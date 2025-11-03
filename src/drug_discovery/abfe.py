@@ -26,7 +26,7 @@ class ABFE(WorkflowStep):
     Objects instantiated here are meant to be used within the Complex class."""
 
     """tool version to use for ABFE"""
-    tool_version = "0.2.15"
+    tool_version = "0.2.18"
     _tool_key = tool_mapper["ABFE"]
 
     _max_atom_count: int = 100_000
@@ -305,12 +305,13 @@ class ABFE(WorkflowStep):
                     f"Complex with Ligand {ligand.name} is not prepared. Please prepare the system using the `prepare` method of Complex."
                 ) from None
 
-        # check that for every prepared system, the number of atoms is less than the max atom count
-        for ligand_name, prepared_system in self.parent._prepared_systems.items():
-            if prepared_system.num_atoms > self._max_atom_count:
-                raise ValueError(
-                    f"System with {ligand_name} has too many atoms. It has {prepared_system.num_atoms} atoms, but the maximum allowed is {self._max_atom_count}."
-                )
+        # TODO -- re-implement this check once we have a way to get the number of atoms in a prepared system
+        # # check that for every prepared system, the number of atoms is less than the max atom count
+        # for ligand_name, prepared_system in self.parent._prepared_systems.items():
+        #     if prepared_system.num_atoms > self._max_atom_count:
+        #         raise ValueError(
+        #             f"System with {ligand_name} has too many atoms. It has {prepared_system.num_atoms} atoms, but the maximum allowed is {self._max_atom_count}."
+        #         )
 
         self.parent._sync_protein_and_ligands()
 
@@ -341,7 +342,7 @@ class ABFE(WorkflowStep):
             output_files = prepared_system["output_files"]
 
             binding_xml = [
-                file for file in output_files if file.endswith("binding.xml")
+                file for file in output_files if file.endswith("bsm_system.xml")
             ][0]
             solvation_xml = [
                 file for file in output_files if file.endswith("solvation.xml")

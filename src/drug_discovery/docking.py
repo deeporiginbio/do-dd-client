@@ -1,7 +1,6 @@
 """This module encapsulates methods to run docking and show docking results on Deep Origin"""
 
 import concurrent.futures
-import hashlib
 import math
 import os
 from pathlib import Path
@@ -32,7 +31,7 @@ class Docking(WorkflowStep):
     Objects instantiated here are meant to be used within the Complex class."""
 
     """tool version to use for Docking"""
-    tool_version = "0.4.0"
+    tool_version = "0.4.5"
     _tool_key = tool_mapper["Docking"]
 
     def __init__(self, parent):
@@ -230,8 +229,10 @@ class Docking(WorkflowStep):
         pocket_center: Optional[tuple[Number, Number, Number]] = None,
         batch_size: Optional[int] = 32,
         n_workers: Optional[int] = None,
-        _output_dir_path: Optional[str] = None,
+        output_dir_path: Optional[str] = None,
         use_parallel: bool = True,
+        approve_amount: Optional[int] = None,
+        quote: bool = False,
         re_run: bool = False,
     ):
         """Run bulk docking on Deep Origin. Ligands will be split into batches based on the batch_size argument, and will run in parallel on Deep Origin clusters.
@@ -245,12 +246,14 @@ class Docking(WorkflowStep):
             re_run (bool, optional): whether to re-run jobs. Defaults to False.
         """
 
+        if quote:
+            approve_amount = 0
+            re_run = True  # if we want a quote, it's irrelevant whether this has already been run or not
+
         protein_basename = os.path.basename(self.parent.protein.file_path)
 
-        if _output_dir_path is None:
-            _output_dir_path = (
-                "tool-runs/Docking/" + self.parent.protein.to_hash() + "/"
-            )
+        if output_dir_path is None:
+            output_dir_path = "tool-runs/docking/" + self.parent.protein.to_hash() + "/"
 
         self.parent._sync_protein_and_ligands()
 
@@ -316,19 +319,16 @@ class Docking(WorkflowStep):
                 smiles_list=chunk,
             )
 
-            # Create a stable hash for the chunk
-            chunk_str = ",".join(chunk)
-            chunk_hash = hashlib.md5(chunk_str.encode("utf-8")).hexdigest()  # NOSONAR
-            this_output_dir_path = os.path.join(_output_dir_path, chunk_hash) + "/"
+            params["protein"] = self.parent.protein._remote_path
 
             return utils._start_tool_run(
                 params=params,
                 metadata=metadata,
-                protein_path=self.parent.protein._remote_path,
                 tool="Docking",
                 tool_version=self.tool_version,
                 client=self.parent.client,
-                _output_dir_path=this_output_dir_path,
+                output_dir_path=output_dir_path,
+                approve_amount=approve_amount,
             )
 
         if len(smiles_strings) > 0:

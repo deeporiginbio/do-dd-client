@@ -82,15 +82,14 @@ def _start_tool_run(
             },
         }
     elif tool == "Docking":
-        raise NotImplementedError("Docking is not implemented yet")
         outputs = {
             "data_file": {
                 PROVIDER_KEY: provider,
                 "key": output_dir_path + RESULTS_CSV,
             },
-            "results_sdf": {
+            "docked_poses": {
                 PROVIDER_KEY: provider,
-                "key": output_dir_path + "results.sdf",
+                "key": output_dir_path,
             },
         }
 
