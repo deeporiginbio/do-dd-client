@@ -351,11 +351,11 @@ class ABFE(WorkflowStep):
             params = self._params.end_to_end
 
             params["binding_xml"] = {
-                "provider": "ufa",
+                "$provider": "ufa",
                 "key": binding_xml,
             }
             params["solvation_xml"] = {
-                "provider": "ufa",
+                "$provider": "ufa",
                 "key": solvation_xml,
             }
 

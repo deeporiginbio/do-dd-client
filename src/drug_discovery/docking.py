@@ -319,7 +319,10 @@ class Docking(WorkflowStep):
                 smiles_list=chunk,
             )
 
-            params["protein"] = self.parent.protein._remote_path
+            params["protein"] = {
+                "$provider": "ufa",
+                "key": self.parent.protein._remote_path,
+            }
 
             return utils._start_tool_run(
                 params=params,

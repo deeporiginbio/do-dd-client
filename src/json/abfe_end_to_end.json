@@ -3,7 +3,6 @@
         "add_fep_repeats": 0,
         "annihilate": true,
         "restraints_type": "rigid_body",
-        "restraints_paths": null,
         "em_all": true,
         "em_solvent": true,
         "emeq_md_options": {
@@ -39,7 +38,6 @@
         "add_fep_repeats": 0,
         "annihilate": true,
         "restraints_type": "rigid_body",
-        "restraints_paths": null,
         "em_all": true,
         "em_solvent": true,
         "emeq_md_options": {

@@ -235,7 +235,7 @@ class Job:
                 ].priceTotal
                 status_html = (
                     "<h3>Job Quoted</h3>"
-                    f"<p>This job has been quoted. It is estimated to cost <strong>${estimated_cost}</strong>. "
+                    f"<p>This job has been quoted. It is estimated to cost <strong>${round(estimated_cost)}</strong>. "
                     "For details look at the Billing tab. To approve and start the run, call the "
                     "<code style='font-family: monospace; background-color: #f5f5f5; padding: 2px 4px; border-radius: 3px;'>confirm()</code> method.</p>"
                 )

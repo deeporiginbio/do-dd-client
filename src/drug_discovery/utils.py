@@ -40,7 +40,7 @@ def _start_tool_run(
     tool_version: str,
     provider: tools_api.PROVIDER = "ufa",
     client: Optional[Client] = None,
-    approve_amount: int = 0,
+    approve_amount: Optional[int] = None,
 ) -> str:
     """
     Starts a single run of an end-to-end tool (such as ABFE) and logs it in the ABFE database.
@@ -102,8 +102,10 @@ def _start_tool_run(
         "inputs": params,
         "outputs": outputs,
         "metadata": metadata,
-        "approveAmount": approve_amount,
     }
+
+    if approve_amount is not None:
+        payload["approveAmount"] = approve_amount
 
     response = tools_api.run_tool(
         data=payload,
