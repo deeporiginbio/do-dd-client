@@ -1,5 +1,6 @@
 """This module contains the function to run system preparation on a protein-ligand complex."""
 
+import json
 import os
 
 from beartype import beartype
@@ -20,7 +21,7 @@ def run_sysprep(
     add_H_atoms: bool = True,
     protonate_protein: bool = True,
     use_cache: bool = True,
-) -> str:
+) -> dict:
     """
     Run system preparation on a protein-ligand complex.
 
@@ -50,56 +51,29 @@ def run_sysprep(
 
     cache_key = hash_dict(payload)
     cache_path = os.path.join(CACHE_DIR, cache_key)
-    output_pdb_path = os.path.join(cache_path, "complex.pdb")
+    results_path = os.path.join(cache_path, "response.json")
 
     # Check if cached results exist
-    if os.path.exists(output_pdb_path) and use_cache:
-        return output_pdb_path
+    if os.path.exists(results_path) and use_cache:
+        with open(results_path, "r") as f:
+            return json.load(f)
 
     protein.upload()
     ligand.upload()
 
     # If no cached results, proceed with server call
-    from deeporigin.platform import file_api, tools_api
+    from deeporigin.platform import tools_api
 
     body = {"params": payload, "clusterId": tools_api.get_default_cluster_id()}
 
     # Send the request to the server
-    # response = tools_api.run_function(
-    #     key="deeporigin.system-prep",
-    #     version="0.3.2",
-    #     function_execution_params_schema_dto=body,
-    # )
-
-    # mock it for now
-    # TODO -- remove once function is deployed
-    response = {
-        "status": "success",
-        "message": "System preparation completed successfully",
-        "protein_path": "entities/proteins/db4aa32e2e8ffa976a60004a8361b86427a2e5653a6623bb60b7913445902549.pdb",
-        "ligand_path": "entities/ligands/bac7b4d01c1a7ab102b1c9955a1839730a5099b08eba93807e12f6ab22adfb67.sdf",
-        "output_files": [
-            "function-runs/system-prep/586a55e3205e7b807c49b32d085700e55e4c159b672f32f7a276ad1b1cc1e9d1/bsm_system.xml",
-            "function-runs/system-prep/586a55e3205e7b807c49b32d085700e55e4c159b672f32f7a276ad1b1cc1e9d1/system.pdb",
-            "function-runs/system-prep/586a55e3205e7b807c49b32d085700e55e4c159b672f32f7a276ad1b1cc1e9d1/solvation.xml",
-        ],
-        "function_key": "deeporigin.system-prep",
-        "function_version": "0.3.2",
-        "parameters": {
-            "add_H_atoms": False,
-            "protonate_protein": False,
-            "retain_waters": True,
-            "padding": 1.5,
-        },
-    }
-
-    prepared_system_pdb_path = [
-        file for file in response["output_files"] if file.endswith(".pdb")
-    ][0]
-
-    file_api.download_file(
-        remote_path=prepared_system_pdb_path,
-        local_path=output_pdb_path,
+    response = tools_api.run_function(
+        key="deeporigin.system-prep",
+        version="0.3.3",
+        function_execution_params_schema_dto=body,
     )
 
-    return output_pdb_path
+    with open(results_path, "w") as f:
+        json.dump(response, f)
+
+    return response

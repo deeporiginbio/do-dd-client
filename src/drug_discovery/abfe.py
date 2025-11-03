@@ -26,7 +26,7 @@ class ABFE(WorkflowStep):
     Objects instantiated here are meant to be used within the Complex class."""
 
     """tool version to use for ABFE"""
-    tool_version = "0.2.14"
+    tool_version = "0.2.15"
     _tool_key = tool_mapper["ABFE"]
 
     _max_atom_count: int = 100_000
@@ -262,7 +262,7 @@ class ABFE(WorkflowStep):
         ligands: Optional[list[Ligand] | LigandSet] = None,
         ligand: Optional[Ligand] = None,
         re_run: bool = False,
-        _output_dir_path: Optional[str] = None,
+        output_dir_path: Optional[str] = None,
         approve_amount: Optional[int] = 0,
         quote: bool = False,
     ) -> list[Job] | None:
@@ -272,7 +272,7 @@ class ABFE(WorkflowStep):
             ligands: List of ligand to run. Defaults to None. When None, all ligands in the object will be run. To view a list of valid ligands, use the `.show_ligands()` method
             ligand: A single ligand to run. Defaults to None. When None, all ligands in the object will be run.
             re_run: Whether to re-run the job if it already exists.
-            _output_dir_path: Path to the output directory.
+            output_dir_path: Path to the output directory.
             approve_amount: Dollar amount under which a job will be approved automatically.
             quote: Whether to run or quote the job. When True, the job will be quoted and not run.
         """
@@ -307,15 +307,9 @@ class ABFE(WorkflowStep):
 
         # check that for every prepared system, the number of atoms is less than the max atom count
         for ligand_name, prepared_system in self.parent._prepared_systems.items():
-            from deeporigin.drug_discovery.external_tools.utils import (
-                count_atoms_in_pdb_file,
-            )
-
-            num_atoms = count_atoms_in_pdb_file(prepared_system)
-
-            if num_atoms > self._max_atom_count:
+            if prepared_system.num_atoms > self._max_atom_count:
                 raise ValueError(
-                    f"System with {ligand_name} has too many atoms. It has {num_atoms} atoms, but the maximum allowed is {self._max_atom_count}."
+                    f"System with {ligand_name} has too many atoms. It has {prepared_system.num_atoms} atoms, but the maximum allowed is {self._max_atom_count}."
                 )
 
         self.parent._sync_protein_and_ligands()
@@ -342,16 +336,38 @@ class ABFE(WorkflowStep):
                 "protein_name": self.parent.protein.name,
                 "ligand_name": ligand.name,
             }
+            prepared_system = self.parent._prepared_systems[ligand.to_hash()]
+
+            output_files = prepared_system["output_files"]
+
+            binding_xml = [
+                file for file in output_files if file.endswith("binding.xml")
+            ][0]
+            solvation_xml = [
+                file for file in output_files if file.endswith("solvation.xml")
+            ][0]
+
+            params = self._params.end_to_end
+
+            params["binding_xml"] = {
+                "provider": "ufa",
+                "key": binding_xml,
+            }
+            params["solvation_xml"] = {
+                "provider": "ufa",
+                "key": solvation_xml,
+            }
+
+            if output_dir_path is None:
+                output_dir_path = f"tool-runs/ABFE/{self.parent.protein.to_hash()}.pdb/{ligand.to_hash()}.sdf/"
 
             job_id = utils._start_tool_run(
                 metadata=metadata,
-                ligand1_path=ligand._remote_path,
-                protein_path=self.parent.protein._remote_path,
-                params=self._params.end_to_end,
+                params=params,
                 tool="ABFE",
                 tool_version=self.tool_version,
                 client=self.parent.client,
-                _output_dir_path=_output_dir_path,
+                output_dir_path=output_dir_path,
                 approve_amount=approve_amount,
             )
 

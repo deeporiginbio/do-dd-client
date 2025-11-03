@@ -23,28 +23,9 @@ a comprehensive set of utilities for protein structure analysis and drug discove
 
 import os
 import pathlib
-from pathlib import Path
 
 from beartype import beartype
 import requests
-
-
-@beartype
-def count_atoms_in_pdb_file(pdb_file_path: str | Path) -> int:
-    """Count the number of atoms in a PDB file
-
-    Args:
-        pdb_file_path (str | Path): The path to the PDB file.
-
-    Returns:
-        int: The number of atoms in the PDB file.
-    """
-    from Bio.PDB import PDBParser
-
-    parser = PDBParser(QUIET=True)
-    structure = parser.get_structure("complex", str(pdb_file_path))
-
-    return sum(1 for _ in structure.get_atoms())
 
 
 @beartype

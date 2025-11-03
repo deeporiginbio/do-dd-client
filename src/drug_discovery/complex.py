@@ -127,7 +127,6 @@ class Complex:
         add_H_atoms: bool = True,  # this nonstandard capitalization is to match the name in the underlying function
         protonate_protein: bool = True,
         use_cache: bool = True,
-        show_prepared_system: bool = True,
     ):
         """run system preparation on the protein and one ligand from the Complex
 
@@ -143,19 +142,20 @@ class Complex:
         if ligand is None:
             from tqdm import tqdm
 
-            show_prepared_system = False
+            responses = []
 
             for ligand in tqdm(self.ligands, desc="Preparing systems"):
-                self.prepare(
+                response = self.prepare(
                     ligand=ligand,
                     padding=padding,
                     retain_waters=retain_waters,
                     add_H_atoms=add_H_atoms,
                     protonate_protein=protonate_protein,
                     use_cache=use_cache,
-                    show_prepared_system=False,
                 )
-            return
+
+                self._prepared_systems[ligand.to_hash()] = response
+            return responses
 
         # make sure there are no missing residues in the protein
         data = self.protein.find_missing_residues()
@@ -166,7 +166,7 @@ class Complex:
             ) from None
 
         # run sysprep on the ligand
-        complex_path = run_sysprep(
+        response = run_sysprep(
             protein=self.protein,
             padding=padding,
             ligand=ligand,
@@ -177,11 +177,19 @@ class Complex:
         )
 
         # set this complex path as the prepared system
-        self._prepared_systems[ligand.to_hash()] = complex_path
+        self._prepared_systems[ligand.to_hash()] = response
+        output_files = response["output_files"]
+        output_file = [file for file in output_files if file.endswith(".pdb")][0]
 
-        # show it
-        if show_prepared_system:
-            return Protein.from_file(complex_path)
+        # download the output file
+        from deeporigin.platform import file_api
+
+        local_path = file_api.download_file(
+            remote_path=output_file,
+            client=self.client,
+        )
+
+        return Protein.from_file(local_path)
 
     def _sync_protein_and_ligands(self) -> None:
         """Ensure that the protein and ligands are uploaded to Deep Origin
