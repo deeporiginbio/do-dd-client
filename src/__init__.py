@@ -3,7 +3,9 @@ import pathlib
 from pathlib import Path
 import subprocess
 
-__all__ = ["__version__", "DataFrame"]
+from deeporigin.exceptions import DeepOriginException
+
+__all__ = ["__version__", "DeepOriginException"]
 
 SRC_DIR = pathlib.Path(__file__).parent
 
