@@ -1586,7 +1586,7 @@ class LigandSet:
         """
         Filter ligands to keep only the best pose for each unique molecule.
 
-        Groups ligands by their 'initial_smiles' property and retains only the one with:
+        Groups ligands by SMILES string and retains only the one with:
         - Minimum binding energy (default), or
         - Maximum pose score (when by_pose_score=True)
 
@@ -1610,10 +1610,10 @@ class LigandSet:
         if not self.ligands:
             return LigandSet(ligands=[])
 
-        # Group ligands by initial_smiles
+        # Group ligands by smiles
         grouped_ligands = {}
         for ligand in self.ligands:
-            initial_smiles = ligand.properties.get("initial_smiles")
+            initial_smiles = ligand.properties.get("SMILES")
             if initial_smiles is None:
                 # Skip ligands without initial_smiles property
                 continue
@@ -1624,7 +1624,7 @@ class LigandSet:
 
         # Select best pose for each group
         best_ligands = []
-        for _initial_smiles, ligands in grouped_ligands.items():
+        for ligands in grouped_ligands.values():
             if len(ligands) == 1:
                 # Only one pose, keep it
                 best_ligands.append(ligands[0])

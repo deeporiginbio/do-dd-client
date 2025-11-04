@@ -31,7 +31,7 @@ class Docking(WorkflowStep):
     Objects instantiated here are meant to be used within the Complex class."""
 
     """tool version to use for Docking"""
-    tool_version = "0.4.5"
+    tool_version = "0.4.6"
     _tool_key = tool_mapper["Docking"]
 
     def __init__(self, parent):
@@ -119,14 +119,17 @@ class Docking(WorkflowStep):
         """return a list of paths to CSV files that contain the results from docking"""
 
         files = file_api.list_files_in_dir(
-            file_path="tool-runs/Docking/" + self.parent.protein.to_hash() + "/",
+            file_path="tool-runs/docking/" + self.parent.protein.to_hash() + "/",
             client=self.parent.client,
         )
 
         if file_type == "csv":
             results_files = [file for file in files if file.endswith("/results.csv")]
         elif file_type == "sdf":
-            results_files = [file for file in files if file.endswith("/results.sdf")]
+            results_files = [file for file in files if file.endswith(".sdf")]
+            results_files = [
+                file for file in results_files if not file.endswith("top_results.sdf")
+            ]
         else:
             raise ValueError(f"Invalid file type: {file_type}")
 
@@ -305,10 +308,7 @@ class Docking(WorkflowStep):
             f"Docking {len(smiles_strings)} ligands, after filtering out already docked ligands..."
         )
 
-        if "id" in df.columns:
-            job_ids = df["id"].tolist()
-        else:
-            job_ids = []
+        job_ids = []
 
         chunks = list(more_itertools.chunked(smiles_strings, batch_size))
 

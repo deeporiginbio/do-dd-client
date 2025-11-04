@@ -232,9 +232,6 @@ def run_tool(
     if "clusterId" not in data.keys():
         data["clusterId"] = get_default_cluster_id(client=client, org_key=org_key)
 
-    if "approveAmount" not in data.keys():
-        data["approveAmount"] = 0
-
     try:
         response = execute_tool_with_version(  # noqa: F821
             tool_key=tool_key,

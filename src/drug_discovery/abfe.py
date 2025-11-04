@@ -337,27 +337,34 @@ class ABFE(WorkflowStep):
                 "protein_name": self.parent.protein.name,
                 "ligand_name": ligand.name,
             }
-            prepared_system = self.parent._prepared_systems[ligand.to_hash()]
 
-            output_files = prepared_system["output_files"]
+            try:
+                prepared_system = self.parent._prepared_systems[ligand.to_hash()]
 
-            binding_xml = [
-                file for file in output_files if file.endswith("bsm_system.xml")
-            ][0]
-            solvation_xml = [
-                file for file in output_files if file.endswith("solvation.xml")
-            ][0]
+                output_files = prepared_system["output_files"]
 
-            params = self._params.end_to_end
+                binding_xml = [
+                    file for file in output_files if file.endswith("bsm_system.xml")
+                ][0]
+                solvation_xml = [
+                    file for file in output_files if file.endswith("solvation.xml")
+                ][0]
 
-            params["binding_xml"] = {
-                "$provider": "ufa",
-                "key": binding_xml,
-            }
-            params["solvation_xml"] = {
-                "$provider": "ufa",
-                "key": solvation_xml,
-            }
+                params = self._params.end_to_end
+
+                params["binding_xml"] = {
+                    "$provider": "ufa",
+                    "key": binding_xml,
+                }
+                params["solvation_xml"] = {
+                    "$provider": "ufa",
+                    "key": solvation_xml,
+                }
+
+            except Exception as e:
+                raise DeepOriginException(
+                    "There is an error with the prepared system. Please prepare the system using the `prepare` method of Complex."
+                ) from e
 
             if output_dir_path is None:
                 output_dir_path = f"tool-runs/ABFE/{self.parent.protein.to_hash()}.pdb/{ligand.to_hash()}.sdf/"
