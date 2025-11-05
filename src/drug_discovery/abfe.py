@@ -295,14 +295,18 @@ class ABFE(WorkflowStep):
         for ligand in ligands:
             if ligand.is_charged():
                 raise DeepOriginException(
-                    f"Ligand {ligand.name} with SMILES {ligand.smiles} is charged. ABFE does not currently support charged ligands."
+                    title="Cannot run ABFE: charged ligand",
+                    message=f"Ligand {ligand.name} with SMILES {ligand.smiles} is charged. ABFE does not currently support charged ligands.",
                 ) from None
 
         # check that there is a prepared system for each ligand
         for ligand in ligands:
             if ligand.to_hash() not in self.parent._prepared_systems:
                 raise DeepOriginException(
-                    f"Complex with Ligand {ligand.name} is not prepared. Please prepare the system using the `prepare` method of Complex."
+                    title="Cannot run ABFE: unprepared ligand",
+                    message=f"Complex with Ligand {ligand.name} is not prepared.",
+                    fix="Use the `prepare` method of Complex to prepare the system.",
+                    level="danger",
                 ) from None
 
         # TODO -- re-implement this check once we have a way to get the number of atoms in a prepared system

@@ -4,7 +4,7 @@ import concurrent.futures
 import math
 import os
 from pathlib import Path
-from typing import Optional
+from typing import Literal, Optional
 
 from beartype import beartype
 from deeporigin_molstar import JupyterViewer
@@ -98,25 +98,19 @@ class Docking(WorkflowStep):
         return ligands
 
     @beartype
-    def _get_result_files(
+    def get_results(
         self,
-        column_name: str,
-        file_extension: str,
-    ) -> list[str] | None:
-        """Helper function to get result files of a specific type.
+        *,
+        file_type: Literal["csv", "sdf"] = "csv",
+    ) -> pd.DataFrame | None | list[str]:
+        """return a list of paths to CSV and SDF files that contain the results from docking
 
         Args:
-            column_name: Name of the column containing file IDs (e.g. "OutputFile" or "ResultFile")
-            file_extension: File extension to use (e.g. ".csv" or ".sdf")
+            file_type (str): "csv" or "sdf". Defaults to "csv".
 
         Returns:
-            List of file paths to the result files
+            pd.DataFrame | None | list[str]: DataFrame of results, None if no results found, or list of file paths.
         """
-        raise NotImplementedError("Not implemented yet")
-
-    @beartype
-    def get_results(self, *, file_type: str = "csv") -> pd.DataFrame | None | list[str]:
-        """return a list of paths to CSV files that contain the results from docking"""
 
         files = file_api.list_files_in_dir(
             file_path="tool-runs/docking/" + self.parent.protein.to_hash() + "/",
@@ -129,9 +123,7 @@ class Docking(WorkflowStep):
             results_files = [file for file in files if file.endswith(".sdf")]
             results_files = [
                 file for file in results_files if not file.endswith("top_results.sdf")
-            ]
-        else:
-            raise ValueError(f"Invalid file type: {file_type}")
+            ]  # exclude this for now, we'll filter client side
 
         if len(results_files) == 0:
             print("No Docking results found for this protein.")
@@ -253,6 +245,14 @@ class Docking(WorkflowStep):
             approve_amount = 0
             re_run = True  # if we want a quote, it's irrelevant whether this has already been run or not
 
+        if pocket is None and box_size is None and pocket_center is None:
+            raise DeepOriginException(
+                title="Cannot run Docking: no pocket specified",
+                message="Specify a pocket, or a box size and pocket center.",
+                fix="Use the pocket finder function to find a pocket, or specify a box size and pocket center.",
+                level="danger",
+            ) from None
+
         protein_basename = os.path.basename(self.parent.protein.file_path)
 
         if output_dir_path is None:
@@ -278,19 +278,12 @@ class Docking(WorkflowStep):
             batch_size = math.ceil(len(self.parent.ligands) / n_workers)
             print(f"Using a batch size of {batch_size}")
 
-        if pocket is None and box_size is None and pocket_center is None:
-            raise DeepOriginException(
-                "Specify a pocket, or a box size and pocket center."
-            ) from None
-
         if pocket is not None:
             box_size = float(2 * np.cbrt(pocket.props["volume"]))
             box_size = [box_size, box_size, box_size]
             pocket_center = pocket.get_center().tolist()
 
         smiles_strings = [ligand.smiles for ligand in self.parent.ligands]
-
-        print(f"Docking {len(smiles_strings)} ligands...")
 
         df = self._get_jobs(pocket_center=pocket_center, box_size=box_size)
 
@@ -303,10 +296,6 @@ class Docking(WorkflowStep):
 
         smiles_strings = set(smiles_strings) - set(already_docked_ligands)
         smiles_strings = sorted(smiles_strings)
-
-        print(
-            f"Docking {len(smiles_strings)} ligands, after filtering out already docked ligands..."
-        )
 
         job_ids = []
 
@@ -359,7 +348,12 @@ class Docking(WorkflowStep):
                     if job_id is not None:
                         job_ids.append(job_id)
         else:
-            print("No new ligands to dock")
+            raise DeepOriginException(
+                title="Cannot run Docking: no new ligands to dock",
+                message="No new ligands to dock. All ligands have already been docked.",
+                fix=" If you want to re-run the docking, set <code>re_run=True</code>.",
+                level="warning",
+            ) from None
 
         self.jobs = [
             Job.from_id(job_id, client=self.parent.client) for job_id in job_ids
