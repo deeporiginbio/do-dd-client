@@ -990,27 +990,18 @@ def ligands_to_dataframe(ligands: list[Ligand]):
 
     import pandas as pd
 
-    smiles_list = [ligand.smiles for ligand in ligands]
-    file_list = [
-        os.path.basename(ligand.file_path) if ligand.file_path is not None else None
-        for ligand in ligands
-    ]
-
-    data = {
-        "Ligand": smiles_list,
-        "File": file_list,
-    }
+    data = {}
 
     # find the union of all properties in all ligands
     all_keys = set()
     for ligand in ligands:
         all_keys.update(ligand.properties.keys())
     for key in all_keys:
+        if key == "_Name" or key == "_SMILES" or key == "initial_smiles":
+            continue
         data[key] = [ligand.properties.get(key, None) for ligand in ligands]
 
-    df = pd.DataFrame(data)
-
-    return df
+    return pd.DataFrame(data)
 
 
 @dataclass
