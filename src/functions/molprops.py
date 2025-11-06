@@ -5,12 +5,12 @@ using the DeepOrigin API.
 import json
 import os
 from pathlib import Path
+from typing import Optional
 
 from beartype import beartype
 
 from deeporigin.utils.core import hash_dict
 
-URL = "http://molprops.default.jobs.edge.deeporigin.io/properties"
 CACHE_DIR = os.path.expanduser("~/.deeporigin/molprops")
 
 # Ensure cache directory exists
@@ -19,7 +19,8 @@ os.makedirs(CACHE_DIR, exist_ok=True)
 
 @beartype
 def molprops(
-    smiles_string: str,
+    smiles_list: list[str],
+    properties: Optional[set[str]] = None,
     *,
     use_cache: bool = True,
 ) -> dict:
@@ -34,12 +35,33 @@ def molprops(
         str: Path to the cached SDF file containing the results
     """
 
+    if properties is None:
+        properties = {"logp", "logd", "logs", "ames", "pains", "herg", "cyp"}
+
     payload = {
-        "smiles": smiles_string,
+        "smiles_list": smiles_list,
     }
 
     # Create hash of inputs
-    cache_hash = hash_dict(payload)
+    response = {}
+    for prop in properties:
+        response[prop] = get_single_property(
+            payload=payload,
+            prop=prop,
+            use_cache=use_cache,
+        )
+
+
+def get_single_property(
+    *,
+    payload: dict,
+    prop: str,
+    use_cache: bool = True,
+) -> dict:
+    """
+    Get a single property for a molecule using the DeepOrigin API.
+    """
+    cache_hash = hash_dict({"property": prop, **payload})
     response_file = str(Path(CACHE_DIR) / f"{cache_hash}.json")
 
     # Check if cached result exists
@@ -56,11 +78,9 @@ def molprops(
 
     body = {"params": payload, "clusterId": tools_api.get_default_cluster_id()}
 
-    print(body)
-
     response = tools_api.run_function(
-        key="deeporigin.mol-props",
-        version="0.1.2",
+        key=f"deeporigin.mol-props-{prop}",
+        version="0.1.3",
         function_execution_params_schema_dto=body,
     )
 

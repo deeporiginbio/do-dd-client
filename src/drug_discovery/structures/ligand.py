@@ -1001,6 +1001,9 @@ def ligands_to_dataframe(ligands: list[Ligand]):
             continue
         data[key] = [ligand.properties.get(key, None) for ligand in ligands]
 
+    # make sure there is a smiles column
+    data["SMILES"] = [ligand.smiles for ligand in ligands]
+
     return pd.DataFrame(data)
 
 
@@ -1124,7 +1127,7 @@ class LigandSet:
 
         from rdkit.Chem import PandasTools
 
-        PandasTools.AddMoleculeColumnToFrame(df, smilesCol="Ligand", molCol="Ligand")
+        PandasTools.AddMoleculeColumnToFrame(df, smilesCol="SMILES", molCol="Ligand")
         PandasTools.RenderImagesInAllDataFrames()
 
         # show structure first
