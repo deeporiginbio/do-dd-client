@@ -15,8 +15,8 @@
         "lambda_schedule": "default",
         "n_windows": 32,
         "mbar": 1,
-        "npt_reduce_restraints_ns": 2.0,
-        "nvt_heating_ns": 1.0,
+        "npt_reduce_restraints_ns": 2.01,
+        "nvt_heating_ns": 1.01,
         "prod_md_options": {
             "T": 298.15,
             "barostat": "MonteCarloBarostat",
