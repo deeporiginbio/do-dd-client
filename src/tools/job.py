@@ -17,6 +17,7 @@ from jinja2 import Environment, FileSystemLoader
 import pandas as pd
 
 from deeporigin.drug_discovery.constants import tool_mapper
+from deeporigin.exceptions import DeepOriginException
 from deeporigin.platform import Client, tools_api
 from deeporigin.tools import job_viz_functions
 from deeporigin.utils.constants import TERMINAL_STATES
@@ -489,12 +490,19 @@ class Job:
         This method confirms the job being tracked by this instance, and requests the job to be started.
         """
 
-        tools_api.confirm(
-            execution_id=self._id,
-            client=self.client,
-        )
+        if self._status != "Quoted":
+            raise DeepOriginException(
+                title="Job is not in the 'Quoted' state.",
+                level="warning",
+                message=f"Job is in the '{self._status}' state. Only Quoted jobs can be confirmed.",
+            )
+        else:
+            tools_api.confirm(
+                execution_id=self._id,
+                client=self.client,
+            )
 
-        self.sync()
+            self.sync()
 
 
 # @beartype
