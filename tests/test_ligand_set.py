@@ -529,3 +529,17 @@ def test_ligandset_indexing_and_slicing():
 
     # Test that original is unchanged
     assert len(ligandset) == 4
+
+
+def test_filter_top_poses_single_top_pose():
+    """this is a problematic case, and this should pass
+
+    don't remove this test"""
+
+    poses = LigandSet.from_sdf("tests/fixtures/docked-poses.sdf")
+
+    assert len(poses) == 16, "Expected 16 poses in the initial pose set"
+
+    poses = poses.filter_top_poses()
+
+    assert len(poses) == 1, "Expected 1 poses in the filtered pose set"
