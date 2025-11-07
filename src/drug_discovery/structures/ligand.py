@@ -875,14 +875,19 @@ class Ligand(Entity):
         from deeporigin.functions.molprops import molprops
 
         try:
-            props = molprops(self.smiles, use_cache=use_cache)["properties"]
+            props = molprops(
+                smiles_list=[self.smiles],
+                use_cache=use_cache,
+                properties={"pains", "logs", "logd", "herg", "cyp", "logp", "ames"},
+            )["properties"][0]  # should be only one in the list
             for key, value in props.items():
                 self.set_property(key, value)
 
             return props
         except Exception as e:
             raise DeepOriginException(
-                f"Failed to predict ADMET properties: {str(e)}"
+                title="Failed to predict ADMET properties",
+                message=f"Failed to predict ADMET properties: {str(e)}",
             ) from e
 
     def update_coordinates(self, coordinates: np.ndarray):
@@ -978,7 +983,9 @@ class Ligand(Entity):
 
         if mol_rdk is None:
             raise DeepOriginException(
-                "Invalid file format or file path or failed to sanitize the molecule"
+                title="Invalid molecule",
+                message="Invalid file format or file path or failed to sanitize the molecule",
+                fix="Please check the file format and file path, and try again.",
             )
 
         return mol_rdk
@@ -1457,9 +1464,23 @@ class LigandSet:
         Shows a progress bar using tqdm.
         """
 
-        for ligand in tqdm(self.ligands, desc="Predicting ADMET properties"):
-            ligand.admet_properties(use_cache=use_cache)
-        return self
+        from deeporigin.functions.molprops import molprops
+
+        try:
+            responses = molprops(
+                smiles_list=self.to_smiles(),
+                use_cache=use_cache,
+                properties={"pains", "logs", "logd", "herg", "cyp", "logp", "ames"},
+            )
+            for response, ligand in zip(responses, self.ligands):
+                for key, value in response.items():
+                    ligand.set_property(key, value)
+
+        except Exception as e:
+            raise DeepOriginException(
+                title="Failed to predict ADMET properties",
+                message=f"Failed to predict ADMET properties: {str(e)}",
+            ) from e
 
     @beartype
     def to_sdf(self, output_path: Optional[str] = None) -> str:

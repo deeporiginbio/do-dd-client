@@ -2,12 +2,12 @@
 using the DeepOrigin API.
 """
 
+from collections import defaultdict
+from copy import deepcopy
 import json
 import os
 from pathlib import Path
 from typing import Optional
-
-from beartype import beartype
 
 from deeporigin.utils.core import hash_dict
 
@@ -17,7 +17,6 @@ CACHE_DIR = os.path.expanduser("~/.deeporigin/molprops")
 os.makedirs(CACHE_DIR, exist_ok=True)
 
 
-@beartype
 def molprops(
     smiles_list: list[str],
     properties: Optional[set[str]] = None,
@@ -43,13 +42,19 @@ def molprops(
     }
 
     # Create hash of inputs
-    response = {}
+    response = []
     for prop in properties:
-        response[prop] = get_single_property(
+        this_response = get_single_property(
             payload=payload,
             prop=prop,
             use_cache=use_cache,
         )
+
+        response.append(this_response)
+
+    # Merge based on smiles
+    response = merge_dict_lists(response)
+    return response
 
 
 def get_single_property(
@@ -85,7 +90,38 @@ def get_single_property(
     )
 
     # Write JSON response to cache
+    # Ensure parent directory exists before writing
+    Path(response_file).parent.mkdir(parents=True, exist_ok=True)
     with open(response_file, "w") as file:
         json.dump(response, file)
 
     return response
+
+
+def merge_dict_lists(dict_lists, key="smiles"):
+    """
+    Merge N lists of dicts by a common key.
+
+    Args:
+        dict_lists: iterable of lists of dicts
+        key: key to merge on (default: 'smiles')
+
+    Returns:
+        List of merged dicts, one per unique key value.
+    """
+    merged = defaultdict(dict)
+    for lst in dict_lists:
+        for d in lst:
+            k = d[key]
+            merged[k].update(d)  # merge keys into single dict
+    # preserve insertion order of first list
+    if dict_lists:
+        order = [d[key] for d in dict_lists[0]]
+        seen = set()
+        result = []
+        for k in order + [k for k in merged if k not in order]:
+            if k not in seen:
+                result.append(deepcopy(merged[k]))
+                seen.add(k)
+        return result
+    return []
