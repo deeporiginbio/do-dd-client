@@ -108,6 +108,7 @@ def _silent_error_handler(shell, etype, evalue, tb, tb_offset=None):
 
 
 def install_silent_error_handler():
+    """Install a custom error handler for IPython notebooks that displays a styled error card."""
     try:
         from IPython import get_ipython
     except ImportError:
@@ -120,5 +121,4 @@ def install_silent_error_handler():
     return True
 
 
-# Optional: auto-install in notebooks
 install_silent_error_handler()
