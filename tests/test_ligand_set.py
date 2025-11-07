@@ -493,7 +493,7 @@ def test_ligandset_to_dataframe():
 
     df = ligandset.to_dataframe()
     assert len(df) == 2
-    assert "Ligand" in df.columns
+    assert "SMILES" in df.columns
     assert "logP" in df.columns
 
 

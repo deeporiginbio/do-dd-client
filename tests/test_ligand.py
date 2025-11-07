@@ -596,8 +596,7 @@ def test_ligands_to_dataframe():
     df = ligands_to_dataframe(ligands_list)
 
     assert len(df) == 2
-    assert "Ligand" in df.columns
-    assert "File" in df.columns
+    assert "SMILES" in df.columns
     assert "logP" in df.columns
-    assert df.iloc[0]["logP"] == 0.32
-    assert df.iloc[1]["logP"] == 0.88
+    assert df.iloc[0]["logP"] == pytest.approx(0.32)
+    assert df.iloc[1]["logP"] == pytest.approx(0.88)

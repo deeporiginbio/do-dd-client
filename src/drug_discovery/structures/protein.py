@@ -121,8 +121,8 @@ class Protein(Entity):
             except Exception:
                 pass
             raise DeepOriginException(
-                f"Failed to create Protein from PDB ID `{pdb_id}`: {str(e)}. The RCSB API appears to be down.",
                 title="Failed to download protein from PDB",
+                message=f"Failed to create Protein from PDB ID `{pdb_id}`: {str(e)}. The RCSB API appears to be down.",
             ) from None
 
     @classmethod

@@ -103,8 +103,8 @@ class Complex:
 
         if len(pdb_files) != 1:
             raise DeepOriginException(
-                f"Expected exactly one PDB file in the directory, but found {len(pdb_files)}: {pdb_files}",
                 title="Complex.from_dir expects a single PDB file",
+                message=f"Expected exactly one PDB file in the directory, but found {len(pdb_files)}: {pdb_files}",
             ) from None
         protein_file = pdb_files[0]
         protein = Protein.from_file(protein_file)
@@ -161,8 +161,8 @@ class Complex:
         data = self.protein.find_missing_residues()
         if len(data.keys()) > 0:
             raise DeepOriginException(
-                "Protein has missing residues. Please use the loop modelling tool to fill in the missing residues.",
                 title="Protein has missing residues",
+                message="Protein has missing residues. Please use the loop modelling tool to fill in the missing residues.",
             ) from None
 
         # run sysprep on the ligand

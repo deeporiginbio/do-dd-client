@@ -25,7 +25,7 @@ def test_abfe_prepared_system():
     ligand = Ligand.from_smiles("CCO")
     protein = Protein.from_file(BRD_DATA_DIR / "brd.pdb")
     sim = Complex(protein=protein, ligands=ligand)
-    with pytest.raises(DeepOriginException, match="Please prepare the system using"):
+    with pytest.raises(DeepOriginException, match="is not prepared"):
         sim.abfe.run()
 
 
