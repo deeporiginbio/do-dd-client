@@ -141,15 +141,15 @@ class Job:
             self._quotation_result = result["quotationResult"]
 
             # Quick and dirty logging for analysis - append progressReport to file
-            log_file = Path(f"{self._id}.txt")
-            with open(log_file, "a") as f:
-                # Parse if it's a JSON string, otherwise use as-is
-                if isinstance(result["progressReport"], str):
-                    progress_data = json.loads(result["progressReport"])
-                else:
-                    progress_data = result["progressReport"]
-                f.write(json.dumps(progress_data, indent=2))
-                f.write("\n\n")
+            # log_file = Path(f"{self._id}.txt")
+            # with open(log_file, "a") as f:
+            #     # Parse if it's a JSON string, otherwise use as-is
+            #     if isinstance(result["progressReport"], str):
+            #         progress_data = json.loads(result["progressReport"])
+            #     else:
+            #         progress_data = result["progressReport"]
+            #     f.write(json.dumps(progress_data, indent=2))
+            #     f.write("\n\n")
 
     def _get_running_time(self) -> Optional[int]:
         """Get the running time of the job.
