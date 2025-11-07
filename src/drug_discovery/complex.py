@@ -124,18 +124,19 @@ class Complex:
         *,
         padding: float = 1.0,
         retain_waters: bool = False,
-        add_H_atoms: bool = True,  # this nonstandard capitalization is to match the name in the underlying function
-        protonate_protein: bool = True,
+        add_H_atoms: bool = False,  # this nonstandard capitalization is to match the name in the underlying function
+        protonate_protein: bool = False,
         use_cache: bool = True,
     ):
         """run system preparation on the protein and one ligand from the Complex
 
         Args:
             ligand (Ligand): The ligand to prepare.
-            padding (float, optional): Padding to add around the system. Defaults to 1.0.
-            keep_waters (bool, optional): Whether to keep water molecules. Defaults to False.
-            is_lig_protonated (bool, optional): Whether the ligand is already protonated. Defaults to True.
-            is_protein_protonated (bool, optional): Whether the protein is already protonated. Defaults to True.
+            padding (float, optional): Padding to add around the system.
+            retain_waters (bool, optional): Whether to keep water molecules.
+            add_H_atoms (bool, optional): Whether the ligand is already protonated.
+            protonate_protein (bool, optional): Whether to protonate the protein.
+            use_cache (bool, optional): Whether to use the cache.
         """
         from deeporigin.functions.sysprep import run_sysprep
 
