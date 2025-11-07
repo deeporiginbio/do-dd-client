@@ -73,6 +73,8 @@ def run_sysprep(
         function_execution_params_schema_dto=body,
     )
 
+    # Ensure the cache directory exists before writing
+    os.makedirs(cache_path, exist_ok=True)
     with open(results_path, "w") as f:
         json.dump(response, f)
 
