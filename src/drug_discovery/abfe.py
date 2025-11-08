@@ -392,25 +392,23 @@ class ABFE(WorkflowStep):
     def show_trajectory(
         self,
         *,
-        ligand: Ligand,
+        job: Job,
         step: Literal["md", "binding"],
         window: int = 1,
     ):
         """Show the system trajectory FEP run.
 
         Args:
-            ligand: The ligand to show the trajectory for.
+            job: The job to show the trajectory for.
             step (Literal["md", "abfe"]): The step to show the trajectory for.
-            window (int, optional): The window number to show the trajectory for. Defaults to 1.
+            window (int, optional): The window number to show the trajectory for.
         """
 
-        remote_base = Path(
-            f"tool-runs/ABFE/{self.parent.protein.to_hash()}.pdb/{ligand.to_hash()}.sdf"
-        )
+        remote_base = Path(job._outputs["output_file"]["key"])
 
-        remote_pdb_file = (
-            remote_base / "output/protein/ligand/systems/complex/system.pdb"
-        )
+        print(remote_base)
+
+        remote_pdb_file = remote_base / "protein/ligand/systems/complex/system.pdb"
         files_to_download = [remote_pdb_file]
 
         if step == "binding":
@@ -428,6 +426,8 @@ class ABFE(WorkflowStep):
                 and "binding/binding" in file
             ]
 
+            print(len(xtc_files))
+
             import re
 
             valid_windows = [
@@ -441,13 +441,13 @@ class ABFE(WorkflowStep):
 
             remote_xtc_file = (
                 remote_base
-                / f"output/protein/ligand/binding/binding/window_{window}/Prod_1/_allatom_trajectory_40ps.xtc"
+                / f"protein/ligand/binding/binding/window_{window}/Prod_1/_allatom_trajectory_40ps.xtc"
             )
 
         else:
             remote_xtc_file = (
                 remote_base
-                / "output/protein/ligand/simple_md/simple_md/prod/_allatom_trajectory_40ps.xtc"
+                / "protein/ligand/simple_md/simple_md/prod/_allatom_trajectory_40ps.xtc"
             )
 
         files_to_download.append(remote_xtc_file)
