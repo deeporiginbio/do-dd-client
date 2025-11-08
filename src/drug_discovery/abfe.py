@@ -404,9 +404,21 @@ class ABFE(WorkflowStep):
             window (int, optional): The window number to show the trajectory for.
         """
 
-        remote_base = Path(job._outputs["output_file"]["key"])
+        if job._status != "Succeeded":
+            raise DeepOriginException(
+                title="Job not succeeded",
+                message="Job must be succeeded to show the trajectory",
+                fix="Provide a completed (and successful) job",
+            ) from None
 
-        print(remote_base)
+        if window < 1:
+            raise DeepOriginException(
+                title="Invalid window number",
+                message="Window number must be greater than 0",
+                fix="Please specify a window number greater than 0",
+            ) from None
+
+        remote_base = Path(job._outputs["output_file"]["key"])
 
         remote_pdb_file = remote_base / "protein/ligand/systems/complex/system.pdb"
         files_to_download = [remote_pdb_file]
@@ -426,8 +438,6 @@ class ABFE(WorkflowStep):
                 and "binding/binding" in file
             ]
 
-            print(len(xtc_files))
-
             import re
 
             valid_windows = [
@@ -436,7 +446,8 @@ class ABFE(WorkflowStep):
 
             if window not in valid_windows:
                 raise DeepOriginException(
-                    f"Invalid window number: {window}. Valid windows are: {sorted(valid_windows)}"
+                    title="Invalid window number",
+                    message=f"Valid windows are: {sorted(valid_windows)}",
                 ) from None
 
             remote_xtc_file = (
