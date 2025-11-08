@@ -69,7 +69,6 @@ def three2one(prot) -> str:
     newprot = ""
     for a in prot:
         newprot += code.get(a, "?")
-        # newprot += seq.ProteinSequence.convert_letter_3to1(a)
 
     return newprot
 
@@ -235,8 +234,8 @@ def write_file(path, content):
         path (str): The path to the file.
         content (str): The content to write to the file.
     """
-    if dir := os.path.dirname(path):
-        os.makedirs(dir, exist_ok=True)
+    if dir_name := os.path.dirname(path):
+        os.makedirs(dir_name, exist_ok=True)
     with open(path, "w") as file:
         file.write(content)
 
