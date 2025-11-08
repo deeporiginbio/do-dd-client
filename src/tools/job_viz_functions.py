@@ -126,6 +126,8 @@ def _viz_func_abfe(job) -> str:
     - Binding FEP
 
     For Solvation FEP and Binding FEP, shows sub-step details and a Bootstrap progress bar.
+    When the job completes successfully (cmd == "FEP Results"), shows a success message
+    and the final delta G result.
     """
 
     # Parse the progress report
@@ -135,6 +137,22 @@ def _viz_func_abfe(job) -> str:
             progress_data = json.loads(job._progress_report)
         except (json.JSONDecodeError, TypeError):
             progress_data = None
+
+    # Check if job is complete with FEP Results
+    if progress_data and progress_data.get("cmd") == "FEP Results":
+        total = progress_data.get("Total", "N/A")
+        unit = progress_data.get("unit", "kcal/mol")
+        success_html = f"""
+        <div style="font-family: sans-serif; font-size: 18px; margin: 20px 0;">
+            <div style="background-color: #90ee90; color: black; padding: 15px; border-radius: 4px; margin-bottom: 15px;">
+                <strong>Job completed successfully.</strong>
+            </div>
+            <div style="padding: 15px; background-color: #f8f9fa; border-radius: 4px;">
+                ΔG = {total} {unit}
+            </div>
+        </div>
+        """
+        return success_html
 
     # Determine current high-level step
     current_step = "initializing"
