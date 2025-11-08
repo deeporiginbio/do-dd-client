@@ -69,7 +69,7 @@ class ABFE(WorkflowStep):
         # set Ligand1 column to ligand name (parent dir of results.csv)
         dfs = []
         for file in results_files:
-            df = pd.read_csv(file)
+            df = pd.read_csv(file, nrows=1)  # we only expect one row per ABFE run
 
             # extract ligand hash from file path
             ligand_hash = str(Path(file).parent.stem)
@@ -78,11 +78,9 @@ class ABFE(WorkflowStep):
             dfs.append(df)
         df1 = pd.concat(dfs)
 
-        df1.drop(columns=["Protein", "Ligand1", "Ligand2"], inplace=True)
+        df1.drop(columns=["Ligand"], inplace=True)
 
         df2 = self.parent.ligands.to_dataframe()
-        df2["SMILES"] = df2["Ligand"]
-        df2.drop(columns=["Ligand", "initial_smiles"], inplace=True)
 
         df = pd.merge(df1, df2, on="SMILES", how="inner")
 
