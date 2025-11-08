@@ -66,11 +66,11 @@ def three2one(prot) -> str:
         "SEP": "S",
     }
 
-    newprot = ""
+    new_protein = ""
     for a in prot:
-        newprot += code.get(a, "?")
+        new_protein += code.get(a, "?")
 
-    return newprot
+    return new_protein
 
 
 def read_structure(file_name, model=1, use_author_fields_flag=True):

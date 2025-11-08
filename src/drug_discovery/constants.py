@@ -107,9 +107,10 @@ METAL_ELEMENTS = {
 }
 
 # File paths
-STATE_DUMP_PATH = Path.home() / ".deeporigin" / "state_dump.pdb"
-PROTEINS_DIR = Path.home() / ".deeporigin" / "proteins"
-LIGANDS_DIR = Path.home() / ".deeporigin" / "ligands"
+DO_HOME_DIR = Path.home() / ".deeporigin"
+STATE_DUMP_PATH = DO_HOME_DIR / "state_dump.pdb"
+PROTEINS_DIR = DO_HOME_DIR / "proteins"
+LIGANDS_DIR = DO_HOME_DIR / "ligands"
 
 # make sure these directories exist
 PROTEINS_DIR.mkdir(parents=True, exist_ok=True)
