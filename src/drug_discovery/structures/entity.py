@@ -24,19 +24,14 @@ class Entity:
         """the base path for the entity on the remote server"""
         return f"{self._remote_path_base}{self.to_hash()}{self._preferred_ext}"
 
-    def upload(self, overwrite: bool = False):
-        """Upload the entity to the remote server."""
+    def upload(self):
+        """Upload the entity to the remote server.
+
+        Overwrites the existing file if it exists."""
 
         from deeporigin.platform import file_api
 
-        remote_files = file_api.get_object_directory(
-            file_path=self._remote_path_base,
-            recursive=True,
+        file_api.upload_file(
+            remote_path=self._remote_path,
+            local_path=self.file_path,
         )
-        remote_files = [file.Key for file in remote_files]
-
-        if self._remote_path not in remote_files or overwrite:
-            file_api.upload_file(
-                remote_path=self._remote_path,
-                local_path=self.file_path,
-            )
