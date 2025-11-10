@@ -103,8 +103,8 @@ class Complex:
 
         if len(pdb_files) != 1:
             raise DeepOriginException(
-                f"Expected exactly one PDB file in the directory, but found {len(pdb_files)}: {pdb_files}",
                 title="Complex.from_dir expects a single PDB file",
+                message=f"Expected exactly one PDB file in the directory, but found {len(pdb_files)}: {pdb_files}",
             ) from None
         protein_file = pdb_files[0]
         protein = Protein.from_file(protein_file)
@@ -123,65 +123,74 @@ class Complex:
         ligand: Optional[Ligand] = None,
         *,
         padding: float = 1.0,
-        keep_waters: bool = False,
-        is_lig_protonated: bool = True,
-        is_protein_protonated: bool = True,
+        retain_waters: bool = False,
+        add_H_atoms: bool = False,  # this nonstandard capitalization is to match the name in the underlying function
+        protonate_protein: bool = False,
         use_cache: bool = True,
-        show_prepared_system: bool = True,
     ):
         """run system preparation on the protein and one ligand from the Complex
 
         Args:
             ligand (Ligand): The ligand to prepare.
-            padding (float, optional): Padding to add around the system. Defaults to 1.0.
-            keep_waters (bool, optional): Whether to keep water molecules. Defaults to False.
-            is_lig_protonated (bool, optional): Whether the ligand is already protonated. Defaults to True.
-            is_protein_protonated (bool, optional): Whether the protein is already protonated. Defaults to True.
+            padding (float, optional): Padding to add around the system.
+            retain_waters (bool, optional): Whether to keep water molecules.
+            add_H_atoms (bool, optional): Whether the ligand is already protonated.
+            protonate_protein (bool, optional): Whether to protonate the protein.
+            use_cache (bool, optional): Whether to use the cache.
         """
         from deeporigin.functions.sysprep import run_sysprep
 
         if ligand is None:
             from tqdm import tqdm
 
-            show_prepared_system = False
+            responses = []
 
             for ligand in tqdm(self.ligands, desc="Preparing systems"):
-                self.prepare(
+                response = self.prepare(
                     ligand=ligand,
                     padding=padding,
-                    keep_waters=keep_waters,
-                    is_lig_protonated=is_lig_protonated,
-                    is_protein_protonated=is_protein_protonated,
+                    retain_waters=retain_waters,
+                    add_H_atoms=add_H_atoms,
+                    protonate_protein=protonate_protein,
                     use_cache=use_cache,
-                    show_prepared_system=False,
                 )
-            return
+
+                self._prepared_systems[ligand.to_hash()] = response
+            return responses
 
         # make sure there are no missing residues in the protein
         data = self.protein.find_missing_residues()
         if len(data.keys()) > 0:
             raise DeepOriginException(
-                "Protein has missing residues. Please use the loop modelling tool to fill in the missing residues.",
                 title="Protein has missing residues",
+                message="Protein has missing residues. Please use the loop modelling tool to fill in the missing residues.",
             ) from None
 
         # run sysprep on the ligand
-        complex_path = run_sysprep(
+        response = run_sysprep(
             protein=self.protein,
             padding=padding,
             ligand=ligand,
-            keep_waters=keep_waters,
-            is_lig_protonated=is_lig_protonated,
-            is_protein_protonated=is_protein_protonated,
+            retain_waters=retain_waters,
+            add_H_atoms=add_H_atoms,
+            protonate_protein=protonate_protein,
             use_cache=use_cache,
         )
 
         # set this complex path as the prepared system
-        self._prepared_systems[ligand.to_hash()] = complex_path
+        self._prepared_systems[ligand.to_hash()] = response
+        output_files = response["output_files"]
+        output_file = [file for file in output_files if file.endswith(".pdb")][0]
 
-        # show it
-        if show_prepared_system:
-            return Protein.from_file(complex_path)
+        # download the output file
+        from deeporigin.platform import file_api
+
+        local_path = file_api.download_file(
+            remote_path=output_file,
+            client=self.client,
+        )
+
+        return Protein.from_file(local_path)
 
     def _sync_protein_and_ligands(self) -> None:
         """Ensure that the protein and ligands are uploaded to Deep Origin

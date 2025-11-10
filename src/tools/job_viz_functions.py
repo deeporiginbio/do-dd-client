@@ -118,71 +118,135 @@ def _viz_func_rbfe(job) -> str:
 @beartype
 def _viz_func_abfe(job) -> str:
     """
-    Render HTML for a Mermaid diagram where each node is drawn as a rounded rectangle
-    with a color indicating its status.
+    Render HTML for ABFE job progress visualization.
 
-    Any node not specified in the node_status dict will default to "notStarted".
+    Shows a simple text flowchart with three high-level steps:
+    - Initializing
+    - Solvation FEP
+    - Binding FEP
+
+    For Solvation FEP and Binding FEP, shows sub-step details and a Bootstrap progress bar.
+    When the job completes successfully (cmd == "FEP Results"), shows a success message
+    and the final delta G result.
     """
 
-    from deeporigin.utils.notebook import mermaid_to_html
+    # Parse the progress report
+    progress_data = None
+    if job._progress_report:
+        try:
+            progress_data = json.loads(job._progress_report)
+        except (json.JSONDecodeError, TypeError):
+            progress_data = None
 
-    statuses = _abfe_parse_progress(job)
+    # Check if job is complete with FEP Results
+    if progress_data and progress_data.get("cmd") == "FEP Results":
+        total = progress_data.get("Total", "N/A")
+        unit = progress_data.get("unit", "kcal/mol")
+        success_html = f"""
+        <div style="font-family: sans-serif; font-size: 18px; margin: 20px 0;">
+            <div style="background-color: #90ee90; color: black; padding: 15px; border-radius: 4px; margin-bottom: 15px;">
+                <strong>Job completed successfully.</strong>
+            </div>
+            <div style="padding: 15px; background-color: #f8f9fa; border-radius: 4px;">
+                ΔG = {total} {unit}
+            </div>
+        </div>
+        """
+        return success_html
 
-    # Define the fixed nodes in the diagram
-    nodes = [
-        "init(Init)",
-        "complex(Complex Prep)",
-        "ligand(Ligand Prep)",
-        "solvation(Solvation FEP)",
-        "simple_md(Simple MD)",
-        "binding(Binding FEP)",
-        "delta_g(ΔG)",
-    ]
+    # Determine current high-level step
+    current_step = "initializing"
+    if progress_data:
+        cmd = progress_data.get("cmd", "")
+        if cmd == "Solvation FEP":
+            current_step = "solvation"
+        elif cmd == "Binding FEP":
+            current_step = "binding"
+        elif cmd == "ABFE E2E" and progress_data.get("status") == "Initiating":
+            current_step = "initializing"
 
-    # Build node definitions. For each node, use the provided status or default to "notStarted".
-    node_defs = ""
-    for node in nodes:
-        label = node.split("(")[0]
-        status = statuses.get(label, "NotStarted")
-        node_defs += f"    {node}:::{status};\n"
+    # Build the flowchart HTML
+    flowchart_html = (
+        '<div style="font-family: sans-serif; font-size: 18px; margin: 20px 0;">'
+    )
 
-    # Define the fixed edges of the diagram.
-    edges = """
-    init --> complex;
-    init --> ligand;
-    ligand ----> solvation;
-    solvation --> delta_g;
-    complex ---> simple_md --> binding -->delta_g;
-    """
+    # Helper function to style a step
+    def style_step(step_name: str, step_key: str) -> str:
+        if current_step == step_key:
+            return f'<span style="background-color: #87CEFA; color: black; padding: 8px 16px; border-radius: 4px; font-weight: bold;">{step_name}</span>'
+        elif current_step == "solvation" and step_key == "initializing":
+            return f'<span style="background-color: #90ee90; color: black; padding: 8px 16px; border-radius: 4px;">{step_name}</span>'
+        elif current_step == "binding" and step_key in ["initializing", "solvation"]:
+            return f'<span style="background-color: #90ee90; color: black; padding: 8px 16px; border-radius: 4px;">{step_name}</span>'
+        else:
+            return f'<span style="background-color: #cccccc; color: black; padding: 8px 16px; border-radius: 4px;">{step_name}</span>'
 
-    # Build the complete Mermaid diagram definition.
-    mermaid_code = f"""
-graph LR;
-    %% Define styles for statuses:
-    classDef NotStarted   fill:#cccccc,stroke:#333,stroke-width:2px;
-    classDef Queued    fill:#cccccc,stroke:#222,stroke-width:2px;
-    classDef Succeeded   fill:#90ee90,stroke:#333,stroke-width:2px;
-    classDef Running      fill:#87CEFA,stroke:#333,stroke-width:2px;
-    classDef Failed    fill:#ff7f7f,stroke:#333,stroke-width:2px;
+    flowchart_html += style_step("Initializing", "initializing")
+    flowchart_html += ' <span style="margin: 0 10px;">→</span> '
+    flowchart_html += style_step("Solvation FEP", "solvation")
+    flowchart_html += ' <span style="margin: 0 10px;">→</span> '
+    flowchart_html += style_step("Binding FEP", "binding")
+    flowchart_html += "</div>"
 
-{node_defs}
-{edges}
-    """
+    # Build details section for Solvation FEP or Binding FEP
+    details_html = ""
+    if current_step in ["solvation", "binding"] and progress_data:
+        sub_step = progress_data.get("sub_step", "")
+        if not sub_step:
+            sub_step = "Initializing..."
 
-    # Render the diagram using your helper function.
-    mermaid_html = mermaid_to_html(mermaid_code)
+        current_avg_step = progress_data.get("current_avg_step", -1.0)
+        target_step = progress_data.get("target_step", -1)
 
-    # Define HTML for the legend. Each status is displayed asa colored span.
-    legend_html = """
-    <div style="margin-top: 20px; font-family: sans-serif;">
-        <span style="background-color:#cccccc; color: black;padding:2px 4px; margin: 0 8px;">NotStarted</span>
-        <span style="background-color:#90ee90; color: black;padding:2px 4px; margin: 0 8px;">Succeeded</span>
-        <span style="background-color:#87CEFA; color: black;padding:2px 4px; margin: 0 8px;">Running</span>
-        <span style="background-color:#ff7f7f; color: black;padding:2px 4px; margin: 0 8px;">Failed</span>
-    </div>
-    """
-    # Display the legend below the Mermaid diagram.
-    return mermaid_html + legend_html
+        # Determine if we're initializing (no valid step data)
+        is_initializing = current_avg_step < 0 or target_step < 0
+
+        # Calculate progress percentage
+        if not is_initializing and target_step > 0:
+            progress_pct = min(100.0, max(0.0, (current_avg_step / target_step) * 100))
+        else:
+            progress_pct = 0.0
+
+        # Build progress bar HTML
+        progress_bar_class = (
+            "progress-bar progress-bar-striped progress-bar-animated"
+            if is_initializing
+            else "progress-bar"
+        )
+        progress_bar_style = f"width: {progress_pct:.1f}%"
+
+        step_info = ""
+        if not is_initializing:
+            step_info = f'<div style="margin-top: 5px; font-size: 14px; color: #666;">Step {current_avg_step:.0f} / {target_step:.0f}</div>'
+
+        details_html = f"""
+        <div style="margin-top: 20px; padding: 15px; background-color: #f8f9fa; border-radius: 4px;">
+            <div style="margin-bottom: 10px;">
+                <strong>Sub-step:</strong> {sub_step}
+            </div>
+            <div class="progress" style="height: 25px;">
+                <div class="{progress_bar_class} bg-primary" role="progressbar"
+                     style="{progress_bar_style}"
+                     aria-valuenow="{progress_pct:.1f}"
+                     aria-valuemin="0"
+                     aria-valuemax="100">
+                    {progress_pct:.1f}%
+                </div>
+            </div>
+            {step_info}
+        </div>
+        """
+
+    # Handle failed status
+    if job._status == "Failed" and progress_data:
+        error_msg = progress_data.get("error_msg", "")
+        details_html += f"""
+        <div style="margin-top: 15px; padding: 10px; background-color: #ff7f7f; border-radius: 4px; color: black;">
+            <strong>Error:</strong> {error_msg if error_msg else "Job failed"}
+        </div>
+        """
+
+    return flowchart_html + details_html
 
 
 def _viz_func_docking(job) -> str:

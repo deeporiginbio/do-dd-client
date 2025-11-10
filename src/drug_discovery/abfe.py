@@ -26,7 +26,7 @@ class ABFE(WorkflowStep):
     Objects instantiated here are meant to be used within the Complex class."""
 
     """tool version to use for ABFE"""
-    tool_version = "0.2.14"
+    tool_version = "0.2.18"
     _tool_key = tool_mapper["ABFE"]
 
     _max_atom_count: int = 100_000
@@ -69,7 +69,7 @@ class ABFE(WorkflowStep):
         # set Ligand1 column to ligand name (parent dir of results.csv)
         dfs = []
         for file in results_files:
-            df = pd.read_csv(file)
+            df = pd.read_csv(file, nrows=1)  # we only expect one row per ABFE run
 
             # extract ligand hash from file path
             ligand_hash = str(Path(file).parent.stem)
@@ -78,11 +78,9 @@ class ABFE(WorkflowStep):
             dfs.append(df)
         df1 = pd.concat(dfs)
 
-        df1.drop(columns=["Protein", "Ligand1", "Ligand2"], inplace=True)
+        df1.drop(columns=["Ligand"], inplace=True)
 
         df2 = self.parent.ligands.to_dataframe()
-        df2["SMILES"] = df2["Ligand"]
-        df2.drop(columns=["Ligand", "initial_smiles"], inplace=True)
 
         df = pd.merge(df1, df2, on="SMILES", how="inner")
 
@@ -262,7 +260,7 @@ class ABFE(WorkflowStep):
         ligands: Optional[list[Ligand] | LigandSet] = None,
         ligand: Optional[Ligand] = None,
         re_run: bool = False,
-        _output_dir_path: Optional[str] = None,
+        output_dir_path: Optional[str] = None,
         approve_amount: Optional[int] = 0,
         quote: bool = False,
     ) -> list[Job] | None:
@@ -272,7 +270,7 @@ class ABFE(WorkflowStep):
             ligands: List of ligand to run. Defaults to None. When None, all ligands in the object will be run. To view a list of valid ligands, use the `.show_ligands()` method
             ligand: A single ligand to run. Defaults to None. When None, all ligands in the object will be run.
             re_run: Whether to re-run the job if it already exists.
-            _output_dir_path: Path to the output directory.
+            output_dir_path: Path to the output directory.
             approve_amount: Dollar amount under which a job will be approved automatically.
             quote: Whether to run or quote the job. When True, the job will be quoted and not run.
         """
@@ -295,28 +293,27 @@ class ABFE(WorkflowStep):
         for ligand in ligands:
             if ligand.is_charged():
                 raise DeepOriginException(
-                    f"Ligand {ligand.name} with SMILES {ligand.smiles} is charged. ABFE does not currently support charged ligands."
+                    title="Cannot run ABFE: charged ligand",
+                    message=f"Ligand {ligand.name} with SMILES {ligand.smiles} is charged. ABFE does not currently support charged ligands.",
                 ) from None
 
         # check that there is a prepared system for each ligand
         for ligand in ligands:
             if ligand.to_hash() not in self.parent._prepared_systems:
                 raise DeepOriginException(
-                    f"Complex with Ligand {ligand.name} is not prepared. Please prepare the system using the `prepare` method of Complex."
+                    title="Cannot run ABFE: unprepared ligand",
+                    message=f"Complex with Ligand {ligand.name} is not prepared.",
+                    fix="Use the `prepare` method of Complex to prepare the system.",
+                    level="danger",
                 ) from None
 
-        # check that for every prepared system, the number of atoms is less than the max atom count
-        for ligand_name, prepared_system in self.parent._prepared_systems.items():
-            from deeporigin.drug_discovery.external_tools.utils import (
-                count_atoms_in_pdb_file,
-            )
-
-            num_atoms = count_atoms_in_pdb_file(prepared_system)
-
-            if num_atoms > self._max_atom_count:
-                raise ValueError(
-                    f"System with {ligand_name} has too many atoms. It has {num_atoms} atoms, but the maximum allowed is {self._max_atom_count}."
-                )
+        # TODO -- re-implement this check once we have a way to get the number of atoms in a prepared system
+        # # check that for every prepared system, the number of atoms is less than the max atom count
+        # for ligand_name, prepared_system in self.parent._prepared_systems.items():
+        #     if prepared_system.num_atoms > self._max_atom_count:
+        #         raise ValueError(
+        #             f"System with {ligand_name} has too many atoms. It has {prepared_system.num_atoms} atoms, but the maximum allowed is {self._max_atom_count}."
+        #         )
 
         self.parent._sync_protein_and_ligands()
 
@@ -343,15 +340,44 @@ class ABFE(WorkflowStep):
                 "ligand_name": ligand.name,
             }
 
+            try:
+                prepared_system = self.parent._prepared_systems[ligand.to_hash()]
+
+                output_files = prepared_system["output_files"]
+
+                binding_xml = [
+                    file for file in output_files if file.endswith("bsm_system.xml")
+                ][0]
+                solvation_xml = [
+                    file for file in output_files if file.endswith("solvation.xml")
+                ][0]
+
+                params = self._params.end_to_end
+
+                params["binding_xml"] = {
+                    "$provider": "ufa",
+                    "key": binding_xml,
+                }
+                params["solvation_xml"] = {
+                    "$provider": "ufa",
+                    "key": solvation_xml,
+                }
+
+            except Exception as e:
+                raise DeepOriginException(
+                    "There is an error with the prepared system. Please prepare the system using the `prepare` method of Complex."
+                ) from e
+
+            if output_dir_path is None:
+                output_dir_path = f"tool-runs/ABFE/{self.parent.protein.to_hash()}.pdb/{ligand.to_hash()}.sdf/"
+
             job_id = utils._start_tool_run(
                 metadata=metadata,
-                ligand1_path=ligand._remote_path,
-                protein_path=self.parent.protein._remote_path,
-                params=self._params.end_to_end,
+                params=params,
                 tool="ABFE",
                 tool_version=self.tool_version,
                 client=self.parent.client,
-                _output_dir_path=_output_dir_path,
+                output_dir_path=output_dir_path,
                 approve_amount=approve_amount,
             )
 
@@ -366,25 +392,35 @@ class ABFE(WorkflowStep):
     def show_trajectory(
         self,
         *,
-        ligand: Ligand,
+        job: Job,
         step: Literal["md", "binding"],
         window: int = 1,
     ):
         """Show the system trajectory FEP run.
 
         Args:
-            ligand: The ligand to show the trajectory for.
+            job: The job to show the trajectory for.
             step (Literal["md", "abfe"]): The step to show the trajectory for.
-            window (int, optional): The window number to show the trajectory for. Defaults to 1.
+            window (int, optional): The window number to show the trajectory for.
         """
 
-        remote_base = Path(
-            f"tool-runs/ABFE/{self.parent.protein.to_hash()}.pdb/{ligand.to_hash()}.sdf"
-        )
+        if job._status != "Succeeded":
+            raise DeepOriginException(
+                title="Job not succeeded",
+                message="Job must be succeeded to show the trajectory",
+                fix="Provide a completed (and successful) job",
+            ) from None
 
-        remote_pdb_file = (
-            remote_base / "output/protein/ligand/systems/complex/system.pdb"
-        )
+        if window < 1:
+            raise DeepOriginException(
+                title="Invalid window number",
+                message="Window number must be greater than 0",
+                fix="Please specify a window number greater than 0",
+            ) from None
+
+        remote_base = Path(job._outputs["output_file"]["key"])
+
+        remote_pdb_file = remote_base / "protein/ligand/systems/complex/system.pdb"
         files_to_download = [remote_pdb_file]
 
         if step == "binding":
@@ -410,18 +446,19 @@ class ABFE(WorkflowStep):
 
             if window not in valid_windows:
                 raise DeepOriginException(
-                    f"Invalid window number: {window}. Valid windows are: {sorted(valid_windows)}"
+                    title="Invalid window number",
+                    message=f"Valid windows are: {sorted(valid_windows)}",
                 ) from None
 
             remote_xtc_file = (
                 remote_base
-                / f"output/protein/ligand/binding/binding/window_{window}/Prod_1/_allatom_trajectory_40ps.xtc"
+                / f"protein/ligand/binding/binding/window_{window}/Prod_1/_allatom_trajectory_40ps.xtc"
             )
 
         else:
             remote_xtc_file = (
                 remote_base
-                / "output/protein/ligand/simple_md/simple_md/prod/_allatom_trajectory_40ps.xtc"
+                / "protein/ligand/simple_md/simple_md/prod/_allatom_trajectory_40ps.xtc"
             )
 
         files_to_download.append(remote_xtc_file)

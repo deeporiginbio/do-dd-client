@@ -121,8 +121,8 @@ class Protein(Entity):
             except Exception:
                 pass
             raise DeepOriginException(
-                f"Failed to create Protein from PDB ID `{pdb_id}`: {str(e)}. The RCSB API appears to be down.",
                 title="Failed to download protein from PDB",
+                message=f"Failed to create Protein from PDB ID `{pdb_id}`: {str(e)}. The RCSB API appears to be down.",
             ) from None
 
     @classmethod
@@ -913,6 +913,21 @@ class Protein(Entity):
 
             if os.path.exists(temp_file_path):
                 os.remove(temp_file_path)
+
+    @property
+    def num_atoms(self) -> int:
+        """Count the number of atoms in PDB file for this protein
+
+
+        Returns:
+            int: The number of atoms in the PDB file.
+        """
+        from Bio.PDB import PDBParser
+
+        parser = PDBParser(QUIET=True)
+        structure = parser.get_structure("complex", str(self.to_pdb()))
+
+        return sum(1 for _ in structure.get_atoms())
 
     @beartype
     def to_hash(self) -> str:

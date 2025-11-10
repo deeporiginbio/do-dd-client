@@ -1,5 +1,6 @@
 """This module contains the function to run system preparation on a protein-ligand complex."""
 
+import json
 import os
 
 from beartype import beartype
@@ -16,11 +17,11 @@ def run_sysprep(
     protein: Protein,
     ligand: Ligand,
     padding: float = 1.0,
-    keep_waters: bool = False,
-    is_lig_protonated: bool = True,
-    is_protein_protonated: bool = True,
+    retain_waters: bool = False,
+    add_H_atoms: bool = True,
+    protonate_protein: bool = True,
     use_cache: bool = True,
-) -> str:
+) -> dict:
     """
     Run system preparation on a protein-ligand complex.
 
@@ -39,40 +40,42 @@ def run_sysprep(
     payload = {
         "protein_path": protein._remote_path,
         "ligand_path": ligand._remote_path,
-        "is_lig_protonated": is_lig_protonated,
-        "is_protein_protonated": is_protein_protonated,
-        "keep_waters": keep_waters,
+        "add_H_atoms": add_H_atoms,
+        "protonate_protein": protonate_protein,
+        "retain_waters": retain_waters,
         "padding": padding,
+        "use_cache": use_cache,
     }
 
     # Create a hash of the input parameters for caching
 
     cache_key = hash_dict(payload)
     cache_path = os.path.join(CACHE_DIR, cache_key)
-    output_pdb_path = os.path.join(cache_path, "complex.pdb")
+    results_path = os.path.join(cache_path, "response.json")
 
     # Check if cached results exist
-    if os.path.exists(output_pdb_path) and use_cache:
-        return output_pdb_path
+    if os.path.exists(results_path) and use_cache:
+        with open(results_path, "r") as f:
+            return json.load(f)
 
     protein.upload()
     ligand.upload()
 
     # If no cached results, proceed with server call
-    from deeporigin.platform import file_api, tools_api
+    from deeporigin.platform import tools_api
 
     body = {"params": payload, "clusterId": tools_api.get_default_cluster_id()}
 
     # Send the request to the server
     response = tools_api.run_function(
         key="deeporigin.system-prep",
-        version="0.2.0",
+        version="0.3.3",
         function_execution_params_schema_dto=body,
     )
 
-    file_api.download_file(
-        remote_path=response.system_pdb_path,
-        local_path=output_pdb_path,
-    )
+    # Ensure the cache directory exists before writing
+    os.makedirs(cache_path, exist_ok=True)
+    with open(results_path, "w") as f:
+        json.dump(response, f)
 
-    return output_pdb_path
+    return response

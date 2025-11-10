@@ -232,13 +232,19 @@ def run_tool(
     if "clusterId" not in data.keys():
         data["clusterId"] = get_default_cluster_id(client=client, org_key=org_key)
 
-    if "approveAmount" not in data.keys():
-        data["approveAmount"] = 0
+    try:
+        response = execute_tool_with_version(  # noqa: F821
+            tool_key=tool_key,
+            execute_tool_schema_dto=data,
+            tool_version=tool_version,
+            client=client,
+            org_key=org_key,
+        )
+    except Exception as e:
+        print(f"Error running tool: {e}")
+        import json
 
-    return execute_tool_with_version(  # noqa: F821
-        tool_key=tool_key,
-        execute_tool_schema_dto=data,
-        tool_version=tool_version,
-        client=client,
-        org_key=org_key,
-    )
+        print(f"Data: {json.dumps(data, indent=4)}")
+        raise e
+
+    return response

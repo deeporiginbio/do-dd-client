@@ -23,28 +23,9 @@ a comprehensive set of utilities for protein structure analysis and drug discove
 
 import os
 import pathlib
-from pathlib import Path
 
 from beartype import beartype
 import requests
-
-
-@beartype
-def count_atoms_in_pdb_file(pdb_file_path: str | Path) -> int:
-    """Count the number of atoms in a PDB file
-
-    Args:
-        pdb_file_path (str | Path): The path to the PDB file.
-
-    Returns:
-        int: The number of atoms in the PDB file.
-    """
-    from Bio.PDB import PDBParser
-
-    parser = PDBParser(QUIET=True)
-    structure = parser.get_structure("complex", str(pdb_file_path))
-
-    return sum(1 for _ in structure.get_atoms())
 
 
 @beartype
@@ -85,12 +66,11 @@ def three2one(prot) -> str:
         "SEP": "S",
     }
 
-    newprot = ""
+    new_protein = ""
     for a in prot:
-        newprot += code.get(a, "?")
-        # newprot += seq.ProteinSequence.convert_letter_3to1(a)
+        new_protein += code.get(a, "?")
 
-    return newprot
+    return new_protein
 
 
 def read_structure(file_name, model=1, use_author_fields_flag=True):
@@ -254,8 +234,8 @@ def write_file(path, content):
         path (str): The path to the file.
         content (str): The content to write to the file.
     """
-    if dir := os.path.dirname(path):
-        os.makedirs(dir, exist_ok=True)
+    if dir_name := os.path.dirname(path):
+        os.makedirs(dir_name, exist_ok=True)
     with open(path, "w") as file:
         file.write(content)
 

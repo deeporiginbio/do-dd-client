@@ -875,14 +875,19 @@ class Ligand(Entity):
         from deeporigin.functions.molprops import molprops
 
         try:
-            props = molprops(self.smiles, use_cache=use_cache)["properties"]
+            props = molprops(
+                smiles_list=[self.smiles],
+                use_cache=use_cache,
+                properties={"pains", "logs", "logd", "herg", "cyp", "logp", "ames"},
+            )["properties"][0]  # should be only one in the list
             for key, value in props.items():
                 self.set_property(key, value)
 
             return props
         except Exception as e:
             raise DeepOriginException(
-                f"Failed to predict ADMET properties: {str(e)}"
+                title="Failed to predict ADMET properties",
+                message=f"Failed to predict ADMET properties: {str(e)}",
             ) from e
 
     def update_coordinates(self, coordinates: np.ndarray):
@@ -978,7 +983,9 @@ class Ligand(Entity):
 
         if mol_rdk is None:
             raise DeepOriginException(
-                "Invalid file format or file path or failed to sanitize the molecule"
+                title="Invalid molecule",
+                message="Invalid file format or file path or failed to sanitize the molecule",
+                fix="Please check the file format and file path, and try again.",
             )
 
         return mol_rdk
@@ -990,27 +997,21 @@ def ligands_to_dataframe(ligands: list[Ligand]):
 
     import pandas as pd
 
-    smiles_list = [ligand.smiles for ligand in ligands]
-    file_list = [
-        os.path.basename(ligand.file_path) if ligand.file_path is not None else None
-        for ligand in ligands
-    ]
-
-    data = {
-        "Ligand": smiles_list,
-        "File": file_list,
-    }
+    data = {}
 
     # find the union of all properties in all ligands
     all_keys = set()
     for ligand in ligands:
         all_keys.update(ligand.properties.keys())
     for key in all_keys:
+        if key == "_Name" or key == "_SMILES" or key == "initial_smiles":
+            continue
         data[key] = [ligand.properties.get(key, None) for ligand in ligands]
 
-    df = pd.DataFrame(data)
+    # make sure there is a smiles column
+    data["SMILES"] = [ligand.smiles for ligand in ligands]
 
-    return df
+    return pd.DataFrame(data)
 
 
 @dataclass
@@ -1133,7 +1134,7 @@ class LigandSet:
 
         from rdkit.Chem import PandasTools
 
-        PandasTools.AddMoleculeColumnToFrame(df, smilesCol="Ligand", molCol="Ligand")
+        PandasTools.AddMoleculeColumnToFrame(df, smilesCol="SMILES", molCol="Ligand")
         PandasTools.RenderImagesInAllDataFrames()
 
         # show structure first
@@ -1463,9 +1464,23 @@ class LigandSet:
         Shows a progress bar using tqdm.
         """
 
-        for ligand in tqdm(self.ligands, desc="Predicting ADMET properties"):
-            ligand.admet_properties(use_cache=use_cache)
-        return self
+        from deeporigin.functions.molprops import molprops
+
+        try:
+            responses = molprops(
+                smiles_list=self.to_smiles(),
+                use_cache=use_cache,
+                properties={"pains", "logs", "logd", "herg", "cyp", "logp", "ames"},
+            )
+            for response, ligand in zip(responses, self.ligands):
+                for key, value in response.items():
+                    ligand.set_property(key, value)
+
+        except Exception as e:
+            raise DeepOriginException(
+                title="Failed to predict ADMET properties",
+                message=f"Failed to predict ADMET properties: {str(e)}",
+            ) from e
 
     @beartype
     def to_sdf(self, output_path: Optional[str] = None) -> str:
@@ -1586,7 +1601,7 @@ class LigandSet:
         """
         Filter ligands to keep only the best pose for each unique molecule.
 
-        Groups ligands by their 'initial_smiles' property and retains only the one with:
+        Groups ligands by SMILES string and retains only the one with:
         - Minimum binding energy (default), or
         - Maximum pose score (when by_pose_score=True)
 
@@ -1610,10 +1625,10 @@ class LigandSet:
         if not self.ligands:
             return LigandSet(ligands=[])
 
-        # Group ligands by initial_smiles
+        # Group ligands by smiles
         grouped_ligands = {}
         for ligand in self.ligands:
-            initial_smiles = ligand.properties.get("initial_smiles")
+            initial_smiles = ligand.properties.get("SMILES")
             if initial_smiles is None:
                 # Skip ligands without initial_smiles property
                 continue
@@ -1624,7 +1639,7 @@ class LigandSet:
 
         # Select best pose for each group
         best_ligands = []
-        for _initial_smiles, ligands in grouped_ligands.items():
+        for ligands in grouped_ligands.values():
             if len(ligands) == 1:
                 # Only one pose, keep it
                 best_ligands.append(ligands[0])

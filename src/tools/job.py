@@ -17,6 +17,7 @@ from jinja2 import Environment, FileSystemLoader
 import pandas as pd
 
 from deeporigin.drug_discovery.constants import tool_mapper
+from deeporigin.exceptions import DeepOriginException
 from deeporigin.platform import Client, tools_api
 from deeporigin.tools import job_viz_functions
 from deeporigin.utils.constants import TERMINAL_STATES
@@ -139,6 +140,17 @@ class Job:
             self._billing_transaction = result["billingTransaction"]
             self._quotation_result = result["quotationResult"]
 
+            # Quick and dirty logging for analysis - append progressReport to file
+            # log_file = Path(f"{self._id}.txt")
+            # with open(log_file, "a") as f:
+            #     # Parse if it's a JSON string, otherwise use as-is
+            #     if isinstance(result["progressReport"], str):
+            #         progress_data = json.loads(result["progressReport"])
+            #     else:
+            #         progress_data = result["progressReport"]
+            #     f.write(json.dumps(progress_data, indent=2))
+            #     f.write("\n\n")
+
     def _get_running_time(self) -> Optional[int]:
         """Get the running time of the job.
 
@@ -235,7 +247,7 @@ class Job:
                 ].priceTotal
                 status_html = (
                     "<h3>Job Quoted</h3>"
-                    f"<p>This job has been quoted. It is estimated to cost <strong>${estimated_cost}</strong>. "
+                    f"<p>This job has been quoted. It is estimated to cost <strong>${round(estimated_cost)}</strong>. "
                     "For details look at the Billing tab. To approve and start the run, call the "
                     "<code style='font-family: monospace; background-color: #f5f5f5; padding: 2px 4px; border-radius: 3px;'>confirm()</code> method.</p>"
                 )
@@ -489,12 +501,19 @@ class Job:
         This method confirms the job being tracked by this instance, and requests the job to be started.
         """
 
-        tools_api.confirm(
-            execution_id=self._id,
-            client=self.client,
-        )
+        if self._status != "Quoted":
+            raise DeepOriginException(
+                title="Job is not in the 'Quoted' state.",
+                level="warning",
+                message=f"Job is in the '{self._status}' state. Only Quoted jobs can be confirmed.",
+            )
+        else:
+            tools_api.confirm(
+                execution_id=self._id,
+                client=self.client,
+            )
 
-        self.sync()
+            self.sync()
 
 
 # @beartype

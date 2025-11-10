@@ -2,24 +2,24 @@
 using the DeepOrigin API.
 """
 
+from collections import defaultdict
+from copy import deepcopy
 import json
 import os
 from pathlib import Path
-
-from beartype import beartype
+from typing import Optional
 
 from deeporigin.utils.core import hash_dict
 
-URL = "http://molprops.default.jobs.edge.deeporigin.io/properties"
 CACHE_DIR = os.path.expanduser("~/.deeporigin/molprops")
 
 # Ensure cache directory exists
 os.makedirs(CACHE_DIR, exist_ok=True)
 
 
-@beartype
 def molprops(
-    smiles_string: str,
+    smiles_list: list[str],
+    properties: Optional[set[str]] = None,
     *,
     use_cache: bool = True,
 ) -> dict:
@@ -34,12 +34,39 @@ def molprops(
         str: Path to the cached SDF file containing the results
     """
 
+    if properties is None:
+        properties = {"logp", "logd", "logs", "ames", "pains", "herg", "cyp"}
+
     payload = {
-        "smiles": smiles_string,
+        "smiles_list": smiles_list,
     }
 
     # Create hash of inputs
-    cache_hash = hash_dict(payload)
+    response = []
+    for prop in properties:
+        this_response = get_single_property(
+            payload=payload,
+            prop=prop,
+            use_cache=use_cache,
+        )
+
+        response.append(this_response)
+
+    # Merge based on smiles
+    response = merge_dict_lists(response)
+    return response
+
+
+def get_single_property(
+    *,
+    payload: dict,
+    prop: str,
+    use_cache: bool = True,
+) -> dict:
+    """
+    Get a single property for a molecule using the DeepOrigin API.
+    """
+    cache_hash = hash_dict({"property": prop, **payload})
     response_file = str(Path(CACHE_DIR) / f"{cache_hash}.json")
 
     # Check if cached result exists
@@ -56,16 +83,45 @@ def molprops(
 
     body = {"params": payload, "clusterId": tools_api.get_default_cluster_id()}
 
-    print(body)
-
     response = tools_api.run_function(
-        key="deeporigin.mol-props",
-        version="0.1.2",
+        key=f"deeporigin.mol-props-{prop}",
+        version="0.1.3",
         function_execution_params_schema_dto=body,
     )
 
     # Write JSON response to cache
+    # Ensure parent directory exists before writing
+    Path(response_file).parent.mkdir(parents=True, exist_ok=True)
     with open(response_file, "w") as file:
         json.dump(response, file)
 
     return response
+
+
+def merge_dict_lists(dict_lists, key="smiles"):
+    """
+    Merge N lists of dicts by a common key.
+
+    Args:
+        dict_lists: iterable of lists of dicts
+        key: key to merge on (default: 'smiles')
+
+    Returns:
+        List of merged dicts, one per unique key value.
+    """
+    merged = defaultdict(dict)
+    for lst in dict_lists:
+        for d in lst:
+            k = d[key]
+            merged[k].update(d)  # merge keys into single dict
+    # preserve insertion order of first list
+    if dict_lists:
+        order = [d[key] for d in dict_lists[0]]
+        seen = set()
+        result = []
+        for k in order + [k for k in merged if k not in order]:
+            if k not in seen:
+                result.append(deepcopy(merged[k]))
+                seen.add(k)
+        return result
+    return []

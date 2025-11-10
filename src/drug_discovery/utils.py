@@ -35,15 +35,12 @@ def _start_tool_run(
     *,
     params: dict,
     metadata: dict,
-    protein_path: str,
     tool: valid_tools,
+    output_dir_path: str,
     tool_version: str,
-    ligand1_path: Optional[str] = None,
-    ligand2_path: Optional[str] = None,
     provider: tools_api.PROVIDER = "ufa",
     client: Optional[Client] = None,
-    approve_amount: int = 0,
-    _output_dir_path: Optional[str] = None,
+    approve_amount: Optional[int] = None,
 ) -> str:
     """
     Starts a single run of an end-to-end tool (such as ABFE) and logs it in the ABFE database.
@@ -70,89 +67,29 @@ def _start_tool_run(
         NotImplementedError: If a tool other than ABFE is specified.
     """
 
-    if _output_dir_path is None:
-        if tool == "ABFE":
-            _output_dir_path = (
-                "tool-runs/"
-                + tool
-                + "/"
-                + os.path.basename(protein_path)
-                + "/"
-                + os.path.basename(ligand1_path)
-                + "/"
-            )
-        elif tool == "RBFE":
-            _output_dir_path = (
-                "tool-runs/"
-                + tool
-                + "/"
-                + os.path.basename(protein_path)
-                + "/"
-                + os.path.basename(ligand1_path)
-                + "/"
-                + os.path.basename(ligand2_path)
-                + "/"
-            )
-        else:
-            raise NotImplementedError(
-                "Tools other than ABFE and RBFE are not implemented yet"
-            )
-
-    # a protein is needed for ABFE, RBFE, and docking
-    params["protein"] = {
-        PROVIDER_KEY: provider,
-        "key": protein_path,
-    }
-
-    # input ligand files
-    if tool == "RBFE":
-        params["ligand1"] = {
-            PROVIDER_KEY: provider,
-            "key": ligand1_path,
-        }
-
-        params["ligand2"] = {
-            PROVIDER_KEY: provider,
-            "key": ligand2_path,
-        }
-    elif tool == "ABFE":
-        params["ligand"] = {
-            PROVIDER_KEY: provider,
-            "key": ligand1_path,
-        }
-
     # output files
     if tool == "RBFE":
-        outputs = {
-            "output_file": {
-                PROVIDER_KEY: provider,
-                "key": _output_dir_path + "output/",
-            },
-            "rbfe_results_summary": {
-                PROVIDER_KEY: provider,
-                "key": _output_dir_path + RESULTS_CSV,
-            },
-        }
+        raise NotImplementedError("RBFE is not implemented yet")
     elif tool == "ABFE":
         outputs = {
             "output_file": {
                 PROVIDER_KEY: provider,
-                "key": _output_dir_path + "output/",
+                "key": output_dir_path + "output/",
             },
             "abfe_results_summary": {
                 PROVIDER_KEY: provider,
-                "key": _output_dir_path + RESULTS_CSV,
+                "key": output_dir_path + RESULTS_CSV,
             },
         }
     elif tool == "Docking":
         outputs = {
             "data_file": {
                 PROVIDER_KEY: provider,
-                "key": _output_dir_path + RESULTS_CSV,
+                "key": output_dir_path + RESULTS_CSV,
             },
-            "results_sdf": {
+            "docked_poses": {
                 PROVIDER_KEY: provider,
-                "key": _output_dir_path + "results.sdf",
+                "key": output_dir_path,
             },
         }
 
@@ -165,8 +102,10 @@ def _start_tool_run(
         "inputs": params,
         "outputs": outputs,
         "metadata": metadata,
-        "approveAmount": approve_amount,
     }
+
+    if approve_amount is not None:
+        payload["approveAmount"] = approve_amount
 
     response = tools_api.run_tool(
         data=payload,

@@ -187,9 +187,8 @@ sim.abfe._params.end_to_end
         {
             "binding": {
                 "add_fep_repeats": 0,
-                "thread_pinning": 1,
                 "annihilate": true,
-                "atom_mapping_threshold": 0.01,
+                "restraints_type": "rigid_body",
                 "em_all": true,
                 "em_solvent": true,
                 "emeq_md_options": {
@@ -199,54 +198,8 @@ sim.abfe._params.end_to_end
                     "fourier_spacing": 0.12,
                     "hydrogen_mass": 2.0
                 },
-                "fep_windows": [
-                    {
-                        "restraints_A": [
-                            0.0,
-                            0.01,
-                            0.025,
-                            0.05,
-                            0.1,
-                            0.35,
-                            0.5,
-                            0.75,
-                            1.0
-                        ]
-                    },
-                    {
-                        "coul_A": [
-                            1.0,
-                            0.9,
-                            0.8,
-                            0.7,
-                            0.6,
-                            0.5,
-                            0.4,
-                            0.3,
-                            0.2,
-                            0.1,
-                            0.0
-                        ]
-                    },
-                    {
-                        "vdw_A": [
-                            1.0,
-                            0.923,
-                            0.846,
-                            0.769,
-                            0.692,
-                            0.615,
-                            0.538,
-                            0.462,
-                            0.385,
-                            0.308,
-                            0.231,
-                            0.154,
-                            0.077,
-                            0.0
-                        ]
-                    }
-                ],
+                "lambda_schedule": "default",
+                "n_windows": 32,
                 "mbar": 1,
                 "npt_reduce_restraints_ns": 2.0,
                 "nvt_heating_ns": 1.0,
@@ -261,73 +214,16 @@ sim.abfe._params.end_to_end
                     "integrator": "BAOABIntegrator"
                 },
                 "repeats": 1,
-                "skip_emeq": "__NO",
+                "replex_period_ps": 0,
                 "softcore_alpha": 0.5,
                 "steps": 1250000,
-                "test_run": 0
-            },
-            "complex_prep": {
-                "sysprep_params": {
-                    "charge_method": "bcc",
-                    "do_loop_modelling": false,
-                    "force_field": "ff14SB",
-                    "is_lig_protonated": false,
-                    "is_protein_protonated": false,
-                    "keep_waters": true,
-                    "lig_force_field": "gaff2",
-                    "padding": 1.0,
-                    "save_gmx_files": false
-                }
-            },
-            "emeq": {
-                "thread_pinning": 1,
-                "em_all": true,
-                "em_solvent": true,
-                "emeq_md_options": {
-                    "T": 298.15,
-                    "cutoff": 0.9,
-                    "dt": 0.004,
-                    "fourier_spacing": 0.12,
-                    "hydrogen_mass": 2.0
-                },
-                "npt_reduce_restraints_ns": 2.0,
-                "nvt_heating_ns": 1.0,
-                "test_run": 0
-            },
-            "ligand_prep": {
-                "sysprep_params": {
-                    "charge_method": "bcc",
-                    "do_loop_modelling": false,
-                    "force_field": "ff14SB",
-                    "is_lig_protonated": false,
-                    "is_protein_protonated": false,
-                    "keep_waters": true,
-                    "lig_force_field": "gaff2",
-                    "padding": 1.0,
-                    "save_gmx_files": false
-                }
-            },
-            "md": {
-                "continue": 0,
-                "thread_pinning": 1,
-                "md_options": {
-                    "T": 298.15,
-                    "barostat": "MonteCarloBarostat",
-                    "barostat_exchange_interval": 1150,
-                    "cutoff": 0.9,
-                    "dt": 0.004,
-                    "fourier_spacing": 0.12,
-                    "hydrogen_mass": 2.0,
-                    "integrator": "BAOABIntegrator"
-                },
-                "steps": 250000,
-                "test_run": 0
+                "test_run": 0,
+                "thread_pinning": 1
             },
             "solvation": {
                 "add_fep_repeats": 0,
-                "thread_pinning": 1,
                 "annihilate": true,
-                "atom_mapping_threshold": 0.01,
+                "restraints_type": "rigid_body",
                 "em_all": true,
                 "em_solvent": true,
                 "emeq_md_options": {
@@ -337,41 +233,8 @@ sim.abfe._params.end_to_end
                     "fourier_spacing": 0.12,
                     "hydrogen_mass": 2.0
                 },
-                "fep_windows": [
-                    {
-                        "coul_A": [
-                            1.0,
-                            0.9,
-                            0.8,
-                            0.7,
-                            0.6,
-                            0.5,
-                            0.4,
-                            0.3,
-                            0.2,
-                            0.1,
-                            0.0
-                        ]
-                    },
-                    {
-                        "vdw_A": [
-                            1.0,
-                            0.923,
-                            0.846,
-                            0.769,
-                            0.692,
-                            0.615,
-                            0.538,
-                            0.462,
-                            0.385,
-                            0.308,
-                            0.231,
-                            0.154,
-                            0.077,
-                            0.0
-                        ]
-                    }
-                ],
+                "lambda_schedule": "default",
+                "n_windows": 24,
                 "mbar": 1,
                 "npt_reduce_restraints_ns": 0.2,
                 "nvt_heating_ns": 0.1,
@@ -386,10 +249,10 @@ sim.abfe._params.end_to_end
                     "integrator": "BAOABIntegrator"
                 },
                 "repeats": 1,
-                "skip_emeq": "__NO",
                 "softcore_alpha": 0.5,
                 "steps": 500000,
-                "test_run": 0
+                "test_run": 0,
+                "thread_pinning": 1
             }
         }
 
@@ -403,7 +266,7 @@ Any of these parameters are modifiable using dot notation. For example, to chang
 from deeporigin.drug_discovery import Complex, BRD_DATA_DIR
 sim = Complex.from_dir(BRD_DATA_DIR)
 
-sim.abfe._params.end_to_end.md.steps = 500000
+sim.abfe._params.end_to_end.binding.n_windows = 96
 ```
 
 !!! danger "Changing parameters may lead to simulation failures"
