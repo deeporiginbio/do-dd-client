@@ -15,7 +15,6 @@ class WorkflowStep:
     This is useful for workflow steps that are run in parallel in batches,
     such as Docking.
     """
-    _fuse_jobs: bool = False
     _tool_key: str = ""  # To be overridden by derived classes
     parent = None
     jobs: list[Job] | None = None
@@ -30,11 +29,13 @@ class WorkflowStep:
         include_outputs: bool = True,
     ) -> pd.DataFrame:
         """Get the jobs for this workflow step as a dataframe"""
+
         df = get_dataframe(
             client=self.parent.client,
             resolve_user_names=False,
             include_metadata=True,
             include_outputs=include_outputs,
+            only_with_status=["Running", "Queued", "Created", "Succeeded", "Quoted"],
         )
 
         if len(df) == 0:
@@ -62,43 +63,10 @@ class WorkflowStep:
 
         job_ids = df["id"].tolist()
 
-        if self._fuse_jobs:
-            self.jobs = [
-                Job.from_id(
-                    job_ids[0],
-                    client=self.parent.client,
-                )
-            ]
-        else:
-            self.jobs = [
-                Job.from_id(
-                    job_id,
-                    client=self.parent.client,
-                )
-                for job_id in job_ids
-            ]
-
-        for job in self.jobs:
-            job.sync()
-
-    @beartype
-    def _make_jobs_from_ids(self, job_ids: list[str]) -> None:
-        """Get a list of jobs for this workflow step. When _fuse_jobs is True, the jobs will be fused into a single job."""
-
-        if len(job_ids) == 0:
-            # nothing to do
-            return
-
-        if self._fuse_jobs:
-            # fuse all job IDs into a single job
-            job = Job.from_ids(job_ids, client=self.parent.client)
-            self.jobs = [job]
-
-        else:
-            # make a new job for each job ID
-            jobs = []
-            for job_id in job_ids:
-                job = Job.from_ids([job_id], client=self.parent.client)
-                jobs.append(job)
-
-            self.jobs = jobs
+        self.jobs = [
+            Job.from_id(
+                job_id,
+                client=self.parent.client,
+            )
+            for job_id in job_ids
+        ]

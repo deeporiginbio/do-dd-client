@@ -41,7 +41,7 @@ class ABFE(WorkflowStep):
 
         This method returns a dataframe showing the results of ABFE runs associated with this simulation session. The ligand file name and ΔG are shown, together with user-supplied properties"""
 
-        df = self.get_jobs(include_outputs=True)
+        df = self.get_jobs_df(include_outputs=True)
 
         results_files = []
 
@@ -115,7 +115,7 @@ class ABFE(WorkflowStep):
         else:
             return df
 
-    def get_jobs(
+    def get_jobs_df(
         self,
         *,
         include_metadata: bool = False,
@@ -148,12 +148,6 @@ class ABFE(WorkflowStep):
             df.drop(columns=["metadata"], inplace=True)
 
         return df
-
-    def show_jobs(self):
-        """show jobs for this workflow step"""
-        df = self.get_jobs()
-
-        return utils.render_smiles_in_dataframe(df, smiles_col="ligand_smiles")
 
     @beartype
     def set_test_run(self, value: int = 1):
@@ -392,7 +386,7 @@ class ABFE(WorkflowStep):
     def show_trajectory(
         self,
         *,
-        job: Job,
+        ligand: Ligand,
         step: Literal["md", "binding"],
         window: int = 1,
     ):
@@ -404,11 +398,13 @@ class ABFE(WorkflowStep):
             window (int, optional): The window number to show the trajectory for.
         """
 
-        if job._status != "Succeeded":
+        df = self.get_jobs_df(include_outputs=True)
+        df = df.loc[df["ligand_smiles"] == ligand.smiles]
+
+        if len(df) == 0:
             raise DeepOriginException(
-                title="Job not succeeded",
-                message="Job must be succeeded to show the trajectory",
-                fix="Provide a completed (and successful) job",
+                title="No job found for this ligand",
+                message="No job found for this ligand",
             ) from None
 
         if window < 1:
@@ -418,7 +414,7 @@ class ABFE(WorkflowStep):
                 fix="Please specify a window number greater than 0",
             ) from None
 
-        remote_base = Path(job._outputs["output_file"]["key"])
+        remote_base = Path(df.iloc[0]["user_outputs"]["output_file"]["key"])
 
         remote_pdb_file = remote_base / "protein/ligand/systems/complex/system.pdb"
         files_to_download = [remote_pdb_file]
@@ -464,7 +460,11 @@ class ABFE(WorkflowStep):
         files_to_download.append(remote_xtc_file)
         files_to_download = dict.fromkeys(map(str, files_to_download), None)
 
-        file_api.download_files(files_to_download, client=self.parent.client)
+        file_api.download_files(
+            files_to_download,
+            client=self.parent.client,
+            lazy=True,
+        )
 
         from deeporigin_molstar.src.viewers import ProteinViewer
 

@@ -1,14 +1,8 @@
 """This module contains the function to run system preparation on a protein-ligand complex."""
 
-import json
-import os
-
 from beartype import beartype
 
 from deeporigin.drug_discovery.structures import Ligand, Protein
-from deeporigin.utils.core import hash_dict
-
-CACHE_DIR = os.path.expanduser("~/.deeporigin/sysprep")
 
 
 @beartype
@@ -47,17 +41,6 @@ def run_sysprep(
         "use_cache": use_cache,
     }
 
-    # Create a hash of the input parameters for caching
-
-    cache_key = hash_dict(payload)
-    cache_path = os.path.join(CACHE_DIR, cache_key)
-    results_path = os.path.join(cache_path, "response.json")
-
-    # Check if cached results exist
-    if os.path.exists(results_path) and use_cache:
-        with open(results_path, "r") as f:
-            return json.load(f)
-
     protein.upload()
     ligand.upload()
 
@@ -67,15 +50,19 @@ def run_sysprep(
     body = {"params": payload, "clusterId": tools_api.get_default_cluster_id()}
 
     # Send the request to the server
-    response = tools_api.run_function(
-        key="deeporigin.system-prep",
-        version="0.3.3",
-        function_execution_params_schema_dto=body,
-    )
+    try:
+        response = tools_api.run_function(
+            key="deeporigin.system-prep",
+            version="0.3.3",
+            function_execution_params_schema_dto=body,
+        )
+    except Exception as e:
+        print(f"Error running sysprep: {e}")
 
-    # Ensure the cache directory exists before writing
-    os.makedirs(cache_path, exist_ok=True)
-    with open(results_path, "w") as f:
-        json.dump(response, f)
+        import json
+
+        print(f"Body: {json.dumps(body, indent=4)}")
+
+        raise e
 
     return response
