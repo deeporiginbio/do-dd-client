@@ -78,6 +78,7 @@ def download_file(
     *,
     remote_path: str,
     local_path: Optional[str] = None,
+    lazy: bool = False,
     client=None,
 ) -> str:
     """download a single file from UFA to ~/.deeporigin/, or some other local path
@@ -85,12 +86,16 @@ def download_file(
     Args:
         remote_path (str): The remote path of the file to download.
         local_path (str): The local path to save the file to. If None, uses ~/.deeporigin/.
+        lazy (bool): If True, and the file exists locally, return the local path without downloading.
     """
 
     if local_path is None:
         local_path = os.path.join(DO_FOLDER, remote_path)
 
     os.makedirs(os.path.dirname(local_path), exist_ok=True)
+
+    if lazy and os.path.exists(local_path):
+        return local_path
 
     response = get_signed_url(  # noqa: F821
         file_path=remote_path,
@@ -148,6 +153,7 @@ def download_files(
     *,
     client=None,
     skip_errors: bool = False,
+    lazy: bool = False,
 ):
     """Download multiple files in parallel. files: {remote_path: local_path or None}. If local_path is None, use default. Raises RuntimeError if any download fails."""
     results = []
@@ -159,6 +165,7 @@ def download_files(
                 remote_path=rp,
                 local_path=lp,
                 client=client,
+                lazy=lazy,
             ): (rp, lp)
             for rp, lp in files.items()
         }

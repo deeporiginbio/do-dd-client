@@ -188,6 +188,7 @@ class Complex:
         local_path = file_api.download_file(
             remote_path=output_file,
             client=self.client,
+            lazy=True,
         )
 
         return Protein.from_file(local_path)
