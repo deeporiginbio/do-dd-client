@@ -5,7 +5,6 @@ import os
 from deeporigin.drug_discovery.structures import Protein
 from deeporigin.utils.core import hash_dict
 
-URL = "http://pocketfinder.default.jobs.edge.deeporigin.io/find_pockets"
 CACHE_DIR = os.path.expanduser("~/.deeporigin/pocket-finder")
 
 
