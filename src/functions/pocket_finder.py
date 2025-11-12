@@ -5,7 +5,6 @@ import os
 from deeporigin.drug_discovery.structures import Protein
 from deeporigin.utils.core import hash_dict
 
-URL = "http://pocketfinder.default.jobs.edge.deeporigin.io/find_pockets"
 CACHE_DIR = os.path.expanduser("~/.deeporigin/pocket-finder")
 
 
@@ -60,7 +59,7 @@ def find_pockets(
     # Send the request to the server
     response = tools_api.run_function(
         key="deeporigin.pocketfinder",
-        version="0.2.0",
+        version="0.2.1",
         function_execution_params_schema_dto=body,
     )
 
