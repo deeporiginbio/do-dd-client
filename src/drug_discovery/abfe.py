@@ -398,6 +398,13 @@ class ABFE(WorkflowStep):
             window (int, optional): The window number to show the trajectory for.
         """
 
+        if window < 1:
+            raise DeepOriginException(
+                title="Invalid window number",
+                message="Window number must be greater than 0",
+                fix="Please specify a window number greater than 0",
+            ) from None
+
         df = self.get_jobs_df(include_outputs=True)
         df = df.loc[df["ligand_smiles"] == ligand.smiles]
 
@@ -405,13 +412,6 @@ class ABFE(WorkflowStep):
             raise DeepOriginException(
                 title="No job found for this ligand",
                 message="No job found for this ligand",
-            ) from None
-
-        if window < 1:
-            raise DeepOriginException(
-                title="Invalid window number",
-                message="Window number must be greater than 0",
-                fix="Please specify a window number greater than 0",
             ) from None
 
         remote_base = Path(df.iloc[0]["user_outputs"]["output_file"]["key"])
