@@ -9,7 +9,7 @@ from deeporigin.drug_discovery.docking import Docking
 from deeporigin.drug_discovery.rbfe import RBFE
 from deeporigin.drug_discovery.structures import Ligand, LigandSet, Protein
 from deeporigin.exceptions import DeepOriginException
-from deeporigin.platform import Client
+from deeporigin.platform.client import DeepOriginClient
 
 
 @dataclass
@@ -20,7 +20,7 @@ class Complex:
 
     # Use a private attribute for ligands
     _ligands: LigandSet = field(default_factory=LigandSet, repr=False)
-    client: Optional[Client] = None
+    client: Optional[DeepOriginClient] = None
     _prepared_systems: dict[str, str] = field(default_factory=dict, repr=False)
 
     def __init__(
@@ -28,7 +28,7 @@ class Complex:
         *,
         protein: Protein,
         ligands: Optional[LigandSet | list[Ligand] | Ligand] = None,
-        client: Optional[Client] = None,
+        client: Optional[DeepOriginClient] = None,
     ):
         """Initialize a Complex object.
 
@@ -73,7 +73,7 @@ class Complex:
         cls,
         directory: str,
         *,
-        client: Optional[Client] = None,
+        client: Optional[DeepOriginClient] = None,
     ) -> "Complex":
         """Initialize a Complex from a directory containing protein and ligand files.
 
@@ -182,12 +182,8 @@ class Complex:
         output_files = response["output_files"]
         output_file = [file for file in output_files if file.endswith(".pdb")][0]
 
-        # download the output file
-        from deeporigin.platform import file_api
-
-        local_path = file_api.download_file(
+        local_path = self.client.files.download_file(
             remote_path=output_file,
-            client=self.client,
             lazy=True,
         )
 
@@ -202,9 +198,7 @@ class Complex:
         # and protein.upload() is so that we can make one call to upload_files, instead
         # of several
 
-        from deeporigin.platform import file_api
-
-        remote_files = file_api.get_object_directory(
+        remote_files = self.client.files.list_files_in_dir(
             file_path="entities/",
             recursive=True,
             client=self.client,
@@ -219,7 +213,7 @@ class Complex:
             if ligand._remote_path not in remote_files:
                 files_to_upload[str(ligand.to_sdf())] = ligand._remote_path
 
-        file_api.upload_files(files_to_upload, client=self.client)
+        self.client.files.upload_files(files_to_upload)
 
     def _repr_pretty_(self, p, cycle):
         """pretty print a Complex object"""

@@ -108,9 +108,7 @@ def dock(
         params=payload,
     )
 
-    from deeporigin.platform import file_api
-
-    sdf_file = file_api.download_file(
+    sdf_file = client.files.download_file(
         remote_path=response["sdf_path"],
         local_path=sdf_file,
     )

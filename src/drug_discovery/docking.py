@@ -18,7 +18,7 @@ from deeporigin.drug_discovery.constants import tool_mapper
 from deeporigin.drug_discovery.structures.pocket import Pocket
 from deeporigin.drug_discovery.workflow_step import WorkflowStep
 from deeporigin.exceptions import DeepOriginException
-from deeporigin.platform import file_api, tools_api
+from deeporigin.platform import tools_api
 from deeporigin.tools.job import Job, get_dataframe
 
 Number = float | int
@@ -112,9 +112,8 @@ class Docking(WorkflowStep):
             pd.DataFrame | None | list[str]: DataFrame of results, None if no results found, or list of file paths.
         """
 
-        files = file_api.list_files_in_dir(
+        files = self.parent.client.files.list_files_in_dir(
             file_path="tool-runs/docking/" + self.parent.protein.to_hash() + "/",
-            client=self.parent.client,
         )
 
         if file_type == "csv":
@@ -132,9 +131,8 @@ class Docking(WorkflowStep):
         # Convert list to dict where each file path is a key with None as value
         results_files_dict = {file: None for file in results_files}
 
-        file_api.download_files(
+        self.parent.client.files.download_files(
             results_files_dict,
-            client=self.parent.client,
         )
 
         all_df = []

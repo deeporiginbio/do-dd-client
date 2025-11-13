@@ -63,10 +63,8 @@ def find_pockets(
         params=payload,
     )
 
-    from deeporigin.platform import file_api
-
     for file in response["files"]:
-        file_api.download_file(
+        client.files.download_file(
             remote_path=file,
             local_path=os.path.join(cache_path, file.split("/")[-1]),
         )

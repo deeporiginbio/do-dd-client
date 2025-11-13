@@ -13,7 +13,6 @@ from deeporigin.drug_discovery.constants import tool_mapper
 from deeporigin.drug_discovery.structures.ligand import Ligand, LigandSet
 from deeporigin.drug_discovery.workflow_step import WorkflowStep
 from deeporigin.exceptions import DeepOriginException
-from deeporigin.platform import file_api
 from deeporigin.tools.job import Job, get_dataframe
 from deeporigin.utils.notebook import get_notebook_environment
 
@@ -55,9 +54,8 @@ class ABFE(WorkflowStep):
 
         results_files = dict.fromkeys(results_files, None)
 
-        results_files = file_api.download_files(
+        results_files = self.parent.client.files.download_files(
             results_files,
-            client=self.parent.client,
             skip_errors=True,
         )
 
@@ -423,9 +421,8 @@ class ABFE(WorkflowStep):
             # Check for valid windows
 
             # figure out valid windows
-            files = file_api.list_files_in_dir(
+            files = self.parent.client.files.list_files_in_dir(
                 file_path=str(remote_base),
-                client=self.parent.client,
             )
             xtc_files = [
                 file
@@ -460,9 +457,8 @@ class ABFE(WorkflowStep):
         files_to_download.append(remote_xtc_file)
         files_to_download = dict.fromkeys(map(str, files_to_download), None)
 
-        file_api.download_files(
+        self.parent.client.files.download_files(
             files_to_download,
-            client=self.parent.client,
             lazy=True,
         )
 

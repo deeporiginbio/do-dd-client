@@ -76,7 +76,6 @@ The DeepOrigin CLI is a Python package that provides a command-line interface an
 - **`__init__.py`** - Module initialization
 - **`utils.py`** - Platform utilities and client management (245 lines)
 - **`tools_api.py`** - Tools API wrapper (256 lines)
-- **`file_api.py`** - File API wrapper (130 lines)
 - **`entities_api.py`** - Entities API wrapper (11 lines)
 
 **Dependencies:**
