@@ -8,9 +8,12 @@ import httpx
 
 from deeporigin.auth import get_tokens
 from deeporigin.config import get_value
+from deeporigin.platform.clusters import Clusters
+from deeporigin.platform.functions import Functions
 
 # Import Tools - safe because tools.py uses TYPE_CHECKING for DeepOriginClient
 from deeporigin.platform.tools import Tools
+from deeporigin.utils.constants import API_ENDPOINT, ENVS
 
 
 class DeepOriginClient:
@@ -27,7 +30,8 @@ class DeepOriginClient:
         self,
         token: str | None = None,
         org_key: str | None = None,
-        base_url: str = "https://api.deeporigin.io/",
+        env: ENVS | None = None,
+        base_url: str | None = None,
         timeout: float = 10.0,
         http2: bool = False,  # often faster off for simple REST
     ):
@@ -38,11 +42,22 @@ class DeepOriginClient:
         if org_key is None:
             org_key = get_value()["org_key"]
 
+        if env is None and base_url is None:
+            env = get_value()["env"]
+            base_url = API_ENDPOINT[env]
+
+        elif env is not None and base_url is None:
+            # get the base url from the environment
+            base_url = API_ENDPOINT[env]
+
         self.token = token
+
         self.org_key = org_key
         self.base_url = base_url.rstrip("/") + "/"
 
         self.tools = Tools(self)
+        self.functions = Functions(self)
+        self.clusters = Clusters(self)
 
         self._client = httpx.Client(
             base_url=self.base_url,
@@ -56,6 +71,9 @@ class DeepOriginClient:
 
         # ensure sockets close if GC happens
         self._finalizer = weakref.finalize(self, self._client.close)
+
+    def __repr__(self):
+        return f"DeepOrigin Platform Client(token={self.token[:5]}..., org_key={self.org_key}, base_url={self.base_url})"
 
     # -------- Singleton helpers --------
     @classmethod
