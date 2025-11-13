@@ -327,15 +327,17 @@ class Job:
         # Generate interactive JSON viewer HTML for inputs and outputs
         inputs = self._attributes.get("userInputs") if self._attributes else None
         outputs = self._attributes.get("userOutputs") if self._attributes else None
+        inputs_fallback = inputs if inputs else {}
         inputs_json_viewer = self._render_json_viewer(
             inputs.to_dict()
             if hasattr(inputs, "to_dict") and inputs is not None
-            else (inputs if inputs else {})
+            else inputs_fallback
         )
+        outputs_fallback = outputs if outputs else {}
         outputs_json_viewer = self._render_json_viewer(
             outputs.to_dict()
             if hasattr(outputs, "to_dict") and outputs is not None
-            else (outputs if outputs else {})
+            else outputs_fallback
         )
         combined_billing_data = {
             "billingTransaction": self._attributes.get("billingTransaction")
