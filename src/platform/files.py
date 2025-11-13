@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import concurrent.futures
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -122,6 +123,55 @@ class Files:
 
         return response.json()
 
+    def upload_files(
+        self,
+        *,
+        files: dict[str, str],
+    ) -> list[dict]:
+        """Upload multiple files in parallel.
+
+        Args:
+            files: A dictionary mapping local paths to remote paths.
+                Format: {local_path: remote_path}
+
+        Returns:
+            List of upload response dictionaries.
+
+        Raises:
+            RuntimeError: If any upload fails, with details about all failures.
+        """
+        results = []
+        errors = []
+
+        with concurrent.futures.ThreadPoolExecutor() as executor:
+            future_to_pair = {
+                executor.submit(
+                    self.upload_file,
+                    local_path=local_path,
+                    remote_path=remote_path,
+                ): (local_path, remote_path)
+                for local_path, remote_path in files.items()
+            }
+
+            for future in concurrent.futures.as_completed(future_to_pair):
+                local_path, remote_path = future_to_pair[future]
+                try:
+                    result = future.result()
+                    results.append(result)
+                except Exception as e:
+                    errors.append((local_path, remote_path, e))
+
+        if errors:
+            error_msgs = "\n".join(
+                [
+                    f"Upload failed for local_path={lp}, remote_path={rp}: {str(err)}"
+                    for lp, rp, err in errors
+                ]
+            )
+            raise RuntimeError(f"Some uploads failed in upload_files:\n{error_msgs}")
+
+        return results
+
     def download_file(
         self,
         *,
@@ -174,3 +224,63 @@ class Files:
                 f.write(download_response.content)
 
         return str(local_path)
+
+    def download_files(
+        self,
+        *,
+        files: dict[str, str | None],
+        skip_errors: bool = False,
+        lazy: bool = False,
+    ) -> list[str]:
+        """Download multiple files in parallel.
+
+        Args:
+            files: A dictionary mapping remote paths to local paths.
+                Format: {remote_path: local_path or None}. If local_path is None,
+                uses default location (~/.deeporigin/).
+            skip_errors: If True, don't raise RuntimeError on failures.
+                Defaults to False.
+            lazy: If True, skip downloading if file already exists locally.
+                Defaults to False.
+
+        Returns:
+            List of local paths where files were saved.
+
+        Raises:
+            RuntimeError: If any download fails and skip_errors is False,
+                with details about all failures.
+        """
+        results = []
+        errors = []
+
+        with concurrent.futures.ThreadPoolExecutor() as executor:
+            future_to_pair = {
+                executor.submit(
+                    self.download_file,
+                    remote_path=remote_path,
+                    local_path=local_path,
+                    lazy=lazy,
+                ): (remote_path, local_path)
+                for remote_path, local_path in files.items()
+            }
+
+            for future in concurrent.futures.as_completed(future_to_pair):
+                remote_path, local_path = future_to_pair[future]
+                try:
+                    result = future.result()
+                    results.append(result)
+                except Exception as e:
+                    errors.append((remote_path, local_path, e))
+
+        if errors and not skip_errors:
+            error_msgs = "\n".join(
+                [
+                    f"Download failed for remote_path={rp}, local_path={lp}: {str(err)}"
+                    for rp, lp, err in errors
+                ]
+            )
+            raise RuntimeError(
+                f"Some downloads failed in download_files:\n{error_msgs}"
+            )
+
+        return results
