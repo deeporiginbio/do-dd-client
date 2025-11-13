@@ -79,7 +79,7 @@ jobs:
           pip install --upgrade pip
           pip install --upgrade setuptools
           pip install -e .[test,tools,plots]
-          pytest -x --mock 
+          pytest --mock
 
 
       - name: "test docs with pytest markdown-docs"
