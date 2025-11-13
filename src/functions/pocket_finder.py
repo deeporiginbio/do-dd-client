@@ -57,9 +57,9 @@ def find_pockets(
     if client is None:
         client = DeepOriginClient()
 
-    # Send the request to the server
-    response = client.functions.run_latest(
+    response = client.functions.run(
         key="deeporigin.pocketfinder",
+        version="0.2.1",
         params=payload,
     )
 

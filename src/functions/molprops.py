@@ -9,6 +9,7 @@ import os
 from pathlib import Path
 from typing import Optional
 
+from deeporigin.platform.client import DeepOriginClient
 from deeporigin.utils.core import hash_dict
 
 CACHE_DIR = os.path.expanduser("~/.deeporigin/molprops")
@@ -22,6 +23,7 @@ def molprops(
     properties: Optional[set[str]] = None,
     *,
     use_cache: bool = True,
+    client: DeepOriginClient | None = None,
 ) -> dict:
     """
     Run molecular property prediction using the DeepOrigin API.
@@ -48,6 +50,7 @@ def molprops(
             payload=payload,
             prop=prop,
             use_cache=use_cache,
+            client=client,
         )
 
         response.append(this_response)
@@ -62,6 +65,7 @@ def get_single_property(
     payload: dict,
     prop: str,
     use_cache: bool = True,
+    client: DeepOriginClient | None = None,
 ) -> dict:
     """
     Get a single property for a molecule using the DeepOrigin API.
@@ -79,14 +83,13 @@ def get_single_property(
 
     # Prepare the request payload
 
-    from deeporigin.platform import tools_api
+    if client is None:
+        client = DeepOriginClient()
 
-    body = {"params": payload, "clusterId": tools_api.get_default_cluster_id()}
-
-    response = tools_api.run_function(
+    response = client.functions.run(
         key=f"deeporigin.mol-props-{prop}",
         version="0.1.3",
-        function_execution_params_schema_dto=body,
+        params=payload,
     )
 
     # Write JSON response to cache

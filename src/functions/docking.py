@@ -16,6 +16,7 @@ import requests
 
 from deeporigin.drug_discovery.structures import Ligand, Pocket, Protein
 from deeporigin.exceptions import DeepOriginException
+from deeporigin.platform.client import DeepOriginClient
 from deeporigin.utils.core import hash_dict
 
 
@@ -48,6 +49,7 @@ def dock(
     pocket_center: Optional[tuple[int, int, int]] = None,
     pocket: Optional[Pocket] = None,
     use_cache: bool = True,
+    client: DeepOriginClient | None = None,
 ) -> str:
     """
     Run molecular docking using the DeepOrigin API.
@@ -60,6 +62,7 @@ def dock(
         pocket_center (Optional[tuple[int, int, int]]): Center coordinates of the docking pocket (x, y, z)
         pocket (Optional[Pocket]): Pocket object defining the docking region
         use_cache (bool): Whether to use cached results. Defaults to True
+        client (DeepOriginClient | None): DeepOrigin client instance. If None, creates a new client. Defaults to None
 
     Returns:
         str: path to the SDF file containing the docking results
@@ -96,25 +99,19 @@ def dock(
 
     protein.upload()
 
-    from deeporigin.platform import tools_api
+    if client is None:
+        client = DeepOriginClient()
 
-    body = {"params": payload, "clusterId": tools_api.get_default_cluster_id()}
-
-    try:
-        response = tools_api.run_function(
-            key="deeporigin.docking",
-            version="0.2.4",
-            function_execution_params_schema_dto=body,
-        )
-    except Exception as e:
-        print(f"Error running docking: {e}")
-        print(f"Body: {body}")
-        raise e
+    response = client.functions.run(
+        key="deeporigin.docking",
+        version="0.2.4",
+        params=payload,
+    )
 
     from deeporigin.platform import file_api
 
     sdf_file = file_api.download_file(
-        remote_path=response.sdf_path,
+        remote_path=response["sdf_path"],
         local_path=sdf_file,
     )
 
