@@ -148,7 +148,7 @@ def constrained_dock(
         stores results based on a SHA256 hash of all input parameters. This allows for
         efficient reuse of previous docking results.
     """
-    URL = "http://constrained-docking.default.jobs.edge.deeporigin.io/dock"
+    URL = "https://constrained-docking.default.jobs.edge.deeporigin.io/dock"
     CACHE_DIR = os.path.expanduser("~/.deeporigin/constrained_docking")
 
     if pocket is None and pocket_center is None:
