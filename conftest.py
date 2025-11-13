@@ -12,12 +12,22 @@ from tests.test_server import TestServer
 
 
 @pytest.fixture(scope="session")
-def test_server():
+def test_server(pytestconfig):
     """Start a local test server for the duration of the test session.
 
+    Only starts if --mock flag is passed. Otherwise yields None.
+
+    Args:
+        pytestconfig: Pytest configuration object.
+
     Yields:
-        TestServer instance that is running.
+        TestServer instance that is running, or None if --mock is not passed.
     """
+    use_mock = pytestconfig.getoption("--mock", default=False)
+    if not use_mock:
+        yield None
+        return
+
     server = TestServer(port=0)
     server.start()
     yield server
@@ -32,9 +42,14 @@ def test_server_url(test_server):
         test_server: The test server fixture.
 
     Yields:
-        Base URL of the test server (e.g., "http://127.0.0.1:12345").
+        Base URL of the test server (e.g., "http://127.0.0.1:12345"), or None if --mock is not passed.
     """
-    host, port = test_server.server.server_address
+    if test_server is None:
+        yield None
+        return
+
+    host = test_server.host
+    port = test_server.port
     yield f"http://{host}:{port}"
 
 
@@ -44,6 +59,12 @@ def pytest_addoption(parser):
         action="store",
         default="deeporigin",
         help="Organization key to use for the client",
+    )
+    parser.addoption(
+        "--mock",
+        action="store_true",
+        default=False,
+        help="Use local mock server instead of real API",
     )
 
 

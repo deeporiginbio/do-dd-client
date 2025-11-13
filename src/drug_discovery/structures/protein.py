@@ -26,6 +26,7 @@ from deeporigin.drug_discovery.constants import (
     STATE_DUMP_PATH,
 )
 from deeporigin.exceptions import DeepOriginException
+from deeporigin.platform.client import DeepOriginClient
 
 from .entity import Entity
 from .ligand import Ligand, LigandSet
@@ -243,6 +244,7 @@ class Protein(Entity):
         pocket: Pocket,
         use_cache: bool = True,
         reference_pose: Optional[Ligand] = None,
+        client: Optional[DeepOriginClient] = None,
     ):
         """Dock a ligand into a specific pocket of the protein.
 
@@ -318,6 +320,7 @@ class Protein(Entity):
                     "pocket": pocket,
                     "ligand": ligand,
                     "use_cache": use_cache,
+                    "client": client,
                 }
                 for ligand in ligands
             ]
@@ -446,6 +449,7 @@ class Protein(Entity):
         pocket_count: int = 1,
         pocket_min_size: int = 30,
         use_cache: bool = True,
+        client: Optional[DeepOriginClient] = None,
     ) -> list[Pocket]:
         """Find potential binding pockets in the protein structure.
 
@@ -481,6 +485,7 @@ class Protein(Entity):
             pocket_count=pocket_count,
             pocket_min_size=pocket_min_size,
             use_cache=use_cache,
+            client=client,
         )
 
         return Pocket.from_pocket_finder_results(results_dir)

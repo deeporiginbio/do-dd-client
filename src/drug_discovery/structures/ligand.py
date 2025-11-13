@@ -23,6 +23,7 @@ from tqdm import tqdm
 from deeporigin.drug_discovery.constants import LIGANDS_DIR, SUPPORTED_ATOM_SYMBOLS
 from deeporigin.drug_discovery.utilities.visualize import jupyter_visualization
 from deeporigin.exceptions import DeepOriginException
+from deeporigin.platform.client import DeepOriginClient
 from deeporigin.utils.constants import number
 
 from .entity import Entity
@@ -866,7 +867,12 @@ class Ligand(Entity):
         return str(ligands_base_dir)
 
     @beartype
-    def admet_properties(self, use_cache: bool = True) -> dict:
+    def admet_properties(
+        self,
+        *,
+        use_cache: bool = True,
+        client: Optional[DeepOriginClient] = None,
+    ) -> dict:
         """
         Predict ADMET properties for the ligand using DO's molprops model.
 
@@ -874,12 +880,16 @@ class Ligand(Entity):
 
         from deeporigin.functions.molprops import molprops
 
+        if client is None:
+            client = DeepOriginClient.get()
+
         try:
             props = molprops(
                 smiles_list=[self.smiles],
                 use_cache=use_cache,
                 properties={"pains", "logs", "logd", "herg", "cyp", "logp", "ames"},
-            )["properties"][0]  # should be only one in the list
+                client=client,
+            )[0]  # should be only one in the list
             for key, value in props.items():
                 self.set_property(key, value)
 
@@ -1456,13 +1466,20 @@ class LigandSet:
         return self
 
     @beartype
-    def admet_properties(self, use_cache: bool = True):
+    def admet_properties(
+        self,
+        use_cache: bool = True,
+        client: Optional[DeepOriginClient] = None,
+    ):
         """
         Predict ADMET properties for all ligands in the set.
         This calls the admet_properties() method on each Ligand in the set.
         Returns a list of the results for each ligand.
         Shows a progress bar using tqdm.
         """
+
+        if client is None:
+            client = DeepOriginClient.get()
 
         from deeporigin.functions.molprops import molprops
 
@@ -1471,6 +1488,7 @@ class LigandSet:
                 smiles_list=self.to_smiles(),
                 use_cache=use_cache,
                 properties={"pains", "logs", "logd", "herg", "cyp", "logp", "ames"},
+                client=client,
             )
             for response, ligand in zip(responses, self.ligands):
                 for key, value in response.items():

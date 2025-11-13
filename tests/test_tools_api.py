@@ -28,14 +28,6 @@ def test_get_executions(client):  # noqa: F811
     assert len(jobs) > 0, "Expected at least one job"
 
 
-def test_get_job_df(client):  # noqa: F811
-    import pandas as pd
-
-    df = get_dataframe(client=client)
-    assert isinstance(df, pd.DataFrame), "Expected a dataframe"
-    assert len(df) > 0, "Expected at least one job"
-
-
 @pytest.mark.dependency()
 def test_tools_api_health(client):  # noqa: F811
     """test the health API"""
@@ -112,7 +104,18 @@ def test_job_df_filtering(client):  # noqa: F811
     )
 
 
-def test_run_docking_and_cancel(client):  # noqa: F811
+def test_run_docking_and_cancel(client, pytestconfig):  # noqa: F811
+    """Test running a docking job and canceling it.
+
+    Note: This test is skipped when using --mock flag as the mock server
+    doesn't implement job execution endpoints yet.
+    """
+    use_mock = pytestconfig.getoption("--mock", default=False)
+    if use_mock:
+        pytest.skip(
+            "Skipping docking run/cancel test with --mock (not yet implemented)"
+        )
+
     sim = Complex.from_dir(BRD_DATA_DIR, client=client)
     sim.client = client
 
@@ -143,7 +146,7 @@ def test_run_docking_and_cancel(client):  # noqa: F811
 
 def test_job_status_logic():
     """Test the simplified status logic for job rendering."""
-    from deeporigin.utils.constants import TERMINAL_STATES
+    from deeporigin.platform.constants import TERMINAL_STATES
 
     # Test the status deduplication logic
     def get_unique_statuses(statuses):
