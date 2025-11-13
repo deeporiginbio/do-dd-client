@@ -9,6 +9,7 @@ import httpx
 from deeporigin.auth import get_tokens
 from deeporigin.config import get_value
 from deeporigin.platform.clusters import Clusters
+from deeporigin.platform.executions import Executions
 from deeporigin.platform.files import Files
 from deeporigin.platform.functions import Functions
 
@@ -60,6 +61,7 @@ class DeepOriginClient:
         self.functions = Functions(self)
         self.clusters = Clusters(self)
         self.files = Files(self)
+        self.executions = Executions(self)
 
         self._client = httpx.Client(
             base_url=self.base_url,
@@ -134,6 +136,11 @@ class DeepOriginClient:
 
     def _put(self, path: str, **kwargs) -> httpx.Response:
         resp = self._client.put(path, **kwargs)
+        resp.raise_for_status()
+        return resp
+
+    def _patch(self, path: str, **kwargs) -> httpx.Response:
+        resp = self._client.patch(path, **kwargs)
         resp.raise_for_status()
         return resp
 
