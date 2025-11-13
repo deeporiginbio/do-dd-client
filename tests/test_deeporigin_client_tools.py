@@ -272,3 +272,143 @@ def test_clusters_get_default_cluster_id_no_non_dev_clusters(mock_client):
 
     with pytest.raises(RuntimeError, match="No clusters found"):
         mock_client.clusters.get_default_cluster_id()
+
+
+def test_files_list_files_in_dir(mock_client):
+    """Test listing files in a directory."""
+    mock_response = MagicMock()
+    mock_response.json.return_value = {
+        "data": [
+            {"Key": "entities/file1.txt", "Size": 1024},
+            {"Key": "entities/file2.txt", "Size": 2048},
+            {"Key": "entities/subdir/file3.txt", "Size": 512},
+        ],
+    }
+    mock_response.raise_for_status = MagicMock()
+    mock_client._client.get.return_value = mock_response
+
+    result = mock_client.files.list_files_in_dir(file_path="entities/")
+
+    assert isinstance(result, list)
+    assert len(result) == 3
+    assert result[0] == "entities/file1.txt"
+    assert result[1] == "entities/file2.txt"
+    assert result[2] == "entities/subdir/file3.txt"
+    mock_client._client.get.assert_called_once_with(
+        "/files/test-org/directory/entities/",
+        params={"recursive": True},
+    )
+
+
+def test_files_list_files_in_dir_with_params(mock_client):
+    """Test listing files in a directory with additional parameters."""
+    mock_response = MagicMock()
+    mock_response.json.return_value = {
+        "data": [{"Key": "entities/file1.txt", "Size": 1024}],
+        "continuationToken": "token-123",
+    }
+    mock_response.raise_for_status = MagicMock()
+    mock_client._client.get.return_value = mock_response
+
+    result = mock_client.files.list_files_in_dir(
+        file_path="entities/",
+        recursive=False,
+        last_count=10,
+        continuation_token="token-123",
+        delimiter="/",
+        max_keys=100,
+        prefix="entities/subdir/",
+    )
+
+    assert isinstance(result, list)
+    assert len(result) == 1
+    assert result[0] == "entities/file1.txt"
+    mock_client._client.get.assert_called_once_with(
+        "/files/test-org/directory/entities/",
+        params={
+            "last-count": "10",
+            "continuation-token": "token-123",
+            "delimiter": "/",
+            "max-orgKeys": 100,
+            "prefix": "entities/subdir/",
+        },
+    )
+
+
+def test_files_list_files_in_dir_empty_response(mock_client):
+    """Test listing files in a directory when no files are found."""
+    mock_response = MagicMock()
+    mock_response.json.return_value = {"data": []}
+    mock_response.raise_for_status = MagicMock()
+    mock_client._client.get.return_value = mock_response
+
+    result = mock_client.files.list_files_in_dir(file_path="empty_dir/")
+
+    assert isinstance(result, list)
+    assert len(result) == 0
+    mock_client._client.get.assert_called_once_with(
+        "/files/test-org/directory/empty_dir/",
+        params={"recursive": True},
+    )
+
+
+def test_files_upload_file(mock_client, tmp_path):
+    """Test uploading a file."""
+    # Create a temporary test file
+    test_file = tmp_path / "test_file.txt"
+    test_file.write_text("test content")
+
+    mock_response = MagicMock()
+    mock_response.json.return_value = {
+        "eTag": "etag-123",
+        "s3": {
+            "bucketName": "test-bucket",
+            "bucketRegion": "us-east-1",
+            "bucketorgKey": "test-key",
+        },
+    }
+    mock_response.raise_for_status = MagicMock()
+    mock_client._client.put.return_value = mock_response
+
+    result = mock_client.files.upload_file(
+        local_path=str(test_file),
+        remote_path="test/uploaded_file.txt",
+    )
+
+    assert isinstance(result, dict)
+    assert result["eTag"] == "etag-123"
+    assert "s3" in result
+
+    # Verify the PUT request was made with correct parameters
+    mock_client._client.put.assert_called_once()
+    call_args = mock_client._client.put.call_args
+    assert call_args[0][0] == "/files/test-org/test/uploaded_file.txt"
+    assert "files" in call_args[1]
+    assert "file" in call_args[1]["files"]
+    file_tuple = call_args[1]["files"]["file"]
+    assert file_tuple[0] == "test_file.txt"
+    assert file_tuple[1] == b"test content"
+    assert file_tuple[2] == "application/octet-stream"
+
+
+def test_files_upload_file_with_path_objects(mock_client, tmp_path):
+    """Test uploading a file using Path objects."""
+    from pathlib import Path
+
+    # Create a temporary test file
+    test_file = tmp_path / "test_file.txt"
+    test_file.write_text("test content")
+
+    mock_response = MagicMock()
+    mock_response.json.return_value = {"eTag": "etag-456"}
+    mock_response.raise_for_status = MagicMock()
+    mock_client._client.put.return_value = mock_response
+
+    result = mock_client.files.upload_file(
+        local_path=Path(test_file),
+        remote_path=Path("test/uploaded_file.txt"),
+    )
+
+    assert isinstance(result, dict)
+    assert result["eTag"] == "etag-456"
+    mock_client._client.put.assert_called_once()

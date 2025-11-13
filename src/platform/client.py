@@ -9,6 +9,7 @@ import httpx
 from deeporigin.auth import get_tokens
 from deeporigin.config import get_value
 from deeporigin.platform.clusters import Clusters
+from deeporigin.platform.files import Files
 from deeporigin.platform.functions import Functions
 
 # Import Tools - safe because tools.py uses TYPE_CHECKING for DeepOriginClient
@@ -58,6 +59,7 @@ class DeepOriginClient:
         self.tools = Tools(self)
         self.functions = Functions(self)
         self.clusters = Clusters(self)
+        self.files = Files(self)
 
         self._client = httpx.Client(
             base_url=self.base_url,
@@ -127,6 +129,11 @@ class DeepOriginClient:
 
     def _post(self, path: str, json: Optional[dict] = None, **kwargs) -> httpx.Response:
         resp = self._client.post(path, json=json, **kwargs)
+        resp.raise_for_status()
+        return resp
+
+    def _put(self, path: str, **kwargs) -> httpx.Response:
+        resp = self._client.put(path, **kwargs)
         resp.raise_for_status()
         return resp
 

@@ -2,7 +2,6 @@
 
 import concurrent.futures
 import os
-from pathlib import Path
 import sys
 from typing import Optional
 
@@ -18,59 +17,6 @@ __all__ = _add_functions_to_module(
 
 
 DO_FOLDER = _ensure_do_folder()
-
-
-@beartype
-def list_files_in_dir(
-    file_path: str,
-    *,
-    client=None,
-) -> list:
-    """
-    Find files on the UFA (Unified File API) storage in some directory.
-
-    Args:
-        file_path (str): The path to the directory to list files from.
-        client (FilesApi): The client to use to list files.
-
-    Returns:
-        List[str]: A list of file paths found in the specified UFA directory.
-    """
-
-    from deeporigin.platform import file_api
-
-    files = file_api.get_object_directory(
-        file_path=file_path,
-        recursive=True,
-        client=client,
-        last_count=99999,  # just get all the files
-    )
-    files = [file.Key for file in files]
-
-    return files
-
-
-@beartype
-def upload_file(
-    *,
-    local_path: str | Path,
-    remote_path: str | Path,
-    client=None,
-):
-    """upload a single file to UFA
-
-    Args:
-        local_path (str): The local path of the file to upload.
-        remote_path (str): The remote path of the file to upload.
-    """
-
-    with open(local_path, "rb") as f:
-        file_data = (remote_path, f.read())
-        put_object(  # noqa: F821
-            file_path=str(remote_path),
-            file=file_data,
-            client=client,
-        )
 
 
 @beartype

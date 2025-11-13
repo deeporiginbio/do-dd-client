@@ -3,6 +3,7 @@
 from beartype import beartype
 
 from deeporigin.drug_discovery.structures import Ligand, Protein
+from deeporigin.platform.client import DeepOriginClient
 
 
 @beartype
@@ -12,9 +13,10 @@ def run_sysprep(
     ligand: Ligand,
     padding: float = 1.0,
     retain_waters: bool = False,
-    add_H_atoms: bool = True,
+    add_H_atoms: bool = True,  # NOSONAR
     protonate_protein: bool = True,
     use_cache: bool = True,
+    client: DeepOriginClient | None = None,
 ) -> dict:
     """
     Run system preparation on a protein-ligand complex.
@@ -26,6 +28,7 @@ def run_sysprep(
         keep_waters (bool, optional): Whether to keep water molecules. Defaults to False.
         is_lig_protonated (bool, optional): Whether the ligand is already protonated. Defaults to True.
         is_protein_protonated (bool, optional): Whether the protein is already protonated. Defaults to True.
+        client (DeepOriginClient | None): DeepOrigin client instance. If None, creates a new client using the default credentials. Defaults to None
 
     Returns:
         Path to the output PDB file if successful, or raises RuntimeError if the server fails.
@@ -44,25 +47,13 @@ def run_sysprep(
     protein.upload()
     ligand.upload()
 
-    # If no cached results, proceed with server call
-    from deeporigin.platform import tools_api
+    if client is None:
+        client = DeepOriginClient()
 
-    body = {"params": payload, "clusterId": tools_api.get_default_cluster_id()}
-
-    # Send the request to the server
-    try:
-        response = tools_api.run_function(
-            key="deeporigin.system-prep",
-            version="0.3.3",
-            function_execution_params_schema_dto=body,
-        )
-    except Exception as e:
-        print(f"Error running sysprep: {e}")
-
-        import json
-
-        print(f"Body: {json.dumps(body, indent=4)}")
-
-        raise e
+    response = client.functions.run(
+        key="deeporigin.system-prep",
+        version="0.3.3",
+        params=payload,
+    )
 
     return response

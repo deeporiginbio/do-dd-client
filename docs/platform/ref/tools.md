@@ -135,3 +135,49 @@ clusters = client.clusters.list(
       show_signature_annotations: true
       show_if_no_docstring: true
       group_by_category: true
+
+## `platform.client.Files`
+
+Files API wrapper for DeepOriginClient. Provides access to files-related endpoints.
+
+Example usage:
+
+```{.python notest}
+from deeporigin.platform.client import DeepOriginClient
+
+client = DeepOriginClient(token="my-token", org_key="my-org")
+
+# List all files in a directory recursively
+files = client.files.list_files_in_dir(file_path="entities/")
+
+# List files with specific parameters
+files = client.files.list_files_in_dir(
+    file_path="entities/",
+    recursive=False,
+    max_keys=100,
+    prefix="entities/subdir/",
+)
+
+# Upload a file
+result = client.files.upload_file(
+    local_path="/path/to/local/file.txt",
+    remote_path="entities/uploaded_file.txt",
+)
+```
+
+::: src.platform.files
+    options:
+      heading_level: 2
+      docstring_style: google
+      show_root_heading: true
+      show_category_heading: true
+      show_object_full_path: false
+      show_root_toc_entry: false
+      inherited_members: true
+      members_order: alphabetical
+      filters:
+        - "!^_"  # Exclude private members (names starting with "_")
+      show_signature: true
+      show_signature_annotations: true
+      show_if_no_docstring: true
+      group_by_category: true
