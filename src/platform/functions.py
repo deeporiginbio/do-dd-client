@@ -22,6 +22,14 @@ class Functions:
         """
         self._c = client
 
+    def list(self) -> list[dict]:
+        """Get all function definitions.
+
+        Returns:
+            List of function definition dictionaries.
+        """
+        return self._c.get_json("/tools/protected/functions/definitions")
+
     def run_latest(
         self,
         *,

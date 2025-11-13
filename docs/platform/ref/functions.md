@@ -11,7 +11,7 @@ client = DeepOriginClient()
 Then, the following methods can be used, for example:
 
 ```{.python notest}
-tools = client.functions.run()
+functions = client.functions.list()
 ```
 
 

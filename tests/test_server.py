@@ -170,6 +170,17 @@ class TestServer:
                 ]
             }
 
+        @self.app.get("/tools/protected/functions/definitions")
+        def list_functions() -> list[dict[str, Any]]:
+            """List all function definitions."""
+            return [
+                {
+                    "key": "test-function",
+                    "name": "Test Function",
+                    "version": "1.0.0",
+                }
+            ]
+
         @self.app.post("/tools/{org_key}/functions/{function_key}")
         def run_function(org_key: str, function_key: str) -> dict[str, str]:
             """Run a function."""

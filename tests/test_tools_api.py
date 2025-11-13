@@ -48,6 +48,17 @@ def test_get_all_tools(client):  # noqa: F811
 
 
 @pytest.mark.dependency(depends=["test_tools_api_health"])
+def test_get_all_functions(client):  # noqa: F811
+    """Test the functions API list method."""
+
+    functions = client.functions.list()
+    assert isinstance(functions, list), "Expected a list"
+    assert len(functions) > 0, "Expected at least one function"
+
+    print(f"Found {len(functions)} functions")
+
+
+@pytest.mark.dependency(depends=["test_tools_api_health"])
 def test_get_all_executions(client):  # noqa: F811
     """test the executions API"""
 
