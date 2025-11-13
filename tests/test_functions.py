@@ -81,7 +81,7 @@ def test_sysprep(client, pytestconfig):  # noqa: F811
 
     from deeporigin.functions.sysprep import run_sysprep
 
-    sim = Complex.from_dir(BRD_DATA_DIR)
+    sim = Complex.from_dir(BRD_DATA_DIR, client=client)
 
     # this is chosen to be one where it takes >1 min
     run_sysprep(

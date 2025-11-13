@@ -4,7 +4,7 @@ The Deep Origin python client allows you to control and interact with the Deep O
 
 Connect to the API using the Deep Origin Client:
 
-```python
+```{.python notest}
 from deeporigin.platform.client import DeepOriginClient
 
 client = DeepOriginClient()

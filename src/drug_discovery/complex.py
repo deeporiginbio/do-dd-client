@@ -40,7 +40,7 @@ class Complex:
         self.ligands = ligands
 
         if client is None:
-            client = DeepOriginClient.get()
+            client = DeepOriginClient()
         self.client = client
 
         # assign references to the complex in the

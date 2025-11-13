@@ -6,7 +6,7 @@ This document describes how to run a [ABFE :octicons-link-external-16:](https://
 
 We assume that we have an initialized and configured `Complex` object:
 
-```python
+```{.python notest}
 from deeporigin.drug_discovery import Complex, BRD_DATA_DIR
 
 sim = Complex.from_dir(BRD_DATA_DIR)
@@ -45,7 +45,7 @@ You will see something like:
 
 Before starting a ABFE run, you can estimate costs using:
 
-```
+``````{.python notest}
 # assuming we want to perform a single ABFE run on a single ligand
 ligand = sim.ligands[0]
 jobs = sim.abfe.run(ligand=ligand, quote=True)
@@ -174,7 +174,7 @@ job.cancel()
 
 The end to end ABFE tool has a number of user-accessible parameters. To view all parameters, use:
 
-```python
+```{.python notest}
 from deeporigin.drug_discovery import Complex, BRD_DATA_DIR
 sim = Complex.from_dir(BRD_DATA_DIR)
 
@@ -262,7 +262,7 @@ sim.abfe._params.end_to_end
 
 Any of these parameters are modifiable using dot notation. For example, to change the number of steps in the MD step, we can use:
 
-```python
+```{.python notest}
 from deeporigin.drug_discovery import Complex, BRD_DATA_DIR
 sim = Complex.from_dir(BRD_DATA_DIR)
 
@@ -279,7 +279,7 @@ The test run parameter can be used to run ABFE for a short number of steps, to v
 To set the test run parameter to 1, we can use:
 
 
-```python
+```{.python notest}
 
 from deeporigin.drug_discovery import Complex, BRD_DATA_DIR
 sim = Complex.from_dir(BRD_DATA_DIR)
