@@ -11,11 +11,11 @@ client = DeepOriginClient()
 Then, the following methods can be used, for example:
 
 ```{.python notest}
-tools = client.files.list_files_in_dir()
+tools = client.clusters.list()
 ```
 
 
-::: src.platform.files.Files
+::: src.platform.clusters.Clusters
     options:
       heading_level: 2
       docstring_style: google

@@ -40,7 +40,7 @@ def test_tools_api_health(client):  # noqa: F811
 def test_get_all_tools(client):  # noqa: F811
     """test the tools API"""
 
-    response = client.tools.get_all()
+    response = client.tools.list()
     tools = response.get("data", [])
     assert len(tools) > 0, "Expected at least one tool"
 

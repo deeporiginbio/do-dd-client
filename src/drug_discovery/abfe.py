@@ -391,7 +391,7 @@ class ABFE(WorkflowStep):
         """Show the system trajectory FEP run.
 
         Args:
-            job: The job to show the trajectory for.
+            ligand: The ligand to show the trajectory for.
             step (Literal["md", "abfe"]): The step to show the trajectory for.
             window (int, optional): The window number to show the trajectory for.
         """

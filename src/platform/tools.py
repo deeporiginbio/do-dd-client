@@ -22,7 +22,7 @@ class Tools:
         """
         self._c = client
 
-    def get_all(self) -> dict:
+    def list(self) -> dict:
         """List all available tool definitions.
 
         Returns:
