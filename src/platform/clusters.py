@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import functools
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -22,6 +21,7 @@ class Clusters:
             client: The DeepOriginClient instance to use for API calls.
         """
         self._c = client
+        self._default_cluster_id: str | None = None
 
     def list(
         self,
@@ -60,11 +60,11 @@ class Clusters:
             params=params if params else None,
         )
 
-    @functools.lru_cache(maxsize=1)
     def get_default_cluster_id(self) -> str:
         """Get the default cluster ID for the client.
 
         Returns the first cluster that does not have "dev" in the hostname.
+        The result is cached per instance.
 
         Returns:
             The ID of the default cluster.
@@ -72,13 +72,16 @@ class Clusters:
         Raises:
             RuntimeError: If no clusters are found (excluding dev clusters).
         """
-        response = self.list()
-        clusters = response.get("data", [])
-        # Filter out clusters with hostnames containing "dev"
-        filtered_clusters = [
-            cluster for cluster in clusters if "dev" not in cluster.get("hostname", "")
-        ]
-        if len(filtered_clusters) == 0:
-            raise RuntimeError("No clusters found (excluding dev clusters).")
-        cluster_id = filtered_clusters[0]["id"]
-        return cluster_id
+        if self._default_cluster_id is None:
+            response = self.list()
+            clusters = response.get("data", [])
+            # Filter out clusters with hostnames containing "dev"
+            filtered_clusters = [
+                cluster
+                for cluster in clusters
+                if "dev" not in cluster.get("hostname", "")
+            ]
+            if len(filtered_clusters) == 0:
+                raise RuntimeError("No clusters found (excluding dev clusters).")
+            self._default_cluster_id = filtered_clusters[0]["id"]
+        return self._default_cluster_id
