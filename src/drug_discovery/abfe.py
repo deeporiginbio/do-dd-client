@@ -363,7 +363,7 @@ class ABFE(WorkflowStep):
             if output_dir_path is None:
                 output_dir_path = f"tool-runs/ABFE/{self.parent.protein.to_hash()}.pdb/{ligand.to_hash()}.sdf/"
 
-            job_id = utils._start_tool_run(
+            execution_dto = utils._start_tool_run(
                 metadata=metadata,
                 params=params,
                 tool="ABFE",
@@ -373,7 +373,7 @@ class ABFE(WorkflowStep):
                 approve_amount=approve_amount,
             )
 
-            job = Job.from_id(job_id, client=self.parent.client)
+            job = Job.from_dto(execution_dto, client=self.parent.client)
 
             self.jobs.append(job)
             jobs_for_this_run.append(job)

@@ -105,6 +105,24 @@ from deeporigin.tools.job import Job
 job = Job.from_id("job-id")
 ```
 
+#### From execution DTOs
+
+A `Job` can also be constructed from a full execution description (DTO) without making a network request. This is faster than `from_id()` when you already have the execution data:
+
+```{.python notest}
+from deeporigin.tools.job import Job
+
+# construct a job from a DTO (no network request)
+execution_dto = {
+    "executionId": "job-id",
+    "status": "Running",
+    # ... other execution fields ...
+}
+job = Job.from_dto(execution_dto)
+```
+
+This is particularly useful when starting tool runs, as the API response already contains the full execution description, avoiding the need for an additional API call.
+
 ### Inspecting a Job
 
 A job can be viewed by simply inspecting it:

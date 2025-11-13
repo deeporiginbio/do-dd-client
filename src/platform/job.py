@@ -66,25 +66,27 @@ class Job:
     status: Optional[str] = None
     _display_id: Optional[str] = None
     _last_html: Optional[str] = None
+    _skip_sync: bool = False
 
     # clients
     client: Optional[DeepOriginClient] = None
 
     def __post_init__(self):
-        self.sync()
+        if not self._skip_sync:
+            self.sync()
 
-        if self._viz_func is None:
-            tool = self._attributes.get("tool") if self._attributes else None
-            if isinstance(tool, dict) and "key" in tool:
-                if tool["key"] == tool_mapper["Docking"]:
-                    self._viz_func = job_viz_functions._viz_func_docking
-                    self._name_func = job_viz_functions._name_func_docking
-                elif tool["key"] == tool_mapper["ABFE"]:
-                    self._viz_func = job_viz_functions._viz_func_abfe
-                    self._name_func = job_viz_functions._name_func_abfe
-                elif tool["key"] == tool_mapper["RBFE"]:
-                    self._viz_func = job_viz_functions._viz_func_rbfe
-                    self._name_func = job_viz_functions._name_func_rbfe
+            if self._viz_func is None:
+                tool = self._attributes.get("tool") if self._attributes else None
+                if isinstance(tool, dict) and "key" in tool:
+                    if tool["key"] == tool_mapper["Docking"]:
+                        self._viz_func = job_viz_functions._viz_func_docking
+                        self._name_func = job_viz_functions._name_func_docking
+                    elif tool["key"] == tool_mapper["ABFE"]:
+                        self._viz_func = job_viz_functions._viz_func_abfe
+                        self._name_func = job_viz_functions._name_func_abfe
+                    elif tool["key"] == tool_mapper["RBFE"]:
+                        self._viz_func = job_viz_functions._viz_func_rbfe
+                        self._name_func = job_viz_functions._name_func_rbfe
 
     @classmethod
     def from_id(
@@ -107,6 +109,59 @@ class Job:
             _id=id,
             client=client,
         )
+
+    @classmethod
+    @beartype
+    def from_dto(
+        cls,
+        dto: dict,
+        *,
+        client: Optional[DeepOriginClient] = None,
+    ) -> "Job":
+        """Create a Job instance from an execution DTO (Data Transfer Object).
+
+        This method constructs a Job from the full execution description without
+        making a network request. It is faster than from_id() when you already
+        have the execution data.
+
+        Args:
+            dto: Dictionary containing the full execution description from the API.
+                Must contain at least 'executionId' and 'status' fields.
+            client: Optional client for API calls.
+
+        Returns:
+            A new Job instance constructed from the DTO.
+        """
+        execution_id = dto.get("executionId")
+        if execution_id is None:
+            raise ValueError("DTO must contain 'executionId' field")
+
+        job = cls(
+            name="job",
+            _id=execution_id,
+            client=client,
+            _skip_sync=True,
+        )
+
+        # Set attributes and status directly from DTO
+        job._attributes = dto
+        job.status = dto.get("status")
+
+        # Set up visualization functions based on tool
+        if job._viz_func is None:
+            tool = dto.get("tool")
+            if isinstance(tool, dict) and "key" in tool:
+                if tool["key"] == tool_mapper["Docking"]:
+                    job._viz_func = job_viz_functions._viz_func_docking
+                    job._name_func = job_viz_functions._name_func_docking
+                elif tool["key"] == tool_mapper["ABFE"]:
+                    job._viz_func = job_viz_functions._viz_func_abfe
+                    job._name_func = job_viz_functions._name_func_abfe
+                elif tool["key"] == tool_mapper["RBFE"]:
+                    job._viz_func = job_viz_functions._viz_func_rbfe
+                    job._name_func = job_viz_functions._name_func_rbfe
+
+        return job
 
     def sync(self):
         """Synchronize the job status and progress report.

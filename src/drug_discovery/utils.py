@@ -42,7 +42,7 @@ def _start_tool_run(
     provider: PROVIDER = "ufa",
     client: Optional[DeepOriginClient] = None,
     approve_amount: Optional[int] = None,
-) -> str:
+) -> dict:
     """
     Starts a single run of an end-to-end tool (such as ABFE) and logs it in the ABFE database.
 
@@ -62,7 +62,7 @@ def _start_tool_run(
         _output_dir_path (Optional[str]): Custom output directory path (on remote storage). If None, a default is constructed.
 
     Returns:
-        str: The job ID of the started tool run.
+        dict: The full execution description (DTO) from the API, containing executionId, status, and other fields.
 
     Raises:
         NotImplementedError: If a tool other than ABFE is specified.
@@ -114,7 +114,7 @@ def _start_tool_run(
         tool_version=tool_version,
     )
 
-    return response["executionId"]
+    return response
 
 
 @beartype

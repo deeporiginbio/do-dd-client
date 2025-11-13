@@ -74,6 +74,22 @@ def test_job(client):  # noqa: F811
     assert execution_id == job._id
 
 
+def test_job_from_dto(client):  # noqa: F811
+    """Test Job.from_dto() creates a Job without making a network request."""
+    response = client.executions.list()
+    jobs = response.get("data", [])
+    execution_dto = jobs[0]
+
+    # Create job from DTO (should not make network request)
+    job = Job.from_dto(execution_dto, client=client)
+
+    assert execution_dto["executionId"] == job._id
+    assert execution_dto["status"] == job.status
+    assert job._attributes == execution_dto
+    # Verify that _skip_sync was set (though it's a private field)
+    assert job._skip_sync is True
+
+
 def test_job_df(client):  # noqa: F811
     _ = get_dataframe(client=client)
 

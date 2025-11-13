@@ -18,6 +18,7 @@ from deeporigin.drug_discovery.constants import tool_mapper
 from deeporigin.drug_discovery.structures.pocket import Pocket
 from deeporigin.drug_discovery.workflow_step import WorkflowStep
 from deeporigin.exceptions import DeepOriginException
+from deeporigin.platform.constants import NON_FAILED_STATES
 from deeporigin.platform.job import Job, get_dataframe
 
 Number = float | int
@@ -167,7 +168,7 @@ class Docking(WorkflowStep):
 
         df = get_dataframe(
             tool_key=tool_mapper["Docking"],
-            only_with_status=platform.NON_FAILED_STATES,
+            only_with_status=NON_FAILED_STATES,
             include_metadata=True,
             include_inputs=True,
             include_outputs=True,
@@ -310,7 +311,7 @@ class Docking(WorkflowStep):
                 "key": self.parent.protein._remote_path,
             }
 
-            return utils._start_tool_run(
+            execution_dto = utils._start_tool_run(
                 params=params,
                 metadata=metadata,
                 tool="Docking",
@@ -319,6 +320,7 @@ class Docking(WorkflowStep):
                 output_dir_path=output_dir_path,
                 approve_amount=approve_amount,
             )
+            return execution_dto
 
         if len(smiles_strings) > 0:
             if use_parallel:
@@ -334,16 +336,16 @@ class Docking(WorkflowStep):
                         total=len(chunks),
                         desc="Starting docking jobs",
                     ):
-                        job_id = future.result()
-                        if job_id is not None:
-                            job_ids.append(job_id)
+                        execution_dto = future.result()
+                        if execution_dto is not None:
+                            job_ids.append(execution_dto)
             else:
                 for chunk in tqdm(
                     chunks, total=len(chunks), desc="Starting docking jobs"
                 ):
-                    job_id = process_chunk(chunk)
-                    if job_id is not None:
-                        job_ids.append(job_id)
+                    execution_dto = process_chunk(chunk)
+                    if execution_dto is not None:
+                        job_ids.append(execution_dto)
         else:
             raise DeepOriginException(
                 title="Cannot run Docking: no new ligands to dock",
@@ -353,7 +355,8 @@ class Docking(WorkflowStep):
             ) from None
 
         self.jobs = [
-            Job.from_id(job_id, client=self.parent.client) for job_id in job_ids
+            Job.from_dto(execution_dto, client=self.parent.client)
+            for execution_dto in job_ids
         ]
 
         return self.jobs
