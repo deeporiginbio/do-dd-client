@@ -24,7 +24,6 @@ dependencies = [
     "pyjwt",
     "cryptography",
     "python-box",
-    "do-sdk-platform==6.3.0",
     "urllib3>=2.0.0",
     "more-itertools",
     "nest_asyncio",
