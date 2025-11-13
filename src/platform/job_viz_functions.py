@@ -19,11 +19,12 @@ def _abfe_parse_progress(job) -> dict:
         "delta_g",
     ]
 
-    if job._progress_report is None:
+    progress_report = job._attributes.get("progressReport") if job._attributes else None
+    if progress_report is None:
         return dict.fromkeys(steps, "NotStarted")
 
     try:
-        data = job._progress_report
+        data = progress_report
 
         if data is None:
             progress = dict.fromkeys(steps, "NotStarted")
@@ -40,7 +41,7 @@ def _abfe_parse_progress(job) -> dict:
             progress["init"] = "Running"
             return progress
 
-        status_value = job._status
+        status_value = job.status
 
         # If the overall status is Succeeded, return a dictionary with every key set to "Succeeded".
         if status_value == "Succeeded":
@@ -65,7 +66,7 @@ def _abfe_parse_progress(job) -> dict:
                 progress[step] = "Succeeded"
 
         # if the job failed, mark the step that is running as failed
-        if job._status == "Failed":
+        if job.status == "Failed":
             progress[current_step] = "Failed"
 
     except Exception:
@@ -84,8 +85,8 @@ def _viz_func_rbfe(job) -> str:
     import json
 
     # For single job, we have single metadata and progress report
-    metadata = job._metadata
-    report = job._progress_report
+    metadata = job._attributes.get("metadata") if job._attributes else None
+    report = job._attributes.get("progressReport") if job._attributes else None
 
     ligand1 = (
         metadata.get("ligand1_file", "Unknown ligand") if metadata else "Unknown ligand"
@@ -132,9 +133,10 @@ def _viz_func_abfe(job) -> str:
 
     # Parse the progress report
     progress_data = None
-    if job._progress_report:
+    progress_report = job._attributes.get("progressReport") if job._attributes else None
+    if progress_report:
         try:
-            progress_data = json.loads(job._progress_report)
+            progress_data = json.loads(progress_report)
         except (json.JSONDecodeError, TypeError):
             progress_data = None
 
@@ -238,7 +240,7 @@ def _viz_func_abfe(job) -> str:
         """
 
     # Handle failed status
-    if job._status == "Failed" and progress_data:
+    if job.status == "Failed" and progress_data:
         error_msg = progress_data.get("error_msg", "")
         details_html += f"""
         <div style="margin-top: 15px; padding: 10px; background-color: #ff7f7f; border-radius: 4px; color: black;">
@@ -252,9 +254,12 @@ def _viz_func_abfe(job) -> str:
 def _viz_func_docking(job) -> str:
     """Render progress visualization for a docking job."""
 
-    data = job._progress_report
+    data = job._attributes.get("progressReport") if job._attributes else None
+    inputs = job._attributes.get("userInputs") if job._attributes else None
 
-    total_ligands = len(job._inputs["smiles_list"]) if job._inputs else 0
+    total_ligands = (
+        len(inputs["smiles_list"]) if inputs and "smiles_list" in inputs else 0
+    )
     total_docked = 0
     total_failed = 0
 
@@ -281,13 +286,15 @@ def _name_func_docking(job) -> str:
     """Generate a name for a docking job."""
 
     unique_smiles = set()
-    if job._inputs:
-        unique_smiles.update(job._inputs["smiles_list"])
+    inputs = job._attributes.get("userInputs") if job._attributes else None
+    if inputs and "smiles_list" in inputs:
+        unique_smiles.update(inputs["smiles_list"])
     num_ligands = len(unique_smiles)
 
+    metadata = job._attributes.get("metadata") if job._attributes else None
     protein_file = (
-        os.path.basename(job._metadata["protein_file"])
-        if job._metadata
+        os.path.basename(metadata["protein_file"])
+        if metadata and "protein_file" in metadata
         else "Unknown protein"
     )
 
@@ -298,7 +305,10 @@ def _name_func_docking(job) -> str:
 def _name_func_abfe(job) -> str:
     """utility function to name a job using inputs to that job"""
     try:
-        return f"ABFE run using <code>{job._metadata['protein_name']}</code> and <code>{job._metadata['ligand_name']}</code>"
+        metadata = job._attributes.get("metadata") if job._attributes else None
+        if metadata and "protein_name" in metadata and "ligand_name" in metadata:
+            return f"ABFE run using <code>{metadata['protein_name']}</code> and <code>{metadata['ligand_name']}</code>"
+        return "ABFE run"
     except Exception:
         return "ABFE run"
 
@@ -309,6 +319,9 @@ def _name_func_rbfe(job) -> str:
 
     try:
         # For single job, we always have single ligand pair
-        return f"RBFE run using <code>{job._metadata['protein_file']}</code> and <code>{job._metadata['ligand_file']}</code>"
+        metadata = job._attributes.get("metadata") if job._attributes else None
+        if metadata and "protein_file" in metadata and "ligand_file" in metadata:
+            return f"RBFE run using <code>{metadata['protein_file']}</code> and <code>{metadata['ligand_file']}</code>"
+        return "RBFE run"
     except Exception:
         return "RBFE run"

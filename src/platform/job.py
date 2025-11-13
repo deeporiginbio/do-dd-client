@@ -18,9 +18,9 @@ import pandas as pd
 
 from deeporigin.drug_discovery.constants import tool_mapper
 from deeporigin.exceptions import DeepOriginException
-from deeporigin.platform import Client, tools_api
-from deeporigin.tools import job_viz_functions
-from deeporigin.utils.constants import TERMINAL_STATES
+from deeporigin.platform import job_viz_functions
+from deeporigin.platform.client import DeepOriginClient
+from deeporigin.platform.constants import TERMINAL_STATES
 from deeporigin.utils.core import elapsed_minutes
 
 # Get the template directory
@@ -61,33 +61,28 @@ class Job:
     _parse_func: Optional[JobFunc] = None
     _name_func: Optional[JobFunc] = field(default_factory=lambda: lambda job: "Job")
 
-    _progress_report: Optional[str] = None
-    _status: Optional[str] = None
-    _inputs: Optional[dict] = None
-    _outputs: Optional[dict] = None
     _task = None
     _attributes: Optional[dict] = None
-    _resource_id: Optional[str] = None
-    _metadata: Optional[dict] = None
-    _tool: Optional[dict] = None
+    status: Optional[str] = None
     _display_id: Optional[str] = None
     _last_html: Optional[str] = None
 
     # clients
-    client: Optional[Client] = None
+    client: Optional[DeepOriginClient] = None
 
     def __post_init__(self):
         self.sync()
 
         if self._viz_func is None:
-            if isinstance(self._tool, dict) and "key" in self._tool:
-                if self._tool["key"] == tool_mapper["Docking"]:
+            tool = self._attributes.get("tool") if self._attributes else None
+            if isinstance(tool, dict) and "key" in tool:
+                if tool["key"] == tool_mapper["Docking"]:
                     self._viz_func = job_viz_functions._viz_func_docking
                     self._name_func = job_viz_functions._name_func_docking
-                elif self._tool["key"] == tool_mapper["ABFE"]:
+                elif tool["key"] == tool_mapper["ABFE"]:
                     self._viz_func = job_viz_functions._viz_func_abfe
                     self._name_func = job_viz_functions._name_func_abfe
-                elif self._tool["key"] == tool_mapper["RBFE"]:
+                elif tool["key"] == tool_mapper["RBFE"]:
                     self._viz_func = job_viz_functions._viz_func_rbfe
                     self._name_func = job_viz_functions._name_func_rbfe
 
@@ -96,7 +91,7 @@ class Job:
         cls,
         id: str,
         *,
-        client: Optional[Client] = None,
+        client: Optional[DeepOriginClient] = None,
     ) -> "Job":
         """Create a Job instance from a single ID.
 
@@ -121,24 +116,15 @@ class Job:
         reached a terminal state (Succeeded or Failed).
         """
 
-        # use
-        results = tools_api.get_statuses_and_progress(
-            [self._id],
-            client=self.client,
-        )
+        if self.client is None:
+            self.client = DeepOriginClient()
 
-        if results:
-            result = results[0]
+        # use
+        result = self.client.executions.get_execution(execution_id=self._id)
+
+        if result:
             self._attributes = result
-            self._status = result["status"]
-            self._progress_report = result["progressReport"]
-            self._resource_id = result["resourceId"]
-            self._inputs = result["userInputs"]
-            self._outputs = result["userOutputs"]
-            self._metadata = result["metadata"]
-            self._tool = result["tool"]
-            self._billing_transaction = result["billingTransaction"]
-            self._quotation_result = result["quotationResult"]
+            self.status = result.get("status")
 
             # Quick and dirty logging for analysis - append progressReport to file
             # log_file = Path(f"{self._id}.txt")
@@ -159,13 +145,13 @@ class Job:
         """
         if (
             self._attributes is None
-            or self._attributes.completedAt is None
-            or self._attributes.startedAt is None
+            or self._attributes.get("completedAt") is None
+            or self._attributes.get("startedAt") is None
         ):
             return None
         else:
             return elapsed_minutes(
-                self._attributes.startedAt, self._attributes.completedAt
+                self._attributes["startedAt"], self._attributes["completedAt"]
             )
 
     def _render_json_viewer(self, obj: dict) -> str:
@@ -240,18 +226,21 @@ class Job:
             template = env.get_template("job.html")
 
         # Handle "Quoted" status with custom message
-        if self._status == "Quoted":
+        if self.status == "Quoted":
+            quotation_result = (
+                self._attributes.get("quotationResult") if self._attributes else None
+            )
             try:
-                estimated_cost = self._quotation_result.successfulQuotations[
-                    0
-                ].priceTotal
+                estimated_cost = quotation_result["successfulQuotations"][0][
+                    "priceTotal"
+                ]
                 status_html = (
                     "<h3>Job Quoted</h3>"
                     f"<p>This job has been quoted. It is estimated to cost <strong>${round(estimated_cost)}</strong>. "
                     "For details look at the Billing tab. To approve and start the run, call the "
                     "<code style='font-family: monospace; background-color: #f5f5f5; padding: 2px 4px; border-radius: 3px;'>confirm()</code> method.</p>"
                 )
-            except (AttributeError, IndexError, KeyError):
+            except (AttributeError, IndexError, KeyError, TypeError):
                 status_html = (
                     "<h3>Job Quoted</h3>"
                     "<p>This job has been quoted. For details look at the Billing tab. To approve and start the run, call the "
@@ -269,8 +258,11 @@ class Job:
             card_title = "No name function provided."
 
         started_at = None
-        if self._attributes is not None and self._attributes.startedAt is not None:
-            dt = parser.isoparse(self._attributes.startedAt).astimezone(timezone.utc)
+        if (
+            self._attributes is not None
+            and self._attributes.get("startedAt") is not None
+        ):
+            dt = parser.isoparse(self._attributes["startedAt"]).astimezone(timezone.utc)
             # Compare to now (also in UTC)
             now = datetime.now(timezone.utc)
             started_at = humanize.naturaltime(now - dt)
@@ -278,32 +270,44 @@ class Job:
         running_time = self._get_running_time()
 
         # Generate interactive JSON viewer HTML for inputs and outputs
+        inputs = self._attributes.get("userInputs") if self._attributes else None
+        outputs = self._attributes.get("userOutputs") if self._attributes else None
         inputs_json_viewer = self._render_json_viewer(
-            self._inputs.to_dict() if self._inputs is not None else ""
+            inputs.to_dict()
+            if hasattr(inputs, "to_dict") and inputs is not None
+            else (inputs if inputs else {})
         )
         outputs_json_viewer = self._render_json_viewer(
-            self._outputs.to_dict() if self._outputs is not None else ""
+            outputs.to_dict()
+            if hasattr(outputs, "to_dict") and outputs is not None
+            else (outputs if outputs else {})
         )
         combined_billing_data = {
-            "billingTransaction": self._billing_transaction,
-            "quotationResult": self._quotation_result,
+            "billingTransaction": self._attributes.get("billingTransaction")
+            if self._attributes
+            else None,
+            "quotationResult": self._attributes.get("quotationResult")
+            if self._attributes
+            else None,
         }
         billing_json_viewer = self._render_json_viewer(combined_billing_data)
 
         # Prepare template variables
+        progress_report = (
+            self._attributes.get("progressReport") if self._attributes else None
+        )
+        resource_id = self._attributes.get("resourceId") if self._attributes else None
         template_vars = {
             "status_html": status_html,
             "last_updated": time.strftime("%Y-%m-%d %H:%M:%S"),
-            "outputs_json": json.dumps(self._outputs, indent=2)
-            if self._outputs
-            else "{}",
-            "inputs_json": json.dumps(self._inputs, indent=2) if self._inputs else "{}",
+            "outputs_json": json.dumps(outputs, indent=2) if outputs else "{}",
+            "inputs_json": json.dumps(inputs, indent=2) if inputs else "{}",
             "inputs_json_viewer": inputs_json_viewer,
             "outputs_json_viewer": outputs_json_viewer,
             "billing_json_viewer": billing_json_viewer,
             "job_id": self._id,
-            "resource_id": self._resource_id,
-            "status": self._status,
+            "resource_id": resource_id,
+            "status": self.status,
             "started_at": started_at,
             "running_time": running_time,
             "card_title": card_title,
@@ -312,20 +316,20 @@ class Job:
         }
 
         # Determine auto-update behavior based on terminal states
-        if self._status and self._status in TERMINAL_STATES:
+        if self.status and self.status in TERMINAL_STATES:
             template_vars["will_auto_update"] = False  # job in terminal state
 
         # Try to parse progress report as JSON, fall back to raw text if it fails
         try:
-            if self._progress_report:
-                parsed_report = json.loads(str(self._progress_report))
+            if progress_report:
+                parsed_report = json.loads(str(progress_report))
                 template_vars["raw_progress_json"] = json.dumps(parsed_report, indent=2)
             else:
                 template_vars["raw_progress_json"] = "{}"
         except Exception:
             # If something goes wrong with the parsing, fall back to raw text
             template_vars["raw_progress_json"] = (
-                str(self._progress_report) if self._progress_report else "{}"
+                str(progress_report) if progress_report else "{}"
             )
             template_vars["raw_progress_json"].replace("\n", "<br>")
 
@@ -374,7 +378,7 @@ class Job:
         nest_asyncio.apply()
 
         # Check if there is any active job (not terminal state)
-        if self._status and self._status in TERMINAL_STATES:
+        if self.status and self.status in TERMINAL_STATES:
             display(
                 HTML(
                     "<div style='color: gray;'>No active job to monitor. This display will not update.</div>"
@@ -411,7 +415,7 @@ class Job:
                         self._last_html = html
 
                         # Check if job is in terminal state
-                        if self._status and self._status in TERMINAL_STATES:
+                        if self.status and self.status in TERMINAL_STATES:
                             break
 
                     except Exception as e:
@@ -488,9 +492,8 @@ class Job:
             The result of the cancellation operation from utils.cancel_runs.
         """
 
-        tools_api.cancel(
+        self.client.executions.cancel(
             execution_id=self._id,
-            client=self.client,
         )
 
         self.sync()
@@ -501,16 +504,15 @@ class Job:
         This method confirms the job being tracked by this instance, and requests the job to be started.
         """
 
-        if self._status != "Quoted":
+        if self.status != "Quoted":
             raise DeepOriginException(
                 title="Job is not in the 'Quoted' state.",
                 level="warning",
-                message=f"Job is in the '{self._status}' state. Only Quoted jobs can be confirmed.",
+                message=f"Job is in the '{self.status}' state. Only Quoted jobs can be confirmed.",
             )
         else:
-            tools_api.confirm(
+            self.client.executions.confirm(
                 execution_id=self._id,
-                client=self.client,
             )
 
             self.sync()
@@ -525,7 +527,7 @@ def get_dataframe(  #
     include_inputs: bool = False,
     include_outputs: bool = False,
     resolve_user_names: bool = False,
-    client: Optional[Client] = None,
+    client: Optional[DeepOriginClient] = None,
 ) -> pd.DataFrame:
     """Get a dataframe of the job statuses and progress reports.
 
@@ -561,11 +563,19 @@ def get_dataframe(  #
             },
         }
 
-    jobs = tools_api.get_tool_executions(
-        filter=_filter,
+    if client is None:
+        from deeporigin.platform.client import DeepOriginClient
+
+        client = DeepOriginClient.get()
+
+    # Serialize filter dict to JSON string
+    filter_str = json.dumps(_filter) if _filter else None
+    result = client.executions.list(
+        filter=filter_str,
         page_size=10000,
-        client=client,
     )
+    # Extract jobs list from paginated response
+    jobs = result.get("data", []) if isinstance(result, dict) else result
 
     if resolve_user_names:
         from deeporigin.platform import entities_api

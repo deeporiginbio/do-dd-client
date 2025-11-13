@@ -14,7 +14,7 @@ from deeporigin.drug_discovery.constants import tool_mapper
 from deeporigin.drug_discovery.structures.ligand import Ligand
 from deeporigin.drug_discovery.workflow_step import WorkflowStep
 from deeporigin.exceptions import DeepOriginException
-from deeporigin.tools.job import Job
+from deeporigin.platform.job import Job
 from deeporigin.utils.core import PrettyDict
 from deeporigin.utils.notebook import get_notebook_environment
 

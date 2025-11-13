@@ -42,6 +42,7 @@ def _get_pocket_center(
 
 def dock(
     *,
+    client: DeepOriginClient,
     protein: Protein,
     smiles_string: Optional[str] = None,
     ligand: Optional[Ligand] = None,
@@ -49,7 +50,6 @@ def dock(
     pocket_center: Optional[tuple[int, int, int]] = None,
     pocket: Optional[Pocket] = None,
     use_cache: bool = True,
-    client: DeepOriginClient | None = None,
 ) -> str:
     """
     Run molecular docking using the DeepOrigin API.
@@ -98,9 +98,6 @@ def dock(
         return sdf_file
 
     protein.upload()
-
-    if client is None:
-        client = DeepOriginClient()
 
     response = client.functions.run(
         key="deeporigin.docking",

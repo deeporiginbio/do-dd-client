@@ -38,6 +38,9 @@ class Complex:
         """
         self.protein = protein
         self.ligands = ligands
+
+        if client is None:
+            client = DeepOriginClient()
         self.client = client
 
         # assign references to the complex in the
@@ -175,6 +178,7 @@ class Complex:
             add_H_atoms=add_H_atoms,
             protonate_protein=protonate_protein,
             use_cache=use_cache,
+            client=self.client,
         )
 
         # set this complex path as the prepared system
@@ -201,9 +205,7 @@ class Complex:
         remote_files = self.client.files.list_files_in_dir(
             file_path="entities/",
             recursive=True,
-            client=self.client,
         )
-        remote_files = [file.Key for file in remote_files]
 
         files_to_upload = {}
 
@@ -213,7 +215,7 @@ class Complex:
             if ligand._remote_path not in remote_files:
                 files_to_upload[str(ligand.to_sdf())] = ligand._remote_path
 
-        self.client.files.upload_files(files_to_upload)
+        self.client.files.upload_files(files=files_to_upload)
 
     def _repr_pretty_(self, p, cycle):
         """pretty print a Complex object"""

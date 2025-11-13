@@ -22,8 +22,8 @@ def molprops(
     smiles_list: list[str],
     properties: Optional[set[str]] = None,
     *,
+    client: DeepOriginClient,
     use_cache: bool = True,
-    client: DeepOriginClient | None = None,
 ) -> dict:
     """
     Run molecular property prediction using the DeepOrigin API.
@@ -64,8 +64,8 @@ def get_single_property(
     *,
     payload: dict,
     prop: str,
+    client: DeepOriginClient,
     use_cache: bool = True,
-    client: DeepOriginClient | None = None,
 ) -> dict:
     """
     Get a single property for a molecule using the DeepOrigin API.
@@ -82,9 +82,6 @@ def get_single_property(
         return response
 
     # Prepare the request payload
-
-    if client is None:
-        client = DeepOriginClient()
 
     response = client.functions.run(
         key=f"deeporigin.mol-props-{prop}",

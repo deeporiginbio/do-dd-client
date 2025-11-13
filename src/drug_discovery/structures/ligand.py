@@ -20,10 +20,10 @@ from rdkit import Chem, RDLogger
 from rdkit.Chem import AllChem, SaltRemover, rdMolDescriptors
 from tqdm import tqdm
 
-from deeporigin.drug_discovery.constants import LIGANDS_DIR
+from deeporigin.drug_discovery.constants import LIGANDS_DIR, SUPPORTED_ATOM_SYMBOLS
 from deeporigin.drug_discovery.utilities.visualize import jupyter_visualization
 from deeporigin.exceptions import DeepOriginException
-from deeporigin.utils.constants import SUPPORTED_ATOM_SYMBOLS, number
+from deeporigin.utils.constants import number
 
 from .entity import Entity
 

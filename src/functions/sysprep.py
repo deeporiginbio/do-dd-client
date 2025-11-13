@@ -16,7 +16,7 @@ def run_sysprep(
     add_H_atoms: bool = True,  # NOSONAR
     protonate_protein: bool = True,
     use_cache: bool = True,
-    client: DeepOriginClient | None = None,
+    client: DeepOriginClient,
 ) -> dict:
     """
     Run system preparation on a protein-ligand complex.
@@ -46,9 +46,6 @@ def run_sysprep(
 
     protein.upload()
     ligand.upload()
-
-    if client is None:
-        client = DeepOriginClient()
 
     response = client.functions.run(
         key="deeporigin.system-prep",

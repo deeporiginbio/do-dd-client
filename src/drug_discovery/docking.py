@@ -18,8 +18,7 @@ from deeporigin.drug_discovery.constants import tool_mapper
 from deeporigin.drug_discovery.structures.pocket import Pocket
 from deeporigin.drug_discovery.workflow_step import WorkflowStep
 from deeporigin.exceptions import DeepOriginException
-from deeporigin.platform import tools_api
-from deeporigin.tools.job import Job, get_dataframe
+from deeporigin.platform.job import Job, get_dataframe
 
 Number = float | int
 LOCAL_BASE = Path.home() / ".deeporigin"
@@ -168,7 +167,7 @@ class Docking(WorkflowStep):
 
         df = get_dataframe(
             tool_key=tool_mapper["Docking"],
-            only_with_status=tools_api.NON_FAILED_STATES,
+            only_with_status=platform.NON_FAILED_STATES,
             include_metadata=True,
             include_inputs=True,
             include_outputs=True,

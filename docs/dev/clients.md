@@ -14,17 +14,15 @@ First, construct a client using:
 
 
 ```{.python notest}
-from deeporigin.platform import Client
+from deeporigin.platform.client import DeepOriginClient
 
-client = Client(token="my-secret-token", org_key="my-org")
+client = DeepOriginClient(token="my-secret-token", org_key="my-org")
 ```
 
-Then, pass the client to any function. For example, to list tools:
+Now, we can list tools using:
 
 ```{.python notest}
-from deeporigin.platform import tools_api
-
-tools = tools_api.get_all_tools(client=client)
+tools = client.tools.list()
 ```
 
 ## Configuration via environment variables
@@ -46,7 +44,7 @@ export DEEPORIGIN_ORG_KEY="my-org"
 Then construct a client without arguments:
 
 ```{.python notest}
-from deeporigin.platform import Client
+from deeporigin.platform.client import DeepOriginClient
 
-client = Client()
+client = DeepOriginClient()
 ```

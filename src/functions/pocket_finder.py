@@ -16,7 +16,7 @@ def find_pockets(
     pocket_count: int = 5,
     pocket_min_size: int = 30,
     use_cache: bool = True,
-    client: DeepOriginClient | None = None,
+    client: DeepOriginClient,
 ) -> str | None:
     """Find protein binding pockets in a PDB structure and save the results.
 
@@ -53,9 +53,6 @@ def find_pockets(
 
     protein.upload()
     os.makedirs(cache_path, exist_ok=True)
-
-    if client is None:
-        client = DeepOriginClient()
 
     response = client.functions.run(
         key="deeporigin.pocketfinder",

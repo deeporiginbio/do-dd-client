@@ -9,7 +9,8 @@ from beartype import beartype
 import pandas as pd
 
 from deeporigin.drug_discovery.constants import tool_mapper, valid_tools
-from deeporigin.platform import Client, tools_api
+from deeporigin.platform.client import DeepOriginClient
+from deeporigin.platform.constants import PROVIDER
 from deeporigin.utils.core import PrettyDict
 
 PROVIDER_KEY = "$provider"
@@ -38,8 +39,8 @@ def _start_tool_run(
     tool: valid_tools,
     output_dir_path: str,
     tool_version: str,
-    provider: tools_api.PROVIDER = "ufa",
-    client: Optional[Client] = None,
+    provider: PROVIDER = "ufa",
+    client: Optional[DeepOriginClient] = None,
     approve_amount: Optional[int] = None,
 ) -> str:
     """
@@ -107,14 +108,13 @@ def _start_tool_run(
     if approve_amount is not None:
         payload["approveAmount"] = approve_amount
 
-    response = tools_api.run_tool(
+    response = client.tools.run(
         data=payload,
         tool_key=tool_mapper[tool],
         tool_version=tool_version,
-        client=client,
     )
 
-    return response.executionId
+    return response["executionId"]
 
 
 @beartype
