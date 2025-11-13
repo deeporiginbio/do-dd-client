@@ -16,7 +16,7 @@ First, construct a client using:
 ```{.python notest}
 from deeporigin.platform.client import DeepOriginClient
 
-client = DeepOriginClient(token="my-secret-token", org_key="my-org")
+client = DeepOriginClient.get(token="my-secret-token", org_key="my-org")
 ```
 
 Now, we can list tools using:
@@ -46,5 +46,5 @@ Then construct a client without arguments:
 ```{.python notest}
 from deeporigin.platform.client import DeepOriginClient
 
-client = DeepOriginClient()
+client = DeepOriginClient.get()
 ```

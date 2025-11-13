@@ -33,7 +33,7 @@ Example usage:
 ```{.python notest}
 from deeporigin.platform.client import DeepOriginClient
 
-client = DeepOriginClient(token="my-token", org_key="my-org")
+client = DeepOriginClient.get(token="my-token", org_key="my-org")
 
 # List all available tool definitions
 all_tools = client.tools.get_all()
@@ -68,7 +68,7 @@ Example usage:
 ```{.python notest}
 from deeporigin.platform.client import DeepOriginClient
 
-client = DeepOriginClient(token="my-token", org_key="my-org")
+client = DeepOriginClient.get(token="my-token", org_key="my-org")
 
 # Run the latest version of a function
 result = client.functions.run_latest(
@@ -105,7 +105,7 @@ Example usage:
 ```{.python notest}
 from deeporigin.platform.client import DeepOriginClient
 
-client = DeepOriginClient(token="my-token", org_key="my-org")
+client = DeepOriginClient.get(token="my-token", org_key="my-org")
 
 # List all clusters
 clusters = client.clusters.list()
@@ -145,7 +145,7 @@ Example usage:
 ```{.python notest}
 from deeporigin.platform.client import DeepOriginClient
 
-client = DeepOriginClient(token="my-token", org_key="my-org")
+client = DeepOriginClient.get(token="my-token", org_key="my-org")
 
 # List all files in a directory recursively
 files = client.files.list_files_in_dir(file_path="entities/")

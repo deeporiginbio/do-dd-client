@@ -32,7 +32,7 @@ class Entity:
         Overwrites the existing file if it exists."""
 
         if client is None:
-            client = DeepOriginClient()
+            client = DeepOriginClient.get()
 
         client.files.upload_file(
             local_path=self.file_path,

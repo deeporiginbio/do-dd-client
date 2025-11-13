@@ -117,7 +117,7 @@ class Job:
         """
 
         if self.client is None:
-            self.client = DeepOriginClient()
+            self.client = DeepOriginClient.get()
 
         # use
         result = self.client.executions.get_execution(execution_id=self._id)

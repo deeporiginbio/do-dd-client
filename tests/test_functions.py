@@ -1,7 +1,5 @@
 """this module contains tests for functions. These are meant to be run against a live instance"""
 
-import pytest
-
 from deeporigin.drug_discovery import (
     BRD_DATA_DIR,
     DATA_DIR,
@@ -10,13 +8,10 @@ from deeporigin.drug_discovery import (
     LigandSet,
     Protein,
 )
-from tests.utils import config  # noqa: F401
+from tests.utils import client  # noqa: F401
 
 
-def test_molprops(config):  # noqa: F811
-    if config["mock"]:
-        pytest.skip("test skipped with mock client")
-
+def test_molprops(client):  # noqa: F811
     ligand = Ligand.from_identifier("serotonin")
 
     props = ligand.admet_properties(use_cache=False)
@@ -27,10 +22,7 @@ def test_molprops(config):  # noqa: F811
     assert "logS" in props, "Expected logS to be in the properties"
 
 
-def test_pocket_finder(config):  # noqa: F811
-    if config["mock"]:
-        pytest.skip("test skipped with mock client")
-
+def test_pocket_finder(client):  # noqa: F811
     protein = Protein.from_pdb_id("1EBY")
     pockets = protein.find_pockets(
         pocket_count=1,
@@ -40,10 +32,7 @@ def test_pocket_finder(config):  # noqa: F811
     assert len(pockets) == 1, "Incorrect number of pockets"
 
 
-def test_docking(config):  # noqa: F811
-    if config["mock"]:
-        pytest.skip("test skipped with mock client")
-
+def test_docking(client):  # noqa: F811
     protein = Protein.from_pdb_id("1EBY")
     pockets = protein.find_pockets(pocket_count=1)
     pocket = pockets[0]
@@ -59,10 +48,7 @@ def test_docking(config):  # noqa: F811
     assert isinstance(poses, LigandSet), "Expected protien.dock() to return a LigandSet"
 
 
-def test_sysprep(config):  # noqa: F811
-    if config["mock"]:
-        pytest.skip("test skipped with mock client")
-
+def test_sysprep(client):  # noqa: F811
     from deeporigin.functions.sysprep import run_sysprep
 
     sim = Complex.from_dir(BRD_DATA_DIR)
@@ -76,10 +62,7 @@ def test_sysprep(config):  # noqa: F811
     )
 
 
-def test_loop_modelling(config):  # noqa: F811
-    if config["mock"]:
-        pytest.skip("test skipped with mock client")
-
+def test_loop_modelling(client):  # noqa: F811
     protein = Protein.from_pdb_id("5QSP")
     assert len(protein.find_missing_residues()) > 0, "Missing residues should be > 0"
     protein.model_loops(use_cache=False)
@@ -89,10 +72,7 @@ def test_loop_modelling(config):  # noqa: F811
     assert len(protein.find_missing_residues()) == 0, "Missing residues should be 0"
 
 
-def test_konnektor(config):  # noqa: F811
-    if config["mock"]:
-        pytest.skip("test skipped with mock client")
-
+def test_konnektor(client):  # noqa: F811
     ligands = LigandSet.from_sdf(DATA_DIR / "ligands" / "ligands-brd-all.sdf")
 
     ligands.map_network(use_cache=False)

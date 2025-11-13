@@ -45,6 +45,8 @@ test = [
     "pytest-xdist",
     "pytest-markdown-docs",
     "pytest-dependency",
+    "fastapi",
+    "uvicorn[standard]",
 ]
 dev = ["ipykernel", "jupyter-black"]
 docs = [

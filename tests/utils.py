@@ -1,31 +1,28 @@
 """helper module to set up tests"""
 
-from mock_client import MockClient
 import pytest
 
-from deeporigin.platform import Client
+from deeporigin.platform.client import DeepOriginClient
 
 
 @pytest.fixture(scope="session", autouse=True)
-def config(pytestconfig):
-    """this fixture performs some setup tasks
-    before all tests are run, and runs only once"""
+def client(pytestconfig, test_server_url):
+    """Set up a client pointing to the local test server.
 
-    data = {}
+    Args:
+        pytestconfig: Pytest configuration object.
+        test_server_url: URL of the local test server.
 
-    # set up client
+    Yields:
+        DeepOriginClient instance configured to use the test server.
+    """
+    # Set up client pointing to local test server
     org_key = pytestconfig.getoption("org_key")
-    if pytestconfig.getoption("mock"):
-        client = MockClient(org_key=org_key)
-        data["mock"] = True
+    # Use a dummy token for testing (the test server doesn't validate it)
+    client_instance = DeepOriginClient(
+        token="test-token",
+        org_key=org_key,
+        base_url=test_server_url,
+    )
 
-    else:
-        client = Client(org_key=org_key) if org_key else Client()
-        data["mock"] = False
-        if pytestconfig.getoption("record"):
-            client.recording = True
-
-    data["client"] = client
-
-    # tests run on yield
-    yield data
+    yield client_instance
