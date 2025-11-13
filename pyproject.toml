@@ -114,6 +114,12 @@ omit = ["src/data_hub/client.py", "tests/*.py"]
 
 [tool.pytest.ini_options]
 norecursedirs = ["notebooks", "scratch-notebooks"]
+filterwarnings = [
+    "ignore::DeprecationWarning:websockets.legacy",
+    "ignore::DeprecationWarning:websockets.server",
+    "ignore::DeprecationWarning:uvicorn.protocols.websockets.websockets_impl",
+    "ignore::DeprecationWarning:uvicorn.protocols.websockets",
+]
 
 [tool.interrogate]
 fail-under = 100

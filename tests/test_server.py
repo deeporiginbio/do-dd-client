@@ -16,7 +16,7 @@ from fastapi.responses import Response
 import uvicorn
 
 
-class TestServer:
+class MockServer:
     """Local test server for mocking DeepOrigin Platform API."""
 
     def __init__(self, port: int = 0):

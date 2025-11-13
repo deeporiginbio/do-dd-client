@@ -89,7 +89,7 @@ def test_construct_complex(client):  # noqa: F811
         assert ligand.name is not None
 
 
-def test_prepare_missing_residues(client):
+def test_prepare_missing_residues(client):  # noqa: F811
     """Test preparing a Complex with missing residues"""
     # Create a Complex with a protein with missing residues
     protein = Protein.from_pdb_id("5QSP")

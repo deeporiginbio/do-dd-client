@@ -8,7 +8,7 @@ All tests use this local server instead of making real API calls.
 
 import pytest
 
-from tests.test_server import TestServer
+from tests.test_server import MockServer
 
 
 @pytest.fixture(scope="session")
@@ -21,14 +21,14 @@ def test_server(pytestconfig):
         pytestconfig: Pytest configuration object.
 
     Yields:
-        TestServer instance that is running, or None if --mock is not passed.
+        MockServer instance that is running, or None if --mock is not passed.
     """
     use_mock = pytestconfig.getoption("--mock", default=False)
     if not use_mock:
         yield None
         return
 
-    server = TestServer(port=0)
+    server = MockServer(port=0)
     server.start()
     yield server
     server.stop()
