@@ -274,6 +274,25 @@ def decode_access_token(
 ) -> dict:
     """decode access token into human readable data"""
 
+    if env == "local":
+        now = int(time.time())
+        one_year_seconds = 365 * 24 * 60 * 60
+        return {
+            "https://deeporigin.io/claims/id/userHandle": "user-deeporigin-com",
+            "https://deeporigin.io/claims/id/userid": "google-apps|user@deeporigin.com",
+            "https://deeporigin.io/claims/id/email": "user@deeporigin.com",
+            "https://deeporigin.io/claims/id/emailVerified": True,
+            "userHandle": "user-deeporigin-com",
+            "userid": "google-apps|user@deeporigin.com",
+            "emailVerified": True,
+            "iss": "https://formicbio.us.auth0.com/",
+            "sub": "google-apps|user@deeporigin.com",
+            "aud": "https://os.deeporigin.io/api",
+            "iat": now,
+            "exp": now + one_year_seconds,
+            "scope": "offline_access",
+        }
+
     if token is None:
         tokens = get_tokens()
         token = tokens["access"]

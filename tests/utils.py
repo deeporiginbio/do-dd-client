@@ -29,6 +29,7 @@ def client(pytestconfig, test_server_url):
             token="test-token",
             org_key=org_key,
             base_url=test_server_url,
+            env="local",
         )
     else:
         # Use default client which reads from config/credentials
