@@ -1,6 +1,7 @@
 """this module handles authentication actions and interactions
 with tokens"""
 
+from functools import lru_cache
 import json
 import os
 import time
@@ -253,6 +254,7 @@ def is_token_expired(token: dict) -> bool:
     return current_time > exp_time
 
 
+@lru_cache(maxsize=3)
 @beartype
 def get_public_keys(env: Optional[ENVS] = None) -> list[dict]:
     """get public keys from public endpoint"""
@@ -266,7 +268,10 @@ def get_public_keys(env: Optional[ENVS] = None) -> list[dict]:
 
 
 @beartype
-def decode_access_token(token: Optional[str] = None) -> dict:
+def decode_access_token(
+    token: Optional[str] = None,
+    env: Optional[ENVS] = None,
+) -> dict:
     """decode access token into human readable data"""
 
     if token is None:
@@ -278,7 +283,7 @@ def decode_access_token(token: Optional[str] = None) -> dict:
     kid = unverified_header["kid"]
 
     # Get the public key using the Key ID
-    public_keys = get_public_keys()
+    public_keys = get_public_keys(env=env)
     for key in public_keys:
         if key["kid"] == kid:
             public_key = RSAAlgorithm.from_jwk(key)

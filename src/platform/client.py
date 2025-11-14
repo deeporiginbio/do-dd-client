@@ -73,11 +73,15 @@ class DeepOriginClient:
             env = get_value()["env"]
             base_url = API_ENDPOINT[env]
 
+        elif env is None and base_url is not None:
+            raise ValueError("env is required when base_url is provided")
+
         elif env is not None and base_url is None:
             # get the base url from the environment
             base_url = API_ENDPOINT[env]
 
         self.token = token
+        self.env = env
 
         self.org_key = org_key
         self.base_url = base_url.rstrip("/") + "/"
@@ -177,6 +181,18 @@ class DeepOriginClient:
             inst.close()
         cls._instances.clear()
 
+    def check_token(self) -> None:
+        """Check if the token is expired."""
+        from deeporigin.auth import decode_access_token, is_token_expired
+        from deeporigin.exceptions import DeepOriginException
+
+        if is_token_expired(decode_access_token(self.token, env=self.env)):
+            raise DeepOriginException(
+                title="Unauthorized",
+                message="The token is invalid or expired. Please sign in again.",
+                level="danger",
+            )
+
     # Removing from registry when explicitly closed
     def _detach_from_registry(self) -> None:
         """Remove this instance from the singleton registry.
@@ -202,6 +218,7 @@ class DeepOriginClient:
         Raises:
             httpx.HTTPStatusError: If the response status code indicates an error.
         """
+        self.check_token()
         resp = self._client.get(path, **kwargs)
         resp.raise_for_status()
         return resp
@@ -220,6 +237,7 @@ class DeepOriginClient:
         Raises:
             httpx.HTTPStatusError: If the response status code indicates an error.
         """
+        self.check_token()
         resp = self._client.post(path, json=json, **kwargs)
         resp.raise_for_status()
         return resp
@@ -237,6 +255,7 @@ class DeepOriginClient:
         Raises:
             httpx.HTTPStatusError: If the response status code indicates an error.
         """
+        self.check_token()
         resp = self._client.put(path, **kwargs)
         resp.raise_for_status()
         return resp
@@ -254,6 +273,7 @@ class DeepOriginClient:
         Raises:
             httpx.HTTPStatusError: If the response status code indicates an error.
         """
+        self.check_token()
         resp = self._client.patch(path, **kwargs)
         resp.raise_for_status()
         return resp
@@ -271,6 +291,7 @@ class DeepOriginClient:
         Raises:
             httpx.HTTPStatusError: If the response status code indicates an error.
         """
+        self.check_token()
         resp = self._client.delete(path, **kwargs)
         resp.raise_for_status()
         return resp
@@ -306,32 +327,6 @@ class DeepOriginClient:
             httpx.HTTPStatusError: If the response status code indicates an error.
         """
         return self._post(path, json=json, **kwargs).json()
-
-    # -------- tools API methods --------
-    def list_tools(self) -> Any:
-        """List all available tool definitions.
-
-        Returns:
-            A JSON response containing the list of tool definitions.
-
-        Raises:
-            httpx.HTTPStatusError: If the request fails.
-        """
-        return self.get_json("/tools/protected/tools/definitions")
-
-    def list_executions(self, limit: int = 100) -> Any:
-        """List tool executions with optional limit.
-
-        Args:
-            limit: Maximum number of executions to return. Defaults to 100.
-
-        Returns:
-            A JSON response containing the list of executions.
-
-        Raises:
-            httpx.HTTPStatusError: If the request fails.
-        """
-        return self.get_json("/tools/executions", params={"limit": limit})
 
     # -------- Lifecycle --------
     def close(self) -> None:
