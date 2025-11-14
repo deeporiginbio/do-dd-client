@@ -242,7 +242,8 @@ class Files:
         *,
         files: dict[str, str | None] | list[str],
         skip_errors: bool = False,
-        lazy: bool = False,
+        lazy: bool = True,
+        max_workers: int = 20,
     ) -> list[str]:
         """Download multiple files in parallel.
 
@@ -254,7 +255,8 @@ class Files:
             skip_errors: If True, don't raise RuntimeError on failures.
                 Defaults to False.
             lazy: If True, skip downloading if file already exists locally.
-                Defaults to False.
+                Defaults to True.
+            max_workers: Maximum number of concurrent downloads. Defaults to 20.
 
         Returns:
             List of local paths where files were saved.
@@ -270,7 +272,7 @@ class Files:
         results = []
         errors = []
 
-        with concurrent.futures.ThreadPoolExecutor() as executor:
+        with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
             future_to_pair = {
                 executor.submit(
                     self.download_file,
