@@ -132,7 +132,7 @@ class Docking(WorkflowStep):
         results_files_dict = {file: None for file in results_files}
 
         self.parent.client.files.download_files(
-            results_files_dict,
+            files=results_files_dict,
         )
 
         all_df = []

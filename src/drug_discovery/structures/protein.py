@@ -261,6 +261,9 @@ class Protein(Entity):
 
         """
 
+        if client is None:
+            client = DeepOriginClient.get()
+
         if ligands is None and ligand is None:
             raise DeepOriginException(
                 "Either ligand or ligands must be provided to protein.dock()"
@@ -476,6 +479,10 @@ class Protein(Entity):
             >>> for pocket in pockets:
             ...     print(f"Pocket: {pocket.name}, Volume: {pocket.properties.get('volume')} Å³")
         """
+
+        if client is None:
+            client = DeepOriginClient()
+
         # Import here to avoid circular import
         # note that name is changed to avoid conflict with the function
         from deeporigin.functions.pocket_finder import find_pockets as _find_pockets
