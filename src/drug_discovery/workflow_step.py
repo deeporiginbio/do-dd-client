@@ -3,7 +3,7 @@
 from beartype import beartype
 import pandas as pd
 
-from deeporigin.tools.job import Job, get_dataframe
+from deeporigin.platform.job import Job, get_dataframe
 from deeporigin.utils.core import PrettyDict
 
 

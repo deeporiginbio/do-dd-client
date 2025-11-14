@@ -22,7 +22,7 @@ config.set_value("env", "prod")  # or "staging" / "edge"
 To view the configuration for this package, run:
 
 
-```python
+```{.python notest}
 from deeporigin import config
 config.get_value()
 

@@ -6,6 +6,8 @@ The Entity class provides methods to manage and upload files, such as protein st
 
 from dataclasses import dataclass
 
+from deeporigin.platform.client import DeepOriginClient
+
 
 @dataclass
 class Entity:
@@ -24,14 +26,15 @@ class Entity:
         """the base path for the entity on the remote server"""
         return f"{self._remote_path_base}{self.to_hash()}{self._preferred_ext}"
 
-    def upload(self):
+    def upload(self, client: DeepOriginClient | None = None):
         """Upload the entity to the remote server.
 
         Overwrites the existing file if it exists."""
 
-        from deeporigin.platform import file_api
+        if client is None:
+            client = DeepOriginClient.get()
 
-        file_api.upload_file(
-            remote_path=self._remote_path,
+        client.files.upload_file(
             local_path=self.file_path,
+            remote_path=self._remote_path,
         )

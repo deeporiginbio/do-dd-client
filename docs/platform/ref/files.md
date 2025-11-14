@@ -1,13 +1,21 @@
-## `platform.file_api`
+# Tools API.
 
-API to interact with the tools API. To list available methods in this module, use:
+The DeepOriginClient can be used to access the tools API using:
 
 ```{.python notest}
-from deeporigin.platform import file_api
-file_api.__all__
+from deeporigin.platform.client import DeepOriginClient
+
+client = DeepOriginClient()
 ```
 
-::: src.platform.file_api
+Then, the following methods can be used, for example:
+
+```{.python notest}
+tools = client.files.list_files_in_dir()
+```
+
+
+::: src.platform.files.Files
     options:
       heading_level: 2
       docstring_style: google

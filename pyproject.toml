@@ -24,7 +24,6 @@ dependencies = [
     "pyjwt",
     "cryptography",
     "python-box",
-    "do-sdk-platform==6.3.0",
     "urllib3>=2.0.0",
     "more-itertools",
     "nest_asyncio",
@@ -45,6 +44,8 @@ test = [
     "pytest-xdist",
     "pytest-markdown-docs",
     "pytest-dependency",
+    "fastapi",
+    "uvicorn[standard]",
 ]
 dev = ["ipykernel", "jupyter-black"]
 docs = [
@@ -113,6 +114,12 @@ omit = ["src/data_hub/client.py", "tests/*.py"]
 
 [tool.pytest.ini_options]
 norecursedirs = ["notebooks", "scratch-notebooks"]
+filterwarnings = [
+    "ignore::DeprecationWarning:websockets.legacy",
+    "ignore::DeprecationWarning:websockets.server",
+    "ignore::DeprecationWarning:uvicorn.protocols.websockets.websockets_impl",
+    "ignore::DeprecationWarning:uvicorn.protocols.websockets",
+]
 
 [tool.interrogate]
 fail-under = 100

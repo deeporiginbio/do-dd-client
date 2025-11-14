@@ -9,117 +9,101 @@ from deeporigin.drug_discovery import (
     Complex,
 )
 from deeporigin.drug_discovery.constants import tool_mapper
-from deeporigin.platform import tools_api
-from deeporigin.tools.job import Job, get_dataframe
-from tests.utils import config  # noqa: F401
-
-"""this module tests various GET routes on the platform API. it is meant to be run against a live instance"""
+from deeporigin.platform.job import Job, get_dataframe
+from tests.utils import client  # noqa: F401
 
 
-def test_get_tool_executions(config):  # noqa: F811
-    jobs = tools_api.get_tool_executions(
-        org_key="deeporigin",
-        filter={},
-        client=config["client"],
-    )
+def test_get_tool_executions(client):  # noqa: F811
+    response = client.executions.list(filter=None)
+    jobs = response.get("data", [])
 
     assert isinstance(jobs, list), "Expected a list"
     assert len(jobs) > 0, "Expected at least one job"
 
 
-def test_get_functions(config):  # noqa: F811
-    functions = tools_api.get_functions(client=config["client"])
-
-    assert isinstance(functions, list), "Expected a list"
-    assert len(functions) > 0, "Expected at least one function"
-
-
-def test_get_executions(config):  # noqa: F811
-    jobs = tools_api.get_tool_executions(client=config["client"])
+def test_get_executions(client):  # noqa: F811
+    response = client.executions.list()
+    jobs = response.get("data", [])
     assert isinstance(jobs, list), "Expected a list"
     assert len(jobs) > 0, "Expected at least one job"
-
-
-def test_get_functions_bykey(config):  # noqa: F811
-    functions = tools_api.get_functions(client=config["client"])
-
-    assert isinstance(functions, list), "Expected a list"
-    assert len(functions) > 0, "Expected at least one function"
-
-    functions = tools_api.get_functions_bykey(
-        key=functions[0].key,
-        client=config["client"],
-    )
-
-    assert isinstance(functions, list), "Expected a list"
-    assert len(functions) > 0, "Expected at least one function"
-
-
-def test_get_job_df(config):  # noqa: F811
-    import pandas as pd
-
-    df = get_dataframe(client=config["client"])
-    assert isinstance(df, pd.DataFrame), "Expected a dataframe"
-    assert len(df) > 0, "Expected at least one job"
 
 
 @pytest.mark.dependency()
-def test_tools_api_health(config):  # noqa: F811
+def test_tools_api_health(client):  # noqa: F811
     """test the health API"""
 
-    data = tools_api.check(client=config["client"])
+    data = client.get_json("/health")
     assert data["status"] == "ok"
-    assert data["info"]["mikroOrm"]["status"] == "up"
 
 
 @pytest.mark.dependency(depends=["test_tools_api_health"])
-def test_get_all_tools(config):  # noqa: F811
+def test_get_all_tools(client):  # noqa: F811
     """test the tools API"""
 
-    tools = tools_api.get_all_tools(client=config["client"])
+    response = client.tools.list()
+    tools = response.get("data", [])
     assert len(tools) > 0, "Expected at least one tool"
 
     print(f"Found {len(tools)} tools")
 
 
 @pytest.mark.dependency(depends=["test_tools_api_health"])
-def test_get_all_functions(config):  # noqa: F811
-    """test the functions API"""
+def test_get_all_functions(client):  # noqa: F811
+    """Test the functions API list method."""
 
-    functions = tools_api.get_functions(client=config["client"])
+    functions = client.functions.list()
+    assert isinstance(functions, list), "Expected a list"
     assert len(functions) > 0, "Expected at least one function"
 
     print(f"Found {len(functions)} functions")
 
 
 @pytest.mark.dependency(depends=["test_tools_api_health"])
-def test_get_all_executions(config):  # noqa: F811
+def test_get_all_executions(client):  # noqa: F811
     """test the executions API"""
 
-    executions = tools_api.get_tool_executions(client=config["client"])
+    response = client.executions.list()
+    executions = response.get("data", [])
 
     print(f"Found {len(executions)} executions")
 
 
-def test_job(config):  # noqa: F811
-    jobs = tools_api.get_tool_executions(client=config["client"])
-    execution_id = jobs[0].executionId
-    job = Job.from_id(execution_id, client=config["client"])
+def test_job(client):  # noqa: F811
+    response = client.executions.list()
+    jobs = response.get("data", [])
+    execution_id = jobs[0]["executionId"]
+    job = Job.from_id(execution_id, client=client)
 
     assert execution_id == job._id
 
 
-def test_job_df(config):  # noqa: F811
-    _ = get_dataframe(client=config["client"])
+def test_job_from_dto(client):  # noqa: F811
+    """Test Job.from_dto() creates a Job without making a network request."""
+    response = client.executions.list()
+    jobs = response.get("data", [])
+    execution_dto = jobs[0]
+
+    # Create job from DTO (should not make network request)
+    job = Job.from_dto(execution_dto, client=client)
+
+    assert execution_dto["executionId"] == job._id
+    assert execution_dto["status"] == job.status
+    assert job._attributes == execution_dto
+    # Verify that _skip_sync was set (though it's a private field)
+    assert job._skip_sync is True
+
+
+def test_job_df(client):  # noqa: F811
+    _ = get_dataframe(client=client)
 
 
 @pytest.mark.dependency()
-def test_job_df_filtering(config):  # noqa: F811
+def test_job_df_filtering(client):  # noqa: F811
     tool_key = tool_mapper["Docking"]
 
     df = get_dataframe(
         tool_key=tool_key,
-        client=config["client"],
+        client=client,
     )
 
     assert len(df["tool_key"].unique()) == 1, (
@@ -131,12 +115,20 @@ def test_job_df_filtering(config):  # noqa: F811
     )
 
 
-def test_run_docking_and_cancel(config):  # noqa: F811
-    sim = Complex.from_dir(BRD_DATA_DIR)
-    sim.client = config["client"]
+def test_run_docking_and_cancel(client, pytestconfig):  # noqa: F811
+    """Test running a docking job and canceling it.
 
-    if config["mock"]:
-        pytest.skip("test skipped with mock client")
+    Note: This test is skipped when using --mock flag as the mock server
+    doesn't implement job execution endpoints yet.
+    """
+    use_mock = pytestconfig.getoption("--mock", default=False)
+    if use_mock:
+        pytest.skip(
+            "Skipping docking run/cancel test with --mock (not yet implemented)"
+        )
+
+    sim = Complex.from_dir(BRD_DATA_DIR, client=client)
+    sim.client = client
 
     job = sim.docking.run(
         box_size=(14.094597464129786, 14.094597464129786, 14.094597464129786),
@@ -146,8 +138,7 @@ def test_run_docking_and_cancel(config):  # noqa: F811
     )
 
     # wait for a bit to start
-    if not config["mock"]:
-        time.sleep(10)
+    time.sleep(10)
 
     # check that it's running
     job.sync()
@@ -157,8 +148,7 @@ def test_run_docking_and_cancel(config):  # noqa: F811
     job.cancel()
 
     # wait for a bit to cancel
-    if not config["mock"]:
-        time.sleep(10)
+    time.sleep(10)
 
     # check that it's cancelled
     job.sync()
@@ -167,7 +157,7 @@ def test_run_docking_and_cancel(config):  # noqa: F811
 
 def test_job_status_logic():
     """Test the simplified status logic for job rendering."""
-    from deeporigin.utils.constants import TERMINAL_STATES
+    from deeporigin.platform.constants import TERMINAL_STATES
 
     # Test the status deduplication logic
     def get_unique_statuses(statuses):

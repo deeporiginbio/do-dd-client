@@ -26,6 +26,7 @@ from deeporigin.drug_discovery.constants import (
     STATE_DUMP_PATH,
 )
 from deeporigin.exceptions import DeepOriginException
+from deeporigin.platform.client import DeepOriginClient
 
 from .entity import Entity
 from .ligand import Ligand, LigandSet
@@ -243,6 +244,7 @@ class Protein(Entity):
         pocket: Pocket,
         use_cache: bool = True,
         reference_pose: Optional[Ligand] = None,
+        client: Optional[DeepOriginClient] = None,
     ):
         """Dock a ligand into a specific pocket of the protein.
 
@@ -258,6 +260,9 @@ class Protein(Entity):
             reference_pose (Ligand): A reference pose to use for constrained docking. If provided, the constraints will be computed using the MCS of the reference pose and the all the ligands to dock.
 
         """
+
+        if client is None:
+            client = DeepOriginClient.get()
 
         if ligands is None and ligand is None:
             raise DeepOriginException(
@@ -318,6 +323,7 @@ class Protein(Entity):
                     "pocket": pocket,
                     "ligand": ligand,
                     "use_cache": use_cache,
+                    "client": client,
                 }
                 for ligand in ligands
             ]
@@ -446,6 +452,7 @@ class Protein(Entity):
         pocket_count: int = 1,
         pocket_min_size: int = 30,
         use_cache: bool = True,
+        client: Optional[DeepOriginClient] = None,
     ) -> list[Pocket]:
         """Find potential binding pockets in the protein structure.
 
@@ -472,6 +479,10 @@ class Protein(Entity):
             >>> for pocket in pockets:
             ...     print(f"Pocket: {pocket.name}, Volume: {pocket.properties.get('volume')} Å³")
         """
+
+        if client is None:
+            client = DeepOriginClient.get()
+
         # Import here to avoid circular import
         # note that name is changed to avoid conflict with the function
         from deeporigin.functions.pocket_finder import find_pockets as _find_pockets
@@ -481,6 +492,7 @@ class Protein(Entity):
             pocket_count=pocket_count,
             pocket_min_size=pocket_min_size,
             use_cache=use_cache,
+            client=client,
         )
 
         return Pocket.from_pocket_finder_results(results_dir)

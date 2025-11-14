@@ -23,9 +23,9 @@ import pandas as pd
 from tabulate import tabulate
 from termcolor import colored
 
+from deeporigin.drug_discovery.constants import POCKETS_BASE_DIR
 from deeporigin.drug_discovery.structures.ligand import Ligand
 from deeporigin.drug_discovery.utilities.visualize import jupyter_visualization
-from deeporigin.utils.constants import POCKETS_BASE_DIR
 
 
 @dataclass

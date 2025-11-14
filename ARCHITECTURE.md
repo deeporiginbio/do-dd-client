@@ -72,12 +72,7 @@ The DeepOrigin CLI is a Python package that provides a command-line interface an
 - `rdkit` - Chemistry toolkit
 - `biotite` - Bioinformatics toolkit
 
-#### `src/platform/` - Platform API Access
-- **`__init__.py`** - Module initialization
-- **`utils.py`** - Platform utilities and client management (245 lines)
-- **`tools_api.py`** - Tools API wrapper (256 lines)
-- **`file_api.py`** - File API wrapper (130 lines)
-- **`entities_api.py`** - Entities API wrapper (11 lines)
+
 
 **Dependencies:**
 - `do-sdk-platform` - Auto-generated platform SDK
@@ -139,8 +134,7 @@ src/
 │   └── structures/        # Molecular structures
 ├── platform/              # Platform API access
 │   ├── utils.py           # Platform utilities
-│   ├── tools_api.py       # Tools API
-│   └── file_api.py        # File API
+
 ├── tools/                 # Tool execution
 │   ├── job.py             # Job management
 │   └── job_viz_functions.py

@@ -13,7 +13,7 @@ test:
 	venv/bin/ruff format .
 	venv/bin/ruff check --select I . --fix
 	venv/bin/interrogate -c pyproject.toml -vv . -f 100 --omit-covered-files
-	venv/bin/pytest -x -n "auto" --failed-first -k $(chosen_tests) --mock --org_key $(org_key) --dist loadfile
+	venv/bin/pytest -x --failed-first -k $(chosen_tests) --mock --org_key $(org_key)
 	venv/bin/pytest -x docs --markdown-docs --markdown-docs-syntax=superfences
 
 
@@ -56,7 +56,7 @@ docs-deploy:
 
 
 test-github-live:
-	pytest -v --ignore=tests/test_config.py --ignore=tests/test_context.py -n "auto" --dist loadfile
+	pytest -v --ignore=tests/test_config.py --ignore=tests/test_context.py
 
 
 notebooks-html:

@@ -18,8 +18,8 @@ from deeporigin.drug_discovery.constants import tool_mapper
 from deeporigin.drug_discovery.structures.pocket import Pocket
 from deeporigin.drug_discovery.workflow_step import WorkflowStep
 from deeporigin.exceptions import DeepOriginException
-from deeporigin.platform import file_api, tools_api
-from deeporigin.tools.job import Job, get_dataframe
+from deeporigin.platform.constants import NON_FAILED_STATES
+from deeporigin.platform.job import Job, get_dataframe
 
 Number = float | int
 LOCAL_BASE = Path.home() / ".deeporigin"
@@ -112,9 +112,8 @@ class Docking(WorkflowStep):
             pd.DataFrame | None | list[str]: DataFrame of results, None if no results found, or list of file paths.
         """
 
-        files = file_api.list_files_in_dir(
+        files = self.parent.client.files.list_files_in_dir(
             file_path="tool-runs/docking/" + self.parent.protein.to_hash() + "/",
-            client=self.parent.client,
         )
 
         if file_type == "csv":
@@ -130,11 +129,10 @@ class Docking(WorkflowStep):
             return None
 
         # Convert list to dict where each file path is a key with None as value
-        results_files_dict = {file: None for file in results_files}
+        results_files_dict = dict.fromkeys(results_files)
 
-        file_api.download_files(
-            results_files_dict,
-            client=self.parent.client,
+        self.parent.client.files.download_files(
+            files=results_files_dict,
         )
 
         all_df = []
@@ -170,7 +168,7 @@ class Docking(WorkflowStep):
 
         df = get_dataframe(
             tool_key=tool_mapper["Docking"],
-            only_with_status=tools_api.NON_FAILED_STATES,
+            only_with_status=NON_FAILED_STATES,
             include_metadata=True,
             include_inputs=True,
             include_outputs=True,
@@ -233,11 +231,15 @@ class Docking(WorkflowStep):
         """Run bulk docking on Deep Origin. Ligands will be split into batches based on the batch_size argument, and will run in parallel on Deep Origin clusters.
 
         Args:
+            pocket (Pocket): pocket object. This can be generated using the pocket finder function.
             box_size (tuple[float, float, float]): box size
             pocket_center (tuple[float, float, float]): pocket center
             batch_size (int, optional): batch size. Defaults to 30.
             n_workers (int, optional): number of workers. Defaults to None.
+            output_dir_path (str, optional): path to output directory. Defaults to None.
             use_parallel (bool, optional): whether to run jobs in parallel. Defaults to True.
+            approve_amount (int, optional): amount to approve for the jobs. Defaults to None.
+            quote (bool, optional): whether to request a quote for the jobs. Defaults to False.
             re_run (bool, optional): whether to re-run jobs. Defaults to False.
         """
 
@@ -313,7 +315,7 @@ class Docking(WorkflowStep):
                 "key": self.parent.protein._remote_path,
             }
 
-            return utils._start_tool_run(
+            execution_dto = utils._start_tool_run(
                 params=params,
                 metadata=metadata,
                 tool="Docking",
@@ -322,6 +324,7 @@ class Docking(WorkflowStep):
                 output_dir_path=output_dir_path,
                 approve_amount=approve_amount,
             )
+            return execution_dto
 
         if len(smiles_strings) > 0:
             if use_parallel:
@@ -337,16 +340,16 @@ class Docking(WorkflowStep):
                         total=len(chunks),
                         desc="Starting docking jobs",
                     ):
-                        job_id = future.result()
-                        if job_id is not None:
-                            job_ids.append(job_id)
+                        execution_dto = future.result()
+                        if execution_dto is not None:
+                            job_ids.append(execution_dto)
             else:
                 for chunk in tqdm(
                     chunks, total=len(chunks), desc="Starting docking jobs"
                 ):
-                    job_id = process_chunk(chunk)
-                    if job_id is not None:
-                        job_ids.append(job_id)
+                    execution_dto = process_chunk(chunk)
+                    if execution_dto is not None:
+                        job_ids.append(execution_dto)
         else:
             raise DeepOriginException(
                 title="Cannot run Docking: no new ligands to dock",
@@ -356,7 +359,8 @@ class Docking(WorkflowStep):
             ) from None
 
         self.jobs = [
-            Job.from_id(job_id, client=self.parent.client) for job_id in job_ids
+            Job.from_dto(execution_dto, client=self.parent.client)
+            for execution_dto in job_ids
         ]
 
         return self.jobs

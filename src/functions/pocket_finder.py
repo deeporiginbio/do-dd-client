@@ -3,6 +3,7 @@
 import os
 
 from deeporigin.drug_discovery.structures import Protein
+from deeporigin.platform.client import DeepOriginClient
 from deeporigin.utils.core import hash_dict
 
 CACHE_DIR = os.path.expanduser("~/.deeporigin/pocket-finder")
@@ -15,6 +16,7 @@ def find_pockets(
     pocket_count: int = 5,
     pocket_min_size: int = 30,
     use_cache: bool = True,
+    client: DeepOriginClient,
 ) -> str | None:
     """Find protein binding pockets in a PDB structure and save the results.
 
@@ -52,19 +54,14 @@ def find_pockets(
     protein.upload()
     os.makedirs(cache_path, exist_ok=True)
 
-    from deeporigin.platform import file_api, tools_api
-
-    body = {"params": payload, "clusterId": tools_api.get_default_cluster_id()}
-
-    # Send the request to the server
-    response = tools_api.run_function(
+    response = client.functions.run(
         key="deeporigin.pocketfinder",
         version="0.2.1",
-        function_execution_params_schema_dto=body,
+        params=payload,
     )
 
-    for file in response.files:
-        file_api.download_file(
+    for file in response["files"]:
+        client.files.download_file(
             remote_path=file,
             local_path=os.path.join(cache_path, file.split("/")[-1]),
         )

@@ -4,9 +4,9 @@ from pathlib import Path
 import numpy as np
 import pytest
 
+from deeporigin.drug_discovery.constants import SUPPORTED_ATOM_SYMBOLS
 from deeporigin.drug_discovery.structures import Ligand
 from deeporigin.exceptions import DeepOriginException
-from deeporigin.utils.constants import SUPPORTED_ATOM_SYMBOLS
 
 # Import shared test fixtures
 from tests.utils_ligands import (

@@ -1,13 +1,21 @@
-## `platform.tools_api`
+# Tools API.
 
-API to interact with the tools API. To list available methods in this module, use:
+The DeepOriginClient can be used to access the tools API using:
 
 ```{.python notest}
-from deeporigin.platform import tools_api
-tools_api.__all__
+from deeporigin.platform.client import DeepOriginClient
+
+client = DeepOriginClient()
 ```
 
-::: src.platform.tools_api
+Then, the following methods can be used, for example:
+
+```{.python notest}
+tools = client.tools.list()
+```
+
+
+::: src.platform.tools.Tools
     options:
       heading_level: 2
       docstring_style: google
@@ -23,3 +31,4 @@ tools_api.__all__
       show_signature_annotations: true
       show_if_no_docstring: true
       group_by_category: true
+

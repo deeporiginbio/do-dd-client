@@ -1,0 +1,83 @@
+{
+    "executionId": "47de46da-71f6-4cb0-84b3-dcaadf01d04e",
+    "type": "ToolExecution",
+    "createdAt": "2025-11-06T19:12:35.410Z",
+    "updatedAt": "2025-11-06T19:24:41.675Z",
+    "resourceId": "23tl3gem6t0k77x2u85ij",
+    "completedAt": null,
+    "startedAt": "2025-11-06T19:12:39.117Z",
+    "userInputs": {
+        "input_file": {
+            "key": "do-patent_20251106191127386/310page.pdf",
+            "bucket": "data.dode.deeporigin",
+            "region": "us-west-2",
+            "$provider": "s3"
+        }
+    },
+    "userOutputs": null,
+    "jobOutputs": null,
+    "resourcesUsed": null,
+    "resourcesRequested": null,
+    "progressReport": null,
+    "status": "Succeeded",
+    "statusReason": null,
+    "metadata": {
+        "n_ligands": 5
+    },
+    "name": null,
+    "approveAmount": null,
+    "quotationResult": {
+        "anyFailed": false,
+        "failedQuotations": [],
+        "successfulQuotations": [
+            {
+                "qty": 310,
+                "orgId": "deeporigin",
+                "status": "OK",
+                "itemCode": "DO_PATENT",
+                "priceEach": 0.1,
+                "priceTotal": 31,
+                "pricingRecords": [
+                    {
+                        "qty": 310,
+                        "itemKey": "DO_PATENT",
+                        "itemName": "PDF analysis",
+                        "priceEach": 0.1,
+                        "tierQtyTo": 0,
+                        "totalPrice": 31,
+                        "tierQtyFrom": 0
+                    }
+                ],
+                "pricingRecordType": "regular"
+            }
+        ]
+    },
+    "billingTransaction": {
+        "items": [
+            {
+                "qty": 310,
+                "itemCode": "DO_PATENT",
+                "priceEach": 0.1,
+                "isApproved": true,
+                "priceTotal": 31,
+                "actionRequest": null,
+                "authorizationId": "690cf323271178059f816e69",
+                "purchaseApprovalComment": null
+            }
+        ],
+        "orgId": "deeporigin",
+        "status": "Approved",
+        "totalCost": 31,
+        "transactionId": "690cf323271178059f816e67"
+    },
+    "cluster": {
+        "id": "d638d3cd-833f-476b-87fe-ca6d76e66049"
+    },
+    "orgKey": "deeporigin",
+    "createdBy": "google-apps|test@deeporigin.com",
+    "tag": null,
+    "tool": {
+        "key": "deeporigin.test-tool",
+        "version": "1.0.0"
+    }
+}

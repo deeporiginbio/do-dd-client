@@ -13,8 +13,7 @@ from deeporigin.drug_discovery.constants import tool_mapper
 from deeporigin.drug_discovery.structures.ligand import Ligand, LigandSet
 from deeporigin.drug_discovery.workflow_step import WorkflowStep
 from deeporigin.exceptions import DeepOriginException
-from deeporigin.platform import file_api
-from deeporigin.tools.job import Job, get_dataframe
+from deeporigin.platform.job import Job, get_dataframe
 from deeporigin.utils.notebook import get_notebook_environment
 
 LOCAL_BASE = Path.home() / ".deeporigin"
@@ -55,9 +54,8 @@ class ABFE(WorkflowStep):
 
         results_files = dict.fromkeys(results_files, None)
 
-        results_files = file_api.download_files(
-            results_files,
-            client=self.parent.client,
+        results_files = self.parent.client.files.download_files(
+            files=results_files,
             skip_errors=True,
         )
 
@@ -365,7 +363,7 @@ class ABFE(WorkflowStep):
             if output_dir_path is None:
                 output_dir_path = f"tool-runs/ABFE/{self.parent.protein.to_hash()}.pdb/{ligand.to_hash()}.sdf/"
 
-            job_id = utils._start_tool_run(
+            execution_dto = utils._start_tool_run(
                 metadata=metadata,
                 params=params,
                 tool="ABFE",
@@ -375,7 +373,7 @@ class ABFE(WorkflowStep):
                 approve_amount=approve_amount,
             )
 
-            job = Job.from_id(job_id, client=self.parent.client)
+            job = Job.from_dto(execution_dto, client=self.parent.client)
 
             self.jobs.append(job)
             jobs_for_this_run.append(job)
@@ -393,7 +391,7 @@ class ABFE(WorkflowStep):
         """Show the system trajectory FEP run.
 
         Args:
-            job: The job to show the trajectory for.
+            ligand: The ligand to show the trajectory for.
             step (Literal["md", "abfe"]): The step to show the trajectory for.
             window (int, optional): The window number to show the trajectory for.
         """
@@ -423,9 +421,8 @@ class ABFE(WorkflowStep):
             # Check for valid windows
 
             # figure out valid windows
-            files = file_api.list_files_in_dir(
+            files = self.parent.client.files.list_files_in_dir(
                 file_path=str(remote_base),
-                client=self.parent.client,
             )
             xtc_files = [
                 file
@@ -460,9 +457,8 @@ class ABFE(WorkflowStep):
         files_to_download.append(remote_xtc_file)
         files_to_download = dict.fromkeys(map(str, files_to_download), None)
 
-        file_api.download_files(
-            files_to_download,
-            client=self.parent.client,
+        self.parent.client.files.download_files(
+            files=files_to_download,
             lazy=True,
         )
 

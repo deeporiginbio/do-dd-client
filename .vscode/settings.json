@@ -51,6 +51,8 @@
         "molprops",
         "molstar",
         "ndarray",
+        "NOSONAR",
+        "notest",
         "nrows",
         "pdbqt",
         "protonate",

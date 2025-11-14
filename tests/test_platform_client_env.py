@@ -1,11 +1,11 @@
-"""Tests for environment variable fallbacks in platform Client."""
+"""Tests for environment variable fallbacks in platform DeepOriginClient."""
 
 import os
 from typing import Generator
 
 import pytest
 
-from deeporigin.platform import Client
+from deeporigin.platform.client import DeepOriginClient
 
 
 @pytest.fixture(autouse=True)
@@ -30,11 +30,11 @@ def test_env_fallbacks_with_defaults() -> None:
     os.environ["DEEPORIGIN_ORG_KEY"] = "org_123"
     # DEEPORIGIN_ENV intentionally not set -> defaults to prod
 
-    client = Client()
+    client = DeepOriginClient()
 
     assert client.token == "tok_abc"
     assert client.org_key == "org_123"
-    assert client.api_endpoint.endswith("deeporigin.io")
+    assert client.base_url.endswith("deeporigin.io/")
 
 
 def test_kwarg_overrides_env() -> None:
@@ -42,8 +42,8 @@ def test_kwarg_overrides_env() -> None:
     os.environ["DEEPORIGIN_ORG_KEY"] = "org_env"
     os.environ["DEEPORIGIN_ENV"] = "staging"
 
-    client = Client(token="tok_kw", org_key="org_kw", env="edge")
+    client = DeepOriginClient(token="tok_kw", org_key="org_kw", env="edge")
 
     assert client.token == "tok_kw"
     assert client.org_key == "org_kw"
-    assert client.env == "edge"
+    assert "edge" in client.base_url or client.base_url.endswith("edge.deeporigin.io/")

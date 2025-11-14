@@ -74,17 +74,14 @@ nav:
     - rbfe: dd/ref/rbfe.md
   - Notebooks:
     - Docking: notebooks/docking.html
-- Platform: 
+- Platform API: 
   - platform/index.md
-  - Tools & Functions:
-    - Reference: platform/ref/tools.md
-  - Files:
-    - Reference: platform/ref/files.md
-  - Compute hub: 
-    - platform/compute-hub/index.md
-    - How to:
-      - Install variables and secrets: platform/compute-hub/how-to/variables.md
-      - Get info about your workstation: platform/compute-hub/how-to/workstation-info.md
+  - tools: platform/ref/tools.md
+  - files: platform/ref/files.md
+  - executions: platform/ref/executions.md
+  - clusters: platform/ref/clusters.md
+  - functions: platform/ref/functions.md
+  - organizations: platform/ref/organizations.md
 - Developing: 
   - Installing: dev/install.md
   - Clients: dev/clients.md

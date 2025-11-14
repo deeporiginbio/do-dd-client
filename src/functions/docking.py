@@ -16,6 +16,7 @@ import requests
 
 from deeporigin.drug_discovery.structures import Ligand, Pocket, Protein
 from deeporigin.exceptions import DeepOriginException
+from deeporigin.platform.client import DeepOriginClient
 from deeporigin.utils.core import hash_dict
 
 
@@ -41,6 +42,7 @@ def _get_pocket_center(
 
 def dock(
     *,
+    client: DeepOriginClient,
     protein: Protein,
     smiles_string: Optional[str] = None,
     ligand: Optional[Ligand] = None,
@@ -60,6 +62,7 @@ def dock(
         pocket_center (Optional[tuple[int, int, int]]): Center coordinates of the docking pocket (x, y, z)
         pocket (Optional[Pocket]): Pocket object defining the docking region
         use_cache (bool): Whether to use cached results. Defaults to True
+        client (DeepOriginClient | None): DeepOrigin client instance. If None, creates a new client. Defaults to None
 
     Returns:
         str: path to the SDF file containing the docking results
@@ -96,25 +99,14 @@ def dock(
 
     protein.upload()
 
-    from deeporigin.platform import tools_api
+    response = client.functions.run(
+        key="deeporigin.docking",
+        version="0.2.4",
+        params=payload,
+    )
 
-    body = {"params": payload, "clusterId": tools_api.get_default_cluster_id()}
-
-    try:
-        response = tools_api.run_function(
-            key="deeporigin.docking",
-            version="0.2.4",
-            function_execution_params_schema_dto=body,
-        )
-    except Exception as e:
-        print(f"Error running docking: {e}")
-        print(f"Body: {body}")
-        raise e
-
-    from deeporigin.platform import file_api
-
-    sdf_file = file_api.download_file(
-        remote_path=response.sdf_path,
+    sdf_file = client.files.download_file(
+        remote_path=response["sdf_path"],
         local_path=sdf_file,
     )
 
@@ -156,7 +148,7 @@ def constrained_dock(
         stores results based on a SHA256 hash of all input parameters. This allows for
         efficient reuse of previous docking results.
     """
-    URL = "http://constrained-docking.default.jobs.edge.deeporigin.io/dock"
+    URL = "https://constrained-docking.default.jobs.edge.deeporigin.io/dock"
     CACHE_DIR = os.path.expanduser("~/.deeporigin/constrained_docking")
 
     if pocket is None and pocket_center is None:

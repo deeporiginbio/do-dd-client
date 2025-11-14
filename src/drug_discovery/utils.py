@@ -9,7 +9,8 @@ from beartype import beartype
 import pandas as pd
 
 from deeporigin.drug_discovery.constants import tool_mapper, valid_tools
-from deeporigin.platform import Client, tools_api
+from deeporigin.platform.client import DeepOriginClient
+from deeporigin.platform.constants import PROVIDER
 from deeporigin.utils.core import PrettyDict
 
 PROVIDER_KEY = "$provider"
@@ -38,10 +39,10 @@ def _start_tool_run(
     tool: valid_tools,
     output_dir_path: str,
     tool_version: str,
-    provider: tools_api.PROVIDER = "ufa",
-    client: Optional[Client] = None,
+    provider: PROVIDER = "ufa",
+    client: Optional[DeepOriginClient] = None,
     approve_amount: Optional[int] = None,
-) -> str:
+) -> dict:
     """
     Starts a single run of an end-to-end tool (such as ABFE) and logs it in the ABFE database.
 
@@ -61,7 +62,7 @@ def _start_tool_run(
         _output_dir_path (Optional[str]): Custom output directory path (on remote storage). If None, a default is constructed.
 
     Returns:
-        str: The job ID of the started tool run.
+        dict: The full execution description (DTO) from the API, containing executionId, status, and other fields.
 
     Raises:
         NotImplementedError: If a tool other than ABFE is specified.
@@ -107,14 +108,13 @@ def _start_tool_run(
     if approve_amount is not None:
         payload["approveAmount"] = approve_amount
 
-    response = tools_api.run_tool(
+    response = client.tools.run(
         data=payload,
         tool_key=tool_mapper[tool],
         tool_version=tool_version,
-        client=client,
     )
 
-    return response.executionId
+    return response
 
 
 @beartype

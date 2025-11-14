@@ -125,3 +125,29 @@ tool_mapper = {
     "RBFE": "deeporigin.rbfe-end-to-end",
     "Docking": "deeporigin.bulk-docking",
 }
+
+# Base directory for storing pocket files
+POCKETS_BASE_DIR = "~/.deeporigin/pockets"
+"""Base directory for storing pocket files."""
+
+# Supported atom symbols for small-molecule ligands in this toolkit.
+# These intentionally exclude certain elements (e.g., metals, boron) that are
+# not supported by downstream tools in typical docking workflows.
+SUPPORTED_ATOM_SYMBOLS = {
+    "H",
+    "C",
+    "N",
+    "O",
+    "F",
+    "P",
+    "S",
+    "Cl",
+    "Br",
+    "I",
+}
+"""Set of supported atom symbols for ligands.
+
+This set is used to validate ligands before docking and related operations.
+Ligands containing atoms outside this set should be rejected by preparation
+utilities.
+"""

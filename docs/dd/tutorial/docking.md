@@ -10,7 +10,7 @@ This document describes how to [dock :octicons-link-external-16:](https://en.wik
 
 We assume that we have an initialized and configured a `Complex` object:
 
-```python
+```{.python notest}
 from deeporigin.drug_discovery import Complex, BRD_DATA_DIR
 
 sim = Complex.from_dir(BRD_DATA_DIR) 

@@ -1,6 +1,7 @@
 """this module handles authentication actions and interactions
 with tokens"""
 
+from functools import lru_cache
 import json
 import os
 import time
@@ -253,6 +254,7 @@ def is_token_expired(token: dict) -> bool:
     return current_time > exp_time
 
 
+@lru_cache(maxsize=3)
 @beartype
 def get_public_keys(env: Optional[ENVS] = None) -> list[dict]:
     """get public keys from public endpoint"""
@@ -266,8 +268,30 @@ def get_public_keys(env: Optional[ENVS] = None) -> list[dict]:
 
 
 @beartype
-def decode_access_token(token: Optional[str] = None) -> dict:
+def decode_access_token(
+    token: Optional[str] = None,
+    env: Optional[ENVS] = None,
+) -> dict:
     """decode access token into human readable data"""
+
+    if env == "local":
+        now = int(time.time())
+        one_year_seconds = 365 * 24 * 60 * 60
+        return {
+            "https://deeporigin.io/claims/id/userHandle": "user-deeporigin-com",
+            "https://deeporigin.io/claims/id/userid": "google-apps|user@deeporigin.com",
+            "https://deeporigin.io/claims/id/email": "user@deeporigin.com",
+            "https://deeporigin.io/claims/id/emailVerified": True,
+            "userHandle": "user-deeporigin-com",
+            "userid": "google-apps|user@deeporigin.com",
+            "emailVerified": True,
+            "iss": "https://formicbio.us.auth0.com/",
+            "sub": "google-apps|user@deeporigin.com",
+            "aud": "https://os.deeporigin.io/api",
+            "iat": now,
+            "exp": now + one_year_seconds,
+            "scope": "offline_access",
+        }
 
     if token is None:
         tokens = get_tokens()
@@ -278,7 +302,7 @@ def decode_access_token(token: Optional[str] = None) -> dict:
     kid = unverified_header["kid"]
 
     # Get the public key using the Key ID
-    public_keys = get_public_keys()
+    public_keys = get_public_keys(env=env)
     for key in public_keys:
         if key["kid"] == kid:
             public_key = RSAAlgorithm.from_jwk(key)

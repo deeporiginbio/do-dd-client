@@ -10,7 +10,7 @@ This document describes how to run a [RBFE :octicons-link-external-16:](https://
 
 We assume that we have an initialized and configured `Complex` object:
 
-```python
+```{.python notest}
 from deeporigin.drug_discovery import Complex, BRD_DATA_DIR
 
 sim = Complex.from_dir(BRD_DATA_DIR)
@@ -70,7 +70,7 @@ This creates a compound job on Deep Origin, where each ligand pair will be run i
 
 The end to end RBFE tool has a number of user-accessible parameters. To view all parameters, use:
 
-```python
+```{.python notest}
 from deeporigin.drug_discovery import Complex, BRD_DATA_DIR
 
 sim = Complex.from_dir(BRD_DATA_DIR)
@@ -348,7 +348,7 @@ sim.rbfe._params.end_to_end
     ```
 Any of these parameters are modifiable using dot notation. For example, to change the number of steps in the RBFE step, we can use:
 
-```python
+```{.python notest}
 from deeporigin.drug_discovery import Complex, BRD_DATA_DIR
 
 sim = Complex.from_dir(BRD_DATA_DIR)

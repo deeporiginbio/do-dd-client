@@ -9,6 +9,7 @@ import os
 from pathlib import Path
 from typing import Optional
 
+from deeporigin.platform.client import DeepOriginClient
 from deeporigin.utils.core import hash_dict
 
 CACHE_DIR = os.path.expanduser("~/.deeporigin/molprops")
@@ -21,6 +22,7 @@ def molprops(
     smiles_list: list[str],
     properties: Optional[set[str]] = None,
     *,
+    client: DeepOriginClient,
     use_cache: bool = True,
 ) -> dict:
     """
@@ -48,6 +50,7 @@ def molprops(
             payload=payload,
             prop=prop,
             use_cache=use_cache,
+            client=client,
         )
 
         response.append(this_response)
@@ -61,6 +64,7 @@ def get_single_property(
     *,
     payload: dict,
     prop: str,
+    client: DeepOriginClient,
     use_cache: bool = True,
 ) -> dict:
     """
@@ -79,14 +83,10 @@ def get_single_property(
 
     # Prepare the request payload
 
-    from deeporigin.platform import tools_api
-
-    body = {"params": payload, "clusterId": tools_api.get_default_cluster_id()}
-
-    response = tools_api.run_function(
+    response = client.functions.run(
         key=f"deeporigin.mol-props-{prop}",
         version="0.1.3",
-        function_execution_params_schema_dto=body,
+        params=payload,
     )
 
     # Write JSON response to cache
