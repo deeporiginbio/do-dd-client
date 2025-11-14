@@ -129,7 +129,7 @@ class Docking(WorkflowStep):
             return None
 
         # Convert list to dict where each file path is a key with None as value
-        results_files_dict = {file: None for file in results_files}
+        results_files_dict = dict.fromkeys(results_files)
 
         self.parent.client.files.download_files(
             files=results_files_dict,
@@ -231,11 +231,15 @@ class Docking(WorkflowStep):
         """Run bulk docking on Deep Origin. Ligands will be split into batches based on the batch_size argument, and will run in parallel on Deep Origin clusters.
 
         Args:
+            pocket (Pocket): pocket object. This can be generated using the pocket finder function.
             box_size (tuple[float, float, float]): box size
             pocket_center (tuple[float, float, float]): pocket center
             batch_size (int, optional): batch size. Defaults to 30.
             n_workers (int, optional): number of workers. Defaults to None.
+            output_dir_path (str, optional): path to output directory. Defaults to None.
             use_parallel (bool, optional): whether to run jobs in parallel. Defaults to True.
+            approve_amount (int, optional): amount to approve for the jobs. Defaults to None.
+            quote (bool, optional): whether to request a quote for the jobs. Defaults to False.
             re_run (bool, optional): whether to re-run jobs. Defaults to False.
         """
 

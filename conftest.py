@@ -8,7 +8,7 @@ All tests use this local server instead of making real API calls.
 
 import pytest
 
-from tests.test_server import MockServer
+from tests.mock_server import MockServer
 
 
 @pytest.fixture(scope="session")

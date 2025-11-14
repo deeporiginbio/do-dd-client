@@ -81,6 +81,7 @@ nav:
   - executions: platform/ref/executions.md
   - clusters: platform/ref/clusters.md
   - functions: platform/ref/functions.md
+  - organizations: platform/ref/organizations.md
 - Developing: 
   - Installing: dev/install.md
   - Clients: dev/clients.md

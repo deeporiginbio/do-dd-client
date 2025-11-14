@@ -252,6 +252,48 @@ class MockServer:
                 "pagination": {"count": 2},
             }
 
+        @self.app.get("/entities/{org_key}/organizations/users")
+        def list_organization_users(org_key: str) -> list[dict[str, Any]]:
+            """List organization users."""
+            return [
+                {
+                    "id": "576b2ec1-888c-4fc6-a137-66846e9ffaaf",
+                    "createdAt": "2024-07-31T07:05:17.367Z",
+                    "updatedAt": "2024-07-31T07:05:20.452Z",
+                    "firstName": "user1@example.com",
+                    "lastName": "user1@example.com",
+                    "email": "user1@example.com",
+                    "authId": "google-apps|user1@example.com",
+                    "avatar": "https://s.gravatar.com/avatar/004cd3190c2f58ed8f192bdceb53aa6e?s=480&r=pg&d=https%3A%2F%2Fcdn.auth0.com%2Favatars%2Fag.png",
+                    "title": "",
+                    "industries": "",
+                    "expertise": "",
+                    "company": None,
+                    "referralCode": None,
+                    "emailNotificationsDisabled": None,
+                    "notificationsDisabled": None,
+                    "appNotificationsDisabled": None,
+                },
+                {
+                    "id": "676b2ec1-888c-4fc6-a137-66846e9ffaaf",
+                    "createdAt": "2024-08-01T07:05:17.367Z",
+                    "updatedAt": "2024-08-01T07:05:20.452Z",
+                    "firstName": "user2@example.com",
+                    "lastName": "user2@example.com",
+                    "email": "user2@example.com",
+                    "authId": "google-apps|user2@example.com",
+                    "avatar": "https://s.gravatar.com/avatar/004cd3190c2f58ed8f192bdceb53aa6e?s=480&r=pg&d=https%3A%2F%2Fcdn.auth0.com%2Favatars%2Fag.png",
+                    "title": "",
+                    "industries": "",
+                    "expertise": "",
+                    "company": None,
+                    "referralCode": None,
+                    "emailNotificationsDisabled": None,
+                    "notificationsDisabled": None,
+                    "appNotificationsDisabled": None,
+                },
+            ]
+
         @self.app.get("/tools/{org_key}/tools/executions")
         def list_executions(
             org_key: str,

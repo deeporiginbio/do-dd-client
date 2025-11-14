@@ -182,13 +182,13 @@ class Job:
             self.status = result.get("status")
 
             # Quick and dirty logging for analysis - append progressReport to file
+            try:
+                progress_data = json.loads(result["progressReport"])
+            except Exception:
+                progress_data = result["progressReport"]
+
             log_file = Path(f"{self._id}.txt")
             with open(log_file, "a") as f:
-                # Parse if it's a JSON string, otherwise use as-is
-                if isinstance(result["progressReport"], str):
-                    progress_data = json.loads(result["progressReport"])
-                else:
-                    progress_data = result["progressReport"]
                 f.write(json.dumps(progress_data, indent=2))
                 f.write("\n\n")
 

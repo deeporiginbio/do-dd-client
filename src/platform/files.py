@@ -139,6 +139,7 @@ class Files:
         self,
         *,
         files: dict[str, str],
+        max_workers: int = 20,
     ) -> list[dict]:
         """Upload multiple files in parallel.
 
@@ -155,7 +156,7 @@ class Files:
         results = []
         errors = []
 
-        with concurrent.futures.ThreadPoolExecutor() as executor:
+        with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
             future_to_pair = {
                 executor.submit(
                     self.upload_file,
@@ -227,13 +228,15 @@ class Files:
 
         # Download file using httpx directly (signed_url is a complete URL)
         # Use a fresh client without base_url to avoid URL prefixing issues
+        # Stream the response to avoid loading large files into memory
         with httpx.Client() as download_client:
-            download_response = download_client.get(signed_url)
-            download_response.raise_for_status()
+            with download_client.stream("GET", signed_url) as download_response:
+                download_response.raise_for_status()
 
-            # Save file
-            with open(local_path, "wb") as f:
-                f.write(download_response.content)
+                # Stream file content directly to disk
+                with open(local_path, "wb") as f:
+                    for chunk in download_response.iter_bytes():
+                        f.write(chunk)
 
         return str(local_path)
 

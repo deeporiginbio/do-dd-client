@@ -19,6 +19,7 @@ from deeporigin.platform.clusters import Clusters
 from deeporigin.platform.executions import Executions
 from deeporigin.platform.files import Files
 from deeporigin.platform.functions import Functions
+from deeporigin.platform.organizations import Organizations
 
 # Import Tools - safe because tools.py uses TYPE_CHECKING for DeepOriginClient
 from deeporigin.platform.tools import Tools
@@ -91,6 +92,7 @@ class DeepOriginClient:
         self.clusters = Clusters(self)
         self.files = Files(self)
         self.executions = Executions(self)
+        self.organizations = Organizations(self)
 
         self._client = httpx.Client(
             base_url=self.base_url,
