@@ -2,7 +2,7 @@
 
 import sys
 
-from IPython.display import HTML, Javascript, display
+from IPython.display import HTML, display
 
 __all__ = ["DeepOriginException", "install_silent_error_handler"]
 
@@ -20,30 +20,30 @@ class DeepOriginException(Exception):
 
 
 # --- Best-effort: ensure Bootstrap 5 CSS is available (no-op if already loaded) ---
-def _ensure_bootstrap_loaded():
-    try:
-        js = r"""
-        (function() {
-          try {
-            // If any bootstrap-like CSS already present, do nothing
-            if (document.querySelector('link[href*="bootstrap"]')) return;
-            if (document.getElementById('do-bootstrap-5')) return;
+# def _ensure_bootstrap_loaded():
+#     try:
+#         js = r"""
+#         (function() {
+#           try {
+#             // If any bootstrap-like CSS already present, do nothing
+#             if (document.querySelector('link[href*="bootstrap"]')) return;
+#             if (document.getElementById('do-bootstrap-5')) return;
 
-            var link = document.createElement('link');
-            link.id = 'do-bootstrap-5';
-            link.rel = 'stylesheet';
-            link.href = 'https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css';
-            link.integrity = 'sha384-QWTKZyjpPEjISv5WaRU9OFeRpok6YctnYmDr5pNlyT2bRjXh0JMhjY6hW+ALEwIH';
-            link.crossOrigin = 'anonymous';
-            document.head.appendChild(link);
-          } catch (e) {
-            // ignore; we'll fall back to inline styles
-          }
-        })();
-        """
-        display(Javascript(js))
-    except Exception:
-        pass
+#             var link = document.createElement('link');
+#             link.id = 'do-bootstrap-5';
+#             link.rel = 'stylesheet';
+#             link.href = 'https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css';
+#             link.integrity = 'sha384-QWTKZyjpPEjISv5WaRU9OFeRpok6YctnYmDr5pNlyT2bRjXh0JMhjY6hW+ALEwIH';
+#             link.crossOrigin = 'anonymous';
+#             document.head.appendChild(link);
+#           } catch (e) {
+#             // ignore; we'll fall back to inline styles
+#           }
+#         })();
+#         """
+#         display(Javascript(js))
+#     except Exception:
+#         pass
 
 
 def _silent_error_handler(shell, etype, evalue, tb, tb_offset=None):
@@ -116,7 +116,7 @@ def install_silent_error_handler():
     ip = get_ipython()
     if ip is None or "pytest" in sys.modules:
         return False
-    _ensure_bootstrap_loaded()  # best-effort
+    # _ensure_bootstrap_loaded()  # best-effort
     ip.set_custom_exc((DeepOriginException,), _silent_error_handler)
     return True
 
