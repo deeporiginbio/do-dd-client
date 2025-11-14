@@ -31,3 +31,39 @@ def test_download_file(client):  # noqa: F811
     )
 
     assert os.path.exists(local_path), "should have downloaded the file"
+
+
+def test_download_files_with_list(client):  # noqa: F811
+    """test the download_files API with a list input."""
+
+    files = client.files.list_files_in_dir(
+        file_path="entities/",
+        recursive=True,
+    )
+    assert len(files) > 0, "should be some files in entities/"
+
+    # Test with a list (first file only)
+    local_paths = client.files.download_files(
+        files=[files[0]],
+    )
+
+    assert len(local_paths) == 1, "should have downloaded one file"
+    assert os.path.exists(local_paths[0]), "should have downloaded the file"
+
+
+def test_download_files_with_dict(client):  # noqa: F811
+    """test the download_files API with a dict input."""
+
+    files = client.files.list_files_in_dir(
+        file_path="entities/",
+        recursive=True,
+    )
+    assert len(files) > 0, "should be some files in entities/"
+
+    # Test with a dict
+    local_paths = client.files.download_files(
+        files={files[0]: None},
+    )
+
+    assert len(local_paths) == 1, "should have downloaded one file"
+    assert os.path.exists(local_paths[0]), "should have downloaded the file"

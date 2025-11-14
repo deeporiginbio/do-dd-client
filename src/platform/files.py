@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 import httpx
+from tqdm import tqdm
 
 if TYPE_CHECKING:
     from deeporigin.platform.client import DeepOriginClient
@@ -34,12 +35,14 @@ class Files:
         file_path: str,
         recursive: bool = True,
         last_count: int | None = None,
-        continuation_token: str | None = None,
         delimiter: str | None = None,
         max_keys: int | None = None,
         prefix: str | None = None,
     ) -> list[str]:
         """List files in a directory.
+
+        Automatically handles pagination using continuation tokens. All pages
+        are fetched and combined into a single list.
 
         Args:
             file_path: The path to the directory to list files from.
@@ -47,43 +50,52 @@ class Files:
                 Defaults to True.
             last_count: Used for pagination - the last count of objects in the
                 bucket. Defaults to None.
-            continuation_token: Token for pagination. Defaults to None.
             delimiter: Used to group results by a common prefix (e.g., "/").
                 Defaults to None.
-            max_keys: Maximum number of keys to return (cannot exceed 1000).
+            max_keys: Page size (cannot exceed 1000).
                 Defaults to None.
             prefix: Path prefix to filter results. Defaults to None.
 
         Returns:
             List of file paths found in the specified directory.
         """
-        params: dict[str, str | int | bool] = {}
-        if recursive:
-            params["recursive"] = True
-        if last_count is not None:
-            params["last-count"] = str(last_count)
-        if continuation_token is not None:
-            params["continuation-token"] = continuation_token
-        if delimiter is not None:
-            params["delimiter"] = delimiter
-        if max_keys is not None:
-            params["max-orgKeys"] = max_keys
-        if prefix is not None:
-            params["prefix"] = prefix
+        all_files: list[str] = []
+        continuation_token: str | None = None
 
-        response = self._c.get_json(
-            f"/files/{self._c.org_key}/directory/{file_path}",
-            params=params,
-        )
+        while True:
+            params: dict[str, str | int | bool] = {}
+            if recursive:
+                params["recursive"] = True
+            if last_count is not None:
+                params["last-count"] = str(last_count)
+            if continuation_token is not None:
+                params["continuation-token"] = continuation_token
+            if delimiter is not None:
+                params["delimiter"] = delimiter
+            if max_keys is not None:
+                params["max-orgKeys"] = max_keys
+            if prefix is not None:
+                params["prefix"] = prefix
 
-        # Extract file keys from the response
-        files = []
-        if "data" in response and isinstance(response["data"], list):
-            for file_obj in response["data"]:
-                if isinstance(file_obj, dict) and "Key" in file_obj:
-                    files.append(file_obj["Key"])
+            response = self._c.get_json(
+                f"/files/{self._c.org_key}/directory/{file_path}",
+                params=params,
+            )
 
-        return files
+            # Extract file keys from the response
+            if "data" in response and isinstance(response["data"], list):
+                for file_obj in response["data"]:
+                    if isinstance(file_obj, dict) and "Key" in file_obj:
+                        all_files.append(file_obj["Key"])
+
+            # Check for continuation token in response
+            continuation_token = response.get("continuation_token") or response.get(
+                "continuationToken"
+            )
+            if not continuation_token:
+                break
+
+        return all_files
 
     def upload_file(
         self,
@@ -228,16 +240,17 @@ class Files:
     def download_files(
         self,
         *,
-        files: dict[str, str | None],
+        files: dict[str, str | None] | list[str],
         skip_errors: bool = False,
         lazy: bool = False,
     ) -> list[str]:
         """Download multiple files in parallel.
 
         Args:
-            files: A dictionary mapping remote paths to local paths.
-                Format: {remote_path: local_path or None}. If local_path is None,
-                uses default location (~/.deeporigin/).
+            files: Either a dictionary mapping remote paths to local paths, or a
+                list of remote paths. Format: {remote_path: local_path or None} or
+                [remote_path1, remote_path2, ...]. If a list is provided, local
+                paths default to None (uses default location ~/.deeporigin/).
             skip_errors: If True, don't raise RuntimeError on failures.
                 Defaults to False.
             lazy: If True, skip downloading if file already exists locally.
@@ -250,6 +263,10 @@ class Files:
             RuntimeError: If any download fails and skip_errors is False,
                 with details about all failures.
         """
+        # Convert list to dict if needed
+        if isinstance(files, list):
+            files = dict.fromkeys(files, None)
+
         results = []
         errors = []
 
@@ -264,7 +281,12 @@ class Files:
                 for remote_path, local_path in files.items()
             }
 
-            for future in concurrent.futures.as_completed(future_to_pair):
+            for future in tqdm(
+                concurrent.futures.as_completed(future_to_pair),
+                total=len(files),
+                desc="Downloading files",
+                unit="file",
+            ):
                 remote_path, local_path = future_to_pair[future]
                 try:
                     result = future.result()
