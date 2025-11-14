@@ -481,7 +481,7 @@ class Protein(Entity):
         """
 
         if client is None:
-            client = DeepOriginClient()
+            client = DeepOriginClient.get()
 
         # Import here to avoid circular import
         # note that name is changed to avoid conflict with the function
