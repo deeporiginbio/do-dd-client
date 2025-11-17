@@ -42,21 +42,23 @@ jobs:
           if [ "$ENV" = "prod" ]; then
             echo "DEEPORIGIN_TOKEN=${{ secrets.DEEPORIGIN_TOKEN_PROD }}" >> "$GITHUB_ENV"
             echo "DEEPORIGIN_REFRESH_TOKEN=${{ secrets.DEEPORIGIN_REFRESH_TOKEN_PROD }}" >> "$GITHUB_ENV"
+            echo "DEEPORIGIN_ORG_KEY=${{ secrets.DEEPORIGIN_ORG_KEY_PROD }}" >> "$GITHUB_ENV"
           elif [ "$ENV" = "staging" ]; then
             echo "DEEPORIGIN_TOKEN=${{ secrets.DEEPORIGIN_TOKEN_STAGING }}" >> "$GITHUB_ENV"
             echo "DEEPORIGIN_REFRESH_TOKEN=${{ secrets.DEEPORIGIN_REFRESH_TOKEN_STAGING }}" >> "$GITHUB_ENV"
+            echo "DEEPORIGIN_ORG_KEY=${{ secrets.DEEPORIGIN_ORG_KEY_STAGING }}" >> "$GITHUB_ENV"
           elif [ "$ENV" = "edge" ]; then
             echo "DEEPORIGIN_TOKEN=${{ secrets.DEEPORIGIN_TOKEN_EDGE }}" >> "$GITHUB_ENV"
             echo "DEEPORIGIN_REFRESH_TOKEN=${{ secrets.DEEPORIGIN_REFRESH_TOKEN_EDGE }}" >> "$GITHUB_ENV"
+            echo "DEEPORIGIN_ORG_KEY=${{ secrets.DEEPORIGIN_ORG_KEY_EDGE }}" >> "$GITHUB_ENV"
           fi
 
       - name: Set environment variables for Client
         run: |
-          echo "DEEPORIGIN_ORG_KEY=deeporigin" >> "$GITHUB_ENV"
           echo "DEEPORIGIN_ENV=${{ inputs.env || 'prod' }}" >> "$GITHUB_ENV"
       - name: Install dependencies
         run: uv sync --extra tools --extra test --extra plots
 
 
       - name: Run tests against a live instance
-        run: uv run pytest -v -s --log-cli-level=ERROR -k test_functions
+        run: uv run pytest -v -s --log-cli-level=ERROR -k test_functions 
