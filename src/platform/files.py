@@ -5,6 +5,7 @@ from __future__ import annotations
 import concurrent.futures
 from pathlib import Path
 from typing import TYPE_CHECKING
+from urllib.parse import quote
 
 import httpx
 from tqdm import tqdm
@@ -311,3 +312,78 @@ class Files:
             )
 
         return results
+
+    def delete_file(
+        self,
+        file_path: str,
+    ) -> None:
+        """Delete a file from UFA.
+
+        Args:
+            file_path: The remote path of the file to delete.
+
+        Returns:
+            None if the file was successfully deleted.
+
+        Raises:
+            RuntimeError: If the file deletion failed. Note: The API returns
+                200 status even if deletion fails, so this method checks the
+                response body for success.
+        """
+        # URL encode the file path
+        encoded_path = quote(file_path, safe="")
+
+        # Make DELETE request
+        response = self._c._delete(
+            f"/files/{self._c.org_key}/{encoded_path}",
+        )
+
+        # Parse JSON response
+        # API returns 200 even on failure, but response body indicates success
+        response = response.json()
+
+        if not response:
+            raise RuntimeError(f"Failed to delete file {file_path}")
+
+    def delete_files(
+        self,
+        file_paths: list[str],
+        *,
+        skip_errors: bool = False,
+        max_workers: int = 20,
+    ) -> None:
+        """Delete multiple files in parallel.
+
+        Args:
+            file_paths: List of remote file paths to delete.
+            skip_errors: If True, don't raise RuntimeError on failures.
+                Defaults to False.
+            max_workers: Maximum number of concurrent deletions. Defaults to 20.
+
+        Raises:
+            RuntimeError: If any deletion fails and skip_errors is False,
+                with details about all failures.
+        """
+        errors = []
+
+        with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
+            future_to_path = {
+                executor.submit(
+                    self.delete_file,
+                    file_path=file_path,
+                ): file_path
+                for file_path in file_paths
+            }
+
+            for future in concurrent.futures.as_completed(future_to_path):
+                file_path = future_to_path[future]
+                try:
+                    future.result()
+                except Exception as e:
+                    errors.append((file_path, e))
+
+        if errors and not skip_errors:
+            error_msgs = "\n".join(
+                [f"Delete failed for file_path={fp}: {str(err)}" for fp, err in errors]
+            )
+            raise RuntimeError(f"Some deletions failed in delete_files:\n{error_msgs}")
