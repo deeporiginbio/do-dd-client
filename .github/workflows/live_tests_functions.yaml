@@ -61,4 +61,4 @@ jobs:
 
 
       - name: Run tests against a live instance
-        run: uv run pytest -v -s --log-cli-level=ERROR -k test_functions
+        run: uv run pytest -v -s --log-cli-level=ERROR -k test_functions -n auto
