@@ -87,7 +87,7 @@ def test_sysprep(client, pytestconfig):  # noqa: F811
     run_sysprep(
         protein=sim.protein,
         ligand=sim.ligands[3],
-        is_lig_protonated=True,
+        add_H_atoms=True,
         use_cache=False,
         client=client,
     )
