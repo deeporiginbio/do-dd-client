@@ -11,7 +11,7 @@ def run_sysprep(
     *,
     protein: Protein,
     ligand: Ligand,
-    padding: float = 1.0,
+    padding: float = 2.0,
     retain_waters: bool = False,
     add_H_atoms: bool = True,  # NOSONAR
     protonate_protein: bool = True,
@@ -24,11 +24,11 @@ def run_sysprep(
     Args:
         protein_path (str | Path): Path to the protein file.
         ligand_path (str | Path): Path to the ligand file.
-        padding (float, optional): Padding to add around the system. Defaults to 1.0.
-        keep_waters (bool, optional): Whether to keep water molecules. Defaults to False.
-        is_lig_protonated (bool, optional): Whether the ligand is already protonated. Defaults to True.
-        is_protein_protonated (bool, optional): Whether the protein is already protonated. Defaults to True.
-        client (DeepOriginClient | None): DeepOrigin client instance. If None, creates a new client using the default credentials. Defaults to None
+        padding (float, optional): Padding to add around the system.
+        keep_waters (bool, optional): Whether to keep water molecules.
+        is_lig_protonated (bool, optional): Whether the ligand is already protonated.
+        is_protein_protonated (bool, optional): Whether the protein is already protonated.
+        client (DeepOriginClient | None): DeepOrigin client instance. If None, creates a new client using the default credentials.
 
     Returns:
         Path to the output PDB file if successful, or raises RuntimeError if the server fails.
