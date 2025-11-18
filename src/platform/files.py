@@ -332,9 +332,9 @@ class Files:
 
         # Parse JSON response
         # API returns 200 even on failure, but response body indicates success
-        response = response.json()
+        data = response.json()
 
-        if not response:
+        if not data:
             raise RuntimeError(f"Failed to delete file {remote_path}")
 
     def delete_files(
