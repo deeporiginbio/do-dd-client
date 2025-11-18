@@ -26,7 +26,7 @@ python scripts/run_mock_server.py 8000
 
 The server will start and display:
 
-```
+```bash
 Mock server running at http://127.0.0.1:8000
 Press Ctrl+C to stop...
 ```
@@ -89,7 +89,7 @@ To add new endpoints or modify existing ones, edit `tests/mock_server.py`:
 
 Example:
 
-```python
+```{.python notest}
 @self.app.get("/tools/{org_key}/custom-endpoint")
 def custom_endpoint(org_key: str) -> dict[str, Any]:
     """Custom endpoint handler."""
