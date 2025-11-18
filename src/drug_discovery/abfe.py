@@ -422,7 +422,7 @@ class ABFE(WorkflowStep):
 
             # figure out valid windows
             files = self.parent.client.files.list_files_in_dir(
-                file_path=str(remote_base),
+                remote_path=str(remote_base),
             )
             xtc_files = [
                 file

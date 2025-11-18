@@ -32,8 +32,8 @@ class Files:
 
     def list_files_in_dir(
         self,
+        remote_path: str,
         *,
-        file_path: str,
         recursive: bool = True,
         last_count: int | None = None,
         delimiter: str | None = None,
@@ -46,7 +46,7 @@ class Files:
         are fetched and combined into a single list.
 
         Args:
-            file_path: The path to the directory to list files from.
+            remote_path: The path to the directory to list files from.
             recursive: If True, recursively list files in subdirectories.
                 Defaults to True.
             last_count: Used for pagination - the last count of objects in the
@@ -79,7 +79,7 @@ class Files:
                 params["prefix"] = prefix
 
             response = self._c.get_json(
-                f"/files/{self._c.org_key}/directory/{file_path}",
+                f"/files/{self._c.org_key}/directory/{remote_path}",
                 params=params,
             )
 
@@ -100,7 +100,6 @@ class Files:
 
     def upload_file(
         self,
-        *,
         local_path: str | Path,
         remote_path: str | Path,
     ) -> dict:
@@ -161,8 +160,8 @@ class Files:
             future_to_pair = {
                 executor.submit(
                     self.upload_file,
-                    local_path=local_path,
-                    remote_path=remote_path,
+                    local_path,
+                    remote_path,
                 ): (local_path, remote_path)
                 for local_path, remote_path in files.items()
             }
@@ -188,8 +187,8 @@ class Files:
 
     def download_file(
         self,
-        *,
         remote_path: str,
+        *,
         local_path: str | Path | None = None,
         lazy: bool = False,
     ) -> str:
@@ -315,12 +314,12 @@ class Files:
 
     def delete_file(
         self,
-        file_path: str,
+        remote_path: str,
     ) -> None:
         """Delete a file from UFA.
 
         Args:
-            file_path: The remote path of the file to delete.
+            remote_path: The remote path of the file to delete.
 
         Returns:
             None if the file was successfully deleted.
@@ -331,7 +330,7 @@ class Files:
                 response body for success.
         """
         # URL encode the file path
-        encoded_path = quote(file_path, safe="")
+        encoded_path = quote(remote_path, safe="")
 
         # Make DELETE request
         response = self._c._delete(
@@ -343,11 +342,11 @@ class Files:
         response = response.json()
 
         if not response:
-            raise RuntimeError(f"Failed to delete file {file_path}")
+            raise RuntimeError(f"Failed to delete file {remote_path}")
 
     def delete_files(
         self,
-        file_paths: list[str],
+        remote_paths: list[str],
         *,
         skip_errors: bool = False,
         max_workers: int = 20,
@@ -355,7 +354,7 @@ class Files:
         """Delete multiple files in parallel.
 
         Args:
-            file_paths: List of remote file paths to delete.
+            remote_paths: List of remote file paths to delete.
             skip_errors: If True, don't raise RuntimeError on failures.
                 Defaults to False.
             max_workers: Maximum number of concurrent deletions. Defaults to 20.
@@ -370,20 +369,23 @@ class Files:
             future_to_path = {
                 executor.submit(
                     self.delete_file,
-                    file_path=file_path,
-                ): file_path
-                for file_path in file_paths
+                    remote_path=remote_path,
+                ): remote_path
+                for remote_path in remote_paths
             }
 
             for future in concurrent.futures.as_completed(future_to_path):
-                file_path = future_to_path[future]
+                remote_path = future_to_path[future]
                 try:
                     future.result()
                 except Exception as e:
-                    errors.append((file_path, e))
+                    errors.append((remote_path, e))
 
         if errors and not skip_errors:
             error_msgs = "\n".join(
-                [f"Delete failed for file_path={fp}: {str(err)}" for fp, err in errors]
+                [
+                    f"Delete failed for remote_path={rp}: {str(err)}"
+                    for rp, err in errors
+                ]
             )
             raise RuntimeError(f"Some deletions failed in delete_files:\n{error_msgs}")

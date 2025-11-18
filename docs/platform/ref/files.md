@@ -11,7 +11,7 @@ client = DeepOriginClient()
 Then, the following methods can be used, for example:
 
 ```{.python notest}
-tools = client.files.list_files_in_dir()
+files = client.files.list_files_in_dir(remote_path="entities/")
 ```
 
 

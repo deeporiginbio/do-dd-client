@@ -11,7 +11,7 @@ def test_get_all_files(client):  # noqa: F811
     """check that there are some files in entities/"""
 
     files = client.files.list_files_in_dir(
-        file_path="entities/",
+        remote_path="entities/",
         recursive=True,
     )
     assert len(files) > 0, "should be some files in entities/"
@@ -23,7 +23,7 @@ def test_download_file(client):  # noqa: F811
     """test the file download API"""
 
     files = client.files.list_files_in_dir(
-        file_path="entities/",
+        remote_path="entities/",
         recursive=True,
     )
     assert len(files) > 0, "should be some files in entities/"
@@ -39,7 +39,7 @@ def test_download_files_with_list(client):  # noqa: F811
     """test the download_files API with a list input."""
 
     files = client.files.list_files_in_dir(
-        file_path="entities/",
+        remote_path="entities/",
         recursive=True,
     )
     assert len(files) > 0, "should be some files in entities/"
@@ -57,7 +57,7 @@ def test_download_files_with_dict(client):  # noqa: F811
     """test the download_files API with a dict input."""
 
     files = client.files.list_files_in_dir(
-        file_path="entities/",
+        remote_path="entities/",
         recursive=True,
     )
     assert len(files) > 0, "should be some files in entities/"
@@ -82,16 +82,16 @@ def test_delete_file(client):  # noqa: F811
 
     # Upload the file
     client.files.upload_file(
-        local_path=local_test_file,
+        local_test_file,
         remote_path=test_file_path,
     )
 
     # Delete the file (should succeed without raising)
-    client.files.delete_file(file_path=test_file_path)
+    client.files.delete_file(remote_path=test_file_path)
 
     # Try to delete a non-existent file (should raise RuntimeError)
     with pytest.raises(RuntimeError, match="Failed to delete file"):
-        client.files.delete_file(file_path="nonexistent_file.txt")
+        client.files.delete_file(remote_path="nonexistent_file.txt")
 
     # Clean up local test file
     if os.path.exists(local_test_file):
@@ -111,12 +111,12 @@ def test_delete_file_with_special_chars(client):  # noqa: F811
 
     # Upload the file
     client.files.upload_file(
-        local_path=local_test_file,
+        local_test_file,
         remote_path=test_file_path,
     )
 
     # Delete the file (should handle URL encoding correctly and succeed)
-    client.files.delete_file(file_path=test_file_path)
+    client.files.delete_file(remote_path=test_file_path)
 
     # Clean up local test file
     if os.path.exists(local_test_file):
@@ -142,12 +142,12 @@ def test_delete_files(client):  # noqa: F811
 
         # Upload the file
         client.files.upload_file(
-            local_path=local_test_file,
+            local_test_file,
             remote_path=test_file_path,
         )
 
     # Delete all files (should succeed without raising)
-    client.files.delete_files(test_file_paths)
+    client.files.delete_files(remote_paths=test_file_paths)
 
     # Clean up local test files
     for local_test_file in local_test_files:
@@ -165,7 +165,7 @@ def test_delete_files_with_errors(client):  # noqa: F811
         f.write("test content")
 
     client.files.upload_file(
-        local_path=local_test_file,
+        local_test_file,
         remote_path=test_file_path,
     )
 
@@ -174,10 +174,10 @@ def test_delete_files_with_errors(client):  # noqa: F811
 
     # Should raise RuntimeError by default
     with pytest.raises(RuntimeError, match="Some deletions failed in delete_files"):
-        client.files.delete_files(file_paths)
+        client.files.delete_files(remote_paths=file_paths)
 
     # With skip_errors=True, should not raise
-    client.files.delete_files(file_paths, skip_errors=True)
+    client.files.delete_files(remote_paths=file_paths, skip_errors=True)
 
     # Clean up local test file
     if os.path.exists(local_test_file):
@@ -188,4 +188,4 @@ def test_delete_files_empty_list(client):  # noqa: F811
     """test the delete_files API with empty list."""
 
     # Should succeed without doing anything
-    client.files.delete_files([])
+    client.files.delete_files(remote_paths=[])
