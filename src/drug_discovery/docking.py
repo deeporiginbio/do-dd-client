@@ -113,7 +113,7 @@ class Docking(WorkflowStep):
         """
 
         files = self.parent.client.files.list_files_in_dir(
-            file_path="tool-runs/docking/" + self.parent.protein.to_hash() + "/",
+            remote_path="tool-runs/docking/" + self.parent.protein.to_hash() + "/",
         )
 
         if file_type == "csv":

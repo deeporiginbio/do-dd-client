@@ -123,24 +123,21 @@ class MockServer:
             request: Request,
         ) -> dict[str, str]:
             """Upload a file."""
-            # Try to get file from form data, otherwise read body
-            content_type = request.headers.get("content-type", "")
-            if "multipart/form-data" in content_type:
-                form = await request.form()
-                if "file" in form:
-                    file_obj = form["file"]
-                    if hasattr(file_obj, "read"):
-                        file_data = await file_obj.read()
-                    else:
-                        file_data = (
-                            file_obj.encode() if isinstance(file_obj, str) else b""
-                        )
-                else:
-                    file_data = await request.body()
-            else:
-                file_data = await request.body()
+            # Read body directly - for testing purposes, we don't need to parse multipart
+            # The actual file content is in the request body
+            file_data = await request.body()
             self._file_storage[remote_path] = file_data
             return {"eTag": "mock-etag", "key": remote_path}
+
+        @self.app.delete("/files/{org_key}/{remote_path:path}")
+        def delete_file(org_key: str, remote_path: str) -> bool:
+            """Delete a file."""
+            # Remove file from storage if it exists
+            if remote_path in self._file_storage:
+                del self._file_storage[remote_path]
+                return True
+            # Return False if file doesn't exist (mimics API behavior)
+            return False
 
         @self.app.get("/tools/protected/tools/definitions")
         def list_tools() -> dict[str, Any]:

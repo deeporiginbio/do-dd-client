@@ -203,7 +203,7 @@ class Complex:
         # of several
 
         remote_files = self.client.files.list_files_in_dir(
-            file_path="entities/",
+            remote_path="entities/",
             recursive=True,
         )
 

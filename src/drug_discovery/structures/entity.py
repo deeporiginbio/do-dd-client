@@ -35,6 +35,6 @@ class Entity:
             client = DeepOriginClient.get()
 
         client.files.upload_file(
-            local_path=self.file_path,
+            self.file_path,
             remote_path=self._remote_path,
         )
