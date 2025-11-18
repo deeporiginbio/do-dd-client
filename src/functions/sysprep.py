@@ -44,8 +44,8 @@ def run_sysprep(
         "use_cache": use_cache,
     }
 
-    protein.upload()
-    ligand.upload()
+    protein.upload(client=client)
+    ligand.upload(client=client)
 
     response = client.functions.run(
         key="deeporigin.system-prep",

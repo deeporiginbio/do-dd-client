@@ -1,4 +1,4 @@
-.PHONY:  test test-github jupyter install
+.PHONY:  test test-github jupyter install mock-server
 
 SHELL := /bin/bash
 uname=$(shell uname -s)
@@ -52,6 +52,13 @@ docs-deploy:
 	@echo "Deploying to live environment..."
 	@source $(CURDIR)/venv/bin/activate && \
 	    mkdocs gh-deploy && \
+	    deactivate
+
+# run mock server for local development and testing
+mock-server:
+	@echo "Starting mock server..."
+	@source $(CURDIR)/venv/bin/activate && \
+	    python scripts/run_mock_server.py $(if $(PORT),$(PORT),8000) && \
 	    deactivate
 
 

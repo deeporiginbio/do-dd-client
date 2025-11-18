@@ -1,0 +1,173 @@
+{
+    "executionId": "abfe9819-4204-474e-af9f-c92a7f20a9cc",
+    "createdAt": "2025-11-17T20:17:56.333Z",
+    "updatedAt": "2025-11-18T08:58:22.019Z",
+    "resourceId": "fa0rqgeo3pytyl82wx53p",
+    "completedAt": "2025-11-18T08:58:21.214Z",
+    "startedAt": "2025-11-17T20:20:48.072Z",
+    "userInputs": {
+        "binding": {
+            "mbar": 1,
+            "steps": 1250000,
+            "em_all": true,
+            "repeats": 1,
+            "test_run": 0,
+            "n_windows": 32,
+            "annihilate": true,
+            "em_solvent": true,
+            "nvt_heating_ns": 1.01,
+            "softcore_alpha": 0.5,
+            "thread_pinning": 1,
+            "add_fep_repeats": 0,
+            "emeq_md_options": {
+                "T": 298.15,
+                "dt": 0.004,
+                "cutoff": 0.9,
+                "hydrogen_mass": 2,
+                "fourier_spacing": 0.12
+            },
+            "lambda_schedule": "default",
+            "prod_md_options": {
+                "T": 298.15,
+                "dt": 0.004,
+                "cutoff": 0.9,
+                "barostat": "MonteCarloBarostat",
+                "integrator": "BAOABIntegrator",
+                "hydrogen_mass": 2,
+                "fourier_spacing": 0.12,
+                "barostat_exchange_interval": 1150
+            },
+            "restraints_type": "rigid_body",
+            "replex_period_ps": 0,
+            "npt_reduce_restraints_ns": 2.01
+        },
+        "solvation": {
+            "mbar": 1,
+            "steps": 500000,
+            "em_all": true,
+            "repeats": 1,
+            "test_run": 0,
+            "n_windows": 24,
+            "annihilate": true,
+            "em_solvent": true,
+            "nvt_heating_ns": 0.1,
+            "softcore_alpha": 0.5,
+            "thread_pinning": 1,
+            "add_fep_repeats": 0,
+            "emeq_md_options": {
+                "T": 298.15,
+                "dt": 0.004,
+                "cutoff": 0.9,
+                "hydrogen_mass": 2,
+                "fourier_spacing": 0.12
+            },
+            "lambda_schedule": "default",
+            "prod_md_options": {
+                "T": 298.15,
+                "dt": 0.004,
+                "cutoff": 0.9,
+                "barostat": "MonteCarloBarostat",
+                "integrator": "BAOABIntegrator",
+                "hydrogen_mass": 2,
+                "fourier_spacing": 0.12,
+                "barostat_exchange_interval": 1150
+            },
+            "restraints_type": "rigid_body",
+            "npt_reduce_restraints_ns": 0.2
+        },
+        "binding_xml": {
+            "key": "function-runs/system-prep/84b0588224175424ba95c2ec3fb8a1f06cf76130faee26ed34aba770a3d5cad2/bsm_system.xml",
+            "$provider": "ufa"
+        },
+        "solvation_xml": {
+            "key": "function-runs/system-prep/84b0588224175424ba95c2ec3fb8a1f06cf76130faee26ed34aba770a3d5cad2/solvation.xml",
+            "$provider": "ufa"
+        }
+    },
+    "userOutputs": {
+        "output_file": {
+            "key": "tool-runs/ABFE/db4aa32e2e8ffa976a60004a8361b86427a2e5653a6623bb60b7913445902549.pdb/4897c616dd1dfb06f08170b7f5ca67ce7f6779c2fd03970315c4387e80274225.sdf/output/",
+            "$provider": "ufa"
+        },
+        "abfe_results_summary": {
+            "key": "tool-runs/ABFE/db4aa32e2e8ffa976a60004a8361b86427a2e5653a6623bb60b7913445902549.pdb/4897c616dd1dfb06f08170b7f5ca67ce7f6779c2fd03970315c4387e80274225.sdf/results.csv",
+            "$provider": "ufa"
+        }
+    },
+    "jobOutputs": null,
+    "resourcesUsed": null,
+    "resourcesRequested": null,
+    "progressReport": null,
+    "status": "Succeeded",
+    "statusReason": null,
+    "metadata": {
+        "ligand_hash": "4897c616dd1dfb06f08170b7f5ca67ce7f6779c2fd03970315c4387e80274225",
+        "ligand_name": "cmpd 8 (n-Butyl)",
+        "protein_hash": "db4aa32e2e8ffa976a60004a8361b86427a2e5653a6623bb60b7913445902549",
+        "protein_name": "brd",
+        "ligand_smiles": "CCCCn1cc(-c2cccc(C(=O)N(C)C)c2)c2cc[nH]c2c1=O"
+    },
+    "name": null,
+    "approveAmount": 0,
+    "quotationResult": {
+        "anyFailed": false,
+        "failedQuotations": [],
+        "successfulQuotations": [
+            {
+                "qty": 0,
+                "orgId": "deeporigin",
+                "status": "OK",
+                "itemCode": "DO_ABFE",
+                "qty_vars": {
+                    "abfe_atoms": 57337,
+                    "abfe_repeats": 1,
+                    "abfe_windows": 32,
+                    "abfe_production_steps": 1250000,
+                    "abfe_equilibration_steps": 754999
+                },
+                "priceEach": 120,
+                "priceTotal": 183.9370042608,
+                "pricingRecords": [
+                    {
+                        "qty": 1.53280836884,
+                        "itemKey": "DO_ABFE",
+                        "itemName": "Absolute Binding Free Energy (ABFE)",
+                        "priceEach": 120,
+                        "tierQtyTo": 0,
+                        "totalPrice": 183.9370042608,
+                        "tierQtyFrom": 0
+                    }
+                ],
+                "pricingRecordType": "regular"
+            }
+        ]
+    },
+    "billingTransaction": {
+        "items": [
+            {
+                "qty": 0,
+                "itemCode": "DO_ABFE",
+                "priceEach": 120,
+                "isApproved": true,
+                "priceTotal": 183.9370042608,
+                "actionRequest": null,
+                "authorizationId": "691b838fac1dc207f1cb3c3e",
+                "purchaseApprovalComment": null
+            }
+        ],
+        "orgId": "deeporigin",
+        "status": "Approved",
+        "totalCost": 183.9370042608,
+        "transactionId": "691b838fac1dc207f1cb3c3c"
+    },
+    "cluster": {
+        "id": "d638d3cd-833f-476b-87fe-ca6d76e66049"
+    },
+    "orgKey": "deeporigin",
+    "createdBy": "google-apps|srinivas@deeporigin.com",
+    "tag": null,
+    "tool": {
+        "key": "deeporigin.abfe-end-to-end",
+        "version": "0.2.18"
+    }
+}

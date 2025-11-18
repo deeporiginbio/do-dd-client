@@ -419,7 +419,7 @@ class Job:
         rendered_html = self._render_job_view()
         display(HTML(rendered_html))
 
-    def watch(self):
+    def watch(self, *, interval: float = 5.0):
         """Start monitoring job progress in real-time.
 
         This method initiates a background task that periodically updates
@@ -458,7 +458,7 @@ class Job:
             """Update and display job progress at regular intervals.
 
             This coroutine runs in the background, updating the display
-            with the latest job status and progress every 5 seconds.
+            with the latest job status and progress every `interval` seconds.
             It automatically stops when the job reaches a terminal state.
             """
             try:
@@ -487,7 +487,7 @@ class Job:
                         )
 
                     # Always sleep 5 seconds before next attempt
-                    await asyncio.sleep(5)
+                    await asyncio.sleep(interval)
             finally:
                 # Perform a final non-blocking refresh and render to clear spinner
                 if self._display_id is not None:

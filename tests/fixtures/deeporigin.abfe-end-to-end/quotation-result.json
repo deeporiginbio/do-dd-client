@@ -1,0 +1,33 @@
+{
+    "anyFailed": false,
+    "failedQuotations": [],
+    "successfulQuotations": [
+        {
+            "qty": 0,
+            "orgId": "deeporigin",
+            "status": "OK",
+            "itemCode": "DO_ABFE",
+            "qty_vars": {
+                "abfe_atoms": 57337,
+                "abfe_repeats": 1,
+                "abfe_windows": 32,
+                "abfe_production_steps": 1250000,
+                "abfe_equilibration_steps": 754999
+            },
+            "priceEach": 120,
+            "priceTotal": 183.9370042608,
+            "pricingRecords": [
+                {
+                    "qty": 1.53280836884,
+                    "itemKey": "DO_ABFE",
+                    "itemName": "Absolute Binding Free Energy (ABFE)",
+                    "priceEach": 120,
+                    "tierQtyTo": 0,
+                    "totalPrice": 183.9370042608,
+                    "tierQtyFrom": 0
+                }
+            ],
+            "pricingRecordType": "regular"
+        }
+    ]
+}

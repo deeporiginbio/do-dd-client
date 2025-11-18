@@ -189,8 +189,6 @@ class ABFE(WorkflowStep):
         else:
             ligand_hashes_already_run = set()
 
-        print(ligand_hashes_already_run)
-
         # no re-run, remove already run ligands
         ligands_to_run = [
             ligand
