@@ -76,7 +76,6 @@ The mock server uses fixture files from `tests/fixtures/` to provide realistic r
 
 - `execution_example.json`: Template for execution responses
 - `molprops_serotonin.json`: Molecular properties data for testing
-- `abfe/execution.json`: ABFE execution data
 - `abfe/progress-reports.json`: ABFE progress report data
 
 ## Extending the Mock Server
