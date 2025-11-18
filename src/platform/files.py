@@ -5,7 +5,6 @@ from __future__ import annotations
 import concurrent.futures
 from pathlib import Path
 from typing import TYPE_CHECKING
-from urllib.parse import quote
 
 import httpx
 from tqdm import tqdm
@@ -329,12 +328,9 @@ class Files:
                 200 status even if deletion fails, so this method checks the
                 response body for success.
         """
-        # URL encode the file path
-        encoded_path = quote(remote_path, safe="")
-
         # Make DELETE request
         response = self._c._delete(
-            f"/files/{self._c.org_key}/{encoded_path}",
+            f"/files/{self._c.org_key}/{remote_path}",
         )
 
         # Parse JSON response
