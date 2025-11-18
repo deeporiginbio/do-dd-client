@@ -320,9 +320,6 @@ class Files:
         Args:
             remote_path: The remote path of the file to delete.
 
-        Returns:
-            None if the file was successfully deleted.
-
         Raises:
             RuntimeError: If the file deletion failed. Note: The API returns
                 200 status even if deletion fails, so this method checks the
