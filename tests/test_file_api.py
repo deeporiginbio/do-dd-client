@@ -1,6 +1,7 @@
 """this module tests the file API"""
 
 import os
+import tempfile
 
 import pytest
 
@@ -76,7 +77,7 @@ def test_delete_file(client):  # noqa: F811
 
     # First upload a file to delete
     test_file_path = "test_delete_file.txt"
-    local_test_file = "/tmp/test_upload_delete.txt"
+    local_test_file = os.path.join(tempfile.gettempdir(), "test_upload_delete.txt")
     with open(local_test_file, "w") as f:
         f.write("test content")
 
@@ -105,7 +106,9 @@ def test_delete_file_with_special_chars(client):  # noqa: F811
     test_file_path = "function-runs/system-prep/test123/bsm_system.xml"
 
     # First upload a file to delete
-    local_test_file = "/tmp/test_upload_delete_special.txt"
+    local_test_file = os.path.join(
+        tempfile.gettempdir(), "test_upload_delete_special.txt"
+    )
     with open(local_test_file, "w") as f:
         f.write("test content")
 
@@ -135,7 +138,9 @@ def test_delete_files(client):  # noqa: F811
     local_test_files = []
 
     for i, test_file_path in enumerate(test_file_paths):
-        local_test_file = f"/tmp/test_upload_delete_{i}.txt"
+        local_test_file = os.path.join(
+            tempfile.gettempdir(), f"test_upload_delete_{i}.txt"
+        )
         local_test_files.append(local_test_file)
         with open(local_test_file, "w") as f:
             f.write(f"test content {i}")
@@ -160,7 +165,9 @@ def test_delete_files_with_errors(client):  # noqa: F811
 
     # Upload one file
     test_file_path = "test_delete_files_error.txt"
-    local_test_file = "/tmp/test_upload_delete_error.txt"
+    local_test_file = os.path.join(
+        tempfile.gettempdir(), "test_upload_delete_error.txt"
+    )
     with open(local_test_file, "w") as f:
         f.write("test content")
 
@@ -175,6 +182,14 @@ def test_delete_files_with_errors(client):  # noqa: F811
     # Should raise RuntimeError by default
     with pytest.raises(RuntimeError, match="Some deletions failed in delete_files"):
         client.files.delete_files(remote_paths=file_paths)
+
+    # Re-upload the file since it was successfully deleted before the error was raised
+    with open(local_test_file, "w") as f:
+        f.write("test content")
+    client.files.upload_file(
+        local_test_file,
+        remote_path=test_file_path,
+    )
 
     # With skip_errors=True, should not raise
     client.files.delete_files(remote_paths=file_paths, skip_errors=True)
