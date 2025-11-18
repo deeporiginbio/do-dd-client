@@ -15,7 +15,16 @@ def test_from_file():
     )
 
 
-def test_from_name():
+def test_from_name(pytestconfig):
+    """Test creating a protein from a name.
+
+    Note: This test is skipped when using --mock flag as it requires
+    a real network connection to the RCSB search API.
+    """
+    use_mock = pytestconfig.getoption("--mock", default=False)
+    if use_mock:
+        pytest.skip("Skipping test_from_name with --mock (requires RCSB search API)")
+
     protein = Protein.from_name("conotoxin")
     assert protein.pdb_id == "1FU3"
 

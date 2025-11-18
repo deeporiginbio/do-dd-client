@@ -599,6 +599,9 @@ class MockServer:
                             execution["metadata"] = {"n_ligands": 5}
 
                 executions.append(execution)
+                # Store execution in memory so it can be retrieved by ID
+                execution_id = execution["executionId"]
+                self._executions[execution_id] = execution
 
             return {
                 "count": len(executions),

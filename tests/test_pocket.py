@@ -10,7 +10,7 @@ from deeporigin.drug_discovery import BRD_DATA_DIR, Pocket, Protein
 
 
 def test_pocket_from_ligand():
-    protein = Protein.from_name("1EBY")
+    protein = Protein.from_pdb_id("1EBY")
 
     ligand = protein.extract_ligand()
 
@@ -21,7 +21,7 @@ def test_pocket_from_ligand():
 
 def test_pocket_get_center():
     """Test getting the center of a pocket."""
-    protein = Protein.from_name("1EBY")
+    protein = Protein.from_pdb_id("1EBY")
     ligand = protein.extract_ligand()
     pocket = Pocket.from_ligand(ligand)
 
@@ -33,7 +33,7 @@ def test_pocket_get_center():
 
 def test_pocket_update_coordinates():
     """Test updating pocket coordinates."""
-    protein = Protein.from_name("1EBY")
+    protein = Protein.from_pdb_id("1EBY")
     ligand = protein.extract_ligand()
     pocket = Pocket.from_ligand(ligand)
 
