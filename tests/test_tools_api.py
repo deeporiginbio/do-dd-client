@@ -130,12 +130,16 @@ def test_run_docking_and_cancel(client, pytestconfig):  # noqa: F811
     sim = Complex.from_dir(BRD_DATA_DIR, client=client)
     sim.client = client
 
-    job = sim.docking.run(
+    jobs = sim.docking.run(
         box_size=(14.094597464129786, 14.094597464129786, 14.094597464129786),
         pocket_center=(-13.215283393859863, -6.083978652954102, 14.214159965515137),
         re_run=True,
         use_parallel=False,
     )
+
+    # Get the first job from the JobList
+    assert len(jobs) > 0, "Expected at least one job"
+    job = jobs[0]
 
     # wait for a bit to start
     time.sleep(10)

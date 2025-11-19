@@ -688,3 +688,279 @@ def test_to_dataframe_with_missing_keys():
     assert df.iloc[0]["approveAmount"] is None
     assert df.iloc[0]["tool.key"] is None
     assert df.iloc[0]["tool.version"] is None
+
+
+def test_job_list_render_view_with_docking_tool():
+    """Test that JobList._render_view uses tool-specific viz function for bulk-docking."""
+    from deeporigin.drug_discovery.constants import tool_mapper
+
+    # Create jobs with docking tool
+    job1 = Job(name="job1", _id="id-1", _skip_sync=True)
+    job1.status = "Running"
+    job1._attributes = {
+        "tool": {"key": tool_mapper["Docking"], "version": "1.0.0"},
+        "userInputs": {"smiles_list": ["CCO", "CCN"]},
+        "progressReport": "ligand docked ligand docked",
+        "startedAt": "2024-01-01T00:00:00.000Z",
+        "completedAt": "2024-01-01T00:10:00.000Z",
+    }
+
+    job2 = Job(name="job2", _id="id-2", _skip_sync=True)
+    job2.status = "Running"
+    job2._attributes = {
+        "tool": {"key": tool_mapper["Docking"], "version": "1.0.0"},
+        "userInputs": {"smiles_list": ["CCC"]},
+        "progressReport": "ligand docked ligand failed",
+        "startedAt": "2024-01-01T00:00:00.000Z",
+        "completedAt": "2024-01-01T00:05:00.000Z",
+    }
+
+    job_list = JobList([job1, job2])
+    html = job_list._render_view()
+
+    # Should use docking-specific visualization (check for speed text)
+    assert "dockings/minute" in html
+    assert isinstance(html, str)
+
+
+def test_job_list_render_view_card_title_with_same_tool():
+    """Test that JobList._render_view uses tool-specific card title when all jobs have same tool key."""
+    from deeporigin.drug_discovery.constants import tool_mapper
+
+    # Create jobs with docking tool and metadata
+    job1 = Job(name="job1", _id="id-1", _skip_sync=True)
+    job1.status = "Running"
+    job1._attributes = {
+        "tool": {"key": tool_mapper["Docking"], "version": "1.0.0"},
+        "userInputs": {"smiles_list": ["CCO", "CCN"]},
+        "metadata": {"protein_file": "test_protein.pdb"},
+    }
+
+    job2 = Job(name="job2", _id="id-2", _skip_sync=True)
+    job2.status = "Running"
+    job2._attributes = {
+        "tool": {"key": tool_mapper["Docking"], "version": "1.0.0"},
+        "userInputs": {"smiles_list": ["CCC"]},
+        "metadata": {"protein_file": "test_protein.pdb"},
+    }
+
+    job_list = JobList([job1, job2])
+    html = job_list._render_view()
+
+    # Should use tool-specific card title (docking name function)
+    # Should aggregate unique SMILES across all jobs (CCO, CCN, CCC = 3 unique ligands)
+    assert "Docking" in html
+    assert "test_protein.pdb" in html
+    assert "3 ligands" in html  # Should show 3 unique ligands, not 2+1
+    assert "2 jobs" in html
+    assert (
+        "Job List" not in html or html.count("Job List") == 0
+    )  # Should not use generic title
+    assert isinstance(html, str)
+
+
+def test_name_func_docking_with_job_list():
+    """Test that _name_func_docking aggregates unique SMILES across all jobs in a JobList."""
+    from deeporigin.platform import job_viz_functions
+
+    # Create jobs with overlapping SMILES
+    job1 = Job(name="job1", _id="id-1", _skip_sync=True)
+    job1._attributes = {
+        "userInputs": {"smiles_list": ["CCO", "CCN"]},
+        "metadata": {"protein_file": "test_protein.pdb"},
+    }
+
+    job2 = Job(name="job2", _id="id-2", _skip_sync=True)
+    job2._attributes = {
+        "userInputs": {"smiles_list": ["CCC", "CCO"]},  # CCO overlaps with job1
+        "metadata": {"protein_file": "test_protein.pdb"},
+    }
+
+    job_list = JobList([job1, job2])
+    name = job_viz_functions._name_func_docking(job_list)
+
+    # Should aggregate unique SMILES: CCO, CCN, CCC = 3 unique ligands
+    assert "Docking" in name
+    assert "test_protein.pdb" in name
+    assert "3 ligands" in name
+    assert isinstance(name, str)
+
+
+def test_name_func_docking_with_single_job():
+    """Test that _name_func_docking works with a single Job."""
+    from deeporigin.platform import job_viz_functions
+
+    job = Job(name="job1", _id="id-1", _skip_sync=True)
+    job._attributes = {
+        "userInputs": {"smiles_list": ["CCO", "CCN", "CCC"]},
+        "metadata": {"protein_file": "test_protein.pdb"},
+    }
+
+    name = job_viz_functions._name_func_docking(job)
+
+    assert "Docking" in name
+    assert "test_protein.pdb" in name
+    assert "3 ligands" in name
+    assert isinstance(name, str)
+
+
+def test_job_list_render_view_card_title_with_mixed_tools():
+    """Test that JobList._render_view uses generic card title when jobs have different tool keys."""
+    from deeporigin.drug_discovery.constants import tool_mapper
+
+    job1 = Job(name="job1", _id="id-1", _skip_sync=True)
+    job1.status = "Running"
+    job1._attributes = {"tool": {"key": tool_mapper["Docking"], "version": "1.0.0"}}
+
+    job2 = Job(name="job2", _id="id-2", _skip_sync=True)
+    job2.status = "Succeeded"
+    job2._attributes = {"tool": {"key": tool_mapper["ABFE"], "version": "1.0.0"}}
+
+    job_list = JobList([job1, job2])
+    html = job_list._render_view()
+
+    # Should use generic card title when tools differ
+    assert "Job List" in html
+    assert "2 jobs" in html
+    assert isinstance(html, str)
+
+
+def test_job_list_render_view_with_mixed_tools():
+    """Test that JobList._render_view uses generic status HTML when jobs have different tool keys."""
+    from deeporigin.drug_discovery.constants import tool_mapper
+
+    job1 = Job(name="job1", _id="id-1", _skip_sync=True)
+    job1.status = "Running"
+    job1._attributes = {"tool": {"key": tool_mapper["Docking"], "version": "1.0.0"}}
+
+    job2 = Job(name="job2", _id="id-2", _skip_sync=True)
+    job2.status = "Succeeded"
+    job2._attributes = {"tool": {"key": tool_mapper["ABFE"], "version": "1.0.0"}}
+
+    job_list = JobList([job1, job2])
+    html = job_list._render_view()
+
+    # Should use generic status HTML
+    assert "job(s) in this list" in html
+    assert "Status breakdown" in html
+    assert isinstance(html, str)
+
+
+def test_viz_func_docking_with_job_list():
+    """Test that _viz_func_docking works with JobList."""
+    from deeporigin.platform import job_viz_functions
+
+    job1 = Job(name="job1", _id="id-1", _skip_sync=True)
+    job1._attributes = {
+        "userInputs": {"smiles_list": ["CCO", "CCN"]},
+        "progressReport": "ligand docked ligand docked",
+        "startedAt": "2024-01-01T00:00:00.000Z",
+        "completedAt": "2024-01-01T00:10:00.000Z",
+    }
+
+    job2 = Job(name="job2", _id="id-2", _skip_sync=True)
+    job2._attributes = {
+        "userInputs": {"smiles_list": ["CCC"]},
+        "progressReport": "ligand docked ligand failed",
+        "startedAt": "2024-01-01T00:00:00.000Z",
+        "completedAt": "2024-01-01T00:05:00.000Z",
+    }
+
+    job_list = JobList([job1, job2])
+    html = job_viz_functions._viz_func_docking(job_list)
+
+    # Should render progress bar with summed values
+    assert "Docking Progress" in html
+    # Total ligands should be 3 (2 + 1)
+    # Total docked should be 3 (2 + 1)
+    # Total failed should be 1 (0 + 1)
+    assert isinstance(html, str)
+
+
+def test_viz_func_quoted_with_single_job():
+    """Test that _viz_func_quoted works with a single Job."""
+    from deeporigin.platform import job_viz_functions
+
+    job = Job(name="job1", _id="id-1", _skip_sync=True)
+    job.status = "Quoted"
+    job._attributes = {
+        "quotationResult": {"successfulQuotations": [{"priceTotal": 100.50}]}
+    }
+
+    html = job_viz_functions._viz_func_quoted(job)
+
+    assert "Job Quoted" in html
+    assert "$101" in html or "$100" in html  # rounded cost
+    assert "confirm()" in html
+    assert isinstance(html, str)
+
+
+def test_viz_func_quoted_with_job_list():
+    """Test that _viz_func_quoted works with JobList and sums costs."""
+    from deeporigin.platform import job_viz_functions
+
+    job1 = Job(name="job1", _id="id-1", _skip_sync=True)
+    job1.status = "Quoted"
+    job1._attributes = {
+        "quotationResult": {"successfulQuotations": [{"priceTotal": 50.25}]}
+    }
+
+    job2 = Job(name="job2", _id="id-2", _skip_sync=True)
+    job2.status = "Quoted"
+    job2._attributes = {
+        "quotationResult": {"successfulQuotations": [{"priceTotal": 75.75}]}
+    }
+
+    job_list = JobList([job1, job2])
+    html = job_viz_functions._viz_func_quoted(job_list)
+
+    assert "Jobs Quoted" in html
+    assert "2" in html  # number of jobs
+    assert "$126" in html or "$125" in html  # rounded total (50.25 + 75.75 = 126)
+    assert "confirm()" in html
+    assert isinstance(html, str)
+
+
+def test_job_list_render_view_with_all_quoted():
+    """Test that JobList._render_view uses quoted visualization when all jobs are Quoted."""
+    job1 = Job(name="job1", _id="id-1", _skip_sync=True)
+    job1.status = "Quoted"
+    job1._attributes = {
+        "quotationResult": {"successfulQuotations": [{"priceTotal": 100.0}]}
+    }
+
+    job2 = Job(name="job2", _id="id-2", _skip_sync=True)
+    job2.status = "Quoted"
+    job2._attributes = {
+        "quotationResult": {"successfulQuotations": [{"priceTotal": 200.0}]}
+    }
+
+    job_list = JobList([job1, job2])
+    html = job_list._render_view()
+
+    # Should use quoted-specific visualization
+    assert "Jobs Quoted" in html
+    assert "2" in html  # number of jobs
+    assert "$300" in html  # total cost (100 + 200)
+    assert isinstance(html, str)
+
+
+def test_job_list_render_view_with_mixed_status():
+    """Test that JobList._render_view uses generic HTML when not all jobs are Quoted."""
+    job1 = Job(name="job1", _id="id-1", _skip_sync=True)
+    job1.status = "Quoted"
+    job1._attributes = {
+        "quotationResult": {"successfulQuotations": [{"priceTotal": 100.0}]}
+    }
+
+    job2 = Job(name="job2", _id="id-2", _skip_sync=True)
+    job2.status = "Running"
+
+    job_list = JobList([job1, job2])
+    html = job_list._render_view()
+
+    # Should use generic status HTML, not quoted visualization
+    assert "Jobs Quoted" not in html
+    assert "job(s) in this list" in html
+    assert "Status breakdown" in html
+    assert isinstance(html, str)

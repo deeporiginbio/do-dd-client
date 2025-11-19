@@ -19,7 +19,7 @@ from deeporigin.drug_discovery.structures.pocket import Pocket
 from deeporigin.drug_discovery.workflow_step import WorkflowStep
 from deeporigin.exceptions import DeepOriginException
 from deeporigin.platform.constants import NON_FAILED_STATES
-from deeporigin.platform.job import Job, get_dataframe
+from deeporigin.platform.job import Job, JobList, get_dataframe
 
 Number = float | int
 LOCAL_BASE = Path.home() / ".deeporigin"
@@ -241,6 +241,9 @@ class Docking(WorkflowStep):
             approve_amount (int, optional): amount to approve for the jobs. Defaults to None.
             quote (bool, optional): whether to request a quote for the jobs. Defaults to False.
             re_run (bool, optional): whether to re-run jobs. Defaults to False.
+
+        Returns:
+            JobList: A JobList containing all the created docking jobs.
         """
 
         if quote:
@@ -358,9 +361,11 @@ class Docking(WorkflowStep):
                 level="warning",
             ) from None
 
-        self.jobs = [
+        jobs = [
             Job.from_dto(execution_dto, client=self.parent.client)
             for execution_dto in job_ids
         ]
+
+        self.jobs = JobList(jobs)
 
         return self.jobs

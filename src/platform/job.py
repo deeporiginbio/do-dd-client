@@ -3,7 +3,7 @@
 import asyncio
 from collections import Counter
 import concurrent.futures
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import datetime, timezone
 import json
 from pathlib import Path
@@ -42,6 +42,13 @@ env = Environment(  # NOSONAR
     autoescape=False,
 )
 
+# Mapping from tool_key to (viz_func_name, name_func_name) tuples
+_TOOL_FUNC_MAP = {
+    "deeporigin.bulk-docking": ("_viz_func_docking", "_name_func_docking"),
+    "deeporigin.abfe-end-to-end": ("_viz_func_abfe", "_name_func_abfe"),
+    "deeporigin.rbfe-end-to-end": ("_viz_func_rbfe", "_name_func_rbfe"),
+}
+
 
 class JobFunc(Protocol):
     """A protocol for functions that can be used to visualize a job or render a name for a job."""
@@ -64,9 +71,7 @@ class Job:
     _id: str
 
     # functions
-    _viz_func: Optional[JobFunc] = None
     _parse_func: Optional[JobFunc] = None
-    _name_func: Optional[JobFunc] = field(default_factory=lambda: lambda job: "Job")
 
     _task = None
     _attributes: Optional[dict] = None
@@ -81,19 +86,6 @@ class Job:
     def __post_init__(self):
         if not self._skip_sync:
             self.sync()
-
-            if self._viz_func is None:
-                tool = self._attributes.get("tool") if self._attributes else None
-                if isinstance(tool, dict) and "key" in tool:
-                    if tool["key"] == tool_mapper["Docking"]:
-                        self._viz_func = job_viz_functions._viz_func_docking
-                        self._name_func = job_viz_functions._name_func_docking
-                    elif tool["key"] == tool_mapper["ABFE"]:
-                        self._viz_func = job_viz_functions._viz_func_abfe
-                        self._name_func = job_viz_functions._name_func_abfe
-                    elif tool["key"] == tool_mapper["RBFE"]:
-                        self._viz_func = job_viz_functions._viz_func_rbfe
-                        self._name_func = job_viz_functions._name_func_rbfe
 
     @classmethod
     def from_id(
@@ -154,20 +146,6 @@ class Job:
         job._attributes = dto
         job.status = dto.get("status")
 
-        # Set up visualization functions based on tool
-        if job._viz_func is None:
-            tool = dto.get("tool")
-            if isinstance(tool, dict) and "key" in tool:
-                if tool["key"] == tool_mapper["Docking"]:
-                    job._viz_func = job_viz_functions._viz_func_docking
-                    job._name_func = job_viz_functions._name_func_docking
-                elif tool["key"] == tool_mapper["ABFE"]:
-                    job._viz_func = job_viz_functions._viz_func_abfe
-                    job._name_func = job_viz_functions._name_func_abfe
-                elif tool["key"] == tool_mapper["RBFE"]:
-                    job._viz_func = job_viz_functions._viz_func_rbfe
-                    job._name_func = job_viz_functions._name_func_rbfe
-
         return job
 
     def sync(self):
@@ -204,6 +182,46 @@ class Job:
             return elapsed_minutes(
                 self._attributes["startedAt"], self._attributes["completedAt"]
             )
+
+    @beartype
+    def _extract_display_data(
+        self,
+    ) -> dict[str, str | Optional[str] | Optional[int]]:
+        """Extract display data from a job for rendering.
+
+        This method extracts common display fields from a job including job ID,
+        resource ID, status, humanized started_at time, and running time.
+
+        Returns:
+            Dictionary containing:
+                - job_id: The job's execution ID (str)
+                - resource_id: The resource ID if available, None otherwise
+                - status: The job status if available, None otherwise
+                - started_at: Humanized time string (e.g., "2 hours ago") if available, None otherwise
+                - running_time: Running time in minutes if available, None otherwise
+        """
+        resource_id = None
+        if self._attributes is not None:
+            resource_id = self._attributes.get("resourceId")
+
+        started_at = None
+        if (
+            self._attributes is not None
+            and self._attributes.get("startedAt") is not None
+        ):
+            dt = parser.isoparse(self._attributes["startedAt"]).astimezone(timezone.utc)
+            now = datetime.now(timezone.utc)
+            started_at = humanize.naturaltime(now - dt)
+
+        running_time = self._get_running_time()
+
+        return {
+            "job_id": self._id,
+            "resource_id": resource_id,
+            "status": self.status,
+            "started_at": started_at,
+            "running_time": running_time,
+        }
 
     def _render_json_viewer(self, obj: dict) -> str:
         """
@@ -251,7 +269,61 @@ class Job:
         return html
 
     @beartype
-    def _render_job_view(
+    def _get_status_html(self) -> str:
+        """Get status HTML based on job status and tool.
+
+        Returns:
+            HTML string for the status visualization.
+        """
+        # Handle "Quoted" status with custom message
+        if self.status == "Quoted":
+            return job_viz_functions._viz_func_quoted(self)
+
+        # Determine visualization function based on tool key
+        tool = self._attributes.get("tool") if self._attributes else None
+        tool_key = tool.get("key") if isinstance(tool, dict) and "key" in tool else None
+
+        if not tool_key:
+            return "No visualization function available for this tool."
+
+        # Look up function in mapping
+        func_names = _TOOL_FUNC_MAP.get(tool_key)
+        if not func_names:
+            return f"No visualization function available for tool '{tool_key}'."
+
+        viz_func_name, _ = func_names
+
+        try:
+            viz_func = getattr(job_viz_functions, viz_func_name)
+            return viz_func(self)
+        except Exception as e:
+            return f"Error rendering visualization for tool '{tool_key}': {e}"
+
+    @beartype
+    def _get_card_title(self) -> str:
+        """Get card title based on job status and tool.
+
+        Returns:
+            Card title string.
+        """
+        try:
+            # Determine name function based on tool key
+            tool = self._attributes.get("tool") if self._attributes else None
+            tool_key = (
+                tool.get("key") if isinstance(tool, dict) and "key" in tool else None
+            )
+
+            # Look up function in mapping
+            func_names = _TOOL_FUNC_MAP.get(tool_key)
+
+            _, name_func_name = func_names
+            name_func = getattr(job_viz_functions, name_func_name)
+            return name_func(self)
+        except Exception:
+            # Fallback to generic title if name function fails
+            return "Job"
+
+    def _render_view(
         self,
         *,
         will_auto_update: bool = False,
@@ -276,49 +348,10 @@ class Job:
             # this one is more straightforward, and works in marimo/browser
             template = env.get_template("job.html")
 
-        # Handle "Quoted" status with custom message
-        if self.status == "Quoted":
-            quotation_result = (
-                self._attributes.get("quotationResult") if self._attributes else None
-            )
-            try:
-                estimated_cost = quotation_result["successfulQuotations"][0][
-                    "priceTotal"
-                ]
-                status_html = (
-                    "<h3>Job Quoted</h3>"
-                    f"<p>This job has been quoted. It is estimated to cost <strong>${round(estimated_cost)}</strong>. "
-                    "For details look at the Billing tab. To approve and start the run, call the "
-                    "<code style='font-family: monospace; background-color: #f5f5f5; padding: 2px 4px; border-radius: 3px;'>confirm()</code> method.</p>"
-                )
-            except (AttributeError, IndexError, KeyError, TypeError):
-                status_html = (
-                    "<h3>Job Quoted</h3>"
-                    "<p>This job has been quoted. For details look at the Billing tab. To approve and start the run, call the "
-                    "<code style='font-family: monospace; background-color: #f5f5f5; padding: 2px 4px; border-radius: 3px;'>confirm()</code> method.</p>"
-                )
-        else:
-            try:
-                status_html = self._viz_func(self)
-            except Exception as e:
-                status_html = f"No visualization function provided, or there was an error. Error: {e}"
+        status_html = self._get_status_html()
+        card_title = self._get_card_title()
 
-        try:
-            card_title = self._name_func(self)
-        except Exception:
-            card_title = "No name function provided."
-
-        started_at = None
-        if (
-            self._attributes is not None
-            and self._attributes.get("startedAt") is not None
-        ):
-            dt = parser.isoparse(self._attributes["startedAt"]).astimezone(timezone.utc)
-            # Compare to now (also in UTC)
-            now = datetime.now(timezone.utc)
-            started_at = humanize.naturaltime(now - dt)
-
-        running_time = self._get_running_time()
+        display_data = self._extract_display_data()
 
         # Generate interactive JSON viewer HTML for inputs and outputs
         inputs = self._attributes.get("userInputs") if self._attributes else None
@@ -349,7 +382,6 @@ class Job:
         progress_report = (
             self._attributes.get("progressReport") if self._attributes else None
         )
-        resource_id = self._attributes.get("resourceId") if self._attributes else None
         template_vars = {
             "status_html": status_html,
             "last_updated": time.strftime("%Y-%m-%d %H:%M:%S"),
@@ -358,14 +390,15 @@ class Job:
             "inputs_json_viewer": inputs_json_viewer,
             "outputs_json_viewer": outputs_json_viewer,
             "billing_json_viewer": billing_json_viewer,
-            "job_id": self._id,
-            "resource_id": resource_id,
-            "status": self.status,
-            "started_at": started_at,
-            "running_time": running_time,
+            "job_id": display_data["job_id"],
+            "resource_id": display_data["resource_id"],
+            "status": display_data["status"],
+            "started_at": display_data["started_at"],
+            "running_time": display_data["running_time"],
             "card_title": card_title,
             "unique_id": str(uuid.uuid4()),
             "will_auto_update": will_auto_update,
+            "is_multiple": False,  # Single job mode
         }
 
         # Determine auto-update behavior based on terminal states
@@ -412,7 +445,7 @@ class Job:
 
         This method renders the job view and displays it in a Jupyter notebook.
         """
-        rendered_html = self._render_job_view()
+        rendered_html = self._render_view()
         display(HTML(rendered_html))
 
     def watch(self, *, interval: float = 5.0):
@@ -463,7 +496,7 @@ class Job:
                         # Run sync in a worker thread without timeout to avoid the timeout issue
                         await asyncio.to_thread(self.sync)
 
-                        html = self._render_job_view(will_auto_update=True)
+                        html = self._render_view(will_auto_update=True)
                         update_display(HTML(html), display_id=self._display_id)
                         self._last_html = html
 
@@ -492,7 +525,7 @@ class Job:
                     except Exception:
                         pass
                     try:
-                        final_html = self._render_job_view(will_auto_update=False)
+                        final_html = self._render_view(will_auto_update=False)
                         update_display(HTML(final_html), display_id=self._display_id)
                     except Exception:
                         pass
@@ -533,7 +566,7 @@ class Job:
             HTML string representing the job object.
         """
 
-        return self._render_job_view()
+        return self._render_view()
 
     def cancel(self):
         """Cancel the job being tracked by this instance.
@@ -604,25 +637,7 @@ class JobList:
 
         Displays a summary of the JobList including the number of jobs and their status breakdown.
         """
-        num_jobs = len(self.jobs)
-        status_breakdown = self.status
-
-        # Format status breakdown
-        status_items = []
-        for status, count in sorted(status_breakdown.items()):
-            status_items.append(f"{status}: {count}")
-        status_str = (
-            ", ".join(status_items) if status_items else "No status information"
-        )
-
-        html = (
-            f"<div style='padding: 10px; border: 1px solid #ddd; border-radius: 5px;'>"
-            f"<p><strong>{num_jobs}</strong> job(s)</p>"
-            f"<p>Statuses: {status_str}</p>"
-            f"<p style='color: #666; font-size: 0.9em;'>Use <code>to_dataframe()</code> to view full details</p>"
-            f"</div>"
-        )
-        return html
+        return self._render_view(will_auto_update=False)
 
     @property
     def status(self) -> Dict[str, int]:
@@ -654,6 +669,19 @@ class JobList:
             futures = [executor.submit(job.cancel) for job in self.jobs]
             concurrent.futures.wait(futures)
 
+    def sync(self, max_workers: int = 4):
+        """Synchronize all jobs in the list in parallel.
+
+        This method updates the internal state of all jobs by fetching the latest
+        status and progress report for each job ID in parallel.
+
+        Args:
+            max_workers: The maximum number of threads to use for parallel execution.
+        """
+        with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
+            futures = [executor.submit(job.sync) for job in self.jobs]
+            concurrent.futures.wait(futures)
+
     def show(self):
         """Display the job list view. (Placeholder)"""
         raise NotImplementedError("Visualization for JobList is not yet implemented.")
@@ -661,6 +689,291 @@ class JobList:
     def watch(self):
         """Start monitoring job list progress. (Placeholder)"""
         raise NotImplementedError("Monitoring for JobList is not yet implemented.")
+
+    @beartype
+    def _render_view(
+        self,
+        *,
+        will_auto_update: bool = False,
+        notebook_environment: Optional[str] = None,
+    ) -> str:
+        """Render a widget view for the JobList showing all jobs in a table.
+
+        This method renders and displays the current state of all jobs in the list
+        using the job_jupyter.html template with multiple rows in the details table.
+
+        Args:
+            will_auto_update: Whether the widget should auto-update.
+            notebook_environment: The notebook environment (jupyter, marimo, etc.).
+
+        Returns:
+            HTML string for the job list widget.
+        """
+        from deeporigin.utils.notebook import get_notebook_environment
+
+        if notebook_environment is None:
+            notebook_environment = get_notebook_environment()
+
+        if notebook_environment == "jupyter":
+            template = env.get_template("job_jupyter.html")
+        else:
+            template = env.get_template("job.html")
+
+        # Collect data from all jobs
+        job_ids: List[str] = []
+        resource_ids: List[Optional[str]] = []
+        statuses: List[Optional[str]] = []
+        started_ats: List[Optional[str]] = []
+        running_times: List[Optional[str]] = []
+
+        for job in self.jobs:
+            display_data = job._extract_display_data()
+            job_ids.append(display_data["job_id"])
+            resource_ids.append(display_data["resource_id"])
+            statuses.append(display_data["status"])
+            started_ats.append(display_data["started_at"])
+            running_time = display_data["running_time"]
+            running_times.append(
+                f"{running_time} minutes" if running_time is not None else None
+            )
+
+        # Check if all jobs are in "Quoted" state
+        num_jobs = len(self.jobs)
+        all_quoted = (
+            all(job.status == "Quoted" for job in self.jobs if job.status is not None)
+            and num_jobs > 0
+        )
+
+        # Check if all jobs have the same tool key (extract this early for use in card title)
+        tool_keys = []
+        for job in self.jobs:
+            tool = job._attributes.get("tool") if job._attributes else None
+            tool_key = (
+                tool.get("key") if isinstance(tool, dict) and "key" in tool else None
+            )
+            tool_keys.append(tool_key)
+
+        # Check if all jobs have the same tool key (and it's not None)
+        unique_tool_keys = {key for key in tool_keys if key is not None}
+        all_same_tool = len(unique_tool_keys) == 1 and None not in tool_keys
+        common_tool_key = unique_tool_keys.pop() if all_same_tool else None
+
+        if all_quoted:
+            # Use quoted status visualization
+            status_html = job_viz_functions._viz_func_quoted(self)
+        else:
+            if all_same_tool:
+                tool_key = common_tool_key
+                # Use tool-specific viz function for bulk-docking
+                if tool_key == tool_mapper["Docking"]:
+                    try:
+                        status_html = job_viz_functions._viz_func_docking(self)
+                    except Exception as e:
+                        # Fall back to generic status HTML if viz function fails
+                        status_breakdown = self.status
+                        status_items = []
+                        for status, count in sorted(status_breakdown.items()):
+                            status_items.append(f"<strong>{status}</strong>: {count}")
+                        status_str = (
+                            ", ".join(status_items)
+                            if status_items
+                            else "No status information"
+                        )
+                        status_html = (
+                            f"<p><strong>{num_jobs}</strong> job(s) in this list</p>"
+                            f"<p>Status breakdown: {status_str}</p>"
+                            f"<p>See the Details tab for individual job information.</p>"
+                            f"<p>Error rendering tool-specific visualization: {e}</p>"
+                        )
+                else:
+                    # For other tools, use generic status HTML
+                    status_breakdown = self.status
+                    status_items = []
+                    for status, count in sorted(status_breakdown.items()):
+                        status_items.append(f"<strong>{status}</strong>: {count}")
+                    status_str = (
+                        ", ".join(status_items)
+                        if status_items
+                        else "No status information"
+                    )
+                    status_html = (
+                        f"<p><strong>{num_jobs}</strong> job(s) in this list</p>"
+                        f"<p>Status breakdown: {status_str}</p>"
+                        f"<p>See the Details tab for individual job information.</p>"
+                    )
+            else:
+                # Jobs have different tool keys, use generic status HTML
+                status_breakdown = self.status
+                status_items = []
+                for status, count in sorted(status_breakdown.items()):
+                    status_items.append(f"<strong>{status}</strong>: {count}")
+                status_str = (
+                    ", ".join(status_items) if status_items else "No status information"
+                )
+                status_html = (
+                    f"<p><strong>{num_jobs}</strong> job(s) in this list</p>"
+                    f"<p>Status breakdown: {status_str}</p>"
+                    f"<p>See the Details tab for individual job information.</p>"
+                )
+
+        # Get unique statuses for badge display (filter out None)
+        unique_statuses = list({s for s in statuses if s is not None})
+
+        # Card title - use tool-specific name function if all jobs have the same tool key
+        if all_same_tool and common_tool_key:
+            try:
+                # Look up name function in mapping
+                func_names = _TOOL_FUNC_MAP.get(common_tool_key)
+                if func_names:
+                    _, name_func_name = func_names
+                    name_func = getattr(job_viz_functions, name_func_name)
+                    # Pass JobList to name function so it can aggregate across all jobs
+                    tool_specific_name = name_func(self)
+                    card_title = f"{tool_specific_name} ({num_jobs} jobs)"
+                else:
+                    card_title = f"Job List ({num_jobs} jobs)"
+            except Exception:
+                # Fallback to generic title if name function fails
+                card_title = f"Job List ({num_jobs} jobs)"
+        else:
+            card_title = f"Job List ({num_jobs} jobs)"
+
+        # For inputs/outputs/billing, create combined JSON viewers
+        # Collect all inputs/outputs/billing data
+        all_inputs = {}
+        all_outputs = {}
+        all_billing = {}
+
+        for job in self.jobs:
+            job_id = job._id
+            if job._attributes:
+                inputs = job._attributes.get("userInputs")
+                if inputs:
+                    all_inputs[job_id] = (
+                        inputs.to_dict() if hasattr(inputs, "to_dict") else inputs
+                    )
+
+                outputs = job._attributes.get("userOutputs")
+                if outputs:
+                    all_outputs[job_id] = (
+                        outputs.to_dict() if hasattr(outputs, "to_dict") else outputs
+                    )
+
+                # Organize billing data by job ID
+                billing_transaction = job._attributes.get("billingTransaction")
+                quotation_result = job._attributes.get("quotationResult")
+                if billing_transaction or quotation_result:
+                    all_billing[job_id] = {
+                        "billingTransaction": billing_transaction,
+                        "quotationResult": quotation_result,
+                    }
+
+        # Generate JSON viewers
+        inputs_json_viewer = self._render_json_viewer(all_inputs)
+        outputs_json_viewer = self._render_json_viewer(all_outputs)
+        billing_json_viewer = self._render_json_viewer(all_billing)
+
+        # Prepare template variables
+        template_vars = {
+            "status_html": status_html,
+            "last_updated": time.strftime("%Y-%m-%d %H:%M:%S"),
+            "outputs_json": json.dumps(all_outputs, indent=2) if all_outputs else "{}",
+            "inputs_json": json.dumps(all_inputs, indent=2) if all_inputs else "{}",
+            "inputs_json_viewer": inputs_json_viewer,
+            "outputs_json_viewer": outputs_json_viewer,
+            "billing_json_viewer": billing_json_viewer,
+            "job_id": job_ids,  # List of job IDs
+            "resource_id": resource_ids,  # List of resource IDs
+            "status": statuses,  # List of statuses
+            "started_at": started_ats,  # List of started_at strings
+            "running_time": running_times,  # List of running_time strings
+            "card_title": card_title,
+            "unique_id": str(uuid.uuid4()),
+            "will_auto_update": will_auto_update,
+            "is_multiple": True,  # Multiple jobs mode
+            "unique_statuses": unique_statuses,  # Unique statuses for badge display
+        }
+
+        # Determine auto-update behavior - only auto-update if any job is not in terminal state
+        all_terminal = all(
+            job.status in TERMINAL_STATES if job.status else False for job in self.jobs
+        )
+        if all_terminal:
+            template_vars["will_auto_update"] = False
+
+        # For progress reports, combine all
+        all_progress_reports = []
+        for job in self.jobs:
+            progress_report = (
+                job._attributes.get("progressReport") if job._attributes else None
+            )
+            if progress_report:
+                all_progress_reports.append(progress_report)
+
+        try:
+            if all_progress_reports:
+                # Try to parse each as JSON
+                parsed_reports = []
+                for report in all_progress_reports:
+                    try:
+                        parsed_reports.append(json.loads(str(report)))
+                    except Exception:
+                        parsed_reports.append(str(report))
+                template_vars["raw_progress_json"] = json.dumps(
+                    parsed_reports, indent=2
+                )
+            else:
+                template_vars["raw_progress_json"] = "[]"
+        except Exception:
+            template_vars["raw_progress_json"] = (
+                json.dumps([str(r) for r in all_progress_reports], indent=2)
+                if all_progress_reports
+                else "[]"
+            )
+
+        # Render the template
+        return template.render(**template_vars)
+
+    @beartype
+    def _render_json_viewer(self, obj: dict) -> str:
+        """Create an interactive JSON viewer HTML snippet for the given dictionary.
+
+        This method generates HTML and JavaScript code that renders the provided
+        dictionary as an interactive JSON viewer in a web environment (e.g., Jupyter notebook).
+        It uses the @textea/json-viewer library via CDN to display the JSON data.
+
+        Args:
+            obj: The dictionary to display in the JSON viewer.
+
+        Returns:
+            HTML and JavaScript code to render the interactive JSON viewer.
+        """
+        uid = f"json_viewer_{uuid.uuid4().hex}"
+        data = json.dumps(obj)
+
+        html = f"""
+        <div id="{uid}" style="padding:10px;border:1px solid #ddd;"></div>
+        <script>
+        (function() {{
+        const mountSelector = "#{uid}";
+        function render() {{
+            new JsonViewer({{ value: {data}, showCopy: true, rootName: false }})
+            .render(mountSelector);
+        }}
+
+        // If JsonViewer is already present, render immediately; otherwise load it then render.
+        if (window.JsonViewer) {{
+            render();
+        }} else {{
+            const s = document.createElement('script');
+            s.src = "https://cdn.jsdelivr.net/npm/@textea/json-viewer@3";
+            s.onload = render;
+            document.head.appendChild(s);
+        }}
+        }})();
+        </script>
+        """
+        return html
 
     @beartype
     def filter(
