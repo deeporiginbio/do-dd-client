@@ -263,7 +263,9 @@ class Docking(WorkflowStep):
         if output_dir_path is None:
             output_dir_path = "tool-runs/docking/" + self.parent.protein.to_hash() + "/"
 
-        self.parent._sync_protein_and_ligands()
+        # only sync the protein, not the ligands, because we're
+        # only using the SMILES strings, which are sent in the request DTO
+        self.parent.protein.upload(client=self.parent.client)
 
         metadata = {
             "protein_file": protein_basename,

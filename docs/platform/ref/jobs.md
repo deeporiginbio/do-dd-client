@@ -21,6 +21,28 @@ jobs = JobList.from_ids(["id-1", "id-2", "id-3"])
 jobs = JobList.from_dtos([dto1, dto2, dto3])
 ```
 
+### Monitoring Jobs
+
+The `watch()` method allows you to monitor multiple jobs in real-time. It will automatically stop when all jobs reach terminal states:
+
+```python
+# Start monitoring a list of jobs
+jobs = JobList.from_ids(["id-1", "id-2", "id-3"])
+jobs.watch()  # Updates every 5 seconds by default
+
+# Custom update interval
+jobs.watch(interval=10.0)  # Update every 10 seconds
+
+# Stop monitoring manually
+jobs.stop_watching()
+```
+
+The `watch()` method will:
+- Display an initial status view
+- Periodically sync all jobs and update the display
+- Automatically stop when all jobs are in terminal states (Succeeded, Failed, Cancelled, etc.)
+- Handle errors gracefully and continue monitoring
+
 ### Filtering Jobs
 
 The `filter()` method allows you to filter jobs by status, attributes, or custom predicates:

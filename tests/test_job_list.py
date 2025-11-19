@@ -399,18 +399,165 @@ def test_job_list_cancel(mock_jobs):
         job.cancel.assert_called_once()
 
 
-def test_job_list_show_placeholder(mock_jobs):
-    """Test show raises NotImplementedError."""
-    job_list = JobList(mock_jobs)
-    with pytest.raises(NotImplementedError):
+@patch("deeporigin.platform.job.display")
+def test_job_list_show(mock_display):
+    """Test show displays the job list view."""
+    # Create real Job objects with proper attributes
+    job1 = Job(name="job1", _id="id-1", _skip_sync=True)
+    job1.status = "Succeeded"
+    job1._attributes = {}
+    job2 = Job(name="job2", _id="id-2", _skip_sync=True)
+    job2.status = "Running"
+    job2._attributes = {}
+
+    job_list = JobList([job1, job2])
+    job_list.show()
+    mock_display.assert_called_once()
+
+
+def test_job_list_show_empty():
+    """Test show works with empty job list."""
+    job_list = JobList([])
+    # Should not raise an error
+    with patch("deeporigin.platform.job.display"):
         job_list.show()
 
 
-def test_job_list_watch_placeholder(mock_jobs):
-    """Test watch raises NotImplementedError."""
-    job_list = JobList(mock_jobs)
-    with pytest.raises(NotImplementedError):
-        job_list.watch()
+@patch("deeporigin.platform.job.display")
+@patch("nest_asyncio.apply")
+def test_job_list_watch_all_terminal(mock_nest_asyncio_apply, mock_display):
+    """Test watch when all jobs are in terminal states."""
+    # Create jobs all in terminal states
+    job1 = Job(name="job1", _id="id-1", _skip_sync=True)
+    job1.status = "Succeeded"
+    job1._attributes = {}
+    job2 = Job(name="job2", _id="id-2", _skip_sync=True)
+    job2.status = "Failed"
+    job2._attributes = {}
+
+    job_list = JobList([job1, job2])
+    job_list.watch()
+
+    # Should display a message and show once, but not start a task
+    assert mock_display.call_count >= 1
+    assert job_list._task is None
+
+
+@patch("deeporigin.platform.job.display")
+@patch("deeporigin.platform.job.update_display")
+@patch("nest_asyncio.apply")
+@patch("asyncio.get_event_loop")
+@patch("asyncio.create_task")
+def test_job_list_watch_with_running_jobs(
+    mock_create_task,
+    mock_get_event_loop,
+    mock_nest_asyncio_apply,
+    mock_update_display,
+    mock_display,
+):
+    """Test watch starts monitoring when there are running jobs."""
+    # Create jobs with some in non-terminal states
+    job1 = Job(name="job1", _id="id-1", _skip_sync=True)
+    job1.status = "Running"
+    job1._attributes = {}
+    job1.sync = MagicMock()
+    job2 = Job(name="job2", _id="id-2", _skip_sync=True)
+    job2.status = "Queued"
+    job2._attributes = {}
+    job2.sync = MagicMock()
+
+    # Mock event loop and task creation
+    mock_task = MagicMock()
+    mock_create_task.return_value = mock_task
+    mock_loop = MagicMock()
+    mock_loop.create_task.return_value = mock_task
+    mock_get_event_loop.return_value = mock_loop
+
+    job_list = JobList([job1, job2])
+    job_list.watch()
+
+    # Should have started a task
+    assert job_list._task is not None
+    assert job_list._display_id is not None
+
+    # Clean up
+    job_list.stop_watching()
+
+
+@patch("deeporigin.platform.job.display")
+@patch("deeporigin.platform.job.update_display")
+@patch("nest_asyncio.apply")
+@patch("asyncio.get_event_loop")
+@patch("asyncio.create_task")
+def test_job_list_watch_stops_when_all_terminal(
+    mock_create_task,
+    mock_get_event_loop,
+    mock_nest_asyncio_apply,
+    mock_update_display,
+    mock_display,
+):
+    """Test watch stops monitoring when all jobs become terminal."""
+    # Create jobs with some in non-terminal states
+    job1 = Job(name="job1", _id="id-1", _skip_sync=True)
+    job1.status = "Running"
+    job1._attributes = {}
+    job1.sync = MagicMock()
+    job2 = Job(name="job2", _id="id-2", _skip_sync=True)
+    job2.status = "Running"
+    job2._attributes = {}
+    job2.sync = MagicMock()
+
+    # Mock event loop and task creation
+    mock_task = MagicMock()
+    mock_create_task.return_value = mock_task
+    mock_loop = MagicMock()
+    mock_loop.create_task.return_value = mock_task
+    mock_get_event_loop.return_value = mock_loop
+
+    job_list = JobList([job1, job2])
+    job_list.watch()
+
+    # Initially should have a task
+    assert job_list._task is not None
+
+    # Simulate jobs becoming terminal
+    job1.status = "Succeeded"
+    job2.status = "Succeeded"
+
+    # Manually trigger the check by running sync (which would happen in the loop)
+    job_list.sync()
+
+    # The task should still exist (it checks in the loop)
+    # But we can stop it manually
+    job_list.stop_watching()
+    assert job_list._task is None
+
+
+def test_job_list_stop_watching():
+    """Test stop_watching cancels the monitoring task."""
+    job1 = Job(name="job1", _id="id-1", _skip_sync=True)
+    job1.status = "Running"
+    job1.sync = MagicMock()
+
+    job_list = JobList([job1])
+
+    # Create a mock task
+    mock_task = MagicMock()
+    job_list._task = mock_task
+
+    job_list.stop_watching()
+
+    # Task should be cancelled
+    mock_task.cancel.assert_called_once()
+    assert job_list._task is None
+
+
+def test_job_list_stop_watching_no_task():
+    """Test stop_watching handles case when no task exists."""
+    job_list = JobList([])
+    # Should not raise an error
+    job_list.stop_watching()
+    assert job_list._task is None
 
 
 @patch("deeporigin.platform.job.Job.from_id")

@@ -172,13 +172,8 @@ class MockServer:
                     except FileNotFoundError:
                         pass
 
-            # Load cluster fixture
-            cluster_path = tool_fixture_dir / "cluster.json"
-            if cluster_path.exists():
-                try:
-                    execution["cluster"] = self._load_fixture(f"{tool_key}/cluster")
-                except FileNotFoundError:
-                    pass
+            # Set cluster ID to a generated UUID
+            execution["cluster"] = {"id": str(uuid.uuid4())}
 
         # Set startedAt/completedAt to None initially
         execution["startedAt"] = None

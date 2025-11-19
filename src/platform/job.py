@@ -619,6 +619,9 @@ class JobList:
             jobs: A list of Job objects.
         """
         self.jobs = jobs
+        self._task = None
+        self._display_id: Optional[str] = None
+        self._last_html: Optional[str] = None
 
     def __iter__(self):
         """Iterate over the jobs in the list."""
@@ -683,12 +686,143 @@ class JobList:
             concurrent.futures.wait(futures)
 
     def show(self):
-        """Display the job list view. (Placeholder)"""
-        raise NotImplementedError("Visualization for JobList is not yet implemented.")
+        """Display the job list view in a Jupyter notebook.
 
-    def watch(self):
-        """Start monitoring job list progress. (Placeholder)"""
-        raise NotImplementedError("Monitoring for JobList is not yet implemented.")
+        This method renders the job list view and displays it in a Jupyter notebook.
+        """
+        rendered_html = self._render_view()
+        display(HTML(rendered_html))
+
+    def watch(self, *, interval: float = 5.0):
+        """Start monitoring job list progress in real-time.
+
+        This method initiates a background task that periodically updates
+        and displays the status of all jobs in the list. It will automatically
+        stop when all jobs reach a terminal state (Succeeded, Failed, etc.).
+        If all jobs are already in terminal states, it will display a message
+        and show the current state once.
+        """
+        # Enable nested event loops for Jupyter
+        import nest_asyncio
+
+        nest_asyncio.apply()
+
+        # Check if all jobs are in terminal states
+        all_terminal = all(
+            job.status in TERMINAL_STATES if job.status else False for job in self.jobs
+        )
+        if all_terminal:
+            display(
+                HTML(
+                    "<div style='color: gray;'>All jobs are in terminal states. This display will not update.</div>"
+                )
+            )
+            self.show()
+            return
+
+        # Stop any existing task before starting a new one
+        self.stop_watching()
+
+        # for reasons i don't understand, removing this breaks the display rendering
+        # when we do job_list.watch()
+        initial_html = HTML("<div style='color: gray;'>Initializing...</div>")
+        display_id = str(uuid.uuid4())
+        self._display_id = display_id
+        display(initial_html, display_id=display_id)
+
+        async def update_progress_report():
+            """Update and display job list progress at regular intervals.
+
+            This coroutine runs in the background, updating the display
+            with the latest status of all jobs every `interval` seconds.
+            It automatically stops when all jobs reach terminal states.
+            """
+            try:
+                while True:
+                    try:
+                        # Run sync in a worker thread without timeout to avoid the timeout issue
+                        await asyncio.to_thread(self.sync)
+
+                        html = self._render_view(will_auto_update=True)
+                        update_display(HTML(html), display_id=self._display_id)
+                        self._last_html = html
+
+                        # Check if all jobs are in terminal states
+                        all_terminal = all(
+                            job.status in TERMINAL_STATES if job.status else False
+                            for job in self.jobs
+                        )
+                        if all_terminal:
+                            break
+
+                    except Exception as e:
+                        # Show a transient error banner, but keep the task alive
+                        banner = self._compose_error_overlay_html(message=str(e))
+                        fallback = (
+                            self._last_html
+                            or "<div style='color: gray;'>No data yet.</div>"
+                        )
+                        update_display(
+                            HTML(banner + fallback), display_id=self._display_id
+                        )
+
+                    # Always sleep before next attempt
+                    await asyncio.sleep(interval)
+            finally:
+                # Perform a final non-blocking refresh and render to clear spinner
+                if self._display_id is not None:
+                    try:
+                        await asyncio.to_thread(self.sync)
+                    except Exception:
+                        pass
+                    try:
+                        final_html = self._render_view(will_auto_update=False)
+                        update_display(HTML(final_html), display_id=self._display_id)
+                    except Exception:
+                        pass
+                    self._display_id = None
+
+        # Schedule the task using the current event loop
+        try:
+            loop = asyncio.get_event_loop()
+            self._task = loop.create_task(update_progress_report())
+        except RuntimeError:
+            # If no event loop is running, create a new one
+            self._task = asyncio.create_task(update_progress_report())
+
+    def stop_watching(self):
+        """Stop the background monitoring task.
+
+        This method safely cancels and cleans up any running monitoring task.
+        It is called automatically when all jobs reach terminal states,
+        or can be called manually to stop monitoring.
+        """
+        if self._task is not None:
+            # Cancel the task; its finally block performs the final render and cleanup
+            try:
+                self._task.cancel()
+            except Exception:
+                pass
+            finally:
+                self._task = None
+
+    @beartype
+    def _compose_error_overlay_html(self, *, message: str) -> str:
+        """Compose an error overlay banner HTML for transient failures.
+
+        Args:
+            message: Error message to display.
+
+        Returns:
+            HTML string for an overlay banner indicating a temporary issue.
+        """
+        timestamp = time.strftime("%Y-%m-%d %H:%M:%S")
+        return (
+            "<div style='background: #fff4f4; border: 1px solid #f0b5b5; color: #8a1f1f;"
+            " padding: 8px 12px; margin-bottom: 8px; border-radius: 6px;'>"
+            f"Network/update issue at {timestamp}. Will retry automatically. Error: {message}"
+            "</div>"
+        )
 
     @beartype
     def _render_view(
