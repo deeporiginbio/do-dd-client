@@ -1,12 +1,19 @@
 """this module contains the Job class"""
 
 import asyncio
+from collections import Counter
+import concurrent.futures
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 import json
 from pathlib import Path
 import time
-from typing import Optional, Protocol
+from typing import Dict, List, Optional, Protocol
+
+try:
+    from beartype.typing import Callable
+except ImportError:
+    from typing import Callable  # fallback for older beartype versions
 import uuid
 
 from beartype import beartype
@@ -562,6 +569,369 @@ class Job:
             )
 
             self.sync()
+
+
+class JobList:
+    """
+    Represents a collection of Jobs that can be monitored and managed together.
+
+    This class provides methods to track, visualize, and manage multiple jobs as a single unit, and is especially useful for
+    managing batch jobs like Docking, where a set of ligands can be batched into multiple executions on multiple resources.
+    """
+
+    def __init__(self, jobs: List[Job]):
+        """Initialize a JobList with a list of Job objects.
+
+        Args:
+            jobs: A list of Job objects.
+        """
+        self.jobs = jobs
+
+    def __iter__(self):
+        """Iterate over the jobs in the list."""
+        return iter(self.jobs)
+
+    def __len__(self):
+        """Return the number of jobs in the list."""
+        return len(self.jobs)
+
+    def __getitem__(self, index):
+        """Get a job by index."""
+        return self.jobs[index]
+
+    def _repr_html_(self) -> str:
+        """Return HTML representation for Jupyter notebooks.
+
+        Displays a summary of the JobList including the number of jobs and their status breakdown.
+        """
+        num_jobs = len(self.jobs)
+        status_breakdown = self.status
+
+        # Format status breakdown
+        status_items = []
+        for status, count in sorted(status_breakdown.items()):
+            status_items.append(f"{status}: {count}")
+        status_str = (
+            ", ".join(status_items) if status_items else "No status information"
+        )
+
+        html = (
+            f"<div style='padding: 10px; border: 1px solid #ddd; border-radius: 5px;'>"
+            f"<p><strong>{num_jobs}</strong> job(s)</p>"
+            f"<p>Statuses: {status_str}</p>"
+            f"<p style='color: #666; font-size: 0.9em;'>Use <code>to_dataframe()</code> to view full details</p>"
+            f"</div>"
+        )
+        return html
+
+    @property
+    def status(self) -> Dict[str, int]:
+        """Get a breakdown of the statuses of all jobs in the list.
+
+        Returns:
+            A dictionary mapping status strings to counts.
+        """
+        statuses = [job.status for job in self.jobs if job.status is not None]
+        return dict(Counter(statuses))
+
+    def confirm(self, max_workers: int = 4):
+        """Confirm all jobs in the list in parallel.
+
+        Args:
+            max_workers: The maximum number of threads to use for parallel execution.
+        """
+        with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
+            futures = [executor.submit(job.confirm) for job in self.jobs]
+            concurrent.futures.wait(futures)
+
+    def cancel(self, max_workers: int = 4):
+        """Cancel all jobs in the list in parallel.
+
+        Args:
+            max_workers: The maximum number of threads to use for parallel execution.
+        """
+        with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
+            futures = [executor.submit(job.cancel) for job in self.jobs]
+            concurrent.futures.wait(futures)
+
+    def show(self):
+        """Display the job list view. (Placeholder)"""
+        raise NotImplementedError("Visualization for JobList is not yet implemented.")
+
+    def watch(self):
+        """Start monitoring job list progress. (Placeholder)"""
+        raise NotImplementedError("Monitoring for JobList is not yet implemented.")
+
+    @beartype
+    def filter(
+        self,
+        *,
+        status: Optional[str] = None,
+        tool_key: Optional[str] = None,
+        tool_version: Optional[str] = None,
+        predicate: Optional[Callable[[Job], bool]] = None,
+        **kwargs,
+    ) -> "JobList":
+        """Filter jobs by status, tool attributes, other attributes, or custom predicate.
+
+        This method returns a new JobList containing only jobs that match the specified
+        criteria. Multiple filters can be combined - keyword arguments are applied
+        first (with AND logic), then the predicate function is applied if provided.
+
+        Args:
+            status: Filter by job status (e.g., "Succeeded", "Running", "Failed").
+                Checks against job.status property.
+            tool_key: Filter by tool key (e.g., "deeporigin.docking", "deeporigin.abfe-end-to-end").
+                Checks against job._attributes["tool"]["key"].
+            tool_version: Filter by tool version (e.g., "1.0.0").
+                Checks against job._attributes["tool"]["version"].
+            predicate: Optional callable that takes a Job and returns True/False.
+                Applied after keyword filters. Useful for complex conditions or
+                accessing nested attributes.
+            **kwargs: Additional filters on job._attributes keys. Each keyword
+                argument is treated as a key in _attributes, and the value must
+                match exactly (equality check).
+
+        Returns:
+            A new JobList instance containing only matching jobs.
+
+        Examples:
+            Filter by status::
+
+                succeeded_jobs = jobs.filter(status="Succeeded")
+                running_jobs = jobs.filter(status="Running")
+
+            Filter by tool attributes::
+
+                docking_jobs = jobs.filter(tool_key="deeporigin.docking")
+                specific_version = jobs.filter(tool_key="deeporigin.abfe-end-to-end", tool_version="1.0.0")
+
+            Filter by multiple attributes::
+
+                specific_job = jobs.filter(status="Running", executionId="id-123")
+
+            Filter with custom predicate::
+
+                expensive_jobs = jobs.filter(
+                    predicate=lambda job: job._attributes.get("approveAmount", 0) > 100
+                )
+
+            Combine filters::
+
+                # Status filter + tool filter + custom predicate
+                complex_filter = jobs.filter(
+                    status="Running",
+                    tool_key="deeporigin.docking",
+                    predicate=lambda job: "error" not in str(
+                        job._attributes.get("progressReport", "")
+                    )
+                )
+        """
+        filtered = self.jobs
+
+        # Apply status filter
+        if status is not None:
+            filtered = [job for job in filtered if job.status == status]
+
+        # Apply tool_key filter
+        if tool_key is not None:
+            filtered = [
+                job
+                for job in filtered
+                if job._attributes
+                and job._attributes.get("tool", {}).get("key") == tool_key
+            ]
+
+        # Apply tool_version filter
+        if tool_version is not None:
+            filtered = [
+                job
+                for job in filtered
+                if job._attributes
+                and job._attributes.get("tool", {}).get("version") == tool_version
+            ]
+
+        # Apply attribute filters
+        for key, value in kwargs.items():
+            filtered = [
+                job
+                for job in filtered
+                if job._attributes and job._attributes.get(key) == value
+            ]
+
+        # Apply custom predicate if provided
+        if predicate is not None:
+            filtered = [job for job in filtered if predicate(job)]
+
+        return JobList(filtered)
+
+    def to_dataframe(self) -> pd.DataFrame:
+        """Convert the JobList to a pandas DataFrame.
+
+        Extracts data from each job's _attributes dictionary and creates a DataFrame
+        with the default columns: status, executionId, createdAt, updatedAt,
+        completedAt, startedAt, approveAmount, tool.key, and tool.version.
+
+        Returns:
+            A pandas DataFrame with one row per job.
+        """
+        # Initialize lists to store data
+        data = {
+            "status": [],
+            "executionId": [],
+            "createdAt": [],
+            "updatedAt": [],
+            "completedAt": [],
+            "startedAt": [],
+            "approveAmount": [],
+            "tool.key": [],
+            "tool.version": [],
+        }
+
+        for job in self.jobs:
+            attributes = job._attributes if job._attributes else {}
+
+            data["status"].append(attributes.get("status"))
+            data["executionId"].append(attributes.get("executionId"))
+            data["createdAt"].append(attributes.get("createdAt"))
+            data["updatedAt"].append(attributes.get("updatedAt"))
+            data["completedAt"].append(attributes.get("completedAt"))
+            data["startedAt"].append(attributes.get("startedAt"))
+            data["approveAmount"].append(attributes.get("approveAmount"))
+
+            # Extract tool.key and tool.version from tool dict
+            tool = attributes.get("tool")
+            if isinstance(tool, dict):
+                data["tool.key"].append(tool.get("key"))
+                data["tool.version"].append(tool.get("version"))
+            else:
+                data["tool.key"].append(None)
+                data["tool.version"].append(None)
+
+        # Create DataFrame
+        df = pd.DataFrame(data)
+
+        # Convert datetime columns
+        datetime_cols = ["createdAt", "updatedAt", "completedAt", "startedAt"]
+        for col in datetime_cols:
+            if col in df.columns:
+                df[col] = (
+                    pd.to_datetime(
+                        df[col], errors="coerce", utc=True
+                    )  # parse → tz-aware
+                    .dt.tz_localize(None)  # drop the UTC tz-info
+                    .astype("datetime64[us]")  # truncate to microseconds
+                )
+
+        return df
+
+    @classmethod
+    def list(
+        cls,
+        *,
+        page: Optional[int] = None,
+        page_size: int = 1000,
+        order: Optional[str] = None,
+        filter: Optional[str] = None,
+        client: Optional[DeepOriginClient] = None,
+    ) -> "JobList":
+        """Fetch executions from the API and return a JobList.
+
+        This method automatically handles pagination, fetching all pages if necessary
+        and combining them into a single JobList.
+
+        Args:
+            page: Page number to start from (default 0). If None, starts from page 0.
+            page_size: Page size of the pagination (max 10,000).
+            order: Order of the pagination, e.g., "executionId? asc", "completedAt? desc".
+            filter: Filter applied to the data set Execution Model.
+            client: Optional client for API calls.
+
+        Returns:
+            A new JobList instance containing the fetched jobs.
+        """
+        if client is None:
+            client = DeepOriginClient.get()
+
+        # Start from page 0 if not specified
+        current_page = page if page is not None else 0
+        all_dtos: List[dict] = []
+
+        while True:
+            response = client.executions.list(
+                page=current_page,
+                page_size=page_size,
+                order=order,
+                filter=filter,
+            )
+
+            if not isinstance(response, dict):
+                # If response is not a dict, treat it as a list of DTOs
+                all_dtos.extend(response if isinstance(response, list) else [])
+                break
+
+            page_dtos = response.get("data", [])
+            all_dtos.extend(page_dtos)
+
+            # Check if there are more pages to fetch
+            count = response.get("count", 0)
+
+            # If count > page_size, there are more items than fit in one page
+            # Continue fetching until we've got all items
+            if count > page_size:
+                # Check if we got a partial page (indicating last page)
+                if len(page_dtos) < page_size:
+                    # Partial page means we're done
+                    break
+                # Check if we've fetched all items (if count represents total)
+                if len(all_dtos) >= count:
+                    # We've fetched all items
+                    break
+                # Move to next page
+                current_page += 1
+            else:
+                # count <= page_size means we've got everything in this page
+                break
+
+        return cls.from_dtos(all_dtos, client=client)
+
+    @classmethod
+    def from_ids(
+        cls,
+        ids: List[str],
+        *,
+        client: Optional[DeepOriginClient] = None,
+    ) -> "JobList":
+        """Create a JobList from a list of job IDs.
+
+        Args:
+            ids: A list of job IDs.
+            client: Optional client for API calls.
+
+        Returns:
+            A new JobList instance.
+        """
+        jobs = [Job.from_id(id, client=client) for id in ids]
+        return cls(jobs)
+
+    @classmethod
+    def from_dtos(
+        cls,
+        dtos: List[dict],
+        *,
+        client: Optional[DeepOriginClient] = None,
+    ) -> "JobList":
+        """Create a JobList from a list of execution DTOs.
+
+        Args:
+            dtos: A list of execution DTOs.
+            client: Optional client for API calls.
+
+        Returns:
+            A new JobList instance.
+        """
+        jobs = [Job.from_dto(dto, client=client) for dto in dtos]
+        return cls(jobs)
 
 
 # @beartype

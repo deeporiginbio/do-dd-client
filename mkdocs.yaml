@@ -79,6 +79,7 @@ nav:
   - tools: platform/ref/tools.md
   - files: platform/ref/files.md
   - executions: platform/ref/executions.md
+  - jobs: platform/ref/jobs.md
   - clusters: platform/ref/clusters.md
   - functions: platform/ref/functions.md
   - organizations: platform/ref/organizations.md
