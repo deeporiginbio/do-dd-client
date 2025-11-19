@@ -1,0 +1,60 @@
+{
+    "executionId": "abfe9819-4204-474e-af9f-c92a7f20a9cc",
+    "createdAt": "2025-11-18T15:22:35.271Z",
+    "updatedAt": "2025-11-18T15:22:35.271Z",
+    "resourceId": "rkzoie44xi997crx7s46j",
+    "userInputs": {},
+    "userOutputs": {},
+    "status": "Quoted",
+    "metadata": {},
+    "approveAmount": 0,
+    "quotationResult": {
+        "anyFailed": false,
+        "successfulQuotations": [
+            {
+                "status": "OK",
+                "itemCode": "DO_ABFE",
+                "orgId": "deeporigin",
+                "qty": 0,
+                "priceEach": 120,
+                "priceTotal": 183.9370042608,
+                "pricingRecordType": "regular",
+                "pricingRecords": [
+                    {
+                        "itemKey": "DO_ABFE",
+                        "itemName": "Absolute Binding Free Energy (ABFE)",
+                        "priceEach": 120,
+                        "totalPrice": 183.9370042608,
+                        "qty": 1.53280836884,
+                        "tierQtyFrom": 0,
+                        "tierQtyTo": 0
+                    }
+                ],
+                "qty_vars": {
+                    "abfe_atoms": 57337,
+                    "abfe_equilibration_steps": 754999,
+                    "abfe_production_steps": 1250000,
+                    "abfe_repeats": 1,
+                    "abfe_windows": 32
+                }
+            }
+        ],
+        "failedQuotations": []
+    },
+    "cluster": {
+        "id": "d638d3cd-833f-476b-87fe-ca6d76e66049",
+        "createdAt": "2024-06-11T16:53:45.922Z",
+        "updatedAt": "2025-03-27T20:23:30.842Z",
+        "hostname": "https://cluster.us-west-2.edge.deeporigin.io",
+        "name": "DeepOrigin Cluster - us-west-2",
+        "orgKey": null,
+        "enabled": true,
+        "status": "healthy"
+    },
+    "orgKey": "deeporigin",
+    "createdBy": "google-apps|srinivas@deeporigin.com",
+    "tool": {
+        "key": "deeporigin.abfe-end-to-end",
+        "version": "0.2.18"
+    }
+}

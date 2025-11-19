@@ -7,16 +7,6 @@ The [`Protein` class](../ref/protein.md)  is the primary way to work with protei
 ## Constructing a protein
 
 
-### From a common name
-
-A protein can be constructed by a common name or text identifier as follows:
-
-```python
-from deeporigin.drug_discovery import Protein
-protein = Protein.from_name("HIV-1 protease")
-```
-The top hit on the PDB will be retrieved. 
-
 ### From a file
 
 A protein can be constructed from a file:

@@ -1,0 +1,18 @@
+{
+    "items": [
+        {
+            "qty": 0,
+            "itemCode": "DO_ABFE",
+            "priceEach": 120,
+            "isApproved": true,
+            "priceTotal": 183.9370042608,
+            "actionRequest": null,
+            "authorizationId": "691b838fac1dc207f1cb3c3e",
+            "purchaseApprovalComment": null
+        }
+    ],
+    "orgId": "deeporigin",
+    "status": "Approved",
+    "totalCost": 183.9370042608,
+    "transactionId": "691b838fac1dc207f1cb3c3c"
+}

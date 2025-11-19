@@ -69,28 +69,28 @@ def test_docking(client, pytestconfig):  # noqa: F811
     assert isinstance(poses, LigandSet), "Expected protein.dock() to return a LigandSet"
 
 
-def test_sysprep(client, pytestconfig):  # noqa: F811
-    """Test system preparation function.
-
-    Note: This test is skipped when using --mock flag as the mock server
-    doesn't implement the sysprep endpoint yet.
-    """
-    use_mock = pytestconfig.getoption("--mock", default=False)
-    if use_mock:
-        pytest.skip("Skipping sysprep test with --mock (not yet implemented)")
-
+def test_sysprep(client):  # noqa: F811
+    """Test system preparation function."""
     from deeporigin.functions.sysprep import run_sysprep
 
     sim = Complex.from_dir(BRD_DATA_DIR, client=client)
 
     # this is chosen to be one where it takes >1 min
-    run_sysprep(
+    response = run_sysprep(
         protein=sim.protein,
         ligand=sim.ligands[3],
         add_H_atoms=True,
         use_cache=False,
         client=client,
     )
+
+    # Verify response structure
+    assert isinstance(response, dict), "Expected a dictionary response"
+    assert "status" in response, "Expected 'status' in response"
+    assert response["status"] == "success", "Expected status to be 'success'"
+    assert "protein_path" in response, "Expected 'protein_path' in response"
+    assert "ligand_path" in response, "Expected 'ligand_path' in response"
+    assert "output_files" in response, "Expected 'output_files' in response"
 
 
 # def test_loop_modelling(client):  # noqa: F811

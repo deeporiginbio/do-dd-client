@@ -6,10 +6,12 @@ API endpoints used by the DeepOriginClient.
 
 from __future__ import annotations
 
+from datetime import datetime, timezone
 import json
 from pathlib import Path
 import threading
 from typing import Any
+import uuid
 
 from fastapi import FastAPI, Request
 from fastapi.responses import Response
@@ -23,7 +25,7 @@ class MockServer:
         """Initialize the test server.
 
         Args:
-            port: Port to run the server on. If 0, uses an available port.
+            port: Port to run the server on. If 0, uses any available port.
         """
         self.app = FastAPI()
         self.port = port
@@ -33,6 +35,13 @@ class MockServer:
         self.host: str | None = None
         self._fixtures_dir = Path(__file__).parent / "fixtures"
         self._fixture_cache: dict[str, dict[str, Any]] = {}
+        # In-memory storage for executions
+        self._executions: dict[str, dict[str, Any]] = {}
+        self._execution_start_times: dict[str, datetime] = {}
+        # Tool-specific mock execution durations (in seconds)
+        self._mock_execution_durations: dict[str, float] = {
+            "deeporigin.abfe-end-to-end": 300.0,  # 5 minutes default
+        }
         self._setup_routes()
 
     def _load_fixture(self, fixture_name: str) -> dict[str, Any]:
@@ -40,6 +49,7 @@ class MockServer:
 
         Args:
             fixture_name: Name of the fixture file (without .json extension).
+                Can include subdirectory paths, e.g., "abfe/execution-quoted".
 
         Returns:
             Dictionary containing the fixture data.
@@ -59,6 +69,230 @@ class MockServer:
 
         self._fixture_cache[fixture_name] = data
         return data
+
+    def _load_execution_fixture(self, execution_id: str) -> dict[str, Any]:
+        """Load an execution fixture by execution ID.
+
+        Args:
+            execution_id: The execution ID to load.
+
+        Returns:
+            Dictionary containing the execution fixture data.
+
+        Raises:
+            FileNotFoundError: If the execution fixture doesn't exist.
+        """
+        fixture_path = self._fixtures_dir / "executions" / f"{execution_id}.json"
+        if not fixture_path.exists():
+            raise FileNotFoundError(f"Execution fixture not found: {fixture_path}")
+
+        with open(fixture_path) as f:
+            return json.load(f)
+
+    def _create_execution_dto(
+        self,
+        *,
+        tool_key: str,
+        tool_version: str,
+        org_key: str,
+        body: dict[str, Any],
+    ) -> dict[str, Any]:
+        """Create an execution DTO dynamically.
+
+        Args:
+            tool_key: The tool key (e.g., "deeporigin.abfe-end-to-end").
+            tool_version: The tool version.
+            org_key: The organization key.
+            body: The request body containing inputs, outputs, metadata, etc.
+
+        Returns:
+            Dictionary containing the execution DTO.
+        """
+        now = datetime.now(timezone.utc)
+        timestamp = now.strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z"
+
+        # Generate execution ID
+        execution_id = str(uuid.uuid4())
+
+        # Determine initial status based on approveAmount
+        approve_amount = body.get("approveAmount", 0)
+        if approve_amount is None:
+            approve_amount = 0
+
+        if approve_amount == 0:
+            status = "Quoted"
+        else:
+            # For approveAmount > 0, we'll handle later
+            raise NotImplementedError(
+                "approveAmount > 0 is not yet implemented in mock server"
+            )
+
+        # Build base execution DTO
+        execution: dict[str, Any] = {
+            "executionId": execution_id,
+            "createdAt": timestamp,
+            "updatedAt": timestamp,
+            "resourceId": self._generate_resource_id(),
+            "status": status,
+            "userInputs": body.get("inputs", {}),
+            "userOutputs": body.get("outputs", {}),
+            "metadata": body.get("metadata", {}),
+            "approveAmount": approve_amount,
+            "jobOutputs": None,
+            "resourcesUsed": None,
+            "resourcesRequested": None,
+            "progressReport": None,
+            "statusReason": None,
+            "name": None,
+            "orgKey": org_key,
+            "tool": {"key": tool_key, "version": tool_version},
+        }
+
+        # Load tool-specific fixtures using tool key in path
+        tool_fixture_dir = self._fixtures_dir / tool_key
+        if tool_fixture_dir.exists():
+            # Load quotationResult fixture
+            quotation_result_path = tool_fixture_dir / "quotation-result.json"
+            if quotation_result_path.exists():
+                try:
+                    execution["quotationResult"] = self._load_fixture(
+                        f"{tool_key}/quotation-result"
+                    )
+                except FileNotFoundError:
+                    pass
+
+            # Load billingTransaction fixture only if approveAmount > 0
+            if approve_amount > 0:
+                billing_transaction_path = tool_fixture_dir / "billing-transaction.json"
+                if billing_transaction_path.exists():
+                    try:
+                        execution["billingTransaction"] = self._load_fixture(
+                            f"{tool_key}/billing-transaction"
+                        )
+                    except FileNotFoundError:
+                        pass
+
+            # Load cluster fixture
+            cluster_path = tool_fixture_dir / "cluster.json"
+            if cluster_path.exists():
+                try:
+                    execution["cluster"] = self._load_fixture(f"{tool_key}/cluster")
+                except FileNotFoundError:
+                    pass
+
+        # Set startedAt/completedAt to None initially
+        execution["startedAt"] = None
+        execution["completedAt"] = None
+
+        return execution
+
+    def _generate_resource_id(self) -> str:
+        """Generate a resource ID.
+
+        Returns:
+            A random resource ID string.
+        """
+        import random
+        import string
+
+        chars = string.ascii_lowercase + string.digits
+        return "".join(random.choice(chars) for _ in range(20))
+
+    def _load_progress_reports(self, tool_key: str) -> list[dict[str, Any] | None]:
+        """Load progress reports for a tool.
+
+        Args:
+            tool_key: The tool key.
+
+        Returns:
+            List of progress report objects.
+        """
+        # Map tool keys to progress report fixture paths
+        # For now, ABFE uses abfe/progress-reports.json
+        # Could be extended to use {tool_key}/progress-reports.json in the future
+        if tool_key == "deeporigin.abfe-end-to-end":
+            fixture_path = self._fixtures_dir / "abfe" / "progress-reports.json"
+        else:
+            # Default: try tool-specific path
+            fixture_path = self._fixtures_dir / tool_key / "progress-reports.json"
+
+        if not fixture_path.exists():
+            return []
+
+        with open(fixture_path) as f:
+            return json.load(f)
+
+    def _get_progress_report(
+        self, execution: dict[str, Any], tool_key: str
+    ) -> str | None:
+        """Get progress report for an execution based on elapsed time.
+
+        Args:
+            execution: The execution object.
+            tool_key: The tool key.
+
+        Returns:
+            JSON string of progress report, or None.
+        """
+        status = execution.get("status")
+        execution_id = execution.get("executionId")
+
+        # For terminal states
+        if status == "Succeeded":
+            # Return final progress report
+            progress_reports = self._load_progress_reports(tool_key)
+            if progress_reports:
+                final_report = progress_reports[-1]
+                return json.dumps(final_report) if final_report is not None else None
+            return None
+
+        if status in ("Failed", "Cancelled"):
+            # Return empty JSON object
+            return json.dumps({})
+
+        if status != "Running":
+            # For other statuses (Quoted, etc.), no progress report
+            return None
+
+        # For Running status, calculate progress based on elapsed time
+        if execution_id not in self._execution_start_times:
+            return None
+
+        start_time = self._execution_start_times[execution_id]
+        now = datetime.now(timezone.utc)
+        elapsed_seconds = (now - start_time).total_seconds()
+
+        # Get duration for this tool
+        duration = self._mock_execution_durations.get(tool_key, 300.0)
+
+        # If elapsed time exceeds duration, transition to Succeeded
+        if elapsed_seconds >= duration:
+            execution["status"] = "Succeeded"
+            execution["completedAt"] = now.strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z"
+            execution["updatedAt"] = now.strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z"
+            # Return final progress report
+            progress_reports = self._load_progress_reports(tool_key)
+            if progress_reports:
+                final_report = progress_reports[-1]
+                return json.dumps(final_report) if final_report is not None else None
+            return None
+
+        # Calculate progress ratio (0.0 to 1.0)
+        progress_ratio = min(elapsed_seconds / duration, 1.0)
+
+        # Load progress reports
+        progress_reports = self._load_progress_reports(tool_key)
+        if not progress_reports:
+            return None
+
+        # Calculate index based on progress ratio
+        max_index = len(progress_reports) - 1
+        index = int(progress_ratio * max_index)
+        index = max(0, min(index, max_index))  # Clamp to valid range
+
+        # Get progress report at calculated index
+        progress_report = progress_reports[index]
+        return json.dumps(progress_report) if progress_report is not None else None
 
     def _get_molprops_fixture(self, smiles: str) -> dict[str, Any]:
         """Get molprops fixture data for a given SMILES string.
@@ -227,6 +461,11 @@ class MockServer:
 
                 return responses
 
+            # Handle system-prep function
+            if function_key == "deeporigin.system-prep":
+                # Return the sysprep response fixture
+                return self._load_fixture("sysprep-response")
+
             # Default: return execution ID for other functions
             return {"executionId": f"exec-{function_key}-{version}-123"}
 
@@ -360,6 +599,9 @@ class MockServer:
                             execution["metadata"] = {"n_ligands": 5}
 
                 executions.append(execution)
+                # Store execution in memory so it can be retrieved by ID
+                execution_id = execution["executionId"]
+                self._executions[execution_id] = execution
 
             return {
                 "count": len(executions),
@@ -369,25 +611,109 @@ class MockServer:
         @self.app.get("/tools/{org_key}/tools/executions/{execution_id}")
         def get_execution(org_key: str, execution_id: str) -> dict[str, Any]:
             """Get execution by ID."""
-            execution_template = self._load_fixture("execution_example")
-            execution = execution_template.copy()
-            execution["executionId"] = execution_id
+            # Check in-memory storage
+            if execution_id not in self._executions:
+                from fastapi import HTTPException
+
+                raise HTTPException(
+                    status_code=404, detail=f"Execution {execution_id} not found"
+                )
+
+            execution = self._executions[execution_id].copy()
+            # Update timestamps if execution has been started
+            if execution_id in self._execution_start_times:
+                start_time = self._execution_start_times[execution_id]
+                execution["startedAt"] = (
+                    start_time.strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z"
+                )
+                now = datetime.now(timezone.utc)
+                execution["updatedAt"] = now.strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z"
+
+            # Get progress report based on execution status and elapsed time
+            tool_key = execution.get("tool", {}).get("key")
+            if tool_key:
+                progress_report = self._get_progress_report(execution, tool_key)
+                execution["progressReport"] = progress_report
+
+            # Update execution in memory if status was changed (e.g., auto-completed)
+            self._executions[execution_id] = execution
+
             return execution
 
         @self.app.patch("/tools/{org_key}/tools/executions/{execution_id}:cancel")
-        def cancel_execution(org_key: str, execution_id: str) -> dict[str, str]:
+        def cancel_execution(org_key: str, execution_id: str) -> dict[str, Any]:
             """Cancel an execution."""
-            return {"status": "Cancelled"}
+            # Get execution from memory
+            if execution_id not in self._executions:
+                from fastapi import HTTPException
+
+                raise HTTPException(
+                    status_code=404, detail=f"Execution {execution_id} not found"
+                )
+
+            execution = self._executions[execution_id]
+
+            # Update status to Cancelled
+            execution["status"] = "Cancelled"
+
+            # Update updatedAt timestamp
+            now = datetime.now(timezone.utc)
+            execution["updatedAt"] = now.strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z"
+
+            # Update in memory storage
+            self._executions[execution_id] = execution
+
+            return execution.copy()
 
         @self.app.patch("/tools/{org_key}/tools/executions/{execution_id}:confirm")
-        def confirm_execution(org_key: str, execution_id: str) -> dict[str, str]:
+        def confirm_execution(org_key: str, execution_id: str) -> dict[str, Any]:
             """Confirm an execution."""
-            return {"status": "Confirmed"}
+            # Get execution from memory
+            if execution_id not in self._executions:
+                from fastapi import HTTPException
+
+                raise HTTPException(
+                    status_code=404, detail=f"Execution {execution_id} not found"
+                )
+
+            execution = self._executions[execution_id]
+
+            # Update status to Running
+            execution["status"] = "Running"
+
+            # Track start time
+            now = datetime.now(timezone.utc)
+            self._execution_start_times[execution_id] = now
+            execution["startedAt"] = now.strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z"
+
+            # Update updatedAt timestamp
+            execution["updatedAt"] = now.strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z"
+
+            # Update in memory storage
+            self._executions[execution_id] = execution
+
+            return execution.copy()
 
         @self.app.post("/tools/{org_key}/tools/{tool_key}/{tool_version}/executions")
-        def run_tool(org_key: str, tool_key: str, tool_version: str) -> dict[str, str]:
+        async def run_tool(
+            org_key: str, tool_key: str, tool_version: str, request: Request
+        ) -> dict[str, Any]:
             """Run a tool."""
-            return {"executionId": f"exec-{tool_key}-{tool_version}-123"}
+            body = await request.json()
+
+            # Create execution DTO dynamically
+            execution = self._create_execution_dto(
+                tool_key=tool_key,
+                tool_version=tool_version,
+                org_key=org_key,
+                body=body,
+            )
+
+            # Store execution in memory
+            execution_id = execution["executionId"]
+            self._executions[execution_id] = execution
+
+            return execution
 
         @self.app.get("/health")
         def health() -> dict[str, str]:

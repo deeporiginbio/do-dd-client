@@ -1,0 +1,19 @@
+{
+    "status": "success",
+    "message": "System preparation completed successfully",
+    "protein_path": "entities/proteins/db4aa32e2e8ffa976a60004a8361b86427a2e5653a6623bb60b7913445902549.pdb",
+    "ligand_path": "entities/ligands/4897c616dd1dfb06f08170b7f5ca67ce7f6779c2fd03970315c4387e80274225.sdf",
+    "output_files": [
+        "function-runs/system-prep/84b0588224175424ba95c2ec3fb8a1f06cf76130faee26ed34aba770a3d5cad2/bsm_system.xml",
+        "function-runs/system-prep/84b0588224175424ba95c2ec3fb8a1f06cf76130faee26ed34aba770a3d5cad2/system.pdb",
+        "function-runs/system-prep/84b0588224175424ba95c2ec3fb8a1f06cf76130faee26ed34aba770a3d5cad2/solvation.xml"
+    ],
+    "function_key": "deeporigin.system-prep",
+    "function_version": "0.3.2",
+    "parameters": {
+        "add_H_atoms": false,
+        "protonate_protein": false,
+        "retain_waters": false,
+        "padding": 2
+    }
+}

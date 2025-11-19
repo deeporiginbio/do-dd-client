@@ -181,17 +181,6 @@ class Job:
             self._attributes = result
             self.status = result.get("status")
 
-            # Quick and dirty logging for analysis - append progressReport to file
-            try:
-                progress_data = json.loads(result["progressReport"])
-            except Exception:
-                progress_data = result["progressReport"]
-
-            log_file = Path(f"{self._id}.txt")
-            with open(log_file, "a") as f:
-                f.write(json.dumps(progress_data, indent=2))
-                f.write("\n\n")
-
     def _get_running_time(self) -> Optional[int]:
         """Get the running time of the job.
 
@@ -419,7 +408,7 @@ class Job:
         rendered_html = self._render_job_view()
         display(HTML(rendered_html))
 
-    def watch(self):
+    def watch(self, *, interval: float = 5.0):
         """Start monitoring job progress in real-time.
 
         This method initiates a background task that periodically updates
@@ -458,7 +447,7 @@ class Job:
             """Update and display job progress at regular intervals.
 
             This coroutine runs in the background, updating the display
-            with the latest job status and progress every 5 seconds.
+            with the latest job status and progress every `interval` seconds.
             It automatically stops when the job reaches a terminal state.
             """
             try:
@@ -487,7 +476,7 @@ class Job:
                         )
 
                     # Always sleep 5 seconds before next attempt
-                    await asyncio.sleep(5)
+                    await asyncio.sleep(interval)
             finally:
                 # Perform a final non-blocking refresh and render to clear spinner
                 if self._display_id is not None:
