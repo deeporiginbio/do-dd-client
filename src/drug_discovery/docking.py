@@ -158,61 +158,53 @@ class Docking(WorkflowStep):
             return local_paths
 
     @beartype
-    def _get_jobs_df(
+    def get_jobs_df(
         self,
         *,
         pocket_center=None,
         box_size=None,
     ):
-        """search for all jobs that match this protein and ligands in the Job DB, and return a dataframe of the results"""
+        """search for all jobs that match this protein and ligands in the Job DB, and return a dataframe of the results
 
-        jobs = JobList.list(
-            client=self.parent.client,
-        )
-        df = jobs.filter(
-            tool_key=tool_mapper["Docking"],
-            status=list(NON_FAILED_STATES),
-            require_metadata=True,
-        ).to_dataframe(
+        Args:
+            pocket_center: Optional tuple of (x, y, z) coordinates to filter by pocket center
+            box_size: Optional tuple of (x, y, z) dimensions to filter by box size
+        """
+        # Use parent method with docking-specific parameters
+        df = super().get_jobs_df(
             include_metadata=True,
             include_inputs=True,
             include_outputs=True,
-            client=self.parent.client,
+            status=list(NON_FAILED_STATES),
         )
 
-        if pocket_center is not None and len(df) > 0:
-            # Filter df rows where pocket_center matches row["user_inputs"]["pocket_center"]
+        if len(df) == 0:
+            return df
+
+        # Apply docking-specific filters
+        if pocket_center is not None:
             mask = df["user_inputs"].apply(
-                lambda x: bool(np.all(np.isclose(pocket_center, x["pocket_center"])))
+                lambda x: isinstance(x, dict)
+                and "pocket_center" in x
+                and bool(np.all(np.isclose(pocket_center, x["pocket_center"])))
             )
             df = df[mask]
 
-        if box_size is not None and len(df) > 0:
-            # Filter df rows where box_size matches row["user_inputs"]["box_size"]
+        if box_size is not None:
             mask = df["user_inputs"].apply(
-                lambda x: bool(np.all(np.isclose(box_size, x["box_size"])))
+                lambda x: isinstance(x, dict)
+                and "box_size" in x
+                and bool(np.all(np.isclose(box_size, x["box_size"])))
             )
             df = df[mask]
 
-        # filter to only keep jobs that match this protein.
-        if "metadata" in df.columns and len(df) > 0:
-            # first, drop rows where metadata has no protein_hash key
-            has_protein_hash = df["metadata"].apply(
-                lambda x: isinstance(x, dict) and ("protein_hash" in x)
-            )
-            df = df[has_protein_hash]
-
-            # then, keep only rows matching this protein hash
-            mask = df["metadata"].apply(
-                lambda x: x["protein_hash"] == self.parent.protein.to_hash()
-            )
-            df = df[mask]
-
+        # Filter by ligands - only keep jobs where at least one ligand matches
         if "user_inputs" in df.columns and len(df) > 0:
-            # only keep jobs where at least one ligand in that job matches what we have in the current complex
             smiles_strings = [ligand.smiles for ligand in self.parent.ligands]
             mask = df["user_inputs"].apply(
-                lambda x: any(s in smiles_strings for s in x["smiles_list"])
+                lambda x: isinstance(x, dict)
+                and "smiles_list" in x
+                and any(s in smiles_strings for s in x["smiles_list"])
             )
             df = df[mask]
 
@@ -297,7 +289,7 @@ class Docking(WorkflowStep):
 
         smiles_strings = [ligand.smiles for ligand in self.parent.ligands]
 
-        df = self._get_jobs_df(pocket_center=pocket_center, box_size=box_size)
+        df = self.get_jobs_df(pocket_center=pocket_center, box_size=box_size)
 
         already_docked_ligands = []
 

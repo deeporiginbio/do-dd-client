@@ -14,18 +14,24 @@ from typing import Any
 import uuid
 
 from fastapi import FastAPI, Request
-from fastapi.responses import Response
 import uvicorn
+
+from .routers import files
 
 
 class MockServer:
-    """Local test server for mocking DeepOrigin Platform API."""
+    """Local test server for mocking DeepOrigin Platform API.
+
+    When used in tests (via conftest.py), the server runs on port 4931.
+    For standalone use, the port can be specified via the port parameter.
+    """
 
     def __init__(self, port: int = 0, docking_speed: float = 1.0):
         """Initialize the test server.
 
         Args:
             port: Port to run the server on. If 0, uses any available port.
+                Note: Tests use port 4931 (configured in conftest.py).
             docking_speed: Number of dockings to simulate per second for bulk-docking
                 executions. Default is 1.0.
         """
@@ -35,14 +41,14 @@ class MockServer:
         self.thread: threading.Thread | None = None
         self._file_storage: dict[str, bytes] = {}
         self.host: str | None = None
-        self._fixtures_dir = Path(__file__).parent / "fixtures"
+        self._fixtures_dir = Path(__file__).parent.parent / "fixtures"
         self._fixture_cache: dict[str, dict[str, Any]] = {}
         # In-memory storage for executions
         self._executions: dict[str, dict[str, Any]] = {}
         self._execution_start_times: dict[str, datetime] = {}
         # Tool-specific mock execution durations (in seconds)
         self._mock_execution_durations: dict[str, float] = {
-            "deeporigin.abfe-end-to-end": 300.0,  # 5 minutes default
+            "deeporigin.abfe-end-to-end": 30.0,  # seconds
         }
         self.docking_speed = docking_speed
         self._setup_routes()
@@ -380,62 +386,9 @@ class MockServer:
 
     def _setup_routes(self) -> None:
         """Set up all API routes."""
-
-        @self.app.get("/files/{org_key}/directory/{file_path:path}")
-        def list_files(
-            org_key: str, file_path: str, recursive: bool = False
-        ) -> dict[str, Any]:
-            """List files in a directory."""
-            # Return mock file list
-            files = [
-                {"Key": f"{file_path}file1.txt"},
-                {"Key": f"{file_path}file2.txt"},
-            ]
-            if recursive:
-                files.append({"Key": f"{file_path}subdir/file3.txt"})
-            return {"data": files}
-
-        @self.app.get("/files/{org_key}/signedUrl/{remote_path:path}")
-        def get_signed_url(
-            org_key: str, remote_path: str, request: Request
-        ) -> dict[str, str]:
-            """Get a signed URL for downloading a file."""
-            # Return a URL that points back to our server
-            base_url = str(request.base_url).rstrip("/")
-            return {"url": f"{base_url}/files/{org_key}/download/{remote_path}"}
-
-        @self.app.get("/files/{org_key}/download/{remote_path:path}")
-        def download_file(org_key: str, remote_path: str) -> Response:
-            """Download a file."""
-            # Return file content if stored, otherwise create dummy content
-            if remote_path in self._file_storage:
-                content = self._file_storage[remote_path]
-            else:
-                content = b"test file content"
-            return Response(content=content, media_type="application/octet-stream")
-
-        @self.app.put("/files/{org_key}/{remote_path:path}")
-        async def upload_file(
-            org_key: str,
-            remote_path: str,
-            request: Request,
-        ) -> dict[str, str]:
-            """Upload a file."""
-            # Read body directly - for testing purposes, we don't need to parse multipart
-            # The actual file content is in the request body
-            file_data = await request.body()
-            self._file_storage[remote_path] = file_data
-            return {"eTag": "mock-etag", "key": remote_path}
-
-        @self.app.delete("/files/{org_key}/{remote_path:path}")
-        def delete_file(org_key: str, remote_path: str) -> bool:
-            """Delete a file."""
-            # Remove file from storage if it exists
-            if remote_path in self._file_storage:
-                del self._file_storage[remote_path]
-                return True
-            # Return False if file doesn't exist (mimics API behavior)
-            return False
+        # Include file-related routes
+        files_router = files.create_files_router(self._file_storage, self._fixtures_dir)
+        self.app.include_router(files_router)
 
         @self.app.get("/tools/protected/tools/definitions")
         def list_tools() -> dict[str, Any]:
@@ -603,9 +556,6 @@ class MockServer:
             filter: str | None = None,
         ) -> dict[str, Any]:
             """List tool executions."""
-            # Load execution fixture
-            execution_template = self._load_fixture("execution_example")
-
             # Parse filter if provided
             filter_dict = None
             requested_tool_key = None
@@ -630,46 +580,54 @@ class MockServer:
                     if "$in" in status_filter:
                         requested_statuses = status_filter["$in"]
 
-            # Generate multiple executions based on limit/pageSize
+            # Get all executions from in-memory store
+            all_executions = list(self._executions.values())
+
+            # Filter by org_key
+            filtered_executions = [
+                exec for exec in all_executions if exec.get("orgKey") == org_key
+            ]
+
+            # Apply tool_key filter if provided
+            if requested_tool_key:
+                filtered_executions = [
+                    exec
+                    for exec in filtered_executions
+                    if exec.get("tool", {}).get("key") == requested_tool_key
+                ]
+
+            # Apply status filter if provided
+            if requested_statuses:
+                filtered_executions = [
+                    exec
+                    for exec in filtered_executions
+                    if exec.get("status") in requested_statuses
+                ]
+
+            # Apply metadata filter if present
+            if filter_dict and "metadata" in filter_dict:
+                metadata_filter = filter_dict["metadata"]
+                if metadata_filter.get("$exists") is True:
+                    # Only include executions where metadata exists and is not None
+                    filtered_executions = [
+                        exec
+                        for exec in filtered_executions
+                        if exec.get("metadata") is not None
+                    ]
+
+            # Sort by createdAt (most recent first) for consistent ordering
+            filtered_executions.sort(key=lambda x: x.get("createdAt", ""), reverse=True)
+
+            # Apply pagination
             page_size = pageSize if pageSize else limit
-            executions = []
-            for i in range(min(page_size, 10)):
-                execution = execution_template.copy()
-                execution["executionId"] = str(uuid.uuid4())
-                execution["resourceId"] = f"resource-{i:03d}"
-                execution["createdAt"] = f"2025-01-01T00:00:{i:02d}.000Z"
-                execution["startedAt"] = f"2025-01-01T00:00:{i + 1:02d}.000Z"
-                execution["completedAt"] = (
-                    f"2025-01-01T00:01:{i:02d}.000Z" if i % 2 == 0 else None
-                )
-                execution["status"] = (
-                    "Succeeded" if i % 2 == 0 else "Running" if i % 3 == 0 else "Queued"
-                )
+            start_idx = page * page_size
+            end_idx = start_idx + page_size
+            paginated_executions = filtered_executions[start_idx:end_idx]
 
-                # Apply tool_key filter - set the tool key if filter requested it
-                if requested_tool_key:
-                    execution["tool"]["key"] = requested_tool_key
-
-                # Apply status filter - skip if status doesn't match
-                if requested_statuses and execution["status"] not in requested_statuses:
-                    continue
-
-                # Apply metadata filter if present
-                if filter_dict and "metadata" in filter_dict:
-                    metadata_filter = filter_dict["metadata"]
-                    if metadata_filter.get("$exists") is True:
-                        # Ensure metadata exists and is not None
-                        if execution.get("metadata") is None:
-                            execution["metadata"] = {"n_ligands": 5}
-
-                executions.append(execution)
-                # Store execution in memory so it can be retrieved by ID
-                execution_id = execution["executionId"]
-                self._executions[execution_id] = execution
-
+            # Return copies to avoid modifying the stored executions
             return {
-                "count": len(executions),
-                "data": executions,
+                "count": len(filtered_executions),
+                "data": [exec.copy() for exec in paginated_executions],
             }
 
         @self.app.get("/tools/{org_key}/tools/executions/{execution_id}")
@@ -805,7 +763,7 @@ class MockServer:
         self.thread.daemon = True
         self.thread.start()
 
-        # Wait for server to start and get the actual port
+        # Wait for server to start
         import time
 
         max_wait = 5.0
@@ -817,19 +775,10 @@ class MockServer:
         if not self.server.started:
             raise RuntimeError("Test server failed to start")
 
-        # Get the actual port from the server
-        if hasattr(self.server, "servers") and self.server.servers:
-            server_socket = self.server.servers[0].sockets[0]
-            actual_port = server_socket.getsockname()[1]
-        else:
-            # Fallback: use the configured port
-            actual_port = self.port if self.port > 0 else 8000
-
-        # Store host and port for later access
+        # Store host and port (port is already known since we set it)
         self.host = "127.0.0.1"
-        self.port = actual_port
 
-        return ("127.0.0.1", actual_port)
+        return ("127.0.0.1", self.port)
 
     def stop(self) -> None:
         """Stop the test server."""
