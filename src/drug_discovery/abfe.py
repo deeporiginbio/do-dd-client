@@ -13,7 +13,7 @@ from deeporigin.drug_discovery.constants import tool_mapper
 from deeporigin.drug_discovery.structures.ligand import Ligand, LigandSet
 from deeporigin.drug_discovery.workflow_step import WorkflowStep
 from deeporigin.exceptions import DeepOriginException
-from deeporigin.platform.job import Job, get_dataframe
+from deeporigin.platform.job import Job, JobList
 from deeporigin.utils.notebook import get_notebook_environment
 
 LOCAL_BASE = Path.home() / ".deeporigin"
@@ -169,9 +169,14 @@ class ABFE(WorkflowStep):
             # we're re-running, so we need to re-run all ligands
             return ligands
 
-        df = get_dataframe(
+        jobs = JobList.list(
+            client=self.parent.client,
+        )
+        df = jobs.filter(
             tool_key=tool_mapper["ABFE"],
-            only_with_status=["Succeeded", "Running", "Queued", "Created"],
+            status=["Succeeded", "Running", "Queued", "Created"],
+            require_metadata=True,
+        ).to_dataframe(
             include_metadata=True,
             resolve_user_names=False,
             client=self.parent.client,

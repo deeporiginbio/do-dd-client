@@ -9,7 +9,7 @@ from deeporigin.drug_discovery import (
     Complex,
 )
 from deeporigin.drug_discovery.constants import tool_mapper
-from deeporigin.platform.job import Job, get_dataframe
+from deeporigin.platform.job import Job, JobList
 from tests.utils import client  # noqa: F401
 
 
@@ -94,17 +94,16 @@ def test_job_from_dto(client):  # noqa: F811
 
 
 def test_job_df(client):  # noqa: F811
-    _ = get_dataframe(client=client)
+    jobs = JobList.list(client=client)
+    _ = jobs.to_dataframe(client=client)
 
 
 @pytest.mark.dependency()
 def test_job_df_filtering(client):  # noqa: F811
     tool_key = tool_mapper["Docking"]
 
-    df = get_dataframe(
-        tool_key=tool_key,
-        client=client,
-    )
+    jobs = JobList.list(client=client)
+    df = jobs.filter(tool_key=tool_key).to_dataframe(client=client)
 
     assert len(df["tool_key"].unique()) == 1, (
         f"should only be one tool key. Instead there were {len(df['tool_key'].unique())}"

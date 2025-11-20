@@ -3,7 +3,7 @@
 from beartype import beartype
 import pandas as pd
 
-from deeporigin.platform.job import Job, get_dataframe
+from deeporigin.platform.job import Job, JobList
 from deeporigin.utils.core import PrettyDict
 
 
@@ -30,12 +30,17 @@ class WorkflowStep:
     ) -> pd.DataFrame:
         """Get the jobs for this workflow step as a dataframe"""
 
-        df = get_dataframe(
+        jobs = JobList.list(
             client=self.parent.client,
-            resolve_user_names=False,
+        )
+        df = jobs.filter(
+            status=["Running", "Queued", "Created", "Succeeded", "Quoted"],
+            require_metadata=True,
+        ).to_dataframe(
             include_metadata=True,
             include_outputs=include_outputs,
-            only_with_status=["Running", "Queued", "Created", "Succeeded", "Quoted"],
+            resolve_user_names=False,
+            client=self.parent.client,
         )
 
         if len(df) == 0:

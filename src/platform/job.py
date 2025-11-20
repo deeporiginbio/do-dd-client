@@ -1113,9 +1113,10 @@ class JobList:
     def filter(
         self,
         *,
-        status: Optional[str] = None,
+        status: Optional[str | list[str] | set[str]] = None,
         tool_key: Optional[str] = None,
         tool_version: Optional[str] = None,
+        require_metadata: bool = False,
         predicate: Optional[Callable[[Job], bool]] = None,
         **kwargs,
     ) -> "JobList":
@@ -1126,12 +1127,14 @@ class JobList:
         first (with AND logic), then the predicate function is applied if provided.
 
         Args:
-            status: Filter by job status (e.g., "Succeeded", "Running", "Failed").
+            status: Filter by job status. Can be a single status string (e.g., "Succeeded"),
+                or a list/set of statuses (e.g., ["Succeeded", "Running", "Queued"]).
                 Checks against job.status property.
             tool_key: Filter by tool key (e.g., "deeporigin.docking", "deeporigin.abfe-end-to-end").
                 Checks against job._attributes["tool"]["key"].
             tool_version: Filter by tool version (e.g., "1.0.0").
                 Checks against job._attributes["tool"]["version"].
+            require_metadata: If True, only include jobs that have metadata that exists and is not None.
             predicate: Optional callable that takes a Job and returns True/False.
                 Applied after keyword filters. Useful for complex conditions or
                 accessing nested attributes.
@@ -1147,6 +1150,7 @@ class JobList:
 
                 succeeded_jobs = jobs.filter(status="Succeeded")
                 running_jobs = jobs.filter(status="Running")
+                multiple_statuses = jobs.filter(status=["Succeeded", "Running", "Queued"])
 
             Filter by tool attributes::
 
@@ -1178,7 +1182,12 @@ class JobList:
 
         # Apply status filter
         if status is not None:
-            filtered = [job for job in filtered if job.status == status]
+            if isinstance(status, str):
+                filtered = [job for job in filtered if job.status == status]
+            else:
+                # Convert set to list for consistent handling
+                status_list = list(status) if isinstance(status, set) else status
+                filtered = [job for job in filtered if job.status in status_list]
 
         # Apply tool_key filter
         if tool_key is not None:
@@ -1198,6 +1207,14 @@ class JobList:
                 and job._attributes.get("tool", {}).get("version") == tool_version
             ]
 
+        # Apply metadata requirement filter
+        if require_metadata:
+            filtered = [
+                job
+                for job in filtered
+                if job._attributes and job._attributes.get("metadata") is not None
+            ]
+
         # Apply attribute filters
         for key, value in kwargs.items():
             filtered = [
@@ -1212,54 +1229,124 @@ class JobList:
 
         return JobList(filtered)
 
-    def to_dataframe(self) -> pd.DataFrame:
+    def to_dataframe(
+        self,
+        *,
+        include_metadata: bool = False,
+        include_inputs: bool = False,
+        include_outputs: bool = False,
+        resolve_user_names: bool = False,
+        client: Optional[DeepOriginClient] = None,
+    ) -> pd.DataFrame:
         """Convert the JobList to a pandas DataFrame.
 
         Extracts data from each job's _attributes dictionary and creates a DataFrame
-        with the default columns: status, executionId, createdAt, updatedAt,
-        completedAt, startedAt, approveAmount, tool.key, and tool.version.
+        with the default columns: id, created_at, resource_id, completed_at, started_at,
+        status, tool_key, tool_version, user_name, and run_duration_minutes.
+
+        Args:
+            include_metadata: If True, include metadata column in the DataFrame.
+            include_inputs: If True, include user_inputs column in the DataFrame.
+            include_outputs: If True, include user_outputs column in the DataFrame.
+            resolve_user_names: If True, resolve user IDs to user names. Requires
+                fetching users from the API.
+            client: Optional client for API calls. Required if resolve_user_names is True.
 
         Returns:
             A pandas DataFrame with one row per job.
         """
+        # Resolve user names if requested
+        user_id_to_name: Optional[Dict[str, str]] = None
+        if resolve_user_names:
+            if client is None:
+                client = DeepOriginClient.get()
+            from deeporigin.platform import entities_api
+
+            users = entities_api.get_organization_users(
+                client=client,
+            )
+
+            # Create a mapping of user IDs to user names
+            user_id_to_name = {
+                user["id"]: user["firstName"] + " " + user["lastName"] for user in users
+            }
+
         # Initialize lists to store data
         data = {
+            "id": [],
+            "created_at": [],
+            "resource_id": [],
+            "completed_at": [],
+            "started_at": [],
             "status": [],
-            "executionId": [],
-            "createdAt": [],
-            "updatedAt": [],
-            "completedAt": [],
-            "startedAt": [],
-            "approveAmount": [],
-            "tool.key": [],
-            "tool.version": [],
+            "tool_key": [],
+            "tool_version": [],
+            "user_name": [],
+            "run_duration_minutes": [],
         }
+
+        if include_metadata:
+            data["metadata"] = []
+
+        if include_inputs:
+            data["user_inputs"] = []
+
+        if include_outputs:
+            data["user_outputs"] = []
 
         for job in self.jobs:
             attributes = job._attributes if job._attributes else {}
 
+            # Add basic fields
+            data["id"].append(attributes.get("executionId"))
+            data["created_at"].append(attributes.get("createdAt"))
+            data["resource_id"].append(attributes.get("resourceId"))
+            data["completed_at"].append(attributes.get("completedAt"))
+            data["started_at"].append(attributes.get("startedAt"))
             data["status"].append(attributes.get("status"))
-            data["executionId"].append(attributes.get("executionId"))
-            data["createdAt"].append(attributes.get("createdAt"))
-            data["updatedAt"].append(attributes.get("updatedAt"))
-            data["completedAt"].append(attributes.get("completedAt"))
-            data["startedAt"].append(attributes.get("startedAt"))
-            data["approveAmount"].append(attributes.get("approveAmount"))
 
             # Extract tool.key and tool.version from tool dict
             tool = attributes.get("tool")
             if isinstance(tool, dict):
-                data["tool.key"].append(tool.get("key"))
-                data["tool.version"].append(tool.get("version"))
+                data["tool_key"].append(tool.get("key"))
+                data["tool_version"].append(tool.get("version"))
             else:
-                data["tool.key"].append(None)
-                data["tool.version"].append(None)
+                data["tool_key"].append(None)
+                data["tool_version"].append(None)
+
+            # Handle user name
+            user_id = attributes.get("createdBy", "Unknown")
+            if resolve_user_names and user_id_to_name is not None:
+                data["user_name"].append(user_id_to_name.get(user_id, "Unknown"))
+            else:
+                data["user_name"].append(user_id)
+
+            # Calculate run duration in minutes
+            completed_at = attributes.get("completedAt")
+            started_at = attributes.get("startedAt")
+            if completed_at and started_at:
+                start = parser.isoparse(started_at)
+                end = parser.isoparse(completed_at)
+                duration = round((end - start).total_seconds() / 60)
+                data["run_duration_minutes"].append(duration)
+            else:
+                data["run_duration_minutes"].append(None)
+
+            if include_metadata:
+                data["metadata"].append(attributes.get("metadata"))
+
+            if include_inputs:
+                user_inputs = attributes.get("userInputs", {})
+                data["user_inputs"].append(user_inputs)
+
+            if include_outputs:
+                data["user_outputs"].append(attributes.get("userOutputs", {}))
 
         # Create DataFrame
         df = pd.DataFrame(data)
 
         # Convert datetime columns
-        datetime_cols = ["createdAt", "updatedAt", "completedAt", "startedAt"]
+        datetime_cols = ["created_at", "completed_at", "started_at"]
         for col in datetime_cols:
             if col in df.columns:
                 df[col] = (

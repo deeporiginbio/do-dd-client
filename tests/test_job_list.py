@@ -762,35 +762,34 @@ def test_to_dataframe():
     # Check DataFrame structure
     assert isinstance(df, pd.DataFrame)
     assert len(df) == 2
-    assert list(df.columns) == [
+    expected_columns = [
+        "id",
+        "created_at",
+        "resource_id",
+        "completed_at",
+        "started_at",
         "status",
-        "executionId",
-        "createdAt",
-        "updatedAt",
-        "completedAt",
-        "startedAt",
-        "approveAmount",
-        "tool.key",
-        "tool.version",
+        "tool_key",
+        "tool_version",
+        "user_name",
+        "run_duration_minutes",
     ]
+    for col in expected_columns:
+        assert col in df.columns
 
     # Check data
     assert df.iloc[0]["status"] == "Succeeded"
-    assert df.iloc[0]["executionId"] == "id-1"
-    assert df.iloc[0]["approveAmount"] == 100.0
-    assert df.iloc[0]["tool.key"] == "tool1"
-    assert df.iloc[0]["tool.version"] == "1.0"
+    assert df.iloc[0]["id"] == "id-1"
+    assert df.iloc[0]["tool_key"] == "tool1"
+    assert df.iloc[0]["tool_version"] == "1.0"
     assert df.iloc[1]["status"] == "Running"
-    assert df.iloc[1]["executionId"] == "id-2"
-    assert pd.isna(df.iloc[1]["completedAt"])
-    assert pd.isna(df.iloc[1]["approveAmount"])
-    assert df.iloc[1]["tool.key"] == "tool2"
-    assert df.iloc[1]["tool.version"] == "2.0"
+    assert df.iloc[1]["id"] == "id-2"
+    assert df.iloc[1]["tool_key"] == "tool2"
+    assert df.iloc[1]["tool_version"] == "2.0"
 
     # Check datetime columns are converted
-    assert pd.api.types.is_datetime64_any_dtype(df["createdAt"])
-    assert pd.api.types.is_datetime64_any_dtype(df["updatedAt"])
-    assert pd.api.types.is_datetime64_any_dtype(df["startedAt"])
+    assert pd.api.types.is_datetime64_any_dtype(df["created_at"])
+    assert pd.api.types.is_datetime64_any_dtype(df["started_at"])
 
 
 def test_to_dataframe_with_missing_attributes():
@@ -809,10 +808,10 @@ def test_to_dataframe_with_missing_attributes():
 
     assert len(df) == 2
     assert df.iloc[0]["status"] == "Succeeded"
-    assert df.iloc[0]["executionId"] == "id-1"
+    assert df.iloc[0]["id"] == "id-1"
     # All other fields should be None for job2
     assert df.iloc[1]["status"] is None
-    assert df.iloc[1]["executionId"] is None
+    assert df.iloc[1]["id"] is None
 
 
 def test_to_dataframe_with_missing_keys():
@@ -829,12 +828,113 @@ def test_to_dataframe_with_missing_keys():
 
     assert len(df) == 1
     assert df.iloc[0]["status"] == "Succeeded"
-    assert df.iloc[0]["executionId"] == "id-1"
+    assert df.iloc[0]["id"] == "id-1"
     # Missing keys should be None/NaT (NaT for datetime columns)
-    assert pd.isna(df.iloc[0]["createdAt"])
-    assert df.iloc[0]["approveAmount"] is None
-    assert df.iloc[0]["tool.key"] is None
-    assert df.iloc[0]["tool.version"] is None
+    assert pd.isna(df.iloc[0]["created_at"])
+    assert df.iloc[0]["tool_key"] is None
+    assert df.iloc[0]["tool_version"] is None
+
+
+def test_filter_by_multiple_statuses():
+    """Test filtering jobs by multiple statuses."""
+    job1 = Job(name="job1", _id="id-1", _skip_sync=True)
+    job1.status = "Succeeded"
+
+    job2 = Job(name="job2", _id="id-2", _skip_sync=True)
+    job2.status = "Running"
+
+    job3 = Job(name="job3", _id="id-3", _skip_sync=True)
+    job3.status = "Failed"
+
+    job_list = JobList([job1, job2, job3])
+
+    # Filter by list of statuses
+    filtered = job_list.filter(status=["Succeeded", "Running"])
+    assert len(filtered) == 2
+    assert filtered[0].status == "Succeeded"
+    assert filtered[1].status == "Running"
+
+    # Filter by set of statuses
+    filtered = job_list.filter(status={"Succeeded", "Failed"})
+    assert len(filtered) == 2
+
+
+def test_filter_require_metadata():
+    """Test filtering jobs that require metadata."""
+    job1 = Job(name="job1", _id="id-1", _skip_sync=True)
+    job1._attributes = {"metadata": {"key": "value"}}
+
+    job2 = Job(name="job2", _id="id-2", _skip_sync=True)
+    job2._attributes = {"metadata": None}
+
+    job3 = Job(name="job3", _id="id-3", _skip_sync=True)
+    job3._attributes = {}  # No metadata key
+
+    job_list = JobList([job1, job2, job3])
+
+    filtered = job_list.filter(require_metadata=True)
+    assert len(filtered) == 1
+    assert filtered[0]._id == "id-1"
+
+
+def test_to_dataframe_with_optional_columns():
+    """Test to_dataframe with include_metadata, include_inputs, include_outputs."""
+    job = Job(name="job1", _id="id-1", _skip_sync=True)
+    job._attributes = {
+        "status": "Succeeded",
+        "executionId": "id-1",
+        "metadata": {"key": "value"},
+        "userInputs": {"smiles_list": ["CCO", "CCC"]},
+        "userOutputs": {"result": "data"},
+    }
+
+    job_list = JobList([job])
+
+    # Test with all optional columns
+    df = job_list.to_dataframe(
+        include_metadata=True, include_inputs=True, include_outputs=True
+    )
+    assert "metadata" in df.columns
+    assert "user_inputs" in df.columns
+    assert "user_outputs" in df.columns
+    assert df.iloc[0]["metadata"] == {"key": "value"}
+    assert df.iloc[0]["user_inputs"] == {"smiles_list": ["CCO", "CCC"]}
+    assert df.iloc[0]["user_outputs"] == {"result": "data"}
+
+    # Test without optional columns
+    df = job_list.to_dataframe()
+    assert "metadata" not in df.columns
+    assert "user_inputs" not in df.columns
+    assert "user_outputs" not in df.columns
+
+
+def test_to_dataframe_run_duration():
+    """Test to_dataframe calculates run_duration_minutes correctly."""
+    job = Job(name="job1", _id="id-1", _skip_sync=True)
+    job._attributes = {
+        "status": "Succeeded",
+        "executionId": "id-1",
+        "startedAt": "2025-01-01T00:00:00.000Z",
+        "completedAt": "2025-01-01T01:30:00.000Z",  # 90 minutes
+    }
+
+    job_list = JobList([job])
+    df = job_list.to_dataframe()
+
+    assert df.iloc[0]["run_duration_minutes"] == 90
+
+    # Test with missing dates
+    job2 = Job(name="job2", _id="id-2", _skip_sync=True)
+    job2._attributes = {
+        "status": "Running",
+        "executionId": "id-2",
+        "startedAt": "2025-01-01T00:00:00.000Z",
+        # No completedAt
+    }
+
+    job_list2 = JobList([job2])
+    df2 = job_list2.to_dataframe()
+    assert df2.iloc[0]["run_duration_minutes"] is None
 
 
 def test_job_list_render_view_with_docking_tool():

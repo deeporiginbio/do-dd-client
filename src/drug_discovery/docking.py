@@ -19,7 +19,7 @@ from deeporigin.drug_discovery.structures.pocket import Pocket
 from deeporigin.drug_discovery.workflow_step import WorkflowStep
 from deeporigin.exceptions import DeepOriginException
 from deeporigin.platform.constants import NON_FAILED_STATES
-from deeporigin.platform.job import Job, JobList, get_dataframe
+from deeporigin.platform.job import Job, JobList
 
 Number = float | int
 LOCAL_BASE = Path.home() / ".deeporigin"
@@ -158,7 +158,7 @@ class Docking(WorkflowStep):
             return local_paths
 
     @beartype
-    def _get_jobs(
+    def _get_jobs_df(
         self,
         *,
         pocket_center=None,
@@ -166,9 +166,14 @@ class Docking(WorkflowStep):
     ):
         """search for all jobs that match this protein and ligands in the Job DB, and return a dataframe of the results"""
 
-        df = get_dataframe(
+        jobs = JobList.list(
+            client=self.parent.client,
+        )
+        df = jobs.filter(
             tool_key=tool_mapper["Docking"],
-            only_with_status=NON_FAILED_STATES,
+            status=list(NON_FAILED_STATES),
+            require_metadata=True,
+        ).to_dataframe(
             include_metadata=True,
             include_inputs=True,
             include_outputs=True,
@@ -292,7 +297,7 @@ class Docking(WorkflowStep):
 
         smiles_strings = [ligand.smiles for ligand in self.parent.ligands]
 
-        df = self._get_jobs(pocket_center=pocket_center, box_size=box_size)
+        df = self._get_jobs_df(pocket_center=pocket_center, box_size=box_size)
 
         already_docked_ligands = []
 
@@ -309,11 +314,11 @@ class Docking(WorkflowStep):
         chunks = list(more_itertools.chunked(smiles_strings, batch_size))
 
         def process_chunk(chunk):
-            params = dict(
-                box_size=list(box_size),
-                pocket_center=list(pocket_center),
-                smiles_list=chunk,
-            )
+            params = {
+                "box_size": list(box_size),
+                "pocket_center": list(pocket_center),
+                "smiles_list": chunk,
+            }
 
             params["protein"] = {
                 "$provider": "ufa",
