@@ -1149,21 +1149,39 @@ class LigandSet:
         """
         num_ligands = len(self.ligands)
 
+        # Calculate unique SMILES to determine if these are poses of the same ligand
+        unique_smiles = (
+            len({ligand.smiles for ligand in self.ligands if ligand.smiles})
+            if num_ligands > 0
+            else 0
+        )
+
         # Build summary HTML
-        ligand_word = "ligand" if num_ligands == 1 else "ligands"
+        # Use "poses" only when there are multiple ligands with the same SMILES
+        if unique_smiles == 1 and num_ligands > 1:
+            ligand_word = "poses"
+        else:
+            ligand_word = "ligand" if num_ligands == 1 else "ligands"
         html_parts = [
-            "<div style='padding: 15px; border: 1px solid #ddd; border-radius: 6px; background-color: #f9f9f9;'>",
+            "<div style='width: 500px; padding: 15px; border: 1px solid #ddd; border-radius: 6px; background-color: #f9f9f9;'>",
             f"<h3 style='margin-top: 0; color: #333;'>LigandSet with {num_ligands} {ligand_word}</h3>",
         ]
 
         if num_ligands > 0:
             # Add summary statistics
-            unique_smiles = len(
-                {ligand.smiles for ligand in self.ligands if ligand.smiles}
-            )
-            html_parts.append(
-                f"<p style='margin: 8px 0;'><strong>{unique_smiles}</strong> unique SMILES</p>"
-            )
+            if unique_smiles == 1:
+                # Get the SMILES string (all ligands have the same one)
+                smiles_str = next(
+                    (ligand.smiles for ligand in self.ligands if ligand.smiles), None
+                )
+                if smiles_str:
+                    html_parts.append(
+                        f"<p style='margin: 8px 0;'><strong>SMILES:</strong> {smiles_str}</p>"
+                    )
+            else:
+                html_parts.append(
+                    f"<p style='margin: 8px 0;'><strong>{unique_smiles}</strong> unique SMILES</p>"
+                )
 
             # Show property summary if available
             if self.ligands and self.ligands[0].properties:
@@ -1188,8 +1206,8 @@ class LigandSet:
             html_parts.append(
                 "<div style='margin-top: 12px; padding-top: 12px; border-top: 1px solid #ddd;'>"
                 "<p style='margin: 4px 0; font-size: 0.9em; color: #666;'>"
-                "<em>Use <code>.to_dataframe()</code> to view as DataFrame, "
-                "<code>.show_df()</code> for interactive view with structures, "
+                "<em>Use <code>.to_dataframe()</code> to convert to a dataframe, "
+                "<code>.show_df()</code> to view dataframewith structures, "
                 "or <code>.show()</code> for 3D visualization</em>"
                 "</p>"
                 "</div>"

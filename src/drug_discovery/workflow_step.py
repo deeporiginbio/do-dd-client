@@ -17,11 +17,41 @@ class WorkflowStep:
     """
     _tool_key: str = ""  # To be overridden by derived classes
     parent = None
-    jobs: list[Job] | None = None
+    jobs: list[Job] | JobList | None = None
 
     def __init__(self, parent):
         self.parent = parent
         self._params = PrettyDict()
+
+    @beartype
+    def get_jobs(
+        self,
+        *,
+        status: list[str] | None = None,
+    ) -> JobList:
+        """Get the jobs for this workflow step and save to self.jobs
+
+        Args:
+            status: List of job statuses to filter by. If None, uses default non-failed states.
+
+        Returns:
+            JobList containing the filtered jobs.
+        """
+        if status is None:
+            status = ["Running", "Queued", "Created", "Succeeded", "Quoted"]
+
+        jobs = JobList.list(
+            client=self.parent.client,
+        )
+        # Filter jobs by tool_key and status
+        filtered_jobs = jobs.filter(
+            tool_key=self._tool_key if self._tool_key else None,
+            status=status,
+            require_metadata=True,
+        )
+
+        self.jobs = filtered_jobs
+        return filtered_jobs
 
     def get_jobs_df(
         self,
@@ -39,18 +69,11 @@ class WorkflowStep:
             include_outputs: Whether to include user_outputs column in the dataframe
             status: List of job statuses to filter by. If None, uses default non-failed states.
         """
-        if status is None:
-            status = ["Running", "Queued", "Created", "Succeeded", "Quoted"]
+        # Get filtered jobs (this avoids duplicate backend requests)
+        jobs = self.get_jobs(status=status)
 
-        jobs = JobList.list(
-            client=self.parent.client,
-        )
         # Always include metadata for filtering purposes, even if not requested in output
-        df = jobs.filter(
-            tool_key=self._tool_key if self._tool_key else None,
-            status=status,
-            require_metadata=True,
-        ).to_dataframe(
+        df = jobs.to_dataframe(
             include_metadata=True,  # Always include for filtering
             include_inputs=include_inputs,
             include_outputs=include_outputs,
@@ -81,18 +104,3 @@ class WorkflowStep:
         df = df.reset_index(drop=True)
 
         return df
-
-    @beartype
-    def get_jobs(self) -> None:
-        """Get the jobs for this workflow step and save to self.jobs"""
-        df = self.get_jobs_df()
-
-        job_ids = df["id"].tolist()
-
-        self.jobs = [
-            Job.from_id(
-                job_id,
-                client=self.parent.client,
-            )
-            for job_id in job_ids
-        ]

@@ -543,3 +543,72 @@ def test_filter_top_poses_single_top_pose():
     poses = poses.filter_top_poses()
 
     assert len(poses) == 1, "Expected 1 poses in the filtered pose set"
+
+
+def test_render_view_with_same_smiles():
+    """Test that _render_view uses 'poses' when all ligands have the same SMILES"""
+    from deeporigin.drug_discovery.structures.ligand import LigandSet
+
+    # Create multiple ligands with the same SMILES (different poses)
+    same_smiles = "CCO"
+    ligand1 = Ligand.from_smiles(same_smiles, name="pose1")
+    ligand2 = Ligand.from_smiles(same_smiles, name="pose2")
+    ligand3 = Ligand.from_smiles(same_smiles, name="pose3")
+
+    ligand_set = LigandSet(ligands=[ligand1, ligand2, ligand3])
+    html = ligand_set._render_view()
+
+    # Should use "poses" since all have the same SMILES
+    assert "3 poses" in html
+    assert "ligands" not in html or html.count("ligands") == 0
+    # Should show the actual SMILES string, not "1 unique SMILES"
+    assert f"<strong>SMILES:</strong> {same_smiles}" in html
+    assert "1 unique SMILES" not in html
+
+
+def test_render_view_with_different_smiles():
+    """Test that _render_view uses 'ligands' when ligands have different SMILES"""
+    from deeporigin.drug_discovery.structures.ligand import LigandSet
+
+    # Create ligands with different SMILES
+    ligand1 = Ligand.from_smiles("CCO", name="ethanol")
+    ligand2 = Ligand.from_smiles("CCCO", name="propanol")
+
+    ligand_set = LigandSet(ligands=[ligand1, ligand2])
+    html = ligand_set._render_view()
+
+    # Should use "ligands" since they have different SMILES
+    assert "2 ligands" in html
+    assert "poses" not in html or html.count("poses") == 0
+    # Should show count of unique SMILES, not the actual SMILES
+    assert "<strong>2</strong> unique SMILES" in html
+
+
+def test_render_view_single_pose():
+    """Test that _render_view uses 'pose' (singular) for a single ligand with unique SMILES"""
+    from deeporigin.drug_discovery.structures.ligand import LigandSet
+
+    # Create a single ligand
+    ligand = Ligand.from_smiles("CCO", name="ethanol")
+    ligand_set = LigandSet(ligands=[ligand])
+    html = ligand_set._render_view()
+
+    # Should use "ligand" (singular) since there's only one
+    assert "1 ligand" in html
+
+
+def test_render_view_single_pose_same_smiles():
+    """Test that _render_view uses 'ligand' for a single ligand even with same SMILES"""
+    from deeporigin.drug_discovery.structures.ligand import LigandSet
+
+    # Create a single ligand
+    smiles = "CCO"
+    ligand = Ligand.from_smiles(smiles, name="pose1")
+    ligand_set = LigandSet(ligands=[ligand])
+    html = ligand_set._render_view()
+
+    # When there's only one ligand, should use "ligand" (not "pose")
+    assert "1 ligand" in html
+    # Should show the actual SMILES string, not "1 unique SMILES"
+    assert f"<strong>SMILES:</strong> {smiles}" in html
+    assert "1 unique SMILES" not in html
