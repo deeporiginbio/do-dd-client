@@ -45,7 +45,7 @@ You will see something like:
 
 Before starting a ABFE run, you can estimate costs using:
 
-``````{.python notest}
+```{.python notest}
 # assuming we want to perform a single ABFE run on a single ligand
 ligand = sim.ligands[0]
 jobs = sim.abfe.run(ligand=ligand, quote=True)
