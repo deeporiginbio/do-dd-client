@@ -5,7 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, Request
 from fastapi.responses import Response
 
 
@@ -88,6 +88,8 @@ def create_files_router(
             content = file_storage[remote_path]
         else:
             # Raise error if file doesn't exist
+            from fastapi import HTTPException
+
             raise HTTPException(
                 status_code=404, detail=f"File not found: {remote_path}"
             )
@@ -101,6 +103,12 @@ def create_files_router(
         request: Request,
     ) -> dict[str, str]:
         """Upload a file."""
+        # Read the file content from the request body
+        content = await request.body()
+
+        # Store in file_storage for tracking uploaded files
+        file_storage[remote_path] = content
+
         # Normalize path and construct fixture path
         fixture_path = _get_fixture_path(remote_path, fixtures_dir)
 
@@ -125,11 +133,15 @@ def create_files_router(
     @router.delete("/files/{org_key}/{remote_path:path}")
     def delete_file(org_key: str, remote_path: str) -> bool:
         """Delete a file."""
+        # Check if file exists in fixtures
+        fixture_path = _get_fixture_path(remote_path, fixtures_dir)
+        file_exists = fixture_path.exists() or remote_path in file_storage
+
         # Remove file from storage if it exists (but don't delete from disk)
         if remote_path in file_storage:
             del file_storage[remote_path]
-            return True
-        # Return False if file doesn't exist (mimics API behavior)
-        return False
+
+        # Return True if file exists (in fixtures or storage), False otherwise
+        return file_exists
 
     return router

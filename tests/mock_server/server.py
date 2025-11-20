@@ -51,6 +51,7 @@ class MockServer:
             "deeporigin.abfe-end-to-end": 30.0,  # seconds
         }
         self.docking_speed = docking_speed
+        self._load_execution_fixtures()
         self._setup_routes()
 
     def _load_fixture(self, fixture_name: str) -> dict[str, Any]:
@@ -78,6 +79,17 @@ class MockServer:
 
         self._fixture_cache[fixture_name] = data
         return data
+
+    def _load_execution_fixtures(self) -> None:
+        """Load all execution fixtures from the executions directory."""
+        executions_dir = self._fixtures_dir / "executions"
+        if executions_dir.exists():
+            for fixture_file in executions_dir.glob("*.json"):
+                with open(fixture_file) as f:
+                    execution_data = json.load(f)
+                    execution_id = execution_data.get("executionId")
+                    if execution_id:
+                        self._executions[execution_id] = execution_data
 
     def _load_execution_fixture(self, execution_id: str) -> dict[str, Any]:
         """Load an execution fixture by execution ID.
