@@ -1,5 +1,7 @@
 """this module contains the Job class"""
 
+from __future__ import annotations
+
 import asyncio
 from collections import Counter
 import concurrent.futures
