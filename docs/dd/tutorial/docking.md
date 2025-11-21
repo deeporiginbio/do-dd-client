@@ -89,7 +89,7 @@ jobs = sim.docking.run(pocket=pocket)
 We get back a widget representing the Jobs that will run. These Jobs are in the `Quoted` state, and provide an estimate of how much this will cost. 
 
 <iframe 
-    src="./docking-quote.html" 
+    src="../../images/docking-quote.html" 
     width="100%" 
     height="400" 
     style="border:none;"
@@ -120,7 +120,7 @@ jobs
 The widget will update as ligands are docked, as shown below:
 
 <iframe 
-    src="./docking-running.html" 
+    src="../../images/docking-running.html" 
     width="100%" 
     height="300" 
     style="border:none;"
@@ -183,7 +183,7 @@ poses.plot()
 This generates an interactive scatter plot similar to:
 
 <iframe 
-    src="./docking-scatter.html" 
+    src="../../images/docking-scatter.html" 
     width="100%" 
     height="600" 
     style="border:none;"

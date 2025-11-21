@@ -55,7 +55,7 @@ job = jobs[0]
 You will get back a widget representing this job such as this:
 
 <iframe 
-    src="./abfe-quote.html" 
+    src="../../images/abfe-quote.html" 
     width="100%" 
     height="340" 
     style="border:none;"
@@ -82,7 +82,7 @@ This will start the ABFE run and the job widget will now display:
 
 
 <iframe 
-    src="./abfe-running.html" 
+    src="../../images/abfe-running.html" 
     width="100%" 
     height="340" 
     style="border:none;"
@@ -268,4 +268,6 @@ This shows a table similar to:
 | -9.98 | 0.0 | 99.23 | 77.78  | -11.46    | 1       | 0.08     | COCCn1cc(-c2cccc(C(=O)N(C)C)c2)c2cc[nH]c2c1=O                           | -7.22    |
 
 
-### 
+### Viewing trajectories
+
+To view MD trajectories from this run, refer to this [How-to section](../how-to/visualize-abfe-trajectories.md)

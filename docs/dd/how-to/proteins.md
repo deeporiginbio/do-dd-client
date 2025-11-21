@@ -108,7 +108,7 @@ A visualization such as this will be shown:
 <iframe 
     src="../../images/1eby.html" 
     width="100%" 
-    height="600" 
+    height="610" 
     style="border:none;"
     title="Protein visualization"
 ></iframe>
@@ -143,6 +143,9 @@ ligand = protein.extract_ligand()
 
 ### Loop modelling 
 
+!!! warning "Coming soon"
+    Loop modelling functionality is under active development and will be available soon.
+
 Missing information and gaps in the structure can be filled in using the Loop Modelling tool. 
 
 For example, this protein from the PDB has missing elements, as can be seen from the dashed lines below:
@@ -157,7 +160,7 @@ protein.show()
 <iframe 
     src="../../images/5QSP.html" 
     width="100%" 
-    height="600" 
+    height="610" 
     style="border:none;"
     title="Protein visualization"
 ></iframe>
@@ -316,7 +319,7 @@ chains_ab = protein.select_chains(['A', 'B'])
 1. Always visualize the structure before and after preparation to ensure the desired changes were made
 2. When working with metalloproteins, use `remove_hetatm()` with appropriate `keep_resnames` or `remove_metals` parameters
 3. For multi-chain proteins, consider selecting specific chains before preparation
-4. Save the prepared structure using `to_pdb()` if you need to use it later:
+4. Save the prepared structure using `to_pdb()` if you need to use it outside of Deep Origin APIs.
 
 ```{.python notest}
 # Save the prepared structure
@@ -332,7 +335,6 @@ protein.to_pdb("prepared_protein.pdb")
 protein = Protein.from_pdb_id("1EBY")
 protein.remove_water()  # Remove water molecules
 protein.remove_hetatm(keep_resnames=['ZN'])  # Keep important cofactors
-protein.to_pdb("docking_ready.pdb")
 ```
 
 ### Working with Metalloproteins

@@ -15,11 +15,10 @@
 </div>
 
 <iframe 
-src="./images/1eby.html" 
-width="100%" 
-height="650" 
-style="border:none;"
-title="1EBY"
+    src="./images/docking-running.html" 
+    width="100%" 
+    height="300" 
+    style="border:none;"
+    title="Running Docking Job"
 ></iframe>
-
 
