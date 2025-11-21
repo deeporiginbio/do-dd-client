@@ -4,7 +4,7 @@ This document describes how to [dock :octicons-link-external-16:](https://en.wik
 
 
 !!! tip "Looking to dock a few ligands?"
-    This document describes how to dock a large number of ligands using a batch job. To dock a single (or a few ligands), you might prefer to use the `.dock()` function of the `Protein` class, as [described here](../how-to/docking.md). 
+    This document describes how to dock more than a handful of ligands (>10) using a batch job. To dock a single (or a few ligands), you might prefer to use the `.dock()` function of the `Protein` class, as [described here](../how-to/docking.md). 
 
 ## Prerequisites
 
@@ -16,12 +16,10 @@ from deeporigin.drug_discovery import Complex, BRD_DATA_DIR
 sim = Complex.from_dir(BRD_DATA_DIR) 
 ```
 
-For more details on how to get started, see [:material-page-previous: Getting Started ](./getting-started.md).
-
 
 ## Find pockets
 
-First we find pockets in the protein using:
+We find pockets in the protein using:
 
 ```{.python notest}
 pockets = sim.protein.find_pockets(pocket_count=1)
@@ -43,40 +41,92 @@ You should see something along the lines of:
     title="Protein visualization"
 ></iframe>
 
+We can see that the protein is shown together with the identified pocket in red. 
+
 !!! tip "The Pocket Finder Function"
     For more details on how to use the Pocket Finder, look at the [How To section for the Pocket Finder](../how-to/find-pockets.md).
 
+The `pocket` object can be inspected, too:
 
-## Starting a docking run
+```{.python notest}
+pocket
+```
 
-### Using a pocket
+!!! success "Expected Output"
+    ```
+    Pocket:
+    ╭─────────────────────────┬──────────────╮
+    │ Name                    │ pocket_1     │
+    ├─────────────────────────┼──────────────┤
+    │ Color                   │ red          │
+    ├─────────────────────────┼──────────────┤
+    │ Volume                  │ 545.0 Å³     │
+    ├─────────────────────────┼──────────────┤
+    │ Total SASA              │ 1560.474 Å²  │
+    ├─────────────────────────┼──────────────┤
+    │ Polar SASA              │ 762.11224 Å² │
+    ├─────────────────────────┼──────────────┤
+    │ Polar/Apolar SASA ratio │ 0.95459515   │
+    ├─────────────────────────┼──────────────┤
+    │ Hydrophobicity          │ 15.903226    │
+    ├─────────────────────────┼──────────────┤
+    │ Polarity                │ 17.0         │
+    ├─────────────────────────┼──────────────┤
+    │ Drugability score       │ 0.83243614   │
+    ╰─────────────────────────┴──────────────╯
+    ```
 
-To dock all ligands in the complex to the protein, using the pocket we found, we can do:
+## Estimate the cost of a docking run
+
+To estimate the cost of docking all the Ligands in the Complex to the Protein, using the pocket we found, we can do:
 
 
 ```{.python notest}
 pocket = pockets[0] # or choose as needed
-sim.docking.run(pocket=pocket)
-
+jobs = sim.docking.run(pocket=pocket)
 ```
 
-### Using residue ID
+We get back a widget representing the Jobs that will run. These Jobs are in the `Quoted` state, and provide an estimate of how much this will cost. 
 
-!!! info "Coming Soon"
-    Ability to dock ligands using a residue ID is coming soon.
+<iframe 
+    src="./docking-quote.html" 
+    width="100%" 
+    height="400" 
+    style="border:none;"
+    title="Quoted Docking Job"
+></iframe>
 
-### Using pocket center and box size
+!!! warning "Example widget"
+    Prices shown here are for demonstrative purposes only. Actual prices can vary. 
 
+## Start the docking run
 
-To dock all ligands to the protein, parallelizing and batching across all ligands, we do the following:
-
+To approve this Job and start all executions, use:
 
 ```{.python notest}
-job = sim.docking.run(
-    box_size=(15, 15, 15),      # match to your protein
-    pocket_center=(13, -6, 22), # match to your protein
-)
+jobs.confirm()
+jobs
 ```
+
+The `jobs` object now reflects the `Running` state of all executions. 
+
+To monitor the progress of this Docking Job, use:
+
+```{.python notest}
+jobs.watch()
+jobs
+```
+
+The widget will update as ligands are docked, as shown below:
+
+<iframe 
+    src="./docking-running.html" 
+    width="100%" 
+    height="300" 
+    style="border:none;"
+    title="Running Docking Job"
+></iframe>
+
 
 ??? info "Controlling batch size"
 
@@ -103,25 +153,6 @@ job = sim.docking.run(
     You can specify either the number of workers or the batch size, but not both. 
 
 
-This queues up tasks on Deep Origin. When it completes, the results of docking can be viewed.
-
-## Viewing status of docking
-
-A job object is returned from `docking.run`. This job object can be inspected to show the status of the job when created. 
-
-The job object can also be used monitor a job as it completes:
-
-```{.python notest}
-job.watch()
-```
-
-Doing so creates a widget that automatically updates and monitors a job as long as its running. 
-
-To stop watching a job, do:
-
-```{.python notest}
-job.stop_watching()
-```
 
 !!! tip "Monitoring jobs"
     For more details about how to monitor jobs, look at this [How To section](../how-to/job.md).
@@ -130,20 +161,34 @@ job.stop_watching()
 
 ### Viewing results
 
-After completion of docking, we can view results using:
+After completion of docking, we can retrieve docked poses using:
 
 ```{.python notest}
-sim.docking.show_results()
+poses = sim.docking.get_poses()
 ```  
 
-This shows a table similar to:
+Each docked pose is assigned a Pose Score and a Binding Energy. 
 
-![Docking results](../../images/tools/docking-results.png)
 
-The `pose_score` is a score that evaluates the quality of each ligand's pose, where higher scores indicate better predicted binding poses. This score can be more informative than binding energy for identifying the optimal conformation.
+- The `pose_score` is a score that evaluates the quality of each ligand's pose, where higher scores indicate better predicted binding poses. This score can be more informative than binding energy for identifying the optimal conformation.
+- The `binding_energy` is the predicted binding energy typically used to estimate the strength of interaction between the ligand and the protein. The units are in kcal/mol and generally the lower energy scores (more negative values) mean higher chances that the ligand would bind to the protein strongly.
 
-The `binding_energy` is the predicted binding energy typically used to estimate the strength of interaction between the ligand and the protein. The units are in kcal/mol and generally the lower energy scores (more negative values) mean higher chances that the ligand would bind to the protein strongly.
 
+We can view the pose scores and binding energies of all ligands using:
+
+```{.python notest}
+poses.plot()
+```  
+
+This generates an interactive scatter plot similar to:
+
+<iframe 
+    src="./docking-scatter.html" 
+    width="100%" 
+    height="600" 
+    style="border:none;"
+    title="Scatter plot of poses"
+></iframe>
 
 ### Viewing docked poses
 
@@ -164,19 +209,13 @@ sim.docking.show_poses()
 
 ### Exporting for further analysis
 
-To obtain the raw dataframe for further analysis, use:
+Poses can be converted into a dataframe for further analysis or export:
 
 ```{.python notest}
-df = sim.docking.get_results()
+df = poses.to_dataframe()
 ```
 
-### Get all docked poses
-
-Use the `get_poses` function to return a [`LigandSet`](../ref/ligandset.md) with all docked poses
-
-```{.python notest}
-poses = sim.docking.get_poses()
-```
+### Filtering poses
 
 You typically want to filter these poses to only retain the top pose for each ligand. To do that, use:
 
@@ -185,18 +224,4 @@ You typically want to filter these poses to only retain the top pose for each li
 poses = poses.filter_top_poses()
 ```
 
-Finally, to visualize these top poses, use:
-
-
-```{.python notest}
-sim.docking.show_poses()
-```
-
-<iframe 
-    src="../../images/docked-poses.html" 
-    width="100%" 
-    height="650" 
-    style="border:none;"
-    title="Protein visualization"
-></iframe>
 

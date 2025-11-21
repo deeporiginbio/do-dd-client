@@ -3,7 +3,7 @@
 import math
 from typing import Optional, Sequence
 
-from bokeh.io import show
+from bokeh.io import save, show
 from bokeh.models import (
     BasicTicker,
     ColorBar,
@@ -264,11 +264,19 @@ def scatter(
     x_label: str = "X",
     y_label: str = "Y",
     title: str = "Scatter Plot",
+    output_file: Optional[str] = None,
+    x_lim_min: Optional[float] = None,
+    x_lim_max: Optional[float] = None,
+    y_lim_min: Optional[float] = None,
+    y_lim_max: Optional[float] = None,
+    width: int = 800,
+    height: int = 800,
 ):
     """Create and display a Bokeh scatter plot with molecule images displayed on hover.
 
     The function automatically detects the environment (notebook vs script) and displays
     the plot appropriately - inline in notebooks or in a browser window for scripts.
+    If output_file is provided, the plot is saved to an HTML file instead of being displayed.
 
     Args:
         x: X-coordinates for the scatter plot points.
@@ -277,6 +285,13 @@ def scatter(
         x_label: Label for the x-axis. Defaults to "X".
         y_label: Label for the y-axis. Defaults to "Y".
         title: Title for the plot. Defaults to "Scatter Plot".
+        output_file: Optional file path to save the HTML figure. If provided, the plot is saved to this file instead of being displayed. Defaults to None.
+        x_lim_min: Optional minimum value for the x-axis. If provided, sets the lower bound of the x-axis. Defaults to None (auto-scale).
+        x_lim_max: Optional maximum value for the x-axis. If provided, sets the upper bound of the x-axis. Defaults to None (auto-scale).
+        y_lim_min: Optional minimum value for the y-axis. If provided, sets the lower bound of the y-axis. Defaults to None (auto-scale).
+        y_lim_max: Optional maximum value for the y-axis. If provided, sets the upper bound of the y-axis. Defaults to None (auto-scale).
+        width: Width of the plot in pixels. Defaults to 800.
+        height: Height of the plot in pixels. Defaults to 800.
 
     Raises:
         ValueError: If the input arrays have different lengths or no valid SMILES strings found.
@@ -322,17 +337,30 @@ def scatter(
         y_axis_label=y_label,
         tools="pan,wheel_zoom,box_zoom,reset,save,hover",
         toolbar_location="right",
-        width=800,
-        height=800,
+        width=width,
+        height=height,
     )
 
     # Add scatter points
     p.scatter(x="x", y="y", source=source, size=8, alpha=0.7, color="blue")
+
+    # Set axis limits if provided
+    if x_lim_min is not None:
+        p.x_range.start = x_lim_min
+    if x_lim_max is not None:
+        p.x_range.end = x_lim_max
+    if y_lim_min is not None:
+        p.y_range.start = y_lim_min
+    if y_lim_max is not None:
+        p.y_range.end = y_lim_max
 
     # Configure hover tool to show molecule images
     hover = p.select_one(HoverTool)
     hover.tooltips = _create_hover_tooltip(x_label, y_label)
     hover.point_policy = "follow_mouse"
 
-    # Show the figure
-    show(p, notebook_handle=True)
+    # Save to file or show the figure
+    if output_file is not None:
+        save(p, output_file)
+    else:
+        show(p, notebook_handle=True)

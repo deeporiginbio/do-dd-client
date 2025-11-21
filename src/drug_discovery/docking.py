@@ -161,8 +161,8 @@ class Docking(WorkflowStep):
     def get_jobs_df(
         self,
         *,
-        pocket_center: Optional[tuple[Number, Number, Number]] = None,
-        box_size: Optional[tuple[Number, Number, Number]] = None,
+        pocket_center: Optional[tuple[Number, Number, Number] | list[Number]] = None,
+        box_size: Optional[tuple[Number, Number, Number] | list[Number]] = None,
     ):
         """search for all jobs that match this protein and ligands in the Job DB, and return a dataframe of the results
 
