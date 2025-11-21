@@ -57,7 +57,7 @@ You will get back a widget representing this job such as this:
 <iframe 
     src="./abfe-quote.html" 
     width="100%" 
-    height="300" 
+    height="340" 
     style="border:none;"
     title="Quoted ABFE Job"
 ></iframe>
@@ -84,25 +84,11 @@ This will start the ABFE run and the job widget will now display:
 <iframe 
     src="./abfe-running.html" 
     width="100%" 
-    height="500" 
+    height="340" 
     style="border:none;"
     title="Quoted ABFE Job"
 ></iframe>
 
-
-### Starting a ABFE directly
-
-### Single ligand
-
-To run an end-to-end ABFE workflow on a single ligand, we use:
-
-
-```{.python notest}
-jobs = sim.abfe.run(ligands=[sim.ligands[0]]) # for example
-job = jobs[0]
-```
-
-This queues up a task on Deep Origin. 
 
 
 ### Multiple ligands
@@ -111,7 +97,6 @@ To run an end-to-end ABFE workflow on multiple ligands, we use:
 
 ```{.python notest}
 jobs = sim.abfe.run(ligands=[sim.ligands[0],sim.ligands[1]]) 
-job = jobs[0]
 ```
 
 Omitting the ligand will run ABFE on all ligands in the `Complex` object.
@@ -124,22 +109,6 @@ jobs = sim.abfe.run()
 Each ligand will be run in parallel on a separate instance, and each `Job` can be monitored and controlled independently. 
 
 
-
-## Job Control 
-
-### Visualize Job
-
-Once a job has been submitted, you can track its status by inspecting the `Job` object:
-
-```{.python notest} 
-job 
-
-```
-This shows a Job widget with information about the job, such as:
-
-!!! success "Expected output" 
-    ![ABFE Job Tracking](../../images/tools/ABFE_Status_Report.png)
-
 ### Watch Jobs
 
 To monitor the status of this job, use:
@@ -148,24 +117,8 @@ To monitor the status of this job, use:
 job.watch() 
 ```
 
-This makes the widget auto-update, and monitor the status of the job till it reaches a terminal state (Cancelled, Succeeded, or Failed). 
+This makes the widget auto-update, and monitor the status of the job till it reaches a terminal state (`Cancelled`, `Succeeded`, or `Failed`). 
 
-### Stop watching Jobs
-
-To manually stop watching a `Job`, do:
-
-```{.python notest} 
-job.stop_watching() 
-```
-
-### Cancel Jobs
-
-To cancel a `Job`, use:
-
-
-```{.python notest} 
-job.cancel() 
-```
 
 !!! tip "Monitoring Jobs"
     For more details about how to monitor jobs, look at this [How To section](../how-to/job.md).
@@ -264,17 +217,19 @@ sim.abfe._params.end_to_end
 
 ### Modifying parameters
 
-Any of these parameters are modifiable using dot notation. For example, to change the number of steps in the MD step, we can use:
+Any of these parameters are modifiable using dot notation. For example, to change the number of windows in the binding step, we can use:
 
 ```{.python notest}
 from deeporigin.drug_discovery import Complex, BRD_DATA_DIR
 sim = Complex.from_dir(BRD_DATA_DIR)
 
-sim.abfe._params.end_to_end.binding.n_windows = 96
+sim.abfe._params.end_to_end.binding.n_windows = 24
 ```
 
 !!! danger "Changing parameters may lead to simulation failures"
     Some parameters, like `dt` are restricted to certain ranges. You will not be allowed to start a simulation run if these parameters exceed those ranges. 
+
+    Changing parameters away from the defaults may lead to simulation failures.
 
 ### Using `test_run`
 
@@ -300,29 +255,17 @@ sim.abfe.set_test_run(1)
 After initiating a run, we can view results using:
 
 ```{.python notest}
-sim.abfe.show_results()
+df = sim.abfe.show_results()
+df
 ```  
 
 This shows a table similar to:
 
-!!! success "Expected output" 
-    ![ABFE ligands](../../images/tools/abfe-results.png)
 
 
+| dG       | Std | Binding    | Solvation  | AnalyticalCorr | Repeats | OverlapScore | SMILES                                                                 | r_exp_dg |
+| -------- | --- | ---------- | ---------- | -------------- | ------- | ------------ | ---------------------------------------------------------------------- | -------- |
+| -9.98 | 0.0 | 99.23 | 77.78  | -11.46    | 1       | 0.08     | COCCn1cc(-c2cccc(C(=O)N(C)C)c2)c2cc[nH]c2c1=O                           | -7.22    |
 
-### Exporting results for analysis
 
-
-These results can be exported for analysis using:
-
-```{.python notest}
-df = sim.abfe.get_results()
-df
-```
-
-!!! success "Expected output" 
-    | Binding       | Solvation            | AnalyticalCorr | Std | Total         | ID         | File       | r_exp_dg | SMILES                                                                                                                                                                               |
-    |---------------|----------------------|----------------|-----|---------------|------------|------------|----------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-    | 16.23   | -27.53 | -7.2 | 0.0 | -36.50 | Ligands-1  | brd-2.sdf  | -9.59    | [H]C1=C([H])C(C(=O)N(C([H])([H])[H])C([H])([H])[H])=C([H])C(C2=C([H])N(C([H])([H])[H])C(=O)C3=C2C([H])=C([H])N3[H])=C1[H]                                      |
-    | -454.99 | -722.01       | -7.58   | 0.0 | -259.44 | Ligands-2  | brd-3.sdf  | -7.09    | [H]C([H])=C([H])C([H])([H])N1C(=O)C2=C(C([H])=C([H])N2[H])C(C2=C([H])C([H])=C([H])C(C(=O)N(C([H])([H])[H])C([H])([H])[H])=C2[H])=C1[H]                    |
-    | -600.31 | -1354.79      | -7.47   | 0.0 | -747.00 | Ligands-3  | brd-4.sdf  | -8.64    | [H]C1=C([H])C(C(=O)N(C([H])([H])[H])C([H])([H])[H])=C([H])C(C2=C([H])N(C([H])([H])/C([H])=C(\[H])C([H])([H])[H])C(=O)C3=C2C([H])=C([H])N3[H])=C1[H]            |
+### 
