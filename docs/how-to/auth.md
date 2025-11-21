@@ -1,7 +1,7 @@
 # Sign into Deep Origin
 
 !!! tip "Configure first"
-    Make sure to [configure](../configure.md#on-your-local-computer) it first.
+    Make sure to [configure](../configure.md) it first.
 
 To use most of the functionality of the Python client, you must first run the following commands to sign into Deep Origin.
 

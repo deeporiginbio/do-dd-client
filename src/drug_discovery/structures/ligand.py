@@ -1860,10 +1860,10 @@ class LigandSet:
         *,
         x_label: str = "Pose Score",
         y_label: str = "Binding Energy (kcal/mol)",
-        x="POSE SCORE",
-        y="Binding Energy",
+        x: str = "POSE SCORE",
+        y: str = "Binding Energy",
         output_file: Optional[str] = None,
-        y_lim_max=0,
+        y_lim_max: Optional[float] = 0,
         width: int = 800,
         height: int = 800,
     ):
