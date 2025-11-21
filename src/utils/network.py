@@ -12,18 +12,6 @@ from deeporigin import __version__
 from deeporigin.exceptions import DeepOriginException
 
 
-def _get_domain_name() -> str:
-    """utility function to get domain name based on env"""
-
-    from deeporigin.utils.config import get_value
-
-    env = get_value()["env"]
-    if env == "prod":
-        return "https://os.deeporigin.io"
-    else:
-        return f"https://os.{env}.deeporigin.io"
-
-
 @functools.cache
 def check_for_updates():
     """check if a new version is available. If so, print an message"""

@@ -171,13 +171,27 @@
                                 </tr>
                             </thead>
                             <tbody>
-                                <tr>
-                                    <td>{{ job_id }}</td>
-                                    <td>{{ resource_id }}</td>
-                                    <td>{{ status }}</td>
-                                    <td>{{ started_at }}</td>
-                                    <td>{{ running_time }}</td>
-                                </tr>
+                                {% if is_multiple %}
+                                    {# Multiple jobs - iterate over lists #}
+                                    {% for i in range(job_id|length) %}
+                                    <tr>
+                                        <td>{{ job_id[i] }}</td>
+                                        <td>{{ resource_id[i] if resource_id and resource_id[i] is defined else '' }}</td>
+                                        <td>{{ status[i] if status and status[i] is defined else '' }}</td>
+                                        <td>{{ started_at[i] if started_at and started_at[i] is defined else '' }}</td>
+                                        <td>{{ running_time[i] if running_time and running_time[i] is defined else '' }}</td>
+                                    </tr>
+                                    {% endfor %}
+                                {% else %}
+                                    {# Single job - backward compatibility #}
+                                    <tr>
+                                        <td>{{ job_id }}</td>
+                                        <td>{{ resource_id }}</td>
+                                        <td>{{ status }}</td>
+                                        <td>{{ started_at }}</td>
+                                        <td>{{ running_time }}</td>
+                                    </tr>
+                                {% endif %}
                             </tbody>
                         </table>
                     </div>
@@ -209,7 +223,15 @@
             <!-- Card Footer with Status Badges and Last Updated Timestamp -->
             <div class="card-footer d-flex justify-content-between align-items-center">
                 <div class="d-flex flex-wrap gap-1">
-                    <span class="badge {% if status == 'Running' %}bg-primary{% elif status == 'Failed' %}bg-danger{% elif status == 'FailedQuotation' %}bg-danger{% elif status == 'Cancelled' %}bg-dark{% elif status == 'Succeeded' %}bg-success{% elif status == 'Created' %}bg-secondary{% elif status == 'Queued' %}bg-info{% elif status == 'Quoted' %}bg-warning{% elif status == 'InsufficientFunds' %}bg-danger{% else %}bg-light text-dark{% endif %}">{{ status|e }}</span>
+                    {% if is_multiple %}
+                        {# Multiple jobs - show status badges for each unique status #}
+                        {% for status_item in unique_statuses %}
+                            <span class="badge {% if status_item == 'Running' %}bg-primary{% elif status_item == 'Failed' %}bg-danger{% elif status_item == 'FailedQuotation' %}bg-danger{% elif status_item == 'Cancelled' %}bg-dark{% elif status_item == 'Succeeded' %}bg-success{% elif status_item == 'Created' %}bg-secondary{% elif status_item == 'Queued' %}bg-info{% elif status_item == 'Quoted' %}bg-warning{% elif status_item == 'InsufficientFunds' %}bg-danger{% else %}bg-light text-dark{% endif %}">{{ status_item|e }}</span>
+                        {% endfor %}
+                    {% else %}
+                        {# Single job - backward compatibility #}
+                        <span class="badge {% if status == 'Running' %}bg-primary{% elif status == 'Failed' %}bg-danger{% elif status == 'FailedQuotation' %}bg-danger{% elif status == 'Cancelled' %}bg-dark{% elif status == 'Succeeded' %}bg-success{% elif status == 'Created' %}bg-secondary{% elif status == 'Queued' %}bg-info{% elif status == 'Quoted' %}bg-warning{% elif status == 'InsufficientFunds' %}bg-danger{% else %}bg-light text-dark{% endif %}">{{ status|e }}</span>
+                    {% endif %}
                 </div>
                 <span id="last-updated" class="text-muted" style="font-size: 0.9rem;">
                     {% if will_auto_update %}

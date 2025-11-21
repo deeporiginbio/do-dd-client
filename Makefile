@@ -58,7 +58,7 @@ docs-deploy:
 mock-server:
 	@echo "Starting mock server..."
 	@source $(CURDIR)/venv/bin/activate && \
-	    python scripts/run_mock_server.py $(if $(PORT),$(PORT),8000) && \
+	    python -m tests.run_mock_server $(if $(PORT),$(PORT),4931) && \
 	    deactivate
 
 

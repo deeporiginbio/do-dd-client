@@ -1,5 +1,7 @@
 """utility functions for working in Jupyter notebooks"""
 
+from typing import Optional
+
 from beartype import beartype
 from IPython import get_ipython
 from IPython.display import HTML, display
@@ -33,7 +35,7 @@ def render_progress_bar(
     completed: int,
     total: int,
     failed: int = 0,
-    title: str = "Progress Report",
+    title: Optional[str] = None,
     body_text: str = "",
 ) -> str:
     """
@@ -66,10 +68,13 @@ def render_progress_bar(
     </div>
     """
 
+    if title:
+        title_html = f"<h3>{title}</h3>"
+    else:
+        title_html = ""
+
     progress_html = f"""
-    
-    
-    <h3>{title}</h3>
+    {title_html}
     <p style="color: #666; margin: 10px 0;">{body_text}</p>
     {text_html}
     

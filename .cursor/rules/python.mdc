@@ -47,3 +47,7 @@ When modifying an existing function, make the following changes together:
 - To test a specific function, use `pytest -k --mock` 
 
 
+# Common mistakes
+
+- Using uppercase List instead of lowercase list to annotate the type of a list
+- Using uppercase Dist instead of lowercase dist to annotate the type of a dict

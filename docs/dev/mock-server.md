@@ -4,7 +4,7 @@ The mock server is a local test server that mimics the DeepOrigin Platform API. 
 
 ## Overview
 
-The mock server (`tests/mock_server.py`) provides mock responses for all API endpoints used by the DeepOriginClient. It runs locally using FastAPI and uvicorn, and serves responses based on fixture data stored in `tests/fixtures/`.
+The mock server (`tests/mock_server/`) provides mock responses for all API endpoints used by the DeepOriginClient. It runs locally using FastAPI and uvicorn, and serves responses based on fixture data stored in `tests/fixtures/`.
 
 ## Running the Mock Server
 
@@ -13,7 +13,7 @@ The mock server (`tests/mock_server.py`) provides mock responses for all API end
 To run the mock server standalone for local development:
 
 ```bash
-python scripts/run_mock_server.py [PORT]
+python tests/run_mock_server.py [PORT]
 ```
 
 Where `PORT` is the port number to run the server on (default: 8000).
@@ -21,13 +21,13 @@ Where `PORT` is the port number to run the server on (default: 8000).
 Example:
 
 ```bash
-python scripts/run_mock_server.py 8000
+python tests/run_mock_server.py 4931
 ```
 
 The server will start and display:
 
 ```bash
-Mock server running at http://127.0.0.1:8000
+Mock server running at http://127.0.0.1:4931
 Press Ctrl+C to stop...
 ```
 
@@ -41,7 +41,7 @@ The mock server is automatically started when running tests with the `--mock` fl
 pytest --mock
 ```
 
-This starts the server for the duration of the test session and automatically stops it when tests complete.
+This starts the server for the duration of the test session and automatically stops it when tests complete. The test server runs on **port 4931** (configured in `conftest.py`).
 
 ## Configuring Your Client
 
@@ -53,7 +53,7 @@ from deeporigin.platform.client import DeepOriginClient
 client = DeepOriginClient(
     token="test-token",  # Any token works with the mock server
     org_key="deeporigin",  # Use any org_key
-    base_url="http://127.0.0.1:8000",  # Mock server URL
+    base_url="http://127.0.0.1:4931",  # Mock server URL (port 4931 for tests)
     env="local",
 )
 ```
@@ -80,11 +80,13 @@ The mock server uses fixture files from `tests/fixtures/` to provide realistic r
 
 ## Extending the Mock Server
 
-To add new endpoints or modify existing ones, edit `tests/mock_server.py`:
+To add new endpoints or modify existing ones, edit `tests/mock_server/server.py`:
 
 1. Add a new route handler in the `_setup_routes()` method
 2. Optionally add fixture files in `tests/fixtures/` if you need realistic data
 3. Use `_load_fixture()` to load JSON fixtures
+
+For file-related endpoints, add them to `tests/mock_server/routers/files.py`.
 
 Example:
 

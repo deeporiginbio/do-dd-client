@@ -1,0 +1,34 @@
+{
+    "executionId": "docking-test-execution-12345",
+    "createdAt": "2025-11-18T15:22:35.271Z",
+    "updatedAt": "2025-11-18T15:22:35.271Z",
+    "resourceId": "rkzoie44xi997crx7s46j",
+    "userInputs": {
+        "smiles_list": [
+            "CCO",
+            "CCN"
+        ]
+    },
+    "userOutputs": {},
+    "status": "Succeeded",
+    "metadata": {
+        "protein_file": "test_protein.pdb"
+    },
+    "approveAmount": 0,
+    "cluster": {
+        "id": "d638d3cd-833f-476b-87fe-ca6d76e66049",
+        "createdAt": "2024-06-11T16:53:45.922Z",
+        "updatedAt": "2025-03-27T20:23:30.842Z",
+        "hostname": "https://cluster.us-west-2.edge.deeporigin.io",
+        "name": "DeepOrigin Cluster - us-west-2",
+        "orgKey": null,
+        "enabled": true,
+        "status": "healthy"
+    },
+    "orgKey": "deeporigin",
+    "createdBy": "google-apps|srinivas@deeporigin.com",
+    "tool": {
+        "key": "deeporigin.bulk-docking",
+        "version": "0.4.6"
+    }
+}

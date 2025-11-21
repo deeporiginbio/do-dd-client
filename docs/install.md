@@ -14,6 +14,8 @@ The Deep Origin Python client is installed on every [Deep Origin Workstation :oc
 !!! tip "Recommended installation"
     We recommend using the following script. A common source of errors in python packages is managing dependencies and conflicts with other packages, that is resolved using the method below. 
 
+    You can of course install it yourself, using your package and environment manager of choice.  
+
 This sections describes how to install the Deep Origin Python client on your computer using our recommendations. We recommend:
 
 - Using the [uv :octicons-link-external-16:](https://docs.astral.sh/uv/) package and environment manager 

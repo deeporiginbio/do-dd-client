@@ -1120,10 +1120,116 @@ class LigandSet:
         sampled_ligands = random.sample(self.ligands, n)  # NOSONAR
         return LigandSet(ligands=sampled_ligands)
 
-    def _repr_html_(self):
-        """Return an HTML representation of the LigandSet."""
+    def __str__(self) -> str:
+        """Return string representation of the LigandSet.
 
-        return self.show_df().to_html()
+        Returns:
+            str: String representation showing the number of ligands and unique SMILES.
+        """
+        num_ligands = len(self.ligands)
+        if num_ligands == 0:
+            return "LigandSet(0 ligands)"
+
+        unique_smiles = len({ligand.smiles for ligand in self.ligands if ligand.smiles})
+        return f"LigandSet({num_ligands} ligands, {unique_smiles} unique SMILES)"
+
+    def __repr__(self) -> str:
+        """Return string representation of the LigandSet.
+
+        Returns:
+            str: String representation showing the number of ligands and unique SMILES.
+        """
+        return self.__str__()
+
+    def _render_view(self) -> str:
+        """Render a custom widget view for the LigandSet.
+
+        Returns:
+            str: HTML string representing the LigandSet summary.
+        """
+        num_ligands = len(self.ligands)
+
+        # Calculate unique SMILES to determine if these are poses of the same ligand
+        unique_smiles = (
+            len({ligand.smiles for ligand in self.ligands if ligand.smiles})
+            if num_ligands > 0
+            else 0
+        )
+
+        # Build summary HTML
+        # Use "poses" only when there are multiple ligands with the same SMILES
+        if unique_smiles == 1 and num_ligands > 1:
+            ligand_word = "poses"
+        else:
+            ligand_word = "ligand" if num_ligands == 1 else "ligands"
+        html_parts = [
+            "<div style='width: 500px; padding: 15px; border: 1px solid #ddd; border-radius: 6px; background-color: #f9f9f9;'>",
+            f"<h3 style='margin-top: 0; color: #333;'>LigandSet with {num_ligands} {ligand_word}</h3>",
+        ]
+
+        if num_ligands > 0:
+            # Add summary statistics
+            if unique_smiles == 1:
+                # Get the SMILES string (all ligands have the same one)
+                smiles_str = next(
+                    (ligand.smiles for ligand in self.ligands if ligand.smiles), None
+                )
+                if smiles_str:
+                    html_parts.append(
+                        f"<p style='margin: 8px 0;'><strong>SMILES:</strong> {smiles_str}</p>"
+                    )
+            else:
+                html_parts.append(
+                    f"<p style='margin: 8px 0;'><strong>{unique_smiles}</strong> unique SMILES</p>"
+                )
+
+            # Show property summary if available
+            if self.ligands and self.ligands[0].properties:
+                all_props = set()
+                for ligand in self.ligands:
+                    all_props.update(ligand.properties.keys())
+                sorted_props = sorted(all_props)
+                props_display = ", ".join(sorted_props[:10])
+                if len(sorted_props) > 10:
+                    props_display += f" and {len(sorted_props) - 10} more..."
+                html_parts.append(
+                    f"<p style='margin: 8px 0;'>Properties: {props_display}</p>"
+                )
+
+            # Show network status if available
+            if self.network:
+                html_parts.append(
+                    "<p style='margin: 8px 0;'><em>Network mapping available</em></p>"
+                )
+
+            # Add action hints
+            html_parts.append(
+                "<div style='margin-top: 12px; padding-top: 12px; border-top: 1px solid #ddd;'>"
+                "<p style='margin: 4px 0; font-size: 0.9em; color: #666;'>"
+                "<em>Use <code>.to_dataframe()</code> to convert to a dataframe, "
+                "<code>.show_df()</code> to view dataframewith structures, "
+                "or <code>.show()</code> for 3D visualization</em>"
+                "</p>"
+                "</div>"
+            )
+        else:
+            html_parts.append(
+                "<p style='margin: 8px 0; color: #999;'><em>Empty LigandSet</em></p>"
+            )
+
+        html_parts.append("</div>")
+        return "".join(html_parts)
+
+    def _repr_html_(self) -> str:
+        """Return HTML representation for Jupyter notebooks.
+
+        Displays a summary of the LigandSet including the number of ligands
+        and key statistics.
+
+        Returns:
+            str: HTML string representing the LigandSet summary.
+        """
+        return self._render_view()
 
     def to_dataframe(self) -> pd.DataFrame:
         """Convert the LigandSet to a pandas DataFrame."""

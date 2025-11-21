@@ -5,39 +5,23 @@ This script starts a local mock server that mimics the DeepOrigin Platform API.
 It's useful for local development and testing without making real API calls.
 
 Usage:
-    python scripts/run_mock_server.py [OPTIONS]
+    python -m tests.run_mock_server [OPTIONS]
 
 Options:
     PORT: Port number to run the server on (default: 8000)
     --abfe-duration SECONDS: Duration for ABFE executions in seconds (default: 300)
 
 Examples:
-    python scripts/run_mock_server.py 8000
-    python scripts/run_mock_server.py --abfe-duration 600
-    python scripts/run_mock_server.py 8080 --abfe-duration 120
+    python -m tests.run_mock_server 8000
+    python -m tests.run_mock_server --abfe-duration 600
+    python -m tests.run_mock_server 8080 --abfe-duration 120
 """
 
 from __future__ import annotations
 
 import argparse
-import importlib.util
-from pathlib import Path
 
-# Load mock_server module directly using importlib instead of modifying sys.path
-# This is cleaner than sys.path manipulation and avoids polluting the import system
-project_root = Path(__file__).parent.parent
-mock_server_path = project_root / "tests" / "mock_server.py"
-if not mock_server_path.exists():
-    raise FileNotFoundError(
-        f"Could not find mock_server.py at {mock_server_path}. "
-        "Make sure you're running this script from the project root."
-    )
-spec = importlib.util.spec_from_file_location("mock_server", mock_server_path)
-if spec is None or spec.loader is None:
-    raise ImportError(f"Could not create module spec for {mock_server_path}")
-mock_server_module = importlib.util.module_from_spec(spec)
-spec.loader.exec_module(mock_server_module)
-MockServer = mock_server_module.MockServer
+from tests.mock_server import MockServer
 
 
 def main() -> None:

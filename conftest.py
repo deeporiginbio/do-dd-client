@@ -28,7 +28,7 @@ def test_server(pytestconfig):
         yield None
         return
 
-    server = MockServer(port=0)
+    server = MockServer(port=4931)  # Fixed port for test server
     server.start()
     yield server
     server.stop()
@@ -42,7 +42,7 @@ def test_server_url(test_server):
         test_server: The test server fixture.
 
     Yields:
-        Base URL of the test server (e.g., "http://127.0.0.1:12345"), or None if --mock is not passed.
+        Base URL of the test server (e.g., "http://127.0.0.1:4931"), or None if --mock is not passed.
     """
     if test_server is None:
         yield None

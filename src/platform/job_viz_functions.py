@@ -6,6 +6,77 @@ import os
 from beartype import beartype
 
 
+def _viz_func_quoted(job_or_jobs) -> str:
+    """Render HTML for jobs in Quoted state.
+
+    Args:
+        job_or_jobs: Either a single Job instance, a JobList instance, or a list of Job instances.
+            If multiple jobs, all must be in "Quoted" state.
+
+    Returns:
+        HTML string for the quoted status visualization.
+    """
+    # Convert to a list of jobs
+    if hasattr(job_or_jobs, "jobs"):
+        jobs_list = job_or_jobs.jobs
+    elif isinstance(job_or_jobs, list):
+        jobs_list = job_or_jobs
+    else:
+        jobs_list = [job_or_jobs]
+
+    # Sum estimated costs across all jobs
+    total_cost = 0.0
+    costs_found = False
+
+    for job in jobs_list:
+        quotation_result = (
+            job._attributes.get("quotationResult") if job._attributes else None
+        )
+        if quotation_result:
+            try:
+                estimated_cost = quotation_result["successfulQuotations"][0][
+                    "priceTotal"
+                ]
+                total_cost += estimated_cost
+                costs_found = True
+            except (AttributeError, IndexError, KeyError, TypeError):
+                pass
+
+    # Generate HTML
+    if costs_found:
+        num_jobs = len(jobs_list)
+        if num_jobs == 1:
+            status_html = (
+                "<h3>Job Quoted</h3>"
+                f"<p>This job has been quoted. It is estimated to cost <strong>${round(total_cost)}</strong>. "
+                "For details look at the Billing tab. To approve and start the run, call the "
+                "<code style='font-family: monospace; background-color: #f5f5f5; padding: 2px 4px; border-radius: 3px;'>confirm()</code> method.</p>"
+            )
+        else:
+            status_html = (
+                "<h3>Jobs Quoted</h3>"
+                f"<p>All {num_jobs} jobs have been quoted. The total estimated cost is <strong>${round(total_cost)}</strong>. "
+                "For details look at the Billing tab. To approve and start the runs, call the "
+                "<code style='font-family: monospace; background-color: #f5f5f5; padding: 2px 4px; border-radius: 3px;'>confirm()</code> method.</p>"
+            )
+    else:
+        num_jobs = len(jobs_list)
+        if num_jobs == 1:
+            status_html = (
+                "<h3>Job Quoted</h3>"
+                "<p>This job has been quoted. For details look at the Billing tab. To approve and start the run, call the "
+                "<code style='font-family: monospace; background-color: #f5f5f5; padding: 2px 4px; border-radius: 3px;'>confirm()</code> method.</p>"
+            )
+        else:
+            status_html = (
+                "<h3>Jobs Quoted</h3>"
+                f"<p>All {num_jobs} jobs have been quoted. For details look at the Billing tab. To approve and start the runs, call the "
+                "<code style='font-family: monospace; background-color: #f5f5f5; padding: 2px 4px; border-radius: 3px;'>confirm()</code> method.</p>"
+            )
+
+    return status_html
+
+
 def _abfe_parse_progress(job) -> dict:
     """parse progress from a ABFE job"""
 
@@ -252,22 +323,44 @@ def _viz_func_abfe(job) -> str:
 
 
 def _viz_func_docking(job) -> str:
-    """Render progress visualization for a docking job."""
+    """Render progress visualization for a docking job or JobList.
 
-    data = job._attributes.get("progressReport") if job._attributes else None
-    inputs = job._attributes.get("userInputs") if job._attributes else None
+    Args:
+        job: Either a Job instance or a JobList instance. If JobList, sums
+            total_docked and total_failed across all jobs.
 
-    total_ligands = (
-        len(inputs["smiles_list"]) if inputs and "smiles_list" in inputs else 0
-    )
+    Returns:
+        HTML string for the progress visualization.
+    """
+    # Convert to a list of jobs (works for both JobList and single Job)
+    jobs_list = job.jobs if hasattr(job, "jobs") else [job]
+
+    # Sum across all jobs
+    total_ligands = 0
     total_docked = 0
     total_failed = 0
+    total_running_time = 0
 
-    if data is not None:
-        total_docked += data.count("ligand docked")
-        total_failed += data.count("ligand failed")
+    for single_job in jobs_list:
+        inputs = (
+            single_job._attributes.get("userInputs") if single_job._attributes else None
+        )
+        if inputs and "smiles_list" in inputs:
+            total_ligands += len(inputs["smiles_list"])
 
-    total_running_time = job._get_running_time() or 0
+        data = (
+            single_job._attributes.get("progressReport")
+            if single_job._attributes
+            else None
+        )
+        if data is not None:
+            total_docked += data.count("ligand docked")
+            total_failed += data.count("ligand failed")
+
+        running_time = single_job._get_running_time()
+        if running_time is not None:
+            total_running_time += running_time
+
     speed = total_docked / total_running_time if total_running_time > 0 else 0
 
     from deeporigin.utils.notebook import render_progress_bar
@@ -276,22 +369,37 @@ def _viz_func_docking(job) -> str:
         completed=total_docked,
         total=total_ligands,
         failed=total_failed,
-        title="Docking Progress",
         body_text=f"Average speed: {speed:.2f} dockings/minute",
     )
 
 
 @beartype
 def _name_func_docking(job) -> str:
-    """Generate a name for a docking job."""
+    """Generate a name for a docking job or JobList.
 
+    Args:
+        job: Either a Job instance or a JobList instance. If JobList, collects
+            unique SMILES across all jobs.
+
+    Returns:
+        Name string for the docking job(s).
+    """
+    # Convert to a list of jobs (works for both JobList and single Job)
+    jobs_list = job.jobs if hasattr(job, "jobs") else [job]
+
+    # Collect unique SMILES across all jobs
     unique_smiles = set()
-    inputs = job._attributes.get("userInputs") if job._attributes else None
-    if inputs and "smiles_list" in inputs:
-        unique_smiles.update(inputs["smiles_list"])
+    for single_job in jobs_list:
+        inputs = (
+            single_job._attributes.get("userInputs") if single_job._attributes else None
+        )
+        if inputs and "smiles_list" in inputs:
+            unique_smiles.update(inputs["smiles_list"])
     num_ligands = len(unique_smiles)
 
-    metadata = job._attributes.get("metadata") if job._attributes else None
+    # Get protein file from first job (should be the same across all jobs)
+    first_job = jobs_list[0]
+    metadata = first_job._attributes.get("metadata") if first_job._attributes else None
     protein_file = (
         os.path.basename(metadata["protein_file"])
         if metadata and "protein_file" in metadata
