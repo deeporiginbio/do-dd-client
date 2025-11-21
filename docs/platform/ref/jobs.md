@@ -8,7 +8,7 @@ The `Job` and `JobList` classes provide a high-level interface for working with 
 
 ### Creating a JobList
 
-```python
+```{.python notest}
 from deeporigin.platform.job import JobList
 
 # Fetch jobs from the API
@@ -25,13 +25,13 @@ jobs = JobList.from_dtos([dto1, dto2, dto3])
 
 The `watch()` method allows you to monitor multiple jobs in real-time. It will automatically stop when all jobs reach terminal states:
 
-```python
+```{.python notest}
 # Start monitoring a list of jobs
 jobs = JobList.from_ids(["id-1", "id-2", "id-3"])
 jobs.watch()  # Updates every 5 seconds by default
 
 # Custom update interval
-jobs.watch(interval=10.0)  # Update every 10 seconds
+jobs.watch(interval=10)  # Update every 10 seconds
 
 # Stop monitoring manually
 jobs.stop_watching()
@@ -49,7 +49,7 @@ The `filter()` method allows you to filter jobs by status, attributes, or custom
 
 **Filter by status:**
 
-```python
+```{.python notest}
 # Get only succeeded jobs
 succeeded_jobs = jobs.filter(status="Succeeded")
 
@@ -59,9 +59,9 @@ running_jobs = jobs.filter(status="Running")
 
 **Filter by tool attributes:**
 
-```python
+```{.python notest}
 # Filter by tool key
-docking_jobs = jobs.filter(tool_key="deeporigin.docking")
+docking_jobs = jobs.filter(tool_key="deeporigin.bulk-docking")
 
 # Filter by tool version
 v1_jobs = jobs.filter(tool_version="1.0.0")
@@ -72,7 +72,7 @@ specific_tool = jobs.filter(tool_key="deeporigin.abfe-end-to-end", tool_version=
 
 **Filter by other attributes:**
 
-```python
+```{.python notest}
 # Filter by execution ID
 specific_job = jobs.filter(executionId="id-123")
 
@@ -82,7 +82,7 @@ filtered = jobs.filter(status="Running", executionId="id-123")
 
 **Filter with custom predicate:**
 
-```python
+```{.python notest}
 # Filter jobs with approveAmount > 100
 expensive_jobs = jobs.filter(
     predicate=lambda job: job._attributes.get("approveAmount", 0) > 100
@@ -96,7 +96,7 @@ tool_jobs = jobs.filter(
 
 **Combine filters:**
 
-```python
+```{.python notest}
 # Status filter + tool filter + custom predicate
 complex_filter = jobs.filter(
     status="Running",
