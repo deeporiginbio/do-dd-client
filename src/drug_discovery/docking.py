@@ -161,8 +161,8 @@ class Docking(WorkflowStep):
     def get_jobs_df(
         self,
         *,
-        pocket_center=None,
-        box_size=None,
+        pocket_center: Optional[tuple[Number, Number, Number]] = None,
+        box_size: Optional[tuple[Number, Number, Number]] = None,
     ):
         """search for all jobs that match this protein and ligands in the Job DB, and return a dataframe of the results
 
@@ -224,7 +224,7 @@ class Docking(WorkflowStep):
         approve_amount: Optional[int] = None,
         quote: bool = False,
         re_run: bool = False,
-    ):
+    ) -> JobList | None:
         """Run bulk docking on Deep Origin. Ligands will be split into batches based on the batch_size argument, and will run in parallel on Deep Origin clusters.
 
         Args:

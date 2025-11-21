@@ -6,22 +6,19 @@
 To use most of the functionality of the Python client, you must first run the following commands to sign into Deep Origin.
 
 
-
-
-
 ```{.python notest}
 from deeporigin import auth
-auth.authenticate()
+_ = auth.get_tokens()
 ```
 
-You will be presented with a prompt similar to below:
+When you first do this, you will be presented with a prompt similar to below:
 
 ```shell
 To connect to the Deep Origin OS, navigate your browser to 
 
-https://<env>auth0.com/activate?user_code=VMPZ-PQFG
+https://<env>auth0.com/activate?user_code=<code>
 
-and verify the confirmation code is "VMPZ-PQFG", and click the "Confirm" button.
+and verify the confirmation code is the one shown, and click the "Confirm" button.
 ```
 
 When you visit that URL, you will see a prompt that looks like:
@@ -36,8 +33,6 @@ After signing in, your access tokens will be cached to disk and then automatical
 be used in subsequent interactions with Deep Origin.
 
 !!! info "Authenticating"
-    In most cases, you only need to authenticate to the Deep Origin OS once.
+    You only need to authenticate to the Deep Origin OS once.
     You do not need to authenticate every time you use the client.
 
-!!! question "Authenticating on Deep Origin workstations"
-    Presently, workstation users must authenticate (once) to the Deep Origin OS. We plan to develop the capability to automatically authenticate workstation users.

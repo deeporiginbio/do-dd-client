@@ -8,12 +8,12 @@ from datetime import datetime, timezone
 import json
 from pathlib import Path
 import time
-from typing import Dict, List, Optional, Protocol
+from typing import Any, Optional, Protocol
 
 try:
     from beartype.typing import Callable
 except ImportError:
-    from typing import Callable  # fallback for older beartype versions
+    from typing import Callable  # fallback for older versions
 import uuid
 
 from beartype import beartype
@@ -568,14 +568,12 @@ class Job:
 
         return self._render_view()
 
-    def cancel(self):
+    def cancel(self) -> None:
         """Cancel the job being tracked by this instance.
 
         This method sends a cancellation request for the job ID tracked by this instance
         using the utils.cancel_runs function.
 
-        Returns:
-            The result of the cancellation operation from utils.cancel_runs.
         """
 
         self.client.executions.cancel(
@@ -612,7 +610,7 @@ class JobList:
     managing batch jobs like Docking, where a set of ligands can be batched into multiple executions on multiple resources.
     """
 
-    def __init__(self, jobs: List[Job]):
+    def __init__(self, jobs: list[Job]):
         """Initialize a JobList with a list of Job objects.
 
         Args:
@@ -643,7 +641,7 @@ class JobList:
         return self._render_view(will_auto_update=False)
 
     @property
-    def status(self) -> Dict[str, int]:
+    def status(self) -> dict[str, int]:
         """Get a breakdown of the statuses of all jobs in the list.
 
         Returns:
@@ -854,11 +852,11 @@ class JobList:
             template = env.get_template("job.html")
 
         # Collect data from all jobs
-        job_ids: List[str] = []
-        resource_ids: List[Optional[str]] = []
-        statuses: List[Optional[str]] = []
-        started_ats: List[Optional[str]] = []
-        running_times: List[Optional[str]] = []
+        job_ids: list[str] = []
+        resource_ids: list[Optional[str]] = []
+        statuses: list[Optional[str]] = []
+        started_ats: list[Optional[str]] = []
+        running_times: list[Optional[str]] = []
 
         for job in self.jobs:
             display_data = job._extract_display_data()
@@ -1118,7 +1116,7 @@ class JobList:
         tool_version: Optional[str] = None,
         require_metadata: bool = False,
         predicate: Optional[Callable[[Job], bool]] = None,
-        **kwargs,
+        **kwargs: Any,
     ) -> "JobList":
         """Filter jobs by status, tool attributes, other attributes, or custom predicate.
 
@@ -1131,9 +1129,9 @@ class JobList:
                 or a list/set of statuses (e.g., ["Succeeded", "Running", "Queued"]).
                 Checks against job.status property.
             tool_key: Filter by tool key (e.g., "deeporigin.docking", "deeporigin.abfe-end-to-end").
-                Checks against job._attributes["tool"]["key"].
+                Checks against ``job._attributes["tool"]["key"]``.
             tool_version: Filter by tool version (e.g., "1.0.0").
-                Checks against job._attributes["tool"]["version"].
+                Checks against ``job._attributes["tool"]["version"]``.
             require_metadata: If True, only include jobs that have metadata that exists and is not None.
             predicate: Optional callable that takes a Job and returns True/False.
                 Applied after keyword filters. Useful for complex conditions or
@@ -1256,7 +1254,7 @@ class JobList:
             A pandas DataFrame with one row per job.
         """
         # Resolve user names if requested
-        user_id_to_name: Optional[Dict[str, str]] = None
+        user_id_to_name: Optional[dict[str, str]] = None
         if resolve_user_names:
             if client is None:
                 client = DeepOriginClient.get()
@@ -1389,7 +1387,7 @@ class JobList:
 
         # Start from page 0 if not specified
         current_page = page if page is not None else 0
-        all_dtos: List[dict] = []
+        all_dtos: list[dict] = []
 
         while True:
             response = client.executions.list(
@@ -1432,7 +1430,7 @@ class JobList:
     @classmethod
     def from_ids(
         cls,
-        ids: List[str],
+        ids: list[str],
         *,
         client: Optional[DeepOriginClient] = None,
     ) -> "JobList":
@@ -1451,7 +1449,7 @@ class JobList:
     @classmethod
     def from_dtos(
         cls,
-        dtos: List[dict],
+        dtos: list[dict],
         *,
         client: Optional[DeepOriginClient] = None,
     ) -> "JobList":

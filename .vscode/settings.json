@@ -34,6 +34,7 @@
         "dateutil",
         "deeporigin",
         "drugability",
+        "dtos",
         "emeq",
         "FMCS",
         "HETATM",
@@ -71,6 +72,7 @@
         "sanitizable",
         "SASA",
         "softcore",
-        "Substruct"
+        "Substruct",
+        "textea"
     ]
 }
