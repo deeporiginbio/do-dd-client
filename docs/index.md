@@ -1,8 +1,6 @@
 
 # Deep Origin Python client
 
-Welcome to the DeepOrigin Client documentation. Use the menu on the left/above for the instructions
-on how to to install, configure and use this SDK for drug discovery.
 
 <div class="grid cards" markdown>
 
