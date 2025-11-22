@@ -1,0 +1,34 @@
+<iframe srcdoc="
+    &lt;!DOCTYPE html&gt;
+    &lt;html lang=&quot;en&quot;&gt;
+    &lt;head&gt;
+        &lt;meta charset=&quot;utf-8&quot; /&gt;
+        &lt;meta name=&quot;viewport&quot; content=&quot;width=device-width, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0&quot;&gt;
+        &lt;link rel=&quot;stylesheet&quot; type=&quot;text/css&quot; href=&quot;https://balto.biosim.ai/molstar/styles.css&quot; /&gt;
+        &lt;title&gt;Mol* Gallery&lt;/title&gt;
+    &lt;/head&gt;
+    &lt;body&gt;
+        &lt;div style=&quot;margin: 20px&quot;&gt;
+            &lt;div id=&quot;DeepOriginViewer&quot;&gt;&lt;/div&gt;
+        &lt;/div&gt;
+        &lt;script type=&quot;text/javascript&quot; src=&quot;https://balto.biosim.ai/molstar/gallery.js&quot;&gt;&lt;/script&gt;
+        &lt;script type=&quot;text/javascript&quot;&gt;
+
+
+        async function init() {
+            const viewer = new deepOriginMolstar.Viewer('DeepOriginViewer');
+            const Renderer = await deepOriginMolstar.Renderer(viewer);
+    
+            const moleculeData = `Unknown_Ligand_70\n     RDKit          3D\n\n 48 53  0  0  0  0  0  0  0  0999 V2000\n    9.8440   24.2070    2.2410 C   0  0  0  0  0  0  0  0  0  0  0  0\n    9.2310   25.4050    1.7950 C   0  0  0  0  0  0  0  0  0  0  0  0\n    7.8250   25.5750    1.9120 C   0  0  0  0  0  0  0  0  0  0  0  0\n    7.0260   24.5420    2.4800 C   0  0  0  0  0  0  0  0  0  0  0  0\n    7.6380   23.3390    2.9290 C   0  0  0  0  0  0  0  0  0  0  0  0\n    9.0430   23.1720    2.8100 C   0  0  0  0  0  0  0  0  0  0  0  0\n   16.6170   22.1670    8.8460 C   0  0  0  0  0  0  0  0  0  0  0  0\n   15.8970   21.1820    9.5900 C   0  0  0  0  0  0  0  0  0  0  0  0\n   16.5680   20.0300   10.0940 C   0  0  0  0  0  0  0  0  0  0  0  0\n   17.9600   19.8590    9.8540 C   0  0  0  0  0  0  0  0  0  0  0  0\n   18.6810   20.8390    9.1140 C   0  0  0  0  0  0  0  0  0  0  0  0\n   18.0100   21.9900    8.6100 C   0  0  0  0  0  0  0  0  0  0  0  0\n   15.8900   23.4020    8.2880 C   0  0  0  0  0  0  0  0  0  0  0  0\n   14.7960   23.1160    7.3670 O   0  0  0  0  0  0  0  0  0  0  0  0\n   15.1800   22.6850    6.0280 C   0  0  2  0  0  0  0  0  0  0  0  0\n   14.0630   23.0590    5.0310 C   0  0  1  0  0  0  0  0  0  0  0  0\n   13.5940   24.5130    5.1080 C   0  0  2  0  0  0  0  0  0  0  0  0\n   12.2210   24.7320    4.3560 C   0  0  2  0  0  0  0  0  0  0  0  0\n   11.0340   24.7260    5.3120 C   0  0  0  0  0  0  0  0  0  0  0  0\n   10.8180   23.7130    5.9610 O   0  0  0  0  0  0  0  0  0  0  0  0\n   10.2610   25.8030    5.3600 N   0  0  0  0  0  0  0  0  0  0  0  0\n   12.0380   23.6650    3.3570 O   0  0  0  0  0  0  0  0  0  0  0  0\n   11.3620   24.0330    2.1260 C   0  0  0  0  0  0  0  0  0  0  0  0\n   14.6400   25.2940    4.4910 O   0  0  0  0  0  0  0  0  0  0  0  0\n   14.5800   22.8360    3.6910 O   0  0  0  0  0  0  0  0  0  0  0  0\n   15.3410   21.1990    5.9620 C   0  0  1  0  0  0  0  0  0  0  0  0\n   14.3540   20.5160    6.2110 O   0  0  0  0  0  0  0  0  0  0  0  0\n   16.5050   20.7010    5.5790 N   0  0  0  0  0  0  0  0  0  0  0  0\n   16.8700   19.3000    5.3590 C   0  0  1  0  0  0  0  0  0  0  0  0\n   16.7550   18.9200    3.8830 C   0  0  0  0  0  0  0  0  0  0  0  0\n   17.6770   17.9100    3.5290 C   0  0  0  0  0  0  0  0  0  0  0  0\n   15.8750   19.4460    2.8930 C   0  0  0  0  0  0  0  0  0  0  0  0\n   15.9380   18.9450    1.5610 C   0  0  0  0  0  0  0  0  0  0  0  0\n   16.8750   17.9240    1.2270 C   0  0  0  0  0  0  0  0  0  0  0  0\n   18.2830   18.7480    5.6730 C   0  0  2  0  0  0  0  0  0  0  0  0\n   19.2290   19.7990    5.3760 O   0  0  0  0  0  0  0  0  0  0  0  0\n   17.7580   17.3950    2.2120 C   0  0  0  0  0  0  0  0  0  0  0  0\n   18.4980   17.5180    4.7450 C   0  0  0  0  0  0  0  0  0  0  0  0\n    9.0290   26.0670    6.1350 C   0  0  1  0  0  0  0  0  0  0  0  0\n    9.2990   26.7620    7.4770 C   0  0  0  0  0  0  0  0  0  0  0  0\n    8.1960   27.5630    7.8780 C   0  0  0  0  0  0  0  0  0  0  0  0\n   10.4560   26.7020    8.3060 C   0  0  0  0  0  0  0  0  0  0  0  0\n   10.4930   27.4460    9.5260 C   0  0  0  0  0  0  0  0  0  0  0  0\n    9.3790   28.2450    9.9180 C   0  0  0  0  0  0  0  0  0  0  0  0\n    7.9050   26.9920    5.5960 C   0  0  2  0  0  0  0  0  0  0  0  0\n    8.5420   28.1100    4.9260 O   0  0  0  0  0  0  0  0  0  0  0  0\n    8.2070   28.3130    9.0900 C   0  0  0  0  0  0  0  0  0  0  0  0\n    7.0940   27.4690    6.8390 C   0  0  0  0  0  0  0  0  0  0  0  0\n  2  1  1  0\n  3  2  1  0\n  4  3  1  0\n  5  4  1  0\n  6  5  1  0\n  6  1  1  0\n  8  7  1  0\n  9  8  1  0\n 10  9  1  0\n 11 10  1  0\n 12 11  1  0\n 12  7  1  0\n 13  7  1  0\n 14 13  1  0\n 15 14  1  1\n 16 15  1  0\n 17 16  1  0\n 18 17  1  0\n 19 18  1  0\n 20 19  1  0\n 21 19  1  0\n 18 22  1  6\n 23  1  1  0\n 23 22  1  0\n 17 24  1  6\n 16 25  1  6\n 26 15  1  0\n 26 27  1  6\n 28 26  1  0\n 29 28  1  6\n 30 29  1  0\n 31 30  1  0\n 32 30  1  0\n 33 32  1  0\n 34 33  1  0\n 35 29  1  0\n 35 36  1  6\n 37 34  1  0\n 37 31  1  0\n 38 31  1  0\n 38 35  1  0\n 39 21  1  6\n 40 39  1  0\n 41 40  1  0\n 42 40  1  0\n 43 42  1  0\n 44 43  1  0\n 45 39  1  0\n 45 46  1  1\n 47 44  1  0\n 47 41  1  0\n 48 45  1  0\n 48 41  1  0\nM  END\n&gt;  &lt;initial_smiles&gt;  (1) \nOC(N[C@H]1C2CCCCC2C[C@H]1O)[C@H](OCC1CCCCC1)[C@H](O)[C@@H](O)[C@@H](OCC1CCCCC1)[C@@H](O)N[C@H]1C2CCCCC2C[C@H]1O\n\n&gt;  &lt;_SMILES&gt;  (1) \nOC(N[C@H]1C2CCCCC2C[C@H]1O)[C@H](OCC1CCCCC1)[C@H](O)[C@@H](O)[C@@H](OCC1CCCCC1)[C@@H](O)N[C@H]1C2CCCCC2C[C@H]1O\n\n$$$$\n`;
+            const ligandFormat = `sdf`;
+            await Renderer.renderLigand(moleculeData, ligandFormat);
+        
+
+        } 
+
+        init();
+        &lt;/script&gt;
+        &lt;/body&gt;
+        &lt;/html&gt;
+    " style="width:100%; height:600px; border:0;">
+</iframe>

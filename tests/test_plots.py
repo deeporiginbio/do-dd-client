@@ -310,3 +310,267 @@ def test_scatter_hover_tooltip_custom_labels():
         assert "@image" in tooltips
         assert "@smiles" in tooltips
         assert "@index" in tooltips
+
+
+def test_scatter_save_to_file(tmp_path):
+    """Test that scatter plot can be saved to a file when output_file is provided."""
+
+    x = np.array([1, 2])
+    y = np.array([1, 2])
+    smiles_list = ["CCO", "CC(=O)O"]
+    output_path = tmp_path / "test_scatter.html"
+
+    with (
+        patch("deeporigin.plots.show") as mock_show,
+        patch("deeporigin.plots.save") as mock_save,
+    ):
+        scatter(x=x, y=y, smiles_list=smiles_list, output_file=str(output_path))
+
+        # Verify save was called instead of show
+        mock_save.assert_called_once()
+        mock_show.assert_not_called()
+
+        # Verify the figure was passed to save
+        figure = mock_save.call_args[0][0]
+        assert hasattr(figure, "scatter")
+        assert figure.title.text == "Scatter Plot"
+
+        # Verify the file path was passed correctly
+        assert mock_save.call_args[0][1] == str(output_path)
+
+
+def test_scatter_save_to_file_with_custom_properties(tmp_path):
+    """Test that scatter plot saved to file retains custom properties."""
+    x = np.array([1, 2, 3])
+    y = np.array([1, 2, 3])
+    smiles_list = ["CCO", "CC(=O)O", "c1ccccc1"]
+    output_path = tmp_path / "custom_scatter.html"
+
+    with (
+        patch("deeporigin.plots.show") as mock_show,
+        patch("deeporigin.plots.save") as mock_save,
+    ):
+        scatter(
+            x=x,
+            y=y,
+            smiles_list=smiles_list,
+            x_label="Molecular Weight",
+            y_label="LogP",
+            title="Custom Plot",
+            output_file=str(output_path),
+        )
+
+        # Verify save was called
+        mock_save.assert_called_once()
+        mock_show.assert_not_called()
+
+        # Verify the figure has custom properties
+        figure = mock_save.call_args[0][0]
+        assert figure.title.text == "Custom Plot"
+        assert figure.xaxis.axis_label == "Molecular Weight"
+        assert figure.yaxis.axis_label == "LogP"
+
+
+def test_scatter_default_behavior_without_output_file():
+    """Test that scatter plot shows by default when output_file is not provided."""
+    x = np.array([1, 2])
+    y = np.array([1, 2])
+    smiles_list = ["CCO", "CC(=O)O"]
+
+    with (
+        patch("deeporigin.plots.show") as mock_show,
+        patch("deeporigin.plots.save") as mock_save,
+    ):
+        scatter(x=x, y=y, smiles_list=smiles_list)
+
+        # Verify show was called and save was not
+        mock_show.assert_called_once()
+        mock_save.assert_not_called()
+
+
+def test_scatter_x_lim_min():
+    """Test that x_lim_min parameter sets x-axis minimum correctly."""
+    x = np.array([1, 2, 3, 4, 5])
+    y = np.array([1, 2, 3, 4, 5])
+    smiles_list = ["CCO", "CC(=O)O", "c1ccccc1", "CCN(CC)CC", "CC(C)O"]
+
+    with patch("deeporigin.plots.show") as mock_show:
+        scatter(x=x, y=y, smiles_list=smiles_list, x_lim_min=0.5)
+
+        # Get the figure that was passed to show
+        figure = mock_show.call_args[0][0]
+
+        # Verify x-axis minimum is set correctly
+        assert figure.x_range.start == 0.5
+
+
+def test_scatter_x_lim_max():
+    """Test that x_lim_max parameter sets x-axis maximum correctly."""
+    x = np.array([1, 2, 3, 4, 5])
+    y = np.array([1, 2, 3, 4, 5])
+    smiles_list = ["CCO", "CC(=O)O", "c1ccccc1", "CCN(CC)CC", "CC(C)O"]
+
+    with patch("deeporigin.plots.show") as mock_show:
+        scatter(x=x, y=y, smiles_list=smiles_list, x_lim_max=5.5)
+
+        # Get the figure that was passed to show
+        figure = mock_show.call_args[0][0]
+
+        # Verify x-axis maximum is set correctly
+        assert figure.x_range.end == 5.5
+
+
+def test_scatter_x_lim_both():
+    """Test that both x_lim_min and x_lim_max parameters work together."""
+    x = np.array([1, 2, 3, 4, 5])
+    y = np.array([1, 2, 3, 4, 5])
+    smiles_list = ["CCO", "CC(=O)O", "c1ccccc1", "CCN(CC)CC", "CC(C)O"]
+
+    with patch("deeporigin.plots.show") as mock_show:
+        scatter(x=x, y=y, smiles_list=smiles_list, x_lim_min=0.5, x_lim_max=5.5)
+
+        # Get the figure that was passed to show
+        figure = mock_show.call_args[0][0]
+
+        # Verify x-axis limits are set correctly
+        assert figure.x_range.start == 0.5
+        assert figure.x_range.end == 5.5
+
+
+def test_scatter_y_lim_min():
+    """Test that y_lim_min parameter sets y-axis minimum correctly."""
+    x = np.array([1, 2, 3, 4, 5])
+    y = np.array([1, 2, 3, 4, 5])
+    smiles_list = ["CCO", "CC(=O)O", "c1ccccc1", "CCN(CC)CC", "CC(C)O"]
+
+    with patch("deeporigin.plots.show") as mock_show:
+        scatter(x=x, y=y, smiles_list=smiles_list, y_lim_min=0.0)
+
+        # Get the figure that was passed to show
+        figure = mock_show.call_args[0][0]
+
+        # Verify y-axis minimum is set correctly
+        assert figure.y_range.start == 0.0
+
+
+def test_scatter_y_lim_max():
+    """Test that y_lim_max parameter sets y-axis maximum correctly."""
+    x = np.array([1, 2, 3, 4, 5])
+    y = np.array([1, 2, 3, 4, 5])
+    smiles_list = ["CCO", "CC(=O)O", "c1ccccc1", "CCN(CC)CC", "CC(C)O"]
+
+    with patch("deeporigin.plots.show") as mock_show:
+        scatter(x=x, y=y, smiles_list=smiles_list, y_lim_max=6.0)
+
+        # Get the figure that was passed to show
+        figure = mock_show.call_args[0][0]
+
+        # Verify y-axis maximum is set correctly
+        assert figure.y_range.end == 6.0
+
+
+def test_scatter_y_lim_both():
+    """Test that both y_lim_min and y_lim_max parameters work together."""
+    x = np.array([1, 2, 3, 4, 5])
+    y = np.array([1, 2, 3, 4, 5])
+    smiles_list = ["CCO", "CC(=O)O", "c1ccccc1", "CCN(CC)CC", "CC(C)O"]
+
+    with patch("deeporigin.plots.show") as mock_show:
+        scatter(x=x, y=y, smiles_list=smiles_list, y_lim_min=0.0, y_lim_max=6.0)
+
+        # Get the figure that was passed to show
+        figure = mock_show.call_args[0][0]
+
+        # Verify y-axis limits are set correctly
+        assert figure.y_range.start == 0.0
+        assert figure.y_range.end == 6.0
+
+
+def test_scatter_all_lim():
+    """Test that all limit parameters work together."""
+    x = np.array([1, 2, 3])
+    y = np.array([10, 20, 30])
+    smiles_list = ["CCO", "CC(=O)O", "c1ccccc1"]
+
+    with patch("deeporigin.plots.show") as mock_show:
+        scatter(
+            x=x,
+            y=y,
+            smiles_list=smiles_list,
+            x_lim_min=0,
+            x_lim_max=4,
+            y_lim_min=5,
+            y_lim_max=35,
+        )
+
+        # Get the figure that was passed to show
+        figure = mock_show.call_args[0][0]
+
+        # Verify all axis limits are set correctly
+        assert figure.x_range.start == 0
+        assert figure.x_range.end == 4
+        assert figure.y_range.start == 5
+        assert figure.y_range.end == 35
+
+
+def test_scatter_lim_with_output_file(tmp_path):
+    """Test that axis limits work when saving to file."""
+    x = np.array([1, 2, 3])
+    y = np.array([1, 2, 3])
+    smiles_list = ["CCO", "CC(=O)O", "c1ccccc1"]
+    output_path = tmp_path / "test_scatter_lim.html"
+
+    with patch("deeporigin.plots.save") as mock_save:
+        scatter(
+            x=x,
+            y=y,
+            smiles_list=smiles_list,
+            x_lim_min=0,
+            x_lim_max=4,
+            y_lim_min=0,
+            y_lim_max=4,
+            output_file=str(output_path),
+        )
+
+        # Get the figure that was passed to save
+        figure = mock_save.call_args[0][0]
+
+        # Verify axis limits are set correctly
+        assert figure.x_range.start == 0
+        assert figure.x_range.end == 4
+        assert figure.y_range.start == 0
+        assert figure.y_range.end == 4
+
+
+def test_scatter_custom_width_height():
+    """Test that custom width and height parameters are applied correctly."""
+    x = np.array([1, 2, 3])
+    y = np.array([1, 2, 3])
+    smiles_list = ["CCO", "CC(=O)O", "c1ccccc1"]
+
+    with patch("deeporigin.plots.show") as mock_show:
+        scatter(x=x, y=y, smiles_list=smiles_list, width=1200, height=600)
+
+        # Get the figure that was passed to show
+        figure = mock_show.call_args[0][0]
+
+        # Verify custom width and height are set correctly
+        assert figure.width == 1200
+        assert figure.height == 600
+
+
+def test_scatter_default_width_height():
+    """Test that default width and height are used when not specified."""
+    x = np.array([1, 2, 3])
+    y = np.array([1, 2, 3])
+    smiles_list = ["CCO", "CC(=O)O", "c1ccccc1"]
+
+    with patch("deeporigin.plots.show") as mock_show:
+        scatter(x=x, y=y, smiles_list=smiles_list)
+
+        # Get the figure that was passed to show
+        figure = mock_show.call_args[0][0]
+
+        # Verify default width and height
+        assert figure.width == 800
+        assert figure.height == 800

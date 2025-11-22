@@ -27,7 +27,7 @@ Ligands can be imported from SDF files or SMILES strings. To run ABFE and RBFE, 
 
 ## Creating a `Complex` object
 
-The core of the Drug Discovery toolbox is the `Complex` class, that acts as a container for a protein and a set of ligand.
+The core of the Drug Discovery toolbox is the [`Complex`](../ref/complex.md) class, that acts as a container for a [`Protein`](../ref/protein.md) and a set of [`Ligands`](../ref/ligand.md).
 
 The `Complex` object can be created using:
 
@@ -56,7 +56,7 @@ sim
     Complex(protein=brd.pdb with 8 ligands)
     ```
 
-### Viewing the protein
+### Viewing the Protein
 
 The 3D structure of the protein can be viewed using the built-in `show` method in the `Protein` class:
 
@@ -73,11 +73,10 @@ This generates a 3D visualization of the protein, similar to:
 <iframe 
     src="../../images/brd-protein.html" 
     width="100%" 
-    height="650" 
+    height="630" 
     style="border:none;"
     title="Protein visualization"
 ></iframe>
-
 
 ### Listing Ligands
 
@@ -102,7 +101,7 @@ and you should see something similar to:
 
 ### Viewing Ligands (3D structures)
 
-We can also view a table of 3D structures as follows:
+We can also 3D structures using:
 
 ```{.python notest}
 from deeporigin.drug_discovery import Complex, BRD_DATA_DIR

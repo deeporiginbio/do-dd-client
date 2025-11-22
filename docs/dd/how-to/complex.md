@@ -1,4 +1,5 @@
-This document describes how to create a `Complex` object, that can be used to run Docking, ABFE and RBFE. 
+This document describes how to create a `Complex` object, that can be used to run [Docking](./docking.md), [ABFE](../tutorial/abfe.md) and [RBFE](../tutorial/rbfe.md).
+
 
 
 ## Creating a Complex
@@ -19,7 +20,7 @@ The directory should contain:
 
 ### From `Protein` and `Ligand` objects
 
-A `Complex` object can be also be constructed using `Protein` and `Ligand` objects. 
+A `Complex` object can be also be constructed using [`Protein`](./proteins.md) and [`Ligand`](./ligands.md) objects. 
 
 ```{.python notest}
 from deeporigin.drug_discovery import Complex, BRD_DATA_DIR, Protein, Ligand
@@ -33,7 +34,7 @@ sim = Complex(protein=protein, ligands=[ligand])
 ### From `LigandSet` objects
 
 
-A `Complex` object can also be constructed using `Protein` and `LigandSet` objects. 
+A `Complex` object can also be constructed using [`Protein`](./proteins.md) and [`LigandSet`](./ligands.md) objects. 
 
 ```{.python notest}
 from deeporigin.drug_discovery import Complex, BRD_DATA_DIR, Protein, LigandSet
@@ -70,12 +71,12 @@ sim.ligands = ligand5  # Replace with a single ligand
 ```
 
 ??? tip "Constructing Ligands"
-    To see how to construct Ligands, see [this](./ligands.md)
+    To see how to construct Ligands, see [:material-page-previous: Ligands](./ligands.md)
 
 ??? tip "Constructing the Protein"
-    To see how to construct the Protein, see [this](./proteins.md)
+    To see how to construct the Protein, see [:material-page-previous: Proteins](./proteins.md)
 
-## Preparing a complex
+## Preparing a Complex
 
 To prepare a protein-ligand complex for simulation or further analysis, use the `Complex.prepare()` method. This method runs system preparation on a given ligand in the context of the complex's protein, handling tasks such as protonation, water retention, and box padding.
 
@@ -84,7 +85,8 @@ To prepare a protein-ligand complex for simulation or further analysis, use the 
 Typically, you would call this method using a ligand in the complex:
 
 ```{.python notest}
-sim.prepare(sim.ligands[0])
+prepared_system = sim.prepare(sim.ligands[0])
+prepared_system.show()
 ```
 
 You should see something like:
@@ -98,3 +100,19 @@ You should see something like:
 ></iframe>
 
 which shows you the prepared system.
+
+!!! info "System preparation parameters"
+    Look at the [:material-page-next: reference documentation](../ref/complex.md#src.drug_discovery.complex.Complex.prepare) to understand parameters for system preparation.
+
+
+## Specifying a Client
+
+A `Complex` can be configured with a [`DeepOriginClient`](../../platform/index.md) explicitly, using:
+
+```{.python notest}
+sim = Complex.from_dir(..., client=client)
+```
+
+## Reference
+
+-  [:material-page-next: Complex](../ref/complex.md)

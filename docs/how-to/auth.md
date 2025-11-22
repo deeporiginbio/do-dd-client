@@ -1,7 +1,7 @@
 # Sign into Deep Origin
 
-!!! tip "Configure if running locally"
-    If you're running this code on your local computer (outside of a Deep Origin Workstation), make sure to [configure](../configure.md#on-your-local-computer) it first.
+!!! tip "Configure first"
+    Make sure to [configure](../configure.md) it first.
 
 To use most of the functionality of the Python client, you must first run the following commands to sign into Deep Origin.
 

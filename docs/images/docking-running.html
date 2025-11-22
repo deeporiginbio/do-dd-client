@@ -1,0 +1,328 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta http-equiv="Content-Security-Policy"
+        content="default-src 'self' https://cdn.jsdelivr.net; style-src 'self' https://cdn.jsdelivr.net 'unsafe-inline'; script-src 'self' https://cdn.jsdelivr.net 'unsafe-inline'">
+    <title>Docking <code>kras.pdb</code> to 145 ligands. (5 jobs)</title>
+    <!-- Bootstrap 5 CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        /* Custom style for JSON blocks */
+        pre,
+        .monospace-block {
+            background: #f8f9fa;
+            border: 1px solid #e3e3e3;
+            border-radius: 0.25rem;
+            padding: 1rem;
+            font-family: monospace;
+            white-space: pre-wrap;
+        }
+
+        .card {
+            margin-bottom: 1rem;
+        }
+    </style>
+</head>
+
+<body>
+    <!-- Full-width, left-aligned card using container-fluid -->
+    <div class="container-fluid py-3">
+        <div class="card w-100">
+            <div class="card-header">
+                <h2 class="card-title mb-3">Docking <code>kras.pdb</code> to 145 ligands. (5 jobs)</h2>
+                <ul class="nav nav-tabs card-header-tabs" id="jobTabs-63473a31-762d-44e6-86a0-bb7c4079ed73" role="tablist">
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link active" id="status-tab-63473a31-762d-44e6-86a0-bb7c4079ed73" data-bs-toggle="tab"
+                            data-bs-target="#status-63473a31-762d-44e6-86a0-bb7c4079ed73" type="button" role="tab"
+                            aria-controls="status-63473a31-762d-44e6-86a0-bb7c4079ed73" aria-selected="true">
+                            Status
+                        </button>
+                    </li>
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link" id="details-tab-63473a31-762d-44e6-86a0-bb7c4079ed73" data-bs-toggle="tab"
+                            data-bs-target="#details-63473a31-762d-44e6-86a0-bb7c4079ed73" type="button" role="tab"
+                            aria-controls="details-63473a31-762d-44e6-86a0-bb7c4079ed73" aria-selected="false">
+                            Details
+                        </button>
+                    </li>
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link" id="inputs-tab-63473a31-762d-44e6-86a0-bb7c4079ed73" data-bs-toggle="tab"
+                            data-bs-target="#inputs-63473a31-762d-44e6-86a0-bb7c4079ed73" type="button" role="tab"
+                            aria-controls="inputs-63473a31-762d-44e6-86a0-bb7c4079ed73" aria-selected="false">
+                            Inputs
+                        </button>
+                    </li>
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link" id="outputs-tab-63473a31-762d-44e6-86a0-bb7c4079ed73" data-bs-toggle="tab"
+                            data-bs-target="#outputs-63473a31-762d-44e6-86a0-bb7c4079ed73" type="button" role="tab"
+                            aria-controls="outputs-63473a31-762d-44e6-86a0-bb7c4079ed73" aria-selected="false">
+                            Outputs
+                        </button>
+                    </li>
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link" id="billing-tab-63473a31-762d-44e6-86a0-bb7c4079ed73" data-bs-toggle="tab"
+                            data-bs-target="#billing-63473a31-762d-44e6-86a0-bb7c4079ed73" type="button" role="tab"
+                            aria-controls="billing-63473a31-762d-44e6-86a0-bb7c4079ed73" aria-selected="false">
+                            Billing
+                        </button>
+                    </li>
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link" id="raw-progress-tab-63473a31-762d-44e6-86a0-bb7c4079ed73" data-bs-toggle="tab"
+                            data-bs-target="#raw-progress-63473a31-762d-44e6-86a0-bb7c4079ed73" type="button" role="tab"
+                            aria-controls="raw-progress-63473a31-762d-44e6-86a0-bb7c4079ed73" aria-selected="false">
+                            Raw Progress Reports
+                        </button>
+                    </li>
+                </ul>
+            </div>
+            <!-- Card Body with Tab Content -->
+            <div class="card-body">
+                <div class="tab-content" id="jobTabsContent-63473a31-762d-44e6-86a0-bb7c4079ed73">
+                    <!-- Status Tab -->
+                    <div class="tab-pane fade show active" id="status-63473a31-762d-44e6-86a0-bb7c4079ed73" role="tabpanel"
+                        aria-labelledby="status-tab-63473a31-762d-44e6-86a0-bb7c4079ed73">
+                        
+    
+    <p style="color: #666; margin: 10px 0;">Average speed: 1.40 dockings/minute</p>
+    
+    <div style="margin-bottom: 5px;">
+      <span id="completed-count">Completed: 0</span>
+      <span style="margin-left: 15px;">Failed: 0</span>
+      <span style="margin-left: 15px;" id="remaining-count">Remaining: 145</span>
+    </div>
+    
+    
+    <div class="progress" style="height: 20px;">
+      <div id="progress-success" class="progress-bar bg-success" role="progressbar" style="width: 0.0%"
+           aria-valuenow="0" aria-valuemin="0" aria-valuemax="145"></div>
+      <div id="progress-danger" class="progress-bar bg-danger" role="progressbar" style="width: 0.0%"
+           aria-valuenow="0" aria-valuemin="0" aria-valuemax="145"></div>
+      <div id="progress-remaining" class="progress-bar bg-secondary" role="progressbar" style="width: 100.0%"
+           aria-valuenow="145" aria-valuemin="0" aria-valuemax="145"></div>
+    </div>
+    
+                    </div>
+                    <!-- Details Tab with Table -->
+                    <div class="tab-pane fade" id="details-63473a31-762d-44e6-86a0-bb7c4079ed73" role="tabpanel"
+                        aria-labelledby="details-tab-63473a31-762d-44e6-86a0-bb7c4079ed73">
+                        <table class="table table-bordered table-striped mb-0">
+                            <thead>
+                                <tr>
+                                    <th>executionID</th>
+                                    <th>resourceID</th>
+                                    <th>Status</th>
+                                    <th>Started At</th>
+                                    <th>Running Time</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                
+                                    
+                                    
+                                    <tr>
+                                        <td>073935e7-8d85-4168-8a63-dc56d9738b48</td>
+                                        <td>gigskicwfemuzxvziecb5</td>
+                                        <td>Running</td>
+                                        <td>10 seconds ago</td>
+                                        <td>None</td>
+                                    </tr>
+                                    
+                                    <tr>
+                                        <td>156776c5-685e-44f6-88db-5171a520fe61</td>
+                                        <td>u9iup6zsnvd5x0xqp42rd</td>
+                                        <td>Running</td>
+                                        <td>11 seconds ago</td>
+                                        <td>None</td>
+                                    </tr>
+                                    
+                                    <tr>
+                                        <td>b75af5ed-d8e1-403c-94fa-8a91d750e197</td>
+                                        <td>kz544pmrxzmiwd4rkdxf9</td>
+                                        <td>Running</td>
+                                        <td>11 seconds ago</td>
+                                        <td>None</td>
+                                    </tr>
+                                    
+                                    <tr>
+                                        <td>9151f852-037e-4ca7-a07d-97f12cfba32c</td>
+                                        <td>yeptx5xlzadm3coy55zrn</td>
+                                        <td>Running</td>
+                                        <td>11 seconds ago</td>
+                                        <td>None</td>
+                                    </tr>
+                                    
+                                    <tr>
+                                        <td>31d52f77-858a-43a7-8064-6c57f21ccec0</td>
+                                        <td>81ydd7r0mguundhh0zwf0</td>
+                                        <td>Running</td>
+                                        <td>10 seconds ago</td>
+                                        <td>None</td>
+                                    </tr>
+                                    
+                                
+                            </tbody>
+                        </table>
+                    </div>
+                    <!-- Inputs Tab with Interactive JSON Viewer -->
+                    <div class="tab-pane fade" id="inputs-63473a31-762d-44e6-86a0-bb7c4079ed73" role="tabpanel"
+                        aria-labelledby="inputs-tab-63473a31-762d-44e6-86a0-bb7c4079ed73">
+                        
+        <div id="json_viewer_bc707e17832f42bba4db7e325458ae59" style="padding:10px;border:1px solid #ddd;"></div>
+        <script>
+        (function() {
+        const mountSelector = "#json_viewer_bc707e17832f42bba4db7e325458ae59";
+        function render() {
+            new JsonViewer({ value: {"073935e7-8d85-4168-8a63-dc56d9738b48": {"protein": {"key": "entities/proteins/7120a2d2faee62493124c8f7f683e16dc2ae1bff9eaeef137350a5d363648291.pdb", "$provider": "ufa"}, "box_size": [16.33661834060757, 16.33661834060757, 16.33661834060757], "smiles_list": ["C=CC(=O)N1CCN(c2nc(OC[C@H]3CCCN3C)nc3c2C[C@@H](C)[C@H](c2c(C)ccc4[nH]ncc24)C3)CC1", "C=CC(=O)N1CCN(c2nc(O[C@@H](C)CN(C)C)nc3c2CCN(c2cc(O)cc4ccccc24)C3)CC1", "C=CC(=O)N1CCN(c2ncnc3c(F)c(-c4c(O)cccc4F)c(Cl)cc23)CC1", "C=CC(=O)N1CCN(c2ncnc3c2CCN(c2c(C)ccc4[nH]ncc24)C3)CC1", "C=CC(=O)N1CCN(c2ncnc3c2CCN(c2c(O)cccc2F)C3)CC1", "C=CC(=O)N1CCN(c2ncnc3c2CCN(c2cc(O)cc4ccccc24)C3)CC1", "C=CC(=O)N1CCN(c2ncnc3c2CCN(c2cc(O)ccc2F)C3)CC1", "C=CC(=O)N1CCN(c2ncnc3c2CCN(c2cccc4ccc(O)cc24)C3)CC1", "C=CC(=O)N1CCN(c2ncnc3c2CCN(c2cccc4ccccc24)C3)CC1", "C=CC(=O)N1CCN(c2ncnc3c2CC[C@@H](c2c(C)ccc4[nH]ncc24)C3)[C@@H](C)C1", "C=CC(=O)N1CCN(c2ncnc3c2C[C@@H](C)[C@H](c2c(C)ccc4[nH]ncc24)C3)CC1", "C=CC(=O)N1CCN(c2ncnc3cc(-c4c(C)ccc5[nH]ncc45)c(Cl)cc23)CC1", "C=CC(=O)N1CCN(c2nnc(-c3ccccc3)c3cc(-c4c(O)cccc4F)c(Cl)cc23)CC1", "C=CC(=O)N1CCN(c2nnc(-c3ccccc3C)c3cc(-c4c(O)cccc4F)c(Cl)cc23)CC1", "C=CC(=O)N1CCN(c2nnc(-c3ccccc3C3CC3)c3cc(-c4c(O)cccc4F)c(Cl)cc23)CC1", "C=CC(=O)N1CCN(c2nnc(-c3ccccc3CC)c3cc(-c4c(O)cccc4F)c(Cl)cc23)CC1", "C=CC(=O)N1CCN(c2nnc(-c3ccccc3Cl)c3cc(-c4c(O)cccc4F)c(Cl)cc23)CC1", "C=CC(=O)N1CCN(c2nnc(-c3ccccc3OC)c3cc(-c4c(O)cccc4F)c(Cl)cc23)CC1", "C=CC(=O)N1CCN2C(=O)c3cc(OCCOC)c(-c4c(O)cccc4Cl)c(F)c3OC[C@H]2C1", "C=CC(=O)N1CCN2C(=O)c3ccc(-c4c(C)ccc5[nH]ncc45)c(Cl)c3OC[C@@H]2C1", "C=CC(=O)N1CCN2Cc3cc(C#CC)c(-c4c(O)cccc4Cl)c(F)c3OC[C@H]2C1", "C=CC(=O)N1CCN2Cc3cc(C#N)c(-c4c(O)cccc4Cl)c(F)c3OC[C@H]2C1", "C=CC(=O)N1CCN2Cc3cc(C(F)F)c(-c4c(O)cccc4Cl)c(F)c3OC[C@H]2C1", "C=CC(=O)N1CCN2Cc3cc(C4CC4)c(-c4c(O)cccc4Cl)c(F)c3OC[C@H]2C1", "C=CC(=O)N1CCN2Cc3cc(Cl)c(-c4c(O)cccc4Cl)c(F)c3OC[C@H]2C1", "C=CC(=O)N1CCN2Cc3cc(F)c(-c4c(C)cccc4O)c(F)c3OC[C@H]2C1", "C=CC(=O)N1CCN2Cc3cc(F)c(-c4c(O)cccc4Cl)c(F)c3OC[C@H]2C1.O", "C=CC(=O)N1CCN2Cc3cc(F)c(-c4c(O)cccc4F)c(Cl)c3OC[C@H]2C1", "C=CC(=O)N1CCN2Cc3cc(F)c(-c4c(O)cccc4F)c(F)c3OC[C@H]2C1", "C=CC(=O)N1CCN2Cc3cc(OC(F)F)c(-c4c(O)cccc4Cl)c(F)c3OC[C@H]2C1", "C=CC(=O)N1CCN2Cc3cc(OC)c(-c4c(O)cccc4Cl)c(F)c3OC[C@H]2C1", "C=CC(=O)N1CCN2Cc3cc(OC4CC4)c(-c4c(O)cccc4Cl)c(F)c3OC[C@H]2C1"], "pocket_center": [15.996501922607422, -8.671774864196777, 20.617807388305664]}, "156776c5-685e-44f6-88db-5171a520fe61": {"protein": {"key": "entities/proteins/7120a2d2faee62493124c8f7f683e16dc2ae1bff9eaeef137350a5d363648291.pdb", "$provider": "ufa"}, "box_size": [16.33661834060757, 16.33661834060757, 16.33661834060757], "smiles_list": ["C=CC(=O)N1C[C@H]2CCOc3c(Cl)c(-c4c(O)cccc4F)c(F)c4ncnc(c34)N2C[C@H]1C", "C=CC(=O)N1C[C@H]2COc3c(Cl)c(-c4c(O)cccc4F)c(F)c4ncnc(c34)N2C[C@@H]1C", "C=CC(=O)N1C[C@H]2COc3c(Cl)c(-c4c(O)cccc4F)c(F)c4ncnc(c34)N2C[C@H]1C", "C=CC(=O)Nc1ccc(-c2nn(C(C)C)c(-c3c(C)ccc4[nH]ncc34)c2C)c(F)c1", "C=CC(=O)Nc1ccc(-n2nc(C(C)C)c(-c3c(C)ccc4[nH]ncc34)c2C)c(C)c1", "C=CC(=O)Nc1ccc(-n2nc(C(C)C)c(-c3c(C)ccc4[nH]ncc34)c2C)c(F)c1", "C=CC(=O)Nc1ccc(-n2nc(C(C)C)c(-c3c(C)ccc4[nH]ncc34)c2C)cc1", "C=CC(=O)Nc1ccc(-n2nc(C)c(-c3c(C)ccc4[nH]ncc34)c2C)c(F)c1", "C=CC(=O)Nc1ccc(-n2nc(C)c(-c3c(C)ccc4[nH]ncc34)c2C)cc1", "C=Cc1ncc2n1CCN(c1nc(=O)n(C(C)C)c3nc(-c4c(O)cccc4F)c(F)cc13)C2", "C=Cc1ncc2n1CCN(c1nc(=O)n(CC3CC3)c3nc(-c4c(O)cccc4F)c(F)cc13)C2", "CC(C)(C)c1nc(-c2cccc(NS(=O)(=O)c3c(F)cccc3F)c2F)c(-c2ccnc(N)n2)s1", "CCCS(=O)(=O)Nc1ccc(F)c(C(=O)c2c[nH]c3ncc(-c4ccc(Cl)cc4)cc23)c1F", "CCn1c(=O)c(-c2cc(NC(=O)NCCC(C)(C)C)c(F)cc2C)cc2cnc(NC)cc21", "CCn1c(=O)c(-c2ccc(F)c(NC(=O)Nc3cc(C(C)(C)C)no3)c2)cc2cnc(NC)cc21", "CN(C)C1CN(c2nc(N3C[C@H]4CC[C@@H](C3)N4)c3cnc(-c4cc(O)cc5ccccc45)c(F)c3n2)C1", "CN(C)CCOc1nc(N2C[C@H]3CC[C@@H](C2)N3)c2cnc(-c3cc(O)cc4ccccc34)c(F)c2n1", "CN(C)Cc1[nH]c2ccccc2c1[C@H]1NC(=O)c2ccc(O)cc21", "CN1CCC[C@H]1COc1nc(N2C[C@H]3CC[C@@H](C2)N3)c2cnc(-c3cc(O)cc4ccccc34)c(F)c2n1", "CNc1cc2c(cn1)cc(-c1ccc(F)c(NC(=O)Nc3cc(C(C)(C)C)no3)c1)c(=O)n2[C@H]1CCOC1", "CNc1cc2nc(C)c(-c3cc(NC(=O)NCCC(C)(C)C)c(F)cc3C)cc2cn1", "CNc1cc2nc(C)c(-c3cc(NC(=O)NCCC(C)(C)C)ccc3C)cc2cn1", "CNc1cc2nc(C)c(-c3cc(NC(=O)NC[C@@H](O)C(C)(C)C)c(F)cc3C)cc2cn1", "CNc1cc2nc(C)c(-c3ccc(F)c(NC(=O)NCCC(C)(C)C)c3)cc2cn1", "CNc1ncc2cc(-c3cc(NC(=O)NCCC(C)(C)C)c(F)cc3C)c(C)nc2n1", "CNc1ncc2cc(-c3cc(NC(=O)NCCC(C)(C)C)c(F)cc3C)cnc2n1", "CNc1ncc2cc(-c3ccc(F)c(NC(=O)NCCC(C)(C)C)c3)c(C)nc2n1", "COc1cc(/C=C/C(=O)c2c(F)cccc2F)cc(OC)c1OC", "COc1cc(/C=C/C(=O)c2ccc(Br)cc2)cc(OC)c1OC", "COc1cc(/C=C/C(=O)c2ccc(F)cc2)cc(OC)c1OC", "COc1cc(/C=C/C(=O)c2ccc(N(C)C)cc2)cc(OC)c1OC", "COc1cc(/C=C/C(=O)c2ccc(N)cc2)cc(OC)c1OC"], "pocket_center": [15.996501922607422, -8.671774864196777, 20.617807388305664]}, "b75af5ed-d8e1-403c-94fa-8a91d750e197": {"protein": {"key": "entities/proteins/7120a2d2faee62493124c8f7f683e16dc2ae1bff9eaeef137350a5d363648291.pdb", "$provider": "ufa"}, "box_size": [16.33661834060757, 16.33661834060757, 16.33661834060757], "smiles_list": ["C#Cc1cc(CN2CCN(C(=O)C=C)CC2)cc(F)c1-c1c(O)cccc1Cl", "C#Cc1cc2c(c(F)c1-c1c(O)cccc1Cl)OC[C@H]1CN(C(=O)C=C)CCN1C2", "C=CC(=O)N1CC(N2CCN(C(=O)CNc3cc(C4(C)CC4)c(Cl)cc3O)CC2)C1", "C=CC(=O)N1CC(N2CCN(C(=O)CNc3cc(Cl)c(Cl)cc3O)CC2)C1", "C=CC(=O)N1CC(NC(=O)COc2ccc(Br)cc2C(=O)N2CC=C(c3ccccc3)C2)C1", "C=CC(=O)N1CC(NC(=O)Cn2c(C)c(C(=O)N3CCc4c(cccc4OC)C3)c3cc(Cl)ccc32)C1", "C=CC(=O)N1CC(NC(=O)Cn2cc(C(=O)N(C)Cc3ccccc3)c3cc(Br)ccc32)C1", "C=CC(=O)N1CC(NC(=O)Cn2cc(C(=O)N3CCc4ccccc4C3)c3cc(Br)ccc32)C1", "C=CC(=O)N1CC(NC(=O)Cn2cc(C(=O)NCCc3ccccc3)c3cc(Br)ccc32)C1", "C=CC(=O)N1CC(NC(=O)Cn2cc(C(=O)NCc3ccccc3)c3cc(Br)ccc32)C1", "C=CC(=O)N1CC(NC(=O)Cn2ccc3cc(Br)ccc32)C1", "C=CC(=O)N1CC2(CC(n3nc(-c4ccc5[nH]ncc5c4)c(-c4c(Cl)c(C)cc5[nH]ncc45)c3C)C2)C1", "C=CC(=O)N1CC2(CC(n3nc(-c4ccc5c(c4)ncn5C)c(-c4c(Cl)c(C)cc5[nH]ncc45)c3C)C2)C1", "C=CC(=O)N1CC2(CC(n3nc(-c4ccc5c(cnn5C)c4)c(-c4c(Cl)c(C)cc5[nH]ncc45)c3C)C2)C1", "C=CC(=O)N1CC2(CC(n3nc(-c4ccc5cn[nH]c5c4)c(-c4c(Cl)c(C)cc5[nH]ncc45)c3C)C2)C1", "C=CC(=O)N1CC2(CC(n3nc(-c4ccccc4)c(-c4c(Cl)c(C)cc5[nH]ncc45)c3C)C2)C1", "C=CC(=O)N1CC2(CC(n3nc(-c4ccccn4)c(-c4c(Cl)c(C)cc5[nH]ncc45)c3C)C2)C1", "C=CC(=O)N1CC2(CC(n3nc(-c4cccnc4)c(-c4c(Cl)c(C)cc5[nH]ncc45)c3C(F)F)C2)C1", "C=CC(=O)N1CC2(CC(n3nc(-c4cccnc4)c(-c4c(Cl)c(C)cc5[nH]ncc45)c3C)C2)C1", "C=CC(=O)N1CC2(CC(n3nc(-c4cccnc4)c(-c4c(Cl)c(C)cc5[nH]ncc45)c3CC#N)C2)C1", "C=CC(=O)N1CC2(CC(n3nc(-c4cccnc4)c(-c4c(Cl)ccc5[nH]ncc45)c3C)C2)C1", "C=CC(=O)N1CC2(CC(n3nc(C(C)C)c(-c4c(C)ccc5[nH]ncc45)c3C)C2)C1", "C=CC(=O)N1CC2(CC(n3nc(C4CCCCC4)c(-c4c(C)ccc5[nH]ncc45)c3C)C2)C1", "C=CC(=O)N1CC2(CC(n3nc(C4CCCCC4)c(-c4c(Cl)ccc5[nH]ncc45)c3C)C2)C1", "C=CC(=O)N1CCN(C(=O)CNc2cc(I)c(Cl)cc2O)CC1", "C=CC(=O)N1CCN(Cc2cc(F)c(-c3c(O)cccc3Cl)c(F)c2)CC1", "C=CC(=O)N1CCN(c2nc(OCCCN(C)C)nc3c2CCN(c2cc(O)cc4ccccc24)C3)CC1", "C=CC(=O)N1CCN(c2nc(OCCCN(C)C)nc3c2C[C@@H](C)[C@H](c2c(C)ccc4[nH]ncc24)C3)CC1", "C=CC(=O)N1CCN(c2nc(OCCN(C)C)nc3c2CCN(c2cc(O)cc4ccccc24)C3)CC1", "C=CC(=O)N1CCN(c2nc(OC[C@@H]3CCCN3C)nc3c2CCN(c2c(C)ccc4[nH]ncc24)C3)CC1", "C=CC(=O)N1CCN(c2nc(OC[C@@H]3CCCN3C)nc3c2CCN(c2cc(O)cc4ccccc24)C3)CC1", "C=CC(=O)N1CCN(c2nc(OC[C@@H]3CCCN3C)nc3c2CCN(c2cccc4ccccc24)C3)CC1"], "pocket_center": [15.996501922607422, -8.671774864196777, 20.617807388305664]}, "9151f852-037e-4ca7-a07d-97f12cfba32c": {"protein": {"key": "entities/proteins/7120a2d2faee62493124c8f7f683e16dc2ae1bff9eaeef137350a5d363648291.pdb", "$provider": "ufa"}, "box_size": [16.33661834060757, 16.33661834060757, 16.33661834060757], "smiles_list": ["COc1cc(/C=C/C(=O)c2ccc([N+](=O)[O-])cc2)cc(OC)c1OC", "COc1cc(/C=C/C(=O)c2ccccn2)cc(OC)c1OC", "COc1cc(C(=O)/C=C/c2c(F)cccc2F)cc(OC)c1OC", "COc1cc(C(=O)/C=C/c2ccc([N+](=O)[O-])cc2)cc(OC)c1OC", "COc1ccc(C(=O)/C=C/c2cc(OC)c(OC)c(OC)c2)cc1", "CSCC[C@H](CC(=O)[C@H](/C=C\\[C@@H](/C=C/[C@@H](N)CS)C(C)C)Cc1ccccc1)C(=O)O", "Cc1[nH]c2cc(Cl)cc(Cl)c2c1CCN", "Cn1ccnc1CCOc1nc(N2C[C@H]3CC[C@@H](C2)N3)c2cnc(-c3cc(O)cc4ccccc34)c(F)c2n1", "Cn1cnc(Cn2ccc3ccc(CNCc4[nH]c5ccccc5c4[C@H]4NC(=O)c5ccc(O)cc54)cc32)c1", "Fc1c(-c2cccc3ccccc23)ncc2c(N3C[C@H]4CC[C@@H](C3)N4)nc(OCC34CCCN3CCC4)nc12", "N#Cc1c(N)sc2c(F)ccc(-c3c(Cl)cc4c(N5C[C@H]6CC[C@@H](C5)N6)ncnc4c3F)c12", "N#Cc1ccc2c(c1)CN(S(=O)(=O)c1cccs1)[C@H](Cc1ccccc1)CN2Cc1c[nH]cn1", "O=C(Cc1ccncc1)N1CCN([C@H]2c3ccc(Cl)cc3CCc3cccnc32)CC1", "O=C1N[C@H](c2c(CNCc3ccc4ccn(Cc5ccccc5)c4c3)[nH]c3ccccc23)c2cc(O)ccc21", "O=S(=O)(NCCOc1ccc2ccccc2c1)c1ccc(NO)cc1", "O=S(=O)(c1ccc(NO)cc1)N(CCOc1ccc2ccccc2c1)[C@@H]1O[C@H](CO)[C@@H](O)[C@H](O)[C@H]1O", "Oc1cc(-c2ncc3c(N4C[C@H]5CC[C@@H](C4)N5)ncnc3c2F)c2ccccc2c1"], "pocket_center": [15.996501922607422, -8.671774864196777, 20.617807388305664]}, "31d52f77-858a-43a7-8064-6c57f21ccec0": {"protein": {"key": "entities/proteins/7120a2d2faee62493124c8f7f683e16dc2ae1bff9eaeef137350a5d363648291.pdb", "$provider": "ufa"}, "box_size": [16.33661834060757, 16.33661834060757, 16.33661834060757], "smiles_list": ["C=CC(=O)N1CCN2Cc3cc(OCCN(C)C)c(-c4c(O)cccc4Cl)c(F)c3OC[C@H]2C1", "C=CC(=O)N1CCN2Cc3ccc(-c4c(C)ccc5[nH]ncc45)c(Cl)c3OCC[C@@H]2C1", "C=CC(=O)N1CCN2Cc3ccc(-c4c(C)ccc5[nH]ncc45)c(Cl)c3OCC[C@H]2C1", "C=CC(=O)N1CCN2Cc3ccc(-c4c(C)ccc5[nH]ncc45)c(Cl)c3OC[C@@H]2C1", "C=CC(=O)N1CCN2Cc3ccc(-c4c(C)ccc5[nH]ncc45)c(Cl)c3OC[C@H]2C1", "C=CC(=O)N1CCN2Cc3ccc(-c4c(O)cccc4F)c(Cl)c3OC[C@H]2C1", "C=CC(=O)N1CCN2c3c(cnc4c(C)c(-c5c(O)cccc5F)c(Cl)cc34)OC[C@H]2C1", "C=CC(=O)N1CCN2c3c(cnc4c(F)c(-c5c(O)cccc5F)c(Cl)cc34)N(C)C(=O)[C@H]2C1", "C=CC(=O)N1CCN2c3c(cnc4c(F)c(-c5c(O)cccc5F)c(Cl)cc34)OC[C@H]2C1", "C=CC(=O)N1CCN2c3c(cnc4c(OC)c(-c5c(O)cccc5F)c(Cl)cc34)OC[C@H]2C1", "C=CC(=O)N1CCN2c3c(cnc4cc(-c5c(C)ccc6[nH]ncc56)c(Cl)cc34)OCC[C@@H]2C1", "C=CC(=O)N1CCN2c3c(cnc4cc(-c5c(C)ccc6[nH]ncc56)c(Cl)cc34)OCC[C@H]2C1", "C=CC(=O)N1CCN2c3c(cnc4cc(-c5c(C)ccc6[nH]ncc56)c(Cl)cc34)OC[C@@H]2C1", "C=CC(=O)N1CCN2c3c(cnc4cc(-c5c(C)ccc6[nH]ncc56)c(Cl)cc34)OC[C@H]2C1", "C=CC(=O)N1CCN2c3c(cnc4cc(-c5c(O)cccc5F)c(Cl)cc34)N(C)C(=O)[C@H]2C1", "C=CC(=O)N1CCN2c3c(cnc4cc(-c5c(O)cccc5F)c(Cl)cc34)N(C)C[C@H]2C1", "C=CC(=O)N1CCN2c3c(cnc4cc(-c5c(O)cccc5F)c(Cl)cc34)NC(=O)[C@H]2C1", "C=CC(=O)N1CCN2c3c(cnc4cc(-c5c(O)cccc5F)c(Cl)cc34)NC[C@H]2C1", "C=CC(=O)N1CCN2c3c(cnc4cc(-c5c(O)cccc5F)c(Cl)cc34)OC[C@H]2C1", "C=CC(=O)N1CCN2c3ncnc4c(F)c(-c5c(O)cccc5F)c(Cl)c(c34)OCC[C@H]2C1", "C=CC(=O)N1CCN2c3ncnc4c(F)c(-c5c(O)cccc5F)c(Cl)c(c34)OC[C@@H]2C1", "C=CC(=O)N1CCN2c3ncnc4cc(-c5c(C)ccc6[nH]ncc56)c(Cl)c(c34)OCC[C@@H]2C1", "C=CC(=O)N1CCN2c3ncnc4cc(-c5c(C)ccc6[nH]ncc56)c(Cl)c(c34)OCC[C@H]2C1", "C=CC(=O)N1CCN2c3ncnc4cc(-c5c(C)ccc6[nH]ncc56)c(Cl)c(c34)OC[C@@H]2C1", "C=CC(=O)N1CCN2c3ncnc4cc(-c5c(C)ccc6[nH]ncc56)c(Cl)c(c34)OC[C@H]2C1", "C=CC(=O)N1CCN2c3ncnc4cc(-c5c(O)cccc5Cl)c(Cl)c(c34)OC[C@@H]2C1", "C=CC(=O)N1CCN2c3ncnc4cc(-c5c(O)cccc5F)c(Cl)c(c34)OC[C@@H]2C1", "C=CC(=O)N1C[C@@H]2C(=O)N(C)c3cnc4c(F)c(-c5c(O)cccc5F)c(Cl)cc4c3N2C[C@H]1C", "C=CC(=O)N1C[C@@H]2CCOc3c(Cl)c(-c4c(O)cccc4F)c(F)c4ncnc(c34)N2C[C@@H]1C", "C=CC(=O)N1C[C@@H]2CCOc3c(Cl)c(-c4c(O)cccc4F)c(F)c4ncnc(c34)N2C[C@H]1C", "C=CC(=O)N1C[C@@H]2COc3cnc4cc(-c5c(O)cccc5F)c(Cl)cc4c3N2C[C@@H]1C", "C=CC(=O)N1C[C@@H]2COc3cnc4cc(-c5c(O)cccc5F)c(Cl)cc4c3N2C[C@H]1C"], "pocket_center": [15.996501922607422, -8.671774864196777, 20.617807388305664]}}, showCopy: true, rootName: false })
+            .render(mountSelector);
+        }
+
+        // If JsonViewer is already present, render immediately; otherwise load it then render.
+        if (window.JsonViewer) {
+            render();
+        } else {
+            const s = document.createElement('script');
+            s.src = "https://cdn.jsdelivr.net/npm/@textea/json-viewer@3";
+            s.onload = render;
+            document.head.appendChild(s);
+        }
+        })();
+        </script>
+        
+                    </div>
+                    <!-- Outputs Tab with Interactive JSON Viewer -->
+                    <div class="tab-pane fade" id="outputs-63473a31-762d-44e6-86a0-bb7c4079ed73" role="tabpanel"
+                        aria-labelledby="outputs-tab-63473a31-762d-44e6-86a0-bb7c4079ed73">
+                        
+        <div id="json_viewer_b20e520168f846fda90aba641dbd091a" style="padding:10px;border:1px solid #ddd;"></div>
+        <script>
+        (function() {
+        const mountSelector = "#json_viewer_b20e520168f846fda90aba641dbd091a";
+        function render() {
+            new JsonViewer({ value: {"073935e7-8d85-4168-8a63-dc56d9738b48": {"data_file": {"key": "tool-runs/docking/7120a2d2faee62493124c8f7f683e16dc2ae1bff9eaeef137350a5d363648291/results.csv", "$provider": "ufa"}, "docked_poses": {"key": "tool-runs/docking/7120a2d2faee62493124c8f7f683e16dc2ae1bff9eaeef137350a5d363648291/", "$provider": "ufa"}}, "156776c5-685e-44f6-88db-5171a520fe61": {"data_file": {"key": "tool-runs/docking/7120a2d2faee62493124c8f7f683e16dc2ae1bff9eaeef137350a5d363648291/results.csv", "$provider": "ufa"}, "docked_poses": {"key": "tool-runs/docking/7120a2d2faee62493124c8f7f683e16dc2ae1bff9eaeef137350a5d363648291/", "$provider": "ufa"}}, "b75af5ed-d8e1-403c-94fa-8a91d750e197": {"data_file": {"key": "tool-runs/docking/7120a2d2faee62493124c8f7f683e16dc2ae1bff9eaeef137350a5d363648291/results.csv", "$provider": "ufa"}, "docked_poses": {"key": "tool-runs/docking/7120a2d2faee62493124c8f7f683e16dc2ae1bff9eaeef137350a5d363648291/", "$provider": "ufa"}}, "9151f852-037e-4ca7-a07d-97f12cfba32c": {"data_file": {"key": "tool-runs/docking/7120a2d2faee62493124c8f7f683e16dc2ae1bff9eaeef137350a5d363648291/results.csv", "$provider": "ufa"}, "docked_poses": {"key": "tool-runs/docking/7120a2d2faee62493124c8f7f683e16dc2ae1bff9eaeef137350a5d363648291/", "$provider": "ufa"}}, "31d52f77-858a-43a7-8064-6c57f21ccec0": {"data_file": {"key": "tool-runs/docking/7120a2d2faee62493124c8f7f683e16dc2ae1bff9eaeef137350a5d363648291/results.csv", "$provider": "ufa"}, "docked_poses": {"key": "tool-runs/docking/7120a2d2faee62493124c8f7f683e16dc2ae1bff9eaeef137350a5d363648291/", "$provider": "ufa"}}}, showCopy: true, rootName: false })
+            .render(mountSelector);
+        }
+
+        // If JsonViewer is already present, render immediately; otherwise load it then render.
+        if (window.JsonViewer) {
+            render();
+        } else {
+            const s = document.createElement('script');
+            s.src = "https://cdn.jsdelivr.net/npm/@textea/json-viewer@3";
+            s.onload = render;
+            document.head.appendChild(s);
+        }
+        })();
+        </script>
+        
+                    </div>
+                    <!-- Billing Tab with Interactive JSON Viewer -->
+                    <div class="tab-pane fade" id="billing-63473a31-762d-44e6-86a0-bb7c4079ed73" role="tabpanel"
+                        aria-labelledby="billing-tab-63473a31-762d-44e6-86a0-bb7c4079ed73">
+                        
+        <div id="json_viewer_321ad08c67534e06b24f950b8a40b85a" style="padding:10px;border:1px solid #ddd;"></div>
+        <script>
+        (function() {
+        const mountSelector = "#json_viewer_321ad08c67534e06b24f950b8a40b85a";
+        function render() {
+            new JsonViewer({ value: {"073935e7-8d85-4168-8a63-dc56d9738b48": {"billingTransaction": {"items": [{"qty": 32, "itemCode": "DO_DOCK", "priceEach": 0.2, "isApproved": true, "priceTotal": 6.4, "actionRequest": null, "authorizationId": "692099aa4238e97ac5e9fd18", "purchaseApprovalComment": null}], "orgId": "deeporigin-com", "status": "Approved", "totalCost": 6.4, "transactionId": "692099aac912b061f34be63e"}, "quotationResult": {"anyFailed": false, "failedQuotations": [], "successfulQuotations": [{"qty": 32, "orgId": "deeporigin-com", "status": "OK", "itemCode": "DO_DOCK", "priceEach": 0.2, "priceTotal": 6.4, "pricingRecords": [{"qty": 32, "itemKey": "DO_DOCK", "itemName": "Docking", "priceEach": 0.2, "tierQtyTo": 0, "totalPrice": 6.4, "tierQtyFrom": 0}], "pricingRecordType": "regular"}]}}, "156776c5-685e-44f6-88db-5171a520fe61": {"billingTransaction": {"items": [{"qty": 32, "itemCode": "DO_DOCK", "priceEach": 0.2, "isApproved": true, "priceTotal": 6.4, "actionRequest": null, "authorizationId": "692099aa4238e97ac5e9fd14", "purchaseApprovalComment": null}], "orgId": "deeporigin-com", "status": "Approved", "totalCost": 6.4, "transactionId": "692099a9c912b061f34be63a"}, "quotationResult": {"anyFailed": false, "failedQuotations": [], "successfulQuotations": [{"qty": 32, "orgId": "deeporigin-com", "status": "OK", "itemCode": "DO_DOCK", "priceEach": 0.2, "priceTotal": 6.4, "pricingRecords": [{"qty": 32, "itemKey": "DO_DOCK", "itemName": "Docking", "priceEach": 0.2, "tierQtyTo": 0, "totalPrice": 6.4, "tierQtyFrom": 0}], "pricingRecordType": "regular"}]}}, "b75af5ed-d8e1-403c-94fa-8a91d750e197": {"billingTransaction": {"items": [{"qty": 32, "itemCode": "DO_DOCK", "priceEach": 0.2, "isApproved": true, "priceTotal": 6.4, "actionRequest": null, "authorizationId": "692099aa4238e97ac5e9fd17", "purchaseApprovalComment": null}], "orgId": "deeporigin-com", "status": "Approved", "totalCost": 6.4, "transactionId": "692099aa4238e97ac5e9fd13"}, "quotationResult": {"anyFailed": false, "failedQuotations": [], "successfulQuotations": [{"qty": 32, "orgId": "deeporigin-com", "status": "OK", "itemCode": "DO_DOCK", "priceEach": 0.2, "priceTotal": 6.4, "pricingRecords": [{"qty": 32, "itemKey": "DO_DOCK", "itemName": "Docking", "priceEach": 0.2, "tierQtyTo": 0, "totalPrice": 6.4, "tierQtyFrom": 0}], "pricingRecordType": "regular"}]}}, "9151f852-037e-4ca7-a07d-97f12cfba32c": {"billingTransaction": {"items": [{"qty": 17, "itemCode": "DO_DOCK", "priceEach": 0.2, "isApproved": true, "priceTotal": 3.4000000000000004, "actionRequest": null, "authorizationId": "692099aac912b061f34be640", "purchaseApprovalComment": null}], "orgId": "deeporigin-com", "status": "Approved", "totalCost": 3.4000000000000004, "transactionId": "692099aac912b061f34be63d"}, "quotationResult": {"anyFailed": false, "failedQuotations": [], "successfulQuotations": [{"qty": 17, "orgId": "deeporigin-com", "status": "OK", "itemCode": "DO_DOCK", "priceEach": 0.2, "priceTotal": 3.4000000000000004, "pricingRecords": [{"qty": 17, "itemKey": "DO_DOCK", "itemName": "Docking", "priceEach": 0.2, "tierQtyTo": 0, "totalPrice": 3.4000000000000004, "tierQtyFrom": 0}], "pricingRecordType": "regular"}]}}, "31d52f77-858a-43a7-8064-6c57f21ccec0": {"billingTransaction": {"items": [{"qty": 32, "itemCode": "DO_DOCK", "priceEach": 0.2, "isApproved": true, "priceTotal": 6.4, "actionRequest": null, "authorizationId": "692099ab4238e97ac5e9fd1a", "purchaseApprovalComment": null}], "orgId": "deeporigin-com", "status": "Approved", "totalCost": 6.4, "transactionId": "692099abc912b061f34be642"}, "quotationResult": {"anyFailed": false, "failedQuotations": [], "successfulQuotations": [{"qty": 32, "orgId": "deeporigin-com", "status": "OK", "itemCode": "DO_DOCK", "priceEach": 0.2, "priceTotal": 6.4, "pricingRecords": [{"qty": 32, "itemKey": "DO_DOCK", "itemName": "Docking", "priceEach": 0.2, "tierQtyTo": 0, "totalPrice": 6.4, "tierQtyFrom": 0}], "pricingRecordType": "regular"}]}}}, showCopy: true, rootName: false })
+            .render(mountSelector);
+        }
+
+        // If JsonViewer is already present, render immediately; otherwise load it then render.
+        if (window.JsonViewer) {
+            render();
+        } else {
+            const s = document.createElement('script');
+            s.src = "https://cdn.jsdelivr.net/npm/@textea/json-viewer@3";
+            s.onload = render;
+            document.head.appendChild(s);
+        }
+        })();
+        </script>
+        
+                    </div>
+                    <!-- Raw Progress Reports Tab -->
+                    <div class="tab-pane fade" id="raw-progress-63473a31-762d-44e6-86a0-bb7c4079ed73" role="tabpanel"
+                        aria-labelledby="raw-progress-tab-63473a31-762d-44e6-86a0-bb7c4079ed73">
+                        <div class="monospace-block">[]</div>
+                    </div>
+                </div>
+            </div>
+            <!-- Card Footer with Status Badges and Last Updated Timestamp -->
+            <div class="card-footer d-flex justify-content-between align-items-center">
+                <div class="d-flex flex-wrap gap-1">
+                    
+                        
+                        
+                            <span id="status-badge" class="badge bg-primary">Running</span>
+                        
+                    
+                </div>
+            </div>
+        </div>
+    </div>
+    <!-- Bootstrap 5 JS Bundle (includes Popper) -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        // Animate progress bar and counts
+        (function() {
+            const total = 145;
+            const duration = 15000; // 15 seconds total animation time
+            const startTime = Date.now();
+            
+            const completedSpan = document.getElementById('completed-count');
+            const remainingSpan = document.getElementById('remaining-count');
+            const progressSuccess = document.getElementById('progress-success');
+            const progressDanger = document.getElementById('progress-danger');
+            const progressRemaining = document.getElementById('progress-remaining');
+            const statusBadge = document.getElementById('status-badge');
+            
+            function updateProgress() {
+                const elapsed = Date.now() - startTime;
+                const progress = Math.min(elapsed / duration, 1);
+                const completed = Math.floor(progress * total);
+                const remaining = total - completed;
+                
+                // Update text counts
+                completedSpan.textContent = `Completed: ${completed}`;
+                remainingSpan.textContent = `Remaining: ${remaining}`;
+                
+                // Calculate percentages
+                const completedPercent = (completed / total) * 100;
+                const remainingPercent = (remaining / total) * 100;
+                
+                // Update progress bars
+                progressSuccess.style.width = `${completedPercent}%`;
+                progressSuccess.setAttribute('aria-valuenow', completed);
+                
+                progressRemaining.style.width = `${remainingPercent}%`;
+                progressRemaining.setAttribute('aria-valuenow', remaining);
+                
+                // Continue animation if not complete
+                if (completed < total) {
+                    requestAnimationFrame(updateProgress);
+                } else {
+                    // Final update to ensure we end at exactly 145
+                    completedSpan.textContent = `Completed: ${total}`;
+                    remainingSpan.textContent = `Remaining: 0`;
+                    progressSuccess.style.width = '100%';
+                    progressSuccess.setAttribute('aria-valuenow', total);
+                    progressRemaining.style.width = '0%';
+                    progressRemaining.setAttribute('aria-valuenow', 0);
+                    
+                    // Update badge to "Succeeded"
+                    statusBadge.textContent = 'Succeeded';
+                    statusBadge.className = 'badge bg-success';
+                }
+            }
+            
+            // Start animation when page loads
+            requestAnimationFrame(updateProgress);
+        })();
+    </script>
+</body>
+
+</html>

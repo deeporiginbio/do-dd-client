@@ -1,8 +1,6 @@
 
 # Deep Origin Python client
 
-Welcome to the DeepOrigin Client documentation. Use the menu on the left/above for the instructions
-on how to to install, configure and use this SDK for drug discovery.
 
 <div class="grid cards" markdown>
 
@@ -17,11 +15,10 @@ on how to to install, configure and use this SDK for drug discovery.
 </div>
 
 <iframe 
-src="./images/1eby.html" 
-width="100%" 
-height="650" 
-style="border:none;"
-title="1EBY"
+    src="./images/docking-running.html" 
+    width="100%" 
+    height="340" 
+    style="border:none;"
+    title="Running Docking Job"
 ></iframe>
-
 

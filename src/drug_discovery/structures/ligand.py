@@ -197,12 +197,14 @@ class Ligand(Entity):
 
         try:
             url = f"https://pubchem.ncbi.nlm.nih.gov/rest/pug/compound/name/{identifier}/property/smiles/JSON"
-            response = requests.get(url)
+            response = requests.get(url, timeout=5)
             data = response.json()
             smiles = data["PropertyTable"]["Properties"][0]["SMILES"]
         except Exception:
             raise DeepOriginException(
-                f"Error resolving SMILES string of {identifier}. Pubchempy did not resolve SMILES"
+                title="Error resolving SMILES string",
+                message=f"Error resolving SMILES string of {identifier}. Could not connect to PubChem.",
+                fix="Please try again later or use a different identifier.",
             ) from None
 
         mol = Chem.MolFromSmiles(smiles)
@@ -1860,28 +1862,40 @@ class LigandSet:
         *,
         x_label: str = "Pose Score",
         y_label: str = "Binding Energy (kcal/mol)",
-        x="POSE SCORE",
-        y="Binding Energy",
+        x: str = "POSE SCORE",
+        y: str = "Binding Energy",
+        output_file: Optional[str] = None,
+        y_lim_max: Optional[float] = 0,
+        width: int = 800,
+        height: int = 800,
     ):
-        """
-        Create a scatter plot of ligands using specified attributes for the axes.
+        """Create a scatter plot of ligands using specified attributes for the axes.
+
+        The plot displays molecule images on hover and can be displayed inline or saved to an HTML file.
 
         Args:
-            x (str, optional): The name of the ligand property to use for the x-axis. Defaults to "POSE SCORE".
-            y (str, optional): The name of the ligand property to use for the y-axis. Defaults to "Binding Energy".
+            x_label: Label for the x-axis. Defaults to "Pose Score".
+            y_label: Label for the y-axis. Defaults to "Binding Energy (kcal/mol)".
+            x: The name of the ligand property to use for the x-axis. Defaults to "POSE SCORE".
+            y: The name of the ligand property to use for the y-axis. Defaults to "Binding Energy".
+            output_file: Optional file path to save the HTML figure. If provided, the plot is saved to this file instead of being displayed. Defaults to None.
 
-
-
+        Raises:
+            ValueError: If the specified x or y properties are not found in the ligand data.
         """
         from deeporigin.plots import scatter
 
         df = self.to_dataframe()
 
-        return scatter(
+        scatter(
             x=df[x],
             y=df[y],
             smiles_list=df["SMILES"],
             x_label=x_label,
             y_label=y_label,
             title="Binding Energy vs POSE SCORE",
+            output_file=output_file,
+            y_lim_max=y_lim_max,
+            width=width,
+            height=height,
         )

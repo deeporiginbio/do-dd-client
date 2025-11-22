@@ -1,15 +1,6 @@
 # Installation
 
-
-## On a Deep Origin workstation
-
-No installation needed!
-
-The Deep Origin Python client is installed on every [Deep Origin Workstation :octicons-link-external-16:](https://docs.deeporigin.io/docs/os/compute-hub/workstations).
-
-## On your own computer
-
-### Recommended installation
+## Recommended installation
 
 !!! tip "Recommended installation"
     We recommend using the following script. A common source of errors in python packages is managing dependencies and conflicts with other packages, that is resolved using the method below. 

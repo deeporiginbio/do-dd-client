@@ -1,0 +1,221 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta http-equiv="Content-Security-Policy"
+        content="default-src 'self' https://cdn.jsdelivr.net; style-src 'self' https://cdn.jsdelivr.net 'unsafe-inline'; script-src 'self' https://cdn.jsdelivr.net 'unsafe-inline'">
+    <title>ABFE run using <code>brd</code> and <code>cmpd 8 (n-Butyl)</code></title>
+    <!-- Bootstrap 5 CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        /* Custom style for JSON blocks */
+        pre,
+        .monospace-block {
+            background: #f8f9fa;
+            border: 1px solid #e3e3e3;
+            border-radius: 0.25rem;
+            padding: 1rem;
+            font-family: monospace;
+            white-space: pre-wrap;
+        }
+
+        .card {
+            margin-bottom: 1rem;
+        }
+    </style>
+</head>
+
+<body>
+    <!-- Full-width, left-aligned card using container-fluid -->
+    <div class="container-fluid py-3">
+        <div class="card w-100">
+            <div class="card-header">
+                <h2 class="card-title mb-3">ABFE run using <code>brd</code> and <code>cmpd 8 (n-Butyl)</code></h2>
+                <ul class="nav nav-tabs card-header-tabs" id="jobTabs-52d2e771-1238-4a35-8997-c7524f59b95f" role="tablist">
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link active" id="status-tab-52d2e771-1238-4a35-8997-c7524f59b95f" data-bs-toggle="tab"
+                            data-bs-target="#status-52d2e771-1238-4a35-8997-c7524f59b95f" type="button" role="tab"
+                            aria-controls="status-52d2e771-1238-4a35-8997-c7524f59b95f" aria-selected="true">
+                            Status
+                        </button>
+                    </li>
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link" id="details-tab-52d2e771-1238-4a35-8997-c7524f59b95f" data-bs-toggle="tab"
+                            data-bs-target="#details-52d2e771-1238-4a35-8997-c7524f59b95f" type="button" role="tab"
+                            aria-controls="details-52d2e771-1238-4a35-8997-c7524f59b95f" aria-selected="false">
+                            Details
+                        </button>
+                    </li>
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link" id="inputs-tab-52d2e771-1238-4a35-8997-c7524f59b95f" data-bs-toggle="tab"
+                            data-bs-target="#inputs-52d2e771-1238-4a35-8997-c7524f59b95f" type="button" role="tab"
+                            aria-controls="inputs-52d2e771-1238-4a35-8997-c7524f59b95f" aria-selected="false">
+                            Inputs
+                        </button>
+                    </li>
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link" id="outputs-tab-52d2e771-1238-4a35-8997-c7524f59b95f" data-bs-toggle="tab"
+                            data-bs-target="#outputs-52d2e771-1238-4a35-8997-c7524f59b95f" type="button" role="tab"
+                            aria-controls="outputs-52d2e771-1238-4a35-8997-c7524f59b95f" aria-selected="false">
+                            Outputs
+                        </button>
+                    </li>
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link" id="billing-tab-52d2e771-1238-4a35-8997-c7524f59b95f" data-bs-toggle="tab"
+                            data-bs-target="#billing-52d2e771-1238-4a35-8997-c7524f59b95f" type="button" role="tab"
+                            aria-controls="billing-52d2e771-1238-4a35-8997-c7524f59b95f" aria-selected="false">
+                            Billing
+                        </button>
+                    </li>
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link" id="raw-progress-tab-52d2e771-1238-4a35-8997-c7524f59b95f" data-bs-toggle="tab"
+                            data-bs-target="#raw-progress-52d2e771-1238-4a35-8997-c7524f59b95f" type="button" role="tab"
+                            aria-controls="raw-progress-52d2e771-1238-4a35-8997-c7524f59b95f" aria-selected="false">
+                            Raw Progress Reports
+                        </button>
+                    </li>
+                </ul>
+            </div>
+            <!-- Card Body with Tab Content -->
+            <div class="card-body">
+                <div class="tab-content" id="jobTabsContent-52d2e771-1238-4a35-8997-c7524f59b95f">
+                    <!-- Status Tab -->
+                    <div class="tab-pane fade show active" id="status-52d2e771-1238-4a35-8997-c7524f59b95f" role="tabpanel"
+                        aria-labelledby="status-tab-52d2e771-1238-4a35-8997-c7524f59b95f">
+                        <h3>Job Quoted</h3><p>This job has been quoted. It is estimated to cost <strong>$184</strong>. For details look at the Billing tab. To approve and start the run, call the <code style='font-family: monospace; background-color: #f5f5f5; padding: 2px 4px; border-radius: 3px;'>confirm()</code> method.</p>
+                    </div>
+                    <!-- Details Tab with Table -->
+                    <div class="tab-pane fade" id="details-52d2e771-1238-4a35-8997-c7524f59b95f" role="tabpanel"
+                        aria-labelledby="details-tab-52d2e771-1238-4a35-8997-c7524f59b95f">
+                        <table class="table table-bordered table-striped mb-0">
+                            <thead>
+                                <tr>
+                                    <th>executionID</th>
+                                    <th>resourceID</th>
+                                    <th>Status</th>
+                                    <th>Started At</th>
+                                    <th>Running Time</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                
+                                    
+                                    <tr>
+                                        <td>4de8ebcc-7ec7-4493-ab41-a0737afe5057</td>
+                                        <td>9eg7bnw77zgbrm9czu88</td>
+                                        <td>Quoted</td>
+                                        <td>None</td>
+                                        <td>None</td>
+                                    </tr>
+                                
+                            </tbody>
+                        </table>
+                    </div>
+                    <!-- Inputs Tab with Interactive JSON Viewer -->
+                    <div class="tab-pane fade" id="inputs-52d2e771-1238-4a35-8997-c7524f59b95f" role="tabpanel"
+                        aria-labelledby="inputs-tab-52d2e771-1238-4a35-8997-c7524f59b95f">
+                        
+        <div id="json_viewer_90b98e00c8f64554bdd5b4103c0a4131" style="padding:10px;border:1px solid #ddd;"></div>
+        <script>
+        (function() {
+        const mountSelector = "#json_viewer_90b98e00c8f64554bdd5b4103c0a4131";
+        function render() {
+            new JsonViewer({ value: {"binding": {"add_fep_repeats": 0, "annihilate": true, "restraints_type": "rigid_body", "em_all": true, "em_solvent": true, "emeq_md_options": {"T": 298.15, "cutoff": 0.9, "dt": 0.004, "fourier_spacing": 0.12, "hydrogen_mass": 2.0}, "lambda_schedule": "default", "n_windows": 32, "mbar": 1, "npt_reduce_restraints_ns": 2.01, "nvt_heating_ns": 1.01, "prod_md_options": {"T": 298.15, "barostat": "MonteCarloBarostat", "barostat_exchange_interval": 1150, "cutoff": 0.9, "dt": 0.004, "fourier_spacing": 0.12, "hydrogen_mass": 2.0, "integrator": "BAOABIntegrator"}, "repeats": 1, "replex_period_ps": 0, "softcore_alpha": 0.5, "steps": 1250000, "test_run": 0, "thread_pinning": 1}, "solvation": {"add_fep_repeats": 0, "annihilate": true, "restraints_type": "rigid_body", "em_all": true, "em_solvent": true, "emeq_md_options": {"T": 298.15, "cutoff": 0.9, "dt": 0.004, "fourier_spacing": 0.12, "hydrogen_mass": 2.0}, "lambda_schedule": "default", "n_windows": 24, "mbar": 1, "npt_reduce_restraints_ns": 0.2, "nvt_heating_ns": 0.1, "prod_md_options": {"T": 298.15, "barostat": "MonteCarloBarostat", "barostat_exchange_interval": 1150, "cutoff": 0.9, "dt": 0.004, "fourier_spacing": 0.12, "hydrogen_mass": 2.0, "integrator": "BAOABIntegrator"}, "repeats": 1, "softcore_alpha": 0.5, "steps": 500000, "test_run": 0, "thread_pinning": 1}, "binding_xml": {"$provider": "ufa", "key": "function-runs/system-prep/84b0588224175424ba95c2ec3fb8a1f06cf76130faee26ed34aba770a3d5cad2/bsm_system.xml"}, "solvation_xml": {"$provider": "ufa", "key": "function-runs/system-prep/84b0588224175424ba95c2ec3fb8a1f06cf76130faee26ed34aba770a3d5cad2/solvation.xml"}}, showCopy: true, rootName: false })
+            .render(mountSelector);
+        }
+
+        // If JsonViewer is already present, render immediately; otherwise load it then render.
+        if (window.JsonViewer) {
+            render();
+        } else {
+            const s = document.createElement('script');
+            s.src = "https://cdn.jsdelivr.net/npm/@textea/json-viewer@3";
+            s.onload = render;
+            document.head.appendChild(s);
+        }
+        })();
+        </script>
+        
+                    </div>
+                    <!-- Outputs Tab with Interactive JSON Viewer -->
+                    <div class="tab-pane fade" id="outputs-52d2e771-1238-4a35-8997-c7524f59b95f" role="tabpanel"
+                        aria-labelledby="outputs-tab-52d2e771-1238-4a35-8997-c7524f59b95f">
+                        
+        <div id="json_viewer_ab7258314cbf40f99b6a5a6fbab26c1c" style="padding:10px;border:1px solid #ddd;"></div>
+        <script>
+        (function() {
+        const mountSelector = "#json_viewer_ab7258314cbf40f99b6a5a6fbab26c1c";
+        function render() {
+            new JsonViewer({ value: {"output_file": {"$provider": "ufa", "key": "tool-runs/ABFE/db4aa32e2e8ffa976a60004a8361b86427a2e5653a6623bb60b7913445902549.pdb/4897c616dd1dfb06f08170b7f5ca67ce7f6779c2fd03970315c4387e80274225.sdf/output/"}, "abfe_results_summary": {"$provider": "ufa", "key": "tool-runs/ABFE/db4aa32e2e8ffa976a60004a8361b86427a2e5653a6623bb60b7913445902549.pdb/4897c616dd1dfb06f08170b7f5ca67ce7f6779c2fd03970315c4387e80274225.sdf/results.csv"}}, showCopy: true, rootName: false })
+            .render(mountSelector);
+        }
+
+        // If JsonViewer is already present, render immediately; otherwise load it then render.
+        if (window.JsonViewer) {
+            render();
+        } else {
+            const s = document.createElement('script');
+            s.src = "https://cdn.jsdelivr.net/npm/@textea/json-viewer@3";
+            s.onload = render;
+            document.head.appendChild(s);
+        }
+        })();
+        </script>
+        
+                    </div>
+                    <!-- Billing Tab with Interactive JSON Viewer -->
+                    <div class="tab-pane fade" id="billing-52d2e771-1238-4a35-8997-c7524f59b95f" role="tabpanel"
+                        aria-labelledby="billing-tab-52d2e771-1238-4a35-8997-c7524f59b95f">
+                        
+        <div id="json_viewer_bf642f963b984b89a9791cb782c1d58c" style="padding:10px;border:1px solid #ddd;"></div>
+        <script>
+        (function() {
+        const mountSelector = "#json_viewer_bf642f963b984b89a9791cb782c1d58c";
+        function render() {
+            new JsonViewer({ value: {"billingTransaction": null, "quotationResult": {"anyFailed": false, "failedQuotations": [], "successfulQuotations": [{"qty": 0, "orgId": "deeporigin", "status": "OK", "itemCode": "DO_ABFE", "qty_vars": {"abfe_atoms": 57337, "abfe_repeats": 1, "abfe_windows": 32, "abfe_production_steps": 1250000, "abfe_equilibration_steps": 754999}, "priceEach": 120, "priceTotal": 183.9370042608, "pricingRecords": [{"qty": 1.53280836884, "itemKey": "DO_ABFE", "itemName": "Absolute Binding Free Energy (ABFE)", "priceEach": 120, "tierQtyTo": 0, "totalPrice": 183.9370042608, "tierQtyFrom": 0}], "pricingRecordType": "regular"}]}}, showCopy: true, rootName: false })
+            .render(mountSelector);
+        }
+
+        // If JsonViewer is already present, render immediately; otherwise load it then render.
+        if (window.JsonViewer) {
+            render();
+        } else {
+            const s = document.createElement('script');
+            s.src = "https://cdn.jsdelivr.net/npm/@textea/json-viewer@3";
+            s.onload = render;
+            document.head.appendChild(s);
+        }
+        })();
+        </script>
+        
+                    </div>
+                    <!-- Raw Progress Reports Tab -->
+                    <div class="tab-pane fade" id="raw-progress-52d2e771-1238-4a35-8997-c7524f59b95f" role="tabpanel"
+                        aria-labelledby="raw-progress-tab-52d2e771-1238-4a35-8997-c7524f59b95f">
+                        <div class="monospace-block">{}</div>
+                    </div>
+                </div>
+            </div>
+            <!-- Card Footer with Status Badges and Last Updated Timestamp -->
+            <div class="card-footer d-flex justify-content-between align-items-center">
+                <div class="d-flex flex-wrap gap-1">
+                    
+                        
+                        <span class="badge bg-warning">Quoted</span>
+                    
+                </div>
+                <span id="last-updated" class="text-muted" style="font-size: 0.9rem;">
+                    
+                    ⚠️ This widget will not auto-update.
+                    
+                    Last updated: 2025-11-21 12:56:59</span>
+            </div>
+        </div>
+    </div>
+    <!-- Bootstrap 5 JS Bundle (includes Popper) -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+
+</html>

@@ -138,7 +138,22 @@ ligand = Ligand.from_rdkit_mol(
 )
 ```
 
-This is particularly useful when you're working with RDKit's molecular manipulation functions and want to convert the results into a Deep Origin Ligand object for further processing or visualization.
+This is particularly useful when you're working with RDKit's molecular manipulation functions and want to convert the results into a `Ligand` for further processing or visualization.
+
+
+
+### From a CSV file
+
+You can also create a `LigandSet` from a CSV file containing SMILES strings and optional properties:
+
+```python
+from deeporigin.drug_discovery import LigandSet, DATA_DIR
+
+ligands = LigandSet.from_csv(
+    file_path=DATA_DIR / "ligands" / "ligands.csv",
+    smiles_column="SMILES"  # Optional, defaults to "smiles"
+)
+```
 
 
 The method will:
@@ -154,26 +169,13 @@ The method will:
     - `FileNotFoundError` if the CSV file does not exist
     - `ValueError` if the specified SMILES column is not found in the CSV file
 
-### From a CSV file
-
-You can also create a `LigandSet` from a CSV file containing SMILES strings and optional properties:
-
-```python
-from deeporigin.drug_discovery import LigandSet, DATA_DIR
-
-ligands = LigandSet.from_csv(
-    file_path=DATA_DIR / "ligands" / "ligands.csv",
-    smiles_column="SMILES"  # Optional, defaults to "smiles"
-)
-```
-
 ### Filtering Top Poses
 
 When working with docking results, you often have multiple poses for the same molecule. The `filter_top_poses()` method helps you select only the best pose for each unique molecule:
 
 ```{.python notest}
 
-# assuming poses comes from protein.dock()
+# assuming poses comes from protein.dock() or Complex.docking.get_results()
 
 # Filter to keep only the best pose per molecule (by binding energy)
 best_poses = poses.filter_top_poses()
@@ -217,21 +219,27 @@ A visualization similar to the following will be shown:
 
 A `LigandSet` can be visualized using several different methods. 
 
+#### Summary card
+
+Simply inspecting the `LigandSet` object shows the following:
+
+```{.python notest}
+ligands
+```
+
+
+<div style='width: 500px; padding: 15px; border: 1px solid #ddd; border-radius: 6px; background-color: #f9f9f9;'><h3 style='margin-top: 0; color: #333;'>LigandSet with 8 ligands</h3><p style='margin: 8px 0;'><strong>8</strong> unique SMILES</p><p style='margin: 8px 0;'>Properties: initial_smiles, r_exp_dg</p><div style='margin-top: 12px; padding-top: 12px; border-top: 1px solid #ddd;'><p style='margin: 4px 0; font-size: 0.9em; color: #666;'><em>Use <code>.to_dataframe()</code> to convert to a dataframe, <code>.show_df()</code> to view dataframewith structures, or <code>.show()</code> for 3D visualization</em></p></div></div>
+
 #### Table view (2D)
 
-First, simply printing the `LigandSet` shows a table of ligands in the `LigandSet`:
+To view a dataframe containined rendered (2D) structures of ligands, use:
 
 ```python
-from deeporigin.drug_discovery import LigandSet
+# for example
+from deeporigin.drug_discovery import LigandSet, DATA_DIR
 
-smiles = {
-    "C/C=C/Cn1cc(-c2cccc(C(=O)N(C)C)c2)c2cc[nH]c2c1=O",
-    "C=CCCn1cc(-c2cccc(C(=O)N(C)C)c2)c2cc[nH]c2c1=O",
-}
-
-ligands = LigandSet.from_smiles(smiles)
-ligands
-
+ligands = LigandSet.from_sdf(DATA_DIR / "ligands" / "ligands-brd-all.sdf")
+ligands.show_df()
 ```
 
 !!! success "Expected Output"
@@ -239,7 +247,6 @@ ligands
     ![](./../../images/ligands.png)
 
 
-This table view is also available using `ligands.show_df`
 
 #### Individual view (3D)
 
@@ -255,12 +262,12 @@ ligands.show()
 
 ```
 
-A visualization similar to this will be shown. Use the arrows to flip between ligands in the `LigandSet`. 
+A visualization similar to this will be shown. Use the arrows to switch between Ligands in the `LigandSet`. 
 
 <iframe 
     src="../../images/brd-3d.html" 
     width="100%" 
-    height="600" 
+    height="610" 
     style="border:none;"
     title="Visualization of ligands"
 ></iframe>
