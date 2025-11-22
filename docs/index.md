@@ -17,7 +17,7 @@
 <iframe 
     src="./images/docking-running.html" 
     width="100%" 
-    height="300" 
+    height="340" 
     style="border:none;"
     title="Running Docking Job"
 ></iframe>

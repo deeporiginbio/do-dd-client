@@ -197,12 +197,14 @@ class Ligand(Entity):
 
         try:
             url = f"https://pubchem.ncbi.nlm.nih.gov/rest/pug/compound/name/{identifier}/property/smiles/JSON"
-            response = requests.get(url)
+            response = requests.get(url, timeout=5)
             data = response.json()
             smiles = data["PropertyTable"]["Properties"][0]["SMILES"]
         except Exception:
             raise DeepOriginException(
-                f"Error resolving SMILES string of {identifier}. Pubchempy did not resolve SMILES"
+                title="Error resolving SMILES string",
+                message=f"Error resolving SMILES string of {identifier}. Could not connect to PubChem.",
+                fix="Please try again later or use a different identifier.",
             ) from None
 
         mol = Chem.MolFromSmiles(smiles)

@@ -236,7 +236,7 @@ To view a dataframe containined rendered (2D) structures of ligands, use:
 
 ```python
 # for example
-from deeporigin.drug_discovery import LigandSet
+from deeporigin.drug_discovery import LigandSet, DATA_DIR
 
 ligands = LigandSet.from_sdf(DATA_DIR / "ligands" / "ligands-brd-all.sdf")
 ligands.show_df()
