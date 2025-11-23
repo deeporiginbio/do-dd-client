@@ -11,16 +11,26 @@ Behavior:
 
 import os
 import sys
-from typing import Literal
+from typing import TYPE_CHECKING, Literal
 
 import yaml
+
+if TYPE_CHECKING:
+    import pandas as pd
 
 from deeporigin.utils.constants import ENV_VARIABLES
 from deeporigin.utils.core import _ensure_do_folder
 
 CONFIG_YML_LOCATION = _ensure_do_folder() / "config.yml"
 
-__all__ = ["get_value", "set_value", "CONFIG_YML_LOCATION"]
+__all__ = [
+    "get_org",
+    "set_org",
+    "get_env",
+    "set_env",
+    "get_value",
+    "CONFIG_YML_LOCATION",
+]
 
 
 def _ensure_config_file_exists() -> None:
@@ -46,6 +56,91 @@ def _supports_unicode_output() -> bool:
         return False
     encoding_lower = encoding.lower()
     return "utf" in encoding_lower
+
+
+def get_org() -> str | None:
+    """Get the organization key.
+
+    Creates the config file with defaults if it doesn't exist.
+
+    Returns:
+        The organization key, or None if not set. Environment variables
+        override the config file value.
+    """
+    return get_value()["org_key"]
+
+
+def set_org(value: str) -> None:
+    """Set the organization key.
+
+    Args:
+        value: The organization key to set.
+
+    Raises:
+        DeepOriginException: If the organization key does not exist in the
+            list of accessible organizations.
+    """
+    from deeporigin.exceptions import DeepOriginException
+
+    # Validate that the org key exists
+    orgs_df = list_orgs()
+    if value not in orgs_df["key"].values:
+        available_keys = ", ".join(orgs_df["key"].tolist())
+        raise DeepOriginException(
+            title="Invalid organization key",
+            message=f"Organization key '{value}' not found in accessible organizations.",
+            fix=f"Available organization keys: {available_keys}",
+            level="danger",
+        )
+
+    _set_value("org_key", value)
+
+
+def get_env() -> str:
+    """Get the environment.
+
+    Creates the config file with defaults if it doesn't exist.
+
+    Returns:
+        The environment (e.g., 'prod', 'staging', 'edge'). Defaults to 'prod'.
+        Environment variables override the config file value.
+    """
+    return get_value()["env"]
+
+
+def set_env(value: str) -> None:
+    """Set the environment.
+
+    Args:
+        value: The environment to set (e.g., 'prod', 'staging', 'edge').
+    """
+    _set_value("env", value)
+
+
+def _set_value(key: Literal["env", "org_key"], value) -> None:
+    """Internal helper to set a configuration value.
+
+    Args:
+        key: Configuration key to set (must be 'env' or 'org_key').
+        value: Value to set.
+    """
+    _ensure_config_file_exists()
+
+    with open(CONFIG_YML_LOCATION, "r") as file:
+        data = yaml.safe_load(file) or {}
+
+    data[key] = value
+
+    # Persist updated data
+    with open(CONFIG_YML_LOCATION, "w") as file:
+        yaml.safe_dump(data, file, default_flow_style=False)
+
+    # Prefer Unicode on capable terminals; fall back to ASCII-safe symbols
+    if _supports_unicode_output():
+        check, arrow = "✔︎", "→"
+    else:
+        check, arrow = "OK", "->"
+    print(f"{check} {key} {arrow} {value}")
 
 
 def get_value() -> dict:
@@ -79,35 +174,28 @@ def get_value() -> dict:
     return {"env": env, "org_key": org_key}
 
 
-def set_value(key: Literal["env", "org_key"], value) -> None:
-    """Set a configuration value.
+def list_orgs() -> "pd.DataFrame":
+    """List all organizations accessible to the authenticated user.
 
-    Only `env` and `org_key` are supported keys.
-
-    Args:
-        key: Configuration key to set (must be `env` or `org_key`).
-        value: Value to set.
+    Returns:
+        A pandas DataFrame with columns: name, key, autoApproveMaxAmount, threshold.
     """
+    import pandas as pd
 
-    if key not in {"env", "org_key"}:
-        raise ValueError(
-            f"{key} is not a valid configuration key. Supported keys are: env, org_key"
-        )
+    from deeporigin.platform.client import DeepOriginClient
 
-    _ensure_config_file_exists()
+    client = DeepOriginClient.get()
+    orgs = client.organizations.list()
 
-    with open(CONFIG_YML_LOCATION, "r") as file:
-        data = yaml.safe_load(file) or {}
+    # Extract only the required columns and map orgKey to key
+    data = [
+        {
+            "name": org["name"],
+            "key": org["orgKey"],
+            "autoApproveMaxAmount": org["autoApproveMaxAmount"],
+            "threshold": org["threshold"],
+        }
+        for org in orgs
+    ]
 
-    data[key] = value
-
-    # Persist updated data
-    with open(CONFIG_YML_LOCATION, "w") as file:
-        yaml.safe_dump(data, file, default_flow_style=False)
-
-    # Prefer Unicode on capable terminals; fall back to ASCII-safe symbols
-    if _supports_unicode_output():
-        check, arrow = "✔︎", "→"
-    else:
-        check, arrow = "OK", "->"
-    print(f"{check} {key} {arrow} {value}")
+    return pd.DataFrame(data)

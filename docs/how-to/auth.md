@@ -1,9 +1,6 @@
 # Sign into Deep Origin
 
-!!! tip "Configure first"
-    Make sure to [configure](../configure.md) it first.
-
-To use most of the functionality of the Python client, you must first run the following commands to sign into Deep Origin.
+To use most of the functionality of the Python client, you must first to sign in to the Deep Origin platform.
 
 
 ```{.python notest}
@@ -34,5 +31,7 @@ be used in subsequent interactions with Deep Origin.
 
 !!! info "Authenticating"
     You only need to authenticate to the Deep Origin OS once.
-    You do not need to authenticate every time you use the client.
+    You do not need to authenticate every time you use the client. 
+
+    Subsequent calls to `get_tokens` (even in a new python session), will re-use the old token and refresh if needed.
 
