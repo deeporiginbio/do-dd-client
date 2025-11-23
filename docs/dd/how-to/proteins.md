@@ -27,6 +27,16 @@ from deeporigin.drug_discovery import Protein
 protein = Protein.from_pdb_id("1EBY")
 ```
 
+### From a name
+
+You can search for a protein by name and create a Protein instance from the top search result:
+
+```python
+from deeporigin.drug_discovery import Protein
+
+protein = Protein.from_name("insulin")
+```
+
 
 ## Inspecting the Protein
 
@@ -87,7 +97,75 @@ This method scans each chain in the protein and returns a dictionary where the k
     {'A': [(511, 514), (547, 550), (679, 682), (841, 855)],
      'B': [(509, 516), (546, 551), (679, 684), (840, 854)]}
     ```
-    
+
+### Listing chain names
+
+You can list all unique chain IDs in the protein structure:
+
+```python
+from deeporigin.drug_discovery import Protein
+
+protein = Protein.from_pdb_id("1EBY")
+chain_names = protein.list_chain_names()
+print(chain_names)
+```
+
+!!! success "Expected output"
+    ```
+    ['A', 'B']
+    ```
+
+### Listing hetero residue names
+
+You can list all unique hetero (non-protein) residue names in the structure:
+
+```python
+from deeporigin.drug_discovery import Protein
+
+protein = Protein.from_pdb_id("1EBY")
+hetero_names = protein.list_hetero_names(exclude_water=True)
+print(hetero_names)
+```
+
+This is useful for identifying ligands, cofactors, and other heteroatoms present in the structure.
+
+### Extracting metals and cofactors
+
+You can extract and categorize metal ions and cofactors from the protein structure:
+
+```python
+from deeporigin.drug_discovery import Protein
+
+protein = Protein.from_pdb_id("1EBY")
+metals, cofactors = protein.extract_metals_and_cofactors()
+print(f"Metals: {metals}")
+print(f"Cofactors: {cofactors}")
+```
+
+This method returns a tuple of two lists: metal residue names and cofactor residue names.
+
+### Getting the number of atoms
+
+You can get the total number of atoms in the protein structure:
+
+```python
+from deeporigin.drug_discovery import Protein
+
+protein = Protein.from_pdb_id("1EBY")
+num_atoms = protein.num_atoms
+print(num_atoms)
+```
+
+### Finding pockets
+
+You can find potential binding pockets in the protein structure. See the [Finding Pockets guide](find-pockets.md) for detailed information.
+
+```python
+from deeporigin.drug_discovery import Protein
+
+protein = Protein.from_pdb_id("1EBY")
+pockets = protein.find_pockets(pocket_count=5)
+```
 
 ### Visualizing a protein
 
@@ -188,6 +266,9 @@ We can use the loop modelling tool to fix this structure using:
 protein.model_loops()
 protein.show()
 ```
+
+!!! warning "Method mutates the `Protein` object"
+    The `model_loops()` method **mutates the protein object** by updating its structure with the modeled loops.
 
 <iframe 
     src="../../images/5QSP-lm.html" 
@@ -296,23 +377,56 @@ protein = Protein.from_pdb_id("1EBY")
 # Remove specific residue names
 protein.remove_resnames(exclude_resnames=["HOH", "SO4"])
 
-# Remove only water molecules
-protein_no_water = protein.remove_water()
+# Remove only water molecules (mutates in place)
+protein.remove_water()
 ```
 
 ### Chain Selection
 
-You can select specific chains from the protein structure:
+You can select specific chains from the protein structure. These methods return **new Protein objects** and do not modify the original:
 
 ```{.python notest}
-# Select a single chain
+# Select a single chain (returns new Protein object)
 chain_a = protein.select_chain('A')
 
-# Select multiple chains
+# Select multiple chains (returns new Protein object)
 chains_ab = protein.select_chains(['A', 'B'])
 ```
 
+!!! note "Returns new object"
+    Unlike most modification methods, `select_chain()` and `select_chains()` return new Protein objects rather than mutating the original.
 
+
+
+### Saving a protein structure
+
+You can save the protein structure to a PDB file:
+
+```python
+from deeporigin.drug_discovery import Protein
+
+protein = Protein.from_pdb_id("1EBY")
+protein.remove_water()
+file_path = protein.to_pdb("prepared_protein.pdb")
+print(f"Saved to: {file_path}")
+```
+
+If no file path is provided, the protein will be saved to a default location based on its hash.
+
+### Docking ligands
+
+You can dock ligands into pockets of the protein. See the [Docking guide](docking.md) for detailed information.
+
+```python
+from deeporigin.drug_discovery import Protein, Ligand, BRD_DATA_DIR
+
+protein = Protein.from_file(BRD_DATA_DIR / "brd.pdb")
+ligand = Ligand.from_sdf(BRD_DATA_DIR / "brd-2.sdf")
+pockets = protein.find_pockets(pocket_count=1)
+
+# Dock ligand into the first pocket
+poses = protein.dock(ligand=ligand, pocket=pockets[0])
+```
 
 ## Best Practices
 
