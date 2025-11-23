@@ -517,6 +517,38 @@ class MockServer:
                 "pagination": {"count": 2},
             }
 
+        @self.app.get("/entities/protected/organizations")
+        def list_organizations() -> list[dict[str, Any]]:
+            """List all organizations accessible to the authenticated user."""
+            return [
+                {
+                    "createdAt": "2024-03-05T00:00:00.000Z",
+                    "updatedAt": "2024-08-01T19:01:49.614Z",
+                    "orgKey": "deeporigin-com",
+                    "name": "Deep Origin",
+                    "mfaEnabled": False,
+                    "threshold": "50.00",
+                    "autoApproveMaxAmount": 500,
+                    "status": "READY",
+                    "id": "a184d5f4-2969-46ed-90ff-0344c14b6705",
+                    "invites": [],
+                    "roles": ["Owner"],
+                },
+                {
+                    "createdAt": "2024-08-22T04:39:40.711Z",
+                    "updatedAt": "2024-08-22T04:50:18.075Z",
+                    "orgKey": "deeporigin-platform",
+                    "name": "Deep Origin - Platform Team",
+                    "mfaEnabled": False,
+                    "threshold": "50.00",
+                    "autoApproveMaxAmount": 500,
+                    "status": "READY",
+                    "id": "1cbf428d-10eb-4f6b-a85b-e2024697fb0a",
+                    "invites": [],
+                    "roles": ["Owner"],
+                },
+            ]
+
         @self.app.get("/entities/{org_key}/organizations/users")
         def list_organization_users(org_key: str) -> list[dict[str, Any]]:
             """List organization users."""

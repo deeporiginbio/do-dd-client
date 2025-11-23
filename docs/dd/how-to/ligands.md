@@ -140,6 +140,16 @@ ligand = Ligand.from_rdkit_mol(
 
 This is particularly useful when you're working with RDKit's molecular manipulation functions and want to convert the results into a `Ligand` for further processing or visualization.
 
+You can also create a `LigandSet` from a list of RDKit molecules:
+
+```python
+from deeporigin.drug_discovery import LigandSet
+from rdkit import Chem
+
+mols = [Chem.MolFromSmiles("CCO"), Chem.MolFromSmiles("CCCO")]
+ligands = LigandSet.from_rdkit_mols(mols)
+```
+
 
 
 ### From a CSV file
@@ -167,7 +177,19 @@ The method will:
 !!! note "Error Handling"
     The method will raise:
     - `FileNotFoundError` if the CSV file does not exist
-    - `ValueError` if the specified SMILES column is not found in the CSV file
+    - `DeepOriginException` if the specified SMILES column is not found in the CSV file
+
+### From a directory
+
+You can create a `LigandSet` from a directory containing SDF and CSV files:
+
+```python
+from deeporigin.drug_discovery import LigandSet, BRD_DATA_DIR
+
+ligands = LigandSet.from_dir(BRD_DATA_DIR)
+```
+
+This will read all `.sdf` and `.csv` files in the directory and combine them into a single LigandSet.
 
 ### Filtering Top Poses
 
@@ -180,7 +202,13 @@ When working with docking results, you often have multiple poses for the same mo
 # Filter to keep only the best pose per molecule (by binding energy)
 best_poses = poses.filter_top_poses()
 
+# Or filter by pose score instead
+best_poses = poses.filter_top_poses(by_pose_score=True)
+
 ```
+
+!!! note "Creates New Object"
+    The `filter_top_poses()` method creates a new `LigandSet` containing only the best pose for each unique molecule. The original LigandSet is not modified. By default, it selects poses by minimum binding energy, but you can use `by_pose_score=True` to select by maximum pose score instead.
 
 
 ## Visualization
@@ -288,9 +316,23 @@ ligands.show_grid()
 
 ## Operations on Ligands
 
-### Ligand Minimization 
+### Preparing Ligands
 
-You can minimize the 3D structure of a single ligand or all ligands in a LigandSet. Minimization optimizes the geometry of the molecule(s) using a force field, which is useful for preparing ligands for docking or other modeling tasks.
+You can prepare a ligand for downstream workflows using the `prepare()` method. This performs salt removal, kekulization, and validates atom types:
+
+```python
+from deeporigin.drug_discovery import Ligand
+
+ligand = Ligand.from_smiles("c1ccccc1")
+ligand.prepare(remove_hydrogens=False)  # Mutates the ligand in place, returns self for chaining
+```
+
+!!! note "Mutation Behavior"
+    The `prepare()` method mutates the ligand object in place and returns `self` for method chaining.
+
+### Generating 3D Coordinates
+
+You can generate 3D coordinates for a single ligand or all ligands in a LigandSet using the `embed()` method. This is useful for preparing ligands for docking or other modeling tasks that require 3D structures.
 
 === "Ligand"
 
@@ -298,8 +340,11 @@ You can minimize the 3D structure of a single ligand or all ligands in a LigandS
     from deeporigin.drug_discovery import Ligand, BRD_DATA_DIR
 
     ligand = Ligand.from_sdf(BRD_DATA_DIR / "brd-2.sdf")
-    ligand.minimize()  # Optimizes the 3D coordinates in place
+    ligand.embed()  # Generates 3D coordinates in place
     ```
+
+    !!! note "Mutation Behavior"
+        The `embed()` method mutates the ligand object by adding 3D coordinates to the molecule.
 
 === "LigandSet"
 
@@ -307,10 +352,13 @@ You can minimize the 3D structure of a single ligand or all ligands in a LigandS
     from deeporigin.drug_discovery import LigandSet, DATA_DIR
 
     ligands = LigandSet.from_sdf(DATA_DIR / "ligands" / "ligands-brd-all.sdf")
-    ligands.minimize()  # Optimizes all ligands in the set in place
+    ligands.embed()  # Generates 3D coordinates for all ligands in place
     ```
 
-    This will call the `minimize()` method on each ligand in the set, updating their 3D coordinates. The method returns the LigandSet itself for convenience, so you can chain further operations if desired.
+    This will call the `embed()` method on each ligand in the set, updating their 3D coordinates. The method returns the LigandSet itself for convenience, so you can chain further operations if desired.
+
+    !!! note "Mutation Behavior"
+        The `embed()` method mutates all ligands in the set and returns `self` for method chaining.
 
 ### Constructing a network using Konnektor
 
@@ -321,7 +369,10 @@ To run RBFE, it is helpful to map out a network within the ligand set, so that w
 ligands.map_network().show_network()
 ```
 
-maps the network and creates a visualization similar to:
+This maps the network and creates a visualization similar to:
+
+!!! note "Mutation Behavior"
+    The `map_network()` method mutates the LigandSet by storing the network in `self.network` and returns `self` for method chaining.
 
 <iframe 
     src="../../images/network.html" 
@@ -343,6 +394,9 @@ ADMET (Absorption, Distribution, Metabolism, Excretion, and Toxicity) properties
     # Predict ADMET properties
     properties = ligand.admet_properties()
     ```
+
+    !!! note "Mutation Behavior"
+        The `admet_properties()` method mutates the ligand object by storing all predicted properties in `ligand.properties`. The method also returns a dictionary of the properties.
 
     The method returns a dictionary containing various ADMET-related predictions:
 
@@ -397,7 +451,10 @@ ADMET (Absorption, Distribution, Metabolism, Excretion, and Toxicity) properties
     ligands.admet_properties()  
     ```
 
-    Each entry in `results` is a dictionary of ADMET properties for the corresponding ligand. The properties are also stored in each ligand's `.properties` attribute for later access.
+    !!! note "Mutation Behavior"
+        The `admet_properties()` method mutates all ligands in the set by storing predicted properties in each ligand's `.properties` attribute.
+
+    The properties are stored in each ligand's `.properties` attribute for later access.
 
     To view ADMET properties of all ligands in the ligand set, simply view the ligandset as a dataframe using:
 
@@ -424,7 +481,8 @@ ligands = LigandSet.from_sdf(DATA_DIR / "ligands" / "ligands-brd-all.sdf")
 sample = ligands.random_sample(5)
 ```
 
-This creates a new `LigandSet` containing a copy of those ligands. 
+!!! note "Creates New Object"
+    The `random_sample()` method creates a new `LigandSet` containing copies of the sampled ligands. The original LigandSet is not modified. 
 
 ### Maximum Common Substructure
 
@@ -434,11 +492,47 @@ The Maximum Common Substructure (MCS) for a `LigandSet` can be computed as follo
 from deeporigin.drug_discovery import BRD_DATA_DIR, LigandSet
 
 ligands = LigandSet.from_dir(BRD_DATA_DIR)
-ligands.mcs()
+mcs_smarts = ligands.mcs()  # Returns a SMARTS string
 ```
+
+!!! note "Returns New Data"
+    The `mcs()` method returns a SMARTS string representing the maximum common substructure. It does not mutate the LigandSet or its ligands.
 
 !!! success "Expected Output"
     ![](../../images/mcs.png)
+
+### Computing RMSD
+
+You can compute pairwise RMSD (Root Mean Square Deviation) between all ligands in a LigandSet:
+
+```{.python notest}
+from deeporigin.drug_discovery import LigandSet
+
+ligands = LigandSet.from_sdf("docking_results.sdf")
+rmsd_matrix = ligands.compute_rmsd()  # Returns a numpy array
+```
+
+!!! note "Returns New Data"
+    The `compute_rmsd()` method returns a numpy array containing pairwise RMSD values. It does not mutate the LigandSet or its ligands.
+
+### Plotting Ligands
+
+You can create scatter plots of ligands using their properties:
+
+```{.python notest}
+from deeporigin.drug_discovery import LigandSet
+
+ligands = LigandSet.from_sdf("docking_results.sdf")
+ligands.plot(
+    x="POSE SCORE",
+    y="Binding Energy",
+    x_label="Pose Score",
+    y_label="Binding Energy (kcal/mol)"
+)
+```
+
+!!! note "Visualization Only"
+    The `plot()` method creates a visualization and optionally saves it to a file. It does not mutate the LigandSet or its ligands.
 
 
 ### Constraints
@@ -449,8 +543,67 @@ Ligands in a LigandSet can be aligned to a reference ligand using:
 from deeporigin.drug_discovery import BRD_DATA_DIR, LigandSet
 
 ligands = LigandSet.from_dir(BRD_DATA_DIR)
-ligands.compute_constraints(reference=ligands[1])
+constraints = ligands.compute_constraints(reference=ligands[1])
 ```
+
+!!! note "Returns New Data"
+    The `compute_constraints()` method returns a list of constraint dictionaries. It does not mutate the LigandSet or its ligands.
+
+### Protonation
+
+You can protonate ligands at a specific pH. This is useful for preparing ligands for molecular dynamics simulations or other pH-dependent calculations.
+
+=== "Ligand"
+
+    ```{.python notest}
+    from deeporigin.drug_discovery import Ligand
+
+    ligand = Ligand.from_smiles("c1ccccc1")
+    ligand.protonate(ph=7.4)  # Mutates the ligand in place
+    ```
+
+    !!! note "Mutation Behavior"
+        The `protonate()` method mutates the ligand object by updating `self.mol` with the protonated structure. Only the most abundant species at the specified pH is retained.
+
+=== "LigandSet"
+
+    ```{.python notest}
+    from deeporigin.drug_discovery import LigandSet
+
+    ligands = LigandSet.from_smiles(["c1ccccc1", "CCO"])
+    ligands.protonate(ph=7.4)  # Mutates all ligands in place
+    ```
+
+    !!! note "Mutation Behavior"
+        The `protonate()` method mutates all ligands in the set and returns `self` for method chaining.
+
+### Adding Hydrogens
+
+You can add hydrogens to ligands, which is often necessary before generating 3D coordinates or performing certain calculations.
+
+=== "Ligand"
+
+    ```python
+    from deeporigin.drug_discovery import Ligand
+
+    ligand = Ligand.from_smiles("c1ccccc1")
+    ligand.add_hydrogens()  # Mutates the ligand in place
+    ```
+
+    !!! note "Mutation Behavior"
+        The `add_hydrogens()` method mutates the ligand object by adding hydrogens to `self.mol`.
+
+=== "LigandSet"
+
+    ```python
+    from deeporigin.drug_discovery import LigandSet
+
+    ligands = LigandSet.from_smiles(["c1ccccc1", "CCO"])
+    ligands.add_hydrogens()  # Mutates all ligands in place
+    ```
+
+    !!! note "Mutation Behavior"
+        The `add_hydrogens()` method mutates all ligands in the set by calling `add_hydrogens()` on each ligand.
 
 ## Exporting ligands
 

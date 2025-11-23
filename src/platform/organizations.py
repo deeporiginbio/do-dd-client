@@ -22,6 +22,16 @@ class Organizations:
         """
         self._c = client
 
+    def list(self) -> list[dict]:
+        """List all organizations accessible to the authenticated user.
+
+        Returns:
+            List of organization dictionaries, each containing fields like id,
+            orgKey, name, mfaEnabled, threshold, autoApproveMaxAmount, status,
+            createdAt, updatedAt, invites, roles, etc.
+        """
+        return self._c.get_json("/entities/protected/organizations")
+
     def users(
         self,
         *,

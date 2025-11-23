@@ -11,6 +11,10 @@ client = DeepOriginClient()
 Then, the following methods can be used, for example:
 
 ```{.python notest}
+# List all organizations accessible to the authenticated user
+orgs = client.organizations.list()
+
+# List users in the current organization
 users = client.organizations.users()
 ```
 

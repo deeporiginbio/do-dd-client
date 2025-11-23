@@ -50,6 +50,10 @@ Every pose is assigned a pose score and a binding energy. These can be viewed us
 poses
 ```
 
+A widget similar to the following will be shown:
+
+<div style='width: 500px; padding: 15px; border: 1px solid #ddd; border-radius: 6px; background-color: #f9f9f9;'><h3 style='margin-top: 0; color: #333;'>LigandSet with 15 poses</h3><p style='margin: 8px 0;'><strong>SMILES:</strong> Cc1[nH]c2cc(Cl)cc(Cl)c2c1CCN</p><p style='margin: 8px 0;'>Properties: Binding Energy, POSE SCORE, SMILES, initial_smiles</p><div style='margin-top: 12px; padding-top: 12px; border-top: 1px solid #ddd;'><p style='margin: 4px 0; font-size: 0.9em; color: #666;'><em>Use <code>.to_dataframe()</code> to convert to a dataframe, <code>.show_df()</code> to view dataframewith structures, or <code>.show()</code> for 3D visualization</em></p></div></div>
+
 To work with a dataframe containing this data, use:
 
 ```{.python notest}
@@ -97,6 +101,10 @@ protein.show(poses=poses)
 
 
 ## Constrained Docking
+
+
+!!! danger "Under development"
+    Constrained Docking is under active development and is not generally available. 
 
 We can use constrained docking to dock a Ligand to a Protein while constraining certain atoms to certain locations.
 

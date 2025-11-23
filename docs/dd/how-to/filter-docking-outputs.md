@@ -3,43 +3,37 @@ This document describes how to filter the outputs of Docking based on various pr
 Here we assume that you have constructed a `Complex` object and successfully run [Docking](../tutorial/docking.md). 
 Following convention, we assume that the `Complex` object is called `sim`.
 
-## Fetch Docking results
+## Fetch docked poses
 
 First, we get the results of Docking in a pandas DataFrame using:
 
 ```{.python notest}
-df = sim.docking.get_results()
+poses = sim.docking.get_poses()
 ```
-## Fetch combined SDF
+Inspecting the `poses` object shows us:
 
-We can generate a single SDF file with all the poses using:
+<div style='width: 500px; padding: 15px; border: 1px solid #ddd; border-radius: 6px; background-color: #f9f9f9;'><h3 style='margin-top: 0; color: #333;'>LigandSet with 2246 ligands</h3><p style='margin: 8px 0;'><strong>157</strong> unique SMILES</p><p style='margin: 8px 0;'>Properties: Binding Energy, POSE SCORE, SCORE, SMILES, initial_smiles</p><div style='margin-top: 12px; padding-top: 12px; border-top: 1px solid #ddd;'><p style='margin: 4px 0; font-size: 0.9em; color: #666;'><em>Use <code>.to_dataframe()</code> to convert to a dataframe, <code>.show_df()</code> to view dataframewith structures, or <code>.show()</code> for 3D visualization</em></p></div></div>
+
+## Plot docking results
+
+The metrics of all docked poses can be plotted in a scatter plot using:
 
 ```{.python notest}
-sim.docking.get_poses("poses.sdf")
+poses.plot()
 ```
 
-## Filter results   
+<iframe 
+    src="../../images/docking-scatter.html" 
+    width="100%" 
+    height="660" 
+    style="border:none;"
+    title="Scatter plot of docking scores"
+></iframe>
 
-We can now filter this dataframe using any criteria we want. For example, we can only retain ligands that have a `pose_score` greater than `0.9` using:
+## Pick top results
 
-```{.python notest}
-df = df[df["pose_score"] > 0.9]
-```
-
-The filtered dataframe now only has ligands that matches the required criterion. 
-
-
-
-## Filter Ligands by SMILES strings
-
-We can create a new SDF file with only these ligands using:
+We can pick the top pose for each SMILES string using:
 
 ```{.python notest}
-from deeporigin.drug_discovery import Ligand
-
-ligands = Ligand.from_sdf("..path/to/poses.sdf") # from docking 
-
-smiles_strings = df["SMILES"]
-
-ligands = [ligand for ligand in ligands if ligand.properties["SMILES"] in smiles_strings]
+poses.filter_top_poses()
 ```

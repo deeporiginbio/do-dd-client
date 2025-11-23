@@ -1,12 +1,27 @@
 # Configuration
 
-To configure the client to connect to the DeepOrigin API, set your organization key and environment.
+The only configuration needed is to select the organization in which you want to work. To list the organizations available to your account, use:
 
 
 ```{.python notest}
 from deeporigin import config
-config.set_value("org_key", "your-org-key")
-config.set_value("env", "prod")  
+
+config.list_orgs()
+```
+
+You will be presented with a table similar to:
+
+|	name| 	key |	autoApproveMaxAmount	| threshold|
+| --- |  --- | --- | --- |
+|	ACME Corp	| acme-corp	| 500 |	50.00 |
+| Polaris Biotech |	polaris-bio | 	500 | 	50.00 |
+
+Choose the organization you want, and set it using:
+
+```{.python notest}
+from deeporigin import config
+
+config.set_org("polaris-bio")
 ```
 
 
@@ -17,6 +32,7 @@ To view the configuration for this package, run:
 
 ```{.python notest}
 from deeporigin import config
+
 config.get_value()
 
 ```

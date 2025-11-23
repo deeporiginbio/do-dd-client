@@ -3,6 +3,21 @@
 from tests.utils import client  # noqa: F401
 
 
+def test_list_organizations(client):  # noqa: F811
+    """Test listing organizations."""
+    orgs = client.organizations.list()
+
+    assert isinstance(orgs, list), "Expected a list"
+    assert len(orgs) > 0, "Expected at least one organization"
+    assert "id" in orgs[0], "Expected organization to have an id"
+    assert "orgKey" in orgs[0], "Expected organization to have an orgKey"
+    assert "name" in orgs[0], "Expected organization to have a name"
+    assert "status" in orgs[0], "Expected organization to have a status"
+    assert "roles" in orgs[0], "Expected organization to have roles"
+    assert "createdAt" in orgs[0], "Expected organization to have a createdAt"
+    assert "updatedAt" in orgs[0], "Expected organization to have an updatedAt"
+
+
 def test_list_organization_users(client):  # noqa: F811
     """Test listing organization users."""
     users = client.organizations.users()
