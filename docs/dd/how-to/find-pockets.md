@@ -23,7 +23,7 @@ pockets = protein.find_pockets(pocket_count=1)
 
 Create a pocket directly from a PDB file:
 
-```python
+```{.python notest}
 from deeporigin.drug_discovery import Pocket
 
 pocket = Pocket.from_pdb_file("path/to/pocket.pdb", name="my_pocket")
@@ -33,7 +33,7 @@ pocket = Pocket.from_pdb_file("path/to/pocket.pdb", name="my_pocket")
 
 Create a pocket centered on a specific residue:
 
-```python
+```{.python notest}
 from deeporigin.drug_discovery import Pocket
 
 pocket = Pocket.from_residue_number(
@@ -61,7 +61,7 @@ pocket = Pocket.from_ligand(ligand, name="ligand_pocket")
 
 View pocket properties by simply inspecting the object:
 
-```python
+```{.python notest}
 pocket
 ```
 

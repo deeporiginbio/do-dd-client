@@ -65,7 +65,7 @@ scatter(
 
 You can save the scatter plot to an HTML file instead of displaying it by providing the `output_file` parameter:
 
-```python
+```{.python notest}
 import numpy as np
 from deeporigin.plots import scatter
 

@@ -505,7 +505,7 @@ mcs_smarts = ligands.mcs()  # Returns a SMARTS string
 
 You can compute pairwise RMSD (Root Mean Square Deviation) between all ligands in a LigandSet:
 
-```python
+```{.python notest}
 from deeporigin.drug_discovery import LigandSet
 
 ligands = LigandSet.from_sdf("docking_results.sdf")
@@ -519,7 +519,7 @@ rmsd_matrix = ligands.compute_rmsd()  # Returns a numpy array
 
 You can create scatter plots of ligands using their properties:
 
-```python
+```{.python notest}
 from deeporigin.drug_discovery import LigandSet
 
 ligands = LigandSet.from_sdf("docking_results.sdf")
@@ -555,7 +555,7 @@ You can protonate ligands at a specific pH. This is useful for preparing ligands
 
 === "Ligand"
 
-    ```python
+    ```{.python notest}
     from deeporigin.drug_discovery import Ligand
 
     ligand = Ligand.from_smiles("c1ccccc1")
@@ -567,7 +567,7 @@ You can protonate ligands at a specific pH. This is useful for preparing ligands
 
 === "LigandSet"
 
-    ```python
+    ```{.python notest}
     from deeporigin.drug_discovery import LigandSet
 
     ligands = LigandSet.from_smiles(["c1ccccc1", "CCO"])

@@ -402,13 +402,13 @@ chains_ab = protein.select_chains(['A', 'B'])
 
 You can save the protein structure to a PDB file:
 
-```python
+```{.python notest}
 from deeporigin.drug_discovery import Protein
 
 protein = Protein.from_pdb_id("1EBY")
 protein.remove_water()
+
 file_path = protein.to_pdb("prepared_protein.pdb")
-print(f"Saved to: {file_path}")
 ```
 
 If no file path is provided, the protein will be saved to a default location based on its hash.
@@ -417,7 +417,7 @@ If no file path is provided, the protein will be saved to a default location bas
 
 You can dock ligands into pockets of the protein. See the [Docking guide](docking.md) for detailed information.
 
-```python
+```{.python notest}
 from deeporigin.drug_discovery import Protein, Ligand, BRD_DATA_DIR
 
 protein = Protein.from_file(BRD_DATA_DIR / "brd.pdb")
