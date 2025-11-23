@@ -160,7 +160,7 @@ print(num_atoms)
 
 You can find potential binding pockets in the protein structure. See the [Finding Pockets guide](find-pockets.md) for detailed information.
 
-```python
+```{.python notest}
 from deeporigin.drug_discovery import Protein
 
 protein = Protein.from_pdb_id("1EBY")
