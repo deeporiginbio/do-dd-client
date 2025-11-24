@@ -47,7 +47,7 @@ def download_sync(
             ) from None
 
         with open(save_path, "wb") as file:
-            for chunk in response.iter_bytes():
+            for chunk in response.iter_bytes(chunk_size=8192):
                 if chunk:  # Filter out keep-alive new chunks
                     file.write(chunk)
 
