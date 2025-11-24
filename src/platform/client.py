@@ -71,9 +71,8 @@ class DeepOriginClient:
             tokens = get_tokens()
             token = tokens["access"]
 
-        if refresh_token is None:
-            tokens = get_tokens()
-            refresh_token = tokens.get("refresh")
+            if refresh_token is None:
+                refresh_token = tokens.get("refresh")
 
         if org_key is None:
             org_key = get_value()["org_key"]
