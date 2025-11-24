@@ -125,7 +125,7 @@ class DeepOriginClient:
             The organization key string.
 
         Raises:
-            DeepOriginException: If org_key is not set, None, empty, or an empty string.
+            DeepOriginException: If org_key is not set
         """
         if self._org_key is None or self._org_key == "":
             raise DeepOriginException(
