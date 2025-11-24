@@ -12,7 +12,6 @@ classifiers = [
 ]
 requires-python = ">=3.10"
 dependencies = [
-    "requests",
     "termcolor",
     "pandas",
     "beartype",

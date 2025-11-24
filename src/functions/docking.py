@@ -12,7 +12,7 @@ from pathlib import Path
 from typing import Optional
 import zipfile
 
-import requests
+import httpx
 
 from deeporigin.drug_discovery.structures import Ligand, Pocket, Protein
 from deeporigin.exceptions import DeepOriginException
@@ -175,7 +175,7 @@ def constrained_dock(
         return _extract_cached_files(extract_dir)
 
     # Send the POST request
-    response = requests.post(
+    response = httpx.post(
         URL,
         headers={"Content-Type": "application/json"},
         json=payload,

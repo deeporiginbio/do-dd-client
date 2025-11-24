@@ -9,9 +9,9 @@ from typing import Optional
 from urllib.parse import urljoin
 
 from beartype import beartype
+import httpx
 import jwt
 from jwt.algorithms import RSAAlgorithm
-import requests
 
 from deeporigin.config import get_value as get_config
 from deeporigin.exceptions import DeepOriginException
@@ -155,7 +155,7 @@ def authenticate(
         "audience": AUTH_AUDIENCE,
     }
 
-    response = requests.post(AUTH_DOMAIN[env] + AUTH_DEVICE_CODE_ENDPOINT, json=body)
+    response = httpx.post(AUTH_DOMAIN[env] + AUTH_DEVICE_CODE_ENDPOINT, json=body)
     response.raise_for_status()
     response_json = response.json()
     device_code = response_json["device_code"]
@@ -180,7 +180,7 @@ def authenticate(
     }
     # Wait for the user to sign into the Deep Origin platform
     while True:
-        response = requests.post(AUTH_DOMAIN[env] + AUTH_TOKEN_ENDPOINT, json=body)
+        response = httpx.post(AUTH_DOMAIN[env] + AUTH_TOKEN_ENDPOINT, json=body)
         if response.status_code == 200:
             break
         if (
@@ -227,7 +227,7 @@ def refresh_tokens(api_refresh_token: str, *, env: Optional[ENVS] = None) -> str
         "client_secret": AUTH_CLIENT_SECRET[env],
         "refresh_token": api_refresh_token,
     }
-    response = requests.post(AUTH_DOMAIN[env] + AUTH_TOKEN_ENDPOINT, json=body)
+    response = httpx.post(AUTH_DOMAIN[env] + AUTH_TOKEN_ENDPOINT, json=body)
     response.raise_for_status()
     response_json = response.json()
     api_access_token = response_json["access_token"]
@@ -263,7 +263,7 @@ def get_public_keys(env: Optional[ENVS] = None) -> list[dict]:
         env = get_config()["env"]
 
     jwks_url = urljoin(AUTH_DOMAIN[env], ".well-known/jwks.json")
-    data = requests.get(jwks_url).json()
+    data = httpx.get(jwks_url).json()
     return data["keys"]
 
 

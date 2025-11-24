@@ -9,7 +9,7 @@ from typing import Literal
 from urllib.parse import urljoin
 
 from beartype import beartype
-import requests
+import httpx
 
 URL = "http://rbfe-tools.default.jobs.edge.deeporigin.io"
 CACHE_DIR = os.path.expanduser("~/.deeporigin/konnektor")
@@ -63,7 +63,7 @@ def map_network(
 
     else:
         # Make the API request
-        response = requests.post(
+        response = httpx.post(
             urljoin(URL, "konnektor"),
             json=payload,
             headers={"Content-Type": "application/json"},

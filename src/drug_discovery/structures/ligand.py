@@ -193,11 +193,11 @@ class Ligand(Entity):
             AssertionError: If neither smiles nor name is provided
         """
 
-        import requests
+        import httpx
 
         try:
             url = f"https://pubchem.ncbi.nlm.nih.gov/rest/pug/compound/name/{identifier}/property/smiles/JSON"
-            response = requests.get(url, timeout=5)
+            response = httpx.get(url, timeout=5)
             data = response.json()
             smiles = data["PropertyTable"]["Properties"][0]["SMILES"]
         except Exception:

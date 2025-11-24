@@ -25,7 +25,7 @@ import os
 import pathlib
 
 from beartype import beartype
-import requests
+import httpx
 
 
 @beartype
@@ -291,7 +291,7 @@ def get_protein_info_dict(pdb_id: str):
 
     info = {}
 
-    response = requests.post(url, json=payload)
+    response = httpx.post(url, json=payload)
     if response.status_code == 200:
         data = response.json()
 
@@ -524,7 +524,7 @@ def get_protein_info_dict(pdb_id: str):
             "variables": {"comp_ids": mol_ids},
         }
 
-        response = requests.post(url, json=smiles_payload)
+        response = httpx.post(url, json=smiles_payload)
         if response.status_code == 200:
             smiles_data = response.json()
             for i, small_mol in enumerate(smiles_data["data"]["chem_comps"]):

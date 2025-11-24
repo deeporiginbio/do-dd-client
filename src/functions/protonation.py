@@ -5,7 +5,7 @@ import os
 from pathlib import Path
 
 from beartype import beartype
-import requests
+import httpx
 
 from deeporigin.utils.constants import number
 from deeporigin.utils.core import hash_dict
@@ -56,7 +56,7 @@ def protonate(
 
     else:
         # Make the API request
-        response = requests.post(
+        response = httpx.post(
             URL,
             json=payload,
             headers={"Content-Type": "application/json"},
