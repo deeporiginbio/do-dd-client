@@ -1,9 +1,15 @@
 """helper module to parse progress and render progress for first party tools"""
 
+from __future__ import annotations
+
 import json
 import os
+from typing import TYPE_CHECKING
 
 from beartype import beartype
+
+if TYPE_CHECKING:
+    from deeporigin.platform.job import Job, JobList
 
 
 def _viz_func_quoted(job_or_jobs) -> str:
@@ -373,8 +379,7 @@ def _viz_func_docking(job) -> str:
     )
 
 
-@beartype
-def _name_func_docking(job) -> str:
+def _name_func_docking(job: "Job | JobList") -> str:
     """Generate a name for a docking job or JobList.
 
     Args:
@@ -409,16 +414,50 @@ def _name_func_docking(job) -> str:
     return f"Docking <code>{protein_file}</code> to {num_ligands} ligands."
 
 
-@beartype
-def _name_func_abfe(job) -> str:
-    """utility function to name a job using inputs to that job"""
+def _name_func_abfe(job: "Job | JobList") -> str:
+    """Generate a name for an ABFE job or JobList.
+
+    Args:
+        job: Either a Job instance or a JobList instance. If JobList with a single job,
+            uses that job's metadata. If JobList with multiple jobs, mentions the
+            protein name and number of ligands.
+
+    Returns:
+        Name string for the ABFE job(s).
+    """
+    # Convert to a list of jobs (works for both JobList and single Job)
+    jobs_list = job.jobs if hasattr(job, "jobs") else [job]
+
+    # If single job, use existing logic
+    if len(jobs_list) == 1:
+        single_job = jobs_list[0]
+        try:
+            metadata = (
+                single_job._attributes.get("metadata")
+                if single_job._attributes
+                else None
+            )
+            if metadata and "protein_name" in metadata and "ligand_name" in metadata:
+                return f"ABFE run using <code>{metadata['protein_name']}</code> and <code>{metadata['ligand_name']}</code>"
+            return "ABFE run"
+        except Exception:
+            return "ABFE run"
+
+    # Multiple jobs: get protein name from first job and count ligands
     try:
-        metadata = job._attributes.get("metadata") if job._attributes else None
-        if metadata and "protein_name" in metadata and "ligand_name" in metadata:
-            return f"ABFE run using <code>{metadata['protein_name']}</code> and <code>{metadata['ligand_name']}</code>"
-        return "ABFE run"
+        first_job = jobs_list[0]
+        metadata = (
+            first_job._attributes.get("metadata") if first_job._attributes else None
+        )
+        protein_name = (
+            metadata.get("protein_name")
+            if metadata and "protein_name" in metadata
+            else "Unknown protein"
+        )
+        num_ligands = len(jobs_list)
+        return f"ABFE run using <code>{protein_name}</code> for {num_ligands} ligands"
     except Exception:
-        return "ABFE run"
+        return f"ABFE run ({len(jobs_list)} jobs)"
 
 
 @beartype

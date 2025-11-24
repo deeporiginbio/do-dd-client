@@ -258,7 +258,7 @@ class ABFE(WorkflowStep):
         output_dir_path: Optional[str] = None,
         approve_amount: Optional[int] = 0,
         quote: bool = False,
-    ) -> list[Job] | None:
+    ) -> JobList | None:
         """Method to run an end-to-end ABFE run.
 
         Args:
@@ -381,7 +381,7 @@ class ABFE(WorkflowStep):
             self.jobs.append(job)
             jobs_for_this_run.append(job)
 
-        return jobs_for_this_run
+        return JobList(jobs_for_this_run)
 
     @beartype
     def show_trajectory(

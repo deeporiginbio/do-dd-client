@@ -1153,7 +1153,13 @@ class LigandSet:
 
         # Calculate unique SMILES to determine if these are poses of the same ligand
         unique_smiles = (
-            len({ligand.smiles for ligand in self.ligands if ligand.smiles})
+            len(
+                {
+                    ligand.properties.get("SMILES", ligand.smiles)
+                    for ligand in self.ligands
+                    if ligand.smiles
+                }
+            )
             if num_ligands > 0
             else 0
         )
