@@ -249,7 +249,15 @@ class DeepOriginClient:
                     fix="Use `config.set_refresh_token(refresh_token)` to set the refresh token.",
                     level="danger",
                 )
+
+            # at this point, if we have a refresh token, we can assume that it's safe to cache to disk
             self.token = auth.refresh_tokens(self.refresh_token, env=self.env)
+            auth.cache_tokens(
+                tokens={
+                    "access": self.token,
+                    "refresh": self.refresh_token,
+                }
+            )
 
     # Removing from registry when explicitly closed
     def _detach_from_registry(self) -> None:
