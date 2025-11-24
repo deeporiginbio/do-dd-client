@@ -26,7 +26,7 @@ class MockServer:
     For standalone use, the port can be specified via the port parameter.
     """
 
-    def __init__(self, port: int = 0, docking_speed: float = 1.0):
+    def __init__(self, port: int = 0, docking_speed: float = 0.5):
         """Initialize the test server.
 
         Args:
