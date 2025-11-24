@@ -21,11 +21,9 @@ from typing import Any, Optional
 import numpy as np
 import pandas as pd
 from tabulate import tabulate
-from termcolor import colored
 
 from deeporigin.drug_discovery.constants import POCKETS_BASE_DIR
 from deeporigin.drug_discovery.structures.ligand import Ligand
-from deeporigin.drug_discovery.utilities.visualize import jupyter_visualization
 
 
 @dataclass
@@ -355,34 +353,6 @@ class Pocket:
                     f"ATOM  {i + 1:5d}  CA  UNK A{i + 1:4d}    {x:8.3f}{y:8.3f}{z:8.3f}  1.00  0.00           C\n"
                 )
             f.write("END\n")
-
-    @jupyter_visualization
-    def show(self):
-        """show the pocket in a jupyter notebook"""
-
-        pocket_paths = [str(self.file_path)]
-        pocket_names = ["Name: " + self.name + " | " + str(self.props)]
-
-        from deeporigin_molstar import ProteinViewer
-
-        viewer = ProteinViewer("", format="pdb")
-
-        pocket_config = viewer.get_pocket_visualization_config()
-        # Ensure self.index is within the bounds of surface_colors
-        if self.index >= len(pocket_config.surface_colors):
-            self.index = 0  # Default to the first color if out of bounds
-
-        pocket_config.surface_colors = [pocket_config.surface_colors[self.index]]
-        print(
-            "\n|\n".join(
-                colored("■", pocket_config.surface_colors[0]) + " " + pocket_name
-                for pocket_name in pocket_names
-            )
-        )
-
-        return viewer.render_protein_with_pockets(
-            pocket_paths=pocket_paths, pocket_config=pocket_config
-        )
 
     def __str__(self):
         properties_line = ""
