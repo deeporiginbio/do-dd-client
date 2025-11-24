@@ -242,8 +242,14 @@ class DeepOriginClient:
         from deeporigin import auth
 
         if auth.is_token_expired(auth.decode_access_token(self.token, env=self.env)):
+            if self.refresh_token is None:
+                raise DeepOriginException(
+                    title="Refresh Token Required",
+                    message="The refresh token is not set. Please set it before using the client, using the `config` module.",
+                    fix="Use `config.set_refresh_token(refresh_token)` to set the refresh token.",
+                    level="danger",
+                )
             self.token = auth.refresh_tokens(self.refresh_token, env=self.env)
-            # No need to manually update headers - setter handles it
 
     # Removing from registry when explicitly closed
     def _detach_from_registry(self) -> None:
