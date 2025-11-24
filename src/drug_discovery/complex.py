@@ -130,16 +130,20 @@ class Complex:
         add_H_atoms: bool = False,  # NOSONAR
         protonate_protein: bool = False,
         use_cache: bool = True,
-    ):
-        """run system preparation on the protein and one ligand from the Complex
+    ) -> "Protein | list[Protein]":
+        """run system preparation on the protein and one or more ligands from the Complex
 
         Args:
-            ligand (Ligand): The ligand to prepare.
+            ligand (Ligand, optional): The ligand to prepare. If None, prepares all ligands in the Complex.
             padding (float, optional): Padding to add around the system.
             retain_waters (bool, optional): Whether to keep water molecules.
             add_H_atoms (bool, optional): Whether the ligand is already protonated.
             protonate_protein (bool, optional): Whether to protonate the protein.
             use_cache (bool, optional): Whether to use the cache.
+
+        Returns:
+            Protein: If a single ligand is provided, returns the prepared Protein object.
+            list[Protein]: If ligand is None, returns a list of prepared Protein objects, one for each ligand.
         """
         from deeporigin.functions.sysprep import run_sysprep
 
@@ -149,7 +153,7 @@ class Complex:
             responses = []
 
             for ligand in tqdm(self.ligands, desc="Preparing systems"):
-                response = self.prepare(
+                prepared_protein = self.prepare(
                     ligand=ligand,
                     padding=padding,
                     retain_waters=retain_waters,
@@ -158,7 +162,7 @@ class Complex:
                     use_cache=use_cache,
                 )
 
-                self._prepared_systems[ligand.to_hash()] = response
+                responses.append(prepared_protein)
             return responses
 
         # make sure there are no missing residues in the protein
