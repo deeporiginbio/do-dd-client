@@ -8,13 +8,13 @@ Usage:
     python -m tests.run_mock_server [OPTIONS]
 
 Options:
-    PORT: Port number to run the server on (default: 8000)
+    --port PORT: Port number to run the server on (default: 4931)
     --abfe-duration SECONDS: Duration for ABFE executions in seconds (default: 300)
 
 Examples:
-    python -m tests.run_mock_server 8000
+    python -m tests.run_mock_server --port 8000
     python -m tests.run_mock_server --abfe-duration 600
-    python -m tests.run_mock_server 8080 --abfe-duration 120
+    python -m tests.run_mock_server --port 8080 --abfe-duration 120
 """
 
 from __future__ import annotations
@@ -32,11 +32,10 @@ def main() -> None:
         epilog=__doc__,
     )
     parser.add_argument(
-        "port",
+        "--port",
         type=int,
-        nargs="?",
-        default=8000,
-        help="Port number to run the server on (default: 8000)",
+        default=4931,
+        help="Port number to run the server on (default: 4931)",
     )
     parser.add_argument(
         "--abfe-duration",
