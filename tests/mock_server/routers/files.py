@@ -56,13 +56,42 @@ def create_files_router(
         org_key: str, file_path: str, recursive: bool = False
     ) -> dict[str, Any]:
         """List files in a directory."""
-        # Return mock file list
-        files = [
-            {"Key": f"{file_path}file1.txt"},
-            {"Key": f"{file_path}file2.txt"},
-        ]
+        # Get the directory path in fixtures
+        dir_path = _get_fixture_path(file_path, fixtures_dir)
+
+        # Ensure the resolved path is within fixtures_dir (prevent path traversal)
+        fixtures_resolved = fixtures_dir.resolve()
+        try:
+            dir_resolved = dir_path.resolve()
+            if not str(dir_resolved).startswith(str(fixtures_resolved)):
+                # Path traversal detected, return empty list
+                return {"data": []}
+        except (OSError, ValueError):
+            # If resolution fails, return empty list
+            return {"data": []}
+
+        # Check if directory exists
+        if not dir_path.exists() or not dir_path.is_dir():
+            return {"data": []}
+
+        # List files in the directory
+        files: list[dict[str, str]] = []
+
         if recursive:
-            files.append({"Key": f"{file_path}subdir/file3.txt"})
+            # Recursively list all files
+            for file_path_obj in dir_path.rglob("*"):
+                if file_path_obj.is_file():
+                    # Get relative path from fixtures_dir
+                    relative_path = file_path_obj.relative_to(fixtures_dir)
+                    files.append({"Key": str(relative_path)})
+        else:
+            # List only files directly in the directory (not subdirectories)
+            for file_path_obj in dir_path.iterdir():
+                if file_path_obj.is_file():
+                    # Get relative path from fixtures_dir
+                    relative_path = file_path_obj.relative_to(fixtures_dir)
+                    files.append({"Key": str(relative_path)})
+
         return {"data": files}
 
     @router.get("/files/{org_key}/signedUrl/{remote_path:path}")

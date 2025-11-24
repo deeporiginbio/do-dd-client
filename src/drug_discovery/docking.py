@@ -95,6 +95,12 @@ class Docking(WorkflowStep):
         for file in file_paths:
             ligands.ligands += LigandSet.from_sdf(file).ligands
 
+        smiles_in_complex = self.parent.ligands.to_smiles()
+
+        ligands.ligands = [
+            ligand for ligand in ligands if ligand.smiles in smiles_in_complex
+        ]
+
         return ligands
 
     @beartype
