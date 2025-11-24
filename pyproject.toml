@@ -28,7 +28,6 @@ dependencies = [
     "asyncio",
     "jinja2",
     "aiohttp",
-    "jsonschema",
 ]
 dynamic = ["version"]
 
