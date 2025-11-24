@@ -5,8 +5,8 @@ from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
 from beartype import beartype
+import httpx
 from packaging.version import Version
-import requests
 
 from deeporigin import __version__
 from deeporigin.exceptions import DeepOriginException
@@ -39,7 +39,7 @@ def download_sync(
         save_path (str): path to save file
     """
 
-    with requests.get(url, stream=True) as response:
+    with httpx.stream("GET", url) as response:
         if response.status_code != 200:
             raise DeepOriginException(
                 message=f"File could not be downloaded from {url}. The message is {response.text}",
@@ -47,7 +47,7 @@ def download_sync(
             ) from None
 
         with open(save_path, "wb") as file:
-            for chunk in response.iter_content(chunk_size=8192):
+            for chunk in response.iter_bytes(chunk_size=8192):
                 if chunk:  # Filter out keep-alive new chunks
                     file.write(chunk)
 
@@ -55,7 +55,7 @@ def download_sync(
 def _get_pypi_version() -> str | None:
     """determines the latest version on PyPI"""
 
-    response = requests.get("https://pypi.org/pypi/deeporigin/json")
+    response = httpx.get("https://pypi.org/pypi/deeporigin/json")
 
     if response.status_code == 200:
         data = response.json()

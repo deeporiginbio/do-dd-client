@@ -12,7 +12,6 @@ classifiers = [
 ]
 requires-python = ">=3.10"
 dependencies = [
-    "requests",
     "pandas",
     "beartype",
     "tabulate",
@@ -23,13 +22,11 @@ dependencies = [
     "pyjwt",
     "cryptography",
     "python-box",
-    "urllib3>=2.0.0",
     "more-itertools",
     "nest_asyncio",
     "asyncio",
     "jinja2",
     "aiohttp",
-    "jsonschema",
 ]
 dynamic = ["version"]
 
