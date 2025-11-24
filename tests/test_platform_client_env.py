@@ -5,6 +5,7 @@ from typing import Generator
 
 import pytest
 
+from deeporigin.exceptions import DeepOriginException
 from deeporigin.platform.client import DeepOriginClient
 
 
@@ -47,3 +48,24 @@ def test_kwarg_overrides_env() -> None:
     assert client.token == "tok_kw"
     assert client.org_key == "org_kw"
     assert "edge" in client.base_url or client.base_url.endswith("edge.deeporigin.io/")
+
+
+def test_org_key_raises_when_empty_string() -> None:
+    """Test that accessing org_key raises DeepOriginException when it's an empty string."""
+    os.environ["DEEPORIGIN_TOKEN"] = "tok_abc"
+    os.environ["DEEPORIGIN_ENV"] = "prod"
+
+    client = DeepOriginClient(token="tok_abc", org_key="", env="prod")
+
+    with pytest.raises(DeepOriginException, match="not set or is empty"):
+        _ = client.org_key
+
+
+def test_org_key_returns_valid_value() -> None:
+    """Test that accessing org_key returns the value when it's valid."""
+    os.environ["DEEPORIGIN_TOKEN"] = "tok_abc"
+    os.environ["DEEPORIGIN_ENV"] = "prod"
+
+    client = DeepOriginClient(token="tok_abc", org_key="org_valid", env="prod")
+
+    assert client.org_key == "org_valid"
