@@ -9,11 +9,10 @@ Behavior:
 - If the config file exists, it is read and a dictionary is returned.
 """
 
+import json
 import os
 import sys
 from typing import TYPE_CHECKING, Literal
-
-import yaml
 
 if TYPE_CHECKING:
     import pandas as pd
@@ -21,7 +20,7 @@ if TYPE_CHECKING:
 from deeporigin.utils.constants import ENV_VARIABLES
 from deeporigin.utils.core import _ensure_do_folder
 
-CONFIG_YML_LOCATION = _ensure_do_folder() / "config.yml"
+CONFIG_JSON_LOCATION = _ensure_do_folder() / "config.json"
 
 __all__ = [
     "get_org",
@@ -29,18 +28,18 @@ __all__ = [
     "get_env",
     "set_env",
     "get_value",
-    "CONFIG_YML_LOCATION",
+    "CONFIG_JSON_LOCATION",
 ]
 
 
 def _ensure_config_file_exists() -> None:
     """Ensure the configuration file exists; create with defaults if missing."""
 
-    if not os.path.isfile(CONFIG_YML_LOCATION):
+    if not os.path.isfile(CONFIG_JSON_LOCATION):
         default_data: dict = {"env": "prod", "org_key": ""}
-        os.makedirs(os.path.dirname(CONFIG_YML_LOCATION), exist_ok=True)
-        with open(CONFIG_YML_LOCATION, "w") as file:
-            yaml.safe_dump(default_data, file, default_flow_style=False)
+        os.makedirs(os.path.dirname(CONFIG_JSON_LOCATION), exist_ok=True)
+        with open(CONFIG_JSON_LOCATION, "w") as file:
+            json.dump(default_data, file, indent=2)
 
 
 def _supports_unicode_output() -> bool:
@@ -126,14 +125,14 @@ def _set_value(key: Literal["env", "org_key"], value) -> None:
     """
     _ensure_config_file_exists()
 
-    with open(CONFIG_YML_LOCATION, "r") as file:
-        data = yaml.safe_load(file) or {}
+    with open(CONFIG_JSON_LOCATION, "r") as file:
+        data = json.load(file) or {}
 
     data[key] = value
 
     # Persist updated data
-    with open(CONFIG_YML_LOCATION, "w") as file:
-        yaml.safe_dump(data, file, default_flow_style=False)
+    with open(CONFIG_JSON_LOCATION, "w") as file:
+        json.dump(data, file, indent=2)
 
     # Prefer Unicode on capable terminals; fall back to ASCII-safe symbols
     if _supports_unicode_output():
@@ -158,8 +157,8 @@ def get_value() -> dict:
 
     _ensure_config_file_exists()
 
-    with open(CONFIG_YML_LOCATION, "r") as file:
-        data = yaml.safe_load(file) or {}
+    with open(CONFIG_JSON_LOCATION, "r") as file:
+        data = json.load(file) or {}
 
     # Fill defaults if missing
     env = data.get("env", "prod")
