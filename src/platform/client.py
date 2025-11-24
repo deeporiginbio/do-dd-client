@@ -15,6 +15,7 @@ import httpx
 
 from deeporigin.auth import get_tokens
 from deeporigin.config import get_value
+from deeporigin.exceptions import DeepOriginException
 from deeporigin.platform.clusters import Clusters
 from deeporigin.platform.executions import Executions
 from deeporigin.platform.files import Files
@@ -39,12 +40,14 @@ class DeepOriginClient:
 
     def __init__(
         self,
+        *,
         token: str | None = None,
         org_key: str | None = None,
         env: ENVS | None = None,
         base_url: str | None = None,
         timeout: float = 10.0,
         http2: bool = False,  # often faster off for simple REST
+        refresh_token: str | None = None,
     ):
         """Initialize a DeepOrigin Platform client.
 
@@ -59,13 +62,17 @@ class DeepOriginClient:
             env: Environment name (e.g., 'prod', 'staging'). If None and
                 base_url is None, reads from config.
             base_url: Base URL for the API. If None, derived from env or config.
-            timeout: Request timeout in seconds. Defaults to 10.0.
-            http2: Whether to enable HTTP/2. Defaults to False (often faster
-                off for simple REST APIs).
+            timeout: Request timeout in seconds.
+            http2: Whether to enable HTTP/2.
+            refresh_token: Refresh token. If None and token is None, reads from config file.
         """
+
         if token is None:
             tokens = get_tokens()
             token = tokens["access"]
+
+            if refresh_token is None:
+                refresh_token = tokens.get("refresh")
 
         if org_key is None:
             org_key = get_value()["org_key"]
@@ -81,10 +88,10 @@ class DeepOriginClient:
             # get the base url from the environment
             base_url = API_ENDPOINT[env]
 
-        self.token = token
+        self.refresh_token = refresh_token
         self.env = env
 
-        self.org_key = org_key
+        self._org_key = org_key
         self.base_url = base_url.rstrip("/") + "/"
 
         self.tools = Tools(self)
@@ -94,18 +101,60 @@ class DeepOriginClient:
         self.executions = Executions(self)
         self.organizations = Organizations(self)
 
+        # Initialize _client first (before setting token property)
         self._client = httpx.Client(
             base_url=self.base_url,
             headers={
-                "Authorization": f"Bearer {self.token}",
                 "Accept": "application/json",
             },
             timeout=timeout,
             http2=http2,
         )
 
+        # Set token property which will update headers automatically
+        self.token = token
+
         # ensure sockets close if GC happens
         self._finalizer = weakref.finalize(self, self._client.close)
+
+    @property
+    def org_key(self) -> str:
+        """Get the organization key.
+
+        Returns:
+            The organization key string.
+
+        Raises:
+            DeepOriginException: If org_key is not set
+        """
+        if self._org_key is None or self._org_key == "":
+            raise DeepOriginException(
+                title="Organization Key Required",
+                message="The organization key is not set or is empty. Please configure it before using the client, using the `config` module.",
+                fix="Use `config.set_org(org_key)` to set the organization key.",
+                level="danger",
+            )
+        return self._org_key
+
+    @property
+    def token(self) -> str:
+        """Get the authentication token.
+
+        Returns:
+            The authentication token string.
+        """
+        return self._token
+
+    @token.setter
+    def token(self, value: str) -> None:
+        """Set the authentication token and update the Authorization header.
+
+        Args:
+            value: The new authentication token.
+        """
+        self._token = value
+        if hasattr(self, "_client"):
+            self._client.headers["Authorization"] = f"Bearer {value}"
 
     def __repr__(self) -> str:
         """Return a string representation of the client.
@@ -137,6 +186,9 @@ class DeepOriginClient:
         if token is None:
             tokens = get_tokens()
             token = tokens["access"]
+            refresh_token = tokens.get("refresh")
+        else:
+            refresh_token = None
 
         if org_key is None:
             org_key = get_value()["org_key"]
@@ -167,6 +219,7 @@ class DeepOriginClient:
                 base_url=base_url,
                 timeout=timeout,
                 http2=http2,
+                refresh_token=refresh_token,
             )
 
         return cls._instances[key]
@@ -185,14 +238,24 @@ class DeepOriginClient:
 
     def check_token(self) -> None:
         """Check if the token is expired."""
-        from deeporigin.auth import decode_access_token, is_token_expired
-        from deeporigin.exceptions import DeepOriginException
+        from deeporigin import auth
 
-        if is_token_expired(decode_access_token(self.token, env=self.env)):
-            raise DeepOriginException(
-                title="Unauthorized",
-                message="The token is invalid or expired. Please sign in again.",
-                level="danger",
+        if auth.is_token_expired(auth.decode_access_token(self.token, env=self.env)):
+            if self.refresh_token is None:
+                raise DeepOriginException(
+                    title="Refresh Token Required",
+                    message="The refresh token is not set. Please set it before using the client, using the `config` module.",
+                    fix="Use `config.set_refresh_token(refresh_token)` to set the refresh token.",
+                    level="danger",
+                )
+
+            # at this point, if we have a refresh token, we can assume that it's safe to cache to disk
+            self.token = auth.refresh_tokens(self.refresh_token, env=self.env)
+            auth.cache_tokens(
+                tokens={
+                    "access": self.token,
+                    "refresh": self.refresh_token,
+                }
             )
 
     # Removing from registry when explicitly closed
