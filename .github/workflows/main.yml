@@ -45,12 +45,22 @@ jobs:
           version: 0.11.2
           args: check 
 
+      - name: Install uv
+        uses: astral-sh/setup-uv@v6
+        with:
+          version: "0.5.27"
+
+      - name: Set up Python
+        run: uv python install
+
+      - name: Install dependencies
+        run: uv sync --extra test
+
       - name: Check docstrings using interrogate
         run: |
-          pip install interrogate 
-          if [ $(interrogate -c pyproject.toml -v . -f 100 | grep "FAILED" | wc -l) = 1 ]; then
+          if [ $(uv run interrogate -c pyproject.toml -v . -f 100 | grep "FAILED" | wc -l) = 1 ]; then
              echo "necessary docstrings missing:"
-             interrogate -vv -c pyproject.toml --omit-covered-files . -f 100 
+             uv run interrogate -vv -c pyproject.toml --omit-covered-files . -f 100 
              exit 1
           fi
 
@@ -67,24 +77,22 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: actions/setup-python@v5
-        id: cached_python_setup
+      - name: Install uv
+        uses: astral-sh/setup-uv@v6
         with:
-          python-version: ${{ matrix.python-version }}
-          cache: 'pip'
-          cache-dependency-path: pyproject.toml
+          version: "0.5.27"
+
+      - name: Set up Python
+        run: uv python install ${{ matrix.python-version }}
+
+      - name: Install dependencies
+        run: uv sync --extra test --extra tools --extra plots --extra core
 
       - name: "run tests using a mock client"
-        run: |
-          pip install --upgrade pip
-          pip install --upgrade setuptools
-          pip install -e .[test,tools,plots]
-          pytest --mock
-
+        run: uv run pytest --mock
 
       - name: "test docs with pytest markdown-docs"
-        run: |
-          pytest -x docs --mock --markdown-docs --markdown-docs-syntax=superfences 
+        run: uv run pytest -x docs --mock --markdown-docs --markdown-docs-syntax=superfences 
 
 
 
