@@ -132,7 +132,7 @@ class Protein(Entity):
         Create a Protein instance from a file.
 
         Args:
-            file_path (str): Path to the protein PDB file.
+            file_path (str): Path to the protein PDB or CIF file.
             struct_ind (int): Index of the structure to select if multiple are present.
 
         Returns:
@@ -140,7 +140,7 @@ class Protein(Entity):
 
         Raises:
             FileNotFoundError: If the file does not exist.
-            ValueError: If the structure cannot be loaded.
+            ValueError: If the file type is unsupported or the structure cannot be loaded.
             RuntimeError: If the file cannot be read or processed.
         """
         try:
@@ -149,6 +149,11 @@ class Protein(Entity):
                 raise FileNotFoundError(f"The file {file_path} does not exist.")
 
             block_type = file_path.suffix.lstrip(".").lower()
+            if block_type not in ["pdb", "pdbqt", "cif"]:
+                raise ValueError(
+                    f"Unsupported file type: {block_type}. Supported types are: pdb, pdbqt, cif"
+                )
+
             block_content = file_path.read_text()
             structure = cls.load_structure_from_block(block_content, block_type)
             structure = cls.select_structure(structure, struct_ind)
@@ -161,7 +166,7 @@ class Protein(Entity):
                 block_type=block_type,
                 block_content=block_content,
             )
-        except FileNotFoundError:
+        except (FileNotFoundError, ValueError):
             raise
         except Exception as e:
             raise RuntimeError(
@@ -170,12 +175,28 @@ class Protein(Entity):
 
     @staticmethod
     def load_structure_from_block(block_content: str, block_type: str) -> np.ndarray:
-        """Load a protein structure from block content."""
+        """Load a protein structure from block content.
+
+        Args:
+            block_content (str): The content of the structure file.
+            block_type (str): The type of the structure file (pdb, pdbqt, or cif).
+
+        Returns:
+            np.ndarray: The loaded protein structure.
+
+        Raises:
+            ValueError: If the block type is unsupported.
+        """
         if block_type in ["pdb", "pdbqt"]:
             from biotite.structure.io.pdb import PDBFile
 
             pdb_file = PDBFile.read(io.StringIO(block_content))
             structure = pdb_file.get_structure()
+        elif block_type == "cif":
+            import biotite.structure.io.pdbx as pdbx
+
+            cif_file = pdbx.CIFFile.read(io.StringIO(block_content))
+            structure = pdbx.get_structure(cif_file)
         else:
             raise ValueError(f"Unsupported block type: {block_type}")
         return structure
