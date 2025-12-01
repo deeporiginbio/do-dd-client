@@ -46,11 +46,8 @@ uv init
 print_step "Installing Python 3.13..."
 uv python install 3.13
 
-print_step "Installing deeporigin with tools extra..."
-uv add --upgrade deeporigin --extra tools
-
-print_step "Installing deeporigin as a uv tool..."
-uv tool install deeporigin
+print_step "Installing deeporigin with core and tools extras..."
+uv add --upgrade deeporigin --extra core --extra tools
 
 print_step "Installation complete!"
 

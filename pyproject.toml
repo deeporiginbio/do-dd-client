@@ -12,25 +12,25 @@ classifiers = [
 ]
 requires-python = ">=3.10"
 dependencies = [
-    "pandas",
     "beartype",
-    "tabulate",
-    "httpx",
-    "humanize",
-    "packaging",
-    "tqdm",
-    "pyjwt",
     "cryptography",
-    "python-box",
-    "more-itertools",
-    "nest_asyncio",
-    "asyncio",
-    "jinja2",
-    "aiohttp",
+    "httpx",
+    "pyjwt",
+    "tqdm",
 ]
 dynamic = ["version"]
 
 [project.optional-dependencies]
+core = [
+    "humanize",
+    "jinja2",
+    "more-itertools",
+    "nest_asyncio",
+    "packaging",
+    "pandas",
+    "python-box",
+    "tabulate",
+]
 lint = ["ruff"]
 test = [
     "pytest",
@@ -67,9 +67,6 @@ include-package-data = true
 
 [tool.setuptools.dynamic]
 version = { file = ["src/VERSION"] }
-
-[project.scripts]
-deeporigin = "deeporigin.cli:main"
 
 [build-system]
 requires = ["setuptools >= 40.9.0"]

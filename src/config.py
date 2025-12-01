@@ -1,4 +1,4 @@
-"""Simplified configuration management for Deep Origin CLI/client.
+"""Simplified configuration management for Deep Origin client.
 
 This module stores and retrieves only two configuration values:
 `env` and `org_key`.
