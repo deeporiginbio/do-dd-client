@@ -25,7 +25,7 @@ class ABFE(WorkflowStep):
     Objects instantiated here are meant to be used within the Complex class."""
 
     """tool version to use for ABFE"""
-    tool_version = "0.2.18"
+    tool_version = "0.2.19"
     _tool_key = tool_mapper["ABFE"]
 
     _max_atom_count: int = 100_000
