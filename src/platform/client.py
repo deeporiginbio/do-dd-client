@@ -238,6 +238,10 @@ class DeepOriginClient:
 
     def check_token(self) -> None:
         """Check if the token is expired."""
+
+        if self.env in ["dev", "local"]:
+            # no check for these envs
+            return
         from deeporigin import auth
 
         if auth.is_token_expired(auth.decode_access_token(self.token, env=self.env)):
