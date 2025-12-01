@@ -13,6 +13,8 @@ from beartype import beartype
 from box import Box
 from tabulate import tabulate
 
+from deeporigin.utils.constants import ENVS
+
 
 class PrettyDict(Box):
     """A dict subclass with a custom pretty-print representation."""
@@ -434,13 +436,33 @@ def _ensure_do_folder() -> Path:
 def _get_api_tokens_filepath() -> Path:
     """get location of the api tokens file"""
 
-    return _ensure_do_folder() / "api_tokens"
+    return _ensure_do_folder() / "api_tokens.json"
 
 
 @beartype
-def read_cached_tokens() -> dict:
-    """Read cached API tokens"""
+def read_cached_tokens(*, env: ENVS | None = None) -> dict:
+    """Read cached API tokens for a specific environment.
 
-    with open(_get_api_tokens_filepath(), "r") as file:
-        tokens = json.load(file)
-    return tokens
+    Args:
+        env: Environment name (e.g., 'prod', 'staging', 'edge').
+            If None, reads from config.
+
+    Returns:
+        Dictionary with 'access' and 'refresh' tokens for the specified environment.
+        Returns empty dict if tokens don't exist for that environment.
+    """
+    from deeporigin.config import get_value as get_config
+
+    if env is None:
+        env = get_config()["env"]
+
+    filepath = _get_api_tokens_filepath()
+
+    if not filepath.exists():
+        return {}
+
+    with open(filepath, "r") as file:
+        all_tokens = json.load(file)
+
+    # Return tokens for the specific environment
+    return all_tokens.get(env, {})

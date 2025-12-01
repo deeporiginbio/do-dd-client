@@ -53,13 +53,30 @@ AUTH_CLIENT_SECRET = {
 
 
 @beartype
-def tokens_exist() -> bool:
-    """Check if the cached API tokens exist"""
+def tokens_exist(*, env: ENVS | None = None) -> bool:
+    """Check if cached API tokens exist for a specific environment.
 
-    return os.path.isfile(_get_api_tokens_filepath())
+    Args:
+        env: Environment name. If None, checks for current config environment.
+
+    Returns:
+        True if tokens exist for the environment, False otherwise.
+    """
+    if env is None:
+        env = get_config()["env"]
+
+    filepath = _get_api_tokens_filepath()
+
+    if not filepath.exists():
+        return False
+
+    with open(filepath, "r") as file:
+        all_tokens = json.load(file)
+
+    return env in all_tokens and bool(all_tokens.get(env))
 
 
-def get_tokens(never_prompt: bool = False) -> dict:
+def get_tokens(never_prompt: bool = False, *, env: ENVS | None = None) -> dict:
     """Get access token for accessing the Deep Origin API
 
     Gets tokens to access Deep Origin API.
@@ -71,16 +88,19 @@ def get_tokens(never_prompt: bool = False) -> dict:
 
     Args:
         never_prompt: when True, will not prompt the user to sign in
+        env: Environment name. If None, uses current config environment.
 
     Returns:
         API access and refresh tokens
     """
+    if env is None:
+        env = get_config()["env"]
 
     tokens = {}
 
-    if tokens_exist():
+    if tokens_exist(env=env):
         # tokens exist on disk
-        tokens = read_cached_tokens()
+        tokens = read_cached_tokens(env=env)
 
     # tokens in env override tokens on disk
     # try to read from env
@@ -91,7 +111,7 @@ def get_tokens(never_prompt: bool = False) -> dict:
 
     if "access" not in tokens.keys() and not never_prompt:
         # no tokens in env. have to sign into the platform to get tokens
-        tokens = authenticate()
+        tokens = authenticate(env=env)
 
     if "access" not in tokens.keys():
         raise DeepOriginException(
@@ -100,9 +120,9 @@ def get_tokens(never_prompt: bool = False) -> dict:
 
     # check if the access token is expired
     try:
-        if is_token_expired(decode_access_token(tokens["access"])):
-            tokens["access"] = refresh_tokens(tokens["refresh"])
-            cache_tokens(tokens)
+        if is_token_expired(decode_access_token(tokens["access"], env=env)):
+            tokens["access"] = refresh_tokens(tokens["refresh"], env=env)
+            cache_tokens(tokens, env=env)
     except jwt.DecodeError:
         # token decoding failed. issue a warning
         print("⚠️ Token decoding failed. Please sign in again.")
@@ -111,24 +131,70 @@ def get_tokens(never_prompt: bool = False) -> dict:
 
 
 @beartype
-def cache_tokens(tokens: dict) -> None:
+def cache_tokens(tokens: dict, *, env: ENVS | None = None) -> None:
     """Save access and refresh tokens to a local file, for example, to
     enable variables/secrets to be regularly pulled without the user
     needing to regularly re-login.
 
     Args:
-        token: dictionary with access and refresh tokens
+        tokens: dictionary with access and refresh tokens
+        env: Environment name. If None, uses current config environment.
     """
+    if env is None:
+        env = get_config()["env"]
 
-    with open(_get_api_tokens_filepath(), "w") as file:
-        json.dump(tokens, file)
+    filepath = _get_api_tokens_filepath()
+
+    # Load existing tokens for all environments
+    all_tokens = {}
+    if filepath.exists():
+        with open(filepath, "r") as file:
+            all_tokens = json.load(file)
+
+    # Update tokens for the specific environment
+    all_tokens[env] = {
+        "access": tokens["access"],
+        "refresh": tokens.get("refresh", ""),
+    }
+
+    # Write back all environments
+    with open(filepath, "w") as file:
+        json.dump(all_tokens, file, indent=2)
 
 
-def remove_cached_tokens() -> None:
-    """Remove cached API tokens"""
+def remove_cached_tokens(*, env: ENVS | None = None, remove_all: bool = False) -> None:
+    """Remove cached API tokens for a specific environment or all environments.
 
-    if os.path.isfile(_get_api_tokens_filepath()):
-        os.remove(_get_api_tokens_filepath())
+    Args:
+        env: Environment name. If None and remove_all is False, removes tokens for current config environment.
+        remove_all: If True, removes all tokens and deletes the file regardless of env parameter.
+    """
+    filepath = _get_api_tokens_filepath()
+
+    if remove_all:
+        # Remove entire file
+        if filepath.exists():
+            filepath.unlink()
+        return
+
+    if env is None:
+        env = get_config()["env"]
+
+    # Remove tokens for specific environment
+    if filepath.exists():
+        with open(filepath, "r") as file:
+            all_tokens = json.load(file)
+
+        # Remove specific environment
+        if env in all_tokens:
+            del all_tokens[env]
+
+        # Write back (or remove file if empty)
+        if all_tokens:
+            with open(filepath, "w") as file:
+                json.dump(all_tokens, file, indent=2)
+        else:
+            filepath.unlink()
 
 
 @beartype
@@ -202,7 +268,7 @@ def authenticate(
     }
 
     if save_tokens:
-        cache_tokens(tokens)
+        cache_tokens(tokens, env=env)
 
     return tokens
 
@@ -294,7 +360,7 @@ def decode_access_token(
         }
 
     if token is None:
-        tokens = get_tokens()
+        tokens = get_tokens(env=env)
         token = tokens["access"]
 
     # Get the JWT header to extract the Key ID
