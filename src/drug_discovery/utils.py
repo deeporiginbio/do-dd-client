@@ -96,7 +96,7 @@ def _start_tool_run(
 
     if is_test_run(params):
         print(
-            "⚠️ Warning: test_run=1 in these parameters. Results will not be accurate."
+            "⚠️ Warning: test_run=1 in these parameters. Results and quoted prices will not be accurate."
         )
 
     payload = {
