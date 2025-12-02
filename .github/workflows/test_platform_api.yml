@@ -8,7 +8,7 @@ on:
         type: choice
         required: true
         default: prod
-        options: [edge, staging,prod]
+        options: [dev, staging, prod]
       service:
         description: "Service to test"
         type: choice
@@ -37,9 +37,9 @@ jobs:
           elif [ "${{ inputs.env }}" = "staging" ]; then
             echo "DEEPORIGIN_TOKEN=${{ secrets.DEEPORIGIN_TOKEN_STAGING }}" >> "$GITHUB_ENV"
             echo "DEEPORIGIN_REFRESH_TOKEN=${{ secrets.DEEPORIGIN_REFRESH_TOKEN_STAGING }}" >> "$GITHUB_ENV"
-          elif [ "${{ inputs.env }}" = "edge" ]; then
-            echo "DEEPORIGIN_TOKEN=${{ secrets.DEEPORIGIN_TOKEN_EDGE }}" >> "$GITHUB_ENV"
-            echo "DEEPORIGIN_REFRESH_TOKEN=${{ secrets.DEEPORIGIN_REFRESH_TOKEN_EDGE }}" >> "$GITHUB_ENV"
+          elif [ "${{ inputs.env }}" = "dev" ]; then
+            echo "DEEPORIGIN_TOKEN=${{ secrets.DEEPORIGIN_TOKEN_DEV }}" >> "$GITHUB_ENV"
+            echo "DEEPORIGIN_REFRESH_TOKEN=${{ secrets.DEEPORIGIN_REFRESH_TOKEN_DEV }}" >> "$GITHUB_ENV"
           fi
 
       - name: Set environment variables for Client

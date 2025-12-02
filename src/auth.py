@@ -34,7 +34,6 @@ __all__ = [
 AUTH_DOMAIN = {
     "prod": "https://formicbio.us.auth0.com",
     "staging": "https://formicbio.us.auth0.com",
-    "edge": "https://edge.login.deeporigin.io",
 }
 
 AUTH_DEVICE_CODE_ENDPOINT = "/oauth/device/code"
@@ -47,13 +46,11 @@ AUTH_GRANT_TYPE = "urn:ietf:params:oauth:grant-type:device_code"
 AUTH_CLIENT_ID = {
     "prod": "m3iyUcrANcIap2ogzWKpnYxCNujOrW3s",
     "staging": "2AMGd2bJnKjMtd7QBvJYlGPqb9vtntsY",
-    "edge": "jbYq4bkeX2UJb1bePH1ci172KbUMVyak",
 }
 
 AUTH_CLIENT_SECRET = {
     "prod": "cQcZclTqMHMuovyXV-DD15tEiL-KH_2XD36vsppULRBuq7AjwyI4dh5ag11O_K1S",
     "staging": "WNoSHfEIBfM8cSpwhU2k30uGaCD3Uo6KhyklSYsWecrPKHjR9MEdeP3YF094GvZt",
-    "edge": "dyXkC91flTvTrqnFDAheysQeUHMT97B8Ah47OssdMjTFDTSdkYq8cqhCASb_fTBK",
 }
 
 
