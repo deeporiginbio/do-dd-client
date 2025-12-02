@@ -259,7 +259,8 @@ class DeepOriginClient:
                 tokens={
                     "access": self.token,
                     "refresh": self.refresh_token,
-                }
+                },
+                env=self.env,
             )
 
     # Removing from registry when explicitly closed

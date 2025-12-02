@@ -11,14 +11,13 @@ Behavior:
 
 import json
 import os
-import sys
 from typing import TYPE_CHECKING, Literal
 
 if TYPE_CHECKING:
     import pandas as pd
 
 from deeporigin.utils.constants import ENV_VARIABLES
-from deeporigin.utils.core import _ensure_do_folder
+from deeporigin.utils.core import _ensure_do_folder, _supports_unicode_output
 
 CONFIG_JSON_LOCATION = _ensure_do_folder() / "config.json"
 
@@ -40,21 +39,6 @@ def _ensure_config_file_exists() -> None:
         os.makedirs(os.path.dirname(CONFIG_JSON_LOCATION), exist_ok=True)
         with open(CONFIG_JSON_LOCATION, "w") as file:
             json.dump(default_data, file, indent=2)
-
-
-def _supports_unicode_output() -> bool:
-    """Return True if stdout likely supports Unicode glyphs.
-
-    Uses the encoding reported by `sys.stdout.encoding` and falls back to
-    `utf-8` heuristic. On Windows default code pages (e.g., cp1252), returns
-    False to avoid `UnicodeEncodeError`.
-    """
-
-    encoding: str | None = getattr(sys.stdout, "encoding", None)
-    if not encoding:
-        return False
-    encoding_lower = encoding.lower()
-    return "utf" in encoding_lower
 
 
 def get_org() -> str | None:
@@ -101,7 +85,7 @@ def get_env() -> str:
     Creates the config file with defaults if it doesn't exist.
 
     Returns:
-        The environment (e.g., 'prod', 'staging', 'edge'). Defaults to 'prod'.
+        The environment (e.g., 'prod', 'staging', 'edge', 'dev', 'local'). Defaults to 'prod'.
         Environment variables override the config file value.
     """
     return get_value()["env"]
@@ -111,7 +95,7 @@ def set_env(value: str) -> None:
     """Set the environment.
 
     Args:
-        value: The environment to set (e.g., 'prod', 'staging', 'edge').
+        value: The environment to set (e.g., 'prod', 'staging', 'edge', 'dev', 'local').
     """
     _set_value("env", value)
 

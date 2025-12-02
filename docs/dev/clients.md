@@ -30,7 +30,7 @@ tools = client.tools.list()
 You can omit constructor arguments and configure the client via environment variables:
 
 - `DEEPORIGIN_TOKEN`: API token
-- `DEEPORIGIN_ENV`: Target environment (one of `prod`, `staging`, `edge`). Defaults to `prod` when unset
+- `DEEPORIGIN_ENV`: Target environment (one of `prod`, `staging`, `dev`). Defaults to `prod` when unset
 - `DEEPORIGIN_ORG_KEY`: Organization key
 
 Example:
