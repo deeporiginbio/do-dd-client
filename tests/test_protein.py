@@ -1,4 +1,5 @@
 import os
+from pathlib import Path
 
 import pytest
 
@@ -191,3 +192,51 @@ def test_extract_ligand_remove_water():
     _ = protein.extract_ligand()
 
     protein.remove_water()
+
+
+def test_from_file_cif():
+    """Test creating a protein from a CIF file."""
+    cif_path = Path(__file__).parent / "fixtures" / "1EBY.cif"
+    protein = Protein.from_file(cif_path)
+
+    assert protein.name == "1EBY"
+    assert protein.block_type == "cif"
+    assert protein.file_path == cif_path.resolve()
+    assert len(protein.structure) > 0
+    assert protein.block_content is not None
+    assert (
+        "data_1EBY" in protein.block_content or "data_r1ebysf" in protein.block_content
+    )
+
+
+def test_from_file_invalid_extension():
+    """Test that from_file raises ValueError for unsupported file types."""
+    # Create a temporary file with an unsupported extension
+    import tempfile
+
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".txt", delete=False) as tmp_file:
+        tmp_file.write("test content")
+        tmp_path = tmp_file.name
+
+    try:
+        with pytest.raises(ValueError, match=r".*Unsupported file type.*"):
+            Protein.from_file(tmp_path)
+    finally:
+        os.unlink(tmp_path)
+
+
+def test_load_structure_from_block_cif():
+    """Test loading structure from CIF block content."""
+    cif_path = Path(__file__).parent / "fixtures" / "1EBY.cif"
+    cif_content = cif_path.read_text()
+
+    structure = Protein.load_structure_from_block(cif_content, "cif")
+
+    assert len(structure) > 0
+    assert hasattr(structure, "coord")
+
+
+def test_load_structure_from_block_invalid_type():
+    """Test that load_structure_from_block raises ValueError for unsupported types."""
+    with pytest.raises(ValueError, match=r".*Unsupported block type.*"):
+        Protein.load_structure_from_block("test content", "xyz")
