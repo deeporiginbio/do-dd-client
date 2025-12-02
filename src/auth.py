@@ -16,7 +16,11 @@ from jwt.algorithms import RSAAlgorithm
 from deeporigin.config import get_value as get_config
 from deeporigin.exceptions import DeepOriginException
 from deeporigin.utils.constants import ENV_VARIABLES, ENVS
-from deeporigin.utils.core import _get_api_tokens_filepath, read_cached_tokens
+from deeporigin.utils.core import (
+    _get_api_tokens_filepath,
+    _supports_unicode_output,
+    read_cached_tokens,
+)
 
 __all__ = [
     "get_tokens",
@@ -24,6 +28,7 @@ __all__ = [
     "remove_cached_tokens",
     "authenticate",
     "refresh_tokens",
+    "save_token",
 ]
 
 AUTH_DOMAIN = {
@@ -73,7 +78,7 @@ def tokens_exist(*, env: ENVS | None = None) -> bool:
     with open(filepath, "r") as file:
         all_tokens = json.load(file)
 
-    return env in all_tokens and all_tokens[env]
+    return bool(env in all_tokens and all_tokens[env])
 
 
 def get_tokens(never_prompt: bool = False, *, env: ENVS | None = None) -> dict:
@@ -101,6 +106,9 @@ def get_tokens(never_prompt: bool = False, *, env: ENVS | None = None) -> dict:
     if tokens_exist(env=env):
         # tokens exist on disk
         tokens = read_cached_tokens(env=env)
+
+    if env in ["dev", "local"]:
+        return tokens
 
     # tokens in env override tokens on disk
     # try to read from env
@@ -302,6 +310,36 @@ def refresh_tokens(api_refresh_token: str, *, env: Optional[ENVS] = None) -> str
 
 
 @beartype
+def save_token(token: str, *, env: ENVS | None = None) -> None:
+    """Save a long-lived token from the UI to disk.
+
+    This function validates and saves a long-lived token obtained from the
+    Deep Origin UI. The token will be stored in the api_tokens.json file
+    and used by get_tokens() and client initialization.
+
+    Args:
+        token: Long-lived token string obtained from the UI.
+        env: Environment name. If None, reads from config.
+
+    Raises:
+        DeepOriginException: If token is invalid or cannot be decoded.
+    """
+    if env is None:
+        env = get_config()["env"]
+
+    # Store in same format as current tokens (environment-specific)
+    tokens = {"access": token}
+    cache_tokens(tokens, env=env)
+
+    # Print confirmation
+    if _supports_unicode_output():
+        check = "✔︎"
+    else:
+        check = "OK"
+    print(f"{check} Long-lived token saved successfully for environment '{env}'")
+
+
+@beartype
 def is_token_expired(token: dict) -> bool:
     """
     Check if the JWT token is expired. The token is expected to have an 'exp' field as a Unix timestamp. This dict can be obtained from the `decode_access_token` function.
@@ -341,6 +379,7 @@ def decode_access_token(
     """decode access token into human readable data"""
 
     if env == "local":
+        # we fake a decoded token for local development
         now = int(time.time())
         one_year_seconds = 365 * 24 * 60 * 60
         return {
