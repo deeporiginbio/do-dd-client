@@ -8,7 +8,7 @@ on:
         type: choice
         required: true
         default: prod
-        options: [edge, staging,prod]
+        options: [dev, staging,prod]
 
 
   # Run every day
@@ -47,10 +47,10 @@ jobs:
             echo "DEEPORIGIN_TOKEN=${{ secrets.DEEPORIGIN_TOKEN_STAGING }}" >> "$GITHUB_ENV"
             echo "DEEPORIGIN_REFRESH_TOKEN=${{ secrets.DEEPORIGIN_REFRESH_TOKEN_STAGING }}" >> "$GITHUB_ENV"
             echo "DEEPORIGIN_ORG_KEY=${{ secrets.DEEPORIGIN_ORG_KEY_STAGING }}" >> "$GITHUB_ENV"
-          elif [ "$ENV" = "edge" ]; then
-            echo "DEEPORIGIN_TOKEN=${{ secrets.DEEPORIGIN_TOKEN_EDGE }}" >> "$GITHUB_ENV"
-            echo "DEEPORIGIN_REFRESH_TOKEN=${{ secrets.DEEPORIGIN_REFRESH_TOKEN_EDGE }}" >> "$GITHUB_ENV"
-            echo "DEEPORIGIN_ORG_KEY=${{ secrets.DEEPORIGIN_ORG_KEY_EDGE }}" >> "$GITHUB_ENV"
+          elif [ "$ENV" = "dev" ]; then
+            echo "DEEPORIGIN_TOKEN=${{ secrets.DEEPORIGIN_TOKEN_DEV }}" >> "$GITHUB_ENV"
+            echo "DEEPORIGIN_REFRESH_TOKEN=${{ secrets.DEEPORIGIN_REFRESH_TOKEN_DEV }}" >> "$GITHUB_ENV"
+            echo "DEEPORIGIN_ORG_KEY=${{ secrets.DEEPORIGIN_ORG_KEY_DEV }}" >> "$GITHUB_ENV"
           fi
 
       - name: Set environment variables for Client

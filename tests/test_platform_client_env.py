@@ -43,11 +43,11 @@ def test_kwarg_overrides_env() -> None:
     os.environ["DEEPORIGIN_ORG_KEY"] = "org_env"
     os.environ["DEEPORIGIN_ENV"] = "staging"
 
-    client = DeepOriginClient(token="tok_kw", org_key="org_kw", env="edge")
+    client = DeepOriginClient(token="tok_kw", org_key="org_kw", env="dev")
 
     assert client.token == "tok_kw"
     assert client.org_key == "org_kw"
-    assert "edge" in client.base_url or client.base_url.endswith("edge.deeporigin.io/")
+    assert "dev" in client.base_url or client.base_url.endswith("dev.deeporigin.io/")
 
 
 def test_org_key_raises_when_empty_string() -> None:
