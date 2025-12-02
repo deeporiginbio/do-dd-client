@@ -107,15 +107,15 @@ def get_tokens(never_prompt: bool = False, *, env: ENVS | None = None) -> dict:
         # tokens exist on disk
         tokens = read_cached_tokens(env=env)
 
-    if env in ["dev", "local"]:
-        return tokens
-
     # tokens in env override tokens on disk
     # try to read from env
     if ENV_VARIABLES["access_token"] in os.environ:
         tokens["access"] = os.environ[ENV_VARIABLES["access_token"]]
     if ENV_VARIABLES["refresh_token"] in os.environ:
         tokens["refresh"] = os.environ[ENV_VARIABLES["refresh_token"]]
+
+    if env in ["dev", "local"]:
+        return tokens
 
     if "access" not in tokens.keys() and not never_prompt:
         # no tokens in env. have to sign into the platform to get tokens
