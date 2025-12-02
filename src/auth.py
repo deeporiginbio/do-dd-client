@@ -73,7 +73,7 @@ def tokens_exist(*, env: ENVS | None = None) -> bool:
     with open(filepath, "r") as file:
         all_tokens = json.load(file)
 
-    return env in all_tokens and bool(all_tokens.get(env))
+    return env in all_tokens and all_tokens[env]
 
 
 def get_tokens(never_prompt: bool = False, *, env: ENVS | None = None) -> dict:
