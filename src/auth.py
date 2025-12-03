@@ -429,7 +429,7 @@ def _get_keycloak_super_user_token(
     password: str,
     realm: str = "deeporigin",
     base_url: str = "https://login.dev.deeporigin.io",
-):
+) -> dict:
     """get a super user token from keycloak
 
     this returns a super-user token (if possible) from keycloak. Do not use this function.

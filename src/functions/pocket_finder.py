@@ -4,9 +4,9 @@ import os
 
 from deeporigin.drug_discovery.structures import Protein
 from deeporigin.platform.client import DeepOriginClient
-from deeporigin.utils.core import hash_dict
+from deeporigin.utils.core import _ensure_do_folder, hash_dict
 
-CACHE_DIR = os.path.expanduser("~/.deeporigin/pocket-finder")
+CACHE_DIR = str(_ensure_do_folder() / "pocket-finder")
 
 
 # @beartype

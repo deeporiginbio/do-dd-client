@@ -301,7 +301,7 @@ class DeepOriginClient:
 
         Args:
             path: API endpoint path (relative to base_url).
-            json: JSON data to send in the request body.
+            body: JSON data to send in the request body.
             **kwargs: Additional arguments passed to httpx.Client.post().
 
         Returns:
@@ -433,7 +433,7 @@ class DeepOriginClient:
 
         Args:
             path: API endpoint path (relative to base_url).
-            json: JSON data to send in the request body.
+            body: JSON data to send in the request body.
             **kwargs: Additional arguments passed to httpx.Client.post().
 
         Returns:

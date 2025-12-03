@@ -3,7 +3,6 @@
 The RBFE object instantiated here is contained in the Complex class is meant to be used within that class."""
 
 import os
-from pathlib import Path
 from typing import Optional
 
 from beartype import beartype
@@ -15,10 +14,10 @@ from deeporigin.drug_discovery.structures.ligand import Ligand
 from deeporigin.drug_discovery.workflow_step import WorkflowStep
 from deeporigin.exceptions import DeepOriginException
 from deeporigin.platform.job import Job
-from deeporigin.utils.core import PrettyDict
+from deeporigin.utils.core import PrettyDict, _ensure_do_folder
 from deeporigin.utils.notebook import get_notebook_environment
 
-LOCAL_BASE = Path.home() / ".deeporigin"
+LOCAL_BASE = _ensure_do_folder()
 
 
 class RBFE(WorkflowStep):

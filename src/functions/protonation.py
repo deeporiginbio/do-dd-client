@@ -8,10 +8,10 @@ from beartype import beartype
 import httpx
 
 from deeporigin.utils.constants import number
-from deeporigin.utils.core import hash_dict
+from deeporigin.utils.core import _ensure_do_folder, hash_dict
 
 URL = "http://molprops.default.jobs.edge.deeporigin.io/protonation"
-CACHE_DIR = os.path.expanduser("~/.deeporigin/protonation")
+CACHE_DIR = str(_ensure_do_folder() / "protonation")
 
 # Ensure cache directory exists
 os.makedirs(CACHE_DIR, exist_ok=True)

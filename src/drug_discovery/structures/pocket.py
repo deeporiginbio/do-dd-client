@@ -380,7 +380,7 @@ class Pocket:
         Returns:
             str: The path to the pockets directory.
         """
-        return str(Path(POCKETS_BASE_DIR).expanduser())
+        return POCKETS_BASE_DIR
 
     def update_coordinates(self, coords: np.ndarray):
         """update coordinates of the pocket"""
