@@ -428,7 +428,7 @@ def _get_keycloak_super_user_token(
     email: str,
     password: str,
     realm: str = "deeporigin",
-    base_url: str = "https://login.dev.deeporigin.io/",
+    base_url: str = "https://login.dev.deeporigin.io",
 ):
     """get a super user token from keycloak
 
@@ -451,12 +451,11 @@ def _get_keycloak_super_user_token(
         "scope": "openid email super-user",
     }
 
-    with httpx.Client() as client:
-        response = client.post(
-            keycloak_url,
-            data=data,  # httpx also sends this as application/x-www-form-urlencoded
-            headers={"Content-Type": "application/x-www-form-urlencoded"},
-        )
+    response = httpx.post(
+        keycloak_url,
+        data=data,  # sent as application/x-www-form-urlencoded
+        # Let httpx set Content-Type automatically for form data
+    )
 
     response.raise_for_status()
     return response.json()
