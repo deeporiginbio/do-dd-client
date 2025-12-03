@@ -421,3 +421,42 @@ def decode_access_token(
             "verify_exp": False,  # we want to decode this no matter what, because we'll check the expiration in the caller
         },
     )
+
+
+def _get_keycloak_super_user_token(
+    *,
+    email: str,
+    password: str,
+    realm: str = "deeporigin",
+    base_url: str = "https://login.dev.deeporigin.io/",
+):
+    """get a super user token from keycloak
+
+    this returns a super-user token (if possible) from keycloak. Do not use this function.
+
+    Args:
+        email: the email of the super user
+        password: the password of the super user
+        realm: the realm to get the token from
+        base_url: the base url of the keycloak instance
+
+    """
+    keycloak_url = f"{base_url}/realms/{realm}/protocol/openid-connect/token"
+
+    data = {
+        "grant_type": "password",
+        "username": email,
+        "password": password,
+        "client_id": "do-app",
+        "scope": "openid email super-user",
+    }
+
+    with httpx.Client() as client:
+        response = client.post(
+            keycloak_url,
+            data=data,  # httpx also sends this as application/x-www-form-urlencoded
+            headers={"Content-Type": "application/x-www-form-urlencoded"},
+        )
+
+    response.raise_for_status()
+    return response.json()
