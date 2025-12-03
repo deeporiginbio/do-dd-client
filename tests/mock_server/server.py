@@ -499,8 +499,14 @@ class MockServer:
             return {"executionId": str(uuid.uuid4())}
 
         @self.app.get("/tools/{org_key}/clusters")
-        def list_clusters(org_key: str) -> dict[str, Any]:
+        async def list_clusters(org_key: str, request: Request) -> dict[str, Any]:
             """List clusters."""
+            # Return empty clusters for org_key "empty-org" to test edge cases
+            if org_key == "empty-org":
+                return {
+                    "data": [],
+                    "pagination": {"count": 0},
+                }
             return {
                 "data": [
                     {

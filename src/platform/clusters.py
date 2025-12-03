@@ -63,25 +63,19 @@ class Clusters:
     def get_default_cluster_id(self) -> str:
         """Get the default cluster ID for the client.
 
-        Returns the first cluster that does not have "dev" in the hostname.
+        Returns the first cluster from the list.
         The result is cached per instance.
 
         Returns:
             The ID of the default cluster.
 
         Raises:
-            RuntimeError: If no clusters are found (excluding dev clusters).
+            RuntimeError: If no clusters are found.
         """
         if self._default_cluster_id is None:
             response = self.list()
             clusters = response.get("data", [])
-            # Filter out clusters with hostnames containing "dev"
-            filtered_clusters = [
-                cluster
-                for cluster in clusters
-                if "dev" not in cluster.get("hostname", "")
-            ]
-            if len(filtered_clusters) == 0:
-                raise RuntimeError("No clusters found (excluding dev clusters).")
-            self._default_cluster_id = filtered_clusters[0]["id"]
+            if len(clusters) == 0:
+                raise RuntimeError("No clusters found.")
+            self._default_cluster_id = clusters[0]["id"]
         return self._default_cluster_id
