@@ -9,7 +9,6 @@ tools, functions, clusters, files, and executions.
 from __future__ import annotations
 
 import json
-import os
 from typing import Any, Dict, Optional, Tuple
 import uuid
 import weakref
@@ -28,6 +27,7 @@ from deeporigin.platform.organizations import Organizations
 # Import Tools - safe because tools.py uses TYPE_CHECKING for DeepOriginClient
 from deeporigin.platform.tools import Tools
 from deeporigin.utils.constants import API_ENDPOINT, ENVS
+from deeporigin.utils.core import _ensure_do_folder
 
 
 class DeepOriginClient:
@@ -344,7 +344,7 @@ class DeepOriginClient:
             # Save to file with UUID name
             file_uuid = str(uuid.uuid4())
             filename = f"{file_uuid}.txt"
-            filepath = os.path.join(os.getcwd(), filename)
+            filepath = _ensure_do_folder() / filename
 
             with open(filepath, "w") as f:
                 f.write(curl_command)
