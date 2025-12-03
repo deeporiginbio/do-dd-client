@@ -98,7 +98,7 @@ class Functions:
             cluster_id = self._c.clusters.get_default_cluster_id()
 
         body: dict[str, dict | str] = {
-            "params": params,
+            "inputs": params,
             "clusterId": cluster_id,
         }
         if tag is not None:
