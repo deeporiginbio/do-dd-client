@@ -458,7 +458,7 @@ class MockServer:
 
                 # Get request body to extract SMILES list
                 body = await request.json()
-                params = body.get("params", {})
+                params = body.get("inputs", {})
                 smiles_list = params.get("smiles_list", [])
 
                 # Return response based on property requested
