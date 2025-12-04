@@ -17,7 +17,7 @@ class DeepOriginException(Exception):
         self.level = level
 
     def __str__(self) -> str:
-        """Format exception for console output when not in notebooks."""
+        """Format exception for display. Returns minimal output in notebooks (where HTML rendering is handled separately) or formatted console output otherwise."""
         # Try to use IPython display if available (for notebooks)
         try:
             from IPython import get_ipython
