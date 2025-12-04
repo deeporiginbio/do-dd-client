@@ -50,6 +50,7 @@ def dock(
     pocket_center: Optional[tuple[int, int, int]] = None,
     pocket: Optional[Pocket] = None,
     use_cache: bool = True,
+    quote: bool = False,
 ) -> str:
     """
     Run molecular docking using the DeepOrigin API.
@@ -103,6 +104,7 @@ def dock(
         key="deeporigin.docking",
         version="0.2.4",
         params=payload,
+        quote=quote,
     )
 
     # TODO -- remove this patch once API is updated

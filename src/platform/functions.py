@@ -116,10 +116,6 @@ class Functions:
         original_timeout = self._c._client.timeout
         self._c._client.timeout = 600
 
-        import json
-
-        print(json.dumps(body, indent=2))
-
         response = self._c.post_json(
             f"/tools/{self._c.org_key}/functions/{key}/{version}",
             body=body,
