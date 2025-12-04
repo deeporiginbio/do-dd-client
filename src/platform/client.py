@@ -278,6 +278,113 @@ class DeepOriginClient:
             self._instances.pop(key, None)
 
     # -------- Low-level helpers --------
+    def _handle_request_error(
+        self,
+        method: str,
+        path: str,
+        error: httpx.HTTPStatusError,
+        body: Optional[dict] = None,
+    ) -> None:
+        """Handle HTTP request errors by extracting error details and saving curl command.
+
+        Args:
+            method: HTTP method (e.g., 'POST', 'PUT').
+            path: API endpoint path (relative to base_url).
+            error: The HTTPStatusError that was raised.
+            body: Optional JSON body that was sent with the request.
+
+        Raises:
+            DeepOriginException: Always raises with error details and curl command filepath.
+        """
+        # Extract error message and details from response
+        error_message = None
+        error_details = None
+        try:
+            # Try to parse JSON error response
+            error_data = error.response.json()
+            # Common error message fields in API responses
+            if isinstance(error_data, dict):
+                error_message = (
+                    error_data.get("message")
+                    or error_data.get("error")
+                    or error_data.get("detail")
+                )
+                # Extract errors array if present
+                if "errors" in error_data:
+                    error_details = json.dumps(error_data["errors"], indent=2)
+            if error_message is None:
+                # Fallback to string representation of entire error_data
+                error_message = str(error_data)
+        except (json.JSONDecodeError, ValueError):
+            # Fall back to text response
+            try:
+                error_message = error.response.text
+            except Exception:
+                error_message = f"HTTP {error.response.status_code}"
+
+        # Build curl command to reproduce the request
+        full_url = self.base_url.rstrip("/") + "/" + path.lstrip("/")
+
+        # Build curl command parts
+        curl_parts = ["curl", "-X", method.upper()]
+
+        # Add headers (include Content-Type for JSON if body is present)
+        headers = dict(self._client.headers)
+        if body is not None and not any(
+            key.lower() == "content-type" for key in headers.keys()
+        ):
+            headers["Content-Type"] = "application/json"
+
+        # Redact sensitive headers before writing to disk
+        sanitized_headers = {}
+        for header_name, header_value in headers.items():
+            if header_name.lower() == "authorization":
+                sanitized_headers[header_name] = "Bearer [REDACTED]"
+            else:
+                sanitized_headers[header_name] = header_value
+
+        for header_name, header_value in sanitized_headers.items():
+            escaped_value = str(header_value).replace('"', '\\"')
+            curl_parts.extend(["-H", f'"{header_name}: {escaped_value}"'])
+
+        # Add JSON body if present
+        if body is not None:
+            body_json = json.dumps(body)
+            curl_parts.extend(["-d", f"'{body_json}'"])
+
+        # Add URL
+        curl_parts.append(f'"{full_url}"')
+
+        # Combine into full curl command
+        curl_command = " \\\n  ".join(curl_parts)
+
+        # Save to file with UUID name
+        file_uuid = str(uuid.uuid4())
+        filename = f"{file_uuid}.txt"
+        filepath = _ensure_do_folder() / filename
+
+        with open(filepath, "w") as f:
+            f.write(curl_command)
+
+        # Build message with error details
+        message_parts = [
+            f"A {method.upper()} request to the platform API failed (HTTP {error.response.status_code})."
+        ]
+        if error_message:
+            message_parts.append(f"Error message: {error_message}")
+        if error_details:
+            message_parts.append(f"Validation errors:\n{error_details}")
+        message_parts.append(
+            f"Curl command to reproduce the request saved to: {filepath}"
+        )
+
+        raise DeepOriginException(
+            title="Request to platform API failed.",
+            message=" ".join(message_parts),
+            fix="Please contact support at https://help.deeporigin.com and provide this text file.",
+            level="danger",
+        ) from None
+
     def _get(self, path: str, **kwargs) -> httpx.Response:
         """Perform a GET request and raise on error.
 
@@ -293,7 +400,12 @@ class DeepOriginClient:
         """
         self.check_token()
         resp = self._client.get(path, **kwargs)
-        resp.raise_for_status()
+
+        try:
+            resp.raise_for_status()
+        except httpx.HTTPStatusError as e:
+            self._handle_request_error("GET", path, e, body=None)
+
         return resp
 
     def _post(self, path: str, body: Optional[dict] = None, **kwargs) -> httpx.Response:
@@ -316,94 +428,7 @@ class DeepOriginClient:
         try:
             resp.raise_for_status()
         except httpx.HTTPStatusError as e:
-            # Extract error message and details from response
-            error_message = None
-            error_details = None
-            try:
-                # Try to parse JSON error response
-                error_data = e.response.json()
-                # Common error message fields in API responses
-                if isinstance(error_data, dict):
-                    error_message = (
-                        error_data.get("message")
-                        or error_data.get("error")
-                        or error_data.get("detail")
-                    )
-                    # Extract errors array if present
-                    if "errors" in error_data:
-                        error_details = json.dumps(error_data["errors"], indent=2)
-                if error_message is None:
-                    # Fallback to string representation of entire error_data
-                    error_message = str(error_data)
-            except (json.JSONDecodeError, ValueError):
-                # Fall back to text response
-                try:
-                    error_message = e.response.text
-                except Exception:
-                    error_message = f"HTTP {e.response.status_code}"
-
-            # Build curl command to reproduce the request
-            full_url = self.base_url.rstrip("/") + "/" + path.lstrip("/")
-
-            # Build curl command parts
-            curl_parts = ["curl", "-X", "POST"]
-
-            # Add headers (include Content-Type for JSON if body is present)
-            headers = dict(self._client.headers)
-            if body is not None and not any(
-                key.lower() == "content-type" for key in headers.keys()
-            ):
-                headers["Content-Type"] = "application/json"
-
-            # Redact sensitive headers before writing to disk
-            sanitized_headers = {}
-            for header_name, header_value in headers.items():
-                if header_name.lower() == "authorization":
-                    sanitized_headers[header_name] = "Bearer [REDACTED]"
-                else:
-                    sanitized_headers[header_name] = header_value
-
-            for header_name, header_value in sanitized_headers.items():
-                escaped_value = str(header_value).replace('"', '\\"')
-                curl_parts.extend(["-H", f'"{header_name}: {escaped_value}"'])
-
-            # Add JSON body if present
-            if body is not None:
-                body_json = json.dumps(body)
-                curl_parts.extend(["-d", f"'{body_json}'"])
-
-            # Add URL
-            curl_parts.append(f'"{full_url}"')
-
-            # Combine into full curl command
-            curl_command = " \\\n  ".join(curl_parts)
-
-            # Save to file with UUID name
-            file_uuid = str(uuid.uuid4())
-            filename = f"{file_uuid}.txt"
-            filepath = _ensure_do_folder() / filename
-
-            with open(filepath, "w") as f:
-                f.write(curl_command)
-
-            # Build message with error details
-            message_parts = [
-                f"A POST request to the platform API failed (HTTP {e.response.status_code})."
-            ]
-            if error_message:
-                message_parts.append(f"Error message: {error_message}")
-            if error_details:
-                message_parts.append(f"Validation errors:\n{error_details}")
-            message_parts.append(
-                f"Curl command to reproduce the request saved to: {filepath}"
-            )
-
-            raise DeepOriginException(
-                title="Request to platform API failed.",
-                message=" ".join(message_parts),
-                fix="Please contact support at https://help.deeporigin.com and provide this text file.",
-                level="danger",
-            ) from None
+            self._handle_request_error("POST", path, e, body=body)
 
         return resp
 
@@ -422,7 +447,14 @@ class DeepOriginClient:
         """
         self.check_token()
         resp = self._client.put(path, **kwargs)
-        resp.raise_for_status()
+
+        try:
+            resp.raise_for_status()
+        except httpx.HTTPStatusError as e:
+            # Extract json body from kwargs if present for curl command construction
+            body = kwargs.get("json")
+            self._handle_request_error("PUT", path, e, body=body)
+
         return resp
 
     def _patch(self, path: str, **kwargs) -> httpx.Response:
@@ -440,7 +472,14 @@ class DeepOriginClient:
         """
         self.check_token()
         resp = self._client.patch(path, **kwargs)
-        resp.raise_for_status()
+
+        try:
+            resp.raise_for_status()
+        except httpx.HTTPStatusError as e:
+            # Extract json body from kwargs if present for curl command construction
+            body = kwargs.get("json")
+            self._handle_request_error("PATCH", path, e, body=body)
+
         return resp
 
     def _delete(self, path: str, **kwargs) -> httpx.Response:
@@ -458,7 +497,14 @@ class DeepOriginClient:
         """
         self.check_token()
         resp = self._client.delete(path, **kwargs)
-        resp.raise_for_status()
+
+        try:
+            resp.raise_for_status()
+        except httpx.HTTPStatusError as e:
+            # Extract json body from kwargs if present for curl command construction
+            body = kwargs.get("json")
+            self._handle_request_error("DELETE", path, e, body=body)
+
         return resp
 
     # -------- Convenience wrappers --------

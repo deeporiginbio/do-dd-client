@@ -56,6 +56,7 @@ class Functions:
 
         body: dict[str, dict | str] = {
             "params": params,
+            "inputs": params,  # we're sending both params and inputs because the APIs across dev/staging/prod are different
             "clusterId": cluster_id,
         }
         if tag is not None:
@@ -103,7 +104,8 @@ class Functions:
             cluster_id = self._c.clusters.get_default_cluster_id()
 
         body: dict[str, dict | str] = {
-            "inputs": params,
+            "params": params,
+            "inputs": params,  # we're sending both params and inputs because the APIs across dev/staging/prod are different
             "clusterId": cluster_id,
         }
         if tag is not None:
