@@ -29,6 +29,7 @@ class DeepOriginException(Exception):
                 return self.title
         except ImportError:
             # IPython is not available; fall back to console output formatting below.
+            pass
 
         # Format for console output
         lines = []
