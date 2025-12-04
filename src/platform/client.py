@@ -324,7 +324,9 @@ class DeepOriginClient:
 
             # Add headers (include Content-Type for JSON if body is present)
             headers = dict(self._client.headers)
-            if body is not None and "Content-Type" not in headers:
+            if body is not None and not any(
+                key.lower() == "content-type" for key in headers.keys()
+            ):
                 headers["Content-Type"] = "application/json"
 
             for header_name, header_value in headers.items():
