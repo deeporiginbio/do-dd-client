@@ -2,8 +2,6 @@
 
 import sys
 
-from IPython.display import HTML, display
-
 __all__ = ["DeepOriginException", "install_silent_error_handler"]
 
 
@@ -18,9 +16,84 @@ class DeepOriginException(Exception):
         # accepted: danger | warning | info | success | secondary
         self.level = level
 
+    def __str__(self) -> str:
+        """Format exception for console output when not in notebooks."""
+        # Try to use IPython display if available (for notebooks)
+        try:
+            from IPython import get_ipython
+
+            ip = get_ipython()
+            if ip is not None and "pytest" not in sys.modules:
+                # In notebook, let the custom handler display HTML
+                # Return minimal string to avoid double display
+                return self.title
+        except ImportError:
+            pass
+
+        # Format for console output
+        lines = []
+
+        # Add colored title if terminal supports it
+        if _supports_color():
+            level_colors = {
+                "danger": "\033[91m",  # Red
+                "warning": "\033[93m",  # Yellow
+                "info": "\033[94m",  # Blue
+                "success": "\033[92m",  # Green
+                "secondary": "\033[90m",  # Gray
+            }
+            reset = "\033[0m"
+            color = level_colors.get(self.level, reset)
+            lines.append(f"{color}╔═ {self.title} ═╗{reset}")
+        else:
+            lines.append(f"╔═ {self.title} ═╗")
+
+        # Add body
+        if self.body:
+            lines.append(self.body)
+
+        # Add footer/fix if present
+        if self.footer:
+            if _supports_color():
+                lines.append(f"\033[2m{self.footer}\033[0m")  # Dimmed text
+            else:
+                lines.append(self.footer)
+
+        return "\n".join(lines)
+
+
+def _supports_color() -> bool:
+    """Check if terminal supports ANSI color codes."""
+    # Check if we're in a terminal that supports colors
+    if not sys.stdout.isatty():
+        return False
+
+    # Check for common environment variables that disable colors
+    if sys.platform == "win32":
+        # Windows terminal color support is more complex
+        return False
+
+    # Check NO_COLOR environment variable (standard)
+    if "NO_COLOR" in sys.environ:
+        return False
+
+    # Check TERM environment variable
+    term = sys.environ.get("TERM", "")
+    if term in ("dumb", "unknown"):
+        return False
+
+    return True
+
 
 def _silent_error_handler(shell, etype, evalue, tb, tb_offset=None):
     """Display a styled error card using Bootstrap 5.3.0."""
+    try:
+        from IPython.display import HTML, display
+    except ImportError:
+        # Fallback to console output if IPython not available
+        print(str(evalue), file=sys.stderr)
+        return []
+
     footer_html = (
         f'<div class="card-footer text-muted">{evalue.footer}</div>'
         if evalue.footer
@@ -56,7 +129,7 @@ def _silent_error_handler(shell, etype, evalue, tb, tb_offset=None):
     return []  # suppress traceback completely
 
 
-def install_silent_error_handler():
+def install_silent_error_handler() -> bool:
     """Install a custom error handler for IPython notebooks that displays a styled error card."""
     try:
         from IPython import get_ipython
