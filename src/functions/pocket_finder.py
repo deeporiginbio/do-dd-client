@@ -17,6 +17,7 @@ def find_pockets(
     pocket_min_size: int = 30,
     use_cache: bool = True,
     client: DeepOriginClient,
+    quote: bool = False,
 ) -> str | None:
     """Find protein binding pockets in a PDB structure and save the results.
 
@@ -58,9 +59,14 @@ def find_pockets(
         key="deeporigin.pocketfinder",
         version="0.2.1",
         params=payload,
+        quote=quote,
     )
 
-    for file in response["functionOutputs"]["files"]:
+    # TODO -- remove this patch once API is updated
+    if "functionOutputs" in response:
+        response = response["functionOutputs"]
+
+    for file in response["files"]:
         client.files.download_file(
             remote_path=file,
             local_path=os.path.join(cache_path, file.split("/")[-1]),

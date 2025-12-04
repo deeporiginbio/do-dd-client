@@ -89,7 +89,9 @@ def get_single_property(
         params=payload,
     )
 
-    response = response["functionOutputs"]
+    # TODO -- remove this patch once API is updated
+    if "functionOutputs" in response:
+        response = response["functionOutputs"]
 
     # Write JSON response to cache
     # Ensure parent directory exists before writing

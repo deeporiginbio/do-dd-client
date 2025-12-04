@@ -53,4 +53,8 @@ def run_sysprep(
         params=payload,
     )
 
-    return response["functionOutputs"]
+    # TODO -- remove this patch once API is updated
+    if "functionOutputs" in response:
+        response = response["functionOutputs"]
+
+    return response

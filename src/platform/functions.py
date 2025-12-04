@@ -37,6 +37,7 @@ class Functions:
         params: dict,
         cluster_id: str | None = None,
         tag: str | None = None,
+        quote: bool = False,
     ) -> dict:
         """Run the latest enabled version of a function.
 
@@ -60,6 +61,9 @@ class Functions:
         if tag is not None:
             body["tag"] = tag
 
+        if quote:
+            body["approveAmount"] = 0
+
         # functions need a longer timeout
         original_timeout = self._c._client.timeout
         self._c._client.timeout = 600
@@ -80,6 +84,7 @@ class Functions:
         params: dict,
         cluster_id: str | None = None,
         tag: str | None = None,
+        quote: bool = False,
     ) -> dict:
         """Run a specific version of a function.
 
@@ -104,9 +109,16 @@ class Functions:
         if tag is not None:
             body["tag"] = tag
 
+        if quote:
+            body["approveAmount"] = 0
+
         # functions need a longer timeout
         original_timeout = self._c._client.timeout
         self._c._client.timeout = 600
+
+        import json
+
+        print(json.dumps(body, indent=2))
 
         response = self._c.post_json(
             f"/tools/{self._c.org_key}/functions/{key}/{version}",

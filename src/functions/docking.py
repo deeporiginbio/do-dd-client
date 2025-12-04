@@ -105,7 +105,9 @@ def dock(
         params=payload,
     )
 
-    response = response["functionOutputs"]
+    # TODO -- remove this patch once API is updated
+    if "functionOutputs" in response:
+        response = response["functionOutputs"]
 
     sdf_file = client.files.download_file(
         remote_path=response["sdf_path"],
