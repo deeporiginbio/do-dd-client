@@ -488,12 +488,13 @@ class MockServer:
 
                     responses.append(response_item)
 
-                return responses
+                return {"functionOutputs": responses}
 
             # Handle system-prep function
             if function_key == "deeporigin.system-prep":
-                # Return the sysprep response fixture
-                return self._load_fixture("sysprep-response")
+                # Return the sysprep response fixture wrapped in functionOutputs
+                sysprep_response = self._load_fixture("sysprep-response")
+                return {"functionOutputs": sysprep_response}
 
             # Default: return execution ID for other functions
             return {"executionId": str(uuid.uuid4())}
