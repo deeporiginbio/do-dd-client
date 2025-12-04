@@ -603,6 +603,73 @@ class Job:
 
             self.sync()
 
+    @beartype
+    def duplicate(self) -> "Job":
+        """Create a duplicate of this job by submitting a new execution with the same parameters.
+
+        This method extracts the necessary fields from the current job's attributes
+        (userOutputs, userInputs, and tool) and submits them as a new
+        execution using the same tool key and version. The platform will fill in
+        all other fields (executionId, status, timestamps, etc.).
+
+        Duplicating a job submits a new execution using the same tool key and version, with approveAmount set to 0.
+        The new execution will be in the "Quoted" state, and will need to be confirmed before it can be started.
+
+        Returns:
+            A new Job instance representing the duplicated execution.
+
+        Raises:
+            ValueError: If the job's attributes are missing or incomplete.
+            DeepOriginException: If the tool execution fails.
+        """
+        if self.client is None:
+            self.client = DeepOriginClient.get()
+
+        if self._attributes is None:
+            raise ValueError(
+                "Cannot duplicate job: job attributes are not available. Try calling sync() first."
+            )
+
+        # Extract tool information
+        tool = self._attributes.get("tool")
+        if not isinstance(tool, dict):
+            raise ValueError(
+                "Cannot duplicate job: tool information is missing or invalid."
+            )
+
+        tool_key = tool.get("key")
+        tool_version = tool.get("version")
+
+        if not tool_key or not tool_version:
+            raise ValueError(
+                f"Cannot duplicate job: tool key or version is missing. "
+                f"Found tool_key={tool_key}, tool_version={tool_version}"
+            )
+
+        # Build data dict with only the allowed fields
+        data: dict[str, Any] = {}
+
+        # Extract allowed fields if they exist
+        if "userOutputs" in self._attributes:
+            data["outputs"] = self._attributes["userOutputs"]
+        if "userInputs" in self._attributes:
+            data["inputs"] = self._attributes["userInputs"]
+        if "metadata" in self._attributes:
+            data["metadata"] = self._attributes["metadata"]
+
+        # force approve amount to 0 because we don't want it to immediately run
+        data["approveAmount"] = 0
+
+        # Submit the new execution
+        response_dto = self.client.tools.run(
+            tool_key=tool_key,
+            tool_version=tool_version,
+            data=data,
+        )
+
+        # Create and return a new Job instance from the response DTO
+        return Job.from_dto(response_dto, client=self.client)
+
 
 class JobList:
     """

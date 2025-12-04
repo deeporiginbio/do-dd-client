@@ -70,16 +70,9 @@ class Tools:
         if "clusterId" not in payload:
             payload["clusterId"] = self._c.clusters.get_default_cluster_id()
 
-        try:
-            response = self._c.post_json(
-                f"/tools/{self._c.org_key}/tools/{tool_key}/{tool_version}/executions",
-                json=payload,
-            )
-        except Exception as e:
-            print(f"Error running tool: {e}")
-            import json
-
-            print(f"Data: {json.dumps(payload, indent=4)}")
-            raise e
+        response = self._c.post_json(
+            f"/tools/{self._c.org_key}/tools/{tool_key}/{tool_version}/executions",
+            body=payload,
+        )
 
         return response
