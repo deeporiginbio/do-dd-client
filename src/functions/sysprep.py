@@ -17,6 +17,7 @@ def run_sysprep(
     protonate_protein: bool = True,
     use_cache: bool = True,
     client: DeepOriginClient,
+    quote: bool = False,
 ) -> dict:
     """
     Run system preparation on a protein-ligand complex.
@@ -51,6 +52,11 @@ def run_sysprep(
         key="deeporigin.system-prep",
         version="0.4.0",
         params=payload,
+        quote=quote,
     )
+
+    # TODO -- remove this patch once API is updated
+    if "functionOutputs" in response:
+        response = response["functionOutputs"]
 
     return response

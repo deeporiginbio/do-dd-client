@@ -473,6 +473,7 @@ class Protein(Entity):
         pocket_min_size: int = 30,
         use_cache: bool = True,
         client: Optional[DeepOriginClient] = None,
+        quote: bool = False,
     ) -> list[Pocket]:
         """Find potential binding pockets in the protein structure.
 
@@ -513,6 +514,7 @@ class Protein(Entity):
             pocket_min_size=pocket_min_size,
             use_cache=use_cache,
             client=client,
+            quote=quote,
         )
 
         return Pocket.from_pocket_finder_results(results_dir)
