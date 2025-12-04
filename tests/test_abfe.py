@@ -49,7 +49,7 @@ def test_check_dt_raises_on_out_of_range(client):  # noqa: F811
     sim = Complex(protein=protein, ligands=ligand, client=client)
 
     # Deliberately set an out-of-range dt deep inside the params
-    sim.abfe._params.end_to_end["binding"]["prod_md_options"]["dt"] = 0.01
+    sim.abfe._params["end_to_end"]["binding"]["prod_md_options"]["dt"] = 0.01
 
     with pytest.raises(
         DeepOriginException,

@@ -14,7 +14,7 @@ from deeporigin.drug_discovery.structures.ligand import Ligand
 from deeporigin.drug_discovery.workflow_step import WorkflowStep
 from deeporigin.exceptions import DeepOriginException
 from deeporigin.platform.job import Job
-from deeporigin.utils.core import PrettyDict, _ensure_do_folder
+from deeporigin.utils.core import _ensure_do_folder
 from deeporigin.utils.notebook import get_notebook_environment
 
 LOCAL_BASE = _ensure_do_folder()
@@ -33,8 +33,8 @@ class RBFE(WorkflowStep):
 
     def __init__(self, parent):
         super().__init__(parent)
-        self._params = PrettyDict()
-        self._params.end_to_end = utils._load_params("rbfe_end_to_end")
+        self._params = {}
+        self._params["end_to_end"] = utils._load_params("rbfe_end_to_end")
 
     def get_results(self) -> pd.DataFrame | None:
         """get RBFE results and return in a dataframe.
@@ -135,7 +135,7 @@ class RBFE(WorkflowStep):
     def set_test_run(self, value: int = 1):
         """set test_run parameter in RBFE parameters"""
 
-        utils._set_test_run(self._params.end_to_end, value)
+        utils._set_test_run(self._params["end_to_end"], value)
 
     @beartype
     def run_ligand_pair(
@@ -194,7 +194,7 @@ class RBFE(WorkflowStep):
             ligand1_path=ligand1._remote_path,
             ligand2_path=ligand2._remote_path,
             protein_path=self.parent.protein._remote_path,
-            params=self._params.end_to_end,
+            params=self._params["end_to_end"],
             tool="RBFE",
             tool_version=self.tool_version,
             client=self.parent.client,

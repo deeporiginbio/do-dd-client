@@ -4,7 +4,6 @@ from beartype import beartype
 import pandas as pd
 
 from deeporigin.platform.job import Job, JobList
-from deeporigin.utils.core import PrettyDict
 
 
 class WorkflowStep:
@@ -21,7 +20,7 @@ class WorkflowStep:
 
     def __init__(self, parent):
         self.parent = parent
-        self._params = PrettyDict()
+        self._params = {}
 
     @beartype
     def get_jobs(
