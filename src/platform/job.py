@@ -608,9 +608,12 @@ class Job:
         """Create a duplicate of this job by submitting a new execution with the same parameters.
 
         This method extracts the necessary fields from the current job's attributes
-        (userOutputs, userInputs, orgKey, tag, and tool) and submits them as a new
+        (userOutputs, userInputs, and tool) and submits them as a new
         execution using the same tool key and version. The platform will fill in
         all other fields (executionId, status, timestamps, etc.).
+
+        Duplicating a job submits a new execution using the same tool key and version, with approveAmount set to 0.
+        The new execution will be in the "Quoted" state, and will need to be confirmed before it can be started.
 
         Returns:
             A new Job instance representing the duplicated execution.
