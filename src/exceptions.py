@@ -68,15 +68,14 @@ def _supports_color() -> bool:
     if not sys.stdout.isatty():
         return False
 
-    # Check for common environment variables that disable colors
-    if sys.platform == "win32":
-        # Windows terminal color support is more complex
-        return False
-
     # Check NO_COLOR environment variable (standard)
     if "NO_COLOR" in sys.environ:
         return False
 
+    # Check for common environment variables that disable colors
+    if sys.platform == "win32":
+        # Windows terminal color support is more complex
+        return False
     # Check TERM environment variable
     term = sys.environ.get("TERM", "")
     if term in ("dumb", "unknown"):
