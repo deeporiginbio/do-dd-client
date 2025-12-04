@@ -457,6 +457,7 @@ def decode_access_token(
     )
 
 
+@beartype
 def _get_keycloak_token(
     *,
     email: str,
@@ -476,7 +477,21 @@ def _get_keycloak_token(
         base_url: the base url of the keycloak instance
         scope: the scope of the token
 
+    Raises:
+        DeepOriginException: If email or password is empty or not a string.
     """
+    # Validate input parameters
+    if not email.strip():
+        raise DeepOriginException(
+            title="Invalid email parameter",
+            message="Email must be a non-empty string.",
+        )
+    if not password.strip():
+        raise DeepOriginException(
+            title="Invalid password parameter",
+            message="Password must be a non-empty string.",
+        )
+
     keycloak_url = f"{base_url}/realms/{realm}/protocol/openid-connect/token"
 
     data = {
