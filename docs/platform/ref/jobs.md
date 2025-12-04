@@ -135,6 +135,22 @@ specific_jobs = jobs.filter(
 
 `Job` represents a single computational job that can be monitored and managed.
 
+### Duplicating a Job
+
+The `duplicate()` method allows you to create a new job with the same parameters as an existing job:
+
+```{.python notest}
+from deeporigin.platform.job import Job
+
+# Get an existing job
+job = Job.from_id("existing-job-id")
+
+# Create a duplicate with the same parameters
+new_job = job.duplicate()
+```
+
+The `duplicate()` method extracts the necessary fields from the original job (userInputs, userOutputs, orgKey, tag, and tool) and submits them as a new execution. The platform will fill in all other fields (executionId, status, timestamps, etc.).
+
 ::: src.platform.job.Job
     options:
       heading_level: 2

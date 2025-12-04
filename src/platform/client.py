@@ -315,7 +315,33 @@ class DeepOriginClient:
 
         try:
             resp.raise_for_status()
-        except httpx.HTTPStatusError:
+        except httpx.HTTPStatusError as e:
+            # Extract error message and details from response
+            error_message = None
+            error_details = None
+            try:
+                # Try to parse JSON error response
+                error_data = e.response.json()
+                # Common error message fields in API responses
+                if isinstance(error_data, dict):
+                    error_message = (
+                        error_data.get("message")
+                        or error_data.get("error")
+                        or error_data.get("detail")
+                    )
+                    # Extract errors array if present
+                    if "errors" in error_data:
+                        error_details = json.dumps(error_data["errors"], indent=2)
+                if error_message is None:
+                    # Fallback to string representation of entire error_data
+                    error_message = str(error_data)
+            except (json.JSONDecodeError, ValueError):
+                # Fall back to text response
+                try:
+                    error_message = e.response.text
+                except Exception:
+                    error_message = f"HTTP {e.response.status_code}"
+
             # Build curl command to reproduce the request
             full_url = self.base_url.rstrip("/") + "/" + path.lstrip("/")
 
@@ -360,9 +386,21 @@ class DeepOriginClient:
             with open(filepath, "w") as f:
                 f.write(curl_command)
 
+            # Build message with error details
+            message_parts = [
+                f"A POST request to the platform API failed (HTTP {e.response.status_code})."
+            ]
+            if error_message:
+                message_parts.append(f"Error message: {error_message}")
+            if error_details:
+                message_parts.append(f"Validation errors:\n{error_details}")
+            message_parts.append(
+                f"Curl command to reproduce the request saved to: {filepath}"
+            )
+
             raise DeepOriginException(
                 title="Request to platform API failed.",
-                message=f"A POST request to the platform API failed. Curl command to reproduce the request saved to: {filepath}",
+                message=" ".join(message_parts),
                 fix="Please contact support at https://help.deeporigin.com and provide this text file.",
                 level="danger",
             ) from None
