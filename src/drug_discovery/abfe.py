@@ -34,7 +34,7 @@ class ABFE(WorkflowStep):
     def __init__(self, parent):
         super().__init__(parent)
 
-        self._params.end_to_end = utils._load_params("abfe_end_to_end")
+        self._params["end_to_end"] = utils._load_params("abfe_end_to_end")
 
     def get_results(self) -> pd.DataFrame | None:
         """get ABFE results and return in a dataframe.
@@ -152,7 +152,7 @@ class ABFE(WorkflowStep):
     def set_test_run(self, value: int = 1):
         """set test_run parameter in abfe parameters"""
 
-        utils._set_test_run(self._params.end_to_end, value)
+        utils._set_test_run(self._params["end_to_end"], value)
 
     @beartype
     def _get_ligands_to_run(
@@ -348,7 +348,7 @@ class ABFE(WorkflowStep):
                     file for file in output_files if file.endswith("solvation.xml")
                 ][0]
 
-                params = self._params.end_to_end
+                params = self._params["end_to_end"]
 
                 params["binding_xml"] = {
                     "$provider": "ufa",

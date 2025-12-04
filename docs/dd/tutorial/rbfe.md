@@ -75,7 +75,7 @@ from deeporigin.drug_discovery import Complex, BRD_DATA_DIR
 
 sim = Complex.from_dir(BRD_DATA_DIR)
 
-sim.rbfe._params.end_to_end
+sim.rbfe._params["end_to_end"]
 ```
 ??? success "Expected output" 
     This will print a dictionary of the parameters used for RBFE, similar to:
@@ -353,7 +353,7 @@ from deeporigin.drug_discovery import Complex, BRD_DATA_DIR
 
 sim = Complex.from_dir(BRD_DATA_DIR)
 
-sim.rbfe._params.end_to_end.binding.steps = 500000
+sim.rbfe._params["end_to_end"]["binding"]["steps"] = 500000
 ```
 
 

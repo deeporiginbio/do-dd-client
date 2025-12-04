@@ -135,7 +135,7 @@ The end to end ABFE tool has a number of user-accessible parameters. To view all
 from deeporigin.drug_discovery import Complex, BRD_DATA_DIR
 sim = Complex.from_dir(BRD_DATA_DIR)
 
-sim.abfe._params.end_to_end
+sim.abfe._params["end_to_end"]
 ```
 ??? success "Expected output" 
     This will print a dictionary of the parameters used for ABFE, similar to:
@@ -217,13 +217,13 @@ sim.abfe._params.end_to_end
 
 ### Modifying parameters
 
-Any of these parameters are modifiable using dot notation. For example, to change the number of windows in the binding step, we can use:
+Any of these parameters are modifiable using dictionary access. For example, to change the number of windows in the binding step, we can use:
 
 ```{.python notest}
 from deeporigin.drug_discovery import Complex, BRD_DATA_DIR
 sim = Complex.from_dir(BRD_DATA_DIR)
 
-sim.abfe._params.end_to_end.binding.n_windows = 24
+sim.abfe._params["end_to_end"]["binding"]["n_windows"] = 24
 ```
 
 !!! danger "Changing parameters may lead to simulation failures"

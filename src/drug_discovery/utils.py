@@ -11,7 +11,7 @@ import pandas as pd
 from deeporigin.drug_discovery.constants import tool_mapper, valid_tools
 from deeporigin.platform.client import DeepOriginClient
 from deeporigin.platform.constants import PROVIDER
-from deeporigin.utils.core import PrettyDict, _ensure_do_folder
+from deeporigin.utils.core import _ensure_do_folder
 
 PROVIDER_KEY = "$provider"
 RESULTS_CSV = "results.csv"
@@ -24,11 +24,11 @@ for tool in tool_mapper.keys():
 
 
 @beartype
-def _load_params(param_file: str) -> PrettyDict:
+def _load_params(param_file: str) -> dict:
     """load params for various tools, reading from JSON files"""
 
     with importlib.resources.open_text("deeporigin.json", f"{param_file}.json") as f:
-        return PrettyDict(json.load(f))
+        return json.load(f)
 
 
 @beartype

@@ -28,7 +28,6 @@ core = [
     "nest_asyncio",
     "packaging",
     "pandas",
-    "python-box",
     "tabulate",
 ]
 lint = ["ruff"]
