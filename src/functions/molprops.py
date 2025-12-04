@@ -89,6 +89,8 @@ def get_single_property(
         params=payload,
     )
 
+    response = response["functionOutputs"]
+
     # Write JSON response to cache
     # Ensure parent directory exists before writing
     Path(response_file).parent.mkdir(parents=True, exist_ok=True)

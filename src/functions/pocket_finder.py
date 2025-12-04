@@ -60,7 +60,7 @@ def find_pockets(
         params=payload,
     )
 
-    for file in response["files"]:
+    for file in response["functionOutputs"]["files"]:
         client.files.download_file(
             remote_path=file,
             local_path=os.path.join(cache_path, file.split("/")[-1]),

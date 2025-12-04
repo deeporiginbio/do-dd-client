@@ -105,6 +105,8 @@ def dock(
         params=payload,
     )
 
+    response = response["functionOutputs"]
+
     sdf_file = client.files.download_file(
         remote_path=response["sdf_path"],
         local_path=sdf_file,

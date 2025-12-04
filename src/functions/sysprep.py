@@ -53,4 +53,4 @@ def run_sysprep(
         params=payload,
     )
 
-    return response
+    return response["functionOutputs"]
