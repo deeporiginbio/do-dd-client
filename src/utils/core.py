@@ -11,7 +11,6 @@ import sys
 from typing import Union
 
 from beartype import beartype
-from tabulate import tabulate
 
 
 @beartype
@@ -366,39 +365,6 @@ def _show_json(data: Union[list, dict]) -> None:
     """Utility for pretty printing JSON, used in the CLI"""
 
     print(json.dumps(data, indent=2))
-
-
-@beartype
-def _print_dict(
-    data: dict,
-    *,
-    json: bool = True,
-    transpose: bool = True,
-    key_label: str = "Name",
-) -> None:
-    """Helper function to pretty print a dict as a table,
-    used in the CLI"""
-
-    if json:
-        _show_json(data)
-    else:
-        if transpose:
-            # truncate values so that long strings
-            # don't break the table
-            data = {key: _truncate(value) for key, value in data.items()}
-
-            data = data.items()
-            headers = [key_label, "Value"]
-        else:
-            headers = "keys"
-
-        print(
-            tabulate(
-                data,
-                headers=headers,
-                tablefmt="rounded_outline",
-            )
-        )
 
 
 @beartype

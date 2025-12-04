@@ -20,7 +20,6 @@ from typing import Any, Optional
 
 import numpy as np
 import pandas as pd
-from tabulate import tabulate
 
 from deeporigin.drug_discovery.constants import POCKETS_BASE_DIR
 from deeporigin.drug_discovery.structures.ligand import Ligand
@@ -151,6 +150,8 @@ class Pocket:
                     ],
                 ]
             )
+
+        from tabulate import tabulate
 
         return f"Pocket:\n{tabulate(table_data, tablefmt='rounded_grid')}"
 
