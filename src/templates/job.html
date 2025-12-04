@@ -33,6 +33,7 @@
         <div class="card w-100">
             <div class="card-header">
                 <h2 class="card-title mb-3">{{ card_title }}</h2>
+                {% if not will_auto_update %}
                 <ul class="nav nav-tabs card-header-tabs" id="jobTabs-{{ unique_id }}" role="tablist">
                     <li class="nav-item" role="presentation">
                         <button class="nav-link active" id="status-tab-{{ unique_id }}" data-bs-toggle="tab"
@@ -77,9 +78,16 @@
                         </button>
                     </li>
                 </ul>
+                {% endif %}
             </div>
             <!-- Card Body with Tab Content -->
             <div class="card-body">
+                {% if will_auto_update %}
+                <!-- When auto-updating, show status content directly without tabs -->
+                <div style="padding: 1.25rem;">
+                    {{ status_html|safe }}
+                </div>
+                {% else %}
                 <div class="tab-content" id="jobTabsContent-{{ unique_id }}">
                     <!-- Status Tab -->
                     <div class="tab-pane fade show active" id="status-{{ unique_id }}" role="tabpanel"
@@ -145,6 +153,7 @@
                         <div class="monospace-block">{{ raw_progress_json|safe }}</div>
                     </div>
                 </div>
+                {% endif %}
             </div>
             <!-- Card Footer with Status Badges and Last Updated Timestamp -->
             <div class="card-footer d-flex justify-content-between align-items-center">
