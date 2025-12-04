@@ -330,7 +330,8 @@ class DeepOriginClient:
                 headers["Content-Type"] = "application/json"
 
             for header_name, header_value in headers.items():
-                curl_parts.extend(["-H", f'"{header_name}: {header_value}"'])
+                escaped_value = str(header_value).replace('"', '\\"')
+                curl_parts.extend(["-H", f'"{header_name}: {escaped_value}"'])
 
             # Add JSON body if present
             if body is not None:
