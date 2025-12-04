@@ -329,7 +329,15 @@ class DeepOriginClient:
             ):
                 headers["Content-Type"] = "application/json"
 
+            # Redact sensitive headers before writing to disk
+            sanitized_headers = {}
             for header_name, header_value in headers.items():
+                if header_name.lower() == "authorization":
+                    sanitized_headers[header_name] = "Bearer [REDACTED]"
+                else:
+                    sanitized_headers[header_name] = header_value
+
+            for header_name, header_value in sanitized_headers.items():
                 escaped_value = str(header_value).replace('"', '\\"')
                 curl_parts.extend(["-H", f'"{header_name}: {escaped_value}"'])
 
