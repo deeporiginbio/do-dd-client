@@ -28,7 +28,7 @@ class DeepOriginException(Exception):
                 # Return minimal string to avoid double display
                 return self.title
         except ImportError:
-            pass
+            # IPython is not available; fall back to console output formatting below.
 
         # Format for console output
         lines = []
