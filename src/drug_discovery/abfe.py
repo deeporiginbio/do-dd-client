@@ -14,9 +14,10 @@ from deeporigin.drug_discovery.structures.ligand import Ligand, LigandSet
 from deeporigin.drug_discovery.workflow_step import WorkflowStep
 from deeporigin.exceptions import DeepOriginException
 from deeporigin.platform.job import Job, JobList
+from deeporigin.utils.core import _ensure_do_folder
 from deeporigin.utils.notebook import get_notebook_environment
 
-LOCAL_BASE = Path.home() / ".deeporigin"
+LOCAL_BASE = _ensure_do_folder()
 
 
 class ABFE(WorkflowStep):

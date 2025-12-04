@@ -110,7 +110,7 @@ class Functions:
 
         response = self._c.post_json(
             f"/tools/{self._c.org_key}/functions/{key}/{version}",
-            json=body,
+            body=body,
         )
         self._c._client.timeout = original_timeout
 

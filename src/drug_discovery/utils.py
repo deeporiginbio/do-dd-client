@@ -11,7 +11,7 @@ import pandas as pd
 from deeporigin.drug_discovery.constants import tool_mapper, valid_tools
 from deeporigin.platform.client import DeepOriginClient
 from deeporigin.platform.constants import PROVIDER
-from deeporigin.utils.core import PrettyDict
+from deeporigin.utils.core import PrettyDict, _ensure_do_folder
 
 PROVIDER_KEY = "$provider"
 RESULTS_CSV = "results.csv"
@@ -19,7 +19,7 @@ RESULTS_CSV = "results.csv"
 DATA_DIRS = {}
 
 for tool in tool_mapper.keys():
-    DATA_DIRS[tool] = os.path.join(os.path.expanduser("~"), ".deeporigin", tool)
+    DATA_DIRS[tool] = str(_ensure_do_folder() / tool)
     os.makedirs(DATA_DIRS[tool], exist_ok=True)
 
 

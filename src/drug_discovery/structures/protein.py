@@ -27,6 +27,7 @@ from deeporigin.drug_discovery.constants import (
 )
 from deeporigin.exceptions import DeepOriginException
 from deeporigin.platform.client import DeepOriginClient
+from deeporigin.utils.core import _ensure_do_folder
 
 from .entity import Entity
 from .ligand import Ligand, LigandSet
@@ -82,15 +83,13 @@ class Protein(Entity):
         """
         try:
             # Download logic (merged from download_protein_by_pdb_id)
-            from pathlib import Path
 
             from deeporigin.utils.network import download_sync
 
             pdb_id_lower = pdb_id.lower()
 
             # Get directory for storing protein files
-            home_dir = Path.home()
-            proteins_dir = home_dir / ".deeporigin" / "proteins"
+            proteins_dir = _ensure_do_folder() / "proteins"
             proteins_dir.mkdir(parents=True, exist_ok=True)
             file_path = proteins_dir / f"{pdb_id_lower}.pdb"
             if not file_path.exists():

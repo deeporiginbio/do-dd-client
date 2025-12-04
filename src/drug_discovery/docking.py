@@ -3,7 +3,6 @@
 import concurrent.futures
 import math
 import os
-from pathlib import Path
 from typing import Literal, Optional
 
 from beartype import beartype
@@ -20,9 +19,10 @@ from deeporigin.drug_discovery.workflow_step import WorkflowStep
 from deeporigin.exceptions import DeepOriginException
 from deeporigin.platform.constants import NON_FAILED_STATES
 from deeporigin.platform.job import Job, JobList
+from deeporigin.utils.core import _ensure_do_folder
 
 Number = float | int
-LOCAL_BASE = Path.home() / ".deeporigin"
+LOCAL_BASE = _ensure_do_folder()
 
 
 class Docking(WorkflowStep):
@@ -143,11 +143,9 @@ class Docking(WorkflowStep):
 
         all_df = []
 
-        home_dir = os.path.expanduser("~")
+        deeporigin_base = _ensure_do_folder()
 
-        local_paths = [
-            os.path.join(home_dir, ".deeporigin", file) for file in results_files
-        ]
+        local_paths = [str(deeporigin_base / file) for file in results_files]
 
         if file_type == "csv":
             for local_path in local_paths:

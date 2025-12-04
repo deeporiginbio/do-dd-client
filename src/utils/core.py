@@ -14,8 +14,6 @@ from beartype import beartype
 from box import Box
 from tabulate import tabulate
 
-from deeporigin.utils.constants import ENVS
-
 
 @beartype
 def _supports_unicode_output() -> bool:
@@ -449,39 +447,3 @@ def _ensure_do_folder() -> Path:
     deeporigin_path.mkdir(parents=True, exist_ok=True)
 
     return deeporigin_path
-
-
-@beartype
-def _get_api_tokens_filepath() -> Path:
-    """get location of the api tokens file"""
-
-    return _ensure_do_folder() / "api_tokens.json"
-
-
-@beartype
-def read_cached_tokens(*, env: ENVS | None = None) -> dict:
-    """Read cached API tokens for a specific environment.
-
-    Args:
-        env: Environment name (e.g., 'prod', 'staging', 'edge').
-            If None, reads from config.
-
-    Returns:
-        Dictionary with 'access' and 'refresh' tokens for the specified environment.
-        Returns empty dict if tokens don't exist for that environment.
-    """
-    from deeporigin.config import get_value as get_config
-
-    if env is None:
-        env = get_config()["env"]
-
-    filepath = _get_api_tokens_filepath()
-
-    if not filepath.exists():
-        return {}
-
-    with open(filepath, "r") as file:
-        all_tokens = json.load(file)
-
-    # Return tokens for the specific environment
-    return all_tokens.get(env, {})

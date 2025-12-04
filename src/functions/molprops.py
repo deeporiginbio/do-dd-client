@@ -10,9 +10,9 @@ from pathlib import Path
 from typing import Optional
 
 from deeporigin.platform.client import DeepOriginClient
-from deeporigin.utils.core import hash_dict
+from deeporigin.utils.core import _ensure_do_folder, hash_dict
 
-CACHE_DIR = os.path.expanduser("~/.deeporigin/molprops")
+CACHE_DIR = str(_ensure_do_folder() / "molprops")
 
 # Ensure cache directory exists
 os.makedirs(CACHE_DIR, exist_ok=True)

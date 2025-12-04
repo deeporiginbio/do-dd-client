@@ -4,8 +4,9 @@ This module contains various constants used throughout the drug discovery pipeli
 including lists of metal atoms and file paths for state management.
 """
 
-from pathlib import Path
 from typing import Literal
+
+from deeporigin.utils.core import _ensure_do_folder
 
 METALS = ["MG", "CA", "ZN", "MN", "CU", "FE", "NA", "K", "HG", "CO", "U", "CD", "NI"]
 
@@ -107,7 +108,7 @@ METAL_ELEMENTS = {
 }
 
 # File paths
-DO_HOME_DIR = Path.home() / ".deeporigin"
+DO_HOME_DIR = _ensure_do_folder()
 STATE_DUMP_PATH = DO_HOME_DIR / "state_dump.pdb"
 PROTEINS_DIR = DO_HOME_DIR / "proteins"
 LIGANDS_DIR = DO_HOME_DIR / "ligands"
@@ -127,7 +128,7 @@ tool_mapper = {
 }
 
 # Base directory for storing pocket files
-POCKETS_BASE_DIR = "~/.deeporigin/pockets"
+POCKETS_BASE_DIR = str(_ensure_do_folder() / "pockets")
 """Base directory for storing pocket files."""
 
 # Supported atom symbols for small-molecule ligands in this toolkit.

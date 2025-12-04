@@ -4,6 +4,7 @@ with tokens"""
 from functools import lru_cache
 import json
 import os
+from pathlib import Path
 import time
 from typing import Optional
 from urllib.parse import urljoin
@@ -17,9 +18,8 @@ from deeporigin.config import get_value as get_config
 from deeporigin.exceptions import DeepOriginException
 from deeporigin.utils.constants import ENV_VARIABLES, ENVS
 from deeporigin.utils.core import (
-    _get_api_tokens_filepath,
+    _ensure_do_folder,
     _supports_unicode_output,
-    read_cached_tokens,
 )
 
 __all__ = [
@@ -52,6 +52,40 @@ AUTH_CLIENT_SECRET = {
     "prod": "cQcZclTqMHMuovyXV-DD15tEiL-KH_2XD36vsppULRBuq7AjwyI4dh5ag11O_K1S",
     "staging": "WNoSHfEIBfM8cSpwhU2k30uGaCD3Uo6KhyklSYsWecrPKHjR9MEdeP3YF094GvZt",
 }
+
+
+@beartype
+def _get_api_tokens_filepath() -> Path:
+    """get location of the api tokens file"""
+
+    return _ensure_do_folder() / "api_tokens.json"
+
+
+@beartype
+def read_cached_tokens(*, env: ENVS | None = None) -> dict:
+    """Read cached API tokens for a specific environment.
+
+    Args:
+        env: Environment name (e.g., 'prod', 'staging', 'edge').
+            If None, reads from config.
+
+    Returns:
+        Dictionary with 'access' and 'refresh' tokens for the specified environment.
+        Returns empty dict if tokens don't exist for that environment.
+    """
+    if env is None:
+        env = get_config()["env"]
+
+    filepath = _get_api_tokens_filepath()
+
+    if not filepath.exists():
+        return {}
+
+    with open(filepath, "r") as file:
+        all_tokens = json.load(file)
+
+    # Return tokens for the specific environment
+    return all_tokens.get(env, {})
 
 
 @beartype
@@ -421,3 +455,58 @@ def decode_access_token(
             "verify_exp": False,  # we want to decode this no matter what, because we'll check the expiration in the caller
         },
     )
+
+
+@beartype
+def _get_keycloak_token(
+    *,
+    email: str,
+    password: str,
+    realm: str = "deeporigin",
+    base_url: str = "https://login.dev.deeporigin.io",
+    scope: str = "openid email super-user",
+) -> dict:
+    """get a token, with optional super user scope from keycloak
+
+    This returns a super-user token (if possible) from keycloak. Do not use this function.
+
+    Args:
+        email: the email of the super user
+        password: the password of the super user
+        realm: the realm to get the token from
+        base_url: the base url of the keycloak instance
+        scope: the scope of the token
+
+    Raises:
+        DeepOriginException: If email or password is empty or not a string.
+    """
+    # Validate input parameters
+    if not email.strip():
+        raise DeepOriginException(
+            title="Invalid email parameter",
+            message="Email must be a non-empty string.",
+        )
+    if not password.strip():
+        raise DeepOriginException(
+            title="Invalid password parameter",
+            message="Password must be a non-empty string.",
+        )
+
+    keycloak_url = f"{base_url}/realms/{realm}/protocol/openid-connect/token"
+
+    data = {
+        "grant_type": "password",
+        "username": email,
+        "password": password,
+        "client_id": "do-app",
+        "scope": scope,
+    }
+
+    response = httpx.post(
+        keycloak_url,
+        data=data,  # sent as application/x-www-form-urlencoded
+        # Let httpx set Content-Type automatically for form data
+    )
+
+    response.raise_for_status()
+    return response.json()

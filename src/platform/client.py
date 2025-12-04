@@ -8,7 +8,9 @@ tools, functions, clusters, files, and executions.
 
 from __future__ import annotations
 
+import json
 from typing import Any, Dict, Optional, Tuple
+import uuid
 import weakref
 
 import httpx
@@ -25,6 +27,7 @@ from deeporigin.platform.organizations import Organizations
 # Import Tools - safe because tools.py uses TYPE_CHECKING for DeepOriginClient
 from deeporigin.platform.tools import Tools
 from deeporigin.utils.constants import API_ENDPOINT, ENVS
+from deeporigin.utils.core import _ensure_do_folder
 
 
 class DeepOriginClient:
@@ -293,12 +296,12 @@ class DeepOriginClient:
         resp.raise_for_status()
         return resp
 
-    def _post(self, path: str, json: Optional[dict] = None, **kwargs) -> httpx.Response:
+    def _post(self, path: str, body: Optional[dict] = None, **kwargs) -> httpx.Response:
         """Perform a POST request and raise on error.
 
         Args:
             path: API endpoint path (relative to base_url).
-            json: JSON data to send in the request body.
+            body: JSON data to send in the request body.
             **kwargs: Additional arguments passed to httpx.Client.post().
 
         Returns:
@@ -308,8 +311,62 @@ class DeepOriginClient:
             httpx.HTTPStatusError: If the response status code indicates an error.
         """
         self.check_token()
-        resp = self._client.post(path, json=json, **kwargs)
-        resp.raise_for_status()
+        resp = self._client.post(path, json=body, **kwargs)
+
+        try:
+            resp.raise_for_status()
+        except httpx.HTTPStatusError:
+            # Build curl command to reproduce the request
+            full_url = self.base_url.rstrip("/") + "/" + path.lstrip("/")
+
+            # Build curl command parts
+            curl_parts = ["curl", "-X", "POST"]
+
+            # Add headers (include Content-Type for JSON if body is present)
+            headers = dict(self._client.headers)
+            if body is not None and not any(
+                key.lower() == "content-type" for key in headers.keys()
+            ):
+                headers["Content-Type"] = "application/json"
+
+            # Redact sensitive headers before writing to disk
+            sanitized_headers = {}
+            for header_name, header_value in headers.items():
+                if header_name.lower() == "authorization":
+                    sanitized_headers[header_name] = "Bearer [REDACTED]"
+                else:
+                    sanitized_headers[header_name] = header_value
+
+            for header_name, header_value in sanitized_headers.items():
+                escaped_value = str(header_value).replace('"', '\\"')
+                curl_parts.extend(["-H", f'"{header_name}: {escaped_value}"'])
+
+            # Add JSON body if present
+            if body is not None:
+                body_json = json.dumps(body)
+                curl_parts.extend(["-d", f"'{body_json}'"])
+
+            # Add URL
+            curl_parts.append(f'"{full_url}"')
+
+            # Combine into full curl command
+            curl_command = " \\\n  ".join(curl_parts)
+
+            # Save to file with UUID name
+            file_uuid = str(uuid.uuid4())
+            filename = f"{file_uuid}.txt"
+            filepath = _ensure_do_folder() / filename
+
+            with open(filepath, "w") as f:
+                f.write(curl_command)
+
+            raise DeepOriginException(
+                title="Request to platform API failed.",
+                message=f"A POST request to the platform API failed. Curl command to reproduce the request saved to: {filepath}",
+                fix="Please contact support at https://help.deeporigin.com and provide this text file.",
+                level="danger",
+            ) from None
+
         return resp
 
     def _put(self, path: str, **kwargs) -> httpx.Response:
@@ -382,12 +439,12 @@ class DeepOriginClient:
         """
         return self._get(path, **kwargs).json()
 
-    def post_json(self, path: str, json: dict[str, Any], **kwargs) -> Any:
+    def post_json(self, path: str, body: dict[str, Any], **kwargs) -> Any:
         """Perform a POST request and return the JSON response.
 
         Args:
             path: API endpoint path (relative to base_url).
-            json: JSON data to send in the request body.
+            body: JSON data to send in the request body.
             **kwargs: Additional arguments passed to httpx.Client.post().
 
         Returns:
@@ -396,7 +453,7 @@ class DeepOriginClient:
         Raises:
             httpx.HTTPStatusError: If the response status code indicates an error.
         """
-        return self._post(path, json=json, **kwargs).json()
+        return self._post(path, body=body, **kwargs).json()
 
     # -------- Lifecycle --------
     def close(self) -> None:

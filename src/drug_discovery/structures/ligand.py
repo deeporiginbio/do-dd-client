@@ -25,6 +25,7 @@ from deeporigin.drug_discovery.utilities.visualize import jupyter_visualization
 from deeporigin.exceptions import DeepOriginException
 from deeporigin.platform.client import DeepOriginClient
 from deeporigin.utils.constants import number
+from deeporigin.utils.core import _ensure_do_folder
 
 from .entity import Entity
 
@@ -863,7 +864,7 @@ class Ligand(Entity):
         Returns:
             str: The path to the ligands directory (~/.deeporigin/ligands).
         """
-        ligands_base_dir = Path.home() / ".deeporigin" / "ligands"
+        ligands_base_dir = _ensure_do_folder() / "ligands"
         ligands_base_dir.mkdir(parents=True, exist_ok=True)
 
         return str(ligands_base_dir)

@@ -17,7 +17,7 @@ import httpx
 from deeporigin.drug_discovery.structures import Ligand, Pocket, Protein
 from deeporigin.exceptions import DeepOriginException
 from deeporigin.platform.client import DeepOriginClient
-from deeporigin.utils.core import hash_dict
+from deeporigin.utils.core import _ensure_do_folder, hash_dict
 
 
 def _extract_cached_files(extract_dir: str) -> list[str]:
@@ -68,7 +68,7 @@ def dock(
         str: path to the SDF file containing the docking results
     """
 
-    CACHE_DIR = os.path.expanduser("~/.deeporigin/docking")
+    CACHE_DIR = str(_ensure_do_folder() / "docking")
 
     if pocket is not None or pocket_center is not None:
         pocket_center = _get_pocket_center(pocket, pocket_center)
@@ -144,12 +144,13 @@ def constrained_dock(
 
 
     Note:
-        The function creates a cache directory at ~/.deeporigin/constrained_docking/ and
-        stores results based on a SHA256 hash of all input parameters. This allows for
-        efficient reuse of previous docking results.
+        The function creates a cache directory in the DeepOrigin home directory
+        (typically ~/.deeporigin/constrained_docking/) and stores results based on
+        a SHA256 hash of all input parameters. This allows for efficient reuse of
+        previous docking results.
     """
     URL = "https://constrained-docking.default.jobs.edge.deeporigin.io/dock"
-    CACHE_DIR = os.path.expanduser("~/.deeporigin/constrained_docking")
+    CACHE_DIR = str(_ensure_do_folder() / "constrained_docking")
 
     if pocket is None and pocket_center is None:
         raise DeepOriginException(
