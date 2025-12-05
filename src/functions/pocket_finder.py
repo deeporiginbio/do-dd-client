@@ -52,7 +52,7 @@ def find_pockets(
     if use_cache and os.path.exists(cache_path):
         return cache_path
 
-    protein.upload()
+    protein.upload(client=client)
     os.makedirs(cache_path, exist_ok=True)
 
     response = client.functions.run(
