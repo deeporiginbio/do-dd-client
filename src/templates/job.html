@@ -85,6 +85,9 @@
                 {% if will_auto_update %}
                 <!-- When auto-updating, show status content directly without tabs -->
                 <div style="padding: 1.25rem;">
+                    <div style="margin-bottom: 1rem;">
+                        <strong>Execution ID:</strong> <code>{{ job_id }}</code>
+                    </div>
                     {{ status_html|safe }}
                 </div>
                 {% else %}
