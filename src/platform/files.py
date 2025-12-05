@@ -29,6 +29,71 @@ class Files:
         """
         self._c = client
 
+    def _build_list_params(
+        self,
+        *,
+        recursive: bool,
+        last_count: int | None,
+        continuation_token: str | None,
+        delimiter: str | None,
+        max_keys: int | None,
+        prefix: str | None,
+    ) -> dict[str, str | int | bool]:
+        """Build parameters dictionary for list_files_in_dir API call.
+
+        Args:
+            recursive: If True, recursively list files in subdirectories.
+            last_count: Used for pagination - the last count of objects.
+            continuation_token: Token for pagination continuation.
+            delimiter: Used to group results by a common prefix.
+            max_keys: Page size (cannot exceed 1000).
+            prefix: Path prefix to filter results.
+
+        Returns:
+            Dictionary of parameters for the API call.
+        """
+        params: dict[str, str | int | bool] = {}
+        if recursive:
+            params["recursive"] = True
+        if last_count is not None:
+            params["last-count"] = str(last_count)
+        if continuation_token is not None:
+            params["continuation-token"] = continuation_token
+        if delimiter is not None:
+            params["delimiter"] = delimiter
+        if max_keys is not None:
+            params["max-orgKeys"] = max_keys
+        if prefix is not None:
+            params["prefix"] = prefix
+        return params
+
+    def _extract_file_keys(self, response: dict) -> list[str]:
+        """Extract file keys from API response.
+
+        Args:
+            response: The API response dictionary.
+
+        Returns:
+            List of file keys extracted from the response.
+        """
+        file_keys: list[str] = []
+        if "data" in response and isinstance(response["data"], list):
+            for file_obj in response["data"]:
+                if isinstance(file_obj, dict) and "Key" in file_obj:
+                    file_keys.append(file_obj["Key"])
+        return file_keys
+
+    def _get_continuation_token(self, response: dict) -> str | None:
+        """Extract continuation token from API response.
+
+        Args:
+            response: The API response dictionary.
+
+        Returns:
+            Continuation token if present, None otherwise.
+        """
+        return response.get("continuation_token") or response.get("continuationToken")
+
     def list_files_in_dir(
         self,
         remote_path: str,
@@ -63,35 +128,23 @@ class Files:
         continuation_token: str | None = None
 
         while True:
-            params: dict[str, str | int | bool] = {}
-            if recursive:
-                params["recursive"] = True
-            if last_count is not None:
-                params["last-count"] = str(last_count)
-            if continuation_token is not None:
-                params["continuation-token"] = continuation_token
-            if delimiter is not None:
-                params["delimiter"] = delimiter
-            if max_keys is not None:
-                params["max-orgKeys"] = max_keys
-            if prefix is not None:
-                params["prefix"] = prefix
+            params = self._build_list_params(
+                recursive=recursive,
+                last_count=last_count,
+                continuation_token=continuation_token,
+                delimiter=delimiter,
+                max_keys=max_keys,
+                prefix=prefix,
+            )
 
             response = self._c.get_json(
                 f"/files/{self._c.org_key}/directory/{remote_path}",
                 params=params,
             )
 
-            # Extract file keys from the response
-            if "data" in response and isinstance(response["data"], list):
-                for file_obj in response["data"]:
-                    if isinstance(file_obj, dict) and "Key" in file_obj:
-                        all_files.append(file_obj["Key"])
+            all_files.extend(self._extract_file_keys(response))
 
-            # Check for continuation token in response
-            continuation_token = response.get("continuation_token") or response.get(
-                "continuationToken"
-            )
+            continuation_token = self._get_continuation_token(response)
             if not continuation_token:
                 break
 
