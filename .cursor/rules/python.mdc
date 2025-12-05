@@ -50,5 +50,5 @@ When modifying an existing function, make the following changes together:
 # Common mistakes
 
 - Using uppercase List instead of lowercase list to annotate the type of a list
-- Using uppercase Dist instead of lowercase dist to annotate the type of a dict
+- Using uppercase Dict instead of lowercase dist to annotate the type of a dict
 - Not using `uv run` to run some code within the correct venv

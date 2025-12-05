@@ -57,7 +57,7 @@ def find_pockets(
 
     response = client.functions.run(
         key="deeporigin.pocketfinder",
-        version="0.2.1",
+        version="0.2.2",
         params=payload,
         quote=quote,
     )
