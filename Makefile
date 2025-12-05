@@ -41,11 +41,9 @@ docs-deploy:
 # run mock server for local development and testing
 mock-server:
 	@echo "Starting mock server..."
-	@source $(CURDIR)/venv/bin/activate && \
-	    python -m tests.run_mock_server \
-	        $(if $(PORT),--port $(PORT),) \
-	        $(if $(ABFE_DURATION),--abfe-duration $(ABFE_DURATION),) && \
-	    deactivate
+	uv run python -m tests.run_mock_server \
+	    $(if $(PORT),--port $(PORT),) \
+	    $(if $(ABFE_DURATION),--abfe-duration $(ABFE_DURATION),)
 
 
 test-github-live:
