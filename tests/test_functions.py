@@ -1,7 +1,5 @@
 """this module contains tests for functions. These are meant to be run against a live instance"""
 
-import pytest
-
 from deeporigin.drug_discovery import (
     BRD_DATA_DIR,
     Complex,
@@ -25,16 +23,8 @@ def test_molprops(client):  # noqa: F811
     assert "logS" in props, "Expected logS to be in the properties"
 
 
-def test_pocket_finder(client, pytestconfig):  # noqa: F811
-    """Test pocket finder function.
-
-    Note: This test is skipped when using --mock flag as the mock server
-    doesn't implement the pocket finder endpoint yet.
-    """
-    use_mock = pytestconfig.getoption("--mock", default=False)
-    if use_mock:
-        pytest.skip("Skipping pocket finder test with --mock (not yet implemented)")
-
+def test_pocket_finder(client):  # noqa: F811
+    """Test pocket finder function."""
     protein = Protein.from_pdb_id("1EBY")
     pockets = protein.find_pockets(
         pocket_count=1,
@@ -45,16 +35,8 @@ def test_pocket_finder(client, pytestconfig):  # noqa: F811
     assert len(pockets) == 1, "Incorrect number of pockets"
 
 
-def test_docking(client, pytestconfig):  # noqa: F811
-    """Test docking function.
-
-    Note: This test is skipped when using --mock flag as the mock server
-    doesn't implement the docking endpoint yet.
-    """
-    use_mock = pytestconfig.getoption("--mock", default=False)
-    if use_mock:
-        pytest.skip("Skipping docking test with --mock (not yet implemented)")
-
+def test_docking(client):  # noqa: F811
+    """Test docking function."""
     protein = Protein.from_pdb_id("1EBY")
     pockets = protein.find_pockets(pocket_count=1, client=client)
     pocket = pockets[0]

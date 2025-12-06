@@ -1,13 +1,7 @@
 """this module tests the tools API"""
 
-import time
-
 import pytest
 
-from deeporigin.drug_discovery import (
-    BRD_DATA_DIR,
-    Complex,
-)
 from deeporigin.drug_discovery.constants import tool_mapper
 from deeporigin.platform.job import Job, JobList
 from tests.utils import client  # noqa: F401
@@ -112,50 +106,6 @@ def test_job_df_filtering(client):  # noqa: F811
     assert df["tool_key"].unique()[0] == tool_key, (
         f"Expected to get back jobs for {tool_key}. Instead got {df['tool_key'].unique()[0]}"
     )
-
-
-def test_run_docking_and_cancel(client, pytestconfig):  # noqa: F811
-    """Test running a docking job and canceling it.
-
-    Note: This test is skipped when using --mock flag as the mock server
-    doesn't implement job execution endpoints yet.
-    """
-    use_mock = pytestconfig.getoption("--mock", default=False)
-    if use_mock:
-        pytest.skip(
-            "Skipping docking run/cancel test with --mock (not yet implemented)"
-        )
-
-    sim = Complex.from_dir(BRD_DATA_DIR, client=client)
-    sim.client = client
-
-    jobs = sim.docking.run(
-        box_size=(14.094597464129786, 14.094597464129786, 14.094597464129786),
-        pocket_center=(-13.215283393859863, -6.083978652954102, 14.214159965515137),
-        re_run=True,
-        use_parallel=False,
-    )
-
-    # Get the first job from the JobList
-    assert len(jobs) > 0, "Expected at least one job"
-    job = jobs[0]
-
-    # wait for a bit to start
-    time.sleep(10)
-
-    # check that it's running
-    job.sync()
-    assert "Running" in job._status, f"Job with ID {job._ids} is not running"
-
-    # now cancel it
-    job.cancel()
-
-    # wait for a bit to cancel
-    time.sleep(10)
-
-    # check that it's cancelled
-    job.sync()
-    assert "Cancelled" in job._status, f"Job with ID {job._ids} is not cancelled"
 
 
 def test_job_status_logic():

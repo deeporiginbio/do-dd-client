@@ -496,6 +496,22 @@ class MockServer:
                 sysprep_response = self._load_fixture("sysprep-response")
                 return {"functionOutputs": sysprep_response}
 
+            # Handle pocketfinder function
+            if function_key == "deeporigin.pocketfinder":
+                # Return the pocketfinder response fixture
+                pocketfinder_response = self._load_fixture(
+                    "deeporigin.pocketfinder/function-response"
+                )
+                return pocketfinder_response
+
+            # Handle docking function
+            if function_key == "deeporigin.docking":
+                # Return the docking response fixture
+                docking_response = self._load_fixture(
+                    "deeporigin.docking/function-response"
+                )
+                return docking_response
+
             # Default: return execution ID for other functions
             return {"executionId": str(uuid.uuid4())}
 
