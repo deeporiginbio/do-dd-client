@@ -56,3 +56,10 @@ notebooks-html:
 	rm -f docs/notebooks/*.html && \
 	marimo export html notebooks/docking.py -o docs/notebooks/docking.html && \
 	deactivate
+
+IMAGE_NAME := deeporigin-uv-temp
+
+# Build image from current directory and start an interactive shell
+docker:
+	docker build --pull -t $(IMAGE_NAME) .
+	docker run --rm -it $(IMAGE_NAME)
