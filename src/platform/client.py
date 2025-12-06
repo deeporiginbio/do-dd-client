@@ -165,7 +165,7 @@ class DeepOriginClient:
         Returns:
             A string showing the client's token (truncated), org_key, and base_url.
         """
-        return f"DeepOrigin Platform Client(token={self.token[:5]}..., org_key={self.org_key}, base_url={self.base_url})"
+        return f"DeepOrigin Platform Client(org_key={self.org_key}, base_url={self.base_url})"
 
     # -------- Singleton helpers --------
     @classmethod
@@ -228,6 +228,47 @@ class DeepOriginClient:
         return cls._instances[key]
 
     @classmethod
+    def from_env(
+        cls,
+        env: ENVS,
+        *,
+        
+        timeout: float = 10.0,
+    ) -> "DeepOriginClient":
+        """Create a client instance from environment configuration.
+
+        Reads the token from ~/.DeepOrigin/api_tokens.json using the appropriate
+        environment key, and reads the org_key from the config file.
+
+        Args:
+            env: Environment name (e.g., 'prod', 'staging'). Required.
+            timeout: Request timeout in seconds.
+            http2: Whether to enable HTTP/2.
+
+        Returns:
+            A new DeepOriginClient instance configured from environment files.
+        """
+        # Get tokens for the specified environment
+        tokens = get_tokens(env=env)
+        token = tokens["access"]
+        refresh_token = tokens.get("refresh")
+
+        # Get org_key from config
+        org_key = get_value()["org_key"]
+
+        # Get base_url from environment
+        base_url = API_ENDPOINT[env]
+
+        return cls(
+            token=token,
+            org_key=org_key,
+            env=env,
+            base_url=base_url,
+            timeout=timeout,
+            refresh_token=refresh_token,
+        )
+
+    @classmethod
     def close_all(cls) -> None:
         """Close all cached client instances and clear the registry.
 
@@ -242,7 +283,7 @@ class DeepOriginClient:
     def check_token(self) -> None:
         """Check if the token is expired."""
 
-        if self.env in ["dev", "local"]:
+        if self.env in ["dev", "local", "staging"]:
             # no check for these envs
             return
         from deeporigin import auth

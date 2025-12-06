@@ -48,3 +48,20 @@ from deeporigin.platform.client import DeepOriginClient
 
 client = DeepOriginClient.get()
 ```
+
+## Creating a client from environment files
+
+You can also create a client that reads configuration from disk files using the `from_env` class method:
+
+```{.python notest}
+from deeporigin.platform.client import DeepOriginClient
+
+client = DeepOriginClient.from_env(env="prod")
+```
+
+This method:
+- Reads the access token from `~/.DeepOrigin/api_tokens.json` using the specified environment key
+- Reads the organization key from the config file (`~/.DeepOrigin/config.json`)
+- Requires you to specify the environment explicitly (e.g., `"prod"`, `"staging"`, `"dev"`)
+
+This is useful when you want to ensure the client reads from the configuration files rather than environment variables.

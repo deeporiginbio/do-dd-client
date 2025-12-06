@@ -144,7 +144,7 @@ def get_tokens(never_prompt: bool = False, *, env: ENVS | None = None) -> dict:
     if ENV_VARIABLES["refresh_token"] in os.environ:
         tokens["refresh"] = os.environ[ENV_VARIABLES["refresh_token"]]
 
-    if env in ["dev", "local"]:
+    if env in ["dev", "local", "staging"]:
         return tokens
 
     if "access" not in tokens.keys() and not never_prompt:

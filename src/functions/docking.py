@@ -102,7 +102,7 @@ def dock(
 
     response = client.functions.run(
         key="deeporigin.docking",
-        version="0.2.4",
+        version="0.2.6",
         params=payload,
         quote=quote,
     )

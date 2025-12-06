@@ -13,7 +13,9 @@ from tests.utils import client  # noqa: F401
 
 
 def test_molprops(client):  # noqa: F811
-    ligand = Ligand.from_identifier("serotonin")
+    ligand = Ligand.from_smiles(
+        "Fc1c(-c2cccc3ccccc23)ncc2c(N3C[C@H]4CC[C@@H](C3)N4)nc(OCC34CCCN3CCC4)nc12"
+    )
 
     props = ligand.admet_properties(use_cache=False, client=client)
 
