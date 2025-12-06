@@ -43,7 +43,11 @@ def test_pocket_finder(client):  # noqa: F811
 def test_docking(client):  # noqa: F811
     """Test docking function."""
     protein = Protein.from_file(FIXTURES_DIR / "1eby.pdb")
-    pockets = protein.find_pockets(pocket_count=1, client=client)
+    pockets = protein.find_pockets(
+        pocket_count=1,
+        client=client,
+        use_cache=False,
+    )
     pocket = pockets[0]
 
     ligand = Ligand.from_smiles("CN(C)C(=O)c1cccc(-c2cn(C)c(=O)c3[nH]ccc23)c1")
