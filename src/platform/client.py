@@ -232,7 +232,6 @@ class DeepOriginClient:
         cls,
         env: ENVS,
         *,
-        
         timeout: float = 10.0,
     ) -> "DeepOriginClient":
         """Create a client instance from environment configuration.
