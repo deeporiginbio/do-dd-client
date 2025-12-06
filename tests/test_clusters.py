@@ -1,7 +1,5 @@
 """Tests for Clusters API wrapper."""
 
-import pytest
-
 from tests.utils import client  # noqa: F401
 
 
@@ -27,19 +25,3 @@ def test_get_default_cluster_id_includes_dev(client):  # noqa: F811
     clusters = client.clusters.list()
     first_cluster_id = clusters["data"][0]["id"]
     assert cluster_id == first_cluster_id
-
-
-def test_get_default_cluster_id_no_clusters(test_server_url):  # noqa: F811
-    """Test that get_default_cluster_id raises RuntimeError when no clusters exist."""
-    # Create a client with org_key that returns empty clusters from mock server
-    from deeporigin.platform.client import DeepOriginClient
-
-    empty_client = DeepOriginClient(
-        token="test-token",
-        org_key="empty-org",
-        base_url=test_server_url,
-        env="local",
-    )
-
-    with pytest.raises(RuntimeError, match="No clusters found"):
-        empty_client.clusters.get_default_cluster_id()

@@ -11,11 +11,12 @@ import pytest
 from tests.mock_server import MockServer
 
 
-@pytest.fixture(scope="session")
+@pytest.fixture(scope="session", autouse=True)
 def test_server(pytestconfig):
     """Start a local test server for the duration of the test session.
 
     Only starts if --env local is passed. Otherwise yields None.
+    This fixture is autouse so it always runs, but only starts the server when needed.
 
     Args:
         pytestconfig: Pytest configuration object.
@@ -24,7 +25,7 @@ def test_server(pytestconfig):
         MockServer instance that is running, or None if --env local is not passed.
     """
     env = pytestconfig.getoption("--env", default=None)
-    
+
     if env != "local":
         yield None
         return
