@@ -1,4 +1,4 @@
-name: Test DO Functions 
+name: Test Functions 
 
 on:
   workflow_dispatch:
@@ -21,11 +21,11 @@ on:
       - 'src/functions/**/*.py'
 
 jobs:
-  test-functions-on-production:
+  test-functions-on-environment:
     environment: ${{ inputs.env || 'prod' }}
     runs-on: ubuntu-latest
     env:
-      DEEP_ORIGIN_ENV: ${{ inputs.env || 'prod' }}
+      DEEPORIGIN_ENV: ${{ inputs.env || 'prod' }}
 
     steps:
       - uses: actions/checkout@v4
@@ -36,7 +36,7 @@ jobs:
       
       - name: Set up Python
         run: uv python install
-      - name: Select API token
+      - name: Select env
         run: |
           ENV="${{ inputs.env || 'prod' }}"
           if [ "$ENV" = "prod" ]; then
@@ -45,19 +45,17 @@ jobs:
             echo "DEEPORIGIN_ORG_KEY=${{ secrets.DEEPORIGIN_ORG_KEY_PROD }}" >> "$GITHUB_ENV"
           elif [ "$ENV" = "staging" ]; then
             echo "DEEPORIGIN_TOKEN=${{ secrets.DEEPORIGIN_TOKEN_STAGING }}" >> "$GITHUB_ENV"
-            echo "DEEPORIGIN_REFRESH_TOKEN=${{ secrets.DEEPORIGIN_REFRESH_TOKEN_STAGING }}" >> "$GITHUB_ENV"
-            echo "DEEPORIGIN_ORG_KEY=${{ secrets.DEEPORIGIN_ORG_KEY_STAGING }}" >> "$GITHUB_ENV"
+            echo "DEEPORIGIN_ORG_KEY=deeporigin" >> "$GITHUB_ENV"
           elif [ "$ENV" = "dev" ]; then
             echo "DEEPORIGIN_TOKEN=${{ secrets.DEEPORIGIN_TOKEN_DEV }}" >> "$GITHUB_ENV"
-            echo "DEEPORIGIN_REFRESH_TOKEN=${{ secrets.DEEPORIGIN_REFRESH_TOKEN_DEV }}" >> "$GITHUB_ENV"
-            echo "DEEPORIGIN_ORG_KEY=${{ secrets.DEEPORIGIN_ORG_KEY_DEV }}" >> "$GITHUB_ENV"
+            echo "DEEPORIGIN_ORG_KEY=deeporigin" >> "$GITHUB_ENV"
           fi
 
       - name: Set environment variables for Client
         run: |
           echo "DEEPORIGIN_ENV=${{ inputs.env || 'prod' }}" >> "$GITHUB_ENV"
       - name: Install dependencies
-        run: uv sync --extra tools --extra test --extra plots
+        run: uv sync --extra tools --extra test --extra plots --extra core
 
 
       - name: Run tests against a live instance

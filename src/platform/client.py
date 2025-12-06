@@ -9,6 +9,7 @@ tools, functions, clusters, files, and executions.
 from __future__ import annotations
 
 import json
+import os
 from typing import Any, Dict, Optional, Tuple
 import uuid
 import weakref
@@ -26,7 +27,7 @@ from deeporigin.platform.organizations import Organizations
 
 # Import Tools - safe because tools.py uses TYPE_CHECKING for DeepOriginClient
 from deeporigin.platform.tools import Tools
-from deeporigin.utils.constants import API_ENDPOINT, ENVS
+from deeporigin.utils.constants import API_ENDPOINT, ENV_VARIABLES, ENVS
 from deeporigin.utils.core import _ensure_do_folder
 
 
@@ -165,7 +166,7 @@ class DeepOriginClient:
         Returns:
             A string showing the client's token (truncated), org_key, and base_url.
         """
-        return f"DeepOrigin Platform Client(token={self.token[:5]}..., org_key={self.org_key}, base_url={self.base_url})"
+        return f"DeepOrigin Platform Client(org_key={self.org_key}, base_url={self.base_url})"
 
     # -------- Singleton helpers --------
     @classmethod
@@ -228,6 +229,78 @@ class DeepOriginClient:
         return cls._instances[key]
 
     @classmethod
+    def from_env(
+        cls,
+        env: ENVS | None = None,
+        *,
+        base_url: str | None = None,
+        timeout: float = 10.0,
+    ) -> "DeepOriginClient":
+        """Create a client instance from environment configuration.
+
+        Reads configuration from environment variables (DEEPORIGIN_TOKEN,
+        DEEPORIGIN_REFRESH_TOKEN, DEEPORIGIN_ORG_KEY, DEEPORIGIN_ENV) or from
+        disk files (~/.DeepOrigin/api_tokens.json and config.json).
+
+        Args:
+            env: Environment name (e.g., 'prod', 'staging', 'local'). If None,
+                reads from DEEPORIGIN_ENV environment variable or config file.
+            base_url: Base URL for the API. If None, derived from env (defaults
+                to http://127.0.0.1:4931 for 'local').
+            timeout: Request timeout in seconds.
+
+        Returns:
+            A new DeepOriginClient instance configured from environment variables
+            or files.
+        """
+        # Determine environment
+        if env is None:
+            env = os.environ.get(ENV_VARIABLES["env"]) or get_value()["env"]
+            if not env:
+                env = "prod"  # default
+
+        # Validate env is a valid ENVS type
+        if env not in ["dev", "prod", "staging", "local"]:
+            raise ValueError(
+                f"Invalid environment: {env}. Must be one of: dev, prod, staging, local"
+            )
+
+        if env == "local":
+            # short circuit for local - use dummy tokens, no disk/env reading
+            # base_url can be overridden by the caller (e.g., test_server_url)
+            if base_url is None:
+                base_url = API_ENDPOINT["local"]
+            return cls(
+                token="token",
+                org_key="deeporigin",
+                env="local",
+                base_url=base_url,
+                timeout=timeout,
+                refresh_token="refresh_token",
+            )
+
+        # Get tokens for the specified environment (reads from env vars or files)
+        tokens = get_tokens(env=env)
+        token = tokens["access"]
+        refresh_token = tokens.get("refresh")
+
+        # Get org_key (reads from env vars or config file)
+        org_key = get_value()["org_key"]
+
+        # Get base_url
+        if base_url is None:
+            base_url = API_ENDPOINT[env]
+
+        return cls(
+            token=token,
+            org_key=org_key,
+            env=env,
+            base_url=base_url,
+            timeout=timeout,
+            refresh_token=refresh_token,
+        )
+
+    @classmethod
     def close_all(cls) -> None:
         """Close all cached client instances and clear the registry.
 
@@ -242,7 +315,7 @@ class DeepOriginClient:
     def check_token(self) -> None:
         """Check if the token is expired."""
 
-        if self.env in ["dev", "local"]:
+        if self.env in ["dev", "local", "staging"]:
             # no check for these envs
             return
         from deeporigin import auth

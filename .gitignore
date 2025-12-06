@@ -1,7 +1,6 @@
-venv/*
 github_token
-bench.pid
 *.csv
+uv.lock
 
 scratch-notebooks/
 
@@ -34,36 +33,17 @@ share/python-wheels/
 *.egg
 MANIFEST
 
-# PyInstaller
-#  Usually these files are written by a Python script from a template
-#  before PyInstaller builds the exe, so as to inject date/other infos into it.
-*.manifest
-*.spec
-
-# Installer logs
-pip-log.txt
-pip-delete-this-directory.txt
 
 # Unit test / coverage reports
 htmlcov/
-.tox/
-.nox/
 .coverage
 .coverage.*
 .cache
-nosetests.xml
 coverage.xml
 *.cover
 *.py,cover
-.hypothesis/
 .pytest_cache/
 /coverage
-
-
-
-
-# Sphinx documentation
-docs/_build/
 
 
 # notebooks
@@ -95,10 +75,6 @@ env.bak/
 venv.bak/
 
 
-
-# Rope project settings
-.ropeproject
-
 # mkdocs documentation
 /site
 
@@ -124,17 +100,7 @@ notebooks/**/tmp/
 /connect.lock
 /typings
 
-# logs
-/libpeerconnection.log
-npm-debug.log
-yarn-error.log
-testem.log
 
-# node artifacts
-node_modules
-
-# nx artifacts
-project.json.bak
 
 # IDEs and editors
 /.idea
@@ -150,9 +116,6 @@ project.json.bak
 !.vscode/launch.json
 !.vscode/extensions.json
 
-
-
-
 # temporary files
 libs/
 tmp/
@@ -160,6 +123,3 @@ tmp/
 **/docs/coverage.txt
 notebooks/**/tmp*
 
-# do-catalog configuration
-.do-catalog.yml
-.do-catalog.yml.save

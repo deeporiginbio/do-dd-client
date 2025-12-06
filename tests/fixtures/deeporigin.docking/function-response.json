@@ -1,0 +1,9 @@
+{
+  "binding_energy": -4.9042416,
+  "pose_score": 0.3718597,
+  "sdf_path": "tool-runs/docking/51f3f8008c28559b18cb6eb1ae048b24604274a91659e8bc12d27151de594c80/7acf92aa03f4a99f13a07242b00785d46c944d417bda87135e72857daece6120.sdf",
+  "status": "success",
+  "time_taken": 77.43552350997925,
+  "function_key": "deeporigin.docking",
+  "function_version": "0.2.6"
+}

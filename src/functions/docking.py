@@ -98,11 +98,11 @@ def dock(
     if os.path.exists(sdf_file) and use_cache:
         return sdf_file
 
-    protein.upload()
+    protein.upload(client=client)
 
     response = client.functions.run(
         key="deeporigin.docking",
-        version="0.2.4",
+        version="0.2.6",
         params=payload,
         quote=quote,
     )

@@ -42,12 +42,13 @@ When modifying an existing function, make the following changes together:
 
 # Running tests
 
-- Before running tests, run `ruff format .` and `ruff check --select I . --fix` to ensure that code is formatted correctly
-- Run tests by activating the venv and then running `pytest --mock`
-- To test a specific function, use `pytest -k --mock` 
+- Before running tests, run `uv run ruff format .` and `uv run ruff check --select I . --fix` to ensure that code is formatted correctly
+- Run tests by using `uv run pytest --mock`
+- To test a specific function, use `uv run pytest -k --mock` 
 
 
 # Common mistakes
 
 - Using uppercase List instead of lowercase list to annotate the type of a list
-- Using uppercase Dist instead of lowercase dist to annotate the type of a dict
+- Using uppercase Dict instead of lowercase dist to annotate the type of a dict
+- Not using `uv run` to run some code within the correct venv

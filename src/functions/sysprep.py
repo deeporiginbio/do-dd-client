@@ -50,7 +50,7 @@ def run_sysprep(
 
     response = client.functions.run(
         key="deeporigin.system-prep",
-        version="0.4.0",
+        version="0.4.1",
         params=payload,
         quote=quote,
     )

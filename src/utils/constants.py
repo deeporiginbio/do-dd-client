@@ -16,12 +16,13 @@ DATAFRAME_ATTRIBUTE_KEYS = {
 
 number = int | float
 
-ENVS = Literal["dev", "prod", "staging", "local", "dev"]
+ENVS = Literal["dev", "prod", "staging", "local"]
 
 API_ENDPOINT = {
     "prod": "https://api.deeporigin.io",
     "staging": "https://api.staging.deeporigin.io",
     "dev": "https://api.dev.deeporigin.io",
+    "local": "http://127.0.0.1:4931",
 }
 
 

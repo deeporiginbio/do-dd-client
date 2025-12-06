@@ -1,6 +1,6 @@
 """this module contains tests for functions. These are meant to be run against a live instance"""
 
-import pytest
+from pathlib import Path
 
 from deeporigin.drug_discovery import (
     BRD_DATA_DIR,
@@ -11,9 +11,14 @@ from deeporigin.drug_discovery import (
 )
 from tests.utils import client  # noqa: F401
 
+# Fixtures directory for test files
+FIXTURES_DIR = Path(__file__).parent / "fixtures"
+
 
 def test_molprops(client):  # noqa: F811
-    ligand = Ligand.from_identifier("serotonin")
+    ligand = Ligand.from_smiles(
+        "Fc1c(-c2cccc3ccccc23)ncc2c(N3C[C@H]4CC[C@@H](C3)N4)nc(OCC34CCCN3CCC4)nc12"
+    )
 
     props = ligand.admet_properties(use_cache=False, client=client)
 
@@ -23,17 +28,9 @@ def test_molprops(client):  # noqa: F811
     assert "logS" in props, "Expected logS to be in the properties"
 
 
-def test_pocket_finder(client, pytestconfig):  # noqa: F811
-    """Test pocket finder function.
-
-    Note: This test is skipped when using --mock flag as the mock server
-    doesn't implement the pocket finder endpoint yet.
-    """
-    use_mock = pytestconfig.getoption("--mock", default=False)
-    if use_mock:
-        pytest.skip("Skipping pocket finder test with --mock (not yet implemented)")
-
-    protein = Protein.from_pdb_id("1EBY")
+def test_pocket_finder(client):  # noqa: F811
+    """Test pocket finder function."""
+    protein = Protein.from_file(FIXTURES_DIR / "1eby.pdb")
     pockets = protein.find_pockets(
         pocket_count=1,
         use_cache=False,
@@ -43,18 +40,14 @@ def test_pocket_finder(client, pytestconfig):  # noqa: F811
     assert len(pockets) == 1, "Incorrect number of pockets"
 
 
-def test_docking(client, pytestconfig):  # noqa: F811
-    """Test docking function.
-
-    Note: This test is skipped when using --mock flag as the mock server
-    doesn't implement the docking endpoint yet.
-    """
-    use_mock = pytestconfig.getoption("--mock", default=False)
-    if use_mock:
-        pytest.skip("Skipping docking test with --mock (not yet implemented)")
-
-    protein = Protein.from_pdb_id("1EBY")
-    pockets = protein.find_pockets(pocket_count=1, client=client)
+def test_docking(client):  # noqa: F811
+    """Test docking function."""
+    protein = Protein.from_file(FIXTURES_DIR / "1eby.pdb")
+    pockets = protein.find_pockets(
+        pocket_count=1,
+        client=client,
+        use_cache=False,
+    )
     pocket = pockets[0]
 
     ligand = Ligand.from_smiles("CN(C)C(=O)c1cccc(-c2cn(C)c(=O)c3[nH]ccc23)c1")
