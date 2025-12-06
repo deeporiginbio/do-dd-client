@@ -89,10 +89,10 @@ jobs:
         run: uv sync --extra test --extra tools --extra plots --extra core
 
       - name: "run tests using a mock client"
-        run: uv run pytest --mock
+        run: uv run pytest --env local
 
       - name: "test docs with pytest markdown-docs"
-        run: uv run pytest -x docs --mock --markdown-docs --markdown-docs-syntax=superfences 
+        run: uv run pytest -x docs --env local --markdown-docs --markdown-docs-syntax=superfences 
 
 
 
