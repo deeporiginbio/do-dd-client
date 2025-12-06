@@ -1,5 +1,7 @@
 """this module contains tests for functions. These are meant to be run against a live instance"""
 
+from pathlib import Path
+
 from deeporigin.drug_discovery import (
     BRD_DATA_DIR,
     Complex,
@@ -8,6 +10,9 @@ from deeporigin.drug_discovery import (
     Protein,
 )
 from tests.utils import client  # noqa: F401
+
+# Fixtures directory for test files
+FIXTURES_DIR = Path(__file__).parent / "fixtures"
 
 
 def test_molprops(client):  # noqa: F811
@@ -25,7 +30,7 @@ def test_molprops(client):  # noqa: F811
 
 def test_pocket_finder(client):  # noqa: F811
     """Test pocket finder function."""
-    protein = Protein.from_pdb_id("1EBY")
+    protein = Protein.from_file(FIXTURES_DIR / "1eby.pdb")
     pockets = protein.find_pockets(
         pocket_count=1,
         use_cache=False,
@@ -37,7 +42,7 @@ def test_pocket_finder(client):  # noqa: F811
 
 def test_docking(client):  # noqa: F811
     """Test docking function."""
-    protein = Protein.from_pdb_id("1EBY")
+    protein = Protein.from_file(FIXTURES_DIR / "1eby.pdb")
     pockets = protein.find_pockets(pocket_count=1, client=client)
     pocket = pockets[0]
 
