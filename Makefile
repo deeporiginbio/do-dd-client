@@ -13,7 +13,7 @@ test:
 	uv run ruff format .
 	uv run ruff check --select I . --fix
 	uv run interrogate -c pyproject.toml -vv . -f 100 --omit-covered-files
-	uv run pytest -x --failed-first -k $(chosen_tests) --mock --org_key $(org_key)
+	uv run pytest -x --failed-first -k $(chosen_tests) --env local --org_key $(org_key)
 	uv run pytest -x docs --markdown-docs --markdown-docs-syntax=superfences
 
 # set up jupyter dev kernel

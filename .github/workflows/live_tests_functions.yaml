@@ -1,4 +1,4 @@
-name: Test DO Functions 
+name: Test Functions 
 
 on:
   workflow_dispatch:
@@ -21,11 +21,11 @@ on:
       - 'src/functions/**/*.py'
 
 jobs:
-  test-functions-on-production:
+  test-functions-on-environment:
     environment: ${{ inputs.env || 'prod' }}
     runs-on: ubuntu-latest
     env:
-      DEEP_ORIGIN_ENV: ${{ inputs.env || 'prod' }}
+      DEEPORIGIN_ENV: ${{ inputs.env || 'prod' }}
 
     steps:
       - uses: actions/checkout@v4
@@ -36,7 +36,7 @@ jobs:
       
       - name: Set up Python
         run: uv python install
-      - name: Select API token
+      - name: Select env
         run: |
           ENV="${{ inputs.env || 'prod' }}"
           if [ "$ENV" = "prod" ]; then

@@ -9,6 +9,7 @@ tools, functions, clusters, files, and executions.
 from __future__ import annotations
 
 import json
+import os
 from typing import Any, Dict, Optional, Tuple
 import uuid
 import weakref
@@ -26,7 +27,7 @@ from deeporigin.platform.organizations import Organizations
 
 # Import Tools - safe because tools.py uses TYPE_CHECKING for DeepOriginClient
 from deeporigin.platform.tools import Tools
-from deeporigin.utils.constants import API_ENDPOINT, ENVS
+from deeporigin.utils.constants import API_ENDPOINT, ENV_VARIABLES, ENVS
 from deeporigin.utils.core import _ensure_do_folder
 
 
@@ -230,33 +231,65 @@ class DeepOriginClient:
     @classmethod
     def from_env(
         cls,
-        env: ENVS,
+        env: ENVS | None = None,
         *,
+        base_url: str | None = None,
         timeout: float = 10.0,
     ) -> "DeepOriginClient":
         """Create a client instance from environment configuration.
 
-        Reads the token from ~/.DeepOrigin/api_tokens.json using the appropriate
-        environment key, and reads the org_key from the config file.
+        Reads configuration from environment variables (DEEPORIGIN_TOKEN,
+        DEEPORIGIN_REFRESH_TOKEN, DEEPORIGIN_ORG_KEY, DEEPORIGIN_ENV) or from
+        disk files (~/.DeepOrigin/api_tokens.json and config.json).
 
         Args:
-            env: Environment name (e.g., 'prod', 'staging'). Required.
+            env: Environment name (e.g., 'prod', 'staging', 'local'). If None,
+                reads from DEEPORIGIN_ENV environment variable or config file.
+            base_url: Base URL for the API. If None, derived from env (defaults
+                to http://127.0.0.1:4931 for 'local').
             timeout: Request timeout in seconds.
-            http2: Whether to enable HTTP/2.
 
         Returns:
-            A new DeepOriginClient instance configured from environment files.
+            A new DeepOriginClient instance configured from environment variables
+            or files.
         """
-        # Get tokens for the specified environment
+        # Determine environment
+        if env is None:
+            env = os.environ.get(ENV_VARIABLES["env"]) or get_value()["env"]
+            if not env:
+                env = "prod"  # default
+
+        # Validate env is a valid ENVS type
+        if env not in ["dev", "prod", "staging", "local"]:
+            raise ValueError(
+                f"Invalid environment: {env}. Must be one of: dev, prod, staging, local"
+            )
+
+        if env == "local":
+            # short circuit for local - use dummy tokens, no disk/env reading
+            # base_url can be overridden by the caller (e.g., test_server_url)
+            if base_url is None:
+                base_url = API_ENDPOINT["local"]
+            return cls(
+                token="token",
+                org_key="deeporigin",
+                env="local",
+                base_url=base_url,
+                timeout=timeout,
+                refresh_token="refresh_token",
+            )
+
+        # Get tokens for the specified environment (reads from env vars or files)
         tokens = get_tokens(env=env)
         token = tokens["access"]
         refresh_token = tokens.get("refresh")
 
-        # Get org_key from config
+        # Get org_key (reads from env vars or config file)
         org_key = get_value()["org_key"]
 
-        # Get base_url from environment
-        base_url = API_ENDPOINT[env]
+        # Get base_url
+        if base_url is None:
+            base_url = API_ENDPOINT[env]
 
         return cls(
             token=token,

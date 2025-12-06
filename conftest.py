@@ -15,16 +15,17 @@ from tests.mock_server import MockServer
 def test_server(pytestconfig):
     """Start a local test server for the duration of the test session.
 
-    Only starts if --mock flag is passed. Otherwise yields None.
+    Only starts if --env local is passed. Otherwise yields None.
 
     Args:
         pytestconfig: Pytest configuration object.
 
     Yields:
-        MockServer instance that is running, or None if --mock is not passed.
+        MockServer instance that is running, or None if --env local is not passed.
     """
-    use_mock = pytestconfig.getoption("--mock", default=False)
-    if not use_mock:
+    env = pytestconfig.getoption("--env", default=None)
+    
+    if env != "local":
         yield None
         return
 
@@ -42,7 +43,7 @@ def test_server_url(test_server):
         test_server: The test server fixture.
 
     Yields:
-        Base URL of the test server (e.g., "http://127.0.0.1:4931"), or None if --mock is not passed.
+        Base URL of the test server (e.g., "http://127.0.0.1:4931"), or None if --env local is not passed.
     """
     if test_server is None:
         yield None
@@ -61,10 +62,11 @@ def pytest_addoption(parser):
         help="Organization key to use for the client",
     )
     parser.addoption(
-        "--mock",
-        action="store_true",
-        default=False,
-        help="Use local mock server instead of real API",
+        "--env",
+        action="store",
+        default=None,
+        choices=["local", "dev", "staging", "prod"],
+        help="Environment to use for the client (local, dev, staging, prod)",
     )
 
 
