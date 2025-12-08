@@ -8,7 +8,7 @@ on:
         type: choice
         required: true
         default: prod
-        options: [dev, staging,prod]
+        options: [dev, staging, prod]
 
 
   # Run every day
@@ -59,4 +59,4 @@ jobs:
 
 
       - name: Run tests against a live instance
-        run: uv run pytest -v -s --log-cli-level=ERROR -k test_functions 
+        run: uv run pytest -v -s --log-cli-level=ERROR -k test_functions --env "${{ inputs.env || 'prod' }}"
