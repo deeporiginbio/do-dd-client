@@ -231,22 +231,6 @@ sim.abfe._params["end_to_end"]["binding"]["n_windows"] = 24
 
     Changing parameters away from the defaults may lead to simulation failures.
 
-### Using `test_run`
-
-The test run parameter can be used to run ABFE for a short number of steps, to verify that all steps execute without consuming too many CPU cycles. This should not be used to run production simulations.
-
-To set the test run parameter to 1, we can use:
-
-
-```{.python notest}
-
-from deeporigin.drug_discovery import Complex, BRD_DATA_DIR
-sim = Complex.from_dir(BRD_DATA_DIR)
-
-sim.abfe.set_test_run(1)
-```
-
-
 
 ## Results
 
