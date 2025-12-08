@@ -886,22 +886,16 @@ class Ligand(Entity):
         if client is None:
             client = DeepOriginClient.get()
 
-        try:
-            props = molprops(
-                smiles_list=[self.smiles],
-                use_cache=use_cache,
-                properties={"pains", "logs", "logd", "herg", "cyp", "logp", "ames"},
-                client=client,
-            )[0]  # should be only one in the list
-            for key, value in props.items():
-                self.set_property(key, value)
+        props = molprops(
+            smiles_list=[self.smiles],
+            use_cache=use_cache,
+            properties={"pains", "logs", "logd", "herg", "cyp", "logp", "ames"},
+            client=client,
+        )[0]  # should be only one in the list
+        for key, value in props.items():
+            self.set_property(key, value)
 
-            return props
-        except Exception as e:
-            raise DeepOriginException(
-                title="Failed to predict ADMET properties",
-                message=f"Failed to predict ADMET properties: {str(e)}",
-            ) from e
+        return props
 
     def update_coordinates(self, coordinates: np.ndarray):
         """update coordinates of the ligand structure"""
