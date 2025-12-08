@@ -133,6 +133,8 @@ class Functions:
 
 
 def _check_response(response: dict, key, version) -> None:
+    if "quotationResult" not in response:
+        return
     if response["quotationResult"]["anyFailed"] or response["status"] == "NotApproved":
         raise DeepOriginException(
             title=f"Failed to run function: {key}/{version}",
