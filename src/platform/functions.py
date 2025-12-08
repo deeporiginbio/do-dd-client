@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from deeporigin.exceptions import DeepOriginException
+
 if TYPE_CHECKING:
     from deeporigin.platform.client import DeepOriginClient
 
@@ -75,6 +77,8 @@ class Functions:
         )
         self._c._client.timeout = original_timeout
 
+        _check_response(response, key, "latest")
+
         return response
 
     def run(
@@ -124,4 +128,14 @@ class Functions:
         )
         self._c._client.timeout = original_timeout
 
+        _check_response(response, key, version)
         return response
+
+
+def _check_response(response: dict, key, version) -> None:
+    if response["quotationResult"]["anyFailed"] or response["status"] == "NotApproved":
+        raise DeepOriginException(
+            title=f"Failed to run function: {key}/{version}",
+            message="Failed to run function. This function run was not approved. ",
+            fix="Please contact support at https://help.deeporigin.com.",
+        ) from None
