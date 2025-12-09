@@ -5,7 +5,6 @@ import json
 import os
 from pathlib import Path
 import time
-from typing import Optional
 
 from beartype import beartype
 import httpx
@@ -292,36 +291,8 @@ def is_token_expired(token: str) -> bool:
 
 
 @beartype
-def decode_access_token(
-    token: Optional[str] = None,
-    env: Optional[ENVS] = None,
-) -> dict:
+def decode_access_token(token: str) -> dict:
     """decode access token into human readable data"""
-
-    if env == "local":
-        # we fake a decoded token for local development
-        now = int(time.time())
-        one_year_seconds = 365 * 24 * 60 * 60
-        return {
-            "exp": now + one_year_seconds,
-            "iat": now,
-            "jti": "onrtro:11f26c41-4d64-15dc-cc13-bfbbfedbd744",
-            "iss": "https://local.deeporigin.io/realms/deeporigin",
-            "aud": ["do-app", "auth-service"],
-            "sub": "6b06d8f8-1f55-472c-a86c-f19651ba4b20",
-            "typ": "Bearer",
-            "azp": "pa-token-365d",
-            "sid": "3516d772-185c-6422-6bd8-5f7f34cf6a71",
-            "scope": "organizations:owner long-live-token",
-            "email_verified": True,
-            "name": "Doe User",
-            "given_name": "User",
-            "family_name": "Doe",
-            "email": "user@deeporigin.com",
-        }
-
-    if token is None:
-        token = get_token(env=env)
 
     # Get the JWT header
     header = jwt.get_unverified_header(token)
