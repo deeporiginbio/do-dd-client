@@ -10,13 +10,11 @@ from __future__ import annotations
 
 import json
 import os
-import time
 from typing import Any, Dict, Optional, Tuple, get_args
 import uuid
 import weakref
 
 import httpx
-import jwt
 
 from deeporigin.auth import get_token
 from deeporigin.config import get_value
@@ -29,29 +27,6 @@ from deeporigin.platform.organizations import Organizations
 from deeporigin.platform.tools import Tools
 from deeporigin.utils.constants import API_ENDPOINT, ENV_VARIABLES, ENVS
 from deeporigin.utils.core import _ensure_do_folder
-
-now = int(time.time())
-one_year_seconds = 365 * 24 * 60 * 60
-decoded_token = {
-    "exp": now + one_year_seconds,
-    "iat": now,
-    "jti": "onrtro:11f26c41-4d64-15dc-cc13-bfbbfedbd744",
-    "iss": "https://local.deeporigin.io/realms/deeporigin",
-    "aud": ["do-app", "auth-service"],
-    "sub": "6b06d8f8-1f55-472c-a86c-f19651ba4b20",
-    "typ": "Bearer",
-    "azp": "pa-token-365d",
-    "sid": "3516d772-185c-6422-6bd8-5f7f34cf6a71",
-    "scope": "organizations:owner long-live-token",
-    "email_verified": True,
-    "name": "Doe User",
-    "given_name": "User",
-    "family_name": "Doe",
-    "email": "user@deeporigin.com",
-}
-
-
-LOCAL_TOKEN = jwt.encode(decoded_token, "secret")
 
 
 class DeepOriginClient:
@@ -282,6 +257,31 @@ class DeepOriginClient:
             )
 
         if env == "local":
+            import time
+
+            import jwt
+
+            now = int(time.time())
+            one_year_seconds = 365 * 24 * 60 * 60
+            decoded_token = {
+                "exp": now + one_year_seconds,
+                "iat": now,
+                "jti": "onrtro:11f26c41-4d64-15dc-cc13-bfbbfedbd744",
+                "iss": "https://local.deeporigin.io/realms/deeporigin",
+                "aud": ["do-app", "auth-service"],
+                "sub": "6b06d8f8-1f55-472c-a86c-f19651ba4b20",
+                "typ": "Bearer",
+                "azp": "pa-token-365d",
+                "sid": "3516d772-185c-6422-6bd8-5f7f34cf6a71",
+                "scope": "organizations:owner long-live-token",
+                "email_verified": True,
+                "name": "Doe User",
+                "given_name": "User",
+                "family_name": "Doe",
+                "email": "user@deeporigin.com",
+            }
+
+            LOCAL_TOKEN = jwt.encode(decoded_token, "secret")
             # short circuit for local - use dummy tokens, no disk/env reading
             # base_url can be overridden by the caller (e.g., test_server_url)
             if base_url is None:
