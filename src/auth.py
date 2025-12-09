@@ -38,7 +38,7 @@ def _get_api_tokens_filepath() -> Path:
 
 
 @beartype
-def read_cached_tokens(*, env: ENVS | None = None) -> str | None:
+def read_cached_token(*, env: ENVS | None = None) -> str | None:
     """Read cached API access token for a specific environment.
 
     Args:
@@ -112,7 +112,7 @@ def get_token(*, env: ENVS | None = None) -> str:
 
     # Try to read from disk first
     if tokens_exist(env=env):
-        token = read_cached_tokens(env=env)
+        token = read_cached_token(env=env)
 
     # tokens in env override tokens on disk
     if ENV_VARIABLES["access_token"] in os.environ:
