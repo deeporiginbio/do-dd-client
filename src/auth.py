@@ -1,18 +1,15 @@
 """this module handles authentication actions and interactions
 with tokens"""
 
-from functools import lru_cache
 import json
 import os
 from pathlib import Path
 import time
 from typing import Optional
-from urllib.parse import urljoin
 
 from beartype import beartype
 import httpx
 import jwt
-from jwt.algorithms import RSAAlgorithm
 
 from deeporigin.config import get_value as get_config
 from deeporigin.exceptions import DeepOriginException
@@ -23,33 +20,15 @@ from deeporigin.utils.core import (
 )
 
 __all__ = [
-    "get_tokens",
-    "cache_tokens",
+    "get_token",
     "remove_cached_tokens",
-    "authenticate",
-    "refresh_tokens",
     "save_token",
 ]
 
 AUTH_DOMAIN = {
     "dev": "https://login.dev.deeporigin.io",
-    "prod": "https://formicbio.us.auth0.com",
-    "staging": "https://formicbio.us.auth0.com",
-}
-
-AUTH_DEVICE_CODE_ENDPOINT = "/oauth/device/code"
-AUTH_TOKEN_ENDPOINT = "/oauth/token"
-AUTH_AUDIENCE = "https://os.deeporigin.io/api"
-
-
-AUTH_GRANT_TYPE = "urn:ietf:params:oauth:grant-type:device_code"
-
-AUTH_CLIENT_ID = {
-    "prod": "m3iyUcrANcIap2ogzWKpnYxCNujOrW3s",
-}
-
-AUTH_CLIENT_SECRET = {
-    "prod": "cQcZclTqMHMuovyXV-DD15tEiL-KH_2XD36vsppULRBuq7AjwyI4dh5ag11O_K1S",
+    "prod": "https://login.deeporigin.io",
+    "staging": "https://login.staging.deeporigin.io",
 }
 
 
@@ -61,16 +40,16 @@ def _get_api_tokens_filepath() -> Path:
 
 
 @beartype
-def read_cached_tokens(*, env: ENVS | None = None) -> dict:
-    """Read cached API tokens for a specific environment.
+def read_cached_tokens(*, env: ENVS | None = None) -> str | None:
+    """Read cached API access token for a specific environment.
 
     Args:
         env: Environment name (e.g., 'prod', 'staging', 'edge').
             If None, reads from config.
 
     Returns:
-        Dictionary with 'access' and 'refresh' tokens for the specified environment.
-        Returns empty dict if tokens don't exist for that environment.
+        Access token string for the specified environment.
+        Returns None if tokens don't exist for that environment.
     """
     if env is None:
         env = get_config()["env"]
@@ -78,13 +57,13 @@ def read_cached_tokens(*, env: ENVS | None = None) -> dict:
     filepath = _get_api_tokens_filepath()
 
     if not filepath.exists():
-        return {}
+        return None
 
     with open(filepath, "r") as file:
         all_tokens = json.load(file)
 
-    # Return tokens for the specific environment
-    return all_tokens.get(env, {})
+    # Return access token for the specific environment
+    return all_tokens.get(env)
 
 
 @beartype
@@ -111,7 +90,8 @@ def tokens_exist(*, env: ENVS | None = None) -> bool:
     return bool(env in all_tokens and all_tokens[env])
 
 
-def get_tokens(never_prompt: bool = False, *, env: ENVS | None = None) -> dict:
+@beartype
+def get_token(*, env: ENVS | None = None) -> str:
     """Get access token for accessing the Deep Origin API
 
     Gets tokens to access Deep Origin API.
@@ -122,60 +102,51 @@ def get_tokens(never_prompt: bool = False, *, env: ENVS | None = None) -> dict:
     checked for access tokens, and used if they exist.
 
     Args:
-        never_prompt: when True, will not prompt the user to sign in
         env: Environment name. If None, uses current config environment.
 
     Returns:
-        API access and refresh tokens
+        API access token string
     """
     if env is None:
         env = get_config()["env"]
 
-    tokens = {}
+    token = ""
 
+    # Try to read from disk first
     if tokens_exist(env=env):
-        # tokens exist on disk
-        tokens = read_cached_tokens(env=env)
+        token = read_cached_tokens(env=env)
 
     # tokens in env override tokens on disk
-    # try to read from env
     if ENV_VARIABLES["access_token"] in os.environ:
-        tokens["access"] = os.environ[ENV_VARIABLES["access_token"]]
-    if ENV_VARIABLES["refresh_token"] in os.environ:
-        tokens["refresh"] = os.environ[ENV_VARIABLES["refresh_token"]]
+        token = os.environ[ENV_VARIABLES["access_token"]]
 
     if env in ["dev", "local", "staging"]:
-        return tokens
+        return token
 
-    if "access" not in tokens.keys() and not never_prompt:
-        # no tokens in env. have to sign into the platform to get tokens
-        tokens = authenticate(env=env)
-
-    if "access" not in tokens.keys():
+    if not token:
         raise DeepOriginException(
             "No access token found. Failed to get a token from the environment or disk."
         )
 
     # check if the access token is expired
-    try:
-        if is_token_expired(decode_access_token(tokens["access"], env=env)):
-            tokens["access"] = refresh_tokens(tokens["refresh"], env=env)
-            cache_tokens(tokens, env=env)
-    except jwt.DecodeError:
-        # token decoding failed. issue a warning
-        print("⚠️ Token decoding failed. Please sign in again.")
+    if is_token_expired(token):
+        raise DeepOriginException(
+            title="Token Expired",
+            message="Token is expired. Please refer to https://client-docs.deeporigin.io/how-to/auth.html to get a new token.",
+            level="danger",
+        )
 
-    return tokens
+    return token
 
 
 @beartype
-def cache_tokens(tokens: dict, *, env: ENVS | None = None) -> None:
-    """Save access and refresh tokens to a local file, for example, to
+def cache_tokens(token: str, *, env: ENVS | None = None) -> None:
+    """Save access tokens to a local file, for example, to
     enable variables/secrets to be regularly pulled without the user
     needing to regularly re-login.
 
     Args:
-        tokens: dictionary with access and refresh tokens
+        token: Access token string
         env: Environment name. If None, uses current config environment.
     """
     if env is None:
@@ -190,10 +161,7 @@ def cache_tokens(tokens: dict, *, env: ENVS | None = None) -> None:
             all_tokens = json.load(file)
 
     # Update tokens for the specific environment
-    all_tokens[env] = {
-        "access": tokens["access"],
-        "refresh": tokens.get("refresh", ""),
-    }
+    all_tokens[env] = token
 
     # Write back all environments
     with open(filepath, "w") as file:
@@ -236,169 +204,91 @@ def remove_cached_tokens(*, env: ENVS | None = None, remove_all: bool = False) -
 
 
 @beartype
-def authenticate(
-    *,
-    env: Optional[ENVS] = None,
-    save_tokens: bool = True,
-) -> dict:
-    """Get an access token for use with the Deep Origin API.
-    The tokens are also cached to file
-
-    Returns:
-        :obj:`tuple`: API access token, API refresh token
-    """
-
-    if env is None:
-        env = get_config()["env"]
-
-    # Get a link for the user to sign into the Deep Origin platform
-
-    body = {
-        "client_id": AUTH_CLIENT_ID[env],
-        "scope": "offline_access",
-        "audience": AUTH_AUDIENCE,
-    }
-
-    response = httpx.post(AUTH_DOMAIN[env] + AUTH_DEVICE_CODE_ENDPOINT, json=body)
-    response.raise_for_status()
-    response_json = response.json()
-    device_code = response_json["device_code"]
-    user_code = response_json["user_code"]
-    verification_url = response_json["verification_uri_complete"]
-    sign_in_poll_interval_sec = response_json["interval"]
-
-    # Prompt the user to sign into the Deep Origin platform
-    print(
-        (
-            "To connect to the Deep Origin Platform API, "
-            f"navigate your browser to \n\n{verification_url}\n\n"
-            f'and verify the confirmation code is "{user_code}", '
-            'and click the "Confirm" button.'
-        )
-    )
-
-    body = {
-        "grant_type": AUTH_GRANT_TYPE,
-        "device_code": device_code,
-        "client_id": AUTH_CLIENT_ID[env],
-    }
-    # Wait for the user to sign into the Deep Origin platform
-    while True:
-        response = httpx.post(AUTH_DOMAIN[env] + AUTH_TOKEN_ENDPOINT, json=body)
-        if response.status_code == 200:
-            break
-        if (
-            response.status_code != 403
-            or response.json().get("error", None) != "authorization_pending"
-        ):
-            raise DeepOriginException(
-                message="Sign in to Deep Origin failed. Please try again."
-            )
-        time.sleep(sign_in_poll_interval_sec)
-
-    response_json = response.json()
-    api_access_token = response_json["access_token"]
-    api_refresh_token = response_json["refresh_token"]
-
-    tokens = {
-        "access": api_access_token,
-        "refresh": api_refresh_token,
-    }
-
-    if save_tokens:
-        cache_tokens(tokens, env=env)
-
-    return tokens
-
-
-@beartype
-def refresh_tokens(api_refresh_token: str, *, env: Optional[ENVS] = None) -> str:
-    """Refresh the access token for the Deep Origin OS
+def token_to_env(token: str) -> ENVS:
+    """Determine the environment from a token's issuer.
 
     Args:
-        api_refresh_token: API refresh token
+        token: Access token string.
 
     Returns:
-        new API access token
+        Environment name ('dev', 'staging', or 'prod').
     """
-
-    if env is None:
-        env = get_config()["env"]
-
-    body = {
-        "grant_type": "refresh_token",
-        "client_id": AUTH_CLIENT_ID[env],
-        "client_secret": AUTH_CLIENT_SECRET[env],
-        "refresh_token": api_refresh_token,
-    }
-    response = httpx.post(AUTH_DOMAIN[env] + AUTH_TOKEN_ENDPOINT, json=body)
-    response.raise_for_status()
-    response_json = response.json()
-    api_access_token = response_json["access_token"]
-
-    return api_access_token
+    decoded_token = decode_access_token(token)
+    if "dev" in decoded_token["iss"]:
+        return "dev"
+    elif "staging" in decoded_token["iss"]:
+        return "staging"
+    elif "local" in decoded_token["iss"]:
+        return "local"
+    else:
+        return "prod"
 
 
 @beartype
-def save_token(token: str, *, env: ENVS | None = None) -> None:
+def save_token(token: str) -> None:
     """Save a long-lived token from the UI to disk.
 
     This function validates and saves a long-lived token obtained from the
     Deep Origin UI. The token will be stored in the api_tokens.json file
-    and used by get_tokens() and client initialization.
+    and used by get_token() and client initialization.
 
     Args:
         token: Long-lived token string obtained from the UI.
-        env: Environment name. If None, reads from config.
+
 
     Raises:
         DeepOriginException: If token is invalid or cannot be decoded.
     """
-    if env is None:
-        env = get_config()["env"]
 
-    # Store in same format as current tokens (environment-specific)
-    tokens = {"access": token}
-    cache_tokens(tokens, env=env)
+    env = token_to_env(token)
+    decoded_token = decode_access_token(token)
+
+    # Save tokens to disk
+    filepath = _get_api_tokens_filepath()
+
+    # Load existing tokens for all environments
+    all_tokens = {}
+    if filepath.exists():
+        with open(filepath, "r") as file:
+            all_tokens = json.load(file)
+
+    # Update tokens for the specific environment
+    all_tokens[env] = token
+
+    # Write back all environments
+    with open(filepath, "w") as file:
+        json.dump(all_tokens, file, indent=2)
+
+    name = decoded_token["name"]
 
     # Print confirmation
     if _supports_unicode_output():
         check = "✔︎"
     else:
         check = "OK"
-    print(f"{check} Long-lived token saved successfully for environment '{env}'")
+    print(
+        f"{check} Long-lived token for {name} saved successfully for environment '{env}'"
+    )
 
 
 @beartype
-def is_token_expired(token: dict) -> bool:
+def is_token_expired(token: str) -> bool:
     """
-    Check if the JWT token is expired. The token is expected to have an 'exp' field as a Unix timestamp. This dict can be obtained from the `decode_access_token` function.
+    Check if the JWT token is expired. The token is expected to have an 'exp' field as a Unix timestamp.
 
     Args:
-        token (dict): The JWT token with an 'exp' field as a Unix timestamp.
+        token: The JWT token string to check.
 
     Returns:
         bool: True if the token is expired, False otherwise.
     """
+    decoded_token = decode_access_token(token)
     # Get the expiration time from the token, defaulting to 0 if not found.
-    exp_time = token.get("exp", 0)
+    exp_time = decoded_token.get("exp", 0)
     current_time = time.time()  # Get current time in seconds since the epoch.
 
     # If current time is greater than the expiration time, it's expired.
     return current_time > exp_time
-
-
-@lru_cache(maxsize=3)
-@beartype
-def get_public_keys(env: Optional[ENVS] = None) -> list[dict]:
-    """get public keys from public endpoint"""
-
-    if env is None:
-        env = get_config()["env"]
-
-    jwks_url = urljoin(AUTH_DOMAIN[env], ".well-known/jwks.json")
-    data = httpx.get(jwks_url).json()
-    return data["keys"]
 
 
 @beartype
@@ -413,46 +303,32 @@ def decode_access_token(
         now = int(time.time())
         one_year_seconds = 365 * 24 * 60 * 60
         return {
-            "https://deeporigin.io/claims/id/userHandle": "user-deeporigin-com",
-            "https://deeporigin.io/claims/id/userid": "google-apps|user@deeporigin.com",
-            "https://deeporigin.io/claims/id/email": "user@deeporigin.com",
-            "https://deeporigin.io/claims/id/emailVerified": True,
-            "userHandle": "user-deeporigin-com",
-            "userid": "google-apps|user@deeporigin.com",
-            "emailVerified": True,
-            "iss": "https://formicbio.us.auth0.com/",
-            "sub": "google-apps|user@deeporigin.com",
-            "aud": "https://os.deeporigin.io/api",
-            "iat": now,
             "exp": now + one_year_seconds,
-            "scope": "offline_access",
+            "iat": now,
+            "jti": "onrtro:11f26c41-4d64-15dc-cc13-bfbbfedbd744",
+            "iss": "https://local.deeporigin.io/realms/deeporigin",
+            "aud": ["do-app", "auth-service"],
+            "sub": "6b06d8f8-1f55-472c-a86c-f19651ba4b20",
+            "typ": "Bearer",
+            "azp": "pa-token-365d",
+            "sid": "3516d772-185c-6422-6bd8-5f7f34cf6a71",
+            "scope": "organizations:owner long-live-token",
+            "email_verified": True,
+            "name": "Doe User",
+            "given_name": "User",
+            "family_name": "Doe",
+            "email": "user@deeporigin.com",
         }
 
     if token is None:
-        tokens = get_tokens(env=env)
-        token = tokens["access"]
+        token = get_token(env=env)
 
-    # Get the JWT header to extract the Key ID
-    unverified_header = jwt.get_unverified_header(token)
-    kid = unverified_header["kid"]
-
-    # Get the public key using the Key ID
-    public_keys = get_public_keys(env=env)
-    for key in public_keys:
-        if key["kid"] == kid:
-            public_key = RSAAlgorithm.from_jwk(key)
-            break
-        raise DeepOriginException(f"Key ID {kid} not found in JWKS.")
+    # Get the JWT header
+    header = jwt.get_unverified_header(token)
 
     # Decode the JWT using the public key
     return jwt.decode(
-        token,
-        public_key,
-        algorithms=["RS256"],
-        options={
-            "verify_aud": False,  # matches what platform does
-            "verify_exp": False,  # we want to decode this no matter what, because we'll check the expiration in the caller
-        },
+        token, algorithms=header["alg"], options={"verify_signature": False}
     )
 
 

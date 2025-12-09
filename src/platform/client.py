@@ -10,13 +10,15 @@ from __future__ import annotations
 
 import json
 import os
-from typing import Any, Dict, Optional, Tuple
+import time
+from typing import Any, Dict, Optional, Tuple, get_args
 import uuid
 import weakref
 
 import httpx
+import jwt
 
-from deeporigin.auth import get_tokens
+from deeporigin.auth import get_token
 from deeporigin.config import get_value
 from deeporigin.exceptions import DeepOriginException
 from deeporigin.platform.clusters import Clusters
@@ -24,11 +26,32 @@ from deeporigin.platform.executions import Executions
 from deeporigin.platform.files import Files
 from deeporigin.platform.functions import Functions
 from deeporigin.platform.organizations import Organizations
-
-# Import Tools - safe because tools.py uses TYPE_CHECKING for DeepOriginClient
 from deeporigin.platform.tools import Tools
 from deeporigin.utils.constants import API_ENDPOINT, ENV_VARIABLES, ENVS
 from deeporigin.utils.core import _ensure_do_folder
+
+now = int(time.time())
+one_year_seconds = 365 * 24 * 60 * 60
+decoded_token = {
+    "exp": now + one_year_seconds,
+    "iat": now,
+    "jti": "onrtro:11f26c41-4d64-15dc-cc13-bfbbfedbd744",
+    "iss": "https://local.deeporigin.io/realms/deeporigin",
+    "aud": ["do-app", "auth-service"],
+    "sub": "6b06d8f8-1f55-472c-a86c-f19651ba4b20",
+    "typ": "Bearer",
+    "azp": "pa-token-365d",
+    "sid": "3516d772-185c-6422-6bd8-5f7f34cf6a71",
+    "scope": "organizations:owner long-live-token",
+    "email_verified": True,
+    "name": "Doe User",
+    "given_name": "User",
+    "family_name": "Doe",
+    "email": "user@deeporigin.com",
+}
+
+
+LOCAL_TOKEN = jwt.encode(decoded_token, "secret")
 
 
 class DeepOriginClient:
@@ -50,8 +73,6 @@ class DeepOriginClient:
         env: ENVS | None = None,
         base_url: str | None = None,
         timeout: float = 10.0,
-        http2: bool = False,  # often faster off for simple REST
-        refresh_token: str | None = None,
     ):
         """Initialize a DeepOrigin Platform client.
 
@@ -67,16 +88,10 @@ class DeepOriginClient:
                 base_url is None, reads from config.
             base_url: Base URL for the API. If None, derived from env or config.
             timeout: Request timeout in seconds.
-            http2: Whether to enable HTTP/2.
-            refresh_token: Refresh token. If None and token is None, reads from config file.
         """
 
         if token is None:
-            tokens = get_tokens()
-            token = tokens["access"]
-
-            if refresh_token is None:
-                refresh_token = tokens.get("refresh")
+            token = get_token()
 
         if org_key is None:
             org_key = get_value()["org_key"]
@@ -92,7 +107,6 @@ class DeepOriginClient:
             # get the base url from the environment
             base_url = API_ENDPOINT[env]
 
-        self.refresh_token = refresh_token
         self.env = env
 
         self._org_key = org_key
@@ -112,7 +126,6 @@ class DeepOriginClient:
                 "Accept": "application/json",
             },
             timeout=timeout,
-            http2=http2,
         )
 
         # Set token property which will update headers automatically
@@ -164,9 +177,19 @@ class DeepOriginClient:
         """Return a string representation of the client.
 
         Returns:
-            A string showing the client's token (truncated), org_key, and base_url.
+            A string showing the client's name (from token), org_key, and base_url.
         """
-        return f"DeepOrigin Platform Client(org_key={self.org_key}, base_url={self.base_url})"
+        from deeporigin import auth
+
+        name = "Unknown"
+        try:
+            decoded_token = auth.decode_access_token(self.token, env=self.env)
+            name = decoded_token.get("name", "Unknown")
+        except Exception:
+            # If token decoding fails, use "Unknown"
+            pass
+
+        return f"DeepOrigin Platform Client for {name} (org_key={self.org_key}, base_url={self.base_url})"
 
     # -------- Singleton helpers --------
     @classmethod
@@ -178,7 +201,6 @@ class DeepOriginClient:
         env: ENVS | None = None,
         base_url: str | None = None,
         timeout: float = 10.0,
-        http2: bool = False,
         replace: bool = False,
     ) -> "DeepOriginClient":
         """
@@ -188,11 +210,7 @@ class DeepOriginClient:
         """
         # Resolve config values (same logic as __init__)
         if token is None:
-            tokens = get_tokens()
-            token = tokens["access"]
-            refresh_token = tokens.get("refresh")
-        else:
-            refresh_token = None
+            token = get_token()
 
         if org_key is None:
             org_key = get_value()["org_key"]
@@ -222,8 +240,6 @@ class DeepOriginClient:
                 env=env,
                 base_url=base_url,
                 timeout=timeout,
-                http2=http2,
-                refresh_token=refresh_token,
             )
 
         return cls._instances[key]
@@ -239,7 +255,7 @@ class DeepOriginClient:
         """Create a client instance from environment configuration.
 
         Reads configuration from environment variables (DEEPORIGIN_TOKEN,
-        DEEPORIGIN_REFRESH_TOKEN, DEEPORIGIN_ORG_KEY, DEEPORIGIN_ENV) or from
+        DEEPORIGIN_ORG_KEY, DEEPORIGIN_ENV) or from
         disk files (~/.DeepOrigin/api_tokens.json and config.json).
 
         Args:
@@ -260,7 +276,7 @@ class DeepOriginClient:
                 env = "prod"  # default
 
         # Validate env is a valid ENVS type
-        if env not in ["dev", "prod", "staging", "local"]:
+        if env not in get_args(ENVS):
             raise ValueError(
                 f"Invalid environment: {env}. Must be one of: dev, prod, staging, local"
             )
@@ -271,18 +287,15 @@ class DeepOriginClient:
             if base_url is None:
                 base_url = API_ENDPOINT["local"]
             return cls(
-                token="token",
+                token=LOCAL_TOKEN,
                 org_key="deeporigin",
                 env="local",
                 base_url=base_url,
                 timeout=timeout,
-                refresh_token="refresh_token",
             )
 
-        # Get tokens for the specified environment (reads from env vars or files)
-        tokens = get_tokens(env=env)
-        token = tokens["access"]
-        refresh_token = tokens.get("refresh")
+        # Get token for the specified environment (reads from env vars or files)
+        token = get_token(env=env)
 
         # Get org_key (reads from env vars or config file)
         org_key = get_value()["org_key"]
@@ -297,7 +310,6 @@ class DeepOriginClient:
             env=env,
             base_url=base_url,
             timeout=timeout,
-            refresh_token=refresh_token,
         )
 
     @classmethod
@@ -315,28 +327,13 @@ class DeepOriginClient:
     def check_token(self) -> None:
         """Check if the token is expired."""
 
-        if self.env in ["dev", "local", "staging"]:
-            # no check for these envs
-            return
         from deeporigin import auth
 
-        if auth.is_token_expired(auth.decode_access_token(self.token, env=self.env)):
-            if self.refresh_token is None:
-                raise DeepOriginException(
-                    title="Refresh Token Required",
-                    message="The refresh token is not set. Please set it before using the client, using the `config` module.",
-                    fix="Use `config.set_refresh_token(refresh_token)` to set the refresh token.",
-                    level="danger",
-                )
-
-            # at this point, if we have a refresh token, we can assume that it's safe to cache to disk
-            self.token = auth.refresh_tokens(self.refresh_token, env=self.env)
-            auth.cache_tokens(
-                tokens={
-                    "access": self.token,
-                    "refresh": self.refresh_token,
-                },
-                env=self.env,
+        if auth.is_token_expired(self.token):
+            raise DeepOriginException(
+                title="Token Expired",
+                message="Token is expired. Please refer to https://client-docs.deeporigin.io/how-to/auth.html to get a new token.",
+                level="danger",
             )
 
     # Removing from registry when explicitly closed

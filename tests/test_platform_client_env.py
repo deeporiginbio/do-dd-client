@@ -1,8 +1,6 @@
 """Tests for environment variable fallbacks in platform DeepOriginClient."""
 
-import json
 import os
-from pathlib import Path
 from typing import Generator
 from unittest.mock import patch
 
@@ -77,13 +75,10 @@ def test_org_key_returns_valid_value() -> None:
 def test_from_env_reads_token_and_org_key_from_files() -> None:
     """Test that from_env reads token from api_tokens.json and org_key from config."""
     with (
-        patch("deeporigin.platform.client.get_tokens") as mock_get_tokens,
+        patch("deeporigin.platform.client.get_token") as mock_get_token,
         patch("deeporigin.platform.client.get_value") as mock_get_value,
     ):
-        mock_get_tokens.return_value = {
-            "access": "token_from_file",
-            "refresh": "refresh_from_file",
-        }
+        mock_get_token.return_value = "token_from_file"
         mock_get_value.return_value = {"env": "prod", "org_key": "org_from_config"}
 
         client = DeepOriginClient.from_env(env="prod")
@@ -91,20 +86,17 @@ def test_from_env_reads_token_and_org_key_from_files() -> None:
         assert client.token == "token_from_file"
         assert client.org_key == "org_from_config"
         assert client.env == "prod"
-        mock_get_tokens.assert_called_once_with(env="prod")
+        mock_get_token.assert_called_once_with(env="prod")
         mock_get_value.assert_called_once()  # Called for org_key
 
 
 def test_from_env_with_explicit_env() -> None:
     """Test that from_env uses explicit env parameter when provided."""
     with (
-        patch("deeporigin.platform.client.get_tokens") as mock_get_tokens,
+        patch("deeporigin.platform.client.get_token") as mock_get_token,
         patch("deeporigin.platform.client.get_value") as mock_get_value,
     ):
-        mock_get_tokens.return_value = {
-            "access": "token_staging",
-            "refresh": "refresh_staging",
-        }
+        mock_get_token.return_value = "token_staging"
         mock_get_value.return_value = {"env": "prod", "org_key": "org_from_config"}
 
         client = DeepOriginClient.from_env(env="staging")
@@ -112,21 +104,18 @@ def test_from_env_with_explicit_env() -> None:
         assert client.token == "token_staging"
         assert client.org_key == "org_from_config"
         assert client.env == "staging"
-        mock_get_tokens.assert_called_once_with(env="staging")
+        mock_get_token.assert_called_once_with(env="staging")
 
 
-def test_from_env_uses_refresh_token_from_file() -> None:
-    """Test that from_env includes refresh token when available."""
+def test_from_env_reads_token_from_file() -> None:
+    """Test that from_env reads token from file."""
     with (
-        patch("deeporigin.platform.client.get_tokens") as mock_get_tokens,
+        patch("deeporigin.platform.client.get_token") as mock_get_token,
         patch("deeporigin.platform.client.get_value") as mock_get_value,
     ):
-        mock_get_tokens.return_value = {
-            "access": "token_from_file",
-            "refresh": "refresh_from_file",
-        }
+        mock_get_token.return_value = "token_from_file"
         mock_get_value.return_value = {"env": "prod", "org_key": "org_from_config"}
 
         client = DeepOriginClient.from_env(env="prod")
 
-        assert client.refresh_token == "refresh_from_file"
+        assert client.token == "token_from_file"

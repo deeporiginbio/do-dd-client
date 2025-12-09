@@ -10,6 +10,7 @@ from datetime import datetime, timezone
 import json
 from pathlib import Path
 import threading
+import time
 from typing import Any
 import uuid
 
@@ -831,7 +832,6 @@ class MockServer:
         self.thread.start()
 
         # Wait for server to start
-        import time
 
         max_wait = 5.0
         waited = 0.0
