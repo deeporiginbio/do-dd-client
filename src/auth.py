@@ -258,7 +258,7 @@ def save_token(token: str) -> None:
     with open(filepath, "w") as file:
         json.dump(all_tokens, file, indent=2)
 
-    name = decoded_token["name"]
+    name = decoded_token.get("name", "Unknown User")
 
     # Print confirmation
     if _supports_unicode_output():
