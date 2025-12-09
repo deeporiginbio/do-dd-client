@@ -93,7 +93,7 @@ def tokens_exist(*, env: ENVS | None = None) -> bool:
 def get_token(*, env: ENVS | None = None) -> str:
     """Get access token for accessing the Deep Origin API
 
-    Gets tokens to access Deep Origin API.
+    Gets token to access Deep Origin API.
 
 
     If an access token exists in the ENV, then it is used before
