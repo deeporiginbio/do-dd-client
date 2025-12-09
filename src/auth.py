@@ -108,7 +108,7 @@ def get_token(*, env: ENVS | None = None) -> str:
     if env is None:
         env = get_config()["env"]
 
-    token = ""
+    token = None
 
     # Try to read from disk first
     if tokens_exist(env=env):

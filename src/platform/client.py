@@ -275,9 +275,9 @@ class DeepOriginClient:
                 "sid": "3516d772-185c-6422-6bd8-5f7f34cf6a71",
                 "scope": "organizations:owner long-live-token",
                 "email_verified": True,
-                "name": "Doe User",
-                "given_name": "User",
-                "family_name": "Doe",
+                "name": "Local User",
+                "given_name": "Local",
+                "family_name": "User",
                 "email": "user@deeporigin.com",
             }
 
