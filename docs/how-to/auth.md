@@ -2,7 +2,7 @@
 
 ## Get a platform API token
 
-To use the Deep Origin client, you must first obtain a API token. 
+To use the Deep Origin client, you must first obtain an API token. 
 
 Navigate to [https://os.deeporigin.io/account?tab=tokens](https://os.deeporigin.io/account?tab=tokens). You will see a screen similar to:
 
