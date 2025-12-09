@@ -28,7 +28,7 @@ Now, in the client, use the following function to set the token:
 ```{.python notest}
 from deeporigin import auth
 
-auth.set_token("your-token-here")
+auth.save_token("your-token-here")
 ```
 
 You are now ready to use the client! 
