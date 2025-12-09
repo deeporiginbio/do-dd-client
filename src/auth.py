@@ -20,7 +20,6 @@ from deeporigin.utils.core import (
 
 __all__ = [
     "get_token",
-    "remove_cached_tokens",
     "save_token",
 ]
 
@@ -136,70 +135,6 @@ def get_token(*, env: ENVS | None = None) -> str:
         )
 
     return token
-
-
-@beartype
-def cache_tokens(token: str, *, env: ENVS | None = None) -> None:
-    """Save access tokens to a local file, for example, to
-    enable variables/secrets to be regularly pulled without the user
-    needing to regularly re-login.
-
-    Args:
-        token: Access token string
-        env: Environment name. If None, uses current config environment.
-    """
-    if env is None:
-        env = get_config()["env"]
-
-    filepath = _get_api_tokens_filepath()
-
-    # Load existing tokens for all environments
-    all_tokens = {}
-    if filepath.exists():
-        with open(filepath, "r") as file:
-            all_tokens = json.load(file)
-
-    # Update tokens for the specific environment
-    all_tokens[env] = token
-
-    # Write back all environments
-    with open(filepath, "w") as file:
-        json.dump(all_tokens, file, indent=2)
-
-
-def remove_cached_tokens(*, env: ENVS | None = None, remove_all: bool = False) -> None:
-    """Remove cached API tokens for a specific environment or all environments.
-
-    Args:
-        env: Environment name. If None and remove_all is False, removes tokens for current config environment.
-        remove_all: If True, removes all tokens and deletes the file regardless of env parameter.
-    """
-    filepath = _get_api_tokens_filepath()
-
-    if remove_all:
-        # Remove entire file
-        if filepath.exists():
-            filepath.unlink()
-        return
-
-    if env is None:
-        env = get_config()["env"]
-
-    # Remove tokens for specific environment
-    if filepath.exists():
-        with open(filepath, "r") as file:
-            all_tokens = json.load(file)
-
-        # Remove specific environment
-        if env in all_tokens:
-            del all_tokens[env]
-
-        # Write back (or remove file if empty)
-        if all_tokens:
-            with open(filepath, "w") as file:
-                json.dump(all_tokens, file, indent=2)
-        else:
-            filepath.unlink()
 
 
 @beartype
