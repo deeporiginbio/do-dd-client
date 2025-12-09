@@ -118,9 +118,6 @@ def get_token(*, env: ENVS | None = None) -> str:
     if ENV_VARIABLES["access_token"] in os.environ:
         token = os.environ[ENV_VARIABLES["access_token"]]
 
-    if env in ["dev", "local", "staging"]:
-        return token
-
     if not token:
         raise DeepOriginException(
             "No access token found. Failed to get a token from the environment or disk."
