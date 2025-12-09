@@ -47,7 +47,7 @@ def read_cached_token(*, env: ENVS | None = None) -> str | None:
 
     Returns:
         Access token string for the specified environment.
-        Returns None if tokens don't exist for that environment.
+        Returns None if token does not exist for that environment.
     """
     if env is None:
         env = get_config()["env"]
@@ -66,13 +66,13 @@ def read_cached_token(*, env: ENVS | None = None) -> str | None:
 
 @beartype
 def tokens_exist(*, env: ENVS | None = None) -> bool:
-    """Check if cached API tokens exist for a specific environment.
+    """Check if cached API token exist for a specific environment.
 
     Args:
         env: Environment name. If None, checks for current config environment.
 
     Returns:
-        True if tokens exist for the environment, False otherwise.
+        True if token exists for the environment, False otherwise.
     """
     if env is None:
         env = get_config()["env"]
@@ -96,8 +96,8 @@ def get_token(*, env: ENVS | None = None) -> str:
 
 
     If an access token exists in the ENV, then it is used before
-    anything else. If not, then tokens file is
-    checked for access tokens, and used if they exist.
+    anything else. If not, then the tokens file is
+    checked for access token, and used if they exist.
 
     Args:
         env: Environment name. If None, uses current config environment.
