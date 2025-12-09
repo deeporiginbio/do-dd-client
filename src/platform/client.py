@@ -183,7 +183,7 @@ class DeepOriginClient:
 
         name = "Unknown"
         try:
-            decoded_token = auth.decode_access_token(self.token, env=self.env)
+            decoded_token = auth.decode_access_token(self.token)
             name = decoded_token.get("name", "Unknown")
         except Exception:
             # If token decoding fails, use "Unknown"
