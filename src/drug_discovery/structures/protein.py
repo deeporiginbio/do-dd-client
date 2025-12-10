@@ -1171,7 +1171,7 @@ class Protein(Entity):
             from deeporigin_molstar import DockingViewer
 
             docking_viewer = DockingViewer()
-            html_content = docking_viewer.render_with_seperate_crystal(
+            html_content = docking_viewer.render_with_separate_crystal(
                 protein_data=current_protein_file,
                 protein_format="pdb",
                 ligands_data=[sdf_file],
