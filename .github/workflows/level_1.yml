@@ -1,0 +1,46 @@
+name: Run Level 1 Tests
+
+on:
+  pull_request:
+    paths:
+      - '**/*.py'
+
+jobs:
+  level-1-tests:
+    runs-on: ubuntu-latest
+    environment: ${{ matrix.env }}
+    strategy:
+      fail-fast: true
+      matrix:
+        python-version: ["3.13"]
+        env: ["dev", "staging"] # TODO: add prod when ready
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v6
+        with:
+          version: "0.5.27"
+
+      - name: Set up Python
+        run: uv python install ${{ matrix.python-version }}
+
+      - name: Set environment variables
+        run: |
+          echo "DEEPORIGIN_ORG_KEY=deeporigin" >> "$GITHUB_ENV"
+          echo "DEEPORIGIN_ENV=${{ matrix.env }}" >> "$GITHUB_ENV"
+          if [ "${{ matrix.env }}" = "prod" ]; then
+            echo "DEEPORIGIN_TOKEN=${{ secrets.DEEPORIGIN_TOKEN_PROD }}" >> "$GITHUB_ENV"
+          elif [ "${{ matrix.env }}" = "staging" ]; then
+            echo "DEEPORIGIN_TOKEN=${{ secrets.DEEPORIGIN_TOKEN_STAGING }}" >> "$GITHUB_ENV"
+          elif [ "${{ matrix.env }}" = "dev" ]; then
+            echo "DEEPORIGIN_TOKEN=${{ secrets.DEEPORIGIN_TOKEN_DEV }}" >> "$GITHUB_ENV"
+          fi
+
+      - name: Install dependencies
+        run: uv sync --extra test --extra tools --extra plots --extra core
+
+      - name: "runing level 1 tests"
+        run: uv run pytest --env ${{ matrix.env }} -k level_1
+
