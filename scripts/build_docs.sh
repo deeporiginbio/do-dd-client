@@ -6,22 +6,14 @@
 
 if [ "$CI" = "true" ]; then
   echo "Running in GitHub Actions runner, installing repo."
-  echo "🚧 Installing repo using pip..."
-  pip install -qqq --upgrade pip
-  pip install -qqq -e .[docs]
-  echo "Installed using pip."
-  if ! command -v mkdocs &> /dev/null
-  then
-      echo "❌ mkdocs could not be found. Fatal"
-      exit 2;
-  fi
-  MKDOCS_OUT="$(mkdocs build -s 2>&1)"
+  echo "🚧 Installing repo using uv..."
+  uv sync --extra docs
+  echo "Installed using uv."
+  MKDOCS_OUT="$(uv run mkdocs build -s 2>&1)"
 
 else
   echo "Running Locally, will not install."
-  source ./venv/bin/activate && \
-      MKDOCS_OUT="$(mkdocs build -s 2>&1)" && \
-      deactivate
+  MKDOCS_OUT="$(uv run mkdocs build -s 2>&1)"
 fi
 
 
