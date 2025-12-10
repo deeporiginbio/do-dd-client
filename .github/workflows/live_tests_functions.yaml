@@ -42,7 +42,6 @@ jobs:
           echo "DEEPORIGIN_ORG_KEY=deeporigin" >> "$GITHUB_ENV"
           if [ "$ENV" = "prod" ]; then
             echo "DEEPORIGIN_TOKEN=${{ secrets.DEEPORIGIN_TOKEN_PROD }}" >> "$GITHUB_ENV"
-            echo "DEEPORIGIN_REFRESH_TOKEN=${{ secrets.DEEPORIGIN_REFRESH_TOKEN_PROD }}" >> "$GITHUB_ENV"
           elif [ "$ENV" = "staging" ]; then
             echo "DEEPORIGIN_TOKEN=${{ secrets.DEEPORIGIN_TOKEN_STAGING }}" >> "$GITHUB_ENV"
           elif [ "$ENV" = "dev" ]; then
