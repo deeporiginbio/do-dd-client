@@ -8,7 +8,7 @@ import pytest
 from tests.utils import client  # noqa: F401
 
 
-def test_get_all_files(client):  # noqa: F811
+def test_get_all_files_level_1(client):  # noqa: F811
     """check that there are some files in entities/"""
 
     files = client.files.list_files_in_dir(
@@ -20,7 +20,7 @@ def test_get_all_files(client):  # noqa: F811
     print(f"Found {len(files)} files")
 
 
-def test_download_file(client):  # noqa: F811
+def test_download_file_level_1(client):  # noqa: F811
     """test the file download API"""
 
     files = client.files.list_files_in_dir(
@@ -36,7 +36,7 @@ def test_download_file(client):  # noqa: F811
     assert os.path.exists(local_path), "should have downloaded the file"
 
 
-def test_download_files_with_list(client):  # noqa: F811
+def test_download_files_with_list_level_1(client):  # noqa: F811
     """test the download_files API with a list input."""
 
     files = client.files.list_files_in_dir(
@@ -54,7 +54,7 @@ def test_download_files_with_list(client):  # noqa: F811
     assert os.path.exists(local_paths[0]), "should have downloaded the file"
 
 
-def test_download_files_with_dict(client):  # noqa: F811
+def test_download_files_with_dict_level_1(client):  # noqa: F811
     """test the download_files API with a dict input."""
 
     files = client.files.list_files_in_dir(
@@ -72,7 +72,7 @@ def test_download_files_with_dict(client):  # noqa: F811
     assert os.path.exists(local_paths[0]), "should have downloaded the file"
 
 
-def test_delete_file(client):  # noqa: F811
+def test_delete_file_level_1(client):  # noqa: F811
     """test the delete_file API."""
 
     # First upload a file to delete
@@ -99,7 +99,7 @@ def test_delete_file(client):  # noqa: F811
         os.remove(local_test_file)
 
 
-def test_delete_file_with_special_chars(client):  # noqa: F811
+def test_delete_file_with_special_chars_level_1(client):  # noqa: F811
     """test the delete_file API with special characters in path."""
 
     # Test with a path that contains special characters (like the example)
@@ -126,7 +126,7 @@ def test_delete_file_with_special_chars(client):  # noqa: F811
         os.remove(local_test_file)
 
 
-def test_delete_files(client):  # noqa: F811
+def test_delete_files_level_1(client):  # noqa: F811
     """test the delete_files API."""
 
     # Upload multiple files to delete
@@ -160,7 +160,7 @@ def test_delete_files(client):  # noqa: F811
             os.remove(local_test_file)
 
 
-def test_delete_files_with_errors(client):  # noqa: F811
+def test_delete_files_with_errors_level_1(client):  # noqa: F811
     """test the delete_files API with errors."""
 
     # Upload one file
@@ -199,7 +199,7 @@ def test_delete_files_with_errors(client):  # noqa: F811
         os.remove(local_test_file)
 
 
-def test_delete_files_empty_list(client):  # noqa: F811
+def test_delete_files_empty_list_level_1(client):  # noqa: F811
     """test the delete_files API with empty list."""
 
     # Should succeed without doing anything

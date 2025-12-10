@@ -3,7 +3,7 @@
 from tests.utils import client  # noqa: F401
 
 
-def test_list_organizations(client):  # noqa: F811
+def test_list_organizations_level_1(client):  # noqa: F811
     """Test listing organizations."""
     orgs = client.organizations.list()
 
@@ -18,7 +18,7 @@ def test_list_organizations(client):  # noqa: F811
     assert "updatedAt" in orgs[0], "Expected organization to have an updatedAt"
 
 
-def test_list_organization_users(client):  # noqa: F811
+def test_list_organization_users_level_1(client):  # noqa: F811
     """Test listing organization users."""
     users = client.organizations.users()
 
@@ -32,7 +32,7 @@ def test_list_organization_users(client):  # noqa: F811
     assert "createdAt" in users[0], "Expected user to have a createdAt"
 
 
-def test_list_organization_users_with_pagination(client):  # noqa: F811
+def test_list_organization_users_with_pagination_level_1(client):  # noqa: F811
     """Test listing organization users with pagination parameters."""
     users = client.organizations.users(page=0, page_size=10)
 
@@ -40,7 +40,7 @@ def test_list_organization_users_with_pagination(client):  # noqa: F811
     assert len(users) > 0, "Expected at least one user"
 
 
-def test_list_organization_users_with_filter(client):  # noqa: F811
+def test_list_organization_users_with_filter_level_1(client):  # noqa: F811
     """Test listing organization users with filter parameter."""
     users = client.organizations.users(filter='{"email": "user1@example.com"}')
 
