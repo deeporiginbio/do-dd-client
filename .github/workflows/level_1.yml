@@ -8,6 +8,7 @@ on:
 jobs:
   level-1-tests:
     runs-on: ubuntu-latest
+    environment: ${{ matrix.env }}
     strategy:
       fail-fast: true
       matrix:
@@ -24,6 +25,23 @@ jobs:
 
       - name: Set up Python
         run: uv python install ${{ matrix.python-version }}
+
+      - name: Select env
+        run: |
+          ENV="${{ matrix.env }}"
+          echo "DEEPORIGIN_ORG_KEY=deeporigin" >> "$GITHUB_ENV"
+          if [ "$ENV" = "prod" ]; then
+            echo "DEEPORIGIN_TOKEN=${{ secrets.DEEPORIGIN_TOKEN_PROD }}" >> "$GITHUB_ENV"
+            echo "DEEPORIGIN_REFRESH_TOKEN=${{ secrets.DEEPORIGIN_REFRESH_TOKEN_PROD }}" >> "$GITHUB_ENV"
+          elif [ "$ENV" = "staging" ]; then
+            echo "DEEPORIGIN_TOKEN=${{ secrets.DEEPORIGIN_TOKEN_STAGING }}" >> "$GITHUB_ENV"
+          elif [ "$ENV" = "dev" ]; then
+            echo "DEEPORIGIN_TOKEN=${{ secrets.DEEPORIGIN_TOKEN_DEV }}" >> "$GITHUB_ENV"
+          fi
+
+      - name: Set environment variables for Client
+        run: |
+          echo "DEEPORIGIN_ENV=${{ matrix.env }}" >> "$GITHUB_ENV"
 
       - name: Install dependencies
         run: uv sync --extra test --extra tools --extra plots --extra core
