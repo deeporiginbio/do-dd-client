@@ -31,7 +31,7 @@ class Docking(WorkflowStep):
     Objects instantiated here are meant to be used within the Complex class."""
 
     """tool version to use for Docking"""
-    tool_version = "0.4.7"
+    tool_version = "0.4.8"
     _tool_key = tool_mapper["Docking"]
 
     def __init__(self, parent):
@@ -74,7 +74,7 @@ class Docking(WorkflowStep):
         from deeporigin_molstar.src.viewers import DockingViewer
 
         docking_viewer = DockingViewer()
-        html_content = docking_viewer.render_with_seperate_crystal(
+        html_content = docking_viewer.render_with_separate_crystal(
             protein_data=str(self.parent.protein.file_path),
             protein_format="pdb",
             ligands_data=file_paths,

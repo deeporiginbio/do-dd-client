@@ -117,11 +117,16 @@ class ABFE(WorkflowStep):
     def get_jobs_df(
         self,
         *,
-        include_metadata: bool = False,
+        include_metadata: bool = True,
         include_outputs: bool = False,
+        include_inputs: bool = False,
     ):
         """get jobs for this workflow step"""
-        df = super().get_jobs_df(include_outputs=include_outputs)
+        df = super().get_jobs_df(
+            include_outputs=include_outputs,
+            include_inputs=include_inputs,
+            include_metadata=include_metadata,
+        )
 
         ligand_hashes = [ligand.to_hash() for ligand in self.parent.ligands]
 
@@ -407,18 +412,21 @@ class ABFE(WorkflowStep):
                 fix="Please specify a window number greater than 0",
             ) from None
 
-        df = self.get_jobs_df(include_outputs=True)
+        df = self.get_jobs_df(include_outputs=True, include_inputs=True)
         df = df.loc[df["ligand_smiles"] == ligand.smiles]
+        df = df[df["status"] == "Succeeded"]
 
         if len(df) == 0:
             raise DeepOriginException(
                 title="No job found for this ligand",
-                message="No job found for this ligand",
+                message="Unable to show trajectories because there are no completed jobs for this ligand",
             ) from None
 
         remote_base = Path(df.iloc[0]["user_outputs"]["output_file"]["key"])
 
-        remote_pdb_file = remote_base / "protein/ligand/systems/complex/system.pdb"
+        remote_pdb_file = str(
+            Path(df.iloc[0]["user_inputs"]["binding_xml"]["key"]).parent / "system.pdb"
+        )
         files_to_download = [remote_pdb_file]
 
         if step == "binding":
@@ -431,7 +439,8 @@ class ABFE(WorkflowStep):
             xtc_files = [
                 file
                 for file in files
-                if file.endswith("Prod_1/_allatom_trajectory_40ps.xtc")
+                if file.endswith(".xtc")
+                and "Prod_1/_allatom_trajectory" in file
                 and "binding/binding" in file
             ]
 
@@ -447,10 +456,9 @@ class ABFE(WorkflowStep):
                     message=f"Valid windows are: {sorted(valid_windows)}",
                 ) from None
 
-            remote_xtc_file = (
-                remote_base
-                / f"protein/ligand/binding/binding/window_{window}/Prod_1/_allatom_trajectory_40ps.xtc"
-            )
+            remote_xtc_file = [
+                xtc_file for xtc_file in xtc_files if f"window_{window}" in xtc_file
+            ][0]
 
         else:
             remote_xtc_file = (
