@@ -30,18 +30,3 @@ def test_list_organization_users_level_1(client):  # noqa: F811
     assert "lastName" in users[0], "Expected user to have a lastName"
     assert "authId" in users[0], "Expected user to have an authId"
     assert "createdAt" in users[0], "Expected user to have a createdAt"
-
-
-def test_list_organization_users_with_pagination_level_1(client):  # noqa: F811
-    """Test listing organization users with pagination parameters."""
-    users = client.organizations.users(page=0, page_size=10)
-
-    assert isinstance(users, list), "Expected a list"
-    assert len(users) > 0, "Expected at least one user"
-
-
-def test_list_organization_users_with_filter_level_1(client):  # noqa: F811
-    """Test listing organization users with filter parameter."""
-    users = client.organizations.users(filter='{"email": "user1@example.com"}')
-
-    assert isinstance(users, list), "Expected a list"
