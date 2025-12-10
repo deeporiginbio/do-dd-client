@@ -88,11 +88,11 @@ def test_delete_file_level_1(client):  # noqa: F811
     )
 
     # Delete the file (should succeed without raising)
-    client.files.delete_file(remote_path=test_file_path)
+    client.files.delete_file(remote_path=test_file_path, timeout=60.0)
 
     # Try to delete a non-existent file (should raise RuntimeError)
     with pytest.raises(RuntimeError, match="Failed to delete file"):
-        client.files.delete_file(remote_path="nonexistent_file.txt")
+        client.files.delete_file(remote_path="nonexistent_file.txt", timeout=10.0)
 
     # Clean up local test file
     if os.path.exists(local_test_file):
@@ -119,7 +119,7 @@ def test_delete_file_with_special_chars_level_1(client):  # noqa: F811
     )
 
     # Delete the file (should handle URL encoding correctly and succeed)
-    client.files.delete_file(remote_path=test_file_path)
+    client.files.delete_file(remote_path=test_file_path, timeout=60.0)
 
     # Clean up local test file
     if os.path.exists(local_test_file):
@@ -152,7 +152,7 @@ def test_delete_files_level_1(client):  # noqa: F811
         )
 
     # Delete all files (should succeed without raising)
-    client.files.delete_files(remote_paths=test_file_paths)
+    client.files.delete_files(remote_paths=test_file_paths, timeout=60.0)
 
     # Clean up local test files
     for local_test_file in local_test_files:
@@ -181,7 +181,7 @@ def test_delete_files_with_errors_level_1(client):  # noqa: F811
 
     # Should raise RuntimeError by default
     with pytest.raises(RuntimeError, match="Some deletions failed in delete_files"):
-        client.files.delete_files(remote_paths=file_paths)
+        client.files.delete_files(remote_paths=file_paths, timeout=60.0)
 
     # Re-upload the file since it was successfully deleted before the error was raised
     with open(local_test_file, "w") as f:
@@ -192,7 +192,7 @@ def test_delete_files_with_errors_level_1(client):  # noqa: F811
     )
 
     # With skip_errors=True, should not raise
-    client.files.delete_files(remote_paths=file_paths, skip_errors=True)
+    client.files.delete_files(remote_paths=file_paths, skip_errors=True, timeout=60.0)
 
     # Clean up local test file
     if os.path.exists(local_test_file):
