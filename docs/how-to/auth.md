@@ -8,13 +8,8 @@ Navigate to [https://os.deeporigin.io/account?tab=tokens](https://os.deeporigin.
 
 ![](../images/token-1.png)
 
-Press the `Generate Token` button and choose a name and expiration for your token. The longest expiration allowed is 1 year. Longer-lived tokens allow you to use that token before having to generate a new one. Choose the `organizations:owner` scope.
+Choose a name and expiration for your token and press the `Generate Token` button. The longest expiration allowed is 1 year. Longer-lived tokens allow you to use that token before having to generate a new one. 
 
-![](../images/token-2.png)
-
-Scroll down and press the `Generate Token` button:
-
-![](../images/token-3.png)
 
 Then, copy the token using the button:
 
