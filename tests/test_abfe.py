@@ -7,7 +7,7 @@ from deeporigin.exceptions import DeepOriginException
 from tests.utils import client  # noqa: F401
 
 
-def test_abfe_charged_ligand(client):  # noqa: F811
+def test_abfe_charged_ligand_level_0(client):  # noqa: F811
     """test that abfe raises an error if a charged ligand is provided"""
 
     ligand = Ligand.from_smiles("C[N+]1=CCCC1")
@@ -21,7 +21,7 @@ def test_abfe_charged_ligand(client):  # noqa: F811
         sim.abfe.run()
 
 
-def test_abfe_prepared_system(client):  # noqa: F811
+def test_abfe_prepared_system_level_0(client):  # noqa: F811
     """test that abfe raises an error if a prepared system is not provided"""
     ligand = Ligand.from_smiles("CCO")
     protein = Protein.from_file(BRD_DATA_DIR / "brd.pdb")
@@ -30,7 +30,7 @@ def test_abfe_prepared_system(client):  # noqa: F811
         sim.abfe.run()
 
 
-def test_check_dt_defaults_valid(client):  # noqa: F811
+def test_check_dt_defaults_valid_level_0(client):  # noqa: F811
     """default parameters should have in-range dt everywhere"""
 
     ligand = Ligand.from_smiles("CCO")
@@ -41,7 +41,7 @@ def test_check_dt_defaults_valid(client):  # noqa: F811
     sim.abfe.check_dt()
 
 
-def test_check_dt_raises_on_out_of_range(client):  # noqa: F811
+def test_check_dt_raises_on_out_of_range_level_0(client):  # noqa: F811
     """setting any nested dt out of range should raise an error"""
 
     ligand = Ligand.from_smiles("CCO")

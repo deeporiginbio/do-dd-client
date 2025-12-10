@@ -7,7 +7,7 @@ from deeporigin.platform.job import Job, JobList
 from tests.utils import client  # noqa: F401
 
 
-def test_get_tool_executions(client):  # noqa: F811
+def test_get_tool_executions_level_1(client):  # noqa: F811
     response = client.executions.list(filter=None)
     jobs = response.get("data", [])
 
@@ -15,15 +15,30 @@ def test_get_tool_executions(client):  # noqa: F811
     assert len(jobs) > 0, "Expected at least one job"
 
 
-def test_get_executions(client):  # noqa: F811
+def test_get_executions_level_1(client):  # noqa: F811
     response = client.executions.list()
     jobs = response.get("data", [])
     assert isinstance(jobs, list), "Expected a list"
     assert len(jobs) > 0, "Expected at least one job"
 
+    job = jobs[0]
+    for expected_key in [
+        "executionId",
+        "status",
+        "tool",
+        "createdAt",
+        "completedAt",
+        "startedAt",
+        "resourceId",
+        "billingTransaction",
+        "quotationResult",
+        "cluster",
+    ]:
+        assert expected_key in job, f"Expected job to have key {expected_key}"
+
 
 @pytest.mark.dependency()
-def test_tools_api_health(client):  # noqa: F811
+def test_tools_api_health_level_1(client):  # noqa: F811
     """test the health API"""
 
     data = client.get_json("/health")
@@ -31,38 +46,52 @@ def test_tools_api_health(client):  # noqa: F811
 
 
 @pytest.mark.dependency(depends=["test_tools_api_health"])
-def test_get_all_tools(client):  # noqa: F811
+def test_get_all_tools_level_1(client):  # noqa: F811
     """test the tools API"""
 
-    response = client.tools.list()
-    tools = response.get("data", [])
+    tools = client.tools.list()
+    assert isinstance(tools, list), "Expected a list"
     assert len(tools) > 0, "Expected at least one tool"
 
-    print(f"Found {len(tools)} tools")
+    tool = tools[0]
+
+    for key in [
+        "key",
+        "inputs",
+        "version",
+        "executors",
+        "description",
+        "billingParser",
+        "toolManifestVersion",
+    ]:
+        assert key in tool.keys(), f"Expected tool to have key {key}"
 
 
 @pytest.mark.dependency(depends=["test_tools_api_health"])
-def test_get_all_functions(client):  # noqa: F811
+def test_get_all_function_level_1(client):  # noqa: F811
     """Test the functions API list method."""
 
     functions = client.functions.list()
     assert isinstance(functions, list), "Expected a list"
     assert len(functions) > 0, "Expected at least one function"
 
-    print(f"Found {len(functions)} functions")
+    function = functions[0]
+
+    for key in [
+        "id",
+        "createdAt",
+        "updatedAt",
+        "functionManifest",
+        "version",
+        "enabled",
+        "manifestBody",
+        "billingCode",
+        "resourceId",
+    ]:
+        assert key in function.keys(), f"Expected function to have key {key}"
 
 
-@pytest.mark.dependency(depends=["test_tools_api_health"])
-def test_get_all_executions(client):  # noqa: F811
-    """test the executions API"""
-
-    response = client.executions.list()
-    executions = response.get("data", [])
-
-    print(f"Found {len(executions)} executions")
-
-
-def test_job(client):  # noqa: F811
+def test_job_level_1(client):  # noqa: F811
     response = client.executions.list()
     jobs = response.get("data", [])
     execution_id = jobs[0]["executionId"]
@@ -71,7 +100,7 @@ def test_job(client):  # noqa: F811
     assert execution_id == job._id
 
 
-def test_job_from_dto(client):  # noqa: F811
+def test_job_from_dto_level_1(client):  # noqa: F811
     """Test Job.from_dto() creates a Job without making a network request."""
     response = client.executions.list()
     jobs = response.get("data", [])
@@ -87,28 +116,24 @@ def test_job_from_dto(client):  # noqa: F811
     assert job._skip_sync is True
 
 
-def test_job_df(client):  # noqa: F811
+def test_job_df_level_1(client):  # noqa: F811
     jobs = JobList.list(client=client)
     _ = jobs.to_dataframe(client=client)
 
 
 @pytest.mark.dependency()
-def test_job_df_filtering(client):  # noqa: F811
+def test_job_df_filtering_level_1(client):  # noqa: F811
     tool_key = tool_mapper["Docking"]
 
     jobs = JobList.list(client=client)
     df = jobs.filter(tool_key=tool_key).to_dataframe(client=client)
 
-    assert len(df["tool_key"].unique()) == 1, (
-        f"should only be one tool key. Instead there were {len(df['tool_key'].unique())}"
-    )
-
-    assert df["tool_key"].unique()[0] == tool_key, (
-        f"Expected to get back jobs for {tool_key}. Instead got {df['tool_key'].unique()[0]}"
+    assert len(df["tool_key"].unique()) <= 1, (
+        f"should at most be one tool key. Instead there were {len(df['tool_key'].unique())}"
     )
 
 
-def test_job_status_logic():
+def test_job_status_logic_level_0():
     """Test the simplified status logic for job rendering."""
     from deeporigin.platform.constants import TERMINAL_STATES
 

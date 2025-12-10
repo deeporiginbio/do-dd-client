@@ -367,21 +367,34 @@ class Files:
     def delete_file(
         self,
         remote_path: str,
+        *,
+        timeout: float | None = None,
     ) -> None:
         """Delete a file from UFA.
 
         Args:
             remote_path: The remote path of the file to delete.
+            timeout: Request timeout in seconds. If None, uses the client's default timeout.
 
         Raises:
             RuntimeError: If the file deletion failed. Note: The API returns
                 200 status even if deletion fails, so this method checks the
                 response body for success.
         """
-        # Make DELETE request
-        response = self._c._delete(
-            f"/files/{self._c.org_key}/{remote_path}",
-        )
+        # Temporarily increase timeout if specified
+        original_timeout = None
+        if timeout is not None:
+            original_timeout = self._c._client.timeout
+            self._c._client.timeout = timeout
+
+        try:
+            # Make DELETE request
+            response = self._c._delete(
+                f"/files/{self._c.org_key}/{remote_path}",
+            )
+        finally:
+            if original_timeout is not None:
+                self._c._client.timeout = original_timeout
 
         # Parse JSON response
         # API returns 200 even on failure, but response body indicates success
@@ -396,6 +409,7 @@ class Files:
         *,
         skip_errors: bool = False,
         max_workers: int = 20,
+        timeout: float | None = None,
     ) -> None:
         """Delete multiple files in parallel.
 
@@ -404,6 +418,7 @@ class Files:
             skip_errors: If True, don't raise RuntimeError on failures.
                 Defaults to False.
             max_workers: Maximum number of concurrent deletions. Defaults to 20.
+            timeout: Request timeout in seconds for each deletion. If None, uses the client's default timeout.
 
         Raises:
             RuntimeError: If any deletion fails and skip_errors is False,
@@ -416,6 +431,7 @@ class Files:
                 executor.submit(
                     self.delete_file,
                     remote_path=remote_path,
+                    timeout=timeout,
                 ): remote_path
                 for remote_path in remote_paths
             }
