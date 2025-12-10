@@ -1,7 +1,7 @@
 site_name: Deep Origin Python client | Deep Origin
 site_author: Deep Origin
-repo_url: https://github.com/deeporiginbio/deeporigin-client
-repo_name: deeporiginbio/deeporigin-client
+repo_url: https://github.com/deeporiginbio/do-dd-client
+repo_name: deeporiginbio/do-dd-client
 site_url: https://client-docs.deeporigin.io
 
 docs_dir: 'docs'
