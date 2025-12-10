@@ -215,6 +215,29 @@ class MockServer:
         chars = string.ascii_lowercase + string.digits
         return "".join(random.choice(chars) for _ in range(20))
 
+    def _normalize_execution(self, execution: dict[str, Any]) -> dict[str, Any]:
+        """Normalize an execution to ensure all required fields are present.
+
+        Args:
+            execution: The execution dictionary to normalize.
+
+        Returns:
+            A normalized execution dictionary with all required fields.
+        """
+        normalized = execution.copy()
+
+        # Ensure all required fields are present
+        if "startedAt" not in normalized:
+            normalized["startedAt"] = None
+        if "completedAt" not in normalized:
+            normalized["completedAt"] = None
+        if "billingTransaction" not in normalized:
+            normalized["billingTransaction"] = None
+        if "quotationResult" not in normalized:
+            normalized["quotationResult"] = None
+
+        return normalized
+
     def _load_progress_reports(self, tool_key: str) -> list[dict[str, Any] | None]:
         """Load progress reports for a tool.
 
@@ -692,10 +715,15 @@ class MockServer:
             end_idx = start_idx + page_size
             paginated_executions = filtered_executions[start_idx:end_idx]
 
+            # Normalize executions to ensure all required fields are present
+            normalized_executions = [
+                self._normalize_execution(exec.copy()) for exec in paginated_executions
+            ]
+
             # Return copies to avoid modifying the stored executions
             return {
                 "count": len(filtered_executions),
-                "data": [exec.copy() for exec in paginated_executions],
+                "data": normalized_executions,
             }
 
         @self.app.get("/tools/{org_key}/tools/executions/{execution_id}")
@@ -728,7 +756,8 @@ class MockServer:
             # Update execution in memory if status was changed (e.g., auto-completed)
             self._executions[execution_id] = execution
 
-            return execution
+            # Normalize execution to ensure all required fields are present
+            return self._normalize_execution(execution)
 
         @self.app.patch("/tools/{org_key}/tools/executions/{execution_id}:cancel")
         def cancel_execution(org_key: str, execution_id: str) -> dict[str, Any]:
@@ -753,7 +782,7 @@ class MockServer:
             # Update in memory storage
             self._executions[execution_id] = execution
 
-            return execution.copy()
+            return self._normalize_execution(execution.copy())
 
         @self.app.patch("/tools/{org_key}/tools/executions/{execution_id}:confirm")
         def confirm_execution(org_key: str, execution_id: str) -> dict[str, Any]:
@@ -782,7 +811,7 @@ class MockServer:
             # Update in memory storage
             self._executions[execution_id] = execution
 
-            return execution.copy()
+            return self._normalize_execution(execution.copy())
 
         @self.app.post("/tools/{org_key}/tools/{tool_key}/{tool_version}/executions")
         async def run_tool(
@@ -803,7 +832,7 @@ class MockServer:
             execution_id = execution["executionId"]
             self._executions[execution_id] = execution
 
-            return execution
+            return self._normalize_execution(execution)
 
         @self.app.get("/health")
         def health() -> dict[str, str]:

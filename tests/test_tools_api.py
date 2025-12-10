@@ -7,7 +7,7 @@ from deeporigin.platform.job import Job, JobList
 from tests.utils import client  # noqa: F401
 
 
-def test_get_tool_executions(client):  # noqa: F811
+def test_get_tool_executions_level_1(client):  # noqa: F811
     response = client.executions.list(filter=None)
     jobs = response.get("data", [])
 
