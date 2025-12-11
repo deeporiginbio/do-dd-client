@@ -4,6 +4,7 @@ on:
   pull_request:
     paths:
       - '**/*.py'
+  workflow_dispatch:
 
 jobs:
   level-1-tests:
@@ -13,7 +14,7 @@ jobs:
       fail-fast: true
       matrix:
         python-version: ["3.13"]
-        env: ["dev", "staging"] # TODO: add prod when ready
+        env: ["dev", "staging", "prod"]
 
     steps:
       - uses: actions/checkout@v4
