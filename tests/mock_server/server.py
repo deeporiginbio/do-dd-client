@@ -465,16 +465,10 @@ class MockServer:
                 }
             ]
 
-        @self.app.post("/tools/{org_key}/functions/{function_key}")
-        def run_function(org_key: str, function_key: str) -> dict[str, str]:
-            """Run a function."""
-            return {"executionId": str(uuid.uuid4())}
-
-        @self.app.post("/tools/{org_key}/functions/{function_key}/{version}")
-        async def run_function_version(
-            org_key: str, function_key: str, version: str, request: Request
+        async def _handle_function_run(
+            function_key: str, request: Request
         ) -> dict[str, Any] | list[dict[str, Any]]:
-            """Run a specific version of a function."""
+            """Handle function execution logic shared between versioned and non-versioned endpoints."""
             # Handle mol-props functions
             if function_key.startswith("deeporigin.mol-props-"):
                 # Extract property name (e.g., "logp" from "deeporigin.mol-props-logp")
@@ -538,6 +532,20 @@ class MockServer:
 
             # Default: return execution ID for other functions
             return {"executionId": str(uuid.uuid4())}
+
+        @self.app.post("/tools/{org_key}/functions/{function_key}")
+        async def run_function(
+            org_key: str, function_key: str, request: Request
+        ) -> dict[str, Any] | list[dict[str, Any]]:
+            """Run a function (latest version)."""
+            return await _handle_function_run(function_key, request)
+
+        @self.app.post("/tools/{org_key}/functions/{function_key}/{version}")
+        async def run_function_version(
+            org_key: str, function_key: str, version: str, request: Request
+        ) -> dict[str, Any] | list[dict[str, Any]]:
+            """Run a specific version of a function."""
+            return await _handle_function_run(function_key, request)
 
         @self.app.get("/tools/{org_key}/clusters")
         async def list_clusters(org_key: str, request: Request) -> dict[str, Any]:

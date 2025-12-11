@@ -92,37 +92,6 @@ class Functions:
         _check_response(response, key, check_version)
         return response
 
-    def run_latest(
-        self,
-        *,
-        key: str,
-        params: dict,
-        cluster_id: str | None = None,
-        tag: str | None = None,
-        quote: bool = False,
-    ) -> dict:
-        """Run the latest enabled version of a function.
-
-        Args:
-            key: Key of the function to run.
-            params: Function execution parameters.
-            cluster_id: Cluster ID to run the function on. If None, uses the
-                default cluster ID (first non-dev cluster, cached).
-            tag: Optional tag for the execution.
-            quote: Whether to request a quote instead of running the function.
-
-        Returns:
-            Dictionary containing the execution response from the API.
-        """
-        return self.run(
-            key=key,
-            params=params,
-            version=None,
-            cluster_id=cluster_id,
-            tag=tag,
-            quote=quote,
-        )
-
 
 def _check_response(response: dict, key, version) -> None:
     if "quotationResult" not in response:
