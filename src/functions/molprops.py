@@ -85,7 +85,6 @@ def get_single_property(
 
     response = client.functions.run(
         key=f"deeporigin.mol-props-{prop}",
-        version="0.1.3",
         params=payload,
     )
 
