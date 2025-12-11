@@ -32,6 +32,66 @@ class Functions:
         """
         return self._c.get_json("/tools/protected/functions/definitions")
 
+    def run(
+        self,
+        *,
+        key: str,
+        params: dict,
+        version: str | None = None,
+        cluster_id: str | None = None,
+        tag: str | None = None,
+        quote: bool = False,
+    ) -> dict:
+        """Run a function.
+
+        Args:
+            key: Key of the function to run.
+            params: Function execution parameters.
+            version: Version of the function to run. If None, runs the latest
+                enabled version.
+            cluster_id: Cluster ID to run the function on. If None, uses the
+                default cluster ID (first non-dev cluster, cached).
+            tag: Optional tag for the execution.
+            quote: Whether to request a quote instead of running the function.
+
+        Returns:
+            Dictionary containing the execution response from the API.
+        """
+        if cluster_id is None:
+            cluster_id = self._c.clusters.get_default_cluster_id()
+
+        body: dict[str, dict | str] = {
+            "params": params,
+            "inputs": params,  # we're sending both params and inputs because the APIs across dev/staging/prod are different
+            "clusterId": cluster_id,
+        }
+        if tag is not None:
+            body["tag"] = tag
+
+        if quote:
+            body["approveAmount"] = 0
+
+        # functions need a longer timeout
+        original_timeout = self._c._client.timeout
+        self._c._client.timeout = 600
+
+        # Build endpoint URL based on whether version is provided
+        if version is None:
+            endpoint = f"/tools/{self._c.org_key}/functions/{key}"
+            check_version = "latest"
+        else:
+            endpoint = f"/tools/{self._c.org_key}/functions/{key}/{version}"
+            check_version = version
+
+        response = self._c.post_json(
+            endpoint,
+            body=body,
+        )
+        self._c._client.timeout = original_timeout
+
+        _check_response(response, key, check_version)
+        return response
+
     def run_latest(
         self,
         *,
@@ -49,87 +109,19 @@ class Functions:
             cluster_id: Cluster ID to run the function on. If None, uses the
                 default cluster ID (first non-dev cluster, cached).
             tag: Optional tag for the execution.
+            quote: Whether to request a quote instead of running the function.
 
         Returns:
             Dictionary containing the execution response from the API.
         """
-        if cluster_id is None:
-            cluster_id = self._c.clusters.get_default_cluster_id()
-
-        body: dict[str, dict | str] = {
-            "params": params,
-            "inputs": params,  # we're sending both params and inputs because the APIs across dev/staging/prod are different
-            "clusterId": cluster_id,
-        }
-        if tag is not None:
-            body["tag"] = tag
-
-        if quote:
-            body["approveAmount"] = 0
-
-        # functions need a longer timeout
-        original_timeout = self._c._client.timeout
-        self._c._client.timeout = 600
-
-        response = self._c.post_json(
-            f"/tools/{self._c.org_key}/functions/{key}",
-            body=body,
+        return self.run(
+            key=key,
+            params=params,
+            version=None,
+            cluster_id=cluster_id,
+            tag=tag,
+            quote=quote,
         )
-        self._c._client.timeout = original_timeout
-
-        _check_response(response, key, "latest")
-
-        return response
-
-    def run(
-        self,
-        *,
-        key: str,
-        version: str,
-        params: dict,
-        cluster_id: str | None = None,
-        tag: str | None = None,
-        quote: bool = False,
-    ) -> dict:
-        """Run a specific version of a function.
-
-        Args:
-            key: Key of the function to run.
-            version: Version of the function to run.
-            params: Function execution parameters.
-            cluster_id: Cluster ID to run the function on. If None, uses the
-                default cluster ID (first non-dev cluster, cached).
-            tag: Optional tag for the execution.
-
-        Returns:
-            Dictionary containing the execution response from the API.
-        """
-        if cluster_id is None:
-            cluster_id = self._c.clusters.get_default_cluster_id()
-
-        body: dict[str, dict | str] = {
-            "params": params,
-            "inputs": params,  # we're sending both params and inputs because the APIs across dev/staging/prod are different
-            "clusterId": cluster_id,
-        }
-        if tag is not None:
-            body["tag"] = tag
-
-        if quote:
-            body["approveAmount"] = 0
-
-        # functions need a longer timeout
-        original_timeout = self._c._client.timeout
-        self._c._client.timeout = 600
-
-        response = self._c.post_json(
-            f"/tools/{self._c.org_key}/functions/{key}/{version}",
-            body=body,
-        )
-        self._c._client.timeout = original_timeout
-
-        _check_response(response, key, version)
-        return response
 
 
 def _check_response(response: dict, key, version) -> None:
