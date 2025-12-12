@@ -1,0 +1,23 @@
+name: nb-clean (check)
+
+on:
+  pull_request:
+    paths:
+      - "**/*.ipynb"
+      - "notebooks/**"
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v5
+
+      - name: Run nb-clean
+        run: |
+          uvx nb-clean clean notebooks/
+
+      - name: Fail if nb-clean would change anything
+        run: |
+          git diff --exit-code

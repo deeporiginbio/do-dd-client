@@ -1,0 +1,33 @@
+name: Fix notebooks
+
+on:
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+  pull-requests: read
+
+jobs:
+  fix:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout PR branch
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref_name }}
+
+      - uses: astral-sh/setup-uv@v5
+
+      - name: Run nb-clean
+        run: |
+          uvx nb-clean clean notebooks/
+
+      - name: Commit & push if changed
+        run: |
+          if ! git diff --quiet; then
+            git config user.name "github-actions[bot]"
+            git config user.email "github-actions[bot]@users.noreply.github.com"
+            git add -A
+            git commit -m "chore: nb-clean notebooks"
+            git push
+          fi
