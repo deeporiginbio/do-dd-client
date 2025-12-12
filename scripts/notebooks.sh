@@ -2,20 +2,19 @@
 set -euo pipefail
 
 DIRTY="notebooks/dirty"
-CLEAN="notebooks/clean"
 
 echo "Sanitizing notebooks..."
 
 # Ensure dirs exist
-mkdir -p "$CLEAN"
+mkdir -p notebooks/clean
 
 # Copy dirty -> clean
-cp -r "$DIRTY"/* "$CLEAN"
+cp -r "$DIRTY"/* notebooks/clean
 
 # Clean all notebooks
-uvx nb-clean clean "$CLEAN"
+uvx nb-clean clean notebooks/clean
 
 # Stage sanitized notebooks
-git add "$CLEAN"/*.ipynb
+git add notebooks/clean/*.ipynb
 
 exit 0
