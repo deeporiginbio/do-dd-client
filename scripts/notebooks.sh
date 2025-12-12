@@ -4,6 +4,8 @@ set -euo pipefail
 DIRTY="notebooks/dirty"
 CLEAN="notebooks/clean"
 
+echo "Sanitizing notebooks..."
+
 # Ensure dirs exist
 mkdir -p "$CLEAN"
 
