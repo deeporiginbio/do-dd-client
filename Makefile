@@ -2,7 +2,7 @@
 
 SHELL := /bin/bash
 uname=$(shell uname -s)
-
+IMAGE_NAME := deeporigin-uv-temp
 repo=$(shell basename $(CURDIR))
 
 
@@ -22,21 +22,14 @@ jupyter:
 		
 
 # install in a virtual env with all extras
-install:
+install: install-pre-commit
 	@echo "Installing deeporigin in editable mode in a venv..."
 	uv sync --all-extras
 
 
-docs-build:
-	bash scripts/build_docs.sh
-
 docs-serve:
 	@echo "Serving docs locally..."
 	uv run mkdocs serve
-
-docs-deploy: 
-	@echo "Deploying to live environment..."
-	uv run mkdocs gh-deploy 
 
 # run mock server for local development and testing
 mock-server:
@@ -46,20 +39,15 @@ mock-server:
 	    $(if $(ABFE_DURATION),--abfe-duration $(ABFE_DURATION),)
 
 
-test-github-live:
-	pytest -v --ignore=tests/test_config.py --ignore=tests/test_context.py
-
-
-notebooks-html:
-	@echo "Making marimo notebooks..."
-	@source $(CURDIR)/venv/bin/activate && \
-	rm -f docs/notebooks/*.html && \
-	marimo export html notebooks/docking.py -o docs/notebooks/docking.html && \
-	deactivate
-
-IMAGE_NAME := deeporigin-uv-temp
-
 # Build image from current directory and start an interactive shell
 docker:
 	docker build --pull -t $(IMAGE_NAME) .
 	docker run --rm -it $(IMAGE_NAME)
+
+
+install-pre-commit:
+	@echo "Installing pre-commit hook..."
+	@mkdir -p .git/hooks
+	@cp scripts/notebooks.sh .git/hooks/pre-commit
+	@chmod +x .git/hooks/pre-commit
+	@echo "Pre-commit hook installed."

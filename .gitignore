@@ -2,7 +2,8 @@ github_token
 *.csv
 uv.lock
 
-scratch-notebooks/
+notebooks/dirty/
+
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
