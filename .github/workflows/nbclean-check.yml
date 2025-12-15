@@ -4,7 +4,7 @@ on:
   pull_request:
     paths:
       - "**/*.ipynb"
-      - "notebooks/**"
+      - "docs/notebooks/**"
 
 jobs:
   check:
@@ -16,7 +16,7 @@ jobs:
 
       - name: Run nb-clean
         run: |
-          uvx nb-clean clean notebooks/
+          uvx nb-clean clean docs/notebooks/
 
       - name: Fail if nb-clean would change anything
         run: |

@@ -20,7 +20,7 @@ jobs:
 
       - name: Run nb-clean
         run: |
-          uvx nb-clean clean notebooks/
+          uvx nb-clean clean docs/notebooks/clean
 
       - name: Commit & push if changed
         run: |
