@@ -69,6 +69,7 @@
         "rdkit",
         "replex",
         "resnames",
+        "retryable",
         "rmsd",
         "sanitizable",
         "SASA",
