@@ -470,15 +470,12 @@ class DeepOriginClient:
             httpx.NetworkError: If network errors persist after all retries.
             httpx.TimeoutException: If timeouts persist after all retries.
         """
-        last_error: Exception | None = None
-
         for attempt in range(self.max_retries + 1):
             try:
                 response = request_func()
                 response.raise_for_status()
                 return response
             except httpx.HTTPStatusError as e:
-                last_error = e
                 if self._should_retry(e) and attempt < self.max_retries:
                     delay = min(
                         self.retry_backoff_factor * (2**attempt), self.max_retry_delay
@@ -488,7 +485,6 @@ class DeepOriginClient:
                 # Not retryable or out of retries - handle HTTPStatusError specially
                 self._handle_request_error(method, path, e, body=body)
             except (httpx.NetworkError, httpx.TimeoutException) as e:
-                last_error = e
                 if self._should_retry(e) and attempt < self.max_retries:
                     delay = min(
                         self.retry_backoff_factor * (2**attempt), self.max_retry_delay
@@ -496,11 +492,6 @@ class DeepOriginClient:
                     time.sleep(delay)
                     continue
                 raise
-
-        # This should never be reached (all paths raise or return)
-        if isinstance(last_error, httpx.HTTPStatusError):
-            self._handle_request_error(method, path, last_error, body=body)
-        raise last_error  # type: ignore[misc]
 
     def _handle_request_error(
         self,
