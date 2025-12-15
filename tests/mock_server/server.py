@@ -476,8 +476,21 @@ class MockServer:
 
                 # Get request body to extract SMILES list
                 body = await request.json()
-                params = body.get("inputs", {})
+                params = body.get("inputs", {}) or body.get("params", {})
                 smiles_list = params.get("smiles_list", [])
+
+                # Handle protonation separately as it has a different response format
+                if prop == "protonation":
+                    ph = params.get("pH", 7.4)
+                    # Return the protonation response fixture wrapped in functionOutputs
+                    protonation_response = self._load_fixture("protonation-response")
+                    # Update pH to match request
+                    protonation_response["pH"] = ph
+                    # Update smiles_list in response to match input
+                    protonation_response["protonation_states"]["smiles_list"] = (
+                        smiles_list
+                    )
+                    return {"functionOutputs": protonation_response}
 
                 # Return response based on property requested
                 # Each property endpoint returns a list of dicts with "smiles" key

@@ -86,6 +86,31 @@ def test_sysprep(client):  # noqa: F811
     assert "output_files" in response, "Expected 'output_files' in response"
 
 
+def test_protonation(client):  # noqa: F811
+    """Test protonation function."""
+    from deeporigin.functions.protonation import protonate
+
+    response = protonate(
+        smiles_list=["CCO"],
+        ph=7.4,
+        filter_percentage=1.0,
+        use_cache=False,
+        client=client,
+    )
+
+    # Verify response structure
+    assert isinstance(response, dict), "Expected a dictionary response"
+    assert "pH" in response, "Expected 'pH' in response"
+    assert response["pH"] == 7.4, "Expected pH to be 7.4"
+    assert "protonation_states" in response, "Expected 'protonation_states' in response"
+    assert "smiles_list" in response["protonation_states"], (
+        "Expected 'smiles_list' in protonation_states"
+    )
+    assert len(response["protonation_states"]["smiles_list"]) > 0, (
+        "Expected at least one SMILES in smiles_list"
+    )
+
+
 # def test_loop_modelling(client):  # noqa: F811
 #     protein = Protein.from_pdb_id("5QSP")
 #     assert len(protein.find_missing_residues()) > 0, "Missing residues should be > 0"
