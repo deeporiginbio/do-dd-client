@@ -4,7 +4,7 @@ uv.lock
 
 # notebooks
 .ipynb_checkpoints
-notebooks/dirty/
+docs/notebooks/dirty/
 
 
 # Byte-compiled / optimized / DLL files

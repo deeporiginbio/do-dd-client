@@ -32,6 +32,9 @@ jobs:
 
       - name: Install
         run: uv sync --extra docs
+
+      - name: Convert notebooks to HTML
+        run: mkdir -p docs/notebooks/html && uvx jupyter nbconvert --to html docs/notebooks/clean/*.ipynb --output-dir docs/notebooks/html
           
       - name: Build docs
         run: uv run mkdocs build

@@ -74,7 +74,8 @@ nav:
     - abfe: dd/ref/abfe.md
     - rbfe: dd/ref/rbfe.md
   - Notebooks:
-    - Docking: notebooks/docking.html
+    - Docking a Single Ligand: notebooks/html/docking-single-ligand.html
+    - Docking Many Ligands: notebooks/html/docking-many-ligands.html
 - Platform API: 
   - platform/index.md
   - tools: platform/ref/tools.md
