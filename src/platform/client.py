@@ -52,6 +52,7 @@ class DeepOriginClient:
         max_retries: int = 3,
         retryable_status_codes: Set[int] | None = None,
         retry_backoff_factor: float = 1.0,
+        max_retry_delay: float = 60.0,
     ):
         """Initialize a DeepOrigin Platform client.
 
@@ -72,7 +73,11 @@ class DeepOriginClient:
             retryable_status_codes: Set of HTTP status codes that should trigger
                 a retry. Defaults to {429, 500, 502, 503, 504}.
             retry_backoff_factor: Multiplier for exponential backoff between retries.
-                Delay = retry_backoff_factor * (2 ** attempt_number). Defaults to 1.0.
+                Delay = min(retry_backoff_factor * (2 ** attempt_number), max_retry_delay).
+                The delay grows exponentially but is capped at max_retry_delay to prevent
+                excessive wait times. Defaults to 1.0.
+            max_retry_delay: Maximum delay in seconds between retry attempts. The exponential
+                backoff delay will be capped at this value. Defaults to 60.0 seconds.
         """
 
         if token is None:
@@ -112,6 +117,7 @@ class DeepOriginClient:
             else {429, 500, 502, 503, 504}
         )
         self.retry_backoff_factor = retry_backoff_factor
+        self.max_retry_delay = max_retry_delay
 
         # Initialize _client first (before setting token property)
         self._client = httpx.Client(
@@ -198,6 +204,7 @@ class DeepOriginClient:
         max_retries: int = 3,
         retryable_status_codes: Set[int] | None = None,
         retry_backoff_factor: float = 1.0,
+        max_retry_delay: float = 60.0,
         replace: bool = False,
     ) -> "DeepOriginClient":
         """
@@ -217,7 +224,11 @@ class DeepOriginClient:
             retryable_status_codes: Set of HTTP status codes that should trigger
                 a retry. Defaults to {429, 500, 502, 503, 504}.
             retry_backoff_factor: Multiplier for exponential backoff between retries.
-                Delay = retry_backoff_factor * (2 ** attempt_number). Defaults to 1.0.
+                Delay = min(retry_backoff_factor * (2 ** attempt_number), max_retry_delay).
+                The delay grows exponentially but is capped at max_retry_delay to prevent
+                excessive wait times. Defaults to 1.0.
+            max_retry_delay: Maximum delay in seconds between retry attempts. The exponential
+                backoff delay will be capped at this value. Defaults to 60.0 seconds.
             replace: If True, close and recreate the cached instance.
 
         Returns:
@@ -258,6 +269,7 @@ class DeepOriginClient:
                 max_retries=max_retries,
                 retryable_status_codes=retryable_status_codes,
                 retry_backoff_factor=retry_backoff_factor,
+                max_retry_delay=max_retry_delay,
             )
 
         return cls._instances[key]
@@ -272,6 +284,7 @@ class DeepOriginClient:
         max_retries: int = 3,
         retryable_status_codes: Set[int] | None = None,
         retry_backoff_factor: float = 1.0,
+        max_retry_delay: float = 60.0,
     ) -> "DeepOriginClient":
         """Create a client instance from environment configuration.
 
@@ -290,7 +303,11 @@ class DeepOriginClient:
             retryable_status_codes: Set of HTTP status codes that should trigger
                 a retry. Defaults to {429, 500, 502, 503, 504}.
             retry_backoff_factor: Multiplier for exponential backoff between retries.
-                Delay = retry_backoff_factor * (2 ** attempt_number). Defaults to 1.0.
+                Delay = min(retry_backoff_factor * (2 ** attempt_number), max_retry_delay).
+                The delay grows exponentially but is capped at max_retry_delay to prevent
+                excessive wait times. Defaults to 1.0.
+            max_retry_delay: Maximum delay in seconds between retry attempts. The exponential
+                backoff delay will be capped at this value. Defaults to 60.0 seconds.
 
         Returns:
             A new DeepOriginClient instance configured from environment variables
@@ -365,6 +382,7 @@ class DeepOriginClient:
             max_retries=max_retries,
             retryable_status_codes=retryable_status_codes,
             retry_backoff_factor=retry_backoff_factor,
+            max_retry_delay=max_retry_delay,
         )
 
     @classmethod
@@ -471,7 +489,9 @@ class DeepOriginClient:
                     self._should_retry(e, e.response.status_code)
                     and attempt < self.max_retries
                 ):
-                    delay = self.retry_backoff_factor * (2**attempt)
+                    delay = min(
+                        self.retry_backoff_factor * (2**attempt), self.max_retry_delay
+                    )
                     time.sleep(delay)
                     continue
                 # Not retryable or out of retries - handle HTTPStatusError specially
@@ -479,7 +499,9 @@ class DeepOriginClient:
             except (httpx.NetworkError, httpx.TimeoutException) as e:
                 last_error = e
                 if self._should_retry(e) and attempt < self.max_retries:
-                    delay = self.retry_backoff_factor * (2**attempt)
+                    delay = min(
+                        self.retry_backoff_factor * (2**attempt), self.max_retry_delay
+                    )
                     time.sleep(delay)
                     continue
                 raise

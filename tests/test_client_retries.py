@@ -321,3 +321,44 @@ def test_retry_preserves_request_body(mock_client_config):
     assert call_count["count"] == 2
     # Verify body was sent in both attempts (checking via transport would require
     # more complex setup, so we just verify the call count)
+
+
+def test_max_retry_delay_cap(mock_client_config):
+    """Test that retry delays are capped at max_retry_delay."""
+    call_count = {"count": 0}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        call_count["count"] += 1
+        # With max_retries=3, we get 4 total attempts (initial + 3 retries)
+        # So we need to fail 3 times and succeed on the 4th
+        if call_count["count"] <= 3:
+            return httpx.Response(500, json={"error": "Server Error"}, request=request)
+        return httpx.Response(200, json={"success": True}, request=request)
+
+    transport = httpx.MockTransport(handler)
+    # Use a very high retry_backoff_factor with a low max_retry_delay to test the cap
+    # Without the cap, delays would be: 100s, 200s, 400s = 700s total
+    # With max_retry_delay=2.0, all delays should be capped at 2s = 6s total
+    client = DeepOriginClient.from_env(
+        env="local",
+        base_url="http://test",
+        max_retries=3,
+        retry_backoff_factor=100.0,
+        max_retry_delay=2.0,
+    )
+    client._client = httpx.Client(transport=transport, base_url="http://test")
+
+    start_time = time.time()
+    result = client._get("/test")
+    elapsed = time.time() - start_time
+
+    assert result.status_code == 200
+    assert call_count["count"] >= 4  # At least initial attempt + 3 retries
+
+    # Verify that total elapsed time is reasonable (not exponentially large)
+    # With 3 retries and max delay of 2s, should be around 6-8 seconds max
+    # Without the cap, this would be 700+ seconds, so this verifies the cap is working
+    assert elapsed < 15.0, (
+        f"Total elapsed time {elapsed}s is too large (should be capped at ~6-8s). "
+        f"This indicates the max_retry_delay cap is not working correctly."
+    )

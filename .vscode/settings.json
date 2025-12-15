@@ -33,6 +33,7 @@
         "dataframe",
         "dateutil",
         "deeporigin",
+        "docstrings",
         "drugability",
         "dtos",
         "emeq",
@@ -45,6 +46,7 @@
         "Kekulization",
         "Kekulize",
         "Konnektor",
+        "kwargs",
         "ligandset",
         "marimo",
         "mbar",
@@ -75,6 +77,7 @@
         "SASA",
         "softcore",
         "Substruct",
-        "textea"
+        "textea",
+        "venv"
     ]
 }
