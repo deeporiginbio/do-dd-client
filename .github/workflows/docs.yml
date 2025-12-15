@@ -28,17 +28,12 @@ jobs:
           version: "0.5.27"
 
       - name: Set up Python
-        run: uv python install
+        run: uv python install 3.10
 
-      - name: Install
-        run: uv sync --extra docs
-
-      - name: Convert notebooks to HTML
-        run: mkdir -p docs/notebooks/html && uvx jupyter nbconvert --to html docs/notebooks/clean/*.ipynb --output-dir docs/notebooks/html
-          
-      - name: Build docs
-        run: uv run mkdocs build
-
+      - name: Build docs and check for warnings
+        env:
+          CI: "true"
+        run: bash scripts/build_docs.sh
 
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
