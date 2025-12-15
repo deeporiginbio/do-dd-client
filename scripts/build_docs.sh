@@ -1,36 +1,48 @@
+#!/bin/bash
 # The purpose of this script is to catch any warnings
-# during the docs built process and surface them as errors
+# during the docs build process and surface them as errors
 # so that there are no missing links or other issues
 
+set -euo pipefail
 
+# Convert notebooks to HTML if they exist
+if [ -d "docs/notebooks/clean" ] && [ "$(ls -A docs/notebooks/clean/*.ipynb 2>/dev/null)" ]; then
+  echo "📓 Converting notebooks to HTML..."
+  mkdir -p docs/notebooks/html
+  uvx jupyter nbconvert --to html docs/notebooks/clean/*.ipynb --output-dir docs/notebooks/html
+  echo "✅ Notebooks converted"
+fi
 
-if [ "$CI" = "true" ]; then
-  echo "Running in GitHub Actions runner, installing repo."
-  echo "🚧 Installing repo using uv..."
+# Install dependencies if running in CI
+if [ "${CI:-false}" = "true" ]; then
+  echo "🚧 Running in CI, installing dependencies using uv..."
   uv sync --extra docs
-  echo "Installed using uv."
-  MKDOCS_OUT="$(uv run mkdocs build -s 2>&1)"
-
-else
-  echo "Running Locally, will not install."
-  MKDOCS_OUT="$(uv run mkdocs build -s 2>&1)"
+  echo "✅ Dependencies installed"
 fi
 
+# Build docs and capture output
+echo "📚 Building documentation..."
+MKDOCS_OUT="$(uv run mkdocs build -s 2>&1)"
+BUILD_EXIT_CODE=$?
 
-
-if [ "$?" -gt 0 ]; then
-  echo "Something went wrong building docs. The error is:";
-  echo $MKDOCS_OUT
-  exit 3;
+# Check if build failed
+if [ "$BUILD_EXIT_CODE" -gt 0 ]; then
+  echo "❌ Build failed with exit code $BUILD_EXIT_CODE"
+  echo "Build output:"
+  echo "$MKDOCS_OUT"
+  exit "$BUILD_EXIT_CODE"
 fi
-warnings=$(echo $MKDOCS_OUT | grep "WARNING" | wc -l)
-if [ "$warnings" -gt 0 ]; then
-  echo "WARNINGS were found when making docs; aborting. The output of `mkdocs build --strict` is:";
-  echo $MKDOCS_OUT
-  exit 4;
+
+# Check for warnings
+WARNING_COUNT=$(echo "$MKDOCS_OUT" | grep -c "WARNING" || true)
+if [ "$WARNING_COUNT" -gt 0 ]; then
+  echo "❌ Found $WARNING_COUNT WARNING(s) during docs build. Aborting."
+  echo "Build output:"
+  echo "$MKDOCS_OUT"
+  exit 1
 fi
 
-echo "Built docs successfully"
+echo "✅ Built docs successfully with no warnings"
 
 
 

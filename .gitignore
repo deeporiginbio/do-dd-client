@@ -2,7 +2,10 @@ github_token
 *.csv
 uv.lock
 
-scratch-notebooks/
+# notebooks
+.ipynb_checkpoints
+docs/notebooks/dirty/
+
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
@@ -46,10 +49,6 @@ coverage.xml
 /coverage
 
 
-# notebooks
-*__marimo__/*
-notebooks/__marimo__/*
-.ipynb_checkpoints
 
 # IPython
 profile_default/
@@ -78,27 +77,11 @@ venv.bak/
 # mkdocs documentation
 /site
 
-# mypy
-.mypy_cache/
-.dmypy.json
-dmypy.json
 
-# Pyre type checker
-.pyre/
 
 # System files
 .DS_Store
 Thumbs.db
-
-# temporary directories
-/tmp
-notebooks/**/tmp/
-/out-tsc
-
-# caches and locks
-/.sass-cache
-/connect.lock
-/typings
 
 
 
@@ -119,7 +102,5 @@ notebooks/**/tmp/
 # temporary files
 libs/
 tmp/
-**/docs/bench-software-blueprint-*/*.yml
 **/docs/coverage.txt
-notebooks/**/tmp*
 

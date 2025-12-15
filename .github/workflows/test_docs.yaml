@@ -1,22 +1,22 @@
-name: Test build of Documentation
+name: Test Documentation Build
 
 on:
   pull_request:
     paths:
       - 'docs/**'
-
+      - 'mkdocs.yaml'
+      - 'scripts/build_docs.sh'
+      - 'pyproject.toml'
 
 jobs:
-
   build-docs:
     runs-on: ubuntu-latest
     environment:
       name: docs
 
     steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
       - name: Install uv
         uses: astral-sh/setup-uv@v6
@@ -26,5 +26,7 @@ jobs:
       - name: Set up Python
         run: uv python install 3.10
 
-      - name: Build docs and check for errors
+      - name: Build docs and check for warnings
+        env:
+          CI: "true"
         run: bash scripts/build_docs.sh

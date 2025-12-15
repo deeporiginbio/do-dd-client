@@ -1,4 +1,0 @@
-project_name_override: file-service
-package_name_override: file_service
-package_version_override: "0.1.0"
-use_path_prefixes_for_title_model_names: false
