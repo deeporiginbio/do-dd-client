@@ -424,13 +424,11 @@ class DeepOriginClient:
     def _should_retry(
         self,
         error: Exception,
-        status_code: int | None = None,
     ) -> bool:
         """Determine if a request should be retried based on the error.
 
         Args:
             error: The exception that occurred.
-            status_code: HTTP status code if available (from HTTPStatusError).
 
         Returns:
             True if the request should be retried, False otherwise.
@@ -443,10 +441,6 @@ class DeepOriginClient:
             return True
 
         # Retry on specific HTTP status codes
-        if isinstance(error, httpx.HTTPStatusError) and status_code is not None:
-            return status_code in self.retryable_status_codes
-
-        # For HTTPStatusError, extract status code from response
         if isinstance(error, httpx.HTTPStatusError):
             return error.response.status_code in self.retryable_status_codes
 
@@ -485,10 +479,7 @@ class DeepOriginClient:
                 return response
             except httpx.HTTPStatusError as e:
                 last_error = e
-                if (
-                    self._should_retry(e, e.response.status_code)
-                    and attempt < self.max_retries
-                ):
+                if self._should_retry(e) and attempt < self.max_retries:
                     delay = min(
                         self.retry_backoff_factor * (2**attempt), self.max_retry_delay
                     )
