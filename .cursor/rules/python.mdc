@@ -6,7 +6,6 @@ alwaysApply: true
 
 # Code Style
 
-
 - Use beartype for runtime type validation 
 - Use type hints for all function arguments and return types
 - Use f-strings for string formatting
@@ -43,8 +42,8 @@ When modifying an existing function, make the following changes together:
 # Running tests
 
 - Before running tests, run `uv run ruff format .` and `uv run ruff check --select I . --fix` to ensure that code is formatted correctly
-- Run tests by using `uv run pytest --mock`
-- To test a specific function, use `uv run pytest -k --mock` 
+- Run tests by using `uv run pytest --env local -x`. Fix failing tests. 
+- To test a specific function, use `uv run pytest -k --env local` 
 
 
 # Common mistakes

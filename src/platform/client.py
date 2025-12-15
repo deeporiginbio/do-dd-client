@@ -10,7 +10,8 @@ from __future__ import annotations
 
 import json
 import os
-from typing import Any, Dict, Optional, Tuple, get_args
+import time
+from typing import Any, Callable, Dict, Optional, Set, Tuple, get_args
 import uuid
 import weakref
 
@@ -48,6 +49,10 @@ class DeepOriginClient:
         env: ENVS | None = None,
         base_url: str | None = None,
         timeout: float = 10.0,
+        max_retries: int = 3,
+        retryable_status_codes: Set[int] | None = None,
+        retry_backoff_factor: float = 1.0,
+        max_retry_delay: float = 60.0,
     ):
         """Initialize a DeepOrigin Platform client.
 
@@ -63,6 +68,16 @@ class DeepOriginClient:
                 base_url is None, reads from config.
             base_url: Base URL for the API. If None, derived from env or config.
             timeout: Request timeout in seconds.
+            max_retries: Maximum number of retry attempts for failed requests.
+                Defaults to 3. Set to 0 to disable retries.
+            retryable_status_codes: Set of HTTP status codes that should trigger
+                a retry. Defaults to {429, 500, 502, 503, 504}.
+            retry_backoff_factor: Multiplier for exponential backoff between retries.
+                Delay = min(retry_backoff_factor * (2 ** attempt_number), max_retry_delay).
+                The delay grows exponentially but is capped at max_retry_delay to prevent
+                excessive wait times. Defaults to 1.0.
+            max_retry_delay: Maximum delay in seconds between retry attempts. The exponential
+                backoff delay will be capped at this value. Defaults to 60.0 seconds.
         """
 
         if token is None:
@@ -93,6 +108,16 @@ class DeepOriginClient:
         self.files = Files(self)
         self.executions = Executions(self)
         self.organizations = Organizations(self)
+
+        # Retry configuration
+        self.max_retries = max_retries
+        self.retryable_status_codes = (
+            retryable_status_codes
+            if retryable_status_codes is not None
+            else {429, 500, 502, 503, 504}
+        )
+        self.retry_backoff_factor = retry_backoff_factor
+        self.max_retry_delay = max_retry_delay
 
         # Initialize _client first (before setting token property)
         self._client = httpx.Client(
@@ -176,12 +201,38 @@ class DeepOriginClient:
         env: ENVS | None = None,
         base_url: str | None = None,
         timeout: float = 10.0,
+        max_retries: int = 3,
+        retryable_status_codes: Set[int] | None = None,
+        retry_backoff_factor: float = 1.0,
+        max_retry_delay: float = 60.0,
         replace: bool = False,
     ) -> "DeepOriginClient":
         """
         Get a cached client for (base_url, token, org_key).
         If arguments are omitted, reads from config (same as __init__).
         If `replace=True`, closes and recreates the cached instance.
+
+        Args:
+            token: Authentication token. If None, reads from config.
+            org_key: Organization key. If None, reads from config.
+            env: Environment name (e.g., 'prod', 'staging'). If None and
+                base_url is None, reads from config.
+            base_url: Base URL for the API. If None, derived from env or config.
+            timeout: Request timeout in seconds.
+            max_retries: Maximum number of retry attempts for failed requests.
+                Defaults to 3. Set to 0 to disable retries.
+            retryable_status_codes: Set of HTTP status codes that should trigger
+                a retry. Defaults to {429, 500, 502, 503, 504}.
+            retry_backoff_factor: Multiplier for exponential backoff between retries.
+                Delay = min(retry_backoff_factor * (2 ** attempt_number), max_retry_delay).
+                The delay grows exponentially but is capped at max_retry_delay to prevent
+                excessive wait times. Defaults to 1.0.
+            max_retry_delay: Maximum delay in seconds between retry attempts. The exponential
+                backoff delay will be capped at this value. Defaults to 60.0 seconds.
+            replace: If True, close and recreate the cached instance.
+
+        Returns:
+            A cached DeepOriginClient instance.
         """
         # Resolve config values (same logic as __init__)
         if token is None:
@@ -215,6 +266,10 @@ class DeepOriginClient:
                 env=env,
                 base_url=base_url,
                 timeout=timeout,
+                max_retries=max_retries,
+                retryable_status_codes=retryable_status_codes,
+                retry_backoff_factor=retry_backoff_factor,
+                max_retry_delay=max_retry_delay,
             )
 
         return cls._instances[key]
@@ -226,6 +281,10 @@ class DeepOriginClient:
         *,
         base_url: str | None = None,
         timeout: float = 10.0,
+        max_retries: int = 3,
+        retryable_status_codes: Set[int] | None = None,
+        retry_backoff_factor: float = 1.0,
+        max_retry_delay: float = 60.0,
     ) -> "DeepOriginClient":
         """Create a client instance from environment configuration.
 
@@ -239,6 +298,16 @@ class DeepOriginClient:
             base_url: Base URL for the API. If None, derived from env (defaults
                 to http://127.0.0.1:4931 for 'local').
             timeout: Request timeout in seconds.
+            max_retries: Maximum number of retry attempts for failed requests.
+                Defaults to 3. Set to 0 to disable retries.
+            retryable_status_codes: Set of HTTP status codes that should trigger
+                a retry. Defaults to {429, 500, 502, 503, 504}.
+            retry_backoff_factor: Multiplier for exponential backoff between retries.
+                Delay = min(retry_backoff_factor * (2 ** attempt_number), max_retry_delay).
+                The delay grows exponentially but is capped at max_retry_delay to prevent
+                excessive wait times. Defaults to 1.0.
+            max_retry_delay: Maximum delay in seconds between retry attempts. The exponential
+                backoff delay will be capped at this value. Defaults to 60.0 seconds.
 
         Returns:
             A new DeepOriginClient instance configured from environment variables
@@ -310,6 +379,10 @@ class DeepOriginClient:
             env=env,
             base_url=base_url,
             timeout=timeout,
+            max_retries=max_retries,
+            retryable_status_codes=retryable_status_codes,
+            retry_backoff_factor=retry_backoff_factor,
+            max_retry_delay=max_retry_delay,
         )
 
     @classmethod
@@ -348,6 +421,78 @@ class DeepOriginClient:
             self._instances.pop(key, None)
 
     # -------- Low-level helpers --------
+    def _should_retry(
+        self,
+        error: Exception,
+    ) -> bool:
+        """Determine if a request should be retried based on the error.
+
+        Args:
+            error: The exception that occurred.
+
+        Returns:
+            True if the request should be retried, False otherwise.
+        """
+        if self.max_retries == 0:
+            return False
+
+        # Retry on network errors and timeouts
+        if isinstance(error, (httpx.NetworkError, httpx.TimeoutException)):
+            return True
+
+        # Retry on specific HTTP status codes
+        if isinstance(error, httpx.HTTPStatusError):
+            return error.response.status_code in self.retryable_status_codes
+
+        return False
+
+    def _retry_request(
+        self,
+        request_func: Callable[[], httpx.Response],
+        method: str,
+        path: str,
+        body: dict | None = None,
+    ) -> httpx.Response:
+        """Execute an HTTP request with retry logic.
+
+        Args:
+            request_func: A callable that executes the HTTP request and returns
+                a Response. Should raise httpx exceptions on failure.
+            method: HTTP method name (e.g., 'GET', 'POST') for error handling.
+            path: API endpoint path for error handling.
+            body: Optional request body for error handling.
+
+        Returns:
+            The HTTP response object.
+
+        Raises:
+            httpx.HTTPStatusError: If the request fails after all retries.
+            httpx.NetworkError: If network errors persist after all retries.
+            httpx.TimeoutException: If timeouts persist after all retries.
+        """
+        for attempt in range(self.max_retries + 1):
+            try:
+                response = request_func()
+                response.raise_for_status()
+                return response
+            except httpx.HTTPStatusError as e:
+                if self._should_retry(e) and attempt < self.max_retries:
+                    delay = min(
+                        self.retry_backoff_factor * (2**attempt), self.max_retry_delay
+                    )
+                    time.sleep(delay)
+                    continue
+                # Not retryable or out of retries - handle HTTPStatusError specially
+                self._handle_request_error(method, path, e, body=body)
+            except (httpx.NetworkError, httpx.TimeoutException) as e:
+                if self._should_retry(e) and attempt < self.max_retries:
+                    delay = min(
+                        self.retry_backoff_factor * (2**attempt), self.max_retry_delay
+                    )
+                    time.sleep(delay)
+                    continue
+                raise
+
     def _handle_request_error(
         self,
         method: str,
@@ -385,7 +530,7 @@ class DeepOriginClient:
             if error_message is None:
                 # Fallback to string representation of entire error_data
                 error_message = str(error_data)
-        except (json.JSONDecodeError, ValueError):
+        except json.JSONDecodeError:
             # Fall back to text response
             try:
                 error_message = error.response.text
@@ -469,14 +614,11 @@ class DeepOriginClient:
             httpx.HTTPStatusError: If the response status code indicates an error.
         """
         self.check_token()
-        resp = self._client.get(path, **kwargs)
 
-        try:
-            resp.raise_for_status()
-        except httpx.HTTPStatusError as e:
-            self._handle_request_error("GET", path, e, body=None)
+        def request() -> httpx.Response:
+            return self._client.get(path, **kwargs)
 
-        return resp
+        return self._retry_request(request, "GET", path, body=None)
 
     def _post(self, path: str, body: Optional[dict] = None, **kwargs) -> httpx.Response:
         """Perform a POST request and raise on error.
@@ -493,14 +635,11 @@ class DeepOriginClient:
             httpx.HTTPStatusError: If the response status code indicates an error.
         """
         self.check_token()
-        resp = self._client.post(path, json=body, **kwargs)
 
-        try:
-            resp.raise_for_status()
-        except httpx.HTTPStatusError as e:
-            self._handle_request_error("POST", path, e, body=body)
+        def request() -> httpx.Response:
+            return self._client.post(path, json=body, **kwargs)
 
-        return resp
+        return self._retry_request(request, "POST", path, body=body)
 
     def _put(self, path: str, **kwargs) -> httpx.Response:
         """Perform a PUT request and raise on error.
@@ -516,16 +655,12 @@ class DeepOriginClient:
             httpx.HTTPStatusError: If the response status code indicates an error.
         """
         self.check_token()
-        resp = self._client.put(path, **kwargs)
 
-        try:
-            resp.raise_for_status()
-        except httpx.HTTPStatusError as e:
-            # Extract json body from kwargs if present for curl command construction
-            body = kwargs.get("json")
-            self._handle_request_error("PUT", path, e, body=body)
+        def request() -> httpx.Response:
+            return self._client.put(path, **kwargs)
 
-        return resp
+        body = kwargs.get("json")
+        return self._retry_request(request, "PUT", path, body=body)
 
     def _patch(self, path: str, **kwargs) -> httpx.Response:
         """Perform a PATCH request and raise on error.
@@ -541,16 +676,12 @@ class DeepOriginClient:
             httpx.HTTPStatusError: If the response status code indicates an error.
         """
         self.check_token()
-        resp = self._client.patch(path, **kwargs)
 
-        try:
-            resp.raise_for_status()
-        except httpx.HTTPStatusError as e:
-            # Extract json body from kwargs if present for curl command construction
-            body = kwargs.get("json")
-            self._handle_request_error("PATCH", path, e, body=body)
+        def request() -> httpx.Response:
+            return self._client.patch(path, **kwargs)
 
-        return resp
+        body = kwargs.get("json")
+        return self._retry_request(request, "PATCH", path, body=body)
 
     def _delete(self, path: str, **kwargs) -> httpx.Response:
         """Perform a DELETE request and raise on error.
@@ -566,16 +697,12 @@ class DeepOriginClient:
             httpx.HTTPStatusError: If the response status code indicates an error.
         """
         self.check_token()
-        resp = self._client.delete(path, **kwargs)
 
-        try:
-            resp.raise_for_status()
-        except httpx.HTTPStatusError as e:
-            # Extract json body from kwargs if present for curl command construction
-            body = kwargs.get("json")
-            self._handle_request_error("DELETE", path, e, body=body)
+        def request() -> httpx.Response:
+            return self._client.delete(path, **kwargs)
 
-        return resp
+        body = kwargs.get("json")
+        return self._retry_request(request, "DELETE", path, body=body)
 
     # -------- Convenience wrappers --------
     def get_json(self, path: str, **kwargs) -> Any:

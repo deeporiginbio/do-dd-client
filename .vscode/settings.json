@@ -33,9 +33,11 @@
         "dataframe",
         "dateutil",
         "deeporigin",
+        "docstrings",
         "drugability",
         "dtos",
         "emeq",
+        "finalizer",
         "FMCS",
         "HETATM",
         "inchi",
@@ -45,6 +47,7 @@
         "Kekulization",
         "Kekulize",
         "Konnektor",
+        "kwargs",
         "ligandset",
         "marimo",
         "mbar",
@@ -69,11 +72,13 @@
         "rdkit",
         "replex",
         "resnames",
+        "retryable",
         "rmsd",
         "sanitizable",
         "SASA",
         "softcore",
         "Substruct",
-        "textea"
+        "textea",
+        "venv"
     ]
 }
