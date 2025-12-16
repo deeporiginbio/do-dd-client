@@ -88,26 +88,18 @@ def test_sysprep(client):  # noqa: F811
 
 def test_protonation(client):  # noqa: F811
     """Test protonation function."""
-    from deeporigin.functions.protonation import protonate
 
-    response = protonate(
-        smiles_list=["CCO"],
-        ph=7.4,
-        filter_percentage=1.0,
-        use_cache=False,
-        client=client,
-    )
+    ligand = Ligand.from_smiles("C=CCCn1cc(-c2cccc(C(=O)N(C)C)c2)c2cc[nH]c2c1=O")
 
-    # Verify response structure
-    assert isinstance(response, dict), "Expected a dictionary response"
-    assert "pH" in response, "Expected 'pH' in response"
-    assert response["pH"] == 7.4, "Expected pH to be 7.4"
-    assert "protonation_states" in response, "Expected 'protonation_states' in response"
-    assert "smiles_list" in response["protonation_states"], (
-        "Expected 'smiles_list' in protonation_states"
-    )
-    assert len(response["protonation_states"]["smiles_list"]) > 0, (
-        "Expected at least one SMILES in smiles_list"
+    original_smiles = ligand.smiles
+    ligand.protonate(ph=7.4, client=client)
+
+    assert ligand.smiles == original_smiles, "Expected SMILES to be the same at pH 7.4"
+
+    ligand.protonate(ph=11.4, client=client)
+
+    assert ligand.smiles != original_smiles, (
+        "Expected SMILES to be different at pH 11.4"
     )
 
 

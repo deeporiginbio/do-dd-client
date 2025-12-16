@@ -512,12 +512,14 @@ class Ligand(Entity):
             client = DeepOriginClient.get()
 
         data = protonate(
-            smiles_list=[self.smiles],
+            smiles=self.smiles,
             ph=ph,
             filter_percentage=filter_percentage,
             client=client,
         )
+
         self.mol = Chem.MolFromSmiles(data["protonation_states"]["smiles_list"][0])
+        self.smiles = data["protonation_states"]["smiles_list"][0]
 
     def to_molblock(self) -> str:
         """

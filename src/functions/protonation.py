@@ -19,7 +19,7 @@ os.makedirs(CACHE_DIR, exist_ok=True)
 @beartype
 def protonate(
     *,
-    smiles_list: list[str],
+    smiles: str,
     ph: number = 7.4,
     filter_percentage: number = 1.0,
     use_cache: bool = True,
@@ -42,7 +42,7 @@ def protonate(
     """
 
     payload = {
-        "smiles_list": smiles_list,
+        "smiles": smiles,
         "pH": ph,
         "filter_percentage": float(filter_percentage),
     }
@@ -79,5 +79,7 @@ def protonate(
         Path(response_file).parent.mkdir(parents=True, exist_ok=True)
         with open(response_file, "w") as file:
             json.dump(response, file)
+
+    print(json.dumps(response, indent=4))
 
     return response
