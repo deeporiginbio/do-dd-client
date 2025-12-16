@@ -504,9 +504,36 @@ class Ligand(Entity):
         quote: bool = False,
     ):
         """
-        Protonate the ligand at a given pH.
+        Protonate the ligand at a given pH using the DeepOrigin API.
 
-        Only the most abundant species is retained.
+        This method calculates the protonation states of the ligand molecule at the
+        specified pH value and updates the ligand's molecule and SMILES representation
+        with the most abundant protonation state. The protonation state affects the
+        charge distribution of ionizable groups (e.g., carboxylic acids, amines) in
+        the molecule, which is important for accurate molecular modeling and docking
+        simulations.
+
+        The method modifies the ligand in place by updating both `self.mol` and
+        `self.smiles` with the protonated form of the molecule.
+
+        Args:
+            ph (number): pH value at which to protonate the ligand. Defaults to 7.4
+                (physiological pH).
+            filter_percentage (number): Percentage threshold for filtering protonation
+                states. Only species with abundance above this threshold are considered.
+                Defaults to 1.0 (100%), meaning only the most abundant species is retained.
+            client (Optional[DeepOriginClient]): DeepOrigin client instance to use for
+                API calls. If None, a default client is obtained using
+                `DeepOriginClient.get()`. Defaults to None.
+            use_cache (bool): Whether to use cached protonation results if available.
+                Caching is based on the SMILES string and pH value. Defaults to True.
+            quote (bool): If True, request a quote for the protonation operation instead
+                of executing it. Defaults to False.
+
+        Note:
+            The protonation process may change the SMILES string of the ligand if
+            ionizable groups are present and their protonation state changes at the
+            specified pH.
         """
         from deeporigin.functions.protonation import protonate
 
