@@ -80,6 +80,4 @@ def protonate(
         with open(response_file, "w") as file:
             json.dump(response, file)
 
-    print(json.dumps(response, indent=4))
-
     return response
