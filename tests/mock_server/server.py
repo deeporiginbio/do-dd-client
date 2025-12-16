@@ -420,6 +420,57 @@ class MockServer:
         fixture_name = smiles_to_fixture.get(smiles, "molprops_serotonin")
         return self._load_fixture(fixture_name)
 
+    def _get_protonation_response(self, *, smiles: str, ph: float) -> dict[str, Any]:
+        """Get protonation response for a given SMILES and pH.
+
+        Args:
+            smiles: SMILES string to get protonation data for.
+            ph: pH value for protonation calculation.
+
+        Returns:
+            Dictionary containing the protonation response.
+
+        Raises:
+            HTTPException: If SMILES is not supported (we only have data for one molecule).
+        """
+        from fastapi import HTTPException
+
+        # Validate smiles - we only have data for this specific molecule
+        expected_smiles = "C=CCCn1cc(-c2cccc(C(=O)N(C)C)c2)c2cc[nH]c2c1=O"
+        if smiles != expected_smiles:
+            raise HTTPException(
+                status_code=400,
+                detail=f"No data available for SMILES: {smiles}",
+            )
+
+        # Build response based on pH
+        if ph < 8:
+            return {
+                "smiles": "C=CCCn1cc(-c2cccc(C(=O)N(C)C)c2)c2cc[nH]c2c1=O",
+                "pH": ph,
+                "filter_percentage": 1,
+                "protonation_states": {
+                    "smiles_list": ["C=CCCn1cc(-c2cccc(C(=O)N(C)C)c2)c2cc[nH]c2c1=O"],
+                    "concentration_list": [99.93319834034459],
+                },
+            }
+        else:  # ph >= 8
+            return {
+                "smiles": "C=CCCn1cc(-c2cccc(C(=O)N(C)C)c2)c2cc[nH]c2c1=O",
+                "pH": ph,
+                "filter_percentage": 1,
+                "protonation_states": {
+                    "smiles_list": [
+                        "C=CCCn1cc(-c2cccc(C(=O)N(C)C)c2)c2cc[n-]c2c1=O",
+                        "C=CCCn1cc(-c2cccc(C(=O)N(C)C)c2)c2cc[nH]c2c1=O",
+                    ],
+                    "concentration_list": [
+                        79.69080764827427,
+                        20.309192281585123,
+                    ],
+                },
+            }
+
     def _setup_routes(self) -> None:
         """Set up all API routes."""
         # Include file-related routes
@@ -476,8 +527,17 @@ class MockServer:
 
                 # Get request body to extract SMILES list
                 body = await request.json()
-                params = body.get("inputs", {})
+                params = body.get("inputs", {}) or body.get("params", {})
                 smiles_list = params.get("smiles_list", [])
+
+                # Handle protonation separately as it has a different response format
+                if prop == "protonation":
+                    smiles = params.get("smiles")
+                    ph = params.get("pH", 7.4)
+                    protonation_response = self._get_protonation_response(
+                        smiles=smiles, ph=ph
+                    )
+                    return {"functionOutputs": protonation_response}
 
                 # Return response based on property requested
                 # Each property endpoint returns a list of dicts with "smiles" key

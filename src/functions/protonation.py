@@ -5,12 +5,11 @@ import os
 from pathlib import Path
 
 from beartype import beartype
-import httpx
 
+from deeporigin.platform.client import DeepOriginClient
 from deeporigin.utils.constants import number
 from deeporigin.utils.core import _ensure_do_folder, hash_dict
 
-URL = "http://molprops.default.jobs.edge.deeporigin.io/protonation"
 CACHE_DIR = str(_ensure_do_folder() / "protonation")
 
 # Ensure cache directory exists
@@ -24,6 +23,8 @@ def protonate(
     ph: number = 7.4,
     filter_percentage: number = 1.0,
     use_cache: bool = True,
+    client: DeepOriginClient,
+    quote: bool = False,
 ) -> dict:
     """
     Run ligand protonation using the DeepOrigin API.
@@ -33,9 +34,11 @@ def protonate(
         ph (number): pH value
         filter_percentage (number): Percentage of the most abundant species to retain
         use_cache (bool): Whether to use the cache
+        client (DeepOriginClient): DeepOrigin client instance
+        quote (bool): Whether to request a quote instead of running the function
 
     Returns:
-        dict: Dictionary containing the protonation states of the molecule
+        dict: Dictionary containing the protonation states of the molecules
     """
 
     payload = {
@@ -55,17 +58,16 @@ def protonate(
             response = json.load(file)
 
     else:
-        # Make the API request
-        response = httpx.post(
-            URL,
-            json=payload,
-            headers={"Content-Type": "application/json"},
+        # Make the API request using client.functions.run()
+        response = client.functions.run(
+            key="deeporigin.mol-props-protonation",
+            params=payload,
+            quote=quote,
         )
 
-        # Raise an exception for bad status codes
-        response.raise_for_status()
-
-        response = response.json()
+        # TODO -- remove this patch once API is updated
+        if "functionOutputs" in response:
+            response = response["functionOutputs"]
 
         # check response pH
         if response["pH"] != ph:
@@ -73,6 +75,8 @@ def protonate(
                 f"Protonation failed. Expected pH {ph}, got {response['pH']}"
             )
         # Write JSON response to cache
+        # Ensure parent directory exists before writing
+        Path(response_file).parent.mkdir(parents=True, exist_ok=True)
         with open(response_file, "w") as file:
             json.dump(response, file)
 

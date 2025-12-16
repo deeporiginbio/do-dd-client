@@ -517,6 +517,7 @@ class DeepOriginClient:
         try:
             # Try to parse JSON error response
             error_data = error.response.json()
+
             # Common error message fields in API responses
             if isinstance(error_data, dict):
                 error_message = (

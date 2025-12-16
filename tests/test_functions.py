@@ -86,6 +86,23 @@ def test_sysprep(client):  # noqa: F811
     assert "output_files" in response, "Expected 'output_files' in response"
 
 
+def test_protonation(client):  # noqa: F811
+    """Test protonation function."""
+
+    ligand = Ligand.from_smiles("C=CCCn1cc(-c2cccc(C(=O)N(C)C)c2)c2cc[nH]c2c1=O")
+
+    original_smiles = ligand.smiles
+    ligand.protonate(ph=7.4, client=client)
+
+    assert ligand.smiles == original_smiles, "Expected SMILES to be the same at pH 7.4"
+
+    ligand.protonate(ph=11.4, client=client)
+
+    assert ligand.smiles != original_smiles, (
+        "Expected SMILES to be different at pH 11.4"
+    )
+
+
 # def test_loop_modelling(client):  # noqa: F811
 #     protein = Protein.from_pdb_id("5QSP")
 #     assert len(protein.find_missing_residues()) > 0, "Missing residues should be > 0"

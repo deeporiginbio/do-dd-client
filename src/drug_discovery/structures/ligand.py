@@ -499,6 +499,7 @@ class Ligand(Entity):
         *,
         ph: number = 7.4,
         filter_percentage: number = 1.0,
+        client: Optional[DeepOriginClient] = None,
     ):
         """
         Protonate the ligand at a given pH.
@@ -507,12 +508,18 @@ class Ligand(Entity):
         """
         from deeporigin.functions.protonation import protonate
 
+        if client is None:
+            client = DeepOriginClient.get()
+
         data = protonate(
             smiles=self.smiles,
             ph=ph,
             filter_percentage=filter_percentage,
+            client=client,
         )
+
         self.mol = Chem.MolFromSmiles(data["protonation_states"]["smiles_list"][0])
+        self.smiles = data["protonation_states"]["smiles_list"][0]
 
     def to_molblock(self) -> str:
         """
