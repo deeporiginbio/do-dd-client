@@ -446,7 +446,7 @@ class MockServer:
         # Build response based on pH
         if ph < 8:
             return {
-                "smiles": "C=CCCn1cc(-c2cccc(C(=O)N(C)C)c2)c2cc[n-]c2c1=O",
+                "smiles": "C=CCCn1cc(-c2cccc(C(=O)N(C)C)c2)c2cc[nH]c2c1=O",
                 "pH": ph,
                 "filter_percentage": 1,
                 "protonation_states": {
