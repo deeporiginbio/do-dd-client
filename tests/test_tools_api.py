@@ -47,7 +47,7 @@ def test_tools_api_health_lv1():
     assert data["status"] == "ok"
 
 
-@pytest.mark.dependency(depends=["test_tools_api_health"])
+@pytest.mark.dependency(depends=["test_tools_api_health_lv1"])
 def test_get_all_tools_lv1():
     """test the tools API"""
     client = DeepOriginClient()
@@ -69,7 +69,7 @@ def test_get_all_tools_lv1():
         assert key in tool.keys(), f"Expected tool to have key {key}"
 
 
-@pytest.mark.dependency(depends=["test_tools_api_health"])
+@pytest.mark.dependency(depends=["test_tools_api_health_lv1"])
 def test_get_all_function_lv1():
     """Test the functions API list method."""
     client = DeepOriginClient()
