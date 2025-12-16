@@ -500,6 +500,8 @@ class Ligand(Entity):
         ph: number = 7.4,
         filter_percentage: number = 1.0,
         client: Optional[DeepOriginClient] = None,
+        use_cache: bool = True,
+        quote: bool = False,
     ):
         """
         Protonate the ligand at a given pH.
@@ -516,6 +518,8 @@ class Ligand(Entity):
             ph=ph,
             filter_percentage=filter_percentage,
             client=client,
+            use_cache=use_cache,
+            quote=quote,
         )
 
         self.mol = Chem.MolFromSmiles(data["protonation_states"]["smiles_list"][0])
@@ -1573,12 +1577,19 @@ class LigandSet:
         *,
         ph: number = 7.4,
         filter_percentage: number = 1.0,
+        use_cache: bool = True,
+        client: Optional[DeepOriginClient] = None,
     ):
         """
         Protonate the ligandSet. Only the most abundant species is retained for each ligand.
         """
         for ligand in tqdm(self.ligands, desc="Protonating ligands", unit="ligand"):
-            ligand.protonate(ph=ph, filter_percentage=filter_percentage)
+            ligand.protonate(
+                ph=ph,
+                filter_percentage=filter_percentage,
+                use_cache=use_cache,
+                client=client,
+            )
         return self
 
     @beartype

@@ -1,7 +1,5 @@
 """Tests for Clusters API wrapper."""
 
-from tests.utils import client  # noqa: F401
-
 
 def test_get_default_cluster_id_level_1(client):  # noqa: F811
     """Test that get_default_cluster_id returns the first cluster."""

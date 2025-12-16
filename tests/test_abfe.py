@@ -4,7 +4,6 @@ import pytest
 
 from deeporigin.drug_discovery import BRD_DATA_DIR, Complex, Ligand, Protein
 from deeporigin.exceptions import DeepOriginException
-from tests.utils import client  # noqa: F401
 
 
 def test_abfe_charged_ligand_level_0(client):  # noqa: F811

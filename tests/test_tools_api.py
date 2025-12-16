@@ -4,7 +4,6 @@ import pytest
 
 from deeporigin.drug_discovery.constants import tool_mapper
 from deeporigin.platform.job import Job, JobList
-from tests.utils import client  # noqa: F401
 
 
 def test_get_tool_executions_level_1(client):  # noqa: F811

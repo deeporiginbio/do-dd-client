@@ -5,8 +5,6 @@ import tempfile
 
 import pytest
 
-from tests.utils import client  # noqa: F401
-
 
 def test_get_all_files_level_1(client):  # noqa: F811
     """check that there are some files in entities/"""

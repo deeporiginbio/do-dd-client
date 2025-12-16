@@ -1,7 +1,5 @@
 """Tests for the Organizations API wrapper."""
 
-from tests.utils import client  # noqa: F401
-
 
 def test_list_organizations_level_1(client):  # noqa: F811
     """Test listing organizations."""

@@ -4,7 +4,6 @@ import pytest
 
 from deeporigin.drug_discovery import BRD_DATA_DIR, Complex, Ligand, LigandSet, Protein
 from deeporigin.exceptions import DeepOriginException
-from tests.utils import client  # noqa: F401
 
 
 def test_from_dir_2_pdb(client):  # noqa: F811
