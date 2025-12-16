@@ -22,13 +22,20 @@ class Tools:
         """
         self._c = client
 
-    def list(self) -> dict:
+    def list(self) -> list[dict]:
         """List all available tool definitions.
 
         Returns:
-            Dictionary containing tool definitions from the API.
+            List of tool definition dictionaries from the API.
         """
-        return self._c.get_json("/tools/protected/tools/definitions")
+        response = self._c.get_json("/tools/protected/tools/definitions")
+        # Handle both dict with 'data' key and direct list responses
+        if isinstance(response, dict) and "data" in response:
+            return response["data"]
+        elif isinstance(response, list):
+            return response
+        else:
+            return []
 
     def get_by_key(self, *, tool_key: str) -> list[dict]:
         """Get all versions of a tool definition by tool key.

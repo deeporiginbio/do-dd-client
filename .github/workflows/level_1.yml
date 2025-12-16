@@ -43,5 +43,5 @@ jobs:
         run: uv sync --extra test --extra tools --extra plots --extra core
 
       - name: "runing level 1 tests"
-        run: uv run pytest --env ${{ matrix.env }} -k level_1
+        run: uv run pytest --env ${{ matrix.env }} -k lv1
 

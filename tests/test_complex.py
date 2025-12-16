@@ -6,7 +6,7 @@ from deeporigin.drug_discovery import BRD_DATA_DIR, Complex, Ligand, LigandSet, 
 from deeporigin.exceptions import DeepOriginException
 
 
-def test_from_dir_2_pdb():
+def test_from_dir_2_pdb_lv0():
     """Test creating a Complex from a directory with 2 PDB files"""
 
     # Find the original PDB file in BRD_DATA_DIR
@@ -32,7 +32,7 @@ def test_from_dir_2_pdb():
         os.remove(copy_pdb_path)
 
 
-def test_from_dir():
+def test_from_dir_lv0():
     """Test creating a Complex from the example data directory"""
     # Create Complex from directory
     complex_obj = Complex.from_dir(BRD_DATA_DIR)
@@ -55,7 +55,7 @@ def test_from_dir():
     assert complex_obj.protein.name == "brd"
 
 
-def test_construct_complex():
+def test_construct_complex_lv0():
     """Test constructing a Complex by providing protein and ligands directly"""
     # Create protein from PDB file
     pdb_path = os.path.join(BRD_DATA_DIR, "brd.pdb")
@@ -88,7 +88,7 @@ def test_construct_complex():
         assert ligand.name is not None
 
 
-def test_prepare_missing_residues():
+def test_prepare_missing_residues_lv0():
     """Test preparing a Complex with missing residues"""
     # Create a Complex with a protein with missing residues
     protein = Protein.from_pdb_id("5QSP")

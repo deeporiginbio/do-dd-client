@@ -27,7 +27,7 @@ BRD_SMILES = {
 
 
 @pytest.mark.parametrize("filename,expected_count", SDF_TEST_CASES)
-def test_ligand_set_from_sdf_file(filename, expected_count):
+def test_ligand_set_from_sdf_file_lv0(filename, expected_count):
     """Test that we can make many ligands from a single SDF file with many molecules"""
     ligands = LigandSet.from_sdf(filename)
     assert len(ligands.ligands) == expected_count, f"Expected {expected_count} ligands"
@@ -35,7 +35,7 @@ def test_ligand_set_from_sdf_file(filename, expected_count):
         assert isinstance(ligand, Ligand), "Expected a Ligand object"
 
 
-def test_ligand_set_from_sdf_files():
+def test_ligand_set_from_sdf_files_lv0():
     """Test that we can create a LigandSet from multiple SDF files by concatenating them"""
 
     # Get paths to test SDF files
@@ -65,7 +65,7 @@ def test_ligand_set_from_sdf_files():
     )
 
 
-def test_ligand_set_from_sdf_files_error_handling():
+def test_ligand_set_from_sdf_files_error_handling_lv0():
     """Test error handling in from_sdf_files method"""
 
     # Test with non-existent file

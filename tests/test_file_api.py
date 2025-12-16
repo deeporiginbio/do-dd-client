@@ -8,7 +8,7 @@ import pytest
 from deeporigin.platform.client import DeepOriginClient
 
 
-def test_get_all_files_level_1():
+def test_get_all_files_lv1():
     """check that there are some files in entities/"""
     client = DeepOriginClient()
     files = client.files.list_files_in_dir(
@@ -20,7 +20,7 @@ def test_get_all_files_level_1():
     print(f"Found {len(files)} files")
 
 
-def test_download_file_level_1():
+def test_download_file_lv1():
     """test the file download API"""
     client = DeepOriginClient()
     files = client.files.list_files_in_dir(
@@ -36,7 +36,7 @@ def test_download_file_level_1():
     assert os.path.exists(local_path), "should have downloaded the file"
 
 
-def test_download_files_with_list_level_1():
+def test_download_files_with_list_lv1():
     """test the download_files API with a list input."""
     client = DeepOriginClient()
     files = client.files.list_files_in_dir(
@@ -54,7 +54,7 @@ def test_download_files_with_list_level_1():
     assert os.path.exists(local_paths[0]), "should have downloaded the file"
 
 
-def test_download_files_with_dict_level_1():
+def test_download_files_with_dict_lv1():
     """test the download_files API with a dict input."""
     client = DeepOriginClient()
     files = client.files.list_files_in_dir(
@@ -72,7 +72,7 @@ def test_download_files_with_dict_level_1():
     assert os.path.exists(local_paths[0]), "should have downloaded the file"
 
 
-def test_delete_file_level_1():
+def test_delete_file_lv1():
     """test the delete_file API."""
     client = DeepOriginClient()
     # First upload a file to delete
@@ -99,7 +99,7 @@ def test_delete_file_level_1():
         os.remove(local_test_file)
 
 
-def test_delete_file_with_special_chars_level_1():
+def test_delete_file_with_special_chars_lv1():
     """test the delete_file API with special characters in path."""
     client = DeepOriginClient()
     # Test with a path that contains special characters (like the example)
@@ -126,7 +126,7 @@ def test_delete_file_with_special_chars_level_1():
         os.remove(local_test_file)
 
 
-def test_delete_files_level_1():
+def test_delete_files_lv1():
     """test the delete_files API."""
     client = DeepOriginClient()
     # Upload multiple files to delete
@@ -160,7 +160,7 @@ def test_delete_files_level_1():
             os.remove(local_test_file)
 
 
-def test_delete_files_with_errors_level_1():
+def test_delete_files_with_errors_lv1():
     """test the delete_files API with errors."""
     client = DeepOriginClient()
     # Upload one file
@@ -199,7 +199,7 @@ def test_delete_files_with_errors_level_1():
         os.remove(local_test_file)
 
 
-def test_delete_files_empty_list_level_1():
+def test_delete_files_empty_list_lv1():
     """test the delete_files API with empty list."""
     client = DeepOriginClient()
     # Should succeed without doing anything

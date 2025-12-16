@@ -21,21 +21,21 @@ def mock_jobs():
     return jobs
 
 
-def test_job_list_initialization(mock_jobs):
+def test_job_list_initialization_lv0(mock_jobs):
     """Test JobList initialization."""
     job_list = JobList(mock_jobs)
     assert len(job_list) == 5
     assert job_list.jobs == mock_jobs
 
 
-def test_job_list_iteration(mock_jobs):
+def test_job_list_iteration_lv0(mock_jobs):
     """Test iterating over JobList."""
     job_list = JobList(mock_jobs)
     for i, job in enumerate(job_list):
         assert job == mock_jobs[i]
 
 
-def test_job_list_getitem(mock_jobs):
+def test_job_list_getitem_lv0(mock_jobs):
     """Test accessing jobs by index."""
     job_list = JobList(mock_jobs)
     assert job_list[0] == mock_jobs[0]
@@ -44,7 +44,7 @@ def test_job_list_getitem(mock_jobs):
     assert job_list[0:2] == mock_jobs[0:2]
 
 
-def test_job_list_repr_html():
+def test_job_list_repr_html_lv0():
     """Test HTML representation of JobList."""
     job1 = Job(name="job1", _id="id-1", _skip_sync=True)
     job1.status = "Succeeded"
@@ -70,7 +70,7 @@ def test_job_list_repr_html():
     assert isinstance(html, str)
 
 
-def test_job_list_repr_html_empty():
+def test_job_list_repr_html_empty_lv0():
     """Test HTML representation of empty JobList."""
     job_list = JobList([])
     html = job_list._repr_html_()
@@ -79,7 +79,7 @@ def test_job_list_repr_html_empty():
     assert "No status information" in html
 
 
-def test_job_list_status(mock_jobs):
+def test_job_list_status_lv0(mock_jobs):
     """Test status property returns correct breakdown."""
     job_list = JobList(mock_jobs)
     status_counts = job_list.status
@@ -90,7 +90,7 @@ def test_job_list_status(mock_jobs):
     assert "Queued" not in status_counts
 
 
-def test_filter_by_status():
+def test_filter_by_status_lv0():
     """Test filtering jobs by status."""
     job1 = Job(name="job1", _id="id-1", _skip_sync=True)
     job1.status = "Succeeded"
@@ -116,7 +116,7 @@ def test_filter_by_status():
     assert len(failed) == 0
 
 
-def test_filter_by_attributes():
+def test_filter_by_attributes_lv0():
     """Test filtering jobs by attributes."""
     job1 = Job(name="job1", _id="id-1", _skip_sync=True)
     job1._attributes = {
@@ -152,7 +152,7 @@ def test_filter_by_attributes():
     )
 
 
-def test_filter_by_predicate():
+def test_filter_by_predicate_lv0():
     """Test filtering jobs with a custom predicate."""
     job1 = Job(name="job1", _id="id-1", _skip_sync=True)
     job1._attributes = {"approveAmount": 100, "status": "Succeeded"}
@@ -183,7 +183,7 @@ def test_filter_by_predicate():
     assert len(tool1_jobs) == 2
 
 
-def test_filter_combine_status_and_predicate():
+def test_filter_combine_status_and_predicate_lv0():
     """Test combining status filter with predicate."""
     job1 = Job(name="job1", _id="id-1", _skip_sync=True)
     job1.status = "Succeeded"
@@ -209,7 +209,7 @@ def test_filter_combine_status_and_predicate():
     assert filtered[0]._attributes.get("approveAmount") == 200
 
 
-def test_filter_combine_all():
+def test_filter_combine_all_lv0():
     """Test combining status, attributes, and predicate."""
     job1 = Job(name="job1", _id="id-1", _skip_sync=True)
     job1.status = "Succeeded"
@@ -235,7 +235,7 @@ def test_filter_combine_all():
     assert filtered[0]._id == "id-1"
 
 
-def test_filter_empty_result():
+def test_filter_empty_result_lv0():
     """Test filtering that returns empty JobList."""
     job1 = Job(name="job1", _id="id-1", _skip_sync=True)
     job1.status = "Succeeded"
@@ -247,7 +247,7 @@ def test_filter_empty_result():
     assert isinstance(filtered, JobList)
 
 
-def test_filter_no_filters():
+def test_filter_no_filters_lv0():
     """Test filtering with no filters returns original list."""
     job1 = Job(name="job1", _id="id-1", _skip_sync=True)
     job2 = Job(name="job2", _id="id-2", _skip_sync=True)
@@ -259,7 +259,7 @@ def test_filter_no_filters():
     assert filtered.jobs == job_list.jobs
 
 
-def test_filter_by_tool_key():
+def test_filter_by_tool_key_lv0():
     """Test filtering jobs by tool_key."""
     job1 = Job(name="job1", _id="id-1", _skip_sync=True)
     job1._attributes = {"tool": {"key": "deeporigin.docking", "version": "1.0.0"}}
@@ -290,7 +290,7 @@ def test_filter_by_tool_key():
     )
 
 
-def test_filter_by_tool_version():
+def test_filter_by_tool_version_lv0():
     """Test filtering jobs by tool_version."""
     job1 = Job(name="job1", _id="id-1", _skip_sync=True)
     job1._attributes = {"tool": {"key": "deeporigin.docking", "version": "1.0.0"}}
@@ -317,7 +317,7 @@ def test_filter_by_tool_version():
     assert v2_jobs[0]._attributes.get("tool", {}).get("version") == "2.0.0"
 
 
-def test_filter_by_tool_key_and_version():
+def test_filter_by_tool_key_and_version_lv0():
     """Test filtering jobs by both tool_key and tool_version."""
     job1 = Job(name="job1", _id="id-1", _skip_sync=True)
     job1._attributes = {"tool": {"key": "deeporigin.docking", "version": "1.0.0"}}
@@ -340,7 +340,7 @@ def test_filter_by_tool_key_and_version():
     assert filtered[0]._attributes.get("tool", {}).get("version") == "1.0.0"
 
 
-def test_filter_combine_tool_with_status():
+def test_filter_combine_tool_with_status_lv0():
     """Test combining tool filters with status filter."""
     job1 = Job(name="job1", _id="id-1", _skip_sync=True)
     job1.status = "Succeeded"
@@ -365,7 +365,7 @@ def test_filter_combine_tool_with_status():
     assert filtered[0]._attributes.get("tool", {}).get("key") == "deeporigin.docking"
 
 
-def test_filter_tool_key_with_missing_tool():
+def test_filter_tool_key_with_missing_tool_lv0():
     """Test filtering by tool_key when some jobs don't have tool attribute."""
     job1 = Job(name="job1", _id="id-1", _skip_sync=True)
     job1._attributes = {"tool": {"key": "deeporigin.docking", "version": "1.0.0"}}
@@ -384,7 +384,7 @@ def test_filter_tool_key_with_missing_tool():
     assert filtered[0]._id == "id-1"
 
 
-def test_job_list_confirm(mock_jobs):
+def test_job_list_confirm_lv0(mock_jobs):
     """Test confirm calls confirm on all jobs."""
     job_list = JobList(mock_jobs)
     job_list.confirm()

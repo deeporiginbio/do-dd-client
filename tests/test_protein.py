@@ -7,7 +7,7 @@ from deeporigin.drug_discovery import BRD_DATA_DIR, Protein
 from deeporigin.exceptions import DeepOriginException
 
 
-def test_from_file():
+def test_from_file_lv0():
     protein = Protein.from_file(BRD_DATA_DIR / "brd.pdb")
 
     assert (
@@ -16,7 +16,7 @@ def test_from_file():
     )
 
 
-def test_from_name(pytestconfig):
+def test_from_name_lv0(pytestconfig):
     """Test creating a protein from a name.
 
     Note: This test is skipped when using --mock flag as it requires
@@ -32,7 +32,7 @@ def test_from_name(pytestconfig):
     assert str(protein.sequence[0]) == "WCKQSGEMCNLLDQNCCDGYCIVLVCT"
 
 
-def test_from_pdb_id():
+def test_from_pdb_id_lv0():
     conotoxin = Protein.from_pdb_id("2JUQ")
 
     os.remove(conotoxin.file_path)
@@ -40,7 +40,7 @@ def test_from_pdb_id():
     _ = Protein.from_pdb_id("2JUQ")
 
 
-def test_from_pdb_id_with_invalid_id():
+def test_from_pdb_id_with_invalid_id_lv0():
     with pytest.raises(DeepOriginException, match=r".*Failed to create Protein.*"):
         Protein.from_pdb_id("foobar")
 

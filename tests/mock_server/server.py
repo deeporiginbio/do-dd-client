@@ -486,6 +486,11 @@ class MockServer:
                         "key": "test-tool",
                         "name": "Test Tool",
                         "version": "1.0.0",
+                        "inputs": {},
+                        "executors": [],
+                        "description": "Test tool description",
+                        "billingParser": {},
+                        "toolManifestVersion": "1.0.0",
                     }
                 ]
             }
@@ -510,9 +515,17 @@ class MockServer:
             """List all function definitions."""
             return [
                 {
+                    "id": "test-function-id",
                     "key": "test-function",
                     "name": "Test Function",
                     "version": "1.0.0",
+                    "createdAt": "2024-01-01T00:00:00Z",
+                    "updatedAt": "2024-01-01T00:00:00Z",
+                    "functionManifest": {},
+                    "enabled": True,
+                    "manifestBody": {},
+                    "billingCode": "test-billing-code",
+                    "resourceId": "test-resource-id",
                 }
             ]
 
