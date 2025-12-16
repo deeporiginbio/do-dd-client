@@ -84,7 +84,7 @@ def test_sysprep():
     assert "output_files" in response, "Expected 'output_files' in response"
 
 
-def test_protonation():  # noqa: F811
+def test_protonation():
     """Test protonation function."""
 
     ligand = Ligand.from_smiles("C=CCCn1cc(-c2cccc(C(=O)N(C)C)c2)c2cc[nH]c2c1=O")
@@ -101,7 +101,7 @@ def test_protonation():  # noqa: F811
     )
 
 
-# def test_loop_modelling(client):  # noqa: F811
+# def test_loop_modelling(client):
 #     protein = Protein.from_pdb_id("5QSP")
 #     assert len(protein.find_missing_residues()) > 0, "Missing residues should be > 0"
 #     protein.model_loops(use_cache=False, client=client)
@@ -111,7 +111,7 @@ def test_protonation():  # noqa: F811
 #     assert len(protein.find_missing_residues()) == 0, "Missing residues should be 0"
 
 
-# def test_konnektor(client):  # noqa: F811
+# def test_konnektor(client):
 #     ligands = LigandSet.from_sdf(DATA_DIR / "ligands" / "ligands-brd-all.sdf")
 
 #     ligands.map_network(use_cache=False, client=client)
