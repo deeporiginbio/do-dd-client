@@ -6,7 +6,7 @@ This document describes how to find pockets in a [`Protein`](../ref/protein.md) 
 
 First, we create a Protein, for example, using:
 
-```python
+```{.python continuation}
 from deeporigin.drug_discovery import  Protein, BRD_DATA_DIR
 protein = Protein.from_file(BRD_DATA_DIR / "brd.pdb")
 ```
@@ -15,7 +15,7 @@ protein = Protein.from_file(BRD_DATA_DIR / "brd.pdb")
 
 We can then find pockets in this protein using the Pocket Finder tool:
 
-```{.python notest}
+```{.python continuation}
 pockets = protein.find_pockets(pocket_count=1)
 ```
 
@@ -33,7 +33,7 @@ pocket = Pocket.from_pdb_file("path/to/pocket.pdb", name="my_pocket")
 
 Create a pocket centered on a specific residue:
 
-```{.python notest}
+```{.python continuation}
 from deeporigin.drug_discovery import Pocket
 
 pocket = Pocket.from_residue_number(

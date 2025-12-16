@@ -10,7 +10,7 @@ This document describes how to [dock :octicons-link-external-16:](https://en.wik
 
 We assume that we have an initialized and configured a `Complex` object:
 
-```{.python notest}
+```{.python continuation}
 from deeporigin.drug_discovery import Complex, BRD_DATA_DIR
 
 sim = Complex.from_dir(BRD_DATA_DIR) 
@@ -21,13 +21,13 @@ sim = Complex.from_dir(BRD_DATA_DIR)
 
 We find pockets in the protein using:
 
-```{.python notest}
+```{.python continuation}
 pockets = sim.protein.find_pockets(pocket_count=1)
 ```
 
 We can visualize the pocket using:
 
-```{.python notest}
+```{.python continuation}
 sim.protein.show(pockets=pockets)
 ```
 
@@ -49,7 +49,7 @@ We can see that the protein is shown together with the identified pocket in red.
 The `pocket` object can be inspected, too:
 
 ```{.python notest}
-pocket
+pockets[0]
 ```
 
 !!! success "Expected Output"

@@ -3,11 +3,12 @@
 import pytest
 
 from deeporigin.drug_discovery.constants import tool_mapper
+from deeporigin.platform.client import DeepOriginClient
 from deeporigin.platform.job import Job, JobList
-from tests.utils import client  # noqa: F401
 
 
-def test_get_tool_executions_level_1(client):  # noqa: F811
+def test_get_tool_executions_level_1():
+    client = DeepOriginClient()
     response = client.executions.list(filter=None)
     jobs = response.get("data", [])
 
@@ -15,7 +16,8 @@ def test_get_tool_executions_level_1(client):  # noqa: F811
     assert len(jobs) > 0, "Expected at least one job"
 
 
-def test_get_executions_level_1(client):  # noqa: F811
+def test_get_executions_level_1():
+    client = DeepOriginClient()
     response = client.executions.list()
     jobs = response.get("data", [])
     assert isinstance(jobs, list), "Expected a list"
@@ -38,17 +40,17 @@ def test_get_executions_level_1(client):  # noqa: F811
 
 
 @pytest.mark.dependency()
-def test_tools_api_health_level_1(client):  # noqa: F811
+def test_tools_api_health_level_1():
     """test the health API"""
-
+    client = DeepOriginClient()
     data = client.get_json("/health")
     assert data["status"] == "ok"
 
 
 @pytest.mark.dependency(depends=["test_tools_api_health"])
-def test_get_all_tools_level_1(client):  # noqa: F811
+def test_get_all_tools_level_1():
     """test the tools API"""
-
+    client = DeepOriginClient()
     tools = client.tools.list()
     assert isinstance(tools, list), "Expected a list"
     assert len(tools) > 0, "Expected at least one tool"
@@ -68,9 +70,9 @@ def test_get_all_tools_level_1(client):  # noqa: F811
 
 
 @pytest.mark.dependency(depends=["test_tools_api_health"])
-def test_get_all_function_level_1(client):  # noqa: F811
+def test_get_all_function_level_1():
     """Test the functions API list method."""
-
+    client = DeepOriginClient()
     functions = client.functions.list()
     assert isinstance(functions, list), "Expected a list"
     assert len(functions) > 0, "Expected at least one function"
@@ -91,7 +93,8 @@ def test_get_all_function_level_1(client):  # noqa: F811
         assert key in function.keys(), f"Expected function to have key {key}"
 
 
-def test_job_level_1(client):  # noqa: F811
+def test_job_level_1():
+    client = DeepOriginClient()
     response = client.executions.list()
     jobs = response.get("data", [])
     execution_id = jobs[0]["executionId"]
@@ -100,8 +103,9 @@ def test_job_level_1(client):  # noqa: F811
     assert execution_id == job._id
 
 
-def test_job_from_dto_level_1(client):  # noqa: F811
+def test_job_from_dto_level_1():
     """Test Job.from_dto() creates a Job without making a network request."""
+    client = DeepOriginClient()
     response = client.executions.list()
     jobs = response.get("data", [])
     execution_dto = jobs[0]
@@ -116,13 +120,15 @@ def test_job_from_dto_level_1(client):  # noqa: F811
     assert job._skip_sync is True
 
 
-def test_job_df_level_1(client):  # noqa: F811
+def test_job_df_level_1():
+    client = DeepOriginClient()
     jobs = JobList.list(client=client)
     _ = jobs.to_dataframe(client=client)
 
 
 @pytest.mark.dependency()
-def test_job_df_filtering_level_1(client):  # noqa: F811
+def test_job_df_filtering_level_1():
+    client = DeepOriginClient()
     tool_key = tool_mapper["Docking"]
 
     jobs = JobList.list(client=client)

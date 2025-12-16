@@ -14,7 +14,7 @@ test:
 	uv run ruff check --select I . --fix
 	uv run interrogate -c pyproject.toml -vv . -f 100 --omit-covered-files
 	uv run pytest -x --failed-first -k $(chosen_tests) --env local --org_key $(org_key)
-	uv run pytest -x docs --markdown-docs --markdown-docs-syntax=superfences
+	uv run pytest -x docs --markdown-docs --markdown-docs-syntax=superfences --env local
 
 # set up jupyter dev kernel
 jupyter:

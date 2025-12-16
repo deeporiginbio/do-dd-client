@@ -6,9 +6,78 @@ The test server runs locally and mimics the DeepOrigin Platform API endpoints.
 All tests use this local server instead of making real API calls.
 """
 
+import os
+
 import pytest
 
+from deeporigin.auth import get_token
+from deeporigin.config import get_value
+from deeporigin.platform.client import DeepOriginClient, _generate_local_token
+from deeporigin.utils.constants import ENV_VARIABLES
 from tests.mock_server import MockServer
+
+
+@pytest.fixture(scope="session", autouse=True)
+def set_test_env_vars(pytestconfig):
+    """Set up environment variables for testing.
+
+    Sets environment variables (DEEPORIGIN_TOKEN, DEEPORIGIN_ORG_KEY, DEEPORIGIN_ENV)
+    based on the --env flag, so that code that creates clients implicitly (e.g.,
+    Complex.from_dir()) will automatically use the test configuration.
+
+    The --env option must be explicitly provided (e.g., --env local).
+    When --env local is passed, the test_server fixture (autouse) ensures the mock server is running.
+
+    Args:
+        pytestconfig: Pytest configuration object.
+
+    Yields:
+        None
+
+    Raises:
+        ValueError: If --env option is not provided.
+    """
+    env = pytestconfig.getoption("--env")
+
+    if env is None:
+        raise ValueError(
+            "The --env option must be explicitly provided. Example: pytest --env local"
+        )
+
+    # Save original env vars to restore later
+    original_env_vars = {key: os.environ.get(key) for key in ENV_VARIABLES.values()}
+
+    try:
+        # Set environment variables based on the specified environment
+        if env == "local":
+            # Use the same helper function that from_env uses for local
+            local_token = _generate_local_token()
+            os.environ[ENV_VARIABLES["access_token"]] = local_token
+            os.environ[ENV_VARIABLES["org_key"]] = "deeporigin"
+            os.environ[ENV_VARIABLES["env"]] = "local"
+
+            # Clear any cached clients so they use the new env vars
+            DeepOriginClient.close_all()
+        else:
+            # For non-local environments, only set env vars if they're not already set
+            # If not set, get_token and get_value will read from disk
+            if ENV_VARIABLES["access_token"] not in os.environ:
+                os.environ[ENV_VARIABLES["access_token"]] = get_token(env=env)
+            if ENV_VARIABLES["org_key"] not in os.environ:
+                os.environ[ENV_VARIABLES["org_key"]] = get_value()["org_key"]
+            os.environ[ENV_VARIABLES["env"]] = env
+
+            # Clear any cached clients so they use the new env vars
+            DeepOriginClient.close_all()
+
+        yield
+    finally:
+        # Restore original env vars
+        for key, value in original_env_vars.items():
+            if value is None:
+                os.environ.pop(key, None)
+            else:
+                os.environ[key] = value
 
 
 @pytest.fixture(scope="session", autouse=True)

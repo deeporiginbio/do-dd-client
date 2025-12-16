@@ -30,6 +30,36 @@ from deeporigin.utils.constants import API_ENDPOINT, ENV_VARIABLES, ENVS
 from deeporigin.utils.core import _ensure_do_folder
 
 
+def _generate_local_token() -> str:
+    """Generate a dummy JWT token for local testing.
+
+    Returns:
+        A JWT token string for local environment testing.
+    """
+    import jwt
+
+    now = int(time.time())
+    one_year_seconds = 365 * 24 * 60 * 60
+    decoded_token = {
+        "exp": now + one_year_seconds,
+        "iat": now,
+        "jti": "onrtro:11f26c41-4d64-15dc-cc13-bfbbfedbd744",
+        "iss": "https://local.deeporigin.io/realms/deeporigin",
+        "aud": ["do-app", "auth-service"],
+        "sub": "6b06d8f8-1f55-472c-a86c-f19651ba4b20",
+        "typ": "Bearer",
+        "azp": "pa-token-365d",
+        "sid": "3516d772-185c-6422-6bd8-5f7f34cf6a71",
+        "scope": "organizations:owner long-live-token",
+        "email_verified": True,
+        "name": "Local User",
+        "given_name": "Local",
+        "family_name": "User",
+        "email": "user@deeporigin.com",
+    }
+    return jwt.encode(decoded_token, "secret")
+
+
 class DeepOriginClient:
     """
     Minimal synchronous API client with built-in singleton cache.
@@ -56,16 +86,20 @@ class DeepOriginClient:
     ):
         """Initialize a DeepOrigin Platform client.
 
-        If token, org_key, or env/base_url are not provided, they will be read
-        from the configuration on disk. The client creates an HTTP connection
-        pool and initializes access to platform resources (tools, functions,
-        clusters, files, executions).
+        Environment variables (DEEPORIGIN_TOKEN, DEEPORIGIN_ORG_KEY, DEEPORIGIN_ENV)
+        ALWAYS override explicit parameters and configuration files. If environment
+        variables are set, disk configuration is NOT read.
+
+        If environment variables are not set, explicit parameters are used. If
+        parameters are None, values are read from configuration files on disk.
+        The client creates an HTTP connection pool and initializes access to
+        platform resources (tools, functions, clusters, files, executions).
 
         Args:
-            token: Authentication token. If None, reads from config.
-            org_key: Organization key. If None, reads from config.
-            env: Environment name (e.g., 'prod', 'staging'). If None and
-                base_url is None, reads from config.
+            token: Authentication token. Overridden by DEEPORIGIN_TOKEN env var.
+            org_key: Organization key. Overridden by DEEPORIGIN_ORG_KEY env var.
+            env: Environment name (e.g., 'prod', 'staging'). Overridden by
+                DEEPORIGIN_ENV env var. If None and base_url is None, reads from config.
             base_url: Base URL for the API. If None, derived from env or config.
             timeout: Request timeout in seconds.
             max_retries: Maximum number of retry attempts for failed requests.
@@ -80,23 +114,34 @@ class DeepOriginClient:
                 backoff delay will be capped at this value. Defaults to 60.0 seconds.
         """
 
-        if token is None:
+        # Environment variables ALWAYS override explicit parameters and skip disk reads
+        if ENV_VARIABLES["access_token"] in os.environ:
+            token = os.environ[ENV_VARIABLES["access_token"]]
+        elif token is None:
             token = get_token()
 
-        if org_key is None:
+        if ENV_VARIABLES["org_key"] in os.environ:
+            org_key = os.environ[ENV_VARIABLES["org_key"]]
+        elif org_key is None:
             org_key = get_value()["org_key"]
 
-        if env is None and base_url is None:
+        # Handle env and base_url resolution
+        if ENV_VARIABLES["env"] in os.environ:
+            env = os.environ[ENV_VARIABLES["env"]]
+            if env not in get_args(ENVS):
+                raise ValueError(
+                    f"Invalid environment in DEEPORIGIN_ENV: {env}. Must be one of: dev, prod, staging, local"
+                )
+            if base_url is None:
+                base_url = API_ENDPOINT[env]
+        elif env is None and base_url is None:
             env = get_value()["env"]
             base_url = API_ENDPOINT[env]
-
         elif env is None and base_url is not None:
             raise ValueError("env is required when base_url is provided")
-
         elif env is not None and base_url is None:
             # get the base url from the environment
             base_url = API_ENDPOINT[env]
-
         self.env = env
 
         self._org_key = org_key
@@ -235,16 +280,31 @@ class DeepOriginClient:
             A cached DeepOriginClient instance.
         """
         # Resolve config values (same logic as __init__)
-        if token is None:
+        # Environment variables ALWAYS override explicit parameters and skip disk reads
+        if ENV_VARIABLES["access_token"] in os.environ:
+            token = os.environ[ENV_VARIABLES["access_token"]]
+        elif token is None:
             token = get_token()
 
-        if org_key is None:
+        if ENV_VARIABLES["org_key"] in os.environ:
+            org_key = os.environ[ENV_VARIABLES["org_key"]]
+        elif org_key is None:
             org_key = get_value()["org_key"]
 
-        if env is None and base_url is None:
+        # Handle env and base_url resolution
+        if ENV_VARIABLES["env"] in os.environ:
+            env = os.environ[ENV_VARIABLES["env"]]
+            if env not in get_args(ENVS):
+                raise ValueError(
+                    f"Invalid environment in DEEPORIGIN_ENV: {env}. Must be one of: dev, prod, staging, local"
+                )
+            if base_url is None:
+                base_url = API_ENDPOINT[env]
+        elif env is None and base_url is None:
             env = get_value()["env"]
             base_url = API_ENDPOINT[env]
-
+        elif env is None and base_url is not None:
+            raise ValueError("env is required when base_url is provided")
         elif env is not None and base_url is None:
             # get the base url from the environment
             base_url = API_ENDPOINT[env]
@@ -326,31 +386,7 @@ class DeepOriginClient:
             )
 
         if env == "local":
-            import time
-
-            import jwt
-
-            now = int(time.time())
-            one_year_seconds = 365 * 24 * 60 * 60
-            decoded_token = {
-                "exp": now + one_year_seconds,
-                "iat": now,
-                "jti": "onrtro:11f26c41-4d64-15dc-cc13-bfbbfedbd744",
-                "iss": "https://local.deeporigin.io/realms/deeporigin",
-                "aud": ["do-app", "auth-service"],
-                "sub": "6b06d8f8-1f55-472c-a86c-f19651ba4b20",
-                "typ": "Bearer",
-                "azp": "pa-token-365d",
-                "sid": "3516d772-185c-6422-6bd8-5f7f34cf6a71",
-                "scope": "organizations:owner long-live-token",
-                "email_verified": True,
-                "name": "Local User",
-                "given_name": "Local",
-                "family_name": "User",
-                "email": "user@deeporigin.com",
-            }
-
-            LOCAL_TOKEN = jwt.encode(decoded_token, "secret")
+            LOCAL_TOKEN = _generate_local_token()
             # short circuit for local - use dummy tokens, no disk/env reading
             # base_url can be overridden by the caller (e.g., test_server_url)
             if base_url is None:

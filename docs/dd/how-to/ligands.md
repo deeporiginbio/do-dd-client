@@ -304,7 +304,11 @@ A visualization similar to this will be shown. Use the arrows to switch between 
 
 To view a grid of all 2D structures of all ligands in the `LigandSet`, use:
 
-```{.python notest}
+```python
+from deeporigin.drug_discovery import LigandSet, DATA_DIR
+
+ligands = LigandSet.from_sdf(DATA_DIR / "ligands" / "ligands-brd-all.sdf")
+
 ligands.show_grid()
 
 ```

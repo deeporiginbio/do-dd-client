@@ -2,7 +2,7 @@
 
 The DeepOriginClient can be used to access the tools API using:
 
-```{.python notest}
+```{.python continuation}
 from deeporigin.platform.client import DeepOriginClient
 
 client = DeepOriginClient()
@@ -10,7 +10,7 @@ client = DeepOriginClient()
 
 Then, the following methods can be used, for example:
 
-```{.python notest}
+```{.python continuation}
 tools = client.tools.list()
 ```
 
