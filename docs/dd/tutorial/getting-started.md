@@ -31,7 +31,7 @@ The core of the Drug Discovery toolbox is the [`Complex`](../ref/complex.md) cla
 
 The `Complex` object can be created using:
 
-```{.python notest}
+```python
 from deeporigin.drug_discovery import Complex, BRD_DATA_DIR
 
 # here, we're using the example data directory
@@ -42,7 +42,7 @@ sim = Complex.from_dir(BRD_DATA_DIR)
 
 Inspecting the object shows that it contains a protein and 8 ligands:
 
-```{.python notest}
+```python
 from deeporigin.drug_discovery import Complex, BRD_DATA_DIR
 
 sim = Complex.from_dir(BRD_DATA_DIR)
@@ -60,7 +60,7 @@ sim
 
 The 3D structure of the protein can be viewed using the built-in `show` method in the `Protein` class:
 
-```{.python notest}
+```python
 from deeporigin.drug_discovery import Complex, BRD_DATA_DIR
 
 sim = Complex.from_dir(BRD_DATA_DIR)
@@ -82,7 +82,7 @@ This generates a 3D visualization of the protein, similar to:
 
 We can further inspect the ligands by inspecting the `ligands` attribute:
 
-```{.python notest}
+```python
 from deeporigin.drug_discovery import Complex, BRD_DATA_DIR
 
 sim = Complex.from_dir(BRD_DATA_DIR)
@@ -103,7 +103,7 @@ and you should see something similar to:
 
 We can also 3D structures using:
 
-```{.python notest}
+```python
 from deeporigin.drug_discovery import Complex, BRD_DATA_DIR
 
 sim = Complex.from_dir(BRD_DATA_DIR)
