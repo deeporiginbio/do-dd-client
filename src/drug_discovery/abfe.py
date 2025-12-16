@@ -486,3 +486,76 @@ class ABFE(WorkflowStep):
         from deeporigin_molstar import JupyterViewer
 
         JupyterViewer.visualize(html_content)
+
+    @beartype
+    def show_overlap_matrix(
+        self, *, ligand: Ligand, run: Literal["binding", "solvation"] = "binding"
+    ):
+        """Show the overlap matrix for the ABFE run."""
+
+        files = self._get_files_for_ligand(ligand=ligand)
+
+        files = [file for file in files if file.endswith("overlap_matrix.png")]
+
+        file = [file for file in files if run in file]
+        if len(file) == 0:
+            raise DeepOriginException(
+                title="No overlap matrix found for this run",
+                message="Unable to show overlap matrix because there are no overlap matrix files for this run",
+            ) from None
+        file = file[0]
+
+        local_path = self.parent.client.files.download_file(
+            file,
+            lazy=True,
+        )
+
+        # show the png image
+        from IPython.display import Image, display
+
+        display(Image(local_path))
+
+    @beartype
+    def show_convergence_time(
+        self, *, ligand: Ligand, run: Literal["binding", "solvation"] = "binding"
+    ):
+        """Show the convergence time for a ABFE run."""
+
+        files = self._get_files_for_ligand(ligand=ligand)
+
+        files = [file for file in files if file.endswith("time_convergence.png")]
+
+        file = [file for file in files if run in file]
+        if len(file) == 0:
+            raise DeepOriginException(
+                title="No overlap matrix found for this run",
+                message="Unable to show overlap matrix because there are no overlap matrix files for this run",
+            ) from None
+        file = file[0]
+
+        local_path = self.parent.client.files.download_file(
+            file,
+            lazy=True,
+        )
+
+        # show the png image
+        from IPython.display import Image, display
+
+        display(Image(local_path))
+
+    def _get_files_for_ligand(self, *, ligand: Ligand) -> list[str]:
+        df = self.get_jobs_df(include_outputs=True, include_inputs=True)
+        df = df.loc[df["ligand_smiles"] == ligand.smiles]
+        df = df[df["status"] == "Succeeded"]
+
+        if len(df) == 0:
+            raise DeepOriginException(
+                title="No job found for this ligand",
+                message="Unable to show overlap matrix because there are no completed jobs for this ligand",
+            ) from None
+
+        remote_base = Path(df.iloc[0]["user_outputs"]["output_file"]["key"])
+
+        files = self.parent.client.files.list_files_in_dir(remote_base)
+
+        return files
