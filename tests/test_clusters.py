@@ -3,7 +3,7 @@
 from deeporigin.platform.client import DeepOriginClient
 
 
-def test_get_default_cluster_id_level_1():
+def test_get_default_cluster_id_lv1():
     """Test that get_default_cluster_id returns the first cluster."""
     client = DeepOriginClient()
     cluster_id = client.clusters.get_default_cluster_id()
@@ -11,7 +11,7 @@ def test_get_default_cluster_id_level_1():
     assert isinstance(cluster_id, str)
 
 
-def test_get_default_cluster_id_cached_level_1():
+def test_get_default_cluster_id_cached_lv1():
     """Test that get_default_cluster_id caches the result."""
     client = DeepOriginClient()
     cluster_id_1 = client.clusters.get_default_cluster_id()

@@ -7,7 +7,7 @@ from deeporigin.platform.client import DeepOriginClient
 from deeporigin.platform.job import Job, JobList
 
 
-def test_get_tool_executions_level_1():
+def test_get_tool_executions_lv1():
     client = DeepOriginClient()
     response = client.executions.list(filter=None)
     jobs = response.get("data", [])
@@ -16,7 +16,7 @@ def test_get_tool_executions_level_1():
     assert len(jobs) > 0, "Expected at least one job"
 
 
-def test_get_executions_level_1():
+def test_get_executions_lv1():
     client = DeepOriginClient()
     response = client.executions.list()
     jobs = response.get("data", [])
@@ -40,7 +40,7 @@ def test_get_executions_level_1():
 
 
 @pytest.mark.dependency()
-def test_tools_api_health_level_1():
+def test_tools_api_health_lv1():
     """test the health API"""
     client = DeepOriginClient()
     data = client.get_json("/health")
@@ -48,7 +48,7 @@ def test_tools_api_health_level_1():
 
 
 @pytest.mark.dependency(depends=["test_tools_api_health"])
-def test_get_all_tools_level_1():
+def test_get_all_tools_lv1():
     """test the tools API"""
     client = DeepOriginClient()
     tools = client.tools.list()
@@ -70,7 +70,7 @@ def test_get_all_tools_level_1():
 
 
 @pytest.mark.dependency(depends=["test_tools_api_health"])
-def test_get_all_function_level_1():
+def test_get_all_function_lv1():
     """Test the functions API list method."""
     client = DeepOriginClient()
     functions = client.functions.list()
@@ -93,7 +93,7 @@ def test_get_all_function_level_1():
         assert key in function.keys(), f"Expected function to have key {key}"
 
 
-def test_job_level_1():
+def test_job_lv1():
     client = DeepOriginClient()
     response = client.executions.list()
     jobs = response.get("data", [])
@@ -103,7 +103,7 @@ def test_job_level_1():
     assert execution_id == job._id
 
 
-def test_job_from_dto_level_1():
+def test_job_from_dto_lv1():
     """Test Job.from_dto() creates a Job without making a network request."""
     client = DeepOriginClient()
     response = client.executions.list()
@@ -120,14 +120,14 @@ def test_job_from_dto_level_1():
     assert job._skip_sync is True
 
 
-def test_job_df_level_1():
+def test_job_df_lv1():
     client = DeepOriginClient()
     jobs = JobList.list(client=client)
     _ = jobs.to_dataframe(client=client)
 
 
 @pytest.mark.dependency()
-def test_job_df_filtering_level_1():
+def test_job_df_filtering_lv1():
     client = DeepOriginClient()
     tool_key = tool_mapper["Docking"]
 
@@ -139,7 +139,7 @@ def test_job_df_filtering_level_1():
     )
 
 
-def test_job_status_logic_level_0():
+def test_job_status_logic_lv0():
     """Test the simplified status logic for job rendering."""
     from deeporigin.platform.constants import TERMINAL_STATES
 

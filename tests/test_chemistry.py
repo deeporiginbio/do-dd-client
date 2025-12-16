@@ -10,7 +10,7 @@ from tests.utils_ligands import ligands
 
 
 @pytest.mark.parametrize("ligand", ligands)
-def test_count_molecules_in_sdf_file(
+def test_count_molecules_in_sdf_file_lv0(
     tmp_path,
     ligand,
 ):
@@ -18,7 +18,7 @@ def test_count_molecules_in_sdf_file(
 
 
 @pytest.mark.parametrize("ligand", ligands)
-def test_split_sdf_file(
+def test_split_sdf_file_lv0(
     tmp_path,
     ligand,
 ):
@@ -54,7 +54,7 @@ def test_split_sdf_file(
 
 
 @pytest.mark.parametrize("ligand_set", ligands)
-def test_pairwise_pose_rmsd(ligand_set):
+def test_pairwise_pose_rmsd_lv0(ligand_set):
     if ligand_set["n_ligands"] > 10:
         pytest.skip("Skipping test for large number of ligands")
 

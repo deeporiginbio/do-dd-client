@@ -14,7 +14,7 @@ from deeporigin.drug_discovery import (
 FIXTURES_DIR = Path(__file__).parent / "fixtures"
 
 
-def test_molprops():
+def test_molprops_lv2():
     ligand = Ligand.from_smiles(
         "Fc1c(-c2cccc3ccccc23)ncc2c(N3C[C@H]4CC[C@@H](C3)N4)nc(OCC34CCCN3CCC4)nc12"
     )
@@ -27,7 +27,7 @@ def test_molprops():
     assert "logS" in props, "Expected logS to be in the properties"
 
 
-def test_pocket_finder():
+def test_pocket_finder_lv2():
     """Test pocket finder function."""
     protein = Protein.from_file(FIXTURES_DIR / "1eby.pdb")
     pockets = protein.find_pockets(
@@ -38,7 +38,7 @@ def test_pocket_finder():
     assert len(pockets) == 1, "Incorrect number of pockets"
 
 
-def test_docking():
+def test_docking_lv2():
     """Test docking function."""
     protein = Protein.from_file(FIXTURES_DIR / "1eby.pdb")
     pockets = protein.find_pockets(
@@ -58,7 +58,7 @@ def test_docking():
     assert isinstance(poses, LigandSet), "Expected protein.dock() to return a LigandSet"
 
 
-def test_sysprep():
+def test_sysprep_lv2():
     """Test system preparation function."""
     from deeporigin.functions.sysprep import run_sysprep
     from deeporigin.platform.client import DeepOriginClient
@@ -84,7 +84,7 @@ def test_sysprep():
     assert "output_files" in response, "Expected 'output_files' in response"
 
 
-def test_protonation():
+def test_protonation_lv2():
     """Test protonation function."""
 
     ligand = Ligand.from_smiles("C=CCCn1cc(-c2cccc(C(=O)N(C)C)c2)c2cc[nH]c2c1=O")

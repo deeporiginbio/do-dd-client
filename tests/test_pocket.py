@@ -9,7 +9,7 @@ import numpy as np
 from deeporigin.drug_discovery import BRD_DATA_DIR, Pocket, Protein
 
 
-def test_pocket_from_ligand():
+def test_pocket_from_ligand_lv0():
     protein = Protein.from_pdb_id("1EBY")
 
     ligand = protein.extract_ligand()
@@ -19,7 +19,7 @@ def test_pocket_from_ligand():
     assert pocket.file_path is not None, "Pocket file path should not be None"
 
 
-def test_pocket_get_center():
+def test_pocket_get_center_lv0():
     """Test getting the center of a pocket."""
     protein = Protein.from_pdb_id("1EBY")
     ligand = protein.extract_ligand()
@@ -31,7 +31,7 @@ def test_pocket_get_center():
     assert pocket.get_center().shape == (3,), "Pocket center shape is wrong"
 
 
-def test_pocket_update_coordinates():
+def test_pocket_update_coordinates_lv0():
     """Test updating pocket coordinates."""
     protein = Protein.from_pdb_id("1EBY")
     ligand = protein.extract_ligand()
@@ -47,7 +47,7 @@ def test_pocket_update_coordinates():
     )
 
 
-def test_from_residue_num():
+def test_from_residue_num_lv0():
     """Test creating a pocket from a residue number"""
 
     # Read in a protein

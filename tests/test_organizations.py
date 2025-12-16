@@ -3,7 +3,7 @@
 from deeporigin.platform.client import DeepOriginClient
 
 
-def test_list_organizations_level_1():
+def test_list_organizations_lv1():
     """Test listing organizations."""
     client = DeepOriginClient()
     orgs = client.organizations.list()
@@ -27,7 +27,7 @@ def test_list_organizations_level_1():
         assert key in org, f"Expected organization to have key {key}"
 
 
-def test_list_organization_users_level_1():
+def test_list_organization_users_lv1():
     """Test listing organization users."""
     client = DeepOriginClient()
     users = client.organizations.users()
