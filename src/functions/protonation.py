@@ -30,7 +30,7 @@ def protonate(
     Run ligand protonation using the DeepOrigin API.
 
     Args:
-        smiles_list (list[str]): List of SMILES strings for the molecules
+        smiles (str): SMILES string for the molecule
         ph (number): pH value
         filter_percentage (number): Percentage of the most abundant species to retain
         use_cache (bool): Whether to use the cache
