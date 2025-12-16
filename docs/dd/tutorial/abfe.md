@@ -255,3 +255,33 @@ This shows a table similar to:
 ### Viewing trajectories
 
 To view MD trajectories from this run, refer to this [How-to section](../how-to/visualize-abfe-trajectories.md)
+
+
+### Viewing overlap matrix
+
+The overlap matrix between windows can be viewed using:
+
+```{.python notest}
+sim.abfe.show_overlap_matrix(ligand=ligand, run="binding")
+```  
+
+An image such as the following will be shown:
+
+![Overlap matrix for Binding Run](../../images/overlap_matrix.png)
+
+To view the overlap matrix for the solvation run, use:
+
+```{.python notest}
+sim.abfe.show_overlap_matrix(ligand=ligand, run="solvation")
+```  
+
+### Viewing convergence time plots
+
+To view the convergence time plots for a run, use:
+
+```{.python notest}
+sim.abfe.show_convergence_time(ligand=ligand, run="binding")
+```  
+An image such as the following will be shown:
+
+![Convergence plot for Binding Run](../../images/time_convergence.png)
