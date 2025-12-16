@@ -2,6 +2,8 @@
 
 import sys
 
+from deeporigin.utils.core import _supports_color
+
 __all__ = ["DeepOriginException", "install_silent_error_handler"]
 
 
@@ -61,28 +63,6 @@ class DeepOriginException(Exception):
                 lines.append(self.footer)
 
         return "\n".join(lines)
-
-
-def _supports_color() -> bool:
-    """Check if terminal supports ANSI color codes."""
-    # Check if we're in a terminal that supports colors
-    if not sys.stdout.isatty():
-        return False
-
-    # Check NO_COLOR environment variable (standard)
-    if "NO_COLOR" in sys.environ:
-        return False
-
-    # Check for common environment variables that disable colors
-    if sys.platform == "win32":
-        # Windows terminal color support is more complex
-        return False
-    # Check TERM environment variable
-    term = sys.environ.get("TERM", "")
-    if term in ("dumb", "unknown"):
-        return False
-
-    return True
 
 
 def _silent_error_handler(shell, etype, evalue, tb, tb_offset=None):

@@ -61,10 +61,10 @@ def test_docking():
 def test_sysprep():
     """Test system preparation function."""
     from deeporigin.functions.sysprep import run_sysprep
+    from deeporigin.platform.client import DeepOriginClient
 
     sim = Complex.from_dir(BRD_DATA_DIR)
-
-    from deeporigin.platform.client import DeepOriginClient
+    client = DeepOriginClient()
 
     # this is chosen to be one where it takes >1 min
     response = run_sysprep(
@@ -72,7 +72,7 @@ def test_sysprep():
         ligand=sim.ligands[3],
         add_H_atoms=True,
         use_cache=False,
-        client=DeepOriginClient.get(),
+        client=client,
     )
 
     # Verify response structure

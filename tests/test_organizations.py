@@ -1,8 +1,11 @@
 """Tests for the Organizations API wrapper."""
 
+from deeporigin.platform.client import DeepOriginClient
 
-def test_list_organizations_level_1(client):  # noqa: F811
+
+def test_list_organizations_level_1():
     """Test listing organizations."""
+    client = DeepOriginClient()
     orgs = client.organizations.list()
 
     assert isinstance(orgs, list), "Expected a list"
@@ -24,8 +27,9 @@ def test_list_organizations_level_1(client):  # noqa: F811
         assert key in org, f"Expected organization to have key {key}"
 
 
-def test_list_organization_users_level_1(client):  # noqa: F811
+def test_list_organization_users_level_1():
     """Test listing organization users."""
+    client = DeepOriginClient()
     users = client.organizations.users()
 
     assert isinstance(users, list), "Expected a list"

@@ -5,10 +5,12 @@ import tempfile
 
 import pytest
 
+from deeporigin.platform.client import DeepOriginClient
 
-def test_get_all_files_level_1(client):  # noqa: F811
+
+def test_get_all_files_level_1():
     """check that there are some files in entities/"""
-
+    client = DeepOriginClient()
     files = client.files.list_files_in_dir(
         remote_path="entities/",
         recursive=True,
@@ -18,9 +20,9 @@ def test_get_all_files_level_1(client):  # noqa: F811
     print(f"Found {len(files)} files")
 
 
-def test_download_file_level_1(client):  # noqa: F811
+def test_download_file_level_1():
     """test the file download API"""
-
+    client = DeepOriginClient()
     files = client.files.list_files_in_dir(
         remote_path="entities/",
         recursive=True,
@@ -34,9 +36,9 @@ def test_download_file_level_1(client):  # noqa: F811
     assert os.path.exists(local_path), "should have downloaded the file"
 
 
-def test_download_files_with_list_level_1(client):  # noqa: F811
+def test_download_files_with_list_level_1():
     """test the download_files API with a list input."""
-
+    client = DeepOriginClient()
     files = client.files.list_files_in_dir(
         remote_path="entities/",
         recursive=True,
@@ -52,9 +54,9 @@ def test_download_files_with_list_level_1(client):  # noqa: F811
     assert os.path.exists(local_paths[0]), "should have downloaded the file"
 
 
-def test_download_files_with_dict_level_1(client):  # noqa: F811
+def test_download_files_with_dict_level_1():
     """test the download_files API with a dict input."""
-
+    client = DeepOriginClient()
     files = client.files.list_files_in_dir(
         remote_path="entities/",
         recursive=True,
@@ -70,9 +72,9 @@ def test_download_files_with_dict_level_1(client):  # noqa: F811
     assert os.path.exists(local_paths[0]), "should have downloaded the file"
 
 
-def test_delete_file_level_1(client):  # noqa: F811
+def test_delete_file_level_1():
     """test the delete_file API."""
-
+    client = DeepOriginClient()
     # First upload a file to delete
     test_file_path = "test_delete_file.txt"
     local_test_file = os.path.join(tempfile.gettempdir(), "test_upload_delete.txt")
@@ -97,9 +99,9 @@ def test_delete_file_level_1(client):  # noqa: F811
         os.remove(local_test_file)
 
 
-def test_delete_file_with_special_chars_level_1(client):  # noqa: F811
+def test_delete_file_with_special_chars_level_1():
     """test the delete_file API with special characters in path."""
-
+    client = DeepOriginClient()
     # Test with a path that contains special characters (like the example)
     test_file_path = "function-runs/system-prep/test123/bsm_system.xml"
 
@@ -124,9 +126,9 @@ def test_delete_file_with_special_chars_level_1(client):  # noqa: F811
         os.remove(local_test_file)
 
 
-def test_delete_files_level_1(client):  # noqa: F811
+def test_delete_files_level_1():
     """test the delete_files API."""
-
+    client = DeepOriginClient()
     # Upload multiple files to delete
     test_file_paths = [
         "test_delete_files_1.txt",
@@ -158,9 +160,9 @@ def test_delete_files_level_1(client):  # noqa: F811
             os.remove(local_test_file)
 
 
-def test_delete_files_with_errors_level_1(client):  # noqa: F811
+def test_delete_files_with_errors_level_1():
     """test the delete_files API with errors."""
-
+    client = DeepOriginClient()
     # Upload one file
     test_file_path = "test_delete_files_error.txt"
     local_test_file = os.path.join(
@@ -197,8 +199,8 @@ def test_delete_files_with_errors_level_1(client):  # noqa: F811
         os.remove(local_test_file)
 
 
-def test_delete_files_empty_list_level_1(client):  # noqa: F811
+def test_delete_files_empty_list_level_1():
     """test the delete_files API with empty list."""
-
+    client = DeepOriginClient()
     # Should succeed without doing anything
     client.files.delete_files(remote_paths=[])

@@ -31,6 +31,29 @@ def _supports_unicode_output() -> bool:
     return "utf" in encoding_lower
 
 
+@beartype
+def _supports_color() -> bool:
+    """Check if terminal supports ANSI color codes."""
+    # Check if we're in a terminal that supports colors
+    if not sys.stdout.isatty():
+        return False
+
+    # Check NO_COLOR environment variable (standard)
+    if "NO_COLOR" in os.environ:
+        return False
+
+    # Check for common environment variables that disable colors
+    if sys.platform == "win32":
+        # Windows terminal color support is more complex
+        return False
+    # Check TERM environment variable
+    term = os.environ.get("TERM", "")
+    if term in ("dumb", "unknown"):
+        return False
+
+    return True
+
+
 def fix_embedded_newlines_in_csv(path: Union[str, Path]) -> bool:
     """
     Detects literal '\\n' sequences in the CSV at `path` and replaces them
