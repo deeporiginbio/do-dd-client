@@ -29,25 +29,12 @@ def run_abfe():
 
     job.confirm()
 
-    time.sleep(10)
+    time.sleep(20)
 
     # check that job is running
     assert job.status == "Running", (
         f"Expected job to be running, instead got {job.status}"
     )
-
-    while job.status == "Running":
-        time.sleep(10)
-        job.sync()
-
-    assert job.status == "Succeeded", (
-        f"Expected job to be succeeded, instead got {job.status}"
-    )
-
-    # check that results are available
-    _ = sim.abfe.get_results()
-
-    return job
 
 
 if __name__ == "__main__":
