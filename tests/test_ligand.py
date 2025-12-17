@@ -19,6 +19,14 @@ from tests.utils_ligands import (
 base_path = os.path.join(os.path.dirname(__file__), "fixtures")
 
 
+def test_ligand_add_hydrogens():
+    ligand = Ligand.from_smiles("Oc1cccc(-c2nnc3ccc(-c4ccoc4)cn23)c1")
+    initial_smiles = ligand.smiles
+    ligand.add_hydrogens()
+    assert ligand.smiles != initial_smiles
+    assert "H" in ligand.smiles
+
+
 @pytest.mark.parametrize("ligand_file", single_ligand_files)
 def test_ligand_hash_stable(ligand_file):
     """check that the ligand hash doesn't change if we perform various read-only operations"""

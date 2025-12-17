@@ -471,6 +471,7 @@ class Ligand(Entity):
             add_coordinates (bool): Whether to generate coordinates for added hydrogens
         """
         self.mol = Chem.AddHs(self.mol, addCoords=add_coordinates)
+        self.smiles = Chem.MolToSmiles(self.mol, canonical=True)
 
     def get_coordinates(self, i: int = 0):
         """
