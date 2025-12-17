@@ -99,9 +99,9 @@ def _check_response(
     version: str,
     quote: bool,
 ) -> None:
-    if "quotationResult" not in response:
-        return
-    if response["quotationResult"]["anyFailed"] or response["status"] == "NotApproved":
+    if "quotationResult" in response and (
+        response["quotationResult"]["anyFailed"] or response["status"] == "NotApproved"
+    ):
         raise DeepOriginException(
             title=f"Failed to run function: {key}/{version}",
             message="Failed to run function. This function run was not approved. ",
@@ -117,7 +117,8 @@ def _check_response(
                 fix="Please contact support at https://help.deeporigin.com.",
             ) from None
 
-        if response["status"] != "Succeeded":
+        # the only valid status can be Completed
+        if response["status"] != "Completed":
             raise DeepOriginException(
                 title=f"Failed to run function: {key}/{version}",
                 message="Failed to run function. Function did not succeed.",
