@@ -11,11 +11,14 @@ def run_abfe():
     print("Preparing system...")
 
     _ = sim.prepare(ligand=ligand, padding=1.0)
-    print("System prepared")
+    print("System prepared", flush=True)
 
     sim.abfe.set_test_run(1)
 
-    output_dir_path = f"/tests/{uuid.uuid4()}"
+    # set up output directory on ufa
+    output_dir_path = f"/tests/{uuid.uuid4()}/"
+
+    # get a quote for the job
     jobs = sim.abfe.run(ligands=[ligand], quote=True, output_dir_path=output_dir_path)
     job = jobs[0]
 
@@ -23,13 +26,23 @@ def run_abfe():
         f"Expected job to be quoted, instead got {job.status}"
     )
 
-    print("Job quoted")
+    print("Job quoted", flush=True)
 
-    print(job.id)
+    print(job.id, flush=True)
 
     job.confirm()
 
-    time.sleep(20)
+    timeout_seconds = 20
+    start_time = time.time()
+    while job.status != "Running":
+        elapsed_time = time.time() - start_time
+        if elapsed_time >= timeout_seconds:
+            raise TimeoutError(
+                f"Job did not start running within {timeout_seconds} seconds. "
+                f"Current status: {job.status}"
+            )
+        time.sleep(2)
+        job.sync()
 
     # check that job is running
     assert job.status == "Running", (
