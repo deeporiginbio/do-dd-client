@@ -108,13 +108,21 @@ def _check_response(
             fix="Please contact support at https://help.deeporigin.com.",
         ) from None
 
+    cost = response["quotationResult"]["successfulQuotations"][0]["priceTotal"]
     if not quote:
+        if response["status"] == "Approved":
+            raise DeepOriginException(
+                title=f"Failed to run function: {key}/{version}",
+                message="Failed to run function. Function did not succeed.",
+                fix=f"Check that the approveAmount is set to a non-zero value greater than ${cost}. Otherwise, Please contact support at https://help.deeporigin.com.",
+            ) from None
+
         # we expect a functionOutputs key in the response
         if "functionOutputs" not in response:
             raise DeepOriginException(
                 title=f"Failed to run function: {key}/{version}",
                 message="Failed to run function. No functionOutputs key in response.",
-                fix="Please contact support at https://help.deeporigin.com.",
+                fix=f"Check that the approveAmount is set to a non-zero value greater than ${cost}. ",
             ) from None
 
         # the only valid status can be Completed
