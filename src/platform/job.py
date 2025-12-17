@@ -1430,6 +1430,7 @@ class JobList:
         page: Optional[int] = None,
         page_size: int = 1000,
         order: Optional[str] = None,
+        filter: Optional[str] = None,
         tool_key: Optional[str] = None,
         tool_version: Optional[str] = None,
         client: Optional[DeepOriginClient] = None,
@@ -1461,6 +1462,7 @@ class JobList:
                 page=current_page,
                 page_size=page_size,
                 order=order,
+                filter=filter,
             )
 
             if not isinstance(response, dict):
