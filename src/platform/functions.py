@@ -89,11 +89,16 @@ class Functions:
         )
         self._c._client.timeout = original_timeout
 
-        _check_response(response, key, check_version)
+        _check_response(response, key, check_version, quote)
         return response
 
 
-def _check_response(response: dict, key, version) -> None:
+def _check_response(
+    response: dict,
+    key: str,
+    version: str,
+    quote: bool,
+) -> None:
     if "quotationResult" not in response:
         return
     if response["quotationResult"]["anyFailed"] or response["status"] == "NotApproved":
@@ -102,3 +107,19 @@ def _check_response(response: dict, key, version) -> None:
             message="Failed to run function. This function run was not approved. ",
             fix="Please contact support at https://help.deeporigin.com.",
         ) from None
+
+    if not quote:
+        # we expect a functionOutputs key in the response
+        if "functionOutputs" not in response:
+            raise DeepOriginException(
+                title=f"Failed to run function: {key}/{version}",
+                message="Failed to run function. No functionOutputs key in response.",
+                fix="Please contact support at https://help.deeporigin.com.",
+            ) from None
+
+        if response["status"] != "Succeeded":
+            raise DeepOriginException(
+                title=f"Failed to run function: {key}/{version}",
+                message="Failed to run function. Function did not succeed.",
+                fix="Please contact support at https://help.deeporigin.com.",
+            ) from None
