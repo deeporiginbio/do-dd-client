@@ -55,6 +55,9 @@ def test_get_all_tools_lv1():
     assert isinstance(tools, list), "Expected a list"
     assert len(tools) > 0, "Expected at least one tool"
 
+    # filter out test tool because they pollute the results and are missing fields
+    tools = [tool for tool in tools if "test" not in tool["key"]]
+
     tool = tools[0]
 
     for key in [
