@@ -65,6 +65,8 @@ def protonate(
             quote=quote,
         )
 
+        print(json.dumps(response, indent=4))
+
         # TODO -- remove this patch once API is updated
         if "functionOutputs" in response:
             response = response["functionOutputs"]

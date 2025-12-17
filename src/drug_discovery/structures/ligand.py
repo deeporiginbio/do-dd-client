@@ -473,6 +473,21 @@ class Ligand(Entity):
         self.mol = Chem.AddHs(self.mol, addCoords=add_coordinates)
         self.smiles = Chem.MolToSmiles(self.mol, canonical=True)
 
+    def has_hydrogens(self) -> bool:
+        """
+        Check if the molecule contains hydrogen atoms.
+
+        This method determines if hydrogens are present by comparing the canonical
+        SMILES string of the molecule with and without explicit hydrogens added.
+        If the SMILES strings differ, the molecule contains hydrogens.
+
+        Returns:
+            bool: True if the molecule contains hydrogen atoms, False otherwise
+        """
+        mol = Chem.AddHs(self.mol)
+        smiles = Chem.MolToSmiles(mol, canonical=True)
+        return smiles == self.smiles
+
     def get_coordinates(self, i: int = 0):
         """
         Get the coordinates of atoms in a specific conformer.
