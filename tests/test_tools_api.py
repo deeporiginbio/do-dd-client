@@ -65,7 +65,6 @@ def test_get_all_tools_lv1():
         "inputs",
         "version",
         "executors",
-        "description",
         "billingParser",
         "toolManifestVersion",
     ]:
