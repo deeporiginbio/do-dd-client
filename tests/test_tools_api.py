@@ -104,7 +104,7 @@ def test_job_lv1():
     execution_id = jobs[0]["executionId"]
     job = Job.from_id(execution_id, client=client)
 
-    assert execution_id == job._id
+    assert execution_id == job.id
 
 
 def test_job_from_dto_lv1():
@@ -117,7 +117,7 @@ def test_job_from_dto_lv1():
     # Create job from DTO (should not make network request)
     job = Job.from_dto(execution_dto, client=client)
 
-    assert execution_dto["executionId"] == job._id
+    assert execution_dto["executionId"] == job.id
     assert execution_dto["status"] == job.status
     assert job._attributes == execution_dto
     # Verify that _skip_sync was set (though it's a private field)

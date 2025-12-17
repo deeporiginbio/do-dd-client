@@ -70,7 +70,7 @@ class Job:
     """
 
     name: str
-    _id: str
+    id: str
 
     # functions
     _parse_func: Optional[JobFunc] = None
@@ -107,7 +107,7 @@ class Job:
         """
         return cls(
             name="job",
-            _id=id,
+            id=id,
             client=client,
         )
 
@@ -139,7 +139,7 @@ class Job:
 
         job = cls(
             name="job",
-            _id=execution_id,
+            id=execution_id,
             client=client,
             _skip_sync=True,
         )
@@ -162,7 +162,7 @@ class Job:
             self.client = DeepOriginClient.get()
 
         # use
-        result = self.client.executions.get_execution(execution_id=self._id)
+        result = self.client.executions.get_execution(execution_id=self.id)
 
         if result:
             self._attributes = result
@@ -218,7 +218,7 @@ class Job:
         running_time = self._get_running_time()
 
         return {
-            "job_id": self._id,
+            "job_id": self.id,
             "resource_id": resource_id,
             "status": self.status,
             "started_at": started_at,
@@ -579,7 +579,7 @@ class Job:
         """
 
         self.client.executions.cancel(
-            execution_id=self._id,
+            execution_id=self.id,
         )
 
         self.sync()
@@ -598,7 +598,7 @@ class Job:
             )
         else:
             self.client.executions.confirm(
-                execution_id=self._id,
+                execution_id=self.id,
             )
 
             self.sync()
@@ -1046,7 +1046,7 @@ class JobList:
         all_billing = {}
 
         for job in self.jobs:
-            job_id = job._id
+            job_id = job.id
             if job._attributes:
                 inputs = job._attributes.get("userInputs")
                 if inputs:
@@ -1431,6 +1431,8 @@ class JobList:
         page_size: int = 1000,
         order: Optional[str] = None,
         filter: Optional[str] = None,
+        tool_key: Optional[str] = None,
+        tool_version: Optional[str] = None,
         client: Optional[DeepOriginClient] = None,
     ) -> "JobList":
         """Fetch executions from the API and return a JobList.
@@ -1491,6 +1493,18 @@ class JobList:
                 # count <= page_size means we've got everything in this page
                 break
 
+        # filter client side by tool_key and tool_version
+        if tool_key is not None:
+            all_dtos = [
+                dto for dto in all_dtos if dto.get("tool", {}).get("key") == tool_key
+            ]
+        if tool_version is not None:
+            all_dtos = [
+                dto
+                for dto in all_dtos
+                if dto.get("tool", {}).get("version") == tool_version
+            ]
+
         return cls.from_dtos(all_dtos, client=client)
 
     @classmethod
@@ -1509,7 +1523,7 @@ class JobList:
         Returns:
             A new JobList instance.
         """
-        jobs = [Job.from_id(id, client=client) for id in ids]
+        jobs = [Job.from_id(job_id, client=client) for job_id in ids]
         return cls(jobs)
 
     @classmethod
