@@ -83,6 +83,13 @@ class ABFE(WorkflowStep):
 
         df = pd.merge(df1, df2, on="SMILES", how="inner")
 
+        # drop some columns we don't want to show
+        df.drop(
+            columns=["Binding", "Solvation", "OverlapScore"],
+            inplace=True,
+            errors="ignore",
+        )
+
         return df
 
     def show_results(self):

@@ -247,9 +247,9 @@ This shows a table similar to:
 
 
 
-| dG       | Std | Binding    | Solvation  | AnalyticalCorr | Repeats | OverlapScore | SMILES                                                                 | r_exp_dg |
-| -------- | --- | ---------- | ---------- | -------------- | ------- | ------------ | ---------------------------------------------------------------------- | -------- |
-| -9.98 | 0.0 | 99.23 | 77.78  | -11.46    | 1       | 0.08     | COCCn1cc(-c2cccc(C(=O)N(C)C)c2)c2cc[nH]c2c1=O                           | -7.22    |
+| dG       | Std | AnalyticalCorr   | Repeats | SMILES                                           | r_exp_dg |
+| -------- | --- | --------------   | ------- | ----------------------------------------         | -------- |
+| -9.98    | 0.0 | -11.46           | 1       | COCCn1cc(-c2cccc(C(=O)N(C)C)c2)c2cc[nH]c2c1=O    | -7.22    |
 
 
 ### Viewing trajectories
@@ -258,6 +258,8 @@ To view MD trajectories from this run, refer to this [How-to section](../how-to/
 
 
 ### Viewing overlap matrix
+
+An [FEP overlap matrix](https://pmc.ncbi.nlm.nih.gov/articles/PMC8388617/) is a diagnostic used in free energy perturbation calculations to evaluate how well neighboring λ states sample overlapping regions of configuration space. Each matrix element measures the statistical overlap between configurations from different states based on their energy distributions. The goal is to ensure every state has overlap with its neighbors in both directions – so that  off-diagonal elements are sufficiently larger than zero.
 
 The overlap matrix between windows can be viewed using:
 

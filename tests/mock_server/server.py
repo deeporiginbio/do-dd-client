@@ -491,7 +491,17 @@ class MockServer:
                         "description": "Test tool description",
                         "billingParser": {},
                         "toolManifestVersion": "1.0.0",
-                    }
+                    },
+                    {
+                        "key": "deeporigin.docking",
+                        "name": "Docking Tool",
+                        "version": "1.0.0",
+                        "inputs": {},
+                        "executors": [],
+                        "description": "Docking tool description",
+                        "billingParser": {},
+                        "toolManifestVersion": "1.0.0",
+                    },
                 ]
             }
 
