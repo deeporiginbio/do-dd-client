@@ -11,7 +11,7 @@ def run_abfe():
     print("Preparing system...")
 
     _ = sim.prepare(ligand=ligand, padding=1.0)
-    print("System prepared", flush=True)
+    print("✅ System prepared", flush=True)
 
     sim.abfe.set_test_run(1)
 
@@ -23,10 +23,10 @@ def run_abfe():
     job = jobs[0]
 
     assert job.status == "Quoted", (
-        f"Expected job to be quoted, instead got {job.status}"
+        f"❌ Expected job to be quoted, instead got {job.status}"
     )
 
-    print("Job quoted", flush=True)
+    print("✅ Job quoted", flush=True)
 
     print(job.id, flush=True)
 
@@ -38,15 +38,15 @@ def run_abfe():
         elapsed_time = time.time() - start_time
         if elapsed_time >= timeout_seconds:
             raise TimeoutError(
-                f"Job did not start running within {timeout_seconds} seconds. "
-                f"Current status: {job.status}"
+                f"❌ Job did not start running within {timeout_seconds} seconds. "
+                f"❌ Current status: {job.status}"
             )
         time.sleep(2)
         job.sync()
 
     # check that job is running
     assert job.status == "Running", (
-        f"Expected job to be running, instead got {job.status}"
+        f"❌Expected job to be running, instead got {job.status}"
     )
 
 
