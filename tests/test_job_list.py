@@ -16,7 +16,7 @@ def mock_jobs():
     for i, status in enumerate(statuses):
         job = MagicMock(spec=Job)
         job.status = status
-        job._id = f"job-{i}"
+        job.id = f"job-{i}"
         jobs.append(job)
     return jobs
 
@@ -46,13 +46,13 @@ def test_job_list_getitem_lv0(mock_jobs):
 
 def test_job_list_repr_html_lv0():
     """Test HTML representation of JobList."""
-    job1 = Job(name="job1", _id="id-1", _skip_sync=True)
+    job1 = Job(name="job1", id="id-1", _skip_sync=True)
     job1.status = "Succeeded"
 
-    job2 = Job(name="job2", _id="id-2", _skip_sync=True)
+    job2 = Job(name="job2", id="id-2", _skip_sync=True)
     job2.status = "Running"
 
-    job3 = Job(name="job3", _id="id-3", _skip_sync=True)
+    job3 = Job(name="job3", id="id-3", _skip_sync=True)
     job3.status = "Succeeded"
 
     job_list = JobList([job1, job2, job3])
@@ -92,13 +92,13 @@ def test_job_list_status_lv0(mock_jobs):
 
 def test_filter_by_status_lv0():
     """Test filtering jobs by status."""
-    job1 = Job(name="job1", _id="id-1", _skip_sync=True)
+    job1 = Job(name="job1", id="id-1", _skip_sync=True)
     job1.status = "Succeeded"
 
-    job2 = Job(name="job2", _id="id-2", _skip_sync=True)
+    job2 = Job(name="job2", id="id-2", _skip_sync=True)
     job2.status = "Running"
 
-    job3 = Job(name="job3", _id="id-3", _skip_sync=True)
+    job3 = Job(name="job3", id="id-3", _skip_sync=True)
     job3.status = "Succeeded"
 
     job_list = JobList([job1, job2, job3])
@@ -118,21 +118,21 @@ def test_filter_by_status_lv0():
 
 def test_filter_by_attributes_lv0():
     """Test filtering jobs by attributes."""
-    job1 = Job(name="job1", _id="id-1", _skip_sync=True)
+    job1 = Job(name="job1", id="id-1", _skip_sync=True)
     job1._attributes = {
         "executionId": "id-1",
         "status": "Succeeded",
         "approveAmount": 100,
     }
 
-    job2 = Job(name="job2", _id="id-2", _skip_sync=True)
+    job2 = Job(name="job2", id="id-2", _skip_sync=True)
     job2._attributes = {
         "executionId": "id-2",
         "status": "Running",
         "approveAmount": 200,
     }
 
-    job3 = Job(name="job3", _id="id-3", _skip_sync=True)
+    job3 = Job(name="job3", id="id-3", _skip_sync=True)
     job3._attributes = {"executionId": "id-1", "status": "Failed", "approveAmount": 100}
 
     job_list = JobList([job1, job2, job3])
@@ -154,13 +154,13 @@ def test_filter_by_attributes_lv0():
 
 def test_filter_by_predicate_lv0():
     """Test filtering jobs with a custom predicate."""
-    job1 = Job(name="job1", _id="id-1", _skip_sync=True)
+    job1 = Job(name="job1", id="id-1", _skip_sync=True)
     job1._attributes = {"approveAmount": 100, "status": "Succeeded"}
 
-    job2 = Job(name="job2", _id="id-2", _skip_sync=True)
+    job2 = Job(name="job2", id="id-2", _skip_sync=True)
     job2._attributes = {"approveAmount": 200, "status": "Running"}
 
-    job3 = Job(name="job3", _id="id-3", _skip_sync=True)
+    job3 = Job(name="job3", id="id-3", _skip_sync=True)
     job3._attributes = {"approveAmount": 50, "status": "Succeeded"}
 
     job_list = JobList([job1, job2, job3])
@@ -185,15 +185,15 @@ def test_filter_by_predicate_lv0():
 
 def test_filter_combine_status_and_predicate_lv0():
     """Test combining status filter with predicate."""
-    job1 = Job(name="job1", _id="id-1", _skip_sync=True)
+    job1 = Job(name="job1", id="id-1", _skip_sync=True)
     job1.status = "Succeeded"
     job1._attributes = {"approveAmount": 100}
 
-    job2 = Job(name="job2", _id="id-2", _skip_sync=True)
+    job2 = Job(name="job2", id="id-2", _skip_sync=True)
     job2.status = "Succeeded"
     job2._attributes = {"approveAmount": 200}
 
-    job3 = Job(name="job3", _id="id-3", _skip_sync=True)
+    job3 = Job(name="job3", id="id-3", _skip_sync=True)
     job3.status = "Running"
     job3._attributes = {"approveAmount": 200}
 
@@ -211,15 +211,15 @@ def test_filter_combine_status_and_predicate_lv0():
 
 def test_filter_combine_all_lv0():
     """Test combining status, attributes, and predicate."""
-    job1 = Job(name="job1", _id="id-1", _skip_sync=True)
+    job1 = Job(name="job1", id="id-1", _skip_sync=True)
     job1.status = "Succeeded"
     job1._attributes = {"executionId": "id-1", "approveAmount": 100}
 
-    job2 = Job(name="job2", _id="id-2", _skip_sync=True)
+    job2 = Job(name="job2", id="id-2", _skip_sync=True)
     job2.status = "Succeeded"
     job2._attributes = {"executionId": "id-2", "approveAmount": 200}
 
-    job3 = Job(name="job3", _id="id-3", _skip_sync=True)
+    job3 = Job(name="job3", id="id-3", _skip_sync=True)
     job3.status = "Running"
     job3._attributes = {"executionId": "id-1", "approveAmount": 100}
 
@@ -232,12 +232,12 @@ def test_filter_combine_all_lv0():
         predicate=lambda job: job._attributes.get("approveAmount", 0) >= 100,
     )
     assert len(filtered) == 1
-    assert filtered[0]._id == "id-1"
+    assert filtered[0].id == "id-1"
 
 
 def test_filter_empty_result_lv0():
     """Test filtering that returns empty JobList."""
-    job1 = Job(name="job1", _id="id-1", _skip_sync=True)
+    job1 = Job(name="job1", id="id-1", _skip_sync=True)
     job1.status = "Succeeded"
 
     job_list = JobList([job1])
@@ -249,8 +249,8 @@ def test_filter_empty_result_lv0():
 
 def test_filter_no_filters_lv0():
     """Test filtering with no filters returns original list."""
-    job1 = Job(name="job1", _id="id-1", _skip_sync=True)
-    job2 = Job(name="job2", _id="id-2", _skip_sync=True)
+    job1 = Job(name="job1", id="id-1", _skip_sync=True)
+    job2 = Job(name="job2", id="id-2", _skip_sync=True)
 
     job_list = JobList([job1, job2])
 
@@ -261,15 +261,15 @@ def test_filter_no_filters_lv0():
 
 def test_filter_by_tool_key_lv0():
     """Test filtering jobs by tool_key."""
-    job1 = Job(name="job1", _id="id-1", _skip_sync=True)
+    job1 = Job(name="job1", id="id-1", _skip_sync=True)
     job1._attributes = {"tool": {"key": "deeporigin.docking", "version": "1.0.0"}}
 
-    job2 = Job(name="job2", _id="id-2", _skip_sync=True)
+    job2 = Job(name="job2", id="id-2", _skip_sync=True)
     job2._attributes = {
         "tool": {"key": "deeporigin.abfe-end-to-end", "version": "1.0.0"}
     }
 
-    job3 = Job(name="job3", _id="id-3", _skip_sync=True)
+    job3 = Job(name="job3", id="id-3", _skip_sync=True)
     job3._attributes = {"tool": {"key": "deeporigin.docking", "version": "2.0.0"}}
 
     job_list = JobList([job1, job2, job3])
@@ -292,13 +292,13 @@ def test_filter_by_tool_key_lv0():
 
 def test_filter_by_tool_version_lv0():
     """Test filtering jobs by tool_version."""
-    job1 = Job(name="job1", _id="id-1", _skip_sync=True)
+    job1 = Job(name="job1", id="id-1", _skip_sync=True)
     job1._attributes = {"tool": {"key": "deeporigin.docking", "version": "1.0.0"}}
 
-    job2 = Job(name="job2", _id="id-2", _skip_sync=True)
+    job2 = Job(name="job2", id="id-2", _skip_sync=True)
     job2._attributes = {"tool": {"key": "deeporigin.docking", "version": "2.0.0"}}
 
-    job3 = Job(name="job3", _id="id-3", _skip_sync=True)
+    job3 = Job(name="job3", id="id-3", _skip_sync=True)
     job3._attributes = {
         "tool": {"key": "deeporigin.abfe-end-to-end", "version": "1.0.0"}
     }
@@ -319,13 +319,13 @@ def test_filter_by_tool_version_lv0():
 
 def test_filter_by_tool_key_and_version_lv0():
     """Test filtering jobs by both tool_key and tool_version."""
-    job1 = Job(name="job1", _id="id-1", _skip_sync=True)
+    job1 = Job(name="job1", id="id-1", _skip_sync=True)
     job1._attributes = {"tool": {"key": "deeporigin.docking", "version": "1.0.0"}}
 
-    job2 = Job(name="job2", _id="id-2", _skip_sync=True)
+    job2 = Job(name="job2", id="id-2", _skip_sync=True)
     job2._attributes = {"tool": {"key": "deeporigin.docking", "version": "2.0.0"}}
 
-    job3 = Job(name="job3", _id="id-3", _skip_sync=True)
+    job3 = Job(name="job3", id="id-3", _skip_sync=True)
     job3._attributes = {
         "tool": {"key": "deeporigin.abfe-end-to-end", "version": "1.0.0"}
     }
@@ -335,22 +335,22 @@ def test_filter_by_tool_key_and_version_lv0():
     # Filter by both tool_key and tool_version
     filtered = job_list.filter(tool_key="deeporigin.docking", tool_version="1.0.0")
     assert len(filtered) == 1
-    assert filtered[0]._id == "id-1"
+    assert filtered[0].id == "id-1"
     assert filtered[0]._attributes.get("tool", {}).get("key") == "deeporigin.docking"
     assert filtered[0]._attributes.get("tool", {}).get("version") == "1.0.0"
 
 
 def test_filter_combine_tool_with_status_lv0():
     """Test combining tool filters with status filter."""
-    job1 = Job(name="job1", _id="id-1", _skip_sync=True)
+    job1 = Job(name="job1", id="id-1", _skip_sync=True)
     job1.status = "Succeeded"
     job1._attributes = {"tool": {"key": "deeporigin.docking", "version": "1.0.0"}}
 
-    job2 = Job(name="job2", _id="id-2", _skip_sync=True)
+    job2 = Job(name="job2", id="id-2", _skip_sync=True)
     job2.status = "Running"
     job2._attributes = {"tool": {"key": "deeporigin.docking", "version": "1.0.0"}}
 
-    job3 = Job(name="job3", _id="id-3", _skip_sync=True)
+    job3 = Job(name="job3", id="id-3", _skip_sync=True)
     job3.status = "Succeeded"
     job3._attributes = {
         "tool": {"key": "deeporigin.abfe-end-to-end", "version": "1.0.0"}
@@ -367,13 +367,13 @@ def test_filter_combine_tool_with_status_lv0():
 
 def test_filter_tool_key_with_missing_tool_lv0():
     """Test filtering by tool_key when some jobs don't have tool attribute."""
-    job1 = Job(name="job1", _id="id-1", _skip_sync=True)
+    job1 = Job(name="job1", id="id-1", _skip_sync=True)
     job1._attributes = {"tool": {"key": "deeporigin.docking", "version": "1.0.0"}}
 
-    job2 = Job(name="job2", _id="id-2", _skip_sync=True)
+    job2 = Job(name="job2", id="id-2", _skip_sync=True)
     job2._attributes = {}  # No tool attribute
 
-    job3 = Job(name="job3", _id="id-3", _skip_sync=True)
+    job3 = Job(name="job3", id="id-3", _skip_sync=True)
     job3._attributes = None  # No attributes at all
 
     job_list = JobList([job1, job2, job3])
@@ -381,7 +381,7 @@ def test_filter_tool_key_with_missing_tool_lv0():
     # Filter by tool_key should only return jobs with matching tool.key
     filtered = job_list.filter(tool_key="deeporigin.docking")
     assert len(filtered) == 1
-    assert filtered[0]._id == "id-1"
+    assert filtered[0].id == "id-1"
 
 
 def test_job_list_confirm_lv0(mock_jobs):
@@ -406,10 +406,10 @@ def test_job_list_cancel(mock_jobs):
 def test_job_list_show(mock_display):
     """Test show displays the job list view."""
     # Create real Job objects with proper attributes
-    job1 = Job(name="job1", _id="id-1", _skip_sync=True)
+    job1 = Job(name="job1", id="id-1", _skip_sync=True)
     job1.status = "Succeeded"
     job1._attributes = {}
-    job2 = Job(name="job2", _id="id-2", _skip_sync=True)
+    job2 = Job(name="job2", id="id-2", _skip_sync=True)
     job2.status = "Running"
     job2._attributes = {}
 
@@ -431,10 +431,10 @@ def test_job_list_show_empty():
 def test_job_list_watch_all_terminal(mock_nest_asyncio_apply, mock_display):
     """Test watch when all jobs are in terminal states."""
     # Create jobs all in terminal states
-    job1 = Job(name="job1", _id="id-1", _skip_sync=True)
+    job1 = Job(name="job1", id="id-1", _skip_sync=True)
     job1.status = "Succeeded"
     job1._attributes = {}
-    job2 = Job(name="job2", _id="id-2", _skip_sync=True)
+    job2 = Job(name="job2", id="id-2", _skip_sync=True)
     job2.status = "Failed"
     job2._attributes = {}
 
@@ -460,11 +460,11 @@ def test_job_list_watch_with_running_jobs(
 ):
     """Test watch starts monitoring when there are running jobs."""
     # Create jobs with some in non-terminal states
-    job1 = Job(name="job1", _id="id-1", _skip_sync=True)
+    job1 = Job(name="job1", id="id-1", _skip_sync=True)
     job1.status = "Running"
     job1._attributes = {}
     job1.sync = MagicMock()
-    job2 = Job(name="job2", _id="id-2", _skip_sync=True)
+    job2 = Job(name="job2", id="id-2", _skip_sync=True)
     job2.status = "Queued"
     job2._attributes = {}
     job2.sync = MagicMock()
@@ -501,11 +501,11 @@ def test_job_list_watch_stops_when_all_terminal(
 ):
     """Test watch stops monitoring when all jobs become terminal."""
     # Create jobs with some in non-terminal states
-    job1 = Job(name="job1", _id="id-1", _skip_sync=True)
+    job1 = Job(name="job1", id="id-1", _skip_sync=True)
     job1.status = "Running"
     job1._attributes = {}
     job1.sync = MagicMock()
-    job2 = Job(name="job2", _id="id-2", _skip_sync=True)
+    job2 = Job(name="job2", id="id-2", _skip_sync=True)
     job2.status = "Running"
     job2._attributes = {}
     job2.sync = MagicMock()
@@ -538,7 +538,7 @@ def test_job_list_watch_stops_when_all_terminal(
 
 def test_job_list_stop_watching():
     """Test stop_watching cancels the monitoring task."""
-    job1 = Job(name="job1", _id="id-1", _skip_sync=True)
+    job1 = Job(name="job1", id="id-1", _skip_sync=True)
     job1.status = "Running"
     job1.sync = MagicMock()
 
@@ -735,7 +735,7 @@ def test_list_pagination_stops_when_count_less_than_page_size(
 def test_to_dataframe():
     """Test converting JobList to DataFrame."""
     # Create Job objects with _attributes
-    job1 = Job(name="job1", _id="id-1", _skip_sync=True)
+    job1 = Job(name="job1", id="id-1", _skip_sync=True)
     job1._attributes = {
         "status": "Succeeded",
         "executionId": "id-1",
@@ -747,7 +747,7 @@ def test_to_dataframe():
         "tool": {"key": "tool1", "version": "1.0"},
     }
 
-    job2 = Job(name="job2", _id="id-2", _skip_sync=True)
+    job2 = Job(name="job2", id="id-2", _skip_sync=True)
     job2._attributes = {
         "status": "Running",
         "executionId": "id-2",
@@ -797,13 +797,13 @@ def test_to_dataframe():
 
 def test_to_dataframe_with_missing_attributes():
     """Test to_dataframe handles jobs with None _attributes."""
-    job1 = Job(name="job1", _id="id-1", _skip_sync=True)
+    job1 = Job(name="job1", id="id-1", _skip_sync=True)
     job1._attributes = {
         "status": "Succeeded",
         "executionId": "id-1",
     }
 
-    job2 = Job(name="job2", _id="id-2", _skip_sync=True)
+    job2 = Job(name="job2", id="id-2", _skip_sync=True)
     job2._attributes = None
 
     job_list = JobList([job1, job2])
@@ -819,7 +819,7 @@ def test_to_dataframe_with_missing_attributes():
 
 def test_to_dataframe_with_missing_keys():
     """Test to_dataframe handles missing keys in _attributes."""
-    job = Job(name="job1", _id="id-1", _skip_sync=True)
+    job = Job(name="job1", id="id-1", _skip_sync=True)
     job._attributes = {
         "status": "Succeeded",
         "executionId": "id-1",
@@ -840,13 +840,13 @@ def test_to_dataframe_with_missing_keys():
 
 def test_filter_by_multiple_statuses():
     """Test filtering jobs by multiple statuses."""
-    job1 = Job(name="job1", _id="id-1", _skip_sync=True)
+    job1 = Job(name="job1", id="id-1", _skip_sync=True)
     job1.status = "Succeeded"
 
-    job2 = Job(name="job2", _id="id-2", _skip_sync=True)
+    job2 = Job(name="job2", id="id-2", _skip_sync=True)
     job2.status = "Running"
 
-    job3 = Job(name="job3", _id="id-3", _skip_sync=True)
+    job3 = Job(name="job3", id="id-3", _skip_sync=True)
     job3.status = "Failed"
 
     job_list = JobList([job1, job2, job3])
@@ -864,25 +864,25 @@ def test_filter_by_multiple_statuses():
 
 def test_filter_require_metadata():
     """Test filtering jobs that require metadata."""
-    job1 = Job(name="job1", _id="id-1", _skip_sync=True)
+    job1 = Job(name="job1", id="id-1", _skip_sync=True)
     job1._attributes = {"metadata": {"key": "value"}}
 
-    job2 = Job(name="job2", _id="id-2", _skip_sync=True)
+    job2 = Job(name="job2", id="id-2", _skip_sync=True)
     job2._attributes = {"metadata": None}
 
-    job3 = Job(name="job3", _id="id-3", _skip_sync=True)
+    job3 = Job(name="job3", id="id-3", _skip_sync=True)
     job3._attributes = {}  # No metadata key
 
     job_list = JobList([job1, job2, job3])
 
     filtered = job_list.filter(require_metadata=True)
     assert len(filtered) == 1
-    assert filtered[0]._id == "id-1"
+    assert filtered[0].id == "id-1"
 
 
 def test_to_dataframe_with_optional_columns():
     """Test to_dataframe with include_metadata, include_inputs, include_outputs."""
-    job = Job(name="job1", _id="id-1", _skip_sync=True)
+    job = Job(name="job1", id="id-1", _skip_sync=True)
     job._attributes = {
         "status": "Succeeded",
         "executionId": "id-1",
@@ -913,7 +913,7 @@ def test_to_dataframe_with_optional_columns():
 
 def test_to_dataframe_run_duration():
     """Test to_dataframe calculates run_duration_minutes correctly."""
-    job = Job(name="job1", _id="id-1", _skip_sync=True)
+    job = Job(name="job1", id="id-1", _skip_sync=True)
     job._attributes = {
         "status": "Succeeded",
         "executionId": "id-1",
@@ -927,7 +927,7 @@ def test_to_dataframe_run_duration():
     assert df.iloc[0]["run_duration_minutes"] == 90
 
     # Test with missing dates
-    job2 = Job(name="job2", _id="id-2", _skip_sync=True)
+    job2 = Job(name="job2", id="id-2", _skip_sync=True)
     job2._attributes = {
         "status": "Running",
         "executionId": "id-2",
@@ -945,7 +945,7 @@ def test_job_list_render_view_with_docking_tool():
     from deeporigin.drug_discovery.constants import tool_mapper
 
     # Create jobs with docking tool
-    job1 = Job(name="job1", _id="id-1", _skip_sync=True)
+    job1 = Job(name="job1", id="id-1", _skip_sync=True)
     job1.status = "Running"
     job1._attributes = {
         "tool": {"key": tool_mapper["Docking"], "version": "1.0.0"},
@@ -955,7 +955,7 @@ def test_job_list_render_view_with_docking_tool():
         "completedAt": "2024-01-01T00:10:00.000Z",
     }
 
-    job2 = Job(name="job2", _id="id-2", _skip_sync=True)
+    job2 = Job(name="job2", id="id-2", _skip_sync=True)
     job2.status = "Running"
     job2._attributes = {
         "tool": {"key": tool_mapper["Docking"], "version": "1.0.0"},
@@ -978,7 +978,7 @@ def test_job_list_render_view_card_title_with_same_tool():
     from deeporigin.drug_discovery.constants import tool_mapper
 
     # Create jobs with docking tool and metadata
-    job1 = Job(name="job1", _id="id-1", _skip_sync=True)
+    job1 = Job(name="job1", id="id-1", _skip_sync=True)
     job1.status = "Running"
     job1._attributes = {
         "tool": {"key": tool_mapper["Docking"], "version": "1.0.0"},
@@ -986,7 +986,7 @@ def test_job_list_render_view_card_title_with_same_tool():
         "metadata": {"protein_file": "test_protein.pdb"},
     }
 
-    job2 = Job(name="job2", _id="id-2", _skip_sync=True)
+    job2 = Job(name="job2", id="id-2", _skip_sync=True)
     job2.status = "Running"
     job2._attributes = {
         "tool": {"key": tool_mapper["Docking"], "version": "1.0.0"},
@@ -1014,13 +1014,13 @@ def test_name_func_docking_with_job_list():
     from deeporigin.platform import job_viz_functions
 
     # Create jobs with overlapping SMILES
-    job1 = Job(name="job1", _id="id-1", _skip_sync=True)
+    job1 = Job(name="job1", id="id-1", _skip_sync=True)
     job1._attributes = {
         "userInputs": {"smiles_list": ["CCO", "CCN"]},
         "metadata": {"protein_file": "test_protein.pdb"},
     }
 
-    job2 = Job(name="job2", _id="id-2", _skip_sync=True)
+    job2 = Job(name="job2", id="id-2", _skip_sync=True)
     job2._attributes = {
         "userInputs": {"smiles_list": ["CCC", "CCO"]},  # CCO overlaps with job1
         "metadata": {"protein_file": "test_protein.pdb"},
@@ -1040,7 +1040,7 @@ def test_name_func_docking_with_single_job():
     """Test that _name_func_docking works with a single Job."""
     from deeporigin.platform import job_viz_functions
 
-    job = Job(name="job1", _id="id-1", _skip_sync=True)
+    job = Job(name="job1", id="id-1", _skip_sync=True)
     job._attributes = {
         "userInputs": {"smiles_list": ["CCO", "CCN", "CCC"]},
         "metadata": {"protein_file": "test_protein.pdb"},
@@ -1058,11 +1058,11 @@ def test_job_list_render_view_card_title_with_mixed_tools():
     """Test that JobList._render_view uses generic card title when jobs have different tool keys."""
     from deeporigin.drug_discovery.constants import tool_mapper
 
-    job1 = Job(name="job1", _id="id-1", _skip_sync=True)
+    job1 = Job(name="job1", id="id-1", _skip_sync=True)
     job1.status = "Running"
     job1._attributes = {"tool": {"key": tool_mapper["Docking"], "version": "1.0.0"}}
 
-    job2 = Job(name="job2", _id="id-2", _skip_sync=True)
+    job2 = Job(name="job2", id="id-2", _skip_sync=True)
     job2.status = "Succeeded"
     job2._attributes = {"tool": {"key": tool_mapper["ABFE"], "version": "1.0.0"}}
 
@@ -1079,11 +1079,11 @@ def test_job_list_render_view_with_mixed_tools():
     """Test that JobList._render_view uses generic status HTML when jobs have different tool keys."""
     from deeporigin.drug_discovery.constants import tool_mapper
 
-    job1 = Job(name="job1", _id="id-1", _skip_sync=True)
+    job1 = Job(name="job1", id="id-1", _skip_sync=True)
     job1.status = "Running"
     job1._attributes = {"tool": {"key": tool_mapper["Docking"], "version": "1.0.0"}}
 
-    job2 = Job(name="job2", _id="id-2", _skip_sync=True)
+    job2 = Job(name="job2", id="id-2", _skip_sync=True)
     job2.status = "Succeeded"
     job2._attributes = {"tool": {"key": tool_mapper["ABFE"], "version": "1.0.0"}}
 
@@ -1100,7 +1100,7 @@ def test_viz_func_docking_with_job_list():
     """Test that _viz_func_docking works with JobList."""
     from deeporigin.platform import job_viz_functions
 
-    job1 = Job(name="job1", _id="id-1", _skip_sync=True)
+    job1 = Job(name="job1", id="id-1", _skip_sync=True)
     job1._attributes = {
         "userInputs": {"smiles_list": ["CCO", "CCN"]},
         "progressReport": "ligand docked ligand docked",
@@ -1108,7 +1108,7 @@ def test_viz_func_docking_with_job_list():
         "completedAt": "2024-01-01T00:10:00.000Z",
     }
 
-    job2 = Job(name="job2", _id="id-2", _skip_sync=True)
+    job2 = Job(name="job2", id="id-2", _skip_sync=True)
     job2._attributes = {
         "userInputs": {"smiles_list": ["CCC"]},
         "progressReport": "ligand docked ligand failed",
@@ -1130,7 +1130,7 @@ def test_viz_func_quoted_with_single_job():
     """Test that _viz_func_quoted works with a single Job."""
     from deeporigin.platform import job_viz_functions
 
-    job = Job(name="job1", _id="id-1", _skip_sync=True)
+    job = Job(name="job1", id="id-1", _skip_sync=True)
     job.status = "Quoted"
     job._attributes = {
         "quotationResult": {"successfulQuotations": [{"priceTotal": 100.50}]}
@@ -1148,13 +1148,13 @@ def test_viz_func_quoted_with_job_list():
     """Test that _viz_func_quoted works with JobList and sums costs."""
     from deeporigin.platform import job_viz_functions
 
-    job1 = Job(name="job1", _id="id-1", _skip_sync=True)
+    job1 = Job(name="job1", id="id-1", _skip_sync=True)
     job1.status = "Quoted"
     job1._attributes = {
         "quotationResult": {"successfulQuotations": [{"priceTotal": 50.25}]}
     }
 
-    job2 = Job(name="job2", _id="id-2", _skip_sync=True)
+    job2 = Job(name="job2", id="id-2", _skip_sync=True)
     job2.status = "Quoted"
     job2._attributes = {
         "quotationResult": {"successfulQuotations": [{"priceTotal": 75.75}]}
@@ -1172,13 +1172,13 @@ def test_viz_func_quoted_with_job_list():
 
 def test_job_list_render_view_with_all_quoted():
     """Test that JobList._render_view uses quoted visualization when all jobs are Quoted."""
-    job1 = Job(name="job1", _id="id-1", _skip_sync=True)
+    job1 = Job(name="job1", id="id-1", _skip_sync=True)
     job1.status = "Quoted"
     job1._attributes = {
         "quotationResult": {"successfulQuotations": [{"priceTotal": 100.0}]}
     }
 
-    job2 = Job(name="job2", _id="id-2", _skip_sync=True)
+    job2 = Job(name="job2", id="id-2", _skip_sync=True)
     job2.status = "Quoted"
     job2._attributes = {
         "quotationResult": {"successfulQuotations": [{"priceTotal": 200.0}]}
@@ -1196,13 +1196,13 @@ def test_job_list_render_view_with_all_quoted():
 
 def test_job_list_render_view_with_mixed_status():
     """Test that JobList._render_view uses generic HTML when not all jobs are Quoted."""
-    job1 = Job(name="job1", _id="id-1", _skip_sync=True)
+    job1 = Job(name="job1", id="id-1", _skip_sync=True)
     job1.status = "Quoted"
     job1._attributes = {
         "quotationResult": {"successfulQuotations": [{"priceTotal": 100.0}]}
     }
 
-    job2 = Job(name="job2", _id="id-2", _skip_sync=True)
+    job2 = Job(name="job2", id="id-2", _skip_sync=True)
     job2.status = "Running"
 
     job_list = JobList([job1, job2])
