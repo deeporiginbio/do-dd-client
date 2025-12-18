@@ -1,0 +1,117 @@
+{
+    "id": "383e75e2-0e7d-4cb3-8bd4-eeffc8468755",
+    "createdAt": "2025-12-18T15:02:01.735Z",
+    "updatedAt": "2025-12-18T15:02:02.140Z",
+    "userInputs": {
+        "inputs": {
+            "smiles_list": [
+                "Fc1c(-c2cccc3ccccc23)ncc2c(N3C[C@H]4CC[C@@H](C3)N4)nc(OCC34CCCN3CCC4)nc12"
+            ]
+        },
+        "clusterId": "d638d3cd-833f-476b-87fe-ca6d76e66049"
+    },
+    "functionOutputs": [
+        {
+            "smiles": "Fc1c(-c2cccc3ccccc23)ncc2c(N3C[C@H]4CC[C@@H](C3)N4)nc(OCC34CCCN3CCC4)nc12",
+            "cyp": {
+                "probabilities": {
+                    "cyp1a2": 0.5363125205039978,
+                    "cyp2c9": 0.7018876075744629,
+                    "cyp2c19": 0.6438205242156982,
+                    "cyp2d6": 0.8363492488861084,
+                    "cyp3a4": 0.9160778522491455
+                }
+            }
+        }
+    ],
+    "status": "Completed",
+    "cluster": {
+        "id": "d638d3cd-833f-476b-87fe-ca6d76e66049",
+        "createdAt": "2024-06-11T16:53:45.922Z",
+        "updatedAt": "2025-03-27T20:23:30.842Z",
+        "hostname": "https://cluster.us-west-2.dev.deeporigin.io",
+        "name": "DeepOrigin Cluster - us-west-2",
+        "orgKey": null,
+        "enabled": true,
+        "status": "healthy"
+    },
+    "orgKey": "deeporigin",
+    "createdBy": "6b96d8f8-0f55-474c-a86c-e09651ba4b20",
+    "quotationResult": {
+        "anyFailed": false,
+        "failedQuotations": [],
+        "successfulQuotations": [
+            {
+                "status": "OK",
+                "itemCode": "DO_CYP",
+                "orgId": "deeporigin",
+                "qty": 1,
+                "priceEach": 0.02,
+                "priceTotal": 0.02,
+                "pricingRecordType": "regular",
+                "pricingRecords": [
+                    {
+                        "itemKey": "DO_CYP",
+                        "itemName": "CYP binding",
+                        "priceEach": 0.02,
+                        "totalPrice": 0.02,
+                        "qty": 1,
+                        "tierQtyFrom": 0,
+                        "tierQtyTo": 0
+                    }
+                ]
+            }
+        ]
+    },
+    "function": {
+        "id": "581710a5-b8ef-4c90-970a-a21b94772f2a",
+        "createdAt": "2025-12-11T00:06:26.802Z",
+        "updatedAt": "2025-12-11T00:06:26.802Z",
+        "functionManifest": "ad60bb08-5232-40bb-885a-9e165e3d0474",
+        "version": "0.1.4",
+        "enabled": true,
+        "manifestBody": {
+            "key": "deeporigin.mol-props-cyp",
+            "version": "0.1.4",
+            "executor": {
+                "name": "deeporigin-mol-props-cyp",
+                "path": "/cyp",
+                "port": {
+                    "name": "http1",
+                    "port": 8000,
+                    "protocol": "TCP"
+                },
+                "image": "645946264134.dkr.ecr.us-west-2.amazonaws.com/research-tools/molprops:0.1.3",
+                "method": "POST",
+                "minScale": 1,
+                "timeoutSeconds": 600,
+                "containerConcurrency": 1,
+                "resourceRequirements": {
+                    "cpu": 2,
+                    "memory": 8
+                },
+                "scaleDownDelaySeconds": 60,
+                "responseStartTimeoutSeconds": 3600
+            },
+            "billingCode": "DO_CYP",
+            "inputSchema": {
+                "type": "object",
+                "required": [
+                    "smiles_list"
+                ],
+                "properties": {
+                    "smiles_list": {
+                        "type": "array",
+                        "items": {
+                            "type": "string"
+                        }
+                    }
+                },
+                "additionalProperties": false
+            },
+            "functionManifestVersion": "1"
+        },
+        "billingCode": "DO_CYP",
+        "resourceId": "function-5lerjp3bc1dz4chatv6al"
+    }
+}

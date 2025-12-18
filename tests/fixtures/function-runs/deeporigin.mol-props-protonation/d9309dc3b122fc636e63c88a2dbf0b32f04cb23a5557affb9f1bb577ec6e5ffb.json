@@ -1,0 +1,121 @@
+{
+    "id": "c0325d44-3a24-426a-a654-ac6842069171",
+    "createdAt": "2025-12-18T15:11:42.683Z",
+    "updatedAt": "2025-12-18T15:11:43.270Z",
+    "userInputs": {
+        "inputs": {
+            "smiles": "C=CCCn1cc(-c2cccc(C(=O)N(C)C)c2)c2cc[nH]c2c1=O",
+            "pH": 7.4,
+            "filter_percentage": 1
+        },
+        "clusterId": "d638d3cd-833f-476b-87fe-ca6d76e66049"
+    },
+    "functionOutputs": {
+        "smiles": "C=CCCn1cc(-c2cccc(C(=O)N(C)C)c2)c2cc[nH]c2c1=O",
+        "pH": 7.4,
+        "filter_percentage": 1,
+        "protonation_states": {
+            "smiles_list": [
+                "C=CCCn1cc(-c2cccc(C(=O)N(C)C)c2)c2cc[nH]c2c1=O"
+            ],
+            "concentration_list": [
+                99.93319834034459
+            ]
+        }
+    },
+    "status": "Completed",
+    "cluster": {
+        "id": "d638d3cd-833f-476b-87fe-ca6d76e66049",
+        "createdAt": "2024-06-11T16:53:45.922Z",
+        "updatedAt": "2025-03-27T20:23:30.842Z",
+        "hostname": "https://cluster.us-west-2.dev.deeporigin.io",
+        "name": "DeepOrigin Cluster - us-west-2",
+        "orgKey": null,
+        "enabled": true,
+        "status": "healthy"
+    },
+    "orgKey": "deeporigin",
+    "createdBy": "6b96d8f8-0f55-474c-a86c-e09651ba4b20",
+    "quotationResult": {
+        "anyFailed": false,
+        "failedQuotations": [],
+        "successfulQuotations": [
+            {
+                "status": "OK",
+                "itemCode": "DO_PROTONATION",
+                "orgId": "deeporigin",
+                "qty": 1,
+                "priceEach": 0,
+                "priceTotal": 0,
+                "pricingRecordType": "regular",
+                "pricingRecords": [
+                    {
+                        "itemKey": "DO_PROTONATION",
+                        "itemName": "Ligand Protonation",
+                        "priceEach": 0,
+                        "totalPrice": 0,
+                        "qty": 1,
+                        "tierQtyFrom": 0,
+                        "tierQtyTo": 0
+                    }
+                ]
+            }
+        ]
+    },
+    "function": {
+        "id": "485fdb6c-c2db-495f-97b1-103ff86adfa0",
+        "createdAt": "2025-12-16T02:16:31.347Z",
+        "updatedAt": "2025-12-16T02:16:31.348Z",
+        "functionManifest": "9e543d6c-9965-4691-b314-840afcddf67d",
+        "version": "0.1.6",
+        "enabled": true,
+        "manifestBody": {
+            "key": "deeporigin.mol-props-protonation",
+            "version": "0.1.6",
+            "executor": {
+                "name": "deeporigin-mol-props-protonation",
+                "path": "/protonation",
+                "port": {
+                    "name": "http1",
+                    "port": 8000,
+                    "protocol": "TCP"
+                },
+                "image": "645946264134.dkr.ecr.us-west-2.amazonaws.com/research-tools/molprops:0.1.3",
+                "method": "POST",
+                "minScale": 1,
+                "timeoutSeconds": 600,
+                "containerConcurrency": 1,
+                "resourceRequirements": {
+                    "cpu": 2,
+                    "memory": 8
+                },
+                "scaleDownDelaySeconds": 60,
+                "responseStartTimeoutSeconds": 3600
+            },
+            "billingCode": "DO_PROTONATION",
+            "inputSchema": {
+                "type": "object",
+                "required": [
+                    "smiles",
+                    "pH",
+                    "filter_percentage"
+                ],
+                "properties": {
+                    "pH": {
+                        "type": "number"
+                    },
+                    "smiles": {
+                        "type": "string"
+                    },
+                    "filter_percentage": {
+                        "type": "number"
+                    }
+                },
+                "additionalProperties": false
+            },
+            "functionManifestVersion": "1"
+        },
+        "billingCode": "DO_PROTONATION",
+        "resourceId": "function-ny5fb479tc6bfmgx27j2o"
+    }
+}

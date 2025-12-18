@@ -1,14 +1,14 @@
 {
-    "id": "caa5152a-a49d-4fb5-8b41-916aa3e7f50b",
-    "createdAt": "2025-12-18T14:18:45.593Z",
-    "updatedAt": "2025-12-18T14:19:31.978Z",
+    "id": "7ad89ed6-609f-418f-ab4b-ae696198824b",
+    "createdAt": "2025-12-18T15:02:37.443Z",
+    "updatedAt": "2025-12-18T15:03:18.314Z",
     "userInputs": {
         "inputs": {
             "protein_path": "entities/proteins/c32244fd9a1fb1675f69c1d28986ef55867ffd6733b28946d62409cc3f55523f.pdb",
             "pocket_count": 1,
             "pocket_min_size": 30
         },
-        "clusterId": "b4e25727-46a3-4eb0-a862-4dc7c8d2bc68"
+        "clusterId": "d638d3cd-833f-476b-87fe-ca6d76e66049"
     },
     "functionOutputs": {
         "results_dir": "tool-runs/pocketfinder/c32244fd9a1fb1675f69c1d28986ef55867ffd6733b28946d62409cc3f55523f/69345ced41f365156fbe7239c960431b1164001c908dd42a508d73d4d4d5e9b3/",
@@ -20,17 +20,17 @@
     },
     "status": "Completed",
     "cluster": {
-        "id": "b4e25727-46a3-4eb0-a862-4dc7c8d2bc68",
-        "createdAt": "2025-08-14T00:35:15.428Z",
-        "updatedAt": "2025-08-14T00:35:15.428Z",
-        "hostname": "https://cluster.us-west-2.staging.deeporigin.io",
+        "id": "d638d3cd-833f-476b-87fe-ca6d76e66049",
+        "createdAt": "2024-06-11T16:53:45.922Z",
+        "updatedAt": "2025-03-27T20:23:30.842Z",
+        "hostname": "https://cluster.us-west-2.dev.deeporigin.io",
         "name": "DeepOrigin Cluster - us-west-2",
         "orgKey": null,
         "enabled": true,
         "status": "healthy"
     },
     "orgKey": "deeporigin",
-    "createdBy": "df333908-4679-4f4b-95b8-ce742baf1200",
+    "createdBy": "6b96d8f8-0f55-474c-a86c-e09651ba4b20",
     "quotationResult": {
         "anyFailed": false,
         "failedQuotations": [],
@@ -58,10 +58,10 @@
         ]
     },
     "function": {
-        "id": "e26bd964-ffe2-4c9e-8daa-63fc92e312b0",
-        "createdAt": "2025-12-05T17:56:26.669Z",
-        "updatedAt": "2025-12-05T17:56:26.669Z",
-        "functionManifest": "298e91af-61de-4978-856e-e314fe881038",
+        "id": "3f45afed-d5dd-4595-b9ab-8c0934d09ddf",
+        "createdAt": "2025-12-08T15:10:50.072Z",
+        "updatedAt": "2025-12-08T15:10:50.072Z",
+        "functionManifest": "cf13bd26-12bc-4d51-a8fc-e283a8ac3b59",
         "version": "0.2.2",
         "enabled": true,
         "manifestBody": {
@@ -113,6 +113,6 @@
             "functionManifestVersion": "1"
         },
         "billingCode": "DO_POCKET_FINDER",
-        "resourceId": "function-me24mi7nvejq4f27him2r"
+        "resourceId": "function-xwdil88sp5mlubxhrzvn3"
     }
 }
