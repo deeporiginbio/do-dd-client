@@ -543,113 +543,14 @@ class MockServer:
             function_key: str, request: Request
         ) -> dict[str, Any] | list[dict[str, Any]]:
             """Handle function execution logic shared between versioned and non-versioned endpoints."""
-            # Handle mol-props functions
-            if function_key.startswith("deeporigin.mol-props-"):
-                # Extract property name (e.g., "logp" from "deeporigin.mol-props-logp")
-                prop = function_key.replace("deeporigin.mol-props-", "")
-
-                # Get request body to extract SMILES list
-                body = await request.json()
-                params = body.get("inputs", {}) or body.get("params", {})
-                smiles_list = params.get("smiles_list", [])
-
-                # Handle protonation separately as it has a different response format
-                if prop == "protonation":
-                    smiles = params.get("smiles")
-                    ph = params.get("pH", 7.4)
-                    protonation_response = self._get_protonation_response(
-                        smiles=smiles, ph=ph
-                    )
-                    return {
-                        "functionOutputs": protonation_response,
-                        "status": "Completed",
-                        "quotationResult": {
-                            "successfulQuotations": [{"priceTotal": 0.1}],
-                            "anyFailed": False,
-                        },
-                    }
-
-                # Return response based on property requested
-                # Each property endpoint returns a list of dicts with "smiles" key
-                responses = []
-                for smiles in smiles_list:
-                    # Load fixture data for this SMILES
-                    molprops_data = self._get_molprops_fixture(smiles)
-
-                    response_item = {"smiles": smiles}
-
-                    # Add the specific property data
-                    if prop == "logp":
-                        response_item["logP"] = molprops_data["logP"]
-                    elif prop == "logd":
-                        response_item["logD"] = molprops_data["logD"]
-                    elif prop == "logs":
-                        response_item["logS"] = molprops_data["logS"]
-                    elif prop == "pains":
-                        response_item["pains"] = molprops_data["pains"]
-                    elif prop == "herg":
-                        response_item["hERG"] = molprops_data["hERG"]
-                    elif prop == "ames":
-                        response_item["ames"] = molprops_data["ames"]
-                    elif prop == "cyp":
-                        response_item["cyp"] = molprops_data["cyp"]
-
-                    responses.append(response_item)
-
-                return {
-                    "functionOutputs": responses,
-                    "status": "Completed",
-                    "quotationResult": {
-                        "successfulQuotations": [{"priceTotal": 0.1}],
-                        "anyFailed": False,
-                    },
-                }
-
-            # Handle system-prep function
-            if function_key == "deeporigin.system-prep":
-                # Return the sysprep response fixture wrapped in functionOutputs
-                sysprep_response = self._load_fixture("sysprep-response")
-                return {
-                    "functionOutputs": sysprep_response,
-                    "status": "Completed",
-                    "quotationResult": {
-                        "successfulQuotations": [{"priceTotal": 0.1}],
-                        "anyFailed": False,
-                    },
-                }
-
-            # Handle pocketfinder function
-            if function_key == "deeporigin.pocketfinder":
-                # Return the pocketfinder response fixture wrapped in functionOutputs
-                pocketfinder_response = self._load_fixture(
-                    "deeporigin.pocketfinder/function-response"
-                )
-                return {
-                    "functionOutputs": pocketfinder_response,
-                    "status": "Completed",
-                    "quotationResult": {
-                        "successfulQuotations": [{"priceTotal": 0.1}],
-                        "anyFailed": False,
-                    },
-                }
-
-            # Handle docking function
-            if function_key == "deeporigin.docking":
-                # Return the docking response fixture wrapped in functionOutputs
-                docking_response = self._load_fixture(
-                    "deeporigin.docking/function-response"
-                )
-                return {
-                    "functionOutputs": docking_response,
-                    "status": "Completed",
-                    "quotationResult": {
-                        "successfulQuotations": [{"priceTotal": 0.1}],
-                        "anyFailed": False,
-                    },
-                }
-
-            # Default: return execution ID for other functions
-            return {"executionId": str(uuid.uuid4())}
+            # Try to load response from function-runs folder
+            try:
+                return self._load_fixture(f"function-runs/{function_key}/response")
+            except FileNotFoundError:
+                raise FileNotFoundError(
+                    f"No fixture found for function '{function_key}'. "
+                    f"Please create a fixture at: function-runs/{function_key}/response.json"
+                ) from None
 
         @self.app.post("/tools/{org_key}/functions/{function_key}")
         async def run_function(

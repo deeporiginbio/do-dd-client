@@ -1,0 +1,118 @@
+{
+    "id": "caa5152a-a49d-4fb5-8b41-916aa3e7f50b",
+    "createdAt": "2025-12-18T14:18:45.593Z",
+    "updatedAt": "2025-12-18T14:19:31.978Z",
+    "userInputs": {
+        "inputs": {
+            "protein_path": "entities/proteins/c32244fd9a1fb1675f69c1d28986ef55867ffd6733b28946d62409cc3f55523f.pdb",
+            "pocket_count": 1,
+            "pocket_min_size": 30
+        },
+        "clusterId": "b4e25727-46a3-4eb0-a862-4dc7c8d2bc68"
+    },
+    "functionOutputs": {
+        "results_dir": "tool-runs/pocketfinder/c32244fd9a1fb1675f69c1d28986ef55867ffd6733b28946d62409cc3f55523f/69345ced41f365156fbe7239c960431b1164001c908dd42a508d73d4d4d5e9b3/",
+        "files": [
+            "tool-runs/pocketfinder/c32244fd9a1fb1675f69c1d28986ef55867ffd6733b28946d62409cc3f55523f/69345ced41f365156fbe7239c960431b1164001c908dd42a508d73d4d4d5e9b3/progress.json",
+            "tool-runs/pocketfinder/c32244fd9a1fb1675f69c1d28986ef55867ffd6733b28946d62409cc3f55523f/69345ced41f365156fbe7239c960431b1164001c908dd42a508d73d4d4d5e9b3/properties.csv",
+            "tool-runs/pocketfinder/c32244fd9a1fb1675f69c1d28986ef55867ffd6733b28946d62409cc3f55523f/69345ced41f365156fbe7239c960431b1164001c908dd42a508d73d4d4d5e9b3/pocket_1.pdb"
+        ]
+    },
+    "status": "Completed",
+    "cluster": {
+        "id": "b4e25727-46a3-4eb0-a862-4dc7c8d2bc68",
+        "createdAt": "2025-08-14T00:35:15.428Z",
+        "updatedAt": "2025-08-14T00:35:15.428Z",
+        "hostname": "https://cluster.us-west-2.staging.deeporigin.io",
+        "name": "DeepOrigin Cluster - us-west-2",
+        "orgKey": null,
+        "enabled": true,
+        "status": "healthy"
+    },
+    "orgKey": "deeporigin",
+    "createdBy": "df333908-4679-4f4b-95b8-ce742baf1200",
+    "quotationResult": {
+        "anyFailed": false,
+        "failedQuotations": [],
+        "successfulQuotations": [
+            {
+                "status": "OK",
+                "itemCode": "DO_POCKET_FINDER",
+                "orgId": "deeporigin",
+                "qty": 1,
+                "priceEach": 10,
+                "priceTotal": 10,
+                "pricingRecordType": "regular",
+                "pricingRecords": [
+                    {
+                        "itemKey": "DO_POCKET_FINDER",
+                        "itemName": "Pocket Finder",
+                        "priceEach": 10,
+                        "totalPrice": 10,
+                        "qty": 1,
+                        "tierQtyFrom": 0,
+                        "tierQtyTo": 0
+                    }
+                ]
+            }
+        ]
+    },
+    "function": {
+        "id": "e26bd964-ffe2-4c9e-8daa-63fc92e312b0",
+        "createdAt": "2025-12-05T17:56:26.669Z",
+        "updatedAt": "2025-12-05T17:56:26.669Z",
+        "functionManifest": "298e91af-61de-4978-856e-e314fe881038",
+        "version": "0.2.2",
+        "enabled": true,
+        "manifestBody": {
+            "key": "deeporigin.pocketfinder",
+            "version": "0.2.2",
+            "executor": {
+                "name": "deeporigin-pocketfinder",
+                "path": "/find_pockets",
+                "port": {
+                    "name": "http1",
+                    "port": 8080,
+                    "protocol": "TCP"
+                },
+                "image": "645946264134.dkr.ecr.us-west-2.amazonaws.com/functions/pocket-finder:0.2.2",
+                "method": "POST",
+                "minScale": 1,
+                "timeoutSeconds": 600,
+                "containerConcurrency": 1,
+                "resourceRequirements": {
+                    "cpu": 2,
+                    "memory": 8
+                },
+                "scaleDownDelaySeconds": 60,
+                "responseStartTimeoutSeconds": 3600
+            },
+            "billingCode": "DO_POCKET_FINDER",
+            "inputSchema": {
+                "type": "object",
+                "required": [
+                    "protein_path",
+                    "pocket_count",
+                    "pocket_min_size"
+                ],
+                "properties": {
+                    "pocket_count": {
+                        "type": "integer",
+                        "minimum": 1
+                    },
+                    "protein_path": {
+                        "type": "string"
+                    },
+                    "pocket_min_size": {
+                        "type": "number",
+                        "minimum": 1
+                    }
+                },
+                "additionalProperties": false
+            },
+            "functionManifestVersion": "1"
+        },
+        "billingCode": "DO_POCKET_FINDER",
+        "resourceId": "function-me24mi7nvejq4f27him2r"
+    }
+}

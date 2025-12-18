@@ -17,12 +17,13 @@ def _get_fixture_path(remote_path: str, fixtures_dir: Path) -> Path:
         fixtures_dir: The fixtures directory path.
 
     Returns:
-        Path object pointing to the file in the fixtures directory.
+        Path object pointing to the file in the fixtures/files directory.
     """
     # Normalize path: remove leading slashes and resolve any '..' components
     normalized = remote_path.lstrip("/")
     # Use Path to handle path components safely
-    fixture_path = fixtures_dir / normalized
+    # Files are stored in fixtures/files/ subdirectory
+    fixture_path = fixtures_dir / "files" / normalized
     # Resolve to ensure we're within fixtures directory (prevent path traversal)
     try:
         resolved = fixture_path.resolve()
@@ -59,11 +60,12 @@ def create_files_router(
         # Get the directory path in fixtures
         dir_path = _get_fixture_path(file_path, fixtures_dir)
 
-        # Ensure the resolved path is within fixtures_dir (prevent path traversal)
-        fixtures_resolved = fixtures_dir.resolve()
+        # Ensure the resolved path is within fixtures/files directory (prevent path traversal)
+        files_dir = fixtures_dir / "files"
+        files_dir_resolved = files_dir.resolve()
         try:
             dir_resolved = dir_path.resolve()
-            if not str(dir_resolved).startswith(str(fixtures_resolved)):
+            if not str(dir_resolved).startswith(str(files_dir_resolved)):
                 # Path traversal detected, return empty list
                 return {"data": []}
         except (OSError, ValueError):
@@ -77,19 +79,20 @@ def create_files_router(
         # List files in the directory
         files: list[dict[str, str]] = []
 
+        files_dir = fixtures_dir / "files"
         if recursive:
             # Recursively list all files
             for file_path_obj in dir_path.rglob("*"):
                 if file_path_obj.is_file():
-                    # Get relative path from fixtures_dir
-                    relative_path = file_path_obj.relative_to(fixtures_dir)
+                    # Get relative path from fixtures/files directory
+                    relative_path = file_path_obj.relative_to(files_dir)
                     files.append({"Key": str(relative_path)})
         else:
             # List only files directly in the directory (not subdirectories)
             for file_path_obj in dir_path.iterdir():
                 if file_path_obj.is_file():
-                    # Get relative path from fixtures_dir
-                    relative_path = file_path_obj.relative_to(fixtures_dir)
+                    # Get relative path from fixtures/files directory
+                    relative_path = file_path_obj.relative_to(files_dir)
                     files.append({"Key": str(relative_path)})
 
         return {"data": files}
@@ -109,7 +112,26 @@ def create_files_router(
         # Normalize path and construct fixture path
         fixture_path = _get_fixture_path(remote_path, fixtures_dir)
 
-        # Try to serve from fixtures first
+        # Ensure the resolved path is within fixtures/files directory (prevent path traversal)
+        files_dir = fixtures_dir / "files"
+        files_dir_resolved = files_dir.resolve()
+        try:
+            fixture_resolved = fixture_path.resolve()
+            if not str(fixture_resolved).startswith(str(files_dir_resolved)):
+                # Path traversal detected
+                from fastapi import HTTPException
+
+                raise HTTPException(
+                    status_code=404, detail=f"File not found: {remote_path}"
+                )
+        except (OSError, ValueError):
+            from fastapi import HTTPException
+
+            raise HTTPException(
+                status_code=404, detail=f"File not found: {remote_path}"
+            )
+
+        # Try to serve from fixtures/files first
         if fixture_path.exists():
             content = fixture_path.read_bytes()
         # Fall back to in-memory storage for backward compatibility
@@ -141,7 +163,18 @@ def create_files_router(
         # Normalize path and construct fixture path
         fixture_path = _get_fixture_path(remote_path, fixtures_dir)
 
-        # Check if file already exists in fixtures
+        # Ensure the resolved path is within fixtures/files directory (prevent path traversal)
+        files_dir = fixtures_dir / "files"
+        files_dir_resolved = files_dir.resolve()
+        try:
+            fixture_resolved = fixture_path.resolve()
+            if not str(fixture_resolved).startswith(str(files_dir_resolved)):
+                # Path traversal detected
+                return {"eTag": "mock-etag", "key": remote_path}
+        except (OSError, ValueError):
+            return {"eTag": "mock-etag", "key": remote_path}
+
+        # Check if file already exists in fixtures/files
         if fixture_path.exists():
             # File exists, nothing to do!
             return {"eTag": "mock-etag", "key": remote_path}
@@ -162,7 +195,7 @@ def create_files_router(
     @router.delete("/files/{org_key}/{remote_path:path}")
     def delete_file(org_key: str, remote_path: str) -> bool:
         """Delete a file."""
-        # Check if file exists in fixtures
+        # Check if file exists in fixtures/files
         fixture_path = _get_fixture_path(remote_path, fixtures_dir)
         file_exists = fixture_path.exists() or remote_path in file_storage
 

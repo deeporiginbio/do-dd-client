@@ -90,6 +90,10 @@ class Functions:
         self._c._client.timeout = original_timeout
 
         _check_response(response, key, check_version, quote)
+
+        import json
+
+        print(json.dumps(response, indent=4))
         return response
 
 
