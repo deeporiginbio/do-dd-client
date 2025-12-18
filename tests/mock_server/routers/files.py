@@ -129,7 +129,7 @@ def create_files_router(
 
             raise HTTPException(
                 status_code=404, detail=f"File not found: {remote_path}"
-            )
+            ) from None
 
         # Try to serve from fixtures/files first
         if fixture_path.exists():
