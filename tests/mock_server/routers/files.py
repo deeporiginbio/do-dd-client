@@ -174,22 +174,18 @@ def create_files_router(
         except (OSError, ValueError):
             return {"eTag": "mock-etag", "key": remote_path}
 
+        # Create parent directories for convenience
+        fixture_path.parent.mkdir(parents=True, exist_ok=True)
+
         # Check if file already exists in fixtures/files
         if fixture_path.exists():
             # File exists, nothing to do!
             return {"eTag": "mock-etag", "key": remote_path}
 
-        # File doesn't exist - prompt dev to manually place it
-        print("\n⚠️  Mock Server: File not found in fixtures")
-        print(f"   Expected path: {fixture_path}")
-        print(f"   Remote path: {remote_path}")
-        print(f"   Please manually place the file at: {fixture_path}")
-        print()
+        # File doesn't exist - write it to disk so it's available for future downloads
+        # This ensures files are automatically created during test runs
+        fixture_path.write_bytes(content)
 
-        # Create parent directories for convenience
-        fixture_path.parent.mkdir(parents=True, exist_ok=True)
-
-        # Return success anyway - the file will be there next time
         return {"eTag": "mock-etag", "key": remote_path}
 
     @router.delete("/files/{org_key}/{remote_path:path}")
