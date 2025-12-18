@@ -67,10 +67,12 @@ def test_sysprep_lv2():
     sim = Complex.from_dir(BRD_DATA_DIR)
     client = DeepOriginClient()
 
+    ligand = [ligand for ligand in sim.ligands if ligand.name == "cmpd 4 (Crotyl)"][0]
+
     # this is chosen to be one where it takes >1 min
     response = run_sysprep(
         protein=sim.protein,
-        ligand=sim.ligands[3],
+        ligand=ligand,
         add_H_atoms=True,
         use_cache=False,
         client=client,
