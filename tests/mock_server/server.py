@@ -560,7 +560,14 @@ class MockServer:
                     protonation_response = self._get_protonation_response(
                         smiles=smiles, ph=ph
                     )
-                    return {"functionOutputs": protonation_response}
+                    return {
+                        "functionOutputs": protonation_response,
+                        "status": "Completed",
+                        "quotationResult": {
+                            "successfulQuotations": [{"priceTotal": 0.1}],
+                            "anyFailed": False,
+                        },
+                    }
 
                 # Return response based on property requested
                 # Each property endpoint returns a list of dicts with "smiles" key
@@ -589,29 +596,57 @@ class MockServer:
 
                     responses.append(response_item)
 
-                return {"functionOutputs": responses}
+                return {
+                    "functionOutputs": responses,
+                    "status": "Completed",
+                    "quotationResult": {
+                        "successfulQuotations": [{"priceTotal": 0.1}],
+                        "anyFailed": False,
+                    },
+                }
 
             # Handle system-prep function
             if function_key == "deeporigin.system-prep":
                 # Return the sysprep response fixture wrapped in functionOutputs
                 sysprep_response = self._load_fixture("sysprep-response")
-                return {"functionOutputs": sysprep_response}
+                return {
+                    "functionOutputs": sysprep_response,
+                    "status": "Completed",
+                    "quotationResult": {
+                        "successfulQuotations": [{"priceTotal": 0.1}],
+                        "anyFailed": False,
+                    },
+                }
 
             # Handle pocketfinder function
             if function_key == "deeporigin.pocketfinder":
-                # Return the pocketfinder response fixture
+                # Return the pocketfinder response fixture wrapped in functionOutputs
                 pocketfinder_response = self._load_fixture(
                     "deeporigin.pocketfinder/function-response"
                 )
-                return pocketfinder_response
+                return {
+                    "functionOutputs": pocketfinder_response,
+                    "status": "Completed",
+                    "quotationResult": {
+                        "successfulQuotations": [{"priceTotal": 0.1}],
+                        "anyFailed": False,
+                    },
+                }
 
             # Handle docking function
             if function_key == "deeporigin.docking":
-                # Return the docking response fixture
+                # Return the docking response fixture wrapped in functionOutputs
                 docking_response = self._load_fixture(
                     "deeporigin.docking/function-response"
                 )
-                return docking_response
+                return {
+                    "functionOutputs": docking_response,
+                    "status": "Completed",
+                    "quotationResult": {
+                        "successfulQuotations": [{"priceTotal": 0.1}],
+                        "anyFailed": False,
+                    },
+                }
 
             # Default: return execution ID for other functions
             return {"executionId": str(uuid.uuid4())}

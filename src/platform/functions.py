@@ -89,16 +89,65 @@ class Functions:
         )
         self._c._client.timeout = original_timeout
 
-        _check_response(response, key, check_version)
+        _check_response(response, key, check_version, quote)
         return response
 
 
-def _check_response(response: dict, key, version) -> None:
-    if "quotationResult" not in response:
-        return
-    if response["quotationResult"]["anyFailed"] or response["status"] == "NotApproved":
+def _check_response(
+    response: dict,
+    key: str,
+    version: str,
+    quote: bool,
+) -> None:
+    if "quotationResult" in response and (
+        response["quotationResult"]["anyFailed"] or response["status"] == "NotApproved"
+    ):
         raise DeepOriginException(
             title=f"Failed to run function: {key}/{version}",
             message="Failed to run function. This function run was not approved. ",
             fix="Please contact support at https://help.deeporigin.com.",
         ) from None
+
+    # Get cost from quotationResult if available, otherwise use None
+    cost = None
+    if (
+        "quotationResult" in response
+        and "successfulQuotations" in response["quotationResult"]
+    ):
+        successful_quotations = response["quotationResult"]["successfulQuotations"]
+        if successful_quotations and len(successful_quotations) > 0:
+            cost = successful_quotations[0].get("priceTotal")
+
+    if not quote:
+        if response["status"] == "Approved":
+            cost_msg = (
+                f"Check that the approveAmount is set to a non-zero value greater than ${cost}. "
+                if cost is not None
+                else ""
+            )
+            raise DeepOriginException(
+                title=f"Failed to run function: {key}/{version}",
+                message="Failed to run function. Function did not succeed.",
+                fix=f"{cost_msg}Otherwise, Please contact support at https://help.deeporigin.com.",
+            ) from None
+
+        # we expect a functionOutputs key in the response
+        if "functionOutputs" not in response:
+            cost_msg = (
+                f"Check that the approveAmount is set to a non-zero value greater than ${cost}. "
+                if cost is not None
+                else ""
+            )
+            raise DeepOriginException(
+                title=f"Failed to run function: {key}/{version}",
+                message="Failed to run function. No functionOutputs key in response.",
+                fix=cost_msg,
+            ) from None
+
+        # the only valid status can be Completed
+        if response["status"] != "Completed":
+            raise DeepOriginException(
+                title=f"Failed to run function: {key}/{version}",
+                message="Failed to run function. Function did not succeed.",
+                fix="Please contact support at https://help.deeporigin.com.",
+            ) from None
