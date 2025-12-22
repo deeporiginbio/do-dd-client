@@ -1,5 +1,10 @@
 """Tests for retry functionality in DeepOriginClient."""
 
+import pytest
+
+pytestmark = pytest.mark.slow
+
+
 import time
 from unittest.mock import patch
 
