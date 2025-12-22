@@ -9,6 +9,7 @@ First, we create a Protein, for example, using:
 ```{.python continuation}
 from deeporigin.drug_discovery import  Protein, BRD_DATA_DIR
 protein = Protein.from_file(BRD_DATA_DIR / "brd.pdb")
+protein.remove_water()
 ```
 
 ### Using Pocket Finder

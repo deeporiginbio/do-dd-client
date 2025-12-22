@@ -22,6 +22,7 @@ sim = Complex.from_dir(BRD_DATA_DIR)
 We find pockets in the protein using:
 
 ```{.python continuation}
+sim.protein.remove_water()
 pockets = sim.protein.find_pockets(pocket_count=1)
 ```
 

@@ -29,7 +29,8 @@ def test_molprops_lv2():
 
 def test_pocket_finder_lv2():
     """Test pocket finder function."""
-    protein = Protein.from_file(FIXTURES_DIR / "1eby.pdb")
+    protein = Protein.from_file(BRD_DATA_DIR / "brd.pdb")
+    protein.remove_water()
     pockets = protein.find_pockets(
         pocket_count=1,
         use_cache=False,
@@ -40,14 +41,14 @@ def test_pocket_finder_lv2():
 
 def test_docking_lv2():
     """Test docking function."""
-    protein = Protein.from_file(FIXTURES_DIR / "1eby.pdb")
-    pockets = protein.find_pockets(
-        pocket_count=1,
-        use_cache=False,
-    )
+    protein = Protein.from_file(BRD_DATA_DIR / "brd.pdb")
+    protein.remove_water()
+    pockets = protein.find_pockets(pocket_count=1)
     pocket = pockets[0]
 
-    ligand = Ligand.from_smiles("CN(C)C(=O)c1cccc(-c2cn(C)c(=O)c3[nH]ccc23)c1")
+    ligand = Ligand.from_smiles(
+        "Fc1c(-c2cccc3ccccc23)ncc2c(N3C[C@H]4CC[C@@H](C3)N4)nc(OCC34CCCN3CCC4)nc12"
+    )
 
     poses = protein.dock(
         ligand=ligand,
@@ -66,10 +67,12 @@ def test_sysprep_lv2():
     sim = Complex.from_dir(BRD_DATA_DIR)
     client = DeepOriginClient()
 
+    ligand = [ligand for ligand in sim.ligands if ligand.name == "cmpd 4 (Crotyl)"][0]
+
     # this is chosen to be one where it takes >1 min
     response = run_sysprep(
         protein=sim.protein,
-        ligand=sim.ligands[3],
+        ligand=ligand,
         add_H_atoms=True,
         use_cache=False,
         client=client,

@@ -83,6 +83,7 @@ class DeepOriginClient:
         retryable_status_codes: Set[int] | None = None,
         retry_backoff_factor: float = 1.0,
         max_retry_delay: float = 60.0,
+        record: bool = False,
     ):
         """Initialize a DeepOrigin Platform client.
 
@@ -112,6 +113,8 @@ class DeepOriginClient:
                 excessive wait times. Defaults to 1.0.
             max_retry_delay: Maximum delay in seconds between retry attempts. The exponential
                 backoff delay will be capped at this value. Defaults to 60.0 seconds.
+            record: Whether to record function run responses to fixture files for testing.
+                Defaults to False.
         """
 
         # Environment variables ALWAYS override explicit parameters and skip disk reads
@@ -163,6 +166,7 @@ class DeepOriginClient:
         )
         self.retry_backoff_factor = retry_backoff_factor
         self.max_retry_delay = max_retry_delay
+        self.record = record
 
         # Initialize _client first (before setting token property)
         self._client = httpx.Client(
@@ -250,6 +254,7 @@ class DeepOriginClient:
         retryable_status_codes: Set[int] | None = None,
         retry_backoff_factor: float = 1.0,
         max_retry_delay: float = 60.0,
+        record: bool = False,
         replace: bool = False,
     ) -> "DeepOriginClient":
         """
@@ -274,6 +279,8 @@ class DeepOriginClient:
                 excessive wait times. Defaults to 1.0.
             max_retry_delay: Maximum delay in seconds between retry attempts. The exponential
                 backoff delay will be capped at this value. Defaults to 60.0 seconds.
+            record: Whether to record function run responses to fixture files for testing.
+                Defaults to False.
             replace: If True, close and recreate the cached instance.
 
         Returns:
@@ -330,6 +337,7 @@ class DeepOriginClient:
                 retryable_status_codes=retryable_status_codes,
                 retry_backoff_factor=retry_backoff_factor,
                 max_retry_delay=max_retry_delay,
+                record=record,
             )
 
         return cls._instances[key]
@@ -345,6 +353,7 @@ class DeepOriginClient:
         retryable_status_codes: Set[int] | None = None,
         retry_backoff_factor: float = 1.0,
         max_retry_delay: float = 60.0,
+        record: bool = False,
     ) -> "DeepOriginClient":
         """Create a client instance from environment configuration.
 
@@ -368,6 +377,8 @@ class DeepOriginClient:
                 excessive wait times. Defaults to 1.0.
             max_retry_delay: Maximum delay in seconds between retry attempts. The exponential
                 backoff delay will be capped at this value. Defaults to 60.0 seconds.
+            record: Whether to record function run responses to fixture files for testing.
+                Defaults to False.
 
         Returns:
             A new DeepOriginClient instance configured from environment variables
@@ -397,6 +408,7 @@ class DeepOriginClient:
                 env="local",
                 base_url=base_url,
                 timeout=timeout,
+                record=record,
             )
 
         # Get token for the specified environment (reads from env vars or files)
@@ -419,6 +431,7 @@ class DeepOriginClient:
             retryable_status_codes=retryable_status_codes,
             retry_backoff_factor=retry_backoff_factor,
             max_retry_delay=max_retry_delay,
+            record=record,
         )
 
     @classmethod
