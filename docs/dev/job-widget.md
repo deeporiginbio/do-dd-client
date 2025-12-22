@@ -32,6 +32,19 @@ export JOB_WATCH_BLOCK=1
 python -m nbconvert --execute notebook.ipynb
 ```
 
+To disable blocking mode, you can either unset the variable or set it to a falsy value:
+
+```bash
+# Unset the variable
+unset JOB_WATCH_BLOCK
+
+# Or set it to an empty string
+export JOB_WATCH_BLOCK=""
+
+# Or set it to a falsy value like 0, false, no, or off
+export JOB_WATCH_BLOCK=0
+```
+
 When `JOB_WATCH_BLOCK` is set, `watch()` will:
 - Start the monitoring task as usual
 - Block execution until the job reaches a terminal state (Succeeded, Failed, etc.)
