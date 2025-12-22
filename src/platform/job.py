@@ -8,6 +8,7 @@ import concurrent.futures
 from dataclasses import dataclass
 from datetime import datetime, timezone
 import json
+import os
 from pathlib import Path
 import time
 from typing import Any, Optional, Protocol
@@ -458,12 +459,13 @@ class Job:
         job reaches a terminal state (Succeeded or Failed). If there is no
         active job to monitor, it will display a message and show the current
         state once.
+
+        If the JOB_WATCH_BLOCK environment variable is set to a truthy value,
+        this method will block until the job reaches a terminal state.
+        Otherwise, it returns immediately after starting the background task.
         """
-
-        # Enable nested event loops for Jupyter
-        import nest_asyncio
-
-        nest_asyncio.apply()
+        # Check if blocking mode is enabled
+        should_block = bool(os.environ.get("JOB_WATCH_BLOCK"))
 
         # Check if there is any active job (not terminal state)
         if self.status and self.status in TERMINAL_STATES:
@@ -474,6 +476,78 @@ class Job:
             )
             self.show()
             return
+
+        if should_block:
+            # Blocking mode: use synchronous polling loop
+            self._watch_blocking(interval=interval)
+        else:
+            # Non-blocking mode: use async background task
+            self._watch_async(interval=interval)
+
+    def _watch_blocking(self, *, interval: float = 5.0):
+        """Blocking watch implementation using synchronous polling.
+
+        This method blocks until the job reaches a terminal state, updating
+        the display at regular intervals. Used when JOB_WATCH_BLOCK is set.
+        """
+        # Stop any existing task before starting a new one
+        self.stop_watching()
+
+        # Initialize display
+        initial_html = HTML("<div style='color: gray;'>Initializing...</div>")
+        display_id = str(uuid.uuid4())
+        self._display_id = display_id
+        display(initial_html, display_id=display_id)
+
+        try:
+            while True:
+                try:
+                    # Sync job status synchronously
+                    self.sync()
+
+                    html = self._render_view(will_auto_update=False)
+                    update_display(HTML(html), display_id=self._display_id)
+                    self._last_html = html
+
+                    # Check if job is in terminal state
+                    if self.status and self.status in TERMINAL_STATES:
+                        break
+
+                except Exception as e:
+                    # Show a transient error banner, but keep polling
+                    banner = self._compose_error_overlay_html(message=str(e))
+                    fallback = (
+                        self._last_html
+                        or "<div style='color: gray;'>No data yet.</div>"
+                    )
+                    update_display(HTML(banner + fallback), display_id=self._display_id)
+
+                # Sleep before next attempt
+                time.sleep(interval)
+        finally:
+            # Perform a final refresh and render to clear spinner
+            if self._display_id is not None:
+                try:
+                    self.sync()
+                except Exception:
+                    pass
+                try:
+                    final_html = self._render_view(will_auto_update=False)
+                    update_display(HTML(final_html), display_id=self._display_id)
+                except Exception:
+                    pass
+                self._display_id = None
+
+    def _watch_async(self, *, interval: float = 5.0):
+        """Non-blocking watch implementation using async background task.
+
+        This method starts a background task and returns immediately.
+        Used for interactive Jupyter notebook usage.
+        """
+        # Enable nested event loops for Jupyter
+        import nest_asyncio
+
+        nest_asyncio.apply()
 
         # Stop any existing task before starting a new one
         self.stop_watching()
@@ -768,11 +842,13 @@ class JobList:
         stop when all jobs reach a terminal state (Succeeded, Failed, etc.).
         If all jobs are already in terminal states, it will display a message
         and show the current state once.
-        """
-        # Enable nested event loops for Jupyter
-        import nest_asyncio
 
-        nest_asyncio.apply()
+        If the JOB_WATCH_BLOCK environment variable is set to a truthy value,
+        this method will block until all jobs reach terminal states.
+        Otherwise, it returns immediately after starting the background task.
+        """
+        # Check if blocking mode is enabled
+        should_block = bool(os.environ.get("JOB_WATCH_BLOCK"))
 
         # Check if all jobs are in terminal states
         all_terminal = all(
@@ -786,6 +862,82 @@ class JobList:
             )
             self.show()
             return
+
+        if should_block:
+            # Blocking mode: use synchronous polling loop
+            self._watch_blocking(interval=interval)
+        else:
+            # Non-blocking mode: use async background task
+            self._watch_async(interval=interval)
+
+    def _watch_blocking(self, *, interval: float = 5.0):
+        """Blocking watch implementation using synchronous polling.
+
+        This method blocks until all jobs reach terminal states, updating
+        the display at regular intervals. Used when JOB_WATCH_BLOCK is set.
+        """
+        # Stop any existing task before starting a new one
+        self.stop_watching()
+
+        # Initialize display
+        initial_html = HTML("<div style='color: gray;'>Initializing...</div>")
+        display_id = str(uuid.uuid4())
+        self._display_id = display_id
+        display(initial_html, display_id=display_id)
+
+        try:
+            while True:
+                try:
+                    # Sync all jobs synchronously
+                    self.sync()
+
+                    html = self._render_view(will_auto_update=False)
+                    update_display(HTML(html), display_id=self._display_id)
+                    self._last_html = html
+
+                    # Check if all jobs are in terminal states
+                    all_terminal = all(
+                        job.status in TERMINAL_STATES if job.status else False
+                        for job in self.jobs
+                    )
+                    if all_terminal:
+                        break
+
+                except Exception as e:
+                    # Show a transient error banner, but keep polling
+                    banner = self._compose_error_overlay_html(message=str(e))
+                    fallback = (
+                        self._last_html
+                        or "<div style='color: gray;'>No data yet.</div>"
+                    )
+                    update_display(HTML(banner + fallback), display_id=self._display_id)
+
+                # Sleep before next attempt
+                time.sleep(interval)
+        finally:
+            # Perform a final refresh and render to clear spinner
+            if self._display_id is not None:
+                try:
+                    self.sync()
+                except Exception:
+                    pass
+                try:
+                    final_html = self._render_view(will_auto_update=False)
+                    update_display(HTML(final_html), display_id=self._display_id)
+                except Exception:
+                    pass
+                self._display_id = None
+
+    def _watch_async(self, *, interval: float = 5.0):
+        """Non-blocking watch implementation using async background task.
+
+        This method starts a background task and returns immediately.
+        Used for interactive Jupyter notebook usage.
+        """
+        # Enable nested event loops for Jupyter
+        import nest_asyncio
+
+        nest_asyncio.apply()
 
         # Stop any existing task before starting a new one
         self.stop_watching()
