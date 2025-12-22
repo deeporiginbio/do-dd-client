@@ -66,10 +66,24 @@ def _watch_blocking_impl(
 ) -> None:
     """Shared blocking watch implementation.
 
+    This function contains the common blocking loop logic used by both Job and
+    JobList classes. It is separated from the class methods to avoid code
+    duplication while allowing each class to define its own termination condition
+    via the is_terminal callable.
+
+    The design follows the DRY (Don't Repeat Yourself) principle: the core
+    blocking loop logic (display initialization, polling loop, status syncing,
+    HTML rendering, and cleanup) is identical for both Job and JobList. The only
+    difference is how each class determines when monitoring should stop (single
+    job terminal state vs. all jobs terminal states).
+
     Args:
         instance: Job or JobList instance with sync(), _render_view(), etc. methods.
         interval: Polling interval in seconds.
         is_terminal: Callable that returns True when monitoring should stop.
+            This allows each class (Job vs. JobList) to define its own
+            termination logic without the shared implementation needing to know
+            about class-specific internals.
     """
     # Stop any existing task before starting a new one
     instance.stop_watching()
@@ -645,6 +659,16 @@ class Job:
         In blocking mode, any errors during sync or rendering will be raised
         immediately since this mode is only used with local servers that
         should not fail.
+
+        This is a thin wrapper around _watch_blocking_impl that provides
+        Job-specific termination logic. The wrapper pattern allows us to:
+        1. Share the common blocking loop implementation with JobList
+        2. Keep termination logic explicit and close to the class definition
+        3. Maintain encapsulation (the shared function doesn't need to know
+           about Job-specific attributes like self.status)
+
+        Args:
+            interval: Polling interval in seconds. Defaults to 5.0.
         """
         _watch_blocking_impl(
             self,
@@ -929,6 +953,16 @@ class JobList:
         In blocking mode, any errors during sync or rendering will be raised
         immediately since this mode is only used with local servers that
         should not fail.
+
+        This is a thin wrapper around _watch_blocking_impl that provides
+        JobList-specific termination logic. The wrapper pattern allows us to:
+        1. Share the common blocking loop implementation with Job
+        2. Keep termination logic explicit and close to the class definition
+        3. Maintain encapsulation (the shared function doesn't need to know
+           about JobList-specific attributes like self.jobs)
+
+        Args:
+            interval: Polling interval in seconds. Defaults to 5.0.
         """
         _watch_blocking_impl(
             self,
