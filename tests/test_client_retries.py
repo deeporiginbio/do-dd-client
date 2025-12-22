@@ -9,6 +9,8 @@ import pytest
 from deeporigin.exceptions import DeepOriginException
 from deeporigin.platform.client import DeepOriginClient
 
+pytestmark = pytest.mark.slow
+
 
 @pytest.fixture
 def mock_client_config():

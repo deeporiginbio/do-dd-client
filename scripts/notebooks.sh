@@ -10,8 +10,11 @@ echo "Sanitizing notebooks..."
 # Ensure dirs exist
 mkdir -p "$CLEAN"
 
-# Copy dirty -> clean
-cp -r "$DIRTY"/* "$CLEAN"
+# Copy dirty -> clean (exit 0 if source doesn't exist)
+cp -r "$DIRTY"/* "$CLEAN" 2>/dev/null || {
+    echo "No dirty notebooks found, exiting."
+    exit 0
+}
 
 # Clean all notebooks
 uvx nb-clean clean "$CLEAN"
