@@ -11,17 +11,10 @@ echo "Sanitizing notebooks..."
 mkdir -p "$CLEAN"
 
 # Copy dirty -> clean (exit 0 if source doesn't exist)
-if [ ! -d "$DIRTY" ] || [ -z "$(ls -A "$DIRTY" 2>/dev/null)" ]; then
-    echo "No dirty notebooks found, exiting."
-    exit 0
-fi
-# Use nullglob to handle case where glob doesn't match
-shopt -s nullglob
-cp -r "$DIRTY"/* "$CLEAN" || {
+cp -r "$DIRTY"/* "$CLEAN" 2>/dev/null || {
     echo "No dirty notebooks found, exiting."
     exit 0
 }
-shopt -u nullglob
 
 # Clean all notebooks
 uvx nb-clean clean "$CLEAN"
