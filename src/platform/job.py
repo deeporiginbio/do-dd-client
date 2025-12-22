@@ -489,6 +489,9 @@ class Job:
 
         This method blocks until the job reaches a terminal state, updating
         the display at regular intervals. Used when JOB_WATCH_BLOCK is set.
+        In blocking mode, any errors during sync or rendering will be raised
+        immediately since this mode is only used with local servers that
+        should not fail.
         """
         # Stop any existing task before starting a new one
         self.stop_watching()
@@ -501,26 +504,16 @@ class Job:
 
         try:
             while True:
-                try:
-                    # Sync job status synchronously
-                    self.sync()
+                # Sync job status synchronously
+                self.sync()
 
-                    html = self._render_view(will_auto_update=False)
-                    update_display(HTML(html), display_id=self._display_id)
-                    self._last_html = html
+                html = self._render_view(will_auto_update=False)
+                update_display(HTML(html), display_id=self._display_id)
+                self._last_html = html
 
-                    # Check if job is in terminal state
-                    if self.status and self.status in TERMINAL_STATES:
-                        break
-
-                except Exception as e:
-                    # Show a transient error banner, but keep polling
-                    banner = self._compose_error_overlay_html(message=str(e))
-                    fallback = (
-                        self._last_html
-                        or "<div style='color: gray;'>No data yet.</div>"
-                    )
-                    update_display(HTML(banner + fallback), display_id=self._display_id)
+                # Check if job is in terminal state
+                if self.status and self.status in TERMINAL_STATES:
+                    break
 
                 # Sleep before next attempt
                 time.sleep(interval)
@@ -565,7 +558,10 @@ class Job:
             This coroutine runs in the background, updating the display
             with the latest job status and progress every `interval` seconds.
             It automatically stops when the job reaches a terminal state.
+            Stops after 10 consecutive errors to prevent infinite loops.
             """
+            consecutive_errors = 0
+            max_consecutive_errors = 10
             try:
                 while True:
                     try:
@@ -575,12 +571,14 @@ class Job:
                         html = self._render_view(will_auto_update=True)
                         update_display(HTML(html), display_id=self._display_id)
                         self._last_html = html
+                        consecutive_errors = 0  # Reset error counter on success
 
                         # Check if job is in terminal state
                         if self.status and self.status in TERMINAL_STATES:
                             break
 
                     except Exception as e:
+                        consecutive_errors += 1
                         # Show a transient error banner, but keep the task alive
                         banner = self._compose_error_overlay_html(message=str(e))
                         fallback = (
@@ -590,6 +588,18 @@ class Job:
                         update_display(
                             HTML(banner + fallback), display_id=self._display_id
                         )
+
+                        # Stop after too many consecutive errors to prevent infinite loops
+                        if consecutive_errors >= max_consecutive_errors:
+                            error_msg = f"Stopped monitoring after {max_consecutive_errors} consecutive errors. Last error: {str(e)}"
+                            final_banner = self._compose_error_overlay_html(
+                                message=error_msg
+                            )
+                            update_display(
+                                HTML(final_banner + fallback),
+                                display_id=self._display_id,
+                            )
+                            break
 
                     # Always sleep 5 seconds before next attempt
                     await asyncio.sleep(interval)
@@ -875,6 +885,9 @@ class JobList:
 
         This method blocks until all jobs reach terminal states, updating
         the display at regular intervals. Used when JOB_WATCH_BLOCK is set.
+        In blocking mode, any errors during sync or rendering will be raised
+        immediately since this mode is only used with local servers that
+        should not fail.
         """
         # Stop any existing task before starting a new one
         self.stop_watching()
@@ -887,30 +900,20 @@ class JobList:
 
         try:
             while True:
-                try:
-                    # Sync all jobs synchronously
-                    self.sync()
+                # Sync all jobs synchronously
+                self.sync()
 
-                    html = self._render_view(will_auto_update=False)
-                    update_display(HTML(html), display_id=self._display_id)
-                    self._last_html = html
+                html = self._render_view(will_auto_update=False)
+                update_display(HTML(html), display_id=self._display_id)
+                self._last_html = html
 
-                    # Check if all jobs are in terminal states
-                    all_terminal = all(
-                        job.status in TERMINAL_STATES if job.status else False
-                        for job in self.jobs
-                    )
-                    if all_terminal:
-                        break
-
-                except Exception as e:
-                    # Show a transient error banner, but keep polling
-                    banner = self._compose_error_overlay_html(message=str(e))
-                    fallback = (
-                        self._last_html
-                        or "<div style='color: gray;'>No data yet.</div>"
-                    )
-                    update_display(HTML(banner + fallback), display_id=self._display_id)
+                # Check if all jobs are in terminal states
+                all_terminal = all(
+                    job.status in TERMINAL_STATES if job.status else False
+                    for job in self.jobs
+                )
+                if all_terminal:
+                    break
 
                 # Sleep before next attempt
                 time.sleep(interval)
@@ -955,7 +958,10 @@ class JobList:
             This coroutine runs in the background, updating the display
             with the latest status of all jobs every `interval` seconds.
             It automatically stops when all jobs reach terminal states.
+            Stops after 10 consecutive errors to prevent infinite loops.
             """
+            consecutive_errors = 0
+            max_consecutive_errors = 10
             try:
                 while True:
                     try:
@@ -965,6 +971,7 @@ class JobList:
                         html = self._render_view(will_auto_update=True)
                         update_display(HTML(html), display_id=self._display_id)
                         self._last_html = html
+                        consecutive_errors = 0  # Reset error counter on success
 
                         # Check if all jobs are in terminal states
                         all_terminal = all(
@@ -975,6 +982,7 @@ class JobList:
                             break
 
                     except Exception as e:
+                        consecutive_errors += 1
                         # Show a transient error banner, but keep the task alive
                         banner = self._compose_error_overlay_html(message=str(e))
                         fallback = (
@@ -984,6 +992,18 @@ class JobList:
                         update_display(
                             HTML(banner + fallback), display_id=self._display_id
                         )
+
+                        # Stop after too many consecutive errors to prevent infinite loops
+                        if consecutive_errors >= max_consecutive_errors:
+                            error_msg = f"Stopped monitoring after {max_consecutive_errors} consecutive errors. Last error: {str(e)}"
+                            final_banner = self._compose_error_overlay_html(
+                                message=error_msg
+                            )
+                            update_display(
+                                HTML(final_banner + fallback),
+                                display_id=self._display_id,
+                            )
+                            break
 
                     # Always sleep before next attempt
                     await asyncio.sleep(interval)
