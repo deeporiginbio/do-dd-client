@@ -91,33 +91,34 @@ class Functions:
 
         _check_response(response, key, check_version, quote)
 
-        # import json
-        # from pathlib import Path
+        if self._c.record:
+            import json
+            from pathlib import Path
 
-        # from deeporigin.utils.core import hash_dict
+            from deeporigin.utils.core import hash_dict
 
-        # # Hash the request body to create a unique filename
-        # # Normalize body by excluding environment-specific fields (clusterId, tag)
-        # # params and inputs are the same, so just use inputs for hashing
-        # normalized_body = {
-        #     "inputs": body.get("inputs", body.get("params", {})),
-        # }
-        # if "approveAmount" in body:
-        #     normalized_body["approveAmount"] = body["approveAmount"]
-        # body_hash = hash_dict(normalized_body)
+            # Hash the request body to create a unique filename
+            # Normalize body by excluding environment-specific fields (clusterId, tag)
+            # params and inputs are the same, so just use inputs for hashing
+            normalized_body = {
+                "inputs": body.get("inputs", body.get("params", {})),
+            }
+            if "approveAmount" in body:
+                normalized_body["approveAmount"] = body["approveAmount"]
+            body_hash = hash_dict(normalized_body)
 
-        # # Write response to fixture file for testing
-        # fixture_path = (
-        #     Path(__file__).parent.parent.parent
-        #     / "tests"
-        #     / "fixtures"
-        #     / "function-runs"
-        #     / key
-        #     / f"{body_hash}.json"
-        # )
-        # fixture_path.parent.mkdir(parents=True, exist_ok=True)
-        # with open(fixture_path, "w") as f:
-        #     json.dump(response, f, indent=4)
+            # Write response to fixture file for testing
+            fixture_path = (
+                Path(__file__).parent.parent.parent
+                / "tests"
+                / "fixtures"
+                / "function-runs"
+                / key
+                / f"{body_hash}.json"
+            )
+            fixture_path.parent.mkdir(parents=True, exist_ok=True)
+            with open(fixture_path, "w") as f:
+                json.dump(response, f, indent=4)
 
         return response
 
