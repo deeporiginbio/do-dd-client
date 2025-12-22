@@ -419,3 +419,31 @@ def _ensure_do_folder() -> Path:
     deeporigin_path.mkdir(parents=True, exist_ok=True)
 
     return deeporigin_path
+
+
+@beartype
+def get_bool_env(env_var: str, default: bool = False) -> bool:
+    """Parse a boolean environment variable robustly.
+
+    This function treats values like "0", "false", "False", and empty strings
+    as falsy, and only returns True for explicit truthy values like "1", "true",
+    "True", "yes", "Yes".
+
+    Parameters:
+        env_var: The name of the environment variable to check.
+        default: The default value to return if the environment variable is not set.
+
+    Returns:
+        True if the environment variable is set to a truthy value, False otherwise.
+    """
+    value = os.environ.get(env_var)
+    if value is None:
+        return default
+
+    # Normalize the value by stripping whitespace and converting to lowercase
+    normalized_value = value.strip().lower()
+
+    # Define truthy values
+    truthy_values = {"1", "true", "yes", "on"}
+
+    return normalized_value in truthy_values

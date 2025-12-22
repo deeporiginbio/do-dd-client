@@ -8,7 +8,6 @@ import concurrent.futures
 from dataclasses import dataclass
 from datetime import datetime, timezone
 import json
-import os
 from pathlib import Path
 import time
 from typing import Any, Optional, Protocol
@@ -31,7 +30,7 @@ from deeporigin.exceptions import DeepOriginException
 from deeporigin.platform import job_viz_functions
 from deeporigin.platform.client import DeepOriginClient
 from deeporigin.platform.constants import TERMINAL_STATES
-from deeporigin.utils.core import elapsed_minutes
+from deeporigin.utils.core import elapsed_minutes, get_bool_env
 
 # Get the template directory
 template_dir = Path(__file__).parent.parent / "templates"
@@ -57,6 +56,160 @@ class JobFunc(Protocol):
     """A protocol for functions that can be used to visualize a job or render a name for a job."""
 
     def __call__(self, job: "Job") -> str: ...
+
+
+def _watch_blocking_impl(
+    instance: "Job | JobList",
+    *,
+    interval: float,
+    is_terminal: Callable[[], bool],
+) -> None:
+    """Shared blocking watch implementation.
+
+    Args:
+        instance: Job or JobList instance with sync(), _render_view(), etc. methods.
+        interval: Polling interval in seconds.
+        is_terminal: Callable that returns True when monitoring should stop.
+    """
+    # Stop any existing task before starting a new one
+    instance.stop_watching()
+
+    # Initialize display
+    initial_html = HTML("<div style='color: gray;'>Initializing...</div>")
+    display_id = str(uuid.uuid4())
+    instance._display_id = display_id
+    display(initial_html, display_id=display_id)
+
+    try:
+        while True:
+            # Sync status synchronously
+            instance.sync()
+
+            html = instance._render_view(will_auto_update=False)
+            update_display(HTML(html), display_id=instance._display_id)
+            instance._last_html = html
+
+            # Check if in terminal state
+            if is_terminal():
+                break
+
+            # Sleep before next attempt
+            time.sleep(interval)
+    finally:
+        # Perform a final refresh and render to clear spinner
+        if instance._display_id is not None:
+            try:
+                instance.sync()
+            except Exception:
+                pass
+            try:
+                final_html = instance._render_view(will_auto_update=False)
+                update_display(HTML(final_html), display_id=instance._display_id)
+            except Exception:
+                pass
+            instance._display_id = None
+
+
+def _watch_async_impl(
+    instance: "Job | JobList",
+    *,
+    interval: float,
+    is_terminal: Callable[[], bool],
+) -> None:
+    """Shared async watch implementation.
+
+    Args:
+        instance: Job or JobList instance with sync(), _render_view(), etc. methods.
+        interval: Polling interval in seconds.
+        is_terminal: Callable that returns True when monitoring should stop.
+    """
+    # Enable nested event loops for Jupyter
+    import nest_asyncio
+
+    nest_asyncio.apply()
+
+    # Stop any existing task before starting a new one
+    instance.stop_watching()
+
+    # for reasons i don't understand, removing this breaks the display rendering
+    # when we do job.watch() or job_list.watch()
+    initial_html = HTML("<div style='color: gray;'>Initializing...</div>")
+    display_id = str(uuid.uuid4())
+    instance._display_id = display_id
+    display(initial_html, display_id=display_id)
+
+    async def update_progress_report():
+        """Update and display progress at regular intervals.
+
+        This coroutine runs in the background, updating the display
+        with the latest status every `interval` seconds.
+        It automatically stops when terminal state is reached.
+        Stops after 10 consecutive errors to prevent infinite loops.
+        """
+        consecutive_errors = 0
+        max_consecutive_errors = 10
+        try:
+            while True:
+                try:
+                    # Run sync in a worker thread without timeout to avoid the timeout issue
+                    await asyncio.to_thread(instance.sync)
+
+                    html = instance._render_view(will_auto_update=True)
+                    update_display(HTML(html), display_id=instance._display_id)
+                    instance._last_html = html
+                    consecutive_errors = 0  # Reset error counter on success
+
+                    # Check if in terminal state
+                    if is_terminal():
+                        break
+
+                except Exception as e:
+                    consecutive_errors += 1
+                    # Show a transient error banner, but keep the task alive
+                    banner = instance._compose_error_overlay_html(message=str(e))
+                    fallback = (
+                        instance._last_html
+                        or "<div style='color: gray;'>No data yet.</div>"
+                    )
+                    update_display(
+                        HTML(banner + fallback), display_id=instance._display_id
+                    )
+
+                    # Stop after too many consecutive errors to prevent infinite loops
+                    if consecutive_errors >= max_consecutive_errors:
+                        error_msg = f"Stopped monitoring after {max_consecutive_errors} consecutive errors. Last error: {str(e)}"
+                        final_banner = instance._compose_error_overlay_html(
+                            message=error_msg
+                        )
+                        update_display(
+                            HTML(final_banner + fallback),
+                            display_id=instance._display_id,
+                        )
+                        break
+
+                # Always sleep before next attempt
+                await asyncio.sleep(interval)
+        finally:
+            # Perform a final non-blocking refresh and render to clear spinner
+            if instance._display_id is not None:
+                try:
+                    await asyncio.to_thread(instance.sync)
+                except Exception:
+                    pass
+                try:
+                    final_html = instance._render_view(will_auto_update=False)
+                    update_display(HTML(final_html), display_id=instance._display_id)
+                except Exception:
+                    pass
+                instance._display_id = None
+
+    # Schedule the task using the current event loop
+    try:
+        loop = asyncio.get_event_loop()
+        instance._task = loop.create_task(update_progress_report())
+    except RuntimeError:
+        # If no event loop is running, create a new one
+        instance._task = asyncio.create_task(update_progress_report())
 
 
 @dataclass
@@ -465,7 +618,7 @@ class Job:
         Otherwise, it returns immediately after starting the background task.
         """
         # Check if blocking mode is enabled
-        should_block = bool(os.environ.get("JOB_WATCH_BLOCK"))
+        should_block = get_bool_env("JOB_WATCH_BLOCK", default=False)
 
         # Check if there is any active job (not terminal state)
         if self.status and self.status in TERMINAL_STATES:
@@ -493,43 +646,12 @@ class Job:
         immediately since this mode is only used with local servers that
         should not fail.
         """
-        # Stop any existing task before starting a new one
-        self.stop_watching()
-
-        # Initialize display
-        initial_html = HTML("<div style='color: gray;'>Initializing...</div>")
-        display_id = str(uuid.uuid4())
-        self._display_id = display_id
-        display(initial_html, display_id=display_id)
-
-        try:
-            while True:
-                # Sync job status synchronously
-                self.sync()
-
-                html = self._render_view(will_auto_update=False)
-                update_display(HTML(html), display_id=self._display_id)
-                self._last_html = html
-
-                # Check if job is in terminal state
-                if self.status and self.status in TERMINAL_STATES:
-                    break
-
-                # Sleep before next attempt
-                time.sleep(interval)
-        finally:
-            # Perform a final refresh and render to clear spinner
-            if self._display_id is not None:
-                try:
-                    self.sync()
-                except Exception:
-                    pass
-                try:
-                    final_html = self._render_view(will_auto_update=False)
-                    update_display(HTML(final_html), display_id=self._display_id)
-                except Exception:
-                    pass
-                self._display_id = None
+        _watch_blocking_impl(
+            self,
+            interval=interval,
+            is_terminal=lambda: self.status is not None
+            and self.status in TERMINAL_STATES,
+        )
 
     def _watch_async(self, *, interval: float = 5.0):
         """Non-blocking watch implementation using async background task.
@@ -537,93 +659,12 @@ class Job:
         This method starts a background task and returns immediately.
         Used for interactive Jupyter notebook usage.
         """
-        # Enable nested event loops for Jupyter
-        import nest_asyncio
-
-        nest_asyncio.apply()
-
-        # Stop any existing task before starting a new one
-        self.stop_watching()
-
-        # for reasons i don't understand, removing this breaks the display rendering
-        # when we do job.watch()
-        initial_html = HTML("<div style='color: gray;'>Initializing...</div>")
-        display_id = str(uuid.uuid4())
-        self._display_id = display_id
-        display(initial_html, display_id=display_id)
-
-        async def update_progress_report():
-            """Update and display job progress at regular intervals.
-
-            This coroutine runs in the background, updating the display
-            with the latest job status and progress every `interval` seconds.
-            It automatically stops when the job reaches a terminal state.
-            Stops after 10 consecutive errors to prevent infinite loops.
-            """
-            consecutive_errors = 0
-            max_consecutive_errors = 10
-            try:
-                while True:
-                    try:
-                        # Run sync in a worker thread without timeout to avoid the timeout issue
-                        await asyncio.to_thread(self.sync)
-
-                        html = self._render_view(will_auto_update=True)
-                        update_display(HTML(html), display_id=self._display_id)
-                        self._last_html = html
-                        consecutive_errors = 0  # Reset error counter on success
-
-                        # Check if job is in terminal state
-                        if self.status and self.status in TERMINAL_STATES:
-                            break
-
-                    except Exception as e:
-                        consecutive_errors += 1
-                        # Show a transient error banner, but keep the task alive
-                        banner = self._compose_error_overlay_html(message=str(e))
-                        fallback = (
-                            self._last_html
-                            or "<div style='color: gray;'>No data yet.</div>"
-                        )
-                        update_display(
-                            HTML(banner + fallback), display_id=self._display_id
-                        )
-
-                        # Stop after too many consecutive errors to prevent infinite loops
-                        if consecutive_errors >= max_consecutive_errors:
-                            error_msg = f"Stopped monitoring after {max_consecutive_errors} consecutive errors. Last error: {str(e)}"
-                            final_banner = self._compose_error_overlay_html(
-                                message=error_msg
-                            )
-                            update_display(
-                                HTML(final_banner + fallback),
-                                display_id=self._display_id,
-                            )
-                            break
-
-                    # Always sleep 5 seconds before next attempt
-                    await asyncio.sleep(interval)
-            finally:
-                # Perform a final non-blocking refresh and render to clear spinner
-                if self._display_id is not None:
-                    try:
-                        await asyncio.to_thread(self.sync)
-                    except Exception:
-                        pass
-                    try:
-                        final_html = self._render_view(will_auto_update=False)
-                        update_display(HTML(final_html), display_id=self._display_id)
-                    except Exception:
-                        pass
-                    self._display_id = None
-
-        # Schedule the task using the current event loop
-        try:
-            loop = asyncio.get_event_loop()
-            self._task = loop.create_task(update_progress_report())
-        except RuntimeError:
-            # If no event loop is running, create a new one
-            self._task = asyncio.create_task(update_progress_report())
+        _watch_async_impl(
+            self,
+            interval=interval,
+            is_terminal=lambda: self.status is not None
+            and self.status in TERMINAL_STATES,
+        )
 
     def stop_watching(self):
         """Stop the background monitoring task.
@@ -858,7 +899,7 @@ class JobList:
         Otherwise, it returns immediately after starting the background task.
         """
         # Check if blocking mode is enabled
-        should_block = bool(os.environ.get("JOB_WATCH_BLOCK"))
+        should_block = get_bool_env("JOB_WATCH_BLOCK", default=False)
 
         # Check if all jobs are in terminal states
         all_terminal = all(
@@ -889,47 +930,14 @@ class JobList:
         immediately since this mode is only used with local servers that
         should not fail.
         """
-        # Stop any existing task before starting a new one
-        self.stop_watching()
-
-        # Initialize display
-        initial_html = HTML("<div style='color: gray;'>Initializing...</div>")
-        display_id = str(uuid.uuid4())
-        self._display_id = display_id
-        display(initial_html, display_id=display_id)
-
-        try:
-            while True:
-                # Sync all jobs synchronously
-                self.sync()
-
-                html = self._render_view(will_auto_update=False)
-                update_display(HTML(html), display_id=self._display_id)
-                self._last_html = html
-
-                # Check if all jobs are in terminal states
-                all_terminal = all(
-                    job.status in TERMINAL_STATES if job.status else False
-                    for job in self.jobs
-                )
-                if all_terminal:
-                    break
-
-                # Sleep before next attempt
-                time.sleep(interval)
-        finally:
-            # Perform a final refresh and render to clear spinner
-            if self._display_id is not None:
-                try:
-                    self.sync()
-                except Exception:
-                    pass
-                try:
-                    final_html = self._render_view(will_auto_update=False)
-                    update_display(HTML(final_html), display_id=self._display_id)
-                except Exception:
-                    pass
-                self._display_id = None
+        _watch_blocking_impl(
+            self,
+            interval=interval,
+            is_terminal=lambda: all(
+                job.status in TERMINAL_STATES if job.status else False
+                for job in self.jobs
+            ),
+        )
 
     def _watch_async(self, *, interval: float = 5.0):
         """Non-blocking watch implementation using async background task.
@@ -937,97 +945,14 @@ class JobList:
         This method starts a background task and returns immediately.
         Used for interactive Jupyter notebook usage.
         """
-        # Enable nested event loops for Jupyter
-        import nest_asyncio
-
-        nest_asyncio.apply()
-
-        # Stop any existing task before starting a new one
-        self.stop_watching()
-
-        # for reasons i don't understand, removing this breaks the display rendering
-        # when we do job_list.watch()
-        initial_html = HTML("<div style='color: gray;'>Initializing...</div>")
-        display_id = str(uuid.uuid4())
-        self._display_id = display_id
-        display(initial_html, display_id=display_id)
-
-        async def update_progress_report():
-            """Update and display job list progress at regular intervals.
-
-            This coroutine runs in the background, updating the display
-            with the latest status of all jobs every `interval` seconds.
-            It automatically stops when all jobs reach terminal states.
-            Stops after 10 consecutive errors to prevent infinite loops.
-            """
-            consecutive_errors = 0
-            max_consecutive_errors = 10
-            try:
-                while True:
-                    try:
-                        # Run sync in a worker thread without timeout to avoid the timeout issue
-                        await asyncio.to_thread(self.sync)
-
-                        html = self._render_view(will_auto_update=True)
-                        update_display(HTML(html), display_id=self._display_id)
-                        self._last_html = html
-                        consecutive_errors = 0  # Reset error counter on success
-
-                        # Check if all jobs are in terminal states
-                        all_terminal = all(
-                            job.status in TERMINAL_STATES if job.status else False
-                            for job in self.jobs
-                        )
-                        if all_terminal:
-                            break
-
-                    except Exception as e:
-                        consecutive_errors += 1
-                        # Show a transient error banner, but keep the task alive
-                        banner = self._compose_error_overlay_html(message=str(e))
-                        fallback = (
-                            self._last_html
-                            or "<div style='color: gray;'>No data yet.</div>"
-                        )
-                        update_display(
-                            HTML(banner + fallback), display_id=self._display_id
-                        )
-
-                        # Stop after too many consecutive errors to prevent infinite loops
-                        if consecutive_errors >= max_consecutive_errors:
-                            error_msg = f"Stopped monitoring after {max_consecutive_errors} consecutive errors. Last error: {str(e)}"
-                            final_banner = self._compose_error_overlay_html(
-                                message=error_msg
-                            )
-                            update_display(
-                                HTML(final_banner + fallback),
-                                display_id=self._display_id,
-                            )
-                            break
-
-                    # Always sleep before next attempt
-                    await asyncio.sleep(interval)
-            finally:
-                # Perform a final non-blocking refresh and render to clear spinner
-                if self._display_id is not None:
-                    try:
-                        await asyncio.to_thread(self.sync)
-                    except Exception:
-                        pass
-                    try:
-                        final_html = self._render_view(will_auto_update=False)
-                        update_display(HTML(final_html), display_id=self._display_id)
-                    except Exception:
-                        pass
-                    self._display_id = None
-
-        # Schedule the task using the current event loop
-        try:
-            loop = asyncio.get_event_loop()
-            self._task = loop.create_task(update_progress_report())
-        except RuntimeError:
-            # If no event loop is running, create a new one
-            self._task = asyncio.create_task(update_progress_report())
+        _watch_async_impl(
+            self,
+            interval=interval,
+            is_terminal=lambda: all(
+                job.status in TERMINAL_STATES if job.status else False
+                for job in self.jobs
+            ),
+        )
 
     def stop_watching(self):
         """Stop the background monitoring task.

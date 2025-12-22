@@ -23,6 +23,8 @@ By default, the `watch()` method on `Job` and `JobList` returns immediately afte
 
 For automated notebook execution (e.g., running notebooks top-to-bottom via scripts), you can enable blocking mode by setting the `JOB_WATCH_BLOCK` environment variable to a truthy value. When enabled, `watch()` will block until the job (or all jobs in a `JobList`) reaches a terminal state.
 
+The following values are considered truthy (case-insensitive): `1`, `true`, `yes`, `on`. All other values (including `0`, `false`, `no`, `off`, and empty strings) are treated as falsy.
+
 Example:
 
 ```bash
