@@ -7,7 +7,7 @@ set -euo pipefail
 
 # Install dependencies (package + extras needed for notebooks, docs, and mock server)
 echo "📦 Installing dependencies..."
-uv sync --extra docs --extra core --extra tools --extra test
+uv sync --extra docs --extra core --extra tools --extra test --extra plots
 echo "✅ Dependencies installed"
 
 # Convert notebooks to HTML if they exist
