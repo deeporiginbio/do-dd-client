@@ -30,9 +30,16 @@ jobs:
       - name: Set up Python
         run: uv python install 3.10
 
+      - name: Set environment variables
+        run: |
+          echo "DEEPORIGIN_ORG_KEY=deeporigin" >> "$GITHUB_ENV"
+          echo "DEEPORIGIN_ENV=local" >> "$GITHUB_ENV"
+          echo "DEEPORIGIN_TOKEN=${{ secrets.DEEPORIGIN_TOKEN_DEV }}" >> "$GITHUB_ENV"
+
       - name: Build docs and check for warnings
         env:
           CI: "true"
+          DEEPORIGIN_TOKEN: ${{ secrets.DEEPORIGIN_TOKEN_DEV }}
         run: bash scripts/build_docs.sh
 
       - name: Upload artifact

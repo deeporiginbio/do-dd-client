@@ -9,8 +9,22 @@ set -euo pipefail
 if [ -d "docs/notebooks/clean" ] && [ "$(ls -A docs/notebooks/clean/*.ipynb 2>/dev/null)" ]; then
   echo "📓 Converting notebooks to HTML..."
   mkdir -p docs/notebooks/html
-  uvx jupyter nbconvert --to html docs/notebooks/clean/*.ipynb --output-dir docs/notebooks/html
-  echo "✅ Notebooks converted"
+  
+  # Create .env file for notebook execution
+  echo "🔧 Creating .env file for notebook execution..."
+  cat > .env << EOF
+DEEPORIGIN_ORG_KEY=deeporigin
+DEEPORIGIN_ENV=local
+JOB_WATCH_BLOCK=1
+DEEPORIGIN_TOKEN=${DEEPORIGIN_TOKEN:-}
+EOF
+  
+  # Convert notebooks to HTML with execution
+  uvx jupyter nbconvert --to html --execute docs/notebooks/clean/*.ipynb --output-dir docs/notebooks/html
+  echo "✅ Notebooks converted and executed"
+  
+  # Clean up .env file
+  rm -f .env
 fi
 
 # Install dependencies if running in CI
