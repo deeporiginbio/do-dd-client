@@ -24,12 +24,12 @@ JOB_WATCH_BLOCK=1
 DEEPORIGIN_TOKEN=${DEEPORIGIN_TOKEN:-}
 EOF
   
+  # Ensure .env file is cleaned up on exit (success or failure)
+  trap 'rm -f .env' EXIT
+  
   # Convert notebooks to HTML with execution
   uv run jupyter nbconvert --to html --execute docs/notebooks/clean/*.ipynb --output-dir docs/notebooks/html
   echo "✅ Notebooks converted and executed"
-  
-  # Clean up .env file
-  rm -f .env
 fi
 
 # Build docs and capture output
