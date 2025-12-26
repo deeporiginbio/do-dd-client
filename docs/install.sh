@@ -47,7 +47,7 @@ print_step "Installing Python 3.13..."
 uv python install 3.13
 
 print_step "Installing deeporigin with core and tools extras..."
-uv add --upgrade deeporigin --extra core --extra tools
+uv add --upgrade deeporigin --extra core --extra tools --extra plots
 
 print_step "Installation complete!"
 
