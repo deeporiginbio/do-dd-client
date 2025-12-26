@@ -77,6 +77,12 @@ def _watch_blocking_impl(
     difference is how each class determines when monitoring should stop (single
     job terminal state vs. all jobs terminal states).
 
+    Error handling: Transient errors during sync() or _render_view() are caught
+    and displayed as error banners. The loop continues retrying until either:
+    - The job(s) reach a terminal state (success)
+    - Too many consecutive errors occur (default: 10), at which point monitoring
+      stops to prevent infinite loops
+
     Args:
         instance: Job or JobList instance with sync(), _render_view(), etc. methods.
         interval: Polling interval in seconds.
@@ -94,20 +100,50 @@ def _watch_blocking_impl(
     instance._display_id = display_id
     display(initial_html, display_id=display_id)
 
+    consecutive_errors = 0
+    max_consecutive_errors = 10
+
     try:
         while True:
-            # Sync status synchronously
-            instance.sync()
+            try:
+                # Sync status synchronously
+                instance.sync()
 
-            html = instance._render_view(will_auto_update=False)
-            update_display(HTML(html), display_id=instance._display_id)
-            instance._last_html = html
+                html = instance._render_view(will_auto_update=False)
+                update_display(HTML(html), display_id=instance._display_id)
+                instance._last_html = html
+                consecutive_errors = 0  # Reset error counter on success
 
-            # Check if in terminal state
-            if is_terminal():
-                break
+                # Check if in terminal state
+                if is_terminal():
+                    break
 
-            # Sleep before next attempt
+            except Exception as e:
+                consecutive_errors += 1
+                # Show a transient error banner, but keep the loop alive
+                banner = instance._compose_error_overlay_html(message=str(e))
+                fallback = (
+                    instance._last_html
+                    or "<div style='color: gray;'>No data yet.</div>"
+                )
+                update_display(HTML(banner + fallback), display_id=instance._display_id)
+
+                # Stop after too many consecutive errors to prevent infinite loops
+                if consecutive_errors >= max_consecutive_errors:
+                    error_msg = (
+                        f"Stopped monitoring after {max_consecutive_errors} "
+                        f"consecutive errors. Last error: {str(e)}"
+                    )
+                    final_banner = instance._compose_error_overlay_html(
+                        message=error_msg
+                    )
+                    update_display(
+                        HTML(final_banner + fallback),
+                        display_id=instance._display_id,
+                    )
+                    break
+
+            # Always sleep before next attempt
             time.sleep(interval)
     finally:
         # Perform a final refresh and render to clear spinner
@@ -572,7 +608,7 @@ class Job:
         }
 
         # Determine auto-update behavior based on terminal states
-        if self.status and self.status in TERMINAL_STATES:
+        if self._is_terminal():
             template_vars["will_auto_update"] = False  # job in terminal state
 
         # Try to parse progress report as JSON, fall back to raw text if it fails
@@ -635,7 +671,7 @@ class Job:
         should_block = get_bool_env("JOB_WATCH_BLOCK", default=False)
 
         # Check if there is any active job (not terminal state)
-        if self.status and self.status in TERMINAL_STATES:
+        if self._is_terminal():
             display(
                 HTML(
                     "<div style='color: gray;'>No active job to monitor. This display will not update.</div>"
@@ -651,14 +687,26 @@ class Job:
             # Non-blocking mode: use async background task
             self._watch_async(interval=interval)
 
+    def _is_terminal(self) -> bool:
+        """Check if the job is in a terminal state.
+
+        Returns:
+            True if the job status is in TERMINAL_STATES, False otherwise.
+        """
+        return self.status is not None and self.status in TERMINAL_STATES
+
     def _watch_blocking(self, *, interval: float = 5.0):
         """Blocking watch implementation using synchronous polling.
 
         This method blocks until the job reaches a terminal state, updating
         the display at regular intervals. Used when JOB_WATCH_BLOCK is set.
-        In blocking mode, any errors during sync or rendering will be raised
-        immediately since this mode is only used with local servers that
-        should not fail.
+
+        Error handling: Transient errors during sync() or _render_view() are
+        caught and displayed as error banners. The monitoring continues retrying
+        until either the job reaches a terminal state or too many consecutive
+        errors occur (default: 10), at which point monitoring stops to prevent
+        infinite loops. This ensures robust behavior even when network issues or
+        transient server problems occur.
 
         This is a thin wrapper around _watch_blocking_impl that provides
         Job-specific termination logic. The wrapper pattern allows us to:
@@ -673,8 +721,7 @@ class Job:
         _watch_blocking_impl(
             self,
             interval=interval,
-            is_terminal=lambda: self.status is not None
-            and self.status in TERMINAL_STATES,
+            is_terminal=self._is_terminal,
         )
 
     def _watch_async(self, *, interval: float = 5.0):
@@ -686,8 +733,7 @@ class Job:
         _watch_async_impl(
             self,
             interval=interval,
-            is_terminal=lambda: self.status is not None
-            and self.status in TERMINAL_STATES,
+            is_terminal=self._is_terminal,
         )
 
     def stop_watching(self):
@@ -926,10 +972,7 @@ class JobList:
         should_block = get_bool_env("JOB_WATCH_BLOCK", default=False)
 
         # Check if all jobs are in terminal states
-        all_terminal = all(
-            job.status in TERMINAL_STATES if job.status else False for job in self.jobs
-        )
-        if all_terminal:
+        if self._is_terminal():
             display(
                 HTML(
                     "<div style='color: gray;'>All jobs are in terminal states. This display will not update.</div>"
@@ -945,14 +988,28 @@ class JobList:
             # Non-blocking mode: use async background task
             self._watch_async(interval=interval)
 
+    def _is_terminal(self) -> bool:
+        """Check if all jobs in the list are in terminal states.
+
+        Returns:
+            True if all jobs have status in TERMINAL_STATES, False otherwise.
+        """
+        return all(
+            job.status in TERMINAL_STATES if job.status else False for job in self.jobs
+        )
+
     def _watch_blocking(self, *, interval: float = 5.0):
         """Blocking watch implementation using synchronous polling.
 
         This method blocks until all jobs reach terminal states, updating
         the display at regular intervals. Used when JOB_WATCH_BLOCK is set.
-        In blocking mode, any errors during sync or rendering will be raised
-        immediately since this mode is only used with local servers that
-        should not fail.
+
+        Error handling: Transient errors during sync() or _render_view() are
+        caught and displayed as error banners. The monitoring continues retrying
+        until either all jobs reach terminal states or too many consecutive
+        errors occur (default: 10), at which point monitoring stops to prevent
+        infinite loops. This ensures robust behavior even when network issues or
+        transient server problems occur.
 
         This is a thin wrapper around _watch_blocking_impl that provides
         JobList-specific termination logic. The wrapper pattern allows us to:
@@ -967,10 +1024,7 @@ class JobList:
         _watch_blocking_impl(
             self,
             interval=interval,
-            is_terminal=lambda: all(
-                job.status in TERMINAL_STATES if job.status else False
-                for job in self.jobs
-            ),
+            is_terminal=self._is_terminal,
         )
 
     def _watch_async(self, *, interval: float = 5.0):
@@ -982,10 +1036,7 @@ class JobList:
         _watch_async_impl(
             self,
             interval=interval,
-            is_terminal=lambda: all(
-                job.status in TERMINAL_STATES if job.status else False
-                for job in self.jobs
-            ),
+            is_terminal=self._is_terminal,
         )
 
     def stop_watching(self):
