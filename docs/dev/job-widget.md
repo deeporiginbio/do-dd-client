@@ -17,4 +17,39 @@ Usage:
 
 - In Python: `Job.from_id("<execution_id>").show()` or `.watch()`.
 
+## Blocking watch mode
+
+By default, the `watch()` method on `Job` and `JobList` returns immediately after starting a background monitoring task, allowing execution to continue while the job status updates are displayed. This is ideal for interactive use in Jupyter notebooks.
+
+For automated notebook execution (e.g., running notebooks top-to-bottom via scripts), you can enable blocking mode by setting the `JOB_WATCH_BLOCK` environment variable to a truthy value. When enabled, `watch()` will block until the job (or all jobs in a `JobList`) reaches a terminal state.
+
+The following values are considered truthy (case-insensitive): `1`, `true`, `yes`, `on`. All other values (including `0`, `false`, `no`, `off`, and empty strings) are treated as falsy.
+
+Example:
+
+```bash
+export JOB_WATCH_BLOCK=1
+python -m nbconvert --execute notebook.ipynb
+```
+
+To disable blocking mode, you can either unset the variable or set it to a falsy value:
+
+```bash
+# Unset the variable
+unset JOB_WATCH_BLOCK
+
+# Or set it to an empty string
+export JOB_WATCH_BLOCK=""
+
+# Or set it to a falsy value like 0, false, no, or off
+export JOB_WATCH_BLOCK=0
+```
+
+When `JOB_WATCH_BLOCK` is set, `watch()` will:
+- Start the monitoring task as usual
+- Block execution until the job reaches a terminal state (Succeeded, Failed, etc.)
+- Return only after the job has completed
+
+This ensures that automated notebook execution waits for jobs to complete before proceeding to the next cell.
+
 

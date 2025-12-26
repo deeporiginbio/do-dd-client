@@ -3,7 +3,7 @@
 import hashlib
 import json
 
-from src.utils.core import hash_dict
+from src.utils.core import get_bool_env, hash_dict
 
 
 def test_basic_dict_hashing():
@@ -148,3 +148,77 @@ def test_different_dicts_produce_different_hashes():
     assert hash1 != hash2
     assert hash1 != hash3
     assert hash2 != hash3
+
+
+def test_get_bool_env_not_set(monkeypatch):
+    """Test that get_bool_env returns default when env var is not set"""
+    # Ensure the env var is not set
+    monkeypatch.delenv("TEST_BOOL_ENV", raising=False)
+    assert get_bool_env("TEST_BOOL_ENV", default=False) is False
+    assert get_bool_env("TEST_BOOL_ENV", default=True) is True
+
+
+def test_get_bool_env_truthy_values(monkeypatch):
+    """Test that get_bool_env returns True for truthy values"""
+    truthy_values = ["1", "true", "True", "TRUE", "yes", "Yes", "YES", "on", "On", "ON"]
+    for value in truthy_values:
+        monkeypatch.setenv("TEST_BOOL_ENV", value)
+        assert get_bool_env("TEST_BOOL_ENV", default=False) is True
+
+
+def test_get_bool_env_falsy_values(monkeypatch):
+    """Test that get_bool_env returns False for falsy values"""
+    falsy_values = [
+        "0",
+        "false",
+        "False",
+        "FALSE",
+        "no",
+        "No",
+        "NO",
+        "off",
+        "Off",
+        "OFF",
+        "",
+    ]
+    for value in falsy_values:
+        monkeypatch.setenv("TEST_BOOL_ENV", value)
+        assert get_bool_env("TEST_BOOL_ENV", default=True) is False
+
+
+def test_get_bool_env_with_whitespace(monkeypatch):
+    """Test that get_bool_env handles whitespace correctly"""
+    monkeypatch.setenv("TEST_BOOL_ENV", " true ")
+    assert get_bool_env("TEST_BOOL_ENV", default=False) is True
+
+    monkeypatch.setenv("TEST_BOOL_ENV", " 1 ")
+    assert get_bool_env("TEST_BOOL_ENV", default=False) is True
+
+    monkeypatch.setenv("TEST_BOOL_ENV", " false ")
+    assert get_bool_env("TEST_BOOL_ENV", default=True) is False
+
+    monkeypatch.setenv("TEST_BOOL_ENV", " 0 ")
+    assert get_bool_env("TEST_BOOL_ENV", default=True) is False
+
+
+def test_get_bool_env_case_insensitive(monkeypatch):
+    """Test that get_bool_env is case-insensitive"""
+    monkeypatch.setenv("TEST_BOOL_ENV", "TRUE")
+    assert get_bool_env("TEST_BOOL_ENV", default=False) is True
+
+    monkeypatch.setenv("TEST_BOOL_ENV", "FALSE")
+    assert get_bool_env("TEST_BOOL_ENV", default=True) is False
+
+    monkeypatch.setenv("TEST_BOOL_ENV", "YES")
+    assert get_bool_env("TEST_BOOL_ENV", default=False) is True
+
+    monkeypatch.setenv("TEST_BOOL_ENV", "NO")
+    assert get_bool_env("TEST_BOOL_ENV", default=True) is False
+
+
+def test_get_bool_env_unexpected_values(monkeypatch):
+    """Test that get_bool_env returns False for unexpected values"""
+    unexpected_values = ["maybe", "2", "enabled", "disabled", "foo", "bar"]
+    for value in unexpected_values:
+        monkeypatch.setenv("TEST_BOOL_ENV", value)
+        assert get_bool_env("TEST_BOOL_ENV", default=True) is False
