@@ -19,6 +19,17 @@ cp -r "$DIRTY"/* "$CLEAN" 2>/dev/null || {
 # Clean all notebooks
 uvx nb-clean clean "$CLEAN"
 
+# Remove kernel metadata to avoid CI kernel issues
+echo "Removing kernel metadata from notebooks..."
+for notebook in "$CLEAN"/*.ipynb; do
+    if [ -f "$notebook" ]; then
+        uvx jupyter nbconvert \
+            --clear-output \
+            --ClearMetadataPreprocessor.enabled=True \
+            --inplace "$notebook"
+    fi
+done
+
 # Stage sanitized notebooks
 git add "$CLEAN"/*.ipynb
 
