@@ -5,6 +5,11 @@
 
 set -euo pipefail
 
+# Install dependencies (package + extras needed for notebooks and docs)
+echo "📦 Installing dependencies..."
+uv sync --extra docs --extra core --extra tools
+echo "✅ Dependencies installed"
+
 # Convert notebooks to HTML if they exist
 if [ -d "docs/notebooks/clean" ] && [ "$(ls -A docs/notebooks/clean/*.ipynb 2>/dev/null)" ]; then
   echo "📓 Converting notebooks to HTML..."
@@ -20,18 +25,11 @@ DEEPORIGIN_TOKEN=${DEEPORIGIN_TOKEN:-}
 EOF
   
   # Convert notebooks to HTML with execution
-  uvx jupyter nbconvert --to html --execute docs/notebooks/clean/*.ipynb --output-dir docs/notebooks/html
+  uv run jupyter nbconvert --to html --execute docs/notebooks/clean/*.ipynb --output-dir docs/notebooks/html
   echo "✅ Notebooks converted and executed"
   
   # Clean up .env file
   rm -f .env
-fi
-
-# Install dependencies if running in CI
-if [ "${CI:-false}" = "true" ]; then
-  echo "🚧 Running in CI, installing dependencies using uv..."
-  uv sync --extra docs
-  echo "✅ Dependencies installed"
 fi
 
 # Build docs and capture output
