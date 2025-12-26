@@ -53,6 +53,7 @@ docs = [
     "click==8.2.1", # there's a bug in later click versions that breaks watchdog
     "python-dotenv",
     "nbconvert",
+    "ipykernel",
 ]
 plots = ["bokeh"]
 tools = [

@@ -27,6 +27,10 @@ EOF
   # Ensure .env file is cleaned up on exit (success or failure)
   trap 'rm -f .env' EXIT
   
+  # Register Python kernel for notebook execution
+  echo "🔧 Registering Python kernel..."
+  uv run python -m ipykernel install --user --name python3 --display-name "Python 3"
+  
   # Convert notebooks to HTML with execution
   uv run jupyter nbconvert --to html --execute docs/notebooks/clean/*.ipynb --output-dir docs/notebooks/html
   echo "✅ Notebooks converted and executed"
