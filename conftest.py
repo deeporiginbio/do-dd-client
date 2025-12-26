@@ -12,7 +12,7 @@ import pytest
 
 from deeporigin.auth import get_token
 from deeporigin.config import get_value
-from deeporigin.platform.client import DeepOriginClient, _generate_local_token
+from deeporigin.platform.client import DeepOriginClient
 from deeporigin.utils.constants import ENV_VARIABLES
 from tests.mock_server import MockServer
 
@@ -21,9 +21,12 @@ from tests.mock_server import MockServer
 def set_test_env_vars(pytestconfig):
     """Set up environment variables for testing.
 
-    Sets environment variables (DEEPORIGIN_TOKEN, DEEPORIGIN_ORG_KEY, DEEPORIGIN_ENV)
-    based on the --env flag, so that code that creates clients implicitly (e.g.,
-    Complex.from_dir()) will automatically use the test configuration.
+    Sets DEEPORIGIN_ENV based on the --env flag. For local environment, the client
+    automatically generates a token and sets org_key. For other environments, sets
+    DEEPORIGIN_TOKEN and DEEPORIGIN_ORG_KEY if not already set.
+
+    This ensures code that creates clients implicitly (e.g., Complex.from_dir()) will
+    automatically use the test configuration.
 
     The --env option must be explicitly provided (e.g., --env local).
     When --env local is passed, the test_server fixture (autouse) ensures the mock server is running.
@@ -50,10 +53,8 @@ def set_test_env_vars(pytestconfig):
     try:
         # Set environment variables based on the specified environment
         if env == "local":
-            # Use the same helper function that from_env uses for local
-            local_token = _generate_local_token()
-            os.environ[ENV_VARIABLES["access_token"]] = local_token
-            os.environ[ENV_VARIABLES["org_key"]] = "deeporigin"
+            # Client automatically handles local environment (generates token, sets org_key)
+            # We only need to set DEEPORIGIN_ENV=local
             os.environ[ENV_VARIABLES["env"]] = "local"
 
             # Clear any cached clients so they use the new env vars

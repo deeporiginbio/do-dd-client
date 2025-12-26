@@ -5,9 +5,9 @@
 
 set -euo pipefail
 
-# Install dependencies (package + extras needed for notebooks and docs)
+# Install dependencies (package + extras needed for notebooks, docs, and mock server)
 echo "📦 Installing dependencies..."
-uv sync --extra docs --extra core --extra tools
+uv sync --extra docs --extra core --extra tools --extra test
 echo "✅ Dependencies installed"
 
 # Convert notebooks to HTML if they exist
@@ -15,17 +15,23 @@ if [ -d "docs/notebooks/clean" ] && [ "$(ls -A docs/notebooks/clean/*.ipynb 2>/d
   echo "📓 Converting notebooks to HTML..."
   mkdir -p docs/notebooks/html
   
-  # Create .env file for notebook execution
-  echo "🔧 Creating .env file for notebook execution..."
+  # Start mock server in background for local testing
+  echo "🚀 Starting mock server..."
+  uv run python -m tests.run_mock_server --port 4931 > /dev/null 2>&1 &
+  MOCK_SERVER_PID=$!
+  
+  # Wait a moment for server to start
+  sleep 2
+  
+  # Ensure mock server is stopped on exit (success or failure)
+  trap 'kill $MOCK_SERVER_PID 2>/dev/null || true; rm -f .env' EXIT
+  
+  # Create .env file for notebook execution (client will auto-handle local env)
+  echo "🔧 Setting up environment for local testing..."
   cat > .env << EOF
-DEEPORIGIN_ORG_KEY=deeporigin
 DEEPORIGIN_ENV=local
 JOB_WATCH_BLOCK=1
-DEEPORIGIN_TOKEN=${DEEPORIGIN_TOKEN:-}
 EOF
-  
-  # Ensure .env file is cleaned up on exit (success or failure)
-  trap 'rm -f .env' EXIT
   
   # Register Python kernel for notebook execution
   echo "🔧 Registering Python kernel..."
@@ -34,6 +40,10 @@ EOF
   # Convert notebooks to HTML with execution
   uv run jupyter nbconvert --to html --execute docs/notebooks/clean/*.ipynb --output-dir docs/notebooks/html
   echo "✅ Notebooks converted and executed"
+  
+  # Stop mock server
+  kill $MOCK_SERVER_PID 2>/dev/null || true
+  trap - EXIT
 fi
 
 # Build docs and capture output

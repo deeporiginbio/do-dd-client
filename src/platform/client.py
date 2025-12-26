@@ -117,18 +117,7 @@ class DeepOriginClient:
                 Defaults to False.
         """
 
-        # Environment variables ALWAYS override explicit parameters and skip disk reads
-        if ENV_VARIABLES["access_token"] in os.environ:
-            token = os.environ[ENV_VARIABLES["access_token"]]
-        elif token is None:
-            token = get_token()
-
-        if ENV_VARIABLES["org_key"] in os.environ:
-            org_key = os.environ[ENV_VARIABLES["org_key"]]
-        elif org_key is None:
-            org_key = get_value()["org_key"]
-
-        # Handle env and base_url resolution
+        # Handle env and base_url resolution first (needed for local check)
         if ENV_VARIABLES["env"] in os.environ:
             env = os.environ[ENV_VARIABLES["env"]]
             if env not in get_args(ENVS):
@@ -146,6 +135,24 @@ class DeepOriginClient:
             # get the base url from the environment
             base_url = API_ENDPOINT[env]
         self.env = env
+
+        # Special handling for local environment: auto-generate token and set org_key
+        if env == "local":
+            token = _generate_local_token()
+            org_key = "deeporigin"
+            if base_url is None:
+                base_url = API_ENDPOINT["local"]
+        else:
+            # Environment variables ALWAYS override explicit parameters and skip disk reads
+            if ENV_VARIABLES["access_token"] in os.environ:
+                token = os.environ[ENV_VARIABLES["access_token"]]
+            elif token is None:
+                token = get_token()
+
+            if ENV_VARIABLES["org_key"] in os.environ:
+                org_key = os.environ[ENV_VARIABLES["org_key"]]
+            elif org_key is None:
+                org_key = get_value()["org_key"]
 
         self._org_key = org_key
         self.base_url = base_url.rstrip("/") + "/"
@@ -287,18 +294,7 @@ class DeepOriginClient:
             A cached DeepOriginClient instance.
         """
         # Resolve config values (same logic as __init__)
-        # Environment variables ALWAYS override explicit parameters and skip disk reads
-        if ENV_VARIABLES["access_token"] in os.environ:
-            token = os.environ[ENV_VARIABLES["access_token"]]
-        elif token is None:
-            token = get_token()
-
-        if ENV_VARIABLES["org_key"] in os.environ:
-            org_key = os.environ[ENV_VARIABLES["org_key"]]
-        elif org_key is None:
-            org_key = get_value()["org_key"]
-
-        # Handle env and base_url resolution
+        # Handle env and base_url resolution first (needed for local check)
         if ENV_VARIABLES["env"] in os.environ:
             env = os.environ[ENV_VARIABLES["env"]]
             if env not in get_args(ENVS):
@@ -315,6 +311,24 @@ class DeepOriginClient:
         elif env is not None and base_url is None:
             # get the base url from the environment
             base_url = API_ENDPOINT[env]
+
+        # Special handling for local environment: auto-generate token and set org_key
+        if env == "local":
+            token = _generate_local_token()
+            org_key = "deeporigin"
+            if base_url is None:
+                base_url = API_ENDPOINT["local"]
+        else:
+            # Environment variables ALWAYS override explicit parameters and skip disk reads
+            if ENV_VARIABLES["access_token"] in os.environ:
+                token = os.environ[ENV_VARIABLES["access_token"]]
+            elif token is None:
+                token = get_token()
+
+            if ENV_VARIABLES["org_key"] in os.environ:
+                org_key = os.environ[ENV_VARIABLES["org_key"]]
+            elif org_key is None:
+                org_key = get_value()["org_key"]
 
         # Normalize base_url for the key
         normalized_base_url = base_url.rstrip("/") + "/"
