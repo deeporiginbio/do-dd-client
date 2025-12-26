@@ -60,6 +60,55 @@ def _generate_local_token() -> str:
     return jwt.encode(decoded_token, "secret")
 
 
+def _resolve_token_and_org_key(
+    env: ENVS,
+    token: str | None = None,
+    org_key: str | None = None,
+    base_url: str | None = None,
+) -> Tuple[str | None, str | None, str | None]:
+    """Resolve token and org_key based on environment and parameters.
+
+    Special handling for local environment: auto-generates token and sets org_key.
+    For other environments, environment variables override explicit parameters.
+
+    Args:
+        env: Environment name (e.g., 'prod', 'staging', 'local').
+        token: Explicit token parameter. May be None.
+        org_key: Explicit org_key parameter. May be None.
+        base_url: Base URL parameter. May be updated for local environment.
+
+    Returns:
+        A tuple of (resolved_token, resolved_org_key, resolved_base_url).
+    """
+    # Special handling for local environment: auto-generate token and set org_key
+    if env == "local":
+        resolved_token = _generate_local_token()
+        resolved_org_key = "deeporigin"
+        if base_url is None:
+            resolved_base_url = API_ENDPOINT["local"]
+        else:
+            resolved_base_url = base_url
+    else:
+        # Environment variables ALWAYS override explicit parameters and skip disk reads
+        if ENV_VARIABLES["access_token"] in os.environ:
+            resolved_token = os.environ[ENV_VARIABLES["access_token"]]
+        elif token is None:
+            resolved_token = get_token()
+        else:
+            resolved_token = token
+
+        if ENV_VARIABLES["org_key"] in os.environ:
+            resolved_org_key = os.environ[ENV_VARIABLES["org_key"]]
+        elif org_key is None:
+            resolved_org_key = get_value()["org_key"]
+        else:
+            resolved_org_key = org_key
+
+        resolved_base_url = base_url
+
+    return resolved_token, resolved_org_key, resolved_base_url
+
+
 class DeepOriginClient:
     """
     Minimal synchronous API client with built-in singleton cache.
@@ -136,23 +185,10 @@ class DeepOriginClient:
             base_url = API_ENDPOINT[env]
         self.env = env
 
-        # Special handling for local environment: auto-generate token and set org_key
-        if env == "local":
-            token = _generate_local_token()
-            org_key = "deeporigin"
-            if base_url is None:
-                base_url = API_ENDPOINT["local"]
-        else:
-            # Environment variables ALWAYS override explicit parameters and skip disk reads
-            if ENV_VARIABLES["access_token"] in os.environ:
-                token = os.environ[ENV_VARIABLES["access_token"]]
-            elif token is None:
-                token = get_token()
-
-            if ENV_VARIABLES["org_key"] in os.environ:
-                org_key = os.environ[ENV_VARIABLES["org_key"]]
-            elif org_key is None:
-                org_key = get_value()["org_key"]
+        # Resolve token and org_key based on environment
+        token, org_key, base_url = _resolve_token_and_org_key(
+            env=env, token=token, org_key=org_key, base_url=base_url
+        )
 
         self._org_key = org_key
         self.base_url = base_url.rstrip("/") + "/"
@@ -312,23 +348,10 @@ class DeepOriginClient:
             # get the base url from the environment
             base_url = API_ENDPOINT[env]
 
-        # Special handling for local environment: auto-generate token and set org_key
-        if env == "local":
-            token = _generate_local_token()
-            org_key = "deeporigin"
-            if base_url is None:
-                base_url = API_ENDPOINT["local"]
-        else:
-            # Environment variables ALWAYS override explicit parameters and skip disk reads
-            if ENV_VARIABLES["access_token"] in os.environ:
-                token = os.environ[ENV_VARIABLES["access_token"]]
-            elif token is None:
-                token = get_token()
-
-            if ENV_VARIABLES["org_key"] in os.environ:
-                org_key = os.environ[ENV_VARIABLES["org_key"]]
-            elif org_key is None:
-                org_key = get_value()["org_key"]
+        # Resolve token and org_key based on environment
+        token, org_key, base_url = _resolve_token_and_org_key(
+            env=env, token=token, org_key=org_key, base_url=base_url
+        )
 
         # Normalize base_url for the key
         normalized_base_url = base_url.rstrip("/") + "/"
