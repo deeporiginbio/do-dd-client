@@ -125,7 +125,7 @@ class Complex:
         self,
         ligand: Optional[Ligand] = None,
         *,
-        padding: float = 2.0,
+        padding: float = 1.0,
         retain_waters: bool = False,
         add_H_atoms: bool = False,  # NOSONAR
         protonate_protein: bool = False,

@@ -1,0 +1,152 @@
+{
+    "cluster": {
+        "createdAt": "2024-06-11T16:53:45.922Z",
+        "enabled": true,
+        "hostname": "https://cluster.us-west-2.dev.deeporigin.io",
+        "id": "d638d3cd-833f-476b-87fe-ca6d76e66049",
+        "name": "DeepOrigin Cluster - us-west-2",
+        "orgKey": null,
+        "status": "healthy",
+        "updatedAt": "2025-03-27T20:23:30.842Z"
+    },
+    "createdAt": "2025-12-18T15:12:20.962Z",
+    "createdBy": "6b96d8f8-0f55-474c-a86c-e09651ba4b20",
+    "function": {
+        "billingCode": "DO_SYSTEM_PREP",
+        "createdAt": "2025-12-08T15:08:31.597Z",
+        "enabled": true,
+        "functionManifest": "44c45423-00dd-45c9-ac1b-bd27bc9103f3",
+        "id": "47b720b9-8eb7-4349-8dcc-9928df65d91c",
+        "manifestBody": {
+            "billingCode": "DO_SYSTEM_PREP",
+            "executor": {
+                "containerConcurrency": 1,
+                "image": "645946264134.dkr.ecr.us-west-2.amazonaws.com/functions/sysprep:0.4.1",
+                "maxScale": 1,
+                "method": "POST",
+                "minScale": 1,
+                "name": "deeporigin-system-prep",
+                "path": "/sysprep",
+                "port": {
+                    "name": "http1",
+                    "port": 8080,
+                    "protocol": "TCP"
+                },
+                "resourceRequirements": {
+                    "cpu": 2,
+                    "memory": 8
+                },
+                "responseStartTimeoutSeconds": 3600,
+                "scaleDownDelaySeconds": 60,
+                "timeoutSeconds": 600
+            },
+            "functionManifestVersion": "1",
+            "inputSchema": {
+                "additionalProperties": false,
+                "properties": {
+                    "add_H_atoms": {
+                        "type": "boolean"
+                    },
+                    "box_size": {
+                        "items": {
+                            "type": "number"
+                        },
+                        "maxItems": 3,
+                        "minItems": 3,
+                        "type": "array"
+                    },
+                    "ligand_path": {
+                        "type": "string"
+                    },
+                    "padding": {
+                        "type": "number"
+                    },
+                    "protein_path": {
+                        "type": "string"
+                    },
+                    "protonate_protein": {
+                        "type": "boolean"
+                    },
+                    "retain_waters": {
+                        "type": "boolean"
+                    }
+                },
+                "required": [
+                    "protein_path",
+                    "ligand_path",
+                    "add_H_atoms",
+                    "protonate_protein",
+                    "retain_waters",
+                    "padding"
+                ],
+                "type": "object"
+            },
+            "key": "deeporigin.system-prep",
+            "version": "0.4.1"
+        },
+        "resourceId": "function-lui5rqdv9q2xar582yxky",
+        "updatedAt": "2025-12-08T15:08:31.597Z",
+        "version": "0.4.1"
+    },
+    "functionOutputs": {
+        "function_key": "deeporigin.system-prep",
+        "function_version": "0.4.1",
+        "ligand_path": "entities/ligands/12ec11311b8cd62100ef6c64ab22a84da875902e28ced762d47fdd7804cc2ad4.sdf",
+        "message": "System preparation completed successfully",
+        "output_files": [
+            "function-runs/system-prep/9efdd220bc177557f6797ddf0e91922b2af2f4eb00290358608adf5bd20ccf68/bsm_system.xml",
+            "function-runs/system-prep/9efdd220bc177557f6797ddf0e91922b2af2f4eb00290358608adf5bd20ccf68/system.pdb",
+            "function-runs/system-prep/9efdd220bc177557f6797ddf0e91922b2af2f4eb00290358608adf5bd20ccf68/solvation.xml"
+        ],
+        "parameters": {
+            "add_H_atoms": false,
+            "box_size": null,
+            "padding": 2,
+            "protonate_protein": false,
+            "retain_waters": false
+        },
+        "protein_path": "entities/proteins/db4aa32e2e8ffa976a60004a8361b86427a2e5653a6623bb60b7913445902549.pdb",
+        "status": "success"
+    },
+    "id": "ad6c0097-f046-4f58-9232-ce750c14c22b",
+    "orgKey": "deeporigin",
+    "quotationResult": {
+        "anyFailed": false,
+        "failedQuotations": [],
+        "successfulQuotations": [
+            {
+                "itemCode": "DO_SYSTEM_PREP",
+                "orgId": "deeporigin",
+                "priceEach": 0,
+                "priceTotal": 0,
+                "pricingRecordType": "regular",
+                "pricingRecords": [
+                    {
+                        "itemKey": "DO_SYSTEM_PREP",
+                        "itemName": "DO_SYSTEM_PREP",
+                        "priceEach": 0,
+                        "qty": 1,
+                        "tierQtyFrom": 0,
+                        "tierQtyTo": 0,
+                        "totalPrice": 0
+                    }
+                ],
+                "qty": 1,
+                "status": "OK"
+            }
+        ]
+    },
+    "status": "Completed",
+    "updatedAt": "2025-12-18T15:13:54.391Z",
+    "userInputs": {
+        "clusterId": "d638d3cd-833f-476b-87fe-ca6d76e66049",
+        "inputs": {
+            "add_H_atoms": true,
+            "ligand_path": "entities/ligands/12ec11311b8cd62100ef6c64ab22a84da875902e28ced762d47fdd7804cc2ad4.sdf",
+            "padding": 1.5,
+            "protein_path": "entities/proteins/db4aa32e2e8ffa976a60004a8361b86427a2e5653a6623bb60b7913445902549.pdb",
+            "protonate_protein": true,
+            "retain_waters": false
+        }
+    }
+}

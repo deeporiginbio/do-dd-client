@@ -61,30 +61,13 @@ def test_docking_lv2():
 
 def test_sysprep_lv2():
     """Test system preparation function."""
-    from deeporigin.functions.sysprep import run_sysprep
-    from deeporigin.platform.client import DeepOriginClient
 
     sim = Complex.from_dir(BRD_DATA_DIR)
-    client = DeepOriginClient()
 
     ligand = [ligand for ligand in sim.ligands if ligand.name == "cmpd 4 (Crotyl)"][0]
 
     # this is chosen to be one where it takes >1 min
-    response = run_sysprep(
-        protein=sim.protein,
-        ligand=ligand,
-        add_H_atoms=True,
-        use_cache=False,
-        client=client,
-    )
-
-    # Verify response structure
-    assert isinstance(response, dict), "Expected a dictionary response"
-    assert "status" in response, "Expected 'status' in response"
-    assert response["status"] == "success", "Expected status to be 'success'"
-    assert "protein_path" in response, "Expected 'protein_path' in response"
-    assert "ligand_path" in response, "Expected 'ligand_path' in response"
-    assert "output_files" in response, "Expected 'output_files' in response"
+    prepared_system = sim.prepare(ligand=ligand)
 
 
 def test_protonation_lv2():

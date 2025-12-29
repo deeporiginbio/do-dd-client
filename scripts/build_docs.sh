@@ -17,7 +17,7 @@ if [ -d "docs/notebooks/clean" ] && [ "$(ls -A docs/notebooks/clean/*.ipynb 2>/d
   
   # Start mock server in background for local testing
   echo "🚀 Starting mock server..."
-  uv run python -m tests.run_mock_server --port 4931 > /dev/null 2>&1 &
+  uv run python -m tests.run_mock_server --port 4931 --abfe-duration 5 > /dev/null 2>&1 &
   MOCK_SERVER_PID=$!
   
   # Wait a moment for server to start

@@ -11,7 +11,7 @@ def run_sysprep(
     *,
     protein: Protein,
     ligand: Ligand,
-    padding: float = 1.5,
+    padding: float = 1.0,
     retain_waters: bool = False,
     add_H_atoms: bool = True,  # NOSONAR
     protonate_protein: bool = True,

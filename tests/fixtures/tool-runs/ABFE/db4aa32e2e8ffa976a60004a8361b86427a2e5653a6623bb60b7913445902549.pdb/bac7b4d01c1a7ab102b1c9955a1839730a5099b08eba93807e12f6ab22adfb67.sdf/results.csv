@@ -1,8 +1,0 @@
-Ligand,dG,Std,Binding,Solvation,AnalyticalCorr,Repeats,OverlapScore
-ligand,-9.985659655831752,0.0,99.23757170172084,77.78680688336519,-11.4651051625239,1,0.08986621447269512
-
-# FEP Results for protein
-# Data: job-zmfziti0yzswalbdw6tbe-workload-head:/data/execution
-# Binding run = binding, Solvation run = ["solvation"]
-# Units = kcal, Method = mbar
-# Time = 2025-11-08T02:57:26.576
