@@ -40,8 +40,8 @@ def main() -> None:
     parser.add_argument(
         "--abfe-duration",
         type=float,
-        default=300.0,
-        help="Duration for ABFE executions in seconds (default: 300)",
+        default=30.0,
+        help="Duration for ABFE executions in seconds (default: 30)",
     )
 
     args = parser.parse_args()

@@ -122,13 +122,15 @@ def create_files_router(
                 from fastapi import HTTPException
 
                 raise HTTPException(
-                    status_code=404, detail=f"File not found: {remote_path}"
+                    status_code=404,
+                    detail=f"File not found: {remote_path}, expected: {fixture_resolved}",
                 )
         except (OSError, ValueError):
             from fastapi import HTTPException
 
             raise HTTPException(
-                status_code=404, detail=f"File not found: {remote_path}"
+                status_code=404,
+                detail=f"File not found: {remote_path}, expected: {fixture_resolved}",
             ) from None
 
         # Try to serve from fixtures/files first

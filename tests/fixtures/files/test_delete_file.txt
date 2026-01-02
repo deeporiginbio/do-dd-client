@@ -1,6 +1,0 @@
---35fe8f4e4a7728b74d61780d2ee9408b
-Content-Disposition: form-data; name="file"; filename="test_upload_delete.txt"
-Content-Type: application/octet-stream
-
-test content
---35fe8f4e4a7728b74d61780d2ee9408b--
