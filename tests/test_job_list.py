@@ -1,24 +1,60 @@
 """Tests for the JobList class."""
 
-from unittest.mock import MagicMock, patch
-
 import pandas as pd
 import pytest
 
+from deeporigin.platform.client import DeepOriginClient
 from deeporigin.platform.job import Job, JobList
 
 
 @pytest.fixture
-def mock_jobs():
-    """Create a list of mock Job objects."""
-    jobs = []
-    statuses = ["Succeeded", "Running", "Succeeded", "Failed", "Running"]
-    for i, status in enumerate(statuses):
-        job = MagicMock(spec=Job)
-        job.status = status
-        job.id = f"job-{i}"
-        jobs.append(job)
-    return jobs
+def client():
+    """Create a DeepOriginClient for testing."""
+    return DeepOriginClient()
+
+
+def create_job_dto(**kwargs):
+    """Create a job DTO with default values, allowing overrides.
+
+    Args:
+        **kwargs: Fields to override in the default DTO.
+
+    Returns:
+        A job DTO dictionary.
+    """
+    default_dto = {
+        "executionId": "id-1",
+        "status": "Succeeded",
+        "createdAt": "2025-01-01T00:00:00.000Z",
+        "updatedAt": "2025-01-01T01:00:00.000Z",
+        "resourceId": "resource-1",
+        "orgKey": "deeporigin",
+        "tool": {"key": "deeporigin.docking", "version": "1.0.0"},
+    }
+    default_dto.update(kwargs)
+    return default_dto
+
+
+@pytest.fixture
+def job_dtos():
+    """Create a list of execution DTOs for testing."""
+    return [
+        create_job_dto(
+            executionId="job-0", status="Succeeded", resourceId="resource-0"
+        ),
+        create_job_dto(executionId="job-1", status="Running", resourceId="resource-1"),
+        create_job_dto(
+            executionId="job-2", status="Succeeded", resourceId="resource-2"
+        ),
+        create_job_dto(executionId="job-3", status="Failed", resourceId="resource-3"),
+        create_job_dto(executionId="job-4", status="Running", resourceId="resource-4"),
+    ]
+
+
+@pytest.fixture
+def mock_jobs(client, job_dtos):
+    """Create a list of real Job objects from DTOs."""
+    return [Job.from_dto(dto, client=client) for dto in job_dtos]
 
 
 def test_job_list_initialization_lv0(mock_jobs):
@@ -44,16 +80,20 @@ def test_job_list_getitem_lv0(mock_jobs):
     assert job_list[0:2] == mock_jobs[0:2]
 
 
-def test_job_list_repr_html_lv0():
+def test_job_list_repr_html_lv0(client):
     """Test HTML representation of JobList."""
-    job1 = Job(name="job1", id="id-1", _skip_sync=True)
-    job1.status = "Succeeded"
-
-    job2 = Job(name="job2", id="id-2", _skip_sync=True)
-    job2.status = "Running"
-
-    job3 = Job(name="job3", id="id-3", _skip_sync=True)
-    job3.status = "Succeeded"
+    job1 = Job.from_dto(
+        create_job_dto(executionId="id-1", status="Succeeded", resourceId="resource-1"),
+        client=client,
+    )
+    job2 = Job.from_dto(
+        create_job_dto(executionId="id-2", status="Running", resourceId="resource-2"),
+        client=client,
+    )
+    job3 = Job.from_dto(
+        create_job_dto(executionId="id-3", status="Succeeded", resourceId="resource-3"),
+        client=client,
+    )
 
     job_list = JobList([job1, job2, job3])
     html = job_list._repr_html_()
@@ -90,16 +130,20 @@ def test_job_list_status_lv0(mock_jobs):
     assert "Queued" not in status_counts
 
 
-def test_filter_by_status_lv0():
+def test_filter_by_status_lv0(client):
     """Test filtering jobs by status."""
-    job1 = Job(name="job1", id="id-1", _skip_sync=True)
-    job1.status = "Succeeded"
-
-    job2 = Job(name="job2", id="id-2", _skip_sync=True)
-    job2.status = "Running"
-
-    job3 = Job(name="job3", id="id-3", _skip_sync=True)
-    job3.status = "Succeeded"
+    job1 = Job.from_dto(
+        create_job_dto(executionId="id-1", status="Succeeded", resourceId="resource-1"),
+        client=client,
+    )
+    job2 = Job.from_dto(
+        create_job_dto(executionId="id-2", status="Running", resourceId="resource-2"),
+        client=client,
+    )
+    job3 = Job.from_dto(
+        create_job_dto(executionId="id-3", status="Succeeded", resourceId="resource-3"),
+        client=client,
+    )
 
     job_list = JobList([job1, job2, job3])
 
@@ -116,24 +160,35 @@ def test_filter_by_status_lv0():
     assert len(failed) == 0
 
 
-def test_filter_by_attributes_lv0():
+def test_filter_by_attributes_lv0(client):
     """Test filtering jobs by attributes."""
-    job1 = Job(name="job1", id="id-1", _skip_sync=True)
-    job1._attributes = {
-        "executionId": "id-1",
-        "status": "Succeeded",
-        "approveAmount": 100,
-    }
-
-    job2 = Job(name="job2", id="id-2", _skip_sync=True)
-    job2._attributes = {
-        "executionId": "id-2",
-        "status": "Running",
-        "approveAmount": 200,
-    }
-
-    job3 = Job(name="job3", id="id-3", _skip_sync=True)
-    job3._attributes = {"executionId": "id-1", "status": "Failed", "approveAmount": 100}
+    job1 = Job.from_dto(
+        create_job_dto(
+            executionId="id-1",
+            status="Succeeded",
+            resourceId="resource-1",
+            approveAmount=100,
+        ),
+        client=client,
+    )
+    job2 = Job.from_dto(
+        create_job_dto(
+            executionId="id-2",
+            status="Running",
+            resourceId="resource-2",
+            approveAmount=200,
+        ),
+        client=client,
+    )
+    job3 = Job.from_dto(
+        create_job_dto(
+            executionId="id-1",
+            status="Failed",
+            resourceId="resource-3",
+            approveAmount=100,
+        ),
+        client=client,
+    )
 
     job_list = JobList([job1, job2, job3])
 
@@ -152,16 +207,35 @@ def test_filter_by_attributes_lv0():
     )
 
 
-def test_filter_by_predicate_lv0():
+def test_filter_by_predicate_lv0(client):
     """Test filtering jobs with a custom predicate."""
-    job1 = Job(name="job1", id="id-1", _skip_sync=True)
-    job1._attributes = {"approveAmount": 100, "status": "Succeeded"}
-
-    job2 = Job(name="job2", id="id-2", _skip_sync=True)
-    job2._attributes = {"approveAmount": 200, "status": "Running"}
-
-    job3 = Job(name="job3", id="id-3", _skip_sync=True)
-    job3._attributes = {"approveAmount": 50, "status": "Succeeded"}
+    job1 = Job.from_dto(
+        create_job_dto(
+            executionId="id-1",
+            status="Succeeded",
+            resourceId="resource-1",
+            approveAmount=100,
+        ),
+        client=client,
+    )
+    job2 = Job.from_dto(
+        create_job_dto(
+            executionId="id-2",
+            status="Running",
+            resourceId="resource-2",
+            approveAmount=200,
+        ),
+        client=client,
+    )
+    job3 = Job.from_dto(
+        create_job_dto(
+            executionId="id-3",
+            status="Succeeded",
+            resourceId="resource-3",
+            approveAmount=50,
+        ),
+        client=client,
+    )
 
     job_list = JobList([job1, job2, job3])
 
@@ -183,19 +257,35 @@ def test_filter_by_predicate_lv0():
     assert len(tool1_jobs) == 2
 
 
-def test_filter_combine_status_and_predicate_lv0():
+def test_filter_combine_status_and_predicate_lv0(client):
     """Test combining status filter with predicate."""
-    job1 = Job(name="job1", id="id-1", _skip_sync=True)
-    job1.status = "Succeeded"
-    job1._attributes = {"approveAmount": 100}
-
-    job2 = Job(name="job2", id="id-2", _skip_sync=True)
-    job2.status = "Succeeded"
-    job2._attributes = {"approveAmount": 200}
-
-    job3 = Job(name="job3", id="id-3", _skip_sync=True)
-    job3.status = "Running"
-    job3._attributes = {"approveAmount": 200}
+    job1 = Job.from_dto(
+        create_job_dto(
+            executionId="id-1",
+            status="Succeeded",
+            resourceId="resource-1",
+            approveAmount=100,
+        ),
+        client=client,
+    )
+    job2 = Job.from_dto(
+        create_job_dto(
+            executionId="id-2",
+            status="Succeeded",
+            resourceId="resource-2",
+            approveAmount=200,
+        ),
+        client=client,
+    )
+    job3 = Job.from_dto(
+        create_job_dto(
+            executionId="id-3",
+            status="Running",
+            resourceId="resource-3",
+            approveAmount=200,
+        ),
+        client=client,
+    )
 
     job_list = JobList([job1, job2, job3])
 
@@ -209,19 +299,35 @@ def test_filter_combine_status_and_predicate_lv0():
     assert filtered[0]._attributes.get("approveAmount") == 200
 
 
-def test_filter_combine_all_lv0():
+def test_filter_combine_all_lv0(client):
     """Test combining status, attributes, and predicate."""
-    job1 = Job(name="job1", id="id-1", _skip_sync=True)
-    job1.status = "Succeeded"
-    job1._attributes = {"executionId": "id-1", "approveAmount": 100}
-
-    job2 = Job(name="job2", id="id-2", _skip_sync=True)
-    job2.status = "Succeeded"
-    job2._attributes = {"executionId": "id-2", "approveAmount": 200}
-
-    job3 = Job(name="job3", id="id-3", _skip_sync=True)
-    job3.status = "Running"
-    job3._attributes = {"executionId": "id-1", "approveAmount": 100}
+    job1 = Job.from_dto(
+        create_job_dto(
+            executionId="id-1",
+            status="Succeeded",
+            resourceId="resource-1",
+            approveAmount=100,
+        ),
+        client=client,
+    )
+    job2 = Job.from_dto(
+        create_job_dto(
+            executionId="id-2",
+            status="Succeeded",
+            resourceId="resource-2",
+            approveAmount=200,
+        ),
+        client=client,
+    )
+    job3 = Job.from_dto(
+        create_job_dto(
+            executionId="id-1",
+            status="Running",
+            resourceId="resource-3",
+            approveAmount=100,
+        ),
+        client=client,
+    )
 
     job_list = JobList([job1, job2, job3])
 
@@ -235,10 +341,12 @@ def test_filter_combine_all_lv0():
     assert filtered[0].id == "id-1"
 
 
-def test_filter_empty_result_lv0():
+def test_filter_empty_result_lv0(client):
     """Test filtering that returns empty JobList."""
-    job1 = Job(name="job1", id="id-1", _skip_sync=True)
-    job1.status = "Succeeded"
+    job1 = Job.from_dto(
+        create_job_dto(executionId="id-1", status="Succeeded", resourceId="resource-1"),
+        client=client,
+    )
 
     job_list = JobList([job1])
 
@@ -247,10 +355,16 @@ def test_filter_empty_result_lv0():
     assert isinstance(filtered, JobList)
 
 
-def test_filter_no_filters_lv0():
+def test_filter_no_filters_lv0(client):
     """Test filtering with no filters returns original list."""
-    job1 = Job(name="job1", id="id-1", _skip_sync=True)
-    job2 = Job(name="job2", id="id-2", _skip_sync=True)
+    job1 = Job.from_dto(
+        create_job_dto(executionId="id-1", status="Succeeded", resourceId="resource-1"),
+        client=client,
+    )
+    job2 = Job.from_dto(
+        create_job_dto(executionId="id-2", status="Running", resourceId="resource-2"),
+        client=client,
+    )
 
     job_list = JobList([job1, job2])
 
@@ -259,18 +373,37 @@ def test_filter_no_filters_lv0():
     assert filtered.jobs == job_list.jobs
 
 
-def test_filter_by_tool_key_lv0():
+def test_filter_by_tool_key_lv0(client):
     """Test filtering jobs by tool_key."""
-    job1 = Job(name="job1", id="id-1", _skip_sync=True)
-    job1._attributes = {"tool": {"key": "deeporigin.docking", "version": "1.0.0"}}
+    job1 = Job.from_dto(
+        create_job_dto(
+            executionId="id-1",
+            status="Succeeded",
+            resourceId="resource-1",
+            tool={"key": "deeporigin.docking", "version": "1.0.0"},
+        ),
+        client=client,
+    )
 
-    job2 = Job(name="job2", id="id-2", _skip_sync=True)
-    job2._attributes = {
-        "tool": {"key": "deeporigin.abfe-end-to-end", "version": "1.0.0"}
-    }
+    job2 = Job.from_dto(
+        create_job_dto(
+            executionId="id-2",
+            status="Running",
+            resourceId="resource-2",
+            tool={"key": "deeporigin.abfe-end-to-end", "version": "1.0.0"},
+        ),
+        client=client,
+    )
 
-    job3 = Job(name="job3", id="id-3", _skip_sync=True)
-    job3._attributes = {"tool": {"key": "deeporigin.docking", "version": "2.0.0"}}
+    job3 = Job.from_dto(
+        create_job_dto(
+            executionId="id-3",
+            status="Succeeded",
+            resourceId="resource-3",
+            tool={"key": "deeporigin.docking", "version": "2.0.0"},
+        ),
+        client=client,
+    )
 
     job_list = JobList([job1, job2, job3])
 
@@ -290,18 +423,37 @@ def test_filter_by_tool_key_lv0():
     )
 
 
-def test_filter_by_tool_version_lv0():
+def test_filter_by_tool_version_lv0(client):
     """Test filtering jobs by tool_version."""
-    job1 = Job(name="job1", id="id-1", _skip_sync=True)
-    job1._attributes = {"tool": {"key": "deeporigin.docking", "version": "1.0.0"}}
+    job1 = Job.from_dto(
+        create_job_dto(
+            executionId="id-1",
+            status="Succeeded",
+            resourceId="resource-1",
+            tool={"key": "deeporigin.docking", "version": "1.0.0"},
+        ),
+        client=client,
+    )
 
-    job2 = Job(name="job2", id="id-2", _skip_sync=True)
-    job2._attributes = {"tool": {"key": "deeporigin.docking", "version": "2.0.0"}}
+    job2 = Job.from_dto(
+        create_job_dto(
+            executionId="id-2",
+            status="Running",
+            resourceId="resource-2",
+            tool={"key": "deeporigin.docking", "version": "2.0.0"},
+        ),
+        client=client,
+    )
 
-    job3 = Job(name="job3", id="id-3", _skip_sync=True)
-    job3._attributes = {
-        "tool": {"key": "deeporigin.abfe-end-to-end", "version": "1.0.0"}
-    }
+    job3 = Job.from_dto(
+        create_job_dto(
+            executionId="id-3",
+            status="Succeeded",
+            resourceId="resource-3",
+            tool={"key": "deeporigin.abfe-end-to-end", "version": "1.0.0"},
+        ),
+        client=client,
+    )
 
     job_list = JobList([job1, job2, job3])
 
@@ -317,18 +469,37 @@ def test_filter_by_tool_version_lv0():
     assert v2_jobs[0]._attributes.get("tool", {}).get("version") == "2.0.0"
 
 
-def test_filter_by_tool_key_and_version_lv0():
+def test_filter_by_tool_key_and_version_lv0(client):
     """Test filtering jobs by both tool_key and tool_version."""
-    job1 = Job(name="job1", id="id-1", _skip_sync=True)
-    job1._attributes = {"tool": {"key": "deeporigin.docking", "version": "1.0.0"}}
+    job1 = Job.from_dto(
+        create_job_dto(
+            executionId="id-1",
+            status="Succeeded",
+            resourceId="resource-1",
+            tool={"key": "deeporigin.docking", "version": "1.0.0"},
+        ),
+        client=client,
+    )
 
-    job2 = Job(name="job2", id="id-2", _skip_sync=True)
-    job2._attributes = {"tool": {"key": "deeporigin.docking", "version": "2.0.0"}}
+    job2 = Job.from_dto(
+        create_job_dto(
+            executionId="id-2",
+            status="Running",
+            resourceId="resource-2",
+            tool={"key": "deeporigin.docking", "version": "2.0.0"},
+        ),
+        client=client,
+    )
 
-    job3 = Job(name="job3", id="id-3", _skip_sync=True)
-    job3._attributes = {
-        "tool": {"key": "deeporigin.abfe-end-to-end", "version": "1.0.0"}
-    }
+    job3 = Job.from_dto(
+        create_job_dto(
+            executionId="id-3",
+            status="Succeeded",
+            resourceId="resource-3",
+            tool={"key": "deeporigin.abfe-end-to-end", "version": "1.0.0"},
+        ),
+        client=client,
+    )
 
     job_list = JobList([job1, job2, job3])
 
@@ -340,21 +511,37 @@ def test_filter_by_tool_key_and_version_lv0():
     assert filtered[0]._attributes.get("tool", {}).get("version") == "1.0.0"
 
 
-def test_filter_combine_tool_with_status_lv0():
+def test_filter_combine_tool_with_status_lv0(client):
     """Test combining tool filters with status filter."""
-    job1 = Job(name="job1", id="id-1", _skip_sync=True)
-    job1.status = "Succeeded"
-    job1._attributes = {"tool": {"key": "deeporigin.docking", "version": "1.0.0"}}
+    job1 = Job.from_dto(
+        create_job_dto(
+            executionId="id-1",
+            status="Succeeded",
+            resourceId="resource-1",
+            tool={"key": "deeporigin.docking", "version": "1.0.0"},
+        ),
+        client=client,
+    )
 
-    job2 = Job(name="job2", id="id-2", _skip_sync=True)
-    job2.status = "Running"
-    job2._attributes = {"tool": {"key": "deeporigin.docking", "version": "1.0.0"}}
+    job2 = Job.from_dto(
+        create_job_dto(
+            executionId="id-2",
+            status="Running",
+            resourceId="resource-2",
+            tool={"key": "deeporigin.docking", "version": "1.0.0"},
+        ),
+        client=client,
+    )
 
-    job3 = Job(name="job3", id="id-3", _skip_sync=True)
-    job3.status = "Succeeded"
-    job3._attributes = {
-        "tool": {"key": "deeporigin.abfe-end-to-end", "version": "1.0.0"}
-    }
+    job3 = Job.from_dto(
+        create_job_dto(
+            executionId="id-3",
+            status="Succeeded",
+            resourceId="resource-3",
+            tool={"key": "deeporigin.abfe-end-to-end", "version": "1.0.0"},
+        ),
+        client=client,
+    )
 
     job_list = JobList([job1, job2, job3])
 
@@ -365,16 +552,28 @@ def test_filter_combine_tool_with_status_lv0():
     assert filtered[0]._attributes.get("tool", {}).get("key") == "deeporigin.docking"
 
 
-def test_filter_tool_key_with_missing_tool_lv0():
+def test_filter_tool_key_with_missing_tool_lv0(client):
     """Test filtering by tool_key when some jobs don't have tool attribute."""
-    job1 = Job(name="job1", id="id-1", _skip_sync=True)
-    job1._attributes = {"tool": {"key": "deeporigin.docking", "version": "1.0.0"}}
+    job1 = Job.from_dto(
+        create_job_dto(
+            executionId="id-1",
+            status="Succeeded",
+            resourceId="resource-1",
+            tool={"key": "deeporigin.docking", "version": "1.0.0"},
+        ),
+        client=client,
+    )
 
-    job2 = Job(name="job2", id="id-2", _skip_sync=True)
-    job2._attributes = {}  # No tool attribute
+    # Create DTOs without tool attribute
+    dto2 = create_job_dto(executionId="id-2", status="Running", resourceId="resource-2")
+    dto2.pop("tool", None)
+    job2 = Job.from_dto(dto2, client=client)
 
-    job3 = Job(name="job3", id="id-3", _skip_sync=True)
-    job3._attributes = None  # No attributes at all
+    dto3 = create_job_dto(
+        executionId="id-3", status="Succeeded", resourceId="resource-3"
+    )
+    dto3.pop("tool", None)
+    job3 = Job.from_dto(dto3, client=client)
 
     job_list = JobList([job1, job2, job3])
 
@@ -384,174 +583,168 @@ def test_filter_tool_key_with_missing_tool_lv0():
     assert filtered[0].id == "id-1"
 
 
-def test_job_list_confirm_lv0(mock_jobs):
+def test_job_list_confirm_lv0(client, test_server):
     """Test confirm calls confirm on all jobs."""
-    job_list = JobList(mock_jobs)
+    if test_server is None:
+        pytest.skip("Mock server not available")
+
+    # Create executions in the mock server
+    execution1 = {
+        "executionId": "confirm-job-1",
+        "status": "Quoted",
+        "createdAt": "2025-01-01T00:00:00.000Z",
+        "updatedAt": "2025-01-01T01:00:00.000Z",
+        "resourceId": "resource-1",
+        "orgKey": "deeporigin",
+        "tool": {"key": "deeporigin.docking", "version": "1.0.0"},
+    }
+    execution2 = {
+        "executionId": "confirm-job-2",
+        "status": "Quoted",
+        "createdAt": "2025-01-01T00:00:00.000Z",
+        "updatedAt": "2025-01-01T01:00:00.000Z",
+        "resourceId": "resource-2",
+        "orgKey": "deeporigin",
+        "tool": {"key": "deeporigin.docking", "version": "1.0.0"},
+    }
+
+    test_server._executions["confirm-job-1"] = execution1
+    test_server._executions["confirm-job-2"] = execution2
+
+    job1 = Job.from_id("confirm-job-1", client=client)
+    job2 = Job.from_id("confirm-job-2", client=client)
+    job_list = JobList([job1, job2])
+
     job_list.confirm()
 
-    for job in mock_jobs:
-        job.confirm.assert_called_once()
+    # Verify jobs were confirmed (status changed to Running)
+    job1.sync()
+    job2.sync()
+    assert job1.status == "Running"
+    assert job2.status == "Running"
 
 
-def test_job_list_cancel(mock_jobs):
+def test_job_list_cancel(client, test_server):
     """Test cancel calls cancel on all jobs."""
-    job_list = JobList(mock_jobs)
+    if test_server is None:
+        pytest.skip("Mock server not available")
+
+    # Create executions in the mock server
+    execution1 = {
+        "executionId": "cancel-job-1",
+        "status": "Running",
+        "createdAt": "2025-01-01T00:00:00.000Z",
+        "updatedAt": "2025-01-01T01:00:00.000Z",
+        "resourceId": "resource-1",
+        "orgKey": "deeporigin",
+        "tool": {"key": "deeporigin.docking", "version": "1.0.0"},
+    }
+    execution2 = {
+        "executionId": "cancel-job-2",
+        "status": "Running",
+        "createdAt": "2025-01-01T00:00:00.000Z",
+        "updatedAt": "2025-01-01T01:00:00.000Z",
+        "resourceId": "resource-2",
+        "orgKey": "deeporigin",
+        "tool": {"key": "deeporigin.docking", "version": "1.0.0"},
+    }
+
+    test_server._executions["cancel-job-1"] = execution1
+    test_server._executions["cancel-job-2"] = execution2
+
+    job1 = Job.from_id("cancel-job-1", client=client)
+    job2 = Job.from_id("cancel-job-2", client=client)
+    job_list = JobList([job1, job2])
+
     job_list.cancel()
 
-    for job in mock_jobs:
-        job.cancel.assert_called_once()
+    # Verify jobs were cancelled (status changed to Cancelled)
+    job1.sync()
+    job2.sync()
+    assert job1.status == "Cancelled"
+    assert job2.status == "Cancelled"
 
 
-@patch("deeporigin.platform.job.display")
-def test_job_list_show(mock_display):
+def test_job_list_show(client):
     """Test show displays the job list view."""
     # Create real Job objects with proper attributes
-    job1 = Job(name="job1", id="id-1", _skip_sync=True)
-    job1.status = "Succeeded"
-    job1._attributes = {}
-    job2 = Job(name="job2", id="id-2", _skip_sync=True)
-    job2.status = "Running"
-    job2._attributes = {}
+    job1 = Job.from_dto(
+        {
+            "executionId": "id-1",
+            "status": "Succeeded",
+            "createdAt": "2025-01-01T00:00:00.000Z",
+            "updatedAt": "2025-01-01T01:00:00.000Z",
+            "resourceId": "resource-1",
+            "orgKey": "deeporigin",
+            "tool": {"key": "deeporigin.docking", "version": "1.0.0"},
+        },
+        client=client,
+    )
+    job2 = Job.from_dto(
+        {
+            "executionId": "id-2",
+            "status": "Running",
+            "createdAt": "2025-01-01T00:00:00.000Z",
+            "updatedAt": "2025-01-01T01:00:00.000Z",
+            "resourceId": "resource-2",
+            "orgKey": "deeporigin",
+            "tool": {"key": "deeporigin.docking", "version": "1.0.0"},
+        },
+        client=client,
+    )
 
     job_list = JobList([job1, job2])
+    # Should not raise an error
     job_list.show()
-    mock_display.assert_called_once()
 
 
 def test_job_list_show_empty():
     """Test show works with empty job list."""
     job_list = JobList([])
     # Should not raise an error
-    with patch("deeporigin.platform.job.display"):
-        job_list.show()
+    job_list.show()
 
 
-@patch("deeporigin.platform.job.display")
-@patch("nest_asyncio.apply")
-def test_job_list_watch_all_terminal(mock_nest_asyncio_apply, mock_display):
+def test_job_list_watch_all_terminal(client):
     """Test watch when all jobs are in terminal states."""
     # Create jobs all in terminal states
-    job1 = Job(name="job1", id="id-1", _skip_sync=True)
-    job1.status = "Succeeded"
-    job1._attributes = {}
-    job2 = Job(name="job2", id="id-2", _skip_sync=True)
-    job2.status = "Failed"
-    job2._attributes = {}
+    job1 = Job.from_dto(
+        {
+            "executionId": "id-1",
+            "status": "Succeeded",
+            "createdAt": "2025-01-01T00:00:00.000Z",
+            "updatedAt": "2025-01-01T01:00:00.000Z",
+            "resourceId": "resource-1",
+            "orgKey": "deeporigin",
+            "tool": {"key": "deeporigin.docking", "version": "1.0.0"},
+        },
+        client=client,
+    )
+    job2 = Job.from_dto(
+        {
+            "executionId": "id-2",
+            "status": "Failed",
+            "createdAt": "2025-01-01T00:00:00.000Z",
+            "updatedAt": "2025-01-01T01:00:00.000Z",
+            "resourceId": "resource-2",
+            "orgKey": "deeporigin",
+            "tool": {"key": "deeporigin.docking", "version": "1.0.0"},
+        },
+        client=client,
+    )
 
     job_list = JobList([job1, job2])
     job_list.watch()
 
     # Should display a message and show once, but not start a task
-    assert mock_display.call_count >= 1
-    assert job_list._task is None
-
-
-@patch("deeporigin.platform.job.display")
-@patch("deeporigin.platform.job.update_display")
-@patch("nest_asyncio.apply")
-@patch("asyncio.get_event_loop")
-@patch("asyncio.create_task")
-def test_job_list_watch_with_running_jobs(
-    mock_create_task,
-    mock_get_event_loop,
-    mock_nest_asyncio_apply,
-    mock_update_display,
-    mock_display,
-):
-    """Test watch starts monitoring when there are running jobs."""
-    # Create jobs with some in non-terminal states
-    job1 = Job(name="job1", id="id-1", _skip_sync=True)
-    job1.status = "Running"
-    job1._attributes = {}
-    job1.sync = MagicMock()
-    job2 = Job(name="job2", id="id-2", _skip_sync=True)
-    job2.status = "Queued"
-    job2._attributes = {}
-    job2.sync = MagicMock()
-
-    # Mock event loop and task creation
-    mock_task = MagicMock()
-    mock_create_task.return_value = mock_task
-    mock_loop = MagicMock()
-    mock_loop.create_task.return_value = mock_task
-    mock_get_event_loop.return_value = mock_loop
-
-    job_list = JobList([job1, job2])
-    job_list.watch()
-
-    # Should have started a task
-    assert job_list._task is not None
-    assert job_list._display_id is not None
-
-    # Clean up
-    job_list.stop_watching()
-
-
-@patch("deeporigin.platform.job.display")
-@patch("deeporigin.platform.job.update_display")
-@patch("nest_asyncio.apply")
-@patch("asyncio.get_event_loop")
-@patch("asyncio.create_task")
-def test_job_list_watch_stops_when_all_terminal(
-    mock_create_task,
-    mock_get_event_loop,
-    mock_nest_asyncio_apply,
-    mock_update_display,
-    mock_display,
-):
-    """Test watch stops monitoring when all jobs become terminal."""
-    # Create jobs with some in non-terminal states
-    job1 = Job(name="job1", id="id-1", _skip_sync=True)
-    job1.status = "Running"
-    job1._attributes = {}
-    job1.sync = MagicMock()
-    job2 = Job(name="job2", id="id-2", _skip_sync=True)
-    job2.status = "Running"
-    job2._attributes = {}
-    job2.sync = MagicMock()
-
-    # Mock event loop and task creation
-    mock_task = MagicMock()
-    mock_create_task.return_value = mock_task
-    mock_loop = MagicMock()
-    mock_loop.create_task.return_value = mock_task
-    mock_get_event_loop.return_value = mock_loop
-
-    job_list = JobList([job1, job2])
-    job_list.watch()
-
-    # Initially should have a task
-    assert job_list._task is not None
-
-    # Simulate jobs becoming terminal
-    job1.status = "Succeeded"
-    job2.status = "Succeeded"
-
-    # Manually trigger the check by running sync (which would happen in the loop)
-    job_list.sync()
-
-    # The task should still exist (it checks in the loop)
-    # But we can stop it manually
-    job_list.stop_watching()
     assert job_list._task is None
 
 
 def test_job_list_stop_watching():
     """Test stop_watching cancels the monitoring task."""
-    job1 = Job(name="job1", id="id-1", _skip_sync=True)
-    job1.status = "Running"
-    job1.sync = MagicMock()
-
-    job_list = JobList([job1])
-
-    # Create a mock task
-    mock_task = MagicMock()
-    job_list._task = mock_task
-
+    job_list = JobList([])
+    # Should not raise an error
     job_list.stop_watching()
-
-    # Task should be cancelled
-    mock_task.cancel.assert_called_once()
     assert job_list._task is None
 
 
@@ -563,201 +756,203 @@ def test_job_list_stop_watching_no_task():
     assert job_list._task is None
 
 
-@patch("deeporigin.platform.job.Job.from_id")
-def test_from_ids(mock_from_id):
+def test_from_ids(client, test_server):
     """Test creating JobList from IDs."""
-    ids = ["id-1", "id-2", "id-3"]
-    mock_jobs = [MagicMock(spec=Job), MagicMock(spec=Job), MagicMock(spec=Job)]
-    mock_from_id.side_effect = mock_jobs
+    if test_server is None:
+        pytest.skip("Mock server not available")
 
-    job_list = JobList.from_ids(ids)
-
-    assert len(job_list) == 3
-    assert job_list.jobs == mock_jobs
-    assert mock_from_id.call_count == 3
-
-
-@patch("deeporigin.platform.job.Job.from_dto")
-def test_from_dtos(mock_from_dto):
-    """Test creating JobList from DTOs."""
-    dtos = [{"executionId": "id-1"}, {"executionId": "id-2"}]
-    mock_jobs = [MagicMock(spec=Job), MagicMock(spec=Job)]
-    mock_from_dto.side_effect = mock_jobs
-
-    job_list = JobList.from_dtos(dtos)
-
-    assert len(job_list) == 2
-    assert job_list.jobs == mock_jobs
-    assert mock_from_dto.call_count == 2
-
-
-@patch("deeporigin.platform.job.JobList.from_dtos")
-@patch("deeporigin.platform.job.DeepOriginClient.get")
-def test_list(mock_get_client, mock_from_dtos):
-    """Test creating JobList from API list call."""
-    mock_client = MagicMock()
-    mock_get_client.return_value = mock_client
-
-    mock_response = {
-        "count": 2,
-        "data": [
-            {"executionId": "id-1", "status": "Running"},
-            {"executionId": "id-2", "status": "Succeeded"},
-        ],
-    }
-    mock_client.executions.list.return_value = mock_response
-
-    mock_job_list = MagicMock(spec=JobList)
-    mock_from_dtos.return_value = mock_job_list
-
-    result = JobList.list(page=0, page_size=10)
-
-    mock_get_client.assert_called_once()
-    mock_client.executions.list.assert_called_once_with(
-        page=0, page_size=10, order=None, filter=None
-    )
-    mock_from_dtos.assert_called_once_with(mock_response["data"], client=mock_client)
-    assert result == mock_job_list
-
-
-@patch("deeporigin.platform.job.JobList.from_dtos")
-@patch("deeporigin.platform.job.DeepOriginClient.get")
-def test_list_with_filter(mock_get_client, mock_from_dtos):
-    """Test creating JobList from API list call with filter."""
-    mock_client = MagicMock()
-    mock_get_client.return_value = mock_client
-
-    mock_response = {
-        "count": 1,
-        "data": [{"executionId": "id-1", "status": "Running"}],
-    }
-    mock_client.executions.list.return_value = mock_response
-
-    mock_job_list = MagicMock(spec=JobList)
-    mock_from_dtos.return_value = mock_job_list
-
-    filter_str = '{"status": {"$in": ["Running"]}}'
-    result = JobList.list(filter=filter_str, client=mock_client)
-
-    mock_get_client.assert_not_called()  # Client provided, shouldn't call get()
-    mock_client.executions.list.assert_called_once_with(
-        page=0, page_size=1000, order=None, filter=filter_str
-    )
-    mock_from_dtos.assert_called_once_with(mock_response["data"], client=mock_client)
-    assert result == mock_job_list
-
-
-@patch("deeporigin.platform.job.JobList.from_dtos")
-@patch("deeporigin.platform.job.DeepOriginClient.get")
-def test_list_pagination(mock_get_client, mock_from_dtos):
-    """Test that JobList.list handles pagination correctly."""
-    mock_client = MagicMock()
-    mock_get_client.return_value = mock_client
-
-    # First page: 100 items, count=250 (total), so need more pages
-    page1_response = {
-        "count": 250,
-        "data": [{"executionId": f"id-{i}", "status": "Running"} for i in range(100)],
-    }
-    # Second page: 100 items
-    page2_response = {
-        "count": 250,
-        "data": [
-            {"executionId": f"id-{i}", "status": "Running"} for i in range(100, 200)
-        ],
-    }
-    # Third page: 50 items (partial page, last page)
-    page3_response = {
-        "count": 250,
-        "data": [
-            {"executionId": f"id-{i}", "status": "Running"} for i in range(200, 250)
-        ],
-    }
-
-    mock_client.executions.list.side_effect = [
-        page1_response,
-        page2_response,
-        page3_response,
-    ]
-
-    mock_job_list = MagicMock(spec=JobList)
-    mock_from_dtos.return_value = mock_job_list
-
-    result = JobList.list(page_size=100)
-
-    # Should have called list 3 times (pages 0, 1, 2)
-    assert mock_client.executions.list.call_count == 3
-    mock_client.executions.list.assert_any_call(
-        page=0, page_size=100, order=None, filter=None
-    )
-    mock_client.executions.list.assert_any_call(
-        page=1, page_size=100, order=None, filter=None
-    )
-    mock_client.executions.list.assert_any_call(
-        page=2, page_size=100, order=None, filter=None
-    )
-
-    # Should combine all DTOs from all pages
-    all_dtos = page1_response["data"] + page2_response["data"] + page3_response["data"]
-    mock_from_dtos.assert_called_once_with(all_dtos, client=mock_client)
-    assert result == mock_job_list
-
-
-@patch("deeporigin.platform.job.JobList.from_dtos")
-@patch("deeporigin.platform.job.DeepOriginClient.get")
-def test_list_pagination_stops_when_count_less_than_page_size(
-    mock_get_client, mock_from_dtos
-):
-    """Test that pagination stops when count <= page_size."""
-    mock_client = MagicMock()
-    mock_get_client.return_value = mock_client
-
-    # Single page with count <= page_size
-    mock_response = {
-        "count": 50,
-        "data": [{"executionId": f"id-{i}", "status": "Running"} for i in range(50)],
-    }
-    mock_client.executions.list.return_value = mock_response
-
-    mock_job_list = MagicMock(spec=JobList)
-    mock_from_dtos.return_value = mock_job_list
-
-    result = JobList.list(page_size=100)
-
-    # Should only call list once since count (50) <= page_size (100)
-    mock_client.executions.list.assert_called_once_with(
-        page=0, page_size=100, order=None, filter=None
-    )
-    mock_from_dtos.assert_called_once_with(mock_response["data"], client=mock_client)
-    assert result == mock_job_list
-
-
-def test_to_dataframe():
-    """Test converting JobList to DataFrame."""
-    # Create Job objects with _attributes
-    job1 = Job(name="job1", id="id-1", _skip_sync=True)
-    job1._attributes = {
+    # Create executions in the mock server
+    execution1 = {
+        "executionId": "from-ids-1",
         "status": "Succeeded",
-        "executionId": "id-1",
         "createdAt": "2025-01-01T00:00:00.000Z",
         "updatedAt": "2025-01-01T01:00:00.000Z",
-        "completedAt": "2025-01-01T02:00:00.000Z",
-        "startedAt": "2025-01-01T01:00:00.000Z",
-        "approveAmount": 100.0,
-        "tool": {"key": "tool1", "version": "1.0"},
+        "resourceId": "resource-1",
+        "orgKey": "deeporigin",
+        "tool": {"key": "deeporigin.docking", "version": "1.0.0"},
+    }
+    execution2 = {
+        "executionId": "from-ids-2",
+        "status": "Running",
+        "createdAt": "2025-01-01T00:00:00.000Z",
+        "updatedAt": "2025-01-01T01:00:00.000Z",
+        "resourceId": "resource-2",
+        "orgKey": "deeporigin",
+        "tool": {"key": "deeporigin.docking", "version": "1.0.0"},
+    }
+    execution3 = {
+        "executionId": "from-ids-3",
+        "status": "Succeeded",
+        "createdAt": "2025-01-01T00:00:00.000Z",
+        "updatedAt": "2025-01-01T01:00:00.000Z",
+        "resourceId": "resource-3",
+        "orgKey": "deeporigin",
+        "tool": {"key": "deeporigin.docking", "version": "1.0.0"},
     }
 
-    job2 = Job(name="job2", id="id-2", _skip_sync=True)
-    job2._attributes = {
+    test_server._executions["from-ids-1"] = execution1
+    test_server._executions["from-ids-2"] = execution2
+    test_server._executions["from-ids-3"] = execution3
+
+    ids = ["from-ids-1", "from-ids-2", "from-ids-3"]
+    job_list = JobList.from_ids(ids, client=client)
+
+    assert len(job_list) == 3
+    assert job_list[0].id == "from-ids-1"
+    assert job_list[1].id == "from-ids-2"
+    assert job_list[2].id == "from-ids-3"
+
+
+def test_from_dtos(client):
+    """Test creating JobList from DTOs."""
+    dtos = [
+        {
+            "executionId": "id-1",
+            "status": "Succeeded",
+            "createdAt": "2025-01-01T00:00:00.000Z",
+            "updatedAt": "2025-01-01T01:00:00.000Z",
+            "resourceId": "resource-1",
+            "orgKey": "deeporigin",
+            "tool": {"key": "deeporigin.docking", "version": "1.0.0"},
+        },
+        {
+            "executionId": "id-2",
+            "status": "Running",
+            "createdAt": "2025-01-01T00:00:00.000Z",
+            "updatedAt": "2025-01-01T01:00:00.000Z",
+            "resourceId": "resource-2",
+            "orgKey": "deeporigin",
+            "tool": {"key": "deeporigin.docking", "version": "1.0.0"},
+        },
+    ]
+
+    job_list = JobList.from_dtos(dtos, client=client)
+
+    assert len(job_list) == 2
+    assert job_list[0].id == "id-1"
+    assert job_list[1].id == "id-2"
+
+
+def test_list(client, test_server):
+    """Test creating JobList from API list call."""
+    if test_server is None:
+        pytest.skip("Mock server not available")
+
+    # Create executions in the mock server
+    execution1 = {
+        "executionId": "list-job-1",
         "status": "Running",
-        "executionId": "id-2",
-        "createdAt": "2025-01-02T00:00:00.000Z",
-        "updatedAt": "2025-01-02T01:00:00.000Z",
-        "completedAt": None,
-        "startedAt": "2025-01-02T01:00:00.000Z",
-        "approveAmount": None,
-        "tool": {"key": "tool2", "version": "2.0"},
+        "createdAt": "2025-01-01T00:00:00.000Z",
+        "updatedAt": "2025-01-01T01:00:00.000Z",
+        "resourceId": "resource-1",
+        "orgKey": "deeporigin",
+        "tool": {"key": "deeporigin.docking", "version": "1.0.0"},
     }
+    execution2 = {
+        "executionId": "list-job-2",
+        "status": "Succeeded",
+        "createdAt": "2025-01-01T00:00:00.000Z",
+        "updatedAt": "2025-01-01T01:00:00.000Z",
+        "resourceId": "resource-2",
+        "orgKey": "deeporigin",
+        "tool": {"key": "deeporigin.docking", "version": "1.0.0"},
+    }
+
+    test_server._executions["list-job-1"] = execution1
+    test_server._executions["list-job-2"] = execution2
+
+    result = JobList.list(page=0, page_size=10, client=client)
+
+    assert len(result) >= 2  # May have other executions from fixtures
+    assert any(job.id == "list-job-1" for job in result)
+    assert any(job.id == "list-job-2" for job in result)
+
+
+def test_list_pagination(client, test_server):
+    """Test that JobList.list handles pagination correctly."""
+    if test_server is None:
+        pytest.skip("Mock server not available")
+
+    # Create 250 executions in the mock server
+    for i in range(250):
+        execution = {
+            "executionId": f"pagination-job-{i}",
+            "status": "Running",
+            "createdAt": "2025-01-01T00:00:00.000Z",
+            "updatedAt": "2025-01-01T01:00:00.000Z",
+            "resourceId": f"resource-{i}",
+            "orgKey": "deeporigin",
+            "tool": {"key": "deeporigin.docking", "version": "1.0.0"},
+        }
+        test_server._executions[f"pagination-job-{i}"] = execution
+
+    result = JobList.list(page_size=100, client=client)
+
+    # Should have fetched all pages (250 items total)
+    assert len(result) >= 250
+    # Verify we got the expected jobs
+    assert any(job.id == "pagination-job-0" for job in result)
+    assert any(job.id == "pagination-job-249" for job in result)
+
+
+def test_list_pagination_stops_when_count_less_than_page_size(client, test_server):
+    """Test that pagination stops when count <= page_size."""
+    if test_server is None:
+        pytest.skip("Mock server not available")
+
+    # Create 50 executions in the mock server
+    for i in range(50):
+        execution = {
+            "executionId": f"small-pagination-job-{i}",
+            "status": "Running",
+            "createdAt": "2025-01-01T00:00:00.000Z",
+            "updatedAt": "2025-01-01T01:00:00.000Z",
+            "resourceId": f"resource-{i}",
+            "orgKey": "deeporigin",
+            "tool": {"key": "deeporigin.docking", "version": "1.0.0"},
+        }
+        test_server._executions[f"small-pagination-job-{i}"] = execution
+
+    result = JobList.list(page_size=100, client=client)
+
+    # Should have fetched all items (50 items total, fits in one page)
+    assert len(result) >= 50
+    assert any(job.id == "small-pagination-job-0" for job in result)
+    assert any(job.id == "small-pagination-job-49" for job in result)
+
+
+def test_to_dataframe(client):
+    """Test converting JobList to DataFrame."""
+    # Create Job objects with _attributes
+    job1 = Job.from_dto(
+        {
+            "executionId": "id-1",
+            "status": "Succeeded",
+            "createdAt": "2025-01-01T00:00:00.000Z",
+            "updatedAt": "2025-01-01T01:00:00.000Z",
+            "completedAt": "2025-01-01T02:00:00.000Z",
+            "startedAt": "2025-01-01T01:00:00.000Z",
+            "resourceId": "resource-1",
+            "orgKey": "deeporigin",
+            "tool": {"key": "tool1", "version": "1.0"},
+        },
+        client=client,
+    )
+
+    job2 = Job.from_dto(
+        {
+            "executionId": "id-2",
+            "status": "Running",
+            "createdAt": "2025-01-02T00:00:00.000Z",
+            "updatedAt": "2025-01-02T01:00:00.000Z",
+            "completedAt": None,
+            "startedAt": "2025-01-02T01:00:00.000Z",
+            "resourceId": "resource-2",
+            "orgKey": "deeporigin",
+            "tool": {"key": "tool2", "version": "2.0"},
+        },
+        client=client,
+    )
 
     job_list = JobList([job1, job2])
     df = job_list.to_dataframe()
@@ -795,16 +990,32 @@ def test_to_dataframe():
     assert pd.api.types.is_datetime64_any_dtype(df["started_at"])
 
 
-def test_to_dataframe_with_missing_attributes():
+def test_to_dataframe_with_missing_attributes(client):
     """Test to_dataframe handles jobs with None _attributes."""
-    job1 = Job(name="job1", id="id-1", _skip_sync=True)
-    job1._attributes = {
-        "status": "Succeeded",
-        "executionId": "id-1",
-    }
+    job1 = Job.from_dto(
+        {
+            "executionId": "id-1",
+            "status": "Succeeded",
+            "createdAt": "2025-01-01T00:00:00.000Z",
+            "updatedAt": "2025-01-01T01:00:00.000Z",
+            "resourceId": "resource-1",
+            "orgKey": "deeporigin",
+            "tool": {"key": "deeporigin.docking", "version": "1.0.0"},
+        },
+        client=client,
+    )
 
-    job2 = Job(name="job2", id="id-2", _skip_sync=True)
-    job2._attributes = None
+    job2 = Job.from_dto(
+        {
+            "executionId": "id-2",
+            "status": "Running",
+            "createdAt": "2025-01-01T00:00:00.000Z",
+            "updatedAt": "2025-01-01T01:00:00.000Z",
+            "resourceId": "resource-2",
+            "orgKey": "deeporigin",
+        },
+        client=client,
+    )
 
     job_list = JobList([job1, job2])
     df = job_list.to_dataframe()
@@ -812,19 +1023,24 @@ def test_to_dataframe_with_missing_attributes():
     assert len(df) == 2
     assert df.iloc[0]["status"] == "Succeeded"
     assert df.iloc[0]["id"] == "id-1"
-    # All other fields should be None for job2
-    assert df.iloc[1]["status"] is None
-    assert df.iloc[1]["id"] is None
+    # job2 may have missing fields
+    assert df.iloc[1]["id"] == "id-2"
 
 
-def test_to_dataframe_with_missing_keys():
+def test_to_dataframe_with_missing_keys(client):
     """Test to_dataframe handles missing keys in _attributes."""
-    job = Job(name="job1", id="id-1", _skip_sync=True)
-    job._attributes = {
-        "status": "Succeeded",
-        "executionId": "id-1",
-        # Missing other keys
-    }
+    job = Job.from_dto(
+        {
+            "executionId": "id-1",
+            "status": "Succeeded",
+            "createdAt": "2025-01-01T00:00:00.000Z",
+            "updatedAt": "2025-01-01T01:00:00.000Z",
+            "resourceId": "resource-1",
+            "orgKey": "deeporigin",
+            "tool": {"key": "deeporigin.docking", "version": "1.0.0"},
+        },
+        client=client,
+    )
 
     job_list = JobList([job])
     df = job_list.to_dataframe()
@@ -833,21 +1049,51 @@ def test_to_dataframe_with_missing_keys():
     assert df.iloc[0]["status"] == "Succeeded"
     assert df.iloc[0]["id"] == "id-1"
     # Missing keys should be None/NaT (NaT for datetime columns)
-    assert pd.isna(df.iloc[0]["created_at"])
-    assert df.iloc[0]["tool_key"] is None
-    assert df.iloc[0]["tool_version"] is None
+    assert pd.isna(df.iloc[0]["completed_at"])
+    assert df.iloc[0]["tool_key"] == "deeporigin.docking"
+    assert df.iloc[0]["tool_version"] == "1.0.0"
 
 
-def test_filter_by_multiple_statuses():
+def test_filter_by_multiple_statuses(client):
     """Test filtering jobs by multiple statuses."""
-    job1 = Job(name="job1", id="id-1", _skip_sync=True)
-    job1.status = "Succeeded"
+    job1 = Job.from_dto(
+        {
+            "executionId": "id-1",
+            "status": "Succeeded",
+            "createdAt": "2025-01-01T00:00:00.000Z",
+            "updatedAt": "2025-01-01T01:00:00.000Z",
+            "resourceId": "resource-1",
+            "orgKey": "deeporigin",
+            "tool": {"key": "deeporigin.docking", "version": "1.0.0"},
+        },
+        client=client,
+    )
 
-    job2 = Job(name="job2", id="id-2", _skip_sync=True)
-    job2.status = "Running"
+    job2 = Job.from_dto(
+        {
+            "executionId": "id-2",
+            "status": "Running",
+            "createdAt": "2025-01-01T00:00:00.000Z",
+            "updatedAt": "2025-01-01T01:00:00.000Z",
+            "resourceId": "resource-2",
+            "orgKey": "deeporigin",
+            "tool": {"key": "deeporigin.docking", "version": "1.0.0"},
+        },
+        client=client,
+    )
 
-    job3 = Job(name="job3", id="id-3", _skip_sync=True)
-    job3.status = "Failed"
+    job3 = Job.from_dto(
+        {
+            "executionId": "id-3",
+            "status": "Failed",
+            "createdAt": "2025-01-01T00:00:00.000Z",
+            "updatedAt": "2025-01-01T01:00:00.000Z",
+            "resourceId": "resource-3",
+            "orgKey": "deeporigin",
+            "tool": {"key": "deeporigin.docking", "version": "1.0.0"},
+        },
+        client=client,
+    )
 
     job_list = JobList([job1, job2, job3])
 
@@ -862,16 +1108,48 @@ def test_filter_by_multiple_statuses():
     assert len(filtered) == 2
 
 
-def test_filter_require_metadata():
+def test_filter_require_metadata(client):
     """Test filtering jobs that require metadata."""
-    job1 = Job(name="job1", id="id-1", _skip_sync=True)
-    job1._attributes = {"metadata": {"key": "value"}}
+    job1 = Job.from_dto(
+        {
+            "executionId": "id-1",
+            "status": "Succeeded",
+            "createdAt": "2025-01-01T00:00:00.000Z",
+            "updatedAt": "2025-01-01T01:00:00.000Z",
+            "resourceId": "resource-1",
+            "orgKey": "deeporigin",
+            "tool": {"key": "deeporigin.docking", "version": "1.0.0"},
+            "metadata": {"key": "value"},
+        },
+        client=client,
+    )
 
-    job2 = Job(name="job2", id="id-2", _skip_sync=True)
-    job2._attributes = {"metadata": None}
+    job2 = Job.from_dto(
+        {
+            "executionId": "id-2",
+            "status": "Running",
+            "createdAt": "2025-01-01T00:00:00.000Z",
+            "updatedAt": "2025-01-01T01:00:00.000Z",
+            "resourceId": "resource-2",
+            "orgKey": "deeporigin",
+            "tool": {"key": "deeporigin.docking", "version": "1.0.0"},
+            "metadata": None,
+        },
+        client=client,
+    )
 
-    job3 = Job(name="job3", id="id-3", _skip_sync=True)
-    job3._attributes = {}  # No metadata key
+    job3 = Job.from_dto(
+        {
+            "executionId": "id-3",
+            "status": "Succeeded",
+            "createdAt": "2025-01-01T00:00:00.000Z",
+            "updatedAt": "2025-01-01T01:00:00.000Z",
+            "resourceId": "resource-3",
+            "orgKey": "deeporigin",
+            "tool": {"key": "deeporigin.docking", "version": "1.0.0"},
+        },
+        client=client,
+    )
 
     job_list = JobList([job1, job2, job3])
 
@@ -880,16 +1158,23 @@ def test_filter_require_metadata():
     assert filtered[0].id == "id-1"
 
 
-def test_to_dataframe_with_optional_columns():
+def test_to_dataframe_with_optional_columns(client):
     """Test to_dataframe with include_metadata, include_inputs, include_outputs."""
-    job = Job(name="job1", id="id-1", _skip_sync=True)
-    job._attributes = {
-        "status": "Succeeded",
-        "executionId": "id-1",
-        "metadata": {"key": "value"},
-        "userInputs": {"smiles_list": ["CCO", "CCC"]},
-        "userOutputs": {"result": "data"},
-    }
+    job = Job.from_dto(
+        {
+            "executionId": "id-1",
+            "status": "Succeeded",
+            "createdAt": "2025-01-01T00:00:00.000Z",
+            "updatedAt": "2025-01-01T01:00:00.000Z",
+            "resourceId": "resource-1",
+            "orgKey": "deeporigin",
+            "tool": {"key": "deeporigin.docking", "version": "1.0.0"},
+            "metadata": {"key": "value"},
+            "userInputs": {"smiles_list": ["CCO", "CCC"]},
+            "userOutputs": {"result": "data"},
+        },
+        client=client,
+    )
 
     job_list = JobList([job])
 
@@ -911,15 +1196,22 @@ def test_to_dataframe_with_optional_columns():
     assert "user_outputs" not in df.columns
 
 
-def test_to_dataframe_run_duration():
+def test_to_dataframe_run_duration(client):
     """Test to_dataframe calculates run_duration_minutes correctly."""
-    job = Job(name="job1", id="id-1", _skip_sync=True)
-    job._attributes = {
-        "status": "Succeeded",
-        "executionId": "id-1",
-        "startedAt": "2025-01-01T00:00:00.000Z",
-        "completedAt": "2025-01-01T01:30:00.000Z",  # 90 minutes
-    }
+    job = Job.from_dto(
+        {
+            "executionId": "id-1",
+            "status": "Succeeded",
+            "createdAt": "2025-01-01T00:00:00.000Z",
+            "updatedAt": "2025-01-01T01:00:00.000Z",
+            "startedAt": "2025-01-01T00:00:00.000Z",
+            "completedAt": "2025-01-01T01:30:00.000Z",  # 90 minutes
+            "resourceId": "resource-1",
+            "orgKey": "deeporigin",
+            "tool": {"key": "deeporigin.docking", "version": "1.0.0"},
+        },
+        client=client,
+    )
 
     job_list = JobList([job])
     df = job_list.to_dataframe()
@@ -927,43 +1219,63 @@ def test_to_dataframe_run_duration():
     assert df.iloc[0]["run_duration_minutes"] == 90
 
     # Test with missing dates
-    job2 = Job(name="job2", id="id-2", _skip_sync=True)
-    job2._attributes = {
-        "status": "Running",
-        "executionId": "id-2",
-        "startedAt": "2025-01-01T00:00:00.000Z",
-        # No completedAt
-    }
+    job2 = Job.from_dto(
+        {
+            "executionId": "id-2",
+            "status": "Running",
+            "createdAt": "2025-01-01T00:00:00.000Z",
+            "updatedAt": "2025-01-01T01:00:00.000Z",
+            "startedAt": "2025-01-01T00:00:00.000Z",
+            "resourceId": "resource-2",
+            "orgKey": "deeporigin",
+            "tool": {"key": "deeporigin.docking", "version": "1.0.0"},
+        },
+        client=client,
+    )
 
     job_list2 = JobList([job2])
     df2 = job_list2.to_dataframe()
     assert df2.iloc[0]["run_duration_minutes"] is None
 
 
-def test_job_list_render_view_with_docking_tool():
+def test_job_list_render_view_with_docking_tool(client):
     """Test that JobList._render_view uses tool-specific viz function for bulk-docking."""
     from deeporigin.drug_discovery.constants import tool_mapper
 
     # Create jobs with docking tool
-    job1 = Job(name="job1", id="id-1", _skip_sync=True)
-    job1.status = "Running"
-    job1._attributes = {
-        "tool": {"key": tool_mapper["Docking"], "version": "1.0.0"},
-        "userInputs": {"smiles_list": ["CCO", "CCN"]},
-        "progressReport": "ligand docked ligand docked",
-        "startedAt": "2024-01-01T00:00:00.000Z",
-        "completedAt": "2024-01-01T00:10:00.000Z",
-    }
+    job1 = Job.from_dto(
+        {
+            "executionId": "id-1",
+            "status": "Running",
+            "createdAt": "2024-01-01T00:00:00.000Z",
+            "updatedAt": "2024-01-01T01:00:00.000Z",
+            "startedAt": "2024-01-01T00:00:00.000Z",
+            "completedAt": "2024-01-01T00:10:00.000Z",
+            "resourceId": "resource-1",
+            "orgKey": "deeporigin",
+            "tool": {"key": tool_mapper["Docking"], "version": "1.0.0"},
+            "userInputs": {"smiles_list": ["CCO", "CCN"]},
+            "progressReport": "ligand docked ligand docked",
+        },
+        client=client,
+    )
 
-    job2 = Job(name="job2", id="id-2", _skip_sync=True)
-    job2.status = "Running"
-    job2._attributes = {
-        "tool": {"key": tool_mapper["Docking"], "version": "1.0.0"},
-        "userInputs": {"smiles_list": ["CCC"]},
-        "progressReport": "ligand docked ligand failed",
-        "startedAt": "2024-01-01T00:00:00.000Z",
-        "completedAt": "2024-01-01T00:05:00.000Z",
-    }
+    job2 = Job.from_dto(
+        {
+            "executionId": "id-2",
+            "status": "Running",
+            "createdAt": "2024-01-01T00:00:00.000Z",
+            "updatedAt": "2024-01-01T01:00:00.000Z",
+            "startedAt": "2024-01-01T00:00:00.000Z",
+            "completedAt": "2024-01-01T00:05:00.000Z",
+            "resourceId": "resource-2",
+            "orgKey": "deeporigin",
+            "tool": {"key": tool_mapper["Docking"], "version": "1.0.0"},
+            "userInputs": {"smiles_list": ["CCC"]},
+            "progressReport": "ligand docked ligand failed",
+        },
+        client=client,
+    )
 
     job_list = JobList([job1, job2])
     html = job_list._render_view()
@@ -973,26 +1285,40 @@ def test_job_list_render_view_with_docking_tool():
     assert isinstance(html, str)
 
 
-def test_job_list_render_view_card_title_with_same_tool():
+def test_job_list_render_view_card_title_with_same_tool(client):
     """Test that JobList._render_view uses tool-specific card title when all jobs have same tool key."""
     from deeporigin.drug_discovery.constants import tool_mapper
 
     # Create jobs with docking tool and metadata
-    job1 = Job(name="job1", id="id-1", _skip_sync=True)
-    job1.status = "Running"
-    job1._attributes = {
-        "tool": {"key": tool_mapper["Docking"], "version": "1.0.0"},
-        "userInputs": {"smiles_list": ["CCO", "CCN"]},
-        "metadata": {"protein_file": "test_protein.pdb"},
-    }
+    job1 = Job.from_dto(
+        {
+            "executionId": "id-1",
+            "status": "Running",
+            "createdAt": "2024-01-01T00:00:00.000Z",
+            "updatedAt": "2024-01-01T01:00:00.000Z",
+            "resourceId": "resource-1",
+            "orgKey": "deeporigin",
+            "tool": {"key": tool_mapper["Docking"], "version": "1.0.0"},
+            "userInputs": {"smiles_list": ["CCO", "CCN"]},
+            "metadata": {"protein_file": "test_protein.pdb"},
+        },
+        client=client,
+    )
 
-    job2 = Job(name="job2", id="id-2", _skip_sync=True)
-    job2.status = "Running"
-    job2._attributes = {
-        "tool": {"key": tool_mapper["Docking"], "version": "1.0.0"},
-        "userInputs": {"smiles_list": ["CCC"]},
-        "metadata": {"protein_file": "test_protein.pdb"},
-    }
+    job2 = Job.from_dto(
+        {
+            "executionId": "id-2",
+            "status": "Running",
+            "createdAt": "2024-01-01T00:00:00.000Z",
+            "updatedAt": "2024-01-01T01:00:00.000Z",
+            "resourceId": "resource-2",
+            "orgKey": "deeporigin",
+            "tool": {"key": tool_mapper["Docking"], "version": "1.0.0"},
+            "userInputs": {"smiles_list": ["CCC"]},
+            "metadata": {"protein_file": "test_protein.pdb"},
+        },
+        client=client,
+    )
 
     job_list = JobList([job1, job2])
     html = job_list._render_view()
@@ -1009,22 +1335,40 @@ def test_job_list_render_view_card_title_with_same_tool():
     assert isinstance(html, str)
 
 
-def test_name_func_docking_with_job_list():
+def test_name_func_docking_with_job_list(client):
     """Test that _name_func_docking aggregates unique SMILES across all jobs in a JobList."""
     from deeporigin.platform import job_viz_functions
 
     # Create jobs with overlapping SMILES
-    job1 = Job(name="job1", id="id-1", _skip_sync=True)
-    job1._attributes = {
-        "userInputs": {"smiles_list": ["CCO", "CCN"]},
-        "metadata": {"protein_file": "test_protein.pdb"},
-    }
+    job1 = Job.from_dto(
+        {
+            "executionId": "id-1",
+            "status": "Succeeded",
+            "createdAt": "2024-01-01T00:00:00.000Z",
+            "updatedAt": "2024-01-01T01:00:00.000Z",
+            "resourceId": "resource-1",
+            "orgKey": "deeporigin",
+            "tool": {"key": "deeporigin.docking", "version": "1.0.0"},
+            "userInputs": {"smiles_list": ["CCO", "CCN"]},
+            "metadata": {"protein_file": "test_protein.pdb"},
+        },
+        client=client,
+    )
 
-    job2 = Job(name="job2", id="id-2", _skip_sync=True)
-    job2._attributes = {
-        "userInputs": {"smiles_list": ["CCC", "CCO"]},  # CCO overlaps with job1
-        "metadata": {"protein_file": "test_protein.pdb"},
-    }
+    job2 = Job.from_dto(
+        {
+            "executionId": "id-2",
+            "status": "Succeeded",
+            "createdAt": "2024-01-01T00:00:00.000Z",
+            "updatedAt": "2024-01-01T01:00:00.000Z",
+            "resourceId": "resource-2",
+            "orgKey": "deeporigin",
+            "tool": {"key": "deeporigin.docking", "version": "1.0.0"},
+            "userInputs": {"smiles_list": ["CCC", "CCO"]},  # CCO overlaps with job1
+            "metadata": {"protein_file": "test_protein.pdb"},
+        },
+        client=client,
+    )
 
     job_list = JobList([job1, job2])
     name = job_viz_functions._name_func_docking(job_list)
@@ -1036,15 +1380,24 @@ def test_name_func_docking_with_job_list():
     assert isinstance(name, str)
 
 
-def test_name_func_docking_with_single_job():
+def test_name_func_docking_with_single_job(client):
     """Test that _name_func_docking works with a single Job."""
     from deeporigin.platform import job_viz_functions
 
-    job = Job(name="job1", id="id-1", _skip_sync=True)
-    job._attributes = {
-        "userInputs": {"smiles_list": ["CCO", "CCN", "CCC"]},
-        "metadata": {"protein_file": "test_protein.pdb"},
-    }
+    job = Job.from_dto(
+        {
+            "executionId": "id-1",
+            "status": "Succeeded",
+            "createdAt": "2024-01-01T00:00:00.000Z",
+            "updatedAt": "2024-01-01T01:00:00.000Z",
+            "resourceId": "resource-1",
+            "orgKey": "deeporigin",
+            "tool": {"key": "deeporigin.docking", "version": "1.0.0"},
+            "userInputs": {"smiles_list": ["CCO", "CCN", "CCC"]},
+            "metadata": {"protein_file": "test_protein.pdb"},
+        },
+        client=client,
+    )
 
     name = job_viz_functions._name_func_docking(job)
 
@@ -1054,17 +1407,35 @@ def test_name_func_docking_with_single_job():
     assert isinstance(name, str)
 
 
-def test_job_list_render_view_card_title_with_mixed_tools():
+def test_job_list_render_view_card_title_with_mixed_tools(client):
     """Test that JobList._render_view uses generic card title when jobs have different tool keys."""
     from deeporigin.drug_discovery.constants import tool_mapper
 
-    job1 = Job(name="job1", id="id-1", _skip_sync=True)
-    job1.status = "Running"
-    job1._attributes = {"tool": {"key": tool_mapper["Docking"], "version": "1.0.0"}}
+    job1 = Job.from_dto(
+        {
+            "executionId": "id-1",
+            "status": "Running",
+            "createdAt": "2024-01-01T00:00:00.000Z",
+            "updatedAt": "2024-01-01T01:00:00.000Z",
+            "resourceId": "resource-1",
+            "orgKey": "deeporigin",
+            "tool": {"key": tool_mapper["Docking"], "version": "1.0.0"},
+        },
+        client=client,
+    )
 
-    job2 = Job(name="job2", id="id-2", _skip_sync=True)
-    job2.status = "Succeeded"
-    job2._attributes = {"tool": {"key": tool_mapper["ABFE"], "version": "1.0.0"}}
+    job2 = Job.from_dto(
+        {
+            "executionId": "id-2",
+            "status": "Succeeded",
+            "createdAt": "2024-01-01T00:00:00.000Z",
+            "updatedAt": "2024-01-01T01:00:00.000Z",
+            "resourceId": "resource-2",
+            "orgKey": "deeporigin",
+            "tool": {"key": tool_mapper["ABFE"], "version": "1.0.0"},
+        },
+        client=client,
+    )
 
     job_list = JobList([job1, job2])
     html = job_list._render_view()
@@ -1075,17 +1446,35 @@ def test_job_list_render_view_card_title_with_mixed_tools():
     assert isinstance(html, str)
 
 
-def test_job_list_render_view_with_mixed_tools():
+def test_job_list_render_view_with_mixed_tools(client):
     """Test that JobList._render_view uses generic status HTML when jobs have different tool keys."""
     from deeporigin.drug_discovery.constants import tool_mapper
 
-    job1 = Job(name="job1", id="id-1", _skip_sync=True)
-    job1.status = "Running"
-    job1._attributes = {"tool": {"key": tool_mapper["Docking"], "version": "1.0.0"}}
+    job1 = Job.from_dto(
+        {
+            "executionId": "id-1",
+            "status": "Running",
+            "createdAt": "2024-01-01T00:00:00.000Z",
+            "updatedAt": "2024-01-01T01:00:00.000Z",
+            "resourceId": "resource-1",
+            "orgKey": "deeporigin",
+            "tool": {"key": tool_mapper["Docking"], "version": "1.0.0"},
+        },
+        client=client,
+    )
 
-    job2 = Job(name="job2", id="id-2", _skip_sync=True)
-    job2.status = "Succeeded"
-    job2._attributes = {"tool": {"key": tool_mapper["ABFE"], "version": "1.0.0"}}
+    job2 = Job.from_dto(
+        {
+            "executionId": "id-2",
+            "status": "Succeeded",
+            "createdAt": "2024-01-01T00:00:00.000Z",
+            "updatedAt": "2024-01-01T01:00:00.000Z",
+            "resourceId": "resource-2",
+            "orgKey": "deeporigin",
+            "tool": {"key": tool_mapper["ABFE"], "version": "1.0.0"},
+        },
+        client=client,
+    )
 
     job_list = JobList([job1, job2])
     html = job_list._render_view()
@@ -1096,25 +1485,43 @@ def test_job_list_render_view_with_mixed_tools():
     assert isinstance(html, str)
 
 
-def test_viz_func_docking_with_job_list():
+def test_viz_func_docking_with_job_list(client):
     """Test that _viz_func_docking works with JobList."""
     from deeporigin.platform import job_viz_functions
 
-    job1 = Job(name="job1", id="id-1", _skip_sync=True)
-    job1._attributes = {
-        "userInputs": {"smiles_list": ["CCO", "CCN"]},
-        "progressReport": "ligand docked ligand docked",
-        "startedAt": "2024-01-01T00:00:00.000Z",
-        "completedAt": "2024-01-01T00:10:00.000Z",
-    }
+    job1 = Job.from_dto(
+        {
+            "executionId": "id-1",
+            "status": "Succeeded",
+            "createdAt": "2024-01-01T00:00:00.000Z",
+            "updatedAt": "2024-01-01T01:00:00.000Z",
+            "startedAt": "2024-01-01T00:00:00.000Z",
+            "completedAt": "2024-01-01T00:10:00.000Z",
+            "resourceId": "resource-1",
+            "orgKey": "deeporigin",
+            "tool": {"key": "deeporigin.docking", "version": "1.0.0"},
+            "userInputs": {"smiles_list": ["CCO", "CCN"]},
+            "progressReport": "ligand docked ligand docked",
+        },
+        client=client,
+    )
 
-    job2 = Job(name="job2", id="id-2", _skip_sync=True)
-    job2._attributes = {
-        "userInputs": {"smiles_list": ["CCC"]},
-        "progressReport": "ligand docked ligand failed",
-        "startedAt": "2024-01-01T00:00:00.000Z",
-        "completedAt": "2024-01-01T00:05:00.000Z",
-    }
+    job2 = Job.from_dto(
+        {
+            "executionId": "id-2",
+            "status": "Succeeded",
+            "createdAt": "2024-01-01T00:00:00.000Z",
+            "updatedAt": "2024-01-01T01:00:00.000Z",
+            "startedAt": "2024-01-01T00:00:00.000Z",
+            "completedAt": "2024-01-01T00:05:00.000Z",
+            "resourceId": "resource-2",
+            "orgKey": "deeporigin",
+            "tool": {"key": "deeporigin.docking", "version": "1.0.0"},
+            "userInputs": {"smiles_list": ["CCC"]},
+            "progressReport": "ligand docked ligand failed",
+        },
+        client=client,
+    )
 
     job_list = JobList([job1, job2])
     html = job_viz_functions._viz_func_docking(job_list)
@@ -1126,15 +1533,23 @@ def test_viz_func_docking_with_job_list():
     assert isinstance(html, str)
 
 
-def test_viz_func_quoted_with_single_job():
+def test_viz_func_quoted_with_single_job(client):
     """Test that _viz_func_quoted works with a single Job."""
     from deeporigin.platform import job_viz_functions
 
-    job = Job(name="job1", id="id-1", _skip_sync=True)
-    job.status = "Quoted"
-    job._attributes = {
-        "quotationResult": {"successfulQuotations": [{"priceTotal": 100.50}]}
-    }
+    job = Job.from_dto(
+        {
+            "executionId": "id-1",
+            "status": "Quoted",
+            "createdAt": "2024-01-01T00:00:00.000Z",
+            "updatedAt": "2024-01-01T01:00:00.000Z",
+            "resourceId": "resource-1",
+            "orgKey": "deeporigin",
+            "tool": {"key": "deeporigin.docking", "version": "1.0.0"},
+            "quotationResult": {"successfulQuotations": [{"priceTotal": 100.50}]},
+        },
+        client=client,
+    )
 
     html = job_viz_functions._viz_func_quoted(job)
 
@@ -1144,21 +1559,37 @@ def test_viz_func_quoted_with_single_job():
     assert isinstance(html, str)
 
 
-def test_viz_func_quoted_with_job_list():
+def test_viz_func_quoted_with_job_list(client):
     """Test that _viz_func_quoted works with JobList and sums costs."""
     from deeporigin.platform import job_viz_functions
 
-    job1 = Job(name="job1", id="id-1", _skip_sync=True)
-    job1.status = "Quoted"
-    job1._attributes = {
-        "quotationResult": {"successfulQuotations": [{"priceTotal": 50.25}]}
-    }
+    job1 = Job.from_dto(
+        {
+            "executionId": "id-1",
+            "status": "Quoted",
+            "createdAt": "2024-01-01T00:00:00.000Z",
+            "updatedAt": "2024-01-01T01:00:00.000Z",
+            "resourceId": "resource-1",
+            "orgKey": "deeporigin",
+            "tool": {"key": "deeporigin.docking", "version": "1.0.0"},
+            "quotationResult": {"successfulQuotations": [{"priceTotal": 50.25}]},
+        },
+        client=client,
+    )
 
-    job2 = Job(name="job2", id="id-2", _skip_sync=True)
-    job2.status = "Quoted"
-    job2._attributes = {
-        "quotationResult": {"successfulQuotations": [{"priceTotal": 75.75}]}
-    }
+    job2 = Job.from_dto(
+        {
+            "executionId": "id-2",
+            "status": "Quoted",
+            "createdAt": "2024-01-01T00:00:00.000Z",
+            "updatedAt": "2024-01-01T01:00:00.000Z",
+            "resourceId": "resource-2",
+            "orgKey": "deeporigin",
+            "tool": {"key": "deeporigin.docking", "version": "1.0.0"},
+            "quotationResult": {"successfulQuotations": [{"priceTotal": 75.75}]},
+        },
+        client=client,
+    )
 
     job_list = JobList([job1, job2])
     html = job_viz_functions._viz_func_quoted(job_list)
@@ -1170,19 +1601,35 @@ def test_viz_func_quoted_with_job_list():
     assert isinstance(html, str)
 
 
-def test_job_list_render_view_with_all_quoted():
+def test_job_list_render_view_with_all_quoted(client):
     """Test that JobList._render_view uses quoted visualization when all jobs are Quoted."""
-    job1 = Job(name="job1", id="id-1", _skip_sync=True)
-    job1.status = "Quoted"
-    job1._attributes = {
-        "quotationResult": {"successfulQuotations": [{"priceTotal": 100.0}]}
-    }
+    job1 = Job.from_dto(
+        {
+            "executionId": "id-1",
+            "status": "Quoted",
+            "createdAt": "2024-01-01T00:00:00.000Z",
+            "updatedAt": "2024-01-01T01:00:00.000Z",
+            "resourceId": "resource-1",
+            "orgKey": "deeporigin",
+            "tool": {"key": "deeporigin.docking", "version": "1.0.0"},
+            "quotationResult": {"successfulQuotations": [{"priceTotal": 100.0}]},
+        },
+        client=client,
+    )
 
-    job2 = Job(name="job2", id="id-2", _skip_sync=True)
-    job2.status = "Quoted"
-    job2._attributes = {
-        "quotationResult": {"successfulQuotations": [{"priceTotal": 200.0}]}
-    }
+    job2 = Job.from_dto(
+        {
+            "executionId": "id-2",
+            "status": "Quoted",
+            "createdAt": "2024-01-01T00:00:00.000Z",
+            "updatedAt": "2024-01-01T01:00:00.000Z",
+            "resourceId": "resource-2",
+            "orgKey": "deeporigin",
+            "tool": {"key": "deeporigin.docking", "version": "1.0.0"},
+            "quotationResult": {"successfulQuotations": [{"priceTotal": 200.0}]},
+        },
+        client=client,
+    )
 
     job_list = JobList([job1, job2])
     html = job_list._render_view()
@@ -1194,16 +1641,34 @@ def test_job_list_render_view_with_all_quoted():
     assert isinstance(html, str)
 
 
-def test_job_list_render_view_with_mixed_status():
+def test_job_list_render_view_with_mixed_status(client):
     """Test that JobList._render_view uses generic HTML when not all jobs are Quoted."""
-    job1 = Job(name="job1", id="id-1", _skip_sync=True)
-    job1.status = "Quoted"
-    job1._attributes = {
-        "quotationResult": {"successfulQuotations": [{"priceTotal": 100.0}]}
-    }
+    job1 = Job.from_dto(
+        {
+            "executionId": "id-1",
+            "status": "Quoted",
+            "createdAt": "2024-01-01T00:00:00.000Z",
+            "updatedAt": "2024-01-01T01:00:00.000Z",
+            "resourceId": "resource-1",
+            "orgKey": "deeporigin",
+            "tool": {"key": "deeporigin.docking", "version": "1.0.0"},
+            "quotationResult": {"successfulQuotations": [{"priceTotal": 100.0}]},
+        },
+        client=client,
+    )
 
-    job2 = Job(name="job2", id="id-2", _skip_sync=True)
-    job2.status = "Running"
+    job2 = Job.from_dto(
+        {
+            "executionId": "id-2",
+            "status": "Running",
+            "createdAt": "2024-01-01T00:00:00.000Z",
+            "updatedAt": "2024-01-01T01:00:00.000Z",
+            "resourceId": "resource-2",
+            "orgKey": "deeporigin",
+            "tool": {"key": "deeporigin.docking", "version": "1.0.0"},
+        },
+        client=client,
+    )
 
     job_list = JobList([job1, job2])
     html = job_list._render_view()

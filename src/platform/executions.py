@@ -30,7 +30,7 @@ class Executions:
         page: int | None = None,
         page_size: int | None = None,
         order: str | None = None,
-        filter: str | None = None,
+        tool_key: str | None = None,
     ) -> dict:
         """List tool executions with pagination and filtering.
 
@@ -50,8 +50,11 @@ class Executions:
             params["pageSize"] = page_size
         if order is not None:
             params["order"] = order
-        if filter is not None:
-            params["filter"] = filter
+
+        if tool_key is not None:
+            import json
+
+            params["filter"] = json.dumps({"tool": {"toolManifest": {"key": tool_key}}})
 
         return self._c.get_json(
             f"/tools/{self._c.org_key}/tools/executions",
