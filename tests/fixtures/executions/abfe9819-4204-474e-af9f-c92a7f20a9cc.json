@@ -13,7 +13,13 @@
     "createdAt": "2025-11-18T15:22:35.271Z",
     "createdBy": "google-apps|srinivas@deeporigin.com",
     "executionId": "abfe9819-4204-474e-af9f-c92a7f20a9cc",
-    "metadata": {},
+    "metadata": {
+        "ligand_hash": "12ec11311b8cd62100ef6c64ab22a84da875902e28ced762d47fdd7804cc2ad4",
+        "ligand_name": "cmpd 4 (Crotyl)",
+        "ligand_smiles": "C/C=C/Cn1cc(-c2cccc(C(=O)N(C)C)c2)c2cc[nH]c2c1=O",
+        "protein_hash": "db4aa32e2e8ffa976a60004a8361b86427a2e5653a6623bb60b7913445902549",
+        "protein_name": "brd"
+    },
     "orgKey": "deeporigin",
     "quotationResult": {
         "anyFailed": false,
@@ -56,5 +62,14 @@
     },
     "updatedAt": "2025-11-18T15:22:35.271Z",
     "userInputs": {},
-    "userOutputs": {}
+    "userOutputs": {
+        "abfe_results_summary": {
+            "$provider": "ufa",
+            "key": "tool-runs/ABFE/db4aa32e2e8ffa976a60004a8361b86427a2e5653a6623bb60b7913445902549.pdb/12ec11311b8cd62100ef6c64ab22a84da875902e28ced762d47fdd7804cc2ad4.sdf/results.csv"
+        },
+        "output_file": {
+            "$provider": "ufa",
+            "key": "tool-runs/ABFE/db4aa32e2e8ffa976a60004a8361b86427a2e5653a6623bb60b7913445902549.pdb/12ec11311b8cd62100ef6c64ab22a84da875902e28ced762d47fdd7804cc2ad4.sdf/output/"
+        }
+    }
 }
