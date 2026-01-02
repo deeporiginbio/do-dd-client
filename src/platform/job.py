@@ -1612,7 +1612,6 @@ class JobList:
         page: Optional[int] = None,
         page_size: int = 1000,
         order: Optional[str] = None,
-        filter: Optional[str] = None,
         tool_key: Optional[str] = None,
         tool_version: Optional[str] = None,
         client: Optional[DeepOriginClient] = None,
@@ -1626,7 +1625,8 @@ class JobList:
             page: Page number to start from (default 0). If None, starts from page 0.
             page_size: Page size of the pagination (max 10,000).
             order: Order of the pagination, e.g., "executionId? asc", "completedAt? desc".
-            filter: Filter applied to the data set Execution Model.
+            tool_key: Tool key to filter by.
+            tool_version: Tool version to filter by.
             client: Optional client for API calls.
 
         Returns:
@@ -1644,7 +1644,7 @@ class JobList:
                 page=current_page,
                 page_size=page_size,
                 order=order,
-                filter=filter,
+                tool_key=tool_key,
             )
 
             if not isinstance(response, dict):

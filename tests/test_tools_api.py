@@ -7,15 +7,6 @@ from deeporigin.platform.client import DeepOriginClient
 from deeporigin.platform.job import Job, JobList
 
 
-def test_get_tool_executions_lv1():
-    client = DeepOriginClient()
-    response = client.executions.list(filter=None)
-    jobs = response.get("data", [])
-
-    assert isinstance(jobs, list), "Expected a list"
-    assert len(jobs) > 0, "Expected at least one job"
-
-
 def test_get_executions_lv1():
     client = DeepOriginClient()
     response = client.executions.list()
