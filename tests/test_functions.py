@@ -67,7 +67,7 @@ def test_sysprep_lv2():
     ligand = [ligand for ligand in sim.ligands if ligand.name == "cmpd 4 (Crotyl)"][0]
 
     # this is chosen to be one where it takes >1 min
-    prepared_system = sim.prepare(ligand=ligand)
+    _ = sim.prepare(ligand=ligand)
 
 
 def test_protonation_lv2():
