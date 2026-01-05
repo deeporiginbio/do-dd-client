@@ -60,6 +60,10 @@ class Functions:
         if cluster_id is None:
             cluster_id = self._c.clusters.get_default_cluster_id()
 
+        # Use client's default tag if tag parameter is None
+        if tag is None:
+            tag = self._c.tag
+
         body: dict[str, dict | str] = {
             "params": params,
             "inputs": params,  # we're sending both params and inputs because the APIs across dev/staging/prod are different
