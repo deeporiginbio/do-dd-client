@@ -38,7 +38,7 @@ class Executions:
             page: Page number of the pagination (default 0).
             page_size: Page size of the pagination (max 10,000).
             order: Order of the pagination, e.g., "executionId? asc", "completedAt? desc".
-            filter: Filter applied to the data set Execution Model.
+            tool_key: Tool key to filter by.
 
         Returns:
             Dictionary containing paginated execution data.
