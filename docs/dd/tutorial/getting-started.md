@@ -4,7 +4,7 @@ This document describes how to use the Drug Discovery toolbox to perform docking
 
 ## Prerequisites 
 
-Make sure you have [:material-page-previous: installed](../../install.md), [:material-page-previous: configured](../../configure.md), and [:material-page-previous: authenticated](../../how-to/auth.md) with the Deep Origin python client.
+Make sure you have [:material-page-previous: installed](../../install.md), [:material-page-previous: authenticated](../../how-to/auth.md), and [:material-page-previous: configured](../../configure.md) with the Deep Origin python client.
 
 !!! tip "Recommended installation method" 
     We recommend using [:material-page-previous: these instructions](../../install.md#recommended-installation) to install the Deep Origin python client.
