@@ -1,6 +1,8 @@
 import os
 from pathlib import Path
+import tempfile
 
+import numpy as np
 import pytest
 
 from deeporigin.drug_discovery import BRD_DATA_DIR, Protein
@@ -165,7 +167,6 @@ def test_protein_base64():
     assert len(new_protein.structure) == len(protein.structure)
 
     # Verify the structures have the same coordinates (within numerical precision)
-    import numpy as np
 
     np.testing.assert_array_almost_equal(
         new_protein.structure.coord,
@@ -252,8 +253,6 @@ def test_extract_ligand_from_cif_with_many_hetatms():
 
     # Count water molecules before extraction
     # Convert to PDB to count HETATMs
-    import os
-    import tempfile
 
     with tempfile.NamedTemporaryFile(
         mode="w", suffix=".pdb", delete=False
