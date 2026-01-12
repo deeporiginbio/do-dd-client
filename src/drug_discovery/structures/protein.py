@@ -1251,3 +1251,20 @@ class Protein(Entity):
         """update coordinates of the protein structure"""
 
         self.structure.coord = coords
+
+    def upload(self, client: Optional[DeepOriginClient] = None) -> None:
+        """upload the protein structure to the remote server, after converting to PDB format
+
+
+        we need to do this (and override the parent class method)
+        because the protein structure has to be stored in the remote server as a PDB file,
+        because core tools need to be able to access the protein structure as a PDB file.
+        and we need to convert the structure to PDB format before uploading it."""
+
+        if client is None:
+            client = DeepOriginClient.get()
+
+        client.files.upload_file(
+            self.to_pdb(),
+            remote_path=self._remote_path,
+        )
