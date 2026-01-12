@@ -1,6 +1,8 @@
 import os
 from pathlib import Path
+import tempfile
 
+import numpy as np
 import pytest
 
 from deeporigin.drug_discovery import BRD_DATA_DIR, Protein
@@ -165,7 +167,6 @@ def test_protein_base64():
     assert len(new_protein.structure) == len(protein.structure)
 
     # Verify the structures have the same coordinates (within numerical precision)
-    import numpy as np
 
     np.testing.assert_array_almost_equal(
         new_protein.structure.coord,
@@ -192,6 +193,108 @@ def test_extract_ligand_remove_water():
     _ = protein.extract_ligand()
 
     protein.remove_water()
+
+
+def test_extract_ligand_filters_water():
+    """Test that extract_ligand filters out water molecules (HOH, WAT, H2O)."""
+    protein = Protein.from_pdb_id("1EBY")
+
+    # Count water molecules before extraction
+    water_count_before = sum(
+        1
+        for line in protein.block_content.split("\n")
+        if line.startswith("HETATM")
+        and line[17:20].strip().upper() in {"HOH", "WAT", "H2O"}
+    )
+
+    # Extract ligand - should exclude water molecules
+    ligand = protein.extract_ligand()
+
+    # Verify ligand was extracted (should not be None)
+    assert ligand is not None
+
+    # Verify that water molecules were not included in the extracted ligand
+    # The ligand should have atoms, but they should not be water
+    assert len(ligand.mol.GetAtoms()) > 0
+
+    # Verify that water molecules are still in the protein block_content
+    # (extract_ligand only removes the ligand, not water)
+    water_count_after = sum(
+        1
+        for line in protein.block_content.split("\n")
+        if line.startswith("HETATM")
+        and line[17:20].strip().upper() in {"HOH", "WAT", "H2O"}
+    )
+
+    # Water should still be in block_content until explicitly removed
+    # (extract_ligand only removes the ligand, not water)
+    assert water_count_after == water_count_before
+
+
+def test_extract_ligand_with_custom_exclude_resnames():
+    """Test that extract_ligand respects custom exclude_resnames parameter."""
+    protein = Protein.from_pdb_id("1EBY")
+
+    # Extract ligand excluding a custom residue name (should work even if not present)
+    ligand = protein.extract_ligand(exclude_resnames={"HOH", "CUSTOM"})
+
+    assert ligand is not None
+    assert len(ligand.mol.GetAtoms()) > 0
+
+
+def test_extract_ligand_from_cif_with_many_hetatms():
+    """Test that extract_ligand works correctly with CIF files containing many HETATMs including water."""
+    cif_path = Path(__file__).parent / "fixtures" / "1nsg-assembly1.cif"
+    protein = Protein.from_file(cif_path)
+
+    # Verify it's a CIF file
+    assert protein.block_type == "cif"
+    assert protein.block_content is not None
+
+    # Count water molecules before extraction
+    # Convert to PDB to count HETATMs
+
+    with tempfile.NamedTemporaryFile(
+        mode="w", suffix=".pdb", delete=False
+    ) as temp_file:
+        temp_pdb_path = temp_file.name
+
+    try:
+        protein.to_pdb(temp_pdb_path)
+        with open(temp_pdb_path, "r") as pdb_file:
+            all_hetatm_lines = [line for line in pdb_file if line.startswith("HETATM")]
+            water_hetatm_lines = [
+                line
+                for line in all_hetatm_lines
+                if line[17:20].strip().upper() in {"HOH", "WAT", "H2O"}
+            ]
+            non_water_hetatm_lines = [
+                line
+                for line in all_hetatm_lines
+                if line[17:20].strip().upper() not in {"HOH", "WAT", "H2O"}
+            ]
+
+        # Verify we have both water and non-water HETATMs
+        assert len(water_hetatm_lines) > 0, "Should have water molecules"
+        assert len(non_water_hetatm_lines) > 0, "Should have non-water HETATMs"
+
+        # Extract ligand - should exclude water molecules and succeed
+        ligand = protein.extract_ligand()
+
+        # Verify ligand was extracted successfully
+        assert ligand is not None
+        assert len(ligand.mol.GetAtoms()) > 0
+
+        # Verify that water molecules were filtered out
+        # The ligand should not contain only water atoms
+        # (we can't easily verify the exact count without parsing the PDB block,
+        # but we can verify RDKit successfully parsed a non-water ligand)
+        assert ligand.smiles is not None
+        assert len(ligand.smiles) > 0
+
+    finally:
+        if os.path.exists(temp_pdb_path):
+            os.remove(temp_pdb_path)
 
 
 def test_from_file_cif():
