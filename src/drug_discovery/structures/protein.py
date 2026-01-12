@@ -192,10 +192,20 @@ class Protein(Entity):
             pdb_file = PDBFile.read(io.StringIO(block_content))
             structure = pdb_file.get_structure()
         elif block_type == "cif":
+            from biotite import InvalidFileError
             import biotite.structure.io.pdbx as pdbx
 
             cif_file = pdbx.CIFFile.read(io.StringIO(block_content))
-            structure = pdbx.get_structure(cif_file)
+            try:
+                structure = pdbx.get_structure(cif_file)
+            except InvalidFileError as e:
+                if "atom_site" in str(e).lower():
+                    raise ValueError(
+                        "The CIF file does not contain atomic coordinates (missing 'atom_site' category). "
+                        "This appears to be a structure factor file or another type of CIF file that "
+                        "does not contain coordinate data. Please provide a coordinate CIF file instead."
+                    ) from e
+                raise
         else:
             raise ValueError(f"Unsupported block type: {block_type}")
         return structure
