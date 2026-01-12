@@ -9,6 +9,15 @@ from deeporigin.drug_discovery import BRD_DATA_DIR, Protein
 from deeporigin.exceptions import DeepOriginException
 
 
+def test_load_protein_from_cif_structure_factor():
+    """Test that loading a structure factor CIF file (without atom_site) raises a helpful error."""
+    cif_path = Path(__file__).parent / "fixtures" / "1NSG-sf.cif"
+
+    # Structure factor files don't have atomic coordinates, so this should raise ValueError
+    with pytest.raises(ValueError, match="does not contain atomic coordinates"):
+        _ = Protein.from_file(cif_path)
+
+
 def test_from_file_lv0():
     protein = Protein.from_file(BRD_DATA_DIR / "brd.pdb")
 
