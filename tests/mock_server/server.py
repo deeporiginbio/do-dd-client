@@ -564,6 +564,12 @@ class MockServer:
             try:
                 return self._load_fixture(f"function-runs/{function_key}/{body_hash}")
             except FileNotFoundError:
+                # Special handling for protonation function - it can work with any input
+                if function_key == "deeporigin.mol-props-protonation":
+                    inputs = body.get("inputs", body.get("params", {}))
+                    smiles = inputs.get("smiles", "")
+                    ph = inputs.get("pH", 7.4)
+                    return self._get_protonation_response(smiles=smiles, ph=ph)
                 raise FileNotFoundError(
                     f"No fixture found for function '{function_key}' with request hash '{body_hash}'. "
                     f"Please create a fixture at: function-runs/{function_key}/{body_hash}.json"
