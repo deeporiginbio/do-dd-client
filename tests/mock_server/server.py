@@ -420,45 +420,69 @@ class MockServer:
         fixture_name = smiles_to_fixture.get(smiles, "molprops_serotonin")
         return self._load_fixture(fixture_name)
 
-    def _get_protonation_response(self, *, smiles: str, ph: float) -> dict[str, Any]:
+    def _get_protonation_response(
+        self, *, smiles: str, ph: float, inputs: dict[str, Any], body: dict[str, Any]
+    ) -> dict[str, Any]:
         """Get protonation response for a given SMILES and pH.
 
         Args:
             smiles: SMILES string to get protonation data for.
             ph: pH value for protonation calculation.
+            inputs: The inputs dictionary from the request.
+            body: The full request body.
 
         Returns:
-            Dictionary containing the protonation response.
-
-        Raises:
-            HTTPException: If SMILES is not supported (we only have data for one molecule).
+            Dictionary containing the protonation response in skeleton format.
         """
-        from fastapi import HTTPException
+        # Load skeleton template
+        skeleton_path = self._fixtures_dir / "function-runs" / "skeleton.json"
+        with open(skeleton_path) as f:
+            response = json.load(f)
 
-        # Validate smiles - we only have data for this specific molecule
+        # Generate timestamps
+        now = datetime.now(timezone.utc)
+        timestamp = now.strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z"
+
+        # Generate IDs
+        response["id"] = str(uuid.uuid4())
+        response["createdAt"] = timestamp
+        response["updatedAt"] = timestamp
+
+        # Populate userInputs
+        response["userInputs"] = {
+            "inputs": inputs,
+        }
+        if "clusterId" in body:
+            response["userInputs"]["clusterId"] = body["clusterId"]
+
+        # Build protonation data based on pH
         expected_smiles = "C=CCCn1cc(-c2cccc(C(=O)N(C)C)c2)c2cc[nH]c2c1=O"
         if smiles != expected_smiles:
-            raise HTTPException(
-                status_code=400,
-                detail=f"No data available for SMILES: {smiles}",
-            )
-
-        # Build response based on pH
-        if ph < 8:
-            return {
+            # just return what was sent
+            protonation_data = {
+                "smiles": smiles,
+                "pH": ph,
+                "filter_percentage": inputs.get("filter_percentage", 1),
+                "protonation_states": {
+                    "smiles_list": [smiles],
+                    "concentration_list": [99.93319834034459],
+                },
+            }
+        elif ph < 8:
+            protonation_data = {
                 "smiles": "C=CCCn1cc(-c2cccc(C(=O)N(C)C)c2)c2cc[nH]c2c1=O",
                 "pH": ph,
-                "filter_percentage": 1,
+                "filter_percentage": inputs.get("filter_percentage", 1),
                 "protonation_states": {
                     "smiles_list": ["C=CCCn1cc(-c2cccc(C(=O)N(C)C)c2)c2cc[nH]c2c1=O"],
                     "concentration_list": [99.93319834034459],
                 },
             }
         else:  # ph >= 8
-            return {
+            protonation_data = {
                 "smiles": "C=CCCn1cc(-c2cccc(C(=O)N(C)C)c2)c2cc[nH]c2c1=O",
                 "pH": ph,
-                "filter_percentage": 1,
+                "filter_percentage": inputs.get("filter_percentage", 1),
                 "protonation_states": {
                     "smiles_list": [
                         "C=CCCn1cc(-c2cccc(C(=O)N(C)C)c2)c2cc[n-]c2c1=O",
@@ -470,6 +494,11 @@ class MockServer:
                     ],
                 },
             }
+
+        # Populate functionOutputs
+        response["functionOutputs"] = protonation_data
+
+        return response
 
     def _setup_routes(self) -> None:
         """Set up all API routes."""
@@ -560,6 +589,14 @@ class MockServer:
             try:
                 return self._load_fixture(f"function-runs/{function_key}/{body_hash}")
             except FileNotFoundError:
+                # Special handling for protonation function - it can work with any input
+                if function_key == "deeporigin.mol-props-protonation":
+                    inputs = body.get("inputs", body.get("params", {}))
+                    smiles = inputs.get("smiles", "")
+                    ph = inputs.get("pH", 7.4)
+                    return self._get_protonation_response(
+                        smiles=smiles, ph=ph, inputs=inputs, body=body
+                    )
                 raise FileNotFoundError(
                     f"No fixture found for function '{function_key}' with request hash '{body_hash}'. "
                     f"Please create a fixture at: function-runs/{function_key}/{body_hash}.json"

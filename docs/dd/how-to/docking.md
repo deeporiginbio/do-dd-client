@@ -8,7 +8,9 @@ This document describes how to dock ligands to a Protein.
 
 - You have a prepared [Protein](./proteins.md)
 - You have a [Ligand or LigandSet](./ligands.md)
+- You have [protonated your ligands](./ligands.md#protonation)
 - You have found pockets in your Protein using the [Pocket Finder](./find-pockets.md)
+
 
 ## Docking a single `Ligand`
 

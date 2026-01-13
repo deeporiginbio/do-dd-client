@@ -17,7 +17,7 @@ sim = Complex.from_dir(BRD_DATA_DIR)
 ```
 
 
-## Find pockets
+## Find pockets in Protein
 
 We find pockets in the protein using:
 
@@ -76,6 +76,15 @@ pockets[0]
     │ Drugability score       │ 0.83243614   │
     ╰─────────────────────────┴──────────────╯
     ```
+
+## Protonate Ligands
+
+It is recommended that you protonate ligands before docking them. 
+
+```{.python notest}
+sim.ligands.protonate()
+```
+
 
 ## Estimate the cost of a docking run
 
