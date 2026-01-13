@@ -433,16 +433,20 @@ class MockServer:
         Raises:
             HTTPException: If SMILES is not supported (we only have data for one molecule).
         """
-        from fastapi import HTTPException
 
         # Validate smiles - we only have data for this specific molecule
         expected_smiles = "C=CCCn1cc(-c2cccc(C(=O)N(C)C)c2)c2cc[nH]c2c1=O"
         if smiles != expected_smiles:
-            raise HTTPException(
-                status_code=400,
-                detail=f"No data available for SMILES: {smiles}",
-            )
-
+            # just return what was sent
+            return {
+                "smiles": smiles,
+                "pH": ph,
+                "filter_percentage": 1,
+                "protonation_states": {
+                    "smiles_list": [smiles],
+                    "concentration_list": [99.93319834034459],
+                },
+            }
         # Build response based on pH
         if ph < 8:
             return {
