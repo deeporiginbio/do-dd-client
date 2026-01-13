@@ -24,7 +24,7 @@ def test_from_dir_2_pdb_lv0():
     try:
         with pytest.raises(
             DeepOriginException,
-            match="Expected exactly one PDB file in the directory, but found 2: ",
+            match="Expected exactly one PDB or CIF file in the directory, but found 2: ",
         ):
             Complex.from_dir(BRD_DATA_DIR)
     finally:
