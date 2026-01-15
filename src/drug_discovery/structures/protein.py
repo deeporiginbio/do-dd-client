@@ -192,10 +192,20 @@ class Protein(Entity):
             pdb_file = PDBFile.read(io.StringIO(block_content))
             structure = pdb_file.get_structure()
         elif block_type == "cif":
+            from biotite import InvalidFileError
             import biotite.structure.io.pdbx as pdbx
 
             cif_file = pdbx.CIFFile.read(io.StringIO(block_content))
-            structure = pdbx.get_structure(cif_file)
+            try:
+                structure = pdbx.get_structure(cif_file)
+            except InvalidFileError as e:
+                if "atom_site" in str(e).lower():
+                    raise ValueError(
+                        "The CIF file does not contain atomic coordinates (missing 'atom_site' category). "
+                        "This appears to be a structure factor file or another type of CIF file that "
+                        "does not contain coordinate data. Please provide a coordinate CIF file instead."
+                    ) from e
+                raise
         else:
             raise ValueError(f"Unsupported block type: {block_type}")
         return structure
@@ -677,49 +687,80 @@ class Protein(Entity):
         from rdkit import Chem
 
         if exclude_resnames is None:
-            exclude_resnames = {"HOH"}
+            exclude_resnames = {"HOH", "WAT", "H2O"}
+        else:
+            # Normalize to uppercase for comparison
+            exclude_resnames = {resname.upper() for resname in exclude_resnames}
 
         ligand_lines = []
         conect_lines = []
         ligand_resnames = set()
         ligand_atom_serials = set()
 
-        # First pass: collect HETATM lines and their residue names
-        with open(self.file_path, "r") as f:
-            for line in f:
-                if line.startswith("HETATM"):
-                    resname = line[17:20].strip()
-                    altloc = line[16].strip()
-                    if resname in exclude_resnames:
-                        continue
+        # For CIF files, we need to convert to PDB format first to extract HETATM records
+        if self.block_type == "cif":
+            # Convert CIF to PDB format temporarily
+            with tempfile.NamedTemporaryFile(
+                mode="w", suffix=".pdb", delete=False
+            ) as temp_file:
+                temp_pdb_path = temp_file.name
+            try:
+                self.to_pdb(temp_pdb_path)
+                with open(temp_pdb_path, "r") as f:
+                    content_lines = list(f)
+            finally:
+                # Clean up temporary file
+                if os.path.exists(temp_pdb_path):
+                    os.remove(temp_pdb_path)
+        elif self.block_content:
+            # Split by newline and add newlines back to match file reading behavior
+            content_lines = [line + "\n" for line in self.block_content.split("\n")]
+        elif self.file_path:
+            # Read file line by line to preserve newlines
+            with open(self.file_path, "r") as f:
+                content_lines = list(f)
+        else:
+            raise ValueError(
+                "No block_content or file_path available to extract ligand from."
+            )
 
-                    if altloc not in ("", "A"):  # skip altLocs other than primary
-                        continue
-                    ligand_lines.append(line)
-                    ligand_resnames.add(resname)
-                    # Store atom serial for later removal from structure
-                    try:
-                        atom_serial = int(line[6:11].strip())
-                        ligand_atom_serials.add(atom_serial)
-                    except ValueError:
-                        continue
+        # First pass: collect HETATM lines and their residue names
+        for line in content_lines:
+            if line.startswith("HETATM"):
+                # Extract resname and normalize to uppercase for comparison
+                resname = line[17:20].strip().upper()
+                altloc = line[16].strip()
+
+                # Skip excluded residue names (e.g., water)
+                if resname in exclude_resnames:
+                    continue
+
+                if altloc not in ("", "A"):  # skip altLocs other than primary
+                    continue
+                ligand_lines.append(line)
+                ligand_resnames.add(resname)
+                # Store atom serial for later removal from structure
+                try:
+                    atom_serial = int(line[6:11].strip())
+                    ligand_atom_serials.add(atom_serial)
+                except ValueError:
+                    continue
 
         # Second pass: collect CONECT records for the ligand atoms
-        with open(self.file_path, "r") as f:
-            for line in f:
-                if line.startswith("CONECT"):
-                    try:
-                        atom1 = int(line[6:11].strip())
-                        # Check if this CONECT involves any ligand atoms
-                        # We'll need to check against the atom serial numbers in our HETATM records
-                        for hetatm_line in ligand_lines:
-                            hetatm_atom_serial = int(hetatm_line[6:11].strip())
-                            if atom1 == hetatm_atom_serial:
-                                conect_lines.append(line)
-                                break
-                    except ValueError:
-                        # Skip malformed CONECT records
-                        continue
+        for line in content_lines:
+            if line.startswith("CONECT"):
+                try:
+                    atom1 = int(line[6:11].strip())
+                    # Check if this CONECT involves any ligand atoms
+                    # We'll need to check against the atom serial numbers in our HETATM records
+                    for hetatm_line in ligand_lines:
+                        hetatm_atom_serial = int(hetatm_line[6:11].strip())
+                        if atom1 == hetatm_atom_serial:
+                            conect_lines.append(line)
+                            break
+                except ValueError:
+                    # Skip malformed CONECT records
+                    continue
 
         if not ligand_lines:
             raise ValueError("No ligand HETATM records found in the PDB.")
@@ -1210,3 +1251,20 @@ class Protein(Entity):
         """update coordinates of the protein structure"""
 
         self.structure.coord = coords
+
+    def upload(self, client: Optional[DeepOriginClient] = None) -> None:
+        """upload the protein structure to the remote server, after converting to PDB format
+
+
+        we need to do this (and override the parent class method)
+        because the protein structure has to be stored in the remote server as a PDB file,
+        because core tools need to be able to access the protein structure as a PDB file.
+        and we need to convert the structure to PDB format before uploading it."""
+
+        if client is None:
+            client = DeepOriginClient.get()
+
+        client.files.upload_file(
+            self.to_pdb(),
+            remote_path=self._remote_path,
+        )

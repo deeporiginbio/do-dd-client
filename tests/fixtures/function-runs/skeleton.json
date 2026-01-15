@@ -1,0 +1,46 @@
+{
+    "cluster": {
+        "createdAt": "2024-06-11T16:53:45.922Z",
+        "enabled": true,
+        "hostname": "https://cluster.us-west-2.dev.deeporigin.io",
+        "id": "d638d3cd-833f-476b-87fe-ca6d76e66049",
+        "name": "DeepOrigin Cluster - us-west-2",
+        "orgKey": null,
+        "status": "healthy",
+        "updatedAt": "2025-03-27T20:23:30.842Z"
+    },
+    "createdAt": "2025-12-18T15:11:43.469Z",
+    "createdBy": "6b96d8f8-0f55-474c-a86c-e09651ba4b20",
+    "functionOutputs": {},
+    "id": "09743227-589b-44a5-84a5-ed30bd023401",
+    "orgKey": "deeporigin",
+    "quotationResult": {
+        "anyFailed": false,
+        "failedQuotations": [],
+        "successfulQuotations": [
+            {
+                "itemCode": "DO_PROTONATION",
+                "orgId": "deeporigin",
+                "priceEach": 0,
+                "priceTotal": 0,
+                "pricingRecordType": "regular",
+                "pricingRecords": [
+                    {
+                        "itemKey": "DO_PROTONATION",
+                        "itemName": "Ligand Protonation",
+                        "priceEach": 0,
+                        "qty": 1,
+                        "tierQtyFrom": 0,
+                        "tierQtyTo": 0,
+                        "totalPrice": 0
+                    }
+                ],
+                "qty": 1,
+                "status": "OK"
+            }
+        ]
+    },
+    "status": "Completed",
+    "updatedAt": "2025-12-18T15:11:43.899Z",
+    "userInputs": {}
+}

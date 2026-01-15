@@ -104,12 +104,18 @@ class Complex:
             if f.lower().endswith(".pdb")
         ]
 
-        if len(pdb_files) != 1:
+        cif_files = [
+            os.path.join(directory, f)
+            for f in os.listdir(directory)
+            if f.lower().endswith(".cif")
+        ]
+
+        if len(pdb_files) + len(cif_files) != 1:
             raise DeepOriginException(
-                title="Complex.from_dir expects a single PDB file",
-                message=f"Expected exactly one PDB file in the directory, but found {len(pdb_files)}: {pdb_files}",
+                title="Complex.from_dir expects a single PDB or CIF file",
+                message=f"Expected exactly one PDB or CIF file in the directory, but found {len(pdb_files) + len(cif_files)}: {pdb_files + cif_files}",
             ) from None
-        protein_file = pdb_files[0]
+        protein_file = pdb_files[0] if len(pdb_files) == 1 else cif_files[0]
         protein = Protein.from_file(protein_file)
 
         # Create the Complex instance

@@ -214,6 +214,13 @@ ligand = protein.extract_ligand()
 !!! warning "Method mutates the `Protein` object"
     The `extract_ligand()` method not only extracts the ligand but also **mutates the protein object** by removing the ligand from the protein structure. This means that after calling this method, the protein will no longer contain the ligand atoms.
 
+!!! note "Water molecules are automatically excluded"
+    The `extract_ligand()` method automatically filters out water molecules (HOH, WAT, H2O) and other excluded residue names. You can customize which residues to exclude by passing the `exclude_resnames` parameter:
+    
+    ```python
+    # Exclude custom residue names
+    ligand = protein.extract_ligand(exclude_resnames={"HOH", "CUSTOM_RES"})
+    ```
 
 !!! note "Note about atom counts"
     In this example, the atom count might not change significantly because the ligand atoms are typically a small fraction of the total protein structure. However, the protein's internal structure and `block_content` are updated to exclude the ligand. Additionally, the PDB file's MASTER record is automatically updated to reflect the new atom and CONECT record counts.
