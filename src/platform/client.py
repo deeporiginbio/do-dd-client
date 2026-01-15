@@ -20,6 +20,7 @@ import httpx
 from deeporigin.auth import get_token
 from deeporigin.config import get_value
 from deeporigin.exceptions import DeepOriginException
+from deeporigin.platform.billing import Billing
 from deeporigin.platform.clusters import Clusters
 from deeporigin.platform.executions import Executions
 from deeporigin.platform.files import Files
@@ -294,6 +295,7 @@ class DeepOriginClient:
         self.files = Files(self)
         self.executions = Executions(self)
         self.organizations = Organizations(self)
+        self.billing = Billing(self)
 
         # Retry configuration
         self.max_retries = max_retries
