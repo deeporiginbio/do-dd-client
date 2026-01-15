@@ -34,23 +34,11 @@ class Billing:
 
         Args:
             tag: The billing tag to get usage for.
-            start_date: Start date in YYYY-MM-DD format. Defaults to "2020-01-01".
+            start_date: Start date in YYYY-MM-DD format.
             end_date: End date in YYYY-MM-DD format. Defaults to today's date.
 
         Returns:
-            Dictionary containing usage information with the following structure:
-            - status: Status of the response (e.g., "OK")
-            - org_id: Organization ID
-            - items: List of usage items, each containing:
-              - entry_dt: Entry date/time
-              - item_code: Item code (e.g., "DO_HELLO_WORLD")
-              - description: Description of the item
-              - qty: Quantity
-              - unit_cost: Unit cost
-              - total_cost: Total cost
-              - notes: Additional notes
-              - billing_tag_transaction: Billing tag transaction ID
-              - billing_tag: Billing tag
+            Dictionary containing usage information.
         """
         if end_date is None:
             end_date = date.today().strftime("%Y-%m-%d")
