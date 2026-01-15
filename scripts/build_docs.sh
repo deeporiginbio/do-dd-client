@@ -48,16 +48,27 @@ fi
 
 # Build docs and capture output
 echo "📚 Building documentation..."
-MKDOCS_OUT="$(uv run mkdocs build -s 2>&1)"
-BUILD_EXIT_CODE=$?
+# Use a temp file to capture output while still showing it in real-time
+MKDOCS_OUTPUT_FILE=$(mktemp)
+trap "rm -f $MKDOCS_OUTPUT_FILE" EXIT
+
+# Run mkdocs, showing output in real-time and capturing to file
+# Capture exit code from mkdocs (not tee) using PIPESTATUS
+set +e  # Temporarily disable exit on error to capture exit code
+uv run mkdocs build -s 2>&1 | tee "$MKDOCS_OUTPUT_FILE"
+BUILD_EXIT_CODE=${PIPESTATUS[0]}
+set -e  # Re-enable exit on error
 
 # Check if build failed
 if [ "$BUILD_EXIT_CODE" -gt 0 ]; then
   echo "❌ Build failed with exit code $BUILD_EXIT_CODE"
   echo "Build output:"
-  echo "$MKDOCS_OUT"
+  cat "$MKDOCS_OUTPUT_FILE"
   exit "$BUILD_EXIT_CODE"
 fi
+
+# Read captured output for warning checking
+MKDOCS_OUT=$(cat "$MKDOCS_OUTPUT_FILE")
 
 # Check for warnings
 WARNING_COUNT=$(echo "$MKDOCS_OUT" | grep -c "WARNING" || true)
