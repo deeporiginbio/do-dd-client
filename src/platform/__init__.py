@@ -9,8 +9,13 @@ environment variables when keywords are omitted:
 - `DEEPORIGIN_ENV` (defaults to "prod" if not provided)
 - `DEEPORIGIN_ORG_KEY`
 
-Use `DeepOriginClient.get()` to get a cached singleton instance that reuses
-connection pools across notebook cells.
+The client automatically caches instances based on (base_url, token, org_key, tag),
+so calling `DeepOriginClient()` multiple times with the same parameters returns
+the same cached instance, reusing connection pools.
+
+Example:
+    client = DeepOriginClient()  # Uses singleton cache automatically
+    client.tag = "my-tag"  # Set tag for all function runs
 """
 
 from deeporigin.platform.client import DeepOriginClient

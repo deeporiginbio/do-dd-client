@@ -27,6 +27,10 @@ install: install-pre-commit
 	uv sync --all-extras
 
 
+docs-build:
+	@echo "Building docs..."
+	uv run mkdocs build
+
 docs-serve:
 	@echo "Serving docs locally..."
 	uv run mkdocs serve
