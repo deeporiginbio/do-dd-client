@@ -1274,6 +1274,14 @@ class Protein(Entity):
 
 
 def validate_pdb_file(file_path: str | Path) -> None:
+    """validate a PDB file by checking if it can be parsed by RDKit
+
+    Args:
+        file_path (str | Path): Path to the PDB file.
+
+    Raises:
+        DeepOriginException: If the PDB file is invalid.
+    """
     # If you want *exceptions* instead, use:
     from rdkit import Chem, rdBase
 
