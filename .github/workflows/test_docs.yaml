@@ -24,7 +24,7 @@ jobs:
           version: "0.5.27"
 
       - name: Set up Python
-        run: uv python install 3.10
+        run: uv python install 3.11
 
       - name: Build docs and check for warnings
         env:
