@@ -27,6 +27,15 @@ def test_from_file_lv0():
     )
 
 
+def test_from_file_invalid_pdb_lv0():
+    pdb_path = Path(__file__).parent / "fixtures" / "1eby-illegal-element-name.pdb"
+    with pytest.raises(
+        DeepOriginException,
+        match="The PDB file is invalid. It could not be parsed by RDKit.",
+    ):
+        _ = Protein.from_file(pdb_path)
+
+
 def test_from_name_lv0(pytestconfig):
     """Test creating a protein from a name.
 
