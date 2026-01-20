@@ -142,17 +142,20 @@ class Protein(Entity):
             ValueError: If the file type is unsupported or the structure cannot be loaded.
             RuntimeError: If the file cannot be read or processed.
         """
+        file_path = Path(file_path).absolute()
+        if not file_path.exists():
+            raise FileNotFoundError(f"The file {file_path} does not exist.")
+
+        block_type = file_path.suffix.lstrip(".").lower()
+        if block_type not in ["pdb", "pdbqt", "cif"]:
+            raise ValueError(
+                f"Unsupported file type: {block_type}. Supported types are: pdb, pdbqt, cif"
+            )
+
+        # validate PDB files
+        if block_type == "pdb":
+            validate_pdb_file(file_path)
         try:
-            file_path = Path(file_path).absolute()
-            if not file_path.exists():
-                raise FileNotFoundError(f"The file {file_path} does not exist.")
-
-            block_type = file_path.suffix.lstrip(".").lower()
-            if block_type not in ["pdb", "pdbqt", "cif"]:
-                raise ValueError(
-                    f"Unsupported file type: {block_type}. Supported types are: pdb, pdbqt, cif"
-                )
-
             block_content = file_path.read_text()
             structure = cls.load_structure_from_block(block_content, block_type)
             structure = cls.select_structure(structure, struct_ind)
@@ -1267,4 +1270,27 @@ class Protein(Entity):
         client.files.upload_file(
             self.to_pdb(),
             remote_path=self._remote_path,
+        )
+
+
+def validate_pdb_file(file_path: str | Path) -> None:
+    """validate a PDB file by checking if it can be parsed by RDKit
+
+    Args:
+        file_path (str | Path): Path to the PDB file.
+
+    Raises:
+        DeepOriginException: If the PDB file is invalid.
+    """
+    # If you want *exceptions* instead, use:
+    from rdkit import Chem, rdBase
+
+    rdBase.EnableLog("rdApp.error")  # logging on
+    mol = Chem.MolFromPDBFile(str(file_path), sanitize=False, removeHs=False)
+    rdBase.DisableLog("rdApp.error")
+    if mol is None:
+        raise DeepOriginException(
+            title="Invalid PDB file",
+            message="The PDB file is invalid. It could not be parsed by RDKit.",
+            fix="Please check the PDB file and try again.",
         )
