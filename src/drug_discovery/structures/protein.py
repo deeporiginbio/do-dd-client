@@ -14,7 +14,7 @@ import io
 import os
 from pathlib import Path
 import tempfile
-from typing import Any, Optional, Tuple
+from typing import Any, Optional, Self, Tuple
 
 from beartype import beartype
 import numpy as np
@@ -52,7 +52,7 @@ class Protein(Entity):
     _preferred_ext = ".pdb"
 
     @classmethod
-    def from_name(cls, name: str) -> "Protein":
+    def from_name(cls, name: str) -> Self:
         """
         Create a Protein instance from a name.
         """
@@ -66,7 +66,7 @@ class Protein(Entity):
         return cls.from_pdb_id(pdb_id)
 
     @classmethod
-    def from_pdb_id(cls, pdb_id: str, struct_ind: int = 0) -> "Protein":
+    def from_pdb_id(cls, pdb_id: str, struct_ind: int = 0) -> Self:
         """
         Create a Protein instance from a PDB ID.
 
@@ -126,7 +126,7 @@ class Protein(Entity):
             ) from None
 
     @classmethod
-    def from_file(cls, file_path: str, struct_ind: int = 0) -> "Protein":
+    def from_file(cls, file_path: str, struct_ind: int = 0) -> Self:
         """
         Create a Protein instance from a file.
 
@@ -442,7 +442,7 @@ class Protein(Entity):
         ligand_res_names = np.unique(hetatm_records.res_name)
         return list(ligand_res_names)
 
-    def select_chain(self, chain_id: str) -> Optional["Protein"]:
+    def select_chain(self, chain_id: str) -> Optional[Self]:
         """
         Select a specific chain by its ID and return a new Protein object.
 
@@ -465,7 +465,7 @@ class Protein(Entity):
         else:
             raise ValueError(f"Chain {chain_id} not found.")
 
-    def select_chains(self, chain_ids: list[str]) -> "Protein":
+    def select_chains(self, chain_ids: list[str]) -> Self:
         """
         Select specific chains from the protein structure.
 
@@ -896,7 +896,7 @@ class Protein(Entity):
 
     def _create_new_protein_with_structure(
         self, new_structure, suffix: str = "_modified"
-    ) -> "Protein":
+    ) -> Self:
         """
         Helper method to create a new Protein object with a modified structure.
         Writes the modified structure to a new file and creates a new Protein object from that file.
@@ -1044,13 +1044,12 @@ class Protein(Entity):
                 os.remove(temp_file_path)
 
     @classmethod
-    @beartype
     def from_base64(
         cls,
         base64_string: str,
         name: str = "",
         **kwargs: Any,
-    ) -> "Protein":
+    ) -> Self:
         """
         Create a Protein instance from a base64 encoded PDB string.
 

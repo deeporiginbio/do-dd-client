@@ -9,7 +9,7 @@ import os
 from pathlib import Path
 import random
 import tempfile
-from typing import Any, Literal, Optional
+from typing import Any, Literal, Optional, Self
 import warnings
 
 from beartype import beartype
@@ -37,6 +37,7 @@ FILE_FORMATS = Literal["mol", "mol2", "pdb", "pdbqt", "xyz", "sdf"]
 
 
 @dataclass
+@beartype
 class Ligand(Entity):
     """A class representing a ligand molecule in drug discovery workflows.
 
@@ -68,14 +69,13 @@ class Ligand(Entity):
     _preferred_ext = ".sdf"
 
     @classmethod
-    @beartype
     def from_rdkit_mol(
         cls,
         mol: Chem.rdchem.Mol,
         name: Optional[str] = None,
         save_to_file: bool = False,
         **kwargs: Any,
-    ):
+    ) -> Self:
         """
         Create a Ligand instance from an RDKit Mol object.
 
@@ -108,7 +108,7 @@ class Ligand(Entity):
         name: str = "",
         save_to_file: bool = False,
         **kwargs: Any,
-    ) -> "Ligand":
+    ) -> Self:
         """
         Create a Ligand instance from a SMILES string.
 
@@ -152,7 +152,7 @@ class Ligand(Entity):
         name: str = "",
         save_to_file: bool = False,
         **kwargs: Any,
-    ) -> "Ligand":
+    ) -> Self:
         """
         Create a Ligand instance from block content.
 
@@ -182,7 +182,7 @@ class Ligand(Entity):
     def from_identifier(
         cls,
         identifier: str,
-    ):
+    ) -> Self:
         """
         Create a Ligand instance from a compound name.
 
@@ -213,14 +213,13 @@ class Ligand(Entity):
         return cls(mol=mol, name=identifier)
 
     @classmethod
-    @beartype
     def from_base64(
         cls,
         base64_string: str,
         name: str = "",
         save_to_file: bool = False,
         **kwargs: Any,
-    ) -> "Ligand":
+    ) -> Self:
         """
         Create a Ligand instance from a base64 encoded SDF string.
 
@@ -271,11 +270,11 @@ class Ligand(Entity):
     @classmethod
     def from_sdf(
         cls,
-        file_path: str,
+        file_path: str | Path,
         *,
         sanitize: bool = True,
         remove_hydrogens: bool = False,
-    ) -> "Ligand":
+    ) -> Self:
         """
         Create a single Ligand instance from an SDF file containing exactly one molecule.
 
@@ -350,8 +349,7 @@ class Ligand(Entity):
 
         self.mol = stripped_mol
 
-    @beartype
-    def prepare(self, *, remove_hydrogens: bool = False) -> "Ligand":
+    def prepare(self, *, remove_hydrogens: bool = False) -> Self:
         """Prepare the ligand for downstream workflows.
 
         The routine performs the following using RDKit and internal utilities:
@@ -852,7 +850,7 @@ class Ligand(Entity):
 
         return MolToImage(self.mol)
 
-    def show(self) -> str:
+    def show(self) -> str | None:
         """
         Visualize the current state of the ligand molecule.
 
@@ -1076,6 +1074,7 @@ def ligands_to_dataframe(ligands: list[Ligand]):
 
 
 @dataclass
+@beartype
 class LigandSet:
     """
     A class representing a set of Ligand objects.
@@ -1146,8 +1145,7 @@ class LigandSet:
         else:
             return NotImplemented
 
-    @beartype
-    def random_sample(self, n: int) -> "LigandSet":
+    def random_sample(self, n: int) -> Self:
         """
         Return a new LigandSet containing n randomly selected ligands.
 
@@ -1335,9 +1333,9 @@ class LigandSet:
     @classmethod
     def from_csv(
         cls,
-        file_path: str,
+        file_path: str | Path,
         smiles_column: str = "smiles",
-    ) -> "LigandSet":
+    ) -> Self:
         """
         Create a LigandSet instance from a CSV file containing SMILES strings and additional properties.
 
@@ -1435,11 +1433,11 @@ class LigandSet:
     @classmethod
     def from_sdf(
         cls,
-        file_path: str,
+        file_path: str | Path,
         *,
         sanitize: bool = True,
         remove_hydrogens: bool = False,
-    ) -> "LigandSet":
+    ) -> Self:
         """
         Create a LigandSet instance from an SDF file containing one or more molecules.
 
@@ -1496,7 +1494,7 @@ class LigandSet:
         *,
         sanitize: bool = True,
         remove_hydrogens: bool = False,
-    ) -> "LigandSet":
+    ) -> Self:
         """
         Create a LigandSet instance from multiple SDF files by concatenating them together.
 
@@ -1540,27 +1538,33 @@ class LigandSet:
         return cls(ligands=all_ligands)
 
     @classmethod
-    def from_dir(cls, directory: str) -> "LigandSet":
+    def from_dir(cls, directory: str | Path) -> Self:
         """
         Create a LigandSet instance from a directory containing SDF files.
         """
-        sdf_files = [f for f in os.listdir(directory) if f.endswith(".sdf")]
+        directory = Path(directory)
+        if not directory.is_dir():
+            raise ValueError(f"{directory} is not a valid directory")
+
         ligands = []
+
+        # Process SDF files
+        sdf_files = list(directory.glob("*.sdf"))
         for sdf_file in sdf_files:
-            this_file = os.path.join(directory, sdf_file)
+            this_file = str(sdf_file)
             this_set = cls.from_sdf(this_file)
             for ligand in this_set.ligands:
                 ligand.file_path = this_file
             ligands.extend(this_set.ligands)
 
-        #  now get all CSV files
-        csv_files = [f for f in os.listdir(directory) if f.endswith(".csv")]
+        # Process CSV files
+        csv_files = list(directory.glob("*.csv"))
         for csv_file in csv_files:
-            this_file = os.path.join(directory, csv_file)
+            this_file = str(csv_file)
             this_set = cls.from_csv(this_file)
             for ligand in this_set.ligands:
                 ligand.file_path = this_file
-            ligands.extend(this_set)
+            ligands.extend(this_set.ligands)
 
         return cls(ligands=ligands)
 
@@ -1570,7 +1574,7 @@ class LigandSet:
             ligand.add_hydrogens()
 
     @jupyter_visualization
-    def show(self):
+    def show(self) -> str | None:
         """
         Visualize all ligands in this LigandSet in 3D
         """
@@ -1715,9 +1719,8 @@ class LigandSet:
         """
         return [ligand.smiles for ligand in self.ligands]
 
-    @beartype
     @classmethod
-    def from_smiles(cls, smiles: list[str] | set[str]) -> "LigandSet":
+    def from_smiles(cls, smiles: list[str] | set[str]) -> Self:
         """
         Create a LigandSet from a list of SMILES strings.
         """
@@ -1771,7 +1774,7 @@ class LigandSet:
         """
         return [ligand.mol for ligand in self.ligands]
 
-    def mcs(self) -> str:
+    def mcs(self) -> Chem.Mol:
         """
         Generates the Most Common Substructure (MCS) for ligands in a LigandSet
 
@@ -1784,8 +1787,7 @@ class LigandSet:
 
         return align.mcs(self.to_rdkit_mols())
 
-    @beartype
-    def filter_top_poses(self, *, by_pose_score: bool = False) -> "LigandSet":
+    def filter_top_poses(self, *, by_pose_score: bool = False) -> Self:
         """
         Filter ligands to keep only the best pose for each unique molecule.
 
