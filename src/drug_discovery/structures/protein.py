@@ -17,6 +17,7 @@ import tempfile
 from typing import Any, Optional, Self, Tuple
 
 from beartype import beartype
+import Bio.Seq
 import numpy as np
 
 from deeporigin.drug_discovery.constants import (
@@ -35,6 +36,7 @@ from .pocket import Pocket
 
 
 @dataclass
+@beartype
 class Protein(Entity):
     """A class representing a protein structure with various manipulation and analysis capabilities."""
 
@@ -126,7 +128,7 @@ class Protein(Entity):
             ) from None
 
     @classmethod
-    def from_file(cls, file_path: str, struct_ind: int = 0) -> Self:
+    def from_file(cls, file_path: str | Path, struct_ind: int = 0) -> Self:
         """
         Create a Protein instance from a file.
 
@@ -176,15 +178,12 @@ class Protein(Entity):
             ) from e
 
     @staticmethod
-    def load_structure_from_block(block_content: str, block_type: str) -> np.ndarray:
+    def load_structure_from_block(block_content: str, block_type: str):
         """Load a protein structure from block content.
 
         Args:
             block_content (str): The content of the structure file.
             block_type (str): The type of the structure file (pdb, pdbqt, or cif).
-
-        Returns:
-            np.ndarray: The loaded protein structure.
 
         Raises:
             ValueError: If the block type is unsupported.
@@ -214,7 +213,7 @@ class Protein(Entity):
         return structure
 
     @staticmethod
-    def select_structure(structure: np.ndarray, index: int) -> np.ndarray:
+    def select_structure(structure, index: int):
         """Select a specific structure by index."""
         if index < 0 or index >= len(structure):
             raise ValueError(
@@ -223,7 +222,7 @@ class Protein(Entity):
         return structure[index]
 
     @property
-    def sequence(self) -> list[str]:
+    def sequence(self) -> list[Bio.Seq.Seq]:
         """
         Retrieve the amino acid sequences of all polypeptide chains in the protein structure.
 
