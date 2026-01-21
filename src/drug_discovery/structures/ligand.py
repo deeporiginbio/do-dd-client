@@ -875,7 +875,7 @@ class Ligand(Entity):
         except Exception as e:
             raise DeepOriginException(f"Visualization failed: {str(e)}") from e
 
-    def _repr_html_(self) -> str:
+    def _repr_html_(self) -> str | None:
         """
         Return the HTML representation of the object for Jupyter Notebook.
 
@@ -1275,7 +1275,7 @@ class LigandSet:
         html_parts.append("</div>")
         return "".join(html_parts)
 
-    def _repr_html_(self) -> str:
+    def _repr_html_(self) -> str | None:
         """Return HTML representation for Jupyter notebooks.
 
         Displays a summary of the LigandSet including the number of ligands
