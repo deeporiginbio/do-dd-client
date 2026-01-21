@@ -30,7 +30,15 @@ class Organizations:
             orgKey, name, mfaEnabled, threshold, autoApproveMaxAmount, status,
             createdAt, updatedAt, invites, roles, etc.
         """
-        return self._c.get_json("/entities/protected/organizations")
+        # we're moving to a response envelope pattern, so need to handle both cases
+        # TODO -- remove this once we've fully migrated to the new pattern
+        response = self._c.get_json("/entities/protected/organizations")
+        if isinstance(response, dict) and "data" in response:
+            return response["data"]
+        elif isinstance(response, list):
+            return response
+        else:
+            return []
 
     def users(self) -> list[dict]:
         """List all users associated with the organization.
@@ -41,4 +49,13 @@ class Organizations:
             firstName, lastName, authId, avatar, createdAt, updatedAt, etc.
         """
 
-        return self._c.get_json(f"/entities/{self._c.org_key}/organizations/users")
+        response = self._c.get_json(f"/entities/{self._c.org_key}/organizations/users")
+
+        # we're moving to a response envelope pattern, so need to handle both cases
+        # TODO -- remove this once we've fully migrated to the new pattern
+        if isinstance(response, dict) and "data" in response:
+            return response["data"]
+        elif isinstance(response, list):
+            return response
+        else:
+            return []
