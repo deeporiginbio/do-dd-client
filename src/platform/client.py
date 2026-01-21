@@ -30,6 +30,9 @@ from deeporigin.platform.tools import Tools
 from deeporigin.utils.constants import API_ENDPOINT, ENV_VARIABLES, ENVS
 from deeporigin.utils.core import _ensure_do_folder
 
+# Cache for local token to ensure consistency across calls
+_LOCAL_TOKEN_CACHE: str | None = None
+
 
 def _generate_local_token() -> str:
     """Generate a dummy JWT token for local testing.
@@ -37,6 +40,12 @@ def _generate_local_token() -> str:
     Returns:
         A JWT token string for local environment testing.
     """
+    global _LOCAL_TOKEN_CACHE
+
+    # Return cached token if available to ensure consistency
+    if _LOCAL_TOKEN_CACHE is not None:
+        return _LOCAL_TOKEN_CACHE
+
     import jwt
 
     now = int(time.time())
@@ -58,7 +67,8 @@ def _generate_local_token() -> str:
         "family_name": "User",
         "email": "user@deeporigin.com",
     }
-    return jwt.encode(decoded_token, "secret")
+    _LOCAL_TOKEN_CACHE = jwt.encode(decoded_token, "secret")
+    return _LOCAL_TOKEN_CACHE
 
 
 def _resolve_token_and_org_key(
@@ -600,7 +610,10 @@ class DeepOriginClient:
         and removes them from the singleton registry. Useful for cleanup or
         when switching between different configurations.
         """
-        for inst in cls._instances.values():
+        # Create a copy of values to avoid "dictionary changed size during iteration"
+        # error when close() modifies the dictionary
+        instances = list(cls._instances.values())
+        for inst in instances:
             inst.close()
         cls._instances.clear()
 
@@ -623,7 +636,9 @@ class DeepOriginClient:
         This is called automatically when the client is closed to ensure
         the registry doesn't hold references to closed clients.
         """
-        key = (self.base_url, self.token, self.org_key)
+        # Use the same cache key format as __new__ (includes tag)
+        normalized_base_url = self.base_url.rstrip("/") + "/"
+        key = (normalized_base_url, self.token, self.org_key, self.tag)
         if key in self._instances and self._instances[key] is self:
             self._instances.pop(key, None)
 

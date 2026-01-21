@@ -16,7 +16,7 @@ Attributes:
 from dataclasses import dataclass, field
 import os
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any, Optional, Self
 
 import numpy as np
 import pandas as pd
@@ -79,7 +79,7 @@ class Pocket:
         pdb_file_path: str | Path,
         name: Optional[str] = None,
         **kwargs: Any,
-    ) -> "Pocket":
+    ) -> Self:
         """
         Create a Pocket instance from a PDB file.
 
@@ -173,7 +173,7 @@ class Pocket:
         residue_number: int,
         chain_id: str | None = None,
         cutoff: float = 5.0,
-    ) -> "Pocket":
+    ) -> Self:
         """
         Creates a pocket centered on a given residue (by number)
 
@@ -331,7 +331,7 @@ class Pocket:
         cls,
         ligand: "Ligand",
         name: Optional[str] = None,
-    ) -> "Pocket":
+    ) -> Self:
         """
         Create a Pocket instance from a Ligand instance.
         """

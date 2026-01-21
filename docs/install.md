@@ -85,7 +85,6 @@ in your project root.
 
 | Python | macOS | Windows | Ubuntu |
 | -- | -- | -- | -- | 
-| 3.10| | ✅ | ✅ |
 | 3.11| | ✅ | ✅ |
 | 3.12| | ✅ | ✅ |
 | 3.13 | ✅ | ✅ | ✅ |
