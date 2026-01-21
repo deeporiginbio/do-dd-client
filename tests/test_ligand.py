@@ -71,11 +71,10 @@ def test_ligand_is_charged():
 @pytest.mark.parametrize(
     "smiles,name,expected_atoms,equivalent_smiles",
     [
-        ("C", "Methane", 1, None),  # Methane
-        ("CC", "Ethane", 2, None),  # Ethane
-        ("CCO", "Ethanol", 3, None),  # Ethanol
         ("c1ccccc1", "Benzene", 6, ["C1=CC=CC=C1"]),  # Benzene (aromatic notation)
         ("C1=CC=CC=C1", "Benzene_alt", 6, ["c1ccccc1"]),  # Benzene (Kekule notation)
+        ("CCCC", "Butane", 4, None),  # Butane (4 carbons, passes validation)
+        ("CCCO", "Propanol", 4, None),  # Propanol (4 atoms, passes validation)
     ],
 )
 def test_ligand_from_smiles(smiles, name, expected_atoms, equivalent_smiles):
@@ -116,6 +115,31 @@ def test_ligand_from_smiles_invalid():
     """Test that invalid SMILES raises DeepOriginException"""
     with pytest.raises(DeepOriginException, match=r"Cannot create"):
         Ligand.from_smiles(smiles="InvalidSMILES")
+
+
+@pytest.mark.parametrize(
+    "smiles,expected_error_pattern",
+    [
+        # Too small molecules (should fail molecular rules)
+        ("C", r"does not match basic molecular rules"),  # Methane - too small
+        (
+            "CC",
+            r"does not match basic molecular rules",
+        ),  # Ethane - too small, only 1 carbon
+        (
+            "CCO",
+            r"does not match basic molecular rules",
+        ),  # Ethanol - too small (< 4 atoms, only 1 carbon)
+        # Invalid SMILES format
+        ("InvalidSMILES", r"Cannot create"),  # Not a valid SMILES at all
+        ("[", r"Cannot create"),  # Unmatched bracket
+        ("CC[", r"Cannot create"),  # Invalid bracket syntax
+    ],
+)
+def test_ligand_from_smiles_validation_errors(smiles, expected_error_pattern):
+    """Test that various invalid SMILES raise appropriate validation errors."""
+    with pytest.raises(DeepOriginException, match=expected_error_pattern):
+        Ligand.from_smiles(smiles=smiles)
 
 
 @pytest.mark.xfail(reason="Depends on external data sources and can be unreliable")
@@ -164,12 +188,11 @@ def test_ligand_from_rdkit_mol():
     """Test that we can create a Ligand from an RDKit Mol object using the from_rdkit_mol classmethod"""
     from rdkit import Chem
 
-    # Create test RDKit molecules
+    # Create test RDKit molecules (using valid drug-like molecules)
     mols = [
-        Chem.MolFromSmiles("C"),  # Methane
-        Chem.MolFromSmiles("CC"),  # Ethane
-        Chem.MolFromSmiles("CCO"),  # Ethanol
         Chem.MolFromSmiles("c1ccccc1"),  # Benzene
+        Chem.MolFromSmiles("CCCC"),  # Butane
+        Chem.MolFromSmiles("CCCO"),  # Propanol
     ]
 
     for mol in mols:
@@ -320,17 +343,17 @@ def test_ligand_process_mol():
     """Test the process_mol method for salt removal and kekulization"""
 
     # Create a simple molecule
-    ligand = Ligand.from_smiles("CCO", name="Ethanol")
+    ligand = Ligand.from_smiles("c1ccccc1", name="Benzene")
 
     # The process_mol method is called in __post_init__, so the molecule should already be processed
     assert ligand.mol is not None
-    assert ligand.mol.GetNumAtoms() == 3
+    assert ligand.mol.GetNumAtoms() == 6  # Benzene has 6 carbon atoms
 
 
 def test_ligand_prepare_basic():
     """Prepare should salt-strip, kekulize, and validate atom types"""
 
-    ligand = Ligand.from_smiles("CCO", name="Ethanol")
+    ligand = Ligand.from_smiles("c1ccccc1", name="Benzene")
     # Ensure prepare runs and sets properties
     prepared = ligand.prepare()
 
@@ -345,7 +368,7 @@ def test_ligand_prepare_basic():
 def test_ligand_prepare_remove_hydrogens():
     """Test prepare with remove_hydrogens parameter"""
 
-    ligand = Ligand.from_smiles("CCO", name="Ethanol")
+    ligand = Ligand.from_smiles("c1ccccc1", name="Benzene")
     ligand.add_hydrogens()  # Add hydrogens first
 
     # Test with remove_hydrogens=True
@@ -353,13 +376,13 @@ def test_ligand_prepare_remove_hydrogens():
     assert "H" not in ligand.smiles  # Should not contain explicit hydrogens
 
     # Test with remove_hydrogens=False (default)
-    ligand2 = Ligand.from_smiles("CCO", name="Ethanol")
+    ligand2 = Ligand.from_smiles("c1ccccc1", name="Benzene")
     ligand2.add_hydrogens()
     ligand2.prepare(remove_hydrogens=False)
     assert "H" in ligand2.smiles  # Should contain explicit hydrogens
 
     # Test default behavior (should preserve hydrogens)
-    ligand3 = Ligand.from_smiles("CCO", name="Ethanol")
+    ligand3 = Ligand.from_smiles("CCCC", name="Butane")
     ligand3.add_hydrogens()
     ligand3.prepare()  # Default should be remove_hydrogens=False
     assert "H" in ligand3.smiles  # Should contain explicit hydrogens
@@ -368,15 +391,17 @@ def test_ligand_prepare_remove_hydrogens():
 def test_ligand_prepare_rejects_unsupported_atoms():
     """Ligands with unsupported atoms should be rejected by prepare()."""
 
-    # Include boron (unsupported) in a simple fragment
-    lig = Ligand.from_smiles("B")
+    # Use a boronic acid derivative that passes molecular rules validation
+    # but will be rejected by prepare() due to unsupported boron atom
+    # B(c1ccccc1)O - phenylboronic acid (has boron, but large enough to pass validation)
+    lig = Ligand.from_smiles("B(c1ccccc1)O")
     with pytest.raises(DeepOriginException, match="Unsupported atom types"):
         lig.prepare()
 
 
 def test_ligand_conformer_management():
     """Test conformer-related methods"""
-    ligand = Ligand.from_smiles("CCO", name="Ethanol")
+    ligand = Ligand.from_smiles("c1ccccc1", name="Benzene")
 
     # Test get_conformer
     conformer = ligand.get_conformer(0)
@@ -393,7 +418,7 @@ def test_ligand_conformer_management():
 
 def test_ligand_embed_and_hydrogens():
     """Test embedding and hydrogen addition methods"""
-    ligand = Ligand.from_smiles("CCO", name="Ethanol")
+    ligand = Ligand.from_smiles("c1ccccc1", name="Benzene")
 
     # Test add_hydrogens
     original_atom_count = ligand.mol.GetNumAtoms()
@@ -412,7 +437,7 @@ def test_ligand_embed_and_hydrogens():
 
 def test_ligand_property_management():
     """Test property setting and getting methods"""
-    ligand = Ligand.from_smiles("CCO", name="Ethanol")
+    ligand = Ligand.from_smiles("c1ccccc1", name="Benzene")
 
     # Test set_property
     ligand.set_property("test_prop", "test_value")
@@ -428,7 +453,7 @@ def test_ligand_property_management():
 
 def test_ligand_file_writing():
     """Test file writing methods"""
-    ligand = Ligand.from_smiles("CCO", name="Ethanol")
+    ligand = Ligand.from_smiles("c1ccccc1", name="Benzene")
 
     # Test write_to_file with SDF format
     sdf_path = ligand.write_to_file(output_format="sdf")
@@ -457,7 +482,7 @@ def test_ligand_file_writing():
 
 def test_ligand_visualization():
     """Test visualization methods"""
-    ligand = Ligand.from_smiles("CCO", name="Ethanol")
+    ligand = Ligand.from_smiles("c1ccccc1", name="Benzene")
 
     # Test draw method (returns RDKit drawing)
     drawing = ligand.draw()
@@ -468,7 +493,7 @@ def test_ligand_visualization():
 
 def test_ligand_coordinate_updates():
     """Test coordinate update methods"""
-    ligand = Ligand.from_smiles("CCO", name="Ethanol")
+    ligand = Ligand.from_smiles("c1ccccc1", name="Benzene")
 
     # Ensure ligand has coordinates
     if ligand.mol.GetNumConformers() == 0:
@@ -492,7 +517,7 @@ def test_ligand_coordinate_updates():
 # Test properties
 def test_ligand_coordinates_property():
     """Test the coordinates property"""
-    ligand = Ligand.from_smiles("CCO", name="Ethanol")
+    ligand = Ligand.from_smiles("c1ccccc1", name="Benzene")
 
     # Ensure ligand has coordinates
     if ligand.mol.GetNumConformers() == 0:
@@ -508,7 +533,8 @@ def test_ligand_coordinates_property():
 
 def test_ligand_atom_types_property():
     """Test the atom_types property"""
-    ligand = Ligand.from_smiles("CCO", name="Ethanol")
+    # Use a molecule with both C and O that passes validation
+    ligand = Ligand.from_smiles("CCCCCO", name="Hexanol")
 
     # Test the atom_types property
     atom_types = ligand.atom_types
@@ -521,7 +547,7 @@ def test_ligand_atom_types_property():
 def test_ligand_contains_boron():
     """Test the contains_boron property"""
     # Test ligand without boron
-    ligand_no_boron = Ligand.from_smiles("CCO", name="Ethanol")
+    ligand_no_boron = Ligand.from_smiles("c1ccccc1", name="Benzene")
     assert not ligand_no_boron.contains_boron
     assert ligand_no_boron.available_for_docking
 
@@ -533,7 +559,7 @@ def test_ligand_contains_boron():
 
 def test_ligand_coordinate_mismatch():
     """Test coordinate update with mismatched atom count"""
-    ligand = Ligand.from_smiles("CCO", name="Ethanol")
+    ligand = Ligand.from_smiles("c1ccccc1", name="Benzene")
 
     # Ensure ligand has coordinates
     if ligand.mol.GetNumConformers() == 0:
@@ -550,7 +576,7 @@ def test_ligand_coordinate_mismatch():
 
 def test_ligand_no_conformers():
     """Test handling of molecules without conformers"""
-    ligand = Ligand.from_smiles("CCO", name="Ethanol")
+    ligand = Ligand.from_smiles("c1ccccc1", name="Benzene")
 
     # Remove all conformers
     ligand.mol.RemoveAllConformers()
@@ -569,19 +595,18 @@ def test_ligand_no_conformers():
 
 def test_ligand_property_inheritance():
     """Test how properties are handled during initialization"""
-    ligand = Ligand.from_smiles("CCO", name="Ethanol")
+    ligand = Ligand.from_smiles("c1ccccc1", name="Benzene")
 
     # Check that initial_smiles property was set
     assert ligand.mol.HasProp("initial_smiles")
 
-    # Check that name property was set (it's set in write_to_file, not __post_init__)
-    # The name property is only set when writing to file, so we'll test that instead
-    assert ligand.name == "Ethanol"
+    # Check that name property was set correctly
+    assert ligand.name == "Benzene"
 
 
 def test_ligand_file_path_handling():
     """Test file path resolution and directory creation"""
-    ligand = Ligand.from_smiles("CCO", name="Ethanol")
+    ligand = Ligand.from_smiles("c1ccccc1", name="Benzene")
 
     # Test that directory creation works
     directory = ligand._get_directory()
@@ -601,8 +626,8 @@ def test_ligands_to_dataframe():
 
     # Create test ligands
     ligands_list = [
-        Ligand.from_smiles("CCO", name="Ethanol"),
-        Ligand.from_smiles("CCCO", name="Propanol"),
+        Ligand.from_smiles("c1ccccc1", name="Benzene"),
+        Ligand.from_smiles("CCCC", name="Butane"),
     ]
 
     # Add some properties

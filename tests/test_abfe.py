@@ -22,7 +22,7 @@ def test_abfe_charged_ligand_lv0():
 
 def test_abfe_prepared_system_lv0():
     """test that abfe raises an error if a prepared system is not provided"""
-    ligand = Ligand.from_smiles("CCO")
+    ligand = Ligand.from_smiles("CCCC")  # Butane - valid drug-like molecule
     protein = Protein.from_file(BRD_DATA_DIR / "brd.pdb")
     sim = Complex(protein=protein, ligands=ligand)
     with pytest.raises(DeepOriginException, match="is not prepared"):
@@ -32,7 +32,7 @@ def test_abfe_prepared_system_lv0():
 def test_check_dt_defaults_valid_lv0():
     """default parameters should have in-range dt everywhere"""
 
-    ligand = Ligand.from_smiles("CCO")
+    ligand = Ligand.from_smiles("CCCC")  # Butane - valid drug-like molecule
     protein = Protein.from_file(BRD_DATA_DIR / "brd.pdb")
     sim = Complex(protein=protein, ligands=ligand)
 
@@ -43,7 +43,7 @@ def test_check_dt_defaults_valid_lv0():
 def test_check_dt_raises_on_out_of_range_lv0():
     """setting any nested dt out of range should raise an error"""
 
-    ligand = Ligand.from_smiles("CCO")
+    ligand = Ligand.from_smiles("CCCC")  # Butane - valid drug-like molecule
     protein = Protein.from_file(BRD_DATA_DIR / "brd.pdb")
     sim = Complex(protein=protein, ligands=ligand)
 

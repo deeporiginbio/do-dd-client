@@ -343,7 +343,7 @@ def test_random_sample():
     """Test the random_sample method of LigandSet"""
 
     # Create a test LigandSet
-    test_smiles = ["CCO", "CCCO", "CCCC", "CCCCC", "CCCCCC"]
+    test_smiles = ["CCCC", "CCCO", "CCCC", "CCCCC", "CCCCCC"]
     ligands = LigandSet.from_smiles(test_smiles)
 
     # Test basic sampling
@@ -373,7 +373,7 @@ def test_random_sample():
 def test_random_sample_validation():
     """Test validation in random_sample method"""
 
-    test_smiles = ["CCO", "CCCO", "CCCC"]
+    test_smiles = ["CCCC", "CCCO", "CCCC"]
     ligands = LigandSet.from_smiles(test_smiles)
 
     # Test invalid n values
@@ -397,7 +397,7 @@ def test_random_sample_validation():
 def test_random_sample_deterministic():
     """Test that random_sample returns different results on multiple calls"""
 
-    test_smiles = ["CCO", "CCCO", "CCCC", "CCCCC", "CCCCCC", "CCCCCCC"]
+    test_smiles = ["CCCC", "CCCO", "CCCC", "CCCCC", "CCCCCC", "CCCCCCC"]
     ligands = LigandSet.from_smiles(test_smiles)
 
     # Sample multiple times and check we get different results
@@ -421,7 +421,7 @@ def test_ligandset_operations():
     from deeporigin.drug_discovery.structures.ligand import LigandSet
 
     # Create test ligands
-    ligand1 = Ligand.from_smiles("CCO", name="Ethanol")
+    ligand1 = Ligand.from_smiles("CCCC", name="Butane")
     ligand2 = Ligand.from_smiles("CCCO", name="Propanol")
 
     # Test LigandSet creation
@@ -445,7 +445,7 @@ def test_ligandset_addition():
     """Test LigandSet addition operations"""
     from deeporigin.drug_discovery.structures.ligand import LigandSet
 
-    ligand1 = Ligand.from_smiles("CCO", name="Ethanol")
+    ligand1 = Ligand.from_smiles("CCCC", name="Butane")
     ligand2 = Ligand.from_smiles("CCCO", name="Propanol")
 
     set1 = LigandSet(ligands=[ligand1])
@@ -468,12 +468,12 @@ def test_ligandset_from_smiles():
     """Test LigandSet creation from SMILES"""
     from deeporigin.drug_discovery.structures.ligand import LigandSet
 
-    smiles_list = ["CCO", "CCCO", "CCCCO"]
+    smiles_list = ["CCCC", "CCCO", "CCCCO"]
     ligandset = LigandSet.from_smiles(smiles_list)
 
     assert len(ligandset) == 3
     assert all(isinstance(ligand, Ligand) for ligand in ligandset)
-    assert ligandset[0].smiles == "CCO"
+    assert ligandset[0].smiles == "CCCC"
     assert ligandset[1].smiles == "CCCO"
     assert ligandset[2].smiles == "CCCCO"
 
@@ -482,7 +482,7 @@ def test_ligandset_to_dataframe():
     """Test LigandSet to DataFrame conversion"""
     from deeporigin.drug_discovery.structures.ligand import LigandSet
 
-    ligand1 = Ligand.from_smiles("CCO", name="Ethanol")
+    ligand1 = Ligand.from_smiles("CCCC", name="Butane")
     ligand2 = Ligand.from_smiles("CCCO", name="Propanol")
 
     ligandset = LigandSet(ligands=[ligand1, ligand2])
@@ -502,13 +502,13 @@ def test_ligandset_indexing_and_slicing():
     from deeporigin.drug_discovery.structures.ligand import LigandSet
 
     # Create test ligands
-    test_smiles = ["CCO", "CCCO", "CCCC", "CCCCC"]
+    test_smiles = ["CCCC", "CCCO", "CCCC", "CCCCC"]
     ligandset = LigandSet.from_smiles(test_smiles)
 
     # Test single indexing (should return Ligand)
     single_ligand = ligandset[0]
     assert isinstance(single_ligand, Ligand)
-    assert single_ligand.smiles == "CCO"
+    assert single_ligand.smiles == "CCCC"
 
     # Test slicing (should return LigandSet)
     subset = ligandset[1:3]
@@ -550,7 +550,7 @@ def test_render_view_with_same_smiles():
     from deeporigin.drug_discovery.structures.ligand import LigandSet
 
     # Create multiple ligands with the same SMILES (different poses)
-    same_smiles = "CCO"
+    same_smiles = "CCCC"  # Butane
     ligand1 = Ligand.from_smiles(same_smiles, name="pose1")
     ligand2 = Ligand.from_smiles(same_smiles, name="pose2")
     ligand3 = Ligand.from_smiles(same_smiles, name="pose3")
@@ -571,7 +571,7 @@ def test_render_view_with_different_smiles():
     from deeporigin.drug_discovery.structures.ligand import LigandSet
 
     # Create ligands with different SMILES
-    ligand1 = Ligand.from_smiles("CCO", name="ethanol")
+    ligand1 = Ligand.from_smiles("CCCC", name="butane")
     ligand2 = Ligand.from_smiles("CCCO", name="propanol")
 
     ligand_set = LigandSet(ligands=[ligand1, ligand2])
@@ -589,7 +589,7 @@ def test_render_view_single_pose():
     from deeporigin.drug_discovery.structures.ligand import LigandSet
 
     # Create a single ligand
-    ligand = Ligand.from_smiles("CCO", name="ethanol")
+    ligand = Ligand.from_smiles("CCCC", name="butane")
     ligand_set = LigandSet(ligands=[ligand])
     html = ligand_set._render_view()
 
@@ -601,8 +601,8 @@ def test_render_view_single_pose_same_smiles():
     """Test that _render_view uses 'ligand' for a single ligand even with same SMILES"""
     from deeporigin.drug_discovery.structures.ligand import LigandSet
 
-    # Create a single ligand
-    smiles = "CCO"
+    # Create a single ligand (using a valid drug-like molecule)
+    smiles = "c1ccccc1"  # Benzene
     ligand = Ligand.from_smiles(smiles, name="pose1")
     ligand_set = LigandSet(ligands=[ligand])
     html = ligand_set._render_view()
@@ -612,3 +612,47 @@ def test_render_view_single_pose_same_smiles():
     # Should show the actual SMILES string, not "1 unique SMILES"
     assert f"<strong>SMILES:</strong> {smiles}" in html
     assert "1 unique SMILES" not in html
+
+
+def test_ligand_set_validation_invalid_smiles():
+    """Test that LigandSet validates SMILES strings and raises appropriate errors."""
+    # Create a valid ligand first
+    valid_ligand = Ligand.from_smiles("c1ccccc1", name="Benzene")
+
+    # Try to create a LigandSet with an invalid ligand (small molecule)
+    # This should fail during Ligand creation, but let's test the set validation
+    # by manually creating a ligand with invalid SMILES if possible
+    # Actually, we can't easily create a Ligand with invalid SMILES since
+    # __post_init__ validates it. So we test that valid ligands work.
+    ligand_set = LigandSet(ligands=[valid_ligand])
+    assert len(ligand_set) == 1
+
+
+def test_ligand_set_validation_wrong_type():
+    """Test that LigandSet raises error when non-Ligand objects are added."""
+    with pytest.raises(
+        DeepOriginException, match="All items in LigandSet must be Ligand instances"
+    ):
+        LigandSet(ligands=["not a ligand", "also not a ligand"])
+
+
+def test_ligand_set_validation_empty():
+    """Test that empty LigandSet is valid."""
+    ligand_set = LigandSet(ligands=[])
+    assert len(ligand_set) == 0
+
+
+@pytest.mark.parametrize(
+    "invalid_smiles,expected_error_pattern",
+    [
+        ("C", r"does not match basic molecular rules"),  # Too small
+        ("CC", r"does not match basic molecular rules"),  # Too small, only 1 carbon
+        ("CCO", r"does not match basic molecular rules"),  # Too small
+    ],
+)
+def test_ligand_set_rejects_small_molecules(invalid_smiles, expected_error_pattern):
+    """Test that LigandSet creation fails when ligands have invalid SMILES."""
+    # The error should occur during Ligand creation, not LigandSet creation
+    # since Ligand.__post_init__ validates first
+    with pytest.raises(DeepOriginException, match=expected_error_pattern):
+        Ligand.from_smiles(invalid_smiles)

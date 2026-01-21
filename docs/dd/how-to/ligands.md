@@ -129,12 +129,11 @@ from deeporigin.drug_discovery import Ligand
 from rdkit import Chem
 
 # Create an RDKit molecule
-mol = Chem.MolFromSmiles("CCO")  # Ethanol
+mol = Chem.MolFromSmiles("C/C=C/Cn1cc(-c2cccc(C(=O)N(C)C)c2)c2cc[nH]c2c1=O")  
 
 # Convert to a Ligand
 ligand = Ligand.from_rdkit_mol(
     mol=mol,
-    name="Ethanol",  # Optional name for the ligand
 )
 ```
 
@@ -146,7 +145,7 @@ You can also create a `LigandSet` from a list of RDKit molecules:
 from deeporigin.drug_discovery import LigandSet
 from rdkit import Chem
 
-mols = [Chem.MolFromSmiles("CCO"), Chem.MolFromSmiles("CCCO")]
+mols = [Chem.MolFromSmiles("C/C=C/Cn1cc(-c2cccc(C(=O)N(C)C)c2)c2cc[nH]c2c1=O"), Chem.MolFromSmiles("CCCC")]
 ligands = LigandSet.from_rdkit_mols(mols)
 ```
 

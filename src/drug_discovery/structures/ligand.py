@@ -22,6 +22,11 @@ from tqdm import tqdm
 
 from deeporigin.drug_discovery.constants import LIGANDS_DIR, SUPPORTED_ATOM_SYMBOLS
 from deeporigin.drug_discovery.utilities.visualize import jupyter_visualization
+from deeporigin.drug_discovery.validation import (
+    is_smiles_like,
+    is_valid_smiles,
+    matches_mol_rules,
+)
 from deeporigin.exceptions import DeepOriginException
 from deeporigin.platform.client import DeepOriginClient
 from deeporigin.utils.constants import number
@@ -593,8 +598,30 @@ class Ligand(Entity):
                 "mol must be provided when initializing from an identifier, file path, SMILES string, or block content."
             )
 
+        # Validate SMILES if provided before processing
+        if self.smiles is not None and not is_valid_smiles(self.smiles):
+            raise DeepOriginException(
+                f"Invalid SMILES string provided: {self.smiles}"
+            ) from None
+
         self.process_mol()
         self.smiles = Chem.MolToSmiles(Chem.RemoveHs(self.mol), canonical=True)
+
+        # Validate the generated SMILES
+        if not is_valid_smiles(self.smiles):
+            raise DeepOriginException(
+                f"Generated SMILES string is invalid: {self.smiles}"
+            ) from None
+
+        if not is_smiles_like(self.smiles):
+            raise DeepOriginException(
+                f"Generated SMILES string does not match SMILES pattern: {self.smiles}"
+            ) from None
+
+        if not matches_mol_rules(self.smiles):
+            raise DeepOriginException(
+                f"SMILES string does not match basic molecular rules: {self.smiles}"
+            ) from None
 
         if not self.mol.GetConformers():
             AllChem.Compute2DCoords(self.mol)
@@ -1087,6 +1114,28 @@ class LigandSet:
 
     ligands: list[Ligand] = field(default_factory=list)
     network: dict = field(default_factory=dict)
+
+    def __post_init__(self):
+        """Validate all ligands in the set."""
+        for i, ligand in enumerate(self.ligands):
+            if not isinstance(ligand, Ligand):
+                raise DeepOriginException(
+                    f"All items in LigandSet must be Ligand instances, "
+                    f"but found {type(ligand).__name__} at index {i}"
+                )
+            if ligand.smiles is not None:
+                if not is_valid_smiles(ligand.smiles):
+                    raise DeepOriginException(
+                        f"Ligand at index {i} has invalid SMILES: {ligand.smiles}"
+                    )
+                if not is_smiles_like(ligand.smiles):
+                    raise DeepOriginException(
+                        f"Ligand at index {i} SMILES does not match SMILES pattern: {ligand.smiles}"
+                    )
+                if not matches_mol_rules(ligand.smiles):
+                    raise DeepOriginException(
+                        f"Ligand at index {i} SMILES does not match basic molecular rules: {ligand.smiles}"
+                    )
 
     def __len__(self):
         return len(self.ligands)

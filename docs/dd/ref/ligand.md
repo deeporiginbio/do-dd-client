@@ -28,7 +28,7 @@ Example:
 ```python
 from deeporigin.drug_discovery.structures import Ligand
 
-lig = Ligand.from_smiles("CCO", name="Ethanol")
+lig = Ligand.from_smiles("C/C=C/Cn1cc(-c2cccc(C(=O)N(C)C)c2)c2cc[nH]c2c1=O")
 lig.prepare()  # Preserves hydrogens by default
 lig.prepare(remove_hydrogens=True)  # Remove hydrogens from SMILES
 ```
