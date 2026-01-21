@@ -793,7 +793,44 @@ class Protein(Entity):
         if not self.block_content:
             return
 
-        # Filter out ligand lines from block_content
+        # For CIF files, filter the structure directly and regenerate CIF content
+        if self.block_type == "cif":
+            # Normalize residue names to uppercase for comparison
+            ligand_resnames_upper = {resname.upper() for resname in ligand_resnames}
+
+            # Filter structure: remove atoms with matching residue names
+            # Keep atoms that are not hetero OR are hetero but not in ligand_resnames
+            res_names_upper = np.char.upper(self.structure.res_name)
+            mask = ~(
+                self.structure.hetero
+                & np.isin(res_names_upper, list(ligand_resnames_upper))
+            )
+            filtered_structure = self.structure[mask]
+
+            # Update the structure
+            self.structure = filtered_structure
+            if hasattr(self.structure, "atom_name"):
+                self.atom_types = self.structure.atom_name
+
+            # Regenerate CIF block_content from the filtered structure
+            try:
+                import biotite.structure.io.pdbx as pdbx
+
+                cif_file = pdbx.CIFFile()
+                pdbx.set_structure(cif_file, self.structure)
+
+                # Serialize to string to get the CIF content
+                self.block_content = cif_file.serialize()
+            except Exception as e:
+                import warnings
+
+                warnings.warn(
+                    f"Failed to regenerate CIF content after ligand removal: {e}",
+                    stacklevel=2,
+                )
+            return
+
+        # For PDB files, filter text lines from block_content
         filtered_lines = []
         lines = self.block_content.split("\n")
         removed_atoms = 0

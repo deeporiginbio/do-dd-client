@@ -323,6 +323,38 @@ def test_extract_ligand_from_cif_with_many_hetatms():
             os.remove(temp_pdb_path)
 
 
+def test_extract_ligand_mutates_protein_cif():
+    """Test that extract_ligand both extracts the ligand and removes it from a CIF protein."""
+    cif_path = Path(__file__).parent / "fixtures" / "1EBY.cif"
+    protein = Protein.from_file(cif_path)
+
+    # Verify it's a CIF file
+    assert protein.block_type == "cif"
+    assert protein.block_content is not None
+
+    # Store initial state
+    initial_structure_length = len(protein.structure)
+    initial_block_content_length = len(protein.block_content)
+
+    # Extract the ligand
+    ligand = protein.extract_ligand()
+
+    # Verify the ligand was extracted correctly
+    assert ligand is not None
+    assert ligand.smiles is not None
+    assert len(ligand.mol.GetAtoms()) > 0
+
+    # Verify the protein structure was mutated (ligand removed)
+    assert len(protein.structure) < initial_structure_length
+
+    # Verify the block_content was updated
+    assert len(protein.block_content) < initial_block_content_length
+
+    # Verify that the protein structure no longer contains the ligand atoms
+    # The structure should have fewer atoms after ligand removal
+    assert len(protein.structure) < initial_structure_length
+
+
 def test_from_file_cif():
     """Test creating a protein from a CIF file."""
     cif_path = Path(__file__).parent / "fixtures" / "1EBY.cif"
