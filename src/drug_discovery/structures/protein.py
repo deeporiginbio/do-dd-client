@@ -14,7 +14,7 @@ import io
 import os
 from pathlib import Path
 import tempfile
-from typing import Any, Optional, Self, Tuple
+from typing import Any, Optional, Self
 
 from beartype import beartype
 import Bio.Seq
@@ -640,7 +640,7 @@ class Protein(Entity):
 
         return missing
 
-    def extract_metals_and_cofactors(self) -> Tuple[list[str], list[str]]:
+    def extract_metals_and_cofactors(self) -> tuple[list[str], list[str]]:
         """
         Extract metal ions and cofactors from the protein structure.
 
