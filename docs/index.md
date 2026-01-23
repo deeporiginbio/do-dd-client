@@ -8,7 +8,7 @@
 - :octicons-unlock-24: **Free and open-source**
 <br>Install onto your own computer. 
 - :material-download: **Easy to install**
-<br>Just run `pip install deeporigin` (or `uv add deeporigin`).
+<br>Just run `pip install deeporigin[core,tools,plots]`.
 - :fontawesome-brands-python: **Pure Python**
 <br>Lightweight, written in pure Python. Works on any system that can run Python.
 
