@@ -90,3 +90,20 @@ in your project root.
 | 3.13 | ✅ | ✅ | ✅ |
 
 
+## Manual install
+
+If you want to install this yourself, in your own virtual env, use:
+
+=== "pip"
+
+    ```
+    pip install deeporigin[tools,core,plots]
+    ```
+
+=== "uv"
+
+    ```
+    uv add deeporigin --extra core --extra plots --extra tools
+    ```
+
+You'll have to install Jupyter Lab and configure the kernel and environment yourself. 
