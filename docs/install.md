@@ -56,13 +56,7 @@ This sections describes how to install the Deep Origin Python client on your com
     uv python install 3.13
 
     # install deeporigin in the current environment
-    uv add deeporigin
-
-    # if you're using Deep Origin tools (like FEP), use:
-    uv add deeporigin --extra tools
-
-    # also install as a uv tool to run from the command line
-    uv tool install deeporigin
+    uv add deeporigin --extra tools --extra core --extra plots
 
     # run jupyter using this environment
     uv run --with jupyter jupyter lab
