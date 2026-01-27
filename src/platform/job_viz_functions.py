@@ -359,7 +359,18 @@ def _viz_func_docking(job) -> str:
             if single_job._attributes
             else None
         )
-        if data is not None:
+
+        if data is None:
+            continue
+
+        # try to attempt to parse the data as JSON
+        # when the tool is running, the data is a string of newline-delimited text
+        # when the tool is complete, the data is a JSON object
+        try:
+            data = json.loads(data)
+            total_failed += data["n_failed_ligands"]
+            total_docked += data["n_successful_ligands"]
+        except (json.JSONDecodeError, TypeError):
             total_docked += data.count("ligand docked")
             total_failed += data.count("ligand failed")
 

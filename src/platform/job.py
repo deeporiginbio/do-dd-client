@@ -71,8 +71,7 @@ def _watch_blocking_impl(
     duplication while allowing each class to define its own termination condition
     via the is_terminal callable.
 
-    The design follows the DRY (Don't Repeat Yourself) principle: the core
-    blocking loop logic (display initialization, polling loop, status syncing,
+    The core blocking loop logic (display initialization, polling loop, status syncing,
     HTML rendering, and cleanup) is identical for both Job and JobList. The only
     difference is how each class determines when monitoring should stop (single
     job terminal state vs. all jobs terminal states).
@@ -388,6 +387,17 @@ class Job:
             return elapsed_minutes(
                 self._attributes["startedAt"], self._attributes["completedAt"]
             )
+
+    def logs(self):
+        """print the logs of the job, if any are available"""
+        try:
+            data = json.loads(self._attributes.get("progressReport"))
+            logs = data.get("logs", [])
+            logs = logs.split("\n")
+            for log in logs:
+                print(log)
+        except Exception:
+            print("No logs available")
 
     @beartype
     def _extract_display_data(
@@ -946,6 +956,16 @@ class JobList:
         with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
             futures = [executor.submit(job.sync) for job in self.jobs]
             concurrent.futures.wait(futures)
+
+    def logs(self):
+        """Print the logs of all jobs in the list, if any are available.
+
+        This method iteratively calls Job.logs() for every job in the JobList instance.
+        """
+        for i, job in enumerate(self.jobs):
+            if len(self.jobs) > 1:
+                print(f"\n--- Logs for Job {i + 1} (ID: {job.id}) ---")
+            job.logs()
 
     def show(self):
         """Display the job list view in a Jupyter notebook.
