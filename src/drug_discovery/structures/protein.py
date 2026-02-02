@@ -26,7 +26,6 @@ from deeporigin.drug_discovery.constants import (
     PROTEINS_DIR,
     STATE_DUMP_PATH,
 )
-from deeporigin.drug_discovery.docking import constrained_dock
 from deeporigin.exceptions import DeepOriginException
 from deeporigin.platform.client import DeepOriginClient
 from deeporigin.utils.core import _ensure_do_folder
@@ -333,6 +332,8 @@ class Protein(Entity):
                 }
                 for ligand, constraint in zip(ligands, constraints, strict=True)
             ]
+
+            from deeporigin.functions.docking import constrained_dock
 
             # running in series for now, while we sort out the parallelization
             all_top_poses = []
