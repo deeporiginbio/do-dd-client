@@ -31,12 +31,10 @@ class Organizations:
             createdAt, updatedAt, invites, roles, etc.
         """
         # we're moving to a response envelope pattern, so need to handle both cases
-        # TODO -- remove this once we've fully migrated to the new pattern
+
         response = self._c.get_json("/entities/protected/organizations")
         if isinstance(response, dict) and "data" in response:
             return response["data"]
-        elif isinstance(response, list):
-            return response
         else:
             return []
 
@@ -52,10 +50,8 @@ class Organizations:
         response = self._c.get_json(f"/entities/{self._c.org_key}/organizations/users")
 
         # we're moving to a response envelope pattern, so need to handle both cases
-        # TODO -- remove this once we've fully migrated to the new pattern
+
         if isinstance(response, dict) and "data" in response:
             return response["data"]
-        elif isinstance(response, list):
-            return response
         else:
             return []
