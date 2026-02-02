@@ -54,11 +54,6 @@ def render_progress_bar(
     passed = max(completed - failed, 0)
     pending = max(total - completed, 0)
 
-    # Calculate percentage for each segment relative to total.
-    passed_pct = (passed / total) * 100
-    failed_pct = (failed / total) * 100
-    pending_pct = (pending / total) * 100
-
     # HTML for the title and text labels
     text_html = f"""
     <div style="margin-bottom: 5px;">
@@ -73,20 +68,37 @@ def render_progress_bar(
     else:
         title_html = ""
 
-    progress_html = f"""
-    {title_html}
-    <p style="color: #666; margin: 10px 0;">{body_text}</p>
-    {text_html}
-    
-    <div class="progress" style="height: 20px;">
-      <div class="progress-bar bg-success" role="progressbar" style="width: {passed_pct:.1f}%"
-           aria-valuenow="{passed}" aria-valuemin="0" aria-valuemax="{total}"></div>
-      <div class="progress-bar bg-danger" role="progressbar" style="width: {failed_pct:.1f}%"
-           aria-valuenow="{failed}" aria-valuemin="0" aria-valuemax="{total}"></div>
-      <div class="progress-bar bg-secondary" role="progressbar" style="width: {pending_pct:.1f}%"
-           aria-valuenow="{pending}" aria-valuemin="0" aria-valuemax="{total}"></div>
-    </div>
-    """
+    # Use animated striped bar when just started (completed=0 and failed=0)
+    if completed == 0 and failed == 0:
+        progress_html = f"""
+        {title_html}
+        <p style="color: #666; margin: 10px 0;">{body_text}</p>
+        {text_html}
+        
+        <div class="progress" role="progressbar" aria-label="Starting" aria-valuenow="0" aria-valuemin="0" aria-valuemax="{total}" style="height: 20px;">
+          <div class="progress-bar progress-bar-striped progress-bar-animated" style="width: 100%"></div>
+        </div>
+        """
+    else:
+        # Calculate percentage for each segment relative to total.
+        passed_pct = (passed / total) * 100
+        failed_pct = (failed / total) * 100
+        pending_pct = (pending / total) * 100
+
+        progress_html = f"""
+        {title_html}
+        <p style="color: #666; margin: 10px 0;">{body_text}</p>
+        {text_html}
+        
+        <div class="progress" style="height: 20px;">
+          <div class="progress-bar bg-success" role="progressbar" style="width: {passed_pct:.1f}%"
+               aria-valuenow="{passed}" aria-valuemin="0" aria-valuemax="{total}"></div>
+          <div class="progress-bar bg-danger" role="progressbar" style="width: {failed_pct:.1f}%"
+               aria-valuenow="{failed}" aria-valuemin="0" aria-valuemax="{total}"></div>
+          <div class="progress-bar bg-secondary" role="progressbar" style="width: {pending_pct:.1f}%"
+               aria-valuenow="{pending}" aria-valuemin="0" aria-valuemax="{total}"></div>
+        </div>
+        """
 
     return progress_html
 
