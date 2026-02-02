@@ -10,7 +10,7 @@ from datetime import datetime, timezone
 import json
 from pathlib import Path
 import time
-from typing import Any, Optional, Protocol
+from typing import Any, Optional, Protocol, Self
 
 try:
     from beartype.typing import Callable
@@ -298,7 +298,7 @@ class Job:
         id: str,
         *,
         client: Optional[DeepOriginClient] = None,
-    ) -> "Job":
+    ) -> Self:
         """Create a Job instance from a single ID.
 
         Args:
@@ -321,7 +321,7 @@ class Job:
         dto: dict,
         *,
         client: Optional[DeepOriginClient] = None,
-    ) -> "Job":
+    ) -> Self:
         """Create a Job instance from an execution DTO (Data Transfer Object).
 
         This method constructs a Job from the full execution description without
@@ -809,7 +809,7 @@ class Job:
             self.sync()
 
     @beartype
-    def duplicate(self) -> "Job":
+    def duplicate(self) -> Self:
         """Create a duplicate of this job by submitting a new execution with the same parameters.
 
         This method extracts the necessary fields from the current job's attributes
@@ -1388,7 +1388,7 @@ class JobList:
         require_metadata: bool = False,
         predicate: Optional[Callable[[Job], bool]] = None,
         **kwargs: Any,
-    ) -> "JobList":
+    ) -> Self:
         """Filter jobs by status, tool attributes, other attributes, or custom predicate.
 
         This method returns a new JobList containing only jobs that match the specified
@@ -1635,7 +1635,7 @@ class JobList:
         tool_key: Optional[str] = None,
         tool_version: Optional[str] = None,
         client: Optional[DeepOriginClient] = None,
-    ) -> "JobList":
+    ) -> Self:
         """Fetch executions from the API and return a JobList.
 
         This method automatically handles pagination, fetching all pages if necessary
@@ -1715,7 +1715,7 @@ class JobList:
         ids: list[str],
         *,
         client: Optional[DeepOriginClient] = None,
-    ) -> "JobList":
+    ) -> Self:
         """Create a JobList from a list of job IDs.
 
         Args:
@@ -1734,7 +1734,7 @@ class JobList:
         dtos: list[dict],
         *,
         client: Optional[DeepOriginClient] = None,
-    ) -> "JobList":
+    ) -> Self:
         """Create a JobList from a list of execution DTOs.
 
         Args:
