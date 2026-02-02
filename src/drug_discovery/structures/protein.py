@@ -324,6 +324,7 @@ class Protein(Entity):
             # construct args
             args = [
                 {
+                    "client": client,
                     "protein": self,
                     "ligand": ligand,
                     "pocket": pocket,
@@ -338,8 +339,18 @@ class Protein(Entity):
             # running in series for now, while we sort out the parallelization
             all_top_poses = []
             for arg in args:
-                _, _, top_pose = constrained_dock(**arg)
-                all_top_poses.append(top_pose)
+                result_files = constrained_dock(**arg)
+                # Find the top pose file (typically named "top_constrained_result.sdf")
+                top_pose = next(
+                    (
+                        f
+                        for f in result_files
+                        if "top" in Path(f).name.lower() and f.endswith(".sdf")
+                    ),
+                    result_files[0] if result_files else None,
+                )
+                if top_pose:
+                    all_top_poses.append(top_pose)
 
             return LigandSet.from_sdf_files(all_top_poses)
         else:
@@ -996,6 +1007,18 @@ class Protein(Entity):
             ) from e
 
     @beartype
+    def to_file(self, file_path: Optional[str | Path] = None) -> str:
+        """Dump state to a file.
+
+        Args:
+            file_path: Path where the file will be written. If None, uses default path.
+
+        Returns:
+            str: Path to the written file.
+        """
+        return self.to_pdb(file_path)
+
+    @beartype
     def to_base64(self) -> str:
         """Convert the protein to base64 encoded PDB format.
 
@@ -1289,23 +1312,6 @@ class Protein(Entity):
         """update coordinates of the protein structure"""
 
         self.structure.coord = coords
-
-    def upload(self, client: Optional[DeepOriginClient] = None) -> None:
-        """upload the protein structure to the remote server, after converting to PDB format
-
-
-        we need to do this (and override the parent class method)
-        because the protein structure has to be stored in the remote server as a PDB file,
-        because core tools need to be able to access the protein structure as a PDB file.
-        and we need to convert the structure to PDB format before uploading it."""
-
-        if client is None:
-            client = DeepOriginClient.get()
-
-        client.files.upload_file(
-            self.to_pdb(),
-            remote_path=self._remote_path,
-        )
 
 
 def validate_pdb_file(file_path: str | Path) -> None:
