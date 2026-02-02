@@ -642,78 +642,82 @@ class MockServer:
             }
 
         @self.app.get("/entities/protected/organizations")
-        def list_organizations() -> list[dict[str, Any]]:
+        def list_organizations() -> dict[str, Any]:
             """List all organizations accessible to the authenticated user."""
-            return [
-                {
-                    "createdAt": "2024-03-05T00:00:00.000Z",
-                    "updatedAt": "2024-08-01T19:01:49.614Z",
-                    "orgKey": "deeporigin-com",
-                    "name": "Deep Origin",
-                    "mfaEnabled": False,
-                    "threshold": "50.00",
-                    "autoApproveMaxAmount": 500,
-                    "status": "READY",
-                    "id": "a184d5f4-2969-46ed-90ff-0344c14b6705",
-                    "invites": [],
-                    "roles": ["Owner"],
-                },
-                {
-                    "createdAt": "2024-08-22T04:39:40.711Z",
-                    "updatedAt": "2024-08-22T04:50:18.075Z",
-                    "orgKey": "deeporigin-platform",
-                    "name": "Deep Origin - Platform Team",
-                    "mfaEnabled": False,
-                    "threshold": "50.00",
-                    "autoApproveMaxAmount": 500,
-                    "status": "READY",
-                    "id": "1cbf428d-10eb-4f6b-a85b-e2024697fb0a",
-                    "invites": [],
-                    "roles": ["Owner"],
-                },
-            ]
+            return {
+                "data": [
+                    {
+                        "createdAt": "2024-03-05T00:00:00.000Z",
+                        "updatedAt": "2024-08-01T19:01:49.614Z",
+                        "orgKey": "deeporigin-com",
+                        "name": "Deep Origin",
+                        "mfaEnabled": False,
+                        "threshold": "50.00",
+                        "autoApproveMaxAmount": 500,
+                        "status": "READY",
+                        "id": "a184d5f4-2969-46ed-90ff-0344c14b6705",
+                        "invites": [],
+                        "roles": ["Owner"],
+                    },
+                    {
+                        "createdAt": "2024-08-22T04:39:40.711Z",
+                        "updatedAt": "2024-08-22T04:50:18.075Z",
+                        "orgKey": "deeporigin-platform",
+                        "name": "Deep Origin - Platform Team",
+                        "mfaEnabled": False,
+                        "threshold": "50.00",
+                        "autoApproveMaxAmount": 500,
+                        "status": "READY",
+                        "id": "1cbf428d-10eb-4f6b-a85b-e2024697fb0a",
+                        "invites": [],
+                        "roles": ["Owner"],
+                    },
+                ]
+            }
 
         @self.app.get("/entities/{org_key}/organizations/users")
-        def list_organization_users(org_key: str) -> list[dict[str, Any]]:
+        def list_organization_users(org_key: str) -> dict[str, Any]:
             """List organization users."""
-            return [
-                {
-                    "id": "576b2ec1-888c-4fc6-a137-66846e9ffaaf",
-                    "createdAt": "2024-07-31T07:05:17.367Z",
-                    "updatedAt": "2024-07-31T07:05:20.452Z",
-                    "firstName": "user1@example.com",
-                    "lastName": "user1@example.com",
-                    "email": "user1@example.com",
-                    "authId": "google-apps|user1@example.com",
-                    "avatar": "https://s.gravatar.com/avatar/004cd3190c2f58ed8f192bdceb53aa6e?s=480&r=pg&d=https%3A%2F%2Fcdn.auth0.com%2Favatars%2Fag.png",
-                    "title": "",
-                    "industries": "",
-                    "expertise": "",
-                    "company": None,
-                    "referralCode": None,
-                    "emailNotificationsDisabled": None,
-                    "notificationsDisabled": None,
-                    "appNotificationsDisabled": None,
-                },
-                {
-                    "id": "676b2ec1-888c-4fc6-a137-66846e9ffaaf",
-                    "createdAt": "2024-08-01T07:05:17.367Z",
-                    "updatedAt": "2024-08-01T07:05:20.452Z",
-                    "firstName": "user2@example.com",
-                    "lastName": "user2@example.com",
-                    "email": "user2@example.com",
-                    "authId": "google-apps|user2@example.com",
-                    "avatar": "https://s.gravatar.com/avatar/004cd3190c2f58ed8f192bdceb53aa6e?s=480&r=pg&d=https%3A%2F%2Fcdn.auth0.com%2Favatars%2Fag.png",
-                    "title": "",
-                    "industries": "",
-                    "expertise": "",
-                    "company": None,
-                    "referralCode": None,
-                    "emailNotificationsDisabled": None,
-                    "notificationsDisabled": None,
-                    "appNotificationsDisabled": None,
-                },
-            ]
+            return {
+                "data": [
+                    {
+                        "id": "576b2ec1-888c-4fc6-a137-66846e9ffaaf",
+                        "createdAt": "2024-07-31T07:05:17.367Z",
+                        "updatedAt": "2024-07-31T07:05:20.452Z",
+                        "firstName": "user1@example.com",
+                        "lastName": "user1@example.com",
+                        "email": "user1@example.com",
+                        "authId": "google-apps|user1@example.com",
+                        "avatar": "https://s.gravatar.com/avatar/004cd3190c2f58ed8f192bdceb53aa6e?s=480&r=pg&d=https%3A%2F%2Fcdn.auth0.com%2Favatars%2Fag.png",
+                        "title": "",
+                        "industries": "",
+                        "expertise": "",
+                        "company": None,
+                        "referralCode": None,
+                        "emailNotificationsDisabled": None,
+                        "notificationsDisabled": None,
+                        "appNotificationsDisabled": None,
+                    },
+                    {
+                        "id": "676b2ec1-888c-4fc6-a137-66846e9ffaaf",
+                        "createdAt": "2024-08-01T07:05:17.367Z",
+                        "updatedAt": "2024-08-01T07:05:20.452Z",
+                        "firstName": "user2@example.com",
+                        "lastName": "user2@example.com",
+                        "email": "user2@example.com",
+                        "authId": "google-apps|user2@example.com",
+                        "avatar": "https://s.gravatar.com/avatar/004cd3190c2f58ed8f192bdceb53aa6e?s=480&r=pg&d=https%3A%2F%2Fcdn.auth0.com%2Favatars%2Fag.png",
+                        "title": "",
+                        "industries": "",
+                        "expertise": "",
+                        "company": None,
+                        "referralCode": None,
+                        "emailNotificationsDisabled": None,
+                        "notificationsDisabled": None,
+                        "appNotificationsDisabled": None,
+                    },
+                ]
+            }
 
         @self.app.get("/tools/{org_key}/tools/executions")
         def list_executions(
