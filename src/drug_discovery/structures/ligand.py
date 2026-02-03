@@ -358,6 +358,7 @@ class Ligand(Entity):
         - Salt removal
         - Kekulization
         - Fragment validation (rejects multiple non-identical fragments)
+        - Wildcard atom validation (rejects '*' atoms)
         - Validation of atom types against supported symbols
 
         Args:
@@ -400,6 +401,15 @@ class Ligand(Entity):
 
         # 4) Validate atom types
         atom_symbols = [atom.GetSymbol() for atom in self.mol.GetAtoms()]
+
+        # Check for wildcard atoms first (explicit check)
+        wildcard_atoms = [sym for sym in atom_symbols if sym == "*"]
+        if wildcard_atoms:
+            raise DeepOriginException(
+                "Ligand contains wildcard ('*') atoms, which are not supported."
+            )
+
+        # Check for other unsupported atom types
         unsupported = sorted(
             {sym for sym in atom_symbols if sym not in SUPPORTED_ATOM_SYMBOLS}
         )

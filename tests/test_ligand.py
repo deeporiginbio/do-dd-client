@@ -374,6 +374,29 @@ def test_ligand_prepare_rejects_unsupported_atoms():
         lig.prepare()
 
 
+def test_ligand_prepare_rejects_wildcard_atoms():
+    """Ligands with wildcard ('*') atoms should be rejected by prepare()."""
+
+    # Try to create a ligand with wildcard atoms
+    # Note: RDKit may not parse '*' in SMILES, so we'll create the molecule directly
+    from rdkit import Chem
+
+    # Create a molecule with a wildcard atom by modifying an existing molecule
+    mol = Chem.MolFromSmiles("CCO")  # Ethanol
+    if mol:
+        # Add a wildcard atom by creating a new atom
+        rw_mol = Chem.RWMol(mol)
+        atom_idx = rw_mol.AddAtom(Chem.Atom("*"))
+        # Connect it to the first atom
+        rw_mol.AddBond(0, atom_idx, Chem.BondType.SINGLE)
+        mol_with_wildcard = rw_mol.GetMol()
+
+        # Create ligand from this molecule
+        lig = Ligand.from_rdkit_mol(mol_with_wildcard)
+        with pytest.raises(DeepOriginException, match="wildcard"):
+            lig.prepare()
+
+
 def test_ligand_prepare_rejects_multiple_fragments():
     """Ligands with multiple non-identical fragments should be rejected by prepare()."""
 
