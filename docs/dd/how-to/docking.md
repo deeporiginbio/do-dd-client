@@ -110,15 +110,24 @@ protein.show(poses=poses)
 
 We can use constrained docking to dock a Ligand to a Protein while constraining certain atoms to certain locations.
 
-Typically, these constraints are computed a reference docked pose for another Ligand, using a Maximum Common Substructure (MCS) shared across Ligands. 
+Typically, these constraints are computed a reference docked pose for another (similar) Ligand, using a Maximum Common Substructure (MCS) shared across Ligands. 
 
-Assuming we have a reference pose in `reference_pose` and we want to dock a Ligand in `ligand_to_dock` to a protein, constrained by `pose`, we first compute constraints using:
+Assuming we have a docked a Ligand to a Protein, and picked a pose to be the "reference". If we want to dock a `Ligand` to that protein, constrained by `reference_pose`, we use:
 
 ```{.python notest}
 
-ligands = LigandSet([reference_pose, ligand_to_dock])
-
-constraints = ligands_to_dock.compute_constraints(
-    reference=reference_pose,
+poses = protein.dock(
+    ligand=ligand,
+    reference_pose=reference_pose,
+    pocket=pocket,
 )
+
+# view poses
+protein.show(poses=poses)
+```
+
+To view the poses from constrained docking together with the reference pose, use:
+
+```{.python notest}
+protein.show(poses=reference_pose + constrained_poses)
 ```
