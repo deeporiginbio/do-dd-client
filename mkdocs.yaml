@@ -87,6 +87,7 @@ nav:
   - functions: platform/ref/functions.md
   - organizations: platform/ref/organizations.md
   - billing: platform/ref/billing.md
+  - data: platform/ref/data.md
 - Developing: 
   - Installing: dev/install.md
   - Clients: dev/clients.md

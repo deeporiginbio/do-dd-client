@@ -957,6 +957,52 @@ class MockServer:
             """Health check endpoint."""
             return {"status": "ok"}
 
+        @self.app.get("/data-platform/health")
+        def data_platform_health() -> dict[str, str]:
+            """Data platform health check endpoint."""
+            return {"status": "ok"}
+
+        @self.app.post("/data-platform/{org_key}/ligands_with_results/search")
+        async def search_ligands_with_results(
+            org_key: str, request: Request
+        ) -> dict[str, Any]:
+            """Search ligands joined with tool results."""
+            body = await request.json()
+            # Return a mock response with empty data list
+            return {
+                "data": [],
+                "count": 0,
+            }
+
+        @self.app.post("/data-platform/{org_key}/{entity}/search")
+        async def search_entity(
+            org_key: str, entity: str, request: Request
+        ) -> dict[str, Any]:
+            """Search an entity."""
+            body = await request.json()
+            # Return a mock response with empty data list
+            return {
+                "data": [],
+                "count": 0,
+            }
+
+        @self.app.get("/data-platform/{org_key}/meta/models")
+        def list_models(org_key: str) -> dict[str, Any]:
+            """List public models."""
+            return {
+                "models": [
+                    {"tableName": "ligands", "visibility": "public"},
+                    {"tableName": "proteins", "visibility": "public"},
+                    {"tableName": "patents", "visibility": "public"},
+                    {"tableName": "projects", "visibility": "public"},
+                    {"tableName": "ui_settings", "visibility": "public"},
+                    {"tableName": "executions", "visibility": "public"},
+                    {"tableName": "execution_subjects", "visibility": "public"},
+                    {"tableName": "results", "visibility": "public"},
+                    {"tableName": "result_table_catalog", "visibility": "public"},
+                ]
+            }
+
     def start(self) -> tuple[str, int]:
         """Start the test server.
 
