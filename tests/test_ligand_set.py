@@ -296,6 +296,59 @@ def test_from_smiles():
         assert isinstance(ligand, Ligand)
 
 
+def test_prepare():
+    """Test that we can prepare a LigandSet"""
+
+    ligands = LigandSet.from_smiles(BRD_SMILES)
+    result = ligands.prepare()
+
+    # Should return self for chaining
+    assert result is ligands
+
+    # All ligands should be prepared
+    for ligand in ligands:
+        assert ligand.get_property("prepared"), "Ligand should be prepared"
+
+
+def test_prepare_remove_hydrogens():
+    """Test that prepare passes remove_hydrogens parameter correctly"""
+
+    ligands = LigandSet.from_smiles({"CCO", "CC"})  # Ethanol and Ethane
+
+    # Add hydrogens first
+    for ligand in ligands:
+        ligand.add_hydrogens()
+
+    # Prepare with remove_hydrogens=True
+    ligands.prepare(remove_hydrogens=True)
+
+    # Check that hydrogens were removed from SMILES
+    for ligand in ligands:
+        assert "H" not in ligand.smiles, "Hydrogens should be removed from SMILES"
+
+    # Test with remove_hydrogens=False
+    ligands2 = LigandSet.from_smiles({"CCO", "CC"})
+    for ligand in ligands2:
+        ligand.add_hydrogens()
+
+    ligands2.prepare(remove_hydrogens=False)
+
+    # Check that hydrogens are preserved in SMILES
+    for ligand in ligands2:
+        assert "H" in ligand.smiles, "Hydrogens should be preserved in SMILES"
+
+
+def test_prepare_rejects_multiple_fragments():
+    """Test that prepare raises exception when ligands have multiple non-identical fragments"""
+
+    # Create a ligand with multiple non-identical fragments
+    ligand_with_fragments = Ligand.from_smiles("CCO.CC")  # Ethanol + Ethane
+    ligands = LigandSet(ligands=[ligand_with_fragments])
+
+    with pytest.raises(DeepOriginException, match="Fragment validation failed"):
+        ligands.prepare()
+
+
 def test_embed():
     """Test that we can minimize a LigandSet"""
 

@@ -324,15 +324,31 @@ ligands.show_grid()
 
 You can prepare a ligand for downstream workflows using the `prepare()` method. This performs salt removal, kekulization, fragment validation (rejects multiple non-identical fragments), and validates atom types:
 
-```python
-from deeporigin.drug_discovery import Ligand
+=== "Ligand"
 
-ligand = Ligand.from_smiles("c1ccccc1")
-ligand.prepare(remove_hydrogens=False)  # Mutates the ligand in place, returns self for chaining
-```
+    ```python
+    from deeporigin.drug_discovery import Ligand
 
-!!! note "Mutation Behavior"
-    The `prepare()` method mutates the ligand object in place and returns `self` for method chaining.
+    ligand = Ligand.from_smiles("c1ccccc1")
+    ligand.prepare(remove_hydrogens=False)  # Mutates the ligand in place, returns self for chaining
+    ```
+
+    !!! note "Mutation Behavior"
+        The `prepare()` method mutates the ligand object in place and returns `self` for method chaining.
+
+=== "LigandSet"
+
+    ```python
+    from deeporigin.drug_discovery import LigandSet, DATA_DIR
+
+    ligands = LigandSet.from_sdf(DATA_DIR / "ligands" / "ligands-brd-all.sdf")
+    ligands.prepare(remove_hydrogens=False)  # Prepares all ligands in place
+    ```
+
+    This will call the `prepare()` method on each ligand in the set. The method returns the LigandSet itself for convenience, so you can chain further operations if desired.
+
+    !!! note "Mutation Behavior"
+        The `prepare()` method mutates all ligands in the set and returns `self` for method chaining.
 
 ### Generating 3D Coordinates
 

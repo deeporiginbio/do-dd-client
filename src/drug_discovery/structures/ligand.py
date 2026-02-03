@@ -1630,6 +1630,31 @@ class LigandSet:
             subImgSize=sub_img_size,
         )
 
+    def prepare(self, *, remove_hydrogens: bool = False) -> Self:
+        """
+        Prepare all ligands in the set for downstream workflows.
+
+        This calls the prepare() method on each Ligand in the set, which performs:
+        - Salt removal
+        - Kekulization
+        - Fragment validation (rejects multiple non-identical fragments)
+        - Validation of atom types against supported symbols
+
+        Args:
+            remove_hydrogens (bool): Whether to remove hydrogens from the SMILES representation.
+                                   Defaults to False (preserve hydrogens).
+
+        Returns:
+            LigandSet: The prepared LigandSet (self), for chaining.
+
+        Raises:
+            DeepOriginException: If preparation fails for any ligand, unsupported atom types are present,
+                               or multiple non-identical fragments are detected.
+        """
+        for ligand in self.ligands:
+            ligand.prepare(remove_hydrogens=remove_hydrogens)
+        return self
+
     def embed(self):
         """
         Minimize all ligands in the set using their 3D optimization routines.
