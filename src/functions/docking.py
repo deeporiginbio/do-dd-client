@@ -9,10 +9,7 @@ The module interfaces with the Deep Origin docking service to perform the actual
 
 import os
 from pathlib import Path
-from typing import Optional
-import zipfile
-
-import httpx
+from typing import Literal, Optional
 
 from deeporigin.drug_discovery.structures import Ligand, Pocket, Protein
 from deeporigin.exceptions import DeepOriginException
@@ -121,13 +118,16 @@ def dock(
 
 def constrained_dock(
     *,
+    client: DeepOriginClient,
     protein: Protein,
     ligand: Ligand,
     constraints: list[dict],
     pocket: Optional[Pocket] = None,
     box_size: tuple[float, float, float] = (20.0, 20.0, 20.0),
     pocket_center: Optional[tuple[int, int, int]] = None,
+    top_criteria: Literal["energy_score", "rmsd"] = "energy_score",
     use_cache: bool = True,
+    quote: bool = False,
 ) -> list[str]:
     """Perform constrained molecular docking using a reference ligand constraints.
 
@@ -136,6 +136,7 @@ def constrained_dock(
     using the MCS, and docking is performed with these alignment constraints applied.
 
     Args:
+        client (DeepOriginClient): DeepOrigin client instance.
         protein (Protein): The protein structure to dock against.
         ligand (Ligand): The ligand to be docked.
         constraints (list[dict]): List of constraints for the docking. Generate this using `align.compute_constraints`.
@@ -143,7 +144,9 @@ def constrained_dock(
         box_size (tuple[float, float, float]): Size of the docking box in Angstroms (x, y, z). Defaults to (20.0, 20.0, 20.0).
         pocket_center (Optional[tuple[int, int, int]]): Optional center coordinates for the docking box. If None and pocket is provided,
                      uses the pocket center. If both are None, raises an error.
+        top_criteria (Literal["energy_score", "rmsd"]): Criteria for selecting top poses. Defaults to "energy_score".
         use_cache (bool): Whether to use cached results if available. Defaults to True.
+        quote (bool): Whether to quote the function run without executing it. Defaults to False.
 
     Returns:
         list[str]: List of file paths to the docking result files (typically SDF files).
@@ -155,7 +158,6 @@ def constrained_dock(
         a SHA256 hash of all input parameters. This allows for efficient reuse of
         previous docking results.
     """
-    URL = "https://constrained-docking.default.jobs.edge.deeporigin.io/dock"
     CACHE_DIR = str(_ensure_do_folder() / "constrained_docking")
 
     if pocket is None and pocket_center is None:
@@ -165,38 +167,47 @@ def constrained_dock(
 
     pocket_center_list = _get_pocket_center(pocket, pocket_center)
 
+    # Upload files first
+    protein.upload(client=client)
+    ligand.upload(client=client)
+
+    # Prepare the request payload
     payload = {
-        "box_size": box_size,
+        "protein_path": protein._remote_path,
+        "ligand_path": ligand._remote_path,
+        "box_size": list(box_size),
         "constraints": constraints,
         "protein": {"pocket_center": pocket_center_list},
-        "top_criteria": "score",
-        "protein_b64": protein.to_base64(),
-        "ligand_b64": ligand.to_base64(),
+        "top_criteria": top_criteria,
     }
 
     cache_hash = hash_dict(payload)
-    zip_file = str(Path(CACHE_DIR) / f"{cache_hash}.zip")
     extract_dir = str(Path(CACHE_DIR) / cache_hash)
 
     if os.path.exists(extract_dir) and use_cache:
         return _extract_cached_files(extract_dir)
 
-    # Send the POST request
-    response = httpx.post(
-        URL,
-        headers={"Content-Type": "application/json"},
-        json=payload,
+    response = client.functions.run(
+        key="deeporigin.constrained-docking",
+        params=payload,
+        quote=quote,
     )
-    response.raise_for_status()
 
-    # Write and extract zip file
-    Path(zip_file).parent.mkdir(parents=True, exist_ok=True)
-    with open(zip_file, "wb") as f:
-        f.write(response.content)
+    # TODO -- remove this patch once API is updated
+    if "functionOutputs" in response:
+        response = response["functionOutputs"]
 
+    # Download individual files from output_files
     Path(extract_dir).mkdir(parents=True, exist_ok=True)
-    with zipfile.ZipFile(zip_file, "r") as zip_ref:
-        zip_ref.extractall(extract_dir)
+    downloaded_files = []
 
-    os.remove(zip_file)
-    return _extract_cached_files(extract_dir)
+    output_files = response.get("output_files", {})
+    for filename, remote_path in output_files.items():
+        local_path = str(Path(extract_dir) / filename)
+        client.files.download_file(
+            remote_path=remote_path,
+            local_path=local_path,
+        )
+        downloaded_files.append(local_path)
+
+    return downloaded_files

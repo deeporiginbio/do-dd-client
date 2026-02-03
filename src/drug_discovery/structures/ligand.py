@@ -769,6 +769,18 @@ class Ligand(Entity):
         return str(output_path)
 
     @beartype
+    def to_file(self, file_path: Optional[str | Path] = None) -> str:
+        """Dump state to a file.
+
+        Args:
+            file_path: Path where the file will be written. If None, uses default path.
+
+        Returns:
+            str: Path to the written file.
+        """
+        return self.to_sdf(file_path)
+
+    @beartype
     def to_base64(self) -> str:
         """Convert the ligand to base64 encoded SDF format.
 
