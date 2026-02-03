@@ -180,16 +180,16 @@ def test_filter_top_poses_error_handling():
         original_properties1 = test_ligand1.properties.copy()
         original_properties2 = test_ligand2.properties.copy()
 
-        # Make both ligands have the same initial_smiles so filtering is triggered
-        test_ligand1.properties["initial_smiles"] = "test_smiles"
-        test_ligand2.properties["initial_smiles"] = "test_smiles"
+        # Make both ligands have the same SMILES so filtering is triggered
+        test_ligand1.properties["SMILES"] = "test_smiles"
+        test_ligand2.properties["SMILES"] = "test_smiles"
 
         # Test with invalid binding energy
         test_ligand1.properties["Binding Energy"] = "not_a_number"
         test_ligand2.properties["Binding Energy"] = "-7.0"
         invalid_set = LigandSet(ligands=[test_ligand1, test_ligand2])
         with pytest.raises(DeepOriginException, match="Invalid binding energy value"):
-            invalid_set.filter_top_poses()
+            invalid_set.filter_top_poses(by_pose_score=False)
 
         # Test with invalid pose score
         test_ligand1.properties["Binding Energy"] = "-7.0"  # Restore valid value
@@ -206,7 +206,7 @@ def test_filter_top_poses_error_handling():
         with pytest.raises(
             DeepOriginException, match="missing 'Binding Energy' property"
         ):
-            no_energy_set.filter_top_poses()
+            no_energy_set.filter_top_poses(by_pose_score=False)
 
         # Test with missing pose score property
         test_ligand1.properties["Binding Energy"] = "-7.0"  # Restore valid value
@@ -753,3 +753,205 @@ def test_render_view_shows_prepare_hint_when_partial():
 
     # Should show prepare hint since not all are prepared
     assert "<code>.prepare()</code> to prepare ligands for docking" in html
+
+
+def test_render_view_shows_not_protonated_badge():
+    """Test that _render_view shows 'NOT PROTONATED' badge when any ligand is not protonated"""
+    from deeporigin.drug_discovery.structures.ligand import LigandSet
+
+    # Create ligands (none are protonated by default)
+    ligand1 = Ligand.from_smiles("CCO", name="ethanol")
+    ligand2 = Ligand.from_smiles("CCCO", name="propanol")
+    ligand_set = LigandSet(ligands=[ligand1, ligand2])
+
+    # Should show NOT PROTONATED badge since none are protonated
+    html = ligand_set._render_view()
+    assert (
+        "<span class='badge text-bg-secondary' style='font-variant: small-caps;'>NOT PROTONATED</span>"
+        in html
+    )
+
+    # Protonate all ligands
+    ligand_set.protonate(ph=7.4, use_cache=False)
+    html = ligand_set._render_view()
+
+    # Should not show NOT PROTONATED badge since all are protonated
+    assert (
+        "<span class='badge text-bg-secondary' style='font-variant: small-caps;'>NOT PROTONATED</span>"
+        not in html
+    )
+
+    # Should show PROTONATED badge with pH value
+    assert (
+        "<span class='badge text-bg-success' style='font-variant: small-caps;'>PROTONATED (pH=7.4)</span>"
+        in html
+    )
+
+
+def test_render_view_shows_not_protonated_badge_when_partial():
+    """Test that _render_view shows 'NOT PROTONATED' badge when only some ligands are protonated"""
+    from deeporigin.drug_discovery.structures.ligand import LigandSet
+
+    # Create ligands
+    ligand1 = Ligand.from_smiles("CCO", name="ethanol")
+    ligand2 = Ligand.from_smiles("CCCO", name="propanol")
+    ligand_set = LigandSet(ligands=[ligand1, ligand2])
+
+    # Protonate only one ligand
+    ligand1.protonate(ph=7.4, use_cache=False)
+    html = ligand_set._render_view()
+
+    # Should show NOT PROTONATED badge since not all are protonated
+    assert (
+        "<span class='badge text-bg-secondary' style='font-variant: small-caps;'>NOT PROTONATED</span>"
+        in html
+    )
+
+
+def test_render_view_shows_protonated_badge_with_ph():
+    """Test that _render_view shows 'PROTONATED (pH={ph})' badge when all ligands are protonated at the same pH"""
+    from deeporigin.drug_discovery.structures.ligand import LigandSet
+
+    # Create ligands
+    ligand1 = Ligand.from_smiles("CCO", name="ethanol")
+    ligand2 = Ligand.from_smiles("CCCO", name="propanol")
+    ligand_set = LigandSet(ligands=[ligand1, ligand2])
+
+    # Protonate all ligands at pH 7.4
+    ligand_set.protonate(ph=7.4, use_cache=False)
+    html = ligand_set._render_view()
+
+    # Should show PROTONATED badge with pH 7.4
+    assert (
+        "<span class='badge text-bg-success' style='font-variant: small-caps;'>PROTONATED (pH=7.4)</span>"
+        in html
+    )
+
+    # Should not show NOT PROTONATED badge
+    assert (
+        "<span class='badge text-bg-secondary' style='font-variant: small-caps;'>NOT PROTONATED</span>"
+        not in html
+    )
+
+
+def test_render_view_shows_protonated_badge_different_ph():
+    """Test that _render_view shows 'PROTONATED (pH={ph})' badge with different pH values"""
+    from deeporigin.drug_discovery.structures.ligand import LigandSet
+
+    # Create ligands
+    ligand1 = Ligand.from_smiles("CCO", name="ethanol")
+    ligand2 = Ligand.from_smiles("CCCO", name="propanol")
+    ligand_set = LigandSet(ligands=[ligand1, ligand2])
+
+    # Protonate all ligands at pH 11.4
+    ligand_set.protonate(ph=11.4, use_cache=False)
+    html = ligand_set._render_view()
+
+    # Should show PROTONATED badge with pH 11.4
+    assert (
+        "<span class='badge text-bg-success' style='font-variant: small-caps;'>PROTONATED (pH=11.4)</span>"
+        in html
+    )
+
+
+def test_render_view_no_protonated_badge_when_different_ph():
+    """Test that _render_view does not show 'PROTONATED' badge when ligands are protonated at different pH values"""
+    from deeporigin.drug_discovery.structures.ligand import LigandSet
+
+    # Create ligands
+    ligand1 = Ligand.from_smiles("CCO", name="ethanol")
+    ligand2 = Ligand.from_smiles("CCCO", name="propanol")
+    ligand_set = LigandSet(ligands=[ligand1, ligand2])
+
+    # Protonate ligands at different pH values
+    ligand1.protonate(ph=7.4, use_cache=False)
+    ligand2.protonate(ph=11.4, use_cache=False)
+    html = ligand_set._render_view()
+
+    # Should not show PROTONATED badge since pH values differ
+    assert (
+        "<span class='badge text-bg-success' style='font-variant: small-caps;'>PROTONATED"
+        not in html
+    )
+
+    # Should not show NOT PROTONATED badge either since all are protonated
+    assert (
+        "<span class='badge text-bg-secondary' style='font-variant: small-caps;'>NOT PROTONATED</span>"
+        not in html
+    )
+
+
+def test_render_view_shows_2d_badge():
+    """Test that _render_view shows '2D' badge when all ligands have only 2D structure"""
+    from deeporigin.drug_discovery.structures.ligand import LigandSet
+
+    # Create ligands from SMILES (they have 2D coordinates, not 3D)
+    ligand1 = Ligand.from_smiles("CCO", name="ethanol")
+    ligand2 = Ligand.from_smiles("CCCO", name="propanol")
+    ligand_set = LigandSet(ligands=[ligand1, ligand2])
+
+    html = ligand_set._render_view()
+
+    # Should show 2D badge since all ligands have only 2D structure
+    assert (
+        "<span class='badge text-bg-info' style='font-variant: small-caps;'>2D</span>"
+        in html
+    )
+
+    # Should not show 3D badge
+    assert (
+        "<span class='badge text-bg-info' style='font-variant: small-caps;'>3D</span>"
+        not in html
+    )
+
+
+def test_render_view_shows_3d_badge():
+    """Test that _render_view shows '3D' badge when all ligands have 3D structure"""
+    from deeporigin.drug_discovery.structures.ligand import LigandSet
+
+    # Create ligands and generate 3D coordinates
+    ligand1 = Ligand.from_smiles("CCO", name="ethanol")
+    ligand2 = Ligand.from_smiles("CCCO", name="propanol")
+    ligand_set = LigandSet(ligands=[ligand1, ligand2])
+
+    # Generate 3D coordinates for all ligands
+    ligand_set.embed()
+    html = ligand_set._render_view()
+
+    # Should show 3D badge since all ligands have 3D structure
+    assert (
+        "<span class='badge text-bg-info' style='font-variant: small-caps;'>3D</span>"
+        in html
+    )
+
+    # Should not show 2D badge
+    assert (
+        "<span class='badge text-bg-info' style='font-variant: small-caps;'>2D</span>"
+        not in html
+    )
+
+
+def test_render_view_no_structure_badge_when_mixed():
+    """Test that _render_view does not show structure badge when ligands have mixed 2D/3D structures"""
+    from deeporigin.drug_discovery.structures.ligand import LigandSet
+
+    # Create ligands
+    ligand1 = Ligand.from_smiles("CCO", name="ethanol")  # 2D
+    ligand2 = Ligand.from_smiles("CCCO", name="propanol")  # 2D
+    ligand_set = LigandSet(ligands=[ligand1, ligand2])
+
+    # Generate 3D coordinates for only one ligand
+    ligand1.embed()
+    html = ligand_set._render_view()
+
+    # Should not show 2D badge since not all are 2D
+    assert (
+        "<span class='badge text-bg-info' style='font-variant: small-caps;'>2D</span>"
+        not in html
+    )
+
+    # Should not show 3D badge since not all are 3D
+    assert (
+        "<span class='badge text-bg-info' style='font-variant: small-caps;'>3D</span>"
+        not in html
+    )

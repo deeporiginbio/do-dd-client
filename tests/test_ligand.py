@@ -36,6 +36,27 @@ def test_ligand_has_hydrogens():
     assert ligand.has_hydrogens(), "Expected this ligand to have hydrogens"
 
 
+def test_ligand_has_3d_structure():
+    """Test that has_3d_structure correctly identifies ligands with and without 3D coordinates"""
+    # Create ligand from SMILES (has 2D coordinates, not 3D)
+    ligand = Ligand.from_smiles("CCO", name="ethanol")
+    assert not ligand.has_3d_structure(), (
+        "Expected ligand from SMILES to not have 3D structure (only 2D)"
+    )
+
+    # Generate 3D coordinates
+    ligand.embed()
+    assert ligand.has_3d_structure(), (
+        "Expected ligand to have 3D structure after embedding"
+    )
+
+    # Create ligand from SDF file (may or may not have 3D coordinates)
+    ligand_from_sdf = Ligand.from_sdf(single_ligand_files[0])
+    # SDF files may or may not have 3D coordinates, so we'll just verify it returns a boolean
+    has_3d = ligand_from_sdf.has_3d_structure()
+    assert isinstance(has_3d, bool), "has_3d_structure should return a boolean"
+
+
 @pytest.mark.parametrize("ligand_file", single_ligand_files)
 def test_ligand_hash_stable(ligand_file):
     """check that the ligand hash doesn't change if we perform various read-only operations"""
@@ -636,6 +657,44 @@ def test_ligand_file_path_handling():
     ligand.save_to_file = True
     # This would create a file in the directory, but we'll skip the actual file creation
     # to avoid cluttering the test environment
+
+
+def test_ligand_protonated_at_ph():
+    """Test the protonated_at_ph attribute"""
+    ligand = Ligand.from_smiles("CCO", name="Ethanol")
+
+    # Test that default value is None
+    assert ligand.protonated_at_ph is None
+
+    # Test that it can be set to a float value
+    ligand.protonated_at_ph = 7.4
+    assert ligand.protonated_at_ph == 7.4
+    assert isinstance(ligand.protonated_at_ph, float)
+
+    # Test that it can be set to another float value
+    ligand.protonated_at_ph = 11.4
+    assert ligand.protonated_at_ph == 11.4
+
+    # Test that it can be reset to None
+    ligand.protonated_at_ph = None
+    assert ligand.protonated_at_ph is None
+
+
+def test_ligand_protonate_sets_protonated_at_ph():
+    """Test that the protonate method sets the protonated_at_ph attribute"""
+    ligand = Ligand.from_smiles("C=CCCn1cc(-c2cccc(C(=O)N(C)C)c2)c2cc[nH]c2c1=O")
+
+    # Test that default value is None
+    assert ligand.protonated_at_ph is None
+
+    # Test that protonate sets the attribute
+    ligand.protonate(ph=7.4, use_cache=False)
+    assert ligand.protonated_at_ph == 7.4
+    assert isinstance(ligand.protonated_at_ph, float)
+
+    # Test that protonating again updates the attribute
+    ligand.protonate(ph=11.4, use_cache=False)
+    assert ligand.protonated_at_ph == 11.4
 
 
 # Test utility functions

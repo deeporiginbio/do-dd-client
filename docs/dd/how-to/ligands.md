@@ -585,6 +585,8 @@ You can protonate ligands at a specific pH. This is useful for preparing ligands
     !!! note "Mutation Behavior"
         The `protonate()` method mutates the ligand object by updating `self.mol` with the protonated structure. Only the most abundant species at the specified pH is retained.
 
+    The `protonated_at_ph` attribute (default: `None`) can be used to track the pH value at which a ligand was protonated. This attribute stores a `float` value representing the pH.
+
 === "LigandSet"
 
     ```{.python notest}

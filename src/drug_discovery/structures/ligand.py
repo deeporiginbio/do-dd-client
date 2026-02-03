@@ -62,6 +62,7 @@ class Ligand(Entity):
     save_to_file: bool = False
     properties: dict = field(default_factory=dict)
     mol: Chem.Mol | None = None
+    protonated_at_ph: float | None = None
 
     # Additional attributes that are initialized in __post_init__
     available_for_docking: bool = field(init=False, default=True)
@@ -506,6 +507,30 @@ class Ligand(Entity):
         smiles = Chem.MolToSmiles(mol, canonical=True)
         return smiles == self.smiles
 
+    def has_3d_structure(self) -> bool:
+        """
+        Check if the ligand has 3D coordinates (not just 2D).
+
+        This method checks if the molecule has conformers with 3D coordinates.
+        Ligands created from SMILES typically have 2D coordinates (z=0 for all atoms),
+        while ligands with actual 3D structure have non-zero z coordinates.
+
+        Returns:
+            bool: True if the ligand has 3D coordinates (non-zero z values),
+                False if it only has 2D coordinates or no conformers.
+        """
+        if self.mol.GetNumConformers() == 0:
+            return False
+
+        # Check if any atom has non-zero z coordinate (indicating 3D structure)
+        coords = self.get_coordinates(0)
+        if coords.shape[1] < 3:
+            return False
+
+        # Check if any z coordinate is significantly non-zero (not just 2D)
+        z_coords = coords[:, 2]
+        return bool(np.any(np.abs(z_coords) > 1e-3))
+
     def get_coordinates(self, i: int = 0):
         """
         Get the coordinates of atoms in a specific conformer.
@@ -548,7 +573,8 @@ class Ligand(Entity):
         simulations.
 
         The method modifies the ligand in place by updating both `self.mol` and
-        `self.smiles` with the protonated form of the molecule.
+        `self.smiles` with the protonated form of the molecule. It also sets the
+        `protonated_at_ph` attribute to the pH value used for protonation.
 
         Args:
             ph (number): pH value at which to protonate the ligand. Defaults to 7.4
@@ -567,7 +593,8 @@ class Ligand(Entity):
         Note:
             The protonation process may change the SMILES string of the ligand if
             ionizable groups are present and their protonation state changes at the
-            specified pH.
+            specified pH. The `protonated_at_ph` attribute is only set when `quote=False`
+            (i.e., when protonation is actually performed, not when just requesting a quote).
         """
         from deeporigin.functions.protonation import protonate
 
@@ -585,6 +612,10 @@ class Ligand(Entity):
 
         self.mol = Chem.MolFromSmiles(data["protonation_states"]["smiles_list"][0])
         self.smiles = data["protonation_states"]["smiles_list"][0]
+
+        # Set the protonated_at_ph attribute to track the pH at which protonation was performed
+        if not quote:
+            self.protonated_at_ph = ph
 
     def to_molblock(self) -> str:
         """
@@ -1258,6 +1289,27 @@ class LigandSet:
             # Check if all ligands are prepared
             all_prepared = all(ligand.prepared for ligand in self.ligands)
 
+            # Check protonation status
+            any_not_protonated = any(
+                ligand.protonated_at_ph is None for ligand in self.ligands
+            )
+            # Check if all ligands are protonated at the same pH
+            all_protonated_at_same_ph = False
+            common_ph = None
+            if not any_not_protonated and num_ligands > 0:
+                ph_values = {
+                    ligand.protonated_at_ph
+                    for ligand in self.ligands
+                    if ligand.protonated_at_ph is not None
+                }
+                if len(ph_values) == 1:
+                    all_protonated_at_same_ph = True
+                    common_ph = ph_values.pop()
+
+            # Check 3D structure status
+            all_have_3d = all(ligand.has_3d_structure() for ligand in self.ligands)
+            all_have_2d = all(not ligand.has_3d_structure() for ligand in self.ligands)
+
             # Add summary statistics
             if unique_smiles == 1:
                 # Get the SMILES string (all ligands have the same one)
@@ -1268,12 +1320,28 @@ class LigandSet:
                     smiles_line = f"<p style='margin: 8px 0;'><strong>SMILES:</strong> {smiles_str}"
                     if all_prepared:
                         smiles_line += " <span class='badge text-bg-primary' style='font-variant: small-caps;'>PREPARED</span>"
+                    if any_not_protonated:
+                        smiles_line += " <span class='badge text-bg-secondary' style='font-variant: small-caps;'>NOT PROTONATED</span>"
+                    elif all_protonated_at_same_ph:
+                        smiles_line += f" <span class='badge text-bg-success' style='font-variant: small-caps;'>PROTONATED (pH={common_ph})</span>"
+                    if all_have_2d:
+                        smiles_line += " <span class='badge text-bg-info' style='font-variant: small-caps;'>2D</span>"
+                    elif all_have_3d:
+                        smiles_line += " <span class='badge text-bg-info' style='font-variant: small-caps;'>3D</span>"
                     smiles_line += "</p>"
                     html_parts.append(smiles_line)
             else:
                 unique_smiles_line = f"<p style='margin: 8px 0;'><strong>{unique_smiles}</strong> unique SMILES"
                 if all_prepared:
                     unique_smiles_line += " <span class='badge text-bg-primary' style='font-variant: small-caps;'>PREPARED</span>"
+                if any_not_protonated:
+                    unique_smiles_line += " <span class='badge text-bg-secondary' style='font-variant: small-caps;'>NOT PROTONATED</span>"
+                elif all_protonated_at_same_ph:
+                    unique_smiles_line += f" <span class='badge text-bg-success' style='font-variant: small-caps;'>PROTONATED (pH={common_ph})</span>"
+                if all_have_2d:
+                    unique_smiles_line += " <span class='badge text-bg-info' style='font-variant: small-caps;'>2D</span>"
+                elif all_have_3d:
+                    unique_smiles_line += " <span class='badge text-bg-info' style='font-variant: small-caps;'>3D</span>"
                 unique_smiles_line += "</p>"
                 html_parts.append(unique_smiles_line)
 
@@ -1862,7 +1930,7 @@ class LigandSet:
 
         return align.mcs(self.to_rdkit_mols())
 
-    def filter_top_poses(self, *, by_pose_score: bool = False) -> Self:
+    def filter_top_poses(self, *, by_pose_score: bool = True) -> Self:
         """
         Filter ligands to keep only the best pose for each unique molecule.
 
@@ -1872,7 +1940,7 @@ class LigandSet:
 
         Args:
             by_pose_score (bool): If True, select by maximum pose score.
-                                If False (default), select by minimum binding energy.
+                                If False, select by minimum binding energy.
 
         Returns:
             LigandSet: A new LigandSet containing only the best pose for each unique molecule.
