@@ -307,7 +307,7 @@ def test_prepare():
 
     # All ligands should be prepared
     for ligand in ligands:
-        assert ligand.get_property("prepared"), "Ligand should be prepared"
+        assert ligand.prepared, "Ligand should be prepared"
 
 
 def test_prepare_remove_hydrogens():
@@ -613,7 +613,8 @@ def test_render_view_with_same_smiles():
 
     # Should use "poses" since all have the same SMILES
     assert "3 poses" in html
-    assert "ligands" not in html or html.count("ligands") == 0
+    # Check that "ligands" doesn't appear in the heading (it may appear in action hints)
+    assert "3 ligands" not in html
     # Should show the actual SMILES string, not "1 unique SMILES"
     assert f"<strong>SMILES:</strong> {same_smiles}" in html
     assert "1 unique SMILES" not in html
@@ -665,3 +666,90 @@ def test_render_view_single_pose_same_smiles():
     # Should show the actual SMILES string, not "1 unique SMILES"
     assert f"<strong>SMILES:</strong> {smiles}" in html
     assert "1 unique SMILES" not in html
+
+
+def test_render_view_shows_prepared_badge():
+    """Test that _render_view shows 'prepared' badge when all ligands are prepared"""
+    from deeporigin.drug_discovery.structures.ligand import LigandSet
+
+    # Create ligands and prepare them
+    ligand1 = Ligand.from_smiles("CCO", name="ethanol")
+    ligand2 = Ligand.from_smiles("CCCO", name="propanol")
+    ligand_set = LigandSet(ligands=[ligand1, ligand2])
+
+    # Not prepared yet - should not show badge
+    html = ligand_set._render_view()
+    assert (
+        "<span class='badge text-bg-primary' style='font-variant: small-caps;'>PREPARED</span>"
+        not in html
+    )
+
+    # Prepare all ligands
+    ligand_set.prepare()
+    html = ligand_set._render_view()
+
+    # Should show prepared badge
+    assert (
+        "<span class='badge text-bg-primary' style='font-variant: small-caps;'>PREPARED</span>"
+        in html
+    )
+
+
+def test_render_view_no_prepared_badge_when_partial():
+    """Test that _render_view does not show 'prepared' badge when only some ligands are prepared"""
+    from deeporigin.drug_discovery.structures.ligand import LigandSet
+
+    # Create ligands
+    ligand1 = Ligand.from_smiles("CCO", name="ethanol")
+    ligand2 = Ligand.from_smiles("CCCO", name="propanol")
+    ligand_set = LigandSet(ligands=[ligand1, ligand2])
+
+    # Prepare only one ligand
+    ligand1.prepare()
+    html = ligand_set._render_view()
+
+    # Should not show prepared badge since not all are prepared
+    # Check that the badge with "PREPARED" text is not present
+    assert (
+        "<span class='badge text-bg-primary' style='font-variant: small-caps;'>PREPARED</span>"
+        not in html
+    )
+
+
+def test_render_view_shows_prepare_hint_when_unprepared():
+    """Test that _render_view shows prepare hint when any ligand is not prepared"""
+    from deeporigin.drug_discovery.structures.ligand import LigandSet
+
+    # Create unprepared ligands
+    ligand1 = Ligand.from_smiles("CCO", name="ethanol")
+    ligand2 = Ligand.from_smiles("CCCO", name="propanol")
+    ligand_set = LigandSet(ligands=[ligand1, ligand2])
+
+    html = ligand_set._render_view()
+
+    # Should show prepare hint
+    assert "Use <code>.prepare()</code> to prepare ligands for docking" in html
+
+    # Prepare all ligands
+    ligand_set.prepare()
+    html = ligand_set._render_view()
+
+    # Should not show prepare hint when all are prepared
+    assert "Use <code>.prepare()</code> to prepare ligands for docking" not in html
+
+
+def test_render_view_shows_prepare_hint_when_partial():
+    """Test that _render_view shows prepare hint when only some ligands are prepared"""
+    from deeporigin.drug_discovery.structures.ligand import LigandSet
+
+    # Create ligands
+    ligand1 = Ligand.from_smiles("CCO", name="ethanol")
+    ligand2 = Ligand.from_smiles("CCCO", name="propanol")
+    ligand_set = LigandSet(ligands=[ligand1, ligand2])
+
+    # Prepare only one ligand
+    ligand1.prepare()
+    html = ligand_set._render_view()
+
+    # Should show prepare hint since not all are prepared
+    assert "Use <code>.prepare()</code> to prepare ligands for docking" in html

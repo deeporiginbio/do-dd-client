@@ -338,8 +338,8 @@ def test_ligand_prepare_basic():
     assert ligand.mol is not None
     # All atoms supported
     assert all(a in SUPPORTED_ATOM_SYMBOLS for a in ligand.atom_types)
-    # Prepared prop
-    assert ligand.get_property("prepared"), "Ligand should be prepared"
+    # Prepared attribute
+    assert ligand.prepared, "Ligand should be prepared"
 
 
 def test_ligand_prepare_remove_hydrogens():

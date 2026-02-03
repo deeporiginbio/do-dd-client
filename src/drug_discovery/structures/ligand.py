@@ -65,6 +65,7 @@ class Ligand(Entity):
 
     # Additional attributes that are initialized in __post_init__
     available_for_docking: bool = field(init=False, default=True)
+    prepared: bool = field(init=False, default=False)
 
     _remote_path_base = "entities/ligands/"
     _preferred_ext = ".sdf"
@@ -412,7 +413,7 @@ class Ligand(Entity):
             self.smiles = Chem.MolToSmiles(Chem.RemoveHs(self.mol), canonical=True)
         else:
             self.smiles = Chem.MolToSmiles(self.mol, canonical=True)
-        self.set_property("prepared", True)
+        self.prepared = True
 
         return self
 
@@ -1244,6 +1245,9 @@ class LigandSet:
         ]
 
         if num_ligands > 0:
+            # Check if all ligands are prepared
+            all_prepared = all(ligand.prepared for ligand in self.ligands)
+
             # Add summary statistics
             if unique_smiles == 1:
                 # Get the SMILES string (all ligands have the same one)
@@ -1251,13 +1255,17 @@ class LigandSet:
                     (ligand.smiles for ligand in self.ligands if ligand.smiles), None
                 )
                 if smiles_str:
-                    html_parts.append(
-                        f"<p style='margin: 8px 0;'><strong>SMILES:</strong> {smiles_str}</p>"
-                    )
+                    smiles_line = f"<p style='margin: 8px 0;'><strong>SMILES:</strong> {smiles_str}"
+                    if all_prepared:
+                        smiles_line += " <span class='badge text-bg-primary' style='font-variant: small-caps;'>PREPARED</span>"
+                    smiles_line += "</p>"
+                    html_parts.append(smiles_line)
             else:
-                html_parts.append(
-                    f"<p style='margin: 8px 0;'><strong>{unique_smiles}</strong> unique SMILES</p>"
-                )
+                unique_smiles_line = f"<p style='margin: 8px 0;'><strong>{unique_smiles}</strong> unique SMILES"
+                if all_prepared:
+                    unique_smiles_line += " <span class='badge text-bg-primary' style='font-variant: small-caps;'>PREPARED</span>"
+                unique_smiles_line += "</p>"
+                html_parts.append(unique_smiles_line)
 
             # Show property summary if available
             if self.ligands and self.ligands[0].properties:
@@ -1279,12 +1287,23 @@ class LigandSet:
                 )
 
             # Add action hints
+            action_hints = []
+            action_hints.append(
+                "Use <code>.to_dataframe()</code> to convert to a dataframe, "
+                "<code>.show_df()</code> to view dataframewith structures, "
+                "or <code>.show()</code> for 3D visualization"
+            )
+
+            # Add prepare hint if any ligand is not prepared
+            if not all_prepared:
+                action_hints.append(
+                    "<code>.prepare()</code> to prepare ligands for docking"
+                )
+
             html_parts.append(
                 "<div style='margin-top: 12px; padding-top: 12px; border-top: 1px solid #ddd;'>"
                 "<p style='margin: 4px 0; font-size: 0.9em; color: #666;'>"
-                "<em>Use <code>.to_dataframe()</code> to convert to a dataframe, "
-                "<code>.show_df()</code> to view dataframewith structures, "
-                "or <code>.show()</code> for 3D visualization</em>"
+                f"<em>{', '.join(action_hints)}</em>"
                 "</p>"
                 "</div>"
             )
