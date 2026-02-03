@@ -727,15 +727,15 @@ def test_render_view_shows_prepare_hint_when_unprepared():
 
     html = ligand_set._render_view()
 
-    # Should show prepare hint
-    assert "Use <code>.prepare()</code> to prepare ligands for docking" in html
+    # Should show prepare hint (it's joined with commas, so check for the key part)
+    assert "<code>.prepare()</code> to prepare ligands for docking" in html
 
     # Prepare all ligands
     ligand_set.prepare()
     html = ligand_set._render_view()
 
     # Should not show prepare hint when all are prepared
-    assert "Use <code>.prepare()</code> to prepare ligands for docking" not in html
+    assert "<code>.prepare()</code> to prepare ligands for docking" not in html
 
 
 def test_render_view_shows_prepare_hint_when_partial():
@@ -752,4 +752,4 @@ def test_render_view_shows_prepare_hint_when_partial():
     html = ligand_set._render_view()
 
     # Should show prepare hint since not all are prepared
-    assert "Use <code>.prepare()</code> to prepare ligands for docking" in html
+    assert "<code>.prepare()</code> to prepare ligands for docking" in html
