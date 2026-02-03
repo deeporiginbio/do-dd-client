@@ -22,6 +22,7 @@ from tqdm import tqdm
 
 from deeporigin.drug_discovery.constants import LIGANDS_DIR, SUPPORTED_ATOM_SYMBOLS
 from deeporigin.drug_discovery.utilities.visualize import jupyter_visualization
+from deeporigin.drug_discovery.validation import validate_fragments
 from deeporigin.exceptions import DeepOriginException
 from deeporigin.platform.client import DeepOriginClient
 from deeporigin.utils.constants import number
@@ -61,9 +62,11 @@ class Ligand(Entity):
     save_to_file: bool = False
     properties: dict = field(default_factory=dict)
     mol: Chem.Mol | None = None
+    protonated_at_ph: float | None = None
 
     # Additional attributes that are initialized in __post_init__
     available_for_docking: bool = field(init=False, default=True)
+    prepared: bool = field(init=False, default=False)
 
     _remote_path_base = "entities/ligands/"
     _preferred_ext = ".sdf"
@@ -355,6 +358,8 @@ class Ligand(Entity):
         The routine performs the following using RDKit and internal utilities:
         - Salt removal
         - Kekulization
+        - Fragment validation (rejects multiple non-identical fragments)
+        - Wildcard atom validation (rejects '*' atoms)
         - Validation of atom types against supported symbols
 
         Args:
@@ -365,7 +370,8 @@ class Ligand(Entity):
             Ligand: The prepared ligand (self), for chaining.
 
         Raises:
-            DeepOriginException: If preparation fails or unsupported atom types are present.
+            DeepOriginException: If preparation fails, unsupported atom types are present, or
+                               multiple non-identical fragments are detected.
         """
         # Start from current molecule
         if self.mol is None:
@@ -374,7 +380,13 @@ class Ligand(Entity):
         # 1) Salt removal and kekulization (reuse process_mol)
         self.process_mol()
 
-        # 2) Sanity sanitize and generate 2D coords if missing
+        # 2) Fragment validation
+        try:
+            self.mol = validate_fragments(self.mol)
+        except ValueError as e:
+            raise DeepOriginException(f"Fragment validation failed: {str(e)}") from e
+
+        # 3) Sanity sanitize and generate 2D coords if missing
         try:
             Chem.SanitizeMol(self.mol)
         except Exception:
@@ -388,8 +400,17 @@ class Ligand(Entity):
         if not self.mol.GetConformers():
             AllChem.Compute2DCoords(self.mol)
 
-        # 3) Validate atom types
+        # 4) Validate atom types
         atom_symbols = [atom.GetSymbol() for atom in self.mol.GetAtoms()]
+
+        # Check for wildcard atoms first (explicit check)
+        wildcard_atoms = [sym for sym in atom_symbols if sym == "*"]
+        if wildcard_atoms:
+            raise DeepOriginException(
+                "Ligand contains wildcard ('*') atoms, which are not supported."
+            )
+
+        # Check for other unsupported atom types
         unsupported = sorted(
             {sym for sym in atom_symbols if sym not in SUPPORTED_ATOM_SYMBOLS}
         )
@@ -403,7 +424,7 @@ class Ligand(Entity):
             self.smiles = Chem.MolToSmiles(Chem.RemoveHs(self.mol), canonical=True)
         else:
             self.smiles = Chem.MolToSmiles(self.mol, canonical=True)
-        self.set_property("prepared", True)
+        self.prepared = True
 
         return self
 
@@ -486,6 +507,30 @@ class Ligand(Entity):
         smiles = Chem.MolToSmiles(mol, canonical=True)
         return smiles == self.smiles
 
+    def has_3d_structure(self) -> bool:
+        """
+        Check if the ligand has 3D coordinates (not just 2D).
+
+        This method checks if the molecule has conformers with 3D coordinates.
+        Ligands created from SMILES typically have 2D coordinates (z=0 for all atoms),
+        while ligands with actual 3D structure have non-zero z coordinates.
+
+        Returns:
+            bool: True if the ligand has 3D coordinates (non-zero z values),
+                False if it only has 2D coordinates or no conformers.
+        """
+        if self.mol.GetNumConformers() == 0:
+            return False
+
+        # Check if any atom has non-zero z coordinate (indicating 3D structure)
+        coords = self.get_coordinates(0)
+        if coords.shape[1] < 3:
+            return False
+
+        # Check if any z coordinate is significantly non-zero (not just 2D)
+        z_coords = coords[:, 2]
+        return bool(np.any(np.abs(z_coords) > 1e-3))
+
     def get_coordinates(self, i: int = 0):
         """
         Get the coordinates of atoms in a specific conformer.
@@ -528,7 +573,8 @@ class Ligand(Entity):
         simulations.
 
         The method modifies the ligand in place by updating both `self.mol` and
-        `self.smiles` with the protonated form of the molecule.
+        `self.smiles` with the protonated form of the molecule. It also sets the
+        `protonated_at_ph` attribute to the pH value used for protonation.
 
         Args:
             ph (number): pH value at which to protonate the ligand. Defaults to 7.4
@@ -547,7 +593,8 @@ class Ligand(Entity):
         Note:
             The protonation process may change the SMILES string of the ligand if
             ionizable groups are present and their protonation state changes at the
-            specified pH.
+            specified pH. The `protonated_at_ph` attribute is only set when `quote=False`
+            (i.e., when protonation is actually performed, not when just requesting a quote).
         """
         from deeporigin.functions.protonation import protonate
 
@@ -565,6 +612,10 @@ class Ligand(Entity):
 
         self.mol = Chem.MolFromSmiles(data["protonation_states"]["smiles_list"][0])
         self.smiles = data["protonation_states"]["smiles_list"][0]
+
+        # Set the protonated_at_ph attribute to track the pH at which protonation was performed
+        if not quote:
+            self.protonated_at_ph = ph
 
     def to_molblock(self) -> str:
         """
@@ -1235,6 +1286,30 @@ class LigandSet:
         ]
 
         if num_ligands > 0:
+            # Check if all ligands are prepared
+            all_prepared = all(ligand.prepared for ligand in self.ligands)
+
+            # Check protonation status
+            any_not_protonated = any(
+                ligand.protonated_at_ph is None for ligand in self.ligands
+            )
+            # Check if all ligands are protonated at the same pH
+            all_protonated_at_same_ph = False
+            common_ph = None
+            if not any_not_protonated and num_ligands > 0:
+                ph_values = {
+                    ligand.protonated_at_ph
+                    for ligand in self.ligands
+                    if ligand.protonated_at_ph is not None
+                }
+                if len(ph_values) == 1:
+                    all_protonated_at_same_ph = True
+                    common_ph = ph_values.pop()
+
+            # Check 3D structure status
+            all_have_3d = all(ligand.has_3d_structure() for ligand in self.ligands)
+            all_have_2d = all(not ligand.has_3d_structure() for ligand in self.ligands)
+
             # Add summary statistics
             if unique_smiles == 1:
                 # Get the SMILES string (all ligands have the same one)
@@ -1242,13 +1317,33 @@ class LigandSet:
                     (ligand.smiles for ligand in self.ligands if ligand.smiles), None
                 )
                 if smiles_str:
-                    html_parts.append(
-                        f"<p style='margin: 8px 0;'><strong>SMILES:</strong> {smiles_str}</p>"
-                    )
+                    smiles_line = f"<p style='margin: 8px 0;'><strong>SMILES:</strong> {smiles_str}"
+                    if all_prepared:
+                        smiles_line += " <span class='badge text-bg-primary' style='font-variant: small-caps;'>PREPARED</span>"
+                    if any_not_protonated:
+                        smiles_line += " <span class='badge text-bg-secondary' style='font-variant: small-caps;'>NOT PROTONATED</span>"
+                    elif all_protonated_at_same_ph:
+                        smiles_line += f" <span class='badge text-bg-success' style='font-variant: small-caps;'>PROTONATED (pH={common_ph})</span>"
+                    if all_have_2d:
+                        smiles_line += " <span class='badge text-bg-info' style='font-variant: small-caps;'>2D</span>"
+                    elif all_have_3d:
+                        smiles_line += " <span class='badge text-bg-info' style='font-variant: small-caps;'>3D</span>"
+                    smiles_line += "</p>"
+                    html_parts.append(smiles_line)
             else:
-                html_parts.append(
-                    f"<p style='margin: 8px 0;'><strong>{unique_smiles}</strong> unique SMILES</p>"
-                )
+                unique_smiles_line = f"<p style='margin: 8px 0;'><strong>{unique_smiles}</strong> unique SMILES"
+                if all_prepared:
+                    unique_smiles_line += " <span class='badge text-bg-primary' style='font-variant: small-caps;'>PREPARED</span>"
+                if any_not_protonated:
+                    unique_smiles_line += " <span class='badge text-bg-secondary' style='font-variant: small-caps;'>NOT PROTONATED</span>"
+                elif all_protonated_at_same_ph:
+                    unique_smiles_line += f" <span class='badge text-bg-success' style='font-variant: small-caps;'>PROTONATED (pH={common_ph})</span>"
+                if all_have_2d:
+                    unique_smiles_line += " <span class='badge text-bg-info' style='font-variant: small-caps;'>2D</span>"
+                elif all_have_3d:
+                    unique_smiles_line += " <span class='badge text-bg-info' style='font-variant: small-caps;'>3D</span>"
+                unique_smiles_line += "</p>"
+                html_parts.append(unique_smiles_line)
 
             # Show property summary if available
             if self.ligands and self.ligands[0].properties:
@@ -1270,12 +1365,23 @@ class LigandSet:
                 )
 
             # Add action hints
+            action_hints = []
+            action_hints.append(
+                "Use <code>.to_dataframe()</code> to convert to a dataframe, "
+                "<code>.show_df()</code> to view dataframewith structures, "
+                "or <code>.show()</code> for 3D visualization"
+            )
+
+            # Add prepare hint if any ligand is not prepared
+            if not all_prepared:
+                action_hints.append(
+                    "<code>.prepare()</code> to prepare ligands for docking"
+                )
+
             html_parts.append(
                 "<div style='margin-top: 12px; padding-top: 12px; border-top: 1px solid #ddd;'>"
                 "<p style='margin: 4px 0; font-size: 0.9em; color: #666;'>"
-                "<em>Use <code>.to_dataframe()</code> to convert to a dataframe, "
-                "<code>.show_df()</code> to view dataframewith structures, "
-                "or <code>.show()</code> for 3D visualization</em>"
+                f"<em>{', '.join(action_hints)}</em>"
                 "</p>"
                 "</div>"
             )
@@ -1621,6 +1727,31 @@ class LigandSet:
             subImgSize=sub_img_size,
         )
 
+    def prepare(self, *, remove_hydrogens: bool = False) -> Self:
+        """
+        Prepare all ligands in the set for downstream workflows.
+
+        This calls the prepare() method on each Ligand in the set, which performs:
+        - Salt removal
+        - Kekulization
+        - Fragment validation (rejects multiple non-identical fragments)
+        - Validation of atom types against supported symbols
+
+        Args:
+            remove_hydrogens (bool): Whether to remove hydrogens from the SMILES representation.
+                                   Defaults to False (preserve hydrogens).
+
+        Returns:
+            LigandSet: The prepared LigandSet (self), for chaining.
+
+        Raises:
+            DeepOriginException: If preparation fails for any ligand, unsupported atom types are present,
+                               or multiple non-identical fragments are detected.
+        """
+        for ligand in self.ligands:
+            ligand.prepare(remove_hydrogens=remove_hydrogens)
+        return self
+
     def embed(self):
         """
         Minimize all ligands in the set using their 3D optimization routines.
@@ -1799,7 +1930,7 @@ class LigandSet:
 
         return align.mcs(self.to_rdkit_mols())
 
-    def filter_top_poses(self, *, by_pose_score: bool = False) -> Self:
+    def filter_top_poses(self, *, by_pose_score: bool = True) -> Self:
         """
         Filter ligands to keep only the best pose for each unique molecule.
 
@@ -1809,7 +1940,7 @@ class LigandSet:
 
         Args:
             by_pose_score (bool): If True, select by maximum pose score.
-                                If False (default), select by minimum binding energy.
+                                If False, select by minimum binding energy.
 
         Returns:
             LigandSet: A new LigandSet containing only the best pose for each unique molecule.
