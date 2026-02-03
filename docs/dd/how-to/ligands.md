@@ -322,7 +322,7 @@ ligands.show_grid()
 
 ### Preparing Ligands
 
-You can prepare a ligand for downstream workflows using the `prepare()` method. This performs salt removal, kekulization, and validates atom types:
+You can prepare a ligand for downstream workflows using the `prepare()` method. This performs salt removal, kekulization, fragment validation (rejects multiple non-identical fragments), and validates atom types:
 
 ```python
 from deeporigin.drug_discovery import Ligand

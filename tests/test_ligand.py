@@ -374,6 +374,27 @@ def test_ligand_prepare_rejects_unsupported_atoms():
         lig.prepare()
 
 
+def test_ligand_prepare_rejects_multiple_fragments():
+    """Ligands with multiple non-identical fragments should be rejected by prepare()."""
+
+    # Create a ligand with multiple non-identical fragments (e.g., salt + ligand)
+    # Using a dot-separated SMILES to represent disconnected fragments
+    lig = Ligand.from_smiles("CCO.CC")  # Ethanol + Ethane (two different fragments)
+    with pytest.raises(DeepOriginException, match="Fragment validation failed"):
+        lig.prepare()
+
+
+def test_ligand_prepare_accepts_identical_fragments():
+    """Ligands with multiple identical fragments should be accepted (first fragment kept)."""
+
+    # Create a ligand with multiple identical fragments
+    lig = Ligand.from_smiles("CCO.CCO")  # Two identical ethanol molecules
+    prepared = lig.prepare()
+    assert prepared is lig
+    # Should keep only the first fragment
+    assert lig.smiles == "CCO"
+
+
 def test_ligand_conformer_management():
     """Test conformer-related methods"""
     ligand = Ligand.from_smiles("CCO", name="Ethanol")

@@ -22,6 +22,7 @@ from tqdm import tqdm
 
 from deeporigin.drug_discovery.constants import LIGANDS_DIR, SUPPORTED_ATOM_SYMBOLS
 from deeporigin.drug_discovery.utilities.visualize import jupyter_visualization
+from deeporigin.drug_discovery.validation import validate_fragments
 from deeporigin.exceptions import DeepOriginException
 from deeporigin.platform.client import DeepOriginClient
 from deeporigin.utils.constants import number
@@ -355,6 +356,7 @@ class Ligand(Entity):
         The routine performs the following using RDKit and internal utilities:
         - Salt removal
         - Kekulization
+        - Fragment validation (rejects multiple non-identical fragments)
         - Validation of atom types against supported symbols
 
         Args:
@@ -365,7 +367,8 @@ class Ligand(Entity):
             Ligand: The prepared ligand (self), for chaining.
 
         Raises:
-            DeepOriginException: If preparation fails or unsupported atom types are present.
+            DeepOriginException: If preparation fails, unsupported atom types are present, or
+                               multiple non-identical fragments are detected.
         """
         # Start from current molecule
         if self.mol is None:
@@ -374,7 +377,13 @@ class Ligand(Entity):
         # 1) Salt removal and kekulization (reuse process_mol)
         self.process_mol()
 
-        # 2) Sanity sanitize and generate 2D coords if missing
+        # 2) Fragment validation
+        try:
+            self.mol = validate_fragments(self.mol)
+        except ValueError as e:
+            raise DeepOriginException(f"Fragment validation failed: {str(e)}") from e
+
+        # 3) Sanity sanitize and generate 2D coords if missing
         try:
             Chem.SanitizeMol(self.mol)
         except Exception:
@@ -388,7 +397,7 @@ class Ligand(Entity):
         if not self.mol.GetConformers():
             AllChem.Compute2DCoords(self.mol)
 
-        # 3) Validate atom types
+        # 4) Validate atom types
         atom_symbols = [atom.GetSymbol() for atom in self.mol.GetAtoms()]
         unsupported = sorted(
             {sym for sym in atom_symbols if sym not in SUPPORTED_ATOM_SYMBOLS}
