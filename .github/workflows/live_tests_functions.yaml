@@ -9,7 +9,12 @@ on:
         required: true
         default: prod
         options: [dev, staging, prod]
-
+  workflow_call:
+    inputs:
+      env:
+        description: "Target environment"
+        type: string
+        required: true
 
   # Run every day
   schedule:
