@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from functools import lru_cache
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
@@ -22,6 +21,7 @@ class Data:
             client: The DeepOriginClient instance to use for API calls.
         """
         self._c = client
+        self._models: dict | None = None
 
     def health(self) -> dict:
         """Check the health status of the data platform.
@@ -31,21 +31,26 @@ class Data:
         """
         return self._c.get_json("/data-platform/health")
 
-    @lru_cache(maxsize=1)  # noqa: B019
     def list_models(self) -> dict:
         """List public models.
+
+        The result is cached per instance.
 
         Returns:
             Dictionary containing the list of models.
         """
-        return self._c.get_json(f"/data-platform/{self._c.org_key}/meta/models")
+        if self._models is None:
+            self._models = self._c.get_json(
+                f"/data-platform/{self._c.org_key}/meta/models"
+            )
+        return self._models
 
     def search_ligands_with_results(
         self,
         *,
         cursor: str | None = None,
         experiments: list[dict[str, str]] | None = None,
-        filter: dict[str, Any] | None = None,
+        filter_dict: dict[str, Any] | None = None,
         limit: int | None = None,
         offset: int | None = None,
         select: list[str] | None = None,
@@ -57,7 +62,7 @@ class Data:
             cursor: Cursor for pagination.
             experiments: List of experiment filters, each containing toolId and
                 optionally toolVersion.
-            filter: Additional filter criteria as a dictionary.
+            filter_dict: Additional filter criteria as a dictionary.
             limit: Maximum number of results to return. Defaults to 100.
             offset: Number of results to skip.
             select: List of fields to select in the response.
@@ -71,8 +76,8 @@ class Data:
             body["cursor"] = cursor
         if experiments is not None:
             body["experiments"] = experiments
-        if filter is not None:
-            body["filter"] = filter
+        if filter_dict is not None:
+            body["filter"] = filter_dict
         if limit is not None:
             body["limit"] = limit
         if offset is not None:
@@ -297,4 +302,86 @@ class Data:
             offset=offset,
             select=select,
             sort=sort,
+        )
+
+    def create_ligand(
+        self,
+        *,
+        project_id: str,
+        canonical_smiles: str,
+        inchi_key: str,
+        inchi: str,
+        smiles: str,
+        name: str,
+        formal_charge: int = 0,
+        hbond_donor_count: int | None = None,
+        hbond_acceptor_count: int | None = None,
+        rotatable_bond_count: int | None = None,
+        tpsa: float | None = None,
+        molecular_weight: float | None = None,
+        variant_name_tag: str = "",
+    ) -> dict:
+        """Create a new ligand.
+
+        Args:
+            project_id: Project ID for the ligand.
+            canonical_smiles: Canonical SMILES string.
+            inchi_key: InChI key.
+            inchi: InChI string.
+            smiles: SMILES string.
+            name: Name of the ligand.
+            formal_charge: Formal charge. Defaults to 0.
+            hbond_donor_count: Number of hydrogen bond donors.
+            hbond_acceptor_count: Number of hydrogen bond acceptors.
+            rotatable_bond_count: Number of rotatable bonds.
+            tpsa: Topological polar surface area.
+            molecular_weight: Molecular weight.
+            variant_name_tag: Variant name tag. Defaults to empty string.
+
+        Returns:
+            Dictionary containing the created ligand data.
+        """
+        # Build the set object with all ligand properties
+        set_dict: dict[str, Any] = {
+            "project_id": project_id,
+            "subtable_name": "ligands",
+            "canonical_smiles": canonical_smiles,
+            "inchi_key": inchi_key,
+            "inchi": inchi,
+            "smiles": smiles,
+            "name": name,
+            "formal_charge": formal_charge,
+            "variant_name_tag": variant_name_tag,
+        }
+
+        # Add optional fields only if provided
+        if hbond_donor_count is not None:
+            set_dict["hbond_donor_count"] = hbond_donor_count
+        if hbond_acceptor_count is not None:
+            set_dict["hbond_acceptor_count"] = hbond_acceptor_count
+        if rotatable_bond_count is not None:
+            set_dict["rotatable_bond_count"] = rotatable_bond_count
+        if tpsa is not None:
+            set_dict["tpsa"] = tpsa
+        if molecular_weight is not None:
+            set_dict["molecular_weight"] = molecular_weight
+
+        body: dict[str, Any] = {
+            "set": set_dict,
+        }
+
+        return self._c.post_json(
+            f"/data-platform/{self._c.org_key}/ligands",
+            body=body,
+        )
+
+    def list_projects(self) -> dict:
+        """List projects.
+
+        Returns:
+            Dictionary containing the list of projects.
+        """
+        return self._c.post_json(
+            f"/data-platform/{self._c.org_key}/projects/search",
+            body={},
         )

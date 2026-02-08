@@ -967,7 +967,7 @@ class MockServer:
             org_key: str, request: Request
         ) -> dict[str, Any]:
             """Search ligands joined with tool results."""
-            body = await request.json()
+            await request.json()  # Consume request body
             # Return a mock response with empty data list
             return {
                 "data": [],
@@ -979,12 +979,53 @@ class MockServer:
             org_key: str, entity: str, request: Request
         ) -> dict[str, Any]:
             """Search an entity."""
-            body = await request.json()
+            await request.json()  # Consume request body
             # Return a mock response with empty data list
             return {
                 "data": [],
                 "count": 0,
             }
+
+        @self.app.post("/data-platform/{org_key}/projects/search")
+        async def list_projects(org_key: str, request: Request) -> dict[str, Any]:
+            """List projects."""
+            await request.json()  # Consume request body
+            # Return a mock response with empty projects list
+            return {
+                "data": [],
+                "count": 0,
+            }
+
+        @self.app.post("/data-platform/{org_key}/ligands")
+        async def create_ligand(org_key: str, request: Request) -> dict[str, Any]:
+            """Create a new ligand."""
+            body = await request.json()
+            set_data = body.get("set", {})
+            returning = body.get("returning", [])
+
+            # Generate mock response with canonical_id and version
+            now = datetime.now(timezone.utc)
+            canonical_id = str(uuid.uuid4())
+            response_data: dict[str, Any] = {
+                "canonical_id": canonical_id,
+                "version": 1,
+                "valid_from": now.strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z",
+                "valid_to": None,
+                "modified_by": "test-user",
+                "deleted": False,
+                "structure_key": str(uuid.uuid4()),
+            }
+
+            # Include all fields from set_data
+            response_data.update(set_data)
+
+            # Filter to only return requested fields if specified
+            if returning:
+                response_data = {
+                    k: v for k, v in response_data.items() if k in returning
+                }
+
+            return response_data
 
         @self.app.get("/data-platform/{org_key}/meta/models")
         def list_models(org_key: str) -> dict[str, Any]:

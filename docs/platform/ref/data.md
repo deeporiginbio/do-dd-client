@@ -29,6 +29,25 @@ results = client.data.search_ligands(limit=10)
 # Search proteins using convenience method
 results = client.data.search_proteins(limit=10)
 
+# Create a new ligand
+ligand = client.data.create_ligand(
+    project_id="\\x0011223344556677",
+    canonical_smiles="CCOc1ccc2nc(S(=O)(=O)N3CCN(CC3)C)c(N)c2c1",
+    inchi_key="BSYNRYMUTXBXSQ-UHFFFAOYSA-N",
+    inchi="InChI=1S/C20H24N4O4S/.../h1-4,6-9H,5,10-14H2,(H,22,23)",
+    smiles="CCOc1ccc2nc(S(=O)(=O)N3CCN(CC3)C)c(N)c2c1",
+    name="Compound-12345",
+    formal_charge=0,
+    hbond_donor_count=1,
+    hbond_acceptor_count=6,
+    rotatable_bond_count=5,
+    tpsa=85.12,
+    molecular_weight=447.5,
+)
+
+# List projects
+projects = client.data.list_projects()
+
 # List public models
 models = client.data.list_models()
 ```

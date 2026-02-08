@@ -115,3 +115,45 @@ def test_list_models_lv1():
     assert "tableName" in model, "Expected 'tableName' key in model"
     assert "visibility" in model, "Expected 'visibility' key in model"
     assert model["visibility"] == "public", "Expected visibility to be 'public'"
+
+
+def test_create_ligand_lv1():
+    """Test creating a ligand."""
+    client = DeepOriginClient()
+    response = client.data.create_ligand(
+        project_id="\\x0011223344556677",
+        canonical_smiles="CCOc1ccc2nc(S(=O)(=O)N3CCN(CC3)C)c(N)c2c1",
+        inchi_key="BSYNRYMUTXBXSQ-UHFFFAOYSA-N",
+        inchi="InChI=1S/C20H24N4O4S/.../h1-4,6-9H,5,10-14H2,(H,22,23)",
+        smiles="CCOc1ccc2nc(S(=O)(=O)N3CCN(CC3)C)c(N)c2c1",
+        name="Compound-12345",
+        formal_charge=0,
+        hbond_donor_count=1,
+        hbond_acceptor_count=6,
+        rotatable_bond_count=5,
+        tpsa=85.12,
+        molecular_weight=447.5,
+        variant_name_tag="",
+    )
+
+    assert isinstance(response, dict), "Expected a dictionary response"
+    assert "canonical_id" in response, "Expected 'canonical_id' key in response"
+    assert "version" in response, "Expected 'version' key in response"
+    assert response["version"] == 1, "Expected version to be 1"
+    assert "name" in response, "Expected 'name' key in response"
+    assert response["name"] == "Compound-12345", "Expected name to match"
+    assert "canonical_smiles" in response, "Expected 'canonical_smiles' key in response"
+    assert (
+        response["canonical_smiles"] == "CCOc1ccc2nc(S(=O)(=O)N3CCN(CC3)C)c(N)c2c1"
+    ), "Expected canonical_smiles to match"
+
+
+def test_list_projects_lv1():
+    """Test listing projects."""
+    client = DeepOriginClient()
+    response = client.data.list_projects()
+
+    assert isinstance(response, dict), "Expected a dictionary response"
+    assert "data" in response, "Expected 'data' key in response"
+    assert isinstance(response["data"], list), "Expected 'data' to be a list"
+    assert "count" in response, "Expected 'count' key in response"
