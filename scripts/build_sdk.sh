@@ -6,19 +6,22 @@ set -euo pipefail
 # clean previously copied files to keep runs idempotent
 rm -rf platform-sdk/src/platform platform-sdk/src/utils
 rm -f platform-sdk/src/auth.py platform-sdk/src/config.py platform-sdk/src/exceptions.py
+rm -f platform-sdk/src/__init__.py
 mkdir -p platform-sdk/src platform-sdk/src/utils
 
 # copy required files to the platform-sdk directory
 cp -r src/platform platform-sdk/src/
+cp -r src/__init__.py platform-sdk/src/__init__.py
 cp -r src/utils/core.py platform-sdk/src/utils/core.py
 cp -r src/utils/constants.py platform-sdk/src/utils/constants.py
 cp -r src/utils/network.py platform-sdk/src/utils/network.py
+cp -r src/utils/__init__.py platform-sdk/src/utils/__init__.py
 cp -r src/auth.py platform-sdk/src/auth.py
 cp -r src/exceptions.py platform-sdk/src/exceptions.py
 cp -r src/config.py platform-sdk/src/config.py
 
 # in every .py file, replace "from deeporigin" with "from do_sdk_platform"
-python - <<'PY'
+python3 - <<'PY'
 from pathlib import Path
 
 for path in Path("platform-sdk/src").rglob("*.py"):
