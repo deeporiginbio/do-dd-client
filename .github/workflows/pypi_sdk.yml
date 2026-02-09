@@ -36,4 +36,4 @@ jobs:
       - name: Publish SDK distributions to PyPI
         uses: pypa/gh-action-pypi-publish@release/v1
         with:
-          packages-dir: platform-sdk/dist
+          packages-dir: dist
