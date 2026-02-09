@@ -1,11 +1,12 @@
 #!/bin/bash
+set -euo pipefail
 
 # script that builds the low level SDK for the Deep Origin Platform
 
 # clean previously copied files to keep runs idempotent
 rm -rf platform-sdk/src/platform platform-sdk/src/utils
-rm -f platform-sdk/src/auth.py platform-sdk/src/config.py
-mkdir -p platform-sdk/src/utils
+rm -f platform-sdk/src/auth.py platform-sdk/src/config.py platform-sdk/src/exceptions.py
+mkdir -p platform-sdk/src platform-sdk/src/utils
 
 # copy required files to the platform-sdk directory
 cp -r src/platform platform-sdk/src/
