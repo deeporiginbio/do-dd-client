@@ -19,3 +19,7 @@ include-package-data = true
 
 [tool.setuptools.dynamic]
 version = { file = ["src/VERSION"] }
+
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
