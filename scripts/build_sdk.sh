@@ -1,17 +1,12 @@
 # script that builds the low level SDK for the Deep Origin Platform
 
-# copy the src/platform directory to the platform-sdk directory
+# copy required files to the platform-sdk directory
 cp -r src/platform platform-sdk/src/
-
-# copy the src/utils directory to the platform-sdk directory
-cp -r src/utils platform-sdk/src/
-
-# copy the src/auth directory to the platform-sdk directory
+cp -r src/utils/core.py platform-sdk/src/utils/core.py
+cp -r src/utils/constants.py platform-sdk/src/utils/constants.py
+cp -r src/utils/network.py platform-sdk/src/utils/network.py
 cp -r src/auth.py platform-sdk/src/auth.py
-
-# copy the src/config directory to the platform-sdk directory
 cp -r src/config.py platform-sdk/src/config.py
-
 
 # in every .py file, replace "from deeporigin" with "from do_sdk_platform"
 python - <<'PY'
