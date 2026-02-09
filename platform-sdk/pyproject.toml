@@ -2,7 +2,7 @@
 name = "deeporigin-sdk"
 description = "Deep Origin Platform SDK"
 readme = "README.md"
-requires-python = ">=3.11, <3.14"
+requires-python = ">=3.11"
 dependencies = [
     "beartype",
     "cryptography",
