@@ -13,6 +13,7 @@ cp -r src/utils/core.py platform-sdk/src/utils/core.py
 cp -r src/utils/constants.py platform-sdk/src/utils/constants.py
 cp -r src/utils/network.py platform-sdk/src/utils/network.py
 cp -r src/auth.py platform-sdk/src/auth.py
+cp -r src/exceptions.py platform-sdk/src/exceptions.py
 cp -r src/config.py platform-sdk/src/config.py
 
 # in every .py file, replace "from deeporigin" with "from do_sdk_platform"
