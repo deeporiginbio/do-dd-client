@@ -1,3 +1,5 @@
+#!/bin/bash
+
 # script that builds the low level SDK for the Deep Origin Platform
 
 # copy required files to the platform-sdk directory
