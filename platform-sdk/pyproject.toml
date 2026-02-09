@@ -1,0 +1,21 @@
+[project]
+name = "do-sdk-platform"
+description = "Deep Origin Platform SDK"
+readme = "README.md"
+requires-python = ">=3.11, <3.14"
+dependencies = [
+    "beartype",
+    "cryptography",
+    "httpx",
+    "pyjwt",
+    "tqdm",
+]
+dynamic = ["version"]
+
+
+[tool.setuptools]
+package-dir = { "do_sdk_platform" = "src" }
+include-package-data = true
+
+[tool.setuptools.dynamic]
+version = { file = ["src/VERSION"] }
