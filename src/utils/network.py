@@ -6,7 +6,6 @@ from urllib.parse import parse_qs, urlparse
 
 from beartype import beartype
 import httpx
-from packaging.version import Version
 
 from deeporigin import __version__
 from deeporigin.exceptions import DeepOriginException
@@ -15,6 +14,8 @@ from deeporigin.exceptions import DeepOriginException
 @functools.cache
 def check_for_updates():
     """check if a new version is available. If so, print an message"""
+
+    from packaging.version import Version
 
     try:
         latest_pypi_version = Version(_get_pypi_version())
