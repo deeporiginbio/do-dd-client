@@ -38,7 +38,7 @@ test = [
     "interrogate",
     "pytest-xdist",
     "pytest-markdown-docs",
-    "pytest-dependency",
+    "pytest-dependency<0.6.0",
     "fastapi",
     "uvicorn[standard]",
 ]
