@@ -11,7 +11,7 @@ from __future__ import annotations
 import json
 import os
 import time
-from typing import Any, Callable, Dict, Optional, Set, Tuple, get_args
+from typing import Any, Callable, Dict, Optional, Self, Set, Tuple, get_args
 import uuid
 import weakref
 
@@ -157,7 +157,7 @@ class DeepOriginClient:
         max_retry_delay: float = 60.0,
         record: bool = False,
         tag: str | None = None,
-    ) -> "DeepOriginClient":
+    ) -> Self:
         """Create a new instance or return a cached one based on cache key.
 
         This method implements singleton-like behavior by checking the cache
@@ -412,7 +412,7 @@ class DeepOriginClient:
         record: bool = False,
         replace: bool = False,
         tag: str | None = None,
-    ) -> "DeepOriginClient":
+    ) -> Self:
         """
         Get a cached client instance.
 
@@ -522,7 +522,7 @@ class DeepOriginClient:
         retry_backoff_factor: float = 1.0,
         max_retry_delay: float = 60.0,
         record: bool = False,
-    ) -> "DeepOriginClient":
+    ) -> Self:
         """Create a client instance from environment configuration.
 
         Reads configuration from environment variables (DEEPORIGIN_TOKEN,
@@ -600,6 +600,43 @@ class DeepOriginClient:
             retry_backoff_factor=retry_backoff_factor,
             max_retry_delay=max_retry_delay,
             record=record,
+        )
+
+    @classmethod
+    def from_headers(cls, headers) -> Self:
+        """Create a client instance from HTTP headers. Useful for creating a client within a served tool.
+
+        Args:
+            headers: headers from the HTTP request
+
+        Returns:
+            A new DeepOriginClient instance configured from the headers.
+        """
+        # check that the necessary headers are present
+        required_keys = [
+            "X-Do-Auth-Token",
+            "X-Do-Org-Key",
+            "X-Do-Execution-Id",
+            "X-Do-Mq-Url",
+            "X-Do-Base-Url",
+        ]
+        missing = [k for k in required_keys if not headers.get(k)]
+        if missing:
+            raise ValueError(f"Missing required headers: {', '.join(missing)}")
+
+        base_url = headers["X-Do-Base-Url"]
+        if "dev" in base_url:
+            env = "dev"
+        elif "staging" in base_url:
+            env = "staging"
+        else:
+            env = "prod"
+
+        return cls(
+            token=headers["X-Do-Auth-Token"],
+            org_key=headers["X-Do-Org-Key"],
+            base_url=base_url,
+            env=env,
         )
 
     @classmethod
