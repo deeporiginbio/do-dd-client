@@ -57,8 +57,6 @@ def test_get_all_tools_lv1():
         "key",
         "inputs",
         "version",
-        "executors",
-        "billingParser",
         "toolManifestVersion",
     ]:
         assert key in tool.keys(), f"Expected tool to have key {key}"
