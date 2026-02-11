@@ -1,0 +1,25 @@
+[project]
+name = "deeporigin-sdk"
+description = "Deep Origin Platform SDK"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "beartype",
+    "cryptography",
+    "httpx",
+    "pyjwt",
+    "tqdm",
+]
+dynamic = ["version"]
+
+
+[tool.setuptools]
+package-dir = { "deeporigin_sdk" = "src" }
+include-package-data = true
+
+[tool.setuptools.dynamic]
+version = { file = ["src/VERSION"] }
+
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"

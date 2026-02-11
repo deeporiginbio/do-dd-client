@@ -243,6 +243,7 @@ class Files:
         *,
         local_path: str | Path | None = None,
         lazy: bool = False,
+        download_to_dir: str | Path | None = None,
     ) -> str:
         """Download a single file from UFA to ~/.deeporigin/, or some other local path.
 
@@ -250,16 +251,24 @@ class Files:
             remote_path: The remote path of the file to download.
             local_path: The local path to save the file to. If None, uses ~/.deeporigin/.
             lazy: If True, and the file exists locally, return the local path without downloading.
+            download_to_dir: If provided, the file will be downloaded to this directory.
+                The local path will be constructed by joining download_to_dir with the
+                basename of remote_path. Ignored if local_path is provided.
 
         Returns:
             The local path where the file was saved.
         """
         # Determine local path
-        if local_path is None:
+        if local_path is not None:
+            local_path = Path(local_path)
+        elif download_to_dir is not None:
+            download_to_dir_path = Path(download_to_dir)
+            # Extract basename from remote_path (handle both / and \ separators)
+            remote_basename = Path(remote_path).name
+            local_path = download_to_dir_path / remote_basename
+        else:
             do_folder = _ensure_do_folder()
             local_path = do_folder / remote_path
-        else:
-            local_path = Path(local_path)
 
         # Create parent directories
         local_path.parent.mkdir(parents=True, exist_ok=True)
