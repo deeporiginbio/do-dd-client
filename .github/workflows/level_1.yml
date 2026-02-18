@@ -3,8 +3,14 @@ name: Run Level 1 Tests
 on:
   pull_request:
     paths:
-      - '**/*.py'
+      - "**/*.py"
   workflow_dispatch:
+  workflow_call:
+    inputs:
+      env:
+        description: "Target environment"
+        type: string
+        required: true
 
 jobs:
   level-1-tests:
@@ -14,10 +20,14 @@ jobs:
       fail-fast: true
       matrix:
         python-version: ["3.13"]
-        env: ["dev", "staging", "prod"]
+        env: ${{ github.event_name == 'workflow_call' && fromJSON(format('["{0}"]', inputs.env)) || fromJSON('["dev","staging","prod"]') }}
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          repository: deeporiginbio/do-dd-client
+          ref: ${{ github.event_name == 'release' && 'main' || github.ref }}
+          token: ${{ github.event_name == 'release' && secrets.CI_BOT_GH_PAT || secrets.GITHUB_TOKEN }}
 
       - name: Install uv
         uses: astral-sh/setup-uv@v6
@@ -44,4 +54,3 @@ jobs:
 
       - name: "runing level 1 tests"
         run: uv run pytest --env ${{ matrix.env }} -k lv1
-
