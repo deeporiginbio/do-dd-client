@@ -1,10 +1,14 @@
-"""This module implements a low level function to perform molecular docking using the Deep Origin API.
+"""Low-level functions for molecular docking using the Deep Origin API.
 
-The main function `dock()` takes a Protein object, a list of ligand SMILES strings, and docking box parameters
-to perform docking calculations. The docking box can be specified either by providing explicit coordinates for the
-pocket center, or by passing a Pocket object which contains the pocket center information.
+The main function ``dock()`` takes a Protein object, a list of ligand SMILES strings,
+and docking box parameters to perform docking calculations. The docking box can be
+specified either by providing explicit coordinates for the pocket center, or by passing
+a Pocket object which contains the pocket center information.
 
-The module interfaces with the Deep Origin docking service to perform the actual docking calculations remotely.
+Both ``dock()`` and ``constrained_dock()`` return a dict containing:
+
+- ``sdf_path``/``sdf_paths``: path(s) to downloaded SDF result files (None when quoting)
+- ``response``: the raw API response dict (always present, contains quotationResult)
 """
 
 import os
@@ -15,6 +19,7 @@ from deeporigin.drug_discovery.structures import Ligand, Pocket, Protein
 from deeporigin.exceptions import DeepOriginException
 from deeporigin.platform.client import DeepOriginClient
 from deeporigin.utils.core import _ensure_do_folder, hash_dict
+from deeporigin.utils.cost import Cost
 
 
 def _extract_cached_files(extract_dir: str) -> list[str]:
@@ -48,22 +53,26 @@ def dock(
     pocket: Optional[Pocket] = None,
     use_cache: bool = True,
     quote: bool = False,
-) -> str:
-    """
-    Run molecular docking using the DeepOrigin API.
+    max_cost: Optional[Cost] = None,
+) -> dict:
+    """Run molecular docking using the DeepOrigin API.
 
     Args:
-        protein (Protein): Protein object representing the target protein
-        smiles_string (Optional[str]): SMILES string for the ligand to dock
-        ligand (Optional[Ligand]): Ligand object to dock
-        box_size (tuple[float, float, float]): Size of the docking box (x, y, z)
-        pocket_center (Optional[tuple[int, int, int]]): Center coordinates of the docking pocket (x, y, z)
-        pocket (Optional[Pocket]): Pocket object defining the docking region
-        use_cache (bool): Whether to use cached results. Defaults to True
-        client (DeepOriginClient | None): DeepOrigin client instance. If None, creates a new client. Defaults to None
+        client: DeepOrigin client instance.
+        protein: Protein object representing the target protein.
+        smiles_string: SMILES string for the ligand to dock.
+        ligand: Ligand object to dock.
+        box_size: Size of the docking box (x, y, z).
+        pocket_center: Center coordinates of the docking pocket (x, y, z).
+        pocket: Pocket object defining the docking region.
+        use_cache: Whether to use cached results. Defaults to True.
+        quote: Whether to request a price quote without running the docking.
+        max_cost: Optional cost limit for the operation.
 
     Returns:
-        str: path to the SDF file containing the docking results
+        Dict with keys:
+            - ``sdf_path``: path to the SDF result file, or None when quoting.
+            - ``response``: raw API response dict.
     """
 
     CACHE_DIR = str(_ensure_do_folder() / "docking")
@@ -81,7 +90,6 @@ def dock(
             "Either smiles_string or ligand must be provided"
         ) from None
 
-    # Prepare the request payload
     payload = {
         "protein_path": protein._remote_path,
         "ligand_smiles": smiles_string,
@@ -91,29 +99,36 @@ def dock(
     cache_hash = hash_dict(payload)
     sdf_file = str(Path(CACHE_DIR) / f"{cache_hash}.sdf")
 
-    # Check if cached result exists
-    if os.path.exists(sdf_file) and use_cache:
-        return sdf_file
+    if os.path.exists(sdf_file) and use_cache and not quote:
+        return {"sdf_path": sdf_file, "response": {}}
 
     protein.upload(client=client)
+
+    approve_amount = max_cost.approve_amount if max_cost is not None else None
 
     response = client.functions.run(
         key="deeporigin.docking",
         version="0.2.6",
         params=payload,
         quote=quote,
+        approve_amount=approve_amount,
     )
+
+    if quote:
+        return {"sdf_path": None, "response": response}
 
     # TODO -- remove this patch once API is updated
     if "functionOutputs" in response:
-        response = response["functionOutputs"]
+        fn_outputs = response["functionOutputs"]
+    else:
+        fn_outputs = response
 
     sdf_file = client.files.download_file(
-        remote_path=response["sdf_path"],
+        remote_path=fn_outputs["sdf_path"],
         local_path=sdf_file,
     )
 
-    return sdf_file
+    return {"sdf_path": sdf_file, "response": response}
 
 
 def constrained_dock(
@@ -128,35 +143,39 @@ def constrained_dock(
     top_criteria: Literal["energy_score", "rmsd"] = "energy_score",
     use_cache: bool = True,
     quote: bool = False,
-) -> list[str]:
-    """Perform constrained molecular docking using a reference ligand constraints.
+    max_cost: Optional[Cost] = None,
+) -> dict:
+    """Perform constrained molecular docking using reference ligand constraints.
 
-    This function performs molecular docking with constraints based on a reference ligand
-    and a maximum common substructure (MCS). The ligand is aligned to the reference ligand
-    using the MCS, and docking is performed with these alignment constraints applied.
+    This function performs molecular docking with constraints based on a reference
+    ligand and a maximum common substructure (MCS). The ligand is aligned to the
+    reference ligand using the MCS, and docking is performed with these alignment
+    constraints applied.
 
     Args:
-        client (DeepOriginClient): DeepOrigin client instance.
-        protein (Protein): The protein structure to dock against.
-        ligand (Ligand): The ligand to be docked.
-        constraints (list[dict]): List of constraints for the docking. Generate this using `align.compute_constraints`.
-        pocket (Optional[Pocket]): Optional pocket object. If provided, its center will be used as pocket_center.
-        box_size (tuple[float, float, float]): Size of the docking box in Angstroms (x, y, z). Defaults to (20.0, 20.0, 20.0).
-        pocket_center (Optional[tuple[int, int, int]]): Optional center coordinates for the docking box. If None and pocket is provided,
-                     uses the pocket center. If both are None, raises an error.
-        top_criteria (Literal["energy_score", "rmsd"]): Criteria for selecting top poses. Defaults to "energy_score".
-        use_cache (bool): Whether to use cached results if available. Defaults to True.
-        quote (bool): Whether to quote the function run without executing it. Defaults to False.
+        client: DeepOrigin client instance.
+        protein: The protein structure to dock against.
+        ligand: The ligand to be docked.
+        constraints: List of constraints for the docking. Generate this using
+            ``align.compute_constraints``.
+        pocket: Optional pocket object. If provided, its center will be used
+            as pocket_center.
+        box_size: Size of the docking box in Angstroms (x, y, z).
+        pocket_center: Optional center coordinates for the docking box.
+        top_criteria: Criteria for selecting top poses.
+        use_cache: Whether to use cached results if available.
+        quote: Whether to request a price quote without running the docking.
+        max_cost: Optional cost limit for the operation.
 
     Returns:
-        list[str]: List of file paths to the docking result files (typically SDF files).
-
+        Dict with keys:
+            - ``sdf_paths``: list of paths to result SDF files, or None when quoting.
+            - ``response``: raw API response dict.
 
     Note:
         The function creates a cache directory in the DeepOrigin home directory
         (typically ~/.deeporigin/constrained_docking/) and stores results based on
-        a SHA256 hash of all input parameters. This allows for efficient reuse of
-        previous docking results.
+        a SHA256 hash of all input parameters.
     """
     CACHE_DIR = str(_ensure_do_folder() / "constrained_docking")
 
@@ -167,11 +186,9 @@ def constrained_dock(
 
     pocket_center_list = _get_pocket_center(pocket, pocket_center)
 
-    # Upload files first
     protein.upload(client=client)
     ligand.upload(client=client)
 
-    # Prepare the request payload
     payload = {
         "protein_path": protein._remote_path,
         "ligand_path": ligand._remote_path,
@@ -184,24 +201,31 @@ def constrained_dock(
     cache_hash = hash_dict(payload)
     extract_dir = str(Path(CACHE_DIR) / cache_hash)
 
-    if os.path.exists(extract_dir) and use_cache:
-        return _extract_cached_files(extract_dir)
+    if os.path.exists(extract_dir) and use_cache and not quote:
+        return {"sdf_paths": _extract_cached_files(extract_dir), "response": {}}
+
+    approve_amount = max_cost.approve_amount if max_cost is not None else None
 
     response = client.functions.run(
         key="deeporigin.constrained-docking",
         params=payload,
         quote=quote,
+        approve_amount=approve_amount,
     )
+
+    if quote:
+        return {"sdf_paths": None, "response": response}
 
     # TODO -- remove this patch once API is updated
     if "functionOutputs" in response:
-        response = response["functionOutputs"]
+        fn_outputs = response["functionOutputs"]
+    else:
+        fn_outputs = response
 
-    # Download individual files from output_files
     Path(extract_dir).mkdir(parents=True, exist_ok=True)
     downloaded_files = []
 
-    output_files = response.get("output_files", {})
+    output_files = fn_outputs.get("output_files", {})
     for filename, remote_path in output_files.items():
         local_path = str(Path(extract_dir) / filename)
         client.files.download_file(
@@ -210,4 +234,4 @@ def constrained_dock(
         )
         downloaded_files.append(local_path)
 
-    return downloaded_files
+    return {"sdf_paths": downloaded_files, "response": response}

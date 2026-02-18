@@ -41,6 +41,7 @@ class Functions:
         cluster_id: str | None = None,
         tag: str | None = None,
         quote: bool = False,
+        approve_amount: int | None = None,
     ) -> dict:
         """Run a function.
 
@@ -53,6 +54,9 @@ class Functions:
                 default cluster ID (first non-dev cluster, cached).
             tag: Optional tag for the execution.
             quote: Whether to request a quote instead of running the function.
+            approve_amount: Maximum dollar amount to approve for this run.
+                When set, the function will only execute if the cost is within
+                this limit. Overridden to 0 when quote=True.
 
         Returns:
             Dictionary containing the execution response from the API.
@@ -74,6 +78,8 @@ class Functions:
 
         if quote:
             body["approveAmount"] = 0
+        elif approve_amount is not None:
+            body["approveAmount"] = approve_amount
 
         # functions need a longer timeout
         original_timeout = self._c._client.timeout

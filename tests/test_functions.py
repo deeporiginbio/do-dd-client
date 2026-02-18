@@ -9,6 +9,7 @@ from deeporigin.drug_discovery import (
     LigandSet,
     Protein,
 )
+from deeporigin.utils.result import Result
 
 # Fixtures directory for test files
 FIXTURES_DIR = Path(__file__).parent / "fixtures"
@@ -50,13 +51,14 @@ def test_docking_lv2():
         "Fc1c(-c2cccc3ccccc23)ncc2c(N3C[C@H]4CC[C@@H](C3)N4)nc(OCC34CCCN3CCC4)nc12"
     )
 
-    poses = protein.dock(
+    result = protein.dock(
         ligand=ligand,
         pocket=pocket,
         use_cache=False,
     )
 
-    assert isinstance(poses, LigandSet), "Expected protein.dock() to return a LigandSet"
+    assert isinstance(result, Result), "Expected protein.dock() to return a Result"
+    assert isinstance(result.data, LigandSet), "Expected result.data to be a LigandSet"
 
 
 def test_sysprep_lv2():

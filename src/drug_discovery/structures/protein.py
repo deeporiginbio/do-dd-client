@@ -14,7 +14,7 @@ import io
 import os
 from pathlib import Path
 import tempfile
-from typing import Any, Optional, Self
+from typing import TYPE_CHECKING, Any, Optional, Self
 
 from beartype import beartype
 import Bio.Seq
@@ -33,6 +33,10 @@ from deeporigin.utils.core import _ensure_do_folder
 from .entity import Entity
 from .ligand import Ligand, LigandSet
 from .pocket import Pocket
+
+if TYPE_CHECKING:
+    from deeporigin.utils.cost import Cost
+    from deeporigin.utils.result import Result
 
 
 @dataclass
@@ -277,20 +281,32 @@ class Protein(Entity):
         use_cache: bool = True,
         reference_pose: Optional[Ligand] = None,
         client: Optional[DeepOriginClient] = None,
-    ):
+        quote: bool = False,
+        max_cost: Optional["Cost"] = None,
+    ) -> "Result":
         """Dock a ligand into a specific pocket of the protein.
 
-        This method performs docking of a ligand or a set of ligands into a specified pocket
-        of the protein structure.
+        This method performs docking of a ligand or a set of ligands into a
+        specified pocket of the protein structure.
 
         Args:
-            ligand (Ligand): The ligand to dock into the protein pocket.
-            ligands (LigandSet | list[Ligand]): A set of ligands to dock into the protein pocket.
-            pocket (Pocket): The specific pocket in the protein where the ligand
+            ligand: The ligand to dock into the protein pocket.
+            ligands: A set of ligands to dock into the protein pocket.
+            pocket: The specific pocket in the protein where the ligand
                 should be docked.
-            use_cache (bool): Whether to use cached results if available. Defaults to True.
-            reference_pose (Ligand): A reference pose to use for constrained docking. If provided, the constraints will be computed using the MCS of the reference pose and the all the ligands to dock.
+            use_cache: Whether to use cached results if available. Defaults to True.
+            reference_pose: A reference pose to use for constrained docking.
+                If provided, the constraints will be computed using the MCS of the
+                reference pose and the all the ligands to dock.
+            client: DeepOrigin client instance. If None, creates a new client.
+            quote: If True, return a cost estimate without running the docking.
+            max_cost: Optional cost limit for the operation.
 
+        Returns:
+            Result with:
+                - ``data``: docked LigandSet (None when quote=True)
+                - ``estimate``: cost estimate (populated when quote=True)
+                - ``cost``: actual cost (populated when quote=False)
         """
 
         if client is None:
@@ -308,72 +324,162 @@ class Protein(Entity):
             ligands = LigandSet(ligands)
 
         if reference_pose is not None:
-            # perform constrained docking
-
-            all_ligands = LigandSet([reference_pose] + ligands)
-
-            # find the mcs across all ligands
-            mcs_mol = all_ligands.mcs()
-
-            # compute constraints for each ligand
-            constraints = ligands.compute_constraints(
-                reference=reference_pose,
-                mcs_mol=mcs_mol,
+            return self._constrained_dock(
+                ligands=ligands,
+                pocket=pocket,
+                reference_pose=reference_pose,
+                use_cache=use_cache,
+                client=client,
+                quote=quote,
+                max_cost=max_cost,
+            )
+        else:
+            return self._standard_dock(
+                ligands=ligands,
+                pocket=pocket,
+                use_cache=use_cache,
+                client=client,
+                quote=quote,
+                max_cost=max_cost,
             )
 
-            # construct args
-            args = [
-                {
-                    "client": client,
-                    "protein": self,
-                    "ligand": ligand,
-                    "pocket": pocket,
-                    "constraints": constraint,
-                    "use_cache": use_cache,
-                }
-                for ligand, constraint in zip(ligands, constraints, strict=True)
-            ]
+    def _standard_dock(
+        self,
+        *,
+        ligands: LigandSet,
+        pocket: Pocket,
+        use_cache: bool,
+        client: DeepOriginClient,
+        quote: bool,
+        max_cost: Optional["Cost"],
+    ) -> "Result":
+        """Run standard (unconstrained) docking for a set of ligands.
 
-            from deeporigin.functions.docking import constrained_dock
+        Args:
+            ligands: Ligands to dock.
+            pocket: Target pocket.
+            use_cache: Whether to use cached results.
+            client: DeepOrigin client instance.
+            quote: Whether to return a quote instead of running.
+            max_cost: Optional cost limit.
 
-            # running in series for now, while we sort out the parallelization
-            all_top_poses = []
-            for arg in args:
-                result_files = constrained_dock(**arg)
-                # Find the top pose file (typically named "top_constrained_result.sdf")
+        Returns:
+            Result with data (LigandSet) and cost/estimate information.
+        """
+        from deeporigin.functions.docking import dock
+        from deeporigin.functions.parallel import run_func_in_parallel
+        from deeporigin.utils.cost import Estimate
+        from deeporigin.utils.result import Result
+
+        args = [
+            {
+                "protein": self,
+                "pocket": pocket,
+                "ligand": lig,
+                "use_cache": use_cache,
+                "client": client,
+                "quote": quote,
+                "max_cost": max_cost,
+            }
+            for lig in ligands
+        ]
+
+        data = run_func_in_parallel(func=dock, args=args)
+
+        responses = [r["response"] for r in data["results"] if r is not None]
+
+        if quote:
+            return Result(
+                data=None,
+                estimate=Estimate.from_responses(responses),
+            )
+
+        sdf_files = [r["sdf_path"] for r in data["results"] if r is not None]
+        poses = LigandSet.from_sdf_files(sdf_files)
+        cost = Estimate.from_responses(responses) if responses else None
+
+        return Result(data=poses, cost=cost)
+
+    def _constrained_dock(
+        self,
+        *,
+        ligands: LigandSet,
+        pocket: Pocket,
+        reference_pose: Ligand,
+        use_cache: bool,
+        client: DeepOriginClient,
+        quote: bool,
+        max_cost: Optional["Cost"],
+    ) -> "Result":
+        """Run constrained docking using a reference pose.
+
+        Args:
+            ligands: Ligands to dock.
+            pocket: Target pocket.
+            reference_pose: Reference ligand for constraint generation.
+            use_cache: Whether to use cached results.
+            client: DeepOrigin client instance.
+            quote: Whether to return a quote instead of running.
+            max_cost: Optional cost limit.
+
+        Returns:
+            Result with data (LigandSet) and cost/estimate information.
+        """
+        from deeporigin.functions.docking import constrained_dock
+        from deeporigin.utils.cost import Estimate
+        from deeporigin.utils.result import Result
+
+        all_ligands = LigandSet([reference_pose] + ligands)
+        mcs_mol = all_ligands.mcs()
+
+        constraints = ligands.compute_constraints(
+            reference=reference_pose,
+            mcs_mol=mcs_mol,
+        )
+
+        args = [
+            {
+                "client": client,
+                "protein": self,
+                "ligand": lig,
+                "pocket": pocket,
+                "constraints": constraint,
+                "use_cache": use_cache,
+                "quote": quote,
+                "max_cost": max_cost,
+            }
+            for lig, constraint in zip(ligands, constraints, strict=True)
+        ]
+
+        all_top_poses: list[str] = []
+        responses: list[dict] = []
+
+        for arg in args:
+            result = constrained_dock(**arg)
+            responses.append(result["response"])
+
+            if not quote and result["sdf_paths"]:
                 top_pose = next(
                     (
                         f
-                        for f in result_files
+                        for f in result["sdf_paths"]
                         if "top" in Path(f).name.lower() and f.endswith(".sdf")
                     ),
-                    result_files[0] if result_files else None,
+                    result["sdf_paths"][0] if result["sdf_paths"] else None,
                 )
                 if top_pose:
                     all_top_poses.append(top_pose)
 
-            return LigandSet.from_sdf_files(all_top_poses)
-        else:
-            # perform normal docking
+        if quote:
+            return Result(
+                data=None,
+                estimate=Estimate.from_responses(responses),
+            )
 
-            # Import here to avoid circular import
-            from deeporigin.functions.docking import dock
-            from deeporigin.functions.parallel import run_func_in_parallel
+        poses = LigandSet.from_sdf_files(all_top_poses)
+        cost = Estimate.from_responses(responses) if responses else None
 
-            args = [
-                {
-                    "protein": self,
-                    "pocket": pocket,
-                    "ligand": ligand,
-                    "use_cache": use_cache,
-                    "client": client,
-                }
-                for ligand in ligands
-            ]
-
-            data = run_func_in_parallel(func=dock, args=args)
-
-            return LigandSet.from_sdf_files(data["results"])
+        return Result(data=poses, cost=cost)
 
     @property
     def coordinates(self):
