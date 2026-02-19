@@ -68,6 +68,56 @@ class Protein(Entity):
         return cls.from_pdb_id(pdb_id)
 
     @classmethod
+    def from_id(cls, id: str, *, client: Optional[DeepOriginClient] = None) -> Self:
+        """
+        Create a Protein instance from a Deep Origin Data Platform ID.
+
+        Args:
+            id: The Deep Origin Data Platform ID of the protein.
+            client: Optional DeepOriginClient instance. If not provided, uses the default client.
+
+        Returns:
+            Protein: A new Protein instance.
+
+        Raises:
+            ValueError: If the protein data does not contain a file_path.
+            RuntimeError: If the file cannot be downloaded or loaded.
+        """
+        if client is None:
+            client = DeepOriginClient.get()
+
+        data = client.data.get_protein(id=id)
+
+        # Check if file_path exists
+        file_path = data.get("file_path")
+        if not file_path:
+            raise ValueError(
+                f"Protein {id} does not have a file_path. Cannot create Protein instance without structure file."
+            )
+
+        # Download the file
+        local_file_path = client.files.download_file(remote_path=file_path)
+
+        # Create Protein instance from the downloaded file
+        protein = cls.from_file(file_path=local_file_path)
+
+        # Set the ID from the data
+        protein.id = data.get("id")
+
+        # Update fields from the data
+        if data.get("protein_name"):
+            protein.name = data["protein_name"]
+        elif data.get("pdb_id"):
+            protein.name = data["pdb_id"]
+        elif data.get("gene_symbol"):
+            protein.name = data["gene_symbol"]
+
+        if data.get("pdb_id"):
+            protein.pdb_id = data["pdb_id"]
+
+        return protein
+
+    @classmethod
     def from_pdb_id(cls, pdb_id: str, struct_ind: int = 0) -> Self:
         """
         Create a Protein instance from a PDB ID.

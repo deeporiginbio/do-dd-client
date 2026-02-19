@@ -71,13 +71,20 @@ class Data:
         Returns:
             Dictionary containing the search results.
         """
+        # Ensure deleted=False is always set in filter_dict
+        if filter_dict is None:
+            filter_dict = {"deleted": False}
+        else:
+            filter_dict = filter_dict.copy()
+            filter_dict["deleted"] = False
+
         body: dict[str, Any] = {}
         if cursor is not None:
             body["cursor"] = cursor
         if experiments is not None:
             body["experiments"] = experiments
-        if filter_dict is not None:
-            body["filter"] = filter_dict
+        body["filter"] = filter_dict
+
         if limit is not None:
             body["limit"] = limit
         if offset is not None:
@@ -159,7 +166,7 @@ class Data:
         self,
         *,
         cursor: str | None = None,
-        filter: dict[str, Any] | None = None,
+        filter_dict: dict[str, Any] | None = None,
         smiles: str | None = None,
         canonical_smiles: str | None = None,
         min_molecular_weight: float | int | None = None,
@@ -175,7 +182,7 @@ class Data:
 
         Args:
             cursor: Cursor for pagination.
-            filter: Additional filter criteria as a dictionary.
+            filter_dict: Additional filter criteria as a dictionary.
             smiles: Filter by SMILES string.
             canonical_smiles: Filter by canonical SMILES string.
             min_molecular_weight: Minimum molecular weight filter (inclusive).
@@ -191,8 +198,8 @@ class Data:
         Raises:
             ValueError: If ligands is not a valid table name (should not happen).
         """
-        # Build filter dict, starting with provided filter or empty dict
-        filter_dict = filter.copy() if filter is not None else {}
+        # Build filter dict, starting with provided filter_dict or empty dict
+        filter_dict = filter_dict.copy() if filter_dict is not None else {}
         filter_dict.setdefault("deleted", False)
 
         # Add smiles filter if provided
@@ -236,6 +243,42 @@ class Data:
             select=select,
             sort=sort,
         )
+
+    def get_entity(self, *, entity: str, entity_id: str) -> dict:
+        """Get an entity by ID.
+
+        Args:
+            entity: The entity type (e.g., "ligands", "proteins").
+            entity_id: The ID of the entity to retrieve.
+
+        Returns:
+            Dictionary containing the entity data.
+        """
+        return self._c.get_json(
+            f"/data-platform/{self._c.org_key}/{entity}/{entity_id}"
+        )
+
+    def get_ligand(self, id: str) -> dict:
+        """Get a ligand by ID.
+
+        Args:
+            id: The ID of the ligand to retrieve.
+
+        Returns:
+            Dictionary containing the ligand data.
+        """
+        return self.get_entity(entity="ligands", entity_id=id)
+
+    def get_protein(self, id: str) -> dict:
+        """Get a protein by ID.
+
+        Args:
+            id: The ID of the protein to retrieve.
+
+        Returns:
+            Dictionary containing the protein data.
+        """
+        return self.get_entity(entity="proteins", entity_id=id)
 
     def search_proteins(
         self,
@@ -326,6 +369,7 @@ class Data:
         smiles: str,
         project_id: str | None = None,
         name: str | None = None,
+        mol_file: str | None = None,
         formal_charge: int = 0,
         hbond_donor_count: int | None = None,
         hbond_acceptor_count: int | None = None,
@@ -340,6 +384,7 @@ class Data:
             smiles: SMILES string (required).
             project_id: Project ID for the ligand.
             name: Name of the ligand.
+            mol_file: Path to the molecule file (e.g., SDF file) in remote storage.
             formal_charge: Formal charge. Defaults to 0.
             hbond_donor_count: Number of hydrogen bond donors.
             hbond_acceptor_count: Number of hydrogen bond acceptors.
@@ -364,6 +409,8 @@ class Data:
             set_dict["project_id"] = project_id
         if name is not None:
             set_dict["name"] = name
+        if mol_file is not None:
+            set_dict["mol_file"] = mol_file
         if hbond_donor_count is not None:
             set_dict["hbond_donor_count"] = hbond_donor_count
         if hbond_acceptor_count is not None:
@@ -384,6 +431,7 @@ class Data:
                 "valid_to",
                 "modified_by",
                 "deleted",
+                "mol_file",
                 "project_id",
                 "subtable_name",
                 "canonical_smiles",

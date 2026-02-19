@@ -1010,9 +1010,12 @@ class Ligand(Entity):
 
         # If ligand has a file_path, upload it to remote storage
         # (Note: ligands in the data platform are identified by canonical_smiles, not file_path)
+        mol_file: str | None = None
         if self.file_path is not None:
             # Upload the ligand file first
             self.upload(client=client)
+            # Use the remote path as the mol_file
+            mol_file = self._remote_path
 
         # Search for existing ligands by canonical_smiles
         response = client.data.search_ligands(canonical_smiles=self.canonical_smiles)
@@ -1031,6 +1034,10 @@ class Ligand(Entity):
         kwargs: dict[str, Any] = {
             "smiles": self.smiles if self.smiles is not None else self.canonical_smiles,
         }
+
+        # Add mol_file if available
+        if mol_file is not None:
+            kwargs["mol_file"] = mol_file
 
         # Add optional fields if available
         if self.name is not None:

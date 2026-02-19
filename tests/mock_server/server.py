@@ -1093,6 +1093,32 @@ class MockServer:
                 "meta": {"inserted": 1},
             }
 
+        @self.app.get("/data-platform/{org_key}/ligands/{ligand_id}")
+        def get_ligand(org_key: str, ligand_id: str) -> dict[str, Any]:
+            """Get a ligand by ID."""
+            # Load fixture for the specific ligand ID
+            try:
+                return self._load_fixture(f"ligand_{ligand_id}")
+            except FileNotFoundError:
+                from fastapi import HTTPException
+
+                raise HTTPException(
+                    status_code=404, detail=f"Ligand {ligand_id} not found"
+                ) from None
+
+        @self.app.get("/data-platform/{org_key}/proteins/{protein_id}")
+        def get_protein(org_key: str, protein_id: str) -> dict[str, Any]:
+            """Get a protein by ID."""
+            # Load fixture for the specific protein ID
+            try:
+                return self._load_fixture(f"protein_{protein_id}")
+            except FileNotFoundError:
+                from fastapi import HTTPException
+
+                raise HTTPException(
+                    status_code=404, detail=f"Protein {protein_id} not found"
+                ) from None
+
         @self.app.get("/data-platform/{org_key}/meta/models")
         def list_models(org_key: str) -> dict[str, Any]:
             """List public models."""

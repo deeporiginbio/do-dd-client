@@ -178,3 +178,37 @@ def test_list_projects_lv1():
     assert isinstance(response, dict), "Expected a dictionary response"
     assert "data" in response, "Expected 'data' key in response"
     assert isinstance(response["data"], list), "Expected 'data' to be a list"
+
+
+def test_get_ligand_lv1():
+    """Test getting a ligand by ID."""
+    client = DeepOriginClient()
+    response = client.data.get_ligand(id="08B05B1GDYWJR")
+
+    assert isinstance(response, dict), "Expected a dictionary response"
+    assert "id" in response, "Expected 'id' key in response"
+    assert response["id"] == "08B05B1GDYWJR", "Expected id to match"
+    assert "smiles" in response, "Expected 'smiles' key in response"
+    assert "name" in response, "Expected 'name' key in response"
+    assert response["name"] == "cmpd 4 (Crotyl)", "Expected name to match"
+    assert "molecular_weight" in response, "Expected 'molecular_weight' key in response"
+    assert abs(response["molecular_weight"] - 335.16337691200056) < 1e-10, (
+        "Expected molecular_weight to match"
+    )
+
+
+def test_get_protein_lv1():
+    """Test getting a protein by ID."""
+    client = DeepOriginClient()
+    response = client.data.get_protein(id="08AD337N5YV4Y")
+
+    assert isinstance(response, dict), "Expected a dictionary response"
+    assert "id" in response, "Expected 'id' key in response"
+    assert response["id"] == "08AD337N5YV4Y", "Expected id to match"
+    assert "file_path" in response, "Expected 'file_path' key in response"
+    assert (
+        response["file_path"]
+        == "entities/proteins/db4aa32e2e8ffa976a60004a8361b86427a2e5653a6623bb60b7913445902549.pdb"
+    ), "Expected file_path to match"
+    assert "subtable_name" in response, "Expected 'subtable_name' key in response"
+    assert response["subtable_name"] == "proteins", "Expected subtable_name to match"
