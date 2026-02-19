@@ -40,18 +40,13 @@ results = protein.find_pockets(pocket_count=1, quote=False)
 results.data # a list of pockets
 results.cost # a single cost
 
-# oneliner if you don't care about cost
-poses = protein.dock(ligand=ligand, quote=False).poses
-
-
 # i want to use up to $100 (one ligand)
 results = protein.dock(ligand=ligand, max_cost=Cost(100))
 
 # i want to use up to $100 (many ligands)
-# currently, if you pass many ligands, it is parallelized. 
-# adding a max cost breaks parallelization because each function call is 
-# independent of others. there's no platform support for a group
-# of function calls (outside of workflows)
+# internally, what happens is that we divide the max cost by the 
+# number of ligands, and make individual function calls using the computed
+# per-ligand max cost 
 results = protein.dock(ligands=ligands, max_cost=Cost(100))
 
 # i only want to use 1 free actions (single ligand)

@@ -10,7 +10,7 @@ from deeporigin.drug_discovery import (
     Pocket,
     Protein,
 )
-from deeporigin.utils.cost import Estimate
+from deeporigin.utils.cost import Cost, Estimate
 from deeporigin.utils.result import Result
 
 # Fixtures directory for test files
@@ -221,6 +221,91 @@ def test_docking_multiple_ligands_lv2():
         pocket=pocket,
         quote=False,
         use_cache=False,
+    )
+
+    assert isinstance(result, Result), "Expected protein.dock() to return a Result"
+    assert result.data is not None, (
+        "Expected result.data to be populated when quote=False"
+    )
+    assert isinstance(result.data, LigandSet), "Expected result.data to be a LigandSet"
+    assert len(result.data) > 0, (
+        "Expected result.data to contain poses from all ligands"
+    )
+    assert result.cost is not None, (
+        "Expected result.cost to be populated when quote=False"
+    )
+    assert isinstance(result.cost, Estimate), (
+        "Expected result.cost to be an Estimate object"
+    )
+    assert result.cost.total_price > 0, (
+        "Expected result.cost.total_price to be greater than 0"
+    )
+    assert result.estimate is None, (
+        "Expected result.estimate to be None when quote=False"
+    )
+
+
+def test_docking_max_cost_single_ligand_lv2():
+    """Test docking with max_cost for a single ligand."""
+    protein = Protein.from_file(BRD_DATA_DIR / "brd.pdb")
+    protein.remove_water()
+    pocket = Pocket.from_pdb_file(
+        FIXTURES_DIR / "pockets" / "brd_pocket_1.pdb", name="brd_pocket_1"
+    )
+
+    ligand = Ligand.from_smiles(
+        "Fc1c(-c2cccc3ccccc23)ncc2c(N3C[C@H]4CC[C@@H](C3)N4)nc(OCC34CCCN3CCC4)nc12"
+    )
+
+    result = protein.dock(
+        ligand=ligand,
+        pocket=pocket,
+        quote=False,
+        use_cache=False,
+        max_cost=Cost(100),
+    )
+
+    assert isinstance(result, Result), "Expected protein.dock() to return a Result"
+    assert result.data is not None, (
+        "Expected result.data to be populated when quote=False"
+    )
+    assert isinstance(result.data, LigandSet), "Expected result.data to be a LigandSet"
+    assert result.cost is not None, (
+        "Expected result.cost to be populated when quote=False"
+    )
+    assert isinstance(result.cost, Estimate), (
+        "Expected result.cost to be an Estimate object"
+    )
+    assert result.cost.total_price > 0, (
+        "Expected result.cost.total_price to be greater than 0"
+    )
+    assert result.estimate is None, (
+        "Expected result.estimate to be None when quote=False"
+    )
+
+
+def test_docking_max_cost_multiple_ligands_lv2():
+    """Test docking with max_cost split across multiple ligands.
+
+    Cost(100) with 2 ligands should internally split to Cost(50) per ligand.
+    """
+    protein = Protein.from_file(BRD_DATA_DIR / "brd.pdb")
+    protein.remove_water()
+    pocket = Pocket.from_pdb_file(
+        FIXTURES_DIR / "pockets" / "brd_pocket_1.pdb", name="brd_pocket_1"
+    )
+
+    ligands = [
+        Ligand.from_sdf(BRD_DATA_DIR / "brd-2.sdf"),
+        Ligand.from_sdf(BRD_DATA_DIR / "brd-3.sdf"),
+    ]
+
+    result = protein.dock(
+        ligands=ligands,
+        pocket=pocket,
+        quote=False,
+        use_cache=False,
+        max_cost=Cost(100),
     )
 
     assert isinstance(result, Result), "Expected protein.dock() to return a Result"

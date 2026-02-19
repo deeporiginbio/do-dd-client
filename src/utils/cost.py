@@ -58,6 +58,38 @@ class Cost:
             return int(self.max_dollars)
         return None
 
+    def per_ligand(self, num_ligands: int) -> "Cost":
+        """Compute the per-ligand cost limit for parallel docking.
+
+        For dollar-based limits, divides the total budget evenly across ligands.
+        For free-action limits, checks that the number of ligands doesn't exceed
+        the allowed free actions, then allocates one free action per ligand.
+
+        Args:
+            num_ligands: Number of ligands to split the cost across.
+
+        Returns:
+            A new Cost instance representing the per-ligand limit.
+
+        Raises:
+            ValueError: If num_ligands exceeds free_actions.
+        """
+        if num_ligands < 1:
+            raise ValueError("num_ligands must be at least 1") from None
+
+        if self.max_dollars is not None:
+            return Cost(self.max_dollars / num_ligands)
+
+        if self.free_actions is not None:
+            if num_ligands > self.free_actions:
+                raise ValueError(
+                    f"Cannot dock {num_ligands} ligands with only "
+                    f"{self.free_actions} free actions."
+                )
+            return Cost(free_actions=1)
+
+        raise ValueError("Cost has neither max_dollars nor free_actions set.")
+
 
 @dataclass(kw_only=True)
 class Estimate:

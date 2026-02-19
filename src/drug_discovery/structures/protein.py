@@ -14,7 +14,7 @@ import io
 import os
 from pathlib import Path
 import tempfile
-from typing import TYPE_CHECKING, Any, Optional, Self
+from typing import Any, Optional, Self
 
 from beartype import beartype
 import Bio.Seq
@@ -29,15 +29,12 @@ from deeporigin.drug_discovery.constants import (
 from deeporigin.exceptions import DeepOriginException
 from deeporigin.platform.client import DeepOriginClient
 from deeporigin.utils.core import _ensure_do_folder
+from deeporigin.utils.cost import Cost
+from deeporigin.utils.result import Result
 
 from .entity import Entity
 from .ligand import Ligand, LigandSet
 from .pocket import Pocket
-
-if TYPE_CHECKING:
-    from deeporigin.utils.cost import Cost
-
-from deeporigin.utils.result import Result
 
 
 @dataclass
@@ -283,7 +280,7 @@ class Protein(Entity):
         reference_pose: Optional[Ligand] = None,
         client: Optional[DeepOriginClient] = None,
         quote: bool = False,
-        max_cost: Optional["Cost"] = None,
+        max_cost: Optional[Cost] = None,
     ) -> "Result":
         """Dock a ligand into a specific pocket of the protein.
 
@@ -352,7 +349,7 @@ class Protein(Entity):
         use_cache: bool,
         client: DeepOriginClient,
         quote: bool,
-        max_cost: Optional["Cost"],
+        max_cost: Optional[Cost],
     ) -> "Result":
         """Run standard (unconstrained) docking for a set of ligands.
 
@@ -372,6 +369,10 @@ class Protein(Entity):
         from deeporigin.utils.cost import Estimate
         from deeporigin.utils.result import Result
 
+        per_ligand_cost = (
+            max_cost.per_ligand(len(ligands)) if max_cost is not None else None
+        )
+
         args = [
             {
                 "protein": self,
@@ -380,7 +381,7 @@ class Protein(Entity):
                 "use_cache": use_cache,
                 "client": client,
                 "quote": quote,
-                "max_cost": max_cost,
+                "max_cost": per_ligand_cost,
             }
             for lig in ligands
         ]
@@ -410,7 +411,7 @@ class Protein(Entity):
         use_cache: bool,
         client: DeepOriginClient,
         quote: bool,
-        max_cost: Optional["Cost"],
+        max_cost: Optional[Cost],
     ) -> "Result":
         """Run constrained docking using a reference pose.
 
@@ -604,7 +605,7 @@ class Protein(Entity):
         use_cache: bool = True,
         client: Optional[DeepOriginClient] = None,
         quote: bool = False,
-        max_cost: Optional["Cost"] = None,
+        max_cost: Optional[Cost] = None,
     ) -> "Result":
         """Find potential binding pockets in the protein structure.
 

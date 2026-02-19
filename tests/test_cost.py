@@ -83,6 +83,43 @@ def test_cost_invalid_type_raises():
         Cost("invalid")  # type: ignore[arg-type]
 
 
+def test_cost_per_ligand_dollars():
+    """per_ligand divides dollar budget evenly across ligands."""
+    cost = Cost(100)
+    per_ligand = cost.per_ligand(4)
+    assert per_ligand.max_dollars == pytest.approx(25.0)
+    assert per_ligand.free_actions is None
+
+
+def test_cost_per_ligand_dollars_single():
+    """per_ligand with 1 ligand returns the same dollar amount."""
+    cost = Cost(100)
+    per_ligand = cost.per_ligand(1)
+    assert per_ligand.max_dollars == pytest.approx(100.0)
+
+
+def test_cost_per_ligand_free_actions():
+    """per_ligand with free_actions allocates 1 free action per ligand."""
+    cost = Cost(free_actions=5)
+    per_ligand = cost.per_ligand(3)
+    assert per_ligand.free_actions == 1
+    assert per_ligand.max_dollars is None
+
+
+def test_cost_per_ligand_free_actions_exceeds():
+    """per_ligand raises when ligands exceed free_actions."""
+    cost = Cost(free_actions=2)
+    with pytest.raises(ValueError, match="Cannot dock 5 ligands"):
+        cost.per_ligand(5)
+
+
+def test_cost_per_ligand_zero_raises():
+    """per_ligand raises for zero ligands."""
+    cost = Cost(100)
+    with pytest.raises(ValueError, match="num_ligands must be at least 1"):
+        cost.per_ligand(0)
+
+
 def test_estimate_from_response_with_quotation():
     """Estimate extracts total price from a quotationResult response."""
     response = {
