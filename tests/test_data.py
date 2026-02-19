@@ -148,6 +148,29 @@ def test_create_ligand_lv1():
     ), "Expected canonical_smiles to match"
 
 
+def test_create_protein_lv1():
+    """Test creating a protein."""
+    client = DeepOriginClient()
+    response = client.data.create_protein(
+        file_path="entities/proteins/db4aa32e2e8ffa976a60004a8361b86427a2e5653a6623bb60b7913445902549.pdb",
+    )
+
+    assert isinstance(response, dict), "Expected a dictionary response"
+    assert "data" in response, "Expected 'data' key in response"
+    assert isinstance(response["data"], dict), "Expected 'data' to be a dictionary"
+    assert "id" in response["data"], "Expected 'id' key in response data"
+    assert "version" in response["data"], "Expected 'version' key in response data"
+    assert response["data"]["version"] == 1, "Expected version to be 1"
+    assert "file_path" in response["data"], "Expected 'file_path' key in response data"
+    assert (
+        response["data"]["file_path"]
+        == "entities/proteins/db4aa32e2e8ffa976a60004a8361b86427a2e5653a6623bb60b7913445902549.pdb"
+    ), "Expected file_path to match"
+    assert "meta" in response, "Expected 'meta' key in response"
+    assert "inserted" in response["meta"], "Expected 'inserted' key in meta"
+    assert response["meta"]["inserted"] == 1, "Expected inserted to be 1"
+
+
 def test_list_projects_lv1():
     """Test listing projects."""
     client = DeepOriginClient()

@@ -1027,6 +1027,64 @@ class MockServer:
 
             return response_data
 
+        @self.app.post("/data-platform/{org_key}/proteins")
+        async def create_protein(org_key: str, request: Request) -> dict[str, Any]:
+            """Create a new protein."""
+            body = await request.json()
+            set_data = body.get("set", {})
+            returning = body.get("returning", [])
+
+            # Generate mock response matching the API format
+            now = datetime.now(timezone.utc)
+            protein_id = "08AD337N5YV4Y"  # Use a consistent ID for testing
+            modified_by = "6b96d8f8-0f55-474c-a86c-e09651ba4b20"
+
+            # Build response data with all fields from the example
+            response_data: dict[str, Any] = {
+                "id": protein_id,
+                "version": 1,
+                "valid_from": now.strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z",
+                "valid_to": None,
+                "modified_by": modified_by,
+                "deleted": False,
+                "project_id": None,
+                "subtable_name": "proteins",
+                "uniprot_accession": None,
+                "file_path": set_data.get("file_path", ""),
+                "gene_symbol": None,
+                "pdb_id": None,
+                "refseq_protein_id": None,
+                "ensembl_protein_id": None,
+                "alpha_fold_id": None,
+                "fasta_sequence": None,
+                "protein_name": None,
+                "kegg_gene_id": None,
+                "chembl_target_id": None,
+                "binding_db_target_id": None,
+                "drugbank_target_id": None,
+                "pfam_id": None,
+                "interpro_id": None,
+                "ec_number": None,
+                "ncbi_taxonomy_id": None,
+                "protein_family": None,
+                "ligandability_score": None,
+                "protein_length": None,
+            }
+
+            # Override with any fields provided in set_data
+            response_data.update(set_data)
+
+            # Filter to only return requested fields if specified
+            if returning:
+                response_data = {
+                    k: v for k, v in response_data.items() if k in returning
+                }
+
+            return {
+                "data": response_data,
+                "meta": {"inserted": 1},
+            }
+
         @self.app.get("/data-platform/{org_key}/meta/models")
         def list_models(org_key: str) -> dict[str, Any]:
             """List public models."""

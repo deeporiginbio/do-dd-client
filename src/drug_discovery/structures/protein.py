@@ -1308,10 +1308,52 @@ class Protein(Entity):
             info_str += f"Info: {self.info}\n"
         return f"Protein:\n  {info_str}"
 
+    @beartype
+    def sync(self, client: Optional[DeepOriginClient] = None) -> dict:
+        """Sync the protein to the data platform.
+
+        This method uploads the protein file to remote storage and creates a protein
+        record in the data platform.
+
+        Args:
+            client: DeepOriginClient instance. If None, uses DeepOriginClient.get().
+
+        Returns:
+            Dictionary containing the created protein data from the data platform.
+        """
+        if client is None:
+            client = DeepOriginClient.get()
+
+        # Upload the protein file first
+        self.upload(client=client)
+
+        # Use the remote path as the file_path
+        file_path = self._remote_path
+
+        # Prepare parameters for create_protein
+        kwargs: dict[str, Any] = {
+            "file_path": file_path,
+        }
+
+        # Pass pdb_id if available
+        if self.pdb_id is not None:
+            kwargs["pdb_id"] = self.pdb_id
+
+        kwargs["protein_length"] = self.length
+        kwargs["protein_name"] = self.name
+
+        # Call create_protein through the client
+        return client.data.create_protein(**kwargs)
+
     def update_coordinates(self, coords: np.ndarray):
         """update coordinates of the protein structure"""
 
         self.structure.coord = coords
+
+    @property
+    def length(self) -> int:
+        """get the length of the protein structure"""
+        return sum([len(seq) for seq in self.sequence])
 
 
 def validate_pdb_file(file_path: str | Path) -> None:

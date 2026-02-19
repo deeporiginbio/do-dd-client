@@ -5,7 +5,7 @@ The Entity class provides methods to manage and upload files, such as protein st
 """
 
 from abc import ABC, abstractmethod
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional
 
@@ -19,6 +19,8 @@ class Entity(ABC):
 
     This class manages the remote path and provides an upload method to ensure that the entity's file is uploaded to the remote storage if it does not already exist there. It uses the DeepOrigin FilesClient for remote file operations.
     """
+
+    id: str | None = field(default=None, kw_only=True)
 
     @abstractmethod
     def to_hash(self) -> str:
