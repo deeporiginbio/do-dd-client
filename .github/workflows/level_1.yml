@@ -20,7 +20,7 @@ jobs:
       fail-fast: true
       matrix:
         python-version: ["3.13"]
-        env: ${{ github.event_name == 'workflow_call' && fromJSON(format('["{0}"]', inputs.env)) || fromJSON('["dev","staging","prod"]') }}
+        env: ${{ fromJSON( ((github.event_name == 'workflow_call' || github.event_name == 'release') && inputs.env != '') && format('["{0}"]', inputs.env) || '["dev","staging","prod"]' ) }}
 
     steps:
       - uses: actions/checkout@v4
