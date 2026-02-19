@@ -1309,17 +1309,18 @@ class Protein(Entity):
         return f"Protein:\n  {info_str}"
 
     @beartype
-    def sync(self, client: Optional[DeepOriginClient] = None) -> dict:
+    def sync(self, client: Optional[DeepOriginClient] = None) -> None:
         """Sync the protein to the data platform.
 
         This method uploads the protein file to remote storage and creates a protein
-        record in the data platform.
+        record in the data platform. If a protein with the same file_path already exists,
+        it returns the existing protein data instead of creating a new one.
 
         Args:
             client: DeepOriginClient instance. If None, uses DeepOriginClient.get().
 
         Returns:
-            Dictionary containing the created protein data from the data platform.
+            Dictionary containing the created or existing protein data from the data platform.
         """
         if client is None:
             client = DeepOriginClient.get()
@@ -1330,6 +1331,19 @@ class Protein(Entity):
         # Use the remote path as the file_path
         file_path = self._remote_path
 
+        # Search for existing proteins with the same file_path
+        response = client.data.search_proteins(file_path=file_path)
+        data = response["data"]
+
+        # If a protein with this file_path already exists, return the first one
+        if data:
+            existing_protein = data[0]
+            # Update self.id with the existing protein's ID
+            if "id" in existing_protein:
+                self.id = existing_protein["id"]
+            return
+
+        # No existing protein found, create a new one
         # Prepare parameters for create_protein
         kwargs: dict[str, Any] = {
             "file_path": file_path,
@@ -1343,7 +1357,11 @@ class Protein(Entity):
         kwargs["protein_name"] = self.name
 
         # Call create_protein through the client
-        return client.data.create_protein(**kwargs)
+        result = client.data.create_protein(**kwargs)
+
+        # Update self.id with the newly created protein's ID
+        if "data" in result and "id" in result["data"]:
+            self.id = result["data"]["id"]
 
     def update_coordinates(self, coords: np.ndarray):
         """update coordinates of the protein structure"""
