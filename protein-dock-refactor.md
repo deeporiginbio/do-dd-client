@@ -3,27 +3,60 @@ Implementation Status vs. Agreed-On Plan
 ## Desired API interface for running `protein.dock()` with quoting
 
 ```Python
+# just quote a function (single ligand)
 results = protein.dock(ligand=ligand, quote=True)
 
-results.poses # None
+results.data # None
 results.estimate # object -- includes dollar estimate, free actions, etc.
 
 
+# just quote a function (many ligand)
+#
+# results.poses <--- an array across all ligands
+# results.estimate <--- includes all the ligands
+results = protein.dock(ligands=ligands, quote=True)
+
+results.data # None
+results.estimate # object -- should be an estimate for the total of all ligands
+
+# just run the function (single ligand)
 results = protein.dock(ligand=ligand, quote=False)
+
+results.data # contains a LigandSet of poses
+results.cost # object
+
+# just run the function (many ligands)
+results = protein.dock(ligands=ligands, quote=False)
+
+results.data # an list across all ligands -- has poses from all ligands
+results.cost # a single cost, across all ligands. 
 
 # oneliner if you don't care about cost
 poses = protein.dock(ligand=ligand, quote=False).poses
 
-results.poses
-results.cost # object
 
-# i want to use up to $100
+# i want to use up to $100 (one ligand)
 results = protein.dock(ligand=ligand, max_cost=Cost(100))
 
-# i want to use up to 5 docking actions
-results = protein.dock(ligand=ligand, max_cost=Cost({"DO_DOCK": 5}))
+# i want to use up to $100 (many ligands)
+# currently, if you pass many ligands, it is parallelized. 
+# adding a max cost breaks parallelization because each function call is 
+# independent of others. there's no platform support for a group
+# of function calls (outside of workflows)
+results = protein.dock(ligands=ligands, max_cost=Cost(100))
+
+# i only want to use 1 free actions (single ligand)
+results = protein.dock(ligand=ligand, max_cost=Cost(free_actions=1))
+
+# i only want to use 5 free actions (5 ligand)
+# internally it checks if the number of ligands is <= the number of free actions
+# and if so, allows it
+results = protein.dock(ligands=ligands, max_cost=Cost(free_actions=5))
 
 # use 1 free action and $100
+# this cannot be supported -- each function call is indepndent. 
+# the platform API doesn't allow this OR logic -- if we want to do it, 
+# we'll have to do it client side 
 results = protein.dock(ligand=ligand, max_cost=Cost(100, {"DO_DOCK": 1}))
 ```
 

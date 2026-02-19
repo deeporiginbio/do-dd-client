@@ -7,8 +7,10 @@ from deeporigin.drug_discovery import (
     Complex,
     Ligand,
     LigandSet,
+    Pocket,
     Protein,
 )
+from deeporigin.utils.cost import Estimate
 from deeporigin.utils.result import Result
 
 # Fixtures directory for test files
@@ -44,8 +46,9 @@ def test_docking_lv2():
     """Test docking function."""
     protein = Protein.from_file(BRD_DATA_DIR / "brd.pdb")
     protein.remove_water()
-    pockets = protein.find_pockets(pocket_count=1)
-    pocket = pockets[0]
+    pocket = Pocket.from_pdb_file(
+        FIXTURES_DIR / "pockets" / "brd_pocket_1.pdb", name="brd_pocket_1"
+    )
 
     ligand = Ligand.from_smiles(
         "Fc1c(-c2cccc3ccccc23)ncc2c(N3C[C@H]4CC[C@@H](C3)N4)nc(OCC34CCCN3CCC4)nc12"
@@ -54,11 +57,144 @@ def test_docking_lv2():
     result = protein.dock(
         ligand=ligand,
         pocket=pocket,
+        quote=False,
         use_cache=False,
     )
 
     assert isinstance(result, Result), "Expected protein.dock() to return a Result"
+    assert result.data is not None, (
+        "Expected result.data to be populated when quote=False"
+    )
     assert isinstance(result.data, LigandSet), "Expected result.data to be a LigandSet"
+    assert result.cost is not None, (
+        "Expected result.cost to be populated when quote=False"
+    )
+    assert isinstance(result.cost, Estimate), (
+        "Expected result.cost to be an Estimate object"
+    )
+    assert result.estimate is None, (
+        "Expected result.estimate to be None when quote=False"
+    )
+
+
+def test_docking_quote_lv1():
+    """Test docking function with quote=True."""
+
+    protein = Protein.from_file(BRD_DATA_DIR / "brd.pdb")
+    protein.remove_water()
+    pocket = Pocket.from_pdb_file(
+        FIXTURES_DIR / "pockets" / "brd_pocket_1.pdb", name="brd_pocket_1"
+    )
+
+    ligand = Ligand.from_smiles(
+        "Fc1c(-c2cccc3ccccc23)ncc2c(N3C[C@H]4CC[C@@H](C3)N4)nc(OCC34CCCN3CCC4)nc12"
+    )
+
+    result = protein.dock(
+        ligand=ligand,
+        pocket=pocket,
+        quote=True,
+        use_cache=False,
+    )
+
+    assert isinstance(result, Result), "Expected protein.dock() to return a Result"
+    assert result.data is None, "Expected result.data to be None when quote=True"
+    assert result.estimate is not None, (
+        "Expected result.estimate to be populated when quote=True"
+    )
+    assert isinstance(result.estimate, Estimate), (
+        "Expected result.estimate to be an Estimate object"
+    )
+    assert result.cost is None, "Expected result.cost to be None when quote=True"
+
+
+def test_docking_multiple_ligands_quote_lv1():
+    """Test docking function with multiple ligands and quote=True.
+
+    it's lv1 because quote=True"""
+
+    protein = Protein.from_file(BRD_DATA_DIR / "brd.pdb")
+    protein.remove_water()
+    pocket = Pocket.from_pdb_file(
+        FIXTURES_DIR / "pockets" / "brd_pocket_1.pdb", name="brd_pocket_1"
+    )
+
+    # Load 3 ligands from BRD_DATA_DIR fixtures
+    ligands = [
+        Ligand.from_sdf(BRD_DATA_DIR / "brd-2.sdf"),
+        Ligand.from_sdf(BRD_DATA_DIR / "brd-3.sdf"),
+        Ligand.from_sdf(BRD_DATA_DIR / "brd-4.sdf"),
+    ]
+
+    result = protein.dock(
+        ligands=ligands,
+        pocket=pocket,
+        quote=True,
+        use_cache=False,
+    )
+
+    assert isinstance(result, Result), "Expected protein.dock() to return a Result"
+    assert result.data is None, "Expected result.data to be None when quote=True"
+    assert result.estimate is not None, (
+        "Expected result.estimate to be populated when quote=True"
+    )
+    assert isinstance(result.estimate, Estimate), (
+        "Expected result.estimate to be an Estimate object"
+    )
+    assert result.cost is None, "Expected result.cost to be None when quote=True"
+    # Verify estimate includes all ligands (should have items from all 3)
+    assert len(result.estimate.items) >= 3, (
+        f"Expected estimate to include items for all 3 ligands, got {len(result.estimate.items)} items"
+    )
+    assert result.estimate.total_price > 0, (
+        "Expected estimate.total_price to be greater than 0"
+    )
+
+
+def test_docking_multiple_ligands_lv2():
+    """Test docking function with multiple ligands and quote=False.
+
+    it's lv2 because quote=False"""
+
+    protein = Protein.from_file(BRD_DATA_DIR / "brd.pdb")
+    protein.remove_water()
+    pocket = Pocket.from_pdb_file(
+        FIXTURES_DIR / "pockets" / "brd_pocket_1.pdb", name="brd_pocket_1"
+    )
+
+    # Load 2 ligands from BRD_DATA_DIR fixtures
+    ligands = [
+        Ligand.from_sdf(BRD_DATA_DIR / "brd-2.sdf"),
+        Ligand.from_sdf(BRD_DATA_DIR / "brd-3.sdf"),
+    ]
+
+    result = protein.dock(
+        ligands=ligands,
+        pocket=pocket,
+        quote=False,
+        use_cache=False,
+    )
+
+    assert isinstance(result, Result), "Expected protein.dock() to return a Result"
+    assert result.data is not None, (
+        "Expected result.data to be populated when quote=False"
+    )
+    assert isinstance(result.data, LigandSet), "Expected result.data to be a LigandSet"
+    assert len(result.data) > 0, (
+        "Expected result.data to contain poses from all ligands"
+    )
+    assert result.cost is not None, (
+        "Expected result.cost to be populated when quote=False"
+    )
+    assert isinstance(result.cost, Estimate), (
+        "Expected result.cost to be an Estimate object"
+    )
+    assert result.cost.total_price > 0, (
+        "Expected result.cost.total_price to be greater than 0"
+    )
+    assert result.estimate is None, (
+        "Expected result.estimate to be None when quote=False"
+    )
 
 
 def test_sysprep_lv2():

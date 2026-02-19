@@ -19,6 +19,8 @@ alwaysApply: true
 - Every module must have a docstring 
 - Prefer dict literals `{"foo": "bar"}` to `dict(foo="bar")`
 - When defining new constants or literals, store them in src/utils/constants.py
+- Use the `Self` type, don't use string literals as types
+- Use dataclasses when possible
 
 # Writing a new function
 

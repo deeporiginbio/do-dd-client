@@ -36,7 +36,8 @@ from .pocket import Pocket
 
 if TYPE_CHECKING:
     from deeporigin.utils.cost import Cost
-    from deeporigin.utils.result import Result
+
+from deeporigin.utils.result import Result
 
 
 @dataclass
