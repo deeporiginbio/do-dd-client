@@ -1003,17 +1003,25 @@ class MockServer:
             set_data = body.get("set", {})
             returning = body.get("returning", [])
 
-            # Generate mock response with canonical_id and version
+            # Generate mock response matching the real API format
             now = datetime.now(timezone.utc)
-            canonical_id = str(uuid.uuid4())
+            ligand_id = "08" + str(uuid.uuid4()).replace("-", "").upper()[:11]
+            smiles = set_data.get("smiles", "")
             response_data: dict[str, Any] = {
-                "canonical_id": canonical_id,
+                "id": ligand_id,
                 "version": 1,
                 "valid_from": now.strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z",
                 "valid_to": None,
                 "modified_by": "test-user",
                 "deleted": False,
-                "structure_key": str(uuid.uuid4()),
+                "project_id": None,
+                "subtable_name": "ligands",
+                "canonical_smiles": smiles,
+                "smiles": smiles,
+                "inchi_key": None,
+                "inchi": None,
+                "log_p": None,
+                "structure_key": None,
             }
 
             # Include all fields from set_data
@@ -1025,7 +1033,7 @@ class MockServer:
                     k: v for k, v in response_data.items() if k in returning
                 }
 
-            return response_data
+            return {"data": response_data, "meta": {"inserted": 1}}
 
         @self.app.post("/data-platform/{org_key}/proteins")
         async def create_protein(org_key: str, request: Request) -> dict[str, Any]:
@@ -1034,12 +1042,12 @@ class MockServer:
             set_data = body.get("set", {})
             returning = body.get("returning", [])
 
-            # Generate mock response matching the API format
+            # Generate mock response matching the real API format
             now = datetime.now(timezone.utc)
             protein_id = "08AD337N5YV4Y"  # Use a consistent ID for testing
             modified_by = "6b96d8f8-0f55-474c-a86c-e09651ba4b20"
 
-            # Build response data with all fields from the example
+            # Build response data with all fields matching the real API
             response_data: dict[str, Any] = {
                 "id": protein_id,
                 "version": 1,

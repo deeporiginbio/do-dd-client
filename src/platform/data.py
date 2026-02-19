@@ -325,8 +325,6 @@ class Data:
         *,
         smiles: str,
         project_id: str | None = None,
-        inchi_key: str | None = None,
-        inchi: str | None = None,
         name: str | None = None,
         formal_charge: int = 0,
         hbond_donor_count: int | None = None,
@@ -341,8 +339,6 @@ class Data:
         Args:
             smiles: SMILES string (required).
             project_id: Project ID for the ligand.
-            inchi_key: InChI key.
-            inchi: InChI string.
             name: Name of the ligand.
             formal_charge: Formal charge. Defaults to 0.
             hbond_donor_count: Number of hydrogen bond donors.
@@ -366,10 +362,6 @@ class Data:
         # Add optional fields only if provided
         if project_id is not None:
             set_dict["project_id"] = project_id
-        if inchi_key is not None:
-            set_dict["inchi_key"] = inchi_key
-        if inchi is not None:
-            set_dict["inchi"] = inchi
         if name is not None:
             set_dict["name"] = name
         if hbond_donor_count is not None:
@@ -386,7 +378,7 @@ class Data:
         body: dict[str, Any] = {
             "set": set_dict,
             "returning": [
-                "canonical_id",
+                "id",
                 "version",
                 "valid_from",
                 "valid_to",
@@ -462,7 +454,7 @@ class Data:
         body: dict[str, Any] = {
             "set": set_dict,
             "returning": [
-                "canonical_id",
+                "id",
                 "version",
                 "valid_from",
                 "valid_to",

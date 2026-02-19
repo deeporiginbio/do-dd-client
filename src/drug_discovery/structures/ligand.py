@@ -792,8 +792,8 @@ class Ligand(Entity):
         # Remove explicit Hs so we don't emit `[H]...` everywhere
         mol = Chem.RemoveHs(mol)
 
-        # If your mol may be unsanitized, you can ensure sanitization:
-        # Chem.SanitizeMol(mol)
+        # ensure sanitization:
+        Chem.SanitizeMol(mol)
 
         return Chem.MolToSmiles(
             mol,

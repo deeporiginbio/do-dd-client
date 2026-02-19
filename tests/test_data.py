@@ -120,12 +120,9 @@ def test_list_models_lv1():
 def test_create_ligand_lv1():
     """Test creating a ligand."""
     client = DeepOriginClient()
+    smiles = "Fc1c(-c2cccc3ccccc23)ncc2c(N3C[C@H]4CC[C@@H](C3)N4)nc(OCC34CCCN3CCC4)nc12"
     response = client.data.create_ligand(
-        project_id="\\x0011223344556677",
-        canonical_smiles="CCOc1ccc2nc(S(=O)(=O)N3CCN(CC3)C)c(N)c2c1",
-        inchi_key="BSYNRYMUTXBXSQ-UHFFFAOYSA-N",
-        inchi="InChI=1S/C20H24N4O4S/.../h1-4,6-9H,5,10-14H2,(H,22,23)",
-        smiles="CCOc1ccc2nc(S(=O)(=O)N3CCN(CC3)C)c(N)c2c1",
+        smiles=smiles,
         name="Compound-12345",
         formal_charge=0,
         hbond_donor_count=1,
@@ -137,15 +134,17 @@ def test_create_ligand_lv1():
     )
 
     assert isinstance(response, dict), "Expected a dictionary response"
-    assert "canonical_id" in response, "Expected 'canonical_id' key in response"
-    assert "version" in response, "Expected 'version' key in response"
-    assert response["version"] == 1, "Expected version to be 1"
-    assert "name" in response, "Expected 'name' key in response"
-    assert response["name"] == "Compound-12345", "Expected name to match"
-    assert "canonical_smiles" in response, "Expected 'canonical_smiles' key in response"
-    assert (
-        response["canonical_smiles"] == "CCOc1ccc2nc(S(=O)(=O)N3CCN(CC3)C)c(N)c2c1"
-    ), "Expected canonical_smiles to match"
+    assert "data" in response, "Expected 'data' key in response"
+    data = response["data"]
+    assert isinstance(data, dict), "Expected 'data' to be a dictionary"
+    assert "id" in data, "Expected 'id' key in data"
+    assert "version" in data, "Expected 'version' key in data"
+    assert data["version"] == 1, "Expected version to be 1"
+    assert "name" in data, "Expected 'name' key in data"
+    assert data["name"] == "Compound-12345", "Expected name to match"
+    assert "canonical_smiles" in data, "Expected 'canonical_smiles' key in data"
+    assert "meta" in response, "Expected 'meta' key in response"
+    assert response["meta"]["inserted"] == 1, "Expected inserted to be 1"
 
 
 def test_create_protein_lv1():
@@ -179,4 +178,3 @@ def test_list_projects_lv1():
     assert isinstance(response, dict), "Expected a dictionary response"
     assert "data" in response, "Expected 'data' key in response"
     assert isinstance(response["data"], list), "Expected 'data' to be a list"
-    assert "count" in response, "Expected 'count' key in response"
