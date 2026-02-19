@@ -30,20 +30,62 @@ def test_molprops_lv2():
     assert "logS" in props, "Expected logS to be in the properties"
 
 
-def test_pocket_finder_lv2():
-    """Test pocket finder function."""
+def test_pocket_finder_quote_lv1():
+    """Test pocket finder with quote=True."""
     protein = Protein.from_file(BRD_DATA_DIR / "brd.pdb")
     protein.remove_water()
-    pockets = protein.find_pockets(
+
+    result = protein.find_pockets(
         pocket_count=1,
+        quote=True,
         use_cache=False,
     )
 
-    assert len(pockets) == 1, "Incorrect number of pockets"
+    assert isinstance(result, Result), "Expected find_pockets() to return a Result"
+    assert result.data is None, "Expected result.data to be None when quote=True"
+    assert result.estimate is not None, (
+        "Expected result.estimate to be populated when quote=True"
+    )
+    assert isinstance(result.estimate, Estimate), (
+        "Expected result.estimate to be an Estimate object"
+    )
+    assert result.cost is None, "Expected result.cost to be None when quote=True"
+
+
+def test_pocket_finder_lv2():
+    """Test pocket finder with quote=False."""
+    protein = Protein.from_file(BRD_DATA_DIR / "brd.pdb")
+    protein.remove_water()
+
+    result = protein.find_pockets(
+        pocket_count=1,
+        quote=False,
+        use_cache=False,
+    )
+
+    assert isinstance(result, Result), "Expected find_pockets() to return a Result"
+    assert result.data is not None, (
+        "Expected result.data to be populated when quote=False"
+    )
+    assert isinstance(result.data, list), "Expected result.data to be a list"
+    assert len(result.data) == 1, "Expected 1 pocket"
+    assert isinstance(result.data[0], Pocket), (
+        "Expected result.data[0] to be a Pocket object"
+    )
+    assert result.cost is not None, (
+        "Expected result.cost to be populated when quote=False"
+    )
+    assert isinstance(result.cost, Estimate), (
+        "Expected result.cost to be an Estimate object"
+    )
+    assert result.estimate is None, (
+        "Expected result.estimate to be None when quote=False"
+    )
 
 
 def test_docking_lv2():
     """Test docking function."""
+
     protein = Protein.from_file(BRD_DATA_DIR / "brd.pdb")
     protein.remove_water()
     pocket = Pocket.from_pdb_file(
@@ -104,6 +146,12 @@ def test_docking_quote_lv1():
     )
     assert isinstance(result.estimate, Estimate), (
         "Expected result.estimate to be an Estimate object"
+    )
+    assert result.estimate.total_price > 0, (
+        "Expected estimate.total_price to be greater than 0"
+    )
+    assert len(result.estimate.items) >= 1, (
+        f"Expected estimate to have at least 1 item, got {len(result.estimate.items)}"
     )
     assert result.cost is None, "Expected result.cost to be None when quote=True"
 

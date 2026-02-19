@@ -1,2 +1,2 @@
 pocket_file,volume,total_SASA,polar_SASA,apolar_SASA,polar_apolar_SASA_ratio,hydrophobicity,polarity,drugability_score
-pocket_1.pdb,382.0,1383.8657,372.27518,1011.5905,0.36800975,30.518518,11.0,0.94493204
+pocket_1.pdb,314.0,1225.8883,309.8629,916.02545,0.3382689,29.92,10.0,0.94410694

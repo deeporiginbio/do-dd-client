@@ -604,50 +604,59 @@ class Protein(Entity):
         use_cache: bool = True,
         client: Optional[DeepOriginClient] = None,
         quote: bool = False,
-    ) -> list[Pocket]:
+        max_cost: Optional["Cost"] = None,
+    ) -> "Result":
         """Find potential binding pockets in the protein structure.
 
         This method analyzes the protein structure to identify cavities or pockets
-        that could potentially serve as binding sites for ligands. It uses the
-        Deep Origin pocket finding algorithm to detect and characterize these pockets.
+        that could potentially serve as binding sites for ligands.
 
         Args:
-            pocket_count (int, optional): Maximum number of pockets to identify.
-                Defaults to 5.
-            pocket_min_size (int, optional): Minimum size of pockets to consider,
+            pocket_count: Maximum number of pockets to identify. Defaults to 1.
+            pocket_min_size: Minimum size of pockets to consider,
                 measured in cubic Angstroms. Defaults to 30.
+            use_cache: Whether to use cached results if available. Defaults to True.
+            client: DeepOrigin client instance. If None, creates a new client.
+            quote: If True, return a cost estimate without running.
+            max_cost: Optional cost limit for the operation.
 
         Returns:
-            list[Pocket]: A list of Pocket objects, each representing a potential
-                binding site in the protein. Each Pocket object contains:
-                - The 3D structure of the pocket
-                - Properties such as volume, surface area, hydrophobicity, etc.
-                - Visualization parameters (color, etc.)
-
-        Examples:
-            >>> protein = Protein(file="protein.pdb")
-            >>> pockets = protein.find_pockets(pocket_count=3, pocket_min_size=50)
-            >>> for pocket in pockets:
-            ...     print(f"Pocket: {pocket.name}, Volume: {pocket.properties.get('volume')} Å³")
+            Result with:
+                - ``data``: list of Pocket objects (None when quote=True)
+                - ``estimate``: cost estimate (populated when quote=True)
+                - ``cost``: actual cost (populated when quote=False)
         """
 
         if client is None:
             client = DeepOriginClient.get()
 
-        # Import here to avoid circular import
-        # note that name is changed to avoid conflict with the function
         from deeporigin.functions.pocket_finder import find_pockets as _find_pockets
+        from deeporigin.utils.cost import Estimate
+        from deeporigin.utils.result import Result
 
-        results_dir = _find_pockets(
+        result = _find_pockets(
             protein=self,
             pocket_count=pocket_count,
             pocket_min_size=pocket_min_size,
             use_cache=use_cache,
             client=client,
             quote=quote,
+            max_cost=max_cost,
         )
 
-        return Pocket.from_pocket_finder_results(results_dir)
+        response = result["response"]
+        responses = [response] if response else []
+
+        if quote:
+            return Result(
+                data=None,
+                estimate=Estimate.from_responses(responses),
+            )
+
+        pockets = Pocket.from_pocket_finder_results(result["results_dir"])
+        cost = Estimate.from_responses(responses) if responses else None
+
+        return Result(data=pockets, cost=cost)
 
     @beartype
     def remove_hetatm(

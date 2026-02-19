@@ -1,36 +1,21 @@
 {
-    "id": "0e717767-2c2f-4441-b9d2-6074154ff818",
-    "createdAt": "2026-02-19T15:06:58.341Z",
-    "updatedAt": "2026-02-19T15:07:39.821Z",
+    "id": "71ba0fdc-94cd-4abc-9b25-9c72b9448e68",
+    "createdAt": "2026-02-19T15:06:56.333Z",
+    "updatedAt": "2026-02-19T15:06:56.333Z",
     "userInputs": {
         "inputs": {
             "protein_path": "entities/proteins/c32244fd9a1fb1675f69c1d28986ef55867ffd6733b28946d62409cc3f55523f.pdb",
             "pocket_count": 1,
             "pocket_min_size": 30
         },
+        "approveAmount": 0,
         "clusterId": "d638d3cd-833f-476b-87fe-ca6d76e66049"
     },
-    "functionOutputs": {
-        "results_dir": "tool-runs/pocketfinder/c32244fd9a1fb1675f69c1d28986ef55867ffd6733b28946d62409cc3f55523f/69345ced41f365156fbe7239c960431b1164001c908dd42a508d73d4d4d5e9b3/",
-        "files": [
-            "tool-runs/pocketfinder/c32244fd9a1fb1675f69c1d28986ef55867ffd6733b28946d62409cc3f55523f/69345ced41f365156fbe7239c960431b1164001c908dd42a508d73d4d4d5e9b3/progress.json",
-            "tool-runs/pocketfinder/c32244fd9a1fb1675f69c1d28986ef55867ffd6733b28946d62409cc3f55523f/69345ced41f365156fbe7239c960431b1164001c908dd42a508d73d4d4d5e9b3/properties.csv",
-            "tool-runs/pocketfinder/c32244fd9a1fb1675f69c1d28986ef55867ffd6733b28946d62409cc3f55523f/69345ced41f365156fbe7239c960431b1164001c908dd42a508d73d4d4d5e9b3/pocket_1.pdb"
-        ]
-    },
-    "status": "Completed",
-    "cluster": {
-        "id": "d638d3cd-833f-476b-87fe-ca6d76e66049",
-        "createdAt": "2024-06-11T16:53:45.922Z",
-        "updatedAt": "2025-03-27T20:23:30.842Z",
-        "hostname": "https://cluster.us-west-2.dev.deeporigin.io",
-        "name": "DeepOrigin Cluster - us-west-2",
-        "orgKey": null,
-        "enabled": true,
-        "status": "healthy"
-    },
+    "status": "Approved",
+    "cluster": "d638d3cd-833f-476b-87fe-ca6d76e66049",
     "orgKey": "deeporigin",
     "createdBy": "6b96d8f8-0f55-474c-a86c-e09651ba4b20",
+    "approveAmount": 0,
     "quotationResult": {
         "anyFailed": false,
         "failedQuotations": [],

@@ -31,6 +31,15 @@ results = protein.dock(ligands=ligands, quote=False)
 results.data # an list across all ligands -- has poses from all ligands
 results.cost # a single cost, across all ligands. 
 
+
+results = protein.find_pockets(pocket_count=1, quote=True)
+results.data # None
+results.estimate # object -- should be an estimate for the total of all ligands
+
+results = protein.find_pockets(pocket_count=1, quote=False)
+results.data # a list of pockets
+results.cost # a single cost
+
 # oneliner if you don't care about cost
 poses = protein.dock(ligand=ligand, quote=False).poses
 

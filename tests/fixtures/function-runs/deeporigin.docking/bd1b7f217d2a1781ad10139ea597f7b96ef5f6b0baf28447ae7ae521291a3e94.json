@@ -1,0 +1,146 @@
+{
+    "id": "ec38b23d-0c18-49b0-b4fd-40fbd13d8d62",
+    "createdAt": "2026-02-19T14:03:30.969Z",
+    "updatedAt": "2026-02-19T14:04:48.903Z",
+    "userInputs": {
+        "inputs": {
+            "protein_path": "entities/proteins/c32244fd9a1fb1675f69c1d28986ef55867ffd6733b28946d62409cc3f55523f.pdb",
+            "ligand_smiles": "CN(C)C(=O)c1cccc(-c2cn(C)c(=O)c3[nH]ccc23)c1",
+            "box_size": [
+                20,
+                20,
+                20
+            ],
+            "pocket_center": [
+                -13.065409660339355,
+                -6.746277809143066,
+                14.787962913513184
+            ]
+        },
+        "clusterId": "d638d3cd-833f-476b-87fe-ca6d76e66049"
+    },
+    "functionOutputs": {
+        "binding_energy": -9.010622,
+        "pose_score": 0.8949525,
+        "sdf_path": "tool-runs/docking/c32244fd9a1fb1675f69c1d28986ef55867ffd6733b28946d62409cc3f55523f/7acf92aa03f4a99f13a07242b00785d46c944d417bda87135e72857daece6120.sdf",
+        "status": "success",
+        "time_taken": 77.1714985370636,
+        "function_key": "deeporigin.docking",
+        "function_version": "0.2.6"
+    },
+    "status": "Completed",
+    "cluster": {
+        "id": "d638d3cd-833f-476b-87fe-ca6d76e66049",
+        "createdAt": "2024-06-11T16:53:45.922Z",
+        "updatedAt": "2025-03-27T20:23:30.842Z",
+        "hostname": "https://cluster.us-west-2.dev.deeporigin.io",
+        "name": "DeepOrigin Cluster - us-west-2",
+        "orgKey": null,
+        "enabled": true,
+        "status": "healthy"
+    },
+    "orgKey": "deeporigin",
+    "createdBy": "6b96d8f8-0f55-474c-a86c-e09651ba4b20",
+    "quotationResult": {
+        "anyFailed": false,
+        "failedQuotations": [],
+        "successfulQuotations": [
+            {
+                "status": "OK",
+                "itemCode": "DO_DOCK",
+                "orgId": "deeporigin",
+                "qty": 1,
+                "priceEach": 0.2,
+                "priceTotal": 0.2,
+                "pricingRecordType": "regular",
+                "pricingRecords": [
+                    {
+                        "itemKey": "DO_DOCK",
+                        "itemName": "Docking",
+                        "priceEach": 0.2,
+                        "totalPrice": 0.2,
+                        "qty": 1,
+                        "tierQtyFrom": 0,
+                        "tierQtyTo": 0
+                    }
+                ]
+            }
+        ]
+    },
+    "function": {
+        "id": "60cef235-0890-4d62-81e8-e2e00b937baf",
+        "createdAt": "2025-12-08T15:10:57.947Z",
+        "updatedAt": "2025-12-08T15:10:57.947Z",
+        "functionManifest": "cf787d83-a8df-4b52-8906-52e25bbd119b",
+        "version": "0.2.6",
+        "enabled": true,
+        "manifestBody": {
+            "key": "deeporigin.docking",
+            "version": "0.2.6",
+            "executor": {
+                "name": "deeporigin-docking",
+                "path": "/dock",
+                "port": {
+                    "name": "http1",
+                    "port": 8080,
+                    "protocol": "TCP"
+                },
+                "image": "645946264134.dkr.ecr.us-west-2.amazonaws.com/functions/docking:0.2.6",
+                "method": "POST",
+                "minScale": 1,
+                "environment": [
+                    {
+                        "name": "JULIA_NUM_THREADS",
+                        "value": "4"
+                    }
+                ],
+                "timeoutSeconds": 600,
+                "containerConcurrency": 1,
+                "resourceRequirements": {
+                    "cpu": 4,
+                    "memory": 4
+                },
+                "scaleDownDelaySeconds": 60,
+                "responseStartTimeoutSeconds": 3600
+            },
+            "billingCode": "DO_DOCK",
+            "inputSchema": {
+                "type": "object",
+                "required": [
+                    "protein_path",
+                    "ligand_smiles",
+                    "box_size",
+                    "pocket_center"
+                ],
+                "properties": {
+                    "box_size": {
+                        "type": "array",
+                        "items": {
+                            "type": "number"
+                        },
+                        "maxItems": 3,
+                        "minItems": 3
+                    },
+                    "protein_path": {
+                        "type": "string"
+                    },
+                    "ligand_smiles": {
+                        "type": "string"
+                    },
+                    "pocket_center": {
+                        "type": "array",
+                        "items": {
+                            "type": "number"
+                        },
+                        "maxItems": 3,
+                        "minItems": 3
+                    }
+                },
+                "additionalProperties": false
+            },
+            "functionManifestVersion": "1"
+        },
+        "billingCode": "DO_DOCK",
+        "resourceId": "function-lsw42idrlizz6vaqs8d3f"
+    }
+}

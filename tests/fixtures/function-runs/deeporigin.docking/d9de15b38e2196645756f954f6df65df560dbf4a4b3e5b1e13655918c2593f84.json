@@ -1,0 +1,130 @@
+{
+    "id": "26e22f91-0789-43d6-9f03-8b4435db6740",
+    "createdAt": "2026-02-19T13:56:41.745Z",
+    "updatedAt": "2026-02-19T13:56:41.745Z",
+    "userInputs": {
+        "inputs": {
+            "protein_path": "entities/proteins/c32244fd9a1fb1675f69c1d28986ef55867ffd6733b28946d62409cc3f55523f.pdb",
+            "ligand_smiles": "C/C=C/Cn1cc(-c2cccc(C(=O)N(C)C)c2)c2cc[nH]c2c1=O",
+            "box_size": [
+                20,
+                20,
+                20
+            ],
+            "pocket_center": [
+                -13.065409660339355,
+                -6.746277809143066,
+                14.787962913513184
+            ]
+        },
+        "approveAmount": 0,
+        "clusterId": "d638d3cd-833f-476b-87fe-ca6d76e66049"
+    },
+    "status": "Approved",
+    "cluster": "d638d3cd-833f-476b-87fe-ca6d76e66049",
+    "orgKey": "deeporigin",
+    "createdBy": "6b96d8f8-0f55-474c-a86c-e09651ba4b20",
+    "approveAmount": 0,
+    "quotationResult": {
+        "anyFailed": false,
+        "failedQuotations": [],
+        "successfulQuotations": [
+            {
+                "status": "OK",
+                "itemCode": "DO_DOCK",
+                "orgId": "deeporigin",
+                "qty": 1,
+                "priceEach": 0.2,
+                "priceTotal": 0.2,
+                "pricingRecordType": "regular",
+                "pricingRecords": [
+                    {
+                        "itemKey": "DO_DOCK",
+                        "itemName": "Docking",
+                        "priceEach": 0.2,
+                        "totalPrice": 0.2,
+                        "qty": 1,
+                        "tierQtyFrom": 0,
+                        "tierQtyTo": 0
+                    }
+                ]
+            }
+        ]
+    },
+    "function": {
+        "id": "60cef235-0890-4d62-81e8-e2e00b937baf",
+        "createdAt": "2025-12-08T15:10:57.947Z",
+        "updatedAt": "2025-12-08T15:10:57.947Z",
+        "functionManifest": "cf787d83-a8df-4b52-8906-52e25bbd119b",
+        "version": "0.2.6",
+        "enabled": true,
+        "manifestBody": {
+            "key": "deeporigin.docking",
+            "version": "0.2.6",
+            "executor": {
+                "name": "deeporigin-docking",
+                "path": "/dock",
+                "port": {
+                    "name": "http1",
+                    "port": 8080,
+                    "protocol": "TCP"
+                },
+                "image": "645946264134.dkr.ecr.us-west-2.amazonaws.com/functions/docking:0.2.6",
+                "method": "POST",
+                "minScale": 1,
+                "environment": [
+                    {
+                        "name": "JULIA_NUM_THREADS",
+                        "value": "4"
+                    }
+                ],
+                "timeoutSeconds": 600,
+                "containerConcurrency": 1,
+                "resourceRequirements": {
+                    "cpu": 4,
+                    "memory": 4
+                },
+                "scaleDownDelaySeconds": 60,
+                "responseStartTimeoutSeconds": 3600
+            },
+            "billingCode": "DO_DOCK",
+            "inputSchema": {
+                "type": "object",
+                "required": [
+                    "protein_path",
+                    "ligand_smiles",
+                    "box_size",
+                    "pocket_center"
+                ],
+                "properties": {
+                    "box_size": {
+                        "type": "array",
+                        "items": {
+                            "type": "number"
+                        },
+                        "maxItems": 3,
+                        "minItems": 3
+                    },
+                    "protein_path": {
+                        "type": "string"
+                    },
+                    "ligand_smiles": {
+                        "type": "string"
+                    },
+                    "pocket_center": {
+                        "type": "array",
+                        "items": {
+                            "type": "number"
+                        },
+                        "maxItems": 3,
+                        "minItems": 3
+                    }
+                },
+                "additionalProperties": false
+            },
+            "functionManifestVersion": "1"
+        },
+        "billingCode": "DO_DOCK",
+        "resourceId": "function-lsw42idrlizz6vaqs8d3f"
+    }
+}
