@@ -692,6 +692,115 @@ class Ligand(Entity):
     def atom_types(self):
         return self.get_species()
 
+    @property
+    def formal_charge(self) -> int:
+        """Compute the formal charge of the ligand molecule.
+
+        Returns:
+            int: The sum of formal charges of all atoms in the molecule.
+        """
+        if self.mol is None:
+            raise DeepOriginException("Cannot compute formal charge: molecule is None")
+        return sum(atom.GetFormalCharge() for atom in self.mol.GetAtoms())
+
+    @property
+    def molecular_weight(self) -> float:
+        """Compute the exact molecular weight of the ligand molecule.
+
+        Returns:
+            float: The exact molecular weight in atomic mass units.
+        """
+        if self.mol is None:
+            raise DeepOriginException(
+                "Cannot compute molecular weight: molecule is None"
+            )
+        return rdMolDescriptors.CalcExactMolWt(self.mol)
+
+    @property
+    def hbond_donor_count(self) -> int:
+        """Compute the number of hydrogen bond donors in the ligand molecule.
+
+        Returns:
+            int: The number of hydrogen bond donors.
+        """
+        if self.mol is None:
+            raise DeepOriginException(
+                "Cannot compute H-bond donor count: molecule is None"
+            )
+        return rdMolDescriptors.CalcNumHBD(self.mol)
+
+    @property
+    def hbond_acceptor_count(self) -> int:
+        """Compute the number of hydrogen bond acceptors in the ligand molecule.
+
+        Returns:
+            int: The number of hydrogen bond acceptors.
+        """
+        if self.mol is None:
+            raise DeepOriginException(
+                "Cannot compute H-bond acceptor count: molecule is None"
+            )
+        return rdMolDescriptors.CalcNumHBA(self.mol)
+
+    @property
+    def rotatable_bond_count(self) -> int:
+        """Compute the number of rotatable bonds in the ligand molecule.
+
+        Returns:
+            int: The number of rotatable bonds.
+        """
+        if self.mol is None:
+            raise DeepOriginException(
+                "Cannot compute rotatable bond count: molecule is None"
+            )
+        return rdMolDescriptors.CalcNumRotatableBonds(self.mol)
+
+    @property
+    def tpsa(self) -> float:
+        """Compute the Topological Polar Surface Area (TPSA) of the ligand molecule.
+
+        Returns:
+            float: The TPSA value in square Angstroms.
+        """
+        if self.mol is None:
+            raise DeepOriginException("Cannot compute TPSA: molecule is None")
+        return rdMolDescriptors.CalcTPSA(self.mol)
+
+    @property
+    def canonical_smiles(self) -> str:
+        """
+        Canonical (RDKit) SMILES for this ligand.
+
+        Notes:
+        - Canonicalization is RDKit-specific.
+        - Returns implicit-H SMILES by default (explicit Hs removed).
+        - Preserves stereochemistry if present.
+        """
+        mol = None
+
+        if self.mol is not None:
+            mol = self.mol
+        elif self.smiles is not None:
+            mol = Chem.MolFromSmiles(self.smiles)
+            if mol is None:
+                raise DeepOriginException(f"Invalid SMILES: {self.smiles!r}")
+        else:
+            raise DeepOriginException(
+                "Cannot compute canonical SMILES: missing mol and smiles"
+            )
+
+        # Remove explicit Hs so we don't emit `[H]...` everywhere
+        mol = Chem.RemoveHs(mol)
+
+        # If your mol may be unsanitized, you can ensure sanitization:
+        # Chem.SanitizeMol(mol)
+
+        return Chem.MolToSmiles(
+            mol,
+            canonical=True,
+            isomericSmiles=True,  # keep stereochem
+        )
+
     def set_property(self, prop_name: str, prop_value):
         """
         Set a property for the ligand molecule.
@@ -880,6 +989,72 @@ class Ligand(Entity):
         os.remove(temp_sdf_path)
 
         return hash_hex
+
+    @beartype
+    def sync(self, client: Optional[DeepOriginClient] = None) -> None:
+        """Sync the ligand to the data platform.
+
+        This method uploads the ligand file to remote storage (if available) and creates a ligand
+        record in the data platform. If a ligand with the same canonical_smiles already exists,
+        it returns the existing ligand data instead of creating a new one.
+
+        Args:
+            client: DeepOriginClient instance. If None, uses DeepOriginClient.get().
+
+        Note:
+            If the ligand was created from a SMILES string without an SDF file, only the SMILES
+            will be used for syncing (no file upload will occur).
+        """
+        if client is None:
+            client = DeepOriginClient.get()
+
+        # If ligand has a file_path, upload it to remote storage
+        # (Note: ligands in the data platform are identified by canonical_smiles, not file_path)
+        if self.file_path is not None:
+            # Upload the ligand file first
+            self.upload(client=client)
+
+        # Search for existing ligands by canonical_smiles
+        response = client.data.search_ligands(canonical_smiles=self.canonical_smiles)
+        data = response["data"]
+
+        # If a ligand with this canonical_smiles already exists, update self.id and return
+        if data:
+            existing_ligand = data[0]
+            if "id" in existing_ligand:
+                self.id = existing_ligand["id"]
+            return
+
+        # No existing ligand found, create a new one
+        # Prepare parameters for create_ligand
+        # Note: canonical_smiles is read-only and computed by the platform
+        kwargs: dict[str, Any] = {
+            "smiles": self.smiles if self.smiles is not None else self.canonical_smiles,
+        }
+
+        # Add optional fields if available
+        if self.name is not None:
+            kwargs["name"] = self.name
+
+        # Add computed molecular properties if mol is available
+        if self.mol is not None:
+            try:
+                kwargs["formal_charge"] = self.formal_charge
+                kwargs["molecular_weight"] = self.molecular_weight
+                kwargs["hbond_donor_count"] = self.hbond_donor_count
+                kwargs["hbond_acceptor_count"] = self.hbond_acceptor_count
+                kwargs["rotatable_bond_count"] = self.rotatable_bond_count
+                kwargs["tpsa"] = self.tpsa
+            except Exception:
+                # If property computation fails, continue without those properties
+                pass
+
+        # Call create_ligand through the client
+        result = client.data.create_ligand(**kwargs)
+
+        # Update self.id with the newly created ligand's ID
+        if "data" in result and "id" in result["data"]:
+            self.id = result["data"]["id"]
 
     @beartype
     def to_pdb(self, output_path: Optional[str] = None) -> str | Path:

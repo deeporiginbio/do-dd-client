@@ -160,6 +160,8 @@ class Data:
         *,
         cursor: str | None = None,
         filter: dict[str, Any] | None = None,
+        smiles: str | None = None,
+        canonical_smiles: str | None = None,
         min_molecular_weight: float | int | None = None,
         max_molecular_weight: float | int | None = None,
         limit: int | None = None,
@@ -174,6 +176,8 @@ class Data:
         Args:
             cursor: Cursor for pagination.
             filter: Additional filter criteria as a dictionary.
+            smiles: Filter by SMILES string.
+            canonical_smiles: Filter by canonical SMILES string.
             min_molecular_weight: Minimum molecular weight filter (inclusive).
             max_molecular_weight: Maximum molecular weight filter (inclusive).
             limit: Maximum number of results to return. Defaults to 100.
@@ -190,6 +194,14 @@ class Data:
         # Build filter dict, starting with provided filter or empty dict
         filter_dict = filter.copy() if filter is not None else {}
         filter_dict.setdefault("deleted", False)
+
+        # Add smiles filter if provided
+        if smiles is not None:
+            filter_dict["smiles"] = smiles
+
+        # Add canonical_smiles filter if provided
+        if canonical_smiles is not None:
+            filter_dict["canonical_smiles"] = canonical_smiles
 
         # Build molecular weight filters
         props = []
@@ -311,12 +323,11 @@ class Data:
     def create_ligand(
         self,
         *,
-        project_id: str,
-        canonical_smiles: str,
-        inchi_key: str,
-        inchi: str,
         smiles: str,
-        name: str,
+        project_id: str | None = None,
+        inchi_key: str | None = None,
+        inchi: str | None = None,
+        name: str | None = None,
         formal_charge: int = 0,
         hbond_donor_count: int | None = None,
         hbond_acceptor_count: int | None = None,
@@ -328,11 +339,10 @@ class Data:
         """Create a new ligand.
 
         Args:
+            smiles: SMILES string (required).
             project_id: Project ID for the ligand.
-            canonical_smiles: Canonical SMILES string.
             inchi_key: InChI key.
             inchi: InChI string.
-            smiles: SMILES string.
             name: Name of the ligand.
             formal_charge: Formal charge. Defaults to 0.
             hbond_donor_count: Number of hydrogen bond donors.
@@ -347,18 +357,21 @@ class Data:
         """
         # Build the set object with all ligand properties
         set_dict: dict[str, Any] = {
-            "project_id": project_id,
             "subtable_name": "ligands",
-            "canonical_smiles": canonical_smiles,
-            "inchi_key": inchi_key,
-            "inchi": inchi,
             "smiles": smiles,
-            "name": name,
             "formal_charge": formal_charge,
             "variant_name_tag": variant_name_tag,
         }
 
         # Add optional fields only if provided
+        if project_id is not None:
+            set_dict["project_id"] = project_id
+        if inchi_key is not None:
+            set_dict["inchi_key"] = inchi_key
+        if inchi is not None:
+            set_dict["inchi"] = inchi
+        if name is not None:
+            set_dict["name"] = name
         if hbond_donor_count is not None:
             set_dict["hbond_donor_count"] = hbond_donor_count
         if hbond_acceptor_count is not None:
@@ -372,6 +385,29 @@ class Data:
 
         body: dict[str, Any] = {
             "set": set_dict,
+            "returning": [
+                "canonical_id",
+                "version",
+                "valid_from",
+                "valid_to",
+                "modified_by",
+                "deleted",
+                "project_id",
+                "subtable_name",
+                "canonical_smiles",
+                "smiles",
+                "inchi_key",
+                "inchi",
+                "name",
+                "formal_charge",
+                "hbond_donor_count",
+                "hbond_acceptor_count",
+                "rotatable_bond_count",
+                "tpsa",
+                "molecular_weight",
+                "log_p",
+                "structure_key",
+            ],
         }
 
         return self._c.post_json(

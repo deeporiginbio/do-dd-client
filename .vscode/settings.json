@@ -39,6 +39,8 @@
         "emeq",
         "finalizer",
         "FMCS",
+        "hbond",
+        "herg",
         "HETATM",
         "inchi",
         "isin",
@@ -49,6 +51,8 @@
         "Konnektor",
         "kwargs",
         "ligandset",
+        "logd",
+        "logp",
         "marimo",
         "mbar",
         "molblock",
@@ -78,7 +82,9 @@
         "SASA",
         "softcore",
         "Substruct",
+        "subtable",
         "textea",
+        "tpsa",
         "venv"
     ]
 }
