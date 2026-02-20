@@ -14,12 +14,10 @@ Attributes:
 """
 
 from dataclasses import dataclass, field
-import os
 from pathlib import Path
 from typing import Any, Optional, Self
 
 import numpy as np
-import pandas as pd
 
 from deeporigin.drug_discovery.constants import POCKETS_BASE_DIR
 from deeporigin.drug_discovery.structures.ligand import Ligand
@@ -38,6 +36,7 @@ class Pocket:
     color: str = "red"
     name: Optional[str] = None
     pdb_id: Optional[str] = None
+    protein_id: Optional[str] = None
     index: Optional[int] = 0
     props: Optional[dict[str, Any]] = field(default_factory=dict)
     coordinates: Optional[np.ndarray] = None
@@ -68,7 +67,7 @@ class Pocket:
                 self.name = self.file_path.stem
             else:
                 self.name = "Unknown_Pocket"
-                directory = Path(self.get_directory())
+                directory = Path(POCKETS_BASE_DIR)
                 directory.mkdir(parents=True, exist_ok=True)
                 num = len(list(directory.glob(f"{self.name}*")))
                 self.name = f"{self.name}_{num + 1}"
@@ -216,7 +215,7 @@ class Pocket:
             current_res_atoms = structure[res_mask]
             current_coords = current_res_atoms.coord
 
-            # Get the acutal distances
+            # Get the actual distances
             diff = target_coords[:, np.newaxis, :] - current_coords[np.newaxis, :, :]
             distances = np.sqrt(np.sum(diff**2, axis=2))
             min_distance = np.min(distances)
@@ -235,26 +234,24 @@ class Pocket:
         return pocket
 
     @classmethod
-    def from_pocket_finder_results(
+    def from_json(
         cls,
-        pocket_finder_results_dir: str | Path,
-    ) -> list["Pocket"]:
-        """Create a list of Pocket objects from pocket finder results directory.
+        data: list[dict[str, Any]],
+    ) -> list[Self]:
+        """Create a list of Pocket objects from a JSON pocket list.
+
+        Each entry in the list should be a dict with at least a ``file_path``
+        key. All remaining keys (except ``protein_id``) are stored in
+        ``props``.  The ``protein_id`` key is mapped to the dedicated
+        attribute of the same name.
 
         Args:
-            pocket_finder_results_dir: Directory containing pocket finder results
-                with PDB files for each pocket and a CSV properties file.
+            data: List of pocket dicts, e.g. the value of the ``"pockets"``
+                key returned by the pocket-finder tool.
 
         Returns:
-            List of Pocket objects with properties from the CSV file.
+            List of Pocket objects with properties populated from the dicts.
         """
-        # Convert to Path object for consistent handling
-        results_dir = Path(pocket_finder_results_dir)
-
-        # Find all PDB files in the directory
-        pdb_files = list(results_dir.glob("*.pdb"))
-
-        # Colors to cycle through for pockets
         colors = [
             "red",
             "green",
@@ -268,61 +265,28 @@ class Pocket:
             "lime",
         ]
 
-        # Create Pocket objects from each PDB file
+        reserved_keys = {"file_path", "protein_id"}
+
         pockets = []
-        for idx, pdb_file in enumerate(pdb_files):
-            # Create a Pocket object with the file path and name (without extension)
+        for idx, entry in enumerate(data):
+            raw_path = entry.get("file_path")
+            if not isinstance(raw_path, str) or not raw_path.strip():
+                raise ValueError(
+                    f"Entry at index {idx} is missing a valid 'file_path' value "
+                    f"(got {raw_path!r}): {entry}"
+                )
+            file_path = Path(raw_path)
+            protein_id = entry.get("protein_id")
+            props = {k: v for k, v in entry.items() if k not in reserved_keys}
+
             pocket = cls(
-                file_path=pdb_file,
-                name=pdb_file.stem,
-                pdb_id=None,  # Will be set from CSV if available
-                props={},  # Initialize empty properties dictionary
-                color=colors[idx % len(colors)],  # Cycle through colors
+                file_path=file_path,
+                name=file_path.stem,
+                protein_id=protein_id,
+                props=props,
+                color=colors[idx % len(colors)],
             )
             pockets.append(pocket)
-
-        # Find the CSV properties file
-        csv_files = list(results_dir.glob("*.csv"))
-        if not csv_files:
-            # If no CSV file, return pockets with just file and name
-            return pockets
-
-        # Use the first CSV file found
-        properties_file = csv_files[0]
-
-        try:
-            # Read CSV file using pandas
-            df = pd.read_csv(properties_file)
-
-            # Map CSV columns to Pocket properties
-            # Using 'pocket_file' column to match with PDB file names
-            for pocket in pockets:
-                # Get the filename without extension to match with CSV
-                pdb_filename = os.path.basename(pocket.file_path)
-
-                # Try to find a row in the CSV that matches this pocket file
-                pocket_row = df[df["pocket_file"] == pdb_filename]
-
-                if not pocket_row.empty:
-                    # Add all properties from the CSV to the pocket's properties dictionary
-                    for column in df.columns:
-                        if column != "pocket_file":  # Skip the file column
-                            value = pocket_row[column].iloc[0]
-
-                            # Convert NumPy types to Python primitive types
-                            if isinstance(value, np.integer):
-                                value = int(value)
-                            elif isinstance(value, np.floating):
-                                value = float(value)
-                            elif isinstance(value, np.bool_):
-                                value = bool(value)
-                            elif pd.isna(value):
-                                value = None
-
-                            pocket.props[column] = value
-        except Exception:
-            # If there's an error reading the CSV, just return the pockets with basic info
-            pass
 
         return pockets
 
@@ -372,16 +336,6 @@ class Pocket:
             f"Pocket:\n  Name: {self.name}\n{properties_line}  File: {self.file_path}\n"
             "Available Fields: {file_path, name, coordinates, color, props}"
         )
-
-    @staticmethod
-    def get_directory() -> str:
-        """
-        Get the pockets directory path.
-
-        Returns:
-            str: The path to the pockets directory.
-        """
-        return POCKETS_BASE_DIR
 
     def update_coordinates(self, coords: np.ndarray):
         """update coordinates of the pocket"""
