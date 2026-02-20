@@ -7,6 +7,7 @@ import pytest
 
 from deeporigin.drug_discovery import BRD_DATA_DIR, Protein
 from deeporigin.exceptions import DeepOriginException
+from deeporigin.platform.client import DeepOriginClient
 
 
 def test_load_protein_from_cif_structure_factor():
@@ -401,3 +402,15 @@ def test_load_structure_from_block_invalid_type():
     """Test that load_structure_from_block raises ValueError for unsupported types."""
     with pytest.raises(ValueError, match=r".*Unsupported block type.*"):
         Protein.load_structure_from_block("test content", "xyz")
+
+
+def test_from_id_lv1():
+    """Test creating a protein from a Deep Origin Data Platform ID."""
+    client = DeepOriginClient()
+    protein = Protein.from_id("08AD337N5YV4Y", client=client)
+
+    assert protein.id == "08AD337N5YV4Y"
+    assert protein.file_path is not None
+    assert protein.file_path.exists()
+    assert len(protein.structure) > 0
+    assert protein.block_content is not None

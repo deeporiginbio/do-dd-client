@@ -22,6 +22,7 @@ from deeporigin.config import get_value
 from deeporigin.exceptions import DeepOriginException
 from deeporigin.platform.billing import Billing
 from deeporigin.platform.clusters import Clusters
+from deeporigin.platform.data import Data
 from deeporigin.platform.executions import Executions
 from deeporigin.platform.files import Files
 from deeporigin.platform.functions import Functions
@@ -306,6 +307,7 @@ class DeepOriginClient:
         self.executions = Executions(self)
         self.organizations = Organizations(self)
         self.billing = Billing(self)
+        self.data = Data(self)
 
         # Retry configuration
         self.max_retries = max_retries

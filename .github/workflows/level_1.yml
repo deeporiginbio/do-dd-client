@@ -17,7 +17,7 @@ jobs:
     runs-on: ubuntu-latest
     environment: ${{ matrix.env }}
     strategy:
-      fail-fast: true
+      fail-fast: false
       matrix:
         python-version: ["3.13"]
         env: ${{ fromJSON( ((github.event_name == 'workflow_call' || github.event_name == 'release') && inputs.env != '') && format('["{0}"]', inputs.env) || '["dev","staging","prod"]' ) }}

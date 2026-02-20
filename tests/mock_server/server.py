@@ -47,6 +47,8 @@ class MockServer:
         # In-memory storage for executions
         self._executions: dict[str, dict[str, Any]] = {}
         self._execution_start_times: dict[str, datetime] = {}
+        self._ligands: dict[str, dict[str, Any]] = {}
+        self._proteins: dict[str, dict[str, Any]] = {}
         # Tool-specific mock execution durations (in seconds)
         self._mock_execution_durations: dict[str, float] = {
             "deeporigin.abfe-end-to-end": 30.0,  # seconds
@@ -956,6 +958,193 @@ class MockServer:
         def health() -> dict[str, str]:
             """Health check endpoint."""
             return {"status": "ok"}
+
+        @self.app.get("/data-platform/health")
+        def data_platform_health() -> dict[str, str]:
+            """Data platform health check endpoint."""
+            return {"status": "ok"}
+
+        @self.app.post("/data-platform/{org_key}/ligands_with_results/search")
+        async def search_ligands_with_results(
+            org_key: str, request: Request
+        ) -> dict[str, Any]:
+            """Search ligands joined with tool results."""
+            await request.json()  # Consume request body
+            # Return a mock response with empty data list
+            return {
+                "data": [],
+                "count": 0,
+            }
+
+        @self.app.post("/data-platform/{org_key}/{entity}/search")
+        async def search_entity(
+            org_key: str, entity: str, request: Request
+        ) -> dict[str, Any]:
+            """Search an entity."""
+            await request.json()  # Consume request body
+            # Return a mock response with empty data list
+            return {
+                "data": [],
+                "count": 0,
+            }
+
+        @self.app.post("/data-platform/{org_key}/projects/search")
+        async def list_projects(org_key: str, request: Request) -> dict[str, Any]:
+            """List projects."""
+            await request.json()  # Consume request body
+            # Return a mock response with empty projects list
+            return {
+                "data": [],
+                "count": 0,
+            }
+
+        @self.app.post("/data-platform/{org_key}/ligands")
+        async def create_ligand(org_key: str, request: Request) -> dict[str, Any]:
+            """Create a new ligand."""
+            body = await request.json()
+            set_data = body.get("set", {})
+            returning = body.get("returning", [])
+
+            # Generate mock response matching the real API format
+            now = datetime.now(timezone.utc)
+            ligand_id = "08" + str(uuid.uuid4()).replace("-", "").upper()[:11]
+            smiles = set_data.get("smiles", "")
+            response_data: dict[str, Any] = {
+                "id": ligand_id,
+                "version": 1,
+                "valid_from": now.strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z",
+                "valid_to": None,
+                "modified_by": "test-user",
+                "deleted": False,
+                "project_id": None,
+                "subtable_name": "ligands",
+                "canonical_smiles": smiles,
+                "smiles": smiles,
+                "inchi_key": None,
+                "inchi": None,
+                "log_p": None,
+                "structure_key": None,
+            }
+
+            # Include all fields from set_data
+            response_data.update(set_data)
+
+            # Store full record in memory before filtering
+            self._ligands[ligand_id] = response_data.copy()
+
+            # Filter to only return requested fields if specified
+            if returning:
+                response_data = {
+                    k: v for k, v in response_data.items() if k in returning
+                }
+
+            return {"data": response_data, "meta": {"inserted": 1}}
+
+        @self.app.post("/data-platform/{org_key}/proteins")
+        async def create_protein(org_key: str, request: Request) -> dict[str, Any]:
+            """Create a new protein."""
+            body = await request.json()
+            set_data = body.get("set", {})
+            returning = body.get("returning", [])
+
+            # Generate mock response matching the real API format
+            now = datetime.now(timezone.utc)
+            protein_id = "08" + str(uuid.uuid4()).replace("-", "").upper()[:11]
+            modified_by = "6b96d8f8-0f55-474c-a86c-e09651ba4b20"
+
+            # Build response data with all fields matching the real API
+            response_data: dict[str, Any] = {
+                "id": protein_id,
+                "version": 1,
+                "valid_from": now.strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z",
+                "valid_to": None,
+                "modified_by": modified_by,
+                "deleted": False,
+                "project_id": None,
+                "subtable_name": "proteins",
+                "uniprot_accession": None,
+                "file_path": set_data.get("file_path", ""),
+                "gene_symbol": None,
+                "pdb_id": None,
+                "refseq_protein_id": None,
+                "ensembl_protein_id": None,
+                "alpha_fold_id": None,
+                "fasta_sequence": None,
+                "protein_name": None,
+                "kegg_gene_id": None,
+                "chembl_target_id": None,
+                "binding_db_target_id": None,
+                "drugbank_target_id": None,
+                "pfam_id": None,
+                "interpro_id": None,
+                "ec_number": None,
+                "ncbi_taxonomy_id": None,
+                "protein_family": None,
+                "ligandability_score": None,
+                "protein_length": None,
+            }
+
+            # Override with any fields provided in set_data
+            response_data.update(set_data)
+
+            # Store full record in memory before filtering
+            self._proteins[protein_id] = response_data.copy()
+
+            # Filter to only return requested fields if specified
+            if returning:
+                response_data = {
+                    k: v for k, v in response_data.items() if k in returning
+                }
+
+            return {
+                "data": response_data,
+                "meta": {"inserted": 1},
+            }
+
+        @self.app.get("/data-platform/{org_key}/ligands/{ligand_id}")
+        def get_ligand(org_key: str, ligand_id: str) -> dict[str, Any]:
+            """Get a ligand by ID."""
+            if ligand_id in self._ligands:
+                return self._ligands[ligand_id]
+            try:
+                return self._load_fixture(f"ligand_{ligand_id}")
+            except FileNotFoundError:
+                from fastapi import HTTPException
+
+                raise HTTPException(
+                    status_code=404, detail=f"Ligand {ligand_id} not found"
+                ) from None
+
+        @self.app.get("/data-platform/{org_key}/proteins/{protein_id}")
+        def get_protein(org_key: str, protein_id: str) -> dict[str, Any]:
+            """Get a protein by ID."""
+            if protein_id in self._proteins:
+                return self._proteins[protein_id]
+            try:
+                return self._load_fixture(f"protein_{protein_id}")
+            except FileNotFoundError:
+                from fastapi import HTTPException
+
+                raise HTTPException(
+                    status_code=404, detail=f"Protein {protein_id} not found"
+                ) from None
+
+        @self.app.get("/data-platform/{org_key}/meta/models")
+        def list_models(org_key: str) -> dict[str, Any]:
+            """List public models."""
+            return {
+                "models": [
+                    {"tableName": "ligands", "visibility": "public"},
+                    {"tableName": "proteins", "visibility": "public"},
+                    {"tableName": "patents", "visibility": "public"},
+                    {"tableName": "projects", "visibility": "public"},
+                    {"tableName": "ui_settings", "visibility": "public"},
+                    {"tableName": "executions", "visibility": "public"},
+                    {"tableName": "execution_subjects", "visibility": "public"},
+                    {"tableName": "results", "visibility": "public"},
+                    {"tableName": "result_table_catalog", "visibility": "public"},
+                ]
+            }
 
     def start(self) -> tuple[str, int]:
         """Start the test server.

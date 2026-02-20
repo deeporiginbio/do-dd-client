@@ -68,6 +68,56 @@ class Protein(Entity):
         return cls.from_pdb_id(pdb_id)
 
     @classmethod
+    def from_id(cls, id: str, *, client: Optional[DeepOriginClient] = None) -> Self:
+        """
+        Create a Protein instance from a Deep Origin Data Platform ID.
+
+        Args:
+            id: The Deep Origin Data Platform ID of the protein.
+            client: Optional DeepOriginClient instance. If not provided, uses the default client.
+
+        Returns:
+            Protein: A new Protein instance.
+
+        Raises:
+            ValueError: If the protein data does not contain a file_path.
+            RuntimeError: If the file cannot be downloaded or loaded.
+        """
+        if client is None:
+            client = DeepOriginClient.get()
+
+        data = client.data.get_protein(id=id)
+
+        # Check if file_path exists
+        file_path = data.get("file_path")
+        if not file_path:
+            raise ValueError(
+                f"Protein {id} does not have a file_path. Cannot create Protein instance without structure file."
+            )
+
+        # Download the file
+        local_file_path = client.files.download_file(remote_path=file_path)
+
+        # Create Protein instance from the downloaded file
+        protein = cls.from_file(file_path=local_file_path)
+
+        # Set the ID from the data
+        protein.id = data.get("id")
+
+        # Update fields from the data
+        if data.get("protein_name"):
+            protein.name = data["protein_name"]
+        elif data.get("pdb_id"):
+            protein.name = data["pdb_id"]
+        elif data.get("gene_symbol"):
+            protein.name = data["gene_symbol"]
+
+        if data.get("pdb_id"):
+            protein.pdb_id = data["pdb_id"]
+
+        return protein
+
+    @classmethod
     def from_pdb_id(cls, pdb_id: str, struct_ind: int = 0) -> Self:
         """
         Create a Protein instance from a PDB ID.
@@ -1308,10 +1358,74 @@ class Protein(Entity):
             info_str += f"Info: {self.info}\n"
         return f"Protein:\n  {info_str}"
 
+    @beartype
+    def sync(self, client: Optional[DeepOriginClient] = None) -> None:
+        """Sync the protein to the data platform.
+
+        This method uploads the protein file to remote storage and creates a protein
+        record in the data platform. If a protein with the same file_path already exists,
+        it updates the current instance with the existing protein's ID instead of
+        creating a new one.
+
+        Args:
+            client: DeepOriginClient instance. If None, uses DeepOriginClient.get().
+
+        Returns:
+            None. As a side effect, uploads the protein (if necessary) and updates
+            ``self.id`` with the ID of the existing or newly created protein record.
+        """
+        if client is None:
+            client = DeepOriginClient.get()
+
+        # Upload the protein file first
+        self.upload(client=client)
+
+        # Use the remote path as the file_path
+        file_path = self._remote_path
+
+        # Search for existing proteins with the same file_path
+        response = client.data.search_proteins(file_path=file_path)
+        data = response["data"]
+
+        # If a protein with this file_path already exists, return the first one
+        if data:
+            existing_protein = data[0]
+            # Update self.id with the existing protein's ID
+            if "id" in existing_protein:
+                self.id = existing_protein["id"]
+            return
+
+        # No existing protein found, create a new one
+        # Prepare parameters for create_protein
+        kwargs: dict[str, Any] = {
+            "file_path": file_path,
+        }
+
+        # Pass pdb_id if available
+        if self.pdb_id is not None:
+            kwargs["pdb_id"] = self.pdb_id
+
+        # Only compute and include protein_length when a local file_path is available
+        if getattr(self, "file_path", None) is not None:
+            kwargs["protein_length"] = self.length
+        kwargs["protein_name"] = self.name
+
+        # Call create_protein through the client
+        result = client.data.create_protein(**kwargs)
+
+        # Update self.id with the newly created protein's ID
+        if "data" in result and "id" in result["data"]:
+            self.id = result["data"]["id"]
+
     def update_coordinates(self, coords: np.ndarray):
         """update coordinates of the protein structure"""
 
         self.structure.coord = coords
+
+    @property
+    def length(self) -> int:
+        """get the length of the protein structure"""
+        return sum([len(seq) for seq in self.sequence])
 
 
 def validate_pdb_file(file_path: str | Path) -> None:
