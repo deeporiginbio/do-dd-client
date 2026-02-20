@@ -1403,7 +1403,9 @@ class Protein(Entity):
         if self.pdb_id is not None:
             kwargs["pdb_id"] = self.pdb_id
 
-        kwargs["protein_length"] = self.length
+        # Only compute and include protein_length when a local file_path is available
+        if getattr(self, "file_path", None) is not None:
+            kwargs["protein_length"] = self.length
         kwargs["protein_name"] = self.name
 
         # Call create_protein through the client
