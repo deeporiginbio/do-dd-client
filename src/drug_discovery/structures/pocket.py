@@ -67,7 +67,7 @@ class Pocket:
                 self.name = self.file_path.stem
             else:
                 self.name = "Unknown_Pocket"
-                directory = Path(self.get_directory())
+                directory = Path(POCKETS_BASE_DIR)
                 directory.mkdir(parents=True, exist_ok=True)
                 num = len(list(directory.glob(f"{self.name}*")))
                 self.name = f"{self.name}_{num + 1}"
@@ -215,7 +215,7 @@ class Pocket:
             current_res_atoms = structure[res_mask]
             current_coords = current_res_atoms.coord
 
-            # Get the acutal distances
+            # Get the actual distances
             diff = target_coords[:, np.newaxis, :] - current_coords[np.newaxis, :, :]
             distances = np.sqrt(np.sum(diff**2, axis=2))
             min_distance = np.min(distances)
@@ -330,16 +330,6 @@ class Pocket:
             f"Pocket:\n  Name: {self.name}\n{properties_line}  File: {self.file_path}\n"
             "Available Fields: {file_path, name, coordinates, color, props}"
         )
-
-    @staticmethod
-    def get_directory() -> str:
-        """
-        Get the pockets directory path.
-
-        Returns:
-            str: The path to the pockets directory.
-        """
-        return POCKETS_BASE_DIR
 
     def update_coordinates(self, coords: np.ndarray):
         """update coordinates of the pocket"""
