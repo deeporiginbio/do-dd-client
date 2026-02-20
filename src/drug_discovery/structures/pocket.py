@@ -269,7 +269,13 @@ class Pocket:
 
         pockets = []
         for idx, entry in enumerate(data):
-            file_path = Path(entry["file_path"])
+            raw_path = entry.get("file_path")
+            if not isinstance(raw_path, str) or not raw_path.strip():
+                raise ValueError(
+                    f"Entry at index {idx} is missing a valid 'file_path' value "
+                    f"(got {raw_path!r}): {entry}"
+                )
+            file_path = Path(raw_path)
             protein_id = entry.get("protein_id")
             props = {k: v for k, v in entry.items() if k not in reserved_keys}
 
