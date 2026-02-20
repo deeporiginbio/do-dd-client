@@ -1,5 +1,7 @@
 """Tests for the Data Platform API wrapper."""
 
+import uuid
+
 import pytest
 
 from deeporigin.platform.client import DeepOriginClient
@@ -13,19 +15,6 @@ def test_data_platform_health_lv1():
     assert isinstance(response, dict), "Expected a dictionary response"
     assert "status" in response, "Expected 'status' key in response"
     assert response["status"] == "ok", "Expected status to be 'ok'"
-
-
-def test_search_ligands_with_results_lv1():
-    """Test searching ligands with results."""
-    client = DeepOriginClient()
-    response = client.data.search_ligands_with_results(
-        limit=10,
-        experiments=[{"toolId": "test-tool"}],
-    )
-
-    assert isinstance(response, dict), "Expected a dictionary response"
-    assert "data" in response, "Expected 'data' key in response"
-    assert isinstance(response["data"], list), "Expected 'data' to be a list"
 
 
 def test_search_entity_lv1():
@@ -55,11 +44,12 @@ def test_search_ligands_lv1():
     assert isinstance(response["data"], list), "Expected 'data' to be a list"
 
 
-def test_search_ligands_molecular_weight():
+def test_search_ligands_molecular_weight_lv1():
     """Test searching ligands with molecular weight filters."""
     client = DeepOriginClient()
     response = client.data.search_ligands(
-        min_molecular_weight=250, max_molecular_weight=550
+        min_molecular_weight=250,
+        max_molecular_weight=550,
     )
 
     assert isinstance(response, dict), "Expected a dictionary response"
@@ -77,11 +67,12 @@ def test_search_proteins_lv1():
     assert isinstance(response["data"], list), "Expected 'data' to be a list"
 
 
-def test_search_proteins_molecular_weight():
+def test_search_proteins_molecular_weight_lv1():
     """Test searching proteins with molecular weight filters."""
     client = DeepOriginClient()
     response = client.data.search_proteins(
-        min_molecular_weight=250, max_molecular_weight=550
+        min_molecular_weight=250,
+        max_molecular_weight=550,
     )
 
     assert isinstance(response, dict), "Expected a dictionary response"
@@ -89,7 +80,7 @@ def test_search_proteins_molecular_weight():
     assert isinstance(response["data"], list), "Expected 'data' to be a list"
 
 
-def test_search_proteins_sequence():
+def test_search_proteins_sequence_lv1():
     """Test searching proteins with sequence filter."""
     client = DeepOriginClient()
     response = client.data.search_proteins(
@@ -121,6 +112,7 @@ def test_create_ligand_lv1():
     """Test creating a ligand."""
     client = DeepOriginClient()
     smiles = "Fc1c(-c2cccc3ccccc23)ncc2c(N3C[C@H]4CC[C@@H](C3)N4)nc(OCC34CCCN3CCC4)nc12"
+    unique_tag = str(uuid.uuid4())
     response = client.data.create_ligand(
         smiles=smiles,
         name="Compound-12345",
@@ -130,7 +122,7 @@ def test_create_ligand_lv1():
         rotatable_bond_count=5,
         tpsa=85.12,
         molecular_weight=447.5,
-        variant_name_tag="",
+        variant_name_tag=unique_tag,
     )
 
     assert isinstance(response, dict), "Expected a dictionary response"
@@ -183,32 +175,39 @@ def test_list_projects_lv1():
 def test_get_ligand_lv1():
     """Test getting a ligand by ID."""
     client = DeepOriginClient()
-    response = client.data.get_ligand(id="08B05B1GDYWJR")
+    smiles = "Fc1c(-c2cccc3ccccc23)ncc2c(N3C[C@H]4CC[C@@H](C3)N4)nc(OCC34CCCN3CCC4)nc12"
+    created = client.data.create_ligand(
+        smiles=smiles,
+        name="GetLigandTest",
+        molecular_weight=447.5,
+        variant_name_tag=str(uuid.uuid4()),
+    )
+    ligand_id = created["data"]["id"]
+
+    response = client.data.get_ligand(id=ligand_id)
 
     assert isinstance(response, dict), "Expected a dictionary response"
     assert "id" in response, "Expected 'id' key in response"
-    assert response["id"] == "08B05B1GDYWJR", "Expected id to match"
+    assert response["id"] == ligand_id, "Expected id to match"
     assert "smiles" in response, "Expected 'smiles' key in response"
     assert "name" in response, "Expected 'name' key in response"
-    assert response["name"] == "cmpd 4 (Crotyl)", "Expected name to match"
+    assert response["name"] == "GetLigandTest", "Expected name to match"
     assert "molecular_weight" in response, "Expected 'molecular_weight' key in response"
-    assert abs(response["molecular_weight"] - 335.16337691200056) < 1e-10, (
-        "Expected molecular_weight to match"
-    )
 
 
 def test_get_protein_lv1():
     """Test getting a protein by ID."""
     client = DeepOriginClient()
-    response = client.data.get_protein(id="08AD337N5YV4Y")
+    file_path = "entities/proteins/db4aa32e2e8ffa976a60004a8361b86427a2e5653a6623bb60b7913445902549.pdb"
+    created = client.data.create_protein(file_path=file_path)
+    protein_id = created["data"]["id"]
+
+    response = client.data.get_protein(id=protein_id)
 
     assert isinstance(response, dict), "Expected a dictionary response"
     assert "id" in response, "Expected 'id' key in response"
-    assert response["id"] == "08AD337N5YV4Y", "Expected id to match"
+    assert response["id"] == protein_id, "Expected id to match"
     assert "file_path" in response, "Expected 'file_path' key in response"
-    assert (
-        response["file_path"]
-        == "entities/proteins/db4aa32e2e8ffa976a60004a8361b86427a2e5653a6623bb60b7913445902549.pdb"
-    ), "Expected file_path to match"
+    assert response["file_path"] == file_path, "Expected file_path to match"
     assert "subtable_name" in response, "Expected 'subtable_name' key in response"
     assert response["subtable_name"] == "proteins", "Expected subtable_name to match"

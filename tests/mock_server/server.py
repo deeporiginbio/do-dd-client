@@ -47,6 +47,8 @@ class MockServer:
         # In-memory storage for executions
         self._executions: dict[str, dict[str, Any]] = {}
         self._execution_start_times: dict[str, datetime] = {}
+        self._ligands: dict[str, dict[str, Any]] = {}
+        self._proteins: dict[str, dict[str, Any]] = {}
         # Tool-specific mock execution durations (in seconds)
         self._mock_execution_durations: dict[str, float] = {
             "deeporigin.abfe-end-to-end": 30.0,  # seconds
@@ -1027,6 +1029,9 @@ class MockServer:
             # Include all fields from set_data
             response_data.update(set_data)
 
+            # Store full record in memory before filtering
+            self._ligands[ligand_id] = response_data.copy()
+
             # Filter to only return requested fields if specified
             if returning:
                 response_data = {
@@ -1044,7 +1049,7 @@ class MockServer:
 
             # Generate mock response matching the real API format
             now = datetime.now(timezone.utc)
-            protein_id = "08AD337N5YV4Y"  # Use a consistent ID for testing
+            protein_id = "08" + str(uuid.uuid4()).replace("-", "").upper()[:11]
             modified_by = "6b96d8f8-0f55-474c-a86c-e09651ba4b20"
 
             # Build response data with all fields matching the real API
@@ -1082,6 +1087,9 @@ class MockServer:
             # Override with any fields provided in set_data
             response_data.update(set_data)
 
+            # Store full record in memory before filtering
+            self._proteins[protein_id] = response_data.copy()
+
             # Filter to only return requested fields if specified
             if returning:
                 response_data = {
@@ -1096,7 +1104,8 @@ class MockServer:
         @self.app.get("/data-platform/{org_key}/ligands/{ligand_id}")
         def get_ligand(org_key: str, ligand_id: str) -> dict[str, Any]:
             """Get a ligand by ID."""
-            # Load fixture for the specific ligand ID
+            if ligand_id in self._ligands:
+                return self._ligands[ligand_id]
             try:
                 return self._load_fixture(f"ligand_{ligand_id}")
             except FileNotFoundError:
@@ -1109,7 +1118,8 @@ class MockServer:
         @self.app.get("/data-platform/{org_key}/proteins/{protein_id}")
         def get_protein(org_key: str, protein_id: str) -> dict[str, Any]:
             """Get a protein by ID."""
-            # Load fixture for the specific protein ID
+            if protein_id in self._proteins:
+                return self._proteins[protein_id]
             try:
                 return self._load_fixture(f"protein_{protein_id}")
             except FileNotFoundError:
