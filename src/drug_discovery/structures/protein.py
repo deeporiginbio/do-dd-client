@@ -581,7 +581,7 @@ class Protein(Entity):
         # note that name is changed to avoid conflict with the function
         from deeporigin.functions.pocket_finder import find_pockets as _find_pockets
 
-        results_dir = _find_pockets(
+        pockets_data = _find_pockets(
             protein=self,
             pocket_count=pocket_count,
             pocket_min_size=pocket_min_size,
@@ -590,7 +590,7 @@ class Protein(Entity):
             quote=quote,
         )
 
-        return Pocket.from_pocket_finder_results(results_dir)
+        return Pocket.from_json(pockets_data)
 
     @beartype
     def remove_hetatm(
