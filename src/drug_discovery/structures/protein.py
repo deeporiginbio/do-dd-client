@@ -1364,13 +1364,15 @@ class Protein(Entity):
 
         This method uploads the protein file to remote storage and creates a protein
         record in the data platform. If a protein with the same file_path already exists,
-        it returns the existing protein data instead of creating a new one.
+        it updates the current instance with the existing protein's ID instead of
+        creating a new one.
 
         Args:
             client: DeepOriginClient instance. If None, uses DeepOriginClient.get().
 
         Returns:
-            Dictionary containing the created or existing protein data from the data platform.
+            None. As a side effect, uploads the protein (if necessary) and updates
+            ``self.id`` with the ID of the existing or newly created protein record.
         """
         if client is None:
             client = DeepOriginClient.get()
