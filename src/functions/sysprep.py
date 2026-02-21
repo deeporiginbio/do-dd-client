@@ -69,4 +69,4 @@ def run_sysprep(
         quote=quote,
     )
 
-    return response.get("system", response)
+    return response["functionOutputs"]
