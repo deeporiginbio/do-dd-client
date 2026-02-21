@@ -135,7 +135,6 @@ class Complex:
         retain_waters: bool = False,
         add_H_atoms: bool = False,  # NOSONAR
         protonate_protein: bool = False,
-        use_cache: bool = True,
     ) -> "Protein | list[Protein]":
         """run system preparation on the protein and one or more ligands from the Complex
 
@@ -165,7 +164,6 @@ class Complex:
                     retain_waters=retain_waters,
                     add_H_atoms=add_H_atoms,
                     protonate_protein=protonate_protein,
-                    use_cache=use_cache,
                 )
 
                 responses.append(prepared_protein)
@@ -187,14 +185,17 @@ class Complex:
             retain_waters=retain_waters,
             add_H_atoms=add_H_atoms,
             protonate_protein=protonate_protein,
-            use_cache=use_cache,
             client=self.client,
         )
 
         # set this complex path as the prepared system
         self._prepared_systems[ligand.to_hash()] = response
-        output_files = response["output_files"]
-        output_file = [file for file in output_files if file.endswith(".pdb")][0]
+
+        import json
+
+        print(json.dumps(response, indent=2))
+
+        output_file = response["system"]["system_pdb_file_path"]
 
         local_path = self.client.files.download_file(
             remote_path=output_file,

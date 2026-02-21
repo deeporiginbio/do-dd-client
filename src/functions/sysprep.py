@@ -15,7 +15,6 @@ def run_sysprep(
     retain_waters: bool = False,
     add_H_atoms: bool = True,  # NOSONAR
     protonate_protein: bool = True,
-    use_cache: bool = True,
     box_size: list[float] | None = None,
     client: DeepOriginClient,
     quote: bool = False,
@@ -55,7 +54,6 @@ def run_sysprep(
         "protonate_protein": protonate_protein,
         "retain_waters": retain_waters,
         "padding": padding,
-        "use_cache": use_cache,
     }
 
     if box_size is not None:
@@ -66,6 +64,7 @@ def run_sysprep(
 
     response = client.functions.run(
         key="deeporigin.system-prep",
+        version="0.6.2",
         params=payload,
         quote=quote,
     )
