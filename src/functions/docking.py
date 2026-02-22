@@ -91,8 +91,6 @@ def dock(
     if pocket is not None and pocket.name is not None:
         payload["pocket_id"] = pocket.name
 
-    protein.upload(client=client)
-
     response = client.functions.run(
         key="deeporigin.docking",
         version="0.4.0",

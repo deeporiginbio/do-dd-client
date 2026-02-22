@@ -39,13 +39,19 @@ def run_sysprep(
         paths to solvation XML, system PDB, and binding XML files.
     """
 
-    protein_input = {"file_path": protein._remote_path}
-    if protein.id is not None:
-        protein_input["id"] = protein.id
+    # ensure the protein and ligand are synced to the data platform
+    protein.sync(lazy=True, client=client)
+    ligand.sync(lazy=True, client=client)
 
-    ligand_input = {"file_path": ligand._remote_path}
-    if ligand.id is not None:
-        ligand_input["id"] = ligand.id
+    protein_input = {
+        "id": protein.id,
+        "file_path": protein._remote_path,
+    }
+
+    ligand_input = {
+        "id": ligand.id,
+        "file_path": ligand._remote_path,
+    }
 
     payload = {
         "protein": protein_input,

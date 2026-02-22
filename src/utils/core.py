@@ -203,14 +203,13 @@ def hash_file(file_path: str | Path) -> str:
 
 @beartype
 def hash_dict(data: dict) -> str:
-    """
-    Computes a SHA-256 hash for a dictionary.
+    """Compute a SHA-256 hash for a dictionary.
 
-    Parameters:
-        data (dict): A dictionary.
+    Args:
+        data: A dictionary.
 
     Returns:
-        str: The hexadecimal SHA-256 hash of the dictionary.
+        The hexadecimal SHA-256 hash of the dictionary.
     """
     sorted_keys = sorted(data.keys())
     data = {key: data[key] for key in sorted_keys}
@@ -218,6 +217,48 @@ def hash_dict(data: dict) -> str:
     hasher = hashlib.sha256()
     hasher.update(json.dumps(data).encode())
     return hasher.hexdigest()
+
+
+def _strip_ids(obj: object) -> object:
+    """Recursively strip ``id`` keys from nested dicts/lists.
+
+    Used to normalize function-run payloads before hashing so that
+    environment-specific IDs (protein ID, ligand ID, …) do not affect
+    the fixture lookup hash.
+
+    Args:
+        obj: Any JSON-serialisable object (dict, list, scalar).
+
+    Returns:
+        A copy of *obj* with every ``"id"`` key removed from dicts at
+        any nesting level.
+    """
+    if isinstance(obj, dict):
+        return {k: _strip_ids(v) for k, v in obj.items() if k != "id"}
+    if isinstance(obj, list):
+        return [_strip_ids(item) for item in obj]
+    return obj
+
+
+def normalize_function_body(body: dict) -> dict:
+    """Normalize a function-run request body for hashing.
+
+    Strips environment-specific fields (``clusterId``, ``tag``, nested
+    ``id`` values) so the hash is stable across dev / local / staging.
+
+    Args:
+        body: The raw request body sent to the functions API.
+
+    Returns:
+        A normalized dict suitable for passing to :func:`hash_dict`.
+    """
+    inputs = body.get("inputs", body.get("params", {}))
+    normalized: dict = {
+        "inputs": _strip_ids(inputs),
+    }
+    if "approveAmount" in body:
+        normalized["approveAmount"] = body["approveAmount"]
+    return normalized
 
 
 @beartype

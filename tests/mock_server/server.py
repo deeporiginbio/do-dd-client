@@ -576,15 +576,9 @@ class MockServer:
             """Handle function execution logic shared between versioned and non-versioned endpoints."""
             # Get request body and hash it to find the correct fixture
             body = await request.json()
-            from deeporigin.utils.core import hash_dict
+            from deeporigin.utils.core import hash_dict, normalize_function_body
 
-            # Normalize body by excluding environment-specific fields (clusterId, tag)
-            # params and inputs are the same, so just use inputs for hashing (same normalization as in functions.py)
-            normalized_body = {
-                "inputs": body.get("inputs", body.get("params", {})),
-            }
-            if "approveAmount" in body:
-                normalized_body["approveAmount"] = body["approveAmount"]
+            normalized_body = normalize_function_body(body)
             body_hash = hash_dict(normalized_body)
 
             # Try to load response from function-runs folder using the hash

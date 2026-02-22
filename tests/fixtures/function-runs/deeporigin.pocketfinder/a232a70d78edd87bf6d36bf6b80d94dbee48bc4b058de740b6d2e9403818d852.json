@@ -1,11 +1,12 @@
 {
-    "id": "302a7b5a-46d4-4039-b9a6-16c9e39d2e4b",
-    "createdAt": "2026-02-20T17:45:15.069Z",
-    "updatedAt": "2026-02-20T17:45:57.298Z",
+    "id": "86ea3aea-accd-474d-9e0b-89a3f47ab61b",
+    "createdAt": "2026-02-22T01:43:48.367Z",
+    "updatedAt": "2026-02-22T01:44:30.536Z",
     "userInputs": {
         "inputs": {
             "protein": {
-                "file_path": "entities/proteins/c32244fd9a1fb1675f69c1d28986ef55867ffd6733b28946d62409cc3f55523f.pdb"
+                "file_path": "entities/proteins/c32244fd9a1fb1675f69c1d28986ef55867ffd6733b28946d62409cc3f55523f.pdb",
+                "id": "08CEVZZPNYV31"
             },
             "pocket_count": 1,
             "pocket_min_size": 30
@@ -15,16 +16,16 @@
     "functionOutputs": {
         "pockets": [
             {
-                "protein_id": null,
-                "file_path": "tool-runs/302a7b5a-46d4-4039-b9a6-16c9e39d2e4b/pocket_1.pdb",
-                "volume": 370,
-                "total_SASA": 1378.6702,
-                "polar_SASA": 371.27637,
-                "apolar_SASA": 1007.3938,
-                "polar_apolar_SASA_ratio": 0.36855137,
-                "hydrophobicity": 27.884615,
-                "drugability_score": 0.9429082,
-                "polarity": 11
+                "protein_id": "08CEVZZPNYV31",
+                "file_path": "tool-runs/86ea3aea-accd-474d-9e0b-89a3f47ab61b/pocket_1.pdb",
+                "volume": 315,
+                "total_SASA": 1225.8883,
+                "polar_SASA": 309.8629,
+                "apolar_SASA": 916.02545,
+                "polar_apolar_SASA_ratio": 0.3382689,
+                "hydrophobicity": 29.92,
+                "drugability_score": 0.9422603,
+                "polarity": 10
             }
         ]
     },
