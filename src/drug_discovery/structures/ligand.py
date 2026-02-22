@@ -991,7 +991,12 @@ class Ligand(Entity):
         return hash_hex
 
     @beartype
-    def sync(self, client: Optional[DeepOriginClient] = None) -> None:
+    def sync(
+        self,
+        *,
+        lazy: bool = False,
+        client: Optional[DeepOriginClient] = None,
+    ) -> None:
         """Sync the ligand to the data platform.
 
         This method uploads the ligand file to remote storage (if available) and creates a ligand
@@ -999,12 +1004,18 @@ class Ligand(Entity):
         it returns the existing ligand data instead of creating a new one.
 
         Args:
+            lazy: If True, skip syncing when the ligand already has an ID.
+                Defaults to False.
             client: DeepOriginClient instance. If None, uses DeepOriginClient.get().
 
         Note:
             If the ligand was created from a SMILES string without an SDF file, only the SMILES
             will be used for syncing (no file upload will occur).
         """
+
+        if lazy and self.id is not None:
+            return
+
         if client is None:
             client = DeepOriginClient.get()
 

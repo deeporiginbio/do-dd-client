@@ -41,14 +41,12 @@ def dock(
     *,
     client: DeepOriginClient,
     protein: Protein,
-    smiles_string: Optional[str] = None,
-    ligand: Optional[Ligand] = None,
+    ligand: Ligand,
     box_size: tuple[float, float, float] = (20.0, 20.0, 20.0),
     pocket_center: Optional[tuple[int, int, int]] = None,
     pocket: Optional[Pocket] = None,
-    use_cache: bool = True,
     quote: bool = False,
-) -> str:
+) -> dict:
     """
     Run molecular docking using the DeepOrigin API.
 
@@ -59,61 +57,53 @@ def dock(
         box_size (tuple[float, float, float]): Size of the docking box (x, y, z)
         pocket_center (Optional[tuple[int, int, int]]): Center coordinates of the docking pocket (x, y, z)
         pocket (Optional[Pocket]): Pocket object defining the docking region
-        use_cache (bool): Whether to use cached results. Defaults to True
-        client (DeepOriginClient | None): DeepOrigin client instance. If None, creates a new client. Defaults to None
+        client (DeepOriginClient): DeepOrigin client instance.
 
     Returns:
-        str: path to the SDF file containing the docking results
+        dict: Raw server response containing docking poses
     """
 
-    CACHE_DIR = str(_ensure_do_folder() / "docking")
+    # ensure the protein and ligand are synced to the data platform
+    protein.sync(lazy=True, client=client)
+    ligand.sync(lazy=True, client=client)
 
     if pocket is not None or pocket_center is not None:
         pocket_center = _get_pocket_center(pocket, pocket_center)
     else:
         raise DeepOriginException("Pocket center is required") from None
 
-    if ligand is not None:
-        smiles_string = ligand.smiles
-
-    if smiles_string is None:
-        raise DeepOriginException(
-            "Either smiles_string or ligand must be provided"
-        ) from None
-
-    # Prepare the request payload
-    payload = {
-        "protein_path": protein._remote_path,
-        "ligand_smiles": smiles_string,
-        "box_size": list(box_size),
-        "pocket_center": list(pocket_center),
+    protein_data = {
+        "id": protein.id,
+        "file_path": protein._remote_path,
     }
-    cache_hash = hash_dict(payload)
-    sdf_file = str(Path(CACHE_DIR) / f"{cache_hash}.sdf")
 
-    # Check if cached result exists
-    if os.path.exists(sdf_file) and use_cache:
-        return sdf_file
+    ligand_data = {
+        "id": ligand.id,
+        "smiles": ligand.smiles,
+    }
+
+    payload = {
+        "protein": protein_data,
+        "ligand": ligand_data,
+        "pocket_center": list(pocket_center),
+        "box_size": list(box_size),
+    }
+    if pocket is not None and pocket.name is not None:
+        payload["pocket_id"] = pocket.name
 
     protein.upload(client=client)
 
     response = client.functions.run(
         key="deeporigin.docking",
-        version="0.2.6",
+        version="0.4.0",
         params=payload,
         quote=quote,
     )
 
-    # TODO -- remove this patch once API is updated
     if "functionOutputs" in response:
         response = response["functionOutputs"]
 
-    sdf_file = client.files.download_file(
-        remote_path=response["sdf_path"],
-        local_path=sdf_file,
-    )
-
-    return sdf_file
+    return response
 
 
 def constrained_dock(
