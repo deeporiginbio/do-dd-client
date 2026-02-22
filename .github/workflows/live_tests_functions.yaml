@@ -30,7 +30,7 @@ jobs:
     environment: ${{ inputs.env || 'prod' }}
     runs-on: ubuntu-latest
     env:
-      DEEPORIGIN_ENV: ${{ inputs.env || 'prod' }}
+      DO_ENV: ${{ inputs.env || 'prod' }}
 
     steps:
       - uses: actions/checkout@v4
@@ -48,18 +48,22 @@ jobs:
       - name: Select env
         run: |
           ENV="${{ inputs.env || 'prod' }}"
-          echo "DEEPORIGIN_ORG_KEY=deeporigin" >> "$GITHUB_ENV"
+          AUTH_TOKEN_VAR=$(python3 scripts/get_env_var_name.py access_token)
+          ORG_KEY_VAR=$(python3 scripts/get_env_var_name.py org_key)
+          ENV_VAR=$(python3 scripts/get_env_var_name.py env)
+          echo "${ORG_KEY_VAR}=deeporigin" >> "$GITHUB_ENV"
           if [ "$ENV" = "prod" ]; then
-            echo "DEEPORIGIN_TOKEN=${{ secrets.DEEPORIGIN_TOKEN_PROD }}" >> "$GITHUB_ENV"
+            echo "${AUTH_TOKEN_VAR}=${{ secrets.DEEPORIGIN_TOKEN_PROD }}" >> "$GITHUB_ENV"
           elif [ "$ENV" = "staging" ]; then
-            echo "DEEPORIGIN_TOKEN=${{ secrets.DEEPORIGIN_TOKEN_STAGING }}" >> "$GITHUB_ENV"
+            echo "${AUTH_TOKEN_VAR}=${{ secrets.DEEPORIGIN_TOKEN_STAGING }}" >> "$GITHUB_ENV"
           elif [ "$ENV" = "dev" ]; then
-            echo "DEEPORIGIN_TOKEN=${{ secrets.DEEPORIGIN_TOKEN_DEV }}" >> "$GITHUB_ENV"
+            echo "${AUTH_TOKEN_VAR}=${{ secrets.DEEPORIGIN_TOKEN_DEV }}" >> "$GITHUB_ENV"
           fi
 
       - name: Set environment variables for Client
         run: |
-          echo "DEEPORIGIN_ENV=${{ inputs.env || 'prod' }}" >> "$GITHUB_ENV"
+          ENV_VAR=$(python3 scripts/get_env_var_name.py env)
+          echo "${ENV_VAR}=${{ inputs.env || 'prod' }}" >> "$GITHUB_ENV"
       - name: Install dependencies
         run: uv sync --extra tools --extra test --extra plots --extra core
 

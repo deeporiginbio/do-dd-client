@@ -40,7 +40,7 @@ Write a throwaway script that runs the failing test operations against dev with 
 ```python
 """Throwaway script to capture fixtures from dev."""
 import os
-os.environ["DEEPORIGIN_ENV"] = "dev"
+os.environ["DO_ENV"] = "dev"
 
 from deeporigin.drug_discovery import BRD_DATA_DIR, Protein
 from deeporigin.platform.client import DeepOriginClient

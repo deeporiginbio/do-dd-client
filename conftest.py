@@ -21,9 +21,9 @@ from tests.mock_server import MockServer
 def set_test_env_vars(pytestconfig):
     """Set up environment variables for testing.
 
-    Sets DEEPORIGIN_ENV based on the --env flag. For local environment, the client
+    Sets DO_ENV based on the --env flag. For local environment, the client
     automatically generates a token and sets org_key. For other environments, sets
-    DEEPORIGIN_TOKEN and DEEPORIGIN_ORG_KEY if not already set.
+    DO_AUTH_TOKEN and DO_ORG_KEY if not already set.
 
     This ensures code that creates clients implicitly (e.g., Complex.from_dir()) will
     automatically use the test configuration.
@@ -54,7 +54,7 @@ def set_test_env_vars(pytestconfig):
         # Set environment variables based on the specified environment
         if env == "local":
             # Client automatically handles local environment (generates token, sets org_key)
-            # We only need to set DEEPORIGIN_ENV=local
+            # We only need to set DO_ENV=local
             os.environ[ENV_VARIABLES["env"]] = "local"
 
             # Clear any cached clients so they use the new env vars

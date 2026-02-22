@@ -27,7 +27,7 @@ API_ENDPOINT = {
 
 
 ENV_VARIABLES = {
-    "access_token": "DEEPORIGIN_TOKEN",
-    "org_key": "DEEPORIGIN_ORG_KEY",
-    "env": "DEEPORIGIN_ENV",
+    "access_token": "DO_AUTH_TOKEN",
+    "org_key": "DO_ORG_KEY",
+    "env": "DO_ENV",
 }

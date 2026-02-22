@@ -186,7 +186,7 @@ class DeepOriginClient:
             env = os.environ[ENV_VARIABLES["env"]]
             if env not in get_args(ENVS):
                 raise ValueError(
-                    f"Invalid environment in DEEPORIGIN_ENV: {env}. Must be one of: dev, prod, staging, local"
+                    f"Invalid environment in DO_ENV: {env}. Must be one of: dev, prod, staging, local"
                 )
             if base_url is None:
                 base_url = API_ENDPOINT[env]
@@ -233,7 +233,7 @@ class DeepOriginClient:
     ):
         """Initialize a DeepOrigin Platform client.
 
-        Environment variables (DEEPORIGIN_TOKEN, DEEPORIGIN_ORG_KEY, DEEPORIGIN_ENV)
+        Environment variables (DO_AUTH_TOKEN, DO_ORG_KEY, DO_ENV)
         ALWAYS override explicit parameters and configuration files. If environment
         variables are set, disk configuration is NOT read.
 
@@ -243,10 +243,10 @@ class DeepOriginClient:
         platform resources (tools, functions, clusters, files, executions).
 
         Args:
-            token: Authentication token. Overridden by DEEPORIGIN_TOKEN env var.
-            org_key: Organization key. Overridden by DEEPORIGIN_ORG_KEY env var.
+            token: Authentication token. Overridden by DO_AUTH_TOKEN env var.
+            org_key: Organization key. Overridden by DO_ORG_KEY env var.
             env: Environment name (e.g., 'prod', 'staging'). Overridden by
-                DEEPORIGIN_ENV env var. If None and base_url is None, reads from config.
+                DO_ENV env var. If None and base_url is None, reads from config.
             base_url: Base URL for the API. If None, derived from env or config.
             timeout: Request timeout in seconds.
             max_retries: Maximum number of retry attempts for failed requests.
@@ -278,7 +278,7 @@ class DeepOriginClient:
             env = os.environ[ENV_VARIABLES["env"]]
             if env not in get_args(ENVS):
                 raise ValueError(
-                    f"Invalid environment in DEEPORIGIN_ENV: {env}. Must be one of: dev, prod, staging, local"
+                    f"Invalid environment in DO_ENV: {env}. Must be one of: dev, prod, staging, local"
                 )
             if base_url is None:
                 base_url = API_ENDPOINT[env]
@@ -527,13 +527,13 @@ class DeepOriginClient:
     ) -> Self:
         """Create a client instance from environment configuration.
 
-        Reads configuration from environment variables (DEEPORIGIN_TOKEN,
-        DEEPORIGIN_ORG_KEY, DEEPORIGIN_ENV) or from
+        Reads configuration from environment variables (DO_AUTH_TOKEN,
+        DO_ORG_KEY, DO_ENV) or from
         disk files (~/.DeepOrigin/api_tokens.json and config.json).
 
         Args:
             env: Environment name (e.g., 'prod', 'staging', 'local'). If None,
-                reads from DEEPORIGIN_ENV environment variable or config file.
+                reads from DO_ENV environment variable or config file.
             base_url: Base URL for the API. If None, derived from env (defaults
                 to http://127.0.0.1:4931 for 'local').
             timeout: Request timeout in seconds.
