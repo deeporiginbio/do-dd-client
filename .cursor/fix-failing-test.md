@@ -58,7 +58,7 @@ Key points:
 - Pass `record=True, replace=True` to `DeepOriginClient.get()` so the singleton client records responses.
 - Use `use_cache=False` to force fresh API calls.
 - Pass `client=client` explicitly to ensure the recording client is used.
-- If tests depend on each other (e.g. docking uses pockets from pocket finder), **capture everything in one script run** so file paths and pocket centers are consistent.
+- **Each test must be independent.** If a test needs output from another function (e.g. docking needs a pocket), load it from a fixture file rather than calling the upstream function. For example, load a pocket PDB from `tests/fixtures/files/` using `Pocket.from_pdb_file()` instead of calling `protein.find_pockets()`.
 
 ### Step 3: Save referenced files to `tests/fixtures/files/`
 
@@ -111,6 +111,6 @@ This means the fixture hash depends only on **content-deterministic fields** lik
 
 ## Common pitfalls
 
-- **Running the capture multiple times overwrites fixtures.** If you capture pocket finder, then capture docking (which also calls pocket finder internally), the pocket finder fixture gets overwritten with a new execution ID. The old pocket PDB files won't match. Always capture in **one consistent run**.
 - **The `file_path` field in responses is execution-specific** (contains a UUID like `tool-runs/{uuid}/pocket_1.pdb`). Every capture produces different UUIDs, so you must save both the fixture JSON and its referenced files together.
-- **Pocket finder is non-deterministic.** Different runs may produce slightly different pocket centers. Since docking payloads include `pocket_center`, a docking fixture captured in a separate run from pocket finder may have a different hash. Capture them together.
+- **Tests must not depend on each other.** If a test needs a pocket (or other upstream output), load it from a fixture file (e.g. `Pocket.from_pdb_file("tests/fixtures/files/tool-runs/{uuid}/pocket_1.pdb")`), not by calling the upstream function. This avoids coupling tests and eliminates issues with non-deterministic upstream outputs.
+- **Capture each function independently.** Since tests are independent, you can capture fixtures for each function in separate script runs. Just make sure the fixture files referenced in responses are also saved.
