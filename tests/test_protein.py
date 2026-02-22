@@ -405,12 +405,18 @@ def test_load_structure_from_block_invalid_type():
 
 
 def test_from_id_lv1():
-    """Test creating a protein from a Deep Origin Data Platform ID."""
+    """Test round-trip: local file -> sync -> from_id."""
     client = DeepOriginClient()
-    protein = Protein.from_id("08AD337N5YV4Y", client=client)
 
-    assert protein.id == "08AD337N5YV4Y"
-    assert protein.file_path is not None
-    assert protein.file_path.exists()
-    assert len(protein.structure) > 0
-    assert protein.block_content is not None
+    protein = Protein.from_file(BRD_DATA_DIR / "brd.pdb")
+    protein.sync(client=client)
+
+    assert protein.id is not None
+
+    fetched = Protein.from_id(protein.id, client=client)
+
+    assert fetched.id == protein.id
+    assert fetched.file_path is not None
+    assert fetched.file_path.exists()
+    assert len(fetched.structure) > 0
+    assert fetched.block_content is not None
