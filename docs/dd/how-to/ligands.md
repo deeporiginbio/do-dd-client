@@ -93,7 +93,7 @@ There are two classes that help you work with ligands:
 
 You can create a ligand from common chemical identifiers (like PubChem names, common names, or drug names). This is particularly useful when working with well-known biochemical molecules:
 
-```python
+```{.python notest}
 from deeporigin.drug_discovery import Ligand
 
 # Create ligands from common biochemical names
