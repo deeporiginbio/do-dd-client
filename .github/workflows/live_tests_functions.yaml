@@ -48,9 +48,9 @@ jobs:
       - name: Select env
         env:
           TARGET_ENV: ${{ inputs.env || 'prod' }}
-          TOKEN_PROD: ${{ secrets.DEEPORIGIN_TOKEN_PROD }}
-          TOKEN_STAGING: ${{ secrets.DEEPORIGIN_TOKEN_STAGING }}
-          TOKEN_DEV: ${{ secrets.DEEPORIGIN_TOKEN_DEV }}
+          TOKEN_PROD: ${{ secrets.DO_AUTH_TOKEN_PROD }}
+          TOKEN_STAGING: ${{ secrets.DO_AUTH_TOKEN_STAGING }}
+          TOKEN_DEV: ${{ secrets.DO_AUTH_TOKEN_DEV }}
         run: |
           AUTH_TOKEN_VAR=$(python3 scripts/get_env_var_name.py access_token)
           ORG_KEY_VAR=$(python3 scripts/get_env_var_name.py org_key)
