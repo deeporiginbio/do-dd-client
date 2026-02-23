@@ -415,7 +415,6 @@ class Protein(Entity):
                     "protein": self,
                     "pocket": pocket,
                     "ligand": ligand,
-                    "use_cache": use_cache,
                     "client": client,
                 }
                 for ligand in ligands
@@ -423,7 +422,16 @@ class Protein(Entity):
 
             data = run_func_in_parallel(func=dock, args=args)
 
-            return LigandSet.from_sdf_files(data["results"])
+            sdf_files = set()
+            for response in data["results"]:
+                for pose in response.get("poses", []):
+                    local_path = client.files.download_file(
+                        remote_path=pose["file_path"],
+                        lazy=True,
+                    )
+                    sdf_files.add(local_path)
+
+            return LigandSet.from_sdf_files(list(sdf_files))
 
     @property
     def coordinates(self):
@@ -1359,7 +1367,12 @@ class Protein(Entity):
         return f"Protein:\n  {info_str}"
 
     @beartype
-    def sync(self, client: Optional[DeepOriginClient] = None) -> None:
+    def sync(
+        self,
+        *,
+        lazy: bool = False,
+        client: Optional[DeepOriginClient] = None,
+    ) -> None:
         """Sync the protein to the data platform.
 
         This method uploads the protein file to remote storage and creates a protein
@@ -1368,12 +1381,18 @@ class Protein(Entity):
         creating a new one.
 
         Args:
+            lazy: If True, skip syncing when the protein already has an ID.
+                Defaults to False.
             client: DeepOriginClient instance. If None, uses DeepOriginClient.get().
 
         Returns:
             None. As a side effect, uploads the protein (if necessary) and updates
             ``self.id`` with the ID of the existing or newly created protein record.
         """
+
+        if lazy and self.id is not None:
+            return
+
         if client is None:
             client = DeepOriginClient.get()
 

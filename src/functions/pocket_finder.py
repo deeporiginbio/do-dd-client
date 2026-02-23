@@ -50,18 +50,20 @@ def find_pockets(
     if pocket_min_size < 1:
         raise ValueError("pocket_min_size must be at least 1") from None
 
-    # Prepare the request payload
-    protein_data: dict = {"file_path": protein._remote_path}
-    if protein.id is not None:
-        protein_data["id"] = protein.id
+    # ensure the protein is synced to the data platform
+    protein.sync(lazy=True, client=client)
 
+    # Prepare the request payload
     payload = {
-        "protein": protein_data,
+        "protein": {"file_path": protein._remote_path},
         "pocket_count": pocket_count,
         "pocket_min_size": pocket_min_size,
     }
 
     cache_key = hash_dict(payload)
+
+    # add protein ID after hashing so it doesn't affect the cache key
+    payload["protein"]["id"] = protein.id
     cache_path = os.path.join(CACHE_DIR, cache_key)
     cache_file = os.path.join(cache_path, CACHE_FILE)
 

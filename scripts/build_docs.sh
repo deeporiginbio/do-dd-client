@@ -29,7 +29,7 @@ if [ -d "docs/notebooks/clean" ] && [ "$(ls -A docs/notebooks/clean/*.ipynb 2>/d
   # Create .env file for notebook execution (client will auto-handle local env)
   echo "🔧 Setting up environment for local testing..."
   cat > .env << EOF
-DEEPORIGIN_ENV=local
+DO_ENV=local
 JOB_WATCH_BLOCK=1
 EOF
   

@@ -15,47 +15,64 @@ def run_sysprep(
     retain_waters: bool = False,
     add_H_atoms: bool = True,  # NOSONAR
     protonate_protein: bool = True,
-    use_cache: bool = True,
+    box_size: list[float] | None = None,
     client: DeepOriginClient,
     quote: bool = False,
 ) -> dict:
-    """
-    Run system preparation on a protein-ligand complex.
+    """Run system preparation on a protein-ligand complex.
 
     Args:
-        protein_path (str | Path): Path to the protein file.
-        ligand_path (str | Path): Path to the ligand file.
-        padding (float, optional): Padding to add around the system.
-        keep_waters (bool, optional): Whether to keep water molecules.
-        is_lig_protonated (bool, optional): Whether the ligand is already protonated.
-        is_protein_protonated (bool, optional): Whether the protein is already protonated.
-        client (DeepOriginClient | None): DeepOrigin client instance. If None, creates a new client using the default credentials.
+        protein: Protein structure for system preparation.
+        ligand: Ligand structure for system preparation.
+        padding: Padding distance in nm to use around the system.
+        retain_waters: Whether to keep water molecules in the system.
+        add_H_atoms: Whether to add hydrogen atoms to the ligand.
+        protonate_protein: Whether to protonate the protein.
+        use_cache: Whether to use cached output files if available.
+        box_size: Simulation box dimensions (X, Y, Z) in nm. Must have
+            exactly 3 elements if provided.
+        client: DeepOrigin client instance.
+        quote: If True, return a cost estimate instead of running.
 
     Returns:
-        Path to the output PDB file if successful, or raises RuntimeError if the server fails.
+        Dictionary containing the prepared system outputs, including
+        paths to solvation XML, system PDB, and binding XML files.
     """
 
+    # ensure the protein and ligand are synced to the data platform
+    protein.sync(lazy=True, client=client)
+    ligand.sync(lazy=True, client=client)
+
+    protein_input = {
+        "id": protein.id,
+        "file_path": protein._remote_path,
+    }
+
+    ligand_input = {
+        "id": ligand.id,
+        "file_path": ligand._remote_path,
+    }
+
     payload = {
-        "protein_path": protein._remote_path,
-        "ligand_path": ligand._remote_path,
+        "protein": protein_input,
+        "ligand": ligand_input,
         "add_H_atoms": add_H_atoms,
         "protonate_protein": protonate_protein,
         "retain_waters": retain_waters,
         "padding": padding,
-        "use_cache": use_cache,
     }
+
+    if box_size is not None:
+        payload["box_size"] = box_size
 
     protein.upload(client=client)
     ligand.upload(client=client)
 
     response = client.functions.run(
         key="deeporigin.system-prep",
+        version="0.6.2",
         params=payload,
         quote=quote,
     )
 
-    # TODO -- remove this patch once API is updated
-    if "functionOutputs" in response:
-        response = response["functionOutputs"]
-
-    return response
+    return response["functionOutputs"]

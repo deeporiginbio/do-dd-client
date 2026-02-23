@@ -38,19 +38,29 @@ jobs:
         run: uv python install ${{ matrix.python-version }}
 
       - name: Set environment variables
+        env:
+          TARGET_ENV: ${{ matrix.env }}
+          TOKEN_PROD: ${{ secrets.DO_AUTH_TOKEN_PROD }}
+          TOKEN_STAGING: ${{ secrets.DO_AUTH_TOKEN_STAGING }}
+          TOKEN_DEV: ${{ secrets.DO_AUTH_TOKEN_DEV }}
         run: |
-          echo "DEEPORIGIN_ORG_KEY=deeporigin" >> "$GITHUB_ENV"
-          echo "DEEPORIGIN_ENV=${{ matrix.env }}" >> "$GITHUB_ENV"
-          if [ "${{ matrix.env }}" = "prod" ]; then
-            echo "DEEPORIGIN_TOKEN=${{ secrets.DEEPORIGIN_TOKEN_PROD }}" >> "$GITHUB_ENV"
-          elif [ "${{ matrix.env }}" = "staging" ]; then
-            echo "DEEPORIGIN_TOKEN=${{ secrets.DEEPORIGIN_TOKEN_STAGING }}" >> "$GITHUB_ENV"
-          elif [ "${{ matrix.env }}" = "dev" ]; then
-            echo "DEEPORIGIN_TOKEN=${{ secrets.DEEPORIGIN_TOKEN_DEV }}" >> "$GITHUB_ENV"
+          AUTH_TOKEN_VAR=$(python3 scripts/get_env_var_name.py access_token)
+          ORG_KEY_VAR=$(python3 scripts/get_env_var_name.py org_key)
+          ENV_VAR=$(python3 scripts/get_env_var_name.py env)
+          echo "${ORG_KEY_VAR}=deeporigin" >> "$GITHUB_ENV"
+          echo "${ENV_VAR}=${TARGET_ENV}" >> "$GITHUB_ENV"
+          if [ "$TARGET_ENV" = "prod" ]; then
+            echo "${AUTH_TOKEN_VAR}=${TOKEN_PROD}" >> "$GITHUB_ENV"
+          elif [ "$TARGET_ENV" = "staging" ]; then
+            echo "${AUTH_TOKEN_VAR}=${TOKEN_STAGING}" >> "$GITHUB_ENV"
+          elif [ "$TARGET_ENV" = "dev" ]; then
+            echo "${AUTH_TOKEN_VAR}=${TOKEN_DEV}" >> "$GITHUB_ENV"
           fi
 
       - name: Install dependencies
         run: uv sync --extra test --extra tools --extra plots --extra core
 
       - name: "runing level 1 tests"
-        run: uv run pytest --env ${{ matrix.env }} -k lv1
+        env:
+          TARGET_ENV: ${{ matrix.env }}
+        run: uv run pytest --env "$TARGET_ENV" -k lv1

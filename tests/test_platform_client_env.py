@@ -7,12 +7,13 @@ from unittest.mock import patch
 import pytest
 
 from deeporigin.platform.client import DeepOriginClient
+from deeporigin.utils.constants import ENV_VARIABLES
 
 
 @pytest.fixture(autouse=True)
 def clear_env() -> Generator[None, None, None]:
     """Clear relevant env vars for each test to avoid cross-test contamination."""
-    keys = ["DEEPORIGIN_TOKEN", "DEEPORIGIN_ENV", "DEEPORIGIN_ORG_KEY"]
+    keys = list(ENV_VARIABLES.values())
     old = {k: os.environ.get(k) for k in keys}
     for k in keys:
         os.environ.pop(k, None)

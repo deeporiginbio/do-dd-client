@@ -7,6 +7,7 @@ from deeporigin.drug_discovery import (
     Complex,
     Ligand,
     LigandSet,
+    Pocket,
     Protein,
 )
 
@@ -43,8 +44,14 @@ def test_docking_lv2():
     """Test docking function."""
     protein = Protein.from_file(BRD_DATA_DIR / "brd.pdb")
     protein.remove_water()
-    pockets = protein.find_pockets(pocket_count=1)
-    pocket = pockets[0]
+
+    pocket = Pocket.from_pdb_file(
+        FIXTURES_DIR
+        / "files"
+        / "tool-runs"
+        / "86ea3aea-accd-474d-9e0b-89a3f47ab61b"
+        / "pocket_1.pdb",
+    )
 
     ligand = Ligand.from_smiles(
         "Fc1c(-c2cccc3ccccc23)ncc2c(N3C[C@H]4CC[C@@H](C3)N4)nc(OCC34CCCN3CCC4)nc12"
