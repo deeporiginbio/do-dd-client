@@ -30,15 +30,22 @@ def test_molprops_lv2():
 
 
 def test_pocket_finder_lv2():
-    """Test pocket finder function."""
+    """Test pocket finder function returns FunctionResult with pockets."""
     protein = Protein.from_file(BRD_DATA_DIR / "brd.pdb")
     protein.remove_water()
-    pockets = protein.find_pockets(
+    result = protein.find_pockets(
         pocket_count=1,
         use_cache=False,
     )
 
-    assert len(pockets) == 1, "Incorrect number of pockets"
+    assert isinstance(result, FunctionResult), (
+        "Expected protein.find_pockets() to return a FunctionResult"
+    )
+    assert isinstance(result.pockets, list), "Expected result.pockets to be a list"
+    assert len(result.pockets) == 1, "Incorrect number of pockets"
+    assert isinstance(result.pockets[0], Pocket), (
+        "Expected pockets to contain Pocket objects"
+    )
 
 
 def test_docking_lv2():

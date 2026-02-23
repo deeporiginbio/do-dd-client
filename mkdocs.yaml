@@ -71,6 +71,7 @@ nav:
       - Complex: dd/ref/complex.md
       - Pocket: dd/ref/pocket.md
     - docking: dd/ref/docking.md
+    - FunctionResult: dd/ref/function-result.md
     - abfe: dd/ref/abfe.md
     - rbfe: dd/ref/rbfe.md
   - Notebooks:
