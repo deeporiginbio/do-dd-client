@@ -971,22 +971,24 @@ class Ligand(Entity):
             str: SHA256 hash string of the SDF file content
         """
 
-        # Create a temporary SDF file
-        temp_sdf_path = self.to_sdf("__ligand_hash__.sdf")
+        # Use a unique temp file per call to avoid race conditions when
+        # multiple ligands are hashed in parallel (e.g. via run_func_in_parallel).
+        fd, temp_sdf_path = tempfile.mkstemp(suffix=".sdf")
+        os.close(fd)
 
-        # Read the file in text mode, normalize newlines, and compute SHA256
-        with open(temp_sdf_path, "r", newline="") as f:
-            sdf_text = f.read()
-            # Normalize all line endings to \n for OS-agnostic hashing
+        try:
+            self.to_sdf(temp_sdf_path)
+
+            with open(temp_sdf_path, "r", newline="") as f:
+                sdf_text = f.read()
+
+            # Normalize line endings for OS-agnostic hashing
             normalized_text = sdf_text.replace("\r\n", "\n").replace("\r", "\n")
-            # Ensure file ends with a single newline to avoid platform differences
             if not normalized_text.endswith("\n"):
                 normalized_text = f"{normalized_text}\n"
-            hash_object = hashlib.sha256(normalized_text.encode("utf-8"))
-            hash_hex = hash_object.hexdigest()
-
-        # Clean up the temporary file
-        os.remove(temp_sdf_path)
+            hash_hex = hashlib.sha256(normalized_text.encode("utf-8")).hexdigest()
+        finally:
+            os.remove(temp_sdf_path)
 
         return hash_hex
 

@@ -27,12 +27,38 @@ from deeporigin.drug_discovery.constants import (
     STATE_DUMP_PATH,
 )
 from deeporigin.exceptions import DeepOriginException
+from deeporigin.functions.result import FunctionResult
 from deeporigin.platform.client import DeepOriginClient
 from deeporigin.utils.core import _ensure_do_folder
 
 from .entity import Entity
 from .ligand import Ligand, LigandSet
 from .pocket import Pocket
+
+
+def _make_poses_from_dock_results(
+    *,
+    result: FunctionResult,
+    client: DeepOriginClient,
+) -> LigandSet:
+    """Download docking pose SDF files and build a LigandSet.
+
+    Args:
+        result: FunctionResult wrapping one or more docking responses.
+        client: DeepOrigin client for downloading files.
+
+    Returns:
+        A LigandSet constructed from the downloaded SDF files.
+    """
+    sdf_files: set[str] = set()
+    for outputs in result.function_outputs:
+        for pose in outputs.get("poses", []):
+            local_path = client.files.download_file(
+                remote_path=pose["file_path"],
+                lazy=True,
+            )
+            sdf_files.add(local_path)
+    return LigandSet.from_sdf_files(list(sdf_files))
 
 
 @dataclass
@@ -327,20 +353,29 @@ class Protein(Entity):
         use_cache: bool = True,
         reference_pose: Optional[Ligand] = None,
         client: Optional[DeepOriginClient] = None,
+        quote: bool = False,
     ):
         """Dock a ligand into a specific pocket of the protein.
 
-        This method performs docking of a ligand or a set of ligands into a specified pocket
-        of the protein structure.
+        Returns a ``FunctionResult`` whose ``.poses`` attribute lazily
+        resolves to a ``LigandSet`` of docking poses. When ``quote=True``,
+        ``.poses`` is an empty ``LigandSet`` and ``.estimate`` gives the
+        cost in dollars.
 
         Args:
-            ligand (Ligand): The ligand to dock into the protein pocket.
-            ligands (LigandSet | list[Ligand]): A set of ligands to dock into the protein pocket.
-            pocket (Pocket): The specific pocket in the protein where the ligand
+            ligand: The ligand to dock into the protein pocket.
+            ligands: A set of ligands to dock into the protein pocket.
+            pocket: The specific pocket in the protein where the ligand
                 should be docked.
-            use_cache (bool): Whether to use cached results if available. Defaults to True.
-            reference_pose (Ligand): A reference pose to use for constrained docking. If provided, the constraints will be computed using the MCS of the reference pose and the all the ligands to dock.
+            use_cache: Whether to use cached results if available.
+            reference_pose: A reference pose for constrained docking. If
+                provided, constraints are computed from the MCS of the
+                reference pose and all ligands.
+            client: DeepOrigin client instance.
+            quote: If True, request a cost estimate without executing.
 
+        Returns:
+            FunctionResult with a lazy ``.poses`` attribute (LigandSet).
         """
 
         if client is None:
@@ -362,16 +397,13 @@ class Protein(Entity):
 
             all_ligands = LigandSet([reference_pose] + ligands)
 
-            # find the mcs across all ligands
             mcs_mol = all_ligands.mcs()
 
-            # compute constraints for each ligand
             constraints = ligands.compute_constraints(
                 reference=reference_pose,
                 mcs_mol=mcs_mol,
             )
 
-            # construct args
             args = [
                 {
                     "client": client,
@@ -386,11 +418,9 @@ class Protein(Entity):
 
             from deeporigin.functions.docking import constrained_dock
 
-            # running in series for now, while we sort out the parallelization
             all_top_poses = []
             for arg in args:
                 result_files = constrained_dock(**arg)
-                # Find the top pose file (typically named "top_constrained_result.sdf")
                 top_pose = next(
                     (
                         f
@@ -402,11 +432,12 @@ class Protein(Entity):
                 if top_pose:
                     all_top_poses.append(top_pose)
 
-            return LigandSet.from_sdf_files(all_top_poses)
+            result = FunctionResult([{"status": "Completed"}])
+            result.poses = LigandSet.from_sdf_files(all_top_poses)
+            return result
         else:
             # perform normal docking
 
-            # Import here to avoid circular import
             from deeporigin.functions.docking import dock
             from deeporigin.functions.parallel import run_func_in_parallel
 
@@ -416,22 +447,29 @@ class Protein(Entity):
                     "pocket": pocket,
                     "ligand": ligand,
                     "client": client,
+                    "quote": quote,
                 }
                 for ligand in ligands
             ]
 
             data = run_func_in_parallel(func=dock, args=args)
 
-            sdf_files = set()
-            for response in data["results"]:
-                for pose in response.get("poses", []):
-                    local_path = client.files.download_file(
-                        remote_path=pose["file_path"],
-                        lazy=True,
-                    )
-                    sdf_files.add(local_path)
+            individual_results = [r for r in data["results"] if r is not None]
+            all_responses = [fr.response for fr in individual_results]
 
-            return LigandSet.from_sdf_files(list(sdf_files))
+            if not all_responses:
+                all_responses = [{"status": "Failed"}]
+
+            result = FunctionResult(all_responses)
+
+            if quote:
+                result.poses = None  # type: ignore
+            else:
+                result.poses = _make_poses_from_dock_results(
+                    result=result,
+                    client=client,
+                )
+            return result
 
     @property
     def coordinates(self):

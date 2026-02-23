@@ -13,6 +13,7 @@ from typing import Literal, Optional
 
 from deeporigin.drug_discovery.structures import Ligand, Pocket, Protein
 from deeporigin.exceptions import DeepOriginException
+from deeporigin.functions.result import FunctionResult
 from deeporigin.platform.client import DeepOriginClient
 from deeporigin.utils.core import _ensure_do_folder, hash_dict
 
@@ -46,24 +47,22 @@ def dock(
     pocket_center: Optional[tuple[int, int, int]] = None,
     pocket: Optional[Pocket] = None,
     quote: bool = False,
-) -> dict:
-    """
-    Run molecular docking using the DeepOrigin API.
+) -> FunctionResult:
+    """Run molecular docking using the DeepOrigin API.
 
     Args:
-        protein (Protein): Protein object representing the target protein
-        smiles_string (Optional[str]): SMILES string for the ligand to dock
-        ligand (Optional[Ligand]): Ligand object to dock
-        box_size (tuple[float, float, float]): Size of the docking box (x, y, z)
-        pocket_center (Optional[tuple[int, int, int]]): Center coordinates of the docking pocket (x, y, z)
-        pocket (Optional[Pocket]): Pocket object defining the docking region
-        client (DeepOriginClient): DeepOrigin client instance.
+        client: DeepOrigin client instance.
+        protein: Protein object representing the target protein.
+        ligand: Ligand object to dock.
+        box_size: Size of the docking box (x, y, z).
+        pocket_center: Center coordinates of the docking pocket (x, y, z).
+        pocket: Pocket object defining the docking region.
+        quote: If True, request a cost estimate without executing.
 
     Returns:
-        dict: Raw server response containing docking poses
+        FunctionResult wrapping the full API response.
     """
 
-    # ensure the protein and ligand are synced to the data platform
     protein.sync(lazy=True, client=client)
     ligand.sync(lazy=True, client=client)
 
@@ -98,10 +97,7 @@ def dock(
         quote=quote,
     )
 
-    if "functionOutputs" in response:
-        response = response["functionOutputs"]
-
-    return response
+    return FunctionResult([response])
 
 
 def constrained_dock(
@@ -181,9 +177,7 @@ def constrained_dock(
         quote=quote,
     )
 
-    # TODO -- remove this patch once API is updated
-    if "functionOutputs" in response:
-        response = response["functionOutputs"]
+    response = response["functionOutputs"]
 
     # Download individual files from output_files
     Path(extract_dir).mkdir(parents=True, exist_ok=True)
