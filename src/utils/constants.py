@@ -22,7 +22,7 @@ API_ENDPOINT = {
     "prod": "https://api.deeporigin.io",
     "staging": "https://api.staging.deeporigin.io",
     "dev": "https://api.dev.deeporigin.io",
-    "local": "http://127.0.0.1:4931",
+    "local": "http://127.0.0.1:6010",
 }
 
 
