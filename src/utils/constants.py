@@ -30,4 +30,5 @@ ENV_VARIABLES = {
     "access_token": "DO_AUTH_TOKEN",
     "org_key": "DO_ORG_KEY",
     "env": "DO_ENV",
+    "base_url": "DO_BASE_URL",
 }
