@@ -75,9 +75,7 @@ class FunctionResult:
         """Total cost estimate in dollars (set when ``quote=True`` was used)."""
         if not self._responses:
             return None
-        if not all(
-            r.get("status") in self._ESTIMATE_STATUSES for r in self._responses
-        ):
+        if not all(r.get("status") in self._ESTIMATE_STATUSES for r in self._responses):
             return None
         total = sum(self._get_price(r) or 0 for r in self._responses)
         return total if total > 0 else None
