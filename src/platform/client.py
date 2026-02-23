@@ -121,6 +121,25 @@ def _resolve_token_and_org_key(
     return resolved_token, resolved_org_key, resolved_base_url
 
 
+def _infer_env_from_base_url(base_url: str) -> ENVS:
+    """Infer the environment name from a base URL.
+
+    Args:
+        base_url: The API base URL string.
+
+    Returns:
+        The inferred environment name.
+    """
+    if "dev" in base_url:
+        return "dev"
+    elif "staging" in base_url:
+        return "staging"
+    elif "127.0.0.1" in base_url or "localhost" in base_url:
+        return "local"
+    else:
+        return "prod"
+
+
 class DeepOriginClient:
     """
     Minimal synchronous API client with built-in singleton cache.
@@ -182,7 +201,10 @@ class DeepOriginClient:
             A DeepOriginClient instance (cached if available, new otherwise).
         """
         # Resolve env and base_url first (same logic as __init__)
-        if ENV_VARIABLES["env"] in os.environ:
+        if ENV_VARIABLES["base_url"] in os.environ:
+            base_url = os.environ[ENV_VARIABLES["base_url"]]
+            env = _infer_env_from_base_url(base_url)
+        elif ENV_VARIABLES["env"] in os.environ:
             env = os.environ[ENV_VARIABLES["env"]]
             if env not in get_args(ENVS):
                 raise ValueError(
@@ -274,7 +296,10 @@ class DeepOriginClient:
             return
 
         # Handle env and base_url resolution first (needed for local check)
-        if ENV_VARIABLES["env"] in os.environ:
+        if ENV_VARIABLES["base_url"] in os.environ:
+            base_url = os.environ[ENV_VARIABLES["base_url"]]
+            env = _infer_env_from_base_url(base_url)
+        elif ENV_VARIABLES["env"] in os.environ:
             env = os.environ[ENV_VARIABLES["env"]]
             if env not in get_args(ENVS):
                 raise ValueError(
@@ -288,7 +313,6 @@ class DeepOriginClient:
         elif env is None and base_url is not None:
             raise ValueError("env is required when base_url is provided")
         elif env is not None and base_url is None:
-            # get the base url from the environment
             base_url = API_ENDPOINT[env]
         self.env = env
 
@@ -454,11 +478,14 @@ class DeepOriginClient:
         # If replace is True, we need to close and remove the cached instance first
         if replace:
             # Resolve env and base_url to compute the cache key
-            if ENV_VARIABLES["env"] in os.environ:
+            if ENV_VARIABLES["base_url"] in os.environ:
+                base_url_for_key = os.environ[ENV_VARIABLES["base_url"]]
+                env_for_key = _infer_env_from_base_url(base_url_for_key)
+            elif ENV_VARIABLES["env"] in os.environ:
                 env_for_key = os.environ[ENV_VARIABLES["env"]]
                 if env_for_key not in get_args(ENVS):
                     raise ValueError(
-                        f"Invalid environment in DEEPORIGIN_ENV: {env_for_key}. Must be one of: dev, prod, staging, local"
+                        f"Invalid environment in DO_ENV: {env_for_key}. Must be one of: dev, prod, staging, local"
                     )
                 if base_url is None:
                     base_url_for_key = API_ENDPOINT[env_for_key]
@@ -554,6 +581,11 @@ class DeepOriginClient:
             A new DeepOriginClient instance configured from environment variables
             or files.
         """
+        # DO_BASE_URL takes priority: infer env from the URL
+        if base_url is None and ENV_VARIABLES["base_url"] in os.environ:
+            base_url = os.environ[ENV_VARIABLES["base_url"]]
+            env = _infer_env_from_base_url(base_url)
+
         # Determine environment
         if env is None:
             env = os.environ.get(ENV_VARIABLES["env"]) or get_value()["env"]
@@ -568,8 +600,6 @@ class DeepOriginClient:
 
         if env == "local":
             LOCAL_TOKEN = _generate_local_token()
-            # short circuit for local - use dummy tokens, no disk/env reading
-            # base_url can be overridden by the caller (e.g., test_server_url)
             if base_url is None:
                 base_url = API_ENDPOINT["local"]
             return cls(
@@ -587,7 +617,6 @@ class DeepOriginClient:
         # Get org_key (reads from env vars or config file)
         org_key = get_value()["org_key"]
 
-        # Get base_url
         if base_url is None:
             base_url = API_ENDPOINT[env]
 
@@ -627,18 +656,79 @@ class DeepOriginClient:
             raise ValueError(f"Missing required headers: {', '.join(missing)}")
 
         base_url = headers["X-Do-Base-Url"]
-        if "dev" in base_url:
-            env = "dev"
-        elif "staging" in base_url:
-            env = "staging"
-        else:
-            env = "prod"
+        env = _infer_env_from_base_url(base_url)
 
         return cls(
             token=headers["X-Do-Auth-Token"],
             org_key=headers["X-Do-Org-Key"],
             base_url=base_url,
             env=env,
+        )
+
+    @classmethod
+    def from_env_variables(
+        cls,
+        *,
+        timeout: float = 10.0,
+        max_retries: int = 3,
+        retryable_status_codes: Set[int] | None = None,
+        retry_backoff_factor: float = 1.0,
+        max_retry_delay: float = 60.0,
+        record: bool = False,
+    ) -> Self:
+        """Create a client instance exclusively from environment variables.
+
+        Reads DO_AUTH_TOKEN, DO_ORG_KEY, and DO_BASE_URL from environment
+        variables. Unlike the default constructor or ``from_env``, this
+        method never falls back to configuration files on disk -- missing
+        environment variables cause an immediate error.
+
+        The environment name is inferred from the base URL
+        (e.g. ``https://api.dev.deeporigin.io`` → ``"dev"``).
+
+        Args:
+            timeout: Request timeout in seconds.
+            max_retries: Maximum number of retry attempts for failed requests.
+            retryable_status_codes: Set of HTTP status codes that trigger a retry.
+            retry_backoff_factor: Multiplier for exponential backoff between retries.
+            max_retry_delay: Maximum delay in seconds between retry attempts.
+            record: Whether to record function run responses to fixture files.
+
+        Returns:
+            A new DeepOriginClient instance.
+
+        Raises:
+            ValueError: If required environment variables are missing.
+        """
+        token = os.environ.get(ENV_VARIABLES["access_token"])
+        org_key = os.environ.get(ENV_VARIABLES["org_key"])
+        base_url = os.environ.get(ENV_VARIABLES["base_url"])
+
+        missing: list[str] = []
+        if not token:
+            missing.append(ENV_VARIABLES["access_token"])
+        if not org_key:
+            missing.append(ENV_VARIABLES["org_key"])
+        if not base_url:
+            missing.append(ENV_VARIABLES["base_url"])
+        if missing:
+            raise ValueError(
+                f"Missing required environment variables: {', '.join(missing)}"
+            )
+
+        env: ENVS = _infer_env_from_base_url(base_url)
+
+        return cls(
+            token=token,
+            org_key=org_key,
+            env=env,
+            base_url=base_url,
+            timeout=timeout,
+            max_retries=max_retries,
+            retryable_status_codes=retryable_status_codes,
+            retry_backoff_factor=retry_backoff_factor,
+            max_retry_delay=max_retry_delay,
+            record=record,
         )
 
     @classmethod
