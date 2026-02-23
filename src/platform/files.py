@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import concurrent.futures
 from pathlib import Path
+import time
 from typing import TYPE_CHECKING
 
 import httpx
@@ -13,6 +14,8 @@ if TYPE_CHECKING:
     from deeporigin.platform.client import DeepOriginClient
 
 from deeporigin.utils.core import _ensure_do_folder
+
+_MISSING_URL_FIELD = "Signed URL response missing 'url' field"
 
 
 class Files:
@@ -94,6 +97,196 @@ class Files:
         """
         return response.get("continuation_token") or response.get("continuationToken")
 
+    def get_signed_url(self, remote_path: str, *, upload: bool = False) -> str:
+        """Get a signed URL for uploading or downloading a file.
+
+        Args:
+            remote_path: The remote file path.
+            upload: If True, returns a signed URL for uploading (HTTP PUT).
+                If False, returns a signed URL for downloading (HTTP GET).
+                Defaults to False.
+
+        Returns:
+            A signed URL string.
+
+        Raises:
+            ValueError: If the API response is missing the 'url' field.
+        """
+        params = {"upload": "true"} if upload else {}
+
+        response = self._c.get_json(
+            f"/files/{self._c.org_key}/signedUrl/{remote_path}",
+            params=params,
+        )
+
+        if "url" not in response:
+            raise ValueError(_MISSING_URL_FIELD)
+
+        return response["url"]
+
+    def _put_to_signed_url(
+        self,
+        local_path: Path,
+        remote_path: str,
+        *,
+        max_retries: int = 3,
+        retry_backoff_factor: float = 1.0,
+    ) -> str:
+        """Upload a single file to a signed URL with retries.
+
+        Gets an upload signed URL for ``remote_path``, reads the file at
+        ``local_path``, and PUTs its contents directly to the signed URL.
+
+        Args:
+            local_path: Local file to upload.
+            remote_path: Remote path to request the signed URL for.
+            max_retries: Maximum retry attempts on transient failures.
+            retry_backoff_factor: Multiplier for exponential back-off between
+                retries.  Delay = retry_backoff_factor * 2^attempt.
+
+        Returns:
+            The remote path that was uploaded.
+
+        Raises:
+            httpx.HTTPStatusError: If the PUT fails after all retries.
+        """
+        signed_url = self.get_signed_url(remote_path, upload=True)
+
+        file_content = local_path.read_bytes()
+
+        last_exc: Exception | None = None
+        for attempt in range(max_retries + 1):
+            try:
+                with httpx.Client() as upload_client:
+                    resp = upload_client.put(
+                        signed_url,
+                        content=file_content,
+                        headers={"Content-Type": "application/octet-stream"},
+                    )
+                    resp.raise_for_status()
+                return remote_path
+            except (
+                httpx.HTTPStatusError,
+                httpx.NetworkError,
+                httpx.TimeoutException,
+            ) as exc:
+                last_exc = exc
+                if attempt < max_retries:
+                    time.sleep(retry_backoff_factor * (2**attempt))
+
+        raise last_exc  # type: ignore[misc]
+
+    @staticmethod
+    def _resolve_upload_pairs(
+        local_path: str | Path | list[str | Path],
+    ) -> list[tuple[Path, str]]:
+        """Resolve local_path into (absolute_path, remote_suffix) pairs.
+
+        Args:
+            local_path: A local directory, a single file path, or a list of
+                file paths.
+
+        Returns:
+            List of (Path, relative_suffix) tuples.
+
+        Raises:
+            ValueError: If ``local_path`` is not a file, directory, or list.
+        """
+        if isinstance(local_path, list):
+            return [(Path(p), Path(p).name) for p in local_path]
+
+        root = Path(local_path)
+        if root.is_dir():
+            return [
+                (fp, fp.relative_to(root).as_posix())
+                for fp in root.rglob("*")
+                if fp.is_file()
+            ]
+        if root.is_file():
+            return [(root, root.name)]
+
+        raise ValueError(
+            f"local_path must be an existing file or directory: {local_path}"
+        )
+
+    def upload_files_via_signed_url(
+        self,
+        local_path: str | Path | list[str | Path],
+        remote_dir: str,
+        *,
+        max_workers: int = 20,
+        max_retries: int = 3,
+        retry_backoff_factor: float = 1.0,
+        skip_errors: bool = False,
+    ) -> list[str]:
+        """Upload local files or a directory to a remote directory using signed URLs.
+
+        Accepts either a list of file paths or a single directory path. When a
+        directory is provided, all files inside it are collected recursively and
+        their relative subdirectory structure is preserved under ``remote_dir``.
+
+        Args:
+            local_path: A local directory, a single file path, or a list of
+                file paths to upload.
+            remote_dir: Remote directory path (e.g. ``"/my-data/"``).
+                A trailing ``/`` is added automatically if missing.
+            max_workers: Maximum number of concurrent uploads. Defaults to 20.
+            max_retries: Maximum retry attempts per file on transient failures.
+                Defaults to 3.
+            retry_backoff_factor: Multiplier for exponential back-off between
+                retries. Defaults to 1.0.
+            skip_errors: If True, don't raise on individual failures.
+                Defaults to False.
+
+        Returns:
+            List of remote paths that were successfully uploaded.
+
+        Raises:
+            RuntimeError: If any upload fails and ``skip_errors`` is False.
+            ValueError: If ``local_path`` is not a file, directory, or list.
+        """
+        if not remote_dir.endswith("/"):
+            remote_dir += "/"
+
+        upload_pairs = self._resolve_upload_pairs(local_path)
+
+        results: list[str] = []
+        errors: list[tuple[str, Exception]] = []
+
+        with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
+            future_to_local = {
+                executor.submit(
+                    self._put_to_signed_url,
+                    fp,
+                    f"{remote_dir}{suffix}",
+                    max_retries=max_retries,
+                    retry_backoff_factor=retry_backoff_factor,
+                ): fp
+                for fp, suffix in upload_pairs
+            }
+
+            for future in tqdm(
+                concurrent.futures.as_completed(future_to_local),
+                total=len(upload_pairs),
+                desc="Uploading files",
+                unit="file",
+            ):
+                local = future_to_local[future]
+                try:
+                    results.append(future.result())
+                except Exception as exc:
+                    errors.append((str(local), exc))
+
+        if errors and not skip_errors:
+            error_msgs = "\n".join(
+                f"Upload failed for {lp}: {err}" for lp, err in errors
+            )
+            raise RuntimeError(
+                f"Some uploads failed in upload_files_via_signed_url:\n{error_msgs}"
+            )
+
+        return results
+
     def list_files_in_dir(
         self,
         remote_path: str,
@@ -143,6 +336,68 @@ class Files:
             )
 
             all_files.extend(self._extract_file_keys(response))
+
+            continuation_token = self._get_continuation_token(response)
+            if not continuation_token:
+                break
+
+        return all_files
+
+    def list_files(
+        self,
+        remote_path: str,
+        *,
+        recursive: bool = True,
+        last_count: int | None = None,
+        delimiter: str | None = None,
+        max_keys: int | None = None,
+        prefix: str | None = None,
+    ) -> list[dict]:
+        """List files in a directory with full metadata.
+
+        Like :meth:`list_files_in_dir` but returns the complete file objects
+        from the API (Key, LastModified, ETag, Size, StorageClass, etc.)
+        instead of just the keys.
+
+        Automatically handles pagination using continuation tokens.
+
+        Args:
+            remote_path: The path to the directory to list files from.
+            recursive: If True, recursively list files in subdirectories.
+                Defaults to True.
+            last_count: Used for pagination - the last count of objects in the
+                bucket. Defaults to None.
+            delimiter: Used to group results by a common prefix (e.g., "/").
+                Defaults to None.
+            max_keys: Page size (cannot exceed 1000).
+                Defaults to None.
+            prefix: Path prefix to filter results. Defaults to None.
+
+        Returns:
+            List of file metadata dictionaries. Each dict contains keys such as
+            ``Key``, ``LastModified``, ``ETag``, ``Size``, ``StorageClass``,
+            and ``ChecksumAlgorithm``.
+        """
+        all_files: list[dict] = []
+        continuation_token: str | None = None
+
+        while True:
+            params = self._build_list_params(
+                recursive=recursive,
+                last_count=last_count,
+                continuation_token=continuation_token,
+                delimiter=delimiter,
+                max_keys=max_keys,
+                prefix=prefix,
+            )
+
+            response = self._c.get_json(
+                f"/files/{self._c.org_key}/directory/{remote_path}",
+                params=params,
+            )
+
+            if "data" in response and isinstance(response["data"], list):
+                all_files.extend(response["data"])
 
             continuation_token = self._get_continuation_token(response)
             if not continuation_token:
@@ -283,7 +538,7 @@ class Files:
         )
 
         if "url" not in signed_url_response:
-            raise ValueError("Signed URL response missing 'url' field")
+            raise ValueError(_MISSING_URL_FIELD)
 
         signed_url = signed_url_response["url"]
 

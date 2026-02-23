@@ -20,6 +20,20 @@ def test_get_all_files_lv1():
     print(f"Found {len(files)} files")
 
 
+def test_list_files_returns_metadata_lv1():
+    """check that list_files returns dicts with metadata."""
+    client = DeepOriginClient()
+    files = client.files.list_files(
+        remote_path="entities/",
+        recursive=True,
+    )
+    assert len(files) > 0, "should be some files in entities/"
+
+    first = files[0]
+    assert isinstance(first, dict), "each entry should be a dict"
+    assert "Key" in first, "should contain Key"
+
+
 def test_download_file_lv1():
     """test the file download API"""
     client = DeepOriginClient()
@@ -126,6 +140,98 @@ def test_download_files_with_dict_lv1():
 
     assert len(local_paths) == 1, "should have downloaded one file"
     assert os.path.exists(local_paths[0]), "should have downloaded the file"
+
+
+def test_get_signed_url_upload_lv1():
+    """test that we can get a signed upload URL for a file path."""
+    client = DeepOriginClient()
+    url = client.files.get_signed_url(
+        "/testing-signed-url/test-upload.txt",
+        upload=True,
+    )
+    assert isinstance(url, str), "should return a string URL"
+    assert url.startswith("http"), "should be a valid URL"
+
+
+def test_get_signed_url_download_lv1():
+    """test that we can get a signed download URL for an existing file."""
+    client = DeepOriginClient()
+    files = client.files.list_files_in_dir(
+        remote_path="entities/",
+        recursive=True,
+    )
+    assert len(files) > 0, "should be some files in entities/"
+
+    url = client.files.get_signed_url(files[0])
+    assert isinstance(url, str), "should return a string URL"
+    assert url.startswith("http"), "should be a valid URL"
+
+
+def test_upload_files_via_signed_url_list_lv1():
+    """test uploading a list of files using signed URLs."""
+    client = DeepOriginClient()
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        file_a = os.path.join(tmpdir, "a.txt")
+        file_b = os.path.join(tmpdir, "b.txt")
+        with open(file_a, "w") as f:
+            f.write("content a")
+        with open(file_b, "w") as f:
+            f.write("content b")
+
+        remote_dir = "/testing-signed-url-upload/"
+        results = client.files.upload_files_via_signed_url(
+            local_path=[file_a, file_b],
+            remote_dir=remote_dir,
+        )
+
+        assert len(results) == 2, "should have uploaded 2 files"
+        assert all(r.startswith(remote_dir) for r in results), (
+            "remote paths should be under remote_dir"
+        )
+
+    client.files.delete_files(
+        remote_paths=[f"{remote_dir}a.txt", f"{remote_dir}b.txt"],
+        skip_errors=True,
+        timeout=60.0,
+    )
+
+
+def test_upload_files_via_signed_url_directory_lv1():
+    """test uploading a local directory using signed URLs, preserving structure."""
+    client = DeepOriginClient()
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        # Create a nested directory structure
+        subdir = os.path.join(tmpdir, "sub")
+        os.makedirs(subdir)
+        file_a = os.path.join(tmpdir, "root.txt")
+        file_b = os.path.join(subdir, "nested.txt")
+        with open(file_a, "w") as f:
+            f.write("root content")
+        with open(file_b, "w") as f:
+            f.write("nested content")
+
+        remote_dir = "/testing-signed-url-upload-dir/"
+        results = client.files.upload_files_via_signed_url(
+            local_path=tmpdir,
+            remote_dir=remote_dir,
+        )
+
+        assert len(results) == 2, "should have uploaded 2 files"
+        remote_names = sorted(r.removeprefix(remote_dir) for r in results)
+        assert remote_names == ["root.txt", "sub/nested.txt"], (
+            "should preserve subdirectory structure"
+        )
+
+    client.files.delete_files(
+        remote_paths=[
+            f"{remote_dir}root.txt",
+            f"{remote_dir}sub/nested.txt",
+        ],
+        skip_errors=True,
+        timeout=60.0,
+    )
 
 
 def test_delete_file_lv1():
