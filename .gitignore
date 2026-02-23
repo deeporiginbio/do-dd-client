@@ -84,6 +84,9 @@ venv.bak/
 .DS_Store
 Thumbs.db
 
+# openAPI spec
+openapi.json
+
 
 
 # IDEs and editors
