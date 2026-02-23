@@ -2002,7 +2002,7 @@ class LigandSet:
                 properties={"pains", "logs", "logd", "herg", "cyp", "logp", "ames"},
                 client=client,
             )
-            for response, ligand in zip(responses, self.ligands):
+            for response, ligand in zip(responses, self.ligands, strict=True):
                 for key, value in response.items():
                     ligand.set_property(key, value)
 
