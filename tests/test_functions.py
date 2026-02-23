@@ -80,14 +80,24 @@ def test_docking_lv2():
 
 
 def test_sysprep_lv2():
-    """Test system preparation function."""
+    """Test system preparation returns FunctionResult with prepared_systems."""
 
     sim = Complex.from_dir(BRD_DATA_DIR)
 
     ligand = [ligand for ligand in sim.ligands if ligand.name == "cmpd 4 (Crotyl)"][0]
 
-    # this is chosen to be one where it takes >1 min
-    _ = sim.prepare(ligand=ligand)
+    result = sim.prepare(ligand=ligand)
+
+    assert isinstance(result, FunctionResult), (
+        "Expected sim.prepare() to return a FunctionResult"
+    )
+    assert isinstance(result.prepared_systems, list), (
+        "Expected result.prepared_systems to be a list"
+    )
+    assert len(result.prepared_systems) == 1
+    assert isinstance(result.prepared_systems[0], Protein), (
+        "Expected prepared_systems[0] to be a Protein"
+    )
 
 
 def test_protonation_lv2():

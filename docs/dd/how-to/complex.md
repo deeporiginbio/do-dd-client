@@ -80,13 +80,21 @@ sim.ligands = ligand5  # Replace with a single ligand
 
 To prepare a protein-ligand complex for simulation or further analysis, use the `Complex.prepare()` method. This method runs system preparation on a given ligand in the context of the complex's protein, handling tasks such as protonation, water retention, and box padding.
 
-
-
 Typically, you would call this method using a ligand in the complex:
 
 ```{.python notest}
-prepared_system = sim.prepare(sim.ligands[0])
-prepared_system.show()
+result = sim.prepare(sim.ligands[0])
+result.prepared_systems[0].show()
+```
+
+`result` is a [`FunctionResult`](../ref/function-result.md) that wraps the API response. The prepared proteins are available as a list on `result.prepared_systems`.
+
+When preparing all ligands at once, the result aggregates costs and systems:
+
+```{.python notest}
+result = sim.prepare()
+result.prepared_systems  # list of Protein objects, one per ligand
+result.cost              # total cost across all preparations
 ```
 
 You should see something like:
@@ -100,6 +108,16 @@ You should see something like:
 ></iframe>
 
 which shows you the prepared system.
+
+### Estimating cost
+
+To get a cost estimate without running system preparation, use `quote=True`:
+
+```{.python notest}
+result = sim.prepare(sim.ligands[0], quote=True)
+result.estimate  # estimated cost in dollars
+result.cost      # None (function was not executed)
+```
 
 !!! info "System preparation parameters"
     Look at the [:material-page-next: reference documentation](../ref/complex.md#src.drug_discovery.complex.Complex.prepare) to understand parameters for system preparation.
