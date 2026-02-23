@@ -101,17 +101,26 @@ def test_sysprep_lv2():
 
 
 def test_protonation_lv2():
-    """Test protonation function."""
+    """Test protonation function returns FunctionResult with ligands."""
 
     ligand = Ligand.from_smiles("C=CCCn1cc(-c2cccc(C(=O)N(C)C)c2)c2cc[nH]c2c1=O")
 
     original_smiles = ligand.smiles
-    ligand.protonate(ph=7.4, use_cache=False)
+    result = ligand.protonate(ph=7.4, use_cache=False)
 
+    assert isinstance(result, FunctionResult), (
+        "Expected ligand.protonate() to return a FunctionResult"
+    )
+    assert isinstance(result.ligands, list), "Expected result.ligands to be a list"
+    assert len(result.ligands) == 1, "Expected result.ligands to contain one ligand"
+    assert result.ligands[0] is ligand, (
+        "Expected result.ligands[0] to be the same ligand"
+    )
     assert ligand.smiles == original_smiles, "Expected SMILES to be the same at pH 7.4"
 
-    ligand.protonate(ph=11.4, use_cache=False)
+    result = ligand.protonate(ph=11.4, use_cache=False)
 
+    assert isinstance(result, FunctionResult)
     assert ligand.smiles != original_smiles, (
         "Expected SMILES to be different at pH 11.4"
     )

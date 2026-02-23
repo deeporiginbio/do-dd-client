@@ -418,7 +418,7 @@ class Protein(Entity):
 
         Returns a ``FunctionResult`` whose ``.poses`` attribute lazily
         resolves to a ``LigandSet`` of docking poses. When ``quote=True``,
-        ``.poses`` is an empty ``LigandSet`` and ``.estimate`` gives the
+        ``.poses`` is ``None`` and ``.estimate`` gives the
         cost in dollars.
 
         Args:
@@ -471,28 +471,37 @@ class Protein(Entity):
                     "pocket": pocket,
                     "constraints": constraint,
                     "use_cache": use_cache,
+                    "quote": quote,
                 }
                 for ligand, constraint in zip(ligands, constraints, strict=True)
             ]
 
             from deeporigin.functions.docking import constrained_dock
 
-            all_top_poses = []
+            all_responses: list[dict] = []
+            all_top_poses: list[str] = []
             for arg in args:
-                result_files = constrained_dock(**arg)
-                top_pose = next(
-                    (
-                        f
-                        for f in result_files
-                        if "top" in Path(f).name.lower() and f.endswith(".sdf")
-                    ),
-                    result_files[0] if result_files else None,
-                )
-                if top_pose:
-                    all_top_poses.append(top_pose)
+                cdock_result = constrained_dock(**arg)
+                all_responses.extend(cdock_result.responses)
 
-            result = FunctionResult([{"status": "Completed"}])
-            result.poses = LigandSet.from_sdf_files(all_top_poses)
+                if not quote:
+                    result_files = cdock_result.downloaded_files
+                    top_pose = next(
+                        (
+                            f
+                            for f in result_files
+                            if "top" in Path(f).name.lower() and f.endswith(".sdf")
+                        ),
+                        result_files[0] if result_files else None,
+                    )
+                    if top_pose:
+                        all_top_poses.append(top_pose)
+
+            result = FunctionResult(all_responses)
+            if quote:
+                result.poses = None
+            else:
+                result.poses = LigandSet.from_sdf_files(all_top_poses)
             return result
         else:
             # perform normal docking

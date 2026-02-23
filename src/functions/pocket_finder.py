@@ -1,11 +1,8 @@
 """Low-level function to find pockets in a protein using the Deep Origin API."""
 
-import os
-
 from deeporigin.drug_discovery.structures import Protein
 from deeporigin.functions.result import FunctionResult
 from deeporigin.platform.client import DeepOriginClient
-from deeporigin.utils.core import hash_dict
 
 
 def find_pockets(
@@ -45,13 +42,9 @@ def find_pockets(
         "pocket_min_size": pocket_min_size,
     }
 
-    cache_key = hash_dict(payload)
-
-    # Add protein ID after hashing so it doesn't affect the cache key
     payload["protein"]["id"] = protein.id
 
     protein.upload(client=client)
-    os.makedirs(cache_path(cache_key), exist_ok=True)
 
     response = client.functions.run(
         key="deeporigin.pocketfinder",

@@ -562,46 +562,36 @@ class Ligand(Entity):
         use_cache: bool = True,
         quote: bool = False,
     ):
-        """
-        Protonate the ligand at a given pH using the DeepOrigin API.
+        """Protonate the ligand at a given pH using the DeepOrigin API.
 
-        This method calculates the protonation states of the ligand molecule at the
-        specified pH value and updates the ligand's molecule and SMILES representation
-        with the most abundant protonation state. The protonation state affects the
-        charge distribution of ionizable groups (e.g., carboxylic acids, amines) in
-        the molecule, which is important for accurate molecular modeling and docking
-        simulations.
+        Returns a ``FunctionResult`` whose ``.ligands`` attribute contains
+        the protonated ligand. When ``quote=True``, ``.ligands`` is empty
+        and ``.estimate`` gives the cost in dollars.
 
-        The method modifies the ligand in place by updating both `self.mol` and
-        `self.smiles` with the protonated form of the molecule. It also sets the
-        `protonated_at_ph` attribute to the pH value used for protonation.
+        The ligand is mutated in place: ``self.mol``, ``self.smiles``, and
+        ``self.protonated_at_ph`` are updated with the most abundant
+        protonation state.
 
         Args:
-            ph (number): pH value at which to protonate the ligand. Defaults to 7.4
+            ph: pH value at which to protonate the ligand. Defaults to 7.4
                 (physiological pH).
-            filter_percentage (number): Percentage threshold for filtering protonation
-                states. Only species with abundance above this threshold are considered.
-                Defaults to 1.0 (100%), meaning only the most abundant species is retained.
-            client (Optional[DeepOriginClient]): DeepOrigin client instance to use for
-                API calls. If None, a default client is obtained using
-                `DeepOriginClient.get()`. Defaults to None.
-            use_cache (bool): Whether to use cached protonation results if available.
-                Caching is based on the SMILES string and pH value. Defaults to True.
-            quote (bool): If True, request a quote for the protonation operation instead
-                of executing it. Defaults to False.
+            filter_percentage: Percentage threshold for filtering protonation
+                states. Only species with abundance above this threshold are
+                considered. Defaults to 1.0.
+            client: DeepOrigin client instance. If None, uses
+                ``DeepOriginClient.get()``.
+            use_cache: Whether to use cached protonation results.
+            quote: If True, request a cost estimate without executing.
 
-        Note:
-            The protonation process may change the SMILES string of the ligand if
-            ionizable groups are present and their protonation state changes at the
-            specified pH. The `protonated_at_ph` attribute is only set when `quote=False`
-            (i.e., when protonation is actually performed, not when just requesting a quote).
+        Returns:
+            FunctionResult with a ``.ligands`` attribute (list of Ligand).
         """
         from deeporigin.functions.protonation import protonate
 
         if client is None:
             client = DeepOriginClient.get()
 
-        data = protonate(
+        result = protonate(
             smiles=self.smiles,
             ph=ph,
             filter_percentage=filter_percentage,
@@ -610,12 +600,18 @@ class Ligand(Entity):
             quote=quote,
         )
 
-        self.mol = Chem.MolFromSmiles(data["protonation_states"]["smiles_list"][0])
-        self.smiles = data["protonation_states"]["smiles_list"][0]
+        if quote:
+            result.ligands = []
+            return result
 
-        # Set the protonated_at_ph attribute to track the pH at which protonation was performed
-        if not quote:
-            self.protonated_at_ph = ph
+        outputs = result.function_outputs[0]
+        protonated_smiles = outputs["protonation_states"]["smiles_list"][0]
+        self.mol = Chem.MolFromSmiles(protonated_smiles)
+        self.smiles = protonated_smiles
+        self.protonated_at_ph = ph
+
+        result.ligands = [self]
+        return result
 
     def to_molblock(self) -> str:
         """
@@ -1964,18 +1960,43 @@ class LigandSet:
         filter_percentage: number = 1.0,
         use_cache: bool = True,
         client: Optional[DeepOriginClient] = None,
+        quote: bool = False,
     ):
+        """Protonate all ligands in the set.
+
+        Returns a ``FunctionResult`` whose ``.ligands`` attribute contains
+        the protonated ligands. When ``quote=True``, ``.ligands`` is empty
+        and ``.estimate`` gives the cost in dollars. Only the most abundant
+        species is retained for each ligand.
+
+        Args:
+            ph: pH value at which to protonate. Defaults to 7.4.
+            filter_percentage: Percentage threshold for filtering protonation
+                states. Defaults to 1.0.
+            use_cache: Whether to use cached protonation results.
+            client: DeepOrigin client instance. If None, uses
+                ``DeepOriginClient.get()``.
+            quote: If True, request a cost estimate without executing.
+
+        Returns:
+            FunctionResult with a ``.ligands`` attribute (list of Ligand).
         """
-        Protonate the ligandSet. Only the most abundant species is retained for each ligand.
-        """
+        from deeporigin.functions.result import FunctionResult
+
+        all_responses: list[dict] = []
         for ligand in tqdm(self.ligands, desc="Protonating ligands", unit="ligand"):
-            ligand.protonate(
+            r = ligand.protonate(
                 ph=ph,
                 filter_percentage=filter_percentage,
                 use_cache=use_cache,
                 client=client,
+                quote=quote,
             )
-        return self
+            all_responses.extend(r.responses)
+
+        result = FunctionResult(all_responses)
+        result.ligands = [] if quote else list(self.ligands)
+        return result
 
     @beartype
     def admet_properties(

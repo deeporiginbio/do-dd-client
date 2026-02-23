@@ -571,7 +571,7 @@ constraints = ligands.compute_constraints(reference=ligands[1])
 
 ### Protonation
 
-You can protonate ligands at a specific pH. This is useful for preparing ligands for molecular dynamics simulations or other pH-dependent calculations.
+You can protonate ligands at a specific pH. This is useful for preparing ligands for molecular dynamics simulations or other pH-dependent calculations. The `protonate()` method returns a `FunctionResult` whose `.ligands` attribute contains the protonated ligands.
 
 === "Ligand"
 
@@ -579,7 +579,8 @@ You can protonate ligands at a specific pH. This is useful for preparing ligands
     from deeporigin.drug_discovery import Ligand
 
     ligand = Ligand.from_smiles("c1ccccc1")
-    ligand.protonate(ph=7.4)  # Mutates the ligand in place
+    result = ligand.protonate(ph=7.4)
+    result.ligands  # [ligand] — the protonated ligand
     ```
 
     !!! note "Mutation Behavior"
@@ -587,17 +588,26 @@ You can protonate ligands at a specific pH. This is useful for preparing ligands
 
     The `protonated_at_ph` attribute (default: `None`) can be used to track the pH value at which a ligand was protonated. This attribute stores a `float` value representing the pH.
 
+    To get a cost estimate without running protonation:
+
+    ```{.python notest}
+    result = ligand.protonate(ph=7.4, quote=True)
+    result.estimate  # cost in dollars
+    result.ligands   # [] — empty when quoting
+    ```
+
 === "LigandSet"
 
     ```{.python notest}
     from deeporigin.drug_discovery import LigandSet
 
     ligands = LigandSet.from_smiles(["c1ccccc1", "CCO"])
-    ligands.protonate(ph=7.4)  # Mutates all ligands in place
+    result = ligands.protonate(ph=7.4)
+    result.ligands  # list of protonated Ligand objects
     ```
 
     !!! note "Mutation Behavior"
-        The `protonate()` method mutates all ligands in the set and returns `self` for method chaining.
+        The `protonate()` method mutates all ligands in the set. The returned `FunctionResult` aggregates responses from all individual protonation calls.
 
 ### Adding Hydrogens
 

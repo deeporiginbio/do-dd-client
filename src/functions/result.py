@@ -29,6 +29,8 @@ class FunctionResult:
     @property
     def response(self) -> dict:
         """The first raw API response (convenience for single-response results)."""
+        if not self._responses:
+            return {}
         return self._responses[0]
 
     @property

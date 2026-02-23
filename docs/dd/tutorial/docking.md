@@ -83,7 +83,8 @@ pockets[0]
 It is recommended that you protonate ligands before docking them. 
 
 ```{.python notest}
-sim.ligands.protonate()
+result = sim.ligands.protonate()
+result.ligands  # list of protonated Ligand objects
 ```
 
 
