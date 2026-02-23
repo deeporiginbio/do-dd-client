@@ -1035,6 +1035,26 @@ class DeepOriginClient:
         body = kwargs.get("json")
         return self._retry_request(request, "PATCH", path, body=body)
 
+    def _head(self, path: str, **kwargs) -> httpx.Response:
+        """Perform a HEAD request and raise on error.
+
+        Args:
+            path: API endpoint path (relative to base_url).
+            **kwargs: Additional arguments passed to httpx.Client.head().
+
+        Returns:
+            The HTTP response object.
+
+        Raises:
+            httpx.HTTPStatusError: If the response status code indicates an error.
+        """
+        self.check_token()
+
+        def request() -> httpx.Response:
+            return self._client.head(path, **kwargs)
+
+        return self._retry_request(request, "HEAD", path, body=None)
+
     def _delete(self, path: str, **kwargs) -> httpx.Response:
         """Perform a DELETE request and raise on error.
 

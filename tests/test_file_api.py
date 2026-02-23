@@ -266,3 +266,82 @@ def test_delete_files_empty_list_lv1():
     client = DeepOriginClient()
     # Should succeed without doing anything
     client.files.delete_files(remote_paths=[])
+
+
+def test_get_file_lv1():
+    """test direct file download via GET endpoint."""
+    client = DeepOriginClient()
+    files = client.files.list_files_in_dir(
+        remote_path="entities/",
+        recursive=True,
+    )
+    assert len(files) > 0, "should be some files in entities/"
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        local_path = client.files.get_file(
+            files[0],
+            download_to_dir=tmpdir,
+        )
+
+        assert os.path.exists(local_path), "should have downloaded the file"
+        assert os.path.getsize(local_path) > 0, "downloaded file should not be empty"
+
+
+def test_head_file_lv1():
+    """test HEAD request returns metadata headers."""
+    client = DeepOriginClient()
+    files = client.files.list_files_in_dir(
+        remote_path="entities/",
+        recursive=True,
+    )
+    assert len(files) > 0, "should be some files in entities/"
+
+    headers = client.files.head_file(files[0])
+
+    assert isinstance(headers, dict), "should return a dict of headers"
+    assert "content-type" in headers, "should contain content-type header"
+
+
+def test_upload_file_from_url_lv1():
+    """test uploading a file by having the server fetch a URL."""
+    client = DeepOriginClient()
+
+    remote_path = "testing-upload-from-url/robots.txt"
+    result = client.files.upload_file_from_url(
+        remote_path,
+        source_url="https://www.google.com/robots.txt",
+    )
+
+    assert isinstance(result, dict), "should return a dict response"
+
+    # Clean up
+    client.files.delete_file(remote_path=remote_path, timeout=60.0)
+
+
+def test_download_as_zip_lv1():
+    """test downloading a remote directory as a ZIP archive."""
+    client = DeepOriginClient()
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        local_path = client.files.download_as_zip(
+            "entities/",
+            download_to_dir=tmpdir,
+        )
+
+        assert os.path.exists(local_path), "ZIP file should exist"
+        assert local_path.endswith(".zip"), "should have .zip extension"
+        assert os.path.getsize(local_path) > 0, "ZIP should not be empty"
+
+
+def test_health_lv1():
+    """test the files service health check."""
+    client = DeepOriginClient()
+    result = client.files.health()
+    assert isinstance(result, dict), "should return a dict"
+
+
+def test_version_lv1():
+    """test the files service version endpoint."""
+    client = DeepOriginClient()
+    result = client.files.version()
+    assert isinstance(result, dict), "should return a dict"

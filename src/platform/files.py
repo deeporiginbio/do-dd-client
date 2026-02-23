@@ -15,6 +15,8 @@ if TYPE_CHECKING:
 
 from deeporigin.utils.core import _ensure_do_folder
 
+_FILES_BASE = "/files"
+
 _MISSING_URL_FIELD = "Signed URL response missing 'url' field"
 
 
@@ -715,3 +717,126 @@ class Files:
                 ]
             )
             raise RuntimeError(f"Some deletions failed in delete_files:\n{error_msgs}")
+
+    def get_file(
+        self,
+        remote_path: str,
+        *,
+        local_path: str | Path | None = None,
+        download_to_dir: str | Path | None = None,
+    ) -> str:
+        """Download a file directly via the GET endpoint (no signed URL round-trip).
+
+        Args:
+            remote_path: The remote file path to download.
+            local_path: Where to save the file locally. If None, defaults to
+                ``~/.deeporigin/<remote_path>``.
+            download_to_dir: If provided and ``local_path`` is None, save the
+                file into this directory using the remote file's basename.
+
+        Returns:
+            The local path where the file was saved.
+        """
+        if local_path is not None:
+            dest = Path(local_path)
+        elif download_to_dir is not None:
+            dest = Path(download_to_dir) / Path(remote_path).name
+        else:
+            dest = _ensure_do_folder() / remote_path
+
+        dest.parent.mkdir(parents=True, exist_ok=True)
+
+        response = self._c._get(f"/files/{self._c.org_key}/{remote_path}")
+
+        dest.write_bytes(response.content)
+        return str(dest)
+
+    def head_file(self, remote_path: str) -> dict[str, str]:
+        """Get file metadata headers without downloading the file body.
+
+        Performs a HEAD request against ``/files/{orgKey}/{filePath}``.
+
+        Args:
+            remote_path: The remote file path to query.
+
+        Returns:
+            Dictionary of HTTP response headers (content-type, content-length,
+            last-modified, etag, etc.).
+        """
+        response = self._c._head(f"/files/{self._c.org_key}/{remote_path}")
+        return dict(response.headers)
+
+    def upload_file_from_url(
+        self,
+        remote_path: str,
+        *,
+        source_url: str,
+    ) -> dict:
+        """Upload a file from a URL (server-side fetch).
+
+        Tells the server to download the file at ``source_url`` and store it at
+        ``remote_path``.  The file bytes never transit through the client.
+
+        Args:
+            remote_path: Destination path on the file server.
+            source_url: Public URL the server should fetch the file from.
+
+        Returns:
+            The JSON response from the API.
+        """
+        response = self._c._post(
+            f"/files/{self._c.org_key}/{remote_path}",
+            body={"url": source_url},
+        )
+        return response.json()
+
+    def download_as_zip(
+        self,
+        remote_path: str,
+        *,
+        local_path: str | Path | None = None,
+        download_to_dir: str | Path | None = None,
+    ) -> str:
+        """Download a remote directory as a ZIP archive.
+
+        Args:
+            remote_path: The remote directory path to download.
+            local_path: Where to save the ZIP file locally. If None, a default
+                name is derived from ``remote_path``.
+            download_to_dir: If provided and ``local_path`` is None, save the
+                ZIP into this directory.
+
+        Returns:
+            The local path where the ZIP file was saved.
+        """
+        if local_path is not None:
+            dest = Path(local_path)
+        elif download_to_dir is not None:
+            name = Path(remote_path.rstrip("/")).name + ".zip"
+            dest = Path(download_to_dir) / name
+        else:
+            name = Path(remote_path.rstrip("/")).name + ".zip"
+            dest = _ensure_do_folder() / name
+
+        dest.parent.mkdir(parents=True, exist_ok=True)
+
+        response = self._c._get(f"/files/{self._c.org_key}/zip/{remote_path}")
+
+        dest.write_bytes(response.content)
+        return str(dest)
+
+    def health(self) -> dict:
+        """Check the health of the files service.
+
+        Returns:
+            The JSON health-check response.
+        """
+        return self._c.get_json(f"{_FILES_BASE}/health")
+
+    def version(self) -> dict:
+        """Get the version of the files service.
+
+        Returns:
+            The JSON version response.
+        """
+        return self._c.get_json(f"{_FILES_BASE}/version")
