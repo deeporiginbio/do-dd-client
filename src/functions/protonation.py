@@ -1,4 +1,4 @@
-"""This module contains functions to protonate molecules using DeepOrigin Functions."""
+"""Low-level function to protonate molecules using DeepOrigin Functions."""
 
 import json
 import os
@@ -6,13 +6,13 @@ from pathlib import Path
 
 from beartype import beartype
 
+from deeporigin.functions.result import FunctionResult
 from deeporigin.platform.client import DeepOriginClient
 from deeporigin.utils.constants import number
 from deeporigin.utils.core import _ensure_do_folder, hash_dict
 
 CACHE_DIR = str(_ensure_do_folder() / "protonation")
 
-# Ensure cache directory exists
 os.makedirs(CACHE_DIR, exist_ok=True)
 
 
@@ -25,20 +25,19 @@ def protonate(
     use_cache: bool = True,
     client: DeepOriginClient,
     quote: bool = False,
-) -> dict:
-    """
-    Run ligand protonation using the DeepOrigin API.
+) -> FunctionResult:
+    """Run ligand protonation using the DeepOrigin API.
 
     Args:
-        smiles (str): SMILES string for the molecule
-        ph (number): pH value
-        filter_percentage (number): Percentage of the most abundant species to retain
-        use_cache (bool): Whether to use the cache
-        client (DeepOriginClient): DeepOrigin client instance
-        quote (bool): Whether to request a quote instead of running the function
+        smiles: SMILES string for the molecule.
+        ph: pH value.
+        filter_percentage: Percentage of the most abundant species to retain.
+        use_cache: Whether to use the cache.
+        client: DeepOrigin client instance.
+        quote: If True, request a cost estimate without executing.
 
     Returns:
-        dict: Dictionary containing the protonation states of the molecules
+        FunctionResult wrapping the full API response.
     """
 
     payload = {
@@ -47,37 +46,31 @@ def protonate(
         "filter_percentage": float(filter_percentage),
     }
 
-    # Create hash of inputs
     cache_hash = hash_dict(payload)
     response_file = str(Path(CACHE_DIR) / f"{cache_hash}.json")
 
-    # Check if cached result exists
-    if os.path.exists(response_file) and use_cache:
-        # Read cached response
+    if os.path.exists(response_file) and use_cache and not quote:
         with open(response_file, "r") as file:
             response = json.load(file)
 
+        if "functionOutputs" not in response:
+            response = {"functionOutputs": response, "status": "Completed"}
     else:
-        # Make the API request using client.functions.run()
         response = client.functions.run(
             key="deeporigin.mol-props-protonation",
             params=payload,
             quote=quote,
         )
 
-        # TODO -- remove this patch once API is updated
-        if "functionOutputs" in response:
-            response = response["functionOutputs"]
+        if not quote:
+            outputs = response.get("functionOutputs", {})
+            if outputs.get("pH") != ph:
+                raise ValueError(
+                    f"Protonation failed. Expected pH {ph}, got {outputs.get('pH')}"
+                )
 
-        # check response pH
-        if response["pH"] != ph:
-            raise ValueError(
-                f"Protonation failed. Expected pH {ph}, got {response['pH']}"
-            )
-        # Write JSON response to cache
-        # Ensure parent directory exists before writing
-        Path(response_file).parent.mkdir(parents=True, exist_ok=True)
-        with open(response_file, "w") as file:
-            json.dump(response, file)
+            Path(response_file).parent.mkdir(parents=True, exist_ok=True)
+            with open(response_file, "w") as file:
+                json.dump(response, file)
 
-    return response
+    return FunctionResult([response])

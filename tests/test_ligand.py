@@ -684,17 +684,16 @@ def test_ligand_protonate_sets_protonated_at_ph():
     """Test that the protonate method sets the protonated_at_ph attribute"""
     ligand = Ligand.from_smiles("C=CCCn1cc(-c2cccc(C(=O)N(C)C)c2)c2cc[nH]c2c1=O")
 
-    # Test that default value is None
     assert ligand.protonated_at_ph is None
 
-    # Test that protonate sets the attribute
-    ligand.protonate(ph=7.4, use_cache=False)
+    result = ligand.protonate(ph=7.4, use_cache=False)
     assert ligand.protonated_at_ph == 7.4
     assert isinstance(ligand.protonated_at_ph, float)
+    assert len(result.ligands) == 1
 
-    # Test that protonating again updates the attribute
-    ligand.protonate(ph=11.4, use_cache=False)
+    result = ligand.protonate(ph=11.4, use_cache=False)
     assert ligand.protonated_at_ph == 11.4
+    assert len(result.ligands) == 1
 
 
 # Test utility functions

@@ -9,6 +9,7 @@ from deeporigin.drug_discovery.docking import Docking
 from deeporigin.drug_discovery.rbfe import RBFE
 from deeporigin.drug_discovery.structures import Ligand, LigandSet, Protein
 from deeporigin.exceptions import DeepOriginException
+from deeporigin.functions.result import FunctionResult
 from deeporigin.platform.client import DeepOriginClient
 
 
@@ -135,41 +136,30 @@ class Complex:
         retain_waters: bool = False,
         add_H_atoms: bool = False,  # NOSONAR
         protonate_protein: bool = False,
-    ) -> "Protein | list[Protein]":
-        """run system preparation on the protein and one or more ligands from the Complex
+        quote: bool = False,
+    ) -> FunctionResult:
+        """Run system preparation on the protein and one or more ligands.
 
         Args:
-            ligand (Ligand, optional): The ligand to prepare. If None, prepares all ligands in the Complex.
-            padding (float, optional): Padding to add around the system.
-            retain_waters (bool, optional): Whether to keep water molecules.
-            add_H_atoms (bool, optional): Whether the ligand is already protonated.
-            protonate_protein (bool, optional): Whether to protonate the protein.
-            use_cache (bool, optional): Whether to use the cache.
+            ligand: The ligand to prepare. If None, prepares all ligands
+                in the Complex.
+            padding: Padding to add around the system.
+            retain_waters: Whether to keep water molecules.
+            add_H_atoms: Whether to add hydrogen atoms to the ligand.
+            protonate_protein: Whether to protonate the protein.
+            quote: If True, request a cost estimate without executing.
 
         Returns:
-            Protein: If a single ligand is provided, returns the prepared Protein object.
-            list[Protein]: If ligand is None, returns a list of prepared Protein objects, one for each ligand.
+            FunctionResult with a ``prepared_systems`` attribute containing
+            a list of prepared Protein objects (empty when ``quote=True``).
         """
         from deeporigin.functions.sysprep import run_sysprep
 
-        if ligand is None:
-            from tqdm import tqdm
+        if ligand is not None:
+            ligands = [ligand]
+        else:
+            ligands = list(self.ligands)
 
-            responses = []
-
-            for ligand in tqdm(self.ligands, desc="Preparing systems"):
-                prepared_protein = self.prepare(
-                    ligand=ligand,
-                    padding=padding,
-                    retain_waters=retain_waters,
-                    add_H_atoms=add_H_atoms,
-                    protonate_protein=protonate_protein,
-                )
-
-                responses.append(prepared_protein)
-            return responses
-
-        # make sure there are no missing residues in the protein
         data = self.protein.find_missing_residues()
         if len(data.keys()) > 0:
             raise DeepOriginException(
@@ -177,32 +167,45 @@ class Complex:
                 message="Protein has missing residues. Please use the loop modelling tool to fill in the missing residues.",
             ) from None
 
-        # run sysprep on the ligand
-        response = run_sysprep(
-            protein=self.protein,
-            padding=padding,
-            ligand=ligand,
-            retain_waters=retain_waters,
-            add_H_atoms=add_H_atoms,
-            protonate_protein=protonate_protein,
-            client=self.client,
-        )
+        from tqdm import tqdm
 
-        # set this complex path as the prepared system
-        self._prepared_systems[ligand.to_hash()] = response
+        individual_results = []
+        for lig in tqdm(ligands, desc="Preparing systems", disable=len(ligands) == 1):
+            individual_results.append(
+                run_sysprep(
+                    protein=self.protein,
+                    padding=padding,
+                    ligand=lig,
+                    retain_waters=retain_waters,
+                    add_H_atoms=add_H_atoms,
+                    protonate_protein=protonate_protein,
+                    client=self.client,
+                    quote=quote,
+                )
+            )
 
-        import json
+        all_responses = [r.response for r in individual_results]
+        result = FunctionResult(all_responses)
 
-        print(json.dumps(response, indent=2))
+        if quote:
+            result.prepared_systems = []
+        else:
+            prepared = []
+            for r in individual_results:
+                outputs = r.function_outputs[0]
+                output_file = outputs["system"]["system_pdb_file_path"]
+                local_path = self.client.files.download_file(
+                    remote_path=output_file,
+                    lazy=True,
+                )
+                prepared.append(Protein.from_file(local_path))
 
-        output_file = response["system"]["system_pdb_file_path"]
+            result.prepared_systems = prepared
 
-        local_path = self.client.files.download_file(
-            remote_path=output_file,
-            lazy=True,
-        )
+            for lig, r in zip(ligands, individual_results, strict=True):
+                self._prepared_systems[lig.to_hash()] = r.function_outputs[0]
 
-        return Protein.from_file(local_path)
+        return result
 
     def _sync_protein_and_ligands(self) -> None:
         """Ensure that the protein and ligands are uploaded to Deep Origin

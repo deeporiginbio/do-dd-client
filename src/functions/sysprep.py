@@ -1,8 +1,9 @@
-"""This module contains the function to run system preparation on a protein-ligand complex."""
+"""Low-level function to run system preparation on a protein-ligand complex."""
 
 from beartype import beartype
 
 from deeporigin.drug_discovery.structures import Ligand, Protein
+from deeporigin.functions.result import FunctionResult
 from deeporigin.platform.client import DeepOriginClient
 
 
@@ -18,7 +19,7 @@ def run_sysprep(
     box_size: list[float] | None = None,
     client: DeepOriginClient,
     quote: bool = False,
-) -> dict:
+) -> FunctionResult:
     """Run system preparation on a protein-ligand complex.
 
     Args:
@@ -28,18 +29,15 @@ def run_sysprep(
         retain_waters: Whether to keep water molecules in the system.
         add_H_atoms: Whether to add hydrogen atoms to the ligand.
         protonate_protein: Whether to protonate the protein.
-        use_cache: Whether to use cached output files if available.
         box_size: Simulation box dimensions (X, Y, Z) in nm. Must have
             exactly 3 elements if provided.
         client: DeepOrigin client instance.
-        quote: If True, return a cost estimate instead of running.
+        quote: If True, request a cost estimate without executing.
 
     Returns:
-        Dictionary containing the prepared system outputs, including
-        paths to solvation XML, system PDB, and binding XML files.
+        FunctionResult wrapping the full API response.
     """
 
-    # ensure the protein and ligand are synced to the data platform
     protein.sync(lazy=True, client=client)
     ligand.sync(lazy=True, client=client)
 
@@ -75,4 +73,4 @@ def run_sysprep(
         quote=quote,
     )
 
-    return response["functionOutputs"]
+    return FunctionResult([response])
