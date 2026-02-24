@@ -1074,6 +1074,40 @@ class Ligand(Entity):
         if "data" in result and "id" in result["data"]:
             self.id = result["data"]["id"]
 
+    def _to_row(self) -> dict[str, Any]:
+        """Build a batch-create row dict from this ligand.
+
+        Returns:
+            Dict suitable for ``batch_create_ligands`` rows.
+        """
+        smiles_value = self.smiles if self.smiles is not None else self.canonical_smiles
+        row: dict[str, Any] = {
+            "smiles": smiles_value,
+            "variant_name_tag": "",
+        }
+        if self.file_path is not None:
+            row["mol_file"] = self._remote_path
+        if self.name is not None:
+            row["name"] = self.name
+        if self.mol is not None:
+            try:
+                row["formal_charge"] = self.formal_charge
+                row["molecular_weight"] = self.molecular_weight
+                row["hbond_donor_count"] = self.hbond_donor_count
+                row["hbond_acceptor_count"] = self.hbond_acceptor_count
+                row["rotatable_bond_count"] = self.rotatable_bond_count
+                row["tpsa"] = self.tpsa
+            except Exception:
+                warnings.warn(
+                    f"Could not compute molecular descriptors for "
+                    f"'{smiles_value}'; formal_charge defaults to 0.",
+                    stacklevel=2,
+                )
+                row.setdefault("formal_charge", 0)
+        else:
+            row["formal_charge"] = 0
+        return row
+
     @beartype
     def to_pdb(self, output_path: Optional[str] = None) -> str | Path:
         """Write the ligand to a PDB file."""
@@ -2050,10 +2084,107 @@ class LigandSet:
             writer.close()
 
     def to_smiles(self) -> list[str]:
-        """
-        Convert all ligands in the set to SMILES strings.
-        """
+        """Convert all ligands in the set to SMILES strings."""
         return [ligand.smiles for ligand in self.ligands]
+
+    @staticmethod
+    def _index_by_canonical_smiles(records: list[dict]) -> dict[str, dict]:
+        """Build a ``canonical_smiles → record`` mapping from API records.
+
+        Args:
+            records: List of dicts returned by a search or batch-create call.
+
+        Returns:
+            Dict keyed by canonical_smiles.
+        """
+        index: dict[str, dict] = {}
+        for record in records:
+            cs = record.get("canonical_smiles")
+            if cs is not None:
+                index[cs] = record
+        return index
+
+    @beartype
+    def sync(
+        self,
+        *,
+        lazy: bool = False,
+        client: Optional[DeepOriginClient] = None,
+    ) -> None:
+        """Sync the ligand set to the data platform.
+
+        For every ligand in the set this method:
+
+        1. Searches the data platform for existing ligands whose
+           ``canonical_smiles`` match (batched into a single request via
+           ``search_ligands(smiles_list=…)``).
+        2. For ligands that already exist remotely, updates the local ``id``.
+        3. For ligands that are new, uploads files to remote storage (if a
+           file_path is present) and batch-creates them in a single API call.
+        4. Updates the local ``id`` values from the created records.
+
+        .. note::
+            The batch-create step is all-or-nothing: if it fails (e.g.
+            network error, invalid data), none of the new ligands will
+            receive an ``id``.
+
+        Args:
+            lazy: If True, skip syncing ligands that already have an id.
+            client: DeepOriginClient instance. If None, uses
+                DeepOriginClient.get().
+        """
+        if not self.ligands:
+            return
+
+        if client is None:
+            client = DeepOriginClient.get()
+
+        ligands_to_sync = (
+            [lig for lig in self.ligands if lig.id is None]
+            if lazy
+            else list(self.ligands)
+        )
+        if not ligands_to_sync:
+            return
+
+        invalid = [lig for lig in ligands_to_sync if lig.canonical_smiles is None]
+        if invalid:
+            raise ValueError(
+                f"{len(invalid)} ligand(s) have no canonical_smiles and "
+                "cannot be synced. Ensure every ligand has a valid SMILES or "
+                "mol before calling sync()."
+            )
+
+        smiles_list = [lig.canonical_smiles for lig in ligands_to_sync]
+        response = client.data.search_ligands(
+            smiles_list=smiles_list,
+            limit=len(smiles_list),
+        )
+        existing_by_smiles = self._index_by_canonical_smiles(response.get("data", []))
+
+        to_create: list[Ligand] = []
+        for lig in ligands_to_sync:
+            record = existing_by_smiles.get(lig.canonical_smiles)
+            if record is not None:
+                lig.id = record["id"]
+            else:
+                to_create.append(lig)
+
+        if not to_create:
+            return
+
+        for lig in to_create:
+            if lig.file_path is not None:
+                lig.upload(client=client)
+
+        rows = [lig._to_row() for lig in to_create]
+        result = client.data.batch_create_ligands(rows=rows)
+        created_by_smiles = self._index_by_canonical_smiles(result.get("data", []))
+
+        for lig in to_create:
+            record = created_by_smiles.get(lig.canonical_smiles)
+            if record is not None:
+                lig.id = record["id"]
 
     @classmethod
     def from_smiles(cls, smiles: list[str] | set[str]) -> Self:

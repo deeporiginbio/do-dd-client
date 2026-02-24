@@ -7,6 +7,32 @@ from typing import TYPE_CHECKING, Any
 if TYPE_CHECKING:
     from deeporigin.platform.client import DeepOriginClient
 
+"""Default ligand fields returned by search/create endpoints."""
+LIGAND_RETURNING_FIELDS = [
+    "id",
+    "version",
+    "valid_from",
+    "valid_to",
+    "modified_by",
+    "deleted",
+    "mol_file",
+    "project_id",
+    "subtable_name",
+    "canonical_smiles",
+    "smiles",
+    "inchi_key",
+    "inchi",
+    "name",
+    "formal_charge",
+    "hbond_donor_count",
+    "hbond_acceptor_count",
+    "rotatable_bond_count",
+    "tpsa",
+    "molecular_weight",
+    "log_p",
+    "structure_key",
+]
+
 
 class Data:
     """Data Platform API wrapper.
@@ -168,6 +194,7 @@ class Data:
         cursor: str | None = None,
         filter_dict: dict[str, Any] | None = None,
         smiles: str | None = None,
+        smiles_list: list[str] | None = None,
         canonical_smiles: str | None = None,
         min_molecular_weight: float | int | None = None,
         max_molecular_weight: float | int | None = None,
@@ -183,7 +210,10 @@ class Data:
         Args:
             cursor: Cursor for pagination.
             filter_dict: Additional filter criteria as a dictionary.
-            smiles: Filter by SMILES string.
+            smiles: Filter by a single SMILES string (exact match).
+            smiles_list: Filter by multiple SMILES strings. Uses an "in"
+                filter on canonical_smiles. Mutually exclusive with smiles
+                and canonical_smiles.
             canonical_smiles: Filter by canonical SMILES string.
             min_molecular_weight: Minimum molecular weight filter (inclusive).
             max_molecular_weight: Maximum molecular weight filter (inclusive).
@@ -196,22 +226,39 @@ class Data:
             Dictionary containing the search results.
 
         Raises:
-            ValueError: If ligands is not a valid table name (should not happen).
+            ValueError: If smiles_list is used together with smiles or
+                canonical_smiles, or if ligands is not a valid table name.
         """
-        # Build filter dict, starting with provided filter_dict or empty dict
+        if smiles_list is not None and (
+            smiles is not None or canonical_smiles is not None
+        ):
+            raise ValueError(
+                "smiles_list is mutually exclusive with smiles and canonical_smiles"
+            )
+
+        if smiles_list is not None and len(smiles_list) == 0:
+            return {"data": [], "count": 0}
+
         filter_dict = filter_dict.copy() if filter_dict is not None else {}
         filter_dict.setdefault("deleted", False)
 
-        # Add smiles filter if provided
         if smiles is not None:
             filter_dict["smiles"] = smiles
 
-        # Add canonical_smiles filter if provided
         if canonical_smiles is not None:
             filter_dict["canonical_smiles"] = canonical_smiles
 
-        # Build molecular weight filters
         props = []
+
+        if smiles_list is not None:
+            props.append(
+                {
+                    "column": "canonical_smiles",
+                    "op": "in",
+                    "value": smiles_list,
+                }
+            )
+
         if min_molecular_weight is not None:
             props.append(
                 {
@@ -230,7 +277,6 @@ class Data:
             )
 
         if props:
-            # Merge with existing props if any
             existing_props = filter_dict.get("props", [])
             filter_dict["props"] = existing_props + props
 
@@ -268,6 +314,26 @@ class Data:
             Dictionary containing the ligand data.
         """
         return self.get_entity(entity="ligands", entity_id=id)
+
+    def get_ligands(self, ids: list[str]) -> list[dict]:
+        """Get multiple ligands by their IDs.
+
+        The data-platform search API does not support filtering by multiple
+        IDs in a single request, so this method calls :meth:`get_ligand` for
+        each ID sequentially.
+
+        .. note::
+            This makes one HTTP request per ID. For large lists this may be
+            slow; prefer ``search_ligands`` with appropriate filters when
+            possible.
+
+        Args:
+            ids: List of ligand IDs to retrieve.
+
+        Returns:
+            List of dictionaries, one per ligand.
+        """
+        return [self.get_ligand(id=lid) for lid in ids]
 
     def get_protein(self, id: str) -> dict:
         """Get a protein by ID.
@@ -424,34 +490,38 @@ class Data:
 
         body: dict[str, Any] = {
             "set": set_dict,
-            "returning": [
-                "id",
-                "version",
-                "valid_from",
-                "valid_to",
-                "modified_by",
-                "deleted",
-                "mol_file",
-                "project_id",
-                "subtable_name",
-                "canonical_smiles",
-                "smiles",
-                "inchi_key",
-                "inchi",
-                "name",
-                "formal_charge",
-                "hbond_donor_count",
-                "hbond_acceptor_count",
-                "rotatable_bond_count",
-                "tpsa",
-                "molecular_weight",
-                "log_p",
-                "structure_key",
-            ],
+            "returning": LIGAND_RETURNING_FIELDS,
         }
 
         return self._c.post_json(
             f"/data-platform/{self._c.org_key}/ligands",
+            body=body,
+        )
+
+    def batch_create_ligands(self, *, rows: list[dict[str, Any]]) -> dict:
+        """Batch create ligands.
+
+        Each row should contain at minimum a ``smiles`` key. Optional keys
+        match the fields accepted by :meth:`create_ligand` (e.g. ``name``,
+        ``formal_charge``, ``molecular_weight``, etc.).  The platform will
+        compute ``canonical_smiles``, ``inchi``, and other derived fields.
+
+        Args:
+            rows: List of dicts, each describing one ligand to create.  Every
+                dict must contain ``smiles`` (str).  All other keys are
+                optional and mirror the ``set`` payload of ``create_ligand``.
+
+        Returns:
+            Dictionary containing the batch creation response with a ``data``
+            list of created ligand records.
+        """
+        body: dict[str, Any] = {
+            "rows": rows,
+            "returning": LIGAND_RETURNING_FIELDS,
+        }
+
+        return self._c.post_json(
+            f"/data-platform/{self._c.org_key}/ligands/batch/create",
             body=body,
         )
 
