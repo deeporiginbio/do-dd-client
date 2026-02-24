@@ -611,7 +611,7 @@ class Ligand(Entity):
         self.smiles = protonated_smiles
         self.protonated_at_ph = ph
 
-        result.ligand = [self]
+        result.ligands = [self]
         return result
 
     def to_molblock(self) -> str:
