@@ -7,6 +7,7 @@ and executions (list / get / cancel / confirm / run).
 from __future__ import annotations
 
 from collections.abc import Callable
+import copy
 from datetime import datetime, timezone
 import json
 from pathlib import Path
@@ -436,6 +437,9 @@ def create_tools_router(
                 f"No fixture found for function '{function_key}' with request hash '{body_hash}'. "
                 f"Please create a fixture at: function-runs/{function_key}/{body_hash}.json"
             ) from None
+
+        # Make a deep copy to avoid mutating the cached fixture
+        response = copy.deepcopy(response)
 
         # Replace protein_id and ligand_id in functionOutputs with IDs from userInputs
         # This is needed because normalize_function_body strips IDs before hashing,

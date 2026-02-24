@@ -29,7 +29,7 @@ def test_pocketfinder_with_data_platform_lv2():
 
     protein = _prepare_protein(client)
 
-    result = protein.find_pockets(pocket_count=1, use_cache=False)
+    result = protein.find_pockets(pocket_count=1, use_cache=False, client=client)
 
     assert isinstance(result, FunctionResult), (
         "Expected protein.find_pockets() to return a FunctionResult"
@@ -65,6 +65,7 @@ def test_docking_with_data_platform_lv2():
         ligand=ligand,
         pocket=pocket,
         use_cache=False,
+        client=client,
     )
 
     assert isinstance(result, FunctionResult), (
@@ -74,7 +75,7 @@ def test_docking_with_data_platform_lv2():
         "Expected result.poses to be a LigandSet"
     )
 
-    poses = result._responses[0]["functionOutputs"]["poses"]
+    poses = result.function_outputs[0]["poses"]
 
     for pose in poses:
         assert pose["protein_id"] == protein.id, (
