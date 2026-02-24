@@ -332,9 +332,13 @@ class Pocket:
                 f"Drugability score: {self.props.get('drugability_score', 'N/A')}"
             )
 
+        protein_id_line = (
+            f"  Protein ID: {self.protein_id}\n" if self.protein_id else ""
+        )
+
         return (
-            f"Pocket:\n  Name: {self.name}\n{properties_line}  File: {self.file_path}\n"
-            "Available Fields: {file_path, name, coordinates, color, props}"
+            f"Pocket:\n  Name: {self.name}\n{protein_id_line}{properties_line}  File: {self.file_path}\n"
+            "Available Fields: {file_path, name, coordinates, color, props, protein_id}"
         )
 
     def update_coordinates(self, coords: np.ndarray):

@@ -7,6 +7,7 @@ and executions (list / get / cancel / confirm / run).
 from __future__ import annotations
 
 from collections.abc import Callable
+import copy
 from datetime import datetime, timezone
 import json
 from pathlib import Path
@@ -26,6 +27,41 @@ def _generate_resource_id() -> str:
     """
     chars = string.ascii_lowercase + string.digits
     return "".join(random.choice(chars) for _ in range(20))
+
+
+def _replace_ids_in_function_outputs(
+    obj: object, protein_id: str | None = None, ligand_id: str | None = None
+) -> object:
+    """Recursively replace protein_id and ligand_id values in functionOutputs.
+
+    Args:
+        obj: The object to traverse (dict, list, or scalar).
+        protein_id: The protein ID to use for replacement (optional).
+        ligand_id: The ligand ID to use for replacement (optional).
+
+    Returns:
+        A copy of obj with protein_id and ligand_id values replaced.
+    """
+    if isinstance(obj, dict):
+        result = {}
+        for key, value in obj.items():
+            if key == "protein_id" and protein_id is not None:
+                result[key] = protein_id
+            elif key == "ligand_id" and ligand_id is not None:
+                result[key] = ligand_id
+            else:
+                result[key] = _replace_ids_in_function_outputs(
+                    value, protein_id=protein_id, ligand_id=ligand_id
+                )
+        return result
+    elif isinstance(obj, list):
+        return [
+            _replace_ids_in_function_outputs(
+                item, protein_id=protein_id, ligand_id=ligand_id
+            )
+            for item in obj
+        ]
+    return obj
 
 
 def _normalize_execution(execution: dict[str, Any]) -> dict[str, Any]:
@@ -388,7 +424,7 @@ def create_tools_router(
         body_hash = hash_dict(normalized_body)
 
         try:
-            return load_fixture(f"function-runs/{function_key}/{body_hash}")
+            response = load_fixture(f"function-runs/{function_key}/{body_hash}")
         except FileNotFoundError:
             if function_key == "deeporigin.mol-props-protonation":
                 inputs = body.get("inputs", body.get("params", {}))
@@ -401,6 +437,38 @@ def create_tools_router(
                 f"No fixture found for function '{function_key}' with request hash '{body_hash}'. "
                 f"Please create a fixture at: function-runs/{function_key}/{body_hash}.json"
             ) from None
+
+        # Make a deep copy to avoid mutating the cached fixture
+        response = copy.deepcopy(response)
+
+        # Replace protein_id and ligand_id in functionOutputs with IDs from userInputs
+        # This is needed because normalize_function_body strips IDs before hashing,
+        # so different IDs hash to the same value
+        inputs = body.get("inputs", body.get("params", {}))
+        protein = inputs.get("protein", {})
+        protein_id = protein.get("id") if isinstance(protein, dict) else None
+        ligand = inputs.get("ligand", {})
+        ligand_id = ligand.get("id") if isinstance(ligand, dict) else None
+
+        if protein_id or ligand_id:
+            if isinstance(response, dict):
+                function_outputs = response.get("functionOutputs")
+                if function_outputs is not None:
+                    response["functionOutputs"] = _replace_ids_in_function_outputs(
+                        function_outputs, protein_id=protein_id, ligand_id=ligand_id
+                    )
+            elif isinstance(response, list):
+                for item in response:
+                    if isinstance(item, dict):
+                        function_outputs = item.get("functionOutputs")
+                        if function_outputs is not None:
+                            item["functionOutputs"] = _replace_ids_in_function_outputs(
+                                function_outputs,
+                                protein_id=protein_id,
+                                ligand_id=ligand_id,
+                            )
+
+        return response
 
     @router.post("/tools/{org_key}/functions/{function_key}")
     async def run_function(
