@@ -1,5 +1,4 @@
 import os
-import uuid
 
 import pytest
 
@@ -964,7 +963,6 @@ def test_ligand_set_sync_lv1():
     Creates ligands from SMILES, syncs them, then syncs again to verify
     that existing ligands are found rather than re-created.
     """
-    tag = uuid.uuid4().hex[:8]
     smiles_list = [
         "CCO",
         "CCCO",
@@ -972,7 +970,7 @@ def test_ligand_set_sync_lv1():
     ]
     ligands = LigandSet.from_smiles(smiles_list)
     for i, lig in enumerate(ligands):
-        lig.name = f"sync-test-{tag}-{i}"
+        lig.name = f"sync-test-{i}"
 
     ligands.sync()
 

@@ -121,32 +121,42 @@ def create_data_platform_router(
         "proteins": proteins,
     }
 
-    # Reverse index: canonical_smiles → ligand_id (enforces uniqueness).
-    _smiles_index: dict[str, str] = {
-        record["canonical_smiles"]: lid
+    # Reverse index: (canonical_smiles, variant_name_tag) → ligand_id.
+    _ligand_key_index: dict[tuple[str, str], str] = {
+        (record["canonical_smiles"], record.get("variant_name_tag", "")): lid
         for lid, record in ligands.items()
         if record.get("canonical_smiles")
     }
 
-    def _upsert_ligand(smiles: str, extra: dict[str, Any]) -> dict[str, Any]:
-        """Insert a ligand or return the existing one if canonical_smiles matches.
+    def _insert_ligand(smiles: str, extra: dict[str, Any]) -> dict[str, Any]:
+        """Insert a ligand, raising 409 if the unique key already exists.
 
         Args:
             smiles: The SMILES string (used as canonical_smiles).
             extra: Additional fields from the request payload.
 
         Returns:
-            The stored ligand record (full, unfiltered).
+            The newly created ligand record.
+
+        Raises:
+            HTTPException: 409 if (canonical_smiles, variant_name_tag) already exists.
         """
-        existing_id = _smiles_index.get(smiles)
-        if existing_id is not None and existing_id in ligands:
-            existing = ligands[existing_id]
-            existing.update(extra)
-            return existing
+        from fastapi import HTTPException
+
+        tag = extra.get("variant_name_tag", "")
+        key = (smiles, tag)
+        if key in _ligand_key_index:
+            raise HTTPException(
+                status_code=409,
+                detail=(
+                    f"Key (project_scope_key, canonical_smiles, variant_name_tag)"
+                    f"=(__unscoped__, {smiles}, {tag}) already exists."
+                ),
+            )
 
         record = _make_ligand_record(smiles, extra)
         ligands[record["id"]] = record
-        _smiles_index[smiles] = record["id"]
+        _ligand_key_index[key] = record["id"]
         return record
 
     @router.get("/data-platform/health")
@@ -188,13 +198,13 @@ def create_data_platform_router(
 
     @router.post("/data-platform/{org_key}/ligands")
     async def create_ligand(org_key: str, request: Request) -> dict[str, Any]:
-        """Create a new ligand (upserts on canonical_smiles)."""
+        """Create a new ligand (returns 409 on duplicate key)."""
         body = await request.json()
         set_data = body.get("set", {})
         returning = body.get("returning", [])
 
         smiles = set_data.get("smiles", "")
-        record = _upsert_ligand(smiles, set_data)
+        record = _insert_ligand(smiles, set_data)
 
         response_data = record.copy()
         if returning:
@@ -204,7 +214,7 @@ def create_data_platform_router(
 
     @router.post("/data-platform/{org_key}/ligands/batch/create")
     async def batch_create_ligands(org_key: str, request: Request) -> dict[str, Any]:
-        """Batch-create ligands (upserts on canonical_smiles)."""
+        """Batch-create ligands (returns 409 on duplicate key)."""
         body = await request.json()
         rows = body.get("rows", [])
         returning = body.get("returning", [])
@@ -212,7 +222,7 @@ def create_data_platform_router(
         created: list[dict[str, Any]] = []
         for row in rows:
             smiles = row.get("smiles", "")
-            record = _upsert_ligand(smiles, row)
+            record = _insert_ligand(smiles, row)
 
             response_data = record.copy()
             if returning:
@@ -230,21 +240,21 @@ def create_data_platform_router(
         if record.get("file_path")
     }
 
-    def _upsert_protein(set_data: dict[str, Any]) -> dict[str, Any]:
-        """Insert a protein or return the existing one if file_path matches.
+    @router.post("/data-platform/{org_key}/proteins")
+    async def create_protein(org_key: str, request: Request) -> dict[str, Any]:
+        """Create a new protein (returns 409 on duplicate file_path)."""
+        from fastapi import HTTPException
 
-        Args:
-            set_data: Fields from the request payload.
+        body = await request.json()
+        set_data = body.get("set", {})
+        returning = body.get("returning", [])
 
-        Returns:
-            The stored protein record (full, unfiltered).
-        """
         fp = set_data.get("file_path", "")
-        existing_id = _file_path_index.get(fp)
-        if existing_id is not None and existing_id in proteins:
-            existing = proteins[existing_id]
-            existing.update(set_data)
-            return existing
+        if fp and fp in _file_path_index:
+            raise HTTPException(
+                status_code=409,
+                detail=f"Protein with file_path '{fp}' already exists.",
+            )
 
         now = datetime.now(timezone.utc)
         protein_id = "08" + str(uuid.uuid4()).replace("-", "").upper()[:11]
@@ -284,16 +294,6 @@ def create_data_platform_router(
         proteins[protein_id] = record
         if fp:
             _file_path_index[fp] = protein_id
-        return record
-
-    @router.post("/data-platform/{org_key}/proteins")
-    async def create_protein(org_key: str, request: Request) -> dict[str, Any]:
-        """Create a new protein (upserts on file_path)."""
-        body = await request.json()
-        set_data = body.get("set", {})
-        returning = body.get("returning", [])
-
-        record = _upsert_protein(set_data)
 
         response_data = record.copy()
         if returning:
