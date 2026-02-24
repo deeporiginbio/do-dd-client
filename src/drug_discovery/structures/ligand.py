@@ -1080,9 +1080,9 @@ class Ligand(Entity):
         Returns:
             Dict suitable for ``batch_create_ligands`` rows.
         """
+        smiles_value = self.smiles if self.smiles is not None else self.canonical_smiles
         row: dict[str, Any] = {
-            "smiles": self.smiles if self.smiles is not None else self.canonical_smiles,
-            "formal_charge": 0,
+            "smiles": smiles_value,
             "variant_name_tag": "",
         }
         if self.file_path is not None:
@@ -1098,7 +1098,14 @@ class Ligand(Entity):
                 row["rotatable_bond_count"] = self.rotatable_bond_count
                 row["tpsa"] = self.tpsa
             except Exception:
-                pass
+                warnings.warn(
+                    f"Could not compute molecular descriptors for "
+                    f"'{smiles_value}'; formal_charge defaults to 0.",
+                    stacklevel=2,
+                )
+                row.setdefault("formal_charge", 0)
+        else:
+            row["formal_charge"] = 0
         return row
 
     @beartype
@@ -2116,6 +2123,11 @@ class LigandSet:
            file_path is present) and batch-creates them in a single API call.
         4. Updates the local ``id`` values from the created records.
 
+        .. note::
+            The batch-create step is all-or-nothing: if it fails (e.g.
+            network error, invalid data), none of the new ligands will
+            receive an ``id``.
+
         Args:
             lazy: If True, skip syncing ligands that already have an id.
             client: DeepOriginClient instance. If None, uses
@@ -2134,6 +2146,14 @@ class LigandSet:
         )
         if not ligands_to_sync:
             return
+
+        invalid = [lig for lig in ligands_to_sync if lig.canonical_smiles is None]
+        if invalid:
+            raise ValueError(
+                f"{len(invalid)} ligand(s) have no canonical_smiles and "
+                "cannot be synced. Ensure every ligand has a valid SMILES or "
+                "mol before calling sync()."
+            )
 
         smiles_list = [lig.canonical_smiles for lig in ligands_to_sync]
         response = client.data.search_ligands(

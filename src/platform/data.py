@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING, Any
 if TYPE_CHECKING:
     from deeporigin.platform.client import DeepOriginClient
 
+"""Default ligand fields returned by search/create endpoints."""
 LIGAND_RETURNING_FIELDS = [
     "id",
     "version",
@@ -235,6 +236,9 @@ class Data:
                 "smiles_list is mutually exclusive with smiles and canonical_smiles"
             )
 
+        if smiles_list is not None and len(smiles_list) == 0:
+            return {"data": [], "count": 0}
+
         filter_dict = filter_dict.copy() if filter_dict is not None else {}
         filter_dict.setdefault("deleted", False)
 
@@ -316,7 +320,12 @@ class Data:
 
         The data-platform search API does not support filtering by multiple
         IDs in a single request, so this method calls :meth:`get_ligand` for
-        each ID.
+        each ID sequentially.
+
+        .. note::
+            This makes one HTTP request per ID. For large lists this may be
+            slow; prefer ``search_ligands`` with appropriate filters when
+            possible.
 
         Args:
             ids: List of ligand IDs to retrieve.

@@ -89,6 +89,14 @@ def test_search_ligands_smiles_list_mutually_exclusive():
         client.data.search_ligands(smiles_list=["C"], canonical_smiles="C")
 
 
+def test_search_ligands_empty_smiles_list():
+    """Test that an empty smiles_list returns an empty result immediately."""
+    client = DeepOriginClient()
+    response = client.data.search_ligands(smiles_list=[])
+
+    assert response == {"data": [], "count": 0}
+
+
 def test_search_proteins_lv1():
     """Test searching proteins using convenience method."""
     client = DeepOriginClient()

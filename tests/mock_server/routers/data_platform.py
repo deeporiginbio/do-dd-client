@@ -8,6 +8,7 @@ from typing import Any
 import uuid
 
 from fastapi import APIRouter, Request
+from rdkit import Chem
 
 
 def _apply_search_filters(
@@ -65,6 +66,21 @@ def _apply_search_filters(
     return {"data": page, "count": total}
 
 
+def _canonicalize_smiles(smiles: str) -> str:
+    """Return the RDKit canonical SMILES for *smiles*, or the input unchanged.
+
+    Args:
+        smiles: Input SMILES string.
+
+    Returns:
+        Canonical SMILES, or the original string if RDKit cannot parse it.
+    """
+    mol = Chem.MolFromSmiles(smiles)
+    if mol is not None:
+        return Chem.MolToSmiles(mol)
+    return smiles
+
+
 def _make_ligand_record(smiles: str, extra: dict[str, Any]) -> dict[str, Any]:
     """Build a new ligand record, generating a fresh ID and timestamp.
 
@@ -76,6 +92,7 @@ def _make_ligand_record(smiles: str, extra: dict[str, Any]) -> dict[str, Any]:
     Returns:
         Complete ligand record dict.
     """
+    canonical = _canonicalize_smiles(smiles)
     now = datetime.now(timezone.utc)
     ligand_id = "08" + str(uuid.uuid4()).replace("-", "").upper()[:11]
     record: dict[str, Any] = {
@@ -87,7 +104,7 @@ def _make_ligand_record(smiles: str, extra: dict[str, Any]) -> dict[str, Any]:
         "deleted": False,
         "project_id": None,
         "subtable_name": "ligands",
-        "canonical_smiles": smiles,
+        "canonical_smiles": canonical,
         "smiles": smiles,
         "inchi_key": None,
         "inchi": None,
@@ -132,7 +149,7 @@ def create_data_platform_router(
         """Insert a ligand, raising 409 if the unique key already exists.
 
         Args:
-            smiles: The SMILES string (used as canonical_smiles).
+            smiles: The SMILES string (canonicalized before keying).
             extra: Additional fields from the request payload.
 
         Returns:
@@ -143,14 +160,15 @@ def create_data_platform_router(
         """
         from fastapi import HTTPException
 
+        canonical = _canonicalize_smiles(smiles)
         tag = extra.get("variant_name_tag", "")
-        key = (smiles, tag)
+        key = (canonical, tag)
         if key in _ligand_key_index:
             raise HTTPException(
                 status_code=409,
                 detail=(
                     f"Key (project_scope_key, canonical_smiles, variant_name_tag)"
-                    f"=(__unscoped__, {smiles}, {tag}) already exists."
+                    f"=(__unscoped__, {canonical}, {tag}) already exists."
                 ),
             )
 
