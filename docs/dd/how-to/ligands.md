@@ -225,7 +225,7 @@ best_poses = poses.filter_top_poses(by_pose_score=True)
 
 A ligand object can be visualized using `show`:
 
-```python
+```{.python notest}
 from deeporigin.drug_discovery import Ligand
 
 ligand = Ligand.from_identifier("serotonin")
