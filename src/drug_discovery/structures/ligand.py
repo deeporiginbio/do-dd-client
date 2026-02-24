@@ -2108,13 +2108,13 @@ class LigandSet:
 
         For every ligand in the set this method:
 
-        1. Uploads its file to remote storage (if a file_path is present).
-        2. Searches the data platform for existing ligands whose
+        1. Searches the data platform for existing ligands whose
            ``canonical_smiles`` match (batched into a single request via
            ``search_ligands(smiles_list=…)``).
-        3. For ligands that already exist remotely, updates the local ``id``.
-        4. For ligands that are new, batch-creates them in a single API call
-           and updates their local ``id`` values.
+        2. For ligands that already exist remotely, updates the local ``id``.
+        3. For ligands that are new, uploads files to remote storage (if a
+           file_path is present) and batch-creates them in a single API call.
+        4. Updates the local ``id`` values from the created records.
 
         Args:
             lazy: If True, skip syncing ligands that already have an id.
@@ -2135,10 +2135,6 @@ class LigandSet:
         if not ligands_to_sync:
             return
 
-        for lig in ligands_to_sync:
-            if lig.file_path is not None:
-                lig.upload(client=client)
-
         smiles_list = [lig.canonical_smiles for lig in ligands_to_sync]
         response = client.data.search_ligands(
             smiles_list=smiles_list,
@@ -2156,6 +2152,10 @@ class LigandSet:
 
         if not to_create:
             return
+
+        for lig in to_create:
+            if lig.file_path is not None:
+                lig.upload(client=client)
 
         rows = [lig._to_row() for lig in to_create]
         result = client.data.batch_create_ligands(rows=rows)
