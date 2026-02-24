@@ -413,7 +413,7 @@ class Protein(Entity):
         reference_pose: Optional[Ligand] = None,
         client: Optional[DeepOriginClient] = None,
         quote: bool = False,
-    ):
+    ) -> FunctionResult:
         """Dock a ligand into a specific pocket of the protein.
 
         Returns a ``FunctionResult`` whose ``.poses`` attribute lazily
@@ -434,7 +434,7 @@ class Protein(Entity):
             quote: If True, request a cost estimate without executing.
 
         Returns:
-            FunctionResult with a lazy ``.poses`` attribute (LigandSet).
+            FunctionResult: A FunctionResult with a lazy ``.poses`` attribute (LigandSet).
         """
 
         if client is None:

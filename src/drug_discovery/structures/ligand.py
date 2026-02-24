@@ -24,6 +24,7 @@ from deeporigin.drug_discovery.constants import LIGANDS_DIR, SUPPORTED_ATOM_SYMB
 from deeporigin.drug_discovery.utilities.visualize import jupyter_visualization
 from deeporigin.drug_discovery.validation import validate_fragments
 from deeporigin.exceptions import DeepOriginException
+from deeporigin.functions.result import FunctionResult
 from deeporigin.platform.client import DeepOriginClient
 from deeporigin.utils.constants import number
 from deeporigin.utils.core import _ensure_do_folder
@@ -561,7 +562,7 @@ class Ligand(Entity):
         client: Optional[DeepOriginClient] = None,
         use_cache: bool = True,
         quote: bool = False,
-    ):
+    ) -> FunctionResult:
         """Protonate the ligand at a given pH using the DeepOrigin API.
 
         Returns a ``FunctionResult`` whose ``.ligands`` attribute contains
@@ -584,7 +585,7 @@ class Ligand(Entity):
             quote: If True, request a cost estimate without executing.
 
         Returns:
-            FunctionResult with a ``.ligands`` attribute (list of Ligand).
+            FunctionResult: A FunctionResult with a ``.ligands`` attribute (list of Ligand).
         """
         from deeporigin.functions.protonation import protonate
 
@@ -1995,7 +1996,7 @@ class LigandSet:
         use_cache: bool = True,
         client: Optional[DeepOriginClient] = None,
         quote: bool = False,
-    ):
+    ) -> FunctionResult:
         """Protonate all ligands in the set.
 
         Returns a ``FunctionResult`` whose ``.ligands`` attribute contains
@@ -2013,7 +2014,7 @@ class LigandSet:
             quote: If True, request a cost estimate without executing.
 
         Returns:
-            FunctionResult with a ``.ligands`` attribute (list of Ligand).
+            FunctionResult: A FunctionResult with a ``.ligands`` attribute (list of Ligand).
         """
         from deeporigin.functions.result import FunctionResult
 
