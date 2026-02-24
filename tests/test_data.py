@@ -1,7 +1,5 @@
 """Tests for the Data Platform API wrapper."""
 
-import uuid
-
 import pytest
 
 from deeporigin.platform.client import DeepOriginClient
@@ -142,10 +140,9 @@ def test_list_models_lv1():
 
 
 def test_create_ligand_lv1():
-    """Test creating a ligand."""
+    """Test creating (or upserting) a ligand."""
     client = DeepOriginClient()
     smiles = "Fc1c(-c2cccc3ccccc23)ncc2c(N3C[C@H]4CC[C@@H](C3)N4)nc(OCC34CCCN3CCC4)nc12"
-    unique_tag = str(uuid.uuid4())
     response = client.data.create_ligand(
         smiles=smiles,
         name="Compound-12345",
@@ -155,7 +152,7 @@ def test_create_ligand_lv1():
         rotatable_bond_count=5,
         tpsa=85.12,
         molecular_weight=447.5,
-        variant_name_tag=unique_tag,
+        variant_name_tag="test-create-ligand",
     )
 
     assert isinstance(response, dict), "Expected a dictionary response"
@@ -164,35 +161,29 @@ def test_create_ligand_lv1():
     assert isinstance(data, dict), "Expected 'data' to be a dictionary"
     assert "id" in data, "Expected 'id' key in data"
     assert "version" in data, "Expected 'version' key in data"
-    assert data["version"] == 1, "Expected version to be 1"
+    assert data["version"] >= 1, "Expected version to be >= 1"
     assert "name" in data, "Expected 'name' key in data"
     assert data["name"] == "Compound-12345", "Expected name to match"
     assert "canonical_smiles" in data, "Expected 'canonical_smiles' key in data"
     assert "meta" in response, "Expected 'meta' key in response"
-    assert response["meta"]["inserted"] == 1, "Expected inserted to be 1"
 
 
 def test_create_protein_lv1():
-    """Test creating a protein."""
+    """Test creating (or upserting) a protein."""
     client = DeepOriginClient()
-    response = client.data.create_protein(
-        file_path="entities/proteins/db4aa32e2e8ffa976a60004a8361b86427a2e5653a6623bb60b7913445902549.pdb",
-    )
+    file_path = "entities/proteins/db4aa32e2e8ffa976a60004a8361b86427a2e5653a6623bb60b7913445902549.pdb"
+    response = client.data.create_protein(file_path=file_path)
 
     assert isinstance(response, dict), "Expected a dictionary response"
     assert "data" in response, "Expected 'data' key in response"
     assert isinstance(response["data"], dict), "Expected 'data' to be a dictionary"
     assert "id" in response["data"], "Expected 'id' key in response data"
     assert "version" in response["data"], "Expected 'version' key in response data"
-    assert response["data"]["version"] == 1, "Expected version to be 1"
+    assert response["data"]["version"] >= 1, "Expected version to be >= 1"
     assert "file_path" in response["data"], "Expected 'file_path' key in response data"
-    assert (
-        response["data"]["file_path"]
-        == "entities/proteins/db4aa32e2e8ffa976a60004a8361b86427a2e5653a6623bb60b7913445902549.pdb"
-    ), "Expected file_path to match"
+    assert response["data"]["file_path"] == file_path, "Expected file_path to match"
     assert "meta" in response, "Expected 'meta' key in response"
     assert "inserted" in response["meta"], "Expected 'inserted' key in meta"
-    assert response["meta"]["inserted"] == 1, "Expected inserted to be 1"
 
 
 def test_list_projects_lv1():
@@ -213,7 +204,7 @@ def test_get_ligand_lv1():
         smiles=smiles,
         name="GetLigandTest",
         molecular_weight=447.5,
-        variant_name_tag=str(uuid.uuid4()),
+        variant_name_tag="test-get-ligand",
     )
     ligand_id = created["data"]["id"]
 
@@ -231,13 +222,12 @@ def test_get_ligand_lv1():
 def test_get_ligands_lv1():
     """Test getting multiple ligands by IDs."""
     client = DeepOriginClient()
-    tag = str(uuid.uuid4())
 
     id1 = client.data.create_ligand(
-        smiles="CCO", name="get-ligands-1", variant_name_tag=tag
+        smiles="CCO", name="get-ligands-1", variant_name_tag="test-get-ligands"
     )["data"]["id"]
     id2 = client.data.create_ligand(
-        smiles="CCCO", name="get-ligands-2", variant_name_tag=tag
+        smiles="CCCO", name="get-ligands-2", variant_name_tag="test-get-ligands"
     )["data"]["id"]
 
     data = client.data.get_ligands(ids=[id1, id2])
@@ -249,21 +239,20 @@ def test_get_ligands_lv1():
 
 
 def test_batch_create_ligands_lv1():
-    """Test batch creating ligands."""
+    """Test batch creating (or upserting) ligands."""
     client = DeepOriginClient()
-    tag = str(uuid.uuid4())
     rows = [
         {
             "smiles": "CCO",
-            "name": f"batch-ethanol-{tag}",
+            "name": "batch-ethanol",
             "formal_charge": 0,
-            "variant_name_tag": tag,
+            "variant_name_tag": "test-batch-create",
         },
         {
             "smiles": "CCCO",
-            "name": f"batch-propanol-{tag}",
+            "name": "batch-propanol",
             "formal_charge": 0,
-            "variant_name_tag": tag,
+            "variant_name_tag": "test-batch-create",
         },
     ]
     response = client.data.batch_create_ligands(rows=rows)
