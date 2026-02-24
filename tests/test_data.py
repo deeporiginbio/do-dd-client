@@ -57,6 +57,39 @@ def test_search_ligands_molecular_weight_lv1():
     assert isinstance(response["data"], list), "Expected 'data' to be a list"
 
 
+def test_search_ligands_smiles_list_lv1():
+    """Test searching ligands by a list of SMILES strings."""
+    client = DeepOriginClient()
+
+    # First, search for a few existing ligands to get known canonical SMILES
+    existing = client.data.search_ligands(limit=3)
+    assert len(existing["data"]) >= 2, "Need at least 2 existing ligands for this test"
+
+    known_smiles = [lig["canonical_smiles"] for lig in existing["data"][:2]]
+
+    response = client.data.search_ligands(smiles_list=known_smiles)
+
+    assert isinstance(response, dict), "Expected a dictionary response"
+    assert "data" in response, "Expected 'data' key in response"
+    assert isinstance(response["data"], list), "Expected 'data' to be a list"
+    assert len(response["data"]) >= 2, "Expected at least 2 results"
+
+    returned_smiles = {lig["canonical_smiles"] for lig in response["data"]}
+    for s in known_smiles:
+        assert s in returned_smiles, f"Expected {s} in results"
+
+
+def test_search_ligands_smiles_list_mutually_exclusive():
+    """Test that smiles_list cannot be used with smiles or canonical_smiles."""
+    client = DeepOriginClient()
+
+    with pytest.raises(ValueError, match="mutually exclusive"):
+        client.data.search_ligands(smiles_list=["C"], smiles="C")
+
+    with pytest.raises(ValueError, match="mutually exclusive"):
+        client.data.search_ligands(smiles_list=["C"], canonical_smiles="C")
+
+
 def test_search_proteins_lv1():
     """Test searching proteins using convenience method."""
     client = DeepOriginClient()
@@ -193,6 +226,56 @@ def test_get_ligand_lv1():
     assert "name" in response, "Expected 'name' key in response"
     assert response["name"] == "GetLigandTest", "Expected name to match"
     assert "molecular_weight" in response, "Expected 'molecular_weight' key in response"
+
+
+def test_get_ligands_lv1():
+    """Test getting multiple ligands by IDs."""
+    client = DeepOriginClient()
+    tag = str(uuid.uuid4())
+
+    id1 = client.data.create_ligand(
+        smiles="CCO", name="get-ligands-1", variant_name_tag=tag
+    )["data"]["id"]
+    id2 = client.data.create_ligand(
+        smiles="CCCO", name="get-ligands-2", variant_name_tag=tag
+    )["data"]["id"]
+
+    data = client.data.get_ligands(ids=[id1, id2])
+
+    assert isinstance(data, list), "Expected a list response"
+    assert len(data) == 2, f"Expected 2 ligands, got {len(data)}"
+    returned_ids = {record["id"] for record in data}
+    assert returned_ids == {id1, id2}, "Expected both IDs in response"
+
+
+def test_batch_create_ligands_lv1():
+    """Test batch creating ligands."""
+    client = DeepOriginClient()
+    tag = str(uuid.uuid4())
+    rows = [
+        {
+            "smiles": "CCO",
+            "name": f"batch-ethanol-{tag}",
+            "formal_charge": 0,
+            "variant_name_tag": tag,
+        },
+        {
+            "smiles": "CCCO",
+            "name": f"batch-propanol-{tag}",
+            "formal_charge": 0,
+            "variant_name_tag": tag,
+        },
+    ]
+    response = client.data.batch_create_ligands(rows=rows)
+
+    assert isinstance(response, dict), "Expected a dictionary response"
+    assert "data" in response, "Expected 'data' key in response"
+    data = response["data"]
+    assert isinstance(data, list), "Expected 'data' to be a list"
+    assert len(data) == 2, f"Expected 2 created ligands, got {len(data)}"
+    for record in data:
+        assert "id" in record, "Expected 'id' in each created record"
+        assert "canonical_smiles" in record, "Expected 'canonical_smiles' in record"
 
 
 def test_get_protein_lv1():

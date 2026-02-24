@@ -1,4 +1,5 @@
 import os
+import uuid
 
 import pytest
 
@@ -955,3 +956,61 @@ def test_render_view_no_structure_badge_when_mixed():
         "<span class='badge text-bg-info' style='font-variant: small-caps;'>3D</span>"
         not in html
     )
+
+
+def test_ligand_set_sync_lv1():
+    """Test syncing a LigandSet to the data platform.
+
+    Creates ligands from SMILES, syncs them, then syncs again to verify
+    that existing ligands are found rather than re-created.
+    """
+    tag = uuid.uuid4().hex[:8]
+    smiles_list = [
+        "CCO",
+        "CCCO",
+        "CCCCO",
+    ]
+    ligands = LigandSet.from_smiles(smiles_list)
+    for i, lig in enumerate(ligands):
+        lig.name = f"sync-test-{tag}-{i}"
+
+    ligands.sync()
+
+    for lig in ligands:
+        assert lig.id is not None, f"Expected id after sync for {lig.smiles}"
+
+    first_ids = [lig.id for lig in ligands]
+
+    # Sync again — same canonical SMILES should match existing records
+    ligands2 = LigandSet.from_smiles(smiles_list)
+    ligands2.sync()
+
+    for lig in ligands2:
+        assert lig.id is not None, f"Expected id after second sync for {lig.smiles}"
+
+    second_ids = [lig.id for lig in ligands2]
+    assert first_ids == second_ids, "IDs should match on re-sync"
+
+
+def test_ligand_set_sync_lazy_lv1():
+    """Test that lazy=True skips ligands that already have an id."""
+    smiles_list = ["CCO", "CCCO"]
+    ligands = LigandSet.from_smiles(smiles_list)
+
+    ligands.sync()
+    original_ids = [lig.id for lig in ligands]
+    assert all(i is not None for i in original_ids)
+
+    # Set one id to None to simulate a "new" ligand
+    ligands.ligands[0].id = None
+    ligands.sync(lazy=True)
+
+    # The first ligand should get an id back; the second should keep its original
+    assert ligands.ligands[0].id is not None
+    assert ligands.ligands[1].id == original_ids[1]
+
+
+def test_ligand_set_sync_empty():
+    """Test that syncing an empty LigandSet is a no-op."""
+    empty = LigandSet(ligands=[])
+    empty.sync()  # should not raise
