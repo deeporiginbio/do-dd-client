@@ -1,0 +1,90 @@
+name: Client compatibility tests
+
+on:
+  schedule:
+    - cron: "0 23 * * *"
+  workflow_dispatch:
+    inputs:
+      env:
+        description: "Target environment"
+        type: choice
+        required: true
+        default: staging
+        options:
+          - staging
+          - prod
+
+jobs:
+  client-compatibility-tests:
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.env == 'prod' && 'prod' || 'staging' }}
+
+    steps:
+      - name: Get latest PyPI version
+        id: get_version
+        run: |
+          PYPI_VERSION=$(curl -sS https://pypi.org/pypi/deeporigin/json | jq -r .info.version)
+          echo "PYPI_VERSION=$PYPI_VERSION" >> "$GITHUB_OUTPUT"
+          echo "Using deeporigin==$PYPI_VERSION"
+
+      - name: Checkout repo at tag
+        uses: actions/checkout@v4
+        with:
+          ref: refs/tags/${{ steps.get_version.outputs.PYPI_VERSION }}
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v6
+        with:
+          version: "0.5.27"
+
+      - name: Set up Python
+        run: uv python install 3.13
+
+      - name: Set environment variables
+        env:
+          TARGET_ENV: ${{ inputs.env == 'prod' && 'prod' || 'staging' }}
+          TOKEN_PROD: ${{ secrets.DO_AUTH_TOKEN_PROD }}
+          TOKEN_STAGING: ${{ secrets.DO_AUTH_TOKEN_STAGING }}
+        run: |
+          AUTH_TOKEN_VAR=$(python3 scripts/get_env_var_name.py access_token)
+          ORG_KEY_VAR=$(python3 scripts/get_env_var_name.py org_key)
+          ENV_VAR=$(python3 scripts/get_env_var_name.py env)
+
+          # Export ENV_VAR name so next step can use ${!ENV_VAR} to get the value (staging/prod)
+          echo "ENV_VAR=${ENV_VAR}" >> "$GITHUB_ENV"
+          # Set the env var names that the SDK at this tag reads from constants.py (e.g. 4.5.3 → DEEPORIGIN_*, future tags → DO_*)
+          echo "${ORG_KEY_VAR}=deeporigin" >> "$GITHUB_ENV"
+          echo "${ENV_VAR}=${TARGET_ENV}" >> "$GITHUB_ENV"
+          if [ "$TARGET_ENV" = "prod" ]; then
+            echo "${AUTH_TOKEN_VAR}=${TOKEN_PROD}" >> "$GITHUB_ENV"
+          else
+            echo "${AUTH_TOKEN_VAR}=${TOKEN_STAGING}" >> "$GITHUB_ENV"
+          fi
+
+      - name: Install client from PyPI
+        run: |
+          mkdir -p pypi-client && cd pypi-client
+          uv init
+          uv add "deeporigin[tools,core,plots,test]==${{ steps.get_version.outputs.PYPI_VERSION }}" pytest-html
+
+      - name: Run full test suite
+        run: |
+          uv run pytest --env "${!ENV_VAR}" -v \
+            --junitxml=test-results.xml \
+            --html=report.html --self-contained-html
+
+      - name: Publish JUnit test results
+        uses: EnricoMi/publish-unit-test-result-action@v2
+        if: always()
+        with:
+          files: test-results.xml
+          check_name: "Client compatibility test results (PyPI ${{ steps.get_version.outputs.PYPI_VERSION }} vs ${{ inputs.env == 'prod' && 'prod' || 'staging' }})"
+
+      - name: Upload HTML and JUnit artifacts
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: test-results-${{ steps.get_version.outputs.PYPI_VERSION }}-${{ inputs.env == 'prod' && 'prod' || 'staging' }}
+          path: |
+            report.html
+            test-results.xml
