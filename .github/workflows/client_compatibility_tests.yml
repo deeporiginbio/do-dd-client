@@ -69,7 +69,7 @@ jobs:
 
       - name: Run full test suite
         run: |
-          pypi-client/.venv/bin/pytest --env "${!ENV_VAR}" -v \
+          uv run pytest --env "${!ENV_VAR}" -v \
             --junitxml=test-results.xml \
             --html=report.html --self-contained-html
 
