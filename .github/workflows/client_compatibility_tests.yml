@@ -46,19 +46,27 @@ jobs:
           TOKEN_PROD: ${{ secrets.DO_AUTH_TOKEN_PROD }}
           TOKEN_STAGING: ${{ secrets.DO_AUTH_TOKEN_STAGING }}
         run: |
-          AUTH_TOKEN_VAR=$(python3 scripts/get_env_var_name.py access_token)
-          ORG_KEY_VAR=$(python3 scripts/get_env_var_name.py org_key)
-          ENV_VAR=$(python3 scripts/get_env_var_name.py env)
+          # scripts/get_env_var_name.py does not exist in older tags (e.g. 4.5.3). Use DEEPORIGIN_*
+          # as in constants.ENV_VARIABLES at 4.5.3. Re-enable the script when all supported PyPI
+          # versions include it (and use it to set AUTH_TOKEN_VAR, ORG_KEY_VAR, ENV_VAR).
+          # AUTH_TOKEN_VAR=$(python3 scripts/get_env_var_name.py access_token)
+          # ORG_KEY_VAR=$(python3 scripts/get_env_var_name.py org_key)
+          # ENV_VAR=$(python3 scripts/get_env_var_name.py env)
+          # echo "ENV_VAR=${ENV_VAR}" >> "$GITHUB_ENV"
+          # echo "${ORG_KEY_VAR}=deeporigin" >> "$GITHUB_ENV"
+          # echo "${ENV_VAR}=${TARGET_ENV}" >> "$GITHUB_ENV"
+          # if [ "$TARGET_ENV" = "prod" ]; then
+          #   echo "${AUTH_TOKEN_VAR}=${TOKEN_PROD}" >> "$GITHUB_ENV"
+          # else
+          #   echo "${AUTH_TOKEN_VAR}=${TOKEN_STAGING}" >> "$GITHUB_ENV"
+          # fi
 
-          # Export ENV_VAR name so next step can use ${!ENV_VAR} to get the value (staging/prod)
-          echo "ENV_VAR=${ENV_VAR}" >> "$GITHUB_ENV"
-          # Set the env var names that the SDK at this tag reads from constants.py (e.g. 4.5.3 → DEEPORIGIN_*, future tags → DO_*)
-          echo "${ORG_KEY_VAR}=deeporigin" >> "$GITHUB_ENV"
-          echo "${ENV_VAR}=${TARGET_ENV}" >> "$GITHUB_ENV"
+          echo "DEEPORIGIN_ORG_KEY=deeporigin" >> "$GITHUB_ENV"
+          echo "DEEPORIGIN_ENV=${TARGET_ENV}" >> "$GITHUB_ENV"
           if [ "$TARGET_ENV" = "prod" ]; then
-            echo "${AUTH_TOKEN_VAR}=${TOKEN_PROD}" >> "$GITHUB_ENV"
+            echo "DEEPORIGIN_TOKEN=${TOKEN_PROD}" >> "$GITHUB_ENV"
           else
-            echo "${AUTH_TOKEN_VAR}=${TOKEN_STAGING}" >> "$GITHUB_ENV"
+            echo "DEEPORIGIN_TOKEN=${TOKEN_STAGING}" >> "$GITHUB_ENV"
           fi
 
       - name: Install client from PyPI
@@ -69,7 +77,7 @@ jobs:
 
       - name: Run full test suite
         run: |
-          uv run pytest --env "${!ENV_VAR}" -v \
+          uv run pytest --env "$DEEPORIGIN_ENV" -v \
             --junitxml=test-results.xml \
             --html=report.html --self-contained-html
 
