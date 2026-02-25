@@ -31,7 +31,7 @@ class Docking(WorkflowStep):
     Objects instantiated here are meant to be used within the Complex class."""
 
     """tool version to use for Docking"""
-    tool_version = "0.5.1"
+    tool_version = "0.6.2"
     _tool_key = tool_mapper["Docking"]
 
     def __init__(self, parent):
@@ -207,8 +207,22 @@ class Docking(WorkflowStep):
             smiles_strings = [ligand.smiles for ligand in self.parent.ligands]
             mask = df["user_inputs"].apply(
                 lambda x: isinstance(x, dict)
-                and "smiles_list" in x
-                and any(s in smiles_strings for s in x["smiles_list"])
+                and (
+                    # Handle old format (smiles_list)
+                    (
+                        "smiles_list" in x
+                        and any(s in smiles_strings for s in x["smiles_list"])
+                    )
+                    # Handle new format (ligands array)
+                    or (
+                        "ligands" in x
+                        and isinstance(x["ligands"], list)
+                        and any(
+                            ligand.get("smiles", "") in smiles_strings
+                            for ligand in x["ligands"]
+                        )
+                    )
+                )
             )
             df = df[mask]
 
@@ -264,9 +278,9 @@ class Docking(WorkflowStep):
         if output_dir_path is None:
             output_dir_path = "tool-runs/docking/" + self.parent.protein.to_hash() + "/"
 
-        # only sync the protein, not the ligands, because we're
-        # only using the SMILES strings, which are sent in the request DTO
-        self.parent.protein.upload(client=self.parent.client)
+        # Sync protein and ligands to ensure they have IDs
+        self.parent.protein.sync(client=self.parent.client)
+        self.parent.ligands.sync(client=self.parent.client)
 
         metadata = {
             "protein_file": protein_basename,
@@ -291,35 +305,65 @@ class Docking(WorkflowStep):
             box_size = [box_size, box_size, box_size]
             pocket_center = pocket.get_center().tolist()
 
-        smiles_strings = [ligand.smiles for ligand in self.parent.ligands]
+        # Get all ligands and filter out already docked ones
+        all_ligands = list(self.parent.ligands)
 
         df = self.get_jobs_df(pocket_center=pocket_center, box_size=box_size)
 
-        already_docked_ligands = []
+        already_docked_smiles = set()
 
         if not re_run:
             for _, row in df.iterrows():
-                this_smiles = row["user_inputs"]["smiles_list"]
-                already_docked_ligands.extend(this_smiles)
+                user_inputs = row.get("user_inputs", {})
+                # Handle both old format (smiles_list) and new format (ligands array)
+                if "smiles_list" in user_inputs:
+                    already_docked_smiles.update(user_inputs["smiles_list"])
+                elif "ligands" in user_inputs:
+                    already_docked_smiles.update(
+                        ligand.get("smiles", "") for ligand in user_inputs["ligands"]
+                    )
 
-        smiles_strings = set(smiles_strings) - set(already_docked_ligands)
-        smiles_strings = sorted(smiles_strings)
+        # Filter ligands to only include those not already docked
+        ligands_to_dock = [
+            ligand
+            for ligand in all_ligands
+            if ligand.smiles not in already_docked_smiles
+        ]
+
+        # Sort ligands by SMILES for consistent batching
+        ligands_to_dock = sorted(ligands_to_dock, key=lambda ligand: ligand.smiles)
 
         job_ids = []
 
-        chunks = list(more_itertools.chunked(smiles_strings, batch_size))
+        chunks = list(more_itertools.chunked(ligands_to_dock, batch_size))
 
         def process_chunk(chunk):
             params = {
                 "box_size": list(box_size),
                 "pocket_center": list(pocket_center),
-                "smiles_list": chunk,
+                "protein": {
+                    "file_path": self.parent.protein._remote_path,
+                },
+                "ligands": [
+                    {
+                        "smiles": ligand.smiles,
+                    }
+                    for ligand in chunk
+                ],
             }
 
-            params["protein"] = {
-                "$provider": "ufa",
-                "key": self.parent.protein._remote_path,
-            }
+            # Include protein ID if available
+            if self.parent.protein.id is not None:
+                params["protein"]["id"] = self.parent.protein.id
+
+            # Include ligand IDs if available
+            for i, ligand in enumerate(chunk):
+                if ligand.id is not None:
+                    params["ligands"][i]["id"] = ligand.id
+
+            # Include pocket_id if pocket is provided and has an ID
+            if pocket is not None and hasattr(pocket, "id") and pocket.id is not None:
+                params["pocket_id"] = pocket.id
 
             execution_dto = utils._start_tool_run(
                 params=params,
@@ -332,7 +376,7 @@ class Docking(WorkflowStep):
             )
             return execution_dto
 
-        if len(smiles_strings) > 0:
+        if len(ligands_to_dock) > 0:
             if use_parallel:
                 with concurrent.futures.ThreadPoolExecutor() as executor:
                     # Submit all chunks to the executor
