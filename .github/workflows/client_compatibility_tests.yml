@@ -61,14 +61,15 @@ jobs:
             echo "${AUTH_TOKEN_VAR}=${TOKEN_STAGING}" >> "$GITHUB_ENV"
           fi
 
-      - name: Create venv and install client from PyPI
+      - name: Install client from PyPI
         run: |
-          uv venv .venv-pypi
-          uv pip install --python .venv-pypi/bin/python "deeporigin[tools,core,plots,test]==${{ steps.get_version.outputs.PYPI_VERSION }}" pytest-html
+          mkdir -p pypi-client && cd pypi-client
+          uv init
+          uv add "deeporigin[tools,core,plots,test]==${{ steps.get_version.outputs.PYPI_VERSION }}" pytest-html
 
       - name: Run full test suite
         run: |
-          .venv-pypi/bin/pytest --env "${!ENV_VAR}" -v \
+          pypi-client/.venv/bin/pytest --env "${!ENV_VAR}" -v \
             --junitxml=test-results.xml \
             --html=report.html --self-contained-html
 
