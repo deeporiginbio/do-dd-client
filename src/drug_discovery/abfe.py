@@ -351,14 +351,26 @@ class ABFE(WorkflowStep):
             try:
                 prepared_system = self.parent._prepared_systems[ligand.to_hash()]
 
-                output_files = prepared_system["output_files"]
+                # Support system-prep output format: system dict with file paths
+                system = prepared_system.get("system", {})
+                if system:
+                    binding_xml = system.get("binding_xml_file_path")
+                    solvation_xml = system.get("solvation_xml_file_path")
+                else:
+                    # Legacy: output_files list
+                    output_files = prepared_system["output_files"]
+                    binding_xml = next(
+                        f for f in output_files if f.endswith("bsm_system.xml")
+                    )
+                    solvation_xml = next(
+                        f for f in output_files if f.endswith("solvation.xml")
+                    )
 
-                binding_xml = [
-                    file for file in output_files if file.endswith("bsm_system.xml")
-                ][0]
-                solvation_xml = [
-                    file for file in output_files if file.endswith("solvation.xml")
-                ][0]
+                if not binding_xml or not solvation_xml:
+                    raise KeyError(
+                        "Prepared system missing binding_xml_file_path or "
+                        "solvation_xml_file_path in system"
+                    )
 
                 params = self._params["end_to_end"]
 
