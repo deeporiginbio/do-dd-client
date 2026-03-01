@@ -614,21 +614,25 @@ class Data:
         tool_id: str,
         protein_id: str,
         tool_version: str | None = None,
-        limit: int | None = None,
+        limit: int = 1000,
         select: list[str] | None = None,
     ) -> dict:
         """Search result-explorer records filtered by tool and protein.
+
+        Automatically paginates using cursor-based pagination until all
+        matching records have been fetched.
 
         Args:
             tool_id: Tool ID to filter by (e.g. "deeporigin.bulk-docking").
             protein_id: Protein ID to filter by.
             tool_version: Optional tool version to filter by.
-            limit: Maximum number of results to return. If None, the API default applies.
+            limit: Page size per request. Defaults to 1000.
             select: List of fields to select. Defaults to
                 ``["id", "tool_id", "tool_version", "data", "execution_id"]``.
 
         Returns:
-            Dictionary containing the search results.
+            Dictionary with ``data`` (all records across pages) and ``meta``
+            from the final response.
         """
         if select is None:
             select = ["id", "tool_id", "tool_version", "data", "execution_id"]
@@ -640,17 +644,29 @@ class Data:
         if tool_version is not None:
             filter_dict["tool_version"] = {"eq": tool_version}
 
-        body: dict[str, Any] = {
-            "filter": filter_dict,
-            "select": select,
-        }
-        if limit is not None:
-            body["limit"] = limit
+        url = f"/data-platform/{self._c.org_key}/result-explorer/search"
+        all_data: list[dict[str, Any]] = []
+        cursor: str | None = None
 
-        return self._c.post_json(
-            f"/data-platform/{self._c.org_key}/result-explorer/search",
-            body=body,
-        )
+        while True:
+            body: dict[str, Any] = {
+                "filter": filter_dict,
+                "limit": limit,
+                "select": select,
+            }
+            if cursor is not None:
+                body["cursor"] = cursor
+
+            response = self._c.post_json(url, body=body)
+            all_data.extend(response.get("data", []))
+
+            next_cursor = response.get("meta", {}).get("nextCursor")
+            if not next_cursor:
+                break
+            cursor = next_cursor
+
+        response["data"] = all_data
+        return response
 
     def list_projects(self) -> dict:
         """List projects.

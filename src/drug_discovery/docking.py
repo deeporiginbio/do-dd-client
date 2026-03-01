@@ -162,6 +162,63 @@ class Docking(WorkflowStep):
             return local_paths
 
     @beartype
+    def get_results_using_id(
+        self,
+    ) -> pd.DataFrame | None:
+        """Retrieve docking results as a flat DataFrame via the result-explorer API.
+
+        Queries the result-explorer endpoint filtered by protein ID and tool ID,
+        then flattens nested ``data`` fields into a single tabular structure.
+
+        Args:
+            limit: Maximum number of result records to fetch. If None, the API
+                default applies.
+
+        Returns:
+            DataFrame with columns ``id``, ``tool_id``, ``tool_version``,
+            ``ligand_id``, ``protein_id``, ``binding_energy``, ``pose_score``,
+            and ``file_path``. Returns None if no results were found.
+
+        Raises:
+            DeepOriginException: If the protein has no ID.
+        """
+        protein_id = self.parent.protein.id
+        if protein_id is None:
+            raise DeepOriginException(
+                title="Protein has no ID",
+                message="Cannot fetch results by ID because the protein has not been synced.",
+                fix="Call <code>protein.sync(client=client)</code> first, or use <code>get_results()</code> instead.",
+            )
+
+        response = self.parent.client.data.get_results_for(
+            tool_id=self._tool_key,
+            protein_id=protein_id,
+        )
+
+        records = response.get("data", [])
+        if len(records) == 0:
+            print("No docking results found for this protein.")
+            return None
+
+        rows = []
+        for record in records:
+            data = record.get("data", {})
+            rows.append(
+                {
+                    "id": record.get("id"),
+                    "tool_id": record.get("tool_id"),
+                    "tool_version": record.get("tool_version"),
+                    "ligand_id": data.get("ligand_id"),
+                    "protein_id": data.get("protein_id"),
+                    "binding_energy": data.get("binding_energy"),
+                    "pose_score": data.get("pose_score"),
+                    "file_path": data.get("file_path"),
+                }
+            )
+
+        return pd.DataFrame(rows)
+
+    @beartype
     def get_jobs_df(
         self,
         *,
