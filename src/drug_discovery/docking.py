@@ -83,12 +83,17 @@ class Docking(WorkflowStep):
         )
         JupyterViewer.visualize(html_content)
 
-    def get_poses(self) -> LigandSet | None:
+    def get_poses(self, *, include_legacy_results: bool = True) -> LigandSet | None:
         """Get all docked poses as a ``LigandSet``.
 
         Tries :meth:`get_results_using_id` first (result-explorer API), then
-        falls back to the legacy :meth:`get_results` directory listing. SDF
-        paths from both sources are merged and deduplicated before loading.
+        optionally includes results from the legacy :meth:`get_results`
+        directory listing. SDF paths from both sources are merged and
+        deduplicated before loading.
+
+        Args:
+            include_legacy_results: If True, also fetch results via the legacy
+                directory-listing method and merge them. Defaults to True.
 
         Returns:
             A LigandSet of docked poses, or None if no results are available.
@@ -108,7 +113,9 @@ class Docking(WorkflowStep):
                 lazy=True,
             )
 
-        legacy_paths = self.get_results(file_type="sdf") or []
+        legacy_paths: list[str] = []
+        if include_legacy_results:
+            legacy_paths = self.get_results(file_type="sdf") or []
 
         all_paths = list(dict.fromkeys(id_local_paths + legacy_paths))
 
