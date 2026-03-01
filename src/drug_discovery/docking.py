@@ -84,15 +84,39 @@ class Docking(WorkflowStep):
         JupyterViewer.visualize(html_content)
 
     def get_poses(self) -> LigandSet | None:
-        """get all docked poses as a `LigandSet`"""
+        """Get all docked poses as a ``LigandSet``.
 
-        file_paths = self.get_results(file_type="sdf")
+        Tries :meth:`get_results_using_id` first (result-explorer API), then
+        falls back to the legacy :meth:`get_results` directory listing. SDF
+        paths from both sources are merged and deduplicated before loading.
 
-        if file_paths is None:
-            # no results available yet
-            return
+        Returns:
+            A LigandSet of docked poses, or None if no results are available.
+        """
+        remote_paths: list[str] = []
+        try:
+            df = self.get_results_using_id()
+            if df is not None:
+                remote_paths = df["file_path"].dropna().unique().tolist()
+        except Exception:
+            pass
+
+        id_local_paths: list[str] = []
+        if remote_paths:
+            id_local_paths = self.parent.client.files.download_files(
+                files=remote_paths,
+                lazy=True,
+            )
+
+        legacy_paths = self.get_results(file_type="sdf") or []
+
+        all_paths = list(dict.fromkeys(id_local_paths + legacy_paths))
+
+        if len(all_paths) == 0:
+            return None
+
         ligands = LigandSet()
-        for file in file_paths:
+        for file in all_paths:
             ligands.ligands += LigandSet.from_sdf(file).ligands
 
         smiles_in_complex = self.parent.ligands.to_smiles()
