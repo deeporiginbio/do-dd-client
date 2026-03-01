@@ -49,6 +49,7 @@ class MockServer:
         self._execution_start_times: dict[str, datetime] = {}
         self._ligands: dict[str, dict[str, Any]] = {}
         self._proteins: dict[str, dict[str, Any]] = {}
+        self._results: list[dict[str, Any]] = []
         # Tool-specific mock execution durations (in seconds)
         self._mock_execution_durations: dict[str, float] = {
             "deeporigin.abfe-end-to-end": 30.0,  # seconds
@@ -56,6 +57,7 @@ class MockServer:
         self.docking_speed = docking_speed
         self._load_execution_fixtures()
         self._load_ligand_fixtures()
+        self._load_result_explorer_fixtures()
         self._setup_routes()
 
     def _load_fixture(self, fixture_name: str) -> dict[str, Any]:
@@ -214,6 +216,17 @@ class MockServer:
                 seen_smiles.add(canonical)
                 self._ligands[data["id"]] = data
 
+    def _load_result_explorer_fixtures(self) -> None:
+        """Load result-explorer fixture files into the in-memory results store.
+
+        Scans ``tests/fixtures/result-explorer-*.json`` for files containing a
+        ``data`` list and appends all records.
+        """
+        for json_path in sorted(self._fixtures_dir.glob("result-explorer-*.json")):
+            with open(json_path) as f:
+                fixture: dict[str, Any] = json.load(f)
+            self._results.extend(fixture.get("data", []))
+
     def _setup_routes(self) -> None:
         """Set up all API routes."""
         # Include file-related routes
@@ -224,6 +237,7 @@ class MockServer:
         dp_router = data_platform.create_data_platform_router(
             ligands=self._ligands,
             proteins=self._proteins,
+            results=self._results,
             load_fixture=self._load_fixture,
         )
         self.app.include_router(dp_router)

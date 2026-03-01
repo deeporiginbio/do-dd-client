@@ -115,10 +115,41 @@ def _make_ligand_record(smiles: str, extra: dict[str, Any]) -> dict[str, Any]:
     return record
 
 
+def _apply_eq_filters(
+    records: list[dict[str, Any]],
+    filter_dict: dict[str, Any],
+) -> list[dict[str, Any]]:
+    """Apply ``{"field": {"eq": value}}`` style filters to a list of records.
+
+    Each filter key maps to a dict with an ``eq`` operator. The value is
+    compared against top-level record fields *and* nested ``data`` fields.
+
+    Args:
+        records: List of record dicts to filter.
+        filter_dict: Mapping of field names to ``{"eq": value}`` dicts.
+
+    Returns:
+        Filtered list of records.
+    """
+    results = list(records)
+    for key, condition in filter_dict.items():
+        if not isinstance(condition, dict) or "eq" not in condition:
+            continue
+        expected = condition["eq"]
+        results = [
+            r
+            for r in results
+            if r.get(key) == expected
+            or (isinstance(r.get("data"), dict) and r["data"].get(key) == expected)
+        ]
+    return results
+
+
 def create_data_platform_router(
     *,
     ligands: dict[str, dict[str, Any]],
     proteins: dict[str, dict[str, Any]],
+    results: list[dict[str, Any]],
     load_fixture: Callable[[str], dict[str, Any]],
 ) -> APIRouter:
     """Create a router for data-platform endpoints.
@@ -126,6 +157,7 @@ def create_data_platform_router(
     Args:
         ligands: In-memory storage for ligands.
         proteins: In-memory storage for proteins.
+        results: In-memory list of result-explorer records.
         load_fixture: Callable to load fixture data by name.
 
     Returns:
@@ -192,6 +224,22 @@ def create_data_platform_router(
         limit = body.get("limit", 100)
         offset = body.get("offset", 0)
         return _apply_search_filters(ligands, filter_dict, limit=limit, offset=offset)
+
+    @router.post("/data-platform/{org_key}/result-explorer/search")
+    async def search_result_explorer(org_key: str, request: Request) -> dict[str, Any]:
+        """Search result-explorer records with ``{"field": {"eq": value}}`` filters."""
+        body = await request.json()
+        filter_dict = body.get("filter", {})
+        limit = body.get("limit", 100)
+        select = body.get("select")
+
+        filtered = _apply_eq_filters(results, filter_dict)
+        page = filtered[:limit]
+
+        if select:
+            page = [{k: v for k, v in r.items() if k in select} for r in page]
+
+        return {"data": page, "meta": {"count": len(filtered)}}
 
     @router.post("/data-platform/{org_key}/{entity}/search")
     async def search_entity(

@@ -263,7 +263,13 @@ class Protein(Entity):
             ) from None
 
     @classmethod
-    def from_file(cls, file_path: str | Path, struct_ind: int = 0) -> Self:
+    def from_file(
+        cls,
+        file_path: str | Path,
+        struct_ind: int = 0,
+        *,
+        validate: bool = True,
+    ) -> Self:
         """
         Create a Protein instance from a file.
 
@@ -290,7 +296,7 @@ class Protein(Entity):
             )
 
         # validate PDB files
-        if block_type == "pdb":
+        if block_type == "pdb" and validate:
             validate_pdb_file(file_path)
         try:
             block_content = file_path.read_text()

@@ -608,6 +608,50 @@ class Data:
             body=body,
         )
 
+    def get_results_for(
+        self,
+        *,
+        tool_id: str,
+        protein_id: str,
+        tool_version: str | None = None,
+        limit: int | None = None,
+        select: list[str] | None = None,
+    ) -> dict:
+        """Search result-explorer records filtered by tool and protein.
+
+        Args:
+            tool_id: Tool ID to filter by (e.g. "deeporigin.bulk-docking").
+            protein_id: Protein ID to filter by.
+            tool_version: Optional tool version to filter by.
+            limit: Maximum number of results to return. If None, the API default applies.
+            select: List of fields to select. Defaults to
+                ``["id", "tool_id", "tool_version", "data", "execution_id"]``.
+
+        Returns:
+            Dictionary containing the search results.
+        """
+        if select is None:
+            select = ["id", "tool_id", "tool_version", "data", "execution_id"]
+
+        filter_dict: dict[str, Any] = {
+            "protein_id": {"eq": protein_id},
+            "tool_id": {"eq": tool_id},
+        }
+        if tool_version is not None:
+            filter_dict["tool_version"] = {"eq": tool_version}
+
+        body: dict[str, Any] = {
+            "filter": filter_dict,
+            "select": select,
+        }
+        if limit is not None:
+            body["limit"] = limit
+
+        return self._c.post_json(
+            f"/data-platform/{self._c.org_key}/result-explorer/search",
+            body=body,
+        )
+
     def list_projects(self) -> dict:
         """List projects.
 
