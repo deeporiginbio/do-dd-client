@@ -1,4 +1,4 @@
-"""Data Platform API wrapper for DeepOriginClient."""
+"""Data Platform entity API wrapper (ligands, proteins, and generic entity search)."""
 
 from __future__ import annotations
 
@@ -7,7 +7,6 @@ from typing import TYPE_CHECKING, Any
 if TYPE_CHECKING:
     from deeporigin.platform.client import DeepOriginClient
 
-"""Default ligand fields returned by search/create endpoints."""
 LIGAND_RETURNING_FIELDS = [
     "id",
     "version",
@@ -34,28 +33,21 @@ LIGAND_RETURNING_FIELDS = [
 ]
 
 
-class Data:
-    """Data Platform API wrapper.
+class Entities:
+    """Data Platform entity API wrapper.
 
-    Provides access to data platform-related endpoints through the DeepOriginClient.
+    Provides access to ligand, protein, and generic entity endpoints
+    through the DeepOriginClient.
     """
 
     def __init__(self, client: DeepOriginClient) -> None:
-        """Initialize Data wrapper.
+        """Initialize Entities wrapper.
 
         Args:
             client: The DeepOriginClient instance to use for API calls.
         """
         self._c = client
         self._models: dict | None = None
-
-    def health(self) -> dict:
-        """Check the health status of the data platform.
-
-        Returns:
-            Dictionary containing the health status response.
-        """
-        return self._c.get_json("/data-platform/health")
 
     def list_models(self) -> dict:
         """List public models.
@@ -70,60 +62,6 @@ class Data:
                 f"/data-platform/{self._c.org_key}/meta/models"
             )
         return self._models
-
-    def search_ligands_with_results(
-        self,
-        *,
-        cursor: str | None = None,
-        experiments: list[dict[str, str]] | None = None,
-        filter_dict: dict[str, Any] | None = None,
-        limit: int | None = None,
-        offset: int | None = None,
-        select: list[str] | None = None,
-        sort: dict[str, str] | None = None,
-    ) -> dict:
-        """Search ligands joined with tool results (wide pivot view).
-
-        Args:
-            cursor: Cursor for pagination.
-            experiments: List of experiment filters, each containing toolId and
-                optionally toolVersion.
-            filter_dict: Additional filter criteria as a dictionary.
-            limit: Maximum number of results to return. Defaults to 100.
-            offset: Number of results to skip.
-            select: List of fields to select in the response.
-            sort: Dictionary mapping field names to sort order ("asc" or "desc").
-
-        Returns:
-            Dictionary containing the search results.
-        """
-        # Ensure deleted=False is always set in filter_dict
-        if filter_dict is None:
-            filter_dict = {"deleted": False}
-        else:
-            filter_dict = filter_dict.copy()
-            filter_dict["deleted"] = False
-
-        body: dict[str, Any] = {}
-        if cursor is not None:
-            body["cursor"] = cursor
-        if experiments is not None:
-            body["experiments"] = experiments
-        body["filter"] = filter_dict
-
-        if limit is not None:
-            body["limit"] = limit
-        if offset is not None:
-            body["offset"] = offset
-        if select is not None:
-            body["select"] = select
-        if sort is not None:
-            body["sort"] = sort
-
-        return self._c.post_json(
-            f"/data-platform/{self._c.org_key}/ligands_with_results/search",
-            body=body,
-        )
 
     def search(
         self,
@@ -153,7 +91,6 @@ class Data:
         Raises:
             ValueError: If the entity is not a valid table name.
         """
-        # Validate entity against list of available models
         models_response = self.list_models()
         valid_table_names = {
             model["tableName"] for model in models_response.get("models", [])
@@ -187,6 +124,22 @@ class Data:
             f"/data-platform/{self._c.org_key}/{entity}/search",
             body=body,
         )
+
+    def get(self, *, entity: str, entity_id: str) -> dict:
+        """Get an entity by ID.
+
+        Args:
+            entity: The entity type (e.g., "ligands", "proteins").
+            entity_id: The ID of the entity to retrieve.
+
+        Returns:
+            Dictionary containing the entity data.
+        """
+        return self._c.get_json(
+            f"/data-platform/{self._c.org_key}/{entity}/{entity_id}"
+        )
+
+    # ---- Ligands ----
 
     def search_ligands(
         self,
@@ -290,20 +243,6 @@ class Data:
             sort=sort,
         )
 
-    def get_entity(self, *, entity: str, entity_id: str) -> dict:
-        """Get an entity by ID.
-
-        Args:
-            entity: The entity type (e.g., "ligands", "proteins").
-            entity_id: The ID of the entity to retrieve.
-
-        Returns:
-            Dictionary containing the entity data.
-        """
-        return self._c.get_json(
-            f"/data-platform/{self._c.org_key}/{entity}/{entity_id}"
-        )
-
     def get_ligand(self, id: str) -> dict:
         """Get a ligand by ID.
 
@@ -313,7 +252,7 @@ class Data:
         Returns:
             Dictionary containing the ligand data.
         """
-        return self.get_entity(entity="ligands", entity_id=id)
+        return self.get(entity="ligands", entity_id=id)
 
     def get_ligands(self, ids: list[str]) -> list[dict]:
         """Get multiple ligands by their IDs.
@@ -334,100 +273,6 @@ class Data:
             List of dictionaries, one per ligand.
         """
         return [self.get_ligand(id=lid) for lid in ids]
-
-    def get_protein(self, id: str) -> dict:
-        """Get a protein by ID.
-
-        Args:
-            id: The ID of the protein to retrieve.
-
-        Returns:
-            Dictionary containing the protein data.
-        """
-        return self.get_entity(entity="proteins", entity_id=id)
-
-    def search_proteins(
-        self,
-        *,
-        cursor: str | None = None,
-        pdb_id: str | None = None,
-        file_path: str | None = None,
-        min_molecular_weight: float | int | None = None,
-        max_molecular_weight: float | int | None = None,
-        sequence: str | None = None,
-        limit: int | None = None,
-        offset: int | None = None,
-        select: list[str] | None = None,
-        sort: dict[str, str] | None = None,
-    ) -> dict:
-        """Search proteins entity.
-
-        Convenience method that calls search(entity="proteins").
-
-        Args:
-            cursor: Cursor for pagination.
-            pdb_id: Filter by PDB ID.
-            file_path: Filter by file path.
-            min_molecular_weight: Minimum molecular weight filter (inclusive).
-            max_molecular_weight: Maximum molecular weight filter (inclusive).
-            sequence: Filter by FASTA sequence (exact match).
-            limit: Maximum number of results to return. Defaults to 100.
-            offset: Number of results to skip.
-            select: List of fields to select in the response.
-            sort: Dictionary mapping field names to sort order ("asc" or "desc").
-
-        Returns:
-            Dictionary containing the search results.
-
-        Raises:
-            ValueError: If proteins is not a valid table name (should not happen).
-        """
-
-        filter_dict = {"deleted": False}
-        if pdb_id is not None:
-            filter_dict["pdb_id"] = pdb_id
-        if file_path is not None:
-            filter_dict["file_path"] = file_path
-
-        # Build molecular weight filters
-        props = []
-        if min_molecular_weight is not None:
-            props.append(
-                {
-                    "column": "molecular_weight",
-                    "op": "gte",
-                    "value": min_molecular_weight,
-                }
-            )
-        if max_molecular_weight is not None:
-            props.append(
-                {
-                    "column": "molecular_weight",
-                    "op": "lte",
-                    "value": max_molecular_weight,
-                }
-            )
-        if sequence is not None:
-            props.append(
-                {
-                    "column": "fasta_sequence",
-                    "op": "eq",
-                    "value": sequence,
-                }
-            )
-
-        if props:
-            filter_dict["props"] = props
-
-        return self.search(
-            "proteins",
-            cursor=cursor,
-            filter_dict=filter_dict,
-            limit=limit,
-            offset=offset,
-            select=select,
-            sort=sort,
-        )
 
     def create_ligand(
         self,
@@ -462,7 +307,6 @@ class Data:
         Returns:
             Dictionary containing the created ligand data.
         """
-        # Build the set object with all ligand properties
         set_dict: dict[str, Any] = {
             "subtable_name": "ligands",
             "smiles": smiles,
@@ -470,7 +314,6 @@ class Data:
             "variant_name_tag": variant_name_tag,
         }
 
-        # Add optional fields only if provided
         if project_id is not None:
             set_dict["project_id"] = project_id
         if name is not None:
@@ -525,6 +368,101 @@ class Data:
             body=body,
         )
 
+    # ---- Proteins ----
+
+    def get_protein(self, id: str) -> dict:
+        """Get a protein by ID.
+
+        Args:
+            id: The ID of the protein to retrieve.
+
+        Returns:
+            Dictionary containing the protein data.
+        """
+        return self.get(entity="proteins", entity_id=id)
+
+    def search_proteins(
+        self,
+        *,
+        cursor: str | None = None,
+        pdb_id: str | None = None,
+        file_path: str | None = None,
+        min_molecular_weight: float | int | None = None,
+        max_molecular_weight: float | int | None = None,
+        sequence: str | None = None,
+        limit: int | None = None,
+        offset: int | None = None,
+        select: list[str] | None = None,
+        sort: dict[str, str] | None = None,
+    ) -> dict:
+        """Search proteins entity.
+
+        Convenience method that calls search(entity="proteins").
+
+        Args:
+            cursor: Cursor for pagination.
+            pdb_id: Filter by PDB ID.
+            file_path: Filter by file path.
+            min_molecular_weight: Minimum molecular weight filter (inclusive).
+            max_molecular_weight: Maximum molecular weight filter (inclusive).
+            sequence: Filter by FASTA sequence (exact match).
+            limit: Maximum number of results to return. Defaults to 100.
+            offset: Number of results to skip.
+            select: List of fields to select in the response.
+            sort: Dictionary mapping field names to sort order ("asc" or "desc").
+
+        Returns:
+            Dictionary containing the search results.
+
+        Raises:
+            ValueError: If proteins is not a valid table name (should not happen).
+        """
+
+        filter_dict = {"deleted": False}
+        if pdb_id is not None:
+            filter_dict["pdb_id"] = pdb_id
+        if file_path is not None:
+            filter_dict["file_path"] = file_path
+
+        props = []
+        if min_molecular_weight is not None:
+            props.append(
+                {
+                    "column": "molecular_weight",
+                    "op": "gte",
+                    "value": min_molecular_weight,
+                }
+            )
+        if max_molecular_weight is not None:
+            props.append(
+                {
+                    "column": "molecular_weight",
+                    "op": "lte",
+                    "value": max_molecular_weight,
+                }
+            )
+        if sequence is not None:
+            props.append(
+                {
+                    "column": "fasta_sequence",
+                    "op": "eq",
+                    "value": sequence,
+                }
+            )
+
+        if props:
+            filter_dict["props"] = props
+
+        return self.search(
+            "proteins",
+            cursor=cursor,
+            filter_dict=filter_dict,
+            limit=limit,
+            offset=offset,
+            select=select,
+            sort=sort,
+        )
+
     def create_protein(
         self,
         *,
@@ -550,12 +488,10 @@ class Data:
         Returns:
             Dictionary containing the created protein data.
         """
-        # Build the set object with all protein properties
         set_dict: dict[str, Any] = {
             "file_path": file_path,
         }
 
-        # Add optional fields only if provided
         if project_id is not None:
             set_dict["project_id"] = project_id
         if gene_symbol is not None:
@@ -606,75 +542,4 @@ class Data:
         return self._c.post_json(
             f"/data-platform/{self._c.org_key}/proteins",
             body=body,
-        )
-
-    def get_results_for(
-        self,
-        *,
-        tool_id: str,
-        protein_id: str,
-        tool_version: str | None = None,
-        limit: int = 1000,
-        select: list[str] | None = None,
-    ) -> dict:
-        """Search result-explorer records filtered by tool and protein.
-
-        Automatically paginates using cursor-based pagination until all
-        matching records have been fetched.
-
-        Args:
-            tool_id: Tool ID to filter by (e.g. "deeporigin.bulk-docking").
-            protein_id: Protein ID to filter by.
-            tool_version: Optional tool version to filter by.
-            limit: Page size per request. Defaults to 1000.
-            select: List of fields to select. Defaults to
-                ``["id", "tool_id", "tool_version", "data", "execution_id"]``.
-
-        Returns:
-            Dictionary with ``data`` (all records across pages) and ``meta``
-            from the final response.
-        """
-        if select is None:
-            select = ["id", "tool_id", "tool_version", "data", "execution_id"]
-
-        filter_dict: dict[str, Any] = {
-            "protein_id": {"eq": protein_id},
-            "tool_id": {"eq": tool_id},
-        }
-        if tool_version is not None:
-            filter_dict["tool_version"] = {"eq": tool_version}
-
-        url = f"/data-platform/{self._c.org_key}/result-explorer/search"
-        all_data: list[dict[str, Any]] = []
-        cursor: str | None = None
-
-        while True:
-            body: dict[str, Any] = {
-                "filter": filter_dict,
-                "limit": limit,
-                "select": select,
-            }
-            if cursor is not None:
-                body["cursor"] = cursor
-
-            response = self._c.post_json(url, body=body)
-            all_data.extend(response.get("data", []))
-
-            next_cursor = response.get("meta", {}).get("nextCursor")
-            if not next_cursor:
-                break
-            cursor = next_cursor
-
-        response["data"] = all_data
-        return response
-
-    def list_projects(self) -> dict:
-        """List projects.
-
-        Returns:
-            Dictionary containing the list of projects.
-        """
-        return self._c.post_json(
-            f"/data-platform/{self._c.org_key}/projects/search",
-            body={},
         )

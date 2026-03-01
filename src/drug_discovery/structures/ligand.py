@@ -1028,7 +1028,9 @@ class Ligand(Entity):
             mol_file = self._remote_path
 
         # Search for existing ligands by canonical_smiles
-        response = client.data.search_ligands(canonical_smiles=self.canonical_smiles)
+        response = client.entities.search_ligands(
+            canonical_smiles=self.canonical_smiles
+        )
         data = response["data"]
 
         # If a ligand with this canonical_smiles already exists, update self.id and return
@@ -1067,7 +1069,7 @@ class Ligand(Entity):
                 pass
 
         # Call create_ligand through the client
-        result = client.data.create_ligand(**kwargs)
+        result = client.entities.create_ligand(**kwargs)
 
         # Update self.id with the newly created ligand's ID
         if "data" in result and "id" in result["data"]:
@@ -2180,7 +2182,7 @@ class LigandSet:
             )
 
         smiles_list = [lig.canonical_smiles for lig in ligands_to_sync]
-        response = client.data.search_ligands(
+        response = client.entities.search_ligands(
             smiles_list=smiles_list,
             limit=len(smiles_list),
         )
@@ -2202,7 +2204,7 @@ class LigandSet:
                 lig.upload(client=client)
 
         rows = [lig._to_row() for lig in to_create]
-        result = client.data.batch_create_ligands(rows=rows)
+        result = client.entities.batch_create_ligands(rows=rows)
         created_by_smiles = self._index_by_canonical_smiles(result.get("data", []))
 
         for lig in to_create:

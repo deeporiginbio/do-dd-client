@@ -351,6 +351,11 @@ def create_tools_router(
 
     # -- route handlers --------------------------------------------------------
 
+    @router.get("/tools/health")
+    def tools_health() -> dict[str, str]:
+        """Health check for the tools service."""
+        return {"status": "ok"}
+
     @router.get("/tools/protected/tools/definitions")
     def list_tools() -> dict[str, Any]:
         """List all tool definitions."""

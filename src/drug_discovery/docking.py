@@ -221,8 +221,7 @@ class Docking(WorkflowStep):
                 fix="Call <code>protein.sync(client=client)</code> first, or use <code>get_results()</code> instead.",
             )
 
-        response = self.parent.client.data.get_results_for(
-            tool_id=self._tool_key,
+        response = self.parent.client.results.get_poses(
             protein_id=protein_id,
         )
 

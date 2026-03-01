@@ -171,7 +171,7 @@ class Protein(Entity):
         if client is None:
             client = DeepOriginClient.get()
 
-        data = client.data.get_protein(id=id)
+        data = client.entities.get_protein(id=id)
 
         # Check if file_path exists
         file_path = data.get("file_path")
@@ -1526,7 +1526,7 @@ class Protein(Entity):
         file_path = self._remote_path
 
         # Search for existing proteins with the same file_path
-        response = client.data.search_proteins(file_path=file_path)
+        response = client.entities.search_proteins(file_path=file_path)
         data = response["data"]
 
         # If a protein with this file_path already exists, return the first one
@@ -1553,7 +1553,7 @@ class Protein(Entity):
         kwargs["protein_name"] = self.name
 
         # Call create_protein through the client
-        result = client.data.create_protein(**kwargs)
+        result = client.entities.create_protein(**kwargs)
 
         # Update self.id with the newly created protein's ID
         if "data" in result and "id" in result["data"]:
