@@ -28,6 +28,9 @@ ligand = client.entities.create_ligand(
     molecular_weight=447.5,
 )
 
+# Delete an entity
+result = client.entities.delete(entity="proteins", entity_id="08BSPN61NYVE3")
+
 # List public models
 models = client.entities.list_models()
 ```

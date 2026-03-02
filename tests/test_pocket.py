@@ -70,6 +70,17 @@ def test_from_json_single_entry_lv0():
     assert pocket.protein_id == "prot_1"
     assert pocket.color == "red"
     assert pocket.volume == pytest.approx(42.0)
+    assert pocket.id is None
+
+
+def test_from_json_id_is_set_lv0():
+    """When an 'id' key is present it should populate the Pocket.id attribute."""
+    data = [{"id": "pocket-abc-123", "file_path": str(_BRD_PDB)}]
+
+    pocket = Pocket.from_json(data)[0]
+
+    assert pocket.id == "pocket-abc-123"
+    assert "id" not in (pocket.props or {})
 
 
 def test_from_json_protein_id_not_in_props_lv0():

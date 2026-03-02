@@ -29,6 +29,7 @@ class Pocket:
     for pocket analysis, visualization, and coordinate manipulation.
     """
 
+    id: Optional[str] = None
     file_path: Optional[Path] = None
     color: str = "red"
     name: Optional[str] = None
@@ -138,10 +139,16 @@ class Pocket:
 
     def __repr__(self):
         """Rich table representation of the pocket."""
-        table_data = [
-            ["Name", self.name],
-            ["Color", self.color],
-        ]
+        from tabulate import tabulate
+
+        table_data = [["Name", self.name]]
+        if self.id:
+            table_data.append(["ID", self.id])
+        if self.pdb_id:
+            table_data.append(["PDB ID", self.pdb_id])
+        if self.protein_id:
+            table_data.append(["Protein ID", self.protein_id])
+        table_data.append(["Color", self.color])
 
         property_rows = [
             ("Volume", self.volume, " \u00c5\u00b3"),
@@ -158,9 +165,12 @@ class Pocket:
                 [label, self._fmt(val, unit)] for label, val, unit in property_rows
             )
 
-        from tabulate import tabulate
+        if self.file_path:
+            table_data.append(["File", str(self.file_path)])
 
         return f"Pocket:\n{tabulate(table_data, tablefmt='rounded_grid')}"
+
+    __str__ = __repr__
 
     def get_center(self) -> np.ndarray:
         """
@@ -295,7 +305,7 @@ class Pocket:
 
         json_mapped_keys = set(cls._JSON_KEY_MAP.keys())
         reserved_keys = (
-            {"file_path", "protein_id"} | cls._PROPERTY_ATTRS | json_mapped_keys
+            {"id", "file_path", "protein_id"} | cls._PROPERTY_ATTRS | json_mapped_keys
         )
 
         pockets = []
@@ -320,6 +330,7 @@ class Pocket:
             props = {k: v for k, v in entry.items() if k not in reserved_keys}
 
             pocket = cls(
+                id=entry.get("id"),
                 file_path=file_path,
                 name=file_path.stem,
                 protein_id=protein_id,
@@ -370,6 +381,7 @@ class Pocket:
         pockets_data: list[dict[str, Any]] = []
         for record in records:
             pocket_data = dict(record["data"])
+            pocket_data["id"] = record["id"]
             remote_path = pocket_data["file_path"]
             local_path = client.files.download_file(remote_path=remote_path)
             pocket_data["file_path"] = local_path
@@ -405,36 +417,6 @@ class Pocket:
                     f"ATOM  {i + 1:5d}  CA  UNK A{i + 1:4d}    {x:8.3f}{y:8.3f}{z:8.3f}  1.00  0.00           C\n"
                 )
             f.write("END\n")
-
-    def __str__(self):
-        """Compact string representation of the pocket."""
-        parts = [f"Pocket:\n  Name: {self.name}"]
-
-        if self.pdb_id:
-            parts.append(f"  PDB ID: {self.pdb_id}")
-
-        if self.protein_id:
-            parts.append(f"  Protein ID: {self.protein_id}")
-
-        property_items = [
-            ("Volume", self.volume, "\u00c5\u00b3"),
-            ("Total SASA", self.total_sasa, ""),
-            ("Polar SASA", self.polar_sasa, ""),
-            ("Polar/Apolar SASA ratio", self.polar_apolar_sasa_ratio, ""),
-            ("Hydrophobicity", self.hydrophobicity, ""),
-            ("Polarity", self.polarity, ""),
-            ("Drugability score", self.drugability_score, ""),
-        ]
-        props_str = ", ".join(
-            f"{label}: {self._fmt(val, unit)}"
-            for label, val, unit in property_items
-            if val is not None
-        )
-        if props_str:
-            parts.append(f"  {props_str}")
-
-        parts.append(f"  File: {self.file_path}")
-        return "\n".join(parts)
 
     def update_coordinates(self, coords: np.ndarray):
         """update coordinates of the pocket"""

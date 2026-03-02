@@ -139,6 +139,20 @@ class Entities:
             f"/data-platform/{self._c.org_key}/{entity}/{entity_id}"
         )
 
+    def delete(self, *, entity: str, entity_id: str) -> dict:
+        """Delete an entity by ID.
+
+        Args:
+            entity: The entity type (e.g., "ligands", "proteins").
+            entity_id: The ID of the entity to delete.
+
+        Returns:
+            Dictionary containing the deletion result (e.g., ``{"deleted": 1}``).
+        """
+        return self._c.delete_json(
+            f"/data-platform/{self._c.org_key}/{entity}/{entity_id}"
+        )
+
     # ---- Ligands ----
 
     def search_ligands(

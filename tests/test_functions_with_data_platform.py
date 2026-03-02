@@ -95,3 +95,11 @@ def test_docking_with_data_platform_lv2():
 
         assert pose["ligand_id"] == ligand.id, "Pose ligand_id should match ligand.id"
         assert pose["file_path"] is not None, "Pose file_path should not be None"
+
+    poses_from_result = Ligand.from_docking_result(protein_id=protein.id, client=client)
+    assert len(poses_from_result) > 0, "Expected at least one pose from result"
+    for p in poses_from_result:
+        assert isinstance(p, Ligand), "Expected Ligand object"
+        assert p.protein_id == protein.id, "Pose protein_id should match protein.id"
+        assert p.ligand_id == ligand.id, "Pose ligand_id should match ligand.id"
+        assert p.file_path is not None, "Pose file_path should not be None"

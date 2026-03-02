@@ -27,6 +27,7 @@ class Results:
         *,
         tool_id: str | list[str] | None = None,
         protein_id: str | None = None,
+        ligand_id: str | list[str] | None = None,
         tool_version: str | None = None,
         limit: int = 1000,
         select: list[str] | None = None,
@@ -40,6 +41,8 @@ class Results:
             tool_id: Optional tool ID (or list of IDs) to filter by.
                 A single string uses ``eq``; a list uses ``in``.
             protein_id: Optional protein ID to filter by.
+            ligand_id: Optional ligand ID (or list of IDs) to filter by.
+                A single string uses ``eq``; a list uses ``in``.
             tool_version: Optional tool version to filter by.
             limit: Page size per request. Defaults to 1000.
             select: List of fields to select. Defaults to
@@ -60,6 +63,11 @@ class Results:
                 filter_dict["tool_id"] = {"eq": tool_id}
         if protein_id is not None:
             filter_dict["protein_id"] = {"eq": protein_id}
+        if ligand_id is not None:
+            if isinstance(ligand_id, list):
+                filter_dict["ligand_id"] = {"in": ligand_id}
+            else:
+                filter_dict["ligand_id"] = {"eq": ligand_id}
         if tool_version is not None:
             filter_dict["tool_version"] = {"eq": tool_version}
 
@@ -91,6 +99,8 @@ class Results:
         self,
         *,
         protein_id: str | None = None,
+        ligand_id: str | list[str] | None = None,
+        tool_id: str | list[str] | None = None,
         tool_version: str | None = None,
         limit: int = 1000,
         select: list[str] | None = None,
@@ -111,9 +121,12 @@ class Results:
             Dictionary with ``data`` (all records across pages) and ``meta``
             from the final response.
         """
+        if tool_id is None:
+            tool_id = ["deeporigin.docking", "deeporigin.bulk-docking"]
         return self.get_for(
-            tool_id=["deeporigin.docking", "deeporigin.bulk-docking"],
+            tool_id=tool_id,
             protein_id=protein_id,
+            ligand_id=ligand_id,
             tool_version=tool_version,
             limit=limit,
             select=select,

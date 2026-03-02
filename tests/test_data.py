@@ -195,6 +195,14 @@ def test_list_projects_lv1():
     assert isinstance(response["data"], list), "Expected 'data' to be a list"
 
 
+def test_register_ligand_lv1():
+    """Test registering a ligand (always creates a new record)."""
+    client = DeepOriginClient()
+    lig = Ligand.from_smiles("CC(=O)Oc1ccccc1C(=O)O", name="RegisterTest")
+    lig.register(client=client)
+    assert lig.id is not None, "Expected ligand to have an id after register"
+
+
 def test_get_ligand_lv1():
     """Test getting a ligand by ID."""
     client = DeepOriginClient()

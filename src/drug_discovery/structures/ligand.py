@@ -990,6 +990,63 @@ class Ligand(Entity):
         return hash_hex
 
     @beartype
+    def register(
+        self,
+        *,
+        client: Optional[DeepOriginClient] = None,
+    ) -> None:
+        """Register the ligand as a new record in the data platform.
+
+        Uploads the ligand file to remote storage (if available) and creates
+        a new ligand record, regardless of whether one already exists for this
+        canonical SMILES.
+
+        Args:
+            client: DeepOriginClient instance. If None, uses DeepOriginClient.get().
+
+        Returns:
+            None. As a side effect, uploads the ligand and sets ``self.id``
+            to the newly created record's ID.
+
+        Note:
+            If the ligand was created from a SMILES string without an SDF file,
+            only the SMILES will be used (no file upload will occur).
+        """
+        if client is None:
+            client = DeepOriginClient.get()
+
+        mol_file: str | None = None
+        if self.file_path is not None:
+            self.upload(client=client)
+            mol_file = self._remote_path
+
+        kwargs: dict[str, Any] = {
+            "smiles": self.smiles if self.smiles is not None else self.canonical_smiles,
+        }
+
+        if mol_file is not None:
+            kwargs["mol_file"] = mol_file
+
+        if self.name is not None:
+            kwargs["name"] = self.name
+
+        if self.mol is not None:
+            try:
+                kwargs["formal_charge"] = self.formal_charge
+                kwargs["molecular_weight"] = self.molecular_weight
+                kwargs["hbond_donor_count"] = self.hbond_donor_count
+                kwargs["hbond_acceptor_count"] = self.hbond_acceptor_count
+                kwargs["rotatable_bond_count"] = self.rotatable_bond_count
+                kwargs["tpsa"] = self.tpsa
+            except Exception:
+                pass
+
+        result = client.entities.create_ligand(**kwargs)
+
+        if "data" in result and "id" in result["data"]:
+            self.id = result["data"]["id"]
+
+    @beartype
     def sync(
         self,
         *,
@@ -998,9 +1055,9 @@ class Ligand(Entity):
     ) -> None:
         """Sync the ligand to the data platform.
 
-        This method uploads the ligand file to remote storage (if available) and creates a ligand
-        record in the data platform. If a ligand with the same canonical_smiles already exists,
-        it returns the existing ligand data instead of creating a new one.
+        Uploads the ligand file and links to an existing record if one with
+        the same canonical SMILES already exists, otherwise creates a new
+        record via :meth:`register`.
 
         Args:
             lazy: If True, skip syncing when the ligand already has an ID.
@@ -1018,62 +1075,18 @@ class Ligand(Entity):
         if client is None:
             client = DeepOriginClient.get()
 
-        # If ligand has a file_path, upload it to remote storage
-        # (Note: ligands in the data platform are identified by canonical_smiles, not file_path)
-        mol_file: str | None = None
-        if self.file_path is not None:
-            # Upload the ligand file first
-            self.upload(client=client)
-            # Use the remote path as the mol_file
-            mol_file = self._remote_path
-
-        # Search for existing ligands by canonical_smiles
         response = client.entities.search_ligands(
             canonical_smiles=self.canonical_smiles
         )
         data = response["data"]
 
-        # If a ligand with this canonical_smiles already exists, update self.id and return
         if data:
             existing_ligand = data[0]
             if "id" in existing_ligand:
                 self.id = existing_ligand["id"]
             return
 
-        # No existing ligand found, create a new one
-        # Prepare parameters for create_ligand
-        # Note: canonical_smiles is read-only and computed by the platform
-        kwargs: dict[str, Any] = {
-            "smiles": self.smiles if self.smiles is not None else self.canonical_smiles,
-        }
-
-        # Add mol_file if available
-        if mol_file is not None:
-            kwargs["mol_file"] = mol_file
-
-        # Add optional fields if available
-        if self.name is not None:
-            kwargs["name"] = self.name
-
-        # Add computed molecular properties if mol is available
-        if self.mol is not None:
-            try:
-                kwargs["formal_charge"] = self.formal_charge
-                kwargs["molecular_weight"] = self.molecular_weight
-                kwargs["hbond_donor_count"] = self.hbond_donor_count
-                kwargs["hbond_acceptor_count"] = self.hbond_acceptor_count
-                kwargs["rotatable_bond_count"] = self.rotatable_bond_count
-                kwargs["tpsa"] = self.tpsa
-            except Exception:
-                # If property computation fails, continue without those properties
-                pass
-
-        # Call create_ligand through the client
-        result = client.entities.create_ligand(**kwargs)
-
-        # Update self.id with the newly created ligand's ID
-        if "data" in result and "id" in result["data"]:
-            self.id = result["data"]["id"]
+        self.register(client=client)
 
     def _to_row(self) -> dict[str, Any]:
         """Build a batch-create row dict from this ligand.

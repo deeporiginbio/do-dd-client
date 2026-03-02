@@ -1490,6 +1490,47 @@ class Protein(Entity):
         return f"Protein:\n  {info_str}"
 
     @beartype
+    def register(
+        self,
+        *,
+        client: Optional[DeepOriginClient] = None,
+    ) -> None:
+        """Register the protein as a new record in the data platform.
+
+        Uploads the protein file to remote storage and creates a new protein
+        record, regardless of whether one already exists for this file path.
+
+        Args:
+            client: DeepOriginClient instance. If None, uses DeepOriginClient.get().
+
+        Returns:
+            None. As a side effect, uploads the protein and sets ``self.id``
+            to the newly created record's ID.
+        """
+        if client is None:
+            client = DeepOriginClient.get()
+
+        self.upload(client=client)
+
+        file_path = self._remote_path
+
+        kwargs: dict[str, Any] = {
+            "file_path": file_path,
+        }
+
+        if self.pdb_id is not None:
+            kwargs["pdb_id"] = self.pdb_id
+
+        if getattr(self, "file_path", None) is not None:
+            kwargs["protein_length"] = self.length
+        kwargs["protein_name"] = self.name
+
+        result = client.entities.create_protein(**kwargs)
+
+        if "data" in result and "id" in result["data"]:
+            self.id = result["data"]["id"]
+
+    @beartype
     def sync(
         self,
         *,
@@ -1498,10 +1539,9 @@ class Protein(Entity):
     ) -> None:
         """Sync the protein to the data platform.
 
-        This method uploads the protein file to remote storage and creates a protein
-        record in the data platform. If a protein with the same file_path already exists,
-        it updates the current instance with the existing protein's ID instead of
-        creating a new one.
+        Uploads the protein file and links to an existing record if one with
+        the same file path already exists, otherwise creates a new record via
+        :meth:`register`.
 
         Args:
             lazy: If True, skip syncing when the protein already has an ID.
@@ -1512,52 +1552,26 @@ class Protein(Entity):
             None. As a side effect, uploads the protein (if necessary) and updates
             ``self.id`` with the ID of the existing or newly created protein record.
         """
-
         if lazy and self.id is not None:
             return
 
         if client is None:
             client = DeepOriginClient.get()
 
-        # Upload the protein file first
         self.upload(client=client)
 
-        # Use the remote path as the file_path
         file_path = self._remote_path
 
-        # Search for existing proteins with the same file_path
         response = client.entities.search_proteins(file_path=file_path)
         data = response["data"]
 
-        # If a protein with this file_path already exists, return the first one
         if data:
             existing_protein = data[0]
-            # Update self.id with the existing protein's ID
             if "id" in existing_protein:
                 self.id = existing_protein["id"]
             return
 
-        # No existing protein found, create a new one
-        # Prepare parameters for create_protein
-        kwargs: dict[str, Any] = {
-            "file_path": file_path,
-        }
-
-        # Pass pdb_id if available
-        if self.pdb_id is not None:
-            kwargs["pdb_id"] = self.pdb_id
-
-        # Only compute and include protein_length when a local file_path is available
-        if getattr(self, "file_path", None) is not None:
-            kwargs["protein_length"] = self.length
-        kwargs["protein_name"] = self.name
-
-        # Call create_protein through the client
-        result = client.entities.create_protein(**kwargs)
-
-        # Update self.id with the newly created protein's ID
-        if "data" in result and "id" in result["data"]:
-            self.id = result["data"]["id"]
+        self.register(client=client)
 
     def update_coordinates(self, coords: np.ndarray):
         """update coordinates of the protein structure"""

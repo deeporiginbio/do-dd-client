@@ -1138,6 +1138,21 @@ class DeepOriginClient:
         """
         return self._post(path, body=body, **kwargs).json()
 
+    def delete_json(self, path: str, **kwargs) -> Any:
+        """Perform a DELETE request and return the JSON response.
+
+        Args:
+            path: API endpoint path (relative to base_url).
+            **kwargs: Additional arguments passed to httpx.Client.delete().
+
+        Returns:
+            The JSON-decoded response body.
+
+        Raises:
+            httpx.HTTPStatusError: If the response status code indicates an error.
+        """
+        return self._delete(path, **kwargs).json()
+
     # -------- Lifecycle --------
     def close(self) -> None:
         """Close the HTTP client connection and remove from registry.
