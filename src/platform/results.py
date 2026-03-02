@@ -22,12 +22,13 @@ class Results:
         """
         self._c = client
 
-    def get_for(
+    def get(
         self,
         *,
         tool_id: str | list[str] | None = None,
         protein_id: str | None = None,
         ligand_id: str | list[str] | None = None,
+        compute_job_id: str | None = None,
         tool_version: str | None = None,
         limit: int = 1000,
         select: list[str] | None = None,
@@ -43,6 +44,7 @@ class Results:
             protein_id: Optional protein ID to filter by.
             ligand_id: Optional ligand ID (or list of IDs) to filter by.
                 A single string uses ``eq``; a list uses ``in``.
+            compute_job_id: Optional compute job ID to filter by.
             tool_version: Optional tool version to filter by.
             limit: Page size per request. Defaults to 1000.
             select: List of fields to select. Defaults to
@@ -68,6 +70,8 @@ class Results:
                 filter_dict["ligand_id"] = {"in": ligand_id}
             else:
                 filter_dict["ligand_id"] = {"eq": ligand_id}
+        if compute_job_id is not None:
+            filter_dict["compute_job_id"] = compute_job_id
         if tool_version is not None:
             filter_dict["tool_version"] = {"eq": tool_version}
 
@@ -101,17 +105,21 @@ class Results:
         protein_id: str | None = None,
         ligand_id: str | list[str] | None = None,
         tool_id: str | list[str] | None = None,
+        compute_job_id: str | None = None,
         tool_version: str | None = None,
         limit: int = 1000,
         select: list[str] | None = None,
     ) -> dict:
         """Get docking poses, optionally filtered by protein.
 
-        Convenience wrapper around :meth:`get_for` that fetches results
+        Convenience wrapper around :meth:`get` that fetches results
         from both ``deeporigin.docking`` and ``deeporigin.bulk-docking``.
 
         Args:
             protein_id: Optional protein ID to filter by.
+            ligand_id: Optional ligand ID (or list of IDs) to filter by.
+            tool_id: Optional tool ID (or list of IDs) to filter by.
+            compute_job_id: Optional compute job ID to filter by.
             tool_version: Optional tool version to filter by.
             limit: Page size per request. Defaults to 1000.
             select: List of fields to select. Defaults to
@@ -123,10 +131,11 @@ class Results:
         """
         if tool_id is None:
             tool_id = ["deeporigin.docking", "deeporigin.bulk-docking"]
-        return self.get_for(
+        return self.get(
             tool_id=tool_id,
             protein_id=protein_id,
             ligand_id=ligand_id,
+            compute_job_id=compute_job_id,
             tool_version=tool_version,
             limit=limit,
             select=select,
@@ -136,17 +145,19 @@ class Results:
         self,
         *,
         protein_id: str | None = None,
+        compute_job_id: str | None = None,
         tool_version: str | None = None,
         limit: int = 1000,
         select: list[str] | None = None,
     ) -> dict:
         """Get binding pockets, optionally filtered by protein.
 
-        Convenience wrapper around :meth:`get_for` with
+        Convenience wrapper around :meth:`get` with
         ``tool_id="deeporigin.pocketfinder"``.
 
         Args:
             protein_id: Optional protein ID to filter by.
+            compute_job_id: Optional compute job ID to filter by.
             tool_version: Optional tool version to filter by.
             limit: Page size per request. Defaults to 1000.
             select: List of fields to select. Defaults to
@@ -156,9 +167,10 @@ class Results:
             Dictionary with ``data`` (all records across pages) and ``meta``
             from the final response.
         """
-        return self.get_for(
+        return self.get(
             tool_id="deeporigin.pocketfinder",
             protein_id=protein_id,
+            compute_job_id=compute_job_id,
             tool_version=tool_version,
             limit=limit,
             select=select,
