@@ -22,12 +22,12 @@ def _get_result_explorer_ids() -> tuple[str, str, str | None]:
     return tool_id, protein_id, None
 
 
-def test_get_results_for_lv1():
+def test_get_results_lv1():
     """Test searching result-explorer records filtered by tool and protein."""
     client = DeepOriginClient()
     tool_id, protein_id, _ = _get_result_explorer_ids()
 
-    response = client.results.get_for(
+    response = client.results.get(
         tool_id=tool_id,
         protein_id=protein_id,
     )
@@ -42,12 +42,12 @@ def test_get_results_for_lv1():
             assert field in record, f"Expected '{field}' key in record"
 
 
-def test_get_results_for_with_tool_version_lv1():
-    """Test get_results_for with an explicit tool_version filter."""
+def test_get_results_with_tool_version_lv1():
+    """Test results.get with an explicit tool_version filter."""
     client = DeepOriginClient()
     tool_id, protein_id, tool_version = _get_result_explorer_ids()
 
-    response = client.results.get_for(
+    response = client.results.get(
         tool_id=tool_id,
         protein_id=protein_id,
         tool_version=tool_version,

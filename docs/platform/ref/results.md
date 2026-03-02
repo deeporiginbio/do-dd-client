@@ -14,7 +14,7 @@ poses = client.results.get_poses(protein_id="08BSPN61NYVE3")
 pockets = client.results.get_pockets(protein_id="08BSPN61NYVE3")
 
 # Get results for a specific tool and protein
-results = client.results.get_for(
+results = client.results.get(
     tool_id="deeporigin.bulk-docking",
     protein_id="08BSPN61NYVE3",
 )
