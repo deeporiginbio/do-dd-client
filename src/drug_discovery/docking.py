@@ -1,6 +1,7 @@
 """This module encapsulates methods to run docking and show docking results on Deep Origin"""
 
 import concurrent.futures
+import logging
 import math
 import os
 from typing import Literal, Optional
@@ -20,6 +21,8 @@ from deeporigin.exceptions import DeepOriginException
 from deeporigin.platform.constants import NON_FAILED_STATES
 from deeporigin.platform.job import Job, JobList
 from deeporigin.utils.core import _ensure_do_folder
+
+logger = logging.getLogger(__name__)
 
 Number = float | int
 LOCAL_BASE = _ensure_do_folder()
@@ -103,8 +106,10 @@ class Docking(WorkflowStep):
             df = self.get_results_using_id()
             if df is not None:
                 remote_paths = df["file_path"].dropna().unique().tolist()
-        except Exception:
-            pass
+        except DeepOriginException:
+            logger.debug(
+                "Result-explorer lookup failed; falling back to legacy results"
+            )
 
         id_local_paths: list[str] = []
         if remote_paths:
@@ -200,10 +205,6 @@ class Docking(WorkflowStep):
 
         Queries the result-explorer endpoint filtered by protein ID and tool ID,
         then flattens nested ``data`` fields into a single tabular structure.
-
-        Args:
-            limit: Maximum number of result records to fetch. If None, the API
-                default applies.
 
         Returns:
             DataFrame with columns ``id``, ``tool_id``, ``tool_version``,

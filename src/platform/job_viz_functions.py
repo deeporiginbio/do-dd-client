@@ -348,7 +348,15 @@ def _viz_func_docking(job) -> str:
     total_running_time = 0
 
     for single_job in jobs_list:
-        total_ligands += len(single_job._attributes["userInputs"]["ligands"])
+        attrs = getattr(single_job, "_attributes", None) or {}
+        user_inputs = attrs.get("userInputs") or {}
+        ligands = user_inputs.get("ligands")
+        if isinstance(ligands, list):
+            total_ligands += len(ligands)
+        else:
+            smiles_list = user_inputs.get("smiles_list")
+            if isinstance(smiles_list, list):
+                total_ligands += len(smiles_list)
 
         data = (
             single_job._attributes.get("progressReport")
@@ -402,11 +410,15 @@ def _name_func_docking(job: "Job | JobList") -> str:
     # Collect unique SMILES across all jobs
     unique_smiles = set()
     for job in jobs_list:
-        this_smiles = [
-            ligand["smiles"] for ligand in job._attributes["userInputs"]["ligands"]
-        ]
-
-        unique_smiles.update(this_smiles)
+        attrs = getattr(job, "_attributes", None) or {}
+        user_inputs = attrs.get("userInputs") or {}
+        ligands = user_inputs.get("ligands")
+        if isinstance(ligands, list):
+            unique_smiles.update(lig["smiles"] for lig in ligands if "smiles" in lig)
+        else:
+            smiles_list = user_inputs.get("smiles_list")
+            if isinstance(smiles_list, list):
+                unique_smiles.update(smiles_list)
     num_ligands = len(unique_smiles)
 
     # Get protein file from first job (should be the same across all jobs)
