@@ -88,6 +88,7 @@ def create_tools_router(
     docking_speed: float,
     fixtures_dir: Path,
     load_fixture: Callable[[str], dict[str, Any]],
+    results: list[dict[str, Any]],
 ) -> APIRouter:
     """Create a router for tools-related endpoints.
 
@@ -98,6 +99,9 @@ def create_tools_router(
         docking_speed: Dockings per second for bulk-docking simulations.
         fixtures_dir: Directory where fixture files are stored.
         load_fixture: Callable to load fixture data by name.
+        results: Shared result-explorer record list; function runs that
+            produce outputs will inject records here so they are visible
+            via the result-explorer search endpoint.
 
     Returns:
         APIRouter instance with tools-related routes.
@@ -473,7 +477,53 @@ def create_tools_router(
                                 ligand_id=ligand_id,
                             )
 
+        _inject_result_explorer_records(function_key, response)
+
         return response
+
+    def _inject_result_explorer_records(
+        function_key: str, response: dict[str, Any] | list[dict[str, Any]]
+    ) -> None:
+        """Populate the shared result-explorer store from function outputs.
+
+        When a function run produces structured outputs (e.g. pockets, poses),
+        this mirrors the production MQ flow by creating result-explorer records
+        so that subsequent result-explorer queries return the data.
+        """
+        if not isinstance(response, dict):
+            return
+
+        function_outputs = response.get("functionOutputs")
+        if not isinstance(function_outputs, dict):
+            return
+
+        execution_id = response.get("id", str(uuid.uuid4()))
+
+        tool_key = function_key
+        tool_version = "0.0.0"
+        func_info = response.get("function", {})
+        manifest = func_info.get("manifestBody", {})
+        if manifest.get("version"):
+            tool_version = manifest["version"]
+
+        output_key_map = {
+            "deeporigin.pocketfinder": "pockets",
+        }
+
+        array_key = output_key_map.get(function_key)
+        if not array_key:
+            return
+
+        items = function_outputs.get(array_key, [])
+        for item in items:
+            record = {
+                "id": "08" + str(uuid.uuid4()).replace("-", "").upper()[:11],
+                "tool_id": tool_key,
+                "tool_version": tool_version,
+                "data": dict(item),
+                "execution_id": execution_id,
+            }
+            results.append(record)
 
     @router.post("/tools/{org_key}/functions/{function_key}")
     async def run_function(

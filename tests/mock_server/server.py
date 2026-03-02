@@ -250,6 +250,7 @@ class MockServer:
             docking_speed=self.docking_speed,
             fixtures_dir=self._fixtures_dir,
             load_fixture=self._load_fixture,
+            results=self._results,
         )
         self.app.include_router(tools_router)
 

@@ -388,7 +388,7 @@ class Docking(WorkflowStep):
             print(f"Using a batch size of {batch_size}")
 
         if pocket is not None:
-            box_size = float(2 * np.cbrt(pocket.props["volume"]))
+            box_size = float(2 * np.cbrt(pocket.volume))
             box_size = [box_size, box_size, box_size]
             pocket_center = pocket.get_center().tolist()
 

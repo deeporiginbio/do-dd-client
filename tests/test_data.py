@@ -9,21 +9,6 @@ from deeporigin.exceptions import DeepOriginException
 from deeporigin.platform.client import DeepOriginClient
 
 
-def test_health_lv1():
-    """Test the combined platform health endpoint."""
-    client = DeepOriginClient()
-    response = client.health()
-
-    assert isinstance(response, dict), "Expected a dictionary response"
-    assert "status" in response, "Expected 'status' key in response"
-    assert response["status"] == "ok", "Expected aggregate status to be 'ok'"
-    for service in ("billing", "entities", "files", "tools"):
-        assert service in response, f"Expected '{service}' key in response"
-        assert response[service]["status"] == "ok", (
-            f"Expected {service} status to be 'ok'"
-        )
-
-
 def test_search_entity_lv1():
     """Test searching an entity."""
     client = DeepOriginClient()

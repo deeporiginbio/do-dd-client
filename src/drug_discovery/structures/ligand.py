@@ -1884,6 +1884,55 @@ class LigandSet:
         return cls(ligands=all_ligands)
 
     @classmethod
+    def from_docking_result(
+        cls,
+        *,
+        protein_id: str,
+        client: Optional[DeepOriginClient] = None,
+    ) -> Self:
+        """Create a LigandSet from docking results in the data platform.
+
+        Fetches docking pose results for the given protein, downloads the
+        SDF files, and loads them into a LigandSet.
+
+        Args:
+            protein_id: Protein ID to fetch docking results for.
+            client: Optional DeepOriginClient instance. If not provided,
+                uses the default client.
+
+        Returns:
+            A LigandSet of docked poses.
+
+        Raises:
+            ValueError: If no docking results are found for the protein.
+        """
+        if client is None:
+            client = DeepOriginClient.get()
+
+        response = client.results.get_poses(protein_id=protein_id)
+        records = response.get("data", [])
+
+        if not records:
+            raise ValueError(f"No docking results found for protein_id={protein_id!r}")
+
+        remote_paths: list[str] = []
+        for record in records:
+            file_path = record.get("data", {}).get("file_path")
+            if file_path:
+                remote_paths.append(file_path)
+
+        local_paths = client.files.download_files(
+            files=remote_paths,
+            lazy=True,
+        )
+
+        all_ligands: list[Ligand] = []
+        for path in local_paths:
+            all_ligands.extend(cls.from_sdf(path).ligands)
+
+        return cls(ligands=all_ligands)
+
+    @classmethod
     def from_dir(cls, directory: str | Path) -> Self:
         """
         Create a LigandSet instance from a directory containing SDF files.

@@ -25,20 +25,21 @@ class Results:
     def get_for(
         self,
         *,
-        tool_id: str,
-        protein_id: str,
+        tool_id: str | list[str] | None = None,
+        protein_id: str | None = None,
         tool_version: str | None = None,
         limit: int = 1000,
         select: list[str] | None = None,
     ) -> dict:
-        """Search result-explorer records filtered by tool and protein.
+        """Search result-explorer records with optional filters.
 
         Automatically paginates using cursor-based pagination until all
         matching records have been fetched.
 
         Args:
-            tool_id: Tool ID to filter by (e.g. "deeporigin.bulk-docking").
-            protein_id: Protein ID to filter by.
+            tool_id: Optional tool ID (or list of IDs) to filter by.
+                A single string uses ``eq``; a list uses ``in``.
+            protein_id: Optional protein ID to filter by.
             tool_version: Optional tool version to filter by.
             limit: Page size per request. Defaults to 1000.
             select: List of fields to select. Defaults to
@@ -51,10 +52,14 @@ class Results:
         if select is None:
             select = ["id", "tool_id", "tool_version", "data", "execution_id"]
 
-        filter_dict: dict[str, Any] = {
-            "protein_id": {"eq": protein_id},
-            "tool_id": {"eq": tool_id},
-        }
+        filter_dict: dict[str, Any] = {}
+        if tool_id is not None:
+            if isinstance(tool_id, list):
+                filter_dict["tool_id"] = {"in": tool_id}
+            else:
+                filter_dict["tool_id"] = {"eq": tool_id}
+        if protein_id is not None:
+            filter_dict["protein_id"] = {"eq": protein_id}
         if tool_version is not None:
             filter_dict["tool_version"] = {"eq": tool_version}
 
@@ -85,18 +90,18 @@ class Results:
     def get_poses(
         self,
         *,
-        protein_id: str,
+        protein_id: str | None = None,
         tool_version: str | None = None,
         limit: int = 1000,
         select: list[str] | None = None,
     ) -> dict:
-        """Get docking poses for a protein.
+        """Get docking poses, optionally filtered by protein.
 
-        Convenience wrapper around :meth:`get_for` with
-        ``tool_id="deeporigin.docking"``.
+        Convenience wrapper around :meth:`get_for` that fetches results
+        from both ``deeporigin.docking`` and ``deeporigin.bulk-docking``.
 
         Args:
-            protein_id: Protein ID to filter by.
+            protein_id: Optional protein ID to filter by.
             tool_version: Optional tool version to filter by.
             limit: Page size per request. Defaults to 1000.
             select: List of fields to select. Defaults to
@@ -107,7 +112,7 @@ class Results:
             from the final response.
         """
         return self.get_for(
-            tool_id="deeporigin.docking",
+            tool_id=["deeporigin.docking", "deeporigin.bulk-docking"],
             protein_id=protein_id,
             tool_version=tool_version,
             limit=limit,
@@ -117,18 +122,18 @@ class Results:
     def get_pockets(
         self,
         *,
-        protein_id: str,
+        protein_id: str | None = None,
         tool_version: str | None = None,
         limit: int = 1000,
         select: list[str] | None = None,
     ) -> dict:
-        """Get binding pockets for a protein.
+        """Get binding pockets, optionally filtered by protein.
 
         Convenience wrapper around :meth:`get_for` with
         ``tool_id="deeporigin.pocketfinder"``.
 
         Args:
-            protein_id: Protein ID to filter by.
+            protein_id: Optional protein ID to filter by.
             tool_version: Optional tool version to filter by.
             limit: Page size per request. Defaults to 1000.
             select: List of fields to select. Defaults to

@@ -42,6 +42,17 @@ def test_pocketfinder_with_data_platform_lv2():
     assert isinstance(pocket, Pocket), "Expected Pocket object"
     assert pocket.protein_id == protein.id, "Pocket protein_id should match protein.id"
 
+    # Verify results are retrievable via Pocket.from_result
+    pockets_from_result = Pocket.from_result(protein_id=protein.id, client=client)
+
+    assert len(pockets_from_result) > 0, "Expected at least one pocket from result"
+    for p in pockets_from_result:
+        assert isinstance(p, Pocket), "Expected Pocket object"
+        assert p.protein_id == protein.id, "Pocket protein_id should match protein.id"
+        assert p.coordinates is not None, "Expected coordinates to be loaded"
+        assert p.volume is not None, "Expected volume on pocket"
+        assert p.drugability_score is not None, "Expected drugability_score on pocket"
+
 
 def test_docking_with_data_platform_lv2():
     """Test docking function integration with data platform."""
