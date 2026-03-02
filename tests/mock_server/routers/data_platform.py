@@ -115,33 +115,78 @@ def _make_ligand_record(smiles: str, extra: dict[str, Any]) -> dict[str, Any]:
     return record
 
 
+def _field_value(record: dict[str, Any], key: str) -> Any:
+    """Return the value for *key* from a record or its nested ``data`` dict.
+
+    Args:
+        record: A single record dict.
+        key: The field name to look up.
+
+    Returns:
+        The value found in the top-level record or nested ``data``, or a
+        sentinel ``_MISSING`` object when the key is absent from both.
+    """
+    _MISSING = object()
+    val = record.get(key, _MISSING)
+    if val is not _MISSING:
+        return val
+    data = record.get("data")
+    if isinstance(data, dict):
+        return data.get(key, _MISSING)
+    return _MISSING
+
+
 def _apply_eq_filters(
     records: list[dict[str, Any]],
     filter_dict: dict[str, Any],
 ) -> list[dict[str, Any]]:
-    """Apply ``{"field": {"eq": value}}`` style filters to a list of records.
+    """Apply equality-style filters to a list of records.
 
-    Each filter key maps to a dict with an ``eq`` operator. The value is
-    compared against top-level record fields *and* nested ``data`` fields.
+    Supports ``{"field": {"eq": value}}`` and ``{"field": {"in": [values]}}``
+    style filters.  Values are compared against top-level record fields *and*
+    nested ``data`` fields when present.
 
     Args:
         records: List of record dicts to filter.
-        filter_dict: Mapping of field names to ``{"eq": value}`` dicts.
+        filter_dict: Mapping of field names to operator dicts, e.g.
+            ``{"field": {"eq": value}}`` or ``{"field": {"in": [values]}}``.
 
     Returns:
         Filtered list of records.
+
+    Raises:
+        ValueError: If a filter condition uses an unsupported operator.
     """
+    _MISSING = object()
     results = list(records)
+    allowed_ops = {"eq", "in"}
+
     for key, condition in filter_dict.items():
-        if not isinstance(condition, dict) or "eq" not in condition:
-            continue
-        expected = condition["eq"]
-        results = [
-            r
-            for r in results
-            if r.get(key) == expected
-            or (isinstance(r.get("data"), dict) and r["data"].get(key) == expected)
-        ]
+        if not isinstance(condition, dict):
+            raise ValueError(
+                f"Invalid filter for field '{key}': expected dict, "
+                f"got {type(condition).__name__}"
+            )
+
+        unknown_ops = set(condition.keys()) - allowed_ops
+        if unknown_ops:
+            raise ValueError(
+                f"Unsupported filter operator(s) for field '{key}': "
+                f"{', '.join(sorted(unknown_ops))}"
+            )
+
+        if "eq" in condition:
+            expected = condition["eq"]
+            results = [r for r in results if _field_value(r, key) == expected]
+        elif "in" in condition:
+            value_set = set(condition["in"])
+            results = [
+                r
+                for r in results
+                if _field_value(r, key) is not _MISSING
+                and _field_value(r, key) in value_set
+            ]
+
     return results
 
 
