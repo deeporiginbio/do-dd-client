@@ -15,6 +15,11 @@ def create_billing_router() -> APIRouter:
     """
     router = APIRouter()
 
+    @router.get("/billing/health")
+    def billing_health() -> dict[str, str]:
+        """Health check for the billing service."""
+        return {"status": "ok"}
+
     @router.get("/billing/{org_key}/usage/{billing_tag}")
     def get_billing_usage(
         org_key: str,

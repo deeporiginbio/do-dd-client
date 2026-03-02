@@ -333,6 +333,52 @@ class Ligand(Entity):
         ligands[0].file_path = str(path)
         return ligands[0]
 
+    @classmethod
+    def from_id(cls, id: str, *, client: Optional[DeepOriginClient] = None) -> Self:
+        """Create a Ligand instance from a Deep Origin Data Platform ID.
+
+        Fetches the ligand record from the platform. If the record has an
+        associated mol file it is downloaded and used to construct the ligand;
+        otherwise the SMILES string is used.
+
+        Args:
+            id: The Deep Origin Data Platform ID of the ligand.
+            client: Optional DeepOriginClient instance. If not provided, uses
+                the default client.
+
+        Returns:
+            Ligand: A new Ligand instance.
+
+        Raises:
+            ValueError: If the ligand data contains neither a mol file nor a
+                SMILES string.
+        """
+        if client is None:
+            client = DeepOriginClient.get()
+
+        data = client.entities.get_ligand(id=id)
+
+        mol_file = data.get("mol_file")
+        smiles = data.get("smiles") or data.get("canonical_smiles")
+
+        if mol_file:
+            local_file_path = client.files.download_file(remote_path=mol_file)
+            ligand = cls.from_sdf(file_path=local_file_path)
+        elif smiles:
+            ligand = cls.from_smiles(smiles=smiles)
+        else:
+            raise ValueError(
+                f"Ligand {id} has neither a mol file nor a SMILES string. "
+                "Cannot create Ligand instance."
+            )
+
+        ligand.id = data.get("id")
+
+        if data.get("name"):
+            ligand.name = data["name"]
+
+        return ligand
+
     def process_mol(self) -> None:
         """
         Clean the ligand molecule by removing hydrogens and sanitizing the structure.
@@ -990,6 +1036,63 @@ class Ligand(Entity):
         return hash_hex
 
     @beartype
+    def register(
+        self,
+        *,
+        client: Optional[DeepOriginClient] = None,
+    ) -> None:
+        """Register the ligand as a new record in the data platform.
+
+        Uploads the ligand file to remote storage (if available) and creates
+        a new ligand record, regardless of whether one already exists for this
+        canonical SMILES.
+
+        Args:
+            client: DeepOriginClient instance. If None, uses DeepOriginClient.get().
+
+        Returns:
+            None. As a side effect, uploads the ligand and sets ``self.id``
+            to the newly created record's ID.
+
+        Note:
+            If the ligand was created from a SMILES string without an SDF file,
+            only the SMILES will be used (no file upload will occur).
+        """
+        if client is None:
+            client = DeepOriginClient.get()
+
+        mol_file: str | None = None
+        if self.file_path is not None:
+            self.upload(client=client)
+            mol_file = self._remote_path
+
+        kwargs: dict[str, Any] = {
+            "smiles": self.smiles if self.smiles is not None else self.canonical_smiles,
+        }
+
+        if mol_file is not None:
+            kwargs["mol_file"] = mol_file
+
+        if self.name is not None:
+            kwargs["name"] = self.name
+
+        if self.mol is not None:
+            try:
+                kwargs["formal_charge"] = self.formal_charge
+                kwargs["molecular_weight"] = self.molecular_weight
+                kwargs["hbond_donor_count"] = self.hbond_donor_count
+                kwargs["hbond_acceptor_count"] = self.hbond_acceptor_count
+                kwargs["rotatable_bond_count"] = self.rotatable_bond_count
+                kwargs["tpsa"] = self.tpsa
+            except Exception:
+                pass
+
+        result = client.entities.create_ligand(**kwargs)
+
+        if "data" in result and "id" in result["data"]:
+            self.id = result["data"]["id"]
+
+    @beartype
     def sync(
         self,
         *,
@@ -998,9 +1101,9 @@ class Ligand(Entity):
     ) -> None:
         """Sync the ligand to the data platform.
 
-        This method uploads the ligand file to remote storage (if available) and creates a ligand
-        record in the data platform. If a ligand with the same canonical_smiles already exists,
-        it returns the existing ligand data instead of creating a new one.
+        Uploads the ligand file and links to an existing record if one with
+        the same canonical SMILES already exists, otherwise creates a new
+        record via :meth:`register`.
 
         Args:
             lazy: If True, skip syncing when the ligand already has an ID.
@@ -1018,60 +1121,23 @@ class Ligand(Entity):
         if client is None:
             client = DeepOriginClient.get()
 
-        # If ligand has a file_path, upload it to remote storage
-        # (Note: ligands in the data platform are identified by canonical_smiles, not file_path)
-        mol_file: str | None = None
-        if self.file_path is not None:
-            # Upload the ligand file first
-            self.upload(client=client)
-            # Use the remote path as the mol_file
-            mol_file = self._remote_path
-
-        # Search for existing ligands by canonical_smiles
-        response = client.data.search_ligands(canonical_smiles=self.canonical_smiles)
+        smiles_value = self.smiles if self.smiles is not None else self.canonical_smiles
+        response = client.entities.search_ligands(smiles=smiles_value)
         data = response["data"]
 
-        # If a ligand with this canonical_smiles already exists, update self.id and return
+        if not data:
+            response = client.entities.search_ligands(
+                canonical_smiles=self.canonical_smiles
+            )
+            data = response["data"]
+
         if data:
             existing_ligand = data[0]
             if "id" in existing_ligand:
                 self.id = existing_ligand["id"]
             return
 
-        # No existing ligand found, create a new one
-        # Prepare parameters for create_ligand
-        # Note: canonical_smiles is read-only and computed by the platform
-        kwargs: dict[str, Any] = {
-            "smiles": self.smiles if self.smiles is not None else self.canonical_smiles,
-        }
-
-        # Add mol_file if available
-        if mol_file is not None:
-            kwargs["mol_file"] = mol_file
-
-        # Add optional fields if available
-        if self.name is not None:
-            kwargs["name"] = self.name
-
-        # Add computed molecular properties if mol is available
-        if self.mol is not None:
-            try:
-                kwargs["formal_charge"] = self.formal_charge
-                kwargs["molecular_weight"] = self.molecular_weight
-                kwargs["hbond_donor_count"] = self.hbond_donor_count
-                kwargs["hbond_acceptor_count"] = self.hbond_acceptor_count
-                kwargs["rotatable_bond_count"] = self.rotatable_bond_count
-                kwargs["tpsa"] = self.tpsa
-            except Exception:
-                # If property computation fails, continue without those properties
-                pass
-
-        # Call create_ligand through the client
-        result = client.data.create_ligand(**kwargs)
-
-        # Update self.id with the newly created ligand's ID
-        if "data" in result and "id" in result["data"]:
-            self.id = result["data"]["id"]
+        self.register(client=client)
 
     def _to_row(self) -> dict[str, Any]:
         """Build a batch-create row dict from this ligand.
@@ -1882,6 +1948,55 @@ class LigandSet:
         return cls(ligands=all_ligands)
 
     @classmethod
+    def from_docking_result(
+        cls,
+        *,
+        protein_id: str,
+        client: Optional[DeepOriginClient] = None,
+    ) -> Self:
+        """Create a LigandSet from docking results in the data platform.
+
+        Fetches docking pose results for the given protein, downloads the
+        SDF files, and loads them into a LigandSet.
+
+        Args:
+            protein_id: Protein ID to fetch docking results for.
+            client: Optional DeepOriginClient instance. If not provided,
+                uses the default client.
+
+        Returns:
+            A LigandSet of docked poses.
+
+        Raises:
+            ValueError: If no docking results are found for the protein.
+        """
+        if client is None:
+            client = DeepOriginClient.get()
+
+        response = client.results.get_poses(protein_id=protein_id)
+        records = response.get("data", [])
+
+        if not records:
+            raise ValueError(f"No docking results found for protein_id={protein_id!r}")
+
+        remote_paths: list[str] = []
+        for record in records:
+            file_path = record.get("data", {}).get("file_path")
+            if file_path:
+                remote_paths.append(file_path)
+
+        local_paths = client.files.download_files(
+            files=remote_paths,
+            lazy=True,
+        )
+
+        all_ligands: list[Ligand] = []
+        for path in local_paths:
+            all_ligands.extend(cls.from_sdf(path).ligands)
+
+        return cls(ligands=all_ligands)
+
+    @classmethod
     def from_dir(cls, directory: str | Path) -> Self:
         """
         Create a LigandSet instance from a directory containing SDF files.
@@ -2180,7 +2295,7 @@ class LigandSet:
             )
 
         smiles_list = [lig.canonical_smiles for lig in ligands_to_sync]
-        response = client.data.search_ligands(
+        response = client.entities.search_ligands(
             smiles_list=smiles_list,
             limit=len(smiles_list),
         )
@@ -2202,7 +2317,7 @@ class LigandSet:
                 lig.upload(client=client)
 
         rows = [lig._to_row() for lig in to_create]
-        result = client.data.batch_create_ligands(rows=rows)
+        result = client.entities.batch_create_ligands(rows=rows)
         created_by_smiles = self._index_by_canonical_smiles(result.get("data", []))
 
         for lig in to_create:

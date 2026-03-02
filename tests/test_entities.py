@@ -1,26 +1,62 @@
-"""Tests for the Data Platform API wrapper."""
+"""Tests for the Entities API wrapper."""
 
+from unittest.mock import MagicMock
+
+import httpx
 import pytest
 
 from deeporigin.drug_discovery.structures.ligand import Ligand, LigandSet
 from deeporigin.exceptions import DeepOriginException
-from deeporigin.platform.client import DeepOriginClient
+from deeporigin.platform import DeepOriginClient
 
 
-def test_data_platform_health_lv1():
-    """Test the data platform health endpoint."""
+def test_delete_entity():
+    """Test that delete sends a DELETE request to the correct URL."""
     client = DeepOriginClient()
-    response = client.data.health()
 
-    assert isinstance(response, dict), "Expected a dictionary response"
-    assert "status" in response, "Expected 'status' key in response"
-    assert response["status"] == "ok", "Expected status to be 'ok'"
+    mock_response = MagicMock(spec=httpx.Response)
+    mock_response.json.return_value = {"deleted": 1}
+    mock_response.raise_for_status = MagicMock()
+
+    original_delete = client._client.delete
+    client._client.delete = MagicMock(return_value=mock_response)
+
+    try:
+        result = client.entities.delete(entity="proteins", entity_id="08BSPN61NYVE3")
+
+        assert result == {"deleted": 1}
+        client._client.delete.assert_called_once()
+        call_args = client._client.delete.call_args
+        assert "/data-platform/deeporigin/proteins/08BSPN61NYVE3" in call_args[0][0]
+    finally:
+        client._client.delete = original_delete
+
+
+def test_delete_entity_ligand():
+    """Test that delete works for ligand entities."""
+    client = DeepOriginClient()
+
+    mock_response = MagicMock(spec=httpx.Response)
+    mock_response.json.return_value = {"deleted": 1}
+    mock_response.raise_for_status = MagicMock()
+
+    original_delete = client._client.delete
+    client._client.delete = MagicMock(return_value=mock_response)
+
+    try:
+        result = client.entities.delete(entity="ligands", entity_id="ABC123")
+
+        assert result == {"deleted": 1}
+        call_args = client._client.delete.call_args
+        assert "/data-platform/deeporigin/ligands/ABC123" in call_args[0][0]
+    finally:
+        client._client.delete = original_delete
 
 
 def test_search_entity_lv1():
     """Test searching an entity."""
     client = DeepOriginClient()
-    response = client.data.search("ligands")
+    response = client.entities.search("ligands")
 
     assert isinstance(response, dict), "Expected a dictionary response"
     assert "data" in response, "Expected 'data' key in response"
@@ -31,13 +67,13 @@ def test_search_entity_invalid_entity():
     """Test searching with an invalid entity raises ValueError."""
     client = DeepOriginClient()
     with pytest.raises(ValueError, match="Invalid entity 'invalid_table'"):
-        client.data.search("invalid_table")
+        client.entities.search("invalid_table")
 
 
 def test_search_ligands_lv1():
     """Test searching ligands using convenience method."""
     client = DeepOriginClient()
-    response = client.data.search_ligands()
+    response = client.entities.search_ligands()
 
     assert isinstance(response, dict), "Expected a dictionary response"
     assert "data" in response, "Expected 'data' key in response"
@@ -47,7 +83,7 @@ def test_search_ligands_lv1():
 def test_search_ligands_molecular_weight_lv1():
     """Test searching ligands with molecular weight filters."""
     client = DeepOriginClient()
-    response = client.data.search_ligands(
+    response = client.entities.search_ligands(
         min_molecular_weight=250,
         max_molecular_weight=550,
     )
@@ -61,12 +97,12 @@ def test_search_ligands_smiles_list_lv1():
     """Test searching ligands by a list of SMILES strings."""
     client = DeepOriginClient()
 
-    existing = client.data.search_ligands(limit=3)
+    existing = client.entities.search_ligands(limit=3)
     assert len(existing["data"]) >= 2, "Need at least 2 existing ligands for this test"
 
     known_smiles = [lig["canonical_smiles"] for lig in existing["data"][:2]]
 
-    response = client.data.search_ligands(smiles_list=known_smiles)
+    response = client.entities.search_ligands(smiles_list=known_smiles)
 
     assert isinstance(response, dict), "Expected a dictionary response"
     assert "data" in response, "Expected 'data' key in response"
@@ -83,16 +119,16 @@ def test_search_ligands_smiles_list_mutually_exclusive():
     client = DeepOriginClient()
 
     with pytest.raises(ValueError, match="mutually exclusive"):
-        client.data.search_ligands(smiles_list=["C"], smiles="C")
+        client.entities.search_ligands(smiles_list=["C"], smiles="C")
 
     with pytest.raises(ValueError, match="mutually exclusive"):
-        client.data.search_ligands(smiles_list=["C"], canonical_smiles="C")
+        client.entities.search_ligands(smiles_list=["C"], canonical_smiles="C")
 
 
 def test_search_ligands_empty_smiles_list():
     """Test that an empty smiles_list returns an empty result immediately."""
     client = DeepOriginClient()
-    response = client.data.search_ligands(smiles_list=[])
+    response = client.entities.search_ligands(smiles_list=[])
 
     assert response == {"data": [], "count": 0}
 
@@ -100,7 +136,7 @@ def test_search_ligands_empty_smiles_list():
 def test_search_proteins_lv1():
     """Test searching proteins using convenience method."""
     client = DeepOriginClient()
-    response = client.data.search_proteins()
+    response = client.entities.search_proteins()
 
     assert isinstance(response, dict), "Expected a dictionary response"
     assert "data" in response, "Expected 'data' key in response"
@@ -110,7 +146,7 @@ def test_search_proteins_lv1():
 def test_search_proteins_molecular_weight_lv1():
     """Test searching proteins with molecular weight filters."""
     client = DeepOriginClient()
-    response = client.data.search_proteins(
+    response = client.entities.search_proteins(
         min_molecular_weight=250,
         max_molecular_weight=550,
     )
@@ -123,7 +159,7 @@ def test_search_proteins_molecular_weight_lv1():
 def test_search_proteins_sequence_lv1():
     """Test searching proteins with sequence filter."""
     client = DeepOriginClient()
-    response = client.data.search_proteins(
+    response = client.entities.search_proteins(
         sequence="MKTAYIAKQRQISFVKSHFSRQLEERLGLIEVQAPILSRVGDGTQDNLSGAEKAVQVKVKALPDAQFEVVHSLAKWKRQTLGQHDFSAGEGLYTHMKALRPDEDRLSPLHSVYVDQWDWERVMGDGERQFSTLKSTVEAIWAGIKATEAAVSEEFGLAPFLPDQIHFVHSQELLSRYPDLDAKGRERAIAKDLGAVFLVGIGGKLSDGHRHDVRAPDYDDWSTPSELGHAGLNGDILVWNPVLEDAFELSSMGIRVDADTLKHQLALTGDEDRLELEWHQALLRGEMPQTIGGGIGQSRLTMLLLQLPHIGQVQAGVWPAAVRESVPSLL"
     )
 
@@ -135,7 +171,7 @@ def test_search_proteins_sequence_lv1():
 def test_list_models_lv1():
     """Test listing models."""
     client = DeepOriginClient()
-    response = client.data.list_models()
+    response = client.entities.list_models()
 
     assert isinstance(response, dict), "Expected a dictionary response"
     assert "models" in response, "Expected 'models' key in response"
@@ -152,7 +188,7 @@ def test_create_ligand_lv1():
     client = DeepOriginClient()
     smiles = "Fc1c(-c2cccc3ccccc23)ncc2c(N3C[C@H]4CC[C@@H](C3)N4)nc(OCC34CCCN3CCC4)nc12"
     try:
-        response = client.data.create_ligand(
+        response = client.entities.create_ligand(
             smiles=smiles,
             name="Compound-12345",
             formal_charge=0,
@@ -179,7 +215,7 @@ def test_create_protein_lv1():
     client = DeepOriginClient()
     file_path = "entities/proteins/db4aa32e2e8ffa976a60004a8361b86427a2e5653a6623bb60b7913445902549.pdb"
     try:
-        response = client.data.create_protein(file_path=file_path)
+        response = client.entities.create_protein(file_path=file_path)
     except DeepOriginException as e:
         if "409" in str(e):
             return
@@ -193,16 +229,6 @@ def test_create_protein_lv1():
     assert data["file_path"] == file_path, "Expected file_path to match"
 
 
-def test_list_projects_lv1():
-    """Test listing projects."""
-    client = DeepOriginClient()
-    response = client.data.list_projects()
-
-    assert isinstance(response, dict), "Expected a dictionary response"
-    assert "data" in response, "Expected 'data' key in response"
-    assert isinstance(response["data"], list), "Expected 'data' to be a list"
-
-
 def test_get_ligand_lv1():
     """Test getting a ligand by ID."""
     client = DeepOriginClient()
@@ -211,7 +237,7 @@ def test_get_ligand_lv1():
     lig.sync(client=client)
     assert lig.id is not None, "Expected ligand to have an id after sync"
 
-    response = client.data.get_ligand(id=lig.id)
+    response = client.entities.get_ligand(id=lig.id)
 
     assert isinstance(response, dict), "Expected a dictionary response"
     assert response["id"] == lig.id, "Expected id to match"
@@ -229,7 +255,7 @@ def test_get_ligands_lv1():
         "Expected all ligands to have ids after sync"
     )
 
-    data = client.data.get_ligands(ids=ids)
+    data = client.entities.get_ligands(ids=ids)
 
     assert isinstance(data, list), "Expected a list response"
     assert len(data) == 2, f"Expected 2 ligands, got {len(data)}"
@@ -237,32 +263,19 @@ def test_get_ligands_lv1():
     assert returned_ids == set(ids), "Expected both IDs in response"
 
 
-def test_batch_create_ligands_lv1():
-    """Test batch creating ligands via LigandSet.sync()."""
-    client = DeepOriginClient()
-    ligands = LigandSet.from_smiles(["CCO", "CCCO"])
-    ligands.sync(client=client)
-
-    for lig in ligands:
-        assert lig.id is not None, f"Expected id after sync for {lig.smiles}"
-        assert lig.canonical_smiles is not None, (
-            f"Expected canonical_smiles for {lig.smiles}"
-        )
-
-
 def test_get_protein_lv1():
     """Test getting a protein by ID."""
     client = DeepOriginClient()
     file_path = "entities/proteins/db4aa32e2e8ffa976a60004a8361b86427a2e5653a6623bb60b7913445902549.pdb"
 
-    results = client.data.search_proteins(file_path=file_path)
+    results = client.entities.search_proteins(file_path=file_path)
     if not results["data"]:
-        response = client.data.create_protein(file_path=file_path)
+        response = client.entities.create_protein(file_path=file_path)
         protein_id = response["data"]["id"]
     else:
         protein_id = results["data"][0]["id"]
 
-    response = client.data.get_protein(id=protein_id)
+    response = client.entities.get_protein(id=protein_id)
 
     assert isinstance(response, dict), "Expected a dictionary response"
     assert response["id"] == protein_id, "Expected id to match"

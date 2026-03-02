@@ -5,6 +5,7 @@ import pytest
 from deeporigin.drug_discovery import DATA_DIR
 from deeporigin.drug_discovery.structures.ligand import Ligand, LigandSet
 from deeporigin.exceptions import DeepOriginException
+from deeporigin.platform.client import DeepOriginClient
 
 # Import shared test fixtures
 
@@ -1012,3 +1013,16 @@ def test_ligand_set_sync_empty():
     """Test that syncing an empty LigandSet is a no-op."""
     empty = LigandSet(ligands=[])
     empty.sync()  # should not raise
+
+
+def test_batch_create_ligands_lv1():
+    """Test batch creating ligands via LigandSet.sync()."""
+    client = DeepOriginClient()
+    ligands = LigandSet.from_smiles(["CCO", "CCCO"])
+    ligands.sync(client=client)
+
+    for lig in ligands:
+        assert lig.id is not None, f"Expected id after sync for {lig.smiles}"
+        assert lig.canonical_smiles is not None, (
+            f"Expected canonical_smiles for {lig.smiles}"
+        )

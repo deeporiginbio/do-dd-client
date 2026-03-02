@@ -83,16 +83,7 @@ def _start_tool_run(
             },
         }
     elif tool == "Docking":
-        outputs = {
-            "data_file": {
-                PROVIDER_KEY: provider,
-                "key": output_dir_path + RESULTS_CSV,
-            },
-            "docked_poses": {
-                PROVIDER_KEY: provider,
-                "key": output_dir_path,
-            },
-        }
+        outputs = {}
 
     if is_test_run(params):
         print(

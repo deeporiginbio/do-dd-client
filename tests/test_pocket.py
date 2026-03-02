@@ -69,7 +69,18 @@ def test_from_json_single_entry_lv0():
     assert pocket.file_path == _BRD_PDB
     assert pocket.protein_id == "prot_1"
     assert pocket.color == "red"
-    assert pocket.props == {"volume": 42.0}
+    assert pocket.volume == pytest.approx(42.0)
+    assert pocket.id is None
+
+
+def test_from_json_id_is_set_lv0():
+    """When an 'id' key is present it should populate the Pocket.id attribute."""
+    data = [{"id": "pocket-abc-123", "file_path": str(_BRD_PDB)}]
+
+    pocket = Pocket.from_json(data)[0]
+
+    assert pocket.id == "pocket-abc-123"
+    assert "id" not in (pocket.props or {})
 
 
 def test_from_json_protein_id_not_in_props_lv0():
@@ -79,11 +90,11 @@ def test_from_json_protein_id_not_in_props_lv0():
     pocket = Pocket.from_json(data)[0]
 
     assert pocket.protein_id == "prot_abc"
-    assert "protein_id" not in pocket.props
+    assert "protein_id" not in (pocket.props or {})
 
 
 def test_from_json_extra_keys_go_to_props_lv0():
-    """All keys except file_path and protein_id should land in props."""
+    """Known property keys become attributes; file_path/protein_id are excluded from props."""
     data = [
         {
             "file_path": str(_BRD_PDB),
@@ -95,8 +106,9 @@ def test_from_json_extra_keys_go_to_props_lv0():
 
     pocket = Pocket.from_json(data)[0]
 
-    assert pocket.props == {"volume": 100.0, "drugability_score": 0.8}
-    assert "file_path" not in pocket.props
+    assert pocket.volume == pytest.approx(100.0)
+    assert pocket.drugability_score == pytest.approx(0.8)
+    assert "file_path" not in (pocket.props or {})
 
 
 def test_from_json_no_protein_id_lv0():
