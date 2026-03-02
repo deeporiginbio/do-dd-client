@@ -7,6 +7,7 @@ import pytest
 from deeporigin.drug_discovery.constants import SUPPORTED_ATOM_SYMBOLS
 from deeporigin.drug_discovery.structures import Ligand
 from deeporigin.exceptions import DeepOriginException
+from deeporigin.platform.client import DeepOriginClient
 
 # Import shared test fixtures
 from tests.utils_ligands import (
@@ -719,3 +720,11 @@ def test_ligands_to_dataframe():
     assert "logP" in df.columns
     assert df.iloc[0]["logP"] == pytest.approx(0.32)
     assert df.iloc[1]["logP"] == pytest.approx(0.88)
+
+
+def test_register_ligand_lv1():
+    """Test registering a ligand (always creates a new record)."""
+    client = DeepOriginClient()
+    lig = Ligand.from_smiles("CC(=O)Oc1ccccc1C(=O)O", name="RegisterTest")
+    lig.register(client=client)
+    assert lig.id is not None, "Expected ligand to have an id after register"

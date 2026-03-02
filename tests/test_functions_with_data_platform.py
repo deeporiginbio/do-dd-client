@@ -1,6 +1,8 @@
-"""this module tests functions working with the data platform."""
+"""This module tests functions working with the data platform."""
 
 from pathlib import Path
+
+import pytest
 
 from deeporigin.drug_discovery import (
     BRD_DATA_DIR,
@@ -12,24 +14,49 @@ from deeporigin.drug_discovery import (
 from deeporigin.functions.result import FunctionResult
 from deeporigin.platform import DeepOriginClient
 
-# Fixtures directory for test files
 FIXTURES_DIR = Path(__file__).parent / "fixtures"
 
 
-def _prepare_protein(client: DeepOriginClient) -> Protein:
+@pytest.fixture()
+def client() -> DeepOriginClient:
+    """Return a DeepOriginClient instance."""
+    return DeepOriginClient()
+
+
+@pytest.fixture()
+def registered_protein(client: DeepOriginClient) -> Protein:
+    """Register a fresh protein and delete it after the test."""
     protein = Protein.from_file(BRD_DATA_DIR / "brd.pdb")
     protein.remove_water()
-    protein.sync(client=client)
-    return protein
+    protein.register(client=client)
+    yield protein
+    client.entities.delete(entity="proteins", entity_id=protein.id)
 
 
-def test_pocketfinder_with_data_platform_lv2():
+@pytest.fixture()
+def registered_ligand(client: DeepOriginClient) -> Ligand:
+    """Register a fresh ligand and delete it after the test."""
+    smiles = "Fc1c(-c2cccc3ccccc23)ncc2c(N3C[C@H]4CC[C@@H](C3)N4)nc(OCC34CCCN3CCC4)nc12"
+    ligand = Ligand.from_smiles(smiles)
+
+    # Delete any leftover from a previous run that didn't clean up
+    ligand.sync(client=client)
+    client.entities.delete(entity="ligands", entity_id=ligand.id)
+
+    ligand = Ligand.from_smiles(smiles)
+    ligand.register(client=client)
+    yield ligand
+    client.entities.delete(entity="ligands", entity_id=ligand.id)
+
+
+def test_pocketfinder_with_data_platform_lv2(
+    client: DeepOriginClient,
+    registered_protein: Protein,
+):
     """Test pocket finder integration with data platform."""
-    client = DeepOriginClient()
-
-    protein = _prepare_protein(client)
-
-    result = protein.find_pockets(pocket_count=1, use_cache=False, client=client)
+    result = registered_protein.find_pockets(
+        pocket_count=1, use_cache=False, client=client
+    )
 
     assert isinstance(result, FunctionResult), (
         "Expected protein.find_pockets() to return a FunctionResult"
@@ -40,25 +67,31 @@ def test_pocketfinder_with_data_platform_lv2():
     pocket = result.pockets[0]
 
     assert isinstance(pocket, Pocket), "Expected Pocket object"
-    assert pocket.protein_id == protein.id, "Pocket protein_id should match protein.id"
+    assert pocket.protein_id == registered_protein.id, (
+        "Pocket protein_id should match protein.id"
+    )
 
-    # Verify results are retrievable via Pocket.from_result
-    pockets_from_result = Pocket.from_result(protein_id=protein.id, client=client)
+    pockets_from_result = Pocket.from_result(
+        protein_id=registered_protein.id, client=client
+    )
 
     assert len(pockets_from_result) > 0, "Expected at least one pocket from result"
     for p in pockets_from_result:
         assert isinstance(p, Pocket), "Expected Pocket object"
-        assert p.protein_id == protein.id, "Pocket protein_id should match protein.id"
+        assert p.protein_id == registered_protein.id, (
+            "Pocket protein_id should match protein.id"
+        )
         assert p.coordinates is not None, "Expected coordinates to be loaded"
         assert p.volume is not None, "Expected volume on pocket"
         assert p.drugability_score is not None, "Expected drugability_score on pocket"
 
 
-def test_docking_with_data_platform_lv2():
+def test_docking_with_data_platform_lv2(
+    client: DeepOriginClient,
+    registered_protein: Protein,
+    registered_ligand: Ligand,
+):
     """Test docking function integration with data platform."""
-    client = DeepOriginClient()
-    protein = _prepare_protein(client)
-
     pocket = Pocket.from_pdb_file(
         FIXTURES_DIR
         / "files"
@@ -67,13 +100,8 @@ def test_docking_with_data_platform_lv2():
         / "pocket_1.pdb",
     )
 
-    ligand = Ligand.from_smiles(
-        "Fc1c(-c2cccc3ccccc23)ncc2c(N3C[C@H]4CC[C@@H](C3)N4)nc(OCC34CCCN3CCC4)nc12"
-    )
-    ligand.sync(client=client)
-
-    result = protein.dock(
-        ligand=ligand,
+    result = registered_protein.dock(
+        ligand=registered_ligand,
         pocket=pocket,
         use_cache=False,
         client=client,
@@ -89,17 +117,24 @@ def test_docking_with_data_platform_lv2():
     poses = result.function_outputs[0]["poses"]
 
     for pose in poses:
-        assert pose["protein_id"] == protein.id, (
+        assert pose["protein_id"] == registered_protein.id, (
             "Pose protein_id should match protein.id"
         )
-
-        assert pose["ligand_id"] == ligand.id, "Pose ligand_id should match ligand.id"
+        assert pose["ligand_id"] == registered_ligand.id, (
+            "Pose ligand_id should match ligand.id"
+        )
         assert pose["file_path"] is not None, "Pose file_path should not be None"
 
-    poses_from_result = Ligand.from_docking_result(protein_id=protein.id, client=client)
+    poses_from_result = LigandSet.from_docking_result(
+        protein_id=registered_protein.id, client=client
+    )
     assert len(poses_from_result) > 0, "Expected at least one pose from result"
     for p in poses_from_result:
         assert isinstance(p, Ligand), "Expected Ligand object"
-        assert p.protein_id == protein.id, "Pose protein_id should match protein.id"
-        assert p.ligand_id == ligand.id, "Pose ligand_id should match ligand.id"
+        assert p.protein_id == registered_protein.id, (
+            "Pose protein_id should match protein.id"
+        )
+        assert p.ligand_id == registered_ligand.id, (
+            "Pose ligand_id should match ligand.id"
+        )
         assert p.file_path is not None, "Pose file_path should not be None"
