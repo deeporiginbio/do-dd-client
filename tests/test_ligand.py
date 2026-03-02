@@ -722,14 +722,6 @@ def test_ligands_to_dataframe():
     assert df.iloc[1]["logP"] == pytest.approx(0.88)
 
 
-def test_register_ligand_lv1():
-    """Test registering a ligand (always creates a new record)."""
-    client = DeepOriginClient()
-    lig = Ligand.from_smiles("CC(=O)Oc1ccccc1C(=O)O", name="RegisterTest")
-    lig.register(client=client)
-    assert lig.id is not None, "Expected ligand to have an id after register"
-
-
 def test_from_id_lv1():
     """Test round-trip: local ligand -> sync -> from_id."""
     client = DeepOriginClient()

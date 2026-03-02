@@ -1121,10 +1121,15 @@ class Ligand(Entity):
         if client is None:
             client = DeepOriginClient.get()
 
-        response = client.entities.search_ligands(
-            canonical_smiles=self.canonical_smiles
-        )
+        smiles_value = self.smiles if self.smiles is not None else self.canonical_smiles
+        response = client.entities.search_ligands(smiles=smiles_value)
         data = response["data"]
+
+        if not data:
+            response = client.entities.search_ligands(
+                canonical_smiles=self.canonical_smiles
+            )
+            data = response["data"]
 
         if data:
             existing_ligand = data[0]

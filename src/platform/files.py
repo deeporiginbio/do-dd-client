@@ -525,7 +525,7 @@ class Files:
             local_path = download_to_dir_path / remote_basename
         else:
             do_folder = _ensure_do_folder()
-            local_path = do_folder / remote_path
+            local_path = do_folder / remote_path.lstrip("/")
 
         # Create parent directories
         local_path.parent.mkdir(parents=True, exist_ok=True)
