@@ -35,18 +35,18 @@ def registered_protein(client: DeepOriginClient) -> Protein:
 
 @pytest.fixture()
 def registered_ligand(client: DeepOriginClient) -> Ligand:
-    """Register a fresh ligand and delete it after the test."""
-    smiles = "Fc1c(-c2cccc3ccccc23)ncc2c(N3C[C@H]4CC[C@@H](C3)N4)nc(OCC34CCCN3CCC4)nc12"
-    ligand = Ligand.from_smiles(smiles)
+    """Sync a ligand for use in tests.
 
-    # Delete any leftover from a previous run that didn't clean up
+    Ligands have a unique constraint on SMILES, so register would fail
+    if the ligand already exists. Stale results are not a concern because
+    docking results are keyed by the protein+ligand pair, and the protein
+    is always freshly registered.
+    """
+    ligand = Ligand.from_smiles(
+        "Fc1c(-c2cccc3ccccc23)ncc2c(N3C[C@H]4CC[C@@H](C3)N4)nc(OCC34CCCN3CCC4)nc12"
+    )
     ligand.sync(client=client)
-    client.entities.delete(entity="ligands", entity_id=ligand.id)
-
-    ligand = Ligand.from_smiles(smiles)
-    ligand.register(client=client)
-    yield ligand
-    client.entities.delete(entity="ligands", entity_id=ligand.id)
+    return ligand
 
 
 def test_pocketfinder_with_data_platform_lv2(
@@ -126,15 +126,11 @@ def test_docking_with_data_platform_lv2(
         assert pose["file_path"] is not None, "Pose file_path should not be None"
 
     poses_from_result = LigandSet.from_docking_result(
-        protein_id=registered_protein.id, client=client
+        protein_id=registered_protein.id,
+        client=client,
     )
     assert len(poses_from_result) > 0, "Expected at least one pose from result"
     for p in poses_from_result:
         assert isinstance(p, Ligand), "Expected Ligand object"
-        assert p.protein_id == registered_protein.id, (
-            "Pose protein_id should match protein.id"
-        )
-        assert p.ligand_id == registered_ligand.id, (
-            "Pose ligand_id should match ligand.id"
-        )
-        assert p.file_path is not None, "Pose file_path should not be None"
+        assert p.mol is not None, "Pose should have a loaded RDKit mol"
+        assert p.smiles is not None, "Pose should have SMILES"

@@ -506,8 +506,16 @@ def create_tools_router(
         if manifest.get("version"):
             tool_version = manifest["version"]
 
+        # Maps function keys to the array field in functionOutputs that
+        # should be mirrored into the result-explorer store.  This emulates
+        # the production message-queue flow where function outputs are
+        # written to the result-explorer table asynchronously.  When adding
+        # a new function type, add an entry here so that downstream queries
+        # (e.g. LigandSet.from_docking_result, Pocket.from_result) can find
+        # the records via result-explorer/search.
         output_key_map = {
             "deeporigin.pocketfinder": "pockets",
+            "deeporigin.docking": "poses",
         }
 
         array_key = output_key_map.get(function_key)

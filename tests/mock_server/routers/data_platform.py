@@ -299,28 +299,18 @@ def create_data_platform_router(
 
         return {"data": created, "meta": {"inserted": len(created)}}
 
-    # Reverse index: file_path → protein_id (enforces uniqueness).
-    _file_path_index: dict[str, str] = {
-        record["file_path"]: pid
-        for pid, record in proteins.items()
-        if record.get("file_path")
-    }
-
     @router.post("/data-platform/{org_key}/proteins")
     async def create_protein(org_key: str, request: Request) -> dict[str, Any]:
-        """Create a new protein (returns 409 on duplicate file_path)."""
-        from fastapi import HTTPException
+        """Create a new protein record.
 
+        Unlike ligands, proteins have no uniqueness constraint on file_path —
+        multiple records may reference the same uploaded file.
+        """
         body = await request.json()
         set_data = body.get("set", {})
         returning = body.get("returning", [])
 
         fp = set_data.get("file_path", "")
-        if fp and fp in _file_path_index:
-            raise HTTPException(
-                status_code=409,
-                detail=f"Protein with file_path '{fp}' already exists.",
-            )
 
         now = datetime.now(timezone.utc)
         protein_id = "08" + str(uuid.uuid4()).replace("-", "").upper()[:11]
@@ -358,8 +348,6 @@ def create_data_platform_router(
         record.update(set_data)
 
         proteins[protein_id] = record
-        if fp:
-            _file_path_index[fp] = protein_id
 
         response_data = record.copy()
         if returning:
@@ -369,6 +357,30 @@ def create_data_platform_router(
             "data": response_data,
             "meta": {"inserted": 1},
         }
+
+    @router.delete("/data-platform/{org_key}/{entity}/{entity_id}")
+    def delete_entity(org_key: str, entity: str, entity_id: str) -> dict[str, Any]:
+        """Delete an entity record by ID."""
+        from fastapi import HTTPException
+
+        store = _entity_stores.get(entity)
+        if store is None:
+            raise HTTPException(status_code=404, detail=f"Unknown entity '{entity}'")
+
+        if entity_id not in store:
+            raise HTTPException(
+                status_code=404,
+                detail=f"{entity} record '{entity_id}' not found",
+            )
+
+        del store[entity_id]
+
+        if entity == "ligands":
+            keys_to_remove = [k for k, v in _ligand_key_index.items() if v == entity_id]
+            for k in keys_to_remove:
+                del _ligand_key_index[k]
+
+        return {"deleted": 1}
 
     @router.get("/data-platform/{org_key}/ligands/{ligand_id}")
     def get_ligand(org_key: str, ligand_id: str) -> dict[str, Any]:

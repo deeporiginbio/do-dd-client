@@ -333,6 +333,52 @@ class Ligand(Entity):
         ligands[0].file_path = str(path)
         return ligands[0]
 
+    @classmethod
+    def from_id(cls, id: str, *, client: Optional[DeepOriginClient] = None) -> Self:
+        """Create a Ligand instance from a Deep Origin Data Platform ID.
+
+        Fetches the ligand record from the platform. If the record has an
+        associated mol file it is downloaded and used to construct the ligand;
+        otherwise the SMILES string is used.
+
+        Args:
+            id: The Deep Origin Data Platform ID of the ligand.
+            client: Optional DeepOriginClient instance. If not provided, uses
+                the default client.
+
+        Returns:
+            Ligand: A new Ligand instance.
+
+        Raises:
+            ValueError: If the ligand data contains neither a mol file nor a
+                SMILES string.
+        """
+        if client is None:
+            client = DeepOriginClient.get()
+
+        data = client.entities.get_ligand(id=id)
+
+        mol_file = data.get("mol_file")
+        smiles = data.get("smiles") or data.get("canonical_smiles")
+
+        if mol_file:
+            local_file_path = client.files.download_file(remote_path=mol_file)
+            ligand = cls.from_sdf(file_path=local_file_path)
+        elif smiles:
+            ligand = cls.from_smiles(smiles=smiles)
+        else:
+            raise ValueError(
+                f"Ligand {id} has neither a mol file nor a SMILES string. "
+                "Cannot create Ligand instance."
+            )
+
+        ligand.id = data.get("id")
+
+        if data.get("name"):
+            ligand.name = data["name"]
+
+        return ligand
+
     def process_mol(self) -> None:
         """
         Clean the ligand molecule by removing hydrogens and sanitizing the structure.

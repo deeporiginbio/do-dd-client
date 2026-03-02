@@ -728,3 +728,19 @@ def test_register_ligand_lv1():
     lig = Ligand.from_smiles("CC(=O)Oc1ccccc1C(=O)O", name="RegisterTest")
     lig.register(client=client)
     assert lig.id is not None, "Expected ligand to have an id after register"
+
+
+def test_from_id_lv1():
+    """Test round-trip: local ligand -> sync -> from_id."""
+    client = DeepOriginClient()
+
+    ligand = Ligand.from_smiles("CCO", name="EthanolFromId")
+    ligand.sync(client=client)
+
+    assert ligand.id is not None
+
+    fetched = Ligand.from_id(ligand.id, client=client)
+
+    assert fetched.id == ligand.id
+    assert fetched.smiles is not None
+    assert fetched.mol is not None
