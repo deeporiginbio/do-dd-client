@@ -114,6 +114,38 @@ class Results:
             select=select,
         )
 
+    def get_pockets(
+        self,
+        *,
+        protein_id: str,
+        tool_version: str | None = None,
+        limit: int = 1000,
+        select: list[str] | None = None,
+    ) -> dict:
+        """Get binding pockets for a protein.
+
+        Convenience wrapper around :meth:`get_for` with
+        ``tool_id="deeporigin.pocketfinder"``.
+
+        Args:
+            protein_id: Protein ID to filter by.
+            tool_version: Optional tool version to filter by.
+            limit: Page size per request. Defaults to 1000.
+            select: List of fields to select. Defaults to
+                ``["id", "tool_id", "tool_version", "data", "execution_id"]``.
+
+        Returns:
+            Dictionary with ``data`` (all records across pages) and ``meta``
+            from the final response.
+        """
+        return self.get_for(
+            tool_id="deeporigin.pocketfinder",
+            protein_id=protein_id,
+            tool_version=tool_version,
+            limit=limit,
+            select=select,
+        )
+
     def with_ligands(
         self,
         *,
