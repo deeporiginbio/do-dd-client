@@ -6,8 +6,6 @@ import math
 import os
 from typing import Literal, Optional
 
-logger = logging.getLogger(__name__)
-
 from beartype import beartype
 from deeporigin_molstar import JupyterViewer
 import more_itertools
@@ -23,6 +21,8 @@ from deeporigin.exceptions import DeepOriginException
 from deeporigin.platform.constants import NON_FAILED_STATES
 from deeporigin.platform.job import Job, JobList
 from deeporigin.utils.core import _ensure_do_folder
+
+logger = logging.getLogger(__name__)
 
 Number = float | int
 LOCAL_BASE = _ensure_do_folder()
