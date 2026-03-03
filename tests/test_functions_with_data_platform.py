@@ -94,7 +94,8 @@ def test_pocketfinder_with_data_platform_lv2(
     )
 
     pockets_from_result = Pocket.from_result(
-        protein_id=registered_protein.id, client=client
+        execution_id=result._responses[0]["id"],
+        client=client,
     )
 
     assert len(pockets_from_result) > 0, "Expected at least one pocket from result"
