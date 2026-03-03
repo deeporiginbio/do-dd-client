@@ -24,6 +24,7 @@ from deeporigin.drug_discovery.constants import LIGANDS_DIR, SUPPORTED_ATOM_SYMB
 from deeporigin.drug_discovery.utilities.visualize import jupyter_visualization
 from deeporigin.drug_discovery.validation import validate_fragments
 from deeporigin.exceptions import DeepOriginException
+from deeporigin.functions.result import FunctionResult
 from deeporigin.platform.client import DeepOriginClient
 from deeporigin.utils.constants import number
 from deeporigin.utils.core import _ensure_do_folder
@@ -332,6 +333,52 @@ class Ligand(Entity):
         ligands[0].file_path = str(path)
         return ligands[0]
 
+    @classmethod
+    def from_id(cls, id: str, *, client: Optional[DeepOriginClient] = None) -> Self:
+        """Create a Ligand instance from a Deep Origin Data Platform ID.
+
+        Fetches the ligand record from the platform. If the record has an
+        associated mol file it is downloaded and used to construct the ligand;
+        otherwise the SMILES string is used.
+
+        Args:
+            id: The Deep Origin Data Platform ID of the ligand.
+            client: Optional DeepOriginClient instance. If not provided, uses
+                the default client.
+
+        Returns:
+            Ligand: A new Ligand instance.
+
+        Raises:
+            ValueError: If the ligand data contains neither a mol file nor a
+                SMILES string.
+        """
+        if client is None:
+            client = DeepOriginClient.get()
+
+        data = client.entities.get_ligand(id=id)
+
+        mol_file = data.get("mol_file")
+        smiles = data.get("smiles") or data.get("canonical_smiles")
+
+        if mol_file:
+            local_file_path = client.files.download_file(remote_path=mol_file)
+            ligand = cls.from_sdf(file_path=local_file_path)
+        elif smiles:
+            ligand = cls.from_smiles(smiles=smiles)
+        else:
+            raise ValueError(
+                f"Ligand {id} has neither a mol file nor a SMILES string. "
+                "Cannot create Ligand instance."
+            )
+
+        ligand.id = data.get("id")
+
+        if data.get("name"):
+            ligand.name = data["name"]
+
+        return ligand
+
     def process_mol(self) -> None:
         """
         Clean the ligand molecule by removing hydrogens and sanitizing the structure.
@@ -561,47 +608,37 @@ class Ligand(Entity):
         client: Optional[DeepOriginClient] = None,
         use_cache: bool = True,
         quote: bool = False,
-    ):
-        """
-        Protonate the ligand at a given pH using the DeepOrigin API.
+    ) -> FunctionResult:
+        """Protonate the ligand at a given pH using the DeepOrigin API.
 
-        This method calculates the protonation states of the ligand molecule at the
-        specified pH value and updates the ligand's molecule and SMILES representation
-        with the most abundant protonation state. The protonation state affects the
-        charge distribution of ionizable groups (e.g., carboxylic acids, amines) in
-        the molecule, which is important for accurate molecular modeling and docking
-        simulations.
+        Returns a ``FunctionResult`` whose ``.ligands`` attribute contains
+        the protonated ligand. When ``quote=True``, ``.ligands`` is empty
+        and ``.estimate`` gives the cost in dollars.
 
-        The method modifies the ligand in place by updating both `self.mol` and
-        `self.smiles` with the protonated form of the molecule. It also sets the
-        `protonated_at_ph` attribute to the pH value used for protonation.
+        The ligand is mutated in place: ``self.mol``, ``self.smiles``, and
+        ``self.protonated_at_ph`` are updated with the most abundant
+        protonation state.
 
         Args:
-            ph (number): pH value at which to protonate the ligand. Defaults to 7.4
+            ph: pH value at which to protonate the ligand. Defaults to 7.4
                 (physiological pH).
-            filter_percentage (number): Percentage threshold for filtering protonation
-                states. Only species with abundance above this threshold are considered.
-                Defaults to 1.0 (100%), meaning only the most abundant species is retained.
-            client (Optional[DeepOriginClient]): DeepOrigin client instance to use for
-                API calls. If None, a default client is obtained using
-                `DeepOriginClient.get()`. Defaults to None.
-            use_cache (bool): Whether to use cached protonation results if available.
-                Caching is based on the SMILES string and pH value. Defaults to True.
-            quote (bool): If True, request a quote for the protonation operation instead
-                of executing it. Defaults to False.
+            filter_percentage: Percentage threshold for filtering protonation
+                states. Only species with abundance above this threshold are
+                considered. Defaults to 1.0.
+            client: DeepOrigin client instance. If None, uses
+                ``DeepOriginClient.get()``.
+            use_cache: Whether to use cached protonation results.
+            quote: If True, request a cost estimate without executing.
 
-        Note:
-            The protonation process may change the SMILES string of the ligand if
-            ionizable groups are present and their protonation state changes at the
-            specified pH. The `protonated_at_ph` attribute is only set when `quote=False`
-            (i.e., when protonation is actually performed, not when just requesting a quote).
+        Returns:
+            FunctionResult: A FunctionResult with a ``.ligands`` attribute (list of Ligand).
         """
         from deeporigin.functions.protonation import protonate
 
         if client is None:
             client = DeepOriginClient.get()
 
-        data = protonate(
+        result = protonate(
             smiles=self.smiles,
             ph=ph,
             filter_percentage=filter_percentage,
@@ -610,12 +647,18 @@ class Ligand(Entity):
             quote=quote,
         )
 
-        self.mol = Chem.MolFromSmiles(data["protonation_states"]["smiles_list"][0])
-        self.smiles = data["protonation_states"]["smiles_list"][0]
+        if quote:
+            result.ligand = []
+            return result
 
-        # Set the protonated_at_ph attribute to track the pH at which protonation was performed
-        if not quote:
-            self.protonated_at_ph = ph
+        outputs = result.function_outputs[0]
+        protonated_smiles = outputs["protonation_states"]["smiles_list"][0]
+        self.mol = Chem.MolFromSmiles(protonated_smiles)
+        self.smiles = protonated_smiles
+        self.protonated_at_ph = ph
+
+        result.ligands = [self]
+        return result
 
     def to_molblock(self) -> str:
         """
@@ -971,24 +1014,83 @@ class Ligand(Entity):
             str: SHA256 hash string of the SDF file content
         """
 
-        # Create a temporary SDF file
-        temp_sdf_path = self.to_sdf("__ligand_hash__.sdf")
+        # Use a unique temp file per call to avoid race conditions when
+        # multiple ligands are hashed in parallel (e.g. via run_func_in_parallel).
+        fd, temp_sdf_path = tempfile.mkstemp(suffix=".sdf")
+        os.close(fd)
 
-        # Read the file in text mode, normalize newlines, and compute SHA256
-        with open(temp_sdf_path, "r", newline="") as f:
-            sdf_text = f.read()
-            # Normalize all line endings to \n for OS-agnostic hashing
+        try:
+            self.to_sdf(temp_sdf_path)
+
+            with open(temp_sdf_path, "r", newline="") as f:
+                sdf_text = f.read()
+
+            # Normalize line endings for OS-agnostic hashing
             normalized_text = sdf_text.replace("\r\n", "\n").replace("\r", "\n")
-            # Ensure file ends with a single newline to avoid platform differences
             if not normalized_text.endswith("\n"):
                 normalized_text = f"{normalized_text}\n"
-            hash_object = hashlib.sha256(normalized_text.encode("utf-8"))
-            hash_hex = hash_object.hexdigest()
-
-        # Clean up the temporary file
-        os.remove(temp_sdf_path)
+            hash_hex = hashlib.sha256(normalized_text.encode("utf-8")).hexdigest()
+        finally:
+            os.remove(temp_sdf_path)
 
         return hash_hex
+
+    @beartype
+    def register(
+        self,
+        *,
+        client: Optional[DeepOriginClient] = None,
+    ) -> None:
+        """Register the ligand as a new record in the data platform.
+
+        Uploads the ligand file to remote storage (if available) and creates
+        a new ligand record, regardless of whether one already exists for this
+        canonical SMILES.
+
+        Args:
+            client: DeepOriginClient instance. If None, uses DeepOriginClient.get().
+
+        Returns:
+            None. As a side effect, uploads the ligand and sets ``self.id``
+            to the newly created record's ID.
+
+        Note:
+            If the ligand was created from a SMILES string without an SDF file,
+            only the SMILES will be used (no file upload will occur).
+        """
+        if client is None:
+            client = DeepOriginClient.get()
+
+        mol_file: str | None = None
+        if self.file_path is not None:
+            self.upload(client=client)
+            mol_file = self._remote_path
+
+        kwargs: dict[str, Any] = {
+            "smiles": self.smiles if self.smiles is not None else self.canonical_smiles,
+        }
+
+        if mol_file is not None:
+            kwargs["mol_file"] = mol_file
+
+        if self.name is not None:
+            kwargs["name"] = self.name
+
+        if self.mol is not None:
+            try:
+                kwargs["formal_charge"] = self.formal_charge
+                kwargs["molecular_weight"] = self.molecular_weight
+                kwargs["hbond_donor_count"] = self.hbond_donor_count
+                kwargs["hbond_acceptor_count"] = self.hbond_acceptor_count
+                kwargs["rotatable_bond_count"] = self.rotatable_bond_count
+                kwargs["tpsa"] = self.tpsa
+            except Exception:
+                pass
+
+        result = client.entities.create_ligand(**kwargs)
+
+        if "data" in result and "id" in result["data"]:
+            self.id = result["data"]["id"]
 
     @beartype
     def sync(
@@ -999,9 +1101,9 @@ class Ligand(Entity):
     ) -> None:
         """Sync the ligand to the data platform.
 
-        This method uploads the ligand file to remote storage (if available) and creates a ligand
-        record in the data platform. If a ligand with the same canonical_smiles already exists,
-        it returns the existing ligand data instead of creating a new one.
+        Uploads the ligand file and links to an existing record if one with
+        the same canonical SMILES already exists, otherwise creates a new
+        record via :meth:`register`.
 
         Args:
             lazy: If True, skip syncing when the ligand already has an ID.
@@ -1019,60 +1121,57 @@ class Ligand(Entity):
         if client is None:
             client = DeepOriginClient.get()
 
-        # If ligand has a file_path, upload it to remote storage
-        # (Note: ligands in the data platform are identified by canonical_smiles, not file_path)
-        mol_file: str | None = None
-        if self.file_path is not None:
-            # Upload the ligand file first
-            self.upload(client=client)
-            # Use the remote path as the mol_file
-            mol_file = self._remote_path
-
-        # Search for existing ligands by canonical_smiles
-        response = client.data.search_ligands(canonical_smiles=self.canonical_smiles)
+        smiles_value = self.smiles if self.smiles is not None else self.canonical_smiles
+        response = client.entities.search_ligands(smiles=smiles_value)
         data = response["data"]
 
-        # If a ligand with this canonical_smiles already exists, update self.id and return
+        if not data:
+            response = client.entities.search_ligands(
+                canonical_smiles=self.canonical_smiles
+            )
+            data = response["data"]
+
         if data:
             existing_ligand = data[0]
             if "id" in existing_ligand:
                 self.id = existing_ligand["id"]
             return
 
-        # No existing ligand found, create a new one
-        # Prepare parameters for create_ligand
-        # Note: canonical_smiles is read-only and computed by the platform
-        kwargs: dict[str, Any] = {
-            "smiles": self.smiles if self.smiles is not None else self.canonical_smiles,
+        self.register(client=client)
+
+    def _to_row(self) -> dict[str, Any]:
+        """Build a batch-create row dict from this ligand.
+
+        Returns:
+            Dict suitable for ``batch_create_ligands`` rows.
+        """
+        smiles_value = self.smiles if self.smiles is not None else self.canonical_smiles
+        row: dict[str, Any] = {
+            "smiles": smiles_value,
+            "variant_name_tag": "",
         }
-
-        # Add mol_file if available
-        if mol_file is not None:
-            kwargs["mol_file"] = mol_file
-
-        # Add optional fields if available
+        if self.file_path is not None:
+            row["mol_file"] = self._remote_path
         if self.name is not None:
-            kwargs["name"] = self.name
-
-        # Add computed molecular properties if mol is available
+            row["name"] = self.name
         if self.mol is not None:
             try:
-                kwargs["formal_charge"] = self.formal_charge
-                kwargs["molecular_weight"] = self.molecular_weight
-                kwargs["hbond_donor_count"] = self.hbond_donor_count
-                kwargs["hbond_acceptor_count"] = self.hbond_acceptor_count
-                kwargs["rotatable_bond_count"] = self.rotatable_bond_count
-                kwargs["tpsa"] = self.tpsa
+                row["formal_charge"] = self.formal_charge
+                row["molecular_weight"] = self.molecular_weight
+                row["hbond_donor_count"] = self.hbond_donor_count
+                row["hbond_acceptor_count"] = self.hbond_acceptor_count
+                row["rotatable_bond_count"] = self.rotatable_bond_count
+                row["tpsa"] = self.tpsa
             except Exception:
-                # If property computation fails, continue without those properties
-                pass
-
-        # Call create_ligand through the client
-        result = client.data.create_ligand(**kwargs)
-
-        # Update self.id with the newly created ligand's ID
-        if "data" in result and "id" in result["data"]:
-            self.id = result["data"]["id"]
+                warnings.warn(
+                    f"Could not compute molecular descriptors for "
+                    f"'{smiles_value}'; formal_charge defaults to 0.",
+                    stacklevel=2,
+                )
+                row.setdefault("formal_charge", 0)
+        else:
+            row["formal_charge"] = 0
+        return row
 
     @beartype
     def to_pdb(self, output_path: Optional[str] = None) -> str | Path:
@@ -1849,6 +1948,55 @@ class LigandSet:
         return cls(ligands=all_ligands)
 
     @classmethod
+    def from_docking_result(
+        cls,
+        *,
+        protein_id: str,
+        client: Optional[DeepOriginClient] = None,
+    ) -> Self:
+        """Create a LigandSet from docking results in the data platform.
+
+        Fetches docking pose results for the given protein, downloads the
+        SDF files, and loads them into a LigandSet.
+
+        Args:
+            protein_id: Protein ID to fetch docking results for.
+            client: Optional DeepOriginClient instance. If not provided,
+                uses the default client.
+
+        Returns:
+            A LigandSet of docked poses.
+
+        Raises:
+            ValueError: If no docking results are found for the protein.
+        """
+        if client is None:
+            client = DeepOriginClient.get()
+
+        response = client.results.get_poses(protein_id=protein_id)
+        records = response.get("data", [])
+
+        if not records:
+            raise ValueError(f"No docking results found for protein_id={protein_id!r}")
+
+        remote_paths: list[str] = []
+        for record in records:
+            file_path = record.get("data", {}).get("file_path")
+            if file_path:
+                remote_paths.append(file_path)
+
+        local_paths = client.files.download_files(
+            files=remote_paths,
+            lazy=True,
+        )
+
+        all_ligands: list[Ligand] = []
+        for path in local_paths:
+            all_ligands.extend(cls.from_sdf(path).ligands)
+
+        return cls(ligands=all_ligands)
+
+    @classmethod
     def from_dir(cls, directory: str | Path) -> Self:
         """
         Create a LigandSet instance from a directory containing SDF files.
@@ -1962,18 +2110,43 @@ class LigandSet:
         filter_percentage: number = 1.0,
         use_cache: bool = True,
         client: Optional[DeepOriginClient] = None,
-    ):
+        quote: bool = False,
+    ) -> FunctionResult:
+        """Protonate all ligands in the set.
+
+        Returns a ``FunctionResult`` whose ``.ligands`` attribute contains
+        the protonated ligands. When ``quote=True``, ``.ligands`` is empty
+        and ``.estimate`` gives the cost in dollars. Only the most abundant
+        species is retained for each ligand.
+
+        Args:
+            ph: pH value at which to protonate. Defaults to 7.4.
+            filter_percentage: Percentage threshold for filtering protonation
+                states. Defaults to 1.0.
+            use_cache: Whether to use cached protonation results.
+            client: DeepOrigin client instance. If None, uses
+                ``DeepOriginClient.get()``.
+            quote: If True, request a cost estimate without executing.
+
+        Returns:
+            FunctionResult: A FunctionResult with a ``.ligands`` attribute (list of Ligand).
         """
-        Protonate the ligandSet. Only the most abundant species is retained for each ligand.
-        """
+        from deeporigin.functions.result import FunctionResult
+
+        all_responses: list[dict] = []
         for ligand in tqdm(self.ligands, desc="Protonating ligands", unit="ligand"):
-            ligand.protonate(
+            r = ligand.protonate(
                 ph=ph,
                 filter_percentage=filter_percentage,
                 use_cache=use_cache,
                 client=client,
+                quote=quote,
             )
-        return self
+            all_responses.extend(r.responses)
+
+        result = FunctionResult(all_responses)
+        result.ligands = [] if quote else list(self.ligands)
+        return result
 
     @beartype
     def admet_properties(
@@ -2000,7 +2173,7 @@ class LigandSet:
                 properties={"pains", "logs", "logd", "herg", "cyp", "logp", "ames"},
                 client=client,
             )
-            for response, ligand in zip(responses, self.ligands):
+            for response, ligand in zip(responses, self.ligands, strict=True):
                 for key, value in response.items():
                     ligand.set_property(key, value)
 
@@ -2050,10 +2223,107 @@ class LigandSet:
             writer.close()
 
     def to_smiles(self) -> list[str]:
-        """
-        Convert all ligands in the set to SMILES strings.
-        """
+        """Convert all ligands in the set to SMILES strings."""
         return [ligand.smiles for ligand in self.ligands]
+
+    @staticmethod
+    def _index_by_canonical_smiles(records: list[dict]) -> dict[str, dict]:
+        """Build a ``canonical_smiles → record`` mapping from API records.
+
+        Args:
+            records: List of dicts returned by a search or batch-create call.
+
+        Returns:
+            Dict keyed by canonical_smiles.
+        """
+        index: dict[str, dict] = {}
+        for record in records:
+            cs = record.get("canonical_smiles")
+            if cs is not None:
+                index[cs] = record
+        return index
+
+    @beartype
+    def sync(
+        self,
+        *,
+        lazy: bool = False,
+        client: Optional[DeepOriginClient] = None,
+    ) -> None:
+        """Sync the ligand set to the data platform.
+
+        For every ligand in the set this method:
+
+        1. Searches the data platform for existing ligands whose
+           ``canonical_smiles`` match (batched into a single request via
+           ``search_ligands(smiles_list=…)``).
+        2. For ligands that already exist remotely, updates the local ``id``.
+        3. For ligands that are new, uploads files to remote storage (if a
+           file_path is present) and batch-creates them in a single API call.
+        4. Updates the local ``id`` values from the created records.
+
+        .. note::
+            The batch-create step is all-or-nothing: if it fails (e.g.
+            network error, invalid data), none of the new ligands will
+            receive an ``id``.
+
+        Args:
+            lazy: If True, skip syncing ligands that already have an id.
+            client: DeepOriginClient instance. If None, uses
+                DeepOriginClient.get().
+        """
+        if not self.ligands:
+            return
+
+        if client is None:
+            client = DeepOriginClient.get()
+
+        ligands_to_sync = (
+            [lig for lig in self.ligands if lig.id is None]
+            if lazy
+            else list(self.ligands)
+        )
+        if not ligands_to_sync:
+            return
+
+        invalid = [lig for lig in ligands_to_sync if lig.canonical_smiles is None]
+        if invalid:
+            raise ValueError(
+                f"{len(invalid)} ligand(s) have no canonical_smiles and "
+                "cannot be synced. Ensure every ligand has a valid SMILES or "
+                "mol before calling sync()."
+            )
+
+        smiles_list = [lig.canonical_smiles for lig in ligands_to_sync]
+        response = client.entities.search_ligands(
+            smiles_list=smiles_list,
+            limit=len(smiles_list),
+        )
+        existing_by_smiles = self._index_by_canonical_smiles(response.get("data", []))
+
+        to_create: list[Ligand] = []
+        for lig in ligands_to_sync:
+            record = existing_by_smiles.get(lig.canonical_smiles)
+            if record is not None:
+                lig.id = record["id"]
+            else:
+                to_create.append(lig)
+
+        if not to_create:
+            return
+
+        for lig in to_create:
+            if lig.file_path is not None:
+                lig.upload(client=client)
+
+        rows = [lig._to_row() for lig in to_create]
+        result = client.entities.batch_create_ligands(rows=rows)
+        created_by_smiles = self._index_by_canonical_smiles(result.get("data", []))
+
+        for lig in to_create:
+            record = created_by_smiles.get(lig.canonical_smiles)
+            if record is not None:
+                lig.id = record["id"]
 
     @classmethod
     def from_smiles(cls, smiles: list[str] | set[str]) -> Self:

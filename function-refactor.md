@@ -1,3 +1,19 @@
+currently, functions (fast running served tools on the server) are called synchronously and blocking, and results 
+are immediately surfaced. for example, this is how we run docking:
+
+```python
+protein = Protein(...)
+pocket = Pocket(...)
+
+poses = protein.dock(ligand=ligand, pocket=pocket)
+# poses is a LigandSet
+```
+
+however, under the hood, we call a function in src/functions/docking.py
+
+these functions typically return the function outputs, and other data, e.g.:
+
+```json
 {
     "id": "9f3be8f0-434d-4fec-80de-ee068aad4999",
     "createdAt": "2025-12-18T15:07:56.091Z",
@@ -144,3 +160,27 @@
         "resourceId": "function-lsw42idrlizz6vaqs8d3f"
     }
 }
+```
+
+the key feature we want to work on is support for "quoting" a function, i.e, asking for an estimate without actually running it. 
+
+to do so, we have to fundamentally change how functions work. All functions (and class methods that are thin wrappers around functions like `protein.dock`) should return a `results` object, which wraps the JSON above. 
+
+crucially, this behavior should be supported:
+
+```python
+results = protein.dock(...) # just run it
+results.poses # contains a ligandSet of poses
+
+results = protein.dock(...quote=True)
+results.poses # empty, because there's nothing here
+results.estimate # a dollar amount for the estiamte, from `quotationResult`
+```
+
+This has a very large blast radius:
+
+1. All docs need to be modified to reflect the fact that `results` is returned, and the actual data is contained inside it
+2. All docs need to be updated to reflect how to quote functions
+3. Jupyter notebooks need to be updated
+4. tests have to be updated. possibly, new fixtures needed
+5. we need to create a results class. keep it lean. it should inject new attributes on demand (like `poses`) -- only when needed. 

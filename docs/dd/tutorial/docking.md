@@ -23,7 +23,8 @@ We find pockets in the protein using:
 
 ```{.python continuation}
 sim.protein.remove_water()
-pockets = sim.protein.find_pockets(pocket_count=1)
+result = sim.protein.find_pockets(pocket_count=1)
+pockets = result.pockets
 ```
 
 We can visualize the pocket using:
@@ -82,7 +83,8 @@ pockets[0]
 It is recommended that you protonate ligands before docking them. 
 
 ```{.python notest}
-sim.ligands.protonate()
+result = sim.ligands.protonate()
+result.ligands  # list of protonated Ligand objects
 ```
 
 

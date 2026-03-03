@@ -1,6 +1,7 @@
 """This module encapsulates methods to run docking and show docking results on Deep Origin"""
 
 import concurrent.futures
+import logging
 import math
 import os
 from typing import Literal, Optional
@@ -21,6 +22,8 @@ from deeporigin.platform.constants import NON_FAILED_STATES
 from deeporigin.platform.job import Job, JobList
 from deeporigin.utils.core import _ensure_do_folder
 
+logger = logging.getLogger(__name__)
+
 Number = float | int
 LOCAL_BASE = _ensure_do_folder()
 
@@ -31,7 +34,7 @@ class Docking(WorkflowStep):
     Objects instantiated here are meant to be used within the Complex class."""
 
     """tool version to use for Docking"""
-    tool_version = "0.5.1"
+    tool_version = "0.6.6"
     _tool_key = tool_mapper["Docking"]
 
     def __init__(self, parent):
@@ -83,16 +86,49 @@ class Docking(WorkflowStep):
         )
         JupyterViewer.visualize(html_content)
 
-    def get_poses(self) -> LigandSet | None:
-        """get all docked poses as a `LigandSet`"""
+    def get_poses(self, *, include_legacy_results: bool = True) -> LigandSet | None:
+        """Get all docked poses as a ``LigandSet``.
 
-        file_paths = self.get_results(file_type="sdf")
+        Tries :meth:`get_results_using_id` first (result-explorer API), then
+        optionally includes results from the legacy :meth:`get_results`
+        directory listing. SDF paths from both sources are merged and
+        deduplicated before loading.
 
-        if file_paths is None:
-            # no results available yet
-            return
+        Args:
+            include_legacy_results: If True, also fetch results via the legacy
+                directory-listing method and merge them. Defaults to True.
+
+        Returns:
+            A LigandSet of docked poses, or None if no results are available.
+        """
+        remote_paths: list[str] = []
+        try:
+            df = self.get_results_using_id()
+            if df is not None:
+                remote_paths = df["file_path"].dropna().unique().tolist()
+        except DeepOriginException:
+            logger.debug(
+                "Result-explorer lookup failed; falling back to legacy results"
+            )
+
+        id_local_paths: list[str] = []
+        if remote_paths:
+            id_local_paths = self.parent.client.files.download_files(
+                files=remote_paths,
+                lazy=True,
+            )
+
+        legacy_paths: list[str] = []
+        if include_legacy_results:
+            legacy_paths = self.get_results(file_type="sdf") or []
+
+        all_paths = list(dict.fromkeys(id_local_paths + legacy_paths))
+
+        if len(all_paths) == 0:
+            return None
+
         ligands = LigandSet()
-        for file in file_paths:
+        for file in all_paths:
             ligands.ligands += LigandSet.from_sdf(file).ligands
 
         smiles_in_complex = self.parent.ligands.to_smiles()
@@ -162,6 +198,58 @@ class Docking(WorkflowStep):
             return local_paths
 
     @beartype
+    def get_results_using_id(
+        self,
+    ) -> pd.DataFrame | None:
+        """Retrieve docking results as a flat DataFrame via the result-explorer API.
+
+        Queries the result-explorer endpoint filtered by protein ID and tool ID,
+        then flattens nested ``data`` fields into a single tabular structure.
+
+        Returns:
+            DataFrame with columns ``id``, ``tool_id``, ``tool_version``,
+            ``ligand_id``, ``protein_id``, ``binding_energy``, ``pose_score``,
+            and ``file_path``. Returns None if no results were found.
+
+        Raises:
+            DeepOriginException: If the protein has no ID.
+        """
+        protein_id = self.parent.protein.id
+        if protein_id is None:
+            raise DeepOriginException(
+                title="Protein has no ID",
+                message="Cannot fetch results by ID because the protein has not been synced.",
+                fix="Call <code>protein.sync(client=client)</code> first, or use <code>get_results()</code> instead.",
+            )
+
+        response = self.parent.client.results.get_poses(
+            protein_id=protein_id,
+        )
+
+        records = response.get("data", [])
+        if len(records) == 0:
+            print("No docking results found for this protein.")
+            return None
+
+        rows = []
+        for record in records:
+            data = record.get("data", {})
+            rows.append(
+                {
+                    "id": record.get("id"),
+                    "tool_id": record.get("tool_id"),
+                    "tool_version": record.get("tool_version"),
+                    "ligand_id": data.get("ligand_id"),
+                    "protein_id": data.get("protein_id"),
+                    "binding_energy": data.get("binding_energy"),
+                    "pose_score": data.get("pose_score"),
+                    "file_path": data.get("file_path"),
+                }
+            )
+
+        return pd.DataFrame(rows)
+
+    @beartype
     def get_jobs_df(
         self,
         *,
@@ -207,8 +295,22 @@ class Docking(WorkflowStep):
             smiles_strings = [ligand.smiles for ligand in self.parent.ligands]
             mask = df["user_inputs"].apply(
                 lambda x: isinstance(x, dict)
-                and "smiles_list" in x
-                and any(s in smiles_strings for s in x["smiles_list"])
+                and (
+                    # Handle old format (smiles_list)
+                    (
+                        "smiles_list" in x
+                        and any(s in smiles_strings for s in x["smiles_list"])
+                    )
+                    # Handle new format (ligands array)
+                    or (
+                        "ligands" in x
+                        and isinstance(x["ligands"], list)
+                        and any(
+                            ligand.get("smiles", "") in smiles_strings
+                            for ligand in x["ligands"]
+                        )
+                    )
+                )
             )
             df = df[mask]
 
@@ -264,9 +366,9 @@ class Docking(WorkflowStep):
         if output_dir_path is None:
             output_dir_path = "tool-runs/docking/" + self.parent.protein.to_hash() + "/"
 
-        # only sync the protein, not the ligands, because we're
-        # only using the SMILES strings, which are sent in the request DTO
-        self.parent.protein.upload(client=self.parent.client)
+        # Sync protein and ligands to ensure they have IDs
+        self.parent.protein.sync(client=self.parent.client)
+        self.parent.ligands.sync(client=self.parent.client)
 
         metadata = {
             "protein_file": protein_basename,
@@ -287,39 +389,69 @@ class Docking(WorkflowStep):
             print(f"Using a batch size of {batch_size}")
 
         if pocket is not None:
-            box_size = float(2 * np.cbrt(pocket.props["volume"]))
+            box_size = float(2 * np.cbrt(pocket.volume))
             box_size = [box_size, box_size, box_size]
             pocket_center = pocket.get_center().tolist()
 
-        smiles_strings = [ligand.smiles for ligand in self.parent.ligands]
+        # Get all ligands and filter out already docked ones
+        all_ligands = list(self.parent.ligands)
 
         df = self.get_jobs_df(pocket_center=pocket_center, box_size=box_size)
 
-        already_docked_ligands = []
+        already_docked_smiles = set()
 
         if not re_run:
             for _, row in df.iterrows():
-                this_smiles = row["user_inputs"]["smiles_list"]
-                already_docked_ligands.extend(this_smiles)
+                user_inputs = row.get("user_inputs", {})
+                # Handle both old format (smiles_list) and new format (ligands array)
+                if "smiles_list" in user_inputs:
+                    already_docked_smiles.update(user_inputs["smiles_list"])
+                elif "ligands" in user_inputs:
+                    already_docked_smiles.update(
+                        ligand.get("smiles", "") for ligand in user_inputs["ligands"]
+                    )
 
-        smiles_strings = set(smiles_strings) - set(already_docked_ligands)
-        smiles_strings = sorted(smiles_strings)
+        # Filter ligands to only include those not already docked
+        ligands_to_dock = [
+            ligand
+            for ligand in all_ligands
+            if ligand.smiles not in already_docked_smiles
+        ]
+
+        # Sort ligands by SMILES for consistent batching
+        ligands_to_dock = sorted(ligands_to_dock, key=lambda ligand: ligand.smiles)
 
         job_ids = []
 
-        chunks = list(more_itertools.chunked(smiles_strings, batch_size))
+        chunks = list(more_itertools.chunked(ligands_to_dock, batch_size))
 
         def process_chunk(chunk):
             params = {
                 "box_size": list(box_size),
                 "pocket_center": list(pocket_center),
-                "smiles_list": chunk,
+                "protein": {
+                    "file_path": self.parent.protein._remote_path,
+                },
+                "ligands": [
+                    {
+                        "smiles": ligand.smiles,
+                    }
+                    for ligand in chunk
+                ],
             }
 
-            params["protein"] = {
-                "$provider": "ufa",
-                "key": self.parent.protein._remote_path,
-            }
+            # Include protein ID if available
+            if self.parent.protein.id is not None:
+                params["protein"]["id"] = self.parent.protein.id
+
+            # Include ligand IDs if available
+            for i, ligand in enumerate(chunk):
+                if ligand.id is not None:
+                    params["ligands"][i]["id"] = ligand.id
+
+            # Include pocket_id if pocket is provided and has an ID
+            if pocket is not None and hasattr(pocket, "id") and pocket.id is not None:
+                params["pocket_id"] = pocket.id
 
             execution_dto = utils._start_tool_run(
                 params=params,
@@ -332,7 +464,7 @@ class Docking(WorkflowStep):
             )
             return execution_dto
 
-        if len(smiles_strings) > 0:
+        if len(ligands_to_dock) > 0:
             if use_parallel:
                 with concurrent.futures.ThreadPoolExecutor() as executor:
                     # Submit all chunks to the executor

@@ -8,6 +8,7 @@ from various sources, preprocess structures, handle ligands, and visualize prote
 """
 
 from collections import defaultdict
+from collections.abc import Callable
 from dataclasses import dataclass, field
 import hashlib
 import io
@@ -27,12 +28,96 @@ from deeporigin.drug_discovery.constants import (
     STATE_DUMP_PATH,
 )
 from deeporigin.exceptions import DeepOriginException
+from deeporigin.functions.result import FunctionResult
 from deeporigin.platform.client import DeepOriginClient
 from deeporigin.utils.core import _ensure_do_folder
 
 from .entity import Entity
 from .ligand import Ligand, LigandSet
 from .pocket import Pocket
+
+
+def _make_poses_from_dock_results(
+    *,
+    result: FunctionResult,
+    client: DeepOriginClient,
+) -> LigandSet:
+    """Download docking pose SDF files and build a LigandSet.
+
+    Args:
+        result: FunctionResult wrapping one or more docking responses.
+        client: DeepOrigin client for downloading files.
+
+    Returns:
+        A LigandSet constructed from the downloaded SDF files.
+    """
+    sdf_files: set[str] = set()
+    for outputs in result.function_outputs:
+        for pose in outputs.get("poses", []):
+            local_path = client.files.download_file(
+                remote_path=pose["file_path"],
+                lazy=True,
+            )
+            sdf_files.add(local_path)
+    return LigandSet.from_sdf_files(list(sdf_files))
+
+
+def _make_pockets_from_result(
+    *,
+    result: FunctionResult,
+    client: DeepOriginClient,
+    cache_path_fn: Callable[[str], str],
+    use_cache: bool,
+) -> list[Pocket]:
+    """Download pocket PDB files and build Pocket objects.
+
+    Args:
+        result: FunctionResult wrapping a pocket-finder response.
+        client: DeepOrigin client for downloading files.
+        cache_path_fn: Callable that maps a cache key to a directory path.
+        use_cache: Whether to return cached results when available.
+
+    Returns:
+        A list of Pocket objects.
+    """
+    import json
+
+    from deeporigin.utils.core import hash_dict
+
+    outputs = result.function_outputs[0]
+    pockets_data = outputs.get("pockets", [])
+
+    response = result.response
+    inputs = response.get("userInputs", {}).get("inputs", {})
+    cache_key = hash_dict(
+        {
+            "protein": {"file_path": inputs.get("protein", {}).get("file_path", "")},
+            "pocket_count": inputs.get("pocket_count", 5),
+            "pocket_min_size": inputs.get("pocket_min_size", 30),
+        }
+    )
+    cp = cache_path_fn(cache_key)
+    cache_file = os.path.join(cp, "pockets.json")
+
+    if use_cache and os.path.exists(cache_file):
+        with open(cache_file) as f:
+            return Pocket.from_json(json.load(f))
+
+    os.makedirs(cp, exist_ok=True)
+
+    for pocket in pockets_data:
+        remote_path = pocket["file_path"]
+        local_path = os.path.join(cp, remote_path.split("/")[-1])
+        client.files.download_file(
+            remote_path=remote_path,
+            local_path=local_path,
+        )
+        pocket["file_path"] = local_path
+
+    with open(cache_file, "w") as f:
+        json.dump(pockets_data, f, indent=2)
+
+    return Pocket.from_json(pockets_data)
 
 
 @dataclass
@@ -86,7 +171,7 @@ class Protein(Entity):
         if client is None:
             client = DeepOriginClient.get()
 
-        data = client.data.get_protein(id=id)
+        data = client.entities.get_protein(id=id)
 
         # Check if file_path exists
         file_path = data.get("file_path")
@@ -178,7 +263,13 @@ class Protein(Entity):
             ) from None
 
     @classmethod
-    def from_file(cls, file_path: str | Path, struct_ind: int = 0) -> Self:
+    def from_file(
+        cls,
+        file_path: str | Path,
+        struct_ind: int = 0,
+        *,
+        validate: bool = True,
+    ) -> Self:
         """
         Create a Protein instance from a file.
 
@@ -205,7 +296,7 @@ class Protein(Entity):
             )
 
         # validate PDB files
-        if block_type == "pdb":
+        if block_type == "pdb" and validate:
             validate_pdb_file(file_path)
         try:
             block_content = file_path.read_text()
@@ -327,20 +418,29 @@ class Protein(Entity):
         use_cache: bool = True,
         reference_pose: Optional[Ligand] = None,
         client: Optional[DeepOriginClient] = None,
-    ):
+        quote: bool = False,
+    ) -> FunctionResult:
         """Dock a ligand into a specific pocket of the protein.
 
-        This method performs docking of a ligand or a set of ligands into a specified pocket
-        of the protein structure.
+        Returns a ``FunctionResult`` whose ``.poses`` attribute lazily
+        resolves to a ``LigandSet`` of docking poses. When ``quote=True``,
+        ``.poses`` is ``None`` and ``.estimate`` gives the
+        cost in dollars.
 
         Args:
-            ligand (Ligand): The ligand to dock into the protein pocket.
-            ligands (LigandSet | list[Ligand]): A set of ligands to dock into the protein pocket.
-            pocket (Pocket): The specific pocket in the protein where the ligand
+            ligand: The ligand to dock into the protein pocket.
+            ligands: A set of ligands to dock into the protein pocket.
+            pocket: The specific pocket in the protein where the ligand
                 should be docked.
-            use_cache (bool): Whether to use cached results if available. Defaults to True.
-            reference_pose (Ligand): A reference pose to use for constrained docking. If provided, the constraints will be computed using the MCS of the reference pose and the all the ligands to dock.
+            use_cache: Whether to use cached results if available.
+            reference_pose: A reference pose for constrained docking. If
+                provided, constraints are computed from the MCS of the
+                reference pose and all ligands.
+            client: DeepOrigin client instance.
+            quote: If True, request a cost estimate without executing.
 
+        Returns:
+            FunctionResult: A FunctionResult with a lazy ``.poses`` attribute (LigandSet).
         """
 
         if client is None:
@@ -362,16 +462,13 @@ class Protein(Entity):
 
             all_ligands = LigandSet([reference_pose] + ligands)
 
-            # find the mcs across all ligands
             mcs_mol = all_ligands.mcs()
 
-            # compute constraints for each ligand
             constraints = ligands.compute_constraints(
                 reference=reference_pose,
                 mcs_mol=mcs_mol,
             )
 
-            # construct args
             args = [
                 {
                     "client": client,
@@ -380,33 +477,41 @@ class Protein(Entity):
                     "pocket": pocket,
                     "constraints": constraint,
                     "use_cache": use_cache,
+                    "quote": quote,
                 }
                 for ligand, constraint in zip(ligands, constraints, strict=True)
             ]
 
             from deeporigin.functions.docking import constrained_dock
 
-            # running in series for now, while we sort out the parallelization
-            all_top_poses = []
+            all_responses: list[dict] = []
+            all_top_poses: list[str] = []
             for arg in args:
-                result_files = constrained_dock(**arg)
-                # Find the top pose file (typically named "top_constrained_result.sdf")
-                top_pose = next(
-                    (
-                        f
-                        for f in result_files
-                        if "top" in Path(f).name.lower() and f.endswith(".sdf")
-                    ),
-                    result_files[0] if result_files else None,
-                )
-                if top_pose:
-                    all_top_poses.append(top_pose)
+                cdock_result = constrained_dock(**arg)
+                all_responses.extend(cdock_result.responses)
 
-            return LigandSet.from_sdf_files(all_top_poses)
+                if not quote:
+                    result_files = cdock_result.downloaded_files
+                    top_pose = next(
+                        (
+                            f
+                            for f in result_files
+                            if "top" in Path(f).name.lower() and f.endswith(".sdf")
+                        ),
+                        result_files[0] if result_files else None,
+                    )
+                    if top_pose:
+                        all_top_poses.append(top_pose)
+
+            result = FunctionResult(all_responses)
+            if quote:
+                result.poses = None
+            else:
+                result.poses = LigandSet.from_sdf_files(all_top_poses)
+            return result
         else:
             # perform normal docking
 
-            # Import here to avoid circular import
             from deeporigin.functions.docking import dock
             from deeporigin.functions.parallel import run_func_in_parallel
 
@@ -416,22 +521,29 @@ class Protein(Entity):
                     "pocket": pocket,
                     "ligand": ligand,
                     "client": client,
+                    "quote": quote,
                 }
                 for ligand in ligands
             ]
 
             data = run_func_in_parallel(func=dock, args=args)
 
-            sdf_files = set()
-            for response in data["results"]:
-                for pose in response.get("poses", []):
-                    local_path = client.files.download_file(
-                        remote_path=pose["file_path"],
-                        lazy=True,
-                    )
-                    sdf_files.add(local_path)
+            individual_results = [r for r in data["results"] if r is not None]
+            all_responses = [fr.response for fr in individual_results]
 
-            return LigandSet.from_sdf_files(list(sdf_files))
+            if not all_responses:
+                all_responses = [{"status": "Failed"}]
+
+            result = FunctionResult(all_responses)
+
+            if quote:
+                result.poses = None  # type: ignore
+            else:
+                result.poses = _make_poses_from_dock_results(
+                    result=result,
+                    client=client,
+                )
+            return result
 
     @property
     def coordinates(self):
@@ -555,7 +667,7 @@ class Protein(Entity):
         use_cache: bool = True,
         client: Optional[DeepOriginClient] = None,
         quote: bool = False,
-    ) -> list[Pocket]:
+    ) -> FunctionResult:
         """Find potential binding pockets in the protein structure.
 
         This method analyzes the protein structure to identify cavities or pockets
@@ -563,42 +675,53 @@ class Protein(Entity):
         Deep Origin pocket finding algorithm to detect and characterize these pockets.
 
         Args:
-            pocket_count (int, optional): Maximum number of pockets to identify.
-                Defaults to 5.
-            pocket_min_size (int, optional): Minimum size of pockets to consider,
+            pocket_count: Maximum number of pockets to identify. Defaults to 1.
+            pocket_min_size: Minimum size of pockets to consider,
                 measured in cubic Angstroms. Defaults to 30.
+            use_cache: Whether to use cached results. Defaults to True.
+            client: DeepOriginClient instance. If None, uses DeepOriginClient.get().
+            quote: If True, request a cost estimate without executing.
 
         Returns:
-            list[Pocket]: A list of Pocket objects, each representing a potential
-                binding site in the protein. Each Pocket object contains:
-                - The 3D structure of the pocket
-                - Properties such as volume, surface area, hydrophobicity, etc.
-                - Visualization parameters (color, etc.)
+            FunctionResult with a ``pockets`` attribute containing a list of
+            Pocket objects (empty when ``quote=True``).
 
         Examples:
             >>> protein = Protein(file="protein.pdb")
-            >>> pockets = protein.find_pockets(pocket_count=3, pocket_min_size=50)
-            >>> for pocket in pockets:
+            >>> result = protein.find_pockets(pocket_count=3, pocket_min_size=50)
+            >>> for pocket in result.pockets:
             ...     print(f"Pocket: {pocket.name}, Volume: {pocket.properties.get('volume')} Å³")
         """
 
         if client is None:
             client = DeepOriginClient.get()
 
-        # Import here to avoid circular import
-        # note that name is changed to avoid conflict with the function
-        from deeporigin.functions.pocket_finder import find_pockets as _find_pockets
+        from deeporigin.functions.pocket_finder import (
+            cache_path as _pocket_cache_path,
+        )
+        from deeporigin.functions.pocket_finder import (
+            find_pockets as _find_pockets,
+        )
 
-        pockets_data = _find_pockets(
+        result = _find_pockets(
             protein=self,
             pocket_count=pocket_count,
             pocket_min_size=pocket_min_size,
-            use_cache=use_cache,
             client=client,
             quote=quote,
         )
 
-        return Pocket.from_json(pockets_data)
+        if quote:
+            result.pockets = []
+            return result
+
+        result.pockets = _make_pockets_from_result(
+            result=result,
+            client=client,
+            cache_path_fn=_pocket_cache_path,
+            use_cache=use_cache,
+        )
+        return result
 
     @beartype
     def remove_hetatm(
@@ -1367,6 +1490,47 @@ class Protein(Entity):
         return f"Protein:\n  {info_str}"
 
     @beartype
+    def register(
+        self,
+        *,
+        client: Optional[DeepOriginClient] = None,
+    ) -> None:
+        """Register the protein as a new record in the data platform.
+
+        Uploads the protein file to remote storage and creates a new protein
+        record, regardless of whether one already exists for this file path.
+
+        Args:
+            client: DeepOriginClient instance. If None, uses DeepOriginClient.get().
+
+        Returns:
+            None. As a side effect, uploads the protein and sets ``self.id``
+            to the newly created record's ID.
+        """
+        if client is None:
+            client = DeepOriginClient.get()
+
+        self.upload(client=client)
+
+        file_path = self._remote_path
+
+        kwargs: dict[str, Any] = {
+            "file_path": file_path,
+        }
+
+        if self.pdb_id is not None:
+            kwargs["pdb_id"] = self.pdb_id
+
+        if getattr(self, "file_path", None) is not None:
+            kwargs["protein_length"] = self.length
+        kwargs["protein_name"] = self.name
+
+        result = client.entities.create_protein(**kwargs)
+
+        if "data" in result and "id" in result["data"]:
+            self.id = result["data"]["id"]
+
+    @beartype
     def sync(
         self,
         *,
@@ -1375,10 +1539,9 @@ class Protein(Entity):
     ) -> None:
         """Sync the protein to the data platform.
 
-        This method uploads the protein file to remote storage and creates a protein
-        record in the data platform. If a protein with the same file_path already exists,
-        it updates the current instance with the existing protein's ID instead of
-        creating a new one.
+        Uploads the protein file and links to an existing record if one with
+        the same file path already exists, otherwise creates a new record via
+        :meth:`register`.
 
         Args:
             lazy: If True, skip syncing when the protein already has an ID.
@@ -1389,52 +1552,26 @@ class Protein(Entity):
             None. As a side effect, uploads the protein (if necessary) and updates
             ``self.id`` with the ID of the existing or newly created protein record.
         """
-
         if lazy and self.id is not None:
             return
 
         if client is None:
             client = DeepOriginClient.get()
 
-        # Upload the protein file first
         self.upload(client=client)
 
-        # Use the remote path as the file_path
         file_path = self._remote_path
 
-        # Search for existing proteins with the same file_path
-        response = client.data.search_proteins(file_path=file_path)
+        response = client.entities.search_proteins(file_path=file_path)
         data = response["data"]
 
-        # If a protein with this file_path already exists, return the first one
         if data:
             existing_protein = data[0]
-            # Update self.id with the existing protein's ID
             if "id" in existing_protein:
                 self.id = existing_protein["id"]
             return
 
-        # No existing protein found, create a new one
-        # Prepare parameters for create_protein
-        kwargs: dict[str, Any] = {
-            "file_path": file_path,
-        }
-
-        # Pass pdb_id if available
-        if self.pdb_id is not None:
-            kwargs["pdb_id"] = self.pdb_id
-
-        # Only compute and include protein_length when a local file_path is available
-        if getattr(self, "file_path", None) is not None:
-            kwargs["protein_length"] = self.length
-        kwargs["protein_name"] = self.name
-
-        # Call create_protein through the client
-        result = client.data.create_protein(**kwargs)
-
-        # Update self.id with the newly created protein's ID
-        if "data" in result and "id" in result["data"]:
-            self.id = result["data"]["id"]
+        self.register(client=client)
 
     def update_coordinates(self, coords: np.ndarray):
         """update coordinates of the protein structure"""

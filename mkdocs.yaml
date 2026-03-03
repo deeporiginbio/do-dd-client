@@ -71,6 +71,7 @@ nav:
       - Complex: dd/ref/complex.md
       - Pocket: dd/ref/pocket.md
     - docking: dd/ref/docking.md
+    - FunctionResult: dd/ref/function-result.md
     - abfe: dd/ref/abfe.md
     - rbfe: dd/ref/rbfe.md
   - Notebooks:
@@ -87,7 +88,9 @@ nav:
   - functions: platform/ref/functions.md
   - organizations: platform/ref/organizations.md
   - billing: platform/ref/billing.md
-  - data: platform/ref/data.md
+  - entities: platform/ref/entities.md
+  - results: platform/ref/results.md
+  - projects: platform/ref/projects.md
 - Developing: 
   - Installing: dev/install.md
   - Clients: dev/clients.md

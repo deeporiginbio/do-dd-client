@@ -13,6 +13,7 @@ from typing import Literal, Optional
 
 from deeporigin.drug_discovery.structures import Ligand, Pocket, Protein
 from deeporigin.exceptions import DeepOriginException
+from deeporigin.functions.result import FunctionResult
 from deeporigin.platform.client import DeepOriginClient
 from deeporigin.utils.core import _ensure_do_folder, hash_dict
 
@@ -46,24 +47,22 @@ def dock(
     pocket_center: Optional[tuple[int, int, int]] = None,
     pocket: Optional[Pocket] = None,
     quote: bool = False,
-) -> dict:
-    """
-    Run molecular docking using the DeepOrigin API.
+) -> FunctionResult:
+    """Run molecular docking using the DeepOrigin API.
 
     Args:
-        protein (Protein): Protein object representing the target protein
-        smiles_string (Optional[str]): SMILES string for the ligand to dock
-        ligand (Optional[Ligand]): Ligand object to dock
-        box_size (tuple[float, float, float]): Size of the docking box (x, y, z)
-        pocket_center (Optional[tuple[int, int, int]]): Center coordinates of the docking pocket (x, y, z)
-        pocket (Optional[Pocket]): Pocket object defining the docking region
-        client (DeepOriginClient): DeepOrigin client instance.
+        client: DeepOrigin client instance.
+        protein: Protein object representing the target protein.
+        ligand: Ligand object to dock.
+        box_size: Size of the docking box (x, y, z).
+        pocket_center: Center coordinates of the docking pocket (x, y, z).
+        pocket: Pocket object defining the docking region.
+        quote: If True, request a cost estimate without executing.
 
     Returns:
-        dict: Raw server response containing docking poses
+        FunctionResult wrapping the full API response.
     """
 
-    # ensure the protein and ligand are synced to the data platform
     protein.sync(lazy=True, client=client)
     ligand.sync(lazy=True, client=client)
 
@@ -93,15 +92,12 @@ def dock(
 
     response = client.functions.run(
         key="deeporigin.docking",
-        version="0.4.0",
+        version="0.5.1",
         params=payload,
         quote=quote,
     )
 
-    if "functionOutputs" in response:
-        response = response["functionOutputs"]
-
-    return response
+    return FunctionResult([response])
 
 
 def constrained_dock(
@@ -116,35 +112,27 @@ def constrained_dock(
     top_criteria: Literal["energy_score", "rmsd"] = "energy_score",
     use_cache: bool = True,
     quote: bool = False,
-) -> list[str]:
-    """Perform constrained molecular docking using a reference ligand constraints.
-
-    This function performs molecular docking with constraints based on a reference ligand
-    and a maximum common substructure (MCS). The ligand is aligned to the reference ligand
-    using the MCS, and docking is performed with these alignment constraints applied.
+) -> FunctionResult:
+    """Perform constrained molecular docking using reference ligand constraints.
 
     Args:
-        client (DeepOriginClient): DeepOrigin client instance.
-        protein (Protein): The protein structure to dock against.
-        ligand (Ligand): The ligand to be docked.
-        constraints (list[dict]): List of constraints for the docking. Generate this using `align.compute_constraints`.
-        pocket (Optional[Pocket]): Optional pocket object. If provided, its center will be used as pocket_center.
-        box_size (tuple[float, float, float]): Size of the docking box in Angstroms (x, y, z). Defaults to (20.0, 20.0, 20.0).
-        pocket_center (Optional[tuple[int, int, int]]): Optional center coordinates for the docking box. If None and pocket is provided,
-                     uses the pocket center. If both are None, raises an error.
-        top_criteria (Literal["energy_score", "rmsd"]): Criteria for selecting top poses. Defaults to "energy_score".
-        use_cache (bool): Whether to use cached results if available. Defaults to True.
-        quote (bool): Whether to quote the function run without executing it. Defaults to False.
+        client: DeepOrigin client instance.
+        protein: The protein structure to dock against.
+        ligand: The ligand to be docked.
+        constraints: List of constraints for the docking. Generate
+            using ``align.compute_constraints``.
+        pocket: Optional pocket object whose center is used as
+            ``pocket_center``.
+        box_size: Size of the docking box in Angstroms (x, y, z).
+        pocket_center: Center coordinates for the docking box.
+        top_criteria: Criteria for selecting top poses.
+        use_cache: Whether to use cached results if available.
+        quote: If True, request a cost estimate without executing.
 
     Returns:
-        list[str]: List of file paths to the docking result files (typically SDF files).
-
-
-    Note:
-        The function creates a cache directory in the DeepOrigin home directory
-        (typically ~/.deeporigin/constrained_docking/) and stores results based on
-        a SHA256 hash of all input parameters. This allows for efficient reuse of
-        previous docking results.
+        FunctionResult wrapping the full API response. When
+        ``quote=False``, downloaded result file paths are available
+        via ``result.downloaded_files``.
     """
     CACHE_DIR = str(_ensure_do_folder() / "constrained_docking")
 
@@ -155,11 +143,9 @@ def constrained_dock(
 
     pocket_center_list = _get_pocket_center(pocket, pocket_center)
 
-    # Upload files first
     protein.upload(client=client)
     ligand.upload(client=client)
 
-    # Prepare the request payload
     payload = {
         "protein_path": protein._remote_path,
         "ligand_path": ligand._remote_path,
@@ -172,8 +158,10 @@ def constrained_dock(
     cache_hash = hash_dict(payload)
     extract_dir = str(Path(CACHE_DIR) / cache_hash)
 
-    if os.path.exists(extract_dir) and use_cache:
-        return _extract_cached_files(extract_dir)
+    if os.path.exists(extract_dir) and use_cache and not quote:
+        result = FunctionResult([{"status": "Completed"}])
+        result.downloaded_files = _extract_cached_files(extract_dir)
+        return result
 
     response = client.functions.run(
         key="deeporigin.constrained-docking",
@@ -181,15 +169,18 @@ def constrained_dock(
         quote=quote,
     )
 
-    # TODO -- remove this patch once API is updated
-    if "functionOutputs" in response:
-        response = response["functionOutputs"]
+    result = FunctionResult([response])
 
-    # Download individual files from output_files
+    if quote:
+        result.downloaded_files = []
+        return result
+
+    outputs = response.get("functionOutputs", {})
+
     Path(extract_dir).mkdir(parents=True, exist_ok=True)
     downloaded_files = []
 
-    output_files = response.get("output_files", {})
+    output_files = outputs.get("output_files", {})
     for filename, remote_path in output_files.items():
         local_path = str(Path(extract_dir) / filename)
         client.files.download_file(
@@ -198,4 +189,5 @@ def constrained_dock(
         )
         downloaded_files.append(local_path)
 
-    return downloaded_files
+    result.downloaded_files = downloaded_files
+    return result

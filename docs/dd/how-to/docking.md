@@ -17,7 +17,7 @@ This document describes how to dock ligands to a Protein.
 A single Ligand can be docked to a Protein using:
 
 ```{.python notest}
-poses = protein.dock(
+result = protein.dock(
     pocket=pocket,
     ligand=ligand,
 )
@@ -25,13 +25,43 @@ poses = protein.dock(
 
 where `pocket` is a `Pocket` object generated using the [Pocket Finder Tool](find-pockets.md) :octicons-book-24: . 
 
+`result` is a [`FunctionResult`](../ref/function-result.md) that wraps the API response. The docked poses are available as a `LigandSet` on `result.poses`:
+
+```{.python notest}
+poses = result.poses
+```
+
+### Estimating cost
+
+To get a cost estimate without running the docking, use `quote=True`:
+
+```{.python notest}
+result = protein.dock(
+    pocket=pocket,
+    ligand=ligand,
+    quote=True,
+)
+
+result.estimate  # estimated cost in dollars
+result.cost      # None (function was not executed)
+```
+
+After a completed (non-quoted) run, the actual cost is available:
+
+```{.python notest}
+result = protein.dock(pocket=pocket, ligand=ligand)
+
+result.cost      # actual cost in dollars
+result.estimate  # None (function was executed)
+```
+
 
 ### Viewing docked poses
 
 Docked poses for that ligand can be viewed using:
 
 ```{.python notest}
-protein.show(poses=poses)
+protein.show(poses=result.poses)
 ```
 
 You will see something similar to the following. Use the arrows to inspect individual poses. 
@@ -49,7 +79,7 @@ You will see something similar to the following. Use the arrows to inspect indiv
 Every pose is assigned a pose score and a binding energy. These can be viewed using:
 
 ```{.python notest}
-poses
+result.poses
 ```
 
 A widget similar to the following will be shown:
@@ -59,7 +89,7 @@ A widget similar to the following will be shown:
 To work with a dataframe containing this data, use:
 
 ```{.python notest}
-df = poses.to_dataframe()
+df = result.poses.to_dataframe()
 ```
 
 ### Exporting poses to SDF
@@ -68,7 +98,7 @@ Poses can be saved to a SDF file using:
 
 
 ```{.python notest}
-poses.to_sdf()
+result.poses.to_sdf()
 ```
 
 ## Docking a `LigandSet` 
@@ -83,22 +113,33 @@ poses.to_sdf()
 Several ligands in a LigandSet can be docked to a Protein using:
 
 ```{.python notest}
-poses = protein.dock(
+result = protein.dock(
     ligands=ligands,
     pocket=pocket,
 )
 ```
 
-`poses` contains all poses for all ligands in the LigandSet. To filter poses to keep only top poses, use:
+`result.poses` contains all poses for all ligands in the LigandSet. To filter poses to keep only top poses, use:
 
 ```{.python notest}
-poses = poses.filter_top_poses()
+top_poses = result.poses.filter_top_poses()
 ```
 
-These poses can by visualized as before:
+These poses can be visualized as before:
 
 ```{.python notest}
-protein.show(poses=poses)
+protein.show(poses=result.poses)
+```
+
+To estimate the cost of docking a full LigandSet without running it:
+
+```{.python notest}
+result = protein.dock(
+    ligands=ligands,
+    pocket=pocket,
+    quote=True,
+)
+result.estimate  # total estimated cost across all ligands
 ```
 
 
@@ -115,19 +156,18 @@ Typically, these constraints are computed a reference docked pose for another (s
 Assuming we have a docked a Ligand to a Protein, and picked a pose to be the "reference". If we want to dock a `Ligand` to that protein, constrained by `reference_pose`, we use:
 
 ```{.python notest}
-
-poses = protein.dock(
+result = protein.dock(
     ligand=ligand,
     reference_pose=reference_pose,
     pocket=pocket,
 )
 
 # view poses
-protein.show(poses=poses)
+protein.show(poses=result.poses)
 ```
 
 To view the poses from constrained docking together with the reference pose, use:
 
 ```{.python notest}
-protein.show(poses=reference_pose + constrained_poses)
+protein.show(poses=reference_pose + result.poses)
 ```

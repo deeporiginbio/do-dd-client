@@ -30,19 +30,19 @@ jobs:
       - name: Check code formatting using ruff
         uses: astral-sh/ruff-action@v3
         with:
-          version: 0.11.2
+          version: 0.14.7
           args: format --check
 
       - name: Check import order
         uses: astral-sh/ruff-action@v3
         with:
-          version: 0.11.2
+          version: 0.14.7
           args: check --select I
 
       - name: Lint 
         uses: astral-sh/ruff-action@v3
         with:
-          version: 0.11.2
+          version: 0.14.7
           args: check 
 
       - name: Install uv

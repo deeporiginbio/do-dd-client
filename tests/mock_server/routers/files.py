@@ -91,7 +91,7 @@ def create_files_router(
     """
     router = APIRouter()
 
-    # --- Non-parameterised routes (must be registered first) ---
+    # --- Non-parameterized routes (must be registered first) ---
 
     @router.get("/files/health")
     def files_health() -> dict[str, str]:

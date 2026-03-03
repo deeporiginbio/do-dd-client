@@ -22,11 +22,13 @@ from deeporigin.config import get_value
 from deeporigin.exceptions import DeepOriginException
 from deeporigin.platform.billing import Billing
 from deeporigin.platform.clusters import Clusters
-from deeporigin.platform.data import Data
+from deeporigin.platform.entities import Entities
 from deeporigin.platform.executions import Executions
 from deeporigin.platform.files import Files
 from deeporigin.platform.functions import Functions
 from deeporigin.platform.organizations import Organizations
+from deeporigin.platform.projects import Projects
+from deeporigin.platform.results import Results
 from deeporigin.platform.tools import Tools
 from deeporigin.utils.constants import API_ENDPOINT, ENV_VARIABLES, ENVS
 from deeporigin.utils.core import _ensure_do_folder
@@ -343,7 +345,9 @@ class DeepOriginClient:
         self.executions = Executions(self)
         self.organizations = Organizations(self)
         self.billing = Billing(self)
-        self.data = Data(self)
+        self.entities = Entities(self)
+        self.results = Results(self)
+        self.projects = Projects(self)
 
         # Retry configuration
         self.max_retries = max_retries
@@ -769,6 +773,33 @@ class DeepOriginClient:
                 level="danger",
             )
 
+    def health(self) -> dict:
+        """Check health of all platform services.
+
+        Calls each service health endpoint and returns a combined response.
+        The top-level ``status`` is ``"ok"`` only when every service reports
+        ``"ok"``; otherwise it is ``"error"``.
+
+        Returns:
+            Dictionary with per-service health and an aggregate ``status``.
+        """
+        services = {
+            "billing": "/billing/health",
+            "entities": "/data-platform/health",
+            "files": "/files/health",
+            "tools": "/tools/health",
+        }
+        combined: dict[str, Any] = {}
+        for name, path in services.items():
+            try:
+                combined[name] = self.get_json(path)
+            except Exception as exc:
+                combined[name] = {"status": "error", "error": str(exc)}
+
+        all_ok = all(svc.get("status") == "ok" for svc in combined.values())
+        combined["status"] = "ok" if all_ok else "error"
+        return combined
+
     # Removing from registry when explicitly closed
     def _detach_from_registry(self) -> None:
         """Remove this instance from the singleton registry.
@@ -1118,6 +1149,21 @@ class DeepOriginClient:
             httpx.HTTPStatusError: If the response status code indicates an error.
         """
         return self._post(path, body=body, **kwargs).json()
+
+    def delete_json(self, path: str, **kwargs) -> Any:
+        """Perform a DELETE request and return the JSON response.
+
+        Args:
+            path: API endpoint path (relative to base_url).
+            **kwargs: Additional arguments passed to httpx.Client.delete().
+
+        Returns:
+            The JSON-decoded response body.
+
+        Raises:
+            httpx.HTTPStatusError: If the response status code indicates an error.
+        """
+        return self._delete(path, **kwargs).json()
 
     # -------- Lifecycle --------
     def close(self) -> None:
