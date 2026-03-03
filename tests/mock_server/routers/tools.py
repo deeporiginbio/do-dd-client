@@ -450,6 +450,9 @@ def create_tools_router(
         # Make a deep copy to avoid mutating the cached fixture
         response = copy.deepcopy(response)
 
+        if isinstance(response, dict):
+            response["id"] = str(uuid.uuid4())
+
         # Replace protein_id and ligand_id in functionOutputs with IDs from userInputs
         # This is needed because normalize_function_body strips IDs before hashing,
         # so different IDs hash to the same value
@@ -529,7 +532,7 @@ def create_tools_router(
                 "tool_id": tool_key,
                 "tool_version": tool_version,
                 "data": dict(item),
-                "execution_id": execution_id,
+                "compute_job_id": execution_id,
             }
             results.append(record)
 

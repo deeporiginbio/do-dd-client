@@ -163,10 +163,7 @@ def _apply_eq_filters(
 
     for key, condition in filter_dict.items():
         if not isinstance(condition, dict):
-            raise ValueError(
-                f"Invalid filter for field '{key}': expected dict, "
-                f"got {type(condition).__name__}"
-            )
+            condition = {"eq": condition}
 
         unknown_ops = set(condition.keys()) - allowed_ops
         if unknown_ops:

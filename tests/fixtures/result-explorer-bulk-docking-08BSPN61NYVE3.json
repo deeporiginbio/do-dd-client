@@ -11,7 +11,7 @@
         "protein_id": "08BSPN61NYVE3",
         "binding_energy": -8.567065
       },
-      "execution_id": "08GTWXE5XYXA2"
+      "compute_job_id": "08GTWXE5XYXA2"
     },
     {
       "id": "08GV25DEXYXA4",
@@ -24,7 +24,7 @@
         "protein_id": "08BSPN61NYVE3",
         "binding_energy": -9.318257
       },
-      "execution_id": "08GTWXE5XYXA2"
+      "compute_job_id": "08GTWXE5XYXA2"
     },
     {
       "id": "08GV25DFDYXA5",
@@ -37,7 +37,7 @@
         "protein_id": "08BSPN61NYVE3",
         "binding_energy": -7.5548854
       },
-      "execution_id": "08GTWXE5XYXA2"
+      "compute_job_id": "08GTWXE5XYXA2"
     },
     {
       "id": "08GV25DFNYXA6",
@@ -50,7 +50,7 @@
         "protein_id": "08BSPN61NYVE3",
         "binding_energy": -8.213833
       },
-      "execution_id": "08GTWXE5XYXA2"
+      "compute_job_id": "08GTWXE5XYXA2"
     },
     {
       "id": "08GV25DFXYXA7",
@@ -63,7 +63,7 @@
         "protein_id": "08BSPN61NYVE3",
         "binding_energy": -8.128791
       },
-      "execution_id": "08GTWXE5XYXA2"
+      "compute_job_id": "08GTWXE5XYXA2"
     }
   ],
   "meta": {
