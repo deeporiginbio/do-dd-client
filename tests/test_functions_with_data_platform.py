@@ -25,6 +25,10 @@ FIXTURES_DIR = Path(__file__).parent / "fixtures"
 
 def check_function_exists(client: DeepOriginClient, key: str, version: str) -> bool:
     """Check if the docking function exists."""
+
+    if client.env == "local":
+        return True
+
     functions = client.functions.list()
     for fcn in functions:
         if (
