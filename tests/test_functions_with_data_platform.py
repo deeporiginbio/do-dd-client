@@ -70,21 +70,26 @@ def test_pocketfinder_with_data_platform_lv2(
     client: DeepOriginClient,
     registered_protein: Protein,
 ) -> None:
+    """Test pocket finder function integration with data platform."""
+
     if not check_function_exists(
         client, POCKET_FINDER_FUNCTION_KEY, POCKET_FINDER_FUNCTION_VERSION
     ):
         pytest.skip("Pocket finder function does not exist")
 
-    """Test pocket finder integration with data platform."""
+    num_pockets = 1
+
     result = registered_protein.find_pockets(
-        pocket_count=1, use_cache=False, client=client
+        pocket_count=num_pockets,
+        use_cache=False,
+        client=client,
     )
 
     assert isinstance(result, FunctionResult), (
         "Expected protein.find_pockets() to return a FunctionResult"
     )
 
-    assert len(result.pockets) == 1, "Expected 1 pocket"
+    assert len(result.pockets) == num_pockets, f"Expected {num_pockets} pockets"
 
     pocket = result.pockets[0]
 
@@ -98,15 +103,21 @@ def test_pocketfinder_with_data_platform_lv2(
         client=client,
     )
 
-    assert len(pockets_from_result) > 0, "Expected at least one pocket from result"
-    for p in pockets_from_result:
-        assert isinstance(p, Pocket), "Expected Pocket object"
-        assert p.protein_id == registered_protein.id, (
-            "Pocket protein_id should match protein.id"
-        )
-        assert p.coordinates is not None, "Expected coordinates to be loaded"
-        assert p.volume is not None, "Expected volume on pocket"
-        assert p.drugability_score is not None, "Expected drugability_score on pocket"
+    assert len(pockets_from_result) == num_pockets, (
+        f"Expected {num_pockets} pockets from result"
+    )
+    pocket_from_result = pockets_from_result[0]
+    assert isinstance(pocket_from_result, Pocket), "Expected Pocket object"
+    assert pocket_from_result.protein_id == registered_protein.id, (
+        "Pocket protein_id should match protein.id"
+    )
+    assert pocket_from_result.coordinates is not None, (
+        "Expected coordinates to be loaded"
+    )
+    assert pocket_from_result.volume is not None, "Expected volume on pocket"
+    assert pocket_from_result.drugability_score is not None, (
+        "Expected drugability_score on pocket"
+    )
 
 
 def test_docking_with_data_platform_lv2(
