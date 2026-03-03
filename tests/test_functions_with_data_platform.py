@@ -4,6 +4,7 @@ from pathlib import Path
 
 import pytest
 
+from conftest import check_function_exists
 from deeporigin.drug_discovery import (
     BRD_DATA_DIR,
     Ligand,
@@ -21,22 +22,6 @@ from deeporigin.platform.constants import (
 )
 
 FIXTURES_DIR = Path(__file__).parent / "fixtures"
-
-
-def check_function_exists(client: DeepOriginClient, key: str, version: str) -> bool:
-    """Check if the docking function exists."""
-
-    if client.env == "local":
-        return True
-
-    functions = client.functions.list()
-    for fcn in functions:
-        if (
-            fcn["manifestBody"]["key"] == key
-            and fcn["manifestBody"]["version"] == version
-        ):
-            return True
-    return False
 
 
 @pytest.fixture()
