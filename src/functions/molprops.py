@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Optional
 
 from deeporigin.platform.client import DeepOriginClient
+from deeporigin.platform.constants import MOL_PROPS_FUNCTION_KEY_PREFIX
 from deeporigin.utils.core import _ensure_do_folder, hash_dict
 
 CACHE_DIR = str(_ensure_do_folder() / "molprops")
@@ -84,7 +85,7 @@ def get_single_property(
     # Prepare the request payload
 
     response = client.functions.run(
-        key=f"deeporigin.mol-props-{prop}",
+        key=f"{MOL_PROPS_FUNCTION_KEY_PREFIX}-{prop}",
         params=payload,
     )
 

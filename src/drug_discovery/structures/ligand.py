@@ -1951,7 +1951,8 @@ class LigandSet:
     def from_docking_result(
         cls,
         *,
-        protein_id: str,
+        protein_id: str | None = None,
+        execution_id: str | None = None,
         client: Optional[DeepOriginClient] = None,
     ) -> Self:
         """Create a LigandSet from docking results in the data platform.
@@ -1961,6 +1962,7 @@ class LigandSet:
 
         Args:
             protein_id: Protein ID to fetch docking results for.
+            execution_id: Execution ID to fetch docking results for.
             client: Optional DeepOriginClient instance. If not provided,
                 uses the default client.
 
@@ -1973,7 +1975,10 @@ class LigandSet:
         if client is None:
             client = DeepOriginClient.get()
 
-        response = client.results.get_poses(protein_id=protein_id)
+        response = client.results.get_poses(
+            protein_id=protein_id,
+            compute_job_id=execution_id,
+        )
         records = response.get("data", [])
 
         if not records:

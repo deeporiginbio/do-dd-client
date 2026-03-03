@@ -2,6 +2,9 @@
 
 from pathlib import Path
 
+import pytest
+
+from conftest import check_function_exists
 from deeporigin.drug_discovery import (
     BRD_DATA_DIR,
     Complex,
@@ -11,12 +14,32 @@ from deeporigin.drug_discovery import (
     Protein,
 )
 from deeporigin.functions.result import FunctionResult
+from deeporigin.platform import DeepOriginClient
+from deeporigin.platform.constants import (
+    DOCKING_FUNCTION_KEY,
+    DOCKING_FUNCTION_VERSION,
+    MOL_PROPS_FUNCTION_KEY_PREFIX,
+    POCKET_FINDER_FUNCTION_KEY,
+    POCKET_FINDER_FUNCTION_VERSION,
+    PROTONATION_FUNCTION_KEY,
+    SYSPREP_FUNCTION_KEY,
+    SYSPREP_FUNCTION_VERSION,
+)
 
 # Fixtures directory for test files
 FIXTURES_DIR = Path(__file__).parent / "fixtures"
 
 
-def test_molprops_lv2():
+@pytest.fixture()
+def client() -> DeepOriginClient:
+    """Return a DeepOriginClient instance."""
+    return DeepOriginClient()
+
+
+def test_molprops_lv2(client: DeepOriginClient):
+    if not check_function_exists(client, f"{MOL_PROPS_FUNCTION_KEY_PREFIX}-logp"):
+        pytest.skip("Mol props function does not exist")
+
     ligand = Ligand.from_smiles(
         "Fc1c(-c2cccc3ccccc23)ncc2c(N3C[C@H]4CC[C@@H](C3)N4)nc(OCC34CCCN3CCC4)nc12"
     )
@@ -29,8 +52,13 @@ def test_molprops_lv2():
     assert "logS" in props, "Expected logS to be in the properties"
 
 
-def test_pocket_finder_lv2():
+def test_pocket_finder_lv2(client: DeepOriginClient):
     """Test pocket finder function returns FunctionResult with pockets."""
+    if not check_function_exists(
+        client, POCKET_FINDER_FUNCTION_KEY, POCKET_FINDER_FUNCTION_VERSION
+    ):
+        pytest.skip("Pocket finder function does not exist")
+
     protein = Protein.from_file(BRD_DATA_DIR / "brd.pdb")
     protein.remove_water()
     result = protein.find_pockets(
@@ -48,8 +76,13 @@ def test_pocket_finder_lv2():
     )
 
 
-def test_docking_lv2():
+def test_docking_lv2(client: DeepOriginClient):
     """Test docking function."""
+    if not check_function_exists(
+        client, DOCKING_FUNCTION_KEY, DOCKING_FUNCTION_VERSION
+    ):
+        pytest.skip("Docking function does not exist")
+
     protein = Protein.from_file(BRD_DATA_DIR / "brd.pdb")
     protein.remove_water()
 
@@ -79,8 +112,12 @@ def test_docking_lv2():
     )
 
 
-def test_sysprep_lv2():
+def test_sysprep_lv2(client: DeepOriginClient):
     """Test system preparation returns FunctionResult with prepared_systems."""
+    if not check_function_exists(
+        client, SYSPREP_FUNCTION_KEY, SYSPREP_FUNCTION_VERSION
+    ):
+        pytest.skip("System prep function does not exist")
 
     sim = Complex.from_dir(BRD_DATA_DIR)
 
@@ -100,8 +137,10 @@ def test_sysprep_lv2():
     )
 
 
-def test_protonation_lv2():
+def test_protonation_lv2(client: DeepOriginClient):
     """Test protonation function returns FunctionResult with ligands."""
+    if not check_function_exists(client, PROTONATION_FUNCTION_KEY):
+        pytest.skip("Protonation function does not exist")
 
     ligand = Ligand.from_smiles("C=CCCn1cc(-c2cccc(C(=O)N(C)C)c2)c2cc[nH]c2c1=O")
 

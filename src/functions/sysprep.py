@@ -5,6 +5,7 @@ from beartype import beartype
 from deeporigin.drug_discovery.structures import Ligand, Protein
 from deeporigin.functions.result import FunctionResult
 from deeporigin.platform.client import DeepOriginClient
+from deeporigin.platform.constants import SYSPREP_FUNCTION_KEY, SYSPREP_FUNCTION_VERSION
 
 
 @beartype
@@ -67,8 +68,8 @@ def run_sysprep(
     ligand.upload(client=client)
 
     response = client.functions.run(
-        key="deeporigin.system-prep",
-        version="0.6.2",
+        key=SYSPREP_FUNCTION_KEY,
+        version=SYSPREP_FUNCTION_VERSION,
         params=payload,
         quote=quote,
     )

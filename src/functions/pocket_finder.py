@@ -3,6 +3,10 @@
 from deeporigin.drug_discovery.structures import Protein
 from deeporigin.functions.result import FunctionResult
 from deeporigin.platform.client import DeepOriginClient
+from deeporigin.platform.constants import (
+    POCKET_FINDER_FUNCTION_KEY,
+    POCKET_FINDER_FUNCTION_VERSION,
+)
 
 
 def find_pockets(
@@ -47,8 +51,8 @@ def find_pockets(
     protein.upload(client=client)
 
     response = client.functions.run(
-        key="deeporigin.pocketfinder",
-        version="0.4.4",
+        key=POCKET_FINDER_FUNCTION_KEY,
+        version=POCKET_FINDER_FUNCTION_VERSION,
         params=payload,
         quote=quote,
     )

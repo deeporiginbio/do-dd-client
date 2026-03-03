@@ -38,7 +38,7 @@ def test_get_results_lv1():
     assert len(response["data"]) > 0, "Expected at least one result"
 
     for record in response["data"]:
-        for field in ("id", "tool_id", "tool_version", "data", "execution_id"):
+        for field in ("id", "tool_id", "tool_version", "data", "compute_job_id"):
             assert field in record, f"Expected '{field}' key in record"
 
 
