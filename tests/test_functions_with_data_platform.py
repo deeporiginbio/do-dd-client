@@ -13,8 +13,26 @@ from deeporigin.drug_discovery import (
 )
 from deeporigin.functions.result import FunctionResult
 from deeporigin.platform import DeepOriginClient
+from deeporigin.platform.constants import (
+    DOCKING_FUNCTION_KEY,
+    DOCKING_FUNCTION_VERSION,
+    POCKET_FINDER_FUNCTION_KEY,
+    POCKET_FINDER_FUNCTION_VERSION,
+)
 
 FIXTURES_DIR = Path(__file__).parent / "fixtures"
+
+
+def check_function_exists(client: DeepOriginClient, key: str, version: str) -> bool:
+    """Check if the docking function exists."""
+    functions = client.functions.list()
+    for fcn in functions:
+        if (
+            fcn["manifestBody"]["key"] == key
+            and fcn["manifestBody"]["version"] == version
+        ):
+            return True
+    return False
 
 
 @pytest.fixture()
@@ -28,9 +46,8 @@ def registered_protein(client: DeepOriginClient) -> Protein:
     """Register a fresh protein and delete it after the test."""
     protein = Protein.from_file(BRD_DATA_DIR / "brd.pdb")
     protein.remove_water()
-    protein.register(client=client)
-    yield protein
-    client.entities.delete(entity="proteins", entity_id=protein.id)
+    protein.sync(client=client)
+    return protein
 
 
 @pytest.fixture()
@@ -52,7 +69,12 @@ def registered_ligand(client: DeepOriginClient) -> Ligand:
 def test_pocketfinder_with_data_platform_lv2(
     client: DeepOriginClient,
     registered_protein: Protein,
-):
+) -> None:
+    if not check_function_exists(
+        client, POCKET_FINDER_FUNCTION_KEY, POCKET_FINDER_FUNCTION_VERSION
+    ):
+        pytest.skip("Pocket finder function does not exist")
+
     """Test pocket finder integration with data platform."""
     result = registered_protein.find_pockets(
         pocket_count=1, use_cache=False, client=client
@@ -91,6 +113,11 @@ def test_docking_with_data_platform_lv2(
     registered_protein: Protein,
     registered_ligand: Ligand,
 ):
+    if not check_function_exists(
+        client, DOCKING_FUNCTION_KEY, DOCKING_FUNCTION_VERSION
+    ):
+        pytest.skip("Docking function does not exist")
+
     """Test docking function integration with data platform."""
     pocket = Pocket.from_pdb_file(
         FIXTURES_DIR
@@ -106,6 +133,10 @@ def test_docking_with_data_platform_lv2(
         use_cache=False,
         client=client,
     )
+
+    execution_id = result._responses[0]["id"]
+
+    assert execution_id is not None, "Expected execution_id to be not None"
 
     assert isinstance(result, FunctionResult), (
         "Expected protein.dock() to return a FunctionResult"
@@ -126,11 +157,11 @@ def test_docking_with_data_platform_lv2(
         assert pose["file_path"] is not None, "Pose file_path should not be None"
 
     poses_from_result = LigandSet.from_docking_result(
-        protein_id=registered_protein.id,
+        execution_id=execution_id,
         client=client,
     )
-    assert len(poses_from_result) > 0, "Expected at least one pose from result"
-    for p in poses_from_result:
-        assert isinstance(p, Ligand), "Expected Ligand object"
-        assert p.mol is not None, "Pose should have a loaded RDKit mol"
-        assert p.smiles is not None, "Pose should have SMILES"
+    assert len(poses_from_result) == 16, "Expected at least one pose from result"
+    for pose in poses_from_result:
+        assert isinstance(pose, Ligand), "Expected Ligand object"
+        assert pose.mol is not None, "Pose should have a loaded RDKit mol"
+        assert pose.smiles is not None, "Pose should have SMILES"

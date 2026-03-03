@@ -20,3 +20,11 @@ NON_FAILED_STATES = {"Succeeded", "Running", "Queued", "Created"}
 
 # Possible providers for files that work with the tools API
 PROVIDER = Literal["ufa", "s3"]
+
+# tool, function keys and versions
+DOCKING_TOOL_KEY = "deeporigin.bulk-docking"
+DOCKING_TOOL_VERSION = "0.7.0"
+DOCKING_FUNCTION_KEY = "deeporigin.docking"
+DOCKING_FUNCTION_VERSION = "0.6.0"
+POCKET_FINDER_FUNCTION_KEY = "deeporigin.pocketfinder"
+POCKET_FINDER_FUNCTION_VERSION = "0.4.4"

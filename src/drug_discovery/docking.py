@@ -34,7 +34,7 @@ class Docking(WorkflowStep):
     Objects instantiated here are meant to be used within the Complex class."""
 
     """tool version to use for Docking"""
-    tool_version = "0.6.6"
+    tool_version = "0.6.7"
     _tool_key = tool_mapper["Docking"]
 
     def __init__(self, parent):
