@@ -15,7 +15,11 @@ from deeporigin.drug_discovery.structures import Ligand, Pocket, Protein
 from deeporigin.exceptions import DeepOriginException
 from deeporigin.functions.result import FunctionResult
 from deeporigin.platform.client import DeepOriginClient
-from deeporigin.platform.constants import DOCKING_FUNCTION_KEY, DOCKING_FUNCTION_VERSION
+from deeporigin.platform.constants import (
+    CONSTRAINED_DOCKING_FUNCTION_KEY,
+    DOCKING_FUNCTION_KEY,
+    DOCKING_FUNCTION_VERSION,
+)
 from deeporigin.utils.core import _ensure_do_folder, hash_dict
 
 
@@ -165,7 +169,7 @@ def constrained_dock(
         return result
 
     response = client.functions.run(
-        key="deeporigin.constrained-docking",
+        key=CONSTRAINED_DOCKING_FUNCTION_KEY,
         params=payload,
         quote=quote,
     )
