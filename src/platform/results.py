@@ -48,14 +48,16 @@ class Results:
             tool_version: Optional tool version to filter by.
             limit: Page size per request. Defaults to 1000.
             select: List of fields to select. Defaults to
-                ``["id", "tool_id", "tool_version", "data", "execution_id"]``.
+                ``["id", "tool_id", "tool_version", "data", "compute_job_id"]``.
 
         Returns:
             Dictionary with ``data`` (all records across pages) and ``meta``
             from the final response.
         """
         if select is None:
-            select = ["id", "tool_id", "tool_version", "data", "execution_id"]
+            # note -- job_compute_id is the same as executionId in the rest of the system
+            # IMPORTANT! execution_id is not the same as executionId in the rest of the system
+            select = ["id", "tool_id", "tool_version", "data", "compute_job_id"]
 
         filter_dict: dict[str, Any] = {}
         if tool_id is not None:

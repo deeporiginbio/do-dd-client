@@ -346,7 +346,8 @@ class Pocket:
     def from_result(
         cls,
         *,
-        protein_id: str,
+        protein_id: str | None = None,
+        execution_id: str | None = None,
         client: Optional["DeepOriginClient"] = None,
     ) -> list[Self]:
         """Create Pocket objects from pocketfinder results in the data platform.
@@ -370,7 +371,10 @@ class Pocket:
         if client is None:
             client = DeepOriginClient.get()
 
-        response = client.results.get_pockets(protein_id=protein_id)
+        response = client.results.get_pockets(
+            protein_id=protein_id,
+            compute_job_id=execution_id,
+        )
         records = response.get("data", [])
 
         if not records:
