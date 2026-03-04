@@ -21,7 +21,7 @@ from rdkit.Chem import AllChem, SaltRemover, rdMolDescriptors
 from tqdm import tqdm
 
 from deeporigin.drug_discovery.constants import LIGANDS_DIR, SUPPORTED_ATOM_SYMBOLS
-from deeporigin.drug_discovery.utilities.visualize import jupyter_visualization
+from deeporigin.drug_discovery.utils.visualize import jupyter_visualization
 from deeporigin.drug_discovery.validation import validate_fragments
 from deeporigin.exceptions import DeepOriginException
 from deeporigin.functions.result import FunctionResult

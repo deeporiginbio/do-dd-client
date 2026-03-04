@@ -1,4 +1,4 @@
-"""This module contains utility functions for the Drug Discovery module"""
+"""Utility functions for the Drug Discovery module"""
 
 import importlib.resources
 import json
@@ -8,7 +8,7 @@ from typing import Any, Optional
 from beartype import beartype
 
 from deeporigin.drug_discovery.constants import tool_mapper, valid_tools
-from deeporigin.drug_discovery.utilities.visualize import (
+from deeporigin.drug_discovery.utils.visualize import (
     render_smiles_in_dataframe,  # noqa: F401
 )
 from deeporigin.platform.client import DeepOriginClient
