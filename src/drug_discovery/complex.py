@@ -153,7 +153,7 @@ class Complex:
             FunctionResult with a ``prepared_systems`` attribute containing
             a list of prepared Protein objects (empty when ``quote=True``).
         """
-        from deeporigin.functions.sysprep import run_sysprep
+        from deeporigin.functions.sysprep import abfe
 
         if ligand is not None:
             ligands = [ligand]
@@ -172,7 +172,7 @@ class Complex:
         individual_results = []
         for lig in tqdm(ligands, desc="Preparing systems", disable=len(ligands) == 1):
             individual_results.append(
-                run_sysprep(
+                abfe(
                     protein=self.protein,
                     padding=padding,
                     ligand=lig,
