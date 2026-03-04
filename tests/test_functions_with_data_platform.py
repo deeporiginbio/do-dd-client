@@ -174,15 +174,17 @@ def test_docking_with_data_platform_lv2(
 def test_sysprep_with_data_platform_lv2(
     client: DeepOriginClient,
     registered_protein: Protein,
-    registered_ligand: Ligand,
 ):
     if not check_function_exists(
         client, SYSPREP_FUNCTION_KEY, SYSPREP_FUNCTION_VERSION
     ):
         pytest.skip("Sysprep function does not exist")
 
+    ligand = Ligand.from_sdf(BRD_DATA_DIR / "brd-2.sdf")
+    ligand.sync(client=client, lazy=True)
+
     # run function
-    result = abfe(client=client, protein=registered_protein, ligand=registered_ligand)
+    result = abfe(client=client, protein=registered_protein, ligand=ligand)
 
     function_data = result._responses[0]["functionOutputs"]
     assert ["system"] in function_data, "Expected system in function data"
