@@ -4,9 +4,9 @@ Sections
 --------
 Terminal / Display  — output formatting, color/unicode detection
 Filesystem          — file hashing, path helpers, size formatting
+Time                — elapsed time helpers
 Hashing             — dict, string, and file SHA-256 helpers
 Dict Utilities      — recursive mutation, normalization, PersistentDict
-Time                — elapsed time helpers
 Environment         — folder setup, boolean env-var parsing
 """
 
@@ -427,7 +427,8 @@ def sha256_checksum(file_path):
     """Compute SHA-256 hash of a file, returned as base64-encoded bytes.
 
     Unlike :func:`hash_file` which returns a hex digest, this returns a
-    base64-encoded digest suitable for use as an HTTP Content-MD5-style checksum.
+    base64-encoded digest suitable for integrity-checking HTTP headers
+    (similar in format to Content-MD5, but using SHA-256).
     """
 
     import hashlib
