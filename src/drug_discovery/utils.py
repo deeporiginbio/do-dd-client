@@ -8,9 +8,11 @@ from typing import Any, Optional
 from beartype import beartype
 
 from deeporigin.drug_discovery.constants import tool_mapper, valid_tools
+from deeporigin.drug_discovery.utilities.visualize import (
+    render_smiles_in_dataframe,  # noqa: F401
+)
 from deeporigin.platform.client import DeepOriginClient
 from deeporigin.platform.constants import PROVIDER
-from deeporigin.drug_discovery.utilities.visualize import render_smiles_in_dataframe  # noqa: F401
 from deeporigin.utils.core import _ensure_do_folder
 
 PROVIDER_KEY = "$provider"
@@ -138,5 +140,3 @@ def _set_test_run(data, value: int = 1) -> None:
     elif isinstance(data, list):
         for item in data:
             _set_test_run(item, value)
-
-

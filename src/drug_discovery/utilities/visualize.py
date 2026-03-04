@@ -4,8 +4,8 @@ This module provides decorators and utilities for visualizing molecular structur
 and other drug discovery related data in Jupyter notebooks using the DeepOrigin Molstar viewer.
 """
 
-import pandas as pd
 from deeporigin_molstar import JupyterViewer
+import pandas as pd
 
 
 def jupyter_visualization(func):

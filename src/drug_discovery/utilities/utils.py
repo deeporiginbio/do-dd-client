@@ -8,7 +8,10 @@ Functions have been moved to focused modules:
 """
 
 from deeporigin.drug_discovery.utilities.collections import chunker
-from deeporigin.drug_discovery.utilities.files import move_file_with_extension, remove_file
+from deeporigin.drug_discovery.utilities.files import (
+    move_file_with_extension,
+    remove_file,
+)
 from deeporigin.drug_discovery.utilities.geometry import (
     calculate_box_dimensions,
     calculate_box_min_max,
