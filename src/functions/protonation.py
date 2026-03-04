@@ -10,7 +10,8 @@ from deeporigin.functions.result import FunctionResult
 from deeporigin.platform.client import DeepOriginClient
 from deeporigin.platform.constants import PROTONATION_FUNCTION_KEY
 from deeporigin.utils.constants import number
-from deeporigin.utils.core import _ensure_do_folder, hash_dict
+from deeporigin.utils.env import _ensure_do_folder
+from deeporigin.utils.hashing import hash_dict
 
 CACHE_DIR = str(_ensure_do_folder() / "protonation")
 

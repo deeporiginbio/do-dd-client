@@ -6,7 +6,7 @@ including lists of metal atoms and file paths for state management.
 
 from typing import Literal
 
-from deeporigin.utils.core import _ensure_do_folder
+from deeporigin.utils.env import _ensure_do_folder
 
 METALS = ["MG", "CA", "ZN", "MN", "CU", "FE", "NA", "K", "HG", "CO", "U", "CD", "NI"]
 

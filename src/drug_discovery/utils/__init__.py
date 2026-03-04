@@ -13,7 +13,7 @@ from deeporigin.drug_discovery.utils.visualize import (
 )
 from deeporigin.platform.client import DeepOriginClient
 from deeporigin.platform.constants import PROVIDER
-from deeporigin.utils.core import _ensure_do_folder
+from deeporigin.utils.env import _ensure_do_folder
 
 PROVIDER_KEY = "$provider"
 RESULTS_CSV = "results.csv"

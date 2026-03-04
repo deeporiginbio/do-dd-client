@@ -3,7 +3,8 @@
 import hashlib
 import json
 
-from src.utils.core import get_bool_env, hash_dict
+from src.utils.env import get_bool_env
+from src.utils.hashing import hash_dict
 
 
 def test_basic_dict_hashing():

@@ -23,7 +23,7 @@ from deeporigin.platform.constants import (
     NON_FAILED_STATES,
 )
 from deeporigin.platform.job import Job, JobList
-from deeporigin.utils.core import _ensure_do_folder
+from deeporigin.utils.env import _ensure_do_folder
 
 logger = logging.getLogger(__name__)
 
@@ -188,7 +188,7 @@ class Docking(WorkflowStep):
 
         if file_type == "csv":
             for local_path in local_paths:
-                from deeporigin.utils.core import fix_embedded_newlines_in_csv
+                from deeporigin.utils.filesystem import fix_embedded_newlines_in_csv
 
                 fix_embedded_newlines_in_csv(local_path)
 

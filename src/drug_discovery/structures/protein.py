@@ -30,7 +30,7 @@ from deeporigin.drug_discovery.constants import (
 from deeporigin.exceptions import DeepOriginException
 from deeporigin.functions.result import FunctionResult
 from deeporigin.platform.client import DeepOriginClient
-from deeporigin.utils.core import _ensure_do_folder
+from deeporigin.utils.env import _ensure_do_folder
 
 from .entity import Entity
 from .ligand import Ligand, LigandSet
@@ -82,7 +82,7 @@ def _make_pockets_from_result(
     """
     import json
 
-    from deeporigin.utils.core import hash_dict
+    from deeporigin.utils.hashing import hash_dict
 
     outputs = result.function_outputs[0]
     pockets_data = outputs.get("pockets", [])

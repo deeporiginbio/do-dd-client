@@ -13,10 +13,8 @@ import jwt
 from deeporigin.config import get_value as get_config
 from deeporigin.exceptions import DeepOriginException
 from deeporigin.utils.constants import ENV_VARIABLES, ENVS
-from deeporigin.utils.core import (
-    _ensure_do_folder,
-    _supports_unicode_output,
-)
+from deeporigin.utils.display import _supports_unicode_output
+from deeporigin.utils.env import _ensure_do_folder
 
 __all__ = [
     "get_token",

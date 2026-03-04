@@ -20,7 +20,8 @@ from deeporigin.platform.constants import (
     DOCKING_FUNCTION_KEY,
     DOCKING_FUNCTION_VERSION,
 )
-from deeporigin.utils.core import _ensure_do_folder, hash_dict
+from deeporigin.utils.env import _ensure_do_folder
+from deeporigin.utils.hashing import hash_dict
 
 
 def _extract_cached_files(extract_dir: str) -> list[str]:
