@@ -1,4 +1,14 @@
-"""this module contains some core utility functions that in turn do not depend on anything else in this library"""
+"""Core utility functions with no internal dependencies.
+
+Sections
+--------
+Terminal / Display  — output formatting, color/unicode detection
+Filesystem          — file hashing, path helpers, size formatting
+Hashing             — dict, string, and file SHA-256 helpers
+Dict Utilities      — recursive mutation, normalization, PersistentDict
+Time                — elapsed time helpers
+Environment         — folder setup, boolean env-var parsing
+"""
 
 import base64
 from datetime import datetime, timezone
@@ -11,6 +21,11 @@ import sys
 from typing import Union
 
 from beartype import beartype
+
+
+# ---------------------------------------------------------------------------
+# Terminal / Display
+# ---------------------------------------------------------------------------
 
 
 @beartype
@@ -54,6 +69,11 @@ def _supports_color() -> bool:
     return True
 
 
+# ---------------------------------------------------------------------------
+# Filesystem
+# ---------------------------------------------------------------------------
+
+
 def fix_embedded_newlines_in_csv(path: Union[str, Path]) -> bool:
     """
     Detects literal '\\n' sequences in the CSV at `path` and replaces them
@@ -74,6 +94,11 @@ def fix_embedded_newlines_in_csv(path: Union[str, Path]) -> bool:
     fixed = text.replace(r"\n", "\n")
     p.write_text(fixed, encoding="utf-8")
     return True
+
+
+# ---------------------------------------------------------------------------
+# Time
+# ---------------------------------------------------------------------------
 
 
 def elapsed_minutes(
@@ -179,6 +204,11 @@ def set_key_to_value(
             set_key_to_value(item, target_key, new_value)
 
 
+# ---------------------------------------------------------------------------
+# Hashing
+# ---------------------------------------------------------------------------
+
+
 @beartype
 def hash_file(file_path: str | Path) -> str:
     """
@@ -217,6 +247,11 @@ def hash_dict(data: dict) -> str:
     hasher = hashlib.sha256()
     hasher.update(json.dumps(data).encode())
     return hasher.hexdigest()
+
+
+# ---------------------------------------------------------------------------
+# Dict Utilities
+# ---------------------------------------------------------------------------
 
 
 def _strip_ids(obj: object) -> object:
@@ -389,7 +424,11 @@ def humanize_file_size(file_size: int):
 
 
 def sha256_checksum(file_path):
-    """compute sha256 hash of a file"""
+    """Compute SHA-256 hash of a file, returned as base64-encoded bytes.
+
+    Unlike :func:`hash_file` which returns a hex digest, this returns a
+    base64-encoded digest suitable for use as an HTTP Content-MD5-style checksum.
+    """
 
     import hashlib
 
@@ -448,6 +487,11 @@ def expand_user(path, user_home_dirname: str = os.path.expanduser("~")) -> str:
         return os.path.join(user_home_dirname, path[2:])
     else:
         return path
+
+
+# ---------------------------------------------------------------------------
+# Environment
+# ---------------------------------------------------------------------------
 
 
 @beartype

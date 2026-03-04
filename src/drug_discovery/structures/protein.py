@@ -238,7 +238,7 @@ class Protein(Entity):
             structure = cls.load_structure_from_block(block_content, "pdb")
             structure = cls.select_structure(structure, struct_ind)
 
-            from deeporigin.drug_discovery.external_tools.utils import (
+            from deeporigin.drug_discovery.external_tools.protein_info import (
                 get_protein_info_dict,
             )
 
@@ -1473,7 +1473,7 @@ class Protein(Entity):
 
         try:
             if self.info:
-                from deeporigin.drug_discovery.external_tools.utils import (
+                from deeporigin.drug_discovery.external_tools.protein_info import (
                     generate_html_output,
                 )
 
