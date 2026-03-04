@@ -14,11 +14,14 @@ import pandas as pd
 from tqdm import tqdm
 
 from deeporigin.drug_discovery import LigandSet, utils
-from deeporigin.drug_discovery.constants import tool_mapper
 from deeporigin.drug_discovery.structures.pocket import Pocket
 from deeporigin.drug_discovery.workflow_step import WorkflowStep
 from deeporigin.exceptions import DeepOriginException
-from deeporigin.platform.constants import NON_FAILED_STATES
+from deeporigin.platform.constants import (
+    DOCKING_TOOL_KEY,
+    DOCKING_TOOL_VERSION,
+    NON_FAILED_STATES,
+)
 from deeporigin.platform.job import Job, JobList
 from deeporigin.utils.core import _ensure_do_folder
 
@@ -34,8 +37,8 @@ class Docking(WorkflowStep):
     Objects instantiated here are meant to be used within the Complex class."""
 
     """tool version to use for Docking"""
-    tool_version = "0.6.7"
-    _tool_key = tool_mapper["Docking"]
+    tool_version = DOCKING_TOOL_VERSION
+    _tool_key = DOCKING_TOOL_KEY
 
     def __init__(self, parent):
         super().__init__(parent)
