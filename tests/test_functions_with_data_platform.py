@@ -187,7 +187,9 @@ def test_sysprep_with_data_platform_lv2(
     result = abfe(client=client, protein=registered_protein, ligand=ligand)
 
     function_data = result._responses[0]["functionOutputs"]
-    assert ["system"] in function_data, "Expected system in function data"
+    assert "system" in function_data.keys(), (
+        f"Expected system in function data, got {function_data.keys()}"
+    )
     function_data = function_data["system"]
 
     # query data platform for this result

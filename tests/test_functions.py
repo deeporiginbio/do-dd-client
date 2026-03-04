@@ -119,11 +119,13 @@ def test_sysprep_lv2(client: DeepOriginClient):
     ):
         pytest.skip("System prep function does not exist")
 
-    sim = Complex.from_dir(BRD_DATA_DIR)
+    protein = Protein.from_file(BRD_DATA_DIR / "brd.pdb")
+    protein.remove_water()
+    ligand = Ligand.from_sdf(BRD_DATA_DIR / "brd-2.sdf")
 
-    ligand = [ligand for ligand in sim.ligands if ligand.name == "cmpd 4 (Crotyl)"][0]
+    sim = Complex(protein=protein, ligands=[ligand])
 
-    result = sim.prepare(ligand=ligand)
+    result = sim.prepare(ligand=ligand, add_H_atoms=True, protonate_protein=True)
 
     assert isinstance(result, FunctionResult), (
         "Expected sim.prepare() to return a FunctionResult"
