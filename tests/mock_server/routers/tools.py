@@ -430,7 +430,7 @@ def create_tools_router(
     ) -> dict[str, Any] | list[dict[str, Any]]:
         """Handle function execution logic shared between versioned and non-versioned endpoints."""
         body = await request.json()
-        from deeporigin.utils.core import hash_dict, normalize_function_body
+        from deeporigin.utils.hashing import hash_dict, normalize_function_body
 
         normalized_body = normalize_function_body(body)
         body_hash = hash_dict(normalized_body)

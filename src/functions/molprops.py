@@ -11,7 +11,8 @@ from typing import Optional
 
 from deeporigin.platform.client import DeepOriginClient
 from deeporigin.platform.constants import MOL_PROPS_FUNCTION_KEY_PREFIX
-from deeporigin.utils.core import _ensure_do_folder, hash_dict
+from deeporigin.utils.env import _ensure_do_folder
+from deeporigin.utils.hashing import hash_dict
 
 CACHE_DIR = str(_ensure_do_folder() / "molprops")
 

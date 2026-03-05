@@ -106,7 +106,7 @@ class Functions:
             import json
             from pathlib import Path
 
-            from deeporigin.utils.core import hash_dict, normalize_function_body
+            from deeporigin.utils.hashing import hash_dict, normalize_function_body
 
             normalized_body = normalize_function_body(body)
             body_hash = hash_dict(normalized_body)

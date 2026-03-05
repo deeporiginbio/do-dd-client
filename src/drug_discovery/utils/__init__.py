@@ -1,4 +1,4 @@
-"""This module contains utility functions for the Drug Discovery module"""
+"""Utility functions for the Drug Discovery module"""
 
 import importlib.resources
 import json
@@ -6,12 +6,14 @@ import os
 from typing import Any, Optional
 
 from beartype import beartype
-import pandas as pd
 
 from deeporigin.drug_discovery.constants import tool_mapper, valid_tools
+from deeporigin.drug_discovery.utils.visualize import (
+    render_smiles_in_dataframe,  # noqa: F401
+)
 from deeporigin.platform.client import DeepOriginClient
 from deeporigin.platform.constants import PROVIDER
-from deeporigin.utils.core import _ensure_do_folder
+from deeporigin.utils.env import _ensure_do_folder
 
 PROVIDER_KEY = "$provider"
 RESULTS_CSV = "results.csv"
@@ -138,26 +140,3 @@ def _set_test_run(data, value: int = 1) -> None:
     elif isinstance(data, list):
         for item in data:
             _set_test_run(item, value)
-
-
-def render_smiles_in_dataframe(df: pd.DataFrame, smiles_col: str) -> pd.DataFrame:
-    """use rdkit to render SMILES in a dataframe"""
-
-    if smiles_col not in df.columns:
-        raise ValueError(f"Column '{smiles_col}' not found in DataFrame.")
-
-    from rdkit.Chem import PandasTools
-
-    # Replace None/NaN in the SMILES column with a placeholder
-    df[smiles_col] = df[smiles_col].fillna("")
-
-    PandasTools.AddMoleculeColumnToFrame(df, smilesCol=smiles_col, molCol="Structure")
-    PandasTools.RenderImagesInAllDataFrames()
-
-    # show structure first
-    new_order = ["Structure"] + [col for col in df.columns if col != "Structure"]
-
-    # re‑index DataFrame
-    df = df[new_order]
-
-    return df

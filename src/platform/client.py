@@ -31,7 +31,7 @@ from deeporigin.platform.projects import Projects
 from deeporigin.platform.results import Results
 from deeporigin.platform.tools import Tools
 from deeporigin.utils.constants import API_ENDPOINT, ENV_VARIABLES, ENVS
-from deeporigin.utils.core import _ensure_do_folder
+from deeporigin.utils.env import _ensure_do_folder
 
 # Cache for local token to ensure consistency across calls
 _LOCAL_TOKEN_CACHE: str | None = None

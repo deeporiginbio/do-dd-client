@@ -2,7 +2,8 @@
 
 import os
 
-from deeporigin.utils.core import _ensure_do_folder, hash_dict
+from deeporigin.utils.env import _ensure_do_folder
+from deeporigin.utils.hashing import hash_dict
 
 URL = "http://loop-modelling.default.jobs.edge.deeporigin.io/model_loops"
 CACHE_DIR = str(_ensure_do_folder() / "model_loops")
