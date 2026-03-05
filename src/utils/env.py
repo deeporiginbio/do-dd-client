@@ -1,7 +1,7 @@
 """Runtime environment utilities: folder setup, env-var parsing, and timing."""
 
-import os
 from datetime import datetime, timezone
+import os
 from pathlib import Path
 from typing import Union
 
