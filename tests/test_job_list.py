@@ -1,5 +1,6 @@
 """Tests for the JobList class."""
 
+import json
 import uuid
 
 import pandas as pd
@@ -1132,7 +1133,9 @@ def test_viz_func_docking_with_job_list(client):
         completedAt="2024-01-01T00:10:00.000Z",
         resourceId="resource-1",
         userInputs=docking_user_inputs("CCO", "CCN"),
-        progressReport="ligand docked ligand docked",
+        progressReport=json.dumps(
+            {"docked": ["CCO", "CCN"], "failed": [], "complete": 100}
+        ),
     )
 
     job2 = make_job(
@@ -1142,16 +1145,15 @@ def test_viz_func_docking_with_job_list(client):
         completedAt="2024-01-01T00:05:00.000Z",
         resourceId="resource-2",
         userInputs=docking_user_inputs("CCC"),
-        progressReport="ligand docked ligand failed",
+        progressReport=json.dumps(
+            {"docked": ["CCC"], "failed": ["DDD"], "complete": 100}
+        ),
     )
 
     job_list = JobList([job1, job2])
     html = job_viz_functions._viz_func_docking(job_list)
 
-    # Should render progress bar with summed values
-    # Total ligands should be 3 (2 + 1)
-    # Total docked should be 3 (2 + 1)
-    # Total failed should be 1 (0 + 1)
+    # Total ligands: 3 (2 + 1), docked: 3 (2 + 1), failed: 1 (0 + 1)
     assert isinstance(html, str)
 
 

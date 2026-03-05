@@ -13,12 +13,15 @@ from deeporigin.drug_discovery import (
     Protein,
 )
 from deeporigin.functions.result import FunctionResult
+from deeporigin.functions.sysprep import abfe
 from deeporigin.platform import DeepOriginClient
 from deeporigin.platform.constants import (
     DOCKING_FUNCTION_KEY,
     DOCKING_FUNCTION_VERSION,
     POCKET_FINDER_FUNCTION_KEY,
     POCKET_FINDER_FUNCTION_VERSION,
+    SYSPREP_FUNCTION_KEY,
+    SYSPREP_FUNCTION_VERSION,
 )
 
 FIXTURES_DIR = Path(__file__).parent / "fixtures"
@@ -166,3 +169,32 @@ def test_docking_with_data_platform_lv2(
         assert isinstance(pose, Ligand), "Expected Ligand object"
         assert pose.mol is not None, "Pose should have a loaded RDKit mol"
         assert pose.smiles is not None, "Pose should have SMILES"
+
+
+def test_sysprep_with_data_platform_lv2(
+    client: DeepOriginClient,
+    registered_protein: Protein,
+):
+    if not check_function_exists(
+        client, SYSPREP_FUNCTION_KEY, SYSPREP_FUNCTION_VERSION
+    ):
+        pytest.skip("Sysprep function does not exist")
+
+    ligand = Ligand.from_sdf(BRD_DATA_DIR / "brd-2.sdf")
+    ligand.sync(client=client, lazy=True)
+
+    # run function
+    result = abfe(client=client, protein=registered_protein, ligand=ligand)
+
+    function_data = result._responses[0]["functionOutputs"]
+    assert "system" in function_data.keys(), (
+        f"Expected system in function data, got {function_data.keys()}"
+    )
+    function_data = function_data["system"]
+
+    # query data platform for this result
+    response = client.results.get(compute_job_id=result.responses[0]["id"])
+    data = response["data"][0]["data"]
+
+    # check that the two are the same
+    assert data == function_data, "Expected data to match function data"

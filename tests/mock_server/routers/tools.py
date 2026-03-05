@@ -32,7 +32,10 @@ def _generate_resource_id() -> str:
 def _replace_ids_in_function_outputs(
     obj: object, protein_id: str | None = None, ligand_id: str | None = None
 ) -> object:
-    """Recursively replace protein_id and ligand_id values in functionOutputs.
+    """Recursively replace protein/ligand ID values in functionOutputs.
+
+    Handles both ``ligand_id`` and ``ligand1_id`` keys so that the
+    fixture works for both legacy and current system-prep schemas.
 
     Args:
         obj: The object to traverse (dict, list, or scalar).
@@ -47,7 +50,7 @@ def _replace_ids_in_function_outputs(
         for key, value in obj.items():
             if key == "protein_id" and protein_id is not None:
                 result[key] = protein_id
-            elif key == "ligand_id" and ligand_id is not None:
+            elif key in ("ligand_id", "ligand1_id") and ligand_id is not None:
                 result[key] = ligand_id
             else:
                 result[key] = _replace_ids_in_function_outputs(
@@ -459,7 +462,7 @@ def create_tools_router(
         inputs = body.get("inputs", body.get("params", {}))
         protein = inputs.get("protein", {})
         protein_id = protein.get("id") if isinstance(protein, dict) else None
-        ligand = inputs.get("ligand", {})
+        ligand = inputs.get("ligand1", inputs.get("ligand", {}))
         ligand_id = ligand.get("id") if isinstance(ligand, dict) else None
 
         if protein_id or ligand_id:
@@ -509,23 +512,31 @@ def create_tools_router(
         if manifest.get("version"):
             tool_version = manifest["version"]
 
-        # Maps function keys to the array field in functionOutputs that
-        # should be mirrored into the result-explorer store.  This emulates
-        # the production message-queue flow where function outputs are
-        # written to the result-explorer table asynchronously.  When adding
-        # a new function type, add an entry here so that downstream queries
-        # (e.g. LigandSet.from_docking_result, Pocket.from_result) can find
-        # the records via result-explorer/search.
+        # Maps function keys to the field in functionOutputs that should
+        # be mirrored into the result-explorer store.  This emulates the
+        # production message-queue flow where function outputs are written
+        # to the result-explorer table asynchronously.  When adding a new
+        # function type, add an entry here so that downstream queries
+        # (e.g. LigandSet.from_docking_result, Pocket.from_result) can
+        # find the records via result-explorer/search.
         output_key_map = {
             "deeporigin.pocketfinder": "pockets",
             "deeporigin.docking": "poses",
+            "deeporigin.system-prep": "system",
         }
 
-        array_key = output_key_map.get(function_key)
-        if not array_key:
+        output_key = output_key_map.get(function_key)
+        if not output_key:
             return
 
-        items = function_outputs.get(array_key, [])
+        output_value = function_outputs.get(output_key)
+        if output_value is None:
+            return
+
+        # Some functions produce a list of items (pockets, poses) while
+        # others produce a single dict (system-prep).  Normalise to a
+        # list so the injection logic is uniform.
+        items = output_value if isinstance(output_value, list) else [output_value]
         for item in items:
             record = {
                 "id": "08" + str(uuid.uuid4()).replace("-", "").upper()[:11],
