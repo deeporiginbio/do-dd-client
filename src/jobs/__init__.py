@@ -1,26 +1,26 @@
-"""Jobs-centric API for drug discovery workflows.
+"""Jobs-centric API for computational workflows.
 
-Provides unified job classes composed from mixins:
+Provides unified execution classes composed from mixins:
 
 - ``PocketFinder`` -- sync-only pocket detection
 - ``Docking`` -- sync + async molecular docking
 - ``ABFE`` -- async absolute binding free energy
 """
 
-from deeporigin.drug_discovery.jobs.abfe import ABFE
-from deeporigin.drug_discovery.jobs.base import JobBase, PlatformStatus
-from deeporigin.drug_discovery.jobs.docking import Docking
-from deeporigin.drug_discovery.jobs.mixins import (
+from deeporigin.jobs.abfe import ABFE
+from deeporigin.jobs.base import Execution, PlatformStatus
+from deeporigin.jobs.docking import Docking
+from deeporigin.jobs.mixins import (
     AsyncExecutableMixin,
     JupyterVizMixin,
     QuoteMixin,
     SyncExecutableMixin,
 )
-from deeporigin.drug_discovery.jobs.pocket_finder import PocketFinder
+from deeporigin.jobs.pocket_finder import PocketFinder
 
 __all__ = [
     "ABFE",
-    "JobBase",
+    "Execution",
     "PlatformStatus",
     "QuoteMixin",
     "SyncExecutableMixin",

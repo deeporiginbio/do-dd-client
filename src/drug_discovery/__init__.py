@@ -45,15 +45,15 @@ def __getattr__(name):
 
         return Pocket
     elif name == "PocketFinder":
-        from .jobs.pocket_finder import PocketFinder
+        from deeporigin.jobs.pocket_finder import PocketFinder
 
         return PocketFinder
     elif name == "Docking":
-        from .jobs.docking import Docking
+        from deeporigin.jobs.docking import Docking
 
         return Docking
     elif name == "ABFE":
-        from .jobs.abfe import ABFE
+        from deeporigin.jobs.abfe import ABFE
 
         return ABFE
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

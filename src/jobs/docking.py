@@ -1,4 +1,4 @@
-"""Docking -- unified sync + async molecular docking job.
+"""Docking -- unified sync + async molecular docking execution.
 
 Usage::
 
@@ -21,15 +21,15 @@ from typing import Optional
 from beartype import beartype
 import numpy as np
 
-from deeporigin.drug_discovery.jobs.base import JobBase
-from deeporigin.drug_discovery.jobs.mixins import (
+from deeporigin.drug_discovery.structures.ligand import LigandSet
+from deeporigin.drug_discovery.structures.pocket import Pocket
+from deeporigin.drug_discovery.structures.protein import Protein
+from deeporigin.jobs.base import Execution
+from deeporigin.jobs.mixins import (
     AsyncExecutableMixin,
     QuoteMixin,
     SyncExecutableMixin,
 )
-from deeporigin.drug_discovery.structures.ligand import LigandSet
-from deeporigin.drug_discovery.structures.pocket import Pocket
-from deeporigin.drug_discovery.structures.protein import Protein
 from deeporigin.platform.client import DeepOriginClient
 from deeporigin.platform.constants import (
     DOCKING_FUNCTION_KEY,
@@ -41,7 +41,7 @@ from deeporigin.platform.constants import (
 Number = float | int
 
 
-class Docking(JobBase, QuoteMixin, SyncExecutableMixin, AsyncExecutableMixin):
+class Docking(Execution, QuoteMixin, SyncExecutableMixin, AsyncExecutableMixin):
     """Molecular docking supporting both sync and async execution.
 
     Sync path (``run()``): uses the functions API for small ligand sets.
@@ -76,7 +76,7 @@ class Docking(JobBase, QuoteMixin, SyncExecutableMixin, AsyncExecutableMixin):
         batch_size: int = 32,
         client: DeepOriginClient | None = None,
     ) -> None:
-        """Create a Docking job.
+        """Create a Docking execution.
 
         Args:
             protein: Protein structure to dock into.

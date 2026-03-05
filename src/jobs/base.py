@@ -1,10 +1,10 @@
-"""Base class for the jobs-centric drug discovery API.
+"""Base class for the jobs-centric API.
 
-Provides ``JobBase`` -- a base class with read-only attribute enforcement,
+Provides ``Execution`` -- a base class with read-only attribute enforcement,
 lifecycle state management, and scoped internal mutation via ``_system_update``.
 Subclasses declare their own immutable input fields and compose with mixins
 (``QuoteMixin``, ``SyncExecutableMixin``, ``AsyncExecutableMixin``) to build
-concrete job types like ``PocketFinder``, ``Docking``, and ``ABFE``.
+concrete execution types like ``PocketFinder``, ``Docking``, and ``ABFE``.
 """
 
 from __future__ import annotations
@@ -25,8 +25,8 @@ PlatformStatus = Literal[
 ]
 
 
-class JobBase:
-    """Base class for all job types in the jobs-centric API.
+class Execution:
+    """Base class for all execution types in the jobs-centric API.
 
     Enforces read-only semantics on system-managed fields (``id``, ``estimate``,
     ``cost``) and immutability on user-supplied input fields declared by
@@ -36,7 +36,7 @@ class JobBase:
         id: Platform execution ID, set after ``start()`` or by ``from_id()``.
         estimate: Cost estimate in dollars, set by ``quote()``.
         cost: Actual cost in dollars, set after execution completes.
-        tool_key: Platform tool key identifying this job type.
+        tool_key: Platform tool key identifying this execution type.
         tool_version: Version of the tool to use.
     """
 
@@ -111,7 +111,7 @@ class JobBase:
             self.status = new_status
 
     def __repr__(self) -> str:
-        """Return a concise summary of the job."""
+        """Return a concise summary of the execution."""
         parts: list[str] = [type(self).__name__]
         if self.id:
             parts.append(f"id={self.id!r}")

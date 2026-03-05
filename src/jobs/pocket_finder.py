@@ -1,4 +1,4 @@
-"""PocketFinder -- sync-only job for detecting protein binding pockets.
+"""PocketFinder -- sync-only execution for detecting protein binding pockets.
 
 Usage::
 
@@ -9,10 +9,10 @@ Usage::
 
 from beartype import beartype
 
-from deeporigin.drug_discovery.jobs.base import JobBase
-from deeporigin.drug_discovery.jobs.mixins import QuoteMixin, SyncExecutableMixin
 from deeporigin.drug_discovery.structures.pocket import Pocket
 from deeporigin.drug_discovery.structures.protein import Protein
+from deeporigin.jobs.base import Execution
+from deeporigin.jobs.mixins import QuoteMixin, SyncExecutableMixin
 from deeporigin.platform.client import DeepOriginClient
 from deeporigin.platform.constants import (
     POCKET_FINDER_FUNCTION_KEY,
@@ -20,7 +20,7 @@ from deeporigin.platform.constants import (
 )
 
 
-class PocketFinder(JobBase, QuoteMixin, SyncExecutableMixin):
+class PocketFinder(Execution, QuoteMixin, SyncExecutableMixin):
     """Find binding pockets in a protein structure (sync-only).
 
     This is a blocking operation that typically completes in under 2 minutes.
@@ -47,7 +47,6 @@ class PocketFinder(JobBase, QuoteMixin, SyncExecutableMixin):
         *,
         pocket_count: int = 1,
         pocket_min_size: int = 30,
-        use_cache: bool = True,
         client: DeepOriginClient | None = None,
     ) -> None:
         """Create a PocketFinder for the given protein.
@@ -56,7 +55,6 @@ class PocketFinder(JobBase, QuoteMixin, SyncExecutableMixin):
             protein: Protein structure to search for pockets.
             pocket_count: Maximum number of pockets to detect. Defaults to 1.
             pocket_min_size: Minimum pocket size in cubic Angstroms. Defaults to 30.
-            use_cache: Whether to use cached results if available. Defaults to True.
             client: Optional API client. Uses the default if not provided.
         """
         super().__init__()
@@ -64,8 +62,16 @@ class PocketFinder(JobBase, QuoteMixin, SyncExecutableMixin):
             self.protein = protein
             self.pocket_count = pocket_count
             self.pocket_min_size = pocket_min_size
-        self._use_cache = use_cache
         self._client = client
+
+    def __repr__(self) -> str:
+        """Return a concise summary of the PocketFinder."""
+        parts = [f"PocketFinder protein={self.protein.id!r}"]
+        if self.id:
+            parts.append(f"id={self.id!r}")
+        parts.append(f"pocket_count={self.pocket_count}")
+        parts.append(f"pocket_min_size={self.pocket_min_size}")
+        return f"<{' '.join(parts)}>"
 
     def quote(self) -> None:
         """Request a cost estimate for pocket finding.
@@ -121,13 +127,36 @@ class PocketFinder(JobBase, QuoteMixin, SyncExecutableMixin):
             result=result,
             client=client,
             cache_path_fn=_pocket_cache_path,
-            use_cache=self._use_cache,
         )
 
         with self._system_update():
             self.cost = result.cost
 
         return pockets
+
+    @beartype
+    def get_results(
+        self,
+        *,
+        client: DeepOriginClient | None = None,
+    ) -> list[Pocket]:
+        """Retrieve previously computed pockets from the platform.
+
+        Fetches pocket results for this protein via the results API,
+        without re-running the computation.
+
+        Args:
+            client: Optional API client. Uses the default if not provided.
+
+        Returns:
+            List of ``Pocket`` objects retrieved from the platform.
+        """
+        client = client or self._resolve_client()
+
+        return Pocket.from_result(
+            protein_id=self.protein.id,
+            client=client,
+        )
 
     def _resolve_client(self) -> DeepOriginClient:
         """Return the client, falling back to the default singleton."""

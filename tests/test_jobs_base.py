@@ -7,13 +7,13 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from deeporigin.drug_discovery import BRD_DATA_DIR, Protein
-from deeporigin.drug_discovery.jobs.base import JobBase
-from deeporigin.drug_discovery.jobs.mixins import (
+from deeporigin.jobs.base import Execution
+from deeporigin.jobs.mixins import (
     AsyncExecutableMixin,
     QuoteMixin,
     SyncExecutableMixin,
 )
-from deeporigin.drug_discovery.jobs.pocket_finder import PocketFinder
+from deeporigin.jobs.pocket_finder import PocketFinder
 from deeporigin.platform.client import DeepOriginClient
 
 _BRD_PDB = Path(os.path.join(BRD_DATA_DIR, "brd.pdb"))
@@ -24,8 +24,8 @@ _BRD_PDB = Path(os.path.join(BRD_DATA_DIR, "brd.pdb"))
 # ---------------------------------------------------------------------------
 
 
-class SyncOnlyJob(JobBase, QuoteMixin, SyncExecutableMixin):
-    """Minimal sync-only job for testing."""
+class SyncOnlyJob(Execution, QuoteMixin, SyncExecutableMixin):
+    """Minimal sync-only execution for testing."""
 
     tool_key = "test.sync"
     tool_version = "0.0.1"
@@ -37,8 +37,8 @@ class SyncOnlyJob(JobBase, QuoteMixin, SyncExecutableMixin):
             self.name = name
 
 
-class AsyncJob(JobBase, QuoteMixin, AsyncExecutableMixin):
-    """Minimal async job for testing."""
+class AsyncJob(Execution, QuoteMixin, AsyncExecutableMixin):
+    """Minimal async execution for testing."""
 
     tool_key = "test.async"
     tool_version = "0.0.1"
@@ -63,12 +63,12 @@ def protein():
 
 
 # ===========================================================================
-# JobBase tests
+# Execution tests
 # ===========================================================================
 
 
-class TestJobBaseReadOnly:
-    """Read-only field enforcement on JobBase."""
+class TestExecutionReadOnly:
+    """Read-only field enforcement on Execution."""
 
     def test_id_blocked_outside_system_update(self):
         """Assigning id directly raises AttributeError."""
@@ -115,7 +115,7 @@ class TestJobBaseReadOnly:
         assert job.cost is None
 
 
-class TestJobBaseImmutableFields:
+class TestExecutionImmutableFields:
     """Immutable input field enforcement."""
 
     def test_immutable_field_blocked(self):
@@ -130,7 +130,7 @@ class TestJobBaseImmutableFields:
         assert job.name == "hello"
 
 
-class TestJobBaseStatusTransitions:
+class TestExecutionStatusTransitions:
     """Lifecycle state transition validation."""
 
     def test_valid_transition_from_none_to_created(self):
@@ -162,7 +162,7 @@ class TestJobBaseStatusTransitions:
             job._set_status("Running")
 
 
-class TestJobBaseRepr:
+class TestExecutionRepr:
     """__repr__ produces a human-readable summary."""
 
     def test_repr_minimal(self):

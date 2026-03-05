@@ -1,6 +1,6 @@
 """Mixins that compose execution capabilities for job classes.
 
-These mixins are combined with ``JobBase`` to build concrete job types:
+These mixins are combined with ``Execution`` to build concrete types:
 
 - ``QuoteMixin`` -- cost estimation via the functions or tools API
 - ``SyncExecutableMixin`` -- blocking, stateless execution via ``run()``
@@ -14,7 +14,7 @@ from typing import TYPE_CHECKING
 
 from beartype import beartype
 
-from deeporigin.drug_discovery.jobs.base import PlatformStatus
+from deeporigin.jobs.base import PlatformStatus
 
 if TYPE_CHECKING:
     from typing import Self
@@ -158,7 +158,7 @@ class AsyncExecutableMixin:
 
     @classmethod
     def from_id(cls, id: str, *, client: DeepOriginClient | None = None) -> Self:
-        """Construct a job instance from an existing platform execution ID.
+        """Construct an instance from an existing platform execution ID.
 
         Rehydrates the object by fetching the execution record and
         reconstructing input entities (protein, ligands, etc.) from
@@ -215,7 +215,7 @@ class JupyterVizMixin:
     """Adds notebook-friendly rendering via ``_repr_html_()``."""
 
     def _repr_html_(self) -> str:
-        """Render this job as HTML for Jupyter display.
+        """Render this execution as HTML for Jupyter display.
 
         Returns:
             HTML string.

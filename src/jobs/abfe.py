@@ -1,4 +1,4 @@
-"""ABFE -- async-only absolute binding free energy job.
+"""ABFE -- async-only absolute binding free energy execution.
 
 Usage::
 
@@ -15,17 +15,17 @@ from typing import Optional
 from beartype import beartype
 import pandas as pd
 
-from deeporigin.drug_discovery.jobs.base import JobBase
-from deeporigin.drug_discovery.jobs.mixins import AsyncExecutableMixin, QuoteMixin
 from deeporigin.drug_discovery.structures.ligand import Ligand
 from deeporigin.drug_discovery.structures.protein import Protein
+from deeporigin.jobs.base import Execution
+from deeporigin.jobs.mixins import AsyncExecutableMixin, QuoteMixin
 from deeporigin.platform.client import DeepOriginClient
 
 ABFE_TOOL_KEY = "deeporigin.abfe-end-to-end"
 ABFE_TOOL_VERSION = "0.2.19"
 
 
-class ABFE(JobBase, QuoteMixin, AsyncExecutableMixin):
+class ABFE(Execution, QuoteMixin, AsyncExecutableMixin):
     """Absolute Binding Free Energy calculation (async-only).
 
     Requires a ``prepare()`` step before ``start()`` to generate the
@@ -51,7 +51,7 @@ class ABFE(JobBase, QuoteMixin, AsyncExecutableMixin):
         ligand: Ligand,
         client: DeepOriginClient | None = None,
     ) -> None:
-        """Create an ABFE job for a protein-ligand pair.
+        """Create an ABFE execution for a protein-ligand pair.
 
         Args:
             protein: Protein structure.
