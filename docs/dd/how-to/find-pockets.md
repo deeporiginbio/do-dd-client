@@ -17,7 +17,20 @@ protein.remove_water()
 We can then find pockets in this protein using the Pocket Finder tool:
 
 ```{.python continuation}
-pockets = protein.find_pockets(pocket_count=1)
+result = protein.find_pockets(pocket_count=1)
+pockets = result.pockets
+```
+
+`result` is a [`FunctionResult`](../ref/function-result.md) that wraps the API response. The identified pockets are available as a list of `Pocket` objects on `result.pockets`.
+
+#### Estimating cost
+
+To get a cost estimate without running the pocket finder, use `quote=True`:
+
+```{.python notest}
+result = protein.find_pockets(pocket_count=1, quote=True)
+result.estimate  # estimated cost in dollars
+result.cost      # None (function was not executed)
 ```
 
 ### Using PDB Files

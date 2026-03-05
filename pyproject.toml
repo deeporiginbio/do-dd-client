@@ -133,6 +133,7 @@ exclude = [
     "notebooks/*",
     "scratch-notebooks/*",
     "scripts/*",
+    "scratch/*",
 ]
 ignore-init-method = true
 ignore-init-module = true

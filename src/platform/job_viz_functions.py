@@ -348,11 +348,15 @@ def _viz_func_docking(job) -> str:
     total_running_time = 0
 
     for single_job in jobs_list:
-        inputs = (
-            single_job._attributes.get("userInputs") if single_job._attributes else None
-        )
-        if inputs and "smiles_list" in inputs:
-            total_ligands += len(inputs["smiles_list"])
+        attrs = getattr(single_job, "_attributes", None) or {}
+        user_inputs = attrs.get("userInputs") or {}
+        ligands = user_inputs.get("ligands")
+        if isinstance(ligands, list):
+            total_ligands += len(ligands)
+        else:
+            smiles_list = user_inputs.get("smiles_list")
+            if isinstance(smiles_list, list):
+                total_ligands += len(smiles_list)
 
         data = (
             single_job._attributes.get("progressReport")
@@ -363,16 +367,15 @@ def _viz_func_docking(job) -> str:
         if data is None:
             continue
 
-        # try to attempt to parse the data as JSON
-        # when the tool is running, the data is a string of newline-delimited text
-        # when the tool is complete, the data is a JSON object
-        try:
-            data = json.loads(data)
-            total_failed += data["n_failed_ligands"]
-            total_docked += data["n_successful_ligands"]
-        except (json.JSONDecodeError, TypeError):
-            total_docked += data.count("ligand docked")
-            total_failed += data.count("ligand failed")
+        if isinstance(data, str):
+            try:
+                data = json.loads(data)
+            except (json.JSONDecodeError, TypeError):
+                continue
+
+        if isinstance(data, dict):
+            total_docked += len(data.get("docked", []))
+            total_failed += len(data.get("failed", []))
 
         running_time = single_job._get_running_time()
         if running_time is not None:
@@ -405,12 +408,16 @@ def _name_func_docking(job: "Job | JobList") -> str:
 
     # Collect unique SMILES across all jobs
     unique_smiles = set()
-    for single_job in jobs_list:
-        inputs = (
-            single_job._attributes.get("userInputs") if single_job._attributes else None
-        )
-        if inputs and "smiles_list" in inputs:
-            unique_smiles.update(inputs["smiles_list"])
+    for job in jobs_list:
+        attrs = getattr(job, "_attributes", None) or {}
+        user_inputs = attrs.get("userInputs") or {}
+        ligands = user_inputs.get("ligands")
+        if isinstance(ligands, list):
+            unique_smiles.update(lig["smiles"] for lig in ligands if "smiles" in lig)
+        else:
+            smiles_list = user_inputs.get("smiles_list")
+            if isinstance(smiles_list, list):
+                unique_smiles.update(smiles_list)
     num_ligands = len(unique_smiles)
 
     # Get protein file from first job (should be the same across all jobs)
