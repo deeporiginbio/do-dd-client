@@ -117,7 +117,7 @@ LIGANDS_DIR = DO_HOME_DIR / "ligands"
 PROTEINS_DIR.mkdir(parents=True, exist_ok=True)
 LIGANDS_DIR.mkdir(parents=True, exist_ok=True)
 
-valid_tools = Literal["ABFE", "RBFE", "Docking"]
+valid_tools = Literal["ABFE", "RBFE", "Docking", "PocketFinder"]
 
 
 # this mapper used to map b/w tool short name and tool key
@@ -125,6 +125,7 @@ tool_mapper = {
     "ABFE": "deeporigin.abfe-end-to-end",
     "RBFE": "deeporigin.rbfe-end-to-end",
     "Docking": "deeporigin.bulk-docking",
+    "PocketFinder": "deeporigin.pocketfinder",
 }
 
 # Base directory for storing pocket files

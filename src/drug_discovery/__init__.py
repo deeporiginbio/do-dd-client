@@ -8,7 +8,16 @@ calculations.
 
 from importlib.resources import files
 
-__all__ = ["Complex", "Protein", "Ligand", "Pocket", "LigandSet"]
+__all__ = [
+    "Complex",
+    "Protein",
+    "Ligand",
+    "Pocket",
+    "LigandSet",
+    "PocketFinder",
+    "Docking",
+    "ABFE",
+]
 
 DATA_DIR = files("deeporigin.data")
 BRD_DATA_DIR = DATA_DIR / "brd"
@@ -35,6 +44,18 @@ def __getattr__(name):
         from .structures.pocket import Pocket
 
         return Pocket
+    elif name == "PocketFinder":
+        from .jobs.pocket_finder import PocketFinder
+
+        return PocketFinder
+    elif name == "Docking":
+        from .jobs.docking import Docking
+
+        return Docking
+    elif name == "ABFE":
+        from .jobs.abfe import ABFE
+
+        return ABFE
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 
