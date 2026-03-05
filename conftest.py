@@ -14,11 +14,8 @@ from deeporigin.auth import get_token
 from deeporigin.config import get_value
 from deeporigin.platform.client import DeepOriginClient
 from deeporigin.utils import constants
-from deeporigin.utils.constants import ENV_VARIABLES
+from deeporigin.utils.constants import ENV_VARIABLES, LOCAL_ENDPOINT_MOCK
 from tests.mock_server import MockServer
-
-LOCAL_ENDPOINT_DEFAULT = "http://127.0.0.1:6010"
-LOCAL_ENDPOINT_MOCK = "http://127.0.0.1:4931"
 
 
 @pytest.fixture(scope="session", autouse=True)
@@ -59,7 +56,7 @@ def set_test_env_vars(pytestconfig):
         # Set environment variables based on the specified environment
         if env == "local":
             # Client automatically handles local environment (generates token, sets org_key)
-            # We only need to set DEEPORIGIN_ENV=local
+            # We only need to set DO_ENV=local
             os.environ[ENV_VARIABLES["env"]] = "local"
             # Override API_ENDPOINT["local"] for unit tests (mock server on 4931)
             constants.API_ENDPOINT["local"] = LOCAL_ENDPOINT_MOCK
