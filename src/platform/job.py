@@ -26,7 +26,7 @@ from deeporigin.exceptions import DeepOriginException
 from deeporigin.platform import job_viz_functions
 from deeporigin.platform.client import DeepOriginClient
 from deeporigin.platform.constants import TERMINAL_STATES
-from deeporigin.utils.core import elapsed_minutes, get_bool_env
+from deeporigin.utils.env import elapsed_minutes, get_bool_env
 
 # Get the template directory
 template_dir = Path(__file__).parent.parent / "templates"

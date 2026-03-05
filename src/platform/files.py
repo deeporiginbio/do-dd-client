@@ -13,7 +13,7 @@ from tqdm import tqdm
 if TYPE_CHECKING:
     from deeporigin.platform.client import DeepOriginClient
 
-from deeporigin.utils.core import _ensure_do_folder
+from deeporigin.utils.env import _ensure_do_folder
 
 _FILES_BASE = "/files"
 

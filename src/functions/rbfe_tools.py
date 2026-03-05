@@ -11,7 +11,7 @@ from urllib.parse import urljoin
 from beartype import beartype
 import httpx
 
-from deeporigin.utils.core import _ensure_do_folder
+from deeporigin.utils.env import _ensure_do_folder
 
 URL = "http://rbfe-tools.default.jobs.edge.deeporigin.io"
 CACHE_DIR = str(_ensure_do_folder() / "konnektor")

@@ -69,6 +69,6 @@ def cache_path(cache_key: str) -> str:
     Returns:
         Absolute path to the cache directory.
     """
-    from deeporigin.utils.core import _ensure_do_folder
+    from deeporigin.utils.env import _ensure_do_folder
 
     return str(_ensure_do_folder() / "pocket-finder" / cache_key)
