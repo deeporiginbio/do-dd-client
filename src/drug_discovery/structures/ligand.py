@@ -2332,11 +2332,35 @@ class LigandSet:
 
     @classmethod
     def from_smiles(cls, smiles: list[str] | set[str]) -> Self:
-        """
-        Create a LigandSet from a list of SMILES strings.
-        """
+        """Create a LigandSet from a list of SMILES strings.
 
+        Args:
+            smiles: SMILES strings to convert into ligands.
+
+        Returns:
+            A new LigandSet containing one Ligand per SMILES string.
+        """
         return cls(ligands=[Ligand.from_smiles(s) for s in smiles])
+
+    @classmethod
+    def from_ids(
+        cls,
+        ids: list[str],
+        *,
+        client: DeepOriginClient | None = None,
+    ) -> Self:
+        """Create a LigandSet by fetching ligands from the platform by ID.
+
+        Args:
+            ids: List of Deep Origin Data Platform ligand IDs.
+            client: Optional API client. Uses the default if not provided.
+
+        Returns:
+            A new LigandSet containing the rehydrated ligands.
+        """
+        if client is None:
+            client = DeepOriginClient.get()
+        return cls(ligands=[Ligand.from_id(id, client=client) for id in ids])
 
     def map_network(
         self,

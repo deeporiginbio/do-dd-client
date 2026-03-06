@@ -34,11 +34,6 @@ class PocketFinder(Execution, QuoteMixin, SyncExecutableMixin):
     """
 
     tool_key: str = POCKET_FINDER_FUNCTION_KEY
-    tool_version: str = POCKET_FINDER_FUNCTION_VERSION
-
-    _immutable_fields: frozenset[str] = frozenset(
-        {"protein", "pocket_count", "pocket_min_size"}
-    )
 
     @beartype
     def __init__(
@@ -47,6 +42,7 @@ class PocketFinder(Execution, QuoteMixin, SyncExecutableMixin):
         *,
         pocket_count: int = 1,
         pocket_min_size: int = 30,
+        tool_version: str = POCKET_FINDER_FUNCTION_VERSION,
         client: DeepOriginClient | None = None,
     ) -> None:
         """Create a PocketFinder for the given protein.
@@ -55,14 +51,30 @@ class PocketFinder(Execution, QuoteMixin, SyncExecutableMixin):
             protein: Protein structure to search for pockets.
             pocket_count: Maximum number of pockets to detect. Defaults to 1.
             pocket_min_size: Minimum pocket size in cubic Angstroms. Defaults to 30.
+            tool_version: Platform tool version to run. Settable so callers
+                can pin or upgrade independently of the SDK release.
             client: Optional API client. Uses the default if not provided.
         """
-        super().__init__()
-        with self._system_update():
-            self.protein = protein
-            self.pocket_count = pocket_count
-            self.pocket_min_size = pocket_min_size
-        self._client = client
+        super().__init__(client=client)
+        self.tool_version = tool_version
+        self._protein = protein
+        self._pocket_count = pocket_count
+        self._pocket_min_size = pocket_min_size
+
+    @property
+    def protein(self) -> Protein:
+        """The protein to analyse."""
+        return self._protein
+
+    @property
+    def pocket_count(self) -> int:
+        """Maximum number of pockets to detect."""
+        return self._pocket_count
+
+    @property
+    def pocket_min_size(self) -> int:
+        """Minimum pocket volume in cubic Angstroms."""
+        return self._pocket_min_size
 
     def __repr__(self) -> str:
         """Return a concise summary of the PocketFinder."""
@@ -81,7 +93,7 @@ class PocketFinder(Execution, QuoteMixin, SyncExecutableMixin):
         """
         from deeporigin.functions.pocket_finder import find_pockets as _find_pockets
 
-        client = self._resolve_client()
+        client = self.client
 
         result = _find_pockets(
             protein=self.protein,
@@ -91,8 +103,7 @@ class PocketFinder(Execution, QuoteMixin, SyncExecutableMixin):
             quote=True,
         )
 
-        with self._system_update():
-            self.estimate = result.estimate
+        self._estimate = result.estimate
 
     def run(self) -> list[Pocket]:
         """Execute pocket finding (blocking).
@@ -113,7 +124,7 @@ class PocketFinder(Execution, QuoteMixin, SyncExecutableMixin):
             find_pockets as _find_pockets,
         )
 
-        client = self._resolve_client()
+        client = self.client
 
         result = _find_pockets(
             protein=self.protein,
@@ -127,33 +138,23 @@ class PocketFinder(Execution, QuoteMixin, SyncExecutableMixin):
             result=result,
             client=client,
             cache_path_fn=_pocket_cache_path,
+            use_cache=True,
         )
 
-        with self._system_update():
-            self.cost = result.cost
+        self._cost = result.cost
 
         return pockets
 
-    @beartype
-    def get_results(
-        self,
-        *,
-        client: DeepOriginClient | None = None,
-    ) -> list[Pocket]:
+    def get_results(self) -> list[Pocket]:
         """Retrieve previously computed pockets from the platform.
 
         Fetches pocket results for this protein via the results API,
         without re-running the computation.
 
-        Args:
-            client: Optional API client. Uses the default if not provided.
-
         Returns:
             List of ``Pocket`` objects retrieved from the platform.
         """
-        client = client or self._resolve_client()
-
         return Pocket.from_result(
             protein_id=self.protein.id,
-            client=client,
+            client=self.client,
         )

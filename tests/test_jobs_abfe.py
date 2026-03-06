@@ -107,9 +107,9 @@ class TestABFEAsyncLifecycle:
         """ABFE instances have a cancel method."""
         assert hasattr(abfe, "cancel")
 
-    def test_has_refresh(self, abfe):
-        """ABFE instances have a refresh method."""
-        assert hasattr(abfe, "refresh")
+    def test_has_sync(self, abfe):
+        """ABFE instances have a sync method."""
+        assert hasattr(abfe, "sync")
 
     def test_no_run_method(self, abfe):
         """ABFE (async-only) should NOT have run()."""
@@ -120,10 +120,10 @@ class TestABFEAsyncLifecycle:
         with pytest.raises(ValueError, match="id is None"):
             abfe.cancel()
 
-    def test_refresh_no_id_raises(self, abfe):
-        """refresh() with no execution ID raises ValueError."""
+    def test_sync_no_id_raises(self, abfe):
+        """sync() with no execution ID raises ValueError."""
         with pytest.raises(ValueError, match="id is None"):
-            abfe.refresh()
+            abfe.sync()
 
 
 # ===========================================================================
@@ -140,7 +140,7 @@ class TestABFEPrepare:
         mock_client.files.download_file.return_value = str(_BRD_PDB)
 
         abfe = ABFE(protein=protein, ligand=ligand, client=client)
-        abfe._client = mock_client
+        abfe.client = mock_client
 
         mock_result = MagicMock()
         mock_result.function_outputs = [
@@ -188,9 +188,8 @@ class TestABFEQuote:
 
     def test_quote_sets_estimate(self, abfe):
         """quote() populates estimate after prepare()."""
-        with abfe._system_update():
-            abfe.binding_xml_path = "/remote/binding.xml"
-            abfe.solvation_xml_path = "/remote/solvation.xml"
+        abfe.binding_xml_path = "/remote/binding.xml"
+        abfe.solvation_xml_path = "/remote/solvation.xml"
 
         mock_dto = {
             "quotationResult": {
@@ -225,9 +224,8 @@ class TestABFEStart:
 
     def test_start_sets_id_and_status(self, abfe):
         """start() assigns execution ID and status from the platform."""
-        with abfe._system_update():
-            abfe.binding_xml_path = "/remote/binding.xml"
-            abfe.solvation_xml_path = "/remote/solvation.xml"
+        abfe.binding_xml_path = "/remote/binding.xml"
+        abfe.solvation_xml_path = "/remote/solvation.xml"
 
         mock_dto = {
             "executionId": "exec-456",
@@ -237,7 +235,7 @@ class TestABFEStart:
         mock_job.id = "exec-456"
         mock_job.status = "Created"
 
-        abfe._client = MagicMock()
+        abfe.client = MagicMock()
 
         with (
             patch(
@@ -271,11 +269,10 @@ class TestABFEGetResults:
 
     def test_get_results_not_succeeded_returns_none(self, abfe, client):
         """get_results() returns None if status is not Succeeded."""
-        abfe._client = client
+        abfe.client = client
 
-        with abfe._system_update():
-            abfe.id = "exec-789"
-            abfe.status = "Created"
+        abfe._id = "exec-789"
+        abfe.status = "Created"
 
         client.executions = MagicMock()
         client.executions.get_execution.return_value = {"status": "Running"}
@@ -301,9 +298,9 @@ class TestABFEBuildHelpers:
         assert "protein_name" in meta
         assert "ligand_name" in meta
 
-    def test_build_output_dir(self, abfe):
-        """_build_output_dir includes protein and ligand hashes."""
-        path = abfe._build_output_dir()
-        assert path.startswith("tool-runs/ABFE/")
-        assert ".pdb/" in path
-        assert ".sdf/" in path
+    def test_build_outputs(self, abfe):
+        """_build_outputs includes expected output keys."""
+        outputs = abfe._build_outputs()
+        assert "output_file" in outputs
+        assert "abfe_results_summary" in outputs
+        assert "results.csv" in outputs["abfe_results_summary"]["key"]

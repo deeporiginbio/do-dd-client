@@ -29,12 +29,15 @@ class SyncOnlyJob(Execution, QuoteMixin, SyncExecutableMixin):
 
     tool_key = "test.sync"
     tool_version = "0.0.1"
-    _immutable_fields = frozenset({"name"})
 
     def __init__(self, name: str) -> None:
         super().__init__()
-        with self._system_update():
-            self.name = name
+        self._name = name
+
+    @property
+    def name(self) -> str:
+        """Immutable job name."""
+        return self._name
 
 
 class AsyncJob(Execution, QuoteMixin, AsyncExecutableMixin):
@@ -42,13 +45,15 @@ class AsyncJob(Execution, QuoteMixin, AsyncExecutableMixin):
 
     tool_key = "test.async"
     tool_version = "0.0.1"
-    _immutable_fields = frozenset({"name"})
 
     def __init__(self, name: str) -> None:
         super().__init__()
-        self._init_async()
-        with self._system_update():
-            self.name = name
+        self._name = name
+
+    @property
+    def name(self) -> str:
+        """Immutable job name."""
+        return self._name
 
 
 # ===========================================================================
@@ -70,42 +75,33 @@ def protein():
 class TestExecutionReadOnly:
     """Read-only field enforcement on Execution."""
 
-    def test_id_blocked_outside_system_update(self):
+    def test_id_blocked(self):
         """Assigning id directly raises AttributeError."""
         job = SyncOnlyJob("x")
         with pytest.raises(AttributeError, match="id"):
             job.id = "should-fail"
 
-    def test_estimate_blocked_outside_system_update(self):
+    def test_estimate_blocked(self):
         """Assigning estimate directly raises AttributeError."""
         job = SyncOnlyJob("x")
         with pytest.raises(AttributeError, match="estimate"):
             job.estimate = 1.23
 
-    def test_cost_blocked_outside_system_update(self):
+    def test_cost_blocked(self):
         """Assigning cost directly raises AttributeError."""
         job = SyncOnlyJob("x")
         with pytest.raises(AttributeError, match="cost"):
             job.cost = 4.56
 
-    def test_system_update_allows_writes(self):
-        """Within _system_update, writes to protected fields succeed."""
+    def test_private_attrs_allow_internal_writes(self):
+        """Internal code can write to the private backing attributes."""
         job = SyncOnlyJob("x")
-        with job._system_update():
-            job.id = "abc"
-            job.estimate = 1.0
-            job.cost = 2.0
+        job._id = "abc"
+        job._estimate = 1.0
+        job._cost = 2.0
         assert job.id == "abc"
         assert job.estimate == 1.0
         assert job.cost == 2.0
-
-    def test_system_update_re_locks(self):
-        """After exiting _system_update, writes are blocked again."""
-        job = SyncOnlyJob("x")
-        with job._system_update():
-            job.id = "abc"
-        with pytest.raises(AttributeError, match="id"):
-            job.id = "def"
 
     def test_initial_values_are_none(self):
         """id, estimate, cost default to None."""
@@ -174,10 +170,9 @@ class TestExecutionRepr:
     def test_repr_with_fields(self):
         """Repr includes id, estimate, cost when set."""
         job = SyncOnlyJob("x")
-        with job._system_update():
-            job.id = "abc"
-            job.estimate = 1.5
-            job.cost = 2.5
+        job._id = "abc"
+        job._estimate = 1.5
+        job._cost = 2.5
         r = repr(job)
         assert "abc" in r
         assert "$1.50" in r
@@ -218,18 +213,17 @@ class TestAsyncExecutableMixin:
         with pytest.raises(ValueError, match="id is None"):
             job.cancel()
 
-    def test_refresh_no_id_raises(self):
-        """refresh() with no execution ID raises ValueError."""
+    def test_sync_no_id_raises(self):
+        """sync() with no execution ID raises ValueError."""
         job = AsyncJob("x")
         with pytest.raises(ValueError, match="id is None"):
-            job.refresh()
+            job.sync()
 
     def test_cancel_wrong_state_raises(self):
         """cancel() from a non-cancellable state raises ValueError."""
         job = AsyncJob("x")
-        with job._system_update():
-            job.id = "some-id"
-            job.status = "Succeeded"
+        job._id = "some-id"
+        job.status = "Succeeded"
         with pytest.raises(ValueError, match="Cannot cancel"):
             job.cancel()
 

@@ -12,10 +12,8 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from beartype import beartype
-
-from deeporigin.drug_discovery.execution import PlatformStatus
 from deeporigin.platform.client import DeepOriginClient
+from deeporigin.platform.constants import PlatformStatus
 
 if TYPE_CHECKING:
     from typing import Self
@@ -56,42 +54,36 @@ class SyncExecutableMixin:
 
 
 class AsyncExecutableMixin:
-    """Adds ``start()``, ``cancel()``, ``refresh()``, ``from_id()``, and ``list()``
+    """Adds ``start()``, ``cancel()``, ``sync()``, ``from_id()``, and ``list()``
     for asynchronous, stateful execution backed by the platform tools API.
 
-    Classes that include this mixin gain a ``status`` attribute tracking the
-    platform lifecycle (``None`` -> ``Created`` -> ``Queued`` -> ... -> terminal).
+    Classes that include this mixin gain ``status`` and ``progress`` attributes
+    tracking the platform lifecycle and execution progress respectively.
     """
 
     status: PlatformStatus | None
+    progress: dict | None
 
-    def _init_async(self) -> None:
-        """Initialize async-specific state. Call from subclass ``__init__``."""
-        with self._system_update():
-            self.status = None
-            self._execution_dto: dict | None = None
+    def __init__(self) -> None:
+        """Initialize async-specific state."""
+        super().__init__()
+        self.status = None
+        self.progress = None
+        self._execution_dto: dict | None = None
 
-    @beartype
-    def start(self, *, client: DeepOriginClient | None = None) -> None:
+    def start(self) -> None:
         """Submit a persisted execution to the platform.
 
         Assigns an execution ID and sets the initial status. Must be
         overridden by subclasses to build the tool payload.
-
-        Args:
-            client: Optional API client. Uses the default if not provided.
 
         Raises:
             NotImplementedError: Always, unless overridden.
         """
         raise NotImplementedError
 
-    @beartype
-    def cancel(self, *, client: DeepOriginClient | None = None) -> None:
+    def cancel(self) -> None:
         """Cancel a running or queued execution.
-
-        Args:
-            client: Optional API client. Uses the default if not provided.
 
         Raises:
             ValueError: If the job has no execution ID.
@@ -109,70 +101,82 @@ class AsyncExecutableMixin:
                 f"Only jobs in {cancellable} can be cancelled."
             )
 
-        if client is None:
-            client = DeepOriginClient.get()
+        self.client.executions.cancel(execution_id=self.id)
+        self.sync()
 
-        client.executions.cancel(execution_id=self.id)
-        self.refresh(client=client)
-
-    @beartype
-    def refresh(self, *, client: DeepOriginClient | None = None) -> None:
+    def sync(self) -> None:
         """Sync status, cost, and estimate from the platform.
-
-        Args:
-            client: Optional API client. Uses the default if not provided.
 
         Raises:
             ValueError: If the job has no execution ID.
         """
         if self.id is None:
-            raise ValueError(
-                "Cannot refresh: no execution has been started (id is None)."
-            )
+            raise ValueError("Cannot sync: no execution has been started (id is None).")
 
-        if client is None:
-            client = DeepOriginClient.get()
-
-        result = client.executions.get_execution(execution_id=self.id)
+        result = self.client.executions.get_execution(execution_id=self.id)
         if result:
-            with self._system_update():
-                self._execution_dto = result
-                self.status = result.get("status")
+            self._execution_dto = result
+            self.status = result.get("status")
+            self.progress = result.get("progressReport")
 
-                quotation = result.get("quotationResult", {})
-                successful = quotation.get("successfulQuotations", [])
-                if successful:
-                    price = successful[0].get("priceTotal")
-                    if price is not None:
-                        self.estimate = float(price)
+            quotation = result.get("quotationResult", {})
+            successful = quotation.get("successfulQuotations", [])
+            if successful:
+                price = successful[0].get("priceTotal")
+                if price is not None:
+                    self._estimate = float(price)
 
-                if self.status == "Succeeded":
-                    if successful:
-                        price = successful[0].get("priceTotal")
-                        if price is not None:
-                            self.cost = float(price)
+            if self.status == "Succeeded" and successful:
+                price = successful[0].get("priceTotal")
+                if price is not None:
+                    self._cost = float(price)
 
     @classmethod
     def from_id(cls, id: str, *, client: DeepOriginClient | None = None) -> Self:
         """Construct an instance from an existing platform execution ID.
 
-        Rehydrates the object by fetching the execution record and
-        reconstructing input entities (protein, ligands, etc.) from
-        the stored metadata.
+        Creates a bare instance via ``object.__new__`` (bypassing
+        ``__init__``), fetches the execution DTO, and populates the
+        common execution fields.  Subclasses should call
+        ``super().from_id()`` then rehydrate domain-specific fields
+        from ``instance._execution_dto["userInputs"]``.
 
         Args:
             id: Platform execution ID.
             client: Optional API client. Uses the default if not provided.
 
         Returns:
-            A fully-hydrated instance of this class.
-
-        Raises:
-            NotImplementedError: Always, unless overridden by a subclass.
+            A partially-hydrated instance with common fields populated.
         """
-        raise NotImplementedError(
-            f"{cls.__name__}.from_id() must be implemented by the subclass."
-        )
+        if client is None:
+            client = DeepOriginClient.get()
+
+        dto = client.executions.get_execution(execution_id=id)
+        tool_info = dto["tool"]
+
+        instance = object.__new__(cls)
+
+        instance.client = client
+        instance._id = dto["executionId"]
+        instance._estimate = None
+        instance._cost = None
+        instance.tool_key = tool_info["key"]
+        instance.tool_version = tool_info["version"]
+
+        instance.status = dto.get("status")
+        instance.progress = dto.get("progressReport")
+        instance._execution_dto = dto
+
+        quotation = dto.get("quotationResult", {})
+        successful = quotation.get("successfulQuotations", [])
+        if successful:
+            price = successful[0].get("priceTotal")
+            if price is not None:
+                instance._estimate = float(price)
+            if instance.status == "Succeeded" and price is not None:
+                instance._cost = float(price)
+
+        return instance
 
     @classmethod
     def list(

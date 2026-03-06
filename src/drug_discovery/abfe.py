@@ -6,11 +6,9 @@ Usage::
     abfe.prepare()
     abfe.quote()
     abfe.start()
-    abfe.refresh()
+    abfe.sync()
     results = abfe.get_results()
 """
-
-from typing import Optional
 
 from beartype import beartype
 import pandas as pd
@@ -39,9 +37,6 @@ class ABFE(Execution, QuoteMixin, AsyncExecutableMixin):
     """
 
     tool_key: str = ABFE_TOOL_KEY
-    tool_version: str = ABFE_TOOL_VERSION
-
-    _immutable_fields: frozenset[str] = frozenset({"protein", "ligand"})
 
     @beartype
     def __init__(
@@ -49,6 +44,7 @@ class ABFE(Execution, QuoteMixin, AsyncExecutableMixin):
         *,
         protein: Protein,
         ligand: Ligand,
+        tool_version: str = ABFE_TOOL_VERSION,
         client: DeepOriginClient | None = None,
     ) -> None:
         """Create an ABFE execution for a protein-ligand pair.
@@ -56,19 +52,28 @@ class ABFE(Execution, QuoteMixin, AsyncExecutableMixin):
         Args:
             protein: Protein structure.
             ligand: Ligand molecule.
+            tool_version: Platform tool version to run. Settable so callers
+                can pin or upgrade independently of the SDK release.
             client: Optional API client.
         """
-        super().__init__()
-        self._init_async()
+        super().__init__(client=client)
+        self.tool_version = tool_version
 
-        with self._system_update():
-            self.protein = protein
-            self.ligand = ligand
-            self.solvation_xml_path: str | None = None
-            self.binding_xml_path: str | None = None
-
-        self._client = client
+        self._protein = protein
+        self._ligand = ligand
+        self.solvation_xml_path: str | None = None
+        self.binding_xml_path: str | None = None
         self._prepared_outputs: dict | None = None
+
+    @property
+    def protein(self) -> Protein:
+        """Target protein structure."""
+        return self._protein
+
+    @property
+    def ligand(self) -> Ligand:
+        """Ligand to evaluate."""
+        return self._ligand
 
     @beartype
     def prepare(
@@ -78,7 +83,6 @@ class ABFE(Execution, QuoteMixin, AsyncExecutableMixin):
         retain_waters: bool = False,
         add_H_atoms: bool = False,
         protonate_protein: bool = False,
-        client: DeepOriginClient | None = None,
     ) -> Protein:
         """Run system preparation for the protein-ligand pair.
 
@@ -91,7 +95,6 @@ class ABFE(Execution, QuoteMixin, AsyncExecutableMixin):
             retain_waters: Keep water molecules from the crystal structure.
             add_H_atoms: Add hydrogen atoms to the ligand.
             protonate_protein: Protonate the protein.
-            client: Optional API client.
 
         Returns:
             A ``Protein`` built from the prepared system PDB.
@@ -108,8 +111,6 @@ class ABFE(Execution, QuoteMixin, AsyncExecutableMixin):
                 message=f"Ligand {self.ligand.name} is charged. ABFE does not support charged ligands.",
             )
 
-        client = client or self._resolve_client()
-
         missing = self.protein.find_missing_residues()
         if len(missing) > 0:
             raise DeepOriginException(
@@ -124,7 +125,7 @@ class ABFE(Execution, QuoteMixin, AsyncExecutableMixin):
             retain_waters=retain_waters,
             add_H_atoms=add_H_atoms,
             protonate_protein=protonate_protein,
-            client=client,
+            client=self.client,
         )
 
         outputs = result.function_outputs[0]
@@ -148,13 +149,12 @@ class ABFE(Execution, QuoteMixin, AsyncExecutableMixin):
                 if isinstance(val, dict) and "system_pdb_file_path" in val:
                     pass
 
-        with self._system_update():
-            self.binding_xml_path = binding_xml
-            self.solvation_xml_path = solvation_xml
+        self.binding_xml_path = binding_xml
+        self.solvation_xml_path = solvation_xml
 
         system_pdb = outputs.get("system", {}).get("system_pdb_file_path")
         if system_pdb:
-            local_path = client.files.download_file(
+            local_path = self.client.files.download_file(
                 remote_path=system_pdb,
                 lazy=True,
             )
@@ -175,19 +175,13 @@ class ABFE(Execution, QuoteMixin, AsyncExecutableMixin):
                 "System has not been prepared. Call prepare() before quote()."
             )
 
-        client = self._resolve_client()
-        params = self._build_params()
-
-        metadata = self._build_metadata()
-        output_dir_path = self._build_output_dir()
-
         execution_dto = utils._start_tool_run(
-            params=params,
-            metadata=metadata,
+            params=self._build_params(),
+            metadata=self._build_metadata(),
+            outputs=self._build_outputs(),
             tool="ABFE",
             tool_version=self.tool_version,
-            client=client,
-            output_dir_path=output_dir_path,
+            client=self.client,
             approve_amount=0,
         )
 
@@ -196,22 +190,19 @@ class ABFE(Execution, QuoteMixin, AsyncExecutableMixin):
         if successful:
             price = successful[0].get("priceTotal")
             if price is not None:
-                with self._system_update():
-                    self.estimate = float(price)
-                    self.id = execution_dto.get("executionId")
-                    self.status = execution_dto.get("status")
+                self._estimate = float(price)
+                self._id = execution_dto.get("executionId")
+                self.status = execution_dto.get("status")
 
     @beartype
     def start(
         self,
         *,
-        client: DeepOriginClient | None = None,
-        approve_amount: Optional[int] = None,
+        approve_amount: int | None = None,
     ) -> None:
         """Submit the ABFE execution to the platform.
 
         Args:
-            client: Optional API client.
             approve_amount: Pre-approved spend amount. If None, uses default.
 
         Raises:
@@ -225,30 +216,23 @@ class ABFE(Execution, QuoteMixin, AsyncExecutableMixin):
                 "System has not been prepared. Call prepare() before start()."
             )
 
-        client = client or self._resolve_client()
-
-        self.protein.sync(client=client)
-
-        params = self._build_params()
-        metadata = self._build_metadata()
-        output_dir_path = self._build_output_dir()
+        self.protein.sync(client=self.client)
 
         execution_dto = utils._start_tool_run(
-            params=params,
-            metadata=metadata,
+            params=self._build_params(),
+            metadata=self._build_metadata(),
+            outputs=self._build_outputs(),
             tool="ABFE",
             tool_version=self.tool_version,
-            client=client,
-            output_dir_path=output_dir_path,
+            client=self.client,
             approve_amount=approve_amount,
         )
 
-        job = Job.from_dto(execution_dto, client=client)
+        job = Job.from_dto(execution_dto, client=self.client)
 
-        with self._system_update():
-            self._execution_dto = execution_dto
-            self.id = job.id
-            self.status = job.status
+        self._execution_dto = execution_dto
+        self._id = job.id
+        self.status = job.status
 
     def get_results(self) -> pd.DataFrame | None:
         """Retrieve ABFE results as a DataFrame.
@@ -265,9 +249,9 @@ class ABFE(Execution, QuoteMixin, AsyncExecutableMixin):
         if self.id is None:
             raise ValueError("No execution has been started. Call start() first.")
 
-        client = self._resolve_client()
+        client = self.client
 
-        self.refresh(client=client)
+        self.sync()
         if self.status != "Succeeded":
             return None
 
@@ -314,8 +298,19 @@ class ABFE(Execution, QuoteMixin, AsyncExecutableMixin):
             "ligand_name": self.ligand.name,
         }
 
-    def _build_output_dir(self) -> str:
-        """Construct the remote output directory path."""
-        return (
+    def _build_outputs(self) -> dict:
+        """Construct the output file specification for the ABFE tool."""
+        output_dir = (
             f"tool-runs/ABFE/{self.protein.to_hash()}.pdb/{self.ligand.to_hash()}.sdf/"
         )
+        provider = "ufa"
+        return {
+            "output_file": {
+                "$provider": provider,
+                "key": output_dir + "output/",
+            },
+            "abfe_results_summary": {
+                "$provider": provider,
+                "key": output_dir + "results.csv",
+            },
+        }

@@ -2,6 +2,31 @@
 
 from typing import Literal
 
+PlatformStatus = Literal[
+    "Quoted",
+    "Created",
+    "Queued",
+    "Running",
+    "Succeeded",
+    "Failed",
+    "Cancelled",
+    "InsufficientFunds",
+    "FailedQuotation",
+]
+
+ALLOWED_STATUS_TRANSITIONS: dict[str | None, set[str]] = {
+    None: {"Quoted", "Created"},
+    "Quoted": {"Created", "Queued", "Running"},
+    "Created": {"Queued", "Running", "Failed", "Cancelled"},
+    "Queued": {"Running", "Failed", "Cancelled"},
+    "Running": {"Succeeded", "Failed", "Cancelled"},
+    "Succeeded": set(),
+    "Failed": set(),
+    "Cancelled": set(),
+    "InsufficientFunds": set(),
+    "FailedQuotation": set(),
+}
+
 # Terminal states for tool executions
 TERMINAL_STATES = {
     "Succeeded",
@@ -27,7 +52,7 @@ DOCKING_TOOL_VERSION = "0.7.1"
 DOCKING_FUNCTION_KEY = "deeporigin.docking"
 DOCKING_FUNCTION_VERSION = "0.6.0"
 POCKET_FINDER_FUNCTION_KEY = "deeporigin.pocketfinder"
-POCKET_FINDER_FUNCTION_VERSION = "0.4.4"
+POCKET_FINDER_FUNCTION_VERSION = "0.4.5"
 CONSTRAINED_DOCKING_FUNCTION_KEY = "deeporigin.constrained-docking"
 MOL_PROPS_FUNCTION_KEY_PREFIX = "deeporigin.mol-props"
 PROTONATION_FUNCTION_KEY = "deeporigin.mol-props-protonation"

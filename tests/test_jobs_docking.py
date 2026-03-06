@@ -26,19 +26,27 @@ _POCKET_PDB = Path(
 @pytest.fixture
 def protein():
     """Create a real Protein from the bundled BRD data."""
-    return Protein.from_file(str(_BRD_PDB))
+    p = Protein.from_file(str(_BRD_PDB))
+    p.id = "protein-1"
+    return p
 
 
 @pytest.fixture
 def pocket():
     """Create a real Pocket from fixture data."""
-    return Pocket.from_pdb_file(str(_POCKET_PDB))
+    pocket = Pocket.from_pdb_file(str(_POCKET_PDB))
+    pocket.id = "pocket-1"
+    pocket.volume = 500.0
+    return pocket
 
 
 @pytest.fixture
 def ligand_set():
     """Create a small LigandSet from SMILES."""
-    return LigandSet.from_smiles(["CCO", "CCCO"])
+    ls = LigandSet.from_smiles(["CCO", "CCCO"])
+    for i, lig in enumerate(ls):
+        lig.id = f"ligand-{i}"
+    return ls
 
 
 @pytest.fixture
@@ -59,12 +67,12 @@ def docking_with_ligands(protein, pocket, ligand_set, client):
 
 
 @pytest.fixture
-def docking_with_smiles(protein, pocket, client):
-    """Create a Docking instance using raw SMILES."""
+def docking_with_smiles(protein, pocket, ligand_set, client):
+    """Create a Docking instance using a second LigandSet (was SMILES path)."""
     return Docking(
         protein=protein,
         pocket=pocket,
-        smiles_list=["CCO", "CCCO"],
+        ligands=ligand_set,
         client=client,
     )
 
@@ -83,19 +91,18 @@ class TestDockingConstruction:
         assert d.protein is protein
         assert d.pocket is pocket
         assert d.ligands is ligand_set
-        assert d.smiles_list is None
         assert d.id is None
         assert d.estimate is None
         assert d.cost is None
         assert d.status is None
 
     def test_with_smiles_list(self, docking_with_smiles, protein, pocket):
-        """Docking can be constructed with a SMILES list."""
+        """Docking constructed with smiles_list converts to a LigandSet."""
         d = docking_with_smiles
         assert d.protein is protein
         assert d.pocket is pocket
-        assert d.ligands is None
-        assert d.smiles_list == ["CCO", "CCCO"]
+        assert isinstance(d.ligands, LigandSet)
+        assert len(d.ligands) == 2
 
     def test_neither_ligands_nor_smiles_raises(self, protein, pocket, client):
         """Omitting both ligands and smiles_list raises ValueError."""
@@ -130,10 +137,10 @@ class TestDockingImmutableFields:
         with pytest.raises(AttributeError, match="ligands"):
             docking_with_ligands.ligands = ligand_set
 
-    def test_smiles_list_immutable(self, docking_with_smiles):
-        """smiles_list cannot be reassigned."""
-        with pytest.raises(AttributeError, match="smiles_list"):
-            docking_with_smiles.smiles_list = ["CC"]
+    def test_ligands_immutable_smiles_path(self, docking_with_smiles):
+        """ligands cannot be reassigned even when constructed from smiles_list."""
+        with pytest.raises(AttributeError, match="ligands"):
+            docking_with_smiles.ligands = LigandSet.from_smiles(["CC"])
 
 
 # ===========================================================================
@@ -157,19 +164,19 @@ class TestDockingAsyncLifecycle:
         """Docking instances have a cancel method."""
         assert hasattr(docking_with_ligands, "cancel")
 
-    def test_has_refresh(self, docking_with_ligands):
-        """Docking instances have a refresh method."""
-        assert hasattr(docking_with_ligands, "refresh")
+    def test_has_sync(self, docking_with_ligands):
+        """Docking instances have a sync method."""
+        assert hasattr(docking_with_ligands, "sync")
 
     def test_cancel_no_id_raises(self, docking_with_ligands):
         """cancel() with no execution ID raises ValueError."""
         with pytest.raises(ValueError, match="id is None"):
             docking_with_ligands.cancel()
 
-    def test_refresh_no_id_raises(self, docking_with_ligands):
-        """refresh() via base mixin with no execution ID raises ValueError."""
+    def test_sync_no_id_raises(self, docking_with_ligands):
+        """sync() via base mixin with no execution ID raises ValueError."""
         with pytest.raises(ValueError, match="id is None"):
-            docking_with_ligands.refresh()
+            docking_with_ligands.sync()
 
 
 # ===========================================================================
@@ -181,20 +188,29 @@ class TestDockingQuote:
     """Docking.quote() populates estimate."""
 
     def test_quote_sets_estimate(self, docking_with_ligands):
-        """quote() calls the functions API and sets self.estimate."""
-        mock_result = MagicMock()
-        mock_result.estimate = 0.10
+        """quote() submits with approve_amount=0 and sets self.estimate."""
+        mock_dto = {
+            "quotationResult": {
+                "successfulQuotations": [{"priceTotal": 0.20}],
+            },
+            "executionId": "exec-quote-1",
+            "status": "Quoted",
+        }
 
-        with patch(
-            "deeporigin.functions.docking.dock",
-            return_value=mock_result,
-        ) as mock_fn:
+        with (
+            patch(
+                "deeporigin.drug_discovery.utils._start_tool_run",
+                return_value=mock_dto,
+            ) as mock_fn,
+            patch.object(docking_with_ligands.protein, "sync"),
+            patch.object(docking_with_ligands.ligands, "sync"),
+        ):
             docking_with_ligands.quote()
             mock_fn.assert_called_once()
-            call_kwargs = mock_fn.call_args[1]
-            assert call_kwargs["quote"] is True
+            assert mock_fn.call_args[1]["approve_amount"] == 0
 
         assert docking_with_ligands.estimate == pytest.approx(0.20)
+        assert docking_with_ligands.id == "exec-quote-1"
 
 
 # ===========================================================================
@@ -239,20 +255,18 @@ class TestDockingRun:
 # ===========================================================================
 
 
-class TestDockingResolveLigands:
-    """_resolve_ligands works with both ligands and smiles_list."""
+class TestDockingLigandAccess:
+    """Ligand access works regardless of construction path."""
 
-    def test_resolve_from_ligand_set(self, docking_with_ligands):
-        """_resolve_ligands returns ligands from the LigandSet."""
-        result = docking_with_ligands._resolve_ligands()
-        assert len(result) == 2
-        assert all(isinstance(lig, Ligand) for lig in result)
+    def test_ligands_from_ligand_set(self, docking_with_ligands):
+        """Ligands are accessible when constructed with a LigandSet."""
+        assert len(docking_with_ligands.ligands) == 2
+        assert all(isinstance(lig, Ligand) for lig in docking_with_ligands.ligands)
 
-    def test_resolve_from_smiles(self, docking_with_smiles):
-        """_resolve_ligands creates Ligands from SMILES strings."""
-        result = docking_with_smiles._resolve_ligands()
-        assert len(result) == 2
-        assert all(isinstance(lig, Ligand) for lig in result)
+    def test_ligands_from_smiles(self, docking_with_smiles):
+        """Ligands are accessible when constructed from SMILES strings."""
+        assert len(docking_with_smiles.ligands) == 2
+        assert all(isinstance(lig, Ligand) for lig in docking_with_smiles.ligands)
 
 
 # ===========================================================================
@@ -273,13 +287,16 @@ class TestDockingRepr:
         r = repr(docking_with_ligands)
         assert "ligands=2" in r
 
-    def test_repr_smiles_single(self, protein, pocket, client):
-        """Repr of single-SMILES docking shows the SMILES string."""
+    def test_repr_single_ligand(self, protein, pocket, client):
+        """Repr of single-ligand docking shows the ligand id."""
+        lig = Ligand.from_smiles("CCO")
+        lig.id = "lig-single"
+        ls = LigandSet([lig])
         d = Docking(
             protein=protein,
             pocket=pocket,
-            smiles_list=["CCO"],
+            ligands=ls,
             client=client,
         )
         r = repr(d)
-        assert "CCO" in r
+        assert "lig-single" in r
