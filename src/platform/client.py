@@ -82,7 +82,9 @@ def _resolve_token_and_org_key(
 ) -> Tuple[str | None, str | None, str | None]:
     """Resolve token and org_key based on environment and parameters.
 
-    Special handling for local environment: auto-generates token and sets org_key.
+    For local environment: uses DO_AUTH_TOKEN and DO_ORG_KEY if set (e.g. from
+    E2E runner with real Keycloak token); otherwise auto-generates a token and
+    sets org_key to "deeporigin" for unit tests with mock server.
     For other environments, environment variables override explicit parameters.
 
     Args:
@@ -94,10 +96,20 @@ def _resolve_token_and_org_key(
     Returns:
         A tuple of (resolved_token, resolved_org_key, resolved_base_url).
     """
-    # Special handling for local environment: auto-generate token and set org_key
+    # Special handling for local environment
     if env == "local":
-        resolved_token = _generate_local_token()
-        resolved_org_key = "deeporigin"
+        if ENV_VARIABLES["access_token"] in os.environ:
+            resolved_token = os.environ[ENV_VARIABLES["access_token"]]
+        elif token is not None:
+            resolved_token = token
+        else:
+            resolved_token = _generate_local_token()
+        if ENV_VARIABLES["org_key"] in os.environ:
+            resolved_org_key = os.environ[ENV_VARIABLES["org_key"]]
+        elif org_key is not None:
+            resolved_org_key = org_key
+        else:
+            resolved_org_key = "deeporigin"
         if base_url is None:
             resolved_base_url = API_ENDPOINT["local"]
         else:

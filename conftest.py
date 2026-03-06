@@ -13,7 +13,8 @@ import pytest
 from deeporigin.auth import get_token
 from deeporigin.config import get_value
 from deeporigin.platform.client import DeepOriginClient
-from deeporigin.utils.constants import ENV_VARIABLES
+from deeporigin.utils import constants
+from deeporigin.utils.constants import ENV_VARIABLES, LOCAL_ENDPOINT_MOCK
 from tests.mock_server import MockServer
 
 
@@ -49,6 +50,7 @@ def set_test_env_vars(pytestconfig):
 
     # Save original env vars to restore later
     original_env_vars = {key: os.environ.get(key) for key in ENV_VARIABLES.values()}
+    original_local_endpoint = constants.API_ENDPOINT["local"]
 
     try:
         # Set environment variables based on the specified environment
@@ -56,6 +58,8 @@ def set_test_env_vars(pytestconfig):
             # Client automatically handles local environment (generates token, sets org_key)
             # We only need to set DO_ENV=local
             os.environ[ENV_VARIABLES["env"]] = "local"
+            # Override API_ENDPOINT["local"] for unit tests (mock server on 4931)
+            constants.API_ENDPOINT["local"] = LOCAL_ENDPOINT_MOCK
 
             # Clear any cached clients so they use the new env vars
             DeepOriginClient.close_all()
@@ -73,6 +77,8 @@ def set_test_env_vars(pytestconfig):
 
         yield
     finally:
+        # Restore API_ENDPOINT["local"] to default (platform gateway on 6010)
+        constants.API_ENDPOINT["local"] = original_local_endpoint
         # Restore original env vars
         for key, value in original_env_vars.items():
             if value is None:
