@@ -1,22 +1,20 @@
-"""Jobs-centric API for computational workflows.
+"""Backward-compatibility shim -- re-exports from ``deeporigin.drug_discovery``.
 
-Provides unified execution classes composed from mixins:
+Prefer importing directly from ``deeporigin.drug_discovery``::
 
-- ``PocketFinder`` -- sync-only pocket detection
-- ``Docking`` -- sync + async molecular docking
-- ``ABFE`` -- async absolute binding free energy
+    from deeporigin.drug_discovery import PocketFinder, Docking, ABFE
 """
 
-from deeporigin.jobs.abfe import ABFE
-from deeporigin.jobs.base import Execution, PlatformStatus
-from deeporigin.jobs.docking import Docking
-from deeporigin.jobs.mixins import (
+from deeporigin.drug_discovery.abfe import ABFE
+from deeporigin.drug_discovery.docking import Docking
+from deeporigin.drug_discovery.execution import Execution, PlatformStatus
+from deeporigin.drug_discovery.execution_mixins import (
     AsyncExecutableMixin,
     JupyterVizMixin,
     QuoteMixin,
     SyncExecutableMixin,
 )
-from deeporigin.jobs.pocket_finder import PocketFinder
+from deeporigin.drug_discovery.pocket_finder import PocketFinder
 
 __all__ = [
     "ABFE",

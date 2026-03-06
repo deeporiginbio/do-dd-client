@@ -10,7 +10,10 @@ concrete execution types like ``PocketFinder``, ``Docking``, and ``ABFE``.
 from __future__ import annotations
 
 from contextlib import contextmanager
-from typing import Literal
+from typing import TYPE_CHECKING, Literal
+
+if TYPE_CHECKING:
+    from deeporigin.platform.client import DeepOriginClient
 
 PlatformStatus = Literal[
     "Quoted",
@@ -65,6 +68,7 @@ class Execution:
             self.estimate: float | None = None
             self.cost: float | None = None
             self._internal_write = False
+        self._client: DeepOriginClient | None = None
 
     def __setattr__(self, name: str, value: object) -> None:
         if name.startswith("_"):
@@ -109,6 +113,14 @@ class Execution:
             )
         with self._system_update():
             self.status = new_status
+
+    def _resolve_client(self) -> DeepOriginClient:
+        """Return the client, falling back to the default singleton."""
+        if self._client is not None:
+            return self._client
+        from deeporigin.platform.client import DeepOriginClient
+
+        return DeepOriginClient.get()
 
     def __repr__(self) -> str:
         """Return a concise summary of the execution."""

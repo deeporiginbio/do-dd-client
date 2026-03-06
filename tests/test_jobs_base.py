@@ -7,13 +7,13 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from deeporigin.drug_discovery import BRD_DATA_DIR, Protein
-from deeporigin.jobs.base import Execution
-from deeporigin.jobs.mixins import (
+from deeporigin.drug_discovery.execution import Execution
+from deeporigin.drug_discovery.execution_mixins import (
     AsyncExecutableMixin,
     QuoteMixin,
     SyncExecutableMixin,
 )
-from deeporigin.jobs.pocket_finder import PocketFinder
+from deeporigin.drug_discovery.pocket_finder import PocketFinder
 from deeporigin.platform.client import DeepOriginClient
 
 _BRD_PDB = Path(os.path.join(BRD_DATA_DIR, "brd.pdb"))

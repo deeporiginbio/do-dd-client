@@ -9,10 +9,10 @@ Usage::
 
 from beartype import beartype
 
+from deeporigin.drug_discovery.execution import Execution
+from deeporigin.drug_discovery.execution_mixins import QuoteMixin, SyncExecutableMixin
 from deeporigin.drug_discovery.structures.pocket import Pocket
 from deeporigin.drug_discovery.structures.protein import Protein
-from deeporigin.jobs.base import Execution
-from deeporigin.jobs.mixins import QuoteMixin, SyncExecutableMixin
 from deeporigin.platform.client import DeepOriginClient
 from deeporigin.platform.constants import (
     POCKET_FINDER_FUNCTION_KEY,
@@ -157,9 +157,3 @@ class PocketFinder(Execution, QuoteMixin, SyncExecutableMixin):
             protein_id=self.protein.id,
             client=client,
         )
-
-    def _resolve_client(self) -> DeepOriginClient:
-        """Return the client, falling back to the default singleton."""
-        if self._client is not None:
-            return self._client
-        return DeepOriginClient.get()

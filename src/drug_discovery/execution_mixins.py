@@ -14,12 +14,12 @@ from typing import TYPE_CHECKING
 
 from beartype import beartype
 
-from deeporigin.jobs.base import PlatformStatus
+from deeporigin.drug_discovery.execution import PlatformStatus
+from deeporigin.platform.client import DeepOriginClient
 
 if TYPE_CHECKING:
     from typing import Self
 
-    from deeporigin.platform.client import DeepOriginClient
     from deeporigin.platform.job import JobList
 
 
@@ -110,8 +110,6 @@ class AsyncExecutableMixin:
             )
 
         if client is None:
-            from deeporigin.platform.client import DeepOriginClient
-
             client = DeepOriginClient.get()
 
         client.executions.cancel(execution_id=self.id)
@@ -133,8 +131,6 @@ class AsyncExecutableMixin:
             )
 
         if client is None:
-            from deeporigin.platform.client import DeepOriginClient
-
             client = DeepOriginClient.get()
 
         result = client.executions.get_execution(execution_id=self.id)
@@ -194,7 +190,6 @@ class AsyncExecutableMixin:
         Returns:
             A ``JobList`` of matching executions.
         """
-        from deeporigin.platform.client import DeepOriginClient
         from deeporigin.platform.job import JobList as PlatformJobList
 
         if client is None:

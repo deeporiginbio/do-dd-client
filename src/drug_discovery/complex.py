@@ -4,8 +4,8 @@ from dataclasses import dataclass, field
 import os
 from typing import Optional
 
-from deeporigin.drug_discovery.abfe import ABFE
-from deeporigin.drug_discovery.docking import Docking
+from deeporigin.drug_discovery.abfe_step import ABFE
+from deeporigin.drug_discovery.docking_step import Docking
 from deeporigin.drug_discovery.rbfe import RBFE
 from deeporigin.drug_discovery.structures import Ligand, LigandSet, Protein
 from deeporigin.exceptions import DeepOriginException
