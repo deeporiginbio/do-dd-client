@@ -6,6 +6,7 @@ from pathlib import Path
 import pytest
 
 from deeporigin.functions.result import FunctionResult
+from deeporigin.platform.constants import DOCKING_FUNCTION_KEY, DOCKING_FUNCTION_VERSION
 
 FIXTURES_DIR = Path(__file__).parent / "fixtures"
 DOCKING_FIXTURES = FIXTURES_DIR / "function-runs" / "deeporigin.docking"
@@ -174,7 +175,7 @@ def test_repr_completed(completed_response):
     """Test __repr__ for a single completed response."""
     result = FunctionResult([completed_response])
     r = repr(result)
-    assert "function='deeporigin.docking/0.4.0'" in r
+    assert f"function='{DOCKING_FUNCTION_KEY}/{DOCKING_FUNCTION_VERSION}'" in r
     assert "status='Completed'" in r
     assert "cost=$0.20" in r
 
