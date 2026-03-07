@@ -182,11 +182,11 @@
                 },
                 "type": "object"
             },
-            "version": "0.4.4"
+            "version": "0.4.5"
         },
         "resourceId": "function-3z5f41csx181qdmmw0vkz",
         "updatedAt": "2026-03-02T15:47:12.405Z",
-        "version": "0.4.4"
+        "version": "0.4.5"
     },
     "functionOutputs": {
         "pockets": [
