@@ -38,6 +38,7 @@ from deeporigin.platform.constants import (
 Number = float | int
 
 
+@beartype
 class Docking(Execution, QuoteMixin, SyncExecutableMixin, AsyncExecutableMixin):
     """Molecular docking supporting both sync and async execution.
 
@@ -56,7 +57,6 @@ class Docking(Execution, QuoteMixin, SyncExecutableMixin, AsyncExecutableMixin):
 
     tool_key: str = DOCKING_TOOL_KEY
 
-    @beartype
     def __init__(
         self,
         *,
@@ -231,7 +231,6 @@ class Docking(Execution, QuoteMixin, SyncExecutableMixin, AsyncExecutableMixin):
 
         return poses
 
-    @beartype
     def start(
         self,
         *,
