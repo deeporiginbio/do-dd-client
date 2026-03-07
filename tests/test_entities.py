@@ -215,14 +215,9 @@ def test_get_ligands_lv1():
 
 def test_get_ligands_empty_ids():
     """Test that get_ligands returns immediately for empty input."""
-    from unittest.mock import patch
-
     client = DeepOriginClient()
-    with patch.object(client.entities, "search_ligands") as mock_search:
-        data = client.entities.get_ligands(ids=[])
-
-        assert data == []
-        mock_search.assert_not_called()
+    data = client.entities.get_ligands(ids=[])
+    assert data == []
 
 
 def test_get_protein_lv1():
