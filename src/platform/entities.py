@@ -158,7 +158,6 @@ class Entities:
     def search_ligands(
         self,
         *,
-        cursor: str | None = None,
         filter_dict: dict[str, Any] | None = None,
         smiles: str | None = None,
         smiles_list: list[str] | None = None,
@@ -170,12 +169,13 @@ class Entities:
         select: list[str] | None = None,
         sort: dict[str, str] | None = None,
     ) -> dict:
-        """Search ligands entity.
+        """Search ligands entity with automatic cursor-based pagination.
 
-        Convenience method that calls search(entity="ligands").
+        Convenience method that calls search(entity="ligands") and iterates
+        through all pages using cursor-based pagination, returning all matching
+        records in a single response.
 
         Args:
-            cursor: Cursor for pagination.
             filter_dict: Additional filter criteria as a dictionary.
             smiles: Filter by a single SMILES string (exact match).
             smiles_list: Filter by multiple SMILES strings. Uses an "in"
@@ -184,13 +184,14 @@ class Entities:
             canonical_smiles: Filter by canonical SMILES string.
             min_molecular_weight: Minimum molecular weight filter (inclusive).
             max_molecular_weight: Maximum molecular weight filter (inclusive).
-            limit: Maximum number of results to return. Defaults to 100.
+            limit: Maximum number of results to return per page. Defaults to 100.
             offset: Number of results to skip.
             select: List of fields to select in the response.
             sort: Dictionary mapping field names to sort order ("asc" or "desc").
 
         Returns:
-            Dictionary containing the search results.
+            Dictionary containing all search results across pages, with ``data``
+            holding the full list of records and ``meta`` from the final response.
 
         Raises:
             ValueError: If smiles_list is used together with smiles or
@@ -247,15 +248,27 @@ class Entities:
             existing_props = filter_dict.get("props", [])
             filter_dict["props"] = existing_props + props
 
-        return self.search(
-            "ligands",
-            cursor=cursor,
-            filter_dict=filter_dict,
-            limit=limit,
-            offset=offset,
-            select=select,
-            sort=sort,
-        )
+        all_data: list[dict[str, Any]] = []
+        cursor: str | None = None
+
+        while True:
+            response = self.search(
+                "ligands",
+                cursor=cursor,
+                filter_dict=filter_dict,
+                limit=limit,
+                offset=offset,
+                select=select,
+                sort=sort,
+            )
+            all_data.extend(response.get("data", []))
+
+            cursor = response.get("meta", {}).get("nextCursor")
+            if not cursor:
+                break
+
+        response["data"] = all_data
+        return response
 
     def get_ligand(self, id: str) -> dict:
         """Get a ligand by ID.
@@ -271,22 +284,18 @@ class Entities:
     def get_ligands(self, ids: list[str]) -> list[dict]:
         """Get multiple ligands by their IDs.
 
-        The data-platform search API does not support filtering by multiple
-        IDs in a single request, so this method calls :meth:`get_ligand` for
-        each ID sequentially.
-
-        .. note::
-            This makes one HTTP request per ID. For large lists this may be
-            slow; prefer ``search_ligands`` with appropriate filters when
-            possible.
+        Convenience wrapper around :meth:`search_ligands` that filters by ID.
 
         Args:
             ids: List of ligand IDs to retrieve.
 
         Returns:
-            List of dictionaries, one per ligand.
+            List of dictionaries for the matching ligands.
         """
-        return [self.get_ligand(id=lid) for lid in ids]
+        if len(ids) == 0:
+            return []
+
+        return self.search_ligands(filter_dict={"id": {"in": ids}})["data"]
 
     def create_ligand(
         self,

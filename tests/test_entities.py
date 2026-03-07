@@ -5,7 +5,7 @@ from unittest.mock import MagicMock
 import httpx
 import pytest
 
-from deeporigin.drug_discovery.structures.ligand import Ligand, LigandSet
+from deeporigin.drug_discovery.structures.ligand import Ligand
 from deeporigin.exceptions import DeepOriginException
 from deeporigin.platform import DeepOriginClient
 
@@ -247,13 +247,9 @@ def test_get_ligand_lv1():
 def test_get_ligands_lv1():
     """Test getting multiple ligands by IDs."""
     client = DeepOriginClient()
-    ligands = LigandSet.from_smiles(["CCO", "CCCO"])
-    ligands.sync(client=client)
-
-    ids = [lig.id for lig in ligands]
-    assert all(i is not None for i in ids), (
-        "Expected all ligands to have ids after sync"
-    )
+    existing = client.entities.search_ligands()
+    assert len(existing["data"]) >= 2, "Expected at least 2 existing ligands"
+    ids = [record["id"] for record in existing["data"][:2]]
 
     data = client.entities.get_ligands(ids=ids)
 
@@ -261,6 +257,34 @@ def test_get_ligands_lv1():
     assert len(data) == 2, f"Expected 2 ligands, got {len(data)}"
     returned_ids = {record["id"] for record in data}
     assert returned_ids == set(ids), "Expected both IDs in response"
+
+
+def test_get_ligands_uses_search_route():
+    """Test that get_ligands uses a single search request."""
+    client = DeepOriginClient()
+    ids = ["08BT9WM0NYVFY", "08DK8031NYTXD"]
+    expected_data = [{"id": ids[1]}, {"id": ids[0]}]
+    client.entities.search_ligands = MagicMock(
+        return_value={"data": expected_data, "count": len(expected_data)}
+    )
+
+    data = client.entities.get_ligands(ids=ids)
+
+    assert data == expected_data
+    client.entities.search_ligands.assert_called_once_with(
+        filter_dict={"props": [{"column": "id", "op": "in", "value": ids}]},
+    )
+
+
+def test_get_ligands_empty_ids():
+    """Test that get_ligands returns immediately for empty input."""
+    client = DeepOriginClient()
+    client.entities.search_ligands = MagicMock()
+
+    data = client.entities.get_ligands(ids=[])
+
+    assert data == []
+    client.entities.search_ligands.assert_not_called()
 
 
 def test_get_protein_lv1():

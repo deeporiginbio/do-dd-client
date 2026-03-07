@@ -3,6 +3,7 @@ This module contains the Ligand and LigandSet classes, which allow you to work w
 """
 
 import base64
+import concurrent.futures
 from dataclasses import dataclass, field
 import hashlib
 import os
@@ -354,7 +355,9 @@ class Ligand(Entity):
         smiles = data.get("smiles") or data.get("canonical_smiles")
 
         if mol_file:
-            local_file_path = client.files.download_file(remote_path=mol_file)
+            local_file_path = client.files.download_file(
+                remote_path=mol_file, lazy=True
+            )
             ligand = cls.from_sdf(file_path=local_file_path)
         elif smiles:
             ligand = cls.from_smiles(smiles=smiles)
@@ -2389,14 +2392,16 @@ class LigandSet:
             raise ValueError(
                 f"Failed to rehydrate all requested ligands. Missing IDs: {missing_ids}"
             )
-        return cls(
-            ligands=[
-                Ligand._from_platform_record(
-                    data=records_by_id[ligand_id], client=client
-                )
-                for ligand_id in ids
-            ]
-        )
+
+        def _build(ligand_id: str) -> "Ligand":
+            return Ligand._from_platform_record(
+                data=records_by_id[ligand_id], client=client
+            )
+
+        with concurrent.futures.ThreadPoolExecutor(max_workers=20) as executor:
+            ligands = list(executor.map(_build, ids))
+
+        return cls(ligands=ligands)
 
     def map_network(
         self,

@@ -1,11 +1,12 @@
 import os
 from pathlib import Path
+from unittest.mock import MagicMock
 
 import numpy as np
 import pytest
 
 from deeporigin.drug_discovery.constants import SUPPORTED_ATOM_SYMBOLS
-from deeporigin.drug_discovery.structures import Ligand
+from deeporigin.drug_discovery.structures import Ligand, LigandSet
 from deeporigin.exceptions import DeepOriginException
 from deeporigin.platform.client import DeepOriginClient
 
@@ -736,3 +737,25 @@ def test_from_id_lv1():
     assert fetched.id == ligand.id
     assert fetched.smiles is not None
     assert fetched.mol is not None
+
+
+def test_ligand_set_from_ids_uses_batched_entities_api():
+    """Test that LigandSet.from_ids rehydrates records via get_ligands."""
+    client = DeepOriginClient()
+    client.entities.get_ligands = MagicMock(
+        return_value=[
+            {"id": "lig-2", "name": "Propanol", "smiles": "CCCO"},
+            {"id": "lig-1", "name": "Ethanol", "smiles": "CCO"},
+        ]
+    )
+    client.entities.get_ligand = MagicMock()
+
+    ligands = LigandSet.from_ids(["lig-1", "lig-2"], client=client)
+
+    client.entities.get_ligands.assert_called_once_with(ids=["lig-1", "lig-2"])
+    client.entities.get_ligand.assert_not_called()
+
+    assert len(ligands.ligands) == 2
+    assert [lig.id for lig in ligands.ligands] == ["lig-1", "lig-2"]
+    assert [lig.name for lig in ligands.ligands] == ["Ethanol", "Propanol"]
+    assert [lig.smiles for lig in ligands.ligands] == ["CCO", "CCCO"]

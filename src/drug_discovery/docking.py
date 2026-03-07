@@ -14,6 +14,7 @@ Usage::
     poses = docking.get_results()
 """
 
+import concurrent.futures
 import os
 from typing import Self
 
@@ -334,18 +335,26 @@ class Docking(Execution, QuoteMixin, SyncExecutableMixin, AsyncExecutableMixin):
         instance = super().from_id(id, client=client)
         inputs = instance._execution_dto["userInputs"]
 
-        instance._protein = Protein.from_id(
-            inputs["protein"]["id"],
-            client=instance.client,
-        )
-        instance._ligands = LigandSet.from_ids(
-            [lig["id"] for lig in inputs["ligands"]],
-            client=instance.client,
-        )
-        instance._pocket = Pocket.from_id(
-            inputs["pocket_id"],
-            client=instance.client,
-        )
+        with concurrent.futures.ThreadPoolExecutor(max_workers=3) as executor:
+            fut_protein = executor.submit(
+                Protein.from_id,
+                inputs["protein"]["id"],
+                client=instance.client,
+            )
+            fut_ligands = executor.submit(
+                LigandSet.from_ids,
+                [lig["id"] for lig in inputs["ligands"]],
+                client=instance.client,
+            )
+            fut_pocket = executor.submit(
+                Pocket.from_id,
+                inputs["pocket_id"],
+                client=instance.client,
+            )
+
+        instance._protein = fut_protein.result()
+        instance._ligands = fut_ligands.result()
+        instance._pocket = fut_pocket.result()
 
         return instance
 
