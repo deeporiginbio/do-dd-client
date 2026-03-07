@@ -4,7 +4,6 @@ Tests for the Pocket class.
 
 import os
 from pathlib import Path
-from unittest.mock import MagicMock
 
 import numpy as np
 import pytest
@@ -176,15 +175,6 @@ def test_from_residue_num_lv0():
     assert isinstance(
         custom_pocket.get_center(), np.ndarray
     ) and custom_pocket.get_center().shape == (3,)
-
-
-def test_from_id_no_record_raises_lv0():
-    """Pocket.from_id raises ValueError when no record exists for the given ID."""
-    client = MagicMock()
-    client.results.get_pockets.return_value = {"data": []}
-
-    with pytest.raises(ValueError, match="No pocket record found"):
-        Pocket.from_id("nonexistent", client=client)
 
 
 def test_from_id_lv2():

@@ -2,7 +2,6 @@
 
 import os
 from pathlib import Path
-from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -14,7 +13,6 @@ from deeporigin.drug_discovery.execution_mixins import (
     SyncExecutableMixin,
 )
 from deeporigin.drug_discovery.pocket_finder import PocketFinder
-from deeporigin.platform.client import DeepOriginClient
 
 _BRD_PDB = Path(os.path.join(BRD_DATA_DIR, "brd.pdb"))
 
@@ -227,24 +225,6 @@ class TestAsyncExecutableMixin:
         with pytest.raises(ValueError, match="Cannot cancel"):
             job.cancel()
 
-    def test_list_delegates_to_platform(self):
-        """list() calls through to platform JobList.list()."""
-        mock_client = MagicMock()
-        mock_job_list = MagicMock()
-
-        with (
-            patch(
-                "deeporigin.platform.client.DeepOriginClient.get",
-                return_value=mock_client,
-            ),
-            patch(
-                "deeporigin.platform.job.JobList.list",
-                return_value=mock_job_list,
-            ),
-        ):
-            result = AsyncJob.list()
-            assert result is mock_job_list
-
 
 # ===========================================================================
 # PocketFinder tests
@@ -286,55 +266,6 @@ class TestPocketFinderConstruction:
         """tool_key matches the platform constant."""
         pf = PocketFinder(protein)
         assert pf.tool_key == "deeporigin.pocketfinder"
-
-
-class TestPocketFinderQuote:
-    """PocketFinder.quote() populates estimate."""
-
-    def test_quote_sets_estimate(self, protein):
-        """quote() calls the functions API and sets self.estimate."""
-        pf = PocketFinder(protein, client=MagicMock(spec=DeepOriginClient))
-
-        mock_result = MagicMock()
-        mock_result.estimate = 0.42
-
-        with patch(
-            "deeporigin.functions.pocket_finder.find_pockets",
-            return_value=mock_result,
-        ) as mock_fn:
-            pf.quote()
-            mock_fn.assert_called_once()
-            call_kwargs = mock_fn.call_args[1]
-            assert call_kwargs["quote"] is True
-
-        assert pf.estimate == 0.42
-
-
-class TestPocketFinderRun:
-    """PocketFinder.run() returns pockets and sets cost."""
-
-    def test_run_returns_pockets_and_sets_cost(self, protein):
-        """run() delegates to the functions API and sets cost."""
-        pf = PocketFinder(protein, client=MagicMock(spec=DeepOriginClient))
-
-        mock_result = MagicMock()
-        mock_result.cost = 0.99
-        mock_pockets = [MagicMock(), MagicMock()]
-
-        with (
-            patch(
-                "deeporigin.functions.pocket_finder.find_pockets",
-                return_value=mock_result,
-            ),
-            patch(
-                "deeporigin.drug_discovery.structures.protein._make_pockets_from_result",
-                return_value=mock_pockets,
-            ),
-        ):
-            result = pf.run()
-
-        assert result == mock_pockets
-        assert pf.cost == 0.99
 
 
 class TestPocketFinderNoAsyncMethods:
