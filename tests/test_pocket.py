@@ -4,6 +4,7 @@ Tests for the Pocket class.
 
 import os
 from pathlib import Path
+from unittest.mock import MagicMock
 
 import numpy as np
 import pytest
@@ -175,3 +176,55 @@ def test_from_residue_num_lv0():
     assert isinstance(
         custom_pocket.get_center(), np.ndarray
     ) and custom_pocket.get_center().shape == (3,)
+
+
+def test_from_id_no_record_raises_lv0():
+    """Pocket.from_id raises ValueError when no record exists for the given ID."""
+    client = MagicMock()
+    client.results.get_pockets.return_value = {"data": []}
+
+    with pytest.raises(ValueError, match="No pocket record found"):
+        Pocket.from_id("nonexistent", client=client)
+
+
+def test_from_id_lv2():
+    """Test round-trip: find_pockets -> Pocket.from_result -> Pocket.from_id.
+
+    this is a lv2 test because it calls pocketfinder function and platform API"""
+
+    from conftest import check_function_exists
+    from deeporigin.platform import DeepOriginClient
+    from deeporigin.platform.constants import (
+        POCKET_FINDER_FUNCTION_KEY,
+        POCKET_FINDER_FUNCTION_VERSION,
+    )
+
+    client = DeepOriginClient()
+
+    if not check_function_exists(
+        client, POCKET_FINDER_FUNCTION_KEY, POCKET_FINDER_FUNCTION_VERSION
+    ):
+        pytest.skip("Pocket finder function does not exist")
+
+    protein = Protein.from_file(BRD_DATA_DIR / "brd.pdb")
+    protein.remove_water()
+    protein.sync(client=client)
+
+    result = protein.find_pockets(pocket_count=1, use_cache=False, client=client)
+    assert len(result.pockets) >= 1
+
+    pockets_from_result = Pocket.from_result(
+        execution_id=result._responses[0]["id"],
+        client=client,
+    )
+    assert len(pockets_from_result) >= 1
+    pocket_id = pockets_from_result[0].id
+    assert pocket_id is not None
+
+    fetched = Pocket.from_id(pocket_id, client=client)
+
+    assert fetched.id == pocket_id
+    assert fetched.file_path is not None
+    assert fetched.file_path.exists()
+    assert fetched.coordinates is not None
+    assert fetched.protein_id == protein.id
