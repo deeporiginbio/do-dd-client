@@ -102,65 +102,7 @@ class ABFE(Execution, QuoteMixin, AsyncExecutableMixin):
         Raises:
             ValueError: If the ligand is charged (ABFE does not support charged ligands).
         """
-        from deeporigin.exceptions import DeepOriginException
-        from deeporigin.functions.sysprep import abfe as _sysprep_abfe
-
-        if self.ligand.is_charged():
-            raise DeepOriginException(
-                title="Cannot prepare ABFE: charged ligand",
-                message=f"Ligand {self.ligand.name} is charged. ABFE does not support charged ligands.",
-            )
-
-        missing = self.protein.find_missing_residues()
-        if len(missing) > 0:
-            raise DeepOriginException(
-                title="Protein has missing residues",
-                message="Please use the loop modelling tool to fill in missing residues before preparing.",
-            )
-
-        result = _sysprep_abfe(
-            protein=self.protein,
-            ligand=self.ligand,
-            padding=padding,
-            retain_waters=retain_waters,
-            add_H_atoms=add_H_atoms,
-            protonate_protein=protonate_protein,
-            client=self.client,
-        )
-
-        outputs = result.function_outputs[0]
-        self._prepared_outputs = outputs
-
-        output_files = outputs.get("output_files", [])
-        if not output_files and "system" in outputs:
-            output_files = outputs
-
-        binding_xml = None
-        solvation_xml = None
-
-        if isinstance(output_files, list):
-            for f in output_files:
-                if isinstance(f, str) and f.endswith("bsm_system.xml"):
-                    binding_xml = f
-                elif isinstance(f, str) and f.endswith("solvation.xml"):
-                    solvation_xml = f
-        elif isinstance(output_files, dict):
-            for key, val in output_files.items():
-                if isinstance(val, dict) and "system_pdb_file_path" in val:
-                    pass
-
-        self.binding_xml_path = binding_xml
-        self.solvation_xml_path = solvation_xml
-
-        system_pdb = outputs.get("system", {}).get("system_pdb_file_path")
-        if system_pdb:
-            local_path = self.client.files.download_file(
-                remote_path=system_pdb,
-                lazy=True,
-            )
-            return Protein.from_file(local_path)
-
-        return self.protein
+        raise NotImplementedError("ABFE preparation is not supported yet.")
 
     def quote(self) -> None:
         """Request a cost estimate for the ABFE calculation.
