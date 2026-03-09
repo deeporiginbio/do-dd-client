@@ -63,7 +63,7 @@ def __getattr__(name):
 
         return Execution
     elif name == "PlatformStatus":
-        from deeporigin.drug_discovery.execution import PlatformStatus
+        from deeporigin.platform.constants import PlatformStatus
 
         return PlatformStatus
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

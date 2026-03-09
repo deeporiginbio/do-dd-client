@@ -395,7 +395,7 @@ poses = docking.get_results()
 # constructing a DockingJob from entities will ALWAYS create a new instance with no platform execution backing it
 docking = Docking(protein=protein, ligands=ligands, pocket=pocket)
 docking.status # None (no platform execution yet)
-dokcing.id # not be set
+docking.id # not be set
 docking.cancel() # will raise an error, no job behind this
 docking.get_results() # raise an error, no job, no ID, no status
 docking.estimate # will be None

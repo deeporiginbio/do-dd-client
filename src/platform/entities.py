@@ -250,6 +250,7 @@ class Entities:
 
         all_data: list[dict[str, Any]] = []
         cursor: str | None = None
+        is_first_page = True
 
         while True:
             response = self.search(
@@ -257,11 +258,12 @@ class Entities:
                 cursor=cursor,
                 filter_dict=filter_dict,
                 limit=limit,
-                offset=offset,
+                offset=offset if is_first_page else None,
                 select=select,
                 sort=sort,
             )
             all_data.extend(response.get("data", []))
+            is_first_page = False
 
             cursor = response.get("meta", {}).get("nextCursor")
             if not cursor:

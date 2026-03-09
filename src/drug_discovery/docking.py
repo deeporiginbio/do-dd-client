@@ -298,17 +298,8 @@ class Docking(Execution, QuoteMixin, SyncExecutableMixin, AsyncExecutableMixin):
                 }
                 for lig in ligands
             ],
+            "pocket_id": self.pocket.id,
         }
-
-        if self.protein.id is not None:
-            params["protein"]["id"] = self.protein.id
-
-        for i, lig in enumerate(ligands):
-            if lig.id is not None:
-                params["ligands"][i]["id"] = lig.id
-
-        if hasattr(self.pocket, "id") and self.pocket.id is not None:
-            params["pocket_id"] = self.pocket.id
 
         return params, metadata
 
@@ -335,6 +326,13 @@ class Docking(Execution, QuoteMixin, SyncExecutableMixin, AsyncExecutableMixin):
         instance = super().from_id(id, client=client)
         inputs = instance._execution_dto["userInputs"]
 
+        pocket_id = inputs.get("pocket_id")
+        if pocket_id is None:
+            raise ValueError(
+                "Missing 'pocket_id' in execution userInputs; "
+                "this execution may have been created without an associated pocket."
+            )
+
         with concurrent.futures.ThreadPoolExecutor(max_workers=3) as executor:
             fut_protein = executor.submit(
                 Protein.from_id,
@@ -348,7 +346,7 @@ class Docking(Execution, QuoteMixin, SyncExecutableMixin, AsyncExecutableMixin):
             )
             fut_pocket = executor.submit(
                 Pocket.from_id,
-                inputs["pocket_id"],
+                pocket_id,
                 client=instance.client,
             )
 
@@ -365,7 +363,13 @@ class Docking(Execution, QuoteMixin, SyncExecutableMixin, AsyncExecutableMixin):
 
         Returns:
             A ``LigandSet`` of docked poses, or ``None`` if no results yet.
+
+        Raises:
+            ValueError: If no execution has been started.
         """
+        if self.id is None:
+            raise ValueError("No execution has been started. Call start() first.")
+
         response = self.client.results.get_poses(protein_id=self.protein.id)
         records = response.get("data", [])
         remote_paths: list[str] = []

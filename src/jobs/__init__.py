@@ -7,7 +7,7 @@ Prefer importing directly from ``deeporigin.drug_discovery``::
 
 from deeporigin.drug_discovery.abfe import ABFE
 from deeporigin.drug_discovery.docking import Docking
-from deeporigin.drug_discovery.execution import Execution, PlatformStatus
+from deeporigin.drug_discovery.execution import Execution
 from deeporigin.drug_discovery.execution_mixins import (
     AsyncExecutableMixin,
     JupyterVizMixin,
@@ -15,6 +15,7 @@ from deeporigin.drug_discovery.execution_mixins import (
     SyncExecutableMixin,
 )
 from deeporigin.drug_discovery.pocket_finder import PocketFinder
+from deeporigin.platform.constants import PlatformStatus
 
 __all__ = [
     "ABFE",

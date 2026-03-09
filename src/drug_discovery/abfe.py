@@ -18,9 +18,7 @@ from deeporigin.drug_discovery.execution_mixins import AsyncExecutableMixin, Quo
 from deeporigin.drug_discovery.structures.ligand import Ligand
 from deeporigin.drug_discovery.structures.protein import Protein
 from deeporigin.platform.client import DeepOriginClient
-
-ABFE_TOOL_KEY = "deeporigin.abfe-end-to-end"
-ABFE_TOOL_VERSION = "0.2.19"
+from deeporigin.platform.constants import ABFE_TOOL_KEY, ABFE_TOOL_VERSION
 
 
 class ABFE(Execution, QuoteMixin, AsyncExecutableMixin):

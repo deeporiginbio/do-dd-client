@@ -462,7 +462,6 @@ class Docking(WorkflowStep):
                 tool="Docking",
                 tool_version=self.tool_version,
                 client=self.parent.client,
-                output_dir_path=output_dir_path,
                 approve_amount=approve_amount,
             )
             return execution_dto

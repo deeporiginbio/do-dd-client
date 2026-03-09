@@ -379,13 +379,15 @@ class ABFE(WorkflowStep):
             if output_dir_path is None:
                 output_dir_path = f"tool-runs/ABFE/{self.parent.protein.to_hash()}.pdb/{ligand.to_hash()}.sdf/"
 
+            outputs = {"output_dir_path": output_dir_path}
+
             execution_dto = utils._start_tool_run(
                 metadata=metadata,
                 params=params,
                 tool="ABFE",
                 tool_version=self.tool_version,
                 client=self.parent.client,
-                output_dir_path=output_dir_path,
+                outputs=outputs,
                 approve_amount=approve_amount,
             )
 

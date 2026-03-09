@@ -160,7 +160,7 @@ class Results:
             tool_version: Optional tool version to filter by.
             limit: Page size per request. Defaults to 1000.
             select: List of fields to select. Defaults to
-                ``["id", "tool_id", "tool_version", "data", "execution_id"]``.
+                ``["id", "tool_id", "tool_version", "data", "compute_job_id"]``.
 
         Returns:
             Dictionary with ``data`` (all records across pages) and ``meta``
@@ -203,7 +203,7 @@ class Results:
             tool_version: Optional tool version to filter by.
             limit: Page size per request. Defaults to 1000.
             select: List of fields to select. Defaults to
-                ``["id", "tool_id", "tool_version", "data", "execution_id"]``.
+                ``["id", "tool_id", "tool_version", "data", "compute_job_id"]``.
 
         Returns:
             Dictionary with ``data`` (all records across pages) and ``meta``
