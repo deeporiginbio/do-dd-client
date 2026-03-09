@@ -343,11 +343,58 @@ class Pocket:
         return pockets
 
     @classmethod
+    def from_id(
+        cls,
+        id: str,
+        *,
+        client: Optional["DeepOriginClient"] = None,
+    ) -> Self:
+        """Create a Pocket from a result-explorer record ID.
+
+        Fetches the single record, downloads the pocket PDB file, and
+        constructs a Pocket object.
+
+        Args:
+            id: Result-explorer record ID of the pocket.
+            client: Optional DeepOriginClient instance. If not provided,
+                uses the default client.
+
+        Returns:
+            A Pocket with properties populated from the record.
+
+        Raises:
+            ValueError: If no record is found for the given ID.
+        """
+        from deeporigin.platform.client import DeepOriginClient
+
+        if client is None:
+            client = DeepOriginClient.get()
+
+        response = client.results.get_pockets(id=id)
+        records = response.get("data", [])
+
+        if not records:
+            raise ValueError(f"No pocket record found for id={id!r}.")
+
+        record = records[0]
+        pocket_data = dict(record["data"])
+        pocket_data["id"] = record["id"]
+        remote_path = pocket_data["file_path"]
+        pocket_data["file_path"] = client.files.download_file(
+            remote_path=remote_path,
+            lazy=True,
+        )
+
+        return cls.from_json([pocket_data])[0]
+
+    @classmethod
     def from_result(
         cls,
         *,
         protein_id: str | None = None,
         execution_id: str | None = None,
+        pocket_count: int | None = None,
+        pocket_min_size: int | None = None,
         client: Optional["DeepOriginClient"] = None,
     ) -> list[Self]:
         """Create Pocket objects from pocketfinder results in the data platform.
@@ -357,6 +404,10 @@ class Pocket:
 
         Args:
             protein_id: Protein ID to fetch pocket results for.
+            execution_id: Optional compute job ID to filter by.
+            pocket_count: Optional maximum number of pockets to filter by.
+            pocket_min_size: Optional minimum pocket volume in cubic Angstroms
+                to filter by.
             client: Optional DeepOriginClient instance. If not provided,
                 uses the default client.
 
@@ -374,6 +425,8 @@ class Pocket:
         response = client.results.get_pockets(
             protein_id=protein_id,
             compute_job_id=execution_id,
+            pocket_count=pocket_count,
+            pocket_min_size=pocket_min_size,
         )
         records = response.get("data", [])
 

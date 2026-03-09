@@ -193,7 +193,9 @@ def test_sysprep_with_data_platform_lv2(
     function_data = function_data["system"]
 
     # query data platform for this result
-    response = client.results.get(compute_job_id=result.responses[0]["id"])
+    response = client.results.get(
+        filter_dict={"compute_job_id": result.responses[0]["id"]},
+    )
     data = response["data"][0]["data"]
 
     # check that the two are the same

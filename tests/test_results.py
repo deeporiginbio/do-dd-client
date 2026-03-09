@@ -28,8 +28,10 @@ def test_get_results_lv1():
     tool_id, protein_id, _ = _get_result_explorer_ids()
 
     response = client.results.get(
-        tool_id=tool_id,
-        protein_id=protein_id,
+        filter_dict={
+            "tool_id": {"eq": tool_id},
+            "protein_id": {"eq": protein_id},
+        },
     )
 
     assert isinstance(response, dict), "Expected a dictionary response"
@@ -47,11 +49,14 @@ def test_get_results_with_tool_version_lv1():
     client = DeepOriginClient()
     tool_id, protein_id, tool_version = _get_result_explorer_ids()
 
-    response = client.results.get(
-        tool_id=tool_id,
-        protein_id=protein_id,
-        tool_version=tool_version,
-    )
+    filter_dict: dict = {
+        "tool_id": {"eq": tool_id},
+        "protein_id": {"eq": protein_id},
+    }
+    if tool_version is not None:
+        filter_dict["tool_version"] = {"eq": tool_version}
+
+    response = client.results.get(filter_dict=filter_dict)
 
     assert isinstance(response, dict), "Expected a dictionary response"
     assert "data" in response, "Expected 'data' key in response"

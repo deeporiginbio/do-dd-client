@@ -3,6 +3,7 @@ This module contains the Ligand and LigandSet classes, which allow you to work w
 """
 
 import base64
+import concurrent.futures
 from dataclasses import dataclass, field
 import hashlib
 import os
@@ -334,6 +335,46 @@ class Ligand(Entity):
         return ligands[0]
 
     @classmethod
+    def _from_platform_record(
+        cls, data: dict[str, Any], *, client: DeepOriginClient
+    ) -> Self:
+        """Create a Ligand instance from a platform ligand record.
+
+        Args:
+            data: Ligand record returned by the platform entities API.
+            client: DeepOrigin client used to download associated files.
+
+        Returns:
+            Ligand: A new Ligand instance.
+
+        Raises:
+            ValueError: If the ligand data contains neither a mol file nor a
+                SMILES string.
+        """
+        mol_file = data.get("mol_file")
+        smiles = data.get("smiles") or data.get("canonical_smiles")
+
+        if mol_file:
+            local_file_path = client.files.download_file(
+                remote_path=mol_file, lazy=True
+            )
+            ligand = cls.from_sdf(file_path=local_file_path)
+        elif smiles:
+            ligand = cls.from_smiles(smiles=smiles)
+        else:
+            raise ValueError(
+                f"Ligand {data.get('id')} has neither a mol file nor a SMILES string. "
+                "Cannot create Ligand instance."
+            )
+
+        ligand.id = data.get("id")
+
+        if data.get("name"):
+            ligand.name = data["name"]
+
+        return ligand
+
+    @classmethod
     def from_id(cls, id: str, *, client: Optional[DeepOriginClient] = None) -> Self:
         """Create a Ligand instance from a Deep Origin Data Platform ID.
 
@@ -357,27 +398,7 @@ class Ligand(Entity):
             client = DeepOriginClient.get()
 
         data = client.entities.get_ligand(id=id)
-
-        mol_file = data.get("mol_file")
-        smiles = data.get("smiles") or data.get("canonical_smiles")
-
-        if mol_file:
-            local_file_path = client.files.download_file(remote_path=mol_file)
-            ligand = cls.from_sdf(file_path=local_file_path)
-        elif smiles:
-            ligand = cls.from_smiles(smiles=smiles)
-        else:
-            raise ValueError(
-                f"Ligand {id} has neither a mol file nor a SMILES string. "
-                "Cannot create Ligand instance."
-            )
-
-        ligand.id = data.get("id")
-
-        if data.get("name"):
-            ligand.name = data["name"]
-
-        return ligand
+        return cls._from_platform_record(data=data, client=client)
 
     def process_mol(self) -> None:
         """
@@ -2332,11 +2353,55 @@ class LigandSet:
 
     @classmethod
     def from_smiles(cls, smiles: list[str] | set[str]) -> Self:
-        """
-        Create a LigandSet from a list of SMILES strings.
-        """
+        """Create a LigandSet from a list of SMILES strings.
 
+        Args:
+            smiles: SMILES strings to convert into ligands.
+
+        Returns:
+            A new LigandSet containing one Ligand per SMILES string.
+        """
         return cls(ligands=[Ligand.from_smiles(s) for s in smiles])
+
+    @classmethod
+    def from_ids(
+        cls,
+        ids: list[str],
+        *,
+        client: DeepOriginClient | None = None,
+    ) -> Self:
+        """Create a LigandSet by fetching ligands from the platform by ID.
+
+        Args:
+            ids: List of Deep Origin Data Platform ligand IDs.
+            client: Optional API client. Uses the default if not provided.
+
+        Returns:
+            A new LigandSet containing the rehydrated ligands.
+
+        Notes:
+            This delegates entity retrieval to ``client.entities.get_ligands()``
+            and preserves the order of the requested IDs.
+        """
+        if client is None:
+            client = DeepOriginClient.get()
+        records = client.entities.get_ligands(ids=ids)
+        records_by_id = {record["id"]: record for record in records if record.get("id")}
+        missing_ids = [ligand_id for ligand_id in ids if ligand_id not in records_by_id]
+        if missing_ids:
+            raise ValueError(
+                f"Failed to rehydrate all requested ligands. Missing IDs: {missing_ids}"
+            )
+
+        def _build(ligand_id: str) -> "Ligand":
+            return Ligand._from_platform_record(
+                data=records_by_id[ligand_id], client=client
+            )
+
+        with concurrent.futures.ThreadPoolExecutor(max_workers=20) as executor:
+            ligands = list(executor.map(_build, ids))
+
+        return cls(ligands=ligands)
 
     def map_network(
         self,

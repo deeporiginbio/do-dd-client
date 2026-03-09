@@ -1,568 +1,256 @@
-"""This module encapsulates methods to run ABFE and show ABFE results on Deep Origin.
+"""ABFE -- async-only absolute binding free energy execution.
 
-The ABFE object instantiated here is contained in the Complex class is meant to be used within that class."""
+Usage::
 
-from pathlib import Path
-from typing import Literal, Optional
+    abfe = ABFE(protein=protein, ligand=ligand)
+    abfe.prepare()
+    abfe.quote()
+    abfe.start()
+    abfe.sync()
+    results = abfe.get_results()
+"""
+
+from typing import NoReturn
 
 from beartype import beartype
 import pandas as pd
 
-from deeporigin.drug_discovery import utils
-from deeporigin.drug_discovery.constants import tool_mapper
-from deeporigin.drug_discovery.structures.ligand import Ligand, LigandSet
-from deeporigin.drug_discovery.workflow_step import WorkflowStep
-from deeporigin.exceptions import DeepOriginException
-from deeporigin.platform.job import Job, JobList
-from deeporigin.utils.env import _ensure_do_folder
-from deeporigin.utils.notebook import get_notebook_environment
-
-LOCAL_BASE = _ensure_do_folder()
+from deeporigin.drug_discovery.execution import Execution
+from deeporigin.drug_discovery.execution_mixins import AsyncExecutableMixin, QuoteMixin
+from deeporigin.drug_discovery.structures.ligand import Ligand
+from deeporigin.drug_discovery.structures.protein import Protein
+from deeporigin.platform.client import DeepOriginClient
+from deeporigin.platform.constants import ABFE_TOOL_KEY, ABFE_TOOL_VERSION
 
 
-class ABFE(WorkflowStep):
-    """class to handle ABFE-related tasks within the Complex class.
+class ABFE(Execution, QuoteMixin, AsyncExecutableMixin):
+    """Absolute Binding Free Energy calculation (async-only).
 
-    Objects instantiated here are meant to be used within the Complex class."""
+    Requires a ``prepare()`` step before ``start()`` to generate the
+    solvation and binding XML files needed by the ABFE tool.
 
-    """tool version to use for ABFE"""
-    tool_version = "0.2.19"
-    _tool_key = tool_mapper["ABFE"]
+    Attributes:
+        protein: Target protein structure.
+        ligand: Ligand to evaluate.
+        solvation_xml_path: Remote path to the solvation XML (set by ``prepare()``).
+        binding_xml_path: Remote path to the binding XML (set by ``prepare()``).
+    """
 
-    _max_atom_count: int = 100_000
+    tool_key: str = ABFE_TOOL_KEY
 
-    def __init__(self, parent):
-        super().__init__(parent)
-
-        self._params["end_to_end"] = utils._load_params("abfe_end_to_end")
-
-    def get_results(self) -> pd.DataFrame | None:
-        """get ABFE results and return in a dataframe.
-
-        This method returns a dataframe showing the results of ABFE runs associated with this simulation session. The ligand file name and ΔG are shown, together with user-supplied properties"""
-
-        df = self.get_jobs_df(include_outputs=True)
-
-        results_files = []
-
-        for _, row in df.iterrows():
-            file_path = row["user_outputs"]["abfe_results_summary"]["key"]
-            results_files.append(file_path)
-
-        if len(results_files) == 0:
-            print("No ABFE results found for this protein.")
-            return None
-
-        results_files = dict.fromkeys(results_files, None)
-
-        results_files = self.parent.client.files.download_files(
-            files=results_files,
-            skip_errors=True,
-        )
-
-        ligand_mapper = {}
-        for ligand in self.parent.ligands:
-            ligand_mapper[ligand.to_hash()] = ligand.smiles
-
-        # read all the CSV files using pandas and
-        # set Ligand1 column to ligand name (parent dir of results.csv)
-        dfs = []
-        for file in results_files:
-            df = pd.read_csv(file, nrows=1)  # we only expect one row per ABFE run
-
-            # extract ligand hash from file path
-            ligand_hash = str(Path(file).parent.stem)
-            df["SMILES"] = ligand_mapper[ligand_hash]
-
-            dfs.append(df)
-        df1 = pd.concat(dfs)
-
-        df1.drop(columns=["Ligand"], inplace=True)
-
-        df2 = self.parent.ligands.to_dataframe()
-
-        df = pd.merge(df1, df2, on="SMILES", how="inner")
-
-        # drop some columns we don't want to show
-        df.drop(
-            columns=["Binding", "Solvation", "OverlapScore"],
-            inplace=True,
-            errors="ignore",
-        )
-
-        return df
-
-    def show_results(self):
-        """Show ABFE results in a dataframe.
-
-        This method returns a dataframe showing the results of ABFE runs associated with this simulation session. The ligand file name, 2-D structure, and ΔG are shown."""
-
-        df = self.get_results()
-
-        if df is None or len(df) == 0:
-            return
-
-        from rdkit.Chem import PandasTools
-
-        PandasTools.AddMoleculeColumnToFrame(df, smilesCol="SMILES", molCol="Structure")
-        PandasTools.RenderImagesInAllDataFrames()
-
-        # show structure first
-        new_order = ["Structure"] + [col for col in df.columns if col != "Structure"]
-
-        # re‑index DataFrame
-        df = df[new_order]
-
-        if get_notebook_environment() == "marimo":
-            import marimo as mo
-
-            return mo.plain(df)
-
-        else:
-            return df
-
-    def get_jobs_df(
+    @beartype
+    def __init__(
         self,
         *,
-        include_metadata: bool = True,
-        include_outputs: bool = False,
-        include_inputs: bool = False,
-    ):
-        """get jobs for this workflow step"""
-        df = super().get_jobs_df(
-            include_outputs=include_outputs,
-            include_inputs=include_inputs,
-            include_metadata=include_metadata,
-        )
+        protein: Protein,
+        ligand: Ligand,
+        tool_version: str = ABFE_TOOL_VERSION,
+        client: DeepOriginClient | None = None,
+    ) -> None:
+        """Create an ABFE execution for a protein-ligand pair.
 
-        ligand_hashes = [ligand.to_hash() for ligand in self.parent.ligands]
+        Args:
+            protein: Protein structure.
+            ligand: Ligand molecule.
+            tool_version: Platform tool version to run. Settable so callers
+                can pin or upgrade independently of the SDK release.
+            client: Optional API client.
+        """
+        super().__init__(client=client)
+        self.tool_version = tool_version
 
-        # filter df by ligand_hash
-        df = df[df["metadata"].apply(lambda d: d.get("ligand_hash") in ligand_hashes)]
+        self._protein = protein
+        self._ligand = ligand
+        self.solvation_xml_path: str | None = None
+        self.binding_xml_path: str | None = None
+        self._prepared_outputs: dict | None = None
 
-        # make a new column called ligand_smiles using the metadata column
-        df["ligand_smiles"] = df["metadata"].apply(
-            lambda d: d.get("ligand_smiles") if isinstance(d, dict) else None
-        )
+    @property
+    def protein(self) -> Protein:
+        """Target protein structure."""
+        return self._protein
 
-        # make a new column called protein_file using the metadata column
-        df["protein_name"] = df["metadata"].apply(
-            lambda d: d.get("protein_name") if isinstance(d, dict) else None
-        )
-
-        # make a new column called ligand_file using the metadata column
-        df["ligand_name"] = df["metadata"].apply(
-            lambda d: d.get("ligand_name") if isinstance(d, dict) else None
-        )
-
-        if not include_metadata:
-            df.drop(columns=["metadata"], inplace=True)
-
-        return df
+    @property
+    def ligand(self) -> Ligand:
+        """Ligand to evaluate."""
+        return self._ligand
 
     @beartype
-    def set_test_run(self, value: int = 1):
-        """set test_run parameter in abfe parameters"""
-
-        utils._set_test_run(self._params["end_to_end"], value)
-
-    @beartype
-    def _get_ligands_to_run(
+    def prepare(
         self,
         *,
-        ligands: list[Ligand] | LigandSet,
-        re_run: bool,
-    ) -> list[Ligand]:
-        """Helper method to determine which ligands need to be run based on already run jobs and re_run flag."""
+        padding: float = 1.0,
+        retain_waters: bool = False,
+        add_H_atoms: bool = False,
+        protonate_protein: bool = False,
+    ) -> NoReturn:
+        """Run system preparation for the protein-ligand pair.
 
-        if isinstance(ligands, LigandSet):
-            ligands = ligands.ligands
+        .. note::
 
-        if re_run:
-            # we're re-running, so we need to re-run all ligands
-            return ligands
+            Not yet implemented. Will produce the solvation and binding
+            XML files required by ``start()``.
 
-        jobs = JobList.list(
-            client=self.parent.client,
-        )
-        df = jobs.filter(
-            tool_key=tool_mapper["ABFE"],
-            status=["Succeeded", "Running", "Queued", "Created"],
-            require_metadata=True,
-        ).to_dataframe(
-            include_metadata=True,
-            resolve_user_names=False,
-            client=self.parent.client,
-        )
-
-        # Build set of ligand names that have already been run
-        if len(df) > 0:
-            ligand_hashes_already_run = {
-                ligand_hash
-                for ligand_hash in df["metadata"].apply(
-                    lambda d: d.get("ligand_hash") if isinstance(d, dict) else None
-                )
-                if isinstance(ligand_hash, str) and ligand_hash
-            }
-        else:
-            ligand_hashes_already_run = set()
-
-        # no re-run, remove already run ligands
-        ligands_to_run = [
-            ligand
-            for ligand in ligands
-            if ligand.to_hash() not in ligand_hashes_already_run
-        ]
-        return ligands_to_run
-
-    @beartype
-    def check_dt(self):
-        """Validate that every "dt" in params is numeric and within allowed bounds.
-
-        Traverses the nested parameters dictionary and validates that each
-        occurrence of a key named "dt" has a numeric value within the
-        inclusive range [min_dt, max_dt]. If any non-numeric or out-of-range
-        values are found, an error is raised listing all offending paths.
+        Args:
+            padding: Padding around the system box in nm. Defaults to 1.0.
+            retain_waters: Keep water molecules from the crystal structure.
+            add_H_atoms: Add hydrogen atoms to the ligand.
+            protonate_protein: Protonate the protein.
 
         Raises:
-            DeepOriginException: If any "dt" value is non-numeric or outside
-                the allowed range.
+            NotImplementedError: Always -- preparation is not yet supported.
         """
-        min_dt = 0.001
-        max_dt = 0.004
+        raise NotImplementedError("ABFE preparation is not supported yet.")
 
-        def is_number(value) -> bool:
-            return isinstance(value, (int, float))
+    def quote(self) -> None:
+        """Request a cost estimate for the ABFE calculation.
 
-        def find_dt_violations(obj, path: list[str]) -> list[str]:
-            """Return list of JSON-like paths with invalid dt values."""
-            violations: list[str] = []
-            if isinstance(obj, dict):
-                for key, value in obj.items():
-                    next_path = path + [str(key)]
-                    if key == "dt" and (
-                        not is_number(value) or not (min_dt <= float(value) <= max_dt)
-                    ):
-                        violations.append(".".join(next_path))
-                    # Recurse into nested structures
-                    if isinstance(value, (dict, list, tuple)):
-                        violations.extend(find_dt_violations(value, next_path))
-            elif isinstance(obj, (list, tuple)):
-                for idx, value in enumerate(obj):
-                    next_path = path + [str(idx)]
-                    if isinstance(value, (dict, list, tuple)):
-                        violations.extend(find_dt_violations(value, next_path))
-            return violations
+        Populates ``self.estimate``. Uses the tools API with
+        ``approve_amount=0`` to get a quotation.
+        """
+        from deeporigin.drug_discovery import utils
 
-        violations = find_dt_violations(self._params, ["_params"])
-        if violations:
-            paths = ", ".join(violations)
-            raise DeepOriginException(
-                f"Found invalid dt values; must be numeric and within range [{min_dt}, {max_dt}]. Offending paths: {paths}"
-            ) from None
+        if self.binding_xml_path is None or self.solvation_xml_path is None:
+            raise ValueError(
+                "System has not been prepared. Call prepare() before quote()."
+            )
+
+        execution_dto = utils._start_tool_run(
+            params=self._build_params(),
+            metadata=self._build_metadata(),
+            outputs=self._build_outputs(),
+            tool="ABFE",
+            tool_version=self.tool_version,
+            client=self.client,
+            approve_amount=0,
+        )
+
+        quotation = execution_dto.get("quotationResult", {})
+        successful = quotation.get("successfulQuotations", [])
+        if successful:
+            price = successful[0].get("priceTotal")
+            if price is not None:
+                self._estimate = float(price)
+                self._id = execution_dto.get("executionId")
+                self.status = execution_dto.get("status")
 
     @beartype
-    def run(
+    def start(
         self,
         *,
-        ligands: Optional[list[Ligand] | LigandSet] = None,
-        ligand: Optional[Ligand] = None,
-        re_run: bool = False,
-        output_dir_path: Optional[str] = None,
-        approve_amount: Optional[int] = 0,
-        quote: bool = False,
-    ) -> JobList | None:
-        """Method to run an end-to-end ABFE run.
+        approve_amount: int | None = None,
+    ) -> None:
+        """Submit the ABFE execution to the platform.
 
         Args:
-            ligands: List of ligand to run. Defaults to None. When None, all ligands in the object will be run. To view a list of valid ligands, use the `.show_ligands()` method
-            ligand: A single ligand to run. Defaults to None. When None, all ligands in the object will be run.
-            re_run: Whether to re-run the job if it already exists.
-            output_dir_path: Path to the output directory.
-            approve_amount: Dollar amount under which a job will be approved automatically.
-            quote: Whether to run or quote the job. When True, the job will be quoted and not run.
+            approve_amount: Pre-approved spend amount. If None, uses default.
+
+        Raises:
+            ValueError: If the system has not been prepared.
         """
+        from deeporigin.drug_discovery import utils
+        from deeporigin.platform.job import Job
 
-        # check that dt in params is valid
-        self.check_dt()
-
-        if quote:
-            approve_amount = 0
-            re_run = True  # if we want a quote, it's irrelevant whether this has already been run or not
-
-        if ligands is None and ligand is None:
-            ligands = self.parent.ligands
-        elif ligands is None:
-            ligands = [ligand]
-
-        if isinstance(ligands, LigandSet):
-            ligands = ligands.ligands
-
-        for ligand in ligands:
-            if ligand.is_charged():
-                raise DeepOriginException(
-                    title="Cannot run ABFE: charged ligand",
-                    message=f"Ligand {ligand.name} with SMILES {ligand.smiles} is charged. ABFE does not currently support charged ligands.",
-                ) from None
-
-        # check that there is a prepared system for each ligand
-        for ligand in ligands:
-            if ligand.to_hash() not in self.parent._prepared_systems:
-                raise DeepOriginException(
-                    title="Cannot run ABFE: unprepared ligand",
-                    message=f"Complex with Ligand {ligand.name} is not prepared.",
-                    fix="Use the `prepare` method of Complex to prepare the system.",
-                    level="danger",
-                ) from None
-
-        # TODO -- re-implement this check once we have a way to get the number of atoms in a prepared system
-        # # check that for every prepared system, the number of atoms is less than the max atom count
-        # for ligand_name, prepared_system in self.parent._prepared_systems.items():
-        #     if prepared_system.num_atoms > self._max_atom_count:
-        #         raise ValueError(
-        #             f"System with {ligand_name} has too many atoms. It has {prepared_system.num_atoms} atoms, but the maximum allowed is {self._max_atom_count}."
-        #         )
-
-        self.parent._sync_protein_and_ligands()
-
-        ligands_to_run = self._get_ligands_to_run(ligands=ligands, re_run=re_run)
-
-        if len(ligands_to_run) == 0:
-            print(
-                "All requested ligands have already been run, or are queued to run. To re-run, set re_run=True"
-            )
-            return
-
-        if self.jobs is None:
-            self.jobs = []
-
-        jobs_for_this_run = []
-
-        # TODO -- parallelize this
-        for ligand in ligands_to_run:
-            metadata = {
-                "protein_hash": self.parent.protein.to_hash(),
-                "ligand_hash": ligand.to_hash(),
-                "ligand_smiles": ligand.smiles,
-                "protein_name": self.parent.protein.name,
-                "ligand_name": ligand.name,
-            }
-
-            try:
-                prepared_system = self.parent._prepared_systems[ligand.to_hash()]
-
-                output_files = prepared_system["output_files"]
-
-                binding_xml = [
-                    file for file in output_files if file.endswith("bsm_system.xml")
-                ][0]
-                solvation_xml = [
-                    file for file in output_files if file.endswith("solvation.xml")
-                ][0]
-
-                params = self._params["end_to_end"]
-
-                params["binding_xml"] = {
-                    "$provider": "ufa",
-                    "key": binding_xml,
-                }
-                params["solvation_xml"] = {
-                    "$provider": "ufa",
-                    "key": solvation_xml,
-                }
-
-            except Exception as e:
-                raise DeepOriginException(
-                    "There is an error with the prepared system. Please prepare the system using the `prepare` method of Complex."
-                ) from e
-
-            if output_dir_path is None:
-                output_dir_path = f"tool-runs/ABFE/{self.parent.protein.to_hash()}.pdb/{ligand.to_hash()}.sdf/"
-
-            execution_dto = utils._start_tool_run(
-                metadata=metadata,
-                params=params,
-                tool="ABFE",
-                tool_version=self.tool_version,
-                client=self.parent.client,
-                output_dir_path=output_dir_path,
-                approve_amount=approve_amount,
+        if self.binding_xml_path is None or self.solvation_xml_path is None:
+            raise ValueError(
+                "System has not been prepared. Call prepare() before start()."
             )
 
-            job = Job.from_dto(execution_dto, client=self.parent.client)
+        self.protein.sync(client=self.client)
 
-            self.jobs.append(job)
-            jobs_for_this_run.append(job)
+        execution_dto = utils._start_tool_run(
+            params=self._build_params(),
+            metadata=self._build_metadata(),
+            outputs=self._build_outputs(),
+            tool="ABFE",
+            tool_version=self.tool_version,
+            client=self.client,
+            approve_amount=approve_amount,
+        )
 
-        return JobList(jobs_for_this_run)
+        job = Job.from_dto(execution_dto, client=self.client)
 
-    @beartype
-    def show_trajectory(
-        self,
-        *,
-        ligand: Ligand,
-        step: Literal["md", "binding"],
-        window: int = 1,
-    ):
-        """Show the system trajectory FEP run.
+        self._execution_dto = execution_dto
+        self._id = job.id
+        self.status = job.status
 
-        Args:
-            ligand: The ligand to show the trajectory for.
-            step (Literal["md", "abfe"]): The step to show the trajectory for.
-            window (int, optional): The window number to show the trajectory for.
+    def get_results(self) -> pd.DataFrame | None:
+        """Retrieve ABFE results as a DataFrame.
+
+        Downloads the results CSV from the platform and returns a
+        DataFrame with the binding free energy and related data.
+
+        Returns:
+            A DataFrame with ABFE results, or ``None`` if not yet available.
+
+        Raises:
+            ValueError: If no execution has been started.
         """
+        if self.id is None:
+            raise ValueError("No execution has been started. Call start() first.")
 
-        if window < 1:
-            raise DeepOriginException(
-                title="Invalid window number",
-                message="Window number must be greater than 0",
-                fix="Please specify a window number greater than 0",
-            ) from None
+        client = self.client
 
-        df = self.get_jobs_df(include_outputs=True, include_inputs=True)
-        df = df.loc[df["ligand_smiles"] == ligand.smiles]
-        df = df[df["status"] == "Succeeded"]
+        self.sync()
+        if self.status != "Succeeded":
+            return None
 
-        if len(df) == 0:
-            raise DeepOriginException(
-                title="No job found for this ligand",
-                message="Unable to show trajectories because there are no completed jobs for this ligand",
-            ) from None
+        if self._execution_dto is None:
+            result = client.executions.get_execution(execution_id=self.id)
+            self._execution_dto = result
 
-        remote_base = Path(df.iloc[0]["user_outputs"]["output_file"]["key"])
+        user_outputs = self._execution_dto.get("userOutputs", {})
+        summary_info = user_outputs.get("abfe_results_summary", {})
+        remote_path = summary_info.get("key")
 
-        remote_pdb_file = str(
-            Path(df.iloc[0]["user_inputs"]["binding_xml"]["key"]).parent / "system.pdb"
-        )
-        files_to_download = [remote_pdb_file]
+        if not remote_path:
+            return None
 
-        if step == "binding":
-            # Check for valid windows
-
-            # figure out valid windows
-            files = self.parent.client.files.list_files_in_dir(
-                remote_path=str(remote_base),
-            )
-            xtc_files = [
-                file
-                for file in files
-                if file.endswith(".xtc")
-                and "Prod_1/_allatom_trajectory" in file
-                and "binding/binding" in file
-            ]
-
-            import re
-
-            valid_windows = [
-                int(re.search(r"window_(\d+)", path).group(1)) for path in xtc_files
-            ]
-
-            if window not in valid_windows:
-                raise DeepOriginException(
-                    title="Invalid window number",
-                    message=f"Valid windows are: {sorted(valid_windows)}",
-                ) from None
-
-            remote_xtc_file = [
-                xtc_file for xtc_file in xtc_files if f"window_{window}" in xtc_file
-            ][0]
-
-        else:
-            remote_xtc_file = (
-                remote_base
-                / "protein/ligand/simple_md/simple_md/prod/_allatom_trajectory_40ps.xtc"
-            )
-
-        files_to_download.append(remote_xtc_file)
-        files_to_download = dict.fromkeys(map(str, files_to_download), None)
-
-        self.parent.client.files.download_files(
-            files=files_to_download,
+        local_path = client.files.download_file(
+            remote_path=remote_path,
             lazy=True,
         )
 
-        from deeporigin_molstar.src.viewers import ProteinViewer
+        return pd.read_csv(local_path, nrows=1)
 
-        protein_viewer = ProteinViewer(
-            data=str(LOCAL_BASE / remote_pdb_file), format="pdb"
+    def _build_params(self) -> dict:
+        """Construct the tool input parameters dict."""
+        from deeporigin.drug_discovery import utils
+
+        params = utils._load_params("abfe_end_to_end")
+        params["binding_xml"] = {
+            "$provider": "ufa",
+            "key": self.binding_xml_path,
+        }
+        params["solvation_xml"] = {
+            "$provider": "ufa",
+            "key": self.solvation_xml_path,
+        }
+        return params
+
+    def _build_metadata(self) -> dict:
+        """Construct execution metadata."""
+        return {
+            "protein_hash": self.protein.to_hash(),
+            "ligand_hash": self.ligand.to_hash(),
+            "ligand_smiles": self.ligand.smiles,
+            "protein_name": self.protein.name,
+            "ligand_name": self.ligand.name,
+        }
+
+    def _build_outputs(self) -> dict:
+        """Construct the output file specification for the ABFE tool."""
+        output_dir = (
+            f"tool-runs/ABFE/{self.protein.to_hash()}.pdb/{self.ligand.to_hash()}.sdf/"
         )
-        html_content = protein_viewer.render_trajectory(
-            str(LOCAL_BASE / remote_xtc_file)
-        )
-
-        from deeporigin_molstar import JupyterViewer
-
-        JupyterViewer.visualize(html_content)
-
-    @beartype
-    def show_overlap_matrix(
-        self, *, ligand: Ligand, run: Literal["binding", "solvation"] = "binding"
-    ):
-        """Show the overlap matrix for the ABFE run."""
-
-        files = self._get_files_for_ligand(ligand=ligand)
-
-        files = [file for file in files if file.endswith("overlap_matrix.png")]
-
-        file = [file for file in files if run in file]
-        if len(file) == 0:
-            raise DeepOriginException(
-                title="No overlap matrix found for this run",
-                message="Unable to show overlap matrix because there are no overlap matrix files for this run",
-            ) from None
-        file = file[0]
-
-        local_path = self.parent.client.files.download_file(
-            file,
-            lazy=True,
-        )
-
-        # show the png image
-        from IPython.display import Image, display
-
-        display(Image(local_path))
-
-    @beartype
-    def show_convergence_time(
-        self, *, ligand: Ligand, run: Literal["binding", "solvation"] = "binding"
-    ):
-        """Show the convergence time for a ABFE run."""
-
-        files = self._get_files_for_ligand(ligand=ligand)
-
-        files = [file for file in files if file.endswith("time_convergence.png")]
-
-        file = [file for file in files if run in file]
-        if len(file) == 0:
-            raise DeepOriginException(
-                title="No overlap matrix found for this run",
-                message="Unable to show overlap matrix because there are no overlap matrix files for this run",
-            ) from None
-        file = file[0]
-
-        local_path = self.parent.client.files.download_file(
-            file,
-            lazy=True,
-        )
-
-        # show the png image
-        from IPython.display import Image, display
-
-        display(Image(local_path))
-
-    def _get_files_for_ligand(self, *, ligand: Ligand) -> list[str]:
-        df = self.get_jobs_df(include_outputs=True, include_inputs=True)
-        df = df.loc[df["ligand_smiles"] == ligand.smiles]
-        df = df[df["status"] == "Succeeded"]
-
-        if len(df) == 0:
-            raise DeepOriginException(
-                title="No job found for this ligand",
-                message="Unable to show overlap matrix because there are no completed jobs for this ligand",
-            ) from None
-
-        remote_base = Path(df.iloc[0]["user_outputs"]["output_file"]["key"])
-
-        files = self.parent.client.files.list_files_in_dir(remote_base)
-
-        return files
+        provider = "ufa"
+        return {
+            "output_file": {
+                "$provider": provider,
+                "key": output_dir + "output/",
+            },
+            "abfe_results_summary": {
+                "$provider": provider,
+                "key": output_dir + "results.csv",
+            },
+        }

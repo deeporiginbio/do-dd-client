@@ -1,13 +1,290 @@
 {
-    "id": "39334a67-8a64-4f00-bad4-ee3dd9c4bf72",
+    "cluster": {
+        "createdAt": "2024-06-11T16:53:45.922Z",
+        "enabled": true,
+        "hostname": "https://cluster.us-west-2.dev.deeporigin.io",
+        "id": "d638d3cd-833f-476b-87fe-ca6d76e66049",
+        "name": "DeepOrigin Cluster - us-west-2",
+        "orgKey": null,
+        "status": "healthy",
+        "updatedAt": "2025-03-27T20:23:30.842Z"
+    },
     "createdAt": "2026-02-22T01:44:32.323Z",
+    "createdBy": "6b96d8f8-0f55-474c-a86c-e09651ba4b20",
+    "function": {
+        "billingCode": "DO_DOCK",
+        "createdAt": "2026-02-21T22:49:06.746Z",
+        "enabled": true,
+        "functionManifest": "cf787d83-a8df-4b52-8906-52e25bbd119b",
+        "id": "3fc6b8b2-6753-4a81-9515-d1ede467b781",
+        "manifestBody": {
+            "billingCode": "DO_DOCK",
+            "executor": {
+                "containerConcurrency": 1,
+                "environment": [
+                    {
+                        "name": "JULIA_NUM_THREADS",
+                        "value": "4"
+                    }
+                ],
+                "image": "645946264134.dkr.ecr.us-west-2.amazonaws.com/functions/docking:0.6.0",
+                "method": "POST",
+                "minScale": 1,
+                "name": "deeporigin-docking",
+                "path": "/dock",
+                "port": {
+                    "name": "http1",
+                    "port": 8080,
+                    "protocol": "TCP"
+                },
+                "resourceRequirements": {
+                    "cpu": 8,
+                    "memory": 4
+                },
+                "responseStartTimeoutSeconds": 3600,
+                "scaleDownDelaySeconds": 60,
+                "timeoutSeconds": 600
+            },
+            "functionManifestVersion": "1",
+            "inputSchema": {
+                "additionalProperties": false,
+                "properties": {
+                    "box_size": {
+                        "items": {
+                            "type": "number"
+                        },
+                        "maxItems": 3,
+                        "minItems": 3,
+                        "type": "array"
+                    },
+                    "ligand": {
+                        "properties": {
+                            "id": {
+                                "type": "string"
+                            },
+                            "smiles": {
+                                "type": "string"
+                            }
+                        },
+                        "required": [
+                            "smiles"
+                        ],
+                        "type": "object"
+                    },
+                    "pocket_center": {
+                        "items": {
+                            "type": "number"
+                        },
+                        "maxItems": 3,
+                        "minItems": 3,
+                        "type": "array"
+                    },
+                    "pocket_id": {
+                        "type": "string"
+                    },
+                    "protein": {
+                        "properties": {
+                            "file_path": {
+                                "format": "file",
+                                "type": "string",
+                                "x-deeporigin-path": "/deeporigin/inputs/protein.pdb"
+                            },
+                            "id": {
+                                "type": "string"
+                            }
+                        },
+                        "required": [
+                            "file_path"
+                        ],
+                        "type": "object"
+                    }
+                },
+                "required": [
+                    "protein",
+                    "ligand",
+                    "pocket_center",
+                    "pocket_id",
+                    "box_size"
+                ],
+                "type": "object"
+            },
+            "key": "deeporigin.docking",
+            "version": "0.6.0"
+        },
+        "resourceId": "function-cpxigo72hz5mjd2fynf67",
+        "updatedAt": "2026-02-21T22:49:06.746Z",
+        "version": "0.6.0"
+    },
+    "functionOutputs": {
+        "poses": [
+            {
+                "binding_energy": -9.04949,
+                "file_path": "tool-runs/39334a67-8a64-4f00-bad4-ee3dd9c4bf72/poses.sdf",
+                "ligand_id": "08BSPN4Y5YVE0",
+                "pocket_id": "pocket_1",
+                "pose_score": 0.69680786,
+                "protein_id": "08CEVZZPNYV31"
+            },
+            {
+                "binding_energy": -8.772902,
+                "file_path": "tool-runs/39334a67-8a64-4f00-bad4-ee3dd9c4bf72/poses.sdf",
+                "ligand_id": "08BSPN4Y5YVE0",
+                "pocket_id": "pocket_1",
+                "pose_score": 0.69230175,
+                "protein_id": "08CEVZZPNYV31"
+            },
+            {
+                "binding_energy": -8.536256,
+                "file_path": "tool-runs/39334a67-8a64-4f00-bad4-ee3dd9c4bf72/poses.sdf",
+                "ligand_id": "08BSPN4Y5YVE0",
+                "pocket_id": "pocket_1",
+                "pose_score": 0.65509313,
+                "protein_id": "08CEVZZPNYV31"
+            },
+            {
+                "binding_energy": -7.8333693,
+                "file_path": "tool-runs/39334a67-8a64-4f00-bad4-ee3dd9c4bf72/poses.sdf",
+                "ligand_id": "08BSPN4Y5YVE0",
+                "pocket_id": "pocket_1",
+                "pose_score": 0.6353575,
+                "protein_id": "08CEVZZPNYV31"
+            },
+            {
+                "binding_energy": -9.008966,
+                "file_path": "tool-runs/39334a67-8a64-4f00-bad4-ee3dd9c4bf72/poses.sdf",
+                "ligand_id": "08BSPN4Y5YVE0",
+                "pocket_id": "pocket_1",
+                "pose_score": 0.63185215,
+                "protein_id": "08CEVZZPNYV31"
+            },
+            {
+                "binding_energy": -8.815986,
+                "file_path": "tool-runs/39334a67-8a64-4f00-bad4-ee3dd9c4bf72/poses.sdf",
+                "ligand_id": "08BSPN4Y5YVE0",
+                "pocket_id": "pocket_1",
+                "pose_score": 0.6074173,
+                "protein_id": "08CEVZZPNYV31"
+            },
+            {
+                "binding_energy": -8.41779,
+                "file_path": "tool-runs/39334a67-8a64-4f00-bad4-ee3dd9c4bf72/poses.sdf",
+                "ligand_id": "08BSPN4Y5YVE0",
+                "pocket_id": "pocket_1",
+                "pose_score": 0.60312396,
+                "protein_id": "08CEVZZPNYV31"
+            },
+            {
+                "binding_energy": -9.554041,
+                "file_path": "tool-runs/39334a67-8a64-4f00-bad4-ee3dd9c4bf72/poses.sdf",
+                "ligand_id": "08BSPN4Y5YVE0",
+                "pocket_id": "pocket_1",
+                "pose_score": 0.597386,
+                "protein_id": "08CEVZZPNYV31"
+            },
+            {
+                "binding_energy": -8.972278,
+                "file_path": "tool-runs/39334a67-8a64-4f00-bad4-ee3dd9c4bf72/poses.sdf",
+                "ligand_id": "08BSPN4Y5YVE0",
+                "pocket_id": "pocket_1",
+                "pose_score": 0.5683789,
+                "protein_id": "08CEVZZPNYV31"
+            },
+            {
+                "binding_energy": -8.282344,
+                "file_path": "tool-runs/39334a67-8a64-4f00-bad4-ee3dd9c4bf72/poses.sdf",
+                "ligand_id": "08BSPN4Y5YVE0",
+                "pocket_id": "pocket_1",
+                "pose_score": 0.55993503,
+                "protein_id": "08CEVZZPNYV31"
+            },
+            {
+                "binding_energy": -9.431365,
+                "file_path": "tool-runs/39334a67-8a64-4f00-bad4-ee3dd9c4bf72/poses.sdf",
+                "ligand_id": "08BSPN4Y5YVE0",
+                "pocket_id": "pocket_1",
+                "pose_score": 0.55052626,
+                "protein_id": "08CEVZZPNYV31"
+            },
+            {
+                "binding_energy": -7.4314547,
+                "file_path": "tool-runs/39334a67-8a64-4f00-bad4-ee3dd9c4bf72/poses.sdf",
+                "ligand_id": "08BSPN4Y5YVE0",
+                "pocket_id": "pocket_1",
+                "pose_score": 0.5348969,
+                "protein_id": "08CEVZZPNYV31"
+            },
+            {
+                "binding_energy": -8.970388,
+                "file_path": "tool-runs/39334a67-8a64-4f00-bad4-ee3dd9c4bf72/poses.sdf",
+                "ligand_id": "08BSPN4Y5YVE0",
+                "pocket_id": "pocket_1",
+                "pose_score": 0.5179022,
+                "protein_id": "08CEVZZPNYV31"
+            },
+            {
+                "binding_energy": -8.5693445,
+                "file_path": "tool-runs/39334a67-8a64-4f00-bad4-ee3dd9c4bf72/poses.sdf",
+                "ligand_id": "08BSPN4Y5YVE0",
+                "pocket_id": "pocket_1",
+                "pose_score": 0.5101284,
+                "protein_id": "08CEVZZPNYV31"
+            },
+            {
+                "binding_energy": -9.3915205,
+                "file_path": "tool-runs/39334a67-8a64-4f00-bad4-ee3dd9c4bf72/poses.sdf",
+                "ligand_id": "08BSPN4Y5YVE0",
+                "pocket_id": "pocket_1",
+                "pose_score": 0.5089432,
+                "protein_id": "08CEVZZPNYV31"
+            },
+            {
+                "binding_energy": -8.090834,
+                "file_path": "tool-runs/39334a67-8a64-4f00-bad4-ee3dd9c4bf72/poses.sdf",
+                "ligand_id": "08BSPN4Y5YVE0",
+                "pocket_id": "pocket_1",
+                "pose_score": 0.506437,
+                "protein_id": "08CEVZZPNYV31"
+            }
+        ]
+    },
+    "id": "39334a67-8a64-4f00-bad4-ee3dd9c4bf72",
+    "orgKey": "deeporigin",
+    "quotationResult": {
+        "anyFailed": false,
+        "failedQuotations": [],
+        "successfulQuotations": [
+            {
+                "itemCode": "DO_DOCK",
+                "orgId": "deeporigin",
+                "priceEach": 0.2,
+                "priceTotal": 0.2,
+                "pricingRecordType": "regular",
+                "pricingRecords": [
+                    {
+                        "itemKey": "DO_DOCK",
+                        "itemName": "Docking",
+                        "priceEach": 0.2,
+                        "qty": 1,
+                        "tierQtyFrom": 0,
+                        "tierQtyTo": 0,
+                        "totalPrice": 0.2
+                    }
+                ],
+                "qty": 1,
+                "status": "OK"
+            }
+        ]
+    },
+    "status": "Completed",
     "updatedAt": "2026-02-22T01:46:21.839Z",
     "userInputs": {
+        "clusterId": "d638d3cd-833f-476b-87fe-ca6d76e66049",
         "inputs": {
-            "protein": {
-                "id": "08CEVZZPNYV31",
-                "file_path": "entities/proteins/c32244fd9a1fb1675f69c1d28986ef55867ffd6733b28946d62409cc3f55523f.pdb"
-            },
+            "box_size": [
+                20,
+                20,
+                20
+            ],
             "ligand": {
                 "id": "08BSPN4Y5YVE0",
                 "smiles": "Fc1c(-c2cccc3ccccc23)ncc2c(N3C[C@H]4CC[C@@H](C3)N4)nc(OCC34CCCN3CCC4)nc12"
@@ -17,288 +294,11 @@
                 -5.712231636047363,
                 14.731620788574219
             ],
-            "box_size": [
-                20,
-                20,
-                20
-            ],
-            "pocket_id": "pocket_1"
-        },
-        "clusterId": "d638d3cd-833f-476b-87fe-ca6d76e66049"
-    },
-    "functionOutputs": {
-        "poses": [
-            {
-                "binding_energy": -9.04949,
-                "ligand_id": "08BSPN4Y5YVE0",
-                "pose_score": 0.69680786,
-                "protein_id": "08CEVZZPNYV31",
-                "pocket_id": "pocket_1",
-                "file_path": "tool-runs/39334a67-8a64-4f00-bad4-ee3dd9c4bf72/poses.sdf"
-            },
-            {
-                "binding_energy": -8.772902,
-                "ligand_id": "08BSPN4Y5YVE0",
-                "pose_score": 0.69230175,
-                "protein_id": "08CEVZZPNYV31",
-                "pocket_id": "pocket_1",
-                "file_path": "tool-runs/39334a67-8a64-4f00-bad4-ee3dd9c4bf72/poses.sdf"
-            },
-            {
-                "binding_energy": -8.536256,
-                "ligand_id": "08BSPN4Y5YVE0",
-                "pose_score": 0.65509313,
-                "protein_id": "08CEVZZPNYV31",
-                "pocket_id": "pocket_1",
-                "file_path": "tool-runs/39334a67-8a64-4f00-bad4-ee3dd9c4bf72/poses.sdf"
-            },
-            {
-                "binding_energy": -7.8333693,
-                "ligand_id": "08BSPN4Y5YVE0",
-                "pose_score": 0.6353575,
-                "protein_id": "08CEVZZPNYV31",
-                "pocket_id": "pocket_1",
-                "file_path": "tool-runs/39334a67-8a64-4f00-bad4-ee3dd9c4bf72/poses.sdf"
-            },
-            {
-                "binding_energy": -9.008966,
-                "ligand_id": "08BSPN4Y5YVE0",
-                "pose_score": 0.63185215,
-                "protein_id": "08CEVZZPNYV31",
-                "pocket_id": "pocket_1",
-                "file_path": "tool-runs/39334a67-8a64-4f00-bad4-ee3dd9c4bf72/poses.sdf"
-            },
-            {
-                "binding_energy": -8.815986,
-                "ligand_id": "08BSPN4Y5YVE0",
-                "pose_score": 0.6074173,
-                "protein_id": "08CEVZZPNYV31",
-                "pocket_id": "pocket_1",
-                "file_path": "tool-runs/39334a67-8a64-4f00-bad4-ee3dd9c4bf72/poses.sdf"
-            },
-            {
-                "binding_energy": -8.41779,
-                "ligand_id": "08BSPN4Y5YVE0",
-                "pose_score": 0.60312396,
-                "protein_id": "08CEVZZPNYV31",
-                "pocket_id": "pocket_1",
-                "file_path": "tool-runs/39334a67-8a64-4f00-bad4-ee3dd9c4bf72/poses.sdf"
-            },
-            {
-                "binding_energy": -9.554041,
-                "ligand_id": "08BSPN4Y5YVE0",
-                "pose_score": 0.597386,
-                "protein_id": "08CEVZZPNYV31",
-                "pocket_id": "pocket_1",
-                "file_path": "tool-runs/39334a67-8a64-4f00-bad4-ee3dd9c4bf72/poses.sdf"
-            },
-            {
-                "binding_energy": -8.972278,
-                "ligand_id": "08BSPN4Y5YVE0",
-                "pose_score": 0.5683789,
-                "protein_id": "08CEVZZPNYV31",
-                "pocket_id": "pocket_1",
-                "file_path": "tool-runs/39334a67-8a64-4f00-bad4-ee3dd9c4bf72/poses.sdf"
-            },
-            {
-                "binding_energy": -8.282344,
-                "ligand_id": "08BSPN4Y5YVE0",
-                "pose_score": 0.55993503,
-                "protein_id": "08CEVZZPNYV31",
-                "pocket_id": "pocket_1",
-                "file_path": "tool-runs/39334a67-8a64-4f00-bad4-ee3dd9c4bf72/poses.sdf"
-            },
-            {
-                "binding_energy": -9.431365,
-                "ligand_id": "08BSPN4Y5YVE0",
-                "pose_score": 0.55052626,
-                "protein_id": "08CEVZZPNYV31",
-                "pocket_id": "pocket_1",
-                "file_path": "tool-runs/39334a67-8a64-4f00-bad4-ee3dd9c4bf72/poses.sdf"
-            },
-            {
-                "binding_energy": -7.4314547,
-                "ligand_id": "08BSPN4Y5YVE0",
-                "pose_score": 0.5348969,
-                "protein_id": "08CEVZZPNYV31",
-                "pocket_id": "pocket_1",
-                "file_path": "tool-runs/39334a67-8a64-4f00-bad4-ee3dd9c4bf72/poses.sdf"
-            },
-            {
-                "binding_energy": -8.970388,
-                "ligand_id": "08BSPN4Y5YVE0",
-                "pose_score": 0.5179022,
-                "protein_id": "08CEVZZPNYV31",
-                "pocket_id": "pocket_1",
-                "file_path": "tool-runs/39334a67-8a64-4f00-bad4-ee3dd9c4bf72/poses.sdf"
-            },
-            {
-                "binding_energy": -8.5693445,
-                "ligand_id": "08BSPN4Y5YVE0",
-                "pose_score": 0.5101284,
-                "protein_id": "08CEVZZPNYV31",
-                "pocket_id": "pocket_1",
-                "file_path": "tool-runs/39334a67-8a64-4f00-bad4-ee3dd9c4bf72/poses.sdf"
-            },
-            {
-                "binding_energy": -9.3915205,
-                "ligand_id": "08BSPN4Y5YVE0",
-                "pose_score": 0.5089432,
-                "protein_id": "08CEVZZPNYV31",
-                "pocket_id": "pocket_1",
-                "file_path": "tool-runs/39334a67-8a64-4f00-bad4-ee3dd9c4bf72/poses.sdf"
-            },
-            {
-                "binding_energy": -8.090834,
-                "ligand_id": "08BSPN4Y5YVE0",
-                "pose_score": 0.506437,
-                "protein_id": "08CEVZZPNYV31",
-                "pocket_id": "pocket_1",
-                "file_path": "tool-runs/39334a67-8a64-4f00-bad4-ee3dd9c4bf72/poses.sdf"
+            "pocket_id": "pocket_1",
+            "protein": {
+                "file_path": "entities/proteins/c32244fd9a1fb1675f69c1d28986ef55867ffd6733b28946d62409cc3f55523f.pdb",
+                "id": "08CEVZZPNYV31"
             }
-        ]
-    },
-    "status": "Completed",
-    "cluster": {
-        "id": "d638d3cd-833f-476b-87fe-ca6d76e66049",
-        "createdAt": "2024-06-11T16:53:45.922Z",
-        "updatedAt": "2025-03-27T20:23:30.842Z",
-        "hostname": "https://cluster.us-west-2.dev.deeporigin.io",
-        "name": "DeepOrigin Cluster - us-west-2",
-        "orgKey": null,
-        "enabled": true,
-        "status": "healthy"
-    },
-    "orgKey": "deeporigin",
-    "createdBy": "6b96d8f8-0f55-474c-a86c-e09651ba4b20",
-    "quotationResult": {
-        "anyFailed": false,
-        "failedQuotations": [],
-        "successfulQuotations": [
-            {
-                "status": "OK",
-                "itemCode": "DO_DOCK",
-                "orgId": "deeporigin",
-                "qty": 1,
-                "priceEach": 0.2,
-                "priceTotal": 0.2,
-                "pricingRecordType": "regular",
-                "pricingRecords": [
-                    {
-                        "itemKey": "DO_DOCK",
-                        "itemName": "Docking",
-                        "priceEach": 0.2,
-                        "totalPrice": 0.2,
-                        "qty": 1,
-                        "tierQtyFrom": 0,
-                        "tierQtyTo": 0
-                    }
-                ]
-            }
-        ]
-    },
-    "function": {
-        "id": "3fc6b8b2-6753-4a81-9515-d1ede467b781",
-        "createdAt": "2026-02-21T22:49:06.746Z",
-        "updatedAt": "2026-02-21T22:49:06.746Z",
-        "functionManifest": "cf787d83-a8df-4b52-8906-52e25bbd119b",
-        "version": "0.4.0",
-        "enabled": true,
-        "manifestBody": {
-            "key": "deeporigin.docking",
-            "version": "0.4.0",
-            "executor": {
-                "name": "deeporigin-docking",
-                "path": "/dock",
-                "port": {
-                    "name": "http1",
-                    "port": 8080,
-                    "protocol": "TCP"
-                },
-                "image": "645946264134.dkr.ecr.us-west-2.amazonaws.com/functions/docking:0.4.0",
-                "method": "POST",
-                "minScale": 1,
-                "environment": [
-                    {
-                        "name": "JULIA_NUM_THREADS",
-                        "value": "4"
-                    }
-                ],
-                "timeoutSeconds": 600,
-                "containerConcurrency": 1,
-                "resourceRequirements": {
-                    "cpu": 8,
-                    "memory": 4
-                },
-                "scaleDownDelaySeconds": 60,
-                "responseStartTimeoutSeconds": 3600
-            },
-            "billingCode": "DO_DOCK",
-            "inputSchema": {
-                "type": "object",
-                "required": [
-                    "protein",
-                    "ligand",
-                    "pocket_center",
-                    "pocket_id",
-                    "box_size"
-                ],
-                "properties": {
-                    "ligand": {
-                        "type": "object",
-                        "required": [
-                            "smiles"
-                        ],
-                        "properties": {
-                            "id": {
-                                "type": "string"
-                            },
-                            "smiles": {
-                                "type": "string"
-                            }
-                        }
-                    },
-                    "protein": {
-                        "type": "object",
-                        "required": [
-                            "file_path"
-                        ],
-                        "properties": {
-                            "id": {
-                                "type": "string"
-                            },
-                            "file_path": {
-                                "type": "string",
-                                "format": "file",
-                                "x-deeporigin-path": "/deeporigin/inputs/protein.pdb"
-                            }
-                        }
-                    },
-                    "box_size": {
-                        "type": "array",
-                        "items": {
-                            "type": "number"
-                        },
-                        "maxItems": 3,
-                        "minItems": 3
-                    },
-                    "pocket_id": {
-                        "type": "string"
-                    },
-                    "pocket_center": {
-                        "type": "array",
-                        "items": {
-                            "type": "number"
-                        },
-                        "maxItems": 3,
-                        "minItems": 3
-                    }
-                },
-                "additionalProperties": false
-            },
-            "functionManifestVersion": "1"
-        },
-        "billingCode": "DO_DOCK",
-        "resourceId": "function-cpxigo72hz5mjd2fynf67"
+        }
     }
 }

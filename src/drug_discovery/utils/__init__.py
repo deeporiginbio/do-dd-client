@@ -3,7 +3,7 @@
 import importlib.resources
 import json
 import os
-from typing import Any, Optional
+from typing import Any
 
 from beartype import beartype
 
@@ -12,11 +12,7 @@ from deeporigin.drug_discovery.utils.visualize import (
     render_smiles_in_dataframe,  # noqa: F401
 )
 from deeporigin.platform.client import DeepOriginClient
-from deeporigin.platform.constants import PROVIDER
 from deeporigin.utils.env import _ensure_do_folder
-
-PROVIDER_KEY = "$provider"
-RESULTS_CSV = "results.csv"
 
 DATA_DIRS = {}
 
@@ -39,54 +35,25 @@ def _start_tool_run(
     params: dict,
     metadata: dict,
     tool: valid_tools,
-    output_dir_path: str,
     tool_version: str,
-    provider: PROVIDER = "ufa",
-    client: Optional[DeepOriginClient] = None,
-    approve_amount: Optional[int] = None,
+    client: DeepOriginClient,
+    outputs: dict | None = None,
+    approve_amount: int | None = None,
 ) -> dict:
-    """
-    Starts a single run of an end-to-end tool (such as ABFE) and logs it in the ABFE database.
-
-    This is an internal function that prepares input and output file parameters, sets up the job metadata,
-    and submits the job to the platform's tools API. Only ABFE is currently supported.
+    """Submit a tool execution to the platform.
 
     Args:
-        params (dict): Parameters for the tool run, including input and configuration options.
-        metadata (dict): Metadata to be logged with the job.
-        protein_path (str): Remote path to the protein file to be used in the run.
-        ligand1_path (str): Remnote path to the first ligand file.
-        ligand2_path (Optional[str]): Remote path to the second ligand file (required for RBFE).
-        tool (valid_tools): The tool to run (e.g., 'ABFE', 'RBFE').
-        tool_version (str): Version of the tool to use.
-        provider (tools_api.PROVIDER, optional): File provider for input/output files. Defaults to 'ufa'.
-        client (Client): Client to use for the job.
-        _output_dir_path (Optional[str]): Custom output directory path (on remote storage). If None, a default is constructed.
+        params: Input parameters for the tool run.
+        metadata: Metadata to log with the execution.
+        tool: Tool identifier (e.g., ``'ABFE'``, ``'Docking'``).
+        tool_version: Version of the tool to use.
+        client: API client.
+        outputs: Output file specification. Defaults to empty.
+        approve_amount: Pre-approved spend amount.
 
     Returns:
-        dict: The full execution description (DTO) from the API, containing executionId, status, and other fields.
-
-    Raises:
-        NotImplementedError: If a tool other than ABFE is specified.
+        The execution DTO from the API.
     """
-
-    # output files
-    if tool == "RBFE":
-        raise NotImplementedError("RBFE is not implemented yet")
-    elif tool == "ABFE":
-        outputs = {
-            "output_file": {
-                PROVIDER_KEY: provider,
-                "key": output_dir_path + "output/",
-            },
-            "abfe_results_summary": {
-                PROVIDER_KEY: provider,
-                "key": output_dir_path + RESULTS_CSV,
-            },
-        }
-    elif tool == "Docking":
-        outputs = {}
-
     if is_test_run(params):
         print(
             "⚠️ Warning: test_run=1 in these parameters. Results and quoted prices will not be accurate."
@@ -94,7 +61,7 @@ def _start_tool_run(
 
     payload = {
         "inputs": params,
-        "outputs": outputs,
+        "outputs": outputs or {},
         "metadata": metadata,
     }
 

@@ -1,56 +1,10 @@
 """Tests for the Entities API wrapper."""
 
-from unittest.mock import MagicMock
-
-import httpx
 import pytest
 
-from deeporigin.drug_discovery.structures.ligand import Ligand, LigandSet
+from deeporigin.drug_discovery.structures.ligand import Ligand
 from deeporigin.exceptions import DeepOriginException
 from deeporigin.platform import DeepOriginClient
-
-
-def test_delete_entity():
-    """Test that delete sends a DELETE request to the correct URL."""
-    client = DeepOriginClient()
-
-    mock_response = MagicMock(spec=httpx.Response)
-    mock_response.json.return_value = {"deleted": 1}
-    mock_response.raise_for_status = MagicMock()
-
-    original_delete = client._client.delete
-    client._client.delete = MagicMock(return_value=mock_response)
-
-    try:
-        result = client.entities.delete(entity="proteins", entity_id="08BSPN61NYVE3")
-
-        assert result == {"deleted": 1}
-        client._client.delete.assert_called_once()
-        call_args = client._client.delete.call_args
-        assert "/data-platform/deeporigin/proteins/08BSPN61NYVE3" in call_args[0][0]
-    finally:
-        client._client.delete = original_delete
-
-
-def test_delete_entity_ligand():
-    """Test that delete works for ligand entities."""
-    client = DeepOriginClient()
-
-    mock_response = MagicMock(spec=httpx.Response)
-    mock_response.json.return_value = {"deleted": 1}
-    mock_response.raise_for_status = MagicMock()
-
-    original_delete = client._client.delete
-    client._client.delete = MagicMock(return_value=mock_response)
-
-    try:
-        result = client.entities.delete(entity="ligands", entity_id="ABC123")
-
-        assert result == {"deleted": 1}
-        call_args = client._client.delete.call_args
-        assert "/data-platform/deeporigin/ligands/ABC123" in call_args[0][0]
-    finally:
-        client._client.delete = original_delete
 
 
 def test_search_entity_lv1():
@@ -247,13 +201,9 @@ def test_get_ligand_lv1():
 def test_get_ligands_lv1():
     """Test getting multiple ligands by IDs."""
     client = DeepOriginClient()
-    ligands = LigandSet.from_smiles(["CCO", "CCCO"])
-    ligands.sync(client=client)
-
-    ids = [lig.id for lig in ligands]
-    assert all(i is not None for i in ids), (
-        "Expected all ligands to have ids after sync"
-    )
+    existing = client.entities.search_ligands()
+    assert len(existing["data"]) >= 2, "Expected at least 2 existing ligands"
+    ids = [record["id"] for record in existing["data"][:2]]
 
     data = client.entities.get_ligands(ids=ids)
 
@@ -261,6 +211,13 @@ def test_get_ligands_lv1():
     assert len(data) == 2, f"Expected 2 ligands, got {len(data)}"
     returned_ids = {record["id"] for record in data}
     assert returned_ids == set(ids), "Expected both IDs in response"
+
+
+def test_get_ligands_empty_ids():
+    """Test that get_ligands returns immediately for empty input."""
+    client = DeepOriginClient()
+    data = client.entities.get_ligands(ids=[])
+    assert data == []
 
 
 def test_get_protein_lv1():

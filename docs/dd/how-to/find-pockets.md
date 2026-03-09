@@ -69,6 +69,24 @@ ligand = Ligand.from_sdf(BRD_DATA_DIR / "brd-2.sdf")
 pocket = Pocket.from_ligand(ligand, name="ligand_pocket")
 ```
 
+### From a result-explorer record ID
+
+Load a single pocket by its result-explorer record ID (for example, an ID from a previous pocket-finder run or from the platform UI):
+
+```{.python notest}
+from deeporigin.drug_discovery import Pocket
+
+pocket = Pocket.from_id("your-pocket-record-id")
+```
+
+This fetches the record, downloads the pocket PDB file, and returns a `Pocket` with properties populated from the record. Optionally pass a `client` if you do not want to use the default:
+
+```{.python notest}
+pocket = Pocket.from_id("your-pocket-record-id", client=my_client)
+```
+
+If no record exists for the given ID, `ValueError` is raised.
+
 ## Visualization
 
 ### Inspecting pocket data

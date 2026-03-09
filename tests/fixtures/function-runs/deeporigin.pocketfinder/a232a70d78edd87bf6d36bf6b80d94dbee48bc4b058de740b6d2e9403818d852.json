@@ -23,7 +23,7 @@
             "billingCode": "DO_POCKET_FINDER",
             "executor": {
                 "containerConcurrency": 1,
-                "image": "645946264134.dkr.ecr.us-west-2.amazonaws.com/functions/pocket-finder:0.4.4",
+                "image": "645946264134.dkr.ecr.us-west-2.amazonaws.com/functions/pocket-finder:0.4.5",
                 "method": "POST",
                 "minScale": 1,
                 "name": "deeporigin-pocketfinder",
@@ -182,11 +182,11 @@
                 },
                 "type": "object"
             },
-            "version": "0.4.4"
+            "version": "0.4.5"
         },
         "resourceId": "function-3z5f41csx181qdmmw0vkz",
         "updatedAt": "2026-03-02T15:47:12.405Z",
-        "version": "0.4.4"
+        "version": "0.4.5"
     },
     "functionOutputs": {
         "pockets": [
@@ -195,6 +195,8 @@
                 "drugability_score": 0.9438493,
                 "file_path": "tool-runs/920996c6-d8d8-4e61-903d-9a6e94990cc1/pocket_1.pdb",
                 "hydrophobicity": 29.92,
+                "pocket_count": 1,
+                "pocket_min_size": 30,
                 "polar_SASA": 309.8629,
                 "polar_apolar_SASA_ratio": 0.3382689,
                 "polarity": 10,

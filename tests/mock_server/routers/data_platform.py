@@ -39,7 +39,28 @@ def _apply_search_filters(
     for key, value in filter_dict.items():
         if key in skip_keys:
             continue
-        results = [r for r in results if r.get(key) == value]
+        if isinstance(value, dict):
+            if "in" in value:
+                allowed = (
+                    set(value["in"]) if isinstance(value["in"], list) else {value["in"]}
+                )
+                results = [r for r in results if r.get(key) in allowed]
+            elif "eq" in value:
+                results = [r for r in results if r.get(key) == value["eq"]]
+            elif "gte" in value:
+                results = [
+                    r
+                    for r in results
+                    if r.get(key) is not None and r.get(key) >= value["gte"]
+                ]
+            elif "lte" in value:
+                results = [
+                    r
+                    for r in results
+                    if r.get(key) is not None and r.get(key) <= value["lte"]
+                ]
+        else:
+            results = [r for r in results if r.get(key) == value]
 
     for prop in filter_dict.get("props", []):
         col = prop["column"]

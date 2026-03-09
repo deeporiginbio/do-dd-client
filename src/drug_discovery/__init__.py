@@ -8,7 +8,18 @@ calculations.
 
 from importlib.resources import files
 
-__all__ = ["Complex", "Protein", "Ligand", "Pocket", "LigandSet"]
+__all__ = [
+    "Complex",
+    "Protein",
+    "Ligand",
+    "Pocket",
+    "LigandSet",
+    "PocketFinder",
+    "Docking",
+    "ABFE",
+    "Execution",
+    "PlatformStatus",
+]
 
 DATA_DIR = files("deeporigin.data")
 BRD_DATA_DIR = DATA_DIR / "brd"
@@ -35,6 +46,26 @@ def __getattr__(name):
         from .structures.pocket import Pocket
 
         return Pocket
+    elif name == "PocketFinder":
+        from deeporigin.drug_discovery.pocket_finder import PocketFinder
+
+        return PocketFinder
+    elif name == "Docking":
+        from deeporigin.drug_discovery.docking import Docking
+
+        return Docking
+    elif name == "ABFE":
+        from deeporigin.drug_discovery.abfe import ABFE
+
+        return ABFE
+    elif name == "Execution":
+        from deeporigin.drug_discovery.execution import Execution
+
+        return Execution
+    elif name == "PlatformStatus":
+        from deeporigin.platform.constants import PlatformStatus
+
+        return PlatformStatus
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 

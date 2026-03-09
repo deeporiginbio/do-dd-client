@@ -5,7 +5,7 @@ import numpy as np
 import pytest
 
 from deeporigin.drug_discovery.constants import SUPPORTED_ATOM_SYMBOLS
-from deeporigin.drug_discovery.structures import Ligand
+from deeporigin.drug_discovery.structures import Ligand, LigandSet
 from deeporigin.exceptions import DeepOriginException
 from deeporigin.platform.client import DeepOriginClient
 
