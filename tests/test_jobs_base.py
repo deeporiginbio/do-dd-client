@@ -1,7 +1,8 @@
-"""Tests for the jobs-centric base classes, mixins, and PocketFinder."""
+"""Tests for the jobs-centric base classes, mixins, PocketFinder, and SystemPrep."""
 
 import os
 from pathlib import Path
+from unittest.mock import patch
 
 import pytest
 
@@ -13,6 +14,9 @@ from deeporigin.drug_discovery.execution_mixins import (
     SyncExecutableMixin,
 )
 from deeporigin.drug_discovery.pocket_finder import PocketFinder
+from deeporigin.drug_discovery.structures.ligand import Ligand
+from deeporigin.drug_discovery.system_prep import SystemPrep
+from deeporigin.functions.result import FunctionResult
 
 _BRD_PDB = Path(os.path.join(BRD_DATA_DIR, "brd.pdb"))
 
@@ -63,6 +67,12 @@ class AsyncJob(Execution, QuoteMixin, AsyncExecutableMixin):
 def protein():
     """Create a real Protein from the bundled BRD data."""
     return Protein.from_file(str(_BRD_PDB))
+
+
+@pytest.fixture
+def ligand():
+    """Create a minimal Ligand from SMILES (no platform upload needed for construction tests)."""
+    return Ligand.from_smiles("CCO", name="ethanol")
 
 
 # ===========================================================================
@@ -286,3 +296,161 @@ class TestPocketFinderNoAsyncMethods:
         """PocketFinder instances have no start method."""
         pf = PocketFinder(protein)
         assert not hasattr(pf, "start")
+
+
+# ===========================================================================
+# SystemPrep tests
+# ===========================================================================
+
+
+class TestSystemPrepConstruction:
+    """SystemPrep construction and attribute access."""
+
+    def test_defaults(self, protein, ligand):
+        """Fresh SystemPrep has None for output paths and estimate/cost."""
+        sp = SystemPrep(protein=protein, ligand=ligand)
+        assert sp.protein is protein
+        assert sp.ligand is ligand
+        assert sp.binding_xml_path is None
+        assert sp.solvation_xml_path is None
+        assert sp.system_pdb_path is None
+        assert sp.is_prepared is False
+        assert sp.id is None
+        assert sp.estimate is None
+        assert sp.cost is None
+
+    def test_custom_params(self, protein, ligand):
+        """Constructor accepts padding, retain_waters, box_size."""
+        sp = SystemPrep(
+            protein=protein,
+            ligand=ligand,
+            padding=2.0,
+            retain_waters=True,
+            box_size=[3.0, 3.0, 3.0],
+        )
+        assert sp._padding == 2.0
+        assert sp._retain_waters is True
+        assert sp._box_size == [3.0, 3.0, 3.0]
+
+    def test_protein_immutable(self, protein, ligand):
+        """Protein cannot be reassigned after construction."""
+        sp = SystemPrep(protein=protein, ligand=ligand)
+        with pytest.raises(AttributeError, match="protein"):
+            sp.protein = protein
+
+    def test_tool_key(self, protein, ligand):
+        """tool_key matches the platform constant."""
+        sp = SystemPrep(protein=protein, ligand=ligand)
+        assert sp.tool_key == "deeporigin.system-prep"
+
+    def test_rbfe_mode_ligand1_ligand2(self, protein, ligand):
+        """Constructor with ligand1 and ligand2 sets is_rbfe and exposes both ligands."""
+        lig2 = Ligand.from_smiles("CC(=O)O", name="acetate")
+        sp = SystemPrep(protein=protein, ligand1=ligand, ligand2=lig2)
+        assert sp.is_rbfe is True
+        assert sp.ligand is None
+        assert sp.ligand1 is ligand
+        assert sp.ligand2 is lig2
+
+    def test_constructor_requires_ligand_or_ligand_pair(self, protein, ligand):
+        """ValueError when neither ligand nor (ligand1 and ligand2) is provided."""
+        with pytest.raises(ValueError, match="Provide either ligand"):
+            SystemPrep(protein=protein)
+
+    def test_constructor_rejects_only_ligand1(self, protein, ligand):
+        """ValueError when only ligand1 is provided."""
+        with pytest.raises(ValueError, match="Provide either ligand"):
+            SystemPrep(protein=protein, ligand1=ligand)
+
+    def test_constructor_rejects_only_ligand2(self, protein, ligand):
+        """ValueError when only ligand2 is provided."""
+        with pytest.raises(ValueError, match="Provide either ligand"):
+            SystemPrep(protein=protein, ligand2=ligand)
+
+    def test_constructor_rejects_both_abfe_and_rbfe(self, protein, ligand):
+        """ValueError when both ligand and ligand1/ligand2 are provided."""
+        lig2 = Ligand.from_smiles("CC(=O)O", name="acetate")
+        with pytest.raises(ValueError, match="Provide either ligand"):
+            SystemPrep(protein=protein, ligand=ligand, ligand1=ligand, ligand2=lig2)
+
+
+class TestSystemPrepNoAsyncMethods:
+    """SystemPrep (sync-only) should not expose async lifecycle methods."""
+
+    def test_no_status_attribute(self, protein, ligand):
+        """SystemPrep instances have no status attribute."""
+        sp = SystemPrep(protein=protein, ligand=ligand)
+        assert not hasattr(sp, "status")
+
+    def test_no_from_id(self):
+        """SystemPrep class has no from_id classmethod."""
+        assert not hasattr(SystemPrep, "from_id")
+
+    def test_no_start(self, protein, ligand):
+        """SystemPrep instances have no start method."""
+        sp = SystemPrep(protein=protein, ligand=ligand)
+        assert not hasattr(sp, "start")
+
+
+class TestSystemPrepRunParsesOutputs:
+    """run() parses function outputs and sets paths; returns self."""
+
+    def test_run_sets_paths_and_returns_self(self, protein, ligand):
+        """When abfe() returns completed result with output_files and system, run() sets paths."""
+        mock_outputs = {
+            "output_files": [
+                "some/dir/bsm_system.xml",
+                "some/dir/solvation.xml",
+                "other/file.xml",
+            ],
+            "system": {"system_pdb_file_path": "some/dir/system.pdb"},
+        }
+        mock_result = FunctionResult(
+            [
+                {
+                    "status": "Completed",
+                    "functionOutputs": mock_outputs,
+                    "quotationResult": {"successfulQuotations": [{"priceTotal": 1.5}]},
+                }
+            ]
+        )
+
+        with patch("deeporigin.functions.sysprep.abfe", return_value=mock_result):
+            sp = SystemPrep(protein=protein, ligand=ligand)
+            out = sp.run()
+
+        assert out is sp
+        assert sp.binding_xml_path == "some/dir/bsm_system.xml"
+        assert sp.solvation_xml_path == "some/dir/solvation.xml"
+        assert sp.system_pdb_path == "some/dir/system.pdb"
+        assert sp.is_prepared is True
+        assert sp.cost == 1.5
+
+    def test_run_rbfe_calls_rbfe_and_sets_paths(self, protein, ligand):
+        """When in RBFE mode, run() calls rbfe() and parses outputs."""
+        lig2 = Ligand.from_smiles("CC(=O)O", name="acetate")
+        mock_outputs = {
+            "output_files": [
+                "rbfe/dir/bsm_system.xml",
+                "rbfe/dir/solvation.xml",
+            ],
+            "system": {"system_pdb_file_path": "rbfe/dir/system.pdb"},
+        }
+        mock_result = FunctionResult(
+            [
+                {
+                    "status": "Completed",
+                    "functionOutputs": mock_outputs,
+                    "quotationResult": {"successfulQuotations": [{"priceTotal": 2.0}]},
+                }
+            ]
+        )
+        with patch("deeporigin.functions.sysprep.rbfe", return_value=mock_result):
+            sp = SystemPrep(protein=protein, ligand1=ligand, ligand2=lig2)
+            out = sp.run()
+        assert out is sp
+        assert sp.binding_xml_path == "rbfe/dir/bsm_system.xml"
+        assert sp.solvation_xml_path == "rbfe/dir/solvation.xml"
+        assert sp.system_pdb_path == "rbfe/dir/system.pdb"
+        assert sp.is_prepared is True
+        assert sp.cost == 2.0

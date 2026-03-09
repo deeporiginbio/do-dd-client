@@ -19,6 +19,7 @@ __all__ = [
     "ABFE",
     "Execution",
     "PlatformStatus",
+    "SystemPrep",
 ]
 
 DATA_DIR = files("deeporigin.data")
@@ -58,6 +59,10 @@ def __getattr__(name):
         from deeporigin.drug_discovery.abfe import ABFE
 
         return ABFE
+    elif name == "SystemPrep":
+        from deeporigin.drug_discovery.system_prep import SystemPrep
+
+        return SystemPrep
     elif name == "Execution":
         from deeporigin.drug_discovery.execution import Execution
 
