@@ -4,14 +4,15 @@ Usage (ABFE)::
 
     sysprep = SystemPrep(protein=protein, ligand=ligand)
     sysprep.quote()
-    sysprep.run()
-    abfe = ABFE(system=sysprep)
+    prepared = sysprep.run()   # returns PreparedSystem
+    # Use prepared.binding_xml_path, prepared.solvation_xml_path, etc.
+    # Or use sysprep.get_results() to fetch previously computed systems.
 
 Usage (RBFE)::
 
     sysprep = SystemPrep(protein=protein, ligand1=lig1, ligand2=lig2)
     sysprep.quote()
-    sysprep.run()
+    prepared = sysprep.run()
 """
 
 from beartype import beartype
@@ -19,6 +20,7 @@ from beartype import beartype
 from deeporigin.drug_discovery.execution import Execution
 from deeporigin.drug_discovery.execution_mixins import QuoteMixin, SyncExecutableMixin
 from deeporigin.drug_discovery.structures.ligand import Ligand
+from deeporigin.drug_discovery.structures.prepared_system import PreparedSystem
 from deeporigin.drug_discovery.structures.protein import Protein
 from deeporigin.platform.client import DeepOriginClient
 from deeporigin.platform.constants import (
@@ -71,10 +73,13 @@ class SystemPrep(Execution, QuoteMixin, SyncExecutableMixin):
         Exactly one of (ligand) or (ligand1 and ligand2) must be provided.
 
         Args:
-            protein: Protein structure for system preparation.
+            protein: Protein structure for system preparation. Must have ``id`` set.
             ligand: Single ligand for ABFE. Mutually exclusive with ligand1/ligand2.
+                Must have ``id`` set.
             ligand1: First ligand for RBFE. Must be used together with ligand2.
+                Must have ``id`` set.
             ligand2: Second ligand for RBFE. Must be used together with ligand1.
+                Must have ``id`` set.
             padding: Padding distance in nm around the system. Defaults to 1.0.
             retain_waters: Whether to keep water molecules. Defaults to False.
             add_H_atoms: Whether to add hydrogen atoms to the ligand(s). Defaults to True.
@@ -86,6 +91,7 @@ class SystemPrep(Execution, QuoteMixin, SyncExecutableMixin):
 
         Raises:
             ValueError: If neither (ligand) nor (ligand1 and ligand2) is set, or both are set.
+            ValueError: If protein or the relevant ligand(s) do not have an ``id`` set.
         """
         super().__init__(client=client)
         _abfe_mode = ligand is not None and ligand1 is None and ligand2 is None
@@ -95,6 +101,22 @@ class SystemPrep(Execution, QuoteMixin, SyncExecutableMixin):
                 "Provide either ligand (ABFE) or both ligand1 and ligand2 (RBFE), "
                 "but not both and not only one of ligand1/ligand2."
             )
+
+        if protein.id is None:
+            raise ValueError(
+                "protein must have an id set (sync or create with id first)."
+            )
+        if _abfe_mode and ligand is not None and ligand.id is None:
+            raise ValueError(
+                "ligand must have an id set (sync or create with id first)."
+            )
+        if _rbfe_mode:
+            if ligand1 is None or ligand2 is None:
+                raise ValueError("ligand1 and ligand2 are required in RBFE mode.")
+            if ligand1.id is None or ligand2.id is None:
+                raise ValueError(
+                    "ligand1 and ligand2 must have an id set (sync or create with id first)."
+                )
 
         self.tool_version = tool_version
         self._protein = protein
@@ -132,38 +154,26 @@ class SystemPrep(Execution, QuoteMixin, SyncExecutableMixin):
         """Second ligand (RBFE mode). None in ABFE mode."""
         return self._ligand2
 
-    @property
-    def is_rbfe(self) -> bool:
-        """True if this SystemPrep was created with ligand1 and ligand2 (RBFE path)."""
-        return self._is_rbfe
-
-    @property
-    def is_prepared(self) -> bool:
-        """True if run() has completed successfully and output paths are set."""
-        return (
-            self.binding_xml_path is not None
-            and self.solvation_xml_path is not None
-            and self.system_pdb_path is not None
-        )
-
     def __repr__(self) -> str:
         """Return a concise summary of this SystemPrep."""
         parts = ["SystemPrep("]
-        if self.protein.id is not None:
-            parts.append(f"  protein_id={self.protein.id!r},")
-        if self._is_rbfe and self.ligand1 is not None and self.ligand2 is not None:
-            if self.ligand1.id is not None:
-                parts.append(f"  ligand1_id={self.ligand1.id!r},")
-            if self.ligand2.id is not None:
-                parts.append(f"  ligand2_id={self.ligand2.id!r},")
-        elif self.ligand is not None and self.ligand.id is not None:
+        parts.append(f"  protein_id={self.protein.id!r},")
+        if self._is_rbfe:
+            parts.append(f"  ligand1_id={self.ligand1.id!r},")
+            parts.append(f"  ligand2_id={self.ligand2.id!r},")
+        else:
             parts.append(f"  ligand_id={self.ligand.id!r},")
         parts.append(f"  is_rbfe={self._is_rbfe},")
-        parts.append(f"  is_prepared={self.is_prepared},")
         parts.append(")")
         return "\n".join(parts)
 
-    def quote(self) -> None:
+    def _ligand_ids(self) -> tuple[str, str | None]:
+        """Return (ligand1_id, ligand2_id). IDs are always set by constructor."""
+        if self._is_rbfe:
+            return (self.ligand1.id, self.ligand2.id)
+        return (self.ligand.id, None)
+
+    def _quote_impl(self) -> None:
         """Request a cost estimate for system preparation.
 
         Populates ``self.estimate`` with the estimated cost in dollars.
@@ -201,15 +211,20 @@ class SystemPrep(Execution, QuoteMixin, SyncExecutableMixin):
         if result.estimate is not None:
             self._estimate = result.estimate
 
-    def run(self) -> "SystemPrep":
+    def run(self) -> PreparedSystem:
         """Execute system preparation (blocking).
 
-        Calls the platform system-prep function (ABFE or RBFE path), then parses
-        the response and sets ``binding_xml_path``, ``solvation_xml_path``, and
-        ``system_pdb_path``. Also sets ``self.cost``.
+        Calls the platform system-prep function (ABFE or RBFE path), parses the
+        response, sets ``binding_xml_path``, ``solvation_xml_path``, and
+        ``system_pdb_path`` on this instance, and returns a ``PreparedSystem``.
+        To fetch previously computed systems without re-running, use
+        :meth:`get_results`.
 
         Returns:
-            self, so the caller can pass this object to ABFE(system=...) in ABFE mode.
+            A PreparedSystem with the output paths and metadata.
+
+        Raises:
+            ValueError: If the function run did not return output paths.
         """
         if self._is_rbfe:
             from deeporigin.functions.sysprep import rbfe as _rbfe
@@ -245,7 +260,10 @@ class SystemPrep(Execution, QuoteMixin, SyncExecutableMixin):
             self._cost = result.cost
 
         if not result.function_outputs:
-            return self
+            raise ValueError(
+                "System preparation did not return output paths. "
+                "The function run may have failed or returned an unexpected format."
+            )
 
         outputs = result.function_outputs[0]
         output_files = outputs.get("output_files", [])
@@ -261,4 +279,45 @@ class SystemPrep(Execution, QuoteMixin, SyncExecutableMixin):
             if pdb_path is not None:
                 self.system_pdb_path = pdb_path
 
-        return self
+        if not (
+            self.binding_xml_path and self.solvation_xml_path and self.system_pdb_path
+        ):
+            raise ValueError(
+                "System preparation did not return output paths. "
+                "The function run may have failed or returned an unexpected format."
+            )
+
+        return PreparedSystem(
+            binding_xml_path=self.binding_xml_path,
+            solvation_xml_path=self.solvation_xml_path,
+            system_pdb_path=self.system_pdb_path,
+            protein_id=self.protein.id,
+            ligand1_id=self._ligand_ids()[0],
+            ligand2_id=self._ligand_ids()[1],
+            padding=self._padding,
+            add_H_atoms=self._add_H_atoms,
+            retain_waters=self._retain_waters,
+            protonate_protein=self._protonate_protein,
+        )
+
+    def get_results(self) -> list[PreparedSystem]:
+        """Retrieve previously computed prepared systems from the platform.
+
+        Fetches prepared-system results for this instance's protein/ligand(s)
+        and params via the results API, without re-running the computation.
+
+        Returns:
+            List of PreparedSystem objects matching the instance's inputs and options.
+        """
+        ligand1_id, ligand2_id = self._ligand_ids()
+        padding_int = int(round(self._padding))
+        return PreparedSystem.from_result(
+            protein_id=self.protein.id,
+            ligand1_id=ligand1_id,
+            ligand2_id=ligand2_id,
+            padding=padding_int,
+            add_H_atoms=self._add_H_atoms,
+            retain_waters=self._retain_waters,
+            protonate_protein=self._protonate_protein,
+            client=self.client,
+        )

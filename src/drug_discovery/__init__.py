@@ -14,9 +14,11 @@ __all__ = [
     "Ligand",
     "Pocket",
     "LigandSet",
+    "PreparedSystem",
     "PocketFinder",
     "Docking",
     "ABFE",
+    "ABFEParams",
     "Execution",
     "PlatformStatus",
     "SystemPrep",
@@ -47,6 +49,10 @@ def __getattr__(name):
         from .structures.pocket import Pocket
 
         return Pocket
+    elif name == "PreparedSystem":
+        from .structures.prepared_system import PreparedSystem
+
+        return PreparedSystem
     elif name == "PocketFinder":
         from deeporigin.drug_discovery.pocket_finder import PocketFinder
 
@@ -59,6 +65,10 @@ def __getattr__(name):
         from deeporigin.drug_discovery.abfe import ABFE
 
         return ABFE
+    elif name == "ABFEParams":
+        from deeporigin.drug_discovery.abfe import ABFEParams
+
+        return ABFEParams
     elif name == "SystemPrep":
         from deeporigin.drug_discovery.system_prep import SystemPrep
 

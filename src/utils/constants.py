@@ -26,3 +26,6 @@ ENV_VARIABLES = {
     "env": "DO_ENV",
     "base_url": "DO_BASE_URL",
 }
+
+UFA_PROVIDER = "ufa"
+"""Provider identifier for UFA (Unified File Access) storage."""

@@ -24,12 +24,36 @@ if TYPE_CHECKING:
 class QuoteMixin:
     """Adds ``quote()`` to request a cost estimate before execution.
 
-    Subclasses should override ``quote()`` to call the appropriate API
-    (functions or tools) with ``quote=True`` and populate ``self.estimate``.
+    Subclasses override ``_quote_impl()`` rather than ``quote()`` directly.
+    ``quote()`` enforces that a quotation can only be requested once: it raises
+    if ``status`` is already ``"Quoted"`` or an execution ID is already assigned.
     """
 
     def quote(self) -> None:
-        """Request a cost estimate. Must be overridden by subclasses.
+        """Request a cost estimate.
+
+        Guards against re-quoting: raises if the execution has already been
+        quoted (``status == "Quoted"``) or if an execution ID has been assigned.
+
+        Raises:
+            ValueError: If the execution has already been quoted or started.
+        """
+        id_ = getattr(self, "id", None)
+        status = getattr(self, "status", None)
+
+        if status == "Quoted":
+            raise ValueError(
+                "Cannot quote: a quotation already exists for this execution. "
+                "Call start() to confirm it."
+            )
+        if id_ is not None:
+            raise ValueError(
+                f"Cannot quote: execution already has id {id_!r} in {status!r} state."
+            )
+        self._quote_impl()
+
+    def _quote_impl(self) -> None:
+        """Perform the actual quotation request. Must be overridden by subclasses.
 
         Raises:
             NotImplementedError: Always, unless overridden.
@@ -71,11 +95,41 @@ class AsyncExecutableMixin:
         self.progress = None
         self._execution_dto: dict | None = None
 
-    def start(self) -> None:
+    def start(self, **kwargs) -> None:
         """Submit a persisted execution to the platform.
 
-        Assigns an execution ID and sets the initial status. Must be
-        overridden by subclasses to build the tool payload.
+        Two valid paths depending on current status:
+
+        - ``None``: no execution exists yet — calls ``_start_impl`` to
+          create and submit a new one.
+        - ``"Quoted"``: a cost-approved execution already exists — calls
+          ``confirm`` on the platform to promote it, then syncs state.
+
+        All other statuses raise immediately to prevent re-submission.
+
+        Args:
+            **kwargs: Forwarded to ``_start_impl`` (only used when
+                status is ``None``).
+
+        Raises:
+            ValueError: If the current status does not permit starting.
+        """
+        if self.status is None:
+            self._start_impl(**kwargs)
+        elif self.status == "Quoted":
+            self.client.executions.confirm(execution_id=self.id)
+            self.sync()
+        else:
+            raise ValueError(
+                f"Cannot start: execution is already in {self.status!r} state. "
+                f"start() is only allowed when status is None or 'Quoted'."
+            )
+
+    def _start_impl(self, **kwargs) -> None:
+        """Perform the actual submission. Must be overridden by subclasses.
+
+        Args:
+            **kwargs: Tool-specific keyword arguments.
 
         Raises:
             NotImplementedError: Always, unless overridden.

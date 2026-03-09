@@ -4,6 +4,12 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
+from deeporigin.platform.constants import (
+    DOCKING_FUNCTION_KEY,
+    DOCKING_TOOL_KEY,
+    SYSPREP_FUNCTION_KEY,
+)
+
 if TYPE_CHECKING:
     from deeporigin.platform.client import DeepOriginClient
 
@@ -155,7 +161,7 @@ class Results:
             protein_id: Optional protein ID to filter by.
             ligand_id: Optional ligand ID (or list of IDs) to filter by.
             tool_id: Optional tool ID (or list of IDs) to filter by.
-                Defaults to ``["deeporigin.docking", "deeporigin.bulk-docking"]``.
+                Defaults to docking and bulk-docking tool keys from constants.
             compute_job_id: Optional compute job ID to filter by.
             tool_version: Optional tool version to filter by.
             limit: Page size per request. Defaults to 1000.
@@ -167,7 +173,7 @@ class Results:
             from the final response.
         """
         if tool_id is None:
-            tool_id = ["deeporigin.docking", "deeporigin.bulk-docking"]
+            tool_id = [DOCKING_FUNCTION_KEY, DOCKING_TOOL_KEY]
         filter_dict = _build_result_filter(
             tool_id=tool_id,
             protein_id=protein_id,
@@ -218,6 +224,59 @@ class Results:
             pocket_min_size=pocket_min_size,
             tool_version=tool_version,
         )
+        return self.get(filter_dict=filter_dict, limit=limit, select=select)
+
+    def get_prepared_systems(
+        self,
+        *,
+        protein_id: str | None = None,
+        ligand1_id: str | None = None,
+        ligand2_id: str | None = None,
+        padding: int | None = None,
+        add_H_atoms: bool | None = None,  # NOSONAR
+        retain_waters: bool | None = None,
+        protonate_protein: bool | None = None,
+        limit: int = 1000,
+        select: list[str] | None = None,
+    ) -> dict:
+        """Get system-prep results, optionally filtered by inputs and options.
+
+        Convenience wrapper around :meth:`get` with
+        ``tool_id="deeporigin.system-prep"``. Optional args filter on the
+        tool result ``data`` (e.g. protein_id, ligand1_id, padding,
+        add_H_atoms, retain_waters, protonate_protein).
+
+        Args:
+            protein_id: Optional protein ID to filter by.
+            ligand1_id: Optional ligand1 ID to filter by.
+            ligand2_id: Optional ligand2 ID to filter by.
+            padding: Optional padding value to filter by.
+            add_H_atoms: Optional add_H_atoms flag to filter by.
+            retain_waters: Optional retain_waters flag to filter by.
+            protonate_protein: Optional protonate_protein flag to filter by.
+            limit: Page size per request. Defaults to 1000.
+            select: List of fields to select. Defaults to
+                ``["id", "tool_id", "tool_version", "data", "compute_job_id"]``.
+
+        Returns:
+            Dictionary with ``data`` (all matching records across pages) and
+            ``meta`` from the final response.
+        """
+        filter_dict: dict[str, Any] = {"tool_id": {"eq": SYSPREP_FUNCTION_KEY}}
+        if protein_id is not None:
+            filter_dict["protein_id"] = {"eq": protein_id}
+        if ligand1_id is not None:
+            filter_dict["ligand1_id"] = {"eq": ligand1_id}
+        if ligand2_id is not None:
+            filter_dict["ligand2_id"] = {"eq": ligand2_id}
+        if padding is not None:
+            filter_dict["padding"] = {"eq": padding}
+        if add_H_atoms is not None:
+            filter_dict["add_H_atoms"] = {"eq": add_H_atoms}
+        if retain_waters is not None:
+            filter_dict["retain_waters"] = {"eq": retain_waters}
+        if protonate_protein is not None:
+            filter_dict["protonate_protein"] = {"eq": protonate_protein}
         return self.get(filter_dict=filter_dict, limit=limit, select=select)
 
     def with_ligands(

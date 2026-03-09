@@ -153,7 +153,7 @@ class Docking(Execution, QuoteMixin, SyncExecutableMixin, AsyncExecutableMixin):
         parts.append(")")
         return "\n".join(parts)
 
-    def quote(self) -> None:
+    def _quote_impl(self) -> None:
         """Request a cost estimate for docking.
 
         Submits an execution with ``approve_amount=0`` to get a quotation
@@ -228,7 +228,7 @@ class Docking(Execution, QuoteMixin, SyncExecutableMixin, AsyncExecutableMixin):
 
         return poses
 
-    def start(
+    def _start_impl(
         self,
         *,
         approve_amount: int | None = None,

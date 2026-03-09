@@ -3,6 +3,8 @@
 import pytest
 
 from deeporigin.drug_discovery import BRD_DATA_DIR, Complex, Ligand, Protein
+from deeporigin.drug_discovery.abfe import ABFE
+from deeporigin.drug_discovery.structures.prepared_system import PreparedSystem
 from deeporigin.exceptions import DeepOriginException
 
 
@@ -55,3 +57,20 @@ def test_check_dt_raises_on_out_of_range_lv0():
         match=r"Found invalid dt values; must be numeric and within range \[0.001, 0.004\]",
     ):
         sim.abfe.check_dt()
+
+
+def test_abfe_quote_cannot_be_called_twice_lv0():
+    """quote() raises ValueError if called after a quotation already exists."""
+    prepared_system = PreparedSystem(
+        binding_xml_path="path/binding.xml",
+        solvation_xml_path="path/solvation.xml",
+        system_pdb_path="path/system.pdb",
+    )
+    abfe = ABFE(prepared_system=prepared_system)
+
+    # Simulate a completed quote by setting state directly
+    abfe._id = "exec-quoted-123"
+    abfe.status = "Quoted"
+
+    with pytest.raises(ValueError, match="quotation already exists"):
+        abfe.quote()

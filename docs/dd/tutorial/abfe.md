@@ -127,109 +127,63 @@ This makes the widget auto-update, and monitor the status of the job till it rea
 
 ## Parameters
 
+ABFE simulation parameters are controlled via the `ABFEParams` dataclass. Default values are tuned for production runs; most users will only need to adjust a small number of fields.
+
 ### Viewing parameters
 
-The end to end ABFE tool has a number of user-accessible parameters. To view all parameters, use:
+To inspect the current parameters on an `ABFE` object, access the `params` property:
 
 ```{.python notest}
 from deeporigin.drug_discovery import Complex, BRD_DATA_DIR
+
 sim = Complex.from_dir(BRD_DATA_DIR)
-
-sim.abfe._params["end_to_end"]
+sim.abfe.params
 ```
-??? success "Expected output" 
-    This will print a dictionary of the parameters used for ABFE, similar to:
 
-    ```json
-        {
-            "binding": {
-                "add_fep_repeats": 0,
-                "annihilate": true,
-                "restraints_type": "rigid_body",
-                "em_all": true,
-                "em_solvent": true,
-                "emeq_md_options": {
-                    "T": 298.15,
-                    "cutoff": 0.9,
-                    "dt": 0.004,
-                    "fourier_spacing": 0.12,
-                    "hydrogen_mass": 2.0
-                },
-                "lambda_schedule": "default",
-                "n_windows": 32,
-                "mbar": 1,
-                "npt_reduce_restraints_ns": 2.0,
-                "nvt_heating_ns": 1.0,
-                "prod_md_options": {
-                    "T": 298.15,
-                    "barostat": "MonteCarloBarostat",
-                    "barostat_exchange_interval": 1150,
-                    "cutoff": 0.9,
-                    "dt": 0.004,
-                    "fourier_spacing": 0.12,
-                    "hydrogen_mass": 2.0,
-                    "integrator": "BAOABIntegrator"
-                },
-                "repeats": 1,
-                "replex_period_ps": 0,
-                "softcore_alpha": 0.5,
-                "steps": 1250000,
-                "test_run": 0,
-                "thread_pinning": 1
-            },
-            "solvation": {
-                "add_fep_repeats": 0,
-                "annihilate": true,
-                "restraints_type": "rigid_body",
-                "em_all": true,
-                "em_solvent": true,
-                "emeq_md_options": {
-                    "T": 298.15,
-                    "cutoff": 0.9,
-                    "dt": 0.004,
-                    "fourier_spacing": 0.12,
-                    "hydrogen_mass": 2.0
-                },
-                "lambda_schedule": "default",
-                "n_windows": 24,
-                "mbar": 1,
-                "npt_reduce_restraints_ns": 0.2,
-                "nvt_heating_ns": 0.1,
-                "prod_md_options": {
-                    "T": 298.15,
-                    "barostat": "MonteCarloBarostat",
-                    "barostat_exchange_interval": 1150,
-                    "cutoff": 0.9,
-                    "dt": 0.004,
-                    "fourier_spacing": 0.12,
-                    "hydrogen_mass": 2.0,
-                    "integrator": "BAOABIntegrator"
-                },
-                "repeats": 1,
-                "softcore_alpha": 0.5,
-                "steps": 500000,
-                "test_run": 0,
-                "thread_pinning": 1
-            }
-        }
+??? success "Expected output"
+    Parameters are printed one per line. Fields that have been changed from their defaults are marked with an asterisk (`*`):
 
+    ```
+    ABFEParams(
+      annihilate: True
+      dt: 0.004
+      temperature: 298.15
+      cutoff: 0.9
+      repeats: 3 *
+      replex_period_ps: 2.5
+      test_run: 0
+      binding_n_windows: 48
+      binding_npt_reduce_restraints_ns: 2.0
+      binding_nvt_heating_ns: 1.0
+      binding_steps: 1250000
+      solvation_n_windows: 32
+      solvation_npt_reduce_restraints_ns: 0.2
+      solvation_nvt_heating_ns: 0.1
+      solvation_steps: 500000
+    )
     ```
 
 ### Modifying parameters
 
-Any of these parameters are modifiable using dictionary access. For example, to change the number of windows in the binding step, we can use:
+`ABFEParams` is an immutable (frozen) dataclass. To change parameters, use `dataclasses.replace()` to create a modified copy and assign it back to the `ABFE` object:
 
 ```{.python notest}
+from dataclasses import replace
 from deeporigin.drug_discovery import Complex, BRD_DATA_DIR
+
 sim = Complex.from_dir(BRD_DATA_DIR)
 
-sim.abfe._params["end_to_end"]["binding"]["n_windows"] = 24
+params = sim.abfe.params
+params = replace(params, repeats=3, test_run=1)
+sim.abfe.params = params
 ```
 
-!!! danger "Changing parameters may lead to simulation failures"
-    Some parameters, like `dt` are restricted to certain ranges. You will not be allowed to start a simulation run if these parameters exceed those ranges. 
+Multiple fields can be changed in a single `replace()` call. The original `params` object is never modified — `replace()` always returns a new instance.
 
-    Changing parameters away from the defaults may lead to simulation failures.
+!!! danger "Changing parameters may lead to simulation failures"
+    Some parameters, such as `dt`, are constrained to specific ranges. You will not be allowed to start a simulation run if these parameters fall outside valid ranges.
+
+    Changing parameters away from their defaults may lead to simulation failures.
 
 
 ## Results
