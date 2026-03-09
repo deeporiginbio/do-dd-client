@@ -147,7 +147,7 @@ class TestExecutionStatusTransitions:
             job._set_status("Succeeded")
 
     def test_terminal_state_blocks_further_transitions(self):
-        """Once in Succeeded, no further transitions are allowed."""
+        """None -> Created -> Running -> Succeeded blocks further transitions."""
         job = AsyncJob("x")
         job._set_status("Created")
         job._set_status("Running")
@@ -221,7 +221,9 @@ class TestAsyncExecutableMixin:
         """cancel() from a non-cancellable state raises ValueError."""
         job = AsyncJob("x")
         job._id = "some-id"
-        job.status = "Succeeded"
+        job._set_status("Created")
+        job._set_status("Running")
+        job._set_status("Succeeded")
         with pytest.raises(ValueError, match="Cannot cancel"):
             job.cancel()
 

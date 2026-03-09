@@ -382,6 +382,7 @@ class Pocket:
         remote_path = pocket_data["file_path"]
         pocket_data["file_path"] = client.files.download_file(
             remote_path=remote_path,
+            lazy=True,
         )
 
         return cls.from_json([pocket_data])[0]

@@ -251,6 +251,7 @@ class Entities:
         all_data: list[dict[str, Any]] = []
         cursor: str | None = None
         is_first_page = True
+        response: dict[str, Any] = {}
 
         while True:
             response = self.search(

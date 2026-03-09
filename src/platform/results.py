@@ -52,7 +52,7 @@ def _build_result_filter(
         else:
             filter_dict["ligand_id"] = {"eq": ligand_id}
     if compute_job_id is not None:
-        filter_dict["compute_job_id"] = compute_job_id
+        filter_dict["compute_job_id"] = {"eq": compute_job_id}
     if tool_version is not None:
         filter_dict["tool_version"] = {"eq": tool_version}
     if pocket_count is not None:

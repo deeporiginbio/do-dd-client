@@ -13,6 +13,7 @@ from deeporigin.drug_discovery.constants import tool_mapper
 from deeporigin.drug_discovery.structures.ligand import Ligand, LigandSet
 from deeporigin.drug_discovery.workflow_step import WorkflowStep
 from deeporigin.exceptions import DeepOriginException
+from deeporigin.platform.constants import ABFE_TOOL_VERSION
 from deeporigin.platform.job import Job, JobList
 from deeporigin.utils.env import _ensure_do_folder
 from deeporigin.utils.notebook import get_notebook_environment
@@ -26,7 +27,7 @@ class ABFE(WorkflowStep):
     Objects instantiated here are meant to be used within the Complex class."""
 
     """tool version to use for ABFE"""
-    tool_version = "0.2.19"
+    tool_version = ABFE_TOOL_VERSION
     _tool_key = tool_mapper["ABFE"]
 
     _max_atom_count: int = 100_000

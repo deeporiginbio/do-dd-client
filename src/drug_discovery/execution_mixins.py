@@ -154,6 +154,9 @@ class AsyncExecutableMixin:
         dto = client.executions.get_execution(execution_id=id)
         tool_info = dto["tool"]
 
+        # Bypass __init__ so subclasses can rehydrate domain fields
+        # (e.g. _protein, _ligands) from the DTO instead of constructor args.
+        # All Execution-level attributes are set explicitly below.
         instance = object.__new__(cls)
 
         instance.client = client

@@ -93,10 +93,6 @@ class Docking(Execution, QuoteMixin, SyncExecutableMixin, AsyncExecutableMixin):
         if ligands is None:
             ligands = LigandSet.from_smiles(smiles_list)
 
-        for ligand in ligands:
-            if ligand.id is None:
-                raise ValueError("Ligands must have an ID.")
-
         super().__init__(client=client)
         self.tool_version = tool_version
 
@@ -333,15 +329,30 @@ class Docking(Execution, QuoteMixin, SyncExecutableMixin, AsyncExecutableMixin):
                 "this execution may have been created without an associated pocket."
             )
 
+        protein_input = inputs.get("protein", {})
+        protein_id = protein_input.get("id")
+        if protein_id is None:
+            raise ValueError(
+                "Missing 'protein.id' in execution userInputs; "
+                "this execution may have been created with an older input schema."
+            )
+
+        ligands_input = inputs.get("ligands", [])
+        if not ligands_input:
+            raise ValueError(
+                "Missing 'ligands' in execution userInputs; "
+                "this execution may have been created with an older input schema."
+            )
+
         with concurrent.futures.ThreadPoolExecutor(max_workers=3) as executor:
             fut_protein = executor.submit(
                 Protein.from_id,
-                inputs["protein"]["id"],
+                protein_id,
                 client=instance.client,
             )
             fut_ligands = executor.submit(
                 LigandSet.from_ids,
-                [lig["id"] for lig in inputs["ligands"]],
+                [lig["id"] for lig in ligands_input],
                 client=instance.client,
             )
             fut_pocket = executor.submit(
@@ -370,7 +381,10 @@ class Docking(Execution, QuoteMixin, SyncExecutableMixin, AsyncExecutableMixin):
         if self.id is None:
             raise ValueError("No execution has been started. Call start() first.")
 
-        response = self.client.results.get_poses(protein_id=self.protein.id)
+        response = self.client.results.get_poses(
+            protein_id=self.protein.id,
+            compute_job_id=self.id,
+        )
         records = response.get("data", [])
         remote_paths: list[str] = []
         for record in records:

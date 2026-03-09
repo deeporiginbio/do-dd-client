@@ -10,6 +10,8 @@ Usage::
     results = abfe.get_results()
 """
 
+from typing import NoReturn
+
 from beartype import beartype
 import pandas as pd
 
@@ -81,12 +83,13 @@ class ABFE(Execution, QuoteMixin, AsyncExecutableMixin):
         retain_waters: bool = False,
         add_H_atoms: bool = False,
         protonate_protein: bool = False,
-    ) -> Protein:
+    ) -> NoReturn:
         """Run system preparation for the protein-ligand pair.
 
-        This step produces the solvation and binding XML files required
-        by ``start()``. The resulting prepared system PDB is returned as
-        a ``Protein`` object and can be visualised.
+        .. note::
+
+            Not yet implemented. Will produce the solvation and binding
+            XML files required by ``start()``.
 
         Args:
             padding: Padding around the system box in nm. Defaults to 1.0.
@@ -94,11 +97,8 @@ class ABFE(Execution, QuoteMixin, AsyncExecutableMixin):
             add_H_atoms: Add hydrogen atoms to the ligand.
             protonate_protein: Protonate the protein.
 
-        Returns:
-            A ``Protein`` built from the prepared system PDB.
-
         Raises:
-            ValueError: If the ligand is charged (ABFE does not support charged ligands).
+            NotImplementedError: Always -- preparation is not yet supported.
         """
         raise NotImplementedError("ABFE preparation is not supported yet.")
 
