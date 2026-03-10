@@ -5,8 +5,6 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any
 
 from deeporigin.platform.constants import (
-    DOCKING_FUNCTION_KEY,
-    DOCKING_TOOL_KEY,
     SYSPREP_FUNCTION_KEY,
 )
 
@@ -173,7 +171,7 @@ class Results:
             from the final response.
         """
         if tool_key is None:
-            tool_key = ["deeporigin.docking", "deeporigin.bulk-docking"]
+            tool_key = [DOCKING_FUNCTION_KEY, DOCKING_TOOL_KEY]
         filter_dict = _build_result_filter(
             tool_key=tool_key,
             protein_id=protein_id,
@@ -242,7 +240,7 @@ class Results:
         """Get system-prep results, optionally filtered by inputs and options.
 
         Convenience wrapper around :meth:`get` with
-        ``tool_id="deeporigin.system-prep"``. Optional args filter on the
+        ``tool_key="deeporigin.system-prep"``. Optional args filter on the
         tool result ``data`` (e.g. protein_id, ligand1_id, padding,
         add_H_atoms, retain_waters, protonate_protein).
 
@@ -256,13 +254,13 @@ class Results:
             protonate_protein: Optional protonate_protein flag to filter by.
             limit: Page size per request. Defaults to 1000.
             select: List of fields to select. Defaults to
-                ``["id", "tool_id", "tool_version", "data", "compute_job_id"]``.
+                ``["id", "tool_key", "tool_version", "data", "compute_job_id"]``.
 
         Returns:
             Dictionary with ``data`` (all matching records across pages) and
             ``meta`` from the final response.
         """
-        filter_dict: dict[str, Any] = {"tool_id": {"eq": SYSPREP_FUNCTION_KEY}}
+        filter_dict: dict[str, Any] = {"tool_key": {"eq": SYSPREP_FUNCTION_KEY}}
         if protein_id is not None:
             filter_dict["protein_id"] = {"eq": protein_id}
         if ligand1_id is not None:
