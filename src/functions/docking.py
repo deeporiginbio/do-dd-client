@@ -1,10 +1,8 @@
-"""This module implements a low level function to perform molecular docking using the Deep Origin API.
+"""Low-level functions for molecular docking via the Deep Origin API.
 
-The main function `dock()` takes a Protein object, a list of ligand SMILES strings, and docking box parameters
-to perform docking calculations. The docking box can be specified either by providing explicit coordinates for the
-pocket center, or by passing a Pocket object which contains the pocket center information.
-
-The module interfaces with the Deep Origin docking service to perform the actual docking calculations remotely.
+The main function `dock()` takes a Protein, a Ligand, and a Pocket and
+performs docking calculations remotely. Box size and pocket center are
+derived from the Pocket object.
 """
 
 import os
@@ -44,14 +42,20 @@ def _get_pocket_center(
     return list(pocket_center)
 
 
+def _get_box_size(pocket: Pocket, axis: str) -> float:
+    """Return box size for *axis* from *pocket*, defaulting to 20.0."""
+    val = getattr(pocket, f"box_size_{axis}", None)
+    if val is not None:
+        return float(val)
+    return 20.0
+
+
 def dock(
     *,
     client: DeepOriginClient,
     protein: Protein,
     ligand: Ligand,
-    box_size: tuple[float, float, float] = (20.0, 20.0, 20.0),
-    pocket_center: Optional[tuple[int, int, int]] = None,
-    pocket: Optional[Pocket] = None,
+    pocket: Pocket,
     quote: bool = False,
 ) -> FunctionResult:
     """Run molecular docking using the DeepOrigin API.
@@ -60,9 +64,8 @@ def dock(
         client: DeepOrigin client instance.
         protein: Protein object representing the target protein.
         ligand: Ligand object to dock.
-        box_size: Size of the docking box (x, y, z).
-        pocket_center: Center coordinates of the docking pocket (x, y, z).
-        pocket: Pocket object defining the docking region.
+        pocket: Pocket object defining the docking region. Box size
+            and pocket center are derived from the pocket.
         quote: If True, request a cost estimate without executing.
 
     Returns:
@@ -72,10 +75,10 @@ def dock(
     protein.sync(lazy=True, client=client)
     ligand.sync(lazy=True, client=client)
 
-    if pocket is not None or pocket_center is not None:
-        pocket_center = _get_pocket_center(pocket, pocket_center)
+    if pocket.pocket_center is not None:
+        pocket_center = list(pocket.pocket_center)
     else:
-        raise DeepOriginException("Pocket center is required") from None
+        pocket_center = pocket.get_center().tolist()
 
     protein_data = {
         "id": protein.id,
@@ -90,11 +93,13 @@ def dock(
     payload = {
         "protein": protein_data,
         "ligand": ligand_data,
-        "pocket_center": list(pocket_center),
-        "box_size": list(box_size),
+        "pocket_center": pocket_center,
+        "box_size_x": _get_box_size(pocket, "x"),
+        "box_size_y": _get_box_size(pocket, "y"),
+        "box_size_z": _get_box_size(pocket, "z"),
     }
-    if pocket is not None and pocket.name is not None:
-        payload["pocket_id"] = pocket.name
+    if pocket.id is not None:
+        payload["pocket_id"] = pocket.id
 
     response = client.functions.run(
         key=DOCKING_FUNCTION_KEY,

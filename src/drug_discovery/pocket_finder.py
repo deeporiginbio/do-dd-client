@@ -114,15 +114,7 @@ class PocketFinder(Execution, QuoteMixin, SyncExecutableMixin):
         Returns:
             List of ``Pocket`` objects found in the protein.
         """
-        from deeporigin.drug_discovery.structures.protein import (
-            _make_pockets_from_result,
-        )
-        from deeporigin.functions.pocket_finder import (
-            cache_path as _pocket_cache_path,
-        )
-        from deeporigin.functions.pocket_finder import (
-            find_pockets as _find_pockets,
-        )
+        from deeporigin.functions.pocket_finder import find_pockets as _find_pockets
 
         client = self.client
 
@@ -134,11 +126,9 @@ class PocketFinder(Execution, QuoteMixin, SyncExecutableMixin):
             quote=False,
         )
 
-        pockets = _make_pockets_from_result(
+        pockets = Pocket.from_function_result(
             result=result,
             client=client,
-            cache_path_fn=_pocket_cache_path,
-            use_cache=True,
         )
 
         self._cost = result.cost

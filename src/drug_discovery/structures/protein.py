@@ -8,7 +8,6 @@ from various sources, preprocess structures, handle ligands, and visualize prote
 """
 
 from collections import defaultdict
-from collections.abc import Callable
 from dataclasses import dataclass, field
 import hashlib
 import io
@@ -60,64 +59,6 @@ def _make_poses_from_dock_results(
             )
             sdf_files.add(local_path)
     return LigandSet.from_sdf_files(list(sdf_files))
-
-
-def _make_pockets_from_result(
-    *,
-    result: FunctionResult,
-    client: DeepOriginClient,
-    cache_path_fn: Callable[[str], str],
-    use_cache: bool,
-) -> list[Pocket]:
-    """Download pocket PDB files and build Pocket objects.
-
-    Args:
-        result: FunctionResult wrapping a pocket-finder response.
-        client: DeepOrigin client for downloading files.
-        cache_path_fn: Callable that maps a cache key to a directory path.
-        use_cache: Whether to return cached results when available.
-
-    Returns:
-        A list of Pocket objects.
-    """
-    import json
-
-    from deeporigin.utils.hashing import hash_dict
-
-    outputs = result.function_outputs[0]
-    pockets_data = outputs.get("pockets", [])
-
-    response = result.response
-    inputs = response.get("userInputs", {}).get("inputs", {})
-    cache_key = hash_dict(
-        {
-            "protein": {"file_path": inputs.get("protein", {}).get("file_path", "")},
-            "pocket_count": inputs.get("pocket_count", 5),
-            "pocket_min_size": inputs.get("pocket_min_size", 30),
-        }
-    )
-    cp = cache_path_fn(cache_key)
-    cache_file = os.path.join(cp, "pockets.json")
-
-    if use_cache and os.path.exists(cache_file):
-        with open(cache_file) as f:
-            return Pocket.from_json(json.load(f))
-
-    os.makedirs(cp, exist_ok=True)
-
-    for pocket in pockets_data:
-        remote_path = pocket["file_path"]
-        local_path = os.path.join(cp, remote_path.split("/")[-1])
-        client.files.download_file(
-            remote_path=remote_path,
-            local_path=local_path,
-        )
-        pocket["file_path"] = local_path
-
-    with open(cache_file, "w") as f:
-        json.dump(pockets_data, f, indent=2)
-
-    return Pocket.from_json(pockets_data)
 
 
 @dataclass
@@ -664,7 +605,6 @@ class Protein(Entity):
         self,
         pocket_count: int = 1,
         pocket_min_size: int = 30,
-        use_cache: bool = True,
         client: Optional[DeepOriginClient] = None,
         quote: bool = False,
     ) -> FunctionResult:
@@ -678,7 +618,6 @@ class Protein(Entity):
             pocket_count: Maximum number of pockets to identify. Defaults to 1.
             pocket_min_size: Minimum size of pockets to consider,
                 measured in cubic Angstroms. Defaults to 30.
-            use_cache: Whether to use cached results. Defaults to True.
             client: DeepOriginClient instance. If None, uses DeepOriginClient.get().
             quote: If True, request a cost estimate without executing.
 
@@ -696,12 +635,7 @@ class Protein(Entity):
         if client is None:
             client = DeepOriginClient.get()
 
-        from deeporigin.functions.pocket_finder import (
-            cache_path as _pocket_cache_path,
-        )
-        from deeporigin.functions.pocket_finder import (
-            find_pockets as _find_pockets,
-        )
+        from deeporigin.functions.pocket_finder import find_pockets as _find_pockets
 
         result = _find_pockets(
             protein=self,
@@ -715,11 +649,9 @@ class Protein(Entity):
             result.pockets = []
             return result
 
-        result.pockets = _make_pockets_from_result(
+        result.pockets = Pocket.from_function_result(
             result=result,
             client=client,
-            cache_path_fn=_pocket_cache_path,
-            use_cache=use_cache,
         )
         return result
 

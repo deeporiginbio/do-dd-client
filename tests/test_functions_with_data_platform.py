@@ -73,7 +73,6 @@ def test_pocketfinder_with_data_platform_lv2(
 
     result = registered_protein.find_pockets(
         pocket_count=num_pockets,
-        use_cache=False,
         client=client,
     )
 

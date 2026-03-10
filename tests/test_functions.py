@@ -63,7 +63,6 @@ def test_pocket_finder_lv2(client: DeepOriginClient):
     protein.remove_water()
     result = protein.find_pockets(
         pocket_count=1,
-        use_cache=False,
     )
 
     assert isinstance(result, FunctionResult), (
