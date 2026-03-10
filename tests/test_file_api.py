@@ -333,6 +333,55 @@ def test_download_as_zip_lv1():
         assert os.path.getsize(local_path) > 0, "ZIP should not be empty"
 
 
+def test_upload_directory_bulk_lv1():
+    """Upload ~100MB directory (100 x 1MB files), verify listing, then clean up."""
+    client = DeepOriginClient()
+
+    if client.env == "local":
+        pytest.skip("Requires a real file service (use --env dev/staging/prod)")
+
+    remote_dir = "/testing-bulk-upload/"
+    num_files = 100
+    file_size = 1024 * 1024  # 1 MB
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        # Generate 100 x 1MB files with random bytes
+        expected_names = []
+        for i in range(num_files):
+            name = f"file_{i:03d}.bin"
+            expected_names.append(name)
+            path = os.path.join(tmpdir, name)
+            with open(path, "wb") as f:
+                f.write(os.urandom(file_size))
+
+        # Upload the entire directory (lower concurrency to avoid write timeouts)
+        results = client.files.upload_files_via_signed_url(
+            local_path=tmpdir,
+            remote_dir=remote_dir,
+            max_workers=5,
+            max_retries=5,
+            retry_backoff_factor=2.0,
+        )
+
+        assert len(results) == num_files, (
+            f"expected {num_files} uploads, got {len(results)}"
+        )
+
+    # Verify uploaded files are visible via list_files_in_dir
+    remote_files = client.files.list_files_in_dir(
+        remote_path=remote_dir,
+        recursive=True,
+    )
+
+    uploaded_basenames = sorted(os.path.basename(f) for f in remote_files)
+    assert uploaded_basenames == sorted(expected_names), (
+        "listed files should match uploaded files"
+    )
+
+    # Clean up remote files
+    client.files.delete_files(remote_paths=remote_files)
+
+
 def test_health_lv1():
     """test the files service health check."""
     client = DeepOriginClient()
