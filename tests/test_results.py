@@ -6,30 +6,30 @@ from deeporigin.platform.client import DeepOriginClient
 
 
 def _get_result_explorer_ids() -> tuple[str, str, str | None]:
-    """Return (tool_id, protein_id, tool_version) for result-explorer tests.
+    """Return (tool_key, protein_id, tool_version) for result-explorer tests.
 
     For local env, returns hardcoded values matching the fixture data.
     For remote envs, uses the same known protein but leaves tool_version
     as None so the test doesn't assert on a specific version.
 
     Returns:
-        Tuple of (tool_id, protein_id, tool_version).
+        Tuple of (tool_key, protein_id, tool_version).
     """
-    tool_id = "deeporigin.bulk-docking"
+    tool_key = "deeporigin.bulk-docking"
     protein_id = "08BSPN61NYVE3"
     if os.environ.get("DO_ENV") == "local":
-        return tool_id, protein_id, "0.6.6"
-    return tool_id, protein_id, None
+        return tool_key, protein_id, "0.6.6"
+    return tool_key, protein_id, None
 
 
 def test_get_results_lv1():
     """Test searching result-explorer records filtered by tool and protein."""
     client = DeepOriginClient()
-    tool_id, protein_id, _ = _get_result_explorer_ids()
+    tool_key, protein_id, _ = _get_result_explorer_ids()
 
     response = client.results.get(
         filter_dict={
-            "tool_id": {"eq": tool_id},
+            "tool_key": {"eq": tool_key},
             "protein_id": {"eq": protein_id},
         },
     )
@@ -40,17 +40,17 @@ def test_get_results_lv1():
     assert len(response["data"]) > 0, "Expected at least one result"
 
     for record in response["data"]:
-        for field in ("id", "tool_id", "tool_version", "data", "compute_job_id"):
+        for field in ("id", "tool_key", "tool_version", "data", "compute_job_id"):
             assert field in record, f"Expected '{field}' key in record"
 
 
 def test_get_results_with_tool_version_lv1():
     """Test results.get with an explicit tool_version filter."""
     client = DeepOriginClient()
-    tool_id, protein_id, tool_version = _get_result_explorer_ids()
+    tool_key, protein_id, tool_version = _get_result_explorer_ids()
 
     filter_dict: dict = {
-        "tool_id": {"eq": tool_id},
+        "tool_key": {"eq": tool_key},
         "protein_id": {"eq": protein_id},
     }
     if tool_version is not None:
