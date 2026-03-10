@@ -4,12 +4,6 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
-from deeporigin.platform.constants import (
-    DOCKING_FUNCTION_KEY,
-    DOCKING_TOOL_KEY,
-    POCKET_FINDER_FUNCTION_KEY,
-    SYSPREP_FUNCTION_KEY,
-)
 from deeporigin.utils.constants import DEFAULT_SEARCH_PAGE_SIZE
 
 if TYPE_CHECKING:
@@ -158,22 +152,19 @@ class Results:
         *,
         protein_id: str | None = None,
         ligand_id: str | list[str] | None = None,
-        tool_key: str | list[str] | None = None,
         compute_job_id: str | None = None,
         tool_version: str | None = None,
-        limit: int | None = 1000,
+        limit: int | None = 100,
         select: list[str] | None = None,
     ) -> dict:
         """Get docking poses, optionally filtered by protein.
 
-        Convenience wrapper around :meth:`get` that fetches results
-        from both ``deeporigin.docking`` and ``deeporigin.bulk-docking``.
+        Convenience wrapper around :meth:`get` with
+        ``result_type="pose"``.
 
         Args:
             protein_id: Optional protein ID to filter by.
             ligand_id: Optional ligand ID (or list of IDs) to filter by.
-            tool_key: Optional tool ID (or list of IDs) to filter by.
-                Defaults to ``[DOCKING_FUNCTION_KEY, DOCKING_TOOL_KEY]``.
             compute_job_id: Optional compute job ID to filter by.
             tool_version: Optional tool version to filter by.
             limit: Maximum total number of results to return. Defaults to 1000.
@@ -184,15 +175,21 @@ class Results:
             Dictionary with ``data`` (all records across pages) and ``meta``
             from the final response.
         """
-        if tool_key is None:
-            tool_key = [DOCKING_FUNCTION_KEY, DOCKING_TOOL_KEY]
-        filter_dict = _build_result_filter(
-            tool_key=tool_key,
-            protein_id=protein_id,
-            ligand_id=ligand_id,
-            compute_job_id=compute_job_id,
-            tool_version=tool_version,
-        )
+        filter_dict: dict[str, Any] = {
+            "props": [{"column": "result_type", "op": "eq", "value": "pose"}]
+        }
+
+        if protein_id is not None:
+            filter_dict["protein_id"] = {"eq": protein_id}
+        if ligand_id is not None:
+            if isinstance(ligand_id, list):
+                filter_dict["ligand_id"] = {"in": ligand_id}
+            else:
+                filter_dict["ligand_id"] = {"eq": ligand_id}
+        if compute_job_id is not None:
+            filter_dict["compute_job_id"] = {"eq": compute_job_id}
+        if tool_version is not None:
+            filter_dict["tool_version"] = {"eq": tool_version}
         return self.get(filter_dict=filter_dict, limit=limit, select=select)
 
     def get_pockets(
@@ -210,7 +207,7 @@ class Results:
         """Get binding pockets, optionally filtered by protein.
 
         Convenience wrapper around :meth:`get` with
-        ``tool_key="deeporigin.pocketfinder"``.
+        ``result_type="pocket"``.
 
         Args:
             id: Optional record ID to fetch a specific pocket.
@@ -227,15 +224,22 @@ class Results:
             Dictionary with ``data`` (all records across pages) and ``meta``
             from the final response.
         """
-        filter_dict = _build_result_filter(
-            id=id,
-            tool_key=POCKET_FINDER_FUNCTION_KEY,
-            protein_id=protein_id,
-            compute_job_id=compute_job_id,
-            pocket_count=pocket_count,
-            pocket_min_size=pocket_min_size,
-            tool_version=tool_version,
-        )
+        filter_dict: dict[str, Any] = {
+            "props": [{"column": "result_type", "op": "eq", "value": "pocket"}]
+        }
+
+        if id is not None:
+            filter_dict["id"] = {"eq": id}
+        if protein_id is not None:
+            filter_dict["protein_id"] = {"eq": protein_id}
+        if compute_job_id is not None:
+            filter_dict["compute_job_id"] = {"eq": compute_job_id}
+        if pocket_count is not None:
+            filter_dict["pocket_count"] = {"eq": pocket_count}
+        if pocket_min_size is not None:
+            filter_dict["pocket_min_size"] = {"eq": pocket_min_size}
+        if tool_version is not None:
+            filter_dict["tool_version"] = {"eq": tool_version}
         return self.get(filter_dict=filter_dict, limit=limit, select=select)
 
     def get_prepared_systems(
@@ -274,7 +278,10 @@ class Results:
             Dictionary with ``data`` (all matching records across pages) and
             ``meta`` from the final response.
         """
-        filter_dict: dict[str, Any] = {"tool_key": {"eq": SYSPREP_FUNCTION_KEY}}
+        filter_dict: dict[str, Any] = {
+            "props": [{"column": "result_type", "op": "eq", "value": "preparedsystem"}]
+        }
+
         if protein_id is not None:
             filter_dict["protein_id"] = {"eq": protein_id}
         if ligand1_id is not None:
