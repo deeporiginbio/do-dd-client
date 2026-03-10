@@ -540,7 +540,7 @@ def create_tools_router(
         for item in items:
             record = {
                 "id": "08" + str(uuid.uuid4()).replace("-", "").upper()[:11],
-                "tool_id": tool_key,
+                "tool_key": tool_key,
                 "tool_version": tool_version,
                 "data": dict(item),
                 "compute_job_id": execution_id,

@@ -11,7 +11,7 @@ if TYPE_CHECKING:
 def _build_result_filter(
     *,
     id: str | None = None,
-    tool_id: str | list[str] | None = None,
+    tool_key: str | list[str] | None = None,
     protein_id: str | None = None,
     ligand_id: str | list[str] | None = None,
     compute_job_id: str | None = None,
@@ -23,7 +23,7 @@ def _build_result_filter(
 
     Args:
         id: Record ID (uses ``eq``).
-        tool_id: Tool ID (or list of IDs). A single string uses ``eq``;
+        tool_key: Tool ID (or list of IDs). A single string uses ``eq``;
             a list uses ``in``.
         protein_id: Protein ID (uses ``eq``).
         ligand_id: Ligand ID (or list of IDs). A single string uses ``eq``;
@@ -39,11 +39,11 @@ def _build_result_filter(
     filter_dict: dict[str, Any] = {}
     if id is not None:
         filter_dict["id"] = {"eq": id}
-    if tool_id is not None:
-        if isinstance(tool_id, list):
-            filter_dict["tool_id"] = {"in": tool_id}
+    if tool_key is not None:
+        if isinstance(tool_key, list):
+            filter_dict["tool_key"] = {"in": tool_key}
         else:
-            filter_dict["tool_id"] = {"eq": tool_id}
+            filter_dict["tool_key"] = {"eq": tool_key}
     if protein_id is not None:
         filter_dict["protein_id"] = {"eq": protein_id}
     if ligand_id is not None:
@@ -98,7 +98,7 @@ class Results:
                 result-explorer search endpoint.
             limit: Page size per request. Defaults to 1000.
             select: List of fields to select. Defaults to
-                ``["id", "tool_id", "tool_version", "data", "compute_job_id"]``.
+                ``["id", "tool_key", "tool_version", "data", "compute_job_id"]``.
 
         Returns:
             Dictionary with ``data`` (all records across pages) and ``meta``
@@ -109,7 +109,7 @@ class Results:
         if select is None:
             # note -- job_compute_id is the same as executionId in the rest of the system
             # IMPORTANT! execution_id is not the same as executionId in the rest of the system
-            select = ["id", "tool_id", "tool_version", "data", "compute_job_id"]
+            select = ["id", "tool_key", "tool_version", "data", "compute_job_id"]
 
         url = f"/data-platform/{self._c.org_key}/result-explorer/search"
         all_data: list[dict[str, Any]] = []
@@ -140,7 +140,7 @@ class Results:
         *,
         protein_id: str | None = None,
         ligand_id: str | list[str] | None = None,
-        tool_id: str | list[str] | None = None,
+        tool_key: str | list[str] | None = None,
         compute_job_id: str | None = None,
         tool_version: str | None = None,
         limit: int = 1000,
@@ -154,22 +154,22 @@ class Results:
         Args:
             protein_id: Optional protein ID to filter by.
             ligand_id: Optional ligand ID (or list of IDs) to filter by.
-            tool_id: Optional tool ID (or list of IDs) to filter by.
+            tool_key: Optional tool ID (or list of IDs) to filter by.
                 Defaults to ``["deeporigin.docking", "deeporigin.bulk-docking"]``.
             compute_job_id: Optional compute job ID to filter by.
             tool_version: Optional tool version to filter by.
             limit: Page size per request. Defaults to 1000.
             select: List of fields to select. Defaults to
-                ``["id", "tool_id", "tool_version", "data", "compute_job_id"]``.
+                ``["id", "tool_key", "tool_version", "data", "compute_job_id"]``.
 
         Returns:
             Dictionary with ``data`` (all records across pages) and ``meta``
             from the final response.
         """
-        if tool_id is None:
-            tool_id = ["deeporigin.docking", "deeporigin.bulk-docking"]
+        if tool_key is None:
+            tool_key = ["deeporigin.docking", "deeporigin.bulk-docking"]
         filter_dict = _build_result_filter(
-            tool_id=tool_id,
+            tool_key=tool_key,
             protein_id=protein_id,
             ligand_id=ligand_id,
             compute_job_id=compute_job_id,
@@ -192,7 +192,7 @@ class Results:
         """Get binding pockets, optionally filtered by protein.
 
         Convenience wrapper around :meth:`get` with
-        ``tool_id="deeporigin.pocketfinder"``.
+        ``tool_key="deeporigin.pocketfinder"``.
 
         Args:
             id: Optional record ID to fetch a specific pocket.
@@ -203,7 +203,7 @@ class Results:
             tool_version: Optional tool version to filter by.
             limit: Page size per request. Defaults to 1000.
             select: List of fields to select. Defaults to
-                ``["id", "tool_id", "tool_version", "data", "compute_job_id"]``.
+                ``["id", "tool_key", "tool_version", "data", "compute_job_id"]``.
 
         Returns:
             Dictionary with ``data`` (all records across pages) and ``meta``
@@ -211,7 +211,7 @@ class Results:
         """
         filter_dict = _build_result_filter(
             id=id,
-            tool_id="deeporigin.pocketfinder",
+            tool_key="deeporigin.pocketfinder",
             protein_id=protein_id,
             compute_job_id=compute_job_id,
             pocket_count=pocket_count,

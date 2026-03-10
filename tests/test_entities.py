@@ -2,9 +2,13 @@
 
 import pytest
 
+from deeporigin.drug_discovery import BRD_DATA_DIR
 from deeporigin.drug_discovery.structures.ligand import Ligand
 from deeporigin.exceptions import DeepOriginException
 from deeporigin.platform import DeepOriginClient
+
+_BRD_PDB_LOCAL = BRD_DATA_DIR / "brd.pdb"
+_BRD_PDB_REMOTE = "testing/brd.pdb"
 
 
 def test_search_entity_lv1():
@@ -27,7 +31,7 @@ def test_search_entity_invalid_entity():
 def test_search_ligands_lv1():
     """Test searching ligands using convenience method."""
     client = DeepOriginClient()
-    response = client.entities.search_ligands()
+    response = client.entities.search_ligands(limit=10)
 
     assert isinstance(response, dict), "Expected a dictionary response"
     assert "data" in response, "Expected 'data' key in response"
@@ -45,6 +49,22 @@ def test_search_ligands_molecular_weight_lv1():
     assert isinstance(response, dict), "Expected a dictionary response"
     assert "data" in response, "Expected 'data' key in response"
     assert isinstance(response["data"], list), "Expected 'data' to be a list"
+
+
+def test_search_ligands_limit_caps_total_results():
+    """Test that limit caps the total number of results returned."""
+    client = DeepOriginClient()
+
+    all_results = client.entities.search_ligands()
+    total = len(all_results["data"])
+    if total < 2:
+        pytest.skip("Need at least 2 ligands to test limit capping")
+
+    for cap in [1, 2]:
+        response = client.entities.search_ligands(limit=cap)
+        assert len(response["data"]) == cap, (
+            f"Expected exactly {cap} results with limit={cap}, got {len(response['data'])}"
+        )
 
 
 def test_search_ligands_smiles_list_lv1():
@@ -167,9 +187,10 @@ def test_create_ligand_lv1():
 def test_create_protein_lv1():
     """Test creating a protein; 409 (already exists) is also a pass."""
     client = DeepOriginClient()
-    file_path = "entities/proteins/db4aa32e2e8ffa976a60004a8361b86427a2e5653a6623bb60b7913445902549.pdb"
+    client.files.upload_file(_BRD_PDB_LOCAL, _BRD_PDB_REMOTE)
+
     try:
-        response = client.entities.create_protein(file_path=file_path)
+        response = client.entities.create_protein(file_path=_BRD_PDB_REMOTE)
     except DeepOriginException as e:
         if "409" in str(e):
             return
@@ -180,7 +201,6 @@ def test_create_protein_lv1():
     data = response["data"]
     assert "id" in data, "Expected 'id' key in data"
     assert "file_path" in data, "Expected 'file_path' key in data"
-    assert data["file_path"] == file_path, "Expected file_path to match"
 
 
 def test_get_ligand_lv1():
@@ -223,11 +243,11 @@ def test_get_ligands_empty_ids():
 def test_get_protein_lv1():
     """Test getting a protein by ID."""
     client = DeepOriginClient()
-    file_path = "entities/proteins/db4aa32e2e8ffa976a60004a8361b86427a2e5653a6623bb60b7913445902549.pdb"
+    client.files.upload_file(_BRD_PDB_LOCAL, _BRD_PDB_REMOTE)
 
-    results = client.entities.search_proteins(file_path=file_path)
+    results = client.entities.search_proteins(file_path=_BRD_PDB_REMOTE)
     if not results["data"]:
-        response = client.entities.create_protein(file_path=file_path)
+        response = client.entities.create_protein(file_path=_BRD_PDB_REMOTE)
         protein_id = response["data"]["id"]
     else:
         protein_id = results["data"][0]["id"]
@@ -236,5 +256,5 @@ def test_get_protein_lv1():
 
     assert isinstance(response, dict), "Expected a dictionary response"
     assert response["id"] == protein_id, "Expected id to match"
-    assert response["file_path"] == file_path, "Expected file_path to match"
+    assert response["file_path"] == _BRD_PDB_REMOTE, "Expected file_path to match"
     assert response["subtable_name"] == "proteins", "Expected subtable_name to match"

@@ -65,6 +65,7 @@
         "molstar",
         "ndarray",
         "newaxis",
+        "Normalise",
         "NOSONAR",
         "notest",
         "nrows",

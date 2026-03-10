@@ -2,7 +2,7 @@
   "data": [
     {
       "id": "08GV25DDDYXA3",
-      "tool_id": "deeporigin.bulk-docking",
+      "tool_key": "deeporigin.bulk-docking",
       "tool_version": "0.6.6",
       "data": {
         "file_path": "tool-runs/c9f8cfa9-5b43-4303-a56f-197fdbb4adec/476be2787f2e9c4f3fbe0b75cf7319c7f82ebb570bf4da8edfc36d564cf0896e.sdf",
@@ -15,7 +15,7 @@
     },
     {
       "id": "08GV25DEXYXA4",
-      "tool_id": "deeporigin.bulk-docking",
+      "tool_key": "deeporigin.bulk-docking",
       "tool_version": "0.6.6",
       "data": {
         "file_path": "tool-runs/c9f8cfa9-5b43-4303-a56f-197fdbb4adec/476be2787f2e9c4f3fbe0b75cf7319c7f82ebb570bf4da8edfc36d564cf0896e.sdf",
@@ -28,7 +28,7 @@
     },
     {
       "id": "08GV25DFDYXA5",
-      "tool_id": "deeporigin.bulk-docking",
+      "tool_key": "deeporigin.bulk-docking",
       "tool_version": "0.6.6",
       "data": {
         "file_path": "tool-runs/c9f8cfa9-5b43-4303-a56f-197fdbb4adec/476be2787f2e9c4f3fbe0b75cf7319c7f82ebb570bf4da8edfc36d564cf0896e.sdf",
@@ -41,7 +41,7 @@
     },
     {
       "id": "08GV25DFNYXA6",
-      "tool_id": "deeporigin.bulk-docking",
+      "tool_key": "deeporigin.bulk-docking",
       "tool_version": "0.6.6",
       "data": {
         "file_path": "tool-runs/c9f8cfa9-5b43-4303-a56f-197fdbb4adec/476be2787f2e9c4f3fbe0b75cf7319c7f82ebb570bf4da8edfc36d564cf0896e.sdf",
@@ -54,7 +54,7 @@
     },
     {
       "id": "08GV25DFXYXA7",
-      "tool_id": "deeporigin.bulk-docking",
+      "tool_key": "deeporigin.bulk-docking",
       "tool_version": "0.6.6",
       "data": {
         "file_path": "tool-runs/c9f8cfa9-5b43-4303-a56f-197fdbb4adec/476be2787f2e9c4f3fbe0b75cf7319c7f82ebb570bf4da8edfc36d564cf0896e.sdf",

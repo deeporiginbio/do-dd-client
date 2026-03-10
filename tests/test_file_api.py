@@ -333,6 +333,189 @@ def test_download_as_zip_lv1():
         assert os.path.getsize(local_path) > 0, "ZIP should not be empty"
 
 
+def test_upload_directory_bulk_lv1():
+    """Upload ~100MB directory (100 x 1MB files), verify listing, then clean up."""
+    client = DeepOriginClient()
+
+    if client.env == "local":
+        pytest.skip("Requires a real file service (use --env dev/staging/prod)")
+
+    remote_dir = "/testing-bulk-upload/"
+    num_files = 100
+    file_size = 1024 * 1024  # 1 MB
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        # Generate 100 x 1MB files with random bytes
+        expected_names = []
+        for i in range(num_files):
+            name = f"file_{i:03d}.bin"
+            expected_names.append(name)
+            path = os.path.join(tmpdir, name)
+            with open(path, "wb") as f:
+                f.write(os.urandom(file_size))
+
+        # Upload the entire directory (lower concurrency to avoid write timeouts)
+        results = client.files.upload_files_via_signed_url(
+            local_path=tmpdir,
+            remote_dir=remote_dir,
+            max_workers=5,
+            max_retries=5,
+            retry_backoff_factor=2.0,
+        )
+
+        assert len(results) == num_files, (
+            f"expected {num_files} uploads, got {len(results)}"
+        )
+
+    # Verify uploaded files are visible via list_files_in_dir
+    remote_files = client.files.list_files_in_dir(
+        remote_path=remote_dir,
+        recursive=True,
+    )
+
+    uploaded_basenames = sorted(os.path.basename(f) for f in remote_files)
+    assert uploaded_basenames == sorted(expected_names), (
+        "listed files should match uploaded files"
+    )
+
+    # Clean up remote files
+    client.files.delete_files(remote_paths=remote_files, skip_errors=True)
+
+
+def test_upload_files_multipart_lv1():
+    """Test parallel multipart upload via upload_files."""
+    client = DeepOriginClient()
+
+    if client.env == "local":
+        pytest.skip("Requires a real file service (use --env dev/staging/prod)")
+
+    remote_dir = "testing-multipart-upload"
+    num_files = 10
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        file_map: dict[str, str] = {}
+        for i in range(num_files):
+            name = f"mp_{i:03d}.bin"
+            local = os.path.join(tmpdir, name)
+            with open(local, "wb") as f:
+                f.write(os.urandom(64 * 1024))
+            file_map[local] = f"{remote_dir}/{name}"
+
+        results = client.files.upload_files(files=file_map)
+
+        assert len(results) == num_files, (
+            f"expected {num_files} results, got {len(results)}"
+        )
+        assert all(isinstance(r, dict) for r in results), "each result should be a dict"
+
+    # Verify via listing
+    remote_files = client.files.list_files_in_dir(
+        remote_path=f"{remote_dir}/",
+        recursive=True,
+    )
+    listed_basenames = sorted(os.path.basename(f) for f in remote_files)
+    expected_basenames = sorted(f"mp_{i:03d}.bin" for i in range(num_files))
+    assert listed_basenames == expected_basenames, (
+        "listed files should match uploaded files"
+    )
+
+    # Clean up
+    client.files.delete_files(remote_paths=remote_files, timeout=120.0)
+
+
+def test_round_trip_content_integrity_lv1():
+    """Upload files via signed URL, download them, and verify bytes match."""
+    client = DeepOriginClient()
+
+    if client.env == "local":
+        pytest.skip("Requires a real file service (use --env dev/staging/prod)")
+
+    remote_dir = "/testing-round-trip/"
+    num_files = 5
+    file_size = 256 * 1024  # 256 KB each
+
+    with tempfile.TemporaryDirectory() as upload_dir:
+        originals: dict[str, bytes] = {}
+        for i in range(num_files):
+            name = f"rt_{i:03d}.bin"
+            data = os.urandom(file_size)
+            originals[name] = data
+            with open(os.path.join(upload_dir, name), "wb") as f:
+                f.write(data)
+
+        results = client.files.upload_files_via_signed_url(
+            local_path=upload_dir,
+            remote_dir=remote_dir,
+        )
+        assert len(results) == num_files
+
+    # Download each file and compare bytes
+    with tempfile.TemporaryDirectory() as download_dir:
+        for name, expected_bytes in originals.items():
+            local_path = client.files.download_file(
+                remote_path=f"{remote_dir}{name}",
+                download_to_dir=download_dir,
+            )
+            with open(local_path, "rb") as f:
+                actual_bytes = f.read()
+
+            assert actual_bytes == expected_bytes, (
+                f"content mismatch for {name}: "
+                f"expected {len(expected_bytes)} bytes, got {len(actual_bytes)}"
+            )
+
+    # Clean up
+    remote_files = [f"{remote_dir}{name}" for name in originals]
+    client.files.delete_files(remote_paths=remote_files, timeout=120.0)
+
+
+def test_list_files_metadata_size_lv1():
+    """Upload known-size files, then verify Size in list_files metadata."""
+    client = DeepOriginClient()
+
+    if client.env == "local":
+        pytest.skip("Requires a real file service (use --env dev/staging/prod)")
+
+    remote_dir = "/testing-metadata-size/"
+    sizes = {
+        "small.bin": 1024,  # 1 KB
+        "medium.bin": 100 * 1024,  # 100 KB
+        "large.bin": 1024 * 1024,  # 1 MB
+    }
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        for name, size in sizes.items():
+            with open(os.path.join(tmpdir, name), "wb") as f:
+                f.write(os.urandom(size))
+
+        client.files.upload_files_via_signed_url(
+            local_path=tmpdir,
+            remote_dir=remote_dir,
+        )
+
+    # Fetch full metadata
+    file_objects = client.files.list_files(
+        remote_path=remote_dir,
+        recursive=True,
+    )
+
+    size_by_name = {
+        os.path.basename(obj["Key"]): obj["Size"]
+        for obj in file_objects
+        if "Size" in obj
+    }
+
+    for name, expected_size in sizes.items():
+        assert name in size_by_name, f"{name} should appear in listing"
+        assert size_by_name[name] == expected_size, (
+            f"Size mismatch for {name}: expected {expected_size}, got {size_by_name[name]}"
+        )
+
+    # Clean up
+    remote_files = [obj["Key"] for obj in file_objects]
+    client.files.delete_files(remote_paths=remote_files, timeout=120.0)
+
+
 def test_health_lv1():
     """test the files service health check."""
     client = DeepOriginClient()

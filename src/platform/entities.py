@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
+from deeporigin.utils.constants import DEFAULT_SEARCH_PAGE_SIZE
+
 if TYPE_CHECKING:
     from deeporigin.platform.client import DeepOriginClient
 
@@ -164,7 +166,7 @@ class Entities:
         canonical_smiles: str | None = None,
         min_molecular_weight: float | int | None = None,
         max_molecular_weight: float | int | None = None,
-        limit: int | None = None,
+        limit: int | None = 100,
         offset: int | None = None,
         select: list[str] | None = None,
         sort: dict[str, str] | None = None,
@@ -184,7 +186,7 @@ class Entities:
             canonical_smiles: Filter by canonical SMILES string.
             min_molecular_weight: Minimum molecular weight filter (inclusive).
             max_molecular_weight: Maximum molecular weight filter (inclusive).
-            limit: Maximum number of results to return per page. Defaults to 100.
+            limit: Maximum total number of results to return across all pages.
             offset: Number of results to skip.
             select: List of fields to select in the response.
             sort: Dictionary mapping field names to sort order ("asc" or "desc").
@@ -253,18 +255,27 @@ class Entities:
         is_first_page = True
         response: dict[str, Any] = {}
 
+        if limit is not None:
+            page_size = min(limit, DEFAULT_SEARCH_PAGE_SIZE)
+        else:
+            page_size = DEFAULT_SEARCH_PAGE_SIZE
+
         while True:
             response = self.search(
                 "ligands",
                 cursor=cursor,
                 filter_dict=filter_dict,
-                limit=limit,
+                limit=page_size,
                 offset=offset if is_first_page else None,
                 select=select,
                 sort=sort,
             )
             all_data.extend(response.get("data", []))
             is_first_page = False
+
+            if limit is not None and len(all_data) >= limit:
+                all_data = all_data[:limit]
+                break
 
             cursor = response.get("meta", {}).get("nextCursor")
             if not cursor:
@@ -416,7 +427,7 @@ class Entities:
         min_molecular_weight: float | int | None = None,
         max_molecular_weight: float | int | None = None,
         sequence: str | None = None,
-        limit: int | None = None,
+        limit: int | None = 100,
         offset: int | None = None,
         select: list[str] | None = None,
         sort: dict[str, str] | None = None,

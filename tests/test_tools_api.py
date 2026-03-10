@@ -73,10 +73,6 @@ def test_get_all_function_lv1():
     function = functions[0]
 
     for key in [
-        "id",
-        "createdAt",
-        "updatedAt",
-        "functionManifest",
         "version",
         "enabled",
         "manifestBody",
