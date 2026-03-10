@@ -5,8 +5,12 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any
 
 from deeporigin.platform.constants import (
+    DOCKING_FUNCTION_KEY,
+    DOCKING_TOOL_KEY,
+    POCKET_FINDER_FUNCTION_KEY,
     SYSPREP_FUNCTION_KEY,
 )
+from deeporigin.utils.constants import DEFAULT_SEARCH_PAGE_SIZE
 
 if TYPE_CHECKING:
     from deeporigin.platform.client import DeepOriginClient
@@ -84,7 +88,7 @@ class Results:
         self,
         *,
         filter_dict: dict[str, Any] | None = None,
-        limit: int = 1000,
+        limit: int | None = 1000,
         select: list[str] | None = None,
     ) -> dict:
         """Low-level paginated search against the result-explorer API.
@@ -100,7 +104,8 @@ class Results:
         Args:
             filter_dict: Raw filter criteria forwarded to the
                 result-explorer search endpoint.
-            limit: Page size per request. Defaults to 1000.
+            limit: Maximum total number of results to return across all
+                pages. Defaults to 1000.
             select: List of fields to select. Defaults to
                 ``["id", "tool_key", "tool_version", "data", "compute_job_id"]``.
 
@@ -115,6 +120,11 @@ class Results:
             # IMPORTANT! execution_id is not the same as executionId in the rest of the system
             select = ["id", "tool_key", "tool_version", "data", "compute_job_id"]
 
+        if limit is not None:
+            page_size = min(limit, DEFAULT_SEARCH_PAGE_SIZE)
+        else:
+            page_size = DEFAULT_SEARCH_PAGE_SIZE
+
         url = f"/data-platform/{self._c.org_key}/result-explorer/search"
         all_data: list[dict[str, Any]] = []
         cursor: str | None = None
@@ -122,7 +132,7 @@ class Results:
         while True:
             body: dict[str, Any] = {
                 "filter": filter_dict,
-                "limit": limit,
+                "limit": page_size,
                 "select": select,
             }
             if cursor is not None:
@@ -130,6 +140,10 @@ class Results:
 
             response = self._c.post_json(url, body=body)
             all_data.extend(response.get("data", []))
+
+            if limit is not None and len(all_data) >= limit:
+                all_data = all_data[:limit]
+                break
 
             next_cursor = response.get("meta", {}).get("nextCursor")
             if not next_cursor:
@@ -147,7 +161,7 @@ class Results:
         tool_key: str | list[str] | None = None,
         compute_job_id: str | None = None,
         tool_version: str | None = None,
-        limit: int = 1000,
+        limit: int | None = 1000,
         select: list[str] | None = None,
     ) -> dict:
         """Get docking poses, optionally filtered by protein.
@@ -159,10 +173,10 @@ class Results:
             protein_id: Optional protein ID to filter by.
             ligand_id: Optional ligand ID (or list of IDs) to filter by.
             tool_key: Optional tool ID (or list of IDs) to filter by.
-                Defaults to ``["deeporigin.docking", "deeporigin.bulk-docking"]``.
+                Defaults to ``[DOCKING_FUNCTION_KEY, DOCKING_TOOL_KEY]``.
             compute_job_id: Optional compute job ID to filter by.
             tool_version: Optional tool version to filter by.
-            limit: Page size per request. Defaults to 1000.
+            limit: Maximum total number of results to return. Defaults to 1000.
             select: List of fields to select. Defaults to
                 ``["id", "tool_key", "tool_version", "data", "compute_job_id"]``.
 
@@ -190,7 +204,7 @@ class Results:
         pocket_count: int | None = None,
         pocket_min_size: int | None = None,
         tool_version: str | None = None,
-        limit: int = 1000,
+        limit: int | None = 1000,
         select: list[str] | None = None,
     ) -> dict:
         """Get binding pockets, optionally filtered by protein.
@@ -205,7 +219,7 @@ class Results:
             pocket_count: Optional pocket count to filter by.
             pocket_min_size: Optional pocket min size to filter by.
             tool_version: Optional tool version to filter by.
-            limit: Page size per request. Defaults to 1000.
+            limit: Maximum total number of results to return. Defaults to 1000.
             select: List of fields to select. Defaults to
                 ``["id", "tool_key", "tool_version", "data", "compute_job_id"]``.
 
@@ -215,7 +229,7 @@ class Results:
         """
         filter_dict = _build_result_filter(
             id=id,
-            tool_key="deeporigin.pocketfinder",
+            tool_key=POCKET_FINDER_FUNCTION_KEY,
             protein_id=protein_id,
             compute_job_id=compute_job_id,
             pocket_count=pocket_count,
@@ -234,7 +248,7 @@ class Results:
         add_H_atoms: bool | None = None,  # NOSONAR
         retain_waters: bool | None = None,
         protonate_protein: bool | None = None,
-        limit: int = 1000,
+        limit: int | None = 1000,
         select: list[str] | None = None,
     ) -> dict:
         """Get system-prep results, optionally filtered by inputs and options.
@@ -252,7 +266,7 @@ class Results:
             add_H_atoms: Optional add_H_atoms flag to filter by.
             retain_waters: Optional retain_waters flag to filter by.
             protonate_protein: Optional protonate_protein flag to filter by.
-            limit: Page size per request. Defaults to 1000.
+            limit: Maximum total number of results to return. Defaults to 1000.
             select: List of fields to select. Defaults to
                 ``["id", "tool_key", "tool_version", "data", "compute_job_id"]``.
 
