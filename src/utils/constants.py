@@ -2,18 +2,6 @@
 
 from beartype.typing import Literal
 
-FileStatus = Literal["ready", "archived"]
-"""Status of a file. Ready files are ready to be used, downloaded, and operated on."""
-
-
-DATAFRAME_ATTRIBUTE_KEYS = {
-    "metadata",
-    "id",
-    "reference_ids",
-    "last_updated_row",
-}
-
-
 number = int | float
 
 ENVS = Literal["dev", "prod", "staging", "local"]
@@ -41,3 +29,6 @@ ENV_VARIABLES = {
     "env": "DO_ENV",
     "base_url": "DO_BASE_URL",
 }
+
+UFA_PROVIDER = "ufa"
+"""Provider identifier for UFA (Unified File Access) storage."""

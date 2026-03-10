@@ -163,14 +163,17 @@ def _apply_eq_filters(
 ) -> list[dict[str, Any]]:
     """Apply equality-style filters to a list of records.
 
-    Supports ``{"field": {"eq": value}}`` and ``{"field": {"in": [values]}}``
-    style filters.  Values are compared against top-level record fields *and*
-    nested ``data`` fields when present.
+    Supports ``{"field": {"eq": value}}``, ``{"field": {"in": [values]}}``
+    style filters and ``props``-style column/op/value filters.  Values are
+    compared against top-level record fields *and* nested ``data`` fields
+    when present.
 
     Args:
         records: List of record dicts to filter.
         filter_dict: Mapping of field names to operator dicts, e.g.
             ``{"field": {"eq": value}}`` or ``{"field": {"in": [values]}}``.
+            May also include a ``"props"`` key with a list of
+            ``{"column": ..., "op": ..., "value": ...}`` dicts.
 
     Returns:
         Filtered list of records.
@@ -181,8 +184,28 @@ def _apply_eq_filters(
     _MISSING = object()
     results = list(records)
     allowed_ops = {"eq", "in"}
+    skip_keys = {"props"}
+
+    for prop in filter_dict.get("props", []):
+        col = prop["column"]
+        op = prop["op"]
+        val = prop["value"]
+
+        if op == "eq":
+            results = [r for r in results if _field_value(r, col) == val]
+        elif op == "in":
+            value_set = set(val) if isinstance(val, list) else {val}
+            results = [
+                r
+                for r in results
+                if _field_value(r, col) is not _MISSING
+                and _field_value(r, col) in value_set
+            ]
 
     for key, condition in filter_dict.items():
+        if key in skip_keys:
+            continue
+
         if not isinstance(condition, dict):
             condition = {"eq": condition}
 

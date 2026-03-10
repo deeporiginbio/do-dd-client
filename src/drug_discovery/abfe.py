@@ -2,38 +2,138 @@
 
 Usage::
 
-    abfe = ABFE(protein=protein, ligand=ligand)
-    abfe.prepare()
+    abfe = ABFE(prepared_system=prepared_system)
     abfe.quote()
     abfe.start()
     abfe.sync()
     results = abfe.get_results()
 """
 
-from typing import NoReturn
+from dataclasses import dataclass
 
 from beartype import beartype
 import pandas as pd
 
 from deeporigin.drug_discovery.execution import Execution
 from deeporigin.drug_discovery.execution_mixins import AsyncExecutableMixin, QuoteMixin
-from deeporigin.drug_discovery.structures.ligand import Ligand
-from deeporigin.drug_discovery.structures.protein import Protein
+from deeporigin.drug_discovery.structures.prepared_system import PreparedSystem
 from deeporigin.platform.client import DeepOriginClient
 from deeporigin.platform.constants import ABFE_TOOL_KEY, ABFE_TOOL_VERSION
+
+
+@dataclass(frozen=True)
+class ABFEParams:
+    """ABFE calculation parameters.
+
+    Attributes:
+        annihilate: Whether to annihilate the ligand.
+        dt: Time step in ps. Used for both emeq_md_options and prod_md_options.
+        temperature: Temperature in K. Used for both emeq_md_options and prod_md_options.
+        cutoff: Cutoff distance in nm. Used for both emeq_md_options and prod_md_options.
+        repeats: Number of repeats.
+        replex_period_ps: Replica exchange period in ps.
+        test_run: Test run flag.
+        binding_n_windows: Number of windows for binding calculation.
+        binding_npt_reduce_restraints_ns: NPT reduce restraints time in ns for binding.
+        binding_nvt_heating_ns: NVT heating time in ns for binding.
+        binding_steps: Number of steps for binding calculation.
+        solvation_n_windows: Number of windows for solvation calculation.
+        solvation_npt_reduce_restraints_ns: NPT reduce restraints time in ns for solvation.
+        solvation_nvt_heating_ns: NVT heating time in ns for solvation.
+        solvation_steps: Number of steps for solvation calculation.
+    """
+
+    # Common parameters (same for binding and solvation)
+    annihilate: bool = True
+    dt: float = 0.004
+    temperature: float = 298.15
+    cutoff: float = 0.9
+    repeats: int = 1
+    replex_period_ps: float = 2.5
+    test_run: int = 0
+    # Binding-specific parameters
+    binding_n_windows: int = 48
+    binding_npt_reduce_restraints_ns: float = 2.0
+    binding_nvt_heating_ns: float = 1.0
+    binding_steps: int = 1250000
+    # Solvation-specific parameters
+    solvation_n_windows: int = 32
+    solvation_npt_reduce_restraints_ns: float = 0.2
+    solvation_nvt_heating_ns: float = 0.1
+    solvation_steps: int = 500000
+
+    def __repr__(self) -> str:
+        """Return a string representation with each attribute on its own line.
+
+        Fields modified from their default values are marked with an asterisk (*).
+        """
+        lines = []
+        for f in self.__dataclass_fields__.values():
+            value = getattr(self, f.name)
+            changed = f.default is not f.default_factory and value != f.default
+            marker = " *" if changed else ""
+            lines.append(f"  {f.name}: {value}{marker}")
+        return "ABFEParams(\n" + "\n".join(lines) + "\n)"
+
+    def to_dict(
+        self,
+        *,
+        binding_xml_path: str,
+        solvation_xml_path: str,
+    ) -> dict:
+        """Build the tool input parameters dict.
+
+        Args:
+            binding_xml_path: Remote path to the binding XML file.
+            solvation_xml_path: Remote path to the solvation XML file.
+
+        Returns:
+            Parameters dict ready to be passed to the ABFE tool.
+        """
+        from deeporigin.utils.constants import UFA_PROVIDER
+
+        md_options = {
+            "T": self.temperature,
+            "cutoff": self.cutoff,
+            "dt": self.dt,
+        }
+        return {
+            "binding_xml": {"$provider": UFA_PROVIDER, "key": binding_xml_path},
+            "solvation_xml": {"$provider": UFA_PROVIDER, "key": solvation_xml_path},
+            "binding": {
+                "annihilate": self.annihilate,
+                "emeq_md_options": md_options,
+                "n_windows": self.binding_n_windows,
+                "npt_reduce_restraints_ns": self.binding_npt_reduce_restraints_ns,
+                "nvt_heating_ns": self.binding_nvt_heating_ns,
+                "prod_md_options": md_options,
+                "repeats": self.repeats,
+                "replex_period_ps": self.replex_period_ps,
+                "steps": self.binding_steps,
+                "test_run": self.test_run,
+            },
+            "solvation": {
+                "annihilate": self.annihilate,
+                "emeq_md_options": md_options,
+                "n_windows": self.solvation_n_windows,
+                "npt_reduce_restraints_ns": self.solvation_npt_reduce_restraints_ns,
+                "nvt_heating_ns": self.solvation_nvt_heating_ns,
+                "prod_md_options": md_options,
+                "repeats": self.repeats,
+                "replex_period_ps": self.replex_period_ps,
+                "steps": self.solvation_steps,
+                "test_run": self.test_run,
+            },
+        }
 
 
 class ABFE(Execution, QuoteMixin, AsyncExecutableMixin):
     """Absolute Binding Free Energy calculation (async-only).
 
-    Requires a ``prepare()`` step before ``start()`` to generate the
-    solvation and binding XML files needed by the ABFE tool.
+    Requires a ``PreparedSystem`` from system preparation before ``start()``.
 
     Attributes:
-        protein: Target protein structure.
-        ligand: Ligand to evaluate.
-        solvation_xml_path: Remote path to the solvation XML (set by ``prepare()``).
-        binding_xml_path: Remote path to the binding XML (set by ``prepare()``).
+        prepared_system: Prepared system containing binding and solvation XML paths.
     """
 
     tool_key: str = ABFE_TOOL_KEY
@@ -42,16 +142,16 @@ class ABFE(Execution, QuoteMixin, AsyncExecutableMixin):
     def __init__(
         self,
         *,
-        protein: Protein,
-        ligand: Ligand,
+        prepared_system: PreparedSystem,
+        params: ABFEParams | None = None,
         tool_version: str = ABFE_TOOL_VERSION,
         client: DeepOriginClient | None = None,
     ) -> None:
-        """Create an ABFE execution for a protein-ligand pair.
+        """Create an ABFE execution from a prepared system.
 
         Args:
-            protein: Protein structure.
-            ligand: Ligand molecule.
+            prepared_system: Prepared system with binding and solvation XML paths.
+            params: ABFE calculation parameters. If None, uses default values.
             tool_version: Platform tool version to run. Settable so callers
                 can pin or upgrade independently of the SDK release.
             client: Optional API client.
@@ -59,61 +159,28 @@ class ABFE(Execution, QuoteMixin, AsyncExecutableMixin):
         super().__init__(client=client)
         self.tool_version = tool_version
 
-        self._protein = protein
-        self._ligand = ligand
-        self.solvation_xml_path: str | None = None
-        self.binding_xml_path: str | None = None
-        self._prepared_outputs: dict | None = None
+        self.prepared_system = prepared_system
+
+        # Store parameters in a frozen dataclass
+        self._params = params if params is not None else ABFEParams()
 
     @property
-    def protein(self) -> Protein:
-        """Target protein structure."""
-        return self._protein
+    def params(self) -> ABFEParams:
+        """ABFE calculation parameters (read-only)."""
+        return self._params
 
-    @property
-    def ligand(self) -> Ligand:
-        """Ligand to evaluate."""
-        return self._ligand
+    @params.setter
+    def params(self, value: ABFEParams) -> None:
+        """Prevent modification of params after construction."""
+        raise AttributeError("params can only be set in the constructor")
 
-    @beartype
-    def prepare(
-        self,
-        *,
-        padding: float = 1.0,
-        retain_waters: bool = False,
-        add_H_atoms: bool = False,
-        protonate_protein: bool = False,
-    ) -> NoReturn:
-        """Run system preparation for the protein-ligand pair.
-
-        .. note::
-
-            Not yet implemented. Will produce the solvation and binding
-            XML files required by ``start()``.
-
-        Args:
-            padding: Padding around the system box in nm. Defaults to 1.0.
-            retain_waters: Keep water molecules from the crystal structure.
-            add_H_atoms: Add hydrogen atoms to the ligand.
-            protonate_protein: Protonate the protein.
-
-        Raises:
-            NotImplementedError: Always -- preparation is not yet supported.
-        """
-        raise NotImplementedError("ABFE preparation is not supported yet.")
-
-    def quote(self) -> None:
+    def _quote_impl(self) -> None:
         """Request a cost estimate for the ABFE calculation.
 
         Populates ``self.estimate``. Uses the tools API with
         ``approve_amount=0`` to get a quotation.
         """
         from deeporigin.drug_discovery import utils
-
-        if self.binding_xml_path is None or self.solvation_xml_path is None:
-            raise ValueError(
-                "System has not been prepared. Call prepare() before quote()."
-            )
 
         execution_dto = utils._start_tool_run(
             params=self._build_params(),
@@ -135,7 +202,7 @@ class ABFE(Execution, QuoteMixin, AsyncExecutableMixin):
                 self.status = execution_dto.get("status")
 
     @beartype
-    def start(
+    def _start_impl(
         self,
         *,
         approve_amount: int | None = None,
@@ -144,19 +211,9 @@ class ABFE(Execution, QuoteMixin, AsyncExecutableMixin):
 
         Args:
             approve_amount: Pre-approved spend amount. If None, uses default.
-
-        Raises:
-            ValueError: If the system has not been prepared.
         """
         from deeporigin.drug_discovery import utils
         from deeporigin.platform.job import Job
-
-        if self.binding_xml_path is None or self.solvation_xml_path is None:
-            raise ValueError(
-                "System has not been prepared. Call prepare() before start()."
-            )
-
-        self.protein.sync(client=self.client)
 
         execution_dto = utils._start_tool_run(
             params=self._build_params(),
@@ -215,42 +272,28 @@ class ABFE(Execution, QuoteMixin, AsyncExecutableMixin):
 
     def _build_params(self) -> dict:
         """Construct the tool input parameters dict."""
-        from deeporigin.drug_discovery import utils
+        return self.params.to_dict(
+            binding_xml_path=self.prepared_system.binding_xml_path,
+            solvation_xml_path=self.prepared_system.solvation_xml_path,
+        )
 
-        params = utils._load_params("abfe_end_to_end")
-        params["binding_xml"] = {
-            "$provider": "ufa",
-            "key": self.binding_xml_path,
-        }
-        params["solvation_xml"] = {
-            "$provider": "ufa",
-            "key": self.solvation_xml_path,
-        }
-        return params
+    def __repr__(self) -> str:
+        """Return a string representation showing protein and ligand IDs."""
+        return (
+            f"ABFE("
+            f"protein_id={self.prepared_system.protein_id!r}, "
+            f"ligand_id={self.prepared_system.ligand1_id!r})"
+        )
 
     def _build_metadata(self) -> dict:
         """Construct execution metadata."""
-        return {
-            "protein_hash": self.protein.to_hash(),
-            "ligand_hash": self.ligand.to_hash(),
-            "ligand_smiles": self.ligand.smiles,
-            "protein_name": self.protein.name,
-            "ligand_name": self.ligand.name,
-        }
+        metadata = {}
+        if self.prepared_system.protein_id:
+            metadata["protein_id"] = self.prepared_system.protein_id
+        if self.prepared_system.ligand1_id:
+            metadata["ligand_id"] = self.prepared_system.ligand1_id
+        return metadata
 
     def _build_outputs(self) -> dict:
         """Construct the output file specification for the ABFE tool."""
-        output_dir = (
-            f"tool-runs/ABFE/{self.protein.to_hash()}.pdb/{self.ligand.to_hash()}.sdf/"
-        )
-        provider = "ufa"
-        return {
-            "output_file": {
-                "$provider": provider,
-                "key": output_dir + "output/",
-            },
-            "abfe_results_summary": {
-                "$provider": provider,
-                "key": output_dir + "results.csv",
-            },
-        }
+        return {}

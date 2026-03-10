@@ -85,7 +85,7 @@ class PocketFinder(Execution, QuoteMixin, SyncExecutableMixin):
         parts.append(f"pocket_min_size={self.pocket_min_size}")
         return f"<{' '.join(parts)}>"
 
-    def quote(self) -> None:
+    def _quote_impl(self) -> None:
         """Request a cost estimate for pocket finding.
 
         Populates ``self.estimate`` with the estimated cost in dollars.

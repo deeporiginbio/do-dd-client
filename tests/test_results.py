@@ -3,6 +3,7 @@
 import os
 
 from deeporigin.platform.client import DeepOriginClient
+from deeporigin.platform.constants import SYSPREP_FUNCTION_KEY
 
 
 def _get_result_explorer_ids() -> tuple[str, str, str | None]:
@@ -67,3 +68,45 @@ def test_get_results_with_tool_version_lv1():
             assert record.get("tool_version") == tool_version, (
                 "Expected all records to match the requested tool_version"
             )
+
+
+def test_get_prepared_systems():
+    """Test get_prepared_systems returns system-prep results with expected shape."""
+    client = DeepOriginClient()
+    response = client.results.get_prepared_systems()
+
+    assert isinstance(response, dict), "Expected a dictionary response"
+    assert "data" in response, "Expected 'data' key in response"
+    assert isinstance(response["data"], list), "Expected 'data' to be a list"
+    for record in response["data"]:
+        for field in ("id", "tool_key", "tool_version", "data", "compute_job_id"):
+            assert field in record, f"Expected '{field}' key in record"
+        assert record.get("tool_key") == SYSPREP_FUNCTION_KEY, (
+            "Expected all records to be system-prep results"
+        )
+
+
+def test_get_prepared_systems_with_filters():
+    """Test get_prepared_systems with optional filters builds correct filter and returns."""
+    client = DeepOriginClient()
+    response = client.results.get_prepared_systems(
+        protein_id="08BSPN9SNYVEA",
+        ligand1_id="08BT9WM0NYVFY",
+        padding=1,
+        add_H_atoms=True,
+        retain_waters=False,
+        protonate_protein=True,
+    )
+
+    assert isinstance(response, dict), "Expected a dictionary response"
+    assert "data" in response, "Expected 'data' key in response"
+    assert isinstance(response["data"], list), "Expected 'data' to be a list"
+    for record in response["data"]:
+        assert record.get("tool_key") == SYSPREP_FUNCTION_KEY
+        data = record.get("data") or {}
+        assert data.get("protein_id") == "08BSPN9SNYVEA"
+        assert data.get("ligand1_id") == "08BT9WM0NYVFY"
+        assert data.get("padding") == 1
+        assert data.get("add_H_atoms") is True
+        assert data.get("retain_waters") is False
+        assert data.get("protonate_protein") is True

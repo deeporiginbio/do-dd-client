@@ -519,16 +519,17 @@ def create_tools_router(
         # function type, add an entry here so that downstream queries
         # (e.g. LigandSet.from_docking_result, Pocket.from_result) can
         # find the records via result-explorer/search.
-        output_key_map = {
-            "deeporigin.pocketfinder": "pockets",
-            "deeporigin.docking": "poses",
-            "deeporigin.system-prep": "system",
+        output_key_map: dict[str, tuple[str, str]] = {
+            "deeporigin.pocketfinder": ("pockets", "pocket"),
+            "deeporigin.docking": ("poses", "pose"),
+            "deeporigin.system-prep": ("system", "preparedsystem"),
         }
 
-        output_key = output_key_map.get(function_key)
-        if not output_key:
+        entry = output_key_map.get(function_key)
+        if not entry:
             return
 
+        output_key, result_type = entry
         output_value = function_outputs.get(output_key)
         if output_value is None:
             return
@@ -542,6 +543,7 @@ def create_tools_router(
                 "id": "08" + str(uuid.uuid4()).replace("-", "").upper()[:11],
                 "tool_key": tool_key,
                 "tool_version": tool_version,
+                "result_type": result_type,
                 "data": dict(item),
                 "compute_job_id": execution_id,
             }

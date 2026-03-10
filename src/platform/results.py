@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
+from deeporigin.utils.constants import DEFAULT_SEARCH_PAGE_SIZE
+
 if TYPE_CHECKING:
     from deeporigin.platform.client import DeepOriginClient
 
@@ -80,7 +82,7 @@ class Results:
         self,
         *,
         filter_dict: dict[str, Any] | None = None,
-        limit: int = 1000,
+        limit: int | None = 1000,
         select: list[str] | None = None,
     ) -> dict:
         """Low-level paginated search against the result-explorer API.
@@ -96,7 +98,8 @@ class Results:
         Args:
             filter_dict: Raw filter criteria forwarded to the
                 result-explorer search endpoint.
-            limit: Page size per request. Defaults to 1000.
+            limit: Maximum total number of results to return across all
+                pages. Defaults to 1000.
             select: List of fields to select. Defaults to
                 ``["id", "tool_key", "tool_version", "data", "compute_job_id"]``.
 
@@ -111,6 +114,11 @@ class Results:
             # IMPORTANT! execution_id is not the same as executionId in the rest of the system
             select = ["id", "tool_key", "tool_version", "data", "compute_job_id"]
 
+        if limit is not None:
+            page_size = min(limit, DEFAULT_SEARCH_PAGE_SIZE)
+        else:
+            page_size = DEFAULT_SEARCH_PAGE_SIZE
+
         url = f"/data-platform/{self._c.org_key}/result-explorer/search"
         all_data: list[dict[str, Any]] = []
         cursor: str | None = None
@@ -118,7 +126,7 @@ class Results:
         while True:
             body: dict[str, Any] = {
                 "filter": filter_dict,
-                "limit": limit,
+                "limit": page_size,
                 "select": select,
             }
             if cursor is not None:
@@ -126,6 +134,10 @@ class Results:
 
             response = self._c.post_json(url, body=body)
             all_data.extend(response.get("data", []))
+
+            if limit is not None and len(all_data) >= limit:
+                all_data = all_data[:limit]
+                break
 
             next_cursor = response.get("meta", {}).get("nextCursor")
             if not next_cursor:
@@ -140,25 +152,22 @@ class Results:
         *,
         protein_id: str | None = None,
         ligand_id: str | list[str] | None = None,
-        tool_key: str | list[str] | None = None,
         compute_job_id: str | None = None,
         tool_version: str | None = None,
-        limit: int = 1000,
+        limit: int | None = 100,
         select: list[str] | None = None,
     ) -> dict:
         """Get docking poses, optionally filtered by protein.
 
-        Convenience wrapper around :meth:`get` that fetches results
-        from both ``deeporigin.docking`` and ``deeporigin.bulk-docking``.
+        Convenience wrapper around :meth:`get` with
+        ``result_type="pose"``.
 
         Args:
             protein_id: Optional protein ID to filter by.
             ligand_id: Optional ligand ID (or list of IDs) to filter by.
-            tool_key: Optional tool ID (or list of IDs) to filter by.
-                Defaults to ``["deeporigin.docking", "deeporigin.bulk-docking"]``.
             compute_job_id: Optional compute job ID to filter by.
             tool_version: Optional tool version to filter by.
-            limit: Page size per request. Defaults to 1000.
+            limit: Maximum total number of results to return. Defaults to 1000.
             select: List of fields to select. Defaults to
                 ``["id", "tool_key", "tool_version", "data", "compute_job_id"]``.
 
@@ -166,15 +175,21 @@ class Results:
             Dictionary with ``data`` (all records across pages) and ``meta``
             from the final response.
         """
-        if tool_key is None:
-            tool_key = ["deeporigin.docking", "deeporigin.bulk-docking"]
-        filter_dict = _build_result_filter(
-            tool_key=tool_key,
-            protein_id=protein_id,
-            ligand_id=ligand_id,
-            compute_job_id=compute_job_id,
-            tool_version=tool_version,
-        )
+        filter_dict: dict[str, Any] = {
+            "props": [{"column": "result_type", "op": "eq", "value": "pose"}]
+        }
+
+        if protein_id is not None:
+            filter_dict["protein_id"] = {"eq": protein_id}
+        if ligand_id is not None:
+            if isinstance(ligand_id, list):
+                filter_dict["ligand_id"] = {"in": ligand_id}
+            else:
+                filter_dict["ligand_id"] = {"eq": ligand_id}
+        if compute_job_id is not None:
+            filter_dict["compute_job_id"] = {"eq": compute_job_id}
+        if tool_version is not None:
+            filter_dict["tool_version"] = {"eq": tool_version}
         return self.get(filter_dict=filter_dict, limit=limit, select=select)
 
     def get_pockets(
@@ -186,13 +201,13 @@ class Results:
         pocket_count: int | None = None,
         pocket_min_size: int | None = None,
         tool_version: str | None = None,
-        limit: int = 1000,
+        limit: int | None = 1000,
         select: list[str] | None = None,
     ) -> dict:
         """Get binding pockets, optionally filtered by protein.
 
         Convenience wrapper around :meth:`get` with
-        ``tool_key="deeporigin.pocketfinder"``.
+        ``result_type="pocket"``.
 
         Args:
             id: Optional record ID to fetch a specific pocket.
@@ -201,7 +216,7 @@ class Results:
             pocket_count: Optional pocket count to filter by.
             pocket_min_size: Optional pocket min size to filter by.
             tool_version: Optional tool version to filter by.
-            limit: Page size per request. Defaults to 1000.
+            limit: Maximum total number of results to return. Defaults to 1000.
             select: List of fields to select. Defaults to
                 ``["id", "tool_key", "tool_version", "data", "compute_job_id"]``.
 
@@ -209,15 +224,78 @@ class Results:
             Dictionary with ``data`` (all records across pages) and ``meta``
             from the final response.
         """
-        filter_dict = _build_result_filter(
-            id=id,
-            tool_key="deeporigin.pocketfinder",
-            protein_id=protein_id,
-            compute_job_id=compute_job_id,
-            pocket_count=pocket_count,
-            pocket_min_size=pocket_min_size,
-            tool_version=tool_version,
-        )
+        filter_dict: dict[str, Any] = {
+            "props": [{"column": "result_type", "op": "eq", "value": "pocket"}]
+        }
+
+        if id is not None:
+            filter_dict["id"] = {"eq": id}
+        if protein_id is not None:
+            filter_dict["protein_id"] = {"eq": protein_id}
+        if compute_job_id is not None:
+            filter_dict["compute_job_id"] = {"eq": compute_job_id}
+        if pocket_count is not None:
+            filter_dict["pocket_count"] = {"eq": pocket_count}
+        if pocket_min_size is not None:
+            filter_dict["pocket_min_size"] = {"eq": pocket_min_size}
+        if tool_version is not None:
+            filter_dict["tool_version"] = {"eq": tool_version}
+        return self.get(filter_dict=filter_dict, limit=limit, select=select)
+
+    def get_prepared_systems(
+        self,
+        *,
+        protein_id: str | None = None,
+        ligand1_id: str | None = None,
+        ligand2_id: str | None = None,
+        padding: int | None = None,
+        add_H_atoms: bool | None = None,  # NOSONAR
+        retain_waters: bool | None = None,
+        protonate_protein: bool | None = None,
+        limit: int | None = 1000,
+        select: list[str] | None = None,
+    ) -> dict:
+        """Get system-prep results, optionally filtered by inputs and options.
+
+        Convenience wrapper around :meth:`get` with
+        ``tool_key="deeporigin.system-prep"``. Optional args filter on the
+        tool result ``data`` (e.g. protein_id, ligand1_id, padding,
+        add_H_atoms, retain_waters, protonate_protein).
+
+        Args:
+            protein_id: Optional protein ID to filter by.
+            ligand1_id: Optional ligand1 ID to filter by.
+            ligand2_id: Optional ligand2 ID to filter by.
+            padding: Optional padding value to filter by.
+            add_H_atoms: Optional add_H_atoms flag to filter by.
+            retain_waters: Optional retain_waters flag to filter by.
+            protonate_protein: Optional protonate_protein flag to filter by.
+            limit: Maximum total number of results to return. Defaults to 1000.
+            select: List of fields to select. Defaults to
+                ``["id", "tool_key", "tool_version", "data", "compute_job_id"]``.
+
+        Returns:
+            Dictionary with ``data`` (all matching records across pages) and
+            ``meta`` from the final response.
+        """
+        filter_dict: dict[str, Any] = {
+            "props": [{"column": "result_type", "op": "eq", "value": "preparedsystem"}]
+        }
+
+        if protein_id is not None:
+            filter_dict["protein_id"] = {"eq": protein_id}
+        if ligand1_id is not None:
+            filter_dict["ligand1_id"] = {"eq": ligand1_id}
+        if ligand2_id is not None:
+            filter_dict["ligand2_id"] = {"eq": ligand2_id}
+        if padding is not None:
+            filter_dict["padding"] = {"eq": padding}
+        if add_H_atoms is not None:
+            filter_dict["add_H_atoms"] = {"eq": add_H_atoms}
+        if retain_waters is not None:
+            filter_dict["retain_waters"] = {"eq": retain_waters}
+        if protonate_protein is not None:
+            filter_dict["protonate_protein"] = {"eq": protonate_protein}
         return self.get(filter_dict=filter_dict, limit=limit, select=select)
 
     def with_ligands(
