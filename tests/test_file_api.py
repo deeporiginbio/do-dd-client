@@ -379,7 +379,7 @@ def test_upload_directory_bulk_lv1():
     )
 
     # Clean up remote files
-    client.files.delete_files(remote_paths=remote_files)
+    client.files.delete_files(remote_paths=remote_files, skip_errors=True)
 
 
 def test_upload_files_multipart_lv1():
