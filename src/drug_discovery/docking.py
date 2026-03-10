@@ -87,9 +87,6 @@ class Docking(Execution, QuoteMixin, SyncExecutableMixin, AsyncExecutableMixin):
         if protein.id is None:
             raise ValueError("Protein must have an ID.")
 
-        if pocket.id is None:
-            raise ValueError("Pocket must have an ID.")
-
         if ligands is None:
             ligands = LigandSet.from_smiles(smiles_list)
 

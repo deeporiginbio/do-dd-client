@@ -3,6 +3,7 @@
 import os
 
 from deeporigin.platform.client import DeepOriginClient
+from deeporigin.platform.constants import SYSPREP_FUNCTION_KEY
 
 
 def _get_result_explorer_ids() -> tuple[str, str, str | None]:
@@ -78,9 +79,9 @@ def test_get_prepared_systems():
     assert "data" in response, "Expected 'data' key in response"
     assert isinstance(response["data"], list), "Expected 'data' to be a list"
     for record in response["data"]:
-        for field in ("id", "tool_id", "tool_version", "data", "compute_job_id"):
+        for field in ("id", "tool_key", "tool_version", "data", "compute_job_id"):
             assert field in record, f"Expected '{field}' key in record"
-        assert record.get("tool_id") == "deeporigin.system-prep", (
+        assert record.get("tool_key") == SYSPREP_FUNCTION_KEY, (
             "Expected all records to be system-prep results"
         )
 
@@ -101,7 +102,7 @@ def test_get_prepared_systems_with_filters():
     assert "data" in response, "Expected 'data' key in response"
     assert isinstance(response["data"], list), "Expected 'data' to be a list"
     for record in response["data"]:
-        assert record.get("tool_id") == "deeporigin.system-prep"
+        assert record.get("tool_key") == SYSPREP_FUNCTION_KEY
         data = record.get("data") or {}
         assert data.get("protein_id") == "08BSPN9SNYVEA"
         assert data.get("ligand1_id") == "08BT9WM0NYVFY"
