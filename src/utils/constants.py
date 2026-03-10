@@ -32,6 +32,9 @@ API_ENDPOINT = {
 }
 
 
+DEFAULT_SEARCH_PAGE_SIZE = 100
+"""Default page size for paginated entity search requests."""
+
 ENV_VARIABLES = {
     "access_token": "DO_AUTH_TOKEN",
     "org_key": "DO_ORG_KEY",
