@@ -127,7 +127,7 @@ def test_docking_with_data_platform_lv2(
         execution_id=execution_id,
         client=client,
     )
-    assert len(poses_from_result) == 16, "Expected at least one pose from result"
+    assert len(poses_from_result) >= 16, "Expected at least one pose from result"
     for pose in poses_from_result:
         assert isinstance(pose, Ligand), "Expected Ligand object"
         assert pose.mol is not None, "Pose should have a loaded RDKit mol"
