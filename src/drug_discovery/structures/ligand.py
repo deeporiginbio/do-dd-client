@@ -1061,6 +1061,7 @@ class Ligand(Entity):
         self,
         *,
         client: Optional[DeepOriginClient] = None,
+        remote_path: Optional[str] = None,
     ) -> None:
         """Register the ligand as a new record in the data platform.
 
@@ -1070,6 +1071,8 @@ class Ligand(Entity):
 
         Args:
             client: DeepOriginClient instance. If None, uses DeepOriginClient.get().
+            remote_path: Custom remote path to upload to. Overrides the
+                default hash-based path.
 
         Returns:
             None. As a side effect, uploads the ligand and sets ``self.id``
@@ -1084,7 +1087,7 @@ class Ligand(Entity):
 
         mol_file: str | None = None
         if self.file_path is not None:
-            self.upload(client=client)
+            self.upload(client=client, remote_path=remote_path)
             mol_file = self._remote_path
 
         kwargs: dict[str, Any] = {
@@ -1119,6 +1122,7 @@ class Ligand(Entity):
         *,
         lazy: bool = False,
         client: Optional[DeepOriginClient] = None,
+        remote_path: Optional[str] = None,
     ) -> None:
         """Sync the ligand to the data platform.
 
@@ -1130,6 +1134,8 @@ class Ligand(Entity):
             lazy: If True, skip syncing when the ligand already has an ID.
                 Defaults to False.
             client: DeepOriginClient instance. If None, uses DeepOriginClient.get().
+            remote_path: Custom remote path to upload to. Overrides the
+                default hash-based path.
 
         Note:
             If the ligand was created from a SMILES string without an SDF file, only the SMILES
@@ -1141,6 +1147,9 @@ class Ligand(Entity):
 
         if client is None:
             client = DeepOriginClient.get()
+
+        if remote_path is not None:
+            self._remote_path_override = remote_path
 
         smiles_value = self.smiles if self.smiles is not None else self.canonical_smiles
         response = client.entities.search_ligands(smiles=smiles_value)
@@ -1158,7 +1167,7 @@ class Ligand(Entity):
                 self.id = existing_ligand["id"]
             return
 
-        self.register(client=client)
+        self.register(client=client, remote_path=remote_path)
 
     def _to_row(self) -> dict[str, Any]:
         """Build a batch-create row dict from this ligand.

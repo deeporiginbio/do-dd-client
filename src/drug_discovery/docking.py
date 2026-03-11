@@ -27,7 +27,7 @@ from deeporigin.drug_discovery.execution_mixins import (
     QuoteMixin,
     SyncExecutableMixin,
 )
-from deeporigin.drug_discovery.structures.ligand import LigandSet
+from deeporigin.drug_discovery.structures.ligand import Ligand, LigandSet
 from deeporigin.drug_discovery.structures.pocket import Pocket
 from deeporigin.drug_discovery.structures.protein import Protein
 from deeporigin.platform.client import DeepOriginClient
@@ -63,6 +63,7 @@ class Docking(Execution, QuoteMixin, SyncExecutableMixin, AsyncExecutableMixin):
         *,
         protein: Protein,
         pocket: Pocket,
+        ligand: Ligand | None = None,
         ligands: LigandSet | None = None,
         smiles_list: list[str] | None = None,
         tool_version: str = DOCKING_TOOL_VERSION,
@@ -73,21 +74,28 @@ class Docking(Execution, QuoteMixin, SyncExecutableMixin, AsyncExecutableMixin):
         Args:
             protein: Protein structure to dock into.
             pocket: Binding pocket defining the search box.
-            ligands: Set of ligands. Mutually exclusive with ``smiles_list``.
-            smiles_list: Raw SMILES strings. Mutually exclusive with ``ligands``.
-                Converted to a ``LigandSet`` during construction.
+            ligand: Single ligand. Mutually exclusive with ``ligands`` and
+                ``smiles_list``. Converted to a ``LigandSet`` during construction.
+            ligands: Set of ligands. Mutually exclusive with ``ligand`` and
+                ``smiles_list``.
+            smiles_list: Raw SMILES strings. Mutually exclusive with ``ligand``
+                and ``ligands``. Converted to a ``LigandSet`` during construction.
             tool_version: Platform tool version to run. Settable so callers
                 can pin or upgrade independently of the SDK release.
             client: Optional API client.
         """
-
-        if ligands is None and smiles_list is None:
-            raise ValueError("Either ligands or smiles_list must be provided.")
+        provided = sum(x is not None for x in (ligand, ligands, smiles_list))
+        if provided != 1:
+            raise ValueError(
+                "Exactly one of ligand, ligands, or smiles_list must be provided."
+            )
 
         if protein.id is None:
             raise ValueError("Protein must have an ID.")
 
-        if ligands is None:
+        if ligand is not None:
+            ligands = LigandSet(ligands=[ligand])
+        elif ligands is None:
             ligands = LigandSet.from_smiles(smiles_list)
 
         super().__init__(client=client)
@@ -268,8 +276,22 @@ class Docking(Execution, QuoteMixin, SyncExecutableMixin, AsyncExecutableMixin):
 
         ligands = list(self.ligands)
 
-        box_size = float(2 * np.cbrt(self.pocket.volume))
-        box_size_list = [box_size, box_size, box_size]
+        default_box = float(2 * np.cbrt(self.pocket.volume or 0))
+        box_size_x = (
+            self.pocket.box_size_x
+            if self.pocket.box_size_x is not None
+            else default_box
+        )
+        box_size_y = (
+            self.pocket.box_size_y
+            if self.pocket.box_size_y is not None
+            else default_box
+        )
+        box_size_z = (
+            self.pocket.box_size_z
+            if self.pocket.box_size_z is not None
+            else default_box
+        )
         pocket_center = self.pocket.get_center().tolist()
 
         metadata = {
@@ -278,8 +300,13 @@ class Docking(Execution, QuoteMixin, SyncExecutableMixin, AsyncExecutableMixin):
         }
 
         params = {
-            "box_size": box_size_list,
-            "pocket_center": pocket_center,
+            "pocket": {
+                "box_size_x": box_size_x,
+                "box_size_y": box_size_y,
+                "box_size_z": box_size_z,
+                "center": pocket_center,
+                "id": self.pocket.id,
+            },
             "protein": {
                 "id": self.protein.id,
                 "file_path": self.protein._remote_path,
@@ -291,7 +318,6 @@ class Docking(Execution, QuoteMixin, SyncExecutableMixin, AsyncExecutableMixin):
                 }
                 for lig in ligands
             ],
-            "pocket_id": self.pocket.id,
         }
 
         return params, metadata
@@ -319,7 +345,8 @@ class Docking(Execution, QuoteMixin, SyncExecutableMixin, AsyncExecutableMixin):
         instance = super().from_id(id, client=client)
         inputs = instance._execution_dto["userInputs"]
 
-        pocket_id = inputs.get("pocket_id")
+        pocket_input = inputs.get("pocket", {})
+        pocket_id = pocket_input.get("id") or inputs.get("pocket_id")
         if pocket_id is None:
             raise ValueError(
                 "Missing 'pocket_id' in execution userInputs; "

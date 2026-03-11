@@ -453,8 +453,15 @@ def create_tools_router(
         # Make a deep copy to avoid mutating the cached fixture
         response = copy.deepcopy(response)
 
+        from tests.fixture_utils import patch_fixture_version
+
         if isinstance(response, dict):
+            patch_fixture_version(response)
             response["id"] = str(uuid.uuid4())
+        elif isinstance(response, list):
+            for item in response:
+                if isinstance(item, dict):
+                    patch_fixture_version(item)
 
         # Replace protein_id and ligand_id in functionOutputs with IDs from userInputs
         # This is needed because normalize_function_body strips IDs before hashing,

@@ -48,8 +48,6 @@ def find_pockets(
 
     payload["protein"]["id"] = protein.id
 
-    protein.upload(client=client)
-
     response = client.functions.run(
         key=POCKET_FINDER_FUNCTION_KEY,
         version=POCKET_FINDER_FUNCTION_VERSION,
@@ -58,17 +56,3 @@ def find_pockets(
     )
 
     return FunctionResult([response])
-
-
-def cache_path(cache_key: str) -> str:
-    """Return the cache directory path for a given cache key.
-
-    Args:
-        cache_key: Hash-based key identifying the cached result.
-
-    Returns:
-        Absolute path to the cache directory.
-    """
-    from deeporigin.utils.env import _ensure_do_folder
-
-    return str(_ensure_do_folder() / "pocket-finder" / cache_key)

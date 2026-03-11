@@ -162,6 +162,50 @@ def test_from_json_error_reports_correct_index_lv0():
         Pocket.from_json(data)
 
 
+def test_from_function_result_lv0():
+    """from_function_result downloads PDBs and populates new fields."""
+    import json
+
+    from deeporigin.functions.result import FunctionResult
+
+    fixture = Path(__file__).parent / (
+        "fixtures/function-runs/deeporigin.pocketfinder/"
+        "d374ba671065b866ff588cee18c9eb7523be307e78eeb84fe321475917424f41.json"
+    )
+    from tests.fixture_utils import patch_fixture_version
+
+    response = patch_fixture_version(json.loads(fixture.read_text()))
+
+    result = FunctionResult([response])
+
+    class FakeFiles:
+        """Stub that returns a local PDB path instead of downloading."""
+
+        def download_file(self, *, remote_path, lazy=False):
+            """Return the BRD PDB path regardless of remote_path."""
+            return str(_BRD_PDB)
+
+    class FakeClient:
+        """Minimal client stub with a fake files service."""
+
+        files = FakeFiles()
+
+    pockets = Pocket.from_function_result(
+        result=result,
+        client=FakeClient(),
+    )
+
+    assert len(pockets) == 1
+    pocket = pockets[0]
+    assert pocket.protein_id == "08QCAKE4DYX3Q"
+    assert pocket.volume == pytest.approx(300)
+    assert pocket.pocket_center == pytest.approx([-13.521, -4.944, 15.457], abs=1e-3)
+    assert pocket.box_size_x == pytest.approx(14)
+    assert pocket.box_size_y == pytest.approx(14)
+    assert pocket.box_size_z == pytest.approx(19)
+    assert pocket.drugability_score == pytest.approx(0.94304204)
+
+
 def test_from_residue_num_lv0():
     """Test creating a pocket from a residue number"""
 
@@ -200,7 +244,7 @@ def test_from_id_lv2():
     protein.remove_water()
     protein.sync(client=client)
 
-    result = protein.find_pockets(pocket_count=1, use_cache=False, client=client)
+    result = protein.find_pockets(pocket_count=1, client=client)
     assert len(result.pockets) >= 1
 
     pockets_from_result = Pocket.from_result(
@@ -218,3 +262,8 @@ def test_from_id_lv2():
     assert fetched.file_path.exists()
     assert fetched.coordinates is not None
     assert fetched.protein_id == protein.id
+    assert fetched.pocket_center is not None
+    assert len(fetched.pocket_center) == 3
+    assert fetched.box_size_x is not None
+    assert fetched.box_size_y is not None
+    assert fetched.box_size_z is not None

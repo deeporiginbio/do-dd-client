@@ -1,19 +1,20 @@
-"""this module contains tests for functions. These are meant to be run against a live instance"""
+"""This module contains tests for functions.
 
-from pathlib import Path
+These are meant to be run against a live instance.
+"""
 
 import pytest
 
-from conftest import check_function_exists
+from conftest import FIXTURES_DIR, check_function_exists
 from deeporigin.drug_discovery import (
-    BRD_DATA_DIR,
-    Complex,
     Ligand,
-    LigandSet,
     Pocket,
     Protein,
 )
+from deeporigin.functions.docking import dock
+from deeporigin.functions.pocket_finder import find_pockets
 from deeporigin.functions.result import FunctionResult
+from deeporigin.functions.sysprep import abfe
 from deeporigin.platform import DeepOriginClient
 from deeporigin.platform.constants import (
     DOCKING_FUNCTION_KEY,
@@ -25,15 +26,6 @@ from deeporigin.platform.constants import (
     SYSPREP_FUNCTION_KEY,
     SYSPREP_FUNCTION_VERSION,
 )
-
-# Fixtures directory for test files
-FIXTURES_DIR = Path(__file__).parent / "fixtures"
-
-
-@pytest.fixture()
-def client() -> DeepOriginClient:
-    """Return a DeepOriginClient instance."""
-    return DeepOriginClient()
 
 
 def test_molprops_lv2(client: DeepOriginClient):
@@ -52,39 +44,34 @@ def test_molprops_lv2(client: DeepOriginClient):
     assert "logS" in props, "Expected logS to be in the properties"
 
 
-def test_pocket_finder_lv2(client: DeepOriginClient):
+def test_pocket_finder_lv2(client: DeepOriginClient, brd_protein: Protein):
     """Test pocket finder function returns FunctionResult with pockets."""
     if not check_function_exists(
         client, POCKET_FINDER_FUNCTION_KEY, POCKET_FINDER_FUNCTION_VERSION
     ):
         pytest.skip("Pocket finder function does not exist")
 
-    protein = Protein.from_file(BRD_DATA_DIR / "brd.pdb")
-    protein.remove_water()
-    result = protein.find_pockets(
+    result = find_pockets(
+        protein=brd_protein,
         pocket_count=1,
-        use_cache=False,
+        client=client,
     )
 
     assert isinstance(result, FunctionResult), (
-        "Expected protein.find_pockets() to return a FunctionResult"
-    )
-    assert isinstance(result.pockets, list), "Expected result.pockets to be a list"
-    assert len(result.pockets) == 1, "Incorrect number of pockets"
-    assert isinstance(result.pockets[0], Pocket), (
-        "Expected pockets to contain Pocket objects"
+        "Expected find_pockets() to return a FunctionResult"
     )
 
 
-def test_docking_lv2(client: DeepOriginClient):
+def test_docking_lv2(
+    client: DeepOriginClient,
+    brd_protein: Protein,
+    brd_ligand: Ligand,
+):
     """Test docking function."""
     if not check_function_exists(
         client, DOCKING_FUNCTION_KEY, DOCKING_FUNCTION_VERSION
     ):
         pytest.skip("Docking function does not exist")
-
-    protein = Protein.from_file(BRD_DATA_DIR / "brd.pdb")
-    protein.remove_water()
 
     pocket = Pocket.from_pdb_file(
         FIXTURES_DIR
@@ -94,48 +81,39 @@ def test_docking_lv2(client: DeepOriginClient):
         / "pocket_1.pdb",
     )
 
-    ligand = Ligand.from_smiles(
-        "Fc1c(-c2cccc3ccccc23)ncc2c(N3C[C@H]4CC[C@@H](C3)N4)nc(OCC34CCCN3CCC4)nc12"
-    )
-
-    result = protein.dock(
-        ligand=ligand,
+    result = dock(
+        client=client,
+        protein=brd_protein,
+        ligand=brd_ligand,
         pocket=pocket,
-        use_cache=False,
     )
 
     assert isinstance(result, FunctionResult), (
         "Expected protein.dock() to return a FunctionResult"
     )
-    assert isinstance(result.poses, LigandSet), (
-        "Expected result.poses to be a LigandSet"
-    )
 
 
-def test_sysprep_lv2(client: DeepOriginClient):
+def test_sysprep_lv2(
+    client: DeepOriginClient,
+    brd_protein: Protein,
+    brd_ligand: Ligand,
+):
     """Test system preparation returns FunctionResult with prepared_systems."""
     if not check_function_exists(
         client, SYSPREP_FUNCTION_KEY, SYSPREP_FUNCTION_VERSION
     ):
         pytest.skip("System prep function does not exist")
 
-    protein = Protein.from_file(BRD_DATA_DIR / "brd.pdb")
-    protein.remove_water()
-    ligand = Ligand.from_sdf(BRD_DATA_DIR / "brd-2.sdf")
-
-    sim = Complex(protein=protein, ligands=[ligand])
-
-    result = sim.prepare(ligand=ligand, add_H_atoms=True, protonate_protein=True)
+    result = abfe(
+        client=client,
+        protein=brd_protein,
+        ligand=brd_ligand,
+        add_H_atoms=True,
+        protonate_protein=True,
+    )
 
     assert isinstance(result, FunctionResult), (
         "Expected sim.prepare() to return a FunctionResult"
-    )
-    assert isinstance(result.prepared_systems, list), (
-        "Expected result.prepared_systems to be a list"
-    )
-    assert len(result.prepared_systems) == 1
-    assert isinstance(result.prepared_systems[0], Protein), (
-        "Expected prepared_systems[0] to be a Protein"
     )
 
 

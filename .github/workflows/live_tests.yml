@@ -1,36 +1,41 @@
-name: Test Functions 
+name: Run Level 1 Tests
 
 on:
+  schedule:
+    - cron: "0 6 * * *"
+  pull_request:
+    paths:
+      - "**/*.py"
   workflow_dispatch:
     inputs:
-      env:
-        description: "Target environment"
+      test_level:
+        description: "Test level to run"
         type: choice
-        required: true
-        default: prod
-        options: [dev, staging, prod]
+        default: lv1
+        options:
+          - lv1
+          - lv2
   workflow_call:
     inputs:
       env:
         description: "Target environment"
         type: string
         required: true
-
-  # Run every day
-  schedule:
-    - cron: "0 6 * * *"
-
-  # Run on changes to Python files in src/functions/
-  push:
-    paths:
-      - 'src/functions/**/*.py'
+      test_level:
+        description: "Test level to run (lv1 or lv2)"
+        type: string
+        required: false
+        default: lv1
 
 jobs:
-  test-functions-on-environment:
-    environment: ${{ inputs.env || 'prod' }}
+  level-1-tests:
     runs-on: ubuntu-latest
-    env:
-      DO_ENV: ${{ inputs.env || 'prod' }}
+    environment: ${{ matrix.env }}
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.13"]
+        env: ${{ fromJSON( ((github.event_name == 'workflow_call' || github.event_name == 'release') && inputs.env != '') && format('["{0}"]', inputs.env) || '["dev","staging","prod"]' ) }}
 
     steps:
       - uses: actions/checkout@v4
@@ -38,16 +43,18 @@ jobs:
           repository: deeporiginbio/do-dd-client
           ref: ${{ github.event_name == 'release' && 'main' || github.ref }}
           token: ${{ github.event_name == 'release' && secrets.CI_BOT_GH_PAT || secrets.GITHUB_TOKEN }}
+
       - name: Install uv
         uses: astral-sh/setup-uv@v6
         with:
           version: "0.5.27"
-      
+
       - name: Set up Python
-        run: uv python install
-      - name: Select env
+        run: uv python install ${{ matrix.python-version }}
+
+      - name: Set environment variables
         env:
-          TARGET_ENV: ${{ inputs.env || 'prod' }}
+          TARGET_ENV: ${{ matrix.env }}
           TOKEN_PROD: ${{ secrets.DO_AUTH_TOKEN_PROD }}
           TOKEN_STAGING: ${{ secrets.DO_AUTH_TOKEN_STAGING }}
           TOKEN_DEV: ${{ secrets.DO_AUTH_TOKEN_DEV }}
@@ -64,11 +71,11 @@ jobs:
           elif [ "$TARGET_ENV" = "dev" ]; then
             echo "${AUTH_TOKEN_VAR}=${TOKEN_DEV}" >> "$GITHUB_ENV"
           fi
+
       - name: Install dependencies
-        run: uv sync --extra tools --extra test --extra plots --extra core
+        run: uv sync --extra test --extra tools --extra plots --extra core
 
-
-      - name: Run tests against a live instance
+      - name: "Running tests against a live instance"
         env:
-          TARGET_ENV: ${{ inputs.env || 'prod' }}
-        run: uv run pytest -v -s --log-cli-level=ERROR -k test_functions --env "$TARGET_ENV"
+          TARGET_ENV: ${{ matrix.env }}
+        run: uv run pytest --env "$TARGET_ENV" -k ${{ github.event.inputs.test_level || (github.event_name == 'workflow_call' && inputs.test_level || '') || 'lv1' }}

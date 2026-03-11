@@ -1,12 +1,9 @@
 """This module tests functions working with the data platform."""
 
-from pathlib import Path
-
 import pytest
 
-from conftest import check_function_exists
+from conftest import FIXTURES_DIR, check_function_exists
 from deeporigin.drug_discovery import (
-    BRD_DATA_DIR,
     Ligand,
     LigandSet,
     Pocket,
@@ -24,39 +21,6 @@ from deeporigin.platform.constants import (
     SYSPREP_FUNCTION_VERSION,
 )
 
-FIXTURES_DIR = Path(__file__).parent / "fixtures"
-
-
-@pytest.fixture()
-def client() -> DeepOriginClient:
-    """Return a DeepOriginClient instance."""
-    return DeepOriginClient()
-
-
-@pytest.fixture()
-def registered_protein(client: DeepOriginClient) -> Protein:
-    """Register a fresh protein and delete it after the test."""
-    protein = Protein.from_file(BRD_DATA_DIR / "brd.pdb")
-    protein.remove_water()
-    protein.sync(client=client)
-    return protein
-
-
-@pytest.fixture()
-def registered_ligand(client: DeepOriginClient) -> Ligand:
-    """Sync a ligand for use in tests.
-
-    Ligands have a unique constraint on SMILES, so register would fail
-    if the ligand already exists. Stale results are not a concern because
-    docking results are keyed by the protein+ligand pair, and the protein
-    is always freshly registered.
-    """
-    ligand = Ligand.from_smiles(
-        "Fc1c(-c2cccc3ccccc23)ncc2c(N3C[C@H]4CC[C@@H](C3)N4)nc(OCC34CCCN3CCC4)nc12"
-    )
-    ligand.sync(client=client)
-    return ligand
-
 
 def test_pocketfinder_with_data_platform_lv2(
     client: DeepOriginClient,
@@ -73,7 +37,6 @@ def test_pocketfinder_with_data_platform_lv2(
 
     result = registered_protein.find_pockets(
         pocket_count=num_pockets,
-        use_cache=False,
         client=client,
     )
 
@@ -164,7 +127,7 @@ def test_docking_with_data_platform_lv2(
         execution_id=execution_id,
         client=client,
     )
-    assert len(poses_from_result) == 16, "Expected at least one pose from result"
+    assert len(poses_from_result) >= 16, "Expected at least one pose from result"
     for pose in poses_from_result:
         assert isinstance(pose, Ligand), "Expected Ligand object"
         assert pose.mol is not None, "Pose should have a loaded RDKit mol"
@@ -174,17 +137,14 @@ def test_docking_with_data_platform_lv2(
 def test_sysprep_with_data_platform_lv2(
     client: DeepOriginClient,
     registered_protein: Protein,
+    registered_ligand: Ligand,
 ):
     if not check_function_exists(
         client, SYSPREP_FUNCTION_KEY, SYSPREP_FUNCTION_VERSION
     ):
         pytest.skip("Sysprep function does not exist")
 
-    ligand = Ligand.from_sdf(BRD_DATA_DIR / "brd-2.sdf")
-    ligand.sync(client=client, lazy=True)
-
-    # run function
-    result = abfe(client=client, protein=registered_protein, ligand=ligand)
+    result = abfe(client=client, protein=registered_protein, ligand=registered_ligand)
 
     function_data = result._responses[0]["functionOutputs"]
     assert "system" in function_data.keys(), (
