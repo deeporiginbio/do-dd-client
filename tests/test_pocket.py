@@ -170,9 +170,11 @@ def test_from_function_result_lv0():
 
     fixture = Path(__file__).parent / (
         "fixtures/function-runs/deeporigin.pocketfinder/"
-        "a232a70d78edd87bf6d36bf6b80d94dbee48bc4b058de740b6d2e9403818d852.json"
+        "d374ba671065b866ff588cee18c9eb7523be307e78eeb84fe321475917424f41.json"
     )
-    response = json.loads(fixture.read_text())
+    from tests.fixture_utils import patch_fixture_version
+
+    response = patch_fixture_version(json.loads(fixture.read_text()))
 
     result = FunctionResult([response])
 
@@ -195,13 +197,13 @@ def test_from_function_result_lv0():
 
     assert len(pockets) == 1
     pocket = pockets[0]
-    assert pocket.protein_id == "08CEVZZPNYV31"
-    assert pocket.volume == pytest.approx(348)
-    assert pocket.pocket_center == pytest.approx([12.345, 23.456, 34.567])
-    assert pocket.box_size_x == pytest.approx(14.1)
-    assert pocket.box_size_y == pytest.approx(14.1)
-    assert pocket.box_size_z == pytest.approx(14.1)
-    assert pocket.drugability_score == pytest.approx(0.9438493)
+    assert pocket.protein_id == "08QCAKE4DYX3Q"
+    assert pocket.volume == pytest.approx(300)
+    assert pocket.pocket_center == pytest.approx([-13.521, -4.944, 15.457], abs=1e-3)
+    assert pocket.box_size_x == pytest.approx(14)
+    assert pocket.box_size_y == pytest.approx(14)
+    assert pocket.box_size_z == pytest.approx(19)
+    assert pocket.drugability_score == pytest.approx(0.94304204)
 
 
 def test_from_residue_num_lv0():

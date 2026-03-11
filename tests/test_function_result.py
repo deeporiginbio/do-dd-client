@@ -7,27 +7,29 @@ import pytest
 
 from deeporigin.functions.result import FunctionResult
 from deeporigin.platform.constants import DOCKING_FUNCTION_KEY, DOCKING_FUNCTION_VERSION
+from tests.fixture_utils import patch_fixture_version
 
 FIXTURES_DIR = Path(__file__).parent / "fixtures"
 DOCKING_FIXTURES = FIXTURES_DIR / "function-runs" / "deeporigin.docking"
 
 COMPLETED_FIXTURE = (
     DOCKING_FIXTURES
-    / "7327071365baa19d589f03adeaf910cf5b22645976a57c19ea65bf301c9fa7e0.json"
+    / "65dcc326fa645574f35562515aa3c39e0bba645af4b65110a4a364a6dc7826aa.json"
 )
+
 QUOTED_FIXTURE = DOCKING_FIXTURES / "quoted.json"
 
 
 @pytest.fixture()
 def completed_response() -> dict:
     """Load a real completed docking response from fixtures."""
-    return json.loads(COMPLETED_FIXTURE.read_text())
+    return patch_fixture_version(json.loads(COMPLETED_FIXTURE.read_text()))
 
 
 @pytest.fixture()
 def quoted_response() -> dict:
     """Load a real quoted docking response from fixtures."""
-    return json.loads(QUOTED_FIXTURE.read_text())
+    return patch_fixture_version(json.loads(QUOTED_FIXTURE.read_text()))
 
 
 # --- single-response tests ---

@@ -1426,6 +1426,7 @@ class Protein(Entity):
         self,
         *,
         client: Optional[DeepOriginClient] = None,
+        remote_path: Optional[str] = None,
     ) -> None:
         """Register the protein as a new record in the data platform.
 
@@ -1434,6 +1435,8 @@ class Protein(Entity):
 
         Args:
             client: DeepOriginClient instance. If None, uses DeepOriginClient.get().
+            remote_path: Custom remote path to upload to. Overrides the
+                default hash-based path.
 
         Returns:
             None. As a side effect, uploads the protein and sets ``self.id``
@@ -1442,7 +1445,7 @@ class Protein(Entity):
         if client is None:
             client = DeepOriginClient.get()
 
-        self.upload(client=client)
+        self.upload(client=client, remote_path=remote_path)
 
         file_path = self._remote_path
 
@@ -1468,6 +1471,7 @@ class Protein(Entity):
         *,
         lazy: bool = False,
         client: Optional[DeepOriginClient] = None,
+        remote_path: Optional[str] = None,
     ) -> None:
         """Sync the protein to the data platform.
 
@@ -1479,6 +1483,8 @@ class Protein(Entity):
             lazy: If True, skip syncing when the protein already has an ID.
                 Defaults to False.
             client: DeepOriginClient instance. If None, uses DeepOriginClient.get().
+            remote_path: Custom remote path to upload to. Overrides the
+                default hash-based path.
 
         Returns:
             None. As a side effect, uploads the protein (if necessary) and updates
@@ -1490,7 +1496,7 @@ class Protein(Entity):
         if client is None:
             client = DeepOriginClient.get()
 
-        self.upload(client=client)
+        self.upload(client=client, remote_path=remote_path)
 
         file_path = self._remote_path
 
