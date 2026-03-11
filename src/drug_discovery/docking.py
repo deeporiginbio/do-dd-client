@@ -299,14 +299,17 @@ class Docking(Execution, QuoteMixin, SyncExecutableMixin, AsyncExecutableMixin):
             "protein_hash": self.protein.to_hash(),
         }
 
+        pocket_params = {
+            "box_size_x": box_size_x,
+            "box_size_y": box_size_y,
+            "box_size_z": box_size_z,
+            "center": pocket_center,
+        }
+        if self.pocket.id is not None:
+            pocket_params["id"] = self.pocket.id
+
         params = {
-            "pocket": {
-                "box_size_x": box_size_x,
-                "box_size_y": box_size_y,
-                "box_size_z": box_size_z,
-                "center": pocket_center,
-                "id": self.pocket.id,
-            },
+            "pocket": pocket_params,
             "protein": {
                 "id": self.protein.id,
                 "file_path": self.protein._remote_path,

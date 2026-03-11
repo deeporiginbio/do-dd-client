@@ -266,18 +266,11 @@ class SystemPrep(Execution, QuoteMixin, SyncExecutableMixin):
             )
 
         outputs = result.function_outputs[0]
-        output_files = outputs.get("output_files", [])
-        binding = [f for f in output_files if f.endswith("bsm_system.xml")]
-        solvation = [f for f in output_files if f.endswith("solvation.xml")]
-        if binding:
-            self.binding_xml_path = binding[0]
-        if solvation:
-            self.solvation_xml_path = solvation[0]
         system = outputs.get("system", {})
         if isinstance(system, dict):
-            pdb_path = system.get("system_pdb_file_path")
-            if pdb_path is not None:
-                self.system_pdb_path = pdb_path
+            self.binding_xml_path = system.get("binding_xml_file_path")
+            self.solvation_xml_path = system.get("solvation_xml_ligand1_file_path")
+            self.system_pdb_path = system.get("system_pdb_file_path")
 
         if not (
             self.binding_xml_path and self.solvation_xml_path and self.system_pdb_path
