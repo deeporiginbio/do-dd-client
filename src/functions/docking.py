@@ -90,16 +90,20 @@ def dock(
         "smiles": ligand.smiles,
     }
 
-    payload = {
-        "protein": protein_data,
-        "ligand": ligand_data,
-        "pocket_center": pocket_center,
+    pocket_data: dict = {
+        "center": pocket_center,
         "box_size_x": _get_box_size(pocket, "x"),
         "box_size_y": _get_box_size(pocket, "y"),
         "box_size_z": _get_box_size(pocket, "z"),
     }
     if pocket.id is not None:
-        payload["pocket_id"] = pocket.id
+        pocket_data["id"] = pocket.id
+
+    payload = {
+        "protein": protein_data,
+        "ligand": ligand_data,
+        "pocket": pocket_data,
+    }
 
     response = client.functions.run(
         key=DOCKING_FUNCTION_KEY,
