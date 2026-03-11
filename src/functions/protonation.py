@@ -27,6 +27,10 @@ def protonate(
     use_cache: bool = True,
     client: DeepOriginClient,
     quote: bool = False,
+    billing: str | None = None,
+    app: str | None = None,
+    session: str | None = None,
+    project_id: str | None = None,
 ) -> FunctionResult:
     """Run ligand protonation using the DeepOrigin API.
 
@@ -37,6 +41,10 @@ def protonate(
         use_cache: Whether to use the cache.
         client: DeepOrigin client instance.
         quote: If True, request a cost estimate without executing.
+        billing: Optional billing identifier for the execution.
+        app: Optional app identifier. Defaults to "do-dd-client" if not set.
+        session: Optional session identifier for the execution.
+        project_id: Optional project ID for the execution.
 
     Returns:
         FunctionResult wrapping the full API response.
@@ -62,6 +70,10 @@ def protonate(
             key=PROTONATION_FUNCTION_KEY,
             params=payload,
             quote=quote,
+            billing=billing,
+            app=app,
+            session=session,
+            project_id=project_id,
         )
 
         if not quote:

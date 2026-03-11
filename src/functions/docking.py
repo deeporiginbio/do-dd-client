@@ -57,6 +57,10 @@ def dock(
     ligand: Ligand,
     pocket: Pocket,
     quote: bool = False,
+    billing: str | None = None,
+    app: str | None = None,
+    session: str | None = None,
+    project_id: str | None = None,
 ) -> FunctionResult:
     """Run molecular docking using the DeepOrigin API.
 
@@ -67,6 +71,10 @@ def dock(
         pocket: Pocket object defining the docking region. Box size
             and pocket center are derived from the pocket.
         quote: If True, request a cost estimate without executing.
+        billing: Optional billing identifier for the execution.
+        app: Optional app identifier. Defaults to "do-dd-client" if not set.
+        session: Optional session identifier for the execution.
+        project_id: Optional project ID for the execution.
 
     Returns:
         FunctionResult wrapping the full API response.
@@ -110,6 +118,10 @@ def dock(
         version=DOCKING_FUNCTION_VERSION,
         params=payload,
         quote=quote,
+        billing=billing,
+        app=app,
+        session=session,
+        project_id=project_id,
     )
 
     return FunctionResult([response])
@@ -127,6 +139,10 @@ def constrained_dock(
     top_criteria: Literal["energy_score", "rmsd"] = "energy_score",
     use_cache: bool = True,
     quote: bool = False,
+    billing: str | None = None,
+    app: str | None = None,
+    session: str | None = None,
+    project_id: str | None = None,
 ) -> FunctionResult:
     """Perform constrained molecular docking using reference ligand constraints.
 
@@ -143,6 +159,10 @@ def constrained_dock(
         top_criteria: Criteria for selecting top poses.
         use_cache: Whether to use cached results if available.
         quote: If True, request a cost estimate without executing.
+        billing: Optional billing identifier for the execution.
+        app: Optional app identifier. Defaults to "do-dd-client" if not set.
+        session: Optional session identifier for the execution.
+        project_id: Optional project ID for the execution.
 
     Returns:
         FunctionResult wrapping the full API response. When
@@ -182,6 +202,10 @@ def constrained_dock(
         key=CONSTRAINED_DOCKING_FUNCTION_KEY,
         params=payload,
         quote=quote,
+        billing=billing,
+        app=app,
+        session=session,
+        project_id=project_id,
     )
 
     result = FunctionResult([response])

@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from deeporigin.exceptions import DeepOriginException
+from deeporigin.utils.constants import DEFAULT_APP_NAME
 
 if TYPE_CHECKING:
     from deeporigin.platform.client import DeepOriginClient
@@ -48,6 +49,10 @@ class Functions:
         cluster_id: str | None = None,
         tag: str | None = None,
         quote: bool = False,
+        billing: str | None = None,
+        app: str | None = None,
+        session: str | None = None,
+        project_id: str | None = None,
     ) -> dict:
         """Run a function.
 
@@ -60,6 +65,10 @@ class Functions:
                 default cluster ID (first non-dev cluster, cached).
             tag: Optional tag for the execution.
             quote: Whether to request a quote instead of running the function.
+            billing: Optional billing identifier for the execution.
+            app: Optional app identifier. Defaults to "do-dd-client" if not provided.
+            session: Optional session identifier for the execution.
+            project_id: Optional project ID for the execution.
 
         Returns:
             Dictionary containing the execution response from the API.
@@ -75,9 +84,16 @@ class Functions:
             "params": params,
             "inputs": params,  # we're sending both params and inputs because the APIs across dev/staging/prod are different
             "clusterId": cluster_id,
+            "app": app if app is not None else DEFAULT_APP_NAME,
         }
         if tag is not None:
             body["tag"] = tag
+        if billing is not None:
+            body["billing"] = billing
+        if session is not None:
+            body["session"] = session
+        if project_id is not None:
+            body["projectId"] = project_id
 
         if quote:
             body["approveAmount"] = 0

@@ -32,3 +32,6 @@ ENV_VARIABLES = {
 
 UFA_PROVIDER = "ufa"
 """Provider identifier for UFA (Unified File Access) storage."""
+
+DEFAULT_APP_NAME = "do-dd-client"
+"""Default app name sent with tools/executions and functions API calls."""

@@ -26,16 +26,26 @@ def molprops(
     *,
     client: DeepOriginClient,
     use_cache: bool = True,
+    billing: str | None = None,
+    app: str | None = None,
+    session: str | None = None,
+    project_id: str | None = None,
 ) -> dict:
     """
     Run molecular property prediction using the DeepOrigin API.
 
     Args:
-        smiles_string (str): SMILES string for the molecule
-        use_cache (bool): Whether to use the cache
+        smiles_list: List of SMILES strings for the molecules.
+        properties: Set of properties to compute. Defaults to standard set.
+        client: DeepOrigin client instance.
+        use_cache: Whether to use the cache.
+        billing: Optional billing identifier for the execution.
+        app: Optional app identifier. Defaults to "do-dd-client" if not set.
+        session: Optional session identifier for the execution.
+        project_id: Optional project ID for the execution.
 
     Returns:
-        str: Path to the cached SDF file containing the results
+        Merged list of dicts with property results per molecule.
     """
 
     if properties is None:
@@ -53,6 +63,10 @@ def molprops(
             prop=prop,
             use_cache=use_cache,
             client=client,
+            billing=billing,
+            app=app,
+            session=session,
+            project_id=project_id,
         )
 
         response.append(this_response)
@@ -68,6 +82,10 @@ def get_single_property(
     prop: str,
     client: DeepOriginClient,
     use_cache: bool = True,
+    billing: str | None = None,
+    app: str | None = None,
+    session: str | None = None,
+    project_id: str | None = None,
 ) -> dict:
     """
     Get a single property for a molecule using the DeepOrigin API.
@@ -88,6 +106,10 @@ def get_single_property(
     response = client.functions.run(
         key=f"{MOL_PROPS_FUNCTION_KEY_PREFIX}-{prop}",
         params=payload,
+        billing=billing,
+        app=app,
+        session=session,
+        project_id=project_id,
     )
 
     response = response["functionOutputs"]
