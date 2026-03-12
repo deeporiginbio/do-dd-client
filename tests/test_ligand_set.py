@@ -56,16 +56,20 @@ def test_ligand_set_from_sdf_files_lv0():
     # All should be Ligand objects
     for ligand in ligands.ligands:
         assert isinstance(ligand, Ligand), "Expected a Ligand object"
-        assert ligand.file_path in file_paths, "Expected ligand.file_path to match source file"
-        assert os.path.exists(ligand.file_path), "Expected ligand.file_path to exist on disk"
+        assert ligand.file_path in file_paths, (
+            "Expected ligand.file_path to match source file"
+        )
+        assert os.path.exists(ligand.file_path), (
+            "Expected ligand.file_path to exist on disk"
+        )
 
     # Test with single file (should work the same as from_sdf)
     single_file_paths = [str(brd_file)]
     single_ligands = LigandSet.from_sdf_files(single_file_paths)
     assert len(single_ligands.ligands) == 8
-    assert all(
-        lig.file_path == str(brd_file) for lig in single_ligands.ligands
-    ), "Expected all ligands to keep their source file path"
+    assert all(lig.file_path == str(brd_file) for lig in single_ligands.ligands), (
+        "Expected all ligands to keep their source file path"
+    )
     assert set(single_ligands.to_smiles()) == set(
         LigandSet.from_sdf(brd_file).to_smiles()
     )
