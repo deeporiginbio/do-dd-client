@@ -1915,6 +1915,7 @@ class LigandSet:
                         mol,
                         properties=mol.GetPropsAsDict(),
                     )
+                    ligand.file_path = str(path)
                     ligands.append(ligand)
                 except Exception as e:
                     print(
