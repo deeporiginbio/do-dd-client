@@ -1,0 +1,1 @@
+../../../platform/.agent-rules/agents/test-runner.md

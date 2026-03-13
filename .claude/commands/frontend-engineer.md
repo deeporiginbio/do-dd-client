@@ -1,0 +1,1 @@
+../../../platform/.agent-rules/commands/frontend-engineer.md
