@@ -13,6 +13,9 @@ poses = client.results.get_poses(protein_id="08BSPN61NYVE3")
 # Get binding pockets for a protein
 pockets = client.results.get_pockets(protein_id="08BSPN61NYVE3")
 
+# Get ABFE (Absolute Binding Free Energy) results
+abfe = client.results.get_abfe_results(protein_id="08BSPN61NYVE3")
+
 # Get results for a specific tool and protein
 results = client.results.get(
     tool_id="deeporigin.bulk-docking",

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
+from deeporigin.platform.constants import ABFE_TOOL_KEY
 from deeporigin.utils.constants import DEFAULT_SEARCH_PAGE_SIZE
 
 if TYPE_CHECKING:
@@ -296,6 +297,51 @@ class Results:
             filter_dict["retain_waters"] = {"eq": retain_waters}
         if protonate_protein is not None:
             filter_dict["protonate_protein"] = {"eq": protonate_protein}
+        return self.get(filter_dict=filter_dict, limit=limit, select=select)
+
+    def get_abfe_results(
+        self,
+        *,
+        protein_id: str | None = None,
+        ligand_id: str | list[str] | None = None,
+        compute_job_id: str | None = None,
+        tool_version: str | None = None,
+        limit: int | None = 1000,
+        select: list[str] | None = None,
+    ) -> dict:
+        """Get ABFE (Absolute Binding Free Energy) end-to-end results.
+
+        Convenience wrapper around :meth:`get` with
+        ``tool_key="deeporigin.abfe-end-to-end"``.
+
+        Args:
+            protein_id: Optional protein ID to filter by.
+            ligand_id: Optional ligand ID (or list of IDs) to filter by.
+            compute_job_id: Optional compute job ID to filter by.
+            tool_version: Optional tool version to filter by.
+            limit: Maximum total number of results to return. Defaults to 1000.
+            select: List of fields to select. Defaults to
+                ``["id", "tool_key", "tool_version", "data", "compute_job_id"]``.
+
+        Returns:
+            Dictionary with ``data`` (all matching records across pages) and
+            ``meta`` from the final response.
+        """
+        filter_dict: dict[str, Any] = {
+            "tool_key": {"eq": ABFE_TOOL_KEY},
+        }
+
+        if protein_id is not None:
+            filter_dict["protein_id"] = {"eq": protein_id}
+        if ligand_id is not None:
+            if isinstance(ligand_id, list):
+                filter_dict["ligand_id"] = {"in": ligand_id}
+            else:
+                filter_dict["ligand_id"] = {"eq": ligand_id}
+        if compute_job_id is not None:
+            filter_dict["compute_job_id"] = {"eq": compute_job_id}
+        if tool_version is not None:
+            filter_dict["tool_version"] = {"eq": tool_version}
         return self.get(filter_dict=filter_dict, limit=limit, select=select)
 
     def with_ligands(
