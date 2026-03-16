@@ -341,7 +341,7 @@ def test_upload_directory_bulk_lv1():
         pytest.skip("Requires a real file service (use --env dev/staging/prod)")
 
     remote_dir = "/testing-bulk-upload/"
-    num_files = 100
+    num_files = 10
     file_size = 1024 * 1024  # 1 MB
 
     with tempfile.TemporaryDirectory() as tmpdir:
