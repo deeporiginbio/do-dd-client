@@ -27,6 +27,7 @@ from deeporigin.platform.executions import Executions
 from deeporigin.platform.files import Files
 from deeporigin.platform.functions import Functions
 from deeporigin.platform.organizations import Organizations
+from deeporigin.platform.progress_reports import ProgressReports
 from deeporigin.platform.projects import Projects
 from deeporigin.platform.results import Results
 from deeporigin.platform.tools import Tools
@@ -347,6 +348,7 @@ class DeepOriginClient:
         self.billing = Billing(self)
         self.entities = Entities(self)
         self.results = Results(self)
+        self.progress_reports = ProgressReports(self)
         self.projects = Projects(self)
 
         # Retry configuration

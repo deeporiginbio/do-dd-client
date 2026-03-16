@@ -3,7 +3,7 @@
 import os
 
 from deeporigin.platform.client import DeepOriginClient
-from deeporigin.platform.constants import SYSPREP_FUNCTION_KEY
+from deeporigin.platform.constants import ABFE_TOOL_KEY, SYSPREP_FUNCTION_KEY
 
 
 def _get_result_explorer_ids() -> tuple[str, str, str | None]:
@@ -110,3 +110,32 @@ def test_get_prepared_systems_with_filters():
         assert data.get("add_H_atoms") is True
         assert data.get("retain_waters") is False
         assert data.get("protonate_protein") is True
+
+
+def test_get_abfe_results():
+    """Test get_abfe_results returns ABFE results with expected shape."""
+    client = DeepOriginClient()
+    response = client.results.get_abfe_results()
+
+    assert isinstance(response, dict), "Expected a dictionary response"
+    assert "data" in response, "Expected 'data' key in response"
+    assert isinstance(response["data"], list), "Expected 'data' to be a list"
+    for record in response["data"]:
+        for field in ("id", "tool_key", "tool_version", "data", "compute_job_id"):
+            assert field in record, f"Expected '{field}' key in record"
+        assert record.get("tool_key") == ABFE_TOOL_KEY, (
+            "Expected all records to be ABFE results"
+        )
+
+
+def test_get_abfe_results_with_filters():
+    """Test get_abfe_results with optional filters builds correct filter and returns."""
+    client = DeepOriginClient()
+    response = client.results.get_abfe_results(limit=10)
+
+    assert isinstance(response, dict), "Expected a dictionary response"
+    assert "data" in response, "Expected 'data' key in response"
+    assert isinstance(response["data"], list), "Expected 'data' to be a list"
+    assert len(response["data"]) <= 10, "Expected at most 10 results"
+    for record in response["data"]:
+        assert record.get("tool_key") == ABFE_TOOL_KEY

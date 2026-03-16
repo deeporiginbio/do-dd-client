@@ -236,6 +236,7 @@ def create_data_platform_router(
     ligands: dict[str, dict[str, Any]],
     proteins: dict[str, dict[str, Any]],
     results: list[dict[str, Any]],
+    executions: dict[str, dict[str, Any]] | None = None,
     load_fixture: Callable[[str], dict[str, Any]],
 ) -> APIRouter:
     """Create a router for data-platform endpoints.
@@ -244,6 +245,7 @@ def create_data_platform_router(
         ligands: In-memory storage for ligands.
         proteins: In-memory storage for proteins.
         results: In-memory list of result-explorer records.
+        executions: In-memory storage for executions (keyed by executionId).
         load_fixture: Callable to load fixture data by name.
 
     Returns:
@@ -326,6 +328,26 @@ def create_data_platform_router(
             page = [{k: v for k, v in r.items() if k in select} for r in page]
 
         return {"data": page, "meta": {"count": len(filtered)}}
+
+    @router.post("/data-platform/{org_key}/executions/search")
+    async def search_executions(org_key: str, request: Request) -> dict[str, Any]:
+        """Search executions by compute_job_id with optional history."""
+        body = await request.json()
+        filter_dict = body.get("filter", {})
+        with_history = body.get("with_history", False)
+
+        store = executions or {}
+        records = list(store.values())
+
+        compute_job_id_filter = filter_dict.get("compute_job_id", {})
+        if "eq" in compute_job_id_filter:
+            target_id = compute_job_id_filter["eq"]
+            records = [r for r in records if r.get("executionId") == target_id]
+
+        response: dict[str, Any] = {"data": records, "count": len(records)}
+        if with_history:
+            response["with_history"] = True
+        return response
 
     @router.post("/data-platform/{org_key}/{entity}/search")
     async def search_entity(
