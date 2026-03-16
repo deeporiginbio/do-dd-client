@@ -1,23 +1,25 @@
-"""This module implements a low level function to perform molecular docking using the Deep Origin API.
+"""Low-level functions for molecular docking via the Deep Origin API.
 
-The main function `dock()` takes a Protein object, a list of ligand SMILES strings, and docking box parameters
-to perform docking calculations. The docking box can be specified either by providing explicit coordinates for the
-pocket center, or by passing a Pocket object which contains the pocket center information.
-
-The module interfaces with the Deep Origin docking service to perform the actual docking calculations remotely.
+The main function `dock()` takes a Protein, a Ligand, and a Pocket and
+performs docking calculations remotely. Box size and pocket center are
+derived from the Pocket object.
 """
 
 import os
 from pathlib import Path
-from typing import Optional
-import zipfile
-
-import httpx
+from typing import Literal, Optional
 
 from deeporigin.drug_discovery.structures import Ligand, Pocket, Protein
 from deeporigin.exceptions import DeepOriginException
+from deeporigin.functions.result import FunctionResult
 from deeporigin.platform.client import DeepOriginClient
-from deeporigin.utils.core import _ensure_do_folder, hash_dict
+from deeporigin.platform.constants import (
+    CONSTRAINED_DOCKING_FUNCTION_KEY,
+    DOCKING_FUNCTION_KEY,
+    DOCKING_FUNCTION_VERSION,
+)
+from deeporigin.utils.env import _ensure_do_folder
+from deeporigin.utils.hashing import hash_dict
 
 
 def _extract_cached_files(extract_dir: str) -> list[str]:
@@ -40,122 +42,113 @@ def _get_pocket_center(
     return list(pocket_center)
 
 
+def _get_box_size(pocket: Pocket, axis: str) -> float:
+    """Return box size for *axis* from *pocket*, defaulting to 20.0."""
+    val = getattr(pocket, f"box_size_{axis}", None)
+    if val is not None:
+        return float(val)
+    return 20.0
+
+
 def dock(
     *,
     client: DeepOriginClient,
     protein: Protein,
-    smiles_string: Optional[str] = None,
-    ligand: Optional[Ligand] = None,
-    box_size: tuple[float, float, float] = (20.0, 20.0, 20.0),
-    pocket_center: Optional[tuple[int, int, int]] = None,
-    pocket: Optional[Pocket] = None,
-    use_cache: bool = True,
+    ligand: Ligand,
+    pocket: Pocket,
     quote: bool = False,
-) -> str:
-    """
-    Run molecular docking using the DeepOrigin API.
+) -> FunctionResult:
+    """Run molecular docking using the DeepOrigin API.
 
     Args:
-        protein (Protein): Protein object representing the target protein
-        smiles_string (Optional[str]): SMILES string for the ligand to dock
-        ligand (Optional[Ligand]): Ligand object to dock
-        box_size (tuple[float, float, float]): Size of the docking box (x, y, z)
-        pocket_center (Optional[tuple[int, int, int]]): Center coordinates of the docking pocket (x, y, z)
-        pocket (Optional[Pocket]): Pocket object defining the docking region
-        use_cache (bool): Whether to use cached results. Defaults to True
-        client (DeepOriginClient | None): DeepOrigin client instance. If None, creates a new client. Defaults to None
+        client: DeepOrigin client instance.
+        protein: Protein object representing the target protein.
+        ligand: Ligand object to dock.
+        pocket: Pocket object defining the docking region. Box size
+            and pocket center are derived from the pocket.
+        quote: If True, request a cost estimate without executing.
 
     Returns:
-        str: path to the SDF file containing the docking results
+        FunctionResult wrapping the full API response.
     """
 
-    CACHE_DIR = str(_ensure_do_folder() / "docking")
+    protein.sync(lazy=True, client=client)
+    ligand.sync(lazy=True, client=client)
 
-    if pocket is not None or pocket_center is not None:
-        pocket_center = _get_pocket_center(pocket, pocket_center)
+    if pocket.pocket_center is not None:
+        pocket_center = list(pocket.pocket_center)
     else:
-        raise DeepOriginException("Pocket center is required") from None
+        pocket_center = pocket.get_center().tolist()
 
-    if ligand is not None:
-        smiles_string = ligand.smiles
-
-    if smiles_string is None:
-        raise DeepOriginException(
-            "Either smiles_string or ligand must be provided"
-        ) from None
-
-    # Prepare the request payload
-    payload = {
-        "protein_path": protein._remote_path,
-        "ligand_smiles": smiles_string,
-        "box_size": list(box_size),
-        "pocket_center": list(pocket_center),
+    protein_data = {
+        "id": protein.id,
+        "file_path": protein._remote_path,
     }
-    cache_hash = hash_dict(payload)
-    sdf_file = str(Path(CACHE_DIR) / f"{cache_hash}.sdf")
 
-    # Check if cached result exists
-    if os.path.exists(sdf_file) and use_cache:
-        return sdf_file
+    ligand_data = {
+        "id": ligand.id,
+        "smiles": ligand.smiles,
+    }
 
-    protein.upload(client=client)
+    pocket_data: dict = {
+        "center": pocket_center,
+        "box_size_x": _get_box_size(pocket, "x"),
+        "box_size_y": _get_box_size(pocket, "y"),
+        "box_size_z": _get_box_size(pocket, "z"),
+    }
+    if pocket.id is not None:
+        pocket_data["id"] = pocket.id
+
+    payload = {
+        "protein": protein_data,
+        "ligand": ligand_data,
+        "pocket": pocket_data,
+    }
 
     response = client.functions.run(
-        key="deeporigin.docking",
-        version="0.2.6",
+        key=DOCKING_FUNCTION_KEY,
+        version=DOCKING_FUNCTION_VERSION,
         params=payload,
         quote=quote,
     )
 
-    # TODO -- remove this patch once API is updated
-    if "functionOutputs" in response:
-        response = response["functionOutputs"]
-
-    sdf_file = client.files.download_file(
-        remote_path=response["sdf_path"],
-        local_path=sdf_file,
-    )
-
-    return sdf_file
+    return FunctionResult([response])
 
 
 def constrained_dock(
     *,
+    client: DeepOriginClient,
     protein: Protein,
     ligand: Ligand,
     constraints: list[dict],
     pocket: Optional[Pocket] = None,
     box_size: tuple[float, float, float] = (20.0, 20.0, 20.0),
     pocket_center: Optional[tuple[int, int, int]] = None,
+    top_criteria: Literal["energy_score", "rmsd"] = "energy_score",
     use_cache: bool = True,
-) -> list[str]:
-    """Perform constrained molecular docking using a reference ligand constraints.
-
-    This function performs molecular docking with constraints based on a reference ligand
-    and a maximum common substructure (MCS). The ligand is aligned to the reference ligand
-    using the MCS, and docking is performed with these alignment constraints applied.
+    quote: bool = False,
+) -> FunctionResult:
+    """Perform constrained molecular docking using reference ligand constraints.
 
     Args:
-        protein (Protein): The protein structure to dock against.
-        ligand (Ligand): The ligand to be docked.
-        constraints (list[dict]): List of constraints for the docking. Generate this using `align.compute_constraints`.
-        pocket (Optional[Pocket]): Optional pocket object. If provided, its center will be used as pocket_center.
-        box_size (tuple[float, float, float]): Size of the docking box in Angstroms (x, y, z). Defaults to (20.0, 20.0, 20.0).
-        pocket_center (Optional[tuple[int, int, int]]): Optional center coordinates for the docking box. If None and pocket is provided,
-                     uses the pocket center. If both are None, raises an error.
-        use_cache (bool): Whether to use cached results if available. Defaults to True.
+        client: DeepOrigin client instance.
+        protein: The protein structure to dock against.
+        ligand: The ligand to be docked.
+        constraints: List of constraints for the docking. Generate
+            using ``align.compute_constraints``.
+        pocket: Optional pocket object whose center is used as
+            ``pocket_center``.
+        box_size: Size of the docking box in Angstroms (x, y, z).
+        pocket_center: Center coordinates for the docking box.
+        top_criteria: Criteria for selecting top poses.
+        use_cache: Whether to use cached results if available.
+        quote: If True, request a cost estimate without executing.
 
     Returns:
-        list[str]: List of file paths to the docking result files (typically SDF files).
-
-
-    Note:
-        The function creates a cache directory in the DeepOrigin home directory
-        (typically ~/.deeporigin/constrained_docking/) and stores results based on
-        a SHA256 hash of all input parameters. This allows for efficient reuse of
-        previous docking results.
+        FunctionResult wrapping the full API response. When
+        ``quote=False``, downloaded result file paths are available
+        via ``result.downloaded_files``.
     """
-    URL = "https://constrained-docking.default.jobs.edge.deeporigin.io/dock"
     CACHE_DIR = str(_ensure_do_folder() / "constrained_docking")
 
     if pocket is None and pocket_center is None:
@@ -165,38 +158,51 @@ def constrained_dock(
 
     pocket_center_list = _get_pocket_center(pocket, pocket_center)
 
+    protein.upload(client=client)
+    ligand.upload(client=client)
+
     payload = {
-        "box_size": box_size,
+        "protein_path": protein._remote_path,
+        "ligand_path": ligand._remote_path,
+        "box_size": list(box_size),
         "constraints": constraints,
         "protein": {"pocket_center": pocket_center_list},
-        "top_criteria": "score",
-        "protein_b64": protein.to_base64(),
-        "ligand_b64": ligand.to_base64(),
+        "top_criteria": top_criteria,
     }
 
     cache_hash = hash_dict(payload)
-    zip_file = str(Path(CACHE_DIR) / f"{cache_hash}.zip")
     extract_dir = str(Path(CACHE_DIR) / cache_hash)
 
-    if os.path.exists(extract_dir) and use_cache:
-        return _extract_cached_files(extract_dir)
+    if os.path.exists(extract_dir) and use_cache and not quote:
+        result = FunctionResult([{"status": "Completed"}])
+        result.downloaded_files = _extract_cached_files(extract_dir)
+        return result
 
-    # Send the POST request
-    response = httpx.post(
-        URL,
-        headers={"Content-Type": "application/json"},
-        json=payload,
+    response = client.functions.run(
+        key=CONSTRAINED_DOCKING_FUNCTION_KEY,
+        params=payload,
+        quote=quote,
     )
-    response.raise_for_status()
 
-    # Write and extract zip file
-    Path(zip_file).parent.mkdir(parents=True, exist_ok=True)
-    with open(zip_file, "wb") as f:
-        f.write(response.content)
+    result = FunctionResult([response])
+
+    if quote:
+        result.downloaded_files = []
+        return result
+
+    outputs = response.get("functionOutputs", {})
 
     Path(extract_dir).mkdir(parents=True, exist_ok=True)
-    with zipfile.ZipFile(zip_file, "r") as zip_ref:
-        zip_ref.extractall(extract_dir)
+    downloaded_files = []
 
-    os.remove(zip_file)
-    return _extract_cached_files(extract_dir)
+    output_files = outputs.get("output_files", {})
+    for filename, remote_path in output_files.items():
+        local_path = str(Path(extract_dir) / filename)
+        client.files.download_file(
+            remote_path=remote_path,
+            local_path=local_path,
+        )
+        downloaded_files.append(local_path)
+
+    result.downloaded_files = downloaded_files
+    return result

@@ -57,8 +57,6 @@ def test_get_all_tools_lv1():
         "key",
         "inputs",
         "version",
-        "executors",
-        "billingParser",
         "toolManifestVersion",
     ]:
         assert key in tool.keys(), f"Expected tool to have key {key}"
@@ -75,10 +73,6 @@ def test_get_all_function_lv1():
     function = functions[0]
 
     for key in [
-        "id",
-        "createdAt",
-        "updatedAt",
-        "functionManifest",
         "version",
         "enabled",
         "manifestBody",

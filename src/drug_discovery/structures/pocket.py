@@ -4,22 +4,19 @@ A simplified class representing a binding pocket in a protein structure.
 The Pocket class stores only the essential coordinate information needed for
 pocket analysis and visualization, removing the complexity of maintaining
 full biotite structure objects.
-
-Attributes:
-    file_path (Optional[Path]): Path to the PDB file containing the pocket.
-    coordinates (Optional[np.ndarray]): 3D coordinates of the pocket atoms.
-    name (Optional[str]): Name of the pocket.
-    color (str): Color for visualization (default: "red").
-    props (Optional[Dict[str, Any]]): Additional properties of the pocket.
 """
 
+from __future__ import annotations
+
 from dataclasses import dataclass, field
-import os
 from pathlib import Path
-from typing import Any, Optional, Self
+from typing import TYPE_CHECKING, Any, ClassVar, Optional, Self
 
 import numpy as np
-import pandas as pd
+
+if TYPE_CHECKING:
+    from deeporigin.functions.result import FunctionResult
+    from deeporigin.platform.client import DeepOriginClient
 
 from deeporigin.drug_discovery.constants import POCKETS_BASE_DIR
 from deeporigin.drug_discovery.structures.ligand import Ligand
@@ -27,20 +24,35 @@ from deeporigin.drug_discovery.structures.ligand import Ligand
 
 @dataclass
 class Pocket:
-    """A simplified class representing a binding pocket in a protein structure.
+    """Class representing a binding pocket in a protein structure.
 
-    This class focuses on coordinate-based operations and removes the complexity
-    of maintaining full biotite structure objects. It provides essential methods
+    This class provides essential methods
     for pocket analysis, visualization, and coordinate manipulation.
     """
 
+    id: Optional[str] = None
     file_path: Optional[Path] = None
     color: str = "red"
     name: Optional[str] = None
     pdb_id: Optional[str] = None
+    protein_id: Optional[str] = None
     index: Optional[int] = 0
-    props: Optional[dict[str, Any]] = field(default_factory=dict)
     coordinates: Optional[np.ndarray] = None
+
+    volume: Optional[float] = None
+    total_sasa: Optional[float] = None
+    polar_sasa: Optional[float] = None
+    apolar_sasa: Optional[float] = None
+    polar_apolar_sasa_ratio: Optional[float] = None
+    hydrophobicity: Optional[float] = None
+    drugability_score: Optional[float] = None
+    polarity: Optional[float] = None
+    pocket_center: Optional[list[float]] = None
+    box_size_x: Optional[float] = None
+    box_size_y: Optional[float] = None
+    box_size_z: Optional[float] = None
+
+    props: Optional[dict[str, Any]] = field(default_factory=dict)
 
     def __post_init__(self):
         from biotite.structure.io.pdb import PDBFile
@@ -68,7 +80,7 @@ class Pocket:
                 self.name = self.file_path.stem
             else:
                 self.name = "Unknown_Pocket"
-                directory = Path(self.get_directory())
+                directory = Path(POCKETS_BASE_DIR)
                 directory.mkdir(parents=True, exist_ok=True)
                 num = len(list(directory.glob(f"{self.name}*")))
                 self.name = f"{self.name}_{num + 1}"
@@ -124,44 +136,69 @@ class Pocket:
         )
         return pocket
 
-    def __repr__(self):
-        # Single table with all info
-        table_data = [
-            ["Name", self.name],
-            ["Color", self.color],
-        ]
+    def _fmt(self, value: float | None, unit: str = "") -> str:
+        """Format a numeric value for display, returning 'N/A' when None."""
+        if value is None:
+            return "N/A"
+        return f"{value}{unit}"
 
-        # Add properties if available
-        if self.props:
-            table_data.extend(
+    def __repr__(self):
+        """Rich table representation of the pocket."""
+        from tabulate import tabulate
+
+        table_data = [["Name", self.name]]
+        if self.id:
+            table_data.append(["ID", self.id])
+        if self.pdb_id:
+            table_data.append(["PDB ID", self.pdb_id])
+        if self.protein_id:
+            table_data.append(["Protein ID", self.protein_id])
+        table_data.append(["Color", self.color])
+
+        if self.pocket_center is not None:
+            cx, cy, cz = self.pocket_center
+            table_data.append(["Center", f"({cx:.2f}, {cy:.2f}, {cz:.2f})"])
+
+        if all(
+            v is not None for v in (self.box_size_x, self.box_size_y, self.box_size_z)
+        ):
+            table_data.append(
                 [
-                    ["Volume", f"{self.props.get('volume', 'N/A')} Å³"],
-                    ["Total SASA", f"{self.props.get('total_SASA', 'N/A')} Å²"],
-                    ["Polar SASA", f"{self.props.get('polar_SASA', 'N/A')} Å²"],
-                    [
-                        "Polar/Apolar SASA ratio",
-                        f"{self.props.get('polar_apolar_SASA_ratio', 'N/A')}",
-                    ],
-                    ["Hydrophobicity", f"{self.props.get('hydrophobicity', 'N/A')}"],
-                    ["Polarity", f"{self.props.get('polarity', 'N/A')}"],
-                    [
-                        "Drugability score",
-                        f"{self.props.get('drugability_score', 'N/A')}",
-                    ],
+                    "Box size",
+                    f"{self.box_size_x:.2f} \u00d7 {self.box_size_y:.2f} \u00d7 {self.box_size_z:.2f} \u00c5",
                 ]
             )
 
-        from tabulate import tabulate
+        property_rows = [
+            ("Volume", self.volume, " \u00c5\u00b3"),
+            ("Total SASA", self.total_sasa, " \u00c5\u00b2"),
+            ("Polar SASA", self.polar_sasa, " \u00c5\u00b2"),
+            ("Polar/Apolar SASA ratio", self.polar_apolar_sasa_ratio, ""),
+            ("Hydrophobicity", self.hydrophobicity, ""),
+            ("Polarity", self.polarity, ""),
+            ("Drugability score", self.drugability_score, ""),
+        ]
+        has_any = any(v is not None for _, v, _ in property_rows)
+        if has_any:
+            table_data.extend(
+                [label, self._fmt(val, unit)] for label, val, unit in property_rows
+            )
 
         return f"Pocket:\n{tabulate(table_data, tablefmt='rounded_grid')}"
 
+    __str__ = __repr__
+
     def get_center(self) -> np.ndarray:
-        """
-        Get the center of the pocket based on its coordinates.
+        """Get the center of the pocket.
+
+        Returns the pre-computed ``pocket_center`` when available, otherwise
+        falls back to computing the mean of the loaded coordinates.
 
         Returns:
-            np.ndarray: A numpy array containing the center of the pocket.
+            np.ndarray: A numpy array of shape (3,) with the pocket center.
         """
+        if self.pocket_center is not None:
+            return np.asarray(self.pocket_center, dtype=float)
         if self.coordinates is None:
             raise ValueError("No coordinates loaded for this pocket")
         return self.coordinates.mean(axis=0)
@@ -216,7 +253,7 @@ class Pocket:
             current_res_atoms = structure[res_mask]
             current_coords = current_res_atoms.coord
 
-            # Get the acutal distances
+            # Get the actual distances
             diff = target_coords[:, np.newaxis, :] - current_coords[np.newaxis, :, :]
             distances = np.sqrt(np.sum(diff**2, axis=2))
             min_distance = np.min(distances)
@@ -234,27 +271,49 @@ class Pocket:
 
         return pocket
 
+    _PROPERTY_ATTRS = frozenset(
+        {
+            "volume",
+            "total_sasa",
+            "polar_sasa",
+            "apolar_sasa",
+            "polar_apolar_sasa_ratio",
+            "hydrophobicity",
+            "drugability_score",
+            "polarity",
+            "pocket_center",
+            "box_size_x",
+            "box_size_y",
+            "box_size_z",
+        }
+    )
+
+    _JSON_KEY_MAP: ClassVar[dict[str, str]] = {
+        "total_SASA": "total_sasa",
+        "polar_SASA": "polar_sasa",
+        "apolar_SASA": "apolar_sasa",
+        "polar_apolar_SASA_ratio": "polar_apolar_sasa_ratio",
+    }
+
     @classmethod
-    def from_pocket_finder_results(
+    def from_json(
         cls,
-        pocket_finder_results_dir: str | Path,
-    ) -> list["Pocket"]:
-        """Create a list of Pocket objects from pocket finder results directory.
+        data: list[dict[str, Any]],
+    ) -> list[Self]:
+        """Create a list of Pocket objects from a JSON pocket list.
+
+        Each entry in the list should be a dict with at least a ``file_path``
+        key. Known property keys (``volume``, ``total_SASA``, etc.) are mapped
+        to dedicated attributes. The ``protein_id`` key is mapped to its own
+        attribute. Any remaining unknown keys go into ``props``.
 
         Args:
-            pocket_finder_results_dir: Directory containing pocket finder results
-                with PDB files for each pocket and a CSV properties file.
+            data: List of pocket dicts, e.g. the value of the ``"pockets"``
+                key returned by the pocket-finder tool.
 
         Returns:
-            List of Pocket objects with properties from the CSV file.
+            List of Pocket objects with properties populated from the dicts.
         """
-        # Convert to Path object for consistent handling
-        results_dir = Path(pocket_finder_results_dir)
-
-        # Find all PDB files in the directory
-        pdb_files = list(results_dir.glob("*.pdb"))
-
-        # Colors to cycle through for pockets
         colors = [
             "red",
             "green",
@@ -268,63 +327,182 @@ class Pocket:
             "lime",
         ]
 
-        # Create Pocket objects from each PDB file
+        json_mapped_keys = set(cls._JSON_KEY_MAP.keys())
+        reserved_keys = (
+            {"id", "file_path", "protein_id"} | cls._PROPERTY_ATTRS | json_mapped_keys
+        )
+
         pockets = []
-        for idx, pdb_file in enumerate(pdb_files):
-            # Create a Pocket object with the file path and name (without extension)
+        for idx, entry in enumerate(data):
+            raw_path = entry.get("file_path")
+            if not isinstance(raw_path, str) or not raw_path.strip():
+                raise ValueError(
+                    f"Entry at index {idx} is missing a valid 'file_path' value "
+                    f"(got {raw_path!r}): {entry}"
+                )
+            file_path = Path(raw_path)
+            protein_id = entry.get("protein_id")
+
+            attr_kwargs: dict[str, Any] = {}
+            for k in cls._PROPERTY_ATTRS:
+                if k in entry:
+                    attr_kwargs[k] = entry[k]
+            for json_key, attr_name in cls._JSON_KEY_MAP.items():
+                if json_key in entry and attr_name not in attr_kwargs:
+                    attr_kwargs[attr_name] = entry[json_key]
+
+            props = {k: v for k, v in entry.items() if k not in reserved_keys}
+
             pocket = cls(
-                file_path=pdb_file,
-                name=pdb_file.stem,
-                pdb_id=None,  # Will be set from CSV if available
-                props={},  # Initialize empty properties dictionary
-                color=colors[idx % len(colors)],  # Cycle through colors
+                id=entry.get("id"),
+                file_path=file_path,
+                name=file_path.stem,
+                protein_id=protein_id,
+                props=props,
+                color=colors[idx % len(colors)],
+                **attr_kwargs,
             )
             pockets.append(pocket)
 
-        # Find the CSV properties file
-        csv_files = list(results_dir.glob("*.csv"))
-        if not csv_files:
-            # If no CSV file, return pockets with just file and name
-            return pockets
-
-        # Use the first CSV file found
-        properties_file = csv_files[0]
-
-        try:
-            # Read CSV file using pandas
-            df = pd.read_csv(properties_file)
-
-            # Map CSV columns to Pocket properties
-            # Using 'pocket_file' column to match with PDB file names
-            for pocket in pockets:
-                # Get the filename without extension to match with CSV
-                pdb_filename = os.path.basename(pocket.file_path)
-
-                # Try to find a row in the CSV that matches this pocket file
-                pocket_row = df[df["pocket_file"] == pdb_filename]
-
-                if not pocket_row.empty:
-                    # Add all properties from the CSV to the pocket's properties dictionary
-                    for column in df.columns:
-                        if column != "pocket_file":  # Skip the file column
-                            value = pocket_row[column].iloc[0]
-
-                            # Convert NumPy types to Python primitive types
-                            if isinstance(value, np.integer):
-                                value = int(value)
-                            elif isinstance(value, np.floating):
-                                value = float(value)
-                            elif isinstance(value, np.bool_):
-                                value = bool(value)
-                            elif pd.isna(value):
-                                value = None
-
-                            pocket.props[column] = value
-        except Exception:
-            # If there's an error reading the CSV, just return the pockets with basic info
-            pass
-
         return pockets
+
+    @classmethod
+    def from_function_result(
+        cls,
+        *,
+        result: "FunctionResult",
+        client: "DeepOriginClient",
+    ) -> list[Self]:
+        """Download pocket PDB files from a function result and build Pocket objects.
+
+        Extracts the pocket list from a raw pocket-finder ``FunctionResult``,
+        downloads the PDB files, and delegates to ``from_json`` to construct
+        Pocket instances.
+
+        Args:
+            result: FunctionResult wrapping a pocket-finder response.
+            client: DeepOrigin client for downloading files.
+
+        Returns:
+            A list of Pocket objects.
+        """
+        outputs = result.function_outputs[0]
+        pockets_data = [
+            {
+                **pocket,
+                "file_path": client.files.download_file(
+                    remote_path=pocket["file_path"],
+                    lazy=True,
+                ),
+            }
+            for pocket in outputs.get("pockets", [])
+        ]
+
+        return cls.from_json(pockets_data)
+
+    @classmethod
+    def from_id(
+        cls,
+        id: str,
+        *,
+        client: Optional["DeepOriginClient"] = None,
+    ) -> Self:
+        """Create a Pocket from a result-explorer record ID.
+
+        Fetches the single record, downloads the pocket PDB file, and
+        constructs a Pocket object.
+
+        Args:
+            id: Result-explorer record ID of the pocket.
+            client: Optional DeepOriginClient instance. If not provided,
+                uses the default client.
+
+        Returns:
+            A Pocket with properties populated from the record.
+
+        Raises:
+            ValueError: If no record is found for the given ID.
+        """
+        from deeporigin.platform.client import DeepOriginClient
+
+        if client is None:
+            client = DeepOriginClient.get()
+
+        response = client.results.get_pockets(id=id)
+        records = response.get("data", [])
+
+        if not records:
+            raise ValueError(f"No pocket record found for id={id!r}.")
+
+        record = records[0]
+        pocket_data = dict(record["data"])
+        pocket_data["id"] = record["id"]
+        remote_path = pocket_data["file_path"]
+        pocket_data["file_path"] = client.files.download_file(
+            remote_path=remote_path,
+            lazy=True,
+        )
+
+        return cls.from_json([pocket_data])[0]
+
+    @classmethod
+    def from_result(
+        cls,
+        *,
+        protein_id: str | None = None,
+        execution_id: str | None = None,
+        pocket_count: int | None = None,
+        pocket_min_size: int | None = None,
+        client: Optional["DeepOriginClient"] = None,
+    ) -> list[Self]:
+        """Create Pocket objects from pocketfinder results in the data platform.
+
+        Fetches pocketfinder results for the given protein, downloads the
+        pocket PDB files, and constructs Pocket objects.
+
+        Args:
+            protein_id: Protein ID to fetch pocket results for.
+            execution_id: Optional compute job ID to filter by.
+            pocket_count: Optional maximum number of pockets to filter by.
+            pocket_min_size: Optional minimum pocket volume in cubic Angstroms
+                to filter by.
+            client: Optional DeepOriginClient instance. If not provided,
+                uses the default client.
+
+        Returns:
+            List of Pocket objects with properties populated from the results.
+
+        Raises:
+            ValueError: If no pocket results are found for the protein.
+        """
+        from deeporigin.platform.client import DeepOriginClient
+
+        if client is None:
+            client = DeepOriginClient.get()
+
+        response = client.results.get_pockets(
+            protein_id=protein_id,
+            compute_job_id=execution_id,
+            pocket_count=pocket_count,
+            pocket_min_size=pocket_min_size,
+        )
+        records = response.get("data", [])
+
+        if not records:
+            raise ValueError(
+                f"No pocketfinder results found for protein_id={protein_id!r}. Run the pocketfinder tool on that protein to get pockets."
+            )
+
+        pockets_data: list[dict[str, Any]] = []
+        for record in records:
+            pocket_data = dict(record["data"])
+            pocket_data["id"] = record["id"]
+            remote_path = pocket_data["file_path"]
+            local_path = client.files.download_file(remote_path=remote_path)
+            pocket_data["file_path"] = local_path
+            pockets_data.append(pocket_data)
+
+        return cls.from_json(pockets_data)
 
     @classmethod
     def from_ligand(
@@ -354,34 +532,6 @@ class Pocket:
                     f"ATOM  {i + 1:5d}  CA  UNK A{i + 1:4d}    {x:8.3f}{y:8.3f}{z:8.3f}  1.00  0.00           C\n"
                 )
             f.write("END\n")
-
-    def __str__(self):
-        properties_line = ""
-        if self.props:
-            properties_line = (
-                f"  Volume: {self.props.get('volume', 'N/A')}Å³, "
-                f"Total SASA: {self.props.get('total_SASA', 'N/A')}, "
-                f"Polar SASA: {self.props.get('polar_SASA', 'N/A')}, "
-                f"Polar/Apolar SASA ratio: {self.props.get('polar_apolar_SASA_ratio', 'N/A')}, "
-                f"Hydrophobicity: {self.props.get('hydrophobicity', 'N/A')}, "
-                f"Polarity: {self.props.get('polarity', 'N/A')}, "
-                f"Drugability score: {self.props.get('drugability_score', 'N/A')}"
-            )
-
-        return (
-            f"Pocket:\n  Name: {self.name}\n{properties_line}  File: {self.file_path}\n"
-            "Available Fields: {file_path, name, coordinates, color, props}"
-        )
-
-    @staticmethod
-    def get_directory() -> str:
-        """
-        Get the pockets directory path.
-
-        Returns:
-            str: The path to the pockets directory.
-        """
-        return POCKETS_BASE_DIR
 
     def update_coordinates(self, coords: np.ndarray):
         """update coordinates of the pocket"""

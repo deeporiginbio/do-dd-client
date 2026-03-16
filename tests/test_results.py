@@ -1,0 +1,141 @@
+"""Tests for the Results API wrapper."""
+
+import os
+
+from deeporigin.platform.client import DeepOriginClient
+from deeporigin.platform.constants import ABFE_TOOL_KEY, SYSPREP_FUNCTION_KEY
+
+
+def _get_result_explorer_ids() -> tuple[str, str, str | None]:
+    """Return (tool_key, protein_id, tool_version) for result-explorer tests.
+
+    For local env, returns hardcoded values matching the fixture data.
+    For remote envs, uses the same known protein but leaves tool_version
+    as None so the test doesn't assert on a specific version.
+
+    Returns:
+        Tuple of (tool_key, protein_id, tool_version).
+    """
+    tool_key = "deeporigin.bulk-docking"
+    protein_id = "08BSPN61NYVE3"
+    if os.environ.get("DO_ENV") == "local":
+        return tool_key, protein_id, "0.6.6"
+    return tool_key, protein_id, None
+
+
+def test_get_results_lv1():
+    """Test searching result-explorer records filtered by tool and protein."""
+    client = DeepOriginClient()
+    tool_key, protein_id, _ = _get_result_explorer_ids()
+
+    response = client.results.get(
+        filter_dict={
+            "tool_key": {"eq": tool_key},
+            "protein_id": {"eq": protein_id},
+        },
+    )
+
+    assert isinstance(response, dict), "Expected a dictionary response"
+    assert "data" in response, "Expected 'data' key in response"
+    assert isinstance(response["data"], list), "Expected 'data' to be a list"
+    assert len(response["data"]) > 0, "Expected at least one result"
+
+    for record in response["data"]:
+        for field in ("id", "tool_key", "tool_version", "data", "compute_job_id"):
+            assert field in record, f"Expected '{field}' key in record"
+
+
+def test_get_results_with_tool_version_lv1():
+    """Test results.get with an explicit tool_version filter."""
+    client = DeepOriginClient()
+    tool_key, protein_id, tool_version = _get_result_explorer_ids()
+
+    filter_dict: dict = {
+        "tool_key": {"eq": tool_key},
+        "protein_id": {"eq": protein_id},
+    }
+    if tool_version is not None:
+        filter_dict["tool_version"] = {"eq": tool_version}
+
+    response = client.results.get(filter_dict=filter_dict)
+
+    assert isinstance(response, dict), "Expected a dictionary response"
+    assert "data" in response, "Expected 'data' key in response"
+    assert isinstance(response["data"], list), "Expected 'data' to be a list"
+
+    if tool_version is not None:
+        for record in response["data"]:
+            assert record.get("tool_version") == tool_version, (
+                "Expected all records to match the requested tool_version"
+            )
+
+
+def test_get_prepared_systems():
+    """Test get_prepared_systems returns system-prep results with expected shape."""
+    client = DeepOriginClient()
+    response = client.results.get_prepared_systems()
+
+    assert isinstance(response, dict), "Expected a dictionary response"
+    assert "data" in response, "Expected 'data' key in response"
+    assert isinstance(response["data"], list), "Expected 'data' to be a list"
+    for record in response["data"]:
+        for field in ("id", "tool_key", "tool_version", "data", "compute_job_id"):
+            assert field in record, f"Expected '{field}' key in record"
+        assert record.get("tool_key") == SYSPREP_FUNCTION_KEY, (
+            "Expected all records to be system-prep results"
+        )
+
+
+def test_get_prepared_systems_with_filters():
+    """Test get_prepared_systems with optional filters builds correct filter and returns."""
+    client = DeepOriginClient()
+    response = client.results.get_prepared_systems(
+        protein_id="08BSPN9SNYVEA",
+        ligand1_id="08BT9WM0NYVFY",
+        padding=1,
+        add_H_atoms=True,
+        retain_waters=False,
+        protonate_protein=True,
+    )
+
+    assert isinstance(response, dict), "Expected a dictionary response"
+    assert "data" in response, "Expected 'data' key in response"
+    assert isinstance(response["data"], list), "Expected 'data' to be a list"
+    for record in response["data"]:
+        assert record.get("tool_key") == SYSPREP_FUNCTION_KEY
+        data = record.get("data") or {}
+        assert data.get("protein_id") == "08BSPN9SNYVEA"
+        assert data.get("ligand1_id") == "08BT9WM0NYVFY"
+        assert data.get("padding") == 1
+        assert data.get("add_H_atoms") is True
+        assert data.get("retain_waters") is False
+        assert data.get("protonate_protein") is True
+
+
+def test_get_abfe_results():
+    """Test get_abfe_results returns ABFE results with expected shape."""
+    client = DeepOriginClient()
+    response = client.results.get_abfe_results()
+
+    assert isinstance(response, dict), "Expected a dictionary response"
+    assert "data" in response, "Expected 'data' key in response"
+    assert isinstance(response["data"], list), "Expected 'data' to be a list"
+    for record in response["data"]:
+        for field in ("id", "tool_key", "tool_version", "data", "compute_job_id"):
+            assert field in record, f"Expected '{field}' key in record"
+        assert record.get("tool_key") == ABFE_TOOL_KEY, (
+            "Expected all records to be ABFE results"
+        )
+
+
+def test_get_abfe_results_with_filters():
+    """Test get_abfe_results with optional filters builds correct filter and returns."""
+    client = DeepOriginClient()
+    response = client.results.get_abfe_results(limit=10)
+
+    assert isinstance(response, dict), "Expected a dictionary response"
+    assert "data" in response, "Expected 'data' key in response"
+    assert isinstance(response["data"], list), "Expected 'data' to be a list"
+    assert len(response["data"]) <= 10, "Expected at most 10 results"
+    for record in response["data"]:
+        assert record.get("tool_key") == ABFE_TOOL_KEY

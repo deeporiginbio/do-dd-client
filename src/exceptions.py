@@ -2,7 +2,7 @@
 
 import sys
 
-from deeporigin.utils.core import _supports_color
+from deeporigin.utils.display import _supports_color
 
 __all__ = ["DeepOriginException", "install_silent_error_handler"]
 

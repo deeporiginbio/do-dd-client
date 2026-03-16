@@ -23,14 +23,21 @@ class Functions:
             client: The DeepOriginClient instance to use for API calls.
         """
         self._c = client
+        self._definitions: list[dict] | None = None
 
     def list(self) -> list[dict]:
         """Get all function definitions.
 
+        The result is cached per instance after the first call.
+
         Returns:
             List of function definition dictionaries.
         """
-        return self._c.get_json("/tools/protected/functions/definitions")
+        if self._definitions is None:
+            self._definitions = self._c.get_json(
+                "/tools/protected/functions/definitions"
+            )
+        return self._definitions
 
     def run(
         self,
@@ -99,16 +106,9 @@ class Functions:
             import json
             from pathlib import Path
 
-            from deeporigin.utils.core import hash_dict
+            from deeporigin.utils.hashing import hash_dict, normalize_function_body
 
-            # Hash the request body to create a unique filename
-            # Normalize body by excluding environment-specific fields (clusterId, tag)
-            # params and inputs are the same, so just use inputs for hashing
-            normalized_body = {
-                "inputs": body.get("inputs", body.get("params", {})),
-            }
-            if "approveAmount" in body:
-                normalized_body["approveAmount"] = body["approveAmount"]
+            normalized_body = normalize_function_body(body)
             body_hash = hash_dict(normalized_body)
 
             # Write response to fixture file for testing

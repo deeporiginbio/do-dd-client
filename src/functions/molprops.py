@@ -10,7 +10,9 @@ from pathlib import Path
 from typing import Optional
 
 from deeporigin.platform.client import DeepOriginClient
-from deeporigin.utils.core import _ensure_do_folder, hash_dict
+from deeporigin.platform.constants import MOL_PROPS_FUNCTION_KEY_PREFIX
+from deeporigin.utils.env import _ensure_do_folder
+from deeporigin.utils.hashing import hash_dict
 
 CACHE_DIR = str(_ensure_do_folder() / "molprops")
 
@@ -84,13 +86,11 @@ def get_single_property(
     # Prepare the request payload
 
     response = client.functions.run(
-        key=f"deeporigin.mol-props-{prop}",
+        key=f"{MOL_PROPS_FUNCTION_KEY_PREFIX}-{prop}",
         params=payload,
     )
 
-    # TODO -- remove this patch once API is updated
-    if "functionOutputs" in response:
-        response = response["functionOutputs"]
+    response = response["functionOutputs"]
 
     # Write JSON response to cache
     # Ensure parent directory exists before writing

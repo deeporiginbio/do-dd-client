@@ -1,0 +1,548 @@
+{
+    "id": "0668b97b-1e6f-4704-a523-eb0a86421df8",
+    "createdAt": "2026-03-11T15:07:03.870Z",
+    "updatedAt": "2026-03-11T15:08:24.506Z",
+    "userInputs": {
+        "inputs": {
+            "protein": {
+                "id": "08QCAKE4DYX3Q",
+                "file_path": "tests/brd.pdb"
+            },
+            "ligand": {
+                "id": "08DK80B7DYTXH",
+                "smiles": "CN(C)C(=O)c1cccc(-c2cn(C)c(=O)c3[nH]ccc23)c1"
+            },
+            "pocket": {
+                "center": [
+                    -13.146394729614258,
+                    -5.712231636047363,
+                    14.731620788574219
+                ],
+                "box_size_x": 20,
+                "box_size_y": 20,
+                "box_size_z": 20
+            }
+        },
+        "clusterId": "d638d3cd-833f-476b-87fe-ca6d76e66049"
+    },
+    "functionOutputs": {
+        "poses": [
+            {
+                "binding_energy": -8.019651,
+                "box_size_x": 20,
+                "box_size_y": 20,
+                "box_size_z": 20,
+                "file_path": "tool-runs/0668b97b-1e6f-4704-a523-eb0a86421df8/9a9274af-376b-4396-8033-6dd062787674.sdf",
+                "ligand_id": "08DK80B7DYTXH",
+                "pocket_center": [
+                    -13.146394729614258,
+                    -5.712231636047363,
+                    14.731620788574219
+                ],
+                "pose_score": 0.91791135,
+                "protein_id": "08QCAKE4DYX3Q"
+            },
+            {
+                "binding_energy": -8.979492,
+                "box_size_x": 20,
+                "box_size_y": 20,
+                "box_size_z": 20,
+                "file_path": "tool-runs/0668b97b-1e6f-4704-a523-eb0a86421df8/3a9f57d9-213f-4268-aa63-34379ee6e43b.sdf",
+                "ligand_id": "08DK80B7DYTXH",
+                "pocket_center": [
+                    -13.146394729614258,
+                    -5.712231636047363,
+                    14.731620788574219
+                ],
+                "pose_score": 0.88988566,
+                "protein_id": "08QCAKE4DYX3Q"
+            },
+            {
+                "binding_energy": -7.7076907,
+                "box_size_x": 20,
+                "box_size_y": 20,
+                "box_size_z": 20,
+                "file_path": "tool-runs/0668b97b-1e6f-4704-a523-eb0a86421df8/5b9c1906-0165-4615-8ebd-a89bc3aa9529.sdf",
+                "ligand_id": "08DK80B7DYTXH",
+                "pocket_center": [
+                    -13.146394729614258,
+                    -5.712231636047363,
+                    14.731620788574219
+                ],
+                "pose_score": 0.8482979,
+                "protein_id": "08QCAKE4DYX3Q"
+            },
+            {
+                "binding_energy": -9.005004,
+                "box_size_x": 20,
+                "box_size_y": 20,
+                "box_size_z": 20,
+                "file_path": "tool-runs/0668b97b-1e6f-4704-a523-eb0a86421df8/895cd2fa-7830-4408-9152-ad187d3bc1e3.sdf",
+                "ligand_id": "08DK80B7DYTXH",
+                "pocket_center": [
+                    -13.146394729614258,
+                    -5.712231636047363,
+                    14.731620788574219
+                ],
+                "pose_score": 0.82058054,
+                "protein_id": "08QCAKE4DYX3Q"
+            },
+            {
+                "binding_energy": -8.629777,
+                "box_size_x": 20,
+                "box_size_y": 20,
+                "box_size_z": 20,
+                "file_path": "tool-runs/0668b97b-1e6f-4704-a523-eb0a86421df8/e0c5d701-1651-4940-96de-db0aa934e560.sdf",
+                "ligand_id": "08DK80B7DYTXH",
+                "pocket_center": [
+                    -13.146394729614258,
+                    -5.712231636047363,
+                    14.731620788574219
+                ],
+                "pose_score": 0.77500993,
+                "protein_id": "08QCAKE4DYX3Q"
+            },
+            {
+                "binding_energy": -7.5611963,
+                "box_size_x": 20,
+                "box_size_y": 20,
+                "box_size_z": 20,
+                "file_path": "tool-runs/0668b97b-1e6f-4704-a523-eb0a86421df8/ccb2a3f9-e458-4577-a747-c535481ff3b5.sdf",
+                "ligand_id": "08DK80B7DYTXH",
+                "pocket_center": [
+                    -13.146394729614258,
+                    -5.712231636047363,
+                    14.731620788574219
+                ],
+                "pose_score": 0.735894,
+                "protein_id": "08QCAKE4DYX3Q"
+            },
+            {
+                "binding_energy": -8.428064,
+                "box_size_x": 20,
+                "box_size_y": 20,
+                "box_size_z": 20,
+                "file_path": "tool-runs/0668b97b-1e6f-4704-a523-eb0a86421df8/dfdcba64-c29f-4df5-a65e-ac321687d67e.sdf",
+                "ligand_id": "08DK80B7DYTXH",
+                "pocket_center": [
+                    -13.146394729614258,
+                    -5.712231636047363,
+                    14.731620788574219
+                ],
+                "pose_score": 0.67781395,
+                "protein_id": "08QCAKE4DYX3Q"
+            },
+            {
+                "binding_energy": -7.603357,
+                "box_size_x": 20,
+                "box_size_y": 20,
+                "box_size_z": 20,
+                "file_path": "tool-runs/0668b97b-1e6f-4704-a523-eb0a86421df8/7600ff73-1427-4508-831b-517845817419.sdf",
+                "ligand_id": "08DK80B7DYTXH",
+                "pocket_center": [
+                    -13.146394729614258,
+                    -5.712231636047363,
+                    14.731620788574219
+                ],
+                "pose_score": 0.64651144,
+                "protein_id": "08QCAKE4DYX3Q"
+            },
+            {
+                "binding_energy": -6.6726613,
+                "box_size_x": 20,
+                "box_size_y": 20,
+                "box_size_z": 20,
+                "file_path": "tool-runs/0668b97b-1e6f-4704-a523-eb0a86421df8/31ad4e94-4993-4640-8eb3-8cd914698b01.sdf",
+                "ligand_id": "08DK80B7DYTXH",
+                "pocket_center": [
+                    -13.146394729614258,
+                    -5.712231636047363,
+                    14.731620788574219
+                ],
+                "pose_score": 0.645137,
+                "protein_id": "08QCAKE4DYX3Q"
+            },
+            {
+                "binding_energy": -7.328771,
+                "box_size_x": 20,
+                "box_size_y": 20,
+                "box_size_z": 20,
+                "file_path": "tool-runs/0668b97b-1e6f-4704-a523-eb0a86421df8/6317fa96-e8aa-457a-8ebe-fe877d9f92b9.sdf",
+                "ligand_id": "08DK80B7DYTXH",
+                "pocket_center": [
+                    -13.146394729614258,
+                    -5.712231636047363,
+                    14.731620788574219
+                ],
+                "pose_score": 0.6006399,
+                "protein_id": "08QCAKE4DYX3Q"
+            },
+            {
+                "binding_energy": -6.836356,
+                "box_size_x": 20,
+                "box_size_y": 20,
+                "box_size_z": 20,
+                "file_path": "tool-runs/0668b97b-1e6f-4704-a523-eb0a86421df8/8c5b0cfa-e677-455c-8bcd-66826f1fabe8.sdf",
+                "ligand_id": "08DK80B7DYTXH",
+                "pocket_center": [
+                    -13.146394729614258,
+                    -5.712231636047363,
+                    14.731620788574219
+                ],
+                "pose_score": 0.5854548,
+                "protein_id": "08QCAKE4DYX3Q"
+            },
+            {
+                "binding_energy": -6.7397127,
+                "box_size_x": 20,
+                "box_size_y": 20,
+                "box_size_z": 20,
+                "file_path": "tool-runs/0668b97b-1e6f-4704-a523-eb0a86421df8/4606033f-d1a9-4721-b509-0521a9e1afd2.sdf",
+                "ligand_id": "08DK80B7DYTXH",
+                "pocket_center": [
+                    -13.146394729614258,
+                    -5.712231636047363,
+                    14.731620788574219
+                ],
+                "pose_score": 0.5797658,
+                "protein_id": "08QCAKE4DYX3Q"
+            },
+            {
+                "binding_energy": -7.5775037,
+                "box_size_x": 20,
+                "box_size_y": 20,
+                "box_size_z": 20,
+                "file_path": "tool-runs/0668b97b-1e6f-4704-a523-eb0a86421df8/9ab49008-b9f7-47c4-9320-f5cece8949b3.sdf",
+                "ligand_id": "08DK80B7DYTXH",
+                "pocket_center": [
+                    -13.146394729614258,
+                    -5.712231636047363,
+                    14.731620788574219
+                ],
+                "pose_score": 0.5531938,
+                "protein_id": "08QCAKE4DYX3Q"
+            },
+            {
+                "binding_energy": -8.171702,
+                "box_size_x": 20,
+                "box_size_y": 20,
+                "box_size_z": 20,
+                "file_path": "tool-runs/0668b97b-1e6f-4704-a523-eb0a86421df8/35f2b7e7-95cf-4eab-ac27-e9636d987682.sdf",
+                "ligand_id": "08DK80B7DYTXH",
+                "pocket_center": [
+                    -13.146394729614258,
+                    -5.712231636047363,
+                    14.731620788574219
+                ],
+                "pose_score": 0.5509581,
+                "protein_id": "08QCAKE4DYX3Q"
+            },
+            {
+                "binding_energy": -8.077258,
+                "box_size_x": 20,
+                "box_size_y": 20,
+                "box_size_z": 20,
+                "file_path": "tool-runs/0668b97b-1e6f-4704-a523-eb0a86421df8/c18ac619-49de-4b13-9aa3-417f994004d4.sdf",
+                "ligand_id": "08DK80B7DYTXH",
+                "pocket_center": [
+                    -13.146394729614258,
+                    -5.712231636047363,
+                    14.731620788574219
+                ],
+                "pose_score": 0.537041,
+                "protein_id": "08QCAKE4DYX3Q"
+            },
+            {
+                "binding_energy": -7.197149,
+                "box_size_x": 20,
+                "box_size_y": 20,
+                "box_size_z": 20,
+                "file_path": "tool-runs/0668b97b-1e6f-4704-a523-eb0a86421df8/2d946c04-5072-4ee4-bc17-3bac1d411d97.sdf",
+                "ligand_id": "08DK80B7DYTXH",
+                "pocket_center": [
+                    -13.146394729614258,
+                    -5.712231636047363,
+                    14.731620788574219
+                ],
+                "pose_score": 0.53029984,
+                "protein_id": "08QCAKE4DYX3Q"
+            }
+        ]
+    },
+    "status": "Completed",
+    "cluster": {
+        "id": "d638d3cd-833f-476b-87fe-ca6d76e66049",
+        "createdAt": "2024-06-11T16:53:45.922Z",
+        "updatedAt": "2025-03-27T20:23:30.842Z",
+        "hostname": "https://cluster.us-west-2.dev.deeporigin.io",
+        "name": "DeepOrigin Cluster - us-west-2",
+        "orgKey": null,
+        "enabled": true,
+        "status": "healthy",
+        "cloudAccountId": null,
+        "cloudRegion": null
+    },
+    "orgKey": "deeporigin",
+    "createdBy": "6b96d8f8-0f55-474c-a86c-e09651ba4b20",
+    "quotationResult": {
+        "anyFailed": false,
+        "failedQuotations": [],
+        "successfulQuotations": [
+            {
+                "status": "OK",
+                "itemCode": "DO_DOCK",
+                "orgId": "deeporigin",
+                "qty": 1,
+                "priceEach": 0.2,
+                "priceTotal": 0.2,
+                "pricingRecordType": "regular",
+                "pricingRecords": [
+                    {
+                        "itemKey": "DO_DOCK",
+                        "itemName": "Docking",
+                        "priceEach": 0.2,
+                        "totalPrice": 0.2,
+                        "qty": 1,
+                        "tierQtyFrom": 0,
+                        "tierQtyTo": 0
+                    }
+                ]
+            }
+        ]
+    },
+    "function": {
+        "id": "adaad9a2-eb6e-43b5-991c-078a65809f47",
+        "createdAt": "2026-03-11T14:56:54.111Z",
+        "updatedAt": "2026-03-11T14:56:54.111Z",
+        "functionManifest": "cf787d83-a8df-4b52-8906-52e25bbd119b",
+        "version": "0.7.0",
+        "enabled": true,
+        "manifestBody": {
+            "key": "deeporigin.docking",
+            "version": "0.7.0",
+            "executor": {
+                "name": "deeporigin-docking",
+                "path": "/dock",
+                "port": {
+                    "name": "http1",
+                    "port": 8080,
+                    "protocol": "TCP"
+                },
+                "image": "645946264134.dkr.ecr.us-west-2.amazonaws.com/functions/docking:0.7.0",
+                "method": "POST",
+                "minScale": 1,
+                "environment": [
+                    {
+                        "name": "JULIA_NUM_THREADS",
+                        "value": "4"
+                    }
+                ],
+                "timeoutSeconds": 600,
+                "containerConcurrency": 1,
+                "resourceRequirements": {
+                    "cpu": 8,
+                    "memory": 4
+                },
+                "scaleDownDelaySeconds": 60,
+                "responseStartTimeoutSeconds": 3600
+            },
+            "billingCode": "DO_DOCK",
+            "inputSchema": {
+                "type": "object",
+                "$schema": "http://json-schema.org/draft-07/schema#",
+                "required": [
+                    "protein",
+                    "ligand",
+                    "pocket"
+                ],
+                "properties": {
+                    "ligand": {
+                        "type": "object",
+                        "required": [
+                            "smiles"
+                        ],
+                        "properties": {
+                            "id": {
+                                "type": "string",
+                                "description": "Ligand ID",
+                                "x-data-type": "Ligand.id"
+                            },
+                            "smiles": {
+                                "type": "string",
+                                "description": "SMILES representation of the ligand",
+                                "x-data-type": "Ligand.smiles"
+                            }
+                        },
+                        "description": "Ligand to dock against the protein",
+                        "x-data-type": "Ligand"
+                    },
+                    "pocket": {
+                        "type": "object",
+                        "required": [
+                            "center",
+                            "box_size_x",
+                            "box_size_y",
+                            "box_size_z"
+                        ],
+                        "properties": {
+                            "id": {
+                                "type": "string",
+                                "description": "Pocket ID",
+                                "x-data-type": "Pocket.id"
+                            },
+                            "center": {
+                                "type": "array",
+                                "items": {
+                                    "type": "number"
+                                },
+                                "maxItems": 3,
+                                "minItems": 3,
+                                "description": "XYZ coordinates of the pocket center in angstroms",
+                                "x-data-type": "Pocket.center"
+                            },
+                            "box_size_x": {
+                                "type": "number",
+                                "description": "Docking box X dimension in angstroms",
+                                "x-data-type": "Pocket.box_size_x",
+                                "x-user-input": true,
+                                "x-display-name": "Box Size X"
+                            },
+                            "box_size_y": {
+                                "type": "number",
+                                "description": "Docking box Y dimension in angstroms",
+                                "x-data-type": "Pocket.box_size_y",
+                                "x-user-input": true,
+                                "x-display-name": "Box Size Y"
+                            },
+                            "box_size_z": {
+                                "type": "number",
+                                "description": "Docking box Z dimension in angstroms",
+                                "x-data-type": "Pocket.box_size_z",
+                                "x-user-input": true,
+                                "x-display-name": "Box Size Z"
+                            }
+                        },
+                        "description": "Binding pocket defining the docking search box",
+                        "x-data-type": "Pocket"
+                    },
+                    "protein": {
+                        "type": "object",
+                        "required": [
+                            "file_path"
+                        ],
+                        "properties": {
+                            "id": {
+                                "type": "string",
+                                "description": "Protein ID",
+                                "x-data-type": "Protein.id"
+                            },
+                            "file_path": {
+                                "type": "string",
+                                "format": "file",
+                                "description": "Path to the protein PDB file",
+                                "x-data-type": "Protein.file_path",
+                                "x-deeporigin-path": "/deeporigin/inputs/protein.pdb"
+                            }
+                        },
+                        "description": "Protein structure for docking",
+                        "x-data-type": "Protein"
+                    }
+                },
+                "description": "Input schema for molecular docking",
+                "additionalProperties": false
+            },
+            "outputSchema": {
+                "type": "object",
+                "$schema": "http://json-schema.org/draft-07/schema",
+                "properties": {
+                    "poses": {
+                        "type": "array",
+                        "items": {
+                            "type": "object",
+                            "required": [
+                                "file_path",
+                                "binding_energy",
+                                "pose_score",
+                                "protein_id",
+                                "ligand_id"
+                            ],
+                            "properties": {
+                                "file_path": {
+                                    "type": "string",
+                                    "format": "file",
+                                    "description": "Path to the pose file (SDF format)",
+                                    "x-data-type": "Pose.file_path"
+                                },
+                                "ligand_id": {
+                                    "type": "string",
+                                    "x-key": true,
+                                    "description": "ID of the ligand that was docked",
+                                    "x-data-type": "Ligand.id"
+                                },
+                                "pocket_id": {
+                                    "type": "string",
+                                    "description": "Pocket ID",
+                                    "x-data-type": "Pocket.id"
+                                },
+                                "box_size_x": {
+                                    "type": "number",
+                                    "description": "Docking box X dimension in angstroms",
+                                    "x-data-type": "Pocket.box_size_x",
+                                    "x-display-name": "Box Size X"
+                                },
+                                "box_size_y": {
+                                    "type": "number",
+                                    "description": "Docking box Y dimension in angstroms",
+                                    "x-data-type": "Pocket.box_size_y",
+                                    "x-display-name": "Box Size Y"
+                                },
+                                "box_size_z": {
+                                    "type": "number",
+                                    "description": "Docking box Z dimension in angstroms",
+                                    "x-data-type": "Pocket.box_size_z",
+                                    "x-display-name": "Box Size Z"
+                                },
+                                "pose_score": {
+                                    "type": "number",
+                                    "description": "Score of the pose",
+                                    "x-data-type": "Pose.pose_score",
+                                    "x-indexable": true
+                                },
+                                "protein_id": {
+                                    "type": "string",
+                                    "x-key": true,
+                                    "description": "ID of the protein this pose was docked against",
+                                    "x-data-type": "Protein.id"
+                                },
+                                "pocket_center": {
+                                    "type": "array",
+                                    "items": {
+                                        "type": "number"
+                                    },
+                                    "maxItems": 3,
+                                    "minItems": 3,
+                                    "description": "XYZ coordinates of the pocket center in angstroms",
+                                    "x-data-type": "Pocket.center"
+                                },
+                                "binding_energy": {
+                                    "type": "number",
+                                    "description": "Binding energy of the pose",
+                                    "x-data-type": "Pose.binding_energy",
+                                    "x-indexable": true
+                                }
+                            },
+                            "additionalProperties": false
+                        },
+                        "description": "Docking poses generated for each ligand",
+                        "x-data-type": "Pose",
+                        "x-result-group": "poses"
+                    }
+                },
+                "description": "Output schema for molecular docking results"
+            },
+            "functionManifestVersion": "1"
+        },
+        "billingCode": "DO_DOCK",
+        "resourceId": "function-2y38aq6la9gke8znfze8c"
+    }
+}

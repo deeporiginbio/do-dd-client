@@ -2,6 +2,9 @@ github_token
 *.csv
 uv.lock
 
+scratch/
+__marimo__/*
+
 # notebooks
 .ipynb_checkpoints
 docs/notebooks/dirty/
@@ -83,6 +86,9 @@ venv.bak/
 # System files
 .DS_Store
 Thumbs.db
+
+# openAPI spec
+openapi.json
 
 
 

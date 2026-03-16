@@ -3,10 +3,14 @@ Tests for the Pocket class.
 """
 
 import os
+from pathlib import Path
 
 import numpy as np
+import pytest
 
 from deeporigin.drug_discovery import BRD_DATA_DIR, Pocket, Protein
+
+_BRD_PDB = Path(os.path.join(BRD_DATA_DIR, "brd.pdb"))
 
 
 def test_pocket_from_ligand_lv0():
@@ -47,6 +51,161 @@ def test_pocket_update_coordinates_lv0():
     )
 
 
+def test_from_json_empty_list_lv0():
+    """Empty input returns an empty list without raising."""
+    result = Pocket.from_json([])
+    assert result == []
+
+
+def test_from_json_single_entry_lv0():
+    """A single valid entry creates one Pocket with the correct attributes."""
+    data = [{"file_path": str(_BRD_PDB), "protein_id": "prot_1", "volume": 42.0}]
+
+    pockets = Pocket.from_json(data)
+
+    assert len(pockets) == 1
+    pocket = pockets[0]
+    assert pocket.name == "brd"
+    assert pocket.file_path == _BRD_PDB
+    assert pocket.protein_id == "prot_1"
+    assert pocket.color == "red"
+    assert pocket.volume == pytest.approx(42.0)
+    assert pocket.id is None
+
+
+def test_from_json_id_is_set_lv0():
+    """When an 'id' key is present it should populate the Pocket.id attribute."""
+    data = [{"id": "pocket-abc-123", "file_path": str(_BRD_PDB)}]
+
+    pocket = Pocket.from_json(data)[0]
+
+    assert pocket.id == "pocket-abc-123"
+    assert "id" not in (pocket.props or {})
+
+
+def test_from_json_protein_id_not_in_props_lv0():
+    """protein_id must be mapped to its own attribute and excluded from props."""
+    data = [{"file_path": str(_BRD_PDB), "protein_id": "prot_abc"}]
+
+    pocket = Pocket.from_json(data)[0]
+
+    assert pocket.protein_id == "prot_abc"
+    assert "protein_id" not in (pocket.props or {})
+
+
+def test_from_json_extra_keys_go_to_props_lv0():
+    """Known property keys become attributes; file_path/protein_id are excluded from props."""
+    data = [
+        {
+            "file_path": str(_BRD_PDB),
+            "protein_id": "p1",
+            "volume": 100.0,
+            "drugability_score": 0.8,
+        }
+    ]
+
+    pocket = Pocket.from_json(data)[0]
+
+    assert pocket.volume == pytest.approx(100.0)
+    assert pocket.drugability_score == pytest.approx(0.8)
+    assert "file_path" not in (pocket.props or {})
+
+
+def test_from_json_no_protein_id_lv0():
+    """Entries without protein_id should have protein_id set to None."""
+    pocket = Pocket.from_json([{"file_path": str(_BRD_PDB)}])[0]
+
+    assert pocket.protein_id is None
+
+
+def test_from_json_missing_file_path_raises_lv0():
+    """An entry missing the file_path key must raise ValueError with the index."""
+    data = [{"protein_id": "p1", "volume": 10.0}]
+
+    with pytest.raises(ValueError, match="index 0"):
+        Pocket.from_json(data)
+
+
+def test_from_json_null_file_path_raises_lv0():
+    """A None file_path must raise ValueError with the index."""
+    data = [{"file_path": None}]
+
+    with pytest.raises(ValueError, match="index 0"):
+        Pocket.from_json(data)
+
+
+def test_from_json_empty_string_file_path_raises_lv0():
+    """An empty-string file_path must raise ValueError with the index."""
+    data = [{"file_path": ""}]
+
+    with pytest.raises(ValueError, match="index 0"):
+        Pocket.from_json(data)
+
+
+def test_from_json_whitespace_file_path_raises_lv0():
+    """A whitespace-only file_path must raise ValueError with the index."""
+    data = [{"file_path": "   "}]
+
+    with pytest.raises(ValueError, match="index 0"):
+        Pocket.from_json(data)
+
+
+def test_from_json_error_reports_correct_index_lv0():
+    """ValueError for a bad entry mid-list must report the correct index."""
+    data = [
+        {"file_path": str(_BRD_PDB)},
+        {"file_path": str(_BRD_PDB)},
+        {"file_path": None},  # index 2 is bad
+    ]
+
+    with pytest.raises(ValueError, match="index 2"):
+        Pocket.from_json(data)
+
+
+def test_from_function_result_lv0():
+    """from_function_result downloads PDBs and populates new fields."""
+    import json
+
+    from deeporigin.functions.result import FunctionResult
+
+    fixture = Path(__file__).parent / (
+        "fixtures/function-runs/deeporigin.pocketfinder/"
+        "d374ba671065b866ff588cee18c9eb7523be307e78eeb84fe321475917424f41.json"
+    )
+    from tests.fixture_utils import patch_fixture_version
+
+    response = patch_fixture_version(json.loads(fixture.read_text()))
+
+    result = FunctionResult([response])
+
+    class FakeFiles:
+        """Stub that returns a local PDB path instead of downloading."""
+
+        def download_file(self, *, remote_path, lazy=False):
+            """Return the BRD PDB path regardless of remote_path."""
+            return str(_BRD_PDB)
+
+    class FakeClient:
+        """Minimal client stub with a fake files service."""
+
+        files = FakeFiles()
+
+    pockets = Pocket.from_function_result(
+        result=result,
+        client=FakeClient(),
+    )
+
+    assert len(pockets) == 1
+    pocket = pockets[0]
+    assert pocket.protein_id == "08QCAKE4DYX3Q"
+    assert pocket.volume == pytest.approx(300)
+    assert pocket.pocket_center == pytest.approx([-13.521, -4.944, 15.457], abs=1e-3)
+    assert pocket.box_size_x == pytest.approx(14)
+    assert pocket.box_size_y == pytest.approx(14)
+    assert pocket.box_size_z == pytest.approx(19)
+    assert pocket.drugability_score == pytest.approx(0.94304204)
+
+
 def test_from_residue_num_lv0():
     """Test creating a pocket from a residue number"""
 
@@ -60,3 +219,51 @@ def test_from_residue_num_lv0():
     assert isinstance(
         custom_pocket.get_center(), np.ndarray
     ) and custom_pocket.get_center().shape == (3,)
+
+
+def test_from_id_lv2():
+    """Test round-trip: find_pockets -> Pocket.from_result -> Pocket.from_id.
+
+    this is a lv2 test because it calls pocketfinder function and platform API"""
+
+    from conftest import check_function_exists
+    from deeporigin.platform import DeepOriginClient
+    from deeporigin.platform.constants import (
+        POCKET_FINDER_FUNCTION_KEY,
+        POCKET_FINDER_FUNCTION_VERSION,
+    )
+
+    client = DeepOriginClient()
+
+    if not check_function_exists(
+        client, POCKET_FINDER_FUNCTION_KEY, POCKET_FINDER_FUNCTION_VERSION
+    ):
+        pytest.skip("Pocket finder function does not exist")
+
+    protein = Protein.from_file(BRD_DATA_DIR / "brd.pdb")
+    protein.remove_water()
+    protein.sync(client=client)
+
+    result = protein.find_pockets(pocket_count=1, client=client)
+    assert len(result.pockets) >= 1
+
+    pockets_from_result = Pocket.from_result(
+        execution_id=result._responses[0]["id"],
+        client=client,
+    )
+    assert len(pockets_from_result) >= 1
+    pocket_id = pockets_from_result[0].id
+    assert pocket_id is not None
+
+    fetched = Pocket.from_id(pocket_id, client=client)
+
+    assert fetched.id == pocket_id
+    assert fetched.file_path is not None
+    assert fetched.file_path.exists()
+    assert fetched.coordinates is not None
+    assert fetched.protein_id == protein.id
+    assert fetched.pocket_center is not None
+    assert len(fetched.pocket_center) == 3
+    assert fetched.box_size_x is not None
+    assert fetched.box_size_y is not None
+    assert fetched.box_size_z is not None

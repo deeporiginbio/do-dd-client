@@ -17,7 +17,8 @@ if TYPE_CHECKING:
     import pandas as pd
 
 from deeporigin.utils.constants import ENV_VARIABLES
-from deeporigin.utils.core import _ensure_do_folder, _supports_unicode_output
+from deeporigin.utils.display import _supports_unicode_output
+from deeporigin.utils.env import _ensure_do_folder
 
 CONFIG_JSON_LOCATION = _ensure_do_folder() / "config.json"
 

@@ -10,15 +10,11 @@ from datetime import datetime, timezone
 import json
 from pathlib import Path
 import time
-from typing import Any, Optional, Protocol
-
-try:
-    from beartype.typing import Callable
-except ImportError:
-    from typing import Callable  # fallback for older versions
+from typing import Any, Optional, Protocol, Self
 import uuid
 
 from beartype import beartype
+from beartype.typing import Callable
 from dateutil import parser
 import humanize
 from IPython.display import HTML, display, update_display
@@ -30,7 +26,7 @@ from deeporigin.exceptions import DeepOriginException
 from deeporigin.platform import job_viz_functions
 from deeporigin.platform.client import DeepOriginClient
 from deeporigin.platform.constants import TERMINAL_STATES
-from deeporigin.utils.core import elapsed_minutes, get_bool_env
+from deeporigin.utils.env import elapsed_minutes, get_bool_env
 
 # Get the template directory
 template_dir = Path(__file__).parent.parent / "templates"
@@ -71,8 +67,7 @@ def _watch_blocking_impl(
     duplication while allowing each class to define its own termination condition
     via the is_terminal callable.
 
-    The design follows the DRY (Don't Repeat Yourself) principle: the core
-    blocking loop logic (display initialization, polling loop, status syncing,
+    The core blocking loop logic (display initialization, polling loop, status syncing,
     HTML rendering, and cleanup) is identical for both Job and JobList. The only
     difference is how each class determines when monitoring should stop (single
     job terminal state vs. all jobs terminal states).
@@ -263,6 +258,7 @@ def _watch_async_impl(
 
 
 @dataclass
+@beartype
 class Job:
     """
     Represents a single computational job that can be monitored and managed.
@@ -299,7 +295,7 @@ class Job:
         id: str,
         *,
         client: Optional[DeepOriginClient] = None,
-    ) -> "Job":
+    ) -> Self:
         """Create a Job instance from a single ID.
 
         Args:
@@ -316,13 +312,12 @@ class Job:
         )
 
     @classmethod
-    @beartype
     def from_dto(
         cls,
         dto: dict,
         *,
         client: Optional[DeepOriginClient] = None,
-    ) -> "Job":
+    ) -> Self:
         """Create a Job instance from an execution DTO (Data Transfer Object).
 
         This method constructs a Job from the full execution description without
@@ -389,7 +384,17 @@ class Job:
                 self._attributes["startedAt"], self._attributes["completedAt"]
             )
 
-    @beartype
+    def logs(self):
+        """print the logs of the job, if any are available"""
+        try:
+            data = json.loads(self._attributes.get("progressReport"))
+            logs = data.get("logs", [])
+            logs = logs.split("\n")
+            for log in logs:
+                print(log)
+        except Exception:
+            print("No logs available")
+
     def _extract_display_data(
         self,
     ) -> dict[str, str | Optional[str] | Optional[int]]:
@@ -474,7 +479,6 @@ class Job:
 
         return html
 
-    @beartype
     def _get_status_html(self) -> str:
         """Get status HTML based on job status and tool.
 
@@ -505,7 +509,6 @@ class Job:
         except Exception as e:
             return f"Error rendering visualization for tool '{tool_key}': {e}"
 
-    @beartype
     def _get_card_title(self) -> str:
         """Get card title based on job status and tool.
 
@@ -628,7 +631,6 @@ class Job:
         # Render the template
         return template.render(**template_vars)
 
-    @beartype
     def _compose_error_overlay_html(self, *, message: str) -> str:
         """Compose an error overlay banner HTML for transient failures.
 
@@ -798,8 +800,7 @@ class Job:
 
             self.sync()
 
-    @beartype
-    def duplicate(self) -> "Job":
+    def duplicate(self) -> Self:
         """Create a duplicate of this job by submitting a new execution with the same parameters.
 
         This method extracts the necessary fields from the current job's attributes
@@ -947,6 +948,16 @@ class JobList:
             futures = [executor.submit(job.sync) for job in self.jobs]
             concurrent.futures.wait(futures)
 
+    def logs(self):
+        """Print the logs of all jobs in the list, if any are available.
+
+        This method iteratively calls Job.logs() for every job in the JobList instance.
+        """
+        for i, job in enumerate(self.jobs):
+            if len(self.jobs) > 1:
+                print(f"\n--- Logs for Job {i + 1} (ID: {job.id}) ---")
+            job.logs()
+
     def show(self):
         """Display the job list view in a Jupyter notebook.
 
@@ -1055,7 +1066,6 @@ class JobList:
             finally:
                 self._task = None
 
-    @beartype
     def _compose_error_overlay_html(self, *, message: str) -> str:
         """Compose an error overlay banner HTML for transient failures.
 
@@ -1073,7 +1083,6 @@ class JobList:
             "</div>"
         )
 
-    @beartype
     def _render_view(
         self,
         *,
@@ -1317,7 +1326,6 @@ class JobList:
         # Render the template
         return template.render(**template_vars)
 
-    @beartype
     def _render_json_viewer(self, obj: dict) -> str:
         """Create an interactive JSON viewer HTML snippet for the given dictionary.
 
@@ -1358,7 +1366,6 @@ class JobList:
         """
         return html
 
-    @beartype
     def filter(
         self,
         *,
@@ -1368,7 +1375,7 @@ class JobList:
         require_metadata: bool = False,
         predicate: Optional[Callable[[Job], bool]] = None,
         **kwargs: Any,
-    ) -> "JobList":
+    ) -> Self:
         """Filter jobs by status, tool attributes, other attributes, or custom predicate.
 
         This method returns a new JobList containing only jobs that match the specified
@@ -1615,7 +1622,7 @@ class JobList:
         tool_key: Optional[str] = None,
         tool_version: Optional[str] = None,
         client: Optional[DeepOriginClient] = None,
-    ) -> "JobList":
+    ) -> Self:
         """Fetch executions from the API and return a JobList.
 
         This method automatically handles pagination, fetching all pages if necessary
@@ -1695,7 +1702,7 @@ class JobList:
         ids: list[str],
         *,
         client: Optional[DeepOriginClient] = None,
-    ) -> "JobList":
+    ) -> Self:
         """Create a JobList from a list of job IDs.
 
         Args:
@@ -1714,7 +1721,7 @@ class JobList:
         dtos: list[dict],
         *,
         client: Optional[DeepOriginClient] = None,
-    ) -> "JobList":
+    ) -> Self:
         """Create a JobList from a list of execution DTOs.
 
         Args:

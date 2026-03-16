@@ -15,7 +15,7 @@ jobs:
       with:
         fetch-depth: 0
     - name: SonarCloud Scan
-      uses: sonarsource/sonarqube-scan-action@master
+      uses: sonarsource/sonarqube-scan-action@49e14673f8dd1e50bab5d7ba5b0c4702c5bfd66c  # v4.1.0
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
@@ -30,19 +30,19 @@ jobs:
       - name: Check code formatting using ruff
         uses: astral-sh/ruff-action@v3
         with:
-          version: 0.11.2
+          version: 0.14.7
           args: format --check
 
       - name: Check import order
         uses: astral-sh/ruff-action@v3
         with:
-          version: 0.11.2
+          version: 0.14.7
           args: check --select I
 
       - name: Lint 
         uses: astral-sh/ruff-action@v3
         with:
-          version: 0.11.2
+          version: 0.14.7
           args: check 
 
       - name: Install uv

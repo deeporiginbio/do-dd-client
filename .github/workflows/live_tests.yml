@@ -1,0 +1,99 @@
+name: Run Level 1 Tests
+
+on:
+  schedule:
+    - cron: "0 6 * * *"
+  pull_request:
+    paths:
+      - "**/*.py"
+  workflow_dispatch:
+    inputs:
+      test_level:
+        description: "Test level to run"
+        type: choice
+        default: lv1
+        options:
+          - lv1
+          - lv2
+  workflow_call:
+    inputs:
+      env:
+        description: "Target environment (dev, staging, or prod)"
+        type: string
+        required: true
+      test_level:
+        description: "Test level to run (lv1 or lv2)"
+        type: string
+        required: false
+        default: lv1
+
+jobs:
+  level-1-tests:
+    # Only run live tests (with secrets) for non-PR events or PRs from org members/collaborators.
+    # Prevents external fork PRs from receiving DO_AUTH_TOKEN_* and CI_BOT_GH_PAT.
+    if: |
+      github.event_name != 'pull_request' ||
+      contains(fromJSON('["MEMBER","OWNER","COLLABORATOR"]'),
+               github.event.pull_request.author_association)
+    runs-on: ubuntu-latest
+    environment: ${{ matrix.env }}
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.13"]
+        env: ${{ fromJSON( ((github.event_name == 'workflow_call' || github.event_name == 'release') && inputs.env != '') && format('["{0}"]', inputs.env) || '["dev","staging","prod"]' ) }}
+
+    steps:
+      - name: Validate workflow_call inputs
+        if: github.event_name == 'workflow_call'
+        run: |
+          case "${{ inputs.env }}" in dev|staging|prod) ;; *) echo "Invalid env: ${{ inputs.env }}"; exit 1 ;; esac
+          case "${{ inputs.test_level }}" in lv1|lv2) ;; *) echo "Invalid test_level: ${{ inputs.test_level }}"; exit 1 ;; esac
+
+      - uses: actions/checkout@v4
+        with:
+          repository: deeporiginbio/do-dd-client
+          ref: ${{ github.event_name == 'release' && 'main' || github.ref }}
+          token: ${{ github.event_name == 'release' && secrets.CI_BOT_GH_PAT || secrets.GITHUB_TOKEN }}
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v6
+        with:
+          version: "0.5.27"
+
+      - name: Set up Python
+        run: uv python install ${{ matrix.python-version }}
+
+      - name: Set environment variables
+        env:
+          TARGET_ENV: ${{ matrix.env }}
+          TOKEN_PROD: ${{ secrets.DO_AUTH_TOKEN_PROD }}
+          TOKEN_STAGING: ${{ secrets.DO_AUTH_TOKEN_STAGING }}
+          TOKEN_DEV: ${{ secrets.DO_AUTH_TOKEN_DEV }}
+        run: |
+          AUTH_TOKEN_VAR=$(python3 scripts/get_env_var_name.py access_token)
+          ORG_KEY_VAR=$(python3 scripts/get_env_var_name.py org_key)
+          ENV_VAR=$(python3 scripts/get_env_var_name.py env)
+          echo "${ORG_KEY_VAR}=deeporigin" >> "$GITHUB_ENV"
+          echo "${ENV_VAR}=${TARGET_ENV}" >> "$GITHUB_ENV"
+          if [ "$TARGET_ENV" = "prod" ]; then
+            echo "${AUTH_TOKEN_VAR}=${TOKEN_PROD}" >> "$GITHUB_ENV"
+          elif [ "$TARGET_ENV" = "staging" ]; then
+            echo "${AUTH_TOKEN_VAR}=${TOKEN_STAGING}" >> "$GITHUB_ENV"
+          elif [ "$TARGET_ENV" = "dev" ]; then
+            echo "${AUTH_TOKEN_VAR}=${TOKEN_DEV}" >> "$GITHUB_ENV"
+          fi
+
+      - name: Install dependencies
+        run: uv sync --extra test --extra tools --extra plots --extra core
+
+      - name: Set test level
+        id: test_level
+        run: |
+          LEVEL="${{ github.event.inputs.test_level || (github.event_name == 'workflow_call' && inputs.test_level) || 'lv1' }}"
+          echo "TEST_LEVEL=${LEVEL}" >> "$GITHUB_ENV"
+
+      - name: "Running tests against a live instance"
+        env:
+          TARGET_ENV: ${{ matrix.env }}
+        run: uv run pytest --env "$TARGET_ENV" -k "$TEST_LEVEL"

@@ -38,19 +38,15 @@ test = [
     "interrogate",
     "pytest-xdist",
     "pytest-markdown-docs",
-    "pytest-dependency",
+    "pytest-dependency<0.6.0",
     "fastapi",
     "uvicorn[standard]",
 ]
 dev = ["ipykernel", "jupyter-black"]
 docs = [
-    "mkdocs",
-    "mkdocs-material-extensions",
-    "mkdocs-material>=8.2.0",
-    "mkdocstrings",
+    "zensical",
     "mkdocstrings-python",
     "black",
-    "click==8.2.1", # there's a bug in later click versions that breaks watchdog
     "python-dotenv",
     "nbconvert",
     "ipykernel",
@@ -79,8 +75,6 @@ build-backend = "setuptools.build_meta"
 
 [tool.ruff]
 include = ["**/src/**/*.py", "**/tests/**/*.py"]
-# Exclude file-service auto-gen code for now
-exclude = ["src/files/file_service"]
 fix = true
 
 [tool.ruff.lint]
@@ -135,6 +129,7 @@ exclude = [
     "notebooks/*",
     "scratch-notebooks/*",
     "scripts/*",
+    "scratch/*",
 ]
 ignore-init-method = true
 ignore-init-module = true
@@ -147,3 +142,6 @@ ignore-nested-classes = true
 ignore-setters = false
 ignore-regex = ["^get$", "^mock_.*", ".*BaseClass.*"]
 color = true
+
+[tool.uv.workspace]
+members = ["platform-sdk"]

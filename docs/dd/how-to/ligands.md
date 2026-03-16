@@ -93,7 +93,7 @@ There are two classes that help you work with ligands:
 
 You can create a ligand from common chemical identifiers (like PubChem names, common names, or drug names). This is particularly useful when working with well-known biochemical molecules:
 
-```python
+```{.python notest}
 from deeporigin.drug_discovery import Ligand
 
 # Create ligands from common biochemical names
@@ -225,7 +225,7 @@ best_poses = poses.filter_top_poses(by_pose_score=True)
 
 A ligand object can be visualized using `show`:
 
-```python
+```{.python notest}
 from deeporigin.drug_discovery import Ligand
 
 ligand = Ligand.from_identifier("serotonin")
@@ -322,17 +322,33 @@ ligands.show_grid()
 
 ### Preparing Ligands
 
-You can prepare a ligand for downstream workflows using the `prepare()` method. This performs salt removal, kekulization, and validates atom types:
+You can prepare a ligand for downstream workflows using the `prepare()` method. This performs salt removal, kekulization, fragment validation (rejects multiple non-identical fragments), and validates atom types:
 
-```python
-from deeporigin.drug_discovery import Ligand
+=== "Ligand"
 
-ligand = Ligand.from_smiles("c1ccccc1")
-ligand.prepare(remove_hydrogens=False)  # Mutates the ligand in place, returns self for chaining
-```
+    ```python
+    from deeporigin.drug_discovery import Ligand
 
-!!! note "Mutation Behavior"
-    The `prepare()` method mutates the ligand object in place and returns `self` for method chaining.
+    ligand = Ligand.from_smiles("c1ccccc1")
+    ligand.prepare(remove_hydrogens=False)  # Mutates the ligand in place, returns self for chaining
+    ```
+
+    !!! note "Mutation Behavior"
+        The `prepare()` method mutates the ligand object in place and returns `self` for method chaining.
+
+=== "LigandSet"
+
+    ```python
+    from deeporigin.drug_discovery import LigandSet, DATA_DIR
+
+    ligands = LigandSet.from_sdf(DATA_DIR / "ligands" / "ligands-brd-all.sdf")
+    ligands.prepare(remove_hydrogens=False)  # Prepares all ligands in place
+    ```
+
+    This will call the `prepare()` method on each ligand in the set. The method returns the LigandSet itself for convenience, so you can chain further operations if desired.
+
+    !!! note "Mutation Behavior"
+        The `prepare()` method mutates all ligands in the set and returns `self` for method chaining.
 
 ### Generating 3D Coordinates
 
@@ -555,7 +571,7 @@ constraints = ligands.compute_constraints(reference=ligands[1])
 
 ### Protonation
 
-You can protonate ligands at a specific pH. This is useful for preparing ligands for molecular dynamics simulations or other pH-dependent calculations.
+You can protonate ligands at a specific pH. This is useful for preparing ligands for molecular dynamics simulations or other pH-dependent calculations. The `protonate()` method returns a `FunctionResult` whose `.ligands` attribute contains the protonated ligands.
 
 === "Ligand"
 
@@ -563,11 +579,22 @@ You can protonate ligands at a specific pH. This is useful for preparing ligands
     from deeporigin.drug_discovery import Ligand
 
     ligand = Ligand.from_smiles("c1ccccc1")
-    ligand.protonate(ph=7.4)  # Mutates the ligand in place
+    result = ligand.protonate(ph=7.4)
+    result.ligands  # [ligand] — the protonated ligand
     ```
 
     !!! note "Mutation Behavior"
         The `protonate()` method mutates the ligand object by updating `self.mol` with the protonated structure. Only the most abundant species at the specified pH is retained.
+
+    The `protonated_at_ph` attribute (default: `None`) can be used to track the pH value at which a ligand was protonated. This attribute stores a `float` value representing the pH.
+
+    To get a cost estimate without running protonation:
+
+    ```{.python notest}
+    result = ligand.protonate(ph=7.4, quote=True)
+    result.estimate  # cost in dollars
+    result.ligands   # [] — empty when quoting
+    ```
 
 === "LigandSet"
 
@@ -575,11 +602,12 @@ You can protonate ligands at a specific pH. This is useful for preparing ligands
     from deeporigin.drug_discovery import LigandSet
 
     ligands = LigandSet.from_smiles(["c1ccccc1", "CCO"])
-    ligands.protonate(ph=7.4)  # Mutates all ligands in place
+    result = ligands.protonate(ph=7.4)
+    result.ligands  # list of protonated Ligand objects
     ```
 
     !!! note "Mutation Behavior"
-        The `protonate()` method mutates all ligands in the set and returns `self` for method chaining.
+        The `protonate()` method mutates all ligands in the set. The returned `FunctionResult` aggregates responses from all individual protonation calls.
 
 ### Adding Hydrogens
 

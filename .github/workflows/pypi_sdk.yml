@@ -1,0 +1,42 @@
+name: Publish SDK to PyPI
+
+on:
+  push:
+    tags:
+      - '*'
+
+jobs:
+  pypi-sdk-publish:
+    name: Build and upload SDK release to PyPI
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v5
+
+      - name: Extract tag name
+        id: tag
+        run: echo "tag=${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
+
+      - name: Set version env
+        run: echo "RELEASE_TAG=${{ steps.tag.outputs.tag }}" >> "$GITHUB_ENV"
+
+      - name: Update SDK version from tag
+        run: echo "$RELEASE_TAG" > platform-sdk/src/VERSION
+
+      - name: Build SDK package
+        run: bash scripts/build_sdk.sh
+
+      - name: Publish SDK distributions to PyPI
+        uses: pypa/gh-action-pypi-publish@76f52d9a08e2f33d1a3d8adc74c7f09b70a741dc  # v1.12.3
+        with:
+          packages-dir: dist

@@ -37,6 +37,37 @@ from deeporigin.drug_discovery import Protein
 protein = Protein.from_name("insulin")
 ```
 
+### From a Deep Origin Data Platform ID
+
+You can create a Protein instance directly from a Deep Origin Data Platform ID. This method fetches the protein data from the platform, downloads the structure file, and creates a Protein instance with metadata from the platform:
+
+```python
+from deeporigin.drug_discovery import Protein
+
+protein = Protein.from_id("08AD337N5YV4Y")
+```
+
+The method automatically:
+- Downloads the structure file from the Deep Origin Data Platform
+- Sets the protein's ID, name, and PDB ID (if available) from the platform metadata
+- Creates a Protein instance from the downloaded file
+
+You can optionally provide a custom `DeepOriginClient` instance:
+
+```python
+from deeporigin.drug_discovery import Protein
+from deeporigin.platform.client import DeepOriginClient
+
+client = DeepOriginClient()
+protein = Protein.from_id("08AD337N5YV4Y", client=client)
+```
+
+!!! warning "Requires file_path"
+    The protein data in the platform must contain a `file_path` field. If the protein data does not have a file_path, a `ValueError` will be raised.
+
+!!! note "Automatic metadata"
+    The method automatically populates the protein's `name` field from the platform data, preferring `protein_name`, then `pdb_id`, then `gene_symbol` (in that order).
+
 
 ## Inspecting the Protein
 

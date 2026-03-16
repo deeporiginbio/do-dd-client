@@ -30,21 +30,22 @@ jobs:
 
       - name: Extract tag name
         id: tag
-        # GITHUB_REF contains full reference name, 'refs/tags/v1.0.0, so this 
-        # extracts just the tag name (v1.0.0)
-        run: echo ::set-output name=TAG_NAME::$(echo $GITHUB_REF | cut -d / -f 3)
+        # GITHUB_REF contains full reference name, e.g. refs/tags/v1.0.0
+        run: echo "TAG_NAME=$(echo $GITHUB_REF | cut -d / -f 3)" >> "$GITHUB_OUTPUT"
+
+      - name: Set version env
+        run: echo "RELEASE_TAG=${{ steps.tag.outputs.TAG_NAME }}" >> "$GITHUB_ENV"
 
       - name: Update version number from tag
-        run: >-
-          echo "${{ steps.tag.outputs.TAG_NAME }}" > src/VERSION
+        run: echo "$RELEASE_TAG" > src/VERSION
 
 
       - name: Build package
         run: 
-          python3 -m build --sdist
+          python3 -m build 
 
       - name: Publish package distributions to PyPI
-        uses: pypa/gh-action-pypi-publish@release/v1
+        uses: pypa/gh-action-pypi-publish@76f52d9a08e2f33d1a3d8adc74c7f09b70a741dc  # v1.12.3
 
 
 

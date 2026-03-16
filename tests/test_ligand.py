@@ -5,8 +5,9 @@ import numpy as np
 import pytest
 
 from deeporigin.drug_discovery.constants import SUPPORTED_ATOM_SYMBOLS
-from deeporigin.drug_discovery.structures import Ligand
+from deeporigin.drug_discovery.structures import Ligand, LigandSet
 from deeporigin.exceptions import DeepOriginException
+from deeporigin.platform.client import DeepOriginClient
 
 # Import shared test fixtures
 from tests.utils_ligands import (
@@ -34,6 +35,27 @@ def test_ligand_has_hydrogens():
     assert not ligand.has_hydrogens(), "Expected this ligand to not have hydrogens"
     ligand.add_hydrogens()
     assert ligand.has_hydrogens(), "Expected this ligand to have hydrogens"
+
+
+def test_ligand_has_3d_structure():
+    """Test that has_3d_structure correctly identifies ligands with and without 3D coordinates"""
+    # Create ligand from SMILES (has 2D coordinates, not 3D)
+    ligand = Ligand.from_smiles("CCO", name="ethanol")
+    assert not ligand.has_3d_structure(), (
+        "Expected ligand from SMILES to not have 3D structure (only 2D)"
+    )
+
+    # Generate 3D coordinates
+    ligand.embed()
+    assert ligand.has_3d_structure(), (
+        "Expected ligand to have 3D structure after embedding"
+    )
+
+    # Create ligand from SDF file (may or may not have 3D coordinates)
+    ligand_from_sdf = Ligand.from_sdf(single_ligand_files[0])
+    # SDF files may or may not have 3D coordinates, so we'll just verify it returns a boolean
+    has_3d = ligand_from_sdf.has_3d_structure()
+    assert isinstance(has_3d, bool), "has_3d_structure should return a boolean"
 
 
 @pytest.mark.parametrize("ligand_file", single_ligand_files)
@@ -338,8 +360,8 @@ def test_ligand_prepare_basic():
     assert ligand.mol is not None
     # All atoms supported
     assert all(a in SUPPORTED_ATOM_SYMBOLS for a in ligand.atom_types)
-    # Prepared prop
-    assert ligand.get_property("prepared"), "Ligand should be prepared"
+    # Prepared attribute
+    assert ligand.prepared, "Ligand should be prepared"
 
 
 def test_ligand_prepare_remove_hydrogens():
@@ -372,6 +394,50 @@ def test_ligand_prepare_rejects_unsupported_atoms():
     lig = Ligand.from_smiles("B")
     with pytest.raises(DeepOriginException, match="Unsupported atom types"):
         lig.prepare()
+
+
+def test_ligand_prepare_rejects_wildcard_atoms():
+    """Ligands with wildcard ('*') atoms should be rejected by prepare()."""
+
+    # Try to create a ligand with wildcard atoms
+    # Note: RDKit may not parse '*' in SMILES, so we'll create the molecule directly
+    from rdkit import Chem
+
+    # Create a molecule with a wildcard atom by modifying an existing molecule
+    mol = Chem.MolFromSmiles("CCO")  # Ethanol
+    if mol:
+        # Add a wildcard atom by creating a new atom
+        rw_mol = Chem.RWMol(mol)
+        atom_idx = rw_mol.AddAtom(Chem.Atom("*"))
+        # Connect it to the first atom
+        rw_mol.AddBond(0, atom_idx, Chem.BondType.SINGLE)
+        mol_with_wildcard = rw_mol.GetMol()
+
+        # Create ligand from this molecule
+        lig = Ligand.from_rdkit_mol(mol_with_wildcard)
+        with pytest.raises(DeepOriginException, match="wildcard"):
+            lig.prepare()
+
+
+def test_ligand_prepare_rejects_multiple_fragments():
+    """Ligands with multiple non-identical fragments should be rejected by prepare()."""
+
+    # Create a ligand with multiple non-identical fragments (e.g., salt + ligand)
+    # Using a dot-separated SMILES to represent disconnected fragments
+    lig = Ligand.from_smiles("CCO.CC")  # Ethanol + Ethane (two different fragments)
+    with pytest.raises(DeepOriginException, match="Fragment validation failed"):
+        lig.prepare()
+
+
+def test_ligand_prepare_accepts_identical_fragments():
+    """Ligands with multiple identical fragments should be accepted (first fragment kept)."""
+
+    # Create a ligand with multiple identical fragments
+    lig = Ligand.from_smiles("CCO.CCO")  # Two identical ethanol molecules
+    prepared = lig.prepare()
+    assert prepared is lig
+    # Should keep only the first fragment
+    assert lig.smiles == "CCO"
 
 
 def test_ligand_conformer_management():
@@ -594,6 +660,43 @@ def test_ligand_file_path_handling():
     # to avoid cluttering the test environment
 
 
+def test_ligand_protonated_at_ph():
+    """Test the protonated_at_ph attribute"""
+    ligand = Ligand.from_smiles("CCO", name="Ethanol")
+
+    # Test that default value is None
+    assert ligand.protonated_at_ph is None
+
+    # Test that it can be set to a float value
+    ligand.protonated_at_ph = 7.4
+    assert ligand.protonated_at_ph == 7.4
+    assert isinstance(ligand.protonated_at_ph, float)
+
+    # Test that it can be set to another float value
+    ligand.protonated_at_ph = 11.4
+    assert ligand.protonated_at_ph == 11.4
+
+    # Test that it can be reset to None
+    ligand.protonated_at_ph = None
+    assert ligand.protonated_at_ph is None
+
+
+def test_ligand_protonate_sets_protonated_at_ph():
+    """Test that the protonate method sets the protonated_at_ph attribute"""
+    ligand = Ligand.from_smiles("C=CCCn1cc(-c2cccc(C(=O)N(C)C)c2)c2cc[nH]c2c1=O")
+
+    assert ligand.protonated_at_ph is None
+
+    result = ligand.protonate(ph=7.4, use_cache=False)
+    assert ligand.protonated_at_ph == 7.4
+    assert isinstance(ligand.protonated_at_ph, float)
+    assert len(result.ligands) == 1
+
+    result = ligand.protonate(ph=11.4, use_cache=False)
+    assert ligand.protonated_at_ph == 11.4
+    assert len(result.ligands) == 1
+
+
 # Test utility functions
 def test_ligands_to_dataframe():
     """Test the ligands_to_dataframe utility function"""
@@ -617,3 +720,19 @@ def test_ligands_to_dataframe():
     assert "logP" in df.columns
     assert df.iloc[0]["logP"] == pytest.approx(0.32)
     assert df.iloc[1]["logP"] == pytest.approx(0.88)
+
+
+def test_from_id_lv1():
+    """Test round-trip: local ligand -> sync -> from_id."""
+    client = DeepOriginClient()
+
+    ligand = Ligand.from_smiles("CCO", name="EthanolFromId")
+    ligand.sync(client=client)
+
+    assert ligand.id is not None
+
+    fetched = Ligand.from_id(ligand.id, client=client)
+
+    assert fetched.id == ligand.id
+    assert fetched.smiles is not None
+    assert fetched.mol is not None

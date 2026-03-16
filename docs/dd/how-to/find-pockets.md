@@ -17,7 +17,20 @@ protein.remove_water()
 We can then find pockets in this protein using the Pocket Finder tool:
 
 ```{.python continuation}
-pockets = protein.find_pockets(pocket_count=1)
+result = protein.find_pockets(pocket_count=1)
+pockets = result.pockets
+```
+
+`result` is a [`FunctionResult`](../ref/function-result.md) that wraps the API response. The identified pockets are available as a list of `Pocket` objects on `result.pockets`.
+
+#### Estimating cost
+
+To get a cost estimate without running the pocket finder, use `quote=True`:
+
+```{.python notest}
+result = protein.find_pockets(pocket_count=1, quote=True)
+result.estimate  # estimated cost in dollars
+result.cost      # None (function was not executed)
 ```
 
 ### Using PDB Files
@@ -55,6 +68,24 @@ from deeporigin.drug_discovery import Pocket, Ligand, BRD_DATA_DIR
 ligand = Ligand.from_sdf(BRD_DATA_DIR / "brd-2.sdf")
 pocket = Pocket.from_ligand(ligand, name="ligand_pocket")
 ```
+
+### From a result-explorer record ID
+
+Load a single pocket by its result-explorer record ID (for example, an ID from a previous pocket-finder run or from the platform UI):
+
+```{.python notest}
+from deeporigin.drug_discovery import Pocket
+
+pocket = Pocket.from_id("your-pocket-record-id")
+```
+
+This fetches the record, downloads the pocket PDB file, and returns a `Pocket` with properties populated from the record. Optionally pass a `client` if you do not want to use the default:
+
+```{.python notest}
+pocket = Pocket.from_id("your-pocket-record-id", client=my_client)
+```
+
+If no record exists for the given ID, `ValueError` is raised.
 
 ## Visualization
 
