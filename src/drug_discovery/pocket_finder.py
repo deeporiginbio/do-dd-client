@@ -126,6 +126,8 @@ class PocketFinder(Execution, QuoteMixin, SyncExecutableMixin):
             quote=False,
         )
 
+        self._id = result._responses[0]["id"]
+
         pockets = Pocket.from_function_result(
             result=result,
             client=client,
