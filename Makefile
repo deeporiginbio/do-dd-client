@@ -29,11 +29,11 @@ install: install-pre-commit
 
 docs-build:
 	@echo "Building docs..."
-	uv run zensical build
+	uv run --extra docs zensical build
 
-docs-serve:
+docs-serve: install
 	@echo "Serving docs locally..."
-	uv run zensical serve
+	uv run --extra docs zensical serve
 
 # run mock server for local development and testing
 mock-server:
