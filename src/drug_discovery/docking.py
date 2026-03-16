@@ -229,6 +229,7 @@ class Docking(Execution, QuoteMixin, SyncExecutableMixin, AsyncExecutableMixin):
             client=client,
         )
 
+        self._id = result.id
         self._cost = result.cost
 
         return poses
