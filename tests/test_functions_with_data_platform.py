@@ -10,7 +10,7 @@ from deeporigin.drug_discovery import (
     Protein,
 )
 from deeporigin.functions.result import FunctionResult
-from deeporigin.functions.sysprep import abfe
+from deeporigin.functions.sysprep import for_abfe
 from deeporigin.platform import DeepOriginClient
 from deeporigin.platform.constants import (
     DOCKING_FUNCTION_KEY,
@@ -144,7 +144,13 @@ def test_sysprep_with_data_platform_lv2(
     ):
         pytest.skip("Sysprep function does not exist")
 
-    result = abfe(client=client, protein=registered_protein, ligand=registered_ligand)
+    result = for_abfe(
+        client=client, protein=registered_protein, ligand=registered_ligand
+    )
+
+    execution_id = result._responses[0]["id"]
+
+    print(f"Execution ID: {execution_id}")
 
     function_data = result._responses[0]["functionOutputs"]
     assert "system" in function_data.keys(), (
@@ -154,7 +160,7 @@ def test_sysprep_with_data_platform_lv2(
 
     # query data platform for this result
     response = client.results.get(
-        filter_dict={"compute_job_id": result.responses[0]["id"]},
+        filter_dict={"compute_job_id": execution_id},
     )
     data = response["data"][0]["data"]
 

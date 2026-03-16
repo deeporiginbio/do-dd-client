@@ -14,7 +14,7 @@ from deeporigin.drug_discovery import (
 from deeporigin.functions.docking import dock
 from deeporigin.functions.pocket_finder import find_pockets
 from deeporigin.functions.result import FunctionResult
-from deeporigin.functions.sysprep import abfe
+from deeporigin.functions.sysprep import for_abfe
 from deeporigin.platform import DeepOriginClient
 from deeporigin.platform.constants import (
     DOCKING_FUNCTION_KEY,
@@ -104,7 +104,7 @@ def test_sysprep_lv2(
     ):
         pytest.skip("System prep function does not exist")
 
-    result = abfe(
+    result = for_abfe(
         client=client,
         protein=brd_protein,
         ligand=brd_ligand,
