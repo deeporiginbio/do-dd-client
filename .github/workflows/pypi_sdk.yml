@@ -27,13 +27,16 @@ jobs:
         id: tag
         run: echo "tag=${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
 
+      - name: Set version env
+        run: echo "RELEASE_TAG=${{ steps.tag.outputs.tag }}" >> "$GITHUB_ENV"
+
       - name: Update SDK version from tag
-        run: echo "${{ steps.tag.outputs.tag }}" > platform-sdk/src/VERSION
+        run: echo "$RELEASE_TAG" > platform-sdk/src/VERSION
 
       - name: Build SDK package
         run: bash scripts/build_sdk.sh
 
       - name: Publish SDK distributions to PyPI
-        uses: pypa/gh-action-pypi-publish@release/v1
+        uses: pypa/gh-action-pypi-publish@76f52d9a08e2f33d1a3d8adc74c7f09b70a741dc  # v1.12.3
         with:
           packages-dir: dist
