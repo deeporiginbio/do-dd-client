@@ -180,9 +180,9 @@ class SystemPrep(Execution, QuoteMixin, SyncExecutableMixin):
         Does not mutate output paths or run the function.
         """
         if self._is_rbfe:
-            from deeporigin.functions.sysprep import rbfe as _rbfe
+            from deeporigin.functions.sysprep import for_rbfe as _for_rbfe
 
-            result = _rbfe(
+            result = _for_rbfe(
                 protein=self.protein,
                 ligand1=self.ligand1,
                 ligand2=self.ligand2,
@@ -195,9 +195,9 @@ class SystemPrep(Execution, QuoteMixin, SyncExecutableMixin):
                 quote=True,
             )
         else:
-            from deeporigin.functions.sysprep import abfe as _abfe
+            from deeporigin.functions.sysprep import for_abfe as _for_abfe
 
-            result = _abfe(
+            result = _for_abfe(
                 protein=self.protein,
                 ligand=self.ligand,
                 padding=self._padding,
@@ -227,9 +227,9 @@ class SystemPrep(Execution, QuoteMixin, SyncExecutableMixin):
             ValueError: If the function run did not return output paths.
         """
         if self._is_rbfe:
-            from deeporigin.functions.sysprep import rbfe as _rbfe
+            from deeporigin.functions.sysprep import for_rbfe as _for_rbfe
 
-            result = _rbfe(
+            result = _for_rbfe(
                 protein=self.protein,
                 ligand1=self.ligand1,
                 ligand2=self.ligand2,
@@ -242,9 +242,9 @@ class SystemPrep(Execution, QuoteMixin, SyncExecutableMixin):
                 quote=False,
             )
         else:
-            from deeporigin.functions.sysprep import abfe as _abfe
+            from deeporigin.functions.sysprep import for_abfe as _for_abfe
 
-            result = _abfe(
+            result = _for_abfe(
                 protein=self.protein,
                 ligand=self.ligand,
                 padding=self._padding,

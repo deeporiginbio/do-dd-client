@@ -485,7 +485,7 @@ class TestSystemPrepRunParsesOutputs:
     """run() parses function outputs, sets paths on SystemPrep, and returns PreparedSystem."""
 
     def test_run_sets_paths_and_returns_prepared_system(self, protein, ligand):
-        """When abfe() returns completed result with system dict, run() sets paths and returns PreparedSystem."""
+        """When for_abfe() returns completed result with system dict, run() sets paths and returns PreparedSystem."""
         mock_outputs = {
             "system": {
                 "binding_xml_file_path": "some/dir/bsm_system.xml",
@@ -503,7 +503,7 @@ class TestSystemPrepRunParsesOutputs:
             ]
         )
 
-        with patch("deeporigin.functions.sysprep.abfe", return_value=mock_result):
+        with patch("deeporigin.functions.sysprep.for_abfe", return_value=mock_result):
             sp = SystemPrep(protein=protein, ligand=ligand)
             out = sp.run()
 
@@ -517,7 +517,7 @@ class TestSystemPrepRunParsesOutputs:
         assert sp.cost == 1.5
 
     def test_run_rbfe_calls_rbfe_and_sets_paths(self, protein, ligand):
-        """When in RBFE mode, run() calls rbfe() and returns PreparedSystem with paths."""
+        """When in RBFE mode, run() calls for_rbfe() and returns PreparedSystem with paths."""
         lig2 = Ligand.from_smiles("CC(=O)O", name="acetate")
         lig2.id = _LIGAND2_ID
         mock_outputs = {
@@ -536,7 +536,7 @@ class TestSystemPrepRunParsesOutputs:
                 }
             ]
         )
-        with patch("deeporigin.functions.sysprep.rbfe", return_value=mock_result):
+        with patch("deeporigin.functions.sysprep.for_rbfe", return_value=mock_result):
             sp = SystemPrep(protein=protein, ligand1=ligand, ligand2=lig2)
             out = sp.run()
         assert isinstance(out, PreparedSystem)
@@ -547,7 +547,7 @@ class TestSystemPrepRunParsesOutputs:
         assert sp.cost == 2.0
 
     def test_run_calls_function_and_returns_prepared_system(self, protein, ligand):
-        """run() calls the platform function and returns PreparedSystem."""
+        """run() calls the platform sysprep function and returns PreparedSystem."""
         mock_outputs = {
             "system": {
                 "binding_xml_file_path": "fresh/bsm_system.xml",
@@ -564,7 +564,7 @@ class TestSystemPrepRunParsesOutputs:
                 }
             ]
         )
-        with patch("deeporigin.functions.sysprep.abfe", return_value=mock_result):
+        with patch("deeporigin.functions.sysprep.for_abfe", return_value=mock_result):
             sp = SystemPrep(protein=protein, ligand=ligand)
             out = sp.run()
         assert isinstance(out, PreparedSystem)
