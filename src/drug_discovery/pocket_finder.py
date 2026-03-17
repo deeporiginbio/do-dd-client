@@ -129,19 +129,25 @@ class PocketFinder(Execution, QuoteMixin, SyncExecutableMixin):
         execution_id = result._responses[0]["id"]
         self._id = execution_id
 
-        try:
-            pockets = Pocket.from_result(
-                execution_id=execution_id,
-                client=client,
-            )
-        except Exception:
-            import warnings
+        if self.protein.id is not None:
+            try:
+                pockets = Pocket.from_result(
+                    execution_id=execution_id,
+                    client=client,
+                )
+            except Exception:
+                import warnings
 
-            warnings.warn(
-                "Could not load pocket results from the data platform; "
-                "using function response instead. Results may be delayed.",
-                stacklevel=2,
-            )
+                warnings.warn(
+                    "Could not load pocket results from the data platform; "
+                    "using function response instead. Results may be delayed.",
+                    stacklevel=2,
+                )
+                pockets = Pocket.from_function_result(
+                    result=result,
+                    client=client,
+                )
+        else:
             pockets = Pocket.from_function_result(
                 result=result,
                 client=client,
