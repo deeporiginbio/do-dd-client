@@ -176,7 +176,9 @@ class DeepOriginClient:
     """
 
     # class-level registry for singleton instances
-    _instances: Dict[Tuple[str, str, str, str | None], "DeepOriginClient"] = {}
+    _instances: Dict[
+        Tuple[str, str, str, str | None, str, str | None], "DeepOriginClient"
+    ] = {}
 
     def __new__(
         cls,
@@ -192,6 +194,8 @@ class DeepOriginClient:
         max_retry_delay: float = 60.0,
         record: bool = False,
         tag: str | None = None,
+        _app: str = "python-client",
+        _session: str | None = None,
     ) -> Self:
         """Create a new instance or return a cached one based on cache key.
 
@@ -242,7 +246,7 @@ class DeepOriginClient:
 
         # Normalize base_url for the key
         normalized_base_url = base_url.rstrip("/") + "/"
-        key = (normalized_base_url, token, org_key, tag)
+        key = (normalized_base_url, token, org_key, tag, _app, _session)
 
         # Return cached instance if it exists
         if key in cls._instances:
@@ -267,6 +271,8 @@ class DeepOriginClient:
         max_retry_delay: float = 60.0,
         record: bool = False,
         tag: str | None = None,
+        _app: str = "python-client",
+        _session: str | None = None,
     ):
         """Initialize a DeepOrigin Platform client.
 
@@ -362,6 +368,8 @@ class DeepOriginClient:
         self.max_retry_delay = max_retry_delay
         self.record = record
         self.tag = tag
+        self._app = _app
+        self._session = str(uuid.uuid4()) if _session is None else _session
 
         # Initialize _client first (before setting token property)
         self._client = httpx.Client(
@@ -456,6 +464,8 @@ class DeepOriginClient:
         record: bool = False,
         replace: bool = False,
         tag: str | None = None,
+        _app: str = "python-client",
+        _session: str | None = None,
     ) -> Self:
         """
         Get a cached client instance.
@@ -533,7 +543,14 @@ class DeepOriginClient:
 
             # Normalize and create key
             normalized_base_url = base_url_for_key.rstrip("/") + "/"
-            key = (normalized_base_url, token_for_key, org_key_for_key, tag)
+            key = (
+                normalized_base_url,
+                token_for_key,
+                org_key_for_key,
+                tag,
+                _app,
+                _session,
+            )
 
             # Close and remove if it exists
             if key in cls._instances:
@@ -555,6 +572,8 @@ class DeepOriginClient:
             max_retry_delay=max_retry_delay,
             record=record,
             tag=tag,
+            _app=_app,
+            _session=_session,
         )
 
     @classmethod
@@ -569,6 +588,8 @@ class DeepOriginClient:
         retry_backoff_factor: float = 1.0,
         max_retry_delay: float = 60.0,
         record: bool = False,
+        _app: str = "python-client",
+        _session: str | None = None,
     ) -> Self:
         """Create a client instance from environment configuration.
 
@@ -627,6 +648,8 @@ class DeepOriginClient:
                 base_url=base_url,
                 timeout=timeout,
                 record=record,
+                _app=_app,
+                _session=_session,
             )
 
         # Get token for the specified environment (reads from env vars or files)
@@ -649,10 +672,14 @@ class DeepOriginClient:
             retry_backoff_factor=retry_backoff_factor,
             max_retry_delay=max_retry_delay,
             record=record,
+            _app=_app,
+            _session=_session,
         )
 
     @classmethod
-    def from_headers(cls, headers) -> Self:
+    def from_headers(
+        cls, headers, *, _app: str = "python-client", _session: str | None = None
+    ) -> Self:
         """Create a client instance from HTTP headers. Useful for creating a client within a served tool.
 
         Args:
@@ -680,6 +707,8 @@ class DeepOriginClient:
             org_key=headers["X-Do-Org-Key"],
             base_url=base_url,
             env=env,
+            _app=_app,
+            _session=_session,
         )
 
     @classmethod
@@ -692,6 +721,8 @@ class DeepOriginClient:
         retry_backoff_factor: float = 1.0,
         max_retry_delay: float = 60.0,
         record: bool = False,
+        _app: str = "python-client",
+        _session: str | None = None,
     ) -> Self:
         """Create a client instance exclusively from environment variables.
 
@@ -746,6 +777,8 @@ class DeepOriginClient:
             retry_backoff_factor=retry_backoff_factor,
             max_retry_delay=max_retry_delay,
             record=record,
+            _app=_app,
+            _session=_session,
         )
 
     @classmethod
@@ -809,11 +842,12 @@ class DeepOriginClient:
         This is called automatically when the client is closed to ensure
         the registry doesn't hold references to closed clients.
         """
-        # Use the same cache key format as __new__ (includes tag)
-        normalized_base_url = self.base_url.rstrip("/") + "/"
-        key = (normalized_base_url, self.token, self.org_key, self.tag)
-        if key in self._instances and self._instances[key] is self:
-            self._instances.pop(key, None)
+        # Find the key that points to this instance (key uses _session param at
+        # creation time, which may be None for default, not self._session)
+        for key, inst in list(self._instances.items()):
+            if inst is self:
+                self._instances.pop(key, None)
+                break
 
     # -------- Low-level helpers --------
     def _should_retry(
