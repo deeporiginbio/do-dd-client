@@ -114,15 +114,7 @@ class PocketFinder(Execution, QuoteMixin, SyncExecutableMixin):
         Returns:
             List of ``Pocket`` objects found in the protein.
         """
-        from deeporigin.drug_discovery.structures.protein import (
-            _make_pockets_from_result,
-        )
-        from deeporigin.functions.pocket_finder import (
-            cache_path as _pocket_cache_path,
-        )
-        from deeporigin.functions.pocket_finder import (
-            find_pockets as _find_pockets,
-        )
+        from deeporigin.functions.pocket_finder import find_pockets as _find_pockets
 
         client = self.client
 
@@ -134,12 +126,32 @@ class PocketFinder(Execution, QuoteMixin, SyncExecutableMixin):
             quote=False,
         )
 
-        pockets = _make_pockets_from_result(
-            result=result,
-            client=client,
-            cache_path_fn=_pocket_cache_path,
-            use_cache=True,
-        )
+        execution_id = result._responses[0]["id"]
+        self._id = execution_id
+
+        if self.protein.id is not None:
+            try:
+                pockets = Pocket.from_result(
+                    execution_id=execution_id,
+                    client=client,
+                )
+            except Exception:
+                import warnings
+
+                warnings.warn(
+                    "Could not load pocket results from the data platform; "
+                    "using function response instead. Results may be delayed.",
+                    stacklevel=2,
+                )
+                pockets = Pocket.from_function_result(
+                    result=result,
+                    client=client,
+                )
+        else:
+            pockets = Pocket.from_function_result(
+                result=result,
+                client=client,
+            )
 
         self._cost = result.cost
 

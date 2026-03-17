@@ -10,6 +10,7 @@ Usage::
 """
 
 from dataclasses import dataclass
+from typing import Self
 
 from beartype import beartype
 import pandas as pd
@@ -90,16 +91,16 @@ class ABFEParams:
         Returns:
             Parameters dict ready to be passed to the ABFE tool.
         """
-        from deeporigin.utils.constants import UFA_PROVIDER
-
         md_options = {
             "T": self.temperature,
             "cutoff": self.cutoff,
             "dt": self.dt,
         }
         return {
-            "binding_xml": {"$provider": UFA_PROVIDER, "key": binding_xml_path},
-            "solvation_xml": {"$provider": UFA_PROVIDER, "key": solvation_xml_path},
+            "prepared_system": {
+                "binding_xml_file_path": binding_xml_path,
+                "solvation_xml_ligand1_file_path": solvation_xml_path,
+            },
             "binding": {
                 "annihilate": self.annihilate,
                 "emeq_md_options": md_options,
@@ -163,6 +164,81 @@ class ABFE(Execution, QuoteMixin, AsyncExecutableMixin):
 
         # Store parameters in a frozen dataclass
         self._params = params if params is not None else ABFEParams()
+
+    @classmethod
+    def from_id(
+        cls,
+        id: str,
+        *,
+        client: DeepOriginClient | None = None,
+    ) -> Self:
+        """Construct an ABFE instance from an existing platform execution ID.
+
+        Fetches the execution record and rehydrates ``prepared_system`` and
+        ``_params`` from the stored ``userInputs`` and ``metadata``.
+
+        Args:
+            id: Platform execution ID.
+            client: Optional API client. Uses the default if not provided.
+
+        Returns:
+            A fully-hydrated ABFE instance with status synced from the platform.
+        """
+        instance = super().from_id(id, client=client)
+        inputs = instance._execution_dto.get("userInputs", {})
+        metadata = instance._execution_dto.get("metadata", {})
+
+        prepared_system_input = inputs.get("prepared_system", {})
+        binding = inputs.get("binding", {})
+        solvation = inputs.get("solvation", {})
+        md_options = binding.get("emeq_md_options", {})
+
+        instance.prepared_system = PreparedSystem(
+            binding_xml_path=prepared_system_input.get("binding_xml_file_path", ""),
+            solvation_xml_path=prepared_system_input.get(
+                "solvation_xml_ligand1_file_path", ""
+            ),
+            system_pdb_path="",
+            protein_id=metadata.get("protein_id"),
+            ligand1_id=metadata.get("ligand_id"),
+        )
+
+        _BINDING_KEY_MAP = {
+            "annihilate": "annihilate",
+            "n_windows": "binding_n_windows",
+            "npt_reduce_restraints_ns": "binding_npt_reduce_restraints_ns",
+            "nvt_heating_ns": "binding_nvt_heating_ns",
+            "steps": "binding_steps",
+            "repeats": "repeats",
+            "replex_period_ps": "replex_period_ps",
+            "test_run": "test_run",
+        }
+        _SOLVATION_KEY_MAP = {
+            "n_windows": "solvation_n_windows",
+            "npt_reduce_restraints_ns": "solvation_npt_reduce_restraints_ns",
+            "nvt_heating_ns": "solvation_nvt_heating_ns",
+            "steps": "solvation_steps",
+        }
+        _MD_OPTIONS_KEY_MAP = {
+            "dt": "dt",
+            "T": "temperature",
+            "cutoff": "cutoff",
+        }
+
+        kwargs: dict = {}
+        for dto_key, param_field in _BINDING_KEY_MAP.items():
+            if dto_key in binding:
+                kwargs[param_field] = binding[dto_key]
+        for dto_key, param_field in _SOLVATION_KEY_MAP.items():
+            if dto_key in solvation:
+                kwargs[param_field] = solvation[dto_key]
+        for dto_key, param_field in _MD_OPTIONS_KEY_MAP.items():
+            if dto_key in md_options:
+                kwargs[param_field] = md_options[dto_key]
+
+        instance._params = ABFEParams(**kwargs)
+
+        return instance
 
     @property
     def params(self) -> ABFEParams:
@@ -279,11 +355,10 @@ class ABFE(Execution, QuoteMixin, AsyncExecutableMixin):
 
     def __repr__(self) -> str:
         """Return a string representation showing protein and ligand IDs."""
-        return (
-            f"ABFE("
-            f"protein_id={self.prepared_system.protein_id!r}, "
-            f"ligand_id={self.prepared_system.ligand1_id!r})"
-        )
+        ps = getattr(self, "prepared_system", None)
+        if ps is None:
+            return super().__repr__()
+        return f"ABFE(protein_id={ps.protein_id!r}, ligand_id={ps.ligand1_id!r})"
 
     def _build_metadata(self) -> dict:
         """Construct execution metadata."""

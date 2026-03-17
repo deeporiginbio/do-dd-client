@@ -77,6 +77,9 @@ class Tools:
         if "clusterId" not in payload:
             payload["clusterId"] = self._c.clusters.get_default_cluster_id()
 
+        payload["app"] = self._c._app
+        payload["session"] = self._c._session
+
         response = self._c.post_json(
             f"/tools/{self._c.org_key}/tools/{tool_key}/{tool_version}/executions",
             body=payload,

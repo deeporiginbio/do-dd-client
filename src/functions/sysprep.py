@@ -64,7 +64,7 @@ def _build_sysprep_payload(
 
 
 @beartype
-def abfe(
+def for_abfe(
     *,
     protein: Protein,
     ligand: Ligand,
@@ -116,7 +116,7 @@ def abfe(
 
 
 @beartype
-def rbfe(
+def for_rbfe(
     *,
     protein: Protein,
     ligand1: Ligand,

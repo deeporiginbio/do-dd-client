@@ -485,18 +485,18 @@ class TestSystemPrepRunParsesOutputs:
     """run() parses function outputs, sets paths on SystemPrep, and returns PreparedSystem."""
 
     def test_run_sets_paths_and_returns_prepared_system(self, protein, ligand):
-        """When abfe() returns completed result with output_files and system, run() sets paths and returns PreparedSystem."""
+        """When for_abfe() returns completed result with system dict, run() sets paths and returns PreparedSystem."""
         mock_outputs = {
-            "output_files": [
-                "some/dir/bsm_system.xml",
-                "some/dir/solvation.xml",
-                "other/file.xml",
-            ],
-            "system": {"system_pdb_file_path": "some/dir/system.pdb"},
+            "system": {
+                "binding_xml_file_path": "some/dir/bsm_system.xml",
+                "solvation_xml_ligand1_file_path": "some/dir/solvation_ligand1.xml",
+                "system_pdb_file_path": "some/dir/system.pdb",
+            },
         }
         mock_result = FunctionResult(
             [
                 {
+                    "id": "test-exec-id",
                     "status": "Completed",
                     "functionOutputs": mock_outputs,
                     "quotationResult": {"successfulQuotations": [{"priceTotal": 1.5}]},
@@ -504,74 +504,94 @@ class TestSystemPrepRunParsesOutputs:
             ]
         )
 
-        with patch("deeporigin.functions.sysprep.abfe", return_value=mock_result):
+        with (
+            patch("deeporigin.functions.sysprep.for_abfe", return_value=mock_result),
+            patch(
+                "deeporigin.platform.results.Results.get_prepared_systems",
+                return_value={"data": []},
+            ),
+        ):
             sp = SystemPrep(protein=protein, ligand=ligand)
             out = sp.run()
 
         assert isinstance(out, PreparedSystem)
         assert out.binding_xml_path == "some/dir/bsm_system.xml"
-        assert out.solvation_xml_path == "some/dir/solvation.xml"
+        assert out.solvation_xml_path == "some/dir/solvation_ligand1.xml"
         assert out.system_pdb_path == "some/dir/system.pdb"
         assert sp.binding_xml_path == "some/dir/bsm_system.xml"
-        assert sp.solvation_xml_path == "some/dir/solvation.xml"
+        assert sp.solvation_xml_path == "some/dir/solvation_ligand1.xml"
         assert sp.system_pdb_path == "some/dir/system.pdb"
         assert sp.cost == 1.5
 
     def test_run_rbfe_calls_rbfe_and_sets_paths(self, protein, ligand):
-        """When in RBFE mode, run() calls rbfe() and returns PreparedSystem with paths."""
+        """When in RBFE mode, run() calls for_rbfe() and returns PreparedSystem with paths."""
         lig2 = Ligand.from_smiles("CC(=O)O", name="acetate")
         lig2.id = _LIGAND2_ID
         mock_outputs = {
-            "output_files": [
-                "rbfe/dir/bsm_system.xml",
-                "rbfe/dir/solvation.xml",
-            ],
-            "system": {"system_pdb_file_path": "rbfe/dir/system.pdb"},
+            "system": {
+                "binding_xml_file_path": "rbfe/dir/bsm_system.xml",
+                "solvation_xml_ligand1_file_path": "rbfe/dir/solvation_ligand1.xml",
+                "system_pdb_file_path": "rbfe/dir/system.pdb",
+            },
         }
         mock_result = FunctionResult(
             [
                 {
+                    "id": "test-exec-id-rbfe",
                     "status": "Completed",
                     "functionOutputs": mock_outputs,
                     "quotationResult": {"successfulQuotations": [{"priceTotal": 2.0}]},
                 }
             ]
         )
-        with patch("deeporigin.functions.sysprep.rbfe", return_value=mock_result):
+        with (
+            patch("deeporigin.functions.sysprep.for_rbfe", return_value=mock_result),
+            patch(
+                "deeporigin.platform.results.Results.get_prepared_systems",
+                return_value={"data": []},
+            ),
+        ):
             sp = SystemPrep(protein=protein, ligand1=ligand, ligand2=lig2)
             out = sp.run()
         assert isinstance(out, PreparedSystem)
         assert out.binding_xml_path == "rbfe/dir/bsm_system.xml"
         assert sp.binding_xml_path == "rbfe/dir/bsm_system.xml"
-        assert sp.solvation_xml_path == "rbfe/dir/solvation.xml"
+        assert sp.solvation_xml_path == "rbfe/dir/solvation_ligand1.xml"
         assert sp.system_pdb_path == "rbfe/dir/system.pdb"
         assert sp.cost == 2.0
 
     def test_run_calls_function_and_returns_prepared_system(self, protein, ligand):
-        """run() calls the platform function and returns PreparedSystem."""
+        """run() calls the platform sysprep function and returns PreparedSystem."""
         mock_outputs = {
-            "output_files": [
-                "fresh/bsm_system.xml",
-                "fresh/solvation.xml",
-            ],
-            "system": {"system_pdb_file_path": "fresh/system.pdb"},
+            "system": {
+                "binding_xml_file_path": "fresh/bsm_system.xml",
+                "solvation_xml_ligand1_file_path": "fresh/solvation_ligand1.xml",
+                "system_pdb_file_path": "fresh/system.pdb",
+            },
         }
         mock_result = FunctionResult(
             [
                 {
+                    "id": "test-exec-id-fresh",
                     "status": "Completed",
                     "functionOutputs": mock_outputs,
                     "quotationResult": {"successfulQuotations": [{"priceTotal": 0.5}]},
                 }
             ]
         )
-        with patch("deeporigin.functions.sysprep.abfe", return_value=mock_result):
+        with (
+            patch("deeporigin.functions.sysprep.for_abfe", return_value=mock_result),
+            patch(
+                "deeporigin.platform.results.Results.get_prepared_systems",
+                return_value={"data": []},
+            ),
+        ):
             sp = SystemPrep(protein=protein, ligand=ligand)
             out = sp.run()
         assert isinstance(out, PreparedSystem)
         assert out.binding_xml_path == "fresh/bsm_system.xml"
         assert sp.binding_xml_path == "fresh/bsm_system.xml"
-        assert sp.solvation_xml_path == "fresh/solvation.xml"
+        assert sp.solvation_xml_path == "fresh/solvation_ligand1.xml"
         assert sp.system_pdb_path == "fresh/system.pdb"
 
     def test_get_results_returns_prepared_systems_from_platform(self, protein, ligand):

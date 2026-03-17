@@ -180,9 +180,9 @@ class SystemPrep(Execution, QuoteMixin, SyncExecutableMixin):
         Does not mutate output paths or run the function.
         """
         if self._is_rbfe:
-            from deeporigin.functions.sysprep import rbfe as _rbfe
+            from deeporigin.functions.sysprep import for_rbfe as _for_rbfe
 
-            result = _rbfe(
+            result = _for_rbfe(
                 protein=self.protein,
                 ligand1=self.ligand1,
                 ligand2=self.ligand2,
@@ -195,9 +195,9 @@ class SystemPrep(Execution, QuoteMixin, SyncExecutableMixin):
                 quote=True,
             )
         else:
-            from deeporigin.functions.sysprep import abfe as _abfe
+            from deeporigin.functions.sysprep import for_abfe as _for_abfe
 
-            result = _abfe(
+            result = _for_abfe(
                 protein=self.protein,
                 ligand=self.ligand,
                 padding=self._padding,
@@ -227,9 +227,9 @@ class SystemPrep(Execution, QuoteMixin, SyncExecutableMixin):
             ValueError: If the function run did not return output paths.
         """
         if self._is_rbfe:
-            from deeporigin.functions.sysprep import rbfe as _rbfe
+            from deeporigin.functions.sysprep import for_rbfe as _for_rbfe
 
-            result = _rbfe(
+            result = _for_rbfe(
                 protein=self.protein,
                 ligand1=self.ligand1,
                 ligand2=self.ligand2,
@@ -242,9 +242,9 @@ class SystemPrep(Execution, QuoteMixin, SyncExecutableMixin):
                 quote=False,
             )
         else:
-            from deeporigin.functions.sysprep import abfe as _abfe
+            from deeporigin.functions.sysprep import for_abfe as _for_abfe
 
-            result = _abfe(
+            result = _for_abfe(
                 protein=self.protein,
                 ligand=self.ligand,
                 padding=self._padding,
@@ -259,6 +259,40 @@ class SystemPrep(Execution, QuoteMixin, SyncExecutableMixin):
         if result.cost is not None:
             self._cost = result.cost
 
+        execution_id = result._responses[0]["id"]
+        self._id = execution_id
+        client = self.client
+        ligand1_id, ligand2_id = self._ligand_ids()
+        ids_ok = (
+            self.protein.id is not None
+            and ligand1_id is not None
+            and (not self._is_rbfe or ligand2_id is not None)
+        )
+
+        if ids_ok:
+            try:
+                response = client.results.get_prepared_systems(
+                    compute_job_id=execution_id,
+                )
+                records = response.get("data", [])
+                if not records:
+                    raise ValueError(
+                        "No prepared-system result found for this execution."
+                    )
+                prepared = PreparedSystem._from_record(records[0])
+                self.binding_xml_path = prepared.binding_xml_path
+                self.solvation_xml_path = prepared.solvation_xml_path
+                self.system_pdb_path = prepared.system_pdb_path
+                return prepared
+            except Exception:
+                import warnings
+
+                warnings.warn(
+                    "Could not load prepared system from the data platform; "
+                    "using function response instead. Results may be delayed.",
+                    stacklevel=2,
+                )
+
         if not result.function_outputs:
             raise ValueError(
                 "System preparation did not return output paths. "
@@ -266,18 +300,11 @@ class SystemPrep(Execution, QuoteMixin, SyncExecutableMixin):
             )
 
         outputs = result.function_outputs[0]
-        output_files = outputs.get("output_files", [])
-        binding = [f for f in output_files if f.endswith("bsm_system.xml")]
-        solvation = [f for f in output_files if f.endswith("solvation.xml")]
-        if binding:
-            self.binding_xml_path = binding[0]
-        if solvation:
-            self.solvation_xml_path = solvation[0]
         system = outputs.get("system", {})
         if isinstance(system, dict):
-            pdb_path = system.get("system_pdb_file_path")
-            if pdb_path is not None:
-                self.system_pdb_path = pdb_path
+            self.binding_xml_path = system.get("binding_xml_file_path")
+            self.solvation_xml_path = system.get("solvation_xml_ligand1_file_path")
+            self.system_pdb_path = system.get("system_pdb_file_path")
 
         if not (
             self.binding_xml_path and self.solvation_xml_path and self.system_pdb_path

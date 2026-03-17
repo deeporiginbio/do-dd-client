@@ -60,14 +60,18 @@ def hash_strings(strings: list[str]) -> str:
     return hashlib.sha256(combined.encode("utf-8")).hexdigest()
 
 
-def _strip_ids(obj: object) -> object:
-    """Recursively remove ``"id"`` keys from nested dicts/lists.
+_VOLATILE_KEYS = {"id", "file_path", "mol_file"}
 
-    Used to normalise function-run payloads before hashing so that
-    environment-specific IDs don't affect the fixture lookup hash.
+
+def _strip_ids(obj: object) -> object:
+    """Recursively remove volatile keys from nested dicts/lists.
+
+    Strips ``"id"``, ``"file_path"``, and ``"mol_file"`` so that the
+    fixture-lookup hash is stable across environments where entity IDs
+    and upload paths may differ.
     """
     if isinstance(obj, dict):
-        return {k: _strip_ids(v) for k, v in obj.items() if k != "id"}
+        return {k: _strip_ids(v) for k, v in obj.items() if k not in _VOLATILE_KEYS}
     if isinstance(obj, list):
         return [_strip_ids(item) for item in obj]
     return obj

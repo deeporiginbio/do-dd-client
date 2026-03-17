@@ -15,6 +15,7 @@ from typing import TYPE_CHECKING, Any, ClassVar, Optional, Self
 import numpy as np
 
 if TYPE_CHECKING:
+    from deeporigin.functions.result import FunctionResult
     from deeporigin.platform.client import DeepOriginClient
 
 from deeporigin.drug_discovery.constants import POCKETS_BASE_DIR
@@ -46,6 +47,10 @@ class Pocket:
     hydrophobicity: Optional[float] = None
     drugability_score: Optional[float] = None
     polarity: Optional[float] = None
+    pocket_center: Optional[list[float]] = None
+    box_size_x: Optional[float] = None
+    box_size_y: Optional[float] = None
+    box_size_z: Optional[float] = None
 
     props: Optional[dict[str, Any]] = field(default_factory=dict)
 
@@ -150,6 +155,20 @@ class Pocket:
             table_data.append(["Protein ID", self.protein_id])
         table_data.append(["Color", self.color])
 
+        if self.pocket_center is not None:
+            cx, cy, cz = self.pocket_center
+            table_data.append(["Center", f"({cx:.2f}, {cy:.2f}, {cz:.2f})"])
+
+        if all(
+            v is not None for v in (self.box_size_x, self.box_size_y, self.box_size_z)
+        ):
+            table_data.append(
+                [
+                    "Box size",
+                    f"{self.box_size_x:.2f} \u00d7 {self.box_size_y:.2f} \u00d7 {self.box_size_z:.2f} \u00c5",
+                ]
+            )
+
         property_rows = [
             ("Volume", self.volume, " \u00c5\u00b3"),
             ("Total SASA", self.total_sasa, " \u00c5\u00b2"),
@@ -165,20 +184,21 @@ class Pocket:
                 [label, self._fmt(val, unit)] for label, val, unit in property_rows
             )
 
-        if self.file_path:
-            table_data.append(["File", str(self.file_path)])
-
         return f"Pocket:\n{tabulate(table_data, tablefmt='rounded_grid')}"
 
     __str__ = __repr__
 
     def get_center(self) -> np.ndarray:
-        """
-        Get the center of the pocket based on its coordinates.
+        """Get the center of the pocket.
+
+        Returns the pre-computed ``pocket_center`` when available, otherwise
+        falls back to computing the mean of the loaded coordinates.
 
         Returns:
-            np.ndarray: A numpy array containing the center of the pocket.
+            np.ndarray: A numpy array of shape (3,) with the pocket center.
         """
+        if self.pocket_center is not None:
+            return np.asarray(self.pocket_center, dtype=float)
         if self.coordinates is None:
             raise ValueError("No coordinates loaded for this pocket")
         return self.coordinates.mean(axis=0)
@@ -261,6 +281,10 @@ class Pocket:
             "hydrophobicity",
             "drugability_score",
             "polarity",
+            "pocket_center",
+            "box_size_x",
+            "box_size_y",
+            "box_size_z",
         }
     )
 
@@ -341,6 +365,40 @@ class Pocket:
             pockets.append(pocket)
 
         return pockets
+
+    @classmethod
+    def from_function_result(
+        cls,
+        *,
+        result: "FunctionResult",
+        client: "DeepOriginClient",
+    ) -> list[Self]:
+        """Download pocket PDB files from a function result and build Pocket objects.
+
+        Extracts the pocket list from a raw pocket-finder ``FunctionResult``,
+        downloads the PDB files, and delegates to ``from_json`` to construct
+        Pocket instances.
+
+        Args:
+            result: FunctionResult wrapping a pocket-finder response.
+            client: DeepOrigin client for downloading files.
+
+        Returns:
+            A list of Pocket objects.
+        """
+        outputs = result.function_outputs[0]
+        pockets_data = [
+            {
+                **pocket,
+                "file_path": client.files.download_file(
+                    remote_path=pocket["file_path"],
+                    lazy=True,
+                ),
+            }
+            for pocket in outputs.get("pockets", [])
+        ]
+
+        return cls.from_json(pockets_data)
 
     @classmethod
     def from_id(

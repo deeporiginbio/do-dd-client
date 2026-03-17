@@ -91,8 +91,10 @@ class WorkflowStep:
         if "metadata" in df.columns:
             df = df[
                 df["metadata"].apply(
-                    lambda x: isinstance(x, dict)
-                    and x.get("protein_hash") == self.parent.protein.to_hash()
+                    lambda x: (
+                        isinstance(x, dict)
+                        and x.get("protein_hash") == self.parent.protein.to_hash()
+                    )
                 )
             ]
 

@@ -279,17 +279,21 @@ class Docking(WorkflowStep):
         # Apply docking-specific filters
         if pocket_center is not None:
             mask = df["user_inputs"].apply(
-                lambda x: isinstance(x, dict)
-                and "pocket_center" in x
-                and bool(np.all(np.isclose(pocket_center, x["pocket_center"])))
+                lambda x: (
+                    isinstance(x, dict)
+                    and "pocket_center" in x
+                    and bool(np.all(np.isclose(pocket_center, x["pocket_center"])))
+                )
             )
             df = df[mask]
 
         if box_size is not None:
             mask = df["user_inputs"].apply(
-                lambda x: isinstance(x, dict)
-                and "box_size" in x
-                and bool(np.all(np.isclose(box_size, x["box_size"])))
+                lambda x: (
+                    isinstance(x, dict)
+                    and "box_size" in x
+                    and bool(np.all(np.isclose(box_size, x["box_size"])))
+                )
             )
             df = df[mask]
 
@@ -297,20 +301,22 @@ class Docking(WorkflowStep):
         if "user_inputs" in df.columns and len(df) > 0:
             smiles_strings = [ligand.smiles for ligand in self.parent.ligands]
             mask = df["user_inputs"].apply(
-                lambda x: isinstance(x, dict)
-                and (
-                    # Handle old format (smiles_list)
-                    (
-                        "smiles_list" in x
-                        and any(s in smiles_strings for s in x["smiles_list"])
-                    )
-                    # Handle new format (ligands array)
-                    or (
-                        "ligands" in x
-                        and isinstance(x["ligands"], list)
-                        and any(
-                            ligand.get("smiles", "") in smiles_strings
-                            for ligand in x["ligands"]
+                lambda x: (
+                    isinstance(x, dict)
+                    and (
+                        # Handle old format (smiles_list)
+                        (
+                            "smiles_list" in x
+                            and any(s in smiles_strings for s in x["smiles_list"])
+                        )
+                        # Handle new format (ligands array)
+                        or (
+                            "ligands" in x
+                            and isinstance(x["ligands"], list)
+                            and any(
+                                ligand.get("smiles", "") in smiles_strings
+                                for ligand in x["ligands"]
+                            )
                         )
                     )
                 )

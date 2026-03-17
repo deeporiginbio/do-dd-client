@@ -94,6 +94,9 @@ class Functions:
             endpoint = f"/tools/{self._c.org_key}/functions/{key}/{version}"
             check_version = version
 
+        body["app"] = self._c._app
+        body["session"] = self._c._session
+
         response = self._c.post_json(
             endpoint,
             body=body,

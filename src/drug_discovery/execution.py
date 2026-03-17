@@ -9,7 +9,8 @@ concrete execution types like ``PocketFinder``, ``Docking``, and ``ABFE``.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+import copy
+from typing import TYPE_CHECKING, Self
 
 from deeporigin.platform.constants import ALLOWED_STATUS_TRANSITIONS
 
@@ -85,6 +86,31 @@ class Execution:
                 f"Allowed transitions from {current!r}: {allowed}"
             )
         self.status = new_status
+
+    def duplicate(self, *, client: DeepOriginClient | None = None) -> Self:
+        """Create a fresh copy with the same configuration but no execution state.
+
+        Useful after ``from_id()`` to re-run the same calculation.  The
+        returned instance has no ``id``, ``status``, ``estimate``, or
+        ``cost`` — it is ready for ``quote()`` / ``start()``.
+
+        Args:
+            client: Optional API client for the new instance.
+                Falls back to the current instance's client.
+
+        Returns:
+            A new instance sharing the same domain-specific configuration.
+        """
+        new = copy.copy(self)
+        new._id = None
+        new._estimate = None
+        new._cost = None
+        for attr in ("status", "progress", "_execution_dto"):
+            if hasattr(new, attr):
+                delattr(new, attr)
+        if client is not None:
+            new.client = client
+        return new
 
     def __repr__(self) -> str:
         """Return a concise summary of the execution."""

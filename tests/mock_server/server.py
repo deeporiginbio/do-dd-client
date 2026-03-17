@@ -238,6 +238,7 @@ class MockServer:
             ligands=self._ligands,
             proteins=self._proteins,
             results=self._results,
+            executions=self._executions,
             load_fixture=self._load_fixture,
         )
         self.app.include_router(dp_router)

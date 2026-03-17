@@ -1,0 +1,299 @@
+{
+    "id": "c002d6b3-0d66-4265-91db-8bec0392751d",
+    "createdAt": "2026-03-11T00:40:33.877Z",
+    "updatedAt": "2026-03-11T00:41:17.077Z",
+    "userInputs": {
+        "inputs": {
+            "protein": {
+                "file_path": "tests/brd.pdb",
+                "id": "08QCAKE4DYX3Q"
+            },
+            "pocket_count": 1,
+            "pocket_min_size": 30
+        },
+        "clusterId": "d638d3cd-833f-476b-87fe-ca6d76e66049"
+    },
+    "functionOutputs": {
+        "pockets": [
+            {
+                "protein_id": "08QCAKE4DYX3Q",
+                "file_path": "tool-runs/c002d6b3-0d66-4265-91db-8bec0392751d/pocket_1.pdb",
+                "volume": 300,
+                "total_SASA": 1225.8883,
+                "polar_SASA": 309.8629,
+                "apolar_SASA": 916.02545,
+                "polar_apolar_SASA_ratio": 0.3382689,
+                "hydrophobicity": 29.92,
+                "drugability_score": 0.94304204,
+                "polarity": 10,
+                "pocket_center": [
+                    -13.521,
+                    -4.9440002,
+                    15.457001
+                ],
+                "box_size_x": 14,
+                "box_size_y": 14,
+                "box_size_z": 19,
+                "pocket_count": 1,
+                "pocket_min_size": 30
+            }
+        ]
+    },
+    "status": "Completed",
+    "cluster": {
+        "id": "d638d3cd-833f-476b-87fe-ca6d76e66049",
+        "createdAt": "2024-06-11T16:53:45.922Z",
+        "updatedAt": "2025-03-27T20:23:30.842Z",
+        "hostname": "https://cluster.us-west-2.dev.deeporigin.io",
+        "name": "DeepOrigin Cluster - us-west-2",
+        "orgKey": null,
+        "enabled": true,
+        "status": "healthy",
+        "cloudAccountId": null,
+        "cloudRegion": null
+    },
+    "orgKey": "deeporigin",
+    "createdBy": "6b96d8f8-0f55-474c-a86c-e09651ba4b20",
+    "quotationResult": {
+        "anyFailed": false,
+        "failedQuotations": [],
+        "successfulQuotations": [
+            {
+                "status": "OK",
+                "itemCode": "DO_POCKET_FINDER",
+                "orgId": "deeporigin",
+                "qty": 1,
+                "priceEach": 10,
+                "priceTotal": 10,
+                "pricingRecordType": "regular",
+                "pricingRecords": [
+                    {
+                        "itemKey": "DO_POCKET_FINDER",
+                        "itemName": "Pocket Finder",
+                        "priceEach": 10,
+                        "totalPrice": 10,
+                        "qty": 1,
+                        "tierQtyFrom": 0,
+                        "tierQtyTo": 0
+                    }
+                ]
+            }
+        ]
+    },
+    "function": {
+        "id": "6c69e4bf-aad3-4850-929b-57eda1e4424c",
+        "createdAt": "2026-03-10T20:00:48.000Z",
+        "updatedAt": "2026-03-10T20:00:48.000Z",
+        "functionManifest": "cf13bd26-12bc-4d51-a8fc-e283a8ac3b59",
+        "version": "0.5.2",
+        "enabled": true,
+        "manifestBody": {
+            "key": "deeporigin.pocketfinder",
+            "version": "0.5.2",
+            "executor": {
+                "name": "deeporigin-pocketfinder",
+                "path": "/find_pockets",
+                "port": {
+                    "name": "http1",
+                    "port": 8080,
+                    "protocol": "TCP"
+                },
+                "image": "645946264134.dkr.ecr.us-west-2.amazonaws.com/functions/pocket-finder:0.5.2",
+                "method": "POST",
+                "minScale": 1,
+                "timeoutSeconds": 600,
+                "containerConcurrency": 1,
+                "resourceRequirements": {
+                    "cpu": 2,
+                    "memory": 8
+                },
+                "scaleDownDelaySeconds": 60,
+                "responseStartTimeoutSeconds": 3600
+            },
+            "billingCode": "DO_POCKET_FINDER",
+            "inputSchema": {
+                "type": "object",
+                "$schema": "http://json-schema.org/draft-07/schema#",
+                "required": [
+                    "protein",
+                    "pocket_count",
+                    "pocket_min_size"
+                ],
+                "properties": {
+                    "protein": {
+                        "type": "object",
+                        "required": [
+                            "file_path"
+                        ],
+                        "properties": {
+                            "id": {
+                                "type": "string",
+                                "description": "Protein ID",
+                                "x-data-type": "Protein.id"
+                            },
+                            "file_path": {
+                                "type": "string",
+                                "format": "file",
+                                "description": "Path to the protein PDB file",
+                                "x-data-type": "Protein.file_path",
+                                "x-deeporigin-path": "/deeporigin/inputs/protein.pdb"
+                            }
+                        },
+                        "description": "Protein structure for pocket detection",
+                        "x-data-type": "Protein"
+                    },
+                    "pocket_count": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "description": "Number of pockets to find",
+                        "x-user-input": true,
+                        "x-display-name": "Pocket Count"
+                    },
+                    "pocket_min_size": {
+                        "type": "number",
+                        "minimum": 1,
+                        "description": "Minimum size of pockets to consider",
+                        "x-user-input": true,
+                        "x-display-name": "Minimum Pocket Size"
+                    }
+                },
+                "description": "Input schema for pocket detection",
+                "additionalProperties": false
+            },
+            "outputSchema": {
+                "type": "object",
+                "$schema": "http://json-schema.org/draft-07/schema",
+                "properties": {
+                    "pockets": {
+                        "type": "array",
+                        "items": {
+                            "type": "object",
+                            "required": [
+                                "protein_id",
+                                "file_path",
+                                "volume",
+                                "total_SASA",
+                                "polar_SASA",
+                                "apolar_SASA",
+                                "polar_apolar_SASA_ratio",
+                                "hydrophobicity",
+                                "drugability_score",
+                                "polarity",
+                                "pocket_center",
+                                "box_size_x",
+                                "box_size_y",
+                                "box_size_z",
+                                "pocket_count",
+                                "pocket_min_size"
+                            ],
+                            "properties": {
+                                "volume": {
+                                    "type": "number",
+                                    "description": "Volume of the pocket in cubic angstroms",
+                                    "x-data-type": "Pocket.volume",
+                                    "x-indexable": true
+                                },
+                                "polarity": {
+                                    "type": "number",
+                                    "description": "Overall polarity measure of the pocket surface",
+                                    "x-data-type": "Pocket.polarity",
+                                    "x-indexable": true
+                                },
+                                "file_path": {
+                                    "type": "string",
+                                    "description": "Path to the pocket PDB file on UFA",
+                                    "x-data-type": "Pocket.file_path"
+                                },
+                                "box_size_x": {
+                                    "type": "number",
+                                    "description": "Docking box X dimension in angstroms",
+                                    "x-data-type": "Pocket.box_size_x"
+                                },
+                                "box_size_y": {
+                                    "type": "number",
+                                    "description": "Docking box Y dimension in angstroms",
+                                    "x-data-type": "Pocket.box_size_y"
+                                },
+                                "box_size_z": {
+                                    "type": "number",
+                                    "description": "Docking box Z dimension in angstroms",
+                                    "x-data-type": "Pocket.box_size_z"
+                                },
+                                "polar_SASA": {
+                                    "type": "number",
+                                    "description": "Polar Solvent Accessible Surface Area in square angstroms",
+                                    "x-data-type": "Pocket.polar_SASA",
+                                    "x-indexable": true
+                                },
+                                "protein_id": {
+                                    "type": "string",
+                                    "x-key": true,
+                                    "description": "ID of the parent protein this pocket belongs to",
+                                    "x-data-type": "Protein.id"
+                                },
+                                "total_SASA": {
+                                    "type": "number",
+                                    "description": "Total Solvent Accessible Surface Area in square angstroms",
+                                    "x-data-type": "Pocket.total_SASA",
+                                    "x-indexable": true
+                                },
+                                "apolar_SASA": {
+                                    "type": "number",
+                                    "description": "Apolar Solvent Accessible Surface Area in square angstroms",
+                                    "x-data-type": "Pocket.apolar_SASA",
+                                    "x-indexable": true
+                                },
+                                "pocket_count": {
+                                    "type": "integer",
+                                    "description": "Number of pockets to find",
+                                    "x-data-type": "Pocket.count"
+                                },
+                                "pocket_center": {
+                                    "type": "array",
+                                    "items": {
+                                        "type": "number"
+                                    },
+                                    "maxItems": 3,
+                                    "minItems": 3,
+                                    "description": "Center coordinates [x, y, z] of the pocket in angstroms",
+                                    "x-data-type": "Pocket.center"
+                                },
+                                "hydrophobicity": {
+                                    "type": "number",
+                                    "description": "Hydrophobicity score of the pocket surface",
+                                    "x-data-type": "Pocket.hydrophobicity",
+                                    "x-indexable": true
+                                },
+                                "pocket_min_size": {
+                                    "type": "number",
+                                    "description": "Minimum size of pockets to consider",
+                                    "x-data-type": "Pocket.min_size"
+                                },
+                                "drugability_score": {
+                                    "type": "number",
+                                    "description": "Predicted drugability score indicating suitability as a drug target",
+                                    "x-data-type": "Pocket.drugability_score",
+                                    "x-indexable": true
+                                },
+                                "polar_apolar_SASA_ratio": {
+                                    "type": "number",
+                                    "description": "Ratio of polar to apolar Solvent Accessible Surface Area",
+                                    "x-data-type": "Pocket.polar_apolar_SASA_ratio",
+                                    "x-indexable": true
+                                }
+                            },
+                            "additionalProperties": false
+                        },
+                        "description": "Detected binding pockets on the target protein",
+                        "x-data-type": "Pocket",
+                        "x-result-group": "pockets"
+                    }
+                },
+                "description": "Output schema for pocket detection results"
+            },
+            "functionManifestVersion": "1"
+        },
+        "billingCode": "DO_POCKET_FINDER",
+        "resourceId": "function-shuwgzqeqh0shkqzus9q7"
+    }
+}

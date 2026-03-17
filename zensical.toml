@@ -1,0 +1,180 @@
+[project]
+site_name = "Deep Origin Python client | Deep Origin"
+site_author = "Deep Origin"
+repo_url = "https://github.com/deeporiginbio/do-dd-client"
+repo_name = "deeporiginbio/do-dd-client"
+site_url = "https://client-docs.deeporigin.io"
+docs_dir = "docs"
+use_directory_urls = false
+extra_css = ["stylesheets/extra.css"]
+
+nav = [
+  {"Quickstart" = [
+    "index.md",
+    {"Install" = "install.md"},
+    {"Authenticate" = "how-to/auth.md"},
+    {"Configure" = "configure.md"},
+  ]},
+  {"Drug Discovery" = [
+    {"Tutorial" = [
+      {"Getting started" = "dd/tutorial/getting-started.md"},
+      {"Docking" = "dd/tutorial/docking.md"},
+      {"ABFE" = "dd/tutorial/abfe.md"},
+      {"RBFE" = "dd/tutorial/rbfe.md"},
+    ]},
+    {"How To" = [
+      {"Work with a Complex" = "dd/how-to/complex.md"},
+      {"Work with Proteins" = "dd/how-to/proteins.md"},
+      {"Work with Ligands" = "dd/how-to/ligands.md"},
+      {"Visualize proteins and ligands" = "dd/how-to/visualize.md"},
+      {"Find pockets" = "dd/how-to/find-pockets.md"},
+      {"Dock Ligands" = "dd/how-to/docking.md"},
+      {"Filter outputs of Docking" = "dd/how-to/filter-docking-outputs.md"},
+      {"Use outputs of Docking for FEP" = "dd/how-to/use-docking-outputs-for-fep.md"},
+      {"Visualize ABFE trajectories" = "dd/how-to/visualize-abfe-trajectories.md"},
+      {"Job control" = "dd/how-to/job.md"},
+    ]},
+    {"Reference" = [
+      {"chemistry" = "dd/ref/chemistry.md"},
+      {"plots" = "dd/ref/plots.md"},
+      {"structures" = [
+        {"Ligand" = "dd/ref/ligand.md"},
+        {"LigandSet" = "dd/ref/ligandset.md"},
+        {"Protein" = "dd/ref/protein.md"},
+        {"Complex" = "dd/ref/complex.md"},
+        {"Pocket" = "dd/ref/pocket.md"},
+      ]},
+      {"docking" = "dd/ref/docking.md"},
+      {"FunctionResult" = "dd/ref/function-result.md"},
+      {"abfe" = "dd/ref/abfe.md"},
+      {"rbfe" = "dd/ref/rbfe.md"},
+    ]},
+    {"Notebooks" = [
+      {"ABFE" = "notebooks/html/abfe.html"},
+      {"Docking a Single Ligand" = "notebooks/html/docking-single-ligand.html"},
+      {"Docking Many Ligands" = "notebooks/html/docking-many-ligands.html"},
+    ]},
+  ]},
+  {"Platform API" = [
+    "platform/index.md",
+    {"tools" = "platform/ref/tools.md"},
+    {"files" = "platform/ref/files.md"},
+    {"executions" = "platform/ref/executions.md"},
+    {"jobs" = "platform/ref/jobs.md"},
+    {"clusters" = "platform/ref/clusters.md"},
+    {"functions" = "platform/ref/functions.md"},
+    {"organizations" = "platform/ref/organizations.md"},
+    {"billing" = "platform/ref/billing.md"},
+    {"entities" = "platform/ref/entities.md"},
+    {"results" = "platform/ref/results.md"},
+    {"projects" = "platform/ref/projects.md"},
+  ]},
+  {"Developing" = [
+    {"Installing" = "dev/install.md"},
+    {"Clients" = "dev/clients.md"},
+    {"Mock server" = "dev/mock-server.md"},
+    {"Job widget" = "dev/job-widget.md"},
+  ]},
+  {"Changelog" = "changelog.md"},
+  {"Support" = "https://www.support.deeporigin.com/servicedesk/customer/portals"},
+]
+
+[project.theme]
+variant = "classic"
+logo = "images/logo.svg"
+favicon = "images/favicon.png"
+
+font.text = "Inter"
+font.code = "Roboto Mono"
+
+palette.primary = "custom"
+
+features = [
+  "announce.dismiss",
+  "content.code.annotate",
+  "content.code.copy",
+  "content.tabs.link",
+  "content.tooltips",
+  "navigation.footer",
+  "navigation.indexes",
+  "navigation.instant",
+  "navigation.instant.prefetch",
+  "navigation.instant.progress",
+  "navigation.sections",
+  "navigation.path",
+  "navigation.tabs",
+  "navigation.top",
+  "navigation.tracking",
+  "search.suggest",
+  "toc.follow",
+]
+
+# Markdown extensions — Zensical defaults plus project-specific overrides
+[project.markdown_extensions.abbr]
+[project.markdown_extensions.admonition]
+[project.markdown_extensions.attr_list]
+[project.markdown_extensions.def_list]
+[project.markdown_extensions.footnotes]
+[project.markdown_extensions.md_in_html]
+[project.markdown_extensions.tables]
+
+[project.markdown_extensions.toc]
+permalink = true
+title = "Page contents"
+
+[project.markdown_extensions.pymdownx.arithmatex]
+generic = true
+
+[project.markdown_extensions.pymdownx.betterem]
+smart_enable = "all"
+
+[project.markdown_extensions.pymdownx.caret]
+[project.markdown_extensions.pymdownx.details]
+
+[project.markdown_extensions.pymdownx.emoji]
+emoji_index = "zensical.extensions.emoji.twemoji"
+emoji_generator = "zensical.extensions.emoji.to_svg"
+
+[project.markdown_extensions.pymdownx.highlight]
+pygments_lang_class = true
+
+[project.markdown_extensions.pymdownx.inlinehilite]
+[project.markdown_extensions.pymdownx.keys]
+[project.markdown_extensions.pymdownx.mark]
+[project.markdown_extensions.pymdownx.smartsymbols]
+[project.markdown_extensions.pymdownx.snippets]
+[project.markdown_extensions.pymdownx.superfences]
+
+[project.markdown_extensions.pymdownx.tabbed]
+alternate_style = true
+
+[project.markdown_extensions.pymdownx.tasklist]
+custom_checkbox = true
+
+[project.markdown_extensions.pymdownx.tilde]
+
+# Plugins
+[project.plugins.mkdocstrings]
+default_handler = "python"
+
+[project.plugins.mkdocstrings.handlers.python]
+paths = ["."]
+
+[project.plugins.mkdocstrings.handlers.python.options]
+annotations_path = "brief"
+show_source = false
+docstring_section_style = "table"
+heading_level = 2
+inherited_members = true
+merge_init_into_class = false
+separate_signature = true
+show_root_heading = true
+show_root_full_path = true
+show_signature_annotations = true
+signature_crossrefs = true
+show_symbol_type_heading = true
+line_length = 60
+show_signature = true
+
+[project.plugins.mkdocstrings.handlers.python.options.docstring_options]
+ignore_init_summary = true
