@@ -126,12 +126,26 @@ class PocketFinder(Execution, QuoteMixin, SyncExecutableMixin):
             quote=False,
         )
 
-        self._id = result._responses[0]["id"]
+        execution_id = result._responses[0]["id"]
+        self._id = execution_id
 
-        pockets = Pocket.from_function_result(
-            result=result,
-            client=client,
-        )
+        try:
+            pockets = Pocket.from_result(
+                execution_id=execution_id,
+                client=client,
+            )
+        except Exception:
+            import warnings
+
+            warnings.warn(
+                "Could not load pocket results from the data platform; "
+                "using function response instead. Results may be delayed.",
+                stacklevel=2,
+            )
+            pockets = Pocket.from_function_result(
+                result=result,
+                client=client,
+            )
 
         self._cost = result.cost
 

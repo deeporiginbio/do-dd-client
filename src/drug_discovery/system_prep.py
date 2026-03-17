@@ -259,6 +259,31 @@ class SystemPrep(Execution, QuoteMixin, SyncExecutableMixin):
         if result.cost is not None:
             self._cost = result.cost
 
+        execution_id = result._responses[0]["id"]
+        self._id = execution_id
+        client = self.client
+
+        try:
+            response = client.results.get_prepared_systems(
+                compute_job_id=execution_id,
+            )
+            records = response.get("data", [])
+            if not records:
+                raise ValueError("No prepared-system result found for this execution.")
+            prepared = PreparedSystem._from_record(records[0])
+            self.binding_xml_path = prepared.binding_xml_path
+            self.solvation_xml_path = prepared.solvation_xml_path
+            self.system_pdb_path = prepared.system_pdb_path
+            return prepared
+        except Exception:
+            import warnings
+
+            warnings.warn(
+                "Could not load prepared system from the data platform; "
+                "using function response instead. Results may be delayed.",
+                stacklevel=2,
+            )
+
         if not result.function_outputs:
             raise ValueError(
                 "System preparation did not return output paths. "

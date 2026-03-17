@@ -224,13 +224,34 @@ class Docking(Execution, QuoteMixin, SyncExecutableMixin, AsyncExecutableMixin):
 
         result = FunctionResult(all_responses)
 
+        self._id = result.id
+        self._cost = result.cost
+
+        execution_ids = [r["id"] for r in result._responses if r.get("id") is not None]
+        try:
+            all_poses: list[Ligand] = []
+            for execution_id in execution_ids:
+                poses_ls = LigandSet.from_docking_result(
+                    execution_id=execution_id,
+                    client=client,
+                )
+                all_poses.extend(poses_ls.ligands)
+            if all_poses:
+                return LigandSet(ligands=all_poses)
+        except Exception:
+            pass
+        import warnings
+
+        warnings.warn(
+            "Could not load docking poses from the data platform; "
+            "using function response instead. Results may be delayed.",
+            stacklevel=2,
+        )
+
         poses = _make_poses_from_dock_results(
             result=result,
             client=client,
         )
-
-        self._id = result.id
-        self._cost = result.cost
 
         return poses
 

@@ -496,6 +496,7 @@ class TestSystemPrepRunParsesOutputs:
         mock_result = FunctionResult(
             [
                 {
+                    "id": "test-exec-id",
                     "status": "Completed",
                     "functionOutputs": mock_outputs,
                     "quotationResult": {"successfulQuotations": [{"priceTotal": 1.5}]},
@@ -503,7 +504,13 @@ class TestSystemPrepRunParsesOutputs:
             ]
         )
 
-        with patch("deeporigin.functions.sysprep.for_abfe", return_value=mock_result):
+        with (
+            patch("deeporigin.functions.sysprep.for_abfe", return_value=mock_result),
+            patch(
+                "deeporigin.platform.results.Results.get_prepared_systems",
+                return_value={"data": []},
+            ),
+        ):
             sp = SystemPrep(protein=protein, ligand=ligand)
             out = sp.run()
 
@@ -530,13 +537,20 @@ class TestSystemPrepRunParsesOutputs:
         mock_result = FunctionResult(
             [
                 {
+                    "id": "test-exec-id-rbfe",
                     "status": "Completed",
                     "functionOutputs": mock_outputs,
                     "quotationResult": {"successfulQuotations": [{"priceTotal": 2.0}]},
                 }
             ]
         )
-        with patch("deeporigin.functions.sysprep.for_rbfe", return_value=mock_result):
+        with (
+            patch("deeporigin.functions.sysprep.for_rbfe", return_value=mock_result),
+            patch(
+                "deeporigin.platform.results.Results.get_prepared_systems",
+                return_value={"data": []},
+            ),
+        ):
             sp = SystemPrep(protein=protein, ligand1=ligand, ligand2=lig2)
             out = sp.run()
         assert isinstance(out, PreparedSystem)
@@ -558,13 +572,20 @@ class TestSystemPrepRunParsesOutputs:
         mock_result = FunctionResult(
             [
                 {
+                    "id": "test-exec-id-fresh",
                     "status": "Completed",
                     "functionOutputs": mock_outputs,
                     "quotationResult": {"successfulQuotations": [{"priceTotal": 0.5}]},
                 }
             ]
         )
-        with patch("deeporigin.functions.sysprep.for_abfe", return_value=mock_result):
+        with (
+            patch("deeporigin.functions.sysprep.for_abfe", return_value=mock_result),
+            patch(
+                "deeporigin.platform.results.Results.get_prepared_systems",
+                return_value={"data": []},
+            ),
+        ):
             sp = SystemPrep(protein=protein, ligand=ligand)
             out = sp.run()
         assert isinstance(out, PreparedSystem)
