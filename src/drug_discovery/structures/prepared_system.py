@@ -56,6 +56,46 @@ class PreparedSystem:
         return "PreparedSystem(" + ", ".join(parts) + ")"
 
     @classmethod
+    def _from_record(cls, record: dict) -> Self:
+        """Build a single PreparedSystem from a result-explorer record.
+
+        Args:
+            record: A single record dict from results.get or get_prepared_systems,
+                with keys ``id``, ``data``, ``compute_job_id``.
+
+        Returns:
+            A PreparedSystem with paths and metadata from the record.
+
+        Raises:
+            ValueError: If the record does not contain required path fields.
+        """
+        data = record.get("data") or {}
+        binding = data.get("binding_xml_file_path")
+        solvation = data.get("solvation_xml_ligand1_file_path") or data.get(
+            "solvation_xml_ligand2_file_path"
+        )
+        system_pdb = data.get("system_pdb_file_path")
+        if not (binding and solvation and system_pdb):
+            raise ValueError(
+                "Record missing required paths (binding_xml_file_path, "
+                "solvation_xml_*_file_path, system_pdb_file_path)."
+            )
+        return cls(
+            id=record.get("id"),
+            binding_xml_path=binding,
+            solvation_xml_path=solvation,
+            system_pdb_path=system_pdb,
+            protein_id=data.get("protein_id"),
+            ligand1_id=data.get("ligand1_id"),
+            ligand2_id=data.get("ligand2_id"),
+            padding=data.get("padding"),
+            add_H_atoms=data.get("add_H_atoms"),
+            retain_waters=data.get("retain_waters"),
+            protonate_protein=data.get("protonate_protein"),
+            compute_job_id=record.get("compute_job_id"),
+        )
+
+    @classmethod
     def from_result(
         cls,
         *,
@@ -117,28 +157,8 @@ class PreparedSystem:
 
         out: list[PreparedSystem] = []
         for record in records:
-            data = record.get("data") or {}
-            binding = data.get("binding_xml_file_path")
-            solvation = data.get("solvation_xml_ligand1_file_path") or data.get(
-                "solvation_xml_ligand2_file_path"
-            )
-            system_pdb = data.get("system_pdb_file_path")
-            if not (binding and solvation and system_pdb):
+            try:
+                out.append(cls._from_record(record))
+            except ValueError:
                 continue
-            out.append(
-                cls(
-                    id=record.get("id"),
-                    binding_xml_path=binding,
-                    solvation_xml_path=solvation,
-                    system_pdb_path=system_pdb,
-                    protein_id=data.get("protein_id"),
-                    ligand1_id=data.get("ligand1_id"),
-                    ligand2_id=data.get("ligand2_id"),
-                    padding=data.get("padding"),
-                    add_H_atoms=data.get("add_H_atoms"),
-                    retain_waters=data.get("retain_waters"),
-                    protonate_protein=data.get("protonate_protein"),
-                    compute_job_id=record.get("compute_job_id"),
-                )
-            )
         return out
