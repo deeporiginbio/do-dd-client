@@ -205,3 +205,63 @@ def test_client_tag_none_explicitly_passed():
 
     # Restore original method
     client.post_json = original_post_json
+
+
+def test_client_app_session_same_params_same_instance():
+    """Same (base_url, token, org_key, tag, _app, _session) yields same cached instance."""
+    DeepOriginClient.close_all()
+
+    client1 = DeepOriginClient(env="local")
+    session1 = client1._session
+    assert client1._app == "python-client"
+
+    client2 = DeepOriginClient(env="local")
+    assert client2 is client1
+    assert client2._session == session1
+
+
+def test_client_app_session_different_app_different_instances():
+    """Different _app yields different cached instances."""
+    DeepOriginClient.close_all()
+
+    client1 = DeepOriginClient(env="local", _app="python-client")
+    client2 = DeepOriginClient(env="local", _app="other-app")
+
+    assert client2 is not client1
+    assert client1._app == "python-client"
+    assert client2._app == "other-app"
+
+
+def test_client_app_session_different_session_different_instances():
+    """Different _session yields different cached instances."""
+    DeepOriginClient.close_all()
+
+    client1 = DeepOriginClient(env="local", _session="session-a")
+    client2 = DeepOriginClient(env="local", _session="session-b")
+
+    assert client2 is not client1
+    assert client1._session == "session-a"
+    assert client2._session == "session-b"
+
+
+def test_client_close_detaches_from_registry():
+    """close() removes the instance from the singleton registry."""
+    DeepOriginClient.close_all()
+
+    client = DeepOriginClient(env="local")
+    assert len(DeepOriginClient._instances) == 1
+
+    client.close()
+    assert len(DeepOriginClient._instances) == 0
+
+
+def test_client_close_all_clears_registry():
+    """close_all() closes all cached instances and clears the registry."""
+    DeepOriginClient.close_all()
+
+    DeepOriginClient(env="local", _app="app-a")
+    DeepOriginClient(env="local", _app="app-b")
+    assert len(DeepOriginClient._instances) == 2
+
+    DeepOriginClient.close_all()
+    assert len(DeepOriginClient._instances) == 0

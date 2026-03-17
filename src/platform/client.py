@@ -176,8 +176,9 @@ class DeepOriginClient:
     """
 
     # class-level registry for singleton instances
+    # Key: (base_url, token, org_key, tag, _app, _session); org_key/tag/_session may be None
     _instances: Dict[
-        Tuple[str, str, str, str | None, str, str | None], "DeepOriginClient"
+        Tuple[str, str, str | None, str | None, str, str | None], "DeepOriginClient"
     ] = {}
 
     def __new__(
@@ -201,7 +202,8 @@ class DeepOriginClient:
 
         This method implements singleton-like behavior by checking the cache
         before creating a new instance. If a cached instance exists with the
-        same (base_url, token, org_key, tag), it returns that instance instead.
+        same (base_url, token, org_key, tag, _app, _session), it returns that
+        instance instead.
 
         Args:
             token: Authentication token.
@@ -215,6 +217,10 @@ class DeepOriginClient:
             max_retry_delay: Maximum delay in seconds between retry attempts.
             record: Whether to record function run responses.
             tag: Optional tag to use for all function runs.
+            _app: Internal app identifier; part of cache key. Defaults to
+                "python-client". Used in tool/function execution payloads.
+            _session: Internal session identifier; part of cache key. When None,
+                a UUID v4 is generated on first init. Used in tool/function payloads.
 
         Returns:
             A DeepOriginClient instance (cached if available, new otherwise).
@@ -252,8 +258,9 @@ class DeepOriginClient:
         if key in cls._instances:
             return cls._instances[key]
 
-        # Create new instance
+        # Create new instance and store cache key for O(1) registry detachment
         instance = super().__new__(cls)
+        instance._cache_key = key  # type: ignore[attr-defined]
         cls._instances[key] = instance
         return instance
 
@@ -307,6 +314,10 @@ class DeepOriginClient:
             tag: Optional tag to use for all function runs. If set, this tag will be
                 automatically included in all function execution requests unless explicitly
                 overridden in the function call. Defaults to None.
+            _app: Internal app identifier; part of cache key. Defaults to
+                "python-client". Sent in tool/function execution payloads.
+            _session: Internal session identifier; part of cache key. When None, a
+                UUID v4 is generated. Sent in tool/function execution payloads.
         """
 
         # Check if instance is already initialized (returned from cache)
@@ -499,6 +510,10 @@ class DeepOriginClient:
             tag: Optional tag to use for all function runs. If set, this tag will be
                 automatically included in all function execution requests unless explicitly
                 overridden in the function call. Defaults to None.
+            _app: Internal app identifier; part of cache key. Defaults to
+                "python-client".
+            _session: Internal session identifier; part of cache key. When None, a
+                UUID v4 is generated on first init.
 
         Returns:
             A cached DeepOriginClient instance.
@@ -840,14 +855,21 @@ class DeepOriginClient:
         """Remove this instance from the singleton registry.
 
         This is called automatically when the client is closed to ensure
-        the registry doesn't hold references to closed clients.
+        the registry doesn't hold references to closed clients. Uses the
+        stored cache key for O(1) removal.
         """
-        # Find the key that points to this instance (key uses _session param at
-        # creation time, which may be None for default, not self._session)
-        for key, inst in list(self._instances.items()):
-            if inst is self:
-                self._instances.pop(key, None)
-                break
+        key = getattr(self, "_cache_key", None)
+        if key is not None and self._instances.get(key) is self:
+            self._instances.pop(key, None)
+        else:
+            # Fallback: remove all keys that point to this instance
+            for k, inst in list(self._instances.items()):
+                if inst is self:
+                    self._instances.pop(k, None)
+        try:
+            del self._cache_key  # type: ignore[attr-defined]
+        except AttributeError:
+            pass
 
     # -------- Low-level helpers --------
     def _should_retry(
