@@ -376,11 +376,6 @@ class Docking(Execution, QuoteMixin, SyncExecutableMixin, AsyncExecutableMixin):
 
         pocket_input = inputs.get("pocket", {})
         pocket_id = pocket_input.get("id") or inputs.get("pocket_id")
-        if pocket_id is None:
-            raise ValueError(
-                "Missing 'pocket_id' in execution userInputs; "
-                "this execution may have been created without an associated pocket."
-            )
 
         protein_input = inputs.get("protein", {})
         protein_id = protein_input.get("id")
@@ -408,15 +403,27 @@ class Docking(Execution, QuoteMixin, SyncExecutableMixin, AsyncExecutableMixin):
                 [lig["id"] for lig in ligands_input],
                 client=instance.client,
             )
-            fut_pocket = executor.submit(
-                Pocket.from_id,
-                pocket_id,
-                client=instance.client,
-            )
+            if pocket_id is not None:
+                fut_pocket = executor.submit(
+                    Pocket.from_id,
+                    pocket_id,
+                    client=instance.client,
+                )
+            else:
+                fut_pocket = None
 
         instance._protein = fut_protein.result()
         instance._ligands = fut_ligands.result()
-        instance._pocket = fut_pocket.result()
+        if fut_pocket is not None:
+            instance._pocket = fut_pocket.result()
+        else:
+            instance._pocket = Pocket(
+                id=None,
+                pocket_center=pocket_input.get("center"),
+                box_size_x=pocket_input.get("box_size_x"),
+                box_size_y=pocket_input.get("box_size_y"),
+                box_size_z=pocket_input.get("box_size_z"),
+            )
 
         return instance
 
