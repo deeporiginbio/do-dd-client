@@ -1,0 +1,81 @@
+{
+    "app": "python-client",
+    "approveAmount": 0,
+    "cluster": {
+        "accountResource": null,
+        "createdAt": "2024-06-11T16:53:45.922Z",
+        "enabled": true,
+        "hostname": "https://cluster.us-west-2.dev.deeporigin.io",
+        "id": "d638d3cd-833f-476b-87fe-ca6d76e66049",
+        "name": "DeepOrigin Cluster - us-west-2",
+        "orgKey": null,
+        "status": "healthy",
+        "updatedAt": "2025-03-27T20:23:30.842Z"
+    },
+    "createdAt": "2026-03-18T18:38:25.990Z",
+    "createdBy": "6b96d8f8-0f55-474c-a86c-e09651ba4b20",
+    "executionId": "8c2b954e-1b74-4f96-90bd-2dc0ca14ecdc",
+    "metadata": {
+        "protein_file": "brd.pdb",
+        "protein_hash": "c32244fd9a1fb1675f69c1d28986ef55867ffd6733b28946d62409cc3f55523f"
+    },
+    "orgKey": "deeporigin",
+    "quotationResult": {
+        "anyFailed": false,
+        "failedQuotations": [],
+        "successfulQuotations": [
+            {
+                "itemCode": "DO_DOCK",
+                "orgId": "deeporigin",
+                "priceEach": 0.2,
+                "priceTotal": 0.2,
+                "pricingRecordType": "regular",
+                "pricingRecords": [
+                    {
+                        "itemKey": "DO_DOCK",
+                        "itemName": "Docking",
+                        "priceEach": 0.2,
+                        "qty": 1,
+                        "tierQtyFrom": 0,
+                        "tierQtyTo": 0,
+                        "totalPrice": 0.2
+                    }
+                ],
+                "qty": 1,
+                "status": "OK"
+            }
+        ]
+    },
+    "resourceId": "evwe2t907g06ho2jzge1e",
+    "session": "309e2b40-e9b5-477e-8d26-3025fa52a1b6",
+    "status": "Quoted",
+    "tool": {
+        "key": "deeporigin.bulk-docking",
+        "version": "0.7.7"
+    },
+    "updatedAt": "2026-03-18T18:38:26.108Z",
+    "userInputs": {
+        "ligands": [
+            {
+                "id": "brd-2",
+                "smiles": "CN(C)C(=O)c1cccc(-c2cn(C)c(=O)c3[nH]ccc23)c1"
+            }
+        ],
+        "pocket": {
+            "box_size_x": 0,
+            "box_size_y": 0,
+            "box_size_z": 0,
+            "center": [
+                -13.146394729614258,
+                -5.712231636047363,
+                14.731620788574219
+            ],
+            "id": "pocket-test-id"
+        },
+        "protein": {
+            "file_path": "testing/brd.pdb",
+            "id": "brd"
+        }
+    },
+    "userOutputs": {}
+}

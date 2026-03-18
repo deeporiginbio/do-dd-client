@@ -5,7 +5,7 @@
     "userInputs": {
         "inputs": {
             "protein": {
-                "id": "08QCAKE4DYX3Q",
+                "id": "brd",
                 "file_path": "tests/brd.pdb"
             },
             "ligand1": {
@@ -25,7 +25,7 @@
             "binding_xml_file_path": "tool-runs/07e2f29d-5aae-40bb-bd83-5fe16bf76ddc/bsm_system.xml",
             "ligand1_id": "08DK80B7DYTXH",
             "padding": 1,
-            "protein_id": "08QCAKE4DYX3Q",
+            "protein_id": "brd",
             "protonate_protein": true,
             "retain_waters": false,
             "solvation_xml_ligand1_file_path": "tool-runs/07e2f29d-5aae-40bb-bd83-5fe16bf76ddc/solvation_ligand1.xml",

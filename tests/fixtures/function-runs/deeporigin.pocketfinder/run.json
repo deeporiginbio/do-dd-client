@@ -249,7 +249,7 @@
                 "polar_SASA": 309.8629,
                 "polar_apolar_SASA_ratio": 0.3382689,
                 "polarity": 10,
-                "protein_id": "08QCAKE4DYX3Q",
+                "protein_id": "brd",
                 "total_SASA": 1225.8883,
                 "volume": 300
             }
@@ -291,8 +291,8 @@
             "pocket_count": 1,
             "pocket_min_size": 30,
             "protein": {
-                "file_path": "tests/brd.pdb",
-                "id": "08QCAKE4DYX3Q"
+                "file_path": "testing/brd.pdb",
+                "id": "brd"
             }
         }
     }

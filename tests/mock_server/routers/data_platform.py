@@ -5,20 +5,13 @@ from __future__ import annotations
 from collections.abc import Callable
 import copy
 from datetime import datetime, timezone
-import hashlib
 from typing import Any
 import uuid
 
 from fastapi import APIRouter, Request
 from rdkit import Chem
 
-# Stable mock protein: matches ``tests/fixtures/files/testing/brd.pdb`` on download.
-MOCK_CANONICAL_PROTEIN_ID = (
-    "08"
-    + hashlib.sha256(b"deeporigin-mock-server-canonical-protein-brd")
-    .hexdigest()[:11]
-    .upper()
-)
+MOCK_CANONICAL_PROTEIN_ID = "brd"
 MOCK_CANONICAL_PROTEIN_FILE_PATH = "testing/brd.pdb"
 
 
@@ -151,6 +144,10 @@ def _canonicalize_smiles(smiles: str) -> str:
 def _make_ligand_record(smiles: str, extra: dict[str, Any]) -> dict[str, Any]:
     """Build a new ligand record, generating a fresh ID and timestamp.
 
+    Uses ``name`` from *extra* as the record ID when provided, otherwise
+    falls back to a random UUID-based ID.  This makes mock IDs
+    deterministic and easy to assert against in tests.
+
     Args:
         smiles: The SMILES string for the ligand.
         extra: Additional fields to merge into the record (from ``set`` or
@@ -161,7 +158,8 @@ def _make_ligand_record(smiles: str, extra: dict[str, Any]) -> dict[str, Any]:
     """
     canonical = _canonicalize_smiles(smiles)
     now = datetime.now(timezone.utc)
-    ligand_id = "08" + str(uuid.uuid4()).replace("-", "").upper()[:11]
+    name = extra.get("name")
+    ligand_id = name if name else "08" + str(uuid.uuid4()).replace("-", "").upper()[:11]
     record: dict[str, Any] = {
         "id": ligand_id,
         "version": 1,
@@ -366,6 +364,64 @@ def create_data_platform_router(
         filter_dict = body.get("filter", {})
         limit = body.get("limit", 100)
         select = body.get("select")
+
+        props = filter_dict.get("props", [])
+
+        def _is_result_type(rtype: str) -> bool:
+            """Check if the search filters for a specific result_type."""
+            return any(
+                p.get("column") == "result_type" and p.get("value") == rtype
+                for p in props
+            )
+
+        if _is_result_type("pocket"):
+            run = load_fixture("function-runs/deeporigin.pocketfinder/run")
+            manifest = run["function"]["manifestBody"]
+            pockets = run["functionOutputs"]["pockets"]
+            page = [
+                {
+                    "id": run["id"],
+                    "tool_key": manifest["key"],
+                    "tool_version": run["function"]["version"],
+                    "result_type": "pocket",
+                    "data": pocket,
+                    "compute_job_id": run["id"],
+                }
+                for pocket in pockets
+            ]
+            page = _apply_eq_filters(page, filter_dict)[:limit]
+            if select:
+                page = [{k: v for k, v in r.items() if k in select} for r in page]
+            return {"data": page, "meta": {"count": len(page)}}
+
+        if _is_result_type("pose"):
+            try:
+                run = load_fixture("function-runs/deeporigin.docking/run")
+            except FileNotFoundError:
+                return {"data": [], "meta": {"count": 0}}
+            manifest = run.get("function", {}).get("manifestBody", {})
+            poses = run.get("functionOutputs", {}).get("poses", [])
+            page = [
+                {
+                    "id": run["id"],
+                    "tool_key": manifest.get("key", "deeporigin.docking"),
+                    "tool_version": manifest.get("version", "0.0.0"),
+                    "result_type": "pose",
+                    "data": pose,
+                    "compute_job_id": run["id"],
+                }
+                for pose in poses
+            ]
+            # Strip compute_job_id from filters — the fixture has a
+            # hard-coded ID that won't match dynamically-generated
+            # execution IDs, and we only have one docking fixture.
+            pose_filter = {
+                k: v for k, v in filter_dict.items() if k != "compute_job_id"
+            }
+            page = _apply_eq_filters(page, pose_filter)[:limit]
+            if select:
+                page = [{k: v for k, v in r.items() if k in select} for r in page]
+            return {"data": page, "meta": {"count": len(page)}}
 
         filtered = _apply_eq_filters(results, filter_dict)
         page = filtered[:limit]

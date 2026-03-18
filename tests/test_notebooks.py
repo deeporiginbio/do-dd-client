@@ -50,3 +50,8 @@ def _execute_notebook(notebook_path: Path) -> None:
 def test_pocketfinder_notebook():
     """Execute the pocketfinder notebook end-to-end."""
     _execute_notebook(NOTEBOOKS_DIR / "pocketfinder.ipynb")
+
+
+def test_docking_notebook():
+    """Execute the docking notebook end-to-end."""
+    _execute_notebook(NOTEBOOKS_DIR / "docking-single-ligand.ipynb")

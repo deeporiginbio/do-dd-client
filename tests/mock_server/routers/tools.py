@@ -434,6 +434,8 @@ def create_tools_router(
         if function_key == "deeporigin.pocketfinder":
             fixture_name = "quote" if body.get("approveAmount") == 0 else "run"
             response = load_fixture(f"function-runs/{function_key}/{fixture_name}")
+        elif function_key == "deeporigin.docking":
+            response = load_fixture(f"function-runs/{function_key}/run")
         elif function_key == "deeporigin.mol-props-protonation":
             inputs = body.get("inputs", body.get("params", {}))
             smiles = inputs.get("smiles", "")
@@ -744,6 +746,64 @@ def create_tools_router(
 
         return _normalize_execution(execution.copy())
 
+    def _create_bulk_docking_quote(
+        *,
+        org_key: str,
+        tool_key: str,
+        tool_version: str,
+        body: dict[str, Any],
+    ) -> dict[str, Any]:
+        """Build a Quoted execution DTO for bulk-docking from the captured fixture.
+
+        Loads the reference quote fixture (1 ligand) and scales the
+        quotation quantities and totals by the number of ligands in the
+        request payload.
+
+        Args:
+            org_key: Organisation key from the URL path.
+            tool_key: Tool key (``deeporigin.bulk-docking``).
+            tool_version: Tool version from the URL path.
+            body: Raw POST body.
+
+        Returns:
+            A complete execution DTO with ``status="Quoted"`` and a
+            correctly-scaled ``quotationResult``.
+        """
+        fixture = copy.deepcopy(load_fixture("tool-runs/deeporigin.bulk-docking/quote"))
+
+        inputs = body.get("inputs", {})
+        num_ligands = len(inputs.get("ligands", []))
+        if num_ligands < 1:
+            num_ligands = 1
+
+        now = datetime.now(timezone.utc)
+        timestamp = now.strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z"
+
+        fixture["executionId"] = str(uuid.uuid4())
+        fixture["createdAt"] = timestamp
+        fixture["updatedAt"] = timestamp
+        fixture["resourceId"] = _generate_resource_id()
+        fixture["orgKey"] = org_key
+        fixture["userInputs"] = inputs
+        fixture["userOutputs"] = body.get("outputs", {})
+        fixture["metadata"] = body.get("metadata", {})
+        fixture["approveAmount"] = 0
+        fixture["tool"] = {"key": tool_key, "version": tool_version}
+
+        quotation = fixture.get("quotationResult", {})
+        for sq in quotation.get("successfulQuotations", []):
+            price_each = sq.get("priceEach", 0)
+            sq["qty"] = num_ligands
+            sq["priceTotal"] = round(price_each * num_ligands, 6)
+            for pr in sq.get("pricingRecords", []):
+                pr["qty"] = num_ligands
+                pr["totalPrice"] = round(pr.get("priceEach", 0) * num_ligands, 6)
+
+        for field in ("startedAt", "completedAt"):
+            fixture.setdefault(field, None)
+
+        return fixture
+
     @router.post("/tools/{org_key}/tools/{tool_key}/{tool_version}/executions")
     async def run_tool(
         org_key: str, tool_key: str, tool_version: str, request: Request
@@ -751,12 +811,24 @@ def create_tools_router(
         """Run a tool."""
         body = await request.json()
 
-        execution = _create_execution_dto(
-            tool_key=tool_key,
-            tool_version=tool_version,
-            org_key=org_key,
-            body=body,
-        )
+        approve_amount = body.get("approveAmount", 0)
+        if approve_amount is None:
+            approve_amount = 0
+
+        if tool_key == "deeporigin.bulk-docking" and approve_amount == 0:
+            execution = _create_bulk_docking_quote(
+                org_key=org_key,
+                tool_key=tool_key,
+                tool_version=tool_version,
+                body=body,
+            )
+        else:
+            execution = _create_execution_dto(
+                tool_key=tool_key,
+                tool_version=tool_version,
+                org_key=org_key,
+                body=body,
+            )
 
         execution_id = execution["executionId"]
         executions[execution_id] = execution

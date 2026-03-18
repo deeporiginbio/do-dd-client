@@ -60,6 +60,23 @@ def test_docking_quote_cannot_be_called_twice_lv0(
         docking.quote()
 
 
+def test_docking_quote_lv1(
+    registered_protein,
+    registered_pocket,
+    registered_ligand,
+):
+    """Docking quote() raises ValueError if called after a quotation already exists."""
+    docking = Docking(
+        protein=registered_protein,
+        pocket=registered_pocket,
+        ligand=registered_ligand,
+    )
+    docking.quote()
+
+    assert docking.estimate is not None, "Estimate should be set"
+    assert docking.cost is None, "Cost should be None"
+
+
 def test_docking_run_lv2(
     client,
     registered_protein,

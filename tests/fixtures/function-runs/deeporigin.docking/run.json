@@ -1,0 +1,343 @@
+{
+    "app": "python-client",
+    "cluster": {
+        "accountResource": null,
+        "createdAt": "2024-06-11T16:53:45.922Z",
+        "enabled": true,
+        "hostname": "https://cluster.us-west-2.dev.deeporigin.io",
+        "id": "d638d3cd-833f-476b-87fe-ca6d76e66049",
+        "name": "DeepOrigin Cluster - us-west-2",
+        "orgKey": null,
+        "status": "healthy",
+        "updatedAt": "2025-03-27T20:23:30.842Z"
+    },
+    "createdAt": "2026-03-18T18:55:00.175Z",
+    "createdBy": "6b96d8f8-0f55-474c-a86c-e09651ba4b20",
+    "function": {
+        "billingCode": "DO_DOCK",
+        "createdAt": "2026-03-13T20:49:53.501Z",
+        "enabled": true,
+        "functionManifest": "cf787d83-a8df-4b52-8906-52e25bbd119b",
+        "id": "9f696835-ffb6-40d1-be07-3cf2aa4b56da",
+        "resourceId": "function-g5u74c14vmpnip69uvgd6",
+        "updatedAt": "2026-03-13T20:49:53.501Z",
+        "version": "0.7.1"
+    },
+    "functionOutputs": {
+        "poses": [
+            {
+                "binding_energy": -8.015328,
+                "box_size_x": 20,
+                "box_size_y": 20,
+                "box_size_z": 20,
+                "file_path": "docking/brd-2/732277f7-2981-4bed-94a0-c0629a76f575.sdf",
+                "ligand_id": "brd-2",
+                "pocket_center": [
+                    -13.146394729614258,
+                    -5.712231636047363,
+                    14.731620788574219
+                ],
+                "pocket_id": "pocket-test-id",
+                "pose_score": 0.90467024,
+                "protein_id": "brd"
+            },
+            {
+                "binding_energy": -8.961081,
+                "box_size_x": 20,
+                "box_size_y": 20,
+                "box_size_z": 20,
+                "file_path": "docking/brd-2/8e07bc10-87ff-4854-8ee8-1db51e1f6e86.sdf",
+                "ligand_id": "brd-2",
+                "pocket_center": [
+                    -13.146394729614258,
+                    -5.712231636047363,
+                    14.731620788574219
+                ],
+                "pocket_id": "pocket-test-id",
+                "pose_score": 0.89840794,
+                "protein_id": "brd"
+            },
+            {
+                "binding_energy": -7.6925106,
+                "box_size_x": 20,
+                "box_size_y": 20,
+                "box_size_z": 20,
+                "file_path": "docking/brd-2/4c2877f5-fab5-4b3b-889f-c98091a0e236.sdf",
+                "ligand_id": "brd-2",
+                "pocket_center": [
+                    -13.146394729614258,
+                    -5.712231636047363,
+                    14.731620788574219
+                ],
+                "pocket_id": "pocket-test-id",
+                "pose_score": 0.8527811,
+                "protein_id": "brd"
+            },
+            {
+                "binding_energy": -9.012382,
+                "box_size_x": 20,
+                "box_size_y": 20,
+                "box_size_z": 20,
+                "file_path": "docking/brd-2/3747fa13-e216-4393-803b-0387e772dc8f.sdf",
+                "ligand_id": "brd-2",
+                "pocket_center": [
+                    -13.146394729614258,
+                    -5.712231636047363,
+                    14.731620788574219
+                ],
+                "pocket_id": "pocket-test-id",
+                "pose_score": 0.807688,
+                "protein_id": "brd"
+            },
+            {
+                "binding_energy": -7.4419374,
+                "box_size_x": 20,
+                "box_size_y": 20,
+                "box_size_z": 20,
+                "file_path": "docking/brd-2/856f45c2-d927-4dfc-ae65-5e95a70102cd.sdf",
+                "ligand_id": "brd-2",
+                "pocket_center": [
+                    -13.146394729614258,
+                    -5.712231636047363,
+                    14.731620788574219
+                ],
+                "pocket_id": "pocket-test-id",
+                "pose_score": 0.7968311,
+                "protein_id": "brd"
+            },
+            {
+                "binding_energy": -8.609729,
+                "box_size_x": 20,
+                "box_size_y": 20,
+                "box_size_z": 20,
+                "file_path": "docking/brd-2/9d72d378-ad13-40c9-925d-e00e0f9ce09d.sdf",
+                "ligand_id": "brd-2",
+                "pocket_center": [
+                    -13.146394729614258,
+                    -5.712231636047363,
+                    14.731620788574219
+                ],
+                "pocket_id": "pocket-test-id",
+                "pose_score": 0.7579488,
+                "protein_id": "brd"
+            },
+            {
+                "binding_energy": -8.411566,
+                "box_size_x": 20,
+                "box_size_y": 20,
+                "box_size_z": 20,
+                "file_path": "docking/brd-2/cb1b1de5-5400-45be-82f9-424d04c47d18.sdf",
+                "ligand_id": "brd-2",
+                "pocket_center": [
+                    -13.146394729614258,
+                    -5.712231636047363,
+                    14.731620788574219
+                ],
+                "pocket_id": "pocket-test-id",
+                "pose_score": 0.70994043,
+                "protein_id": "brd"
+            },
+            {
+                "binding_energy": -7.6978073,
+                "box_size_x": 20,
+                "box_size_y": 20,
+                "box_size_z": 20,
+                "file_path": "docking/brd-2/b5d1c56d-e418-4930-ba54-b3dcbd35ac52.sdf",
+                "ligand_id": "brd-2",
+                "pocket_center": [
+                    -13.146394729614258,
+                    -5.712231636047363,
+                    14.731620788574219
+                ],
+                "pocket_id": "pocket-test-id",
+                "pose_score": 0.624421,
+                "protein_id": "brd"
+            },
+            {
+                "binding_energy": -7.191995,
+                "box_size_x": 20,
+                "box_size_y": 20,
+                "box_size_z": 20,
+                "file_path": "docking/brd-2/15b068ad-2409-456d-9a50-310501f8af93.sdf",
+                "ligand_id": "brd-2",
+                "pocket_center": [
+                    -13.146394729614258,
+                    -5.712231636047363,
+                    14.731620788574219
+                ],
+                "pocket_id": "pocket-test-id",
+                "pose_score": 0.59442407,
+                "protein_id": "brd"
+            },
+            {
+                "binding_energy": -6.837277,
+                "box_size_x": 20,
+                "box_size_y": 20,
+                "box_size_z": 20,
+                "file_path": "docking/brd-2/b6378671-dc11-4af5-af61-7ee0c87a9849.sdf",
+                "ligand_id": "brd-2",
+                "pocket_center": [
+                    -13.146394729614258,
+                    -5.712231636047363,
+                    14.731620788574219
+                ],
+                "pocket_id": "pocket-test-id",
+                "pose_score": 0.5858487,
+                "protein_id": "brd"
+            },
+            {
+                "binding_energy": -6.739297,
+                "box_size_x": 20,
+                "box_size_y": 20,
+                "box_size_z": 20,
+                "file_path": "docking/brd-2/aacd8d02-a938-43d5-9627-abd795a9fa6b.sdf",
+                "ligand_id": "brd-2",
+                "pocket_center": [
+                    -13.146394729614258,
+                    -5.712231636047363,
+                    14.731620788574219
+                ],
+                "pocket_id": "pocket-test-id",
+                "pose_score": 0.5732305,
+                "protein_id": "brd"
+            },
+            {
+                "binding_energy": -8.172841,
+                "box_size_x": 20,
+                "box_size_y": 20,
+                "box_size_z": 20,
+                "file_path": "docking/brd-2/30e60b4d-f003-40ed-822b-14572a503378.sdf",
+                "ligand_id": "brd-2",
+                "pocket_center": [
+                    -13.146394729614258,
+                    -5.712231636047363,
+                    14.731620788574219
+                ],
+                "pocket_id": "pocket-test-id",
+                "pose_score": 0.5443839,
+                "protein_id": "brd"
+            },
+            {
+                "binding_energy": -7.280019,
+                "box_size_x": 20,
+                "box_size_y": 20,
+                "box_size_z": 20,
+                "file_path": "docking/brd-2/654baf26-79a1-4f27-96f7-53f42983f791.sdf",
+                "ligand_id": "brd-2",
+                "pocket_center": [
+                    -13.146394729614258,
+                    -5.712231636047363,
+                    14.731620788574219
+                ],
+                "pocket_id": "pocket-test-id",
+                "pose_score": 0.5373161,
+                "protein_id": "brd"
+            },
+            {
+                "binding_energy": -8.083034,
+                "box_size_x": 20,
+                "box_size_y": 20,
+                "box_size_z": 20,
+                "file_path": "docking/brd-2/41a75564-901a-4685-b0cc-3de6b884f2ff.sdf",
+                "ligand_id": "brd-2",
+                "pocket_center": [
+                    -13.146394729614258,
+                    -5.712231636047363,
+                    14.731620788574219
+                ],
+                "pocket_id": "pocket-test-id",
+                "pose_score": 0.53597337,
+                "protein_id": "brd"
+            },
+            {
+                "binding_energy": -7.64499,
+                "box_size_x": 20,
+                "box_size_y": 20,
+                "box_size_z": 20,
+                "file_path": "docking/brd-2/b110fa65-4735-4e9e-8dcf-98459348fa67.sdf",
+                "ligand_id": "brd-2",
+                "pocket_center": [
+                    -13.146394729614258,
+                    -5.712231636047363,
+                    14.731620788574219
+                ],
+                "pocket_id": "pocket-test-id",
+                "pose_score": 0.5349652,
+                "protein_id": "brd"
+            },
+            {
+                "binding_energy": -8.5000725,
+                "box_size_x": 20,
+                "box_size_y": 20,
+                "box_size_z": 20,
+                "file_path": "docking/brd-2/ef091970-fd5c-47f2-b05c-58be5cc46130.sdf",
+                "ligand_id": "brd-2",
+                "pocket_center": [
+                    -13.146394729614258,
+                    -5.712231636047363,
+                    14.731620788574219
+                ],
+                "pocket_id": "pocket-test-id",
+                "pose_score": 0.5136283,
+                "protein_id": "brd"
+            }
+        ]
+    },
+    "id": "9d550e2c-77b0-4394-a14d-bebfe8fb05bc",
+    "orgKey": "deeporigin",
+    "quotationResult": {
+        "anyFailed": false,
+        "failedQuotations": [],
+        "successfulQuotations": [
+            {
+                "itemCode": "DO_DOCK",
+                "orgId": "deeporigin",
+                "priceEach": 0.2,
+                "priceTotal": 0.2,
+                "pricingRecordType": "regular",
+                "pricingRecords": [
+                    {
+                        "itemKey": "DO_DOCK",
+                        "itemName": "Docking",
+                        "priceEach": 0.2,
+                        "qty": 1,
+                        "tierQtyFrom": 0,
+                        "tierQtyTo": 0,
+                        "totalPrice": 0.2
+                    }
+                ],
+                "qty": 1,
+                "status": "OK"
+            }
+        ]
+    },
+    "session": "9bc415fc-639a-440d-ae7a-da58a6798cfd",
+    "status": "Completed",
+    "updatedAt": "2026-03-18T18:56:18.930Z",
+    "userInputs": {
+        "app": "python-client",
+        "clusterId": "d638d3cd-833f-476b-87fe-ca6d76e66049",
+        "inputs": {
+            "ligand": {
+                "id": "brd-2",
+                "smiles": "CN(C)C(=O)c1cccc(-c2cn(C)c(=O)c3[nH]ccc23)c1"
+            },
+            "pocket": {
+                "box_size_x": 20,
+                "box_size_y": 20,
+                "box_size_z": 20,
+                "center": [
+                    -13.146394729614258,
+                    -5.712231636047363,
+                    14.731620788574219
+                ],
+                "id": "pocket-test-id"
+            },
+            "protein": {
+                "file_path": "testing/brd.pdb",
+                "id": "brd"
+            }
+        },
+        "session": "9bc415fc-639a-440d-ae7a-da58a6798cfd"
+    }
+}

@@ -159,7 +159,7 @@ class MockServer:
         seen_smiles: set[str] = set()
         now_ts = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z"
 
-        def _ingest_mol(mol: Chem.Mol) -> None:
+        def _ingest_mol(mol: Chem.Mol, *, ligand_id: str | None = None) -> None:
             """Convert an RDKit Mol into a ligand record and store it."""
             canonical = Chem.MolToSmiles(mol)
             if canonical in seen_smiles:
@@ -167,7 +167,8 @@ class MockServer:
             seen_smiles.add(canonical)
 
             name = mol.GetProp("_Name") if mol.HasProp("_Name") else "Unknown"
-            ligand_id = self._make_ligand_id(canonical)
+            if ligand_id is None:
+                ligand_id = self._make_ligand_id(canonical)
 
             self._ligands[ligand_id] = {
                 "id": ligand_id,
@@ -193,21 +194,22 @@ class MockServer:
                 "tpsa": Descriptors.TPSA(mol),
             }
 
-        def _ingest_sdf(path: Path) -> None:
+        def _ingest_sdf(path: Path, *, use_stem_as_id: bool = False) -> None:
             """Parse all molecules from an SDF file."""
             supplier = Chem.SDMolSupplier(str(path), removeHs=True)
             for mol in supplier:
                 if mol is None:
                     continue
                 try:
-                    _ingest_mol(mol)
+                    lid = path.stem if use_stem_as_id else None
+                    _ingest_mol(mol, ligand_id=lid)
                 except Exception:
                     continue
 
         brd_dir = Path(__file__).parent.parent.parent / "src" / "data" / "brd"
         if brd_dir.exists():
             for sdf_file in sorted(brd_dir.glob("*.sdf")):
-                _ingest_sdf(sdf_file)
+                _ingest_sdf(sdf_file, use_stem_as_id=True)
 
         for sdf_name in ("ligands-brd-all.sdf", "42-ligands.sdf", "brd-7.sdf"):
             sdf_path = self._fixtures_dir / sdf_name

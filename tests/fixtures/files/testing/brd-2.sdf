@@ -1,7 +1,3 @@
---d32d9058aa7ab0867545cce58ff281fb
-Content-Disposition: form-data; name="file"; filename="95b16b7c028d5914ba0aaa8c1a123765c453f39199ccb0f85c728a3497b7e5af.sdf"
-Content-Type: application/octet-stream
-
 cmpd 2 (methyl)
      RDKit          3D
 
@@ -90,9 +86,4 @@ M  END
 >  <r_exp_dg>  (1) 
 -9.59
 
->  <initial_smiles>  (1) 
-CN(C)C(=O)c1cccc(-c2cn(C)c(=O)c3[nH]ccc23)c1
-
 $$$$
-
---d32d9058aa7ab0867545cce58ff281fb--
