@@ -42,7 +42,7 @@ Write a throwaway script that runs the failing test operations against dev with 
 import os
 os.environ["DO_ENV"] = "dev"
 
-from deeporigin.drug_discovery import BRD_DATA_DIR, Protein
+from deeporigin.drug_discovery import BRD_DATA_DIR, PocketFinder, Protein
 from deeporigin.platform.client import DeepOriginClient
 
 client = DeepOriginClient.get(record=True, replace=True)
@@ -50,7 +50,8 @@ client = DeepOriginClient.get(record=True, replace=True)
 # Run the same operations as the failing test
 protein = Protein.from_file(BRD_DATA_DIR / "brd.pdb")
 protein.remove_water()
-pockets = protein.find_pockets(pocket_count=1, use_cache=False, client=client)
+pf = PocketFinder(protein, pocket_count=1, client=client)
+pockets = pf.run()
 ```
 
 Key points:

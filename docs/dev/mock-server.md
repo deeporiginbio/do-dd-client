@@ -20,6 +20,8 @@ The mock server is organized into routers, each handling a group of related endp
 
 All routers share in-memory stores (dicts/lists) that are created in `MockServer.__init__` and passed into the router factory functions. This lets data flow between routers — for example, a function run in the tools router can inject records that are later visible via the data-platform router's result-explorer search.
 
+**Proteins (local only):** `Protein.sync()` / `Protein.register()` are wired to a single canonical row (`MOCK_CANONICAL_PROTEIN_ID`, `tests/brd.pdb` fixture) so IDs stay stable under `--env local`. There is no separate test module for the mock server; that behavior is exercised indirectly by any local test that syncs a protein (e.g. the `registered_protein` fixture).
+
 ## Running the Mock Server
 
 ### Using in Tests
@@ -30,7 +32,9 @@ Pass `--env local` to pytest:
 uv run pytest --env local
 ```
 
-This starts a `MockServer` on port 4931 for the duration of the test session (see `conftest.py`). The `DeepOriginClient` is automatically configured to talk to `http://127.0.0.1:4931`.
+This starts a `MockServer` on port 4931 for the duration of the test session (see `conftest.py`). With `DO_ENV=local`, `DeepOriginClient` defaults to `http://127.0.0.1:4931` (same as the mock).
+
+**Full platform locally (gateway on 6010):** set `DO_BASE_URL=http://127.0.0.1:6010` (and keep or set `DO_ENV=local` if inferred from URL). See `LOCAL_ENDPOINT_GATEWAY` in `src/utils/constants.py`.
 
 The same tests can also run against a real environment:
 

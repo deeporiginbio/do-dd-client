@@ -11,7 +11,7 @@ This document describes how to [dock :octicons-link-external-16:](https://en.wik
 We assume that we have an initialized and configured a `Complex` object:
 
 ```{.python continuation}
-from deeporigin.drug_discovery import Complex, BRD_DATA_DIR
+from deeporigin.drug_discovery import Complex, BRD_DATA_DIR, PocketFinder
 
 sim = Complex.from_dir(BRD_DATA_DIR) 
 ```
@@ -23,8 +23,8 @@ We find pockets in the protein using:
 
 ```{.python continuation}
 sim.protein.remove_water()
-result = sim.protein.find_pockets(pocket_count=1)
-pockets = result.pockets
+pf = PocketFinder(sim.protein, pocket_count=1)
+pockets = pf.run()
 ```
 
 We can visualize the pocket using:

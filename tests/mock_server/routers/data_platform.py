@@ -3,12 +3,58 @@
 from __future__ import annotations
 
 from collections.abc import Callable
+import copy
 from datetime import datetime, timezone
+import hashlib
 from typing import Any
 import uuid
 
 from fastapi import APIRouter, Request
 from rdkit import Chem
+
+# Stable mock protein: matches ``tests/fixtures/files/testing/brd.pdb`` on download.
+MOCK_CANONICAL_PROTEIN_ID = (
+    "08"
+    + hashlib.sha256(b"deeporigin-mock-server-canonical-protein-brd")
+    .hexdigest()[:11]
+    .upper()
+)
+MOCK_CANONICAL_PROTEIN_FILE_PATH = "testing/brd.pdb"
+
+
+def _base_canonical_protein_record() -> dict[str, Any]:
+    """Return the default in-memory protein row for the mock canonical BRD structure."""
+    now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z"
+    return {
+        "id": MOCK_CANONICAL_PROTEIN_ID,
+        "version": 1,
+        "valid_from": now,
+        "valid_to": None,
+        "modified_by": "mock-server",
+        "deleted": False,
+        "project_id": None,
+        "subtable_name": "proteins",
+        "uniprot_accession": None,
+        "file_path": MOCK_CANONICAL_PROTEIN_FILE_PATH,
+        "gene_symbol": None,
+        "pdb_id": None,
+        "refseq_protein_id": None,
+        "ensembl_protein_id": None,
+        "alpha_fold_id": None,
+        "fasta_sequence": None,
+        "protein_name": "brd",
+        "kegg_gene_id": None,
+        "chembl_target_id": None,
+        "binding_db_target_id": None,
+        "drugbank_target_id": None,
+        "pfam_id": None,
+        "interpro_id": None,
+        "ec_number": None,
+        "ncbi_taxonomy_id": None,
+        "protein_family": None,
+        "ligandability_score": None,
+        "protein_length": None,
+    }
 
 
 def _apply_search_filters(
@@ -359,6 +405,19 @@ def create_data_platform_router(
         limit = body.get("limit", 100)
         offset = body.get("offset", 0)
         store = _entity_stores.get(entity, {})
+
+        # Protein.sync() searches by uploaded file_path (hash-based or custom).
+        # Always resolve to the canonical BRD fixture + stable ID.
+        if entity == "proteins" and "file_path" in filter_dict:
+            if MOCK_CANONICAL_PROTEIN_ID not in proteins:
+                proteins[MOCK_CANONICAL_PROTEIN_ID] = copy.deepcopy(
+                    _base_canonical_protein_record()
+                )
+            return {
+                "data": [copy.deepcopy(proteins[MOCK_CANONICAL_PROTEIN_ID])],
+                "count": 1,
+            }
+
         return _apply_search_filters(store, filter_dict, limit=limit, offset=offset)
 
     @router.post("/data-platform/{org_key}/projects/search")
@@ -409,53 +468,27 @@ def create_data_platform_router(
 
     @router.post("/data-platform/{org_key}/proteins")
     async def create_protein(org_key: str, request: Request) -> dict[str, Any]:
-        """Create a new protein record.
+        """Create or update the canonical mock protein (stable ID, BRD fixture file_path).
 
-        Unlike ligands, proteins have no uniqueness constraint on file_path —
-        multiple records may reference the same uploaded file.
+        Every register/sync flow maps to the same platform row so tests and
+        notebooks get deterministic IDs and ``tests/brd.pdb`` content.
         """
         body = await request.json()
         set_data = body.get("set", {})
         returning = body.get("returning", [])
 
-        fp = set_data.get("file_path", "")
-
         now = datetime.now(timezone.utc)
-        protein_id = "08" + str(uuid.uuid4()).replace("-", "").upper()[:11]
+        now_s = now.strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z"
 
-        record: dict[str, Any] = {
-            "id": protein_id,
-            "version": 1,
-            "valid_from": now.strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z",
-            "valid_to": None,
-            "modified_by": "6b96d8f8-0f55-474c-a86c-e09651ba4b20",
-            "deleted": False,
-            "project_id": None,
-            "subtable_name": "proteins",
-            "uniprot_accession": None,
-            "file_path": fp,
-            "gene_symbol": None,
-            "pdb_id": None,
-            "refseq_protein_id": None,
-            "ensembl_protein_id": None,
-            "alpha_fold_id": None,
-            "fasta_sequence": None,
-            "protein_name": None,
-            "kegg_gene_id": None,
-            "chembl_target_id": None,
-            "binding_db_target_id": None,
-            "drugbank_target_id": None,
-            "pfam_id": None,
-            "interpro_id": None,
-            "ec_number": None,
-            "ncbi_taxonomy_id": None,
-            "protein_family": None,
-            "ligandability_score": None,
-            "protein_length": None,
-        }
+        base = proteins.get(MOCK_CANONICAL_PROTEIN_ID, _base_canonical_protein_record())
+        record = copy.deepcopy(base)
+        record["valid_from"] = now_s
         record.update(set_data)
+        record["id"] = MOCK_CANONICAL_PROTEIN_ID
+        record["file_path"] = MOCK_CANONICAL_PROTEIN_FILE_PATH
+        record["deleted"] = False
 
-        proteins[protein_id] = record
+        proteins[MOCK_CANONICAL_PROTEIN_ID] = record
 
         response_data = record.copy()
         if returning:

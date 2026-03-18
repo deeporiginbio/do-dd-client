@@ -6,6 +6,7 @@ API endpoints used by the DeepOriginClient.
 
 from __future__ import annotations
 
+import copy
 from datetime import datetime, timezone
 import hashlib
 import json
@@ -18,6 +19,10 @@ from fastapi import FastAPI
 import uvicorn
 
 from .routers import billing, data_platform, entities, files, tools
+from .routers.data_platform import (
+    MOCK_CANONICAL_PROTEIN_ID,
+    _base_canonical_protein_record,
+)
 
 
 class MockServer:
@@ -58,6 +63,7 @@ class MockServer:
         self._load_execution_fixtures()
         self._load_ligand_fixtures()
         self._load_result_explorer_fixtures()
+        self._seed_canonical_mock_protein()
         self._setup_routes()
 
     def _load_fixture(self, fixture_name: str) -> dict[str, Any]:
@@ -226,6 +232,13 @@ class MockServer:
             with open(json_path) as f:
                 fixture: dict[str, Any] = json.load(f)
             self._results.extend(fixture.get("data", []))
+
+    def _seed_canonical_mock_protein(self) -> None:
+        """Ensure one stable protein row exists for sync/register and get_protein."""
+        if MOCK_CANONICAL_PROTEIN_ID not in self._proteins:
+            self._proteins[MOCK_CANONICAL_PROTEIN_ID] = copy.deepcopy(
+                _base_canonical_protein_record()
+            )
 
     def _setup_routes(self) -> None:
         """Set up all API routes."""

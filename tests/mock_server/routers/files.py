@@ -53,6 +53,15 @@ def _resolve_file_content(
     """
     from fastapi import HTTPException
 
+    normalized = remote_path.lstrip("/").replace("\\", "/")
+    brd_fixture = fixtures_dir / "files" / "tests" / "brd.pdb"
+    if (
+        brd_fixture.is_file()
+        and normalized.endswith(".pdb")
+        and "entities/proteins/" in normalized
+    ):
+        return brd_fixture.read_bytes()
+
     fixture_path = _get_fixture_path(remote_path, fixtures_dir)
 
     files_dir = fixtures_dir / "files"

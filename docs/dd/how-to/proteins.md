@@ -192,10 +192,11 @@ print(num_atoms)
 You can find potential binding pockets in the protein structure. See the [Finding Pockets guide](find-pockets.md) for detailed information.
 
 ```{.python notest}
-from deeporigin.drug_discovery import Protein
+from deeporigin.drug_discovery import PocketFinder, Protein
 
 protein = Protein.from_pdb_id("1EBY")
-pockets = protein.find_pockets(pocket_count=5)
+pf = PocketFinder(protein, pocket_count=5)
+pockets = pf.run()
 ```
 
 ### Visualizing a protein
@@ -456,11 +457,12 @@ If no file path is provided, the protein will be saved to a default location bas
 You can dock ligands into pockets of the protein. See the [Docking guide](docking.md) for detailed information.
 
 ```{.python notest}
-from deeporigin.drug_discovery import Protein, Ligand, BRD_DATA_DIR
+from deeporigin.drug_discovery import PocketFinder, Protein, Ligand, BRD_DATA_DIR
 
 protein = Protein.from_file(BRD_DATA_DIR / "brd.pdb")
 ligand = Ligand.from_sdf(BRD_DATA_DIR / "brd-2.sdf")
-pockets = protein.find_pockets(pocket_count=1)
+pf = PocketFinder(protein, pocket_count=1)
+pockets = pf.run()
 
 # Dock ligand into the first pocket
 poses = protein.dock(ligand=ligand, pocket=pockets[0])

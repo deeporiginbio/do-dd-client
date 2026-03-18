@@ -9,6 +9,7 @@ import numpy as np
 import pytest
 
 from deeporigin.drug_discovery import BRD_DATA_DIR, Pocket, Protein
+from deeporigin.exceptions import MethodDeprecatedError
 
 _BRD_PDB = Path(os.path.join(BRD_DATA_DIR, "brd.pdb"))
 
@@ -169,8 +170,7 @@ def test_from_function_result_lv0():
     from deeporigin.functions.result import FunctionResult
 
     fixture = Path(__file__).parent / (
-        "fixtures/function-runs/deeporigin.pocketfinder/"
-        "d374ba671065b866ff588cee18c9eb7523be307e78eeb84fe321475917424f41.json"
+        "fixtures/function-runs/deeporigin.pocketfinder/run.json"
     )
     from tests.fixture_utils import patch_fixture_version
 
@@ -221,12 +221,22 @@ def test_from_residue_num_lv0():
     ) and custom_pocket.get_center().shape == (3,)
 
 
+def test_protein_find_pockets_deprecated_lv0():
+    """Protein.find_pockets() is deprecated; it raises MethodDeprecatedError."""
+    protein = Protein.from_file(_BRD_PDB)
+    with pytest.raises(MethodDeprecatedError) as exc_info:
+        protein.find_pockets(pocket_count=1)
+    assert "PocketFinder" in str(exc_info.value)
+    assert "deprecated" in str(exc_info.value).lower()
+
+
 def test_from_id_lv2():
-    """Test round-trip: find_pockets -> Pocket.from_result -> Pocket.from_id.
+    """Test round-trip: PocketFinder.run() -> Pocket.from_result -> Pocket.from_id.
 
     this is a lv2 test because it calls pocketfinder function and platform API"""
 
     from conftest import check_function_exists
+    from deeporigin.drug_discovery import PocketFinder
     from deeporigin.platform import DeepOriginClient
     from deeporigin.platform.constants import (
         POCKET_FINDER_FUNCTION_KEY,
@@ -244,11 +254,12 @@ def test_from_id_lv2():
     protein.remove_water()
     protein.sync(client=client)
 
-    result = protein.find_pockets(pocket_count=1, client=client)
-    assert len(result.pockets) >= 1
+    pf = PocketFinder(protein, pocket_count=1, client=client)
+    pockets = pf.run()
+    assert len(pockets) >= 1
 
     pockets_from_result = Pocket.from_result(
-        execution_id=result._responses[0]["id"],
+        execution_id=pf.id,
         client=client,
     )
     assert len(pockets_from_result) >= 1

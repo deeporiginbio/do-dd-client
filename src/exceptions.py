@@ -4,7 +4,15 @@ import sys
 
 from deeporigin.utils.display import _supports_color
 
-__all__ = ["DeepOriginException", "install_silent_error_handler"]
+__all__ = [
+    "DeepOriginException",
+    "MethodDeprecatedError",
+    "install_silent_error_handler",
+]
+
+
+class MethodDeprecatedError(ValueError):
+    """Raised when a deprecated method is called. Use the suggested replacement instead."""
 
 
 class DeepOriginException(Exception):

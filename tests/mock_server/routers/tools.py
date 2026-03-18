@@ -430,25 +430,30 @@ def create_tools_router(
     ) -> dict[str, Any] | list[dict[str, Any]]:
         """Handle function execution logic shared between versioned and non-versioned endpoints."""
         body = await request.json()
-        from deeporigin.utils.hashing import hash_dict, normalize_function_body
 
-        normalized_body = normalize_function_body(body)
-        body_hash = hash_dict(normalized_body)
+        if function_key == "deeporigin.pocketfinder":
+            fixture_name = "quote" if body.get("approveAmount") == 0 else "run"
+            response = load_fixture(f"function-runs/{function_key}/{fixture_name}")
+        elif function_key == "deeporigin.mol-props-protonation":
+            inputs = body.get("inputs", body.get("params", {}))
+            smiles = inputs.get("smiles", "")
+            ph = inputs.get("pH", 7.4)
+            return _get_protonation_response(
+                smiles=smiles, ph=ph, inputs=inputs, body=body
+            )
+        else:
+            from deeporigin.utils.hashing import hash_dict, normalize_function_body
 
-        try:
-            response = load_fixture(f"function-runs/{function_key}/{body_hash}")
-        except FileNotFoundError:
-            if function_key == "deeporigin.mol-props-protonation":
-                inputs = body.get("inputs", body.get("params", {}))
-                smiles = inputs.get("smiles", "")
-                ph = inputs.get("pH", 7.4)
-                return _get_protonation_response(
-                    smiles=smiles, ph=ph, inputs=inputs, body=body
-                )
-            raise FileNotFoundError(
-                f"No fixture found for function '{function_key}' with request hash '{body_hash}'. "
-                f"Please create a fixture at: function-runs/{function_key}/{body_hash}.json"
-            ) from None
+            normalized_body = normalize_function_body(body)
+            body_hash = hash_dict(normalized_body)
+
+            try:
+                response = load_fixture(f"function-runs/{function_key}/{body_hash}")
+            except FileNotFoundError:
+                raise FileNotFoundError(
+                    f"No fixture found for function '{function_key}' with request hash '{body_hash}'. "
+                    f"Please create a fixture at: function-runs/{function_key}/{body_hash}.json"
+                ) from None
 
         # Make a deep copy to avoid mutating the cached fixture
         response = copy.deepcopy(response)
@@ -502,8 +507,14 @@ def create_tools_router(
         When a function run produces structured outputs (e.g. pockets, poses),
         this mirrors the production MQ flow by creating result-explorer records
         so that subsequent result-explorer queries return the data.
+
+        Only completed runs inject records; quoted responses do not produce
+        results (matching production behaviour).
         """
         if not isinstance(response, dict):
+            return
+
+        if response.get("status") != "Completed":
             return
 
         function_outputs = response.get("functionOutputs")

@@ -409,6 +409,7 @@ def test_from_id_lv1():
     client = DeepOriginClient()
 
     protein = Protein.from_file(BRD_DATA_DIR / "brd.pdb")
+    protein.remove_water()
     protein.sync(client=client)
 
     assert protein.id is not None
