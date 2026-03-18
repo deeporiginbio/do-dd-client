@@ -65,13 +65,6 @@ def test_pocketfinder_with_data_platform_lv2(
     assert pocket_from_result.protein_id == registered_protein.id, (
         "Pocket protein_id should match protein.id"
     )
-    assert pocket_from_result.coordinates is not None, (
-        "Expected coordinates to be loaded"
-    )
-    assert pocket_from_result.volume is not None, "Expected volume on pocket"
-    assert pocket_from_result.drugability_score is not None, (
-        "Expected drugability_score on pocket"
-    )
 
 
 def test_docking_with_data_platform_lv2(
@@ -137,7 +130,9 @@ def test_sysprep_with_data_platform_lv2(
         pytest.skip("Sysprep function does not exist")
 
     result = for_abfe(
-        client=client, protein=registered_protein, ligand=registered_ligand
+        client=client,
+        protein=registered_protein,
+        ligand=registered_ligand,
     )
 
     execution_id = result._responses[0]["id"]

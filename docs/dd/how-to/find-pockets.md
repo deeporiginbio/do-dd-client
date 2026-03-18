@@ -23,12 +23,7 @@ pf = PocketFinder(protein, pocket_count=1)
 pockets = pf.run()
 ```
 
-`pf.run()` runs the pocket finder (blocking) and returns a list of `Pocket` objects.
-
-By default, `run(use_cache=True)` reuses existing platform results when the protein
-is registered and a matching result exists (same protein and parameters). To always
-run the tool, use `pf.run(use_cache=False)`. Note that you may be charged for new
-tool runs. 
+`pf.run()` always runs the pocket finder (blocking) and returns a list of `Pocket` objects. Note that you will be charged for each run. To fetch previously computed pockets without re-running, use `pf.get_results()`.
 
 #### Estimating cost
 

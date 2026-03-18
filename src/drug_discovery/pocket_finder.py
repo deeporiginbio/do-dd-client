@@ -106,38 +106,16 @@ class PocketFinder(Execution, QuoteMixin, SyncExecutableMixin):
         self._estimate = result.estimate
 
     @beartype
-    def run(self, *, use_cache: bool = True) -> list[Pocket]:
+    def run(self) -> list[Pocket]:
         """Execute pocket finding (blocking).
 
-        When ``use_cache`` is True and the protein is registered (has an id),
-        first tries to load existing pocket results from the platform that match
-        this protein and parameters. If a matching result is found, returns those
-        pockets without running the tool. Otherwise runs the tool and returns
-        the new pockets. When the protein has no id, cache is not used and
-        execution always runs.
-
-        Args:
-            use_cache: If True (default), reuse existing platform results when
-                they match the input. If False, always run the tool.
+        Always runs the tool and returns fresh results. To fetch previously
+        computed pockets without re-running, use :meth:`get_results` instead.
 
         Returns:
             List of ``Pocket`` objects found in the protein.
         """
         client = self.client
-
-        if use_cache and self.protein.id is not None:
-            try:
-                pockets = Pocket.from_result(
-                    protein_id=self.protein.id,
-                    pocket_count=self.pocket_count,
-                    pocket_min_size=self.pocket_min_size,
-                    client=client,
-                )
-                if pockets:
-                    self._cost = 0.0
-                    return pockets
-            except ValueError:
-                pass
 
         from deeporigin.functions.pocket_finder import find_pockets as _find_pockets
 

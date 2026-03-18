@@ -112,6 +112,9 @@ def test_docking_start_sync_get_results_lv3(
     registered_ligand,
 ):
     """Start docking asynchronously via start(), sync until done, then get_results()."""
+    if client.env == "local":
+        pytest.skip("start/sync/get_results docking flow not run against local mock")
+
     if not check_tool_exists(client, DOCKING_TOOL_KEY, DOCKING_TOOL_VERSION):
         pytest.skip("Docking tool does not exist")
 

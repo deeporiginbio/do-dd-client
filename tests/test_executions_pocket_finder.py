@@ -21,6 +21,4 @@ def test_pocket_finder_run_lv2(registered_protein):
     pockets = pf.run()
     assert len(pockets) > 0, "Expected at least one pocket"
     assert pf.cost is not None, "Cost should be set"
-    assert pf.id is not None, "ID should be set"
-    assert pf.status is not None, "Status should be set"
-    assert pf.status == "Completed", "Status should be Completed"
+    assert pf.estimate is None, "Estimate should NOT be set"

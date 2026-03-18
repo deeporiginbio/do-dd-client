@@ -4,20 +4,16 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from deeporigin.platform.client import DeepOriginClient
 from deeporigin.platform.constants import ABFE_TOOL_KEY, SYSPREP_FUNCTION_KEY
 
 if TYPE_CHECKING:
     from deeporigin.drug_discovery import Protein
 
 
-def test_get_results_lv1(registered_protein: "Protein"):
+def test_get_results_lv1(client, registered_protein: "Protein"):
     """Test searching result-explorer records filtered by tool and protein."""
-    client = DeepOriginClient()
-
     response = client.results.get(
         filter_dict={
-            "tool_key": {"eq": "deeporigin.bulk-docking"},
             "protein_id": {"eq": registered_protein.id},
         },
     )
@@ -32,10 +28,8 @@ def test_get_results_lv1(registered_protein: "Protein"):
             assert field in record, f"Expected '{field}' key in record"
 
 
-def test_get_results_with_tool_version_lv1(registered_protein: "Protein"):
+def test_get_results_with_tool_version_lv1(client, registered_protein: "Protein"):
     """Test results.get with an explicit tool_version filter."""
-    client = DeepOriginClient()
-
     response = client.results.get(
         filter_dict={
             "tool_key": {"eq": "deeporigin.bulk-docking"},
@@ -48,9 +42,8 @@ def test_get_results_with_tool_version_lv1(registered_protein: "Protein"):
     assert isinstance(response["data"], list), "Expected 'data' to be a list"
 
 
-def test_get_prepared_systems():
+def test_get_prepared_systems(client):
     """Test get_prepared_systems returns system-prep results with expected shape."""
-    client = DeepOriginClient()
     response = client.results.get_prepared_systems()
 
     assert isinstance(response, dict), "Expected a dictionary response"
@@ -64,9 +57,8 @@ def test_get_prepared_systems():
         )
 
 
-def test_get_prepared_systems_with_filters(registered_protein: "Protein"):
+def test_get_prepared_systems_with_filters(client, registered_protein: "Protein"):
     """Test get_prepared_systems with optional filters builds correct filter and returns."""
-    client = DeepOriginClient()
     protein_id = registered_protein.id
     response = client.results.get_prepared_systems(
         protein_id=protein_id,
@@ -89,9 +81,8 @@ def test_get_prepared_systems_with_filters(registered_protein: "Protein"):
         assert data.get("protonate_protein") is True
 
 
-def test_get_abfe_results():
+def test_get_abfe_results(client):
     """Test get_abfe_results returns ABFE results with expected shape."""
-    client = DeepOriginClient()
     response = client.results.get_abfe_results()
 
     assert isinstance(response, dict), "Expected a dictionary response"
@@ -105,9 +96,8 @@ def test_get_abfe_results():
         )
 
 
-def test_get_abfe_results_with_filters():
+def test_get_abfe_results_with_filters(client):
     """Test get_abfe_results with optional filters builds correct filter and returns."""
-    client = DeepOriginClient()
     response = client.results.get_abfe_results(limit=10)
 
     assert isinstance(response, dict), "Expected a dictionary response"

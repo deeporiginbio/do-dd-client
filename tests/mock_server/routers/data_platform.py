@@ -365,71 +365,49 @@ def create_data_platform_router(
         limit = body.get("limit", 100)
         select = body.get("select")
 
-        props = filter_dict.get("props", [])
+        # Build the full pool of fixture-backed results first, then filter.
+        all_results: list[dict[str, Any]] = []
 
-        def _is_result_type(rtype: str) -> bool:
-            """Check if the search filters for a specific result_type."""
-            return any(
-                p.get("column") == "result_type" and p.get("value") == rtype
-                for p in props
-            )
+        run_pf = load_fixture("function-runs/deeporigin.pocketfinder/run")
+        manifest_pf = run_pf["function"]["manifestBody"]
+        all_results.extend(
+            {
+                "id": run_pf["id"],
+                "tool_key": manifest_pf["key"],
+                "tool_version": run_pf["function"]["version"],
+                "result_type": "pocket",
+                "data": pocket,
+                "compute_job_id": run_pf["id"],
+            }
+            for pocket in run_pf["functionOutputs"]["pockets"]
+        )
 
-        if _is_result_type("pocket"):
-            run = load_fixture("function-runs/deeporigin.pocketfinder/run")
-            manifest = run["function"]["manifestBody"]
-            pockets = run["functionOutputs"]["pockets"]
-            page = [
+        try:
+            run_dk = load_fixture("function-runs/deeporigin.docking/run")
+            manifest_dk = run_dk.get("function", {}).get("manifestBody", {})
+            all_results.extend(
                 {
-                    "id": run["id"],
-                    "tool_key": manifest["key"],
-                    "tool_version": run["function"]["version"],
-                    "result_type": "pocket",
-                    "data": pocket,
-                    "compute_job_id": run["id"],
-                }
-                for pocket in pockets
-            ]
-            page = _apply_eq_filters(page, filter_dict)[:limit]
-            if select:
-                page = [{k: v for k, v in r.items() if k in select} for r in page]
-            return {"data": page, "meta": {"count": len(page)}}
-
-        if _is_result_type("pose"):
-            try:
-                run = load_fixture("function-runs/deeporigin.docking/run")
-            except FileNotFoundError:
-                return {"data": [], "meta": {"count": 0}}
-            manifest = run.get("function", {}).get("manifestBody", {})
-            poses = run.get("functionOutputs", {}).get("poses", [])
-            page = [
-                {
-                    "id": run["id"],
-                    "tool_key": manifest.get("key", "deeporigin.docking"),
-                    "tool_version": manifest.get("version", "0.0.0"),
+                    "id": run_dk["id"],
+                    "tool_key": manifest_dk.get("key", "deeporigin.docking"),
+                    "tool_version": manifest_dk.get("version", "0.0.0"),
                     "result_type": "pose",
                     "data": pose,
-                    "compute_job_id": run["id"],
+                    "compute_job_id": run_dk["id"],
                 }
-                for pose in poses
-            ]
-            # Strip compute_job_id from filters — the fixture has a
-            # hard-coded ID that won't match dynamically-generated
-            # execution IDs, and we only have one docking fixture.
-            pose_filter = {
-                k: v for k, v in filter_dict.items() if k != "compute_job_id"
-            }
-            page = _apply_eq_filters(page, pose_filter)[:limit]
-            if select:
-                page = [{k: v for k, v in r.items() if k in select} for r in page]
-            return {"data": page, "meta": {"count": len(page)}}
+                for pose in run_dk.get("functionOutputs", {}).get("poses", [])
+            )
+        except FileNotFoundError:
+            pass
 
-        filtered = _apply_eq_filters(results, filter_dict)
-        page = filtered[:limit]
+        # Strip compute_job_id from filters — fixture IDs won't match
+        # dynamically-generated execution IDs.
+        safe_filter = {k: v for k, v in filter_dict.items() if k != "compute_job_id"}
 
+        page = _apply_eq_filters(all_results, safe_filter)[:limit]
         if select:
             page = [{k: v for k, v in r.items() if k in select} for r in page]
 
-        return {"data": page, "meta": {"count": len(filtered)}}
+        return {"data": page, "meta": {"count": len(page)}}
 
     @router.post("/data-platform/{org_key}/executions/search")
     async def search_executions(org_key: str, request: Request) -> dict[str, Any]:
