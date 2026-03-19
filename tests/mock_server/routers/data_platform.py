@@ -3,12 +3,51 @@
 from __future__ import annotations
 
 from collections.abc import Callable
+import copy
 from datetime import datetime, timezone
 from typing import Any
 import uuid
 
 from fastapi import APIRouter, Request
 from rdkit import Chem
+
+MOCK_CANONICAL_PROTEIN_ID = "brd"
+MOCK_CANONICAL_PROTEIN_FILE_PATH = "testing/brd.pdb"
+
+
+def _base_canonical_protein_record() -> dict[str, Any]:
+    """Return the default in-memory protein row for the mock canonical BRD structure."""
+    now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z"
+    return {
+        "id": MOCK_CANONICAL_PROTEIN_ID,
+        "version": 1,
+        "valid_from": now,
+        "valid_to": None,
+        "modified_by": "mock-server",
+        "deleted": False,
+        "project_id": None,
+        "subtable_name": "proteins",
+        "uniprot_accession": None,
+        "file_path": MOCK_CANONICAL_PROTEIN_FILE_PATH,
+        "gene_symbol": None,
+        "pdb_id": None,
+        "refseq_protein_id": None,
+        "ensembl_protein_id": None,
+        "alpha_fold_id": None,
+        "fasta_sequence": None,
+        "protein_name": "brd",
+        "kegg_gene_id": None,
+        "chembl_target_id": None,
+        "binding_db_target_id": None,
+        "drugbank_target_id": None,
+        "pfam_id": None,
+        "interpro_id": None,
+        "ec_number": None,
+        "ncbi_taxonomy_id": None,
+        "protein_family": None,
+        "ligandability_score": None,
+        "protein_length": None,
+    }
 
 
 def _apply_search_filters(
@@ -105,6 +144,10 @@ def _canonicalize_smiles(smiles: str) -> str:
 def _make_ligand_record(smiles: str, extra: dict[str, Any]) -> dict[str, Any]:
     """Build a new ligand record, generating a fresh ID and timestamp.
 
+    Uses ``name`` from *extra* as the record ID when provided, otherwise
+    falls back to a random UUID-based ID.  This makes mock IDs
+    deterministic and easy to assert against in tests.
+
     Args:
         smiles: The SMILES string for the ligand.
         extra: Additional fields to merge into the record (from ``set`` or
@@ -115,7 +158,8 @@ def _make_ligand_record(smiles: str, extra: dict[str, Any]) -> dict[str, Any]:
     """
     canonical = _canonicalize_smiles(smiles)
     now = datetime.now(timezone.utc)
-    ligand_id = "08" + str(uuid.uuid4()).replace("-", "").upper()[:11]
+    name = extra.get("name")
+    ligand_id = name if name else "08" + str(uuid.uuid4()).replace("-", "").upper()[:11]
     record: dict[str, Any] = {
         "id": ligand_id,
         "version": 1,
@@ -321,13 +365,49 @@ def create_data_platform_router(
         limit = body.get("limit", 100)
         select = body.get("select")
 
-        filtered = _apply_eq_filters(results, filter_dict)
-        page = filtered[:limit]
+        # Build the full pool of fixture-backed results first, then filter.
+        all_results: list[dict[str, Any]] = []
 
+        run_pf = load_fixture("function-runs/deeporigin.pocketfinder/run")
+        manifest_pf = run_pf["function"]["manifestBody"]
+        all_results.extend(
+            {
+                "id": run_pf["id"],
+                "tool_key": manifest_pf["key"],
+                "tool_version": run_pf["function"]["version"],
+                "result_type": "pocket",
+                "data": pocket,
+                "compute_job_id": run_pf["id"],
+            }
+            for pocket in run_pf["functionOutputs"]["pockets"]
+        )
+
+        try:
+            run_dk = load_fixture("function-runs/deeporigin.docking/run")
+            manifest_dk = run_dk.get("function", {}).get("manifestBody", {})
+            all_results.extend(
+                {
+                    "id": run_dk["id"],
+                    "tool_key": manifest_dk.get("key", "deeporigin.docking"),
+                    "tool_version": manifest_dk.get("version", "0.0.0"),
+                    "result_type": "pose",
+                    "data": pose,
+                    "compute_job_id": run_dk["id"],
+                }
+                for pose in run_dk.get("functionOutputs", {}).get("poses", [])
+            )
+        except FileNotFoundError:
+            pass
+
+        # Strip compute_job_id from filters — fixture IDs won't match
+        # dynamically-generated execution IDs.
+        safe_filter = {k: v for k, v in filter_dict.items() if k != "compute_job_id"}
+
+        page = _apply_eq_filters(all_results, safe_filter)[:limit]
         if select:
             page = [{k: v for k, v in r.items() if k in select} for r in page]
 
-        return {"data": page, "meta": {"count": len(filtered)}}
+        return {"data": page, "meta": {"count": len(page)}}
 
     @router.post("/data-platform/{org_key}/executions/search")
     async def search_executions(org_key: str, request: Request) -> dict[str, Any]:
@@ -359,6 +439,19 @@ def create_data_platform_router(
         limit = body.get("limit", 100)
         offset = body.get("offset", 0)
         store = _entity_stores.get(entity, {})
+
+        # Protein.sync() searches by uploaded file_path (hash-based or custom).
+        # Always resolve to the canonical BRD fixture + stable ID.
+        if entity == "proteins" and "file_path" in filter_dict:
+            if MOCK_CANONICAL_PROTEIN_ID not in proteins:
+                proteins[MOCK_CANONICAL_PROTEIN_ID] = copy.deepcopy(
+                    _base_canonical_protein_record()
+                )
+            return {
+                "data": [copy.deepcopy(proteins[MOCK_CANONICAL_PROTEIN_ID])],
+                "count": 1,
+            }
+
         return _apply_search_filters(store, filter_dict, limit=limit, offset=offset)
 
     @router.post("/data-platform/{org_key}/projects/search")
@@ -409,53 +502,27 @@ def create_data_platform_router(
 
     @router.post("/data-platform/{org_key}/proteins")
     async def create_protein(org_key: str, request: Request) -> dict[str, Any]:
-        """Create a new protein record.
+        """Create or update the canonical mock protein (stable ID, BRD fixture file_path).
 
-        Unlike ligands, proteins have no uniqueness constraint on file_path —
-        multiple records may reference the same uploaded file.
+        Every register/sync flow maps to the same platform row so tests and
+        notebooks get deterministic IDs and ``tests/brd.pdb`` content.
         """
         body = await request.json()
         set_data = body.get("set", {})
         returning = body.get("returning", [])
 
-        fp = set_data.get("file_path", "")
-
         now = datetime.now(timezone.utc)
-        protein_id = "08" + str(uuid.uuid4()).replace("-", "").upper()[:11]
+        now_s = now.strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z"
 
-        record: dict[str, Any] = {
-            "id": protein_id,
-            "version": 1,
-            "valid_from": now.strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z",
-            "valid_to": None,
-            "modified_by": "6b96d8f8-0f55-474c-a86c-e09651ba4b20",
-            "deleted": False,
-            "project_id": None,
-            "subtable_name": "proteins",
-            "uniprot_accession": None,
-            "file_path": fp,
-            "gene_symbol": None,
-            "pdb_id": None,
-            "refseq_protein_id": None,
-            "ensembl_protein_id": None,
-            "alpha_fold_id": None,
-            "fasta_sequence": None,
-            "protein_name": None,
-            "kegg_gene_id": None,
-            "chembl_target_id": None,
-            "binding_db_target_id": None,
-            "drugbank_target_id": None,
-            "pfam_id": None,
-            "interpro_id": None,
-            "ec_number": None,
-            "ncbi_taxonomy_id": None,
-            "protein_family": None,
-            "ligandability_score": None,
-            "protein_length": None,
-        }
+        base = proteins.get(MOCK_CANONICAL_PROTEIN_ID, _base_canonical_protein_record())
+        record = copy.deepcopy(base)
+        record["valid_from"] = now_s
         record.update(set_data)
+        record["id"] = MOCK_CANONICAL_PROTEIN_ID
+        record["file_path"] = MOCK_CANONICAL_PROTEIN_FILE_PATH
+        record["deleted"] = False
 
-        proteins[protein_id] = record
+        proteins[MOCK_CANONICAL_PROTEIN_ID] = record
 
         response_data = record.copy()
         if returning:

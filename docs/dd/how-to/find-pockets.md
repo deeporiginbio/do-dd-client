@@ -14,23 +14,26 @@ protein.remove_water()
 
 ### Using Pocket Finder
 
-We can then find pockets in this protein using the Pocket Finder tool:
+Use the ``PocketFinder`` class from ``deeporigin.drug_discovery.pocket_finder`` to find pockets:
 
 ```{.python continuation}
-result = protein.find_pockets(pocket_count=1)
-pockets = result.pockets
+from deeporigin.drug_discovery import PocketFinder
+
+pf = PocketFinder(protein, pocket_count=1)
+pockets = pf.run()
 ```
 
-`result` is a [`FunctionResult`](../ref/function-result.md) that wraps the API response. The identified pockets are available as a list of `Pocket` objects on `result.pockets`.
+`pf.run()` always runs the pocket finder (blocking) and returns a list of `Pocket` objects. Note that you will be charged for each run. To fetch previously computed pockets without re-running, use `pf.get_results()`.
 
 #### Estimating cost
 
-To get a cost estimate without running the pocket finder, use `quote=True`:
+To get a cost estimate without running the pocket finder, call `quote()` before `run()`:
 
 ```{.python notest}
-result = protein.find_pockets(pocket_count=1, quote=True)
-result.estimate  # estimated cost in dollars
-result.cost      # None (function was not executed)
+pf = PocketFinder(protein, pocket_count=1)
+pf.quote()       # populates pf.estimate
+pf.estimate      # estimated cost in dollars
+pockets = pf.run()  # run when ready; pf.cost is set after completion
 ```
 
 ### Using PDB Files

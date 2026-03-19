@@ -21,6 +21,8 @@ class Entity(ABC):
     """
 
     id: str | None = field(default=None, kw_only=True)
+    remote_path: str | None = field(default=None, kw_only=True)
+    local_path: str | None = field(default=None, kw_only=True)
 
     @abstractmethod
     def to_hash(self) -> str:
@@ -43,6 +45,32 @@ class Entity(ABC):
         if override is not None:
             return override
         return f"{self._remote_path_base}{self.to_hash()}{self._preferred_ext}"
+
+    def download(self, *, client: DeepOriginClient | None = None) -> str:
+        """Download the entity file from remote storage.
+
+        No-ops if ``local_path`` is already set.
+
+        Args:
+            client: DeepOriginClient instance. If None, uses DeepOriginClient.get().
+
+        Returns:
+            The local file path.
+
+        Raises:
+            ValueError: If neither local_path nor remote_path is available.
+        """
+        if self.local_path is not None:
+            return self.local_path
+        if self.remote_path is None:
+            raise ValueError("No local_path or remote_path available")
+        if client is None:
+            client = DeepOriginClient.get()
+        self.local_path = client.files.download_file(
+            remote_path=self.remote_path,
+            lazy=True,
+        )
+        return self.local_path
 
     def upload(
         self,

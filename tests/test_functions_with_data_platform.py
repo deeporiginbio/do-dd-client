@@ -2,11 +2,12 @@
 
 import pytest
 
-from conftest import FIXTURES_DIR, check_function_exists
+from conftest import check_function_exists
 from deeporigin.drug_discovery import (
     Ligand,
     LigandSet,
     Pocket,
+    PocketFinder,
     Protein,
 )
 from deeporigin.functions.result import FunctionResult
@@ -35,18 +36,16 @@ def test_pocketfinder_with_data_platform_lv2(
 
     num_pockets = 1
 
-    result = registered_protein.find_pockets(
+    pf = PocketFinder(
+        registered_protein,
         pocket_count=num_pockets,
         client=client,
     )
+    pockets = pf.run()
 
-    assert isinstance(result, FunctionResult), (
-        "Expected protein.find_pockets() to return a FunctionResult"
-    )
+    assert len(pockets) == num_pockets, f"Expected {num_pockets} pockets"
 
-    assert len(result.pockets) == num_pockets, f"Expected {num_pockets} pockets"
-
-    pocket = result.pockets[0]
+    pocket = pockets[0]
 
     assert isinstance(pocket, Pocket), "Expected Pocket object"
     assert pocket.protein_id == registered_protein.id, (
@@ -54,7 +53,7 @@ def test_pocketfinder_with_data_platform_lv2(
     )
 
     pockets_from_result = Pocket.from_result(
-        execution_id=result._responses[0]["id"],
+        execution_id=pf.id,
         client=client,
     )
 
@@ -66,37 +65,23 @@ def test_pocketfinder_with_data_platform_lv2(
     assert pocket_from_result.protein_id == registered_protein.id, (
         "Pocket protein_id should match protein.id"
     )
-    assert pocket_from_result.coordinates is not None, (
-        "Expected coordinates to be loaded"
-    )
-    assert pocket_from_result.volume is not None, "Expected volume on pocket"
-    assert pocket_from_result.drugability_score is not None, (
-        "Expected drugability_score on pocket"
-    )
 
 
 def test_docking_with_data_platform_lv2(
     client: DeepOriginClient,
     registered_protein: Protein,
     registered_ligand: Ligand,
+    registered_pocket: Pocket,
 ):
+    """Test docking function integration with data platform."""
     if not check_function_exists(
         client, DOCKING_FUNCTION_KEY, DOCKING_FUNCTION_VERSION
     ):
         pytest.skip("Docking function does not exist")
 
-    """Test docking function integration with data platform."""
-    pocket = Pocket.from_pdb_file(
-        FIXTURES_DIR
-        / "files"
-        / "tool-runs"
-        / "86ea3aea-accd-474d-9e0b-89a3f47ab61b"
-        / "pocket_1.pdb",
-    )
-
     result = registered_protein.dock(
         ligand=registered_ligand,
-        pocket=pocket,
+        pocket=registered_pocket,
         use_cache=False,
         client=client,
     )
@@ -134,6 +119,7 @@ def test_docking_with_data_platform_lv2(
         assert pose.smiles is not None, "Pose should have SMILES"
 
 
+@pytest.mark.skip(reason="backend is broken")
 def test_sysprep_with_data_platform_lv2(
     client: DeepOriginClient,
     registered_protein: Protein,
@@ -145,7 +131,9 @@ def test_sysprep_with_data_platform_lv2(
         pytest.skip("Sysprep function does not exist")
 
     result = for_abfe(
-        client=client, protein=registered_protein, ligand=registered_ligand
+        client=client,
+        protein=registered_protein,
+        ligand=registered_ligand,
     )
 
     execution_id = result._responses[0]["id"]

@@ -2,13 +2,20 @@
 Tests for the Pocket class.
 """
 
+from __future__ import annotations
+
 import os
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import numpy as np
 import pytest
 
 from deeporigin.drug_discovery import BRD_DATA_DIR, Pocket, Protein
+from deeporigin.exceptions import MethodDeprecatedError
+
+if TYPE_CHECKING:
+    from deeporigin.platform import DeepOriginClient
 
 _BRD_PDB = Path(os.path.join(BRD_DATA_DIR, "brd.pdb"))
 
@@ -20,7 +27,7 @@ def test_pocket_from_ligand_lv0():
 
     pocket = Pocket.from_ligand(ligand)
 
-    assert pocket.file_path is not None, "Pocket file path should not be None"
+    assert pocket.local_path is not None, "Pocket local_path should not be None"
 
 
 def test_pocket_get_center_lv0():
@@ -66,7 +73,7 @@ def test_from_json_single_entry_lv0():
     assert len(pockets) == 1
     pocket = pockets[0]
     assert pocket.name == "brd"
-    assert pocket.file_path == _BRD_PDB
+    assert pocket.local_path == str(_BRD_PDB)
     assert pocket.protein_id == "prot_1"
     assert pocket.color == "red"
     assert pocket.volume == pytest.approx(42.0)
@@ -163,14 +170,13 @@ def test_from_json_error_reports_correct_index_lv0():
 
 
 def test_from_function_result_lv0():
-    """from_function_result downloads PDBs and populates new fields."""
+    """from_function_result stores remote_path without downloading."""
     import json
 
     from deeporigin.functions.result import FunctionResult
 
     fixture = Path(__file__).parent / (
-        "fixtures/function-runs/deeporigin.pocketfinder/"
-        "d374ba671065b866ff588cee18c9eb7523be307e78eeb84fe321475917424f41.json"
+        "fixtures/function-runs/deeporigin.pocketfinder/run.json"
     )
     from tests.fixture_utils import patch_fixture_version
 
@@ -178,17 +184,8 @@ def test_from_function_result_lv0():
 
     result = FunctionResult([response])
 
-    class FakeFiles:
-        """Stub that returns a local PDB path instead of downloading."""
-
-        def download_file(self, *, remote_path, lazy=False):
-            """Return the BRD PDB path regardless of remote_path."""
-            return str(_BRD_PDB)
-
     class FakeClient:
-        """Minimal client stub with a fake files service."""
-
-        files = FakeFiles()
+        """Minimal client stub (no file ops needed -- lazy download)."""
 
     pockets = Pocket.from_function_result(
         result=result,
@@ -197,7 +194,10 @@ def test_from_function_result_lv0():
 
     assert len(pockets) == 1
     pocket = pockets[0]
-    assert pocket.protein_id == "08QCAKE4DYX3Q"
+    assert pocket.remote_path is not None
+    assert pocket.local_path is None
+    assert pocket.coordinates is None
+    assert pocket.protein_id == "brd"
     assert pocket.volume == pytest.approx(300)
     assert pocket.pocket_center == pytest.approx([-13.521, -4.944, 15.457], abs=1e-3)
     assert pocket.box_size_x == pytest.approx(14)
@@ -221,47 +221,47 @@ def test_from_residue_num_lv0():
     ) and custom_pocket.get_center().shape == (3,)
 
 
-def test_from_id_lv2():
-    """Test round-trip: find_pockets -> Pocket.from_result -> Pocket.from_id.
+def test_protein_find_pockets_deprecated_lv0():
+    """Protein.find_pockets() is deprecated; it raises MethodDeprecatedError."""
+    protein = Protein.from_file(_BRD_PDB)
+    with pytest.raises(MethodDeprecatedError) as exc_info:
+        protein.find_pockets(pocket_count=1)
+    assert "PocketFinder" in str(exc_info.value)
+    assert "deprecated" in str(exc_info.value).lower()
 
-    this is a lv2 test because it calls pocketfinder function and platform API"""
 
-    from conftest import check_function_exists
-    from deeporigin.platform import DeepOriginClient
-    from deeporigin.platform.constants import (
-        POCKET_FINDER_FUNCTION_KEY,
-        POCKET_FINDER_FUNCTION_VERSION,
-    )
+def test_from_id_lv2(
+    client: "DeepOriginClient",
+    registered_protein: Protein,
+):
+    """Test round-trip: Pocket.from_result -> Pocket.from_id (lazy download)"""
 
-    client = DeepOriginClient()
-
-    if not check_function_exists(
-        client, POCKET_FINDER_FUNCTION_KEY, POCKET_FINDER_FUNCTION_VERSION
-    ):
-        pytest.skip("Pocket finder function does not exist")
-
-    protein = Protein.from_file(BRD_DATA_DIR / "brd.pdb")
-    protein.remove_water()
-    protein.sync(client=client)
-
-    result = protein.find_pockets(pocket_count=1, client=client)
-    assert len(result.pockets) >= 1
-
-    pockets_from_result = Pocket.from_result(
-        execution_id=result._responses[0]["id"],
-        client=client,
-    )
+    pockets_from_result = Pocket.from_result(client=client)
     assert len(pockets_from_result) >= 1
-    pocket_id = pockets_from_result[0].id
-    assert pocket_id is not None
 
-    fetched = Pocket.from_id(pocket_id, client=client)
+    pocket = pockets_from_result[0]
+    assert pocket.id is not None
+    assert pocket.remote_path is not None
+    assert pocket.local_path is None
+    assert pocket.coordinates is None
+    assert pocket.protein_id is not None
+    assert pocket.pocket_center is not None
+    assert len(pocket.pocket_center) == 3
+    assert pocket.box_size_x is not None
+    assert pocket.box_size_y is not None
+    assert pocket.box_size_z is not None
 
-    assert fetched.id == pocket_id
-    assert fetched.file_path is not None
-    assert fetched.file_path.exists()
-    assert fetched.coordinates is not None
-    assert fetched.protein_id == protein.id
+    coords = pocket._ensure_coordinates()
+    assert coords is not None
+    assert pocket.local_path is not None
+    assert Path(pocket.local_path).exists()
+
+    fetched = Pocket.from_id(pocket.id, client=client)
+
+    assert fetched.id == pocket.id
+    assert fetched.remote_path is not None
+    assert fetched.local_path is None
+    assert fetched.protein_id == pocket.protein_id
     assert fetched.pocket_center is not None
     assert len(fetched.pocket_center) == 3
     assert fetched.box_size_x is not None

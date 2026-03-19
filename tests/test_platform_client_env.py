@@ -56,6 +56,15 @@ def test_infer_env_local() -> None:
     assert _infer_env_from_base_url("http://localhost:4931") == "local"
 
 
+def test_do_env_local_defaults_to_mock_base_url() -> None:
+    """``DO_ENV=local`` should default the client to the mock API (port 4931)."""
+    os.environ["DO_ENV"] = "local"
+    client = DeepOriginClient()
+
+    assert client.env == "local"
+    assert client.base_url.rstrip("/") == "http://127.0.0.1:4931"
+
+
 # ---- DO_BASE_URL in constructor ----
 
 

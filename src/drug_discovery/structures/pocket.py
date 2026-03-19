@@ -9,7 +9,9 @@ full biotite structure objects.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+import hashlib
 from pathlib import Path
+import tempfile
 from typing import TYPE_CHECKING, Any, ClassVar, Optional, Self
 
 import numpy as np
@@ -19,19 +21,21 @@ if TYPE_CHECKING:
     from deeporigin.platform.client import DeepOriginClient
 
 from deeporigin.drug_discovery.constants import POCKETS_BASE_DIR
+from deeporigin.drug_discovery.structures.entity import Entity
 from deeporigin.drug_discovery.structures.ligand import Ligand
 
 
 @dataclass
-class Pocket:
+class Pocket(Entity):
     """Class representing a binding pocket in a protein structure.
 
     This class provides essential methods
     for pocket analysis, visualization, and coordinate manipulation.
     """
 
-    id: Optional[str] = None
-    file_path: Optional[Path] = None
+    _remote_path_base = "entities/pockets/"
+    _preferred_ext = ".pdb"
+
     color: str = "red"
     name: Optional[str] = None
     pdb_id: Optional[str] = None
@@ -53,37 +57,110 @@ class Pocket:
     box_size_z: Optional[float] = None
 
     props: Optional[dict[str, Any]] = field(default_factory=dict)
+    _client: Optional[DeepOriginClient] = field(default=None, repr=False)
 
     def __post_init__(self):
-        from biotite.structure.io.pdb import PDBFile
+        if self.local_path is not None and self.coordinates is None:
+            self._load_coordinates_from_file(self.local_path)
 
-        if self.file_path is not None:
-            # Load coordinates directly from PDB file
-            structure_file = PDBFile.read(str(self.file_path))
-            structure = structure_file.get_structure()
-
-            # Handle AtomArrayStack by taking the first structure
-            if (
-                hasattr(structure, "__len__")
-                and len(structure) > 0
-                and hasattr(structure[0], "coord")
-            ):
-                self.coordinates = structure[0].coord
-            elif hasattr(structure, "coord"):
-                self.coordinates = structure.coord
-            else:
-                raise ValueError("Could not extract coordinates from structure")
-
-        # Set name if not provided
         if self.name is None:
-            if self.file_path:
-                self.name = self.file_path.stem
+            if self.local_path:
+                self.name = Path(self.local_path).stem
+            elif self.remote_path:
+                self.name = Path(self.remote_path).stem
             else:
                 self.name = "Unknown_Pocket"
                 directory = Path(POCKETS_BASE_DIR)
                 directory.mkdir(parents=True, exist_ok=True)
                 num = len(list(directory.glob(f"{self.name}*")))
                 self.name = f"{self.name}_{num + 1}"
+
+    def _load_coordinates_from_file(self, path: str) -> None:
+        """Read a PDB file and populate ``self.coordinates``.
+
+        Args:
+            path: Local filesystem path to the PDB file.
+        """
+        from biotite.structure.io.pdb import PDBFile
+
+        structure_file = PDBFile.read(path)
+        structure = structure_file.get_structure()
+
+        if (
+            hasattr(structure, "__len__")
+            and len(structure) > 0
+            and hasattr(structure[0], "coord")
+        ):
+            self.coordinates = structure[0].coord
+        elif hasattr(structure, "coord"):
+            self.coordinates = structure.coord
+        else:
+            raise ValueError("Could not extract coordinates from structure")
+
+    def _ensure_coordinates(self) -> np.ndarray:
+        """Load coordinates from file if needed, downloading first if necessary.
+
+        Returns:
+            The coordinate array.
+
+        Raises:
+            ValueError: If no coordinates and no file path available.
+        """
+        if self.coordinates is not None:
+            return self.coordinates
+        local = self.download(client=self._client)
+        self._load_coordinates_from_file(local)
+        return self.coordinates
+
+    def _to_pdb_string(self) -> str:
+        """Generate PDB format string from coordinates.
+
+        Returns:
+            PDB file content as a string.
+        """
+        coords = self._ensure_coordinates()
+        lines = ["HEADER    POCKET COORDINATES"]
+        for i, coord in enumerate(coords):
+            x, y, z = coord
+            lines.append(
+                f"ATOM  {i + 1:5d}  CA  UNK A{i + 1:4d}    {x:8.3f}{y:8.3f}{z:8.3f}  1.00  0.00           C"
+            )
+        lines.append("END")
+        return "\n".join(lines) + "\n"
+
+    def to_hash(self) -> str:
+        """Compute a hash of the pocket PDB content.
+
+        Returns:
+            SHA-256 hex digest of the generated PDB string.
+        """
+        return hashlib.sha256(self._to_pdb_string().encode()).hexdigest()
+
+    def to_file(self, file_path: str | Path | None = None) -> str:
+        """Write pocket coordinates to a PDB file.
+
+        Args:
+            file_path: Destination path. When ``None`` a temporary file is
+                created; the caller is responsible for deleting it when done.
+
+        Returns:
+            The path the file was written to.
+        """
+        if file_path is None:
+            fd = tempfile.NamedTemporaryFile(
+                mode="w",
+                delete=False,
+                suffix=".pdb",
+                prefix=f"{self.name or 'pocket'}_",
+            )
+            path = Path(fd.name)
+            fd.write(self._to_pdb_string())
+            fd.close()
+            return str(path)
+        path = Path(file_path)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(self._to_pdb_string())
+        return str(path)
 
     @classmethod
     def from_pdb_file(
@@ -129,7 +206,7 @@ class Pocket:
             name = pdb_file_path.stem
 
         pocket = cls(
-            file_path=pdb_file_path,
+            local_path=str(pdb_file_path),
             name=name,
             coordinates=coordinates,
             **kwargs,
@@ -199,9 +276,8 @@ class Pocket:
         """
         if self.pocket_center is not None:
             return np.asarray(self.pocket_center, dtype=float)
-        if self.coordinates is None:
-            raise ValueError("No coordinates loaded for this pocket")
-        return self.coordinates.mean(axis=0)
+        coords = self._ensure_coordinates()
+        return coords.mean(axis=0)
 
     @classmethod
     def from_residue_number(
@@ -295,21 +371,66 @@ class Pocket:
         "polar_apolar_SASA_ratio": "polar_apolar_sasa_ratio",
     }
 
+    @staticmethod
+    def _resolve_paths(
+        entry: dict[str, Any],
+        idx: int,
+    ) -> tuple[str | None, str | None]:
+        """Extract and validate local/remote paths from a pocket dict.
+
+        Args:
+            entry: Single pocket dict.
+            idx: Position in the list (for error messages).
+
+        Returns:
+            ``(local_path, remote_path)`` — at least one is non-None.
+
+        Raises:
+            ValueError: If neither a valid local nor remote path is present.
+        """
+        raw_local = entry.get("file_path") or entry.get("local_path")
+        raw_remote = entry.get("remote_path")
+
+        has_local = isinstance(raw_local, str) and raw_local.strip()
+        has_remote = isinstance(raw_remote, str) and raw_remote.strip()
+
+        if not has_local and not has_remote:
+            raise ValueError(
+                f"Entry at index {idx} needs a valid 'file_path', "
+                f"'local_path', or 'remote_path' "
+                f"(got file_path={entry.get('file_path')!r}, "
+                f"remote_path={raw_remote!r}): {entry}"
+            )
+
+        local_path = raw_local if has_local else None
+        remote_path = raw_remote if has_remote else None
+        return local_path, remote_path
+
     @classmethod
     def from_json(
         cls,
         data: list[dict[str, Any]],
+        *,
+        client: Optional["DeepOriginClient"] = None,
     ) -> list[Self]:
         """Create a list of Pocket objects from a JSON pocket list.
 
-        Each entry in the list should be a dict with at least a ``file_path``
-        key. Known property keys (``volume``, ``total_SASA``, etc.) are mapped
-        to dedicated attributes. The ``protein_id`` key is mapped to its own
-        attribute. Any remaining unknown keys go into ``props``.
+        Each entry should contain at least one of ``file_path`` /
+        ``local_path`` (a local filesystem path) or ``remote_path`` (a UFA
+        remote path).  When only ``remote_path`` is provided the pocket is
+        created without downloading; coordinates will be fetched lazily on
+        first access via :meth:`_ensure_coordinates`.
+
+        Known property keys (``volume``, ``total_SASA``, etc.) are mapped
+        to dedicated attributes.  The ``protein_id`` key is mapped to its
+        own attribute.  Any remaining unknown keys go into ``props``.
 
         Args:
             data: List of pocket dicts, e.g. the value of the ``"pockets"``
                 key returned by the pocket-finder tool.
+            client: Optional client to use for lazy downloads. When provided,
+                stored on each Pocket and used by :meth:`download` when
+                coordinates are first accessed.
 
         Returns:
             List of Pocket objects with properties populated from the dicts.
@@ -329,19 +450,15 @@ class Pocket:
 
         json_mapped_keys = set(cls._JSON_KEY_MAP.keys())
         reserved_keys = (
-            {"id", "file_path", "protein_id"} | cls._PROPERTY_ATTRS | json_mapped_keys
+            {"id", "file_path", "local_path", "remote_path", "protein_id"}
+            | cls._PROPERTY_ATTRS
+            | json_mapped_keys
         )
 
         pockets = []
         for idx, entry in enumerate(data):
-            raw_path = entry.get("file_path")
-            if not isinstance(raw_path, str) or not raw_path.strip():
-                raise ValueError(
-                    f"Entry at index {idx} is missing a valid 'file_path' value "
-                    f"(got {raw_path!r}): {entry}"
-                )
-            file_path = Path(raw_path)
-            protein_id = entry.get("protein_id")
+            local_path, remote_path = cls._resolve_paths(entry, idx)
+            name = Path(local_path or remote_path).stem
 
             attr_kwargs: dict[str, Any] = {}
             for k in cls._PROPERTY_ATTRS:
@@ -355,11 +472,13 @@ class Pocket:
 
             pocket = cls(
                 id=entry.get("id"),
-                file_path=file_path,
-                name=file_path.stem,
-                protein_id=protein_id,
+                local_path=local_path,
+                remote_path=remote_path,
+                name=name,
+                protein_id=entry.get("protein_id"),
                 props=props,
                 color=colors[idx % len(colors)],
+                _client=client,
                 **attr_kwargs,
             )
             pockets.append(pocket)
@@ -373,32 +492,27 @@ class Pocket:
         result: "FunctionResult",
         client: "DeepOriginClient",
     ) -> list[Self]:
-        """Download pocket PDB files from a function result and build Pocket objects.
+        """Build Pocket objects from a pocket-finder ``FunctionResult``.
 
-        Extracts the pocket list from a raw pocket-finder ``FunctionResult``,
-        downloads the PDB files, and delegates to ``from_json`` to construct
-        Pocket instances.
+        Extracts the pocket list and stores the remote paths without
+        downloading.  Files are fetched lazily when coordinates are first
+        accessed.
 
         Args:
             result: FunctionResult wrapping a pocket-finder response.
-            client: DeepOrigin client for downloading files.
+            client: DeepOrigin client (retained for API compatibility).
 
         Returns:
             A list of Pocket objects.
         """
         outputs = result.function_outputs[0]
-        pockets_data = [
-            {
-                **pocket,
-                "file_path": client.files.download_file(
-                    remote_path=pocket["file_path"],
-                    lazy=True,
-                ),
-            }
-            for pocket in outputs.get("pockets", [])
-        ]
+        pockets_data = []
+        for pocket in outputs.get("pockets", []):
+            entry = {**pocket}
+            entry["remote_path"] = entry.pop("file_path")
+            pockets_data.append(entry)
 
-        return cls.from_json(pockets_data)
+        return cls.from_json(pockets_data, client=client)
 
     @classmethod
     def from_id(
@@ -409,8 +523,9 @@ class Pocket:
     ) -> Self:
         """Create a Pocket from a result-explorer record ID.
 
-        Fetches the single record, downloads the pocket PDB file, and
-        constructs a Pocket object.
+        Fetches the single record and stores the remote path without
+        downloading.  The PDB file is fetched lazily when coordinates
+        are first accessed.
 
         Args:
             id: Result-explorer record ID of the pocket.
@@ -437,13 +552,9 @@ class Pocket:
         record = records[0]
         pocket_data = dict(record["data"])
         pocket_data["id"] = record["id"]
-        remote_path = pocket_data["file_path"]
-        pocket_data["file_path"] = client.files.download_file(
-            remote_path=remote_path,
-            lazy=True,
-        )
+        pocket_data["remote_path"] = pocket_data.pop("file_path")
 
-        return cls.from_json([pocket_data])[0]
+        return cls.from_json([pocket_data], client=client)[0]
 
     @classmethod
     def from_result(
@@ -457,8 +568,9 @@ class Pocket:
     ) -> list[Self]:
         """Create Pocket objects from pocketfinder results in the data platform.
 
-        Fetches pocketfinder results for the given protein, downloads the
-        pocket PDB files, and constructs Pocket objects.
+        Fetches pocketfinder results for the given protein and stores the
+        remote paths without downloading.  PDB files are fetched lazily
+        when coordinates are first accessed.
 
         Args:
             protein_id: Protein ID to fetch pocket results for.
@@ -497,12 +609,10 @@ class Pocket:
         for record in records:
             pocket_data = dict(record["data"])
             pocket_data["id"] = record["id"]
-            remote_path = pocket_data["file_path"]
-            local_path = client.files.download_file(remote_path=remote_path)
-            pocket_data["file_path"] = local_path
+            pocket_data["remote_path"] = pocket_data.pop("file_path")
             pockets_data.append(pocket_data)
 
-        return cls.from_json(pockets_data)
+        return cls.from_json(pockets_data, client=client)
 
     @classmethod
     def from_ligand(
@@ -516,22 +626,12 @@ class Pocket:
         return cls.from_pdb_file(str(ligand.to_pdb()), name=name)
 
     def to_pdb_file(self, output_path: str):
-        """Write coordinates to a PDB file."""
-        if self.coordinates is None:
-            raise ValueError("No coordinates available to write to file")
+        """Write coordinates to a PDB file.
 
-        path = Path(output_path)
-        if not path.parent.exists():
-            path.parent.mkdir(parents=True, exist_ok=True)
-
-        with open(output_path, "w") as f:
-            f.write("HEADER    POCKET COORDINATES\n")
-            for i, coord in enumerate(self.coordinates):
-                x, y, z = coord
-                f.write(
-                    f"ATOM  {i + 1:5d}  CA  UNK A{i + 1:4d}    {x:8.3f}{y:8.3f}{z:8.3f}  1.00  0.00           C\n"
-                )
-            f.write("END\n")
+        Args:
+            output_path: Destination file path.
+        """
+        self.to_file(output_path)
 
     def update_coordinates(self, coords: np.ndarray):
         """update coordinates of the pocket"""

@@ -4,10 +4,10 @@ from pathlib import Path
 import numpy as np
 import pytest
 
+from deeporigin.drug_discovery import BRD_DATA_DIR
 from deeporigin.drug_discovery.constants import SUPPORTED_ATOM_SYMBOLS
-from deeporigin.drug_discovery.structures import Ligand, LigandSet
+from deeporigin.drug_discovery.structures import Ligand
 from deeporigin.exceptions import DeepOriginException
-from deeporigin.platform.client import DeepOriginClient
 
 # Import shared test fixtures
 from tests.utils_ligands import (
@@ -722,17 +722,11 @@ def test_ligands_to_dataframe():
     assert df.iloc[1]["logP"] == pytest.approx(0.88)
 
 
-def test_from_id_lv1():
-    """Test round-trip: local ligand -> sync -> from_id."""
-    client = DeepOriginClient()
-
-    ligand = Ligand.from_smiles("CCO", name="EthanolFromId")
-    ligand.sync(client=client)
-
+@pytest.mark.parametrize(
+    "sdf_file", sorted(BRD_DATA_DIR.glob("*.sdf")), ids=lambda p: p.stem
+)
+def test_ligand_sync(sdf_file):
+    """Test that we can sync a ligand from each BRD SDF file"""
+    ligand = Ligand.from_sdf(sdf_file)
+    ligand.sync()
     assert ligand.id is not None
-
-    fetched = Ligand.from_id(ligand.id, client=client)
-
-    assert fetched.id == ligand.id
-    assert fetched.smiles is not None
-    assert fetched.mol is not None

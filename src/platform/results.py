@@ -83,6 +83,7 @@ class Results:
         self,
         *,
         filter_dict: dict[str, Any] | None = None,
+        compute_job_id: str | None = None,
         limit: int | None = 1000,
         select: list[str] | None = None,
     ) -> dict:
@@ -99,6 +100,7 @@ class Results:
         Args:
             filter_dict: Raw filter criteria forwarded to the
                 result-explorer search endpoint.
+            compute_job_id: Optional compute job ID to filter by.
             limit: Maximum total number of results to return across all
                 pages. Defaults to 1000.
             select: List of fields to select. Defaults to
@@ -110,8 +112,10 @@ class Results:
         """
         if filter_dict is None:
             filter_dict = {}
+        if compute_job_id is not None:
+            filter_dict["compute_job_id"] = {"eq": compute_job_id}
         if select is None:
-            # note -- job_compute_id is the same as executionId in the rest of the system
+            # note -- compute_job_id is the same as executionId in the rest of the system
             # IMPORTANT! execution_id is not the same as executionId in the rest of the system
             select = ["id", "tool_key", "tool_version", "data", "compute_job_id"]
 

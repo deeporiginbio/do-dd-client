@@ -6,17 +6,20 @@ number = int | float
 
 ENVS = Literal["dev", "prod", "staging", "local"]
 
-LOCAL_ENDPOINT_DEFAULT = "http://127.0.0.1:6010"
-"""Default local API base URL (platform gateway)."""
+LOCAL_ENDPOINT_GATEWAY = "http://127.0.0.1:6010"
+"""Platform API gateway when running the full stack locally (use via ``DO_BASE_URL``)."""
 
 LOCAL_ENDPOINT_MOCK = "http://127.0.0.1:4931"
-"""Local mock server URL used by unit tests."""
+"""Default base URL for ``DO_ENV=local`` (API mock server; ``make mock-server``)."""
+
+LOCAL_ENDPOINT_DEFAULT = LOCAL_ENDPOINT_MOCK
+"""Deprecated alias for ``LOCAL_ENDPOINT_MOCK``. Use ``LOCAL_ENDPOINT_MOCK`` or ``LOCAL_ENDPOINT_GATEWAY``."""
 
 API_ENDPOINT = {
     "prod": "https://api.deeporigin.io",
     "staging": "https://api.staging.deeporigin.io",
     "dev": "https://api.dev.deeporigin.io",
-    "local": LOCAL_ENDPOINT_DEFAULT,
+    "local": LOCAL_ENDPOINT_MOCK,
 }
 
 

@@ -5,7 +5,7 @@ These are meant to be run against a live instance.
 
 import pytest
 
-from conftest import FIXTURES_DIR, check_function_exists
+from conftest import check_function_exists
 from deeporigin.drug_discovery import (
     Ligand,
     Pocket,
@@ -66,6 +66,7 @@ def test_docking_lv2(
     client: DeepOriginClient,
     brd_protein: Protein,
     brd_ligand: Ligand,
+    registered_pocket: Pocket,
 ):
     """Test docking function."""
     if not check_function_exists(
@@ -73,19 +74,11 @@ def test_docking_lv2(
     ):
         pytest.skip("Docking function does not exist")
 
-    pocket = Pocket.from_pdb_file(
-        FIXTURES_DIR
-        / "files"
-        / "tool-runs"
-        / "86ea3aea-accd-474d-9e0b-89a3f47ab61b"
-        / "pocket_1.pdb",
-    )
-
     result = dock(
         client=client,
         protein=brd_protein,
         ligand=brd_ligand,
-        pocket=pocket,
+        pocket=registered_pocket,
     )
 
     assert isinstance(result, FunctionResult), (

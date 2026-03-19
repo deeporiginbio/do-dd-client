@@ -173,7 +173,7 @@ class AsyncExecutableMixin:
             self.status = result.get("status")
             self.progress = result.get("progressReport")
 
-            quotation = result.get("quotationResult", {})
+            quotation = result.get("quotationResult") or {}
             successful = quotation.get("successfulQuotations", [])
             if successful:
                 price = successful[0].get("priceTotal")

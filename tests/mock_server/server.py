@@ -6,6 +6,7 @@ API endpoints used by the DeepOriginClient.
 
 from __future__ import annotations
 
+import copy
 from datetime import datetime, timezone
 import hashlib
 import json
@@ -18,6 +19,10 @@ from fastapi import FastAPI
 import uvicorn
 
 from .routers import billing, data_platform, entities, files, tools
+from .routers.data_platform import (
+    MOCK_CANONICAL_PROTEIN_ID,
+    _base_canonical_protein_record,
+)
 
 
 class MockServer:
@@ -58,6 +63,7 @@ class MockServer:
         self._load_execution_fixtures()
         self._load_ligand_fixtures()
         self._load_result_explorer_fixtures()
+        self._seed_canonical_mock_protein()
         self._setup_routes()
 
     def _load_fixture(self, fixture_name: str) -> dict[str, Any]:
@@ -153,7 +159,7 @@ class MockServer:
         seen_smiles: set[str] = set()
         now_ts = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z"
 
-        def _ingest_mol(mol: Chem.Mol) -> None:
+        def _ingest_mol(mol: Chem.Mol, *, ligand_id: str | None = None) -> None:
             """Convert an RDKit Mol into a ligand record and store it."""
             canonical = Chem.MolToSmiles(mol)
             if canonical in seen_smiles:
@@ -161,7 +167,8 @@ class MockServer:
             seen_smiles.add(canonical)
 
             name = mol.GetProp("_Name") if mol.HasProp("_Name") else "Unknown"
-            ligand_id = self._make_ligand_id(canonical)
+            if ligand_id is None:
+                ligand_id = self._make_ligand_id(canonical)
 
             self._ligands[ligand_id] = {
                 "id": ligand_id,
@@ -187,21 +194,22 @@ class MockServer:
                 "tpsa": Descriptors.TPSA(mol),
             }
 
-        def _ingest_sdf(path: Path) -> None:
+        def _ingest_sdf(path: Path, *, use_stem_as_id: bool = False) -> None:
             """Parse all molecules from an SDF file."""
             supplier = Chem.SDMolSupplier(str(path), removeHs=True)
             for mol in supplier:
                 if mol is None:
                     continue
                 try:
-                    _ingest_mol(mol)
+                    lid = path.stem if use_stem_as_id else None
+                    _ingest_mol(mol, ligand_id=lid)
                 except Exception:
                     continue
 
         brd_dir = Path(__file__).parent.parent.parent / "src" / "data" / "brd"
         if brd_dir.exists():
             for sdf_file in sorted(brd_dir.glob("*.sdf")):
-                _ingest_sdf(sdf_file)
+                _ingest_sdf(sdf_file, use_stem_as_id=True)
 
         for sdf_name in ("ligands-brd-all.sdf", "42-ligands.sdf", "brd-7.sdf"):
             sdf_path = self._fixtures_dir / sdf_name
@@ -226,6 +234,13 @@ class MockServer:
             with open(json_path) as f:
                 fixture: dict[str, Any] = json.load(f)
             self._results.extend(fixture.get("data", []))
+
+    def _seed_canonical_mock_protein(self) -> None:
+        """Ensure one stable protein row exists for sync/register and get_protein."""
+        if MOCK_CANONICAL_PROTEIN_ID not in self._proteins:
+            self._proteins[MOCK_CANONICAL_PROTEIN_ID] = copy.deepcopy(
+                _base_canonical_protein_record()
+            )
 
     def _setup_routes(self) -> None:
         """Set up all API routes."""

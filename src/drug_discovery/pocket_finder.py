@@ -105,18 +105,19 @@ class PocketFinder(Execution, QuoteMixin, SyncExecutableMixin):
 
         self._estimate = result.estimate
 
+    @beartype
     def run(self) -> list[Pocket]:
         """Execute pocket finding (blocking).
 
-        Returns the detected pockets and populates ``self.cost`` with
-        the actual cost incurred.
+        Always runs the tool and returns fresh results. To fetch previously
+        computed pockets without re-running, use :meth:`get_results` instead.
 
         Returns:
             List of ``Pocket`` objects found in the protein.
         """
-        from deeporigin.functions.pocket_finder import find_pockets as _find_pockets
-
         client = self.client
+
+        from deeporigin.functions.pocket_finder import find_pockets as _find_pockets
 
         result = _find_pockets(
             protein=self.protein,
@@ -154,6 +155,7 @@ class PocketFinder(Execution, QuoteMixin, SyncExecutableMixin):
             )
 
         self._cost = result.cost
+        self.status = result.status
 
         return pockets
 

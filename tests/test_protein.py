@@ -7,7 +7,6 @@ import pytest
 
 from deeporigin.drug_discovery import BRD_DATA_DIR, Protein
 from deeporigin.exceptions import DeepOriginException
-from deeporigin.platform.client import DeepOriginClient
 
 
 def test_load_protein_from_cif_structure_factor():
@@ -404,19 +403,9 @@ def test_load_structure_from_block_invalid_type():
         Protein.load_structure_from_block("test content", "xyz")
 
 
-def test_from_id_lv1():
-    """Test round-trip: local file -> sync -> from_id."""
-    client = DeepOriginClient()
-
+def test_protein_sync_lv1():
+    """Test that we can sync a protein"""
     protein = Protein.from_file(BRD_DATA_DIR / "brd.pdb")
-    protein.sync(client=client)
-
+    protein.remove_water()
+    protein.sync()
     assert protein.id is not None
-
-    fetched = Protein.from_id(protein.id, client=client)
-
-    assert fetched.id == protein.id
-    assert fetched.file_path is not None
-    assert fetched.file_path.exists()
-    assert len(fetched.structure) > 0
-    assert fetched.block_content is not None

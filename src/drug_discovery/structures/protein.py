@@ -14,7 +14,7 @@ import io
 import os
 from pathlib import Path
 import tempfile
-from typing import Any, Optional, Self
+from typing import Any, NoReturn, Optional, Self
 
 from beartype import beartype
 import Bio.Seq
@@ -607,53 +607,27 @@ class Protein(Entity):
         pocket_min_size: int = 30,
         client: Optional[DeepOriginClient] = None,
         quote: bool = False,
-    ) -> FunctionResult:
-        """Find potential binding pockets in the protein structure.
+    ) -> NoReturn:
+        """Deprecated. Use :class:`deeporigin.drug_discovery.pocket_finder.PocketFinder` instead.
 
-        This method analyzes the protein structure to identify cavities or pockets
-        that could potentially serve as binding sites for ligands. It uses the
-        Deep Origin pocket finding algorithm to detect and characterize these pockets.
+        This method is deprecated. Use ``PocketFinder`` to find binding pockets:
 
-        Args:
-            pocket_count: Maximum number of pockets to identify. Defaults to 1.
-            pocket_min_size: Minimum size of pockets to consider,
-                measured in cubic Angstroms. Defaults to 30.
-            client: DeepOriginClient instance. If None, uses DeepOriginClient.get().
-            quote: If True, request a cost estimate without executing.
+        - ``PocketFinder(protein, pocket_count=..., pocket_min_size=...).run()``
+          returns a list of :class:`Pocket` objects.
+        - ``PocketFinder(protein).quote()`` populates ``.estimate`` for cost
+          estimation without executing.
 
-        Returns:
-            FunctionResult with a ``pockets`` attribute containing a list of
-            Pocket objects (empty when ``quote=True``).
-
-        Examples:
-            >>> protein = Protein(file="protein.pdb")
-            >>> result = protein.find_pockets(pocket_count=3, pocket_min_size=50)
-            >>> for pocket in result.pockets:
-            ...     print(f"Pocket: {pocket.name}, Volume: {pocket.properties.get('volume')} Å³")
+        Raises:
+            MethodDeprecatedError: Always, directing users to PocketFinder.
         """
+        from deeporigin.exceptions import MethodDeprecatedError
 
-        if client is None:
-            client = DeepOriginClient.get()
-
-        from deeporigin.functions.pocket_finder import find_pockets as _find_pockets
-
-        result = _find_pockets(
-            protein=self,
-            pocket_count=pocket_count,
-            pocket_min_size=pocket_min_size,
-            client=client,
-            quote=quote,
+        raise MethodDeprecatedError(
+            "Protein.find_pockets() is deprecated. "
+            "Use PocketFinder from deeporigin.drug_discovery instead: "
+            "e.g. PocketFinder(protein, pocket_count=1, pocket_min_size=30).run() for execution, "
+            "or PocketFinder(protein).quote() for a cost estimate."
         )
-
-        if quote:
-            result.pockets = []
-            return result
-
-        result.pockets = Pocket.from_function_result(
-            result=result,
-            client=client,
-        )
-        return result
 
     @beartype
     def remove_hetatm(
@@ -1358,12 +1332,16 @@ class Protein(Entity):
             html_content = protein_viewer.render_protein()
             return render_html(html_content)
         elif pockets is not None and sdf_file is None:
+            # make sure we
+            for pocket in pockets:
+                pocket.download()
+
             # need to show pockets
             pocket_surface_alpha: float = 0.7
             protein_surface_alpha: float = 0.1
 
             protein_viewer = ProteinViewer(data=current_protein_file, format="pdb")
-            pocket_paths = [str(pocket.file_path) for pocket in pockets]
+            pocket_paths = [str(pocket.local_path) for pocket in pockets]
 
             # Retrieve and customize pocket visualization configuration
             pocket_config = protein_viewer.get_pocket_visualization_config()
