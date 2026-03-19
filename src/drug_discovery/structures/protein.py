@@ -1332,12 +1332,16 @@ class Protein(Entity):
             html_content = protein_viewer.render_protein()
             return render_html(html_content)
         elif pockets is not None and sdf_file is None:
+            # make sure we
+            for pocket in pockets:
+                pocket.download()
+
             # need to show pockets
             pocket_surface_alpha: float = 0.7
             protein_surface_alpha: float = 0.1
 
             protein_viewer = ProteinViewer(data=current_protein_file, format="pdb")
-            pocket_paths = [str(pocket.file_path) for pocket in pockets]
+            pocket_paths = [str(pocket.local_path) for pocket in pockets]
 
             # Retrieve and customize pocket visualization configuration
             pocket_config = protein_viewer.get_pocket_visualization_config()

@@ -119,6 +119,7 @@ def test_docking_with_data_platform_lv2(
         assert pose.smiles is not None, "Pose should have SMILES"
 
 
+@pytest.mark.skip(reason="backend is broken")
 def test_sysprep_with_data_platform_lv2(
     client: DeepOriginClient,
     registered_protein: Protein,
