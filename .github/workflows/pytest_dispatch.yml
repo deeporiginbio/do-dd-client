@@ -1,0 +1,70 @@
+name: Dispatch pytest (-k)
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: Platform API environment to run tests against
+        type: choice
+        options:
+          - dev
+          - staging
+          - prod
+        required: true
+      test_expression:
+        description: Pytest -k expression (e.g. test name substring or keyword expression)
+        type: string
+        required: true
+
+jobs:
+  pytest:
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.environment }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate test expression
+        env:
+          TEST_EXPR: ${{ inputs.test_expression }}
+        run: |
+          if [ -z "${TEST_EXPR// }" ]; then
+            echo "::error::test_expression cannot be empty"
+            exit 1
+          fi
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v6
+        with:
+          version: "0.5.27"
+
+      - name: Set up Python
+        run: uv python install 3.13
+
+      - name: Set environment variables
+        env:
+          TARGET_ENV: ${{ inputs.environment }}
+          TOKEN_PROD: ${{ secrets.DO_AUTH_TOKEN_PROD }}
+          TOKEN_STAGING: ${{ secrets.DO_AUTH_TOKEN_STAGING }}
+          TOKEN_DEV: ${{ secrets.DO_AUTH_TOKEN_DEV }}
+        run: |
+          AUTH_TOKEN_VAR=$(python3 scripts/get_env_var_name.py access_token)
+          ORG_KEY_VAR=$(python3 scripts/get_env_var_name.py org_key)
+          ENV_VAR=$(python3 scripts/get_env_var_name.py env)
+          echo "${ORG_KEY_VAR}=deeporigin" >> "$GITHUB_ENV"
+          echo "${ENV_VAR}=${TARGET_ENV}" >> "$GITHUB_ENV"
+          if [ "$TARGET_ENV" = "prod" ]; then
+            echo "${AUTH_TOKEN_VAR}=${TOKEN_PROD}" >> "$GITHUB_ENV"
+          elif [ "$TARGET_ENV" = "staging" ]; then
+            echo "${AUTH_TOKEN_VAR}=${TOKEN_STAGING}" >> "$GITHUB_ENV"
+          elif [ "$TARGET_ENV" = "dev" ]; then
+            echo "${AUTH_TOKEN_VAR}=${TOKEN_DEV}" >> "$GITHUB_ENV"
+          fi
+
+      - name: Install dependencies
+        run: uv sync --extra test --extra tools --extra plots --extra core
+
+      - name: Run pytest
+        env:
+          TARGET_ENV: ${{ inputs.environment }}
+          TEST_K: ${{ inputs.test_expression }}
+        run: uv run pytest --env "$TARGET_ENV" -k "$TEST_K" -v

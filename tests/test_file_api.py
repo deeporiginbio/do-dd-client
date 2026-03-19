@@ -2,6 +2,7 @@
 
 import os
 import tempfile
+import uuid
 
 import pytest
 
@@ -380,8 +381,8 @@ def test_upload_directory_bulk_lv1():
         "listed files should match uploaded files"
     )
 
-    # Clean up remote files
-    client.files.delete_many(remote_paths=remote_files, skip_errors=True)
+    # Clean up: trailing slash on remote_dir => file-service deletes the whole prefix
+    client.files.delete(remote_dir, timeout=60.0)
 
 
 def test_upload_files_multipart_lv1():
@@ -391,7 +392,7 @@ def test_upload_files_multipart_lv1():
     if client.env == "local":
         pytest.skip("Requires a real file service (use --env dev/staging/prod)")
 
-    remote_dir = "testing-multipart-upload"
+    remote_dir = f"testing-multipart-upload-{uuid.uuid4()}"
     num_files = 10
 
     with tempfile.TemporaryDirectory() as tmpdir:
@@ -421,8 +422,8 @@ def test_upload_files_multipart_lv1():
         "listed files should match uploaded files"
     )
 
-    # Clean up
-    client.files.delete_many(remote_paths=remote_files, timeout=120.0)
+    # Clean up: trailing slash => file-service deletes the whole prefix
+    client.files.delete(f"{remote_dir}/", timeout=30.0)
 
 
 def test_round_trip_content_integrity_lv1():
