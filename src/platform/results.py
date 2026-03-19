@@ -115,7 +115,7 @@ class Results:
         if compute_job_id is not None:
             filter_dict["compute_job_id"] = {"eq": compute_job_id}
         if select is None:
-            # note -- job_compute_id is the same as executionId in the rest of the system
+            # note -- compute_job_id is the same as executionId in the rest of the system
             # IMPORTANT! execution_id is not the same as executionId in the rest of the system
             select = ["id", "tool_key", "tool_version", "data", "compute_job_id"]
 
