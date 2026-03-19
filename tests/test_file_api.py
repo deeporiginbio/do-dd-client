@@ -1,11 +1,43 @@
 """this module tests the file API"""
 
+import json
 import os
+from pathlib import Path
 import tempfile
+import time
 
 import pytest
 
 from deeporigin.platform.client import DeepOriginClient
+
+# #region agent log
+_AGENT_DEBUG_LOG = (
+    Path(__file__).resolve().parent.parent / ".cursor" / "debug-c693fa.log"
+)
+
+
+def _agent_debug_log(
+    hypothesis_id: str,
+    location: str,
+    message: str,
+    data: dict,
+) -> None:
+    """Append one NDJSON debug line for CI/local multipart test diagnostics."""
+    _AGENT_DEBUG_LOG.parent.mkdir(parents=True, exist_ok=True)
+    payload = {
+        "sessionId": "c693fa",
+        "runId": os.environ.get("GITHUB_RUN_ID", "local"),
+        "hypothesisId": hypothesis_id,
+        "location": location,
+        "message": message,
+        "data": data,
+        "timestamp": int(time.time() * 1000),
+    }
+    with _AGENT_DEBUG_LOG.open("a", encoding="utf-8") as f:
+        f.write(json.dumps(payload, default=str) + "\n")
+
+
+# #endregion
 
 
 def test_get_all_files_lv1():
@@ -394,35 +426,107 @@ def test_upload_files_multipart_lv1():
     remote_dir = "testing-multipart-upload"
     num_files = 10
 
-    with tempfile.TemporaryDirectory() as tmpdir:
-        file_map: dict[str, str] = {}
-        for i in range(num_files):
-            name = f"mp_{i:03d}.bin"
-            local = os.path.join(tmpdir, name)
-            with open(local, "wb") as f:
-                f.write(os.urandom(64 * 1024))
-            file_map[local] = f"{remote_dir}/{name}"
+    # #region agent log
+    _agent_debug_log(
+        "H3",
+        "test_file_api.py:test_upload_files_multipart_lv1:start",
+        "ci_env_and_remote_dir",
+        {
+            "GITHUB_ACTIONS": os.environ.get("GITHUB_ACTIONS"),
+            "GITHUB_RUN_ID": os.environ.get("GITHUB_RUN_ID"),
+            "GITHUB_JOB": os.environ.get("GITHUB_JOB"),
+            "remote_dir": remote_dir,
+            "num_files": num_files,
+        },
+    )
+    # #endregion
 
-        results = client.files.upload_many(files=file_map)
+    try:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            file_map: dict[str, str] = {}
+            for i in range(num_files):
+                name = f"mp_{i:03d}.bin"
+                local = os.path.join(tmpdir, name)
+                with open(local, "wb") as f:
+                    f.write(os.urandom(64 * 1024))
+                file_map[local] = f"{remote_dir}/{name}"
 
-        assert len(results) == num_files, (
-            f"expected {num_files} results, got {len(results)}"
+            t0 = time.monotonic()
+            results = client.files.upload_many(files=file_map)
+            upload_s = time.monotonic() - t0
+
+            # #region agent log
+            _agent_debug_log(
+                "H1",
+                "test_file_api.py:test_upload_files_multipart_lv1:after_upload",
+                "upload_many_finished",
+                {
+                    "result_count": len(results),
+                    "upload_seconds": round(upload_s, 3),
+                    "all_dict": all(isinstance(r, dict) for r in results),
+                },
+            )
+            # #endregion
+
+            assert len(results) == num_files, (
+                f"expected {num_files} results, got {len(results)}"
+            )
+            assert all(isinstance(r, dict) for r in results), (
+                "each result should be a dict"
+            )
+
+        # Verify via listing
+        remote_files = client.files.list(
+            remote_path=f"{remote_dir}/",
+            recursive=True,
         )
-        assert all(isinstance(r, dict) for r in results), "each result should be a dict"
+        listed_basenames = sorted(os.path.basename(f) for f in remote_files)
+        expected_basenames = sorted(f"mp_{i:03d}.bin" for i in range(num_files))
 
-    # Verify via listing
-    remote_files = client.files.list(
-        remote_path=f"{remote_dir}/",
-        recursive=True,
-    )
-    listed_basenames = sorted(os.path.basename(f) for f in remote_files)
-    expected_basenames = sorted(f"mp_{i:03d}.bin" for i in range(num_files))
-    assert listed_basenames == expected_basenames, (
-        "listed files should match uploaded files"
-    )
+        # #region agent log
+        only_expected = {b for b in listed_basenames if b in set(expected_basenames)}
+        _agent_debug_log(
+            "H2,H3,H4",
+            "test_file_api.py:test_upload_files_multipart_lv1:after_list",
+            "list_vs_expected",
+            {
+                "list_len": len(remote_files),
+                "listed_basenames": listed_basenames,
+                "expected_basenames": expected_basenames,
+                "sample_raw_keys": remote_files[:5],
+                "matched_expected_count": len(only_expected),
+            },
+        )
+        # #endregion
 
-    # Clean up
-    client.files.delete_many(remote_paths=remote_files, timeout=120.0)
+        assert listed_basenames == expected_basenames, (
+            "listed files should match uploaded files"
+        )
+
+        # Clean up
+        t_del0 = time.monotonic()
+        client.files.delete_many(remote_paths=remote_files, timeout=120.0)
+        # #region agent log
+        _agent_debug_log(
+            "H5",
+            "test_file_api.py:test_upload_files_multipart_lv1:after_delete",
+            "delete_many_ok",
+            {
+                "delete_seconds": round(time.monotonic() - t_del0, 3),
+                "deleted_count": len(remote_files),
+            },
+        )
+        # #endregion
+    except BaseException as exc:
+        # #region agent log
+        _agent_debug_log(
+            "H1-H5",
+            "test_file_api.py:test_upload_files_multipart_lv1:exception",
+            "test_failed",
+            {"exc_type": type(exc).__name__, "exc_msg": str(exc)[:800]},
+        )
+        # #endregion
+        raise
 
 
 def test_round_trip_content_integrity_lv1():
