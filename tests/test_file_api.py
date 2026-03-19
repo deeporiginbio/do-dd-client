@@ -381,8 +381,8 @@ def test_upload_directory_bulk_lv1():
         "listed files should match uploaded files"
     )
 
-    # Clean up remote files
-    client.files.delete_many(remote_paths=remote_files, skip_errors=True)
+    # Clean up: trailing slash on remote_dir => file-service deletes the whole prefix
+    client.files.delete(remote_dir, timeout=60.0)
 
 
 def test_upload_files_multipart_lv1():
