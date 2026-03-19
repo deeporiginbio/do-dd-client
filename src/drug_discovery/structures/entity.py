@@ -66,7 +66,7 @@ class Entity(ABC):
             raise ValueError("No local_path or remote_path available")
         if client is None:
             client = DeepOriginClient.get()
-        self.local_path = client.files.download_file(
+        self.local_path = client.files.download(
             remote_path=self.remote_path,
             lazy=True,
         )
@@ -93,7 +93,7 @@ class Entity(ABC):
         if remote_path is not None:
             self._remote_path_override = remote_path
 
-        client.files.upload_file(
+        client.files.upload(
             self.to_file(),
             remote_path=self._remote_path,
         )

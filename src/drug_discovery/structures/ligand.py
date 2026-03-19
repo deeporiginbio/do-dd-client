@@ -355,9 +355,7 @@ class Ligand(Entity):
         smiles = data.get("smiles") or data.get("canonical_smiles")
 
         if mol_file:
-            local_file_path = client.files.download_file(
-                remote_path=mol_file, lazy=True
-            )
+            local_file_path = client.files.download(remote_path=mol_file, lazy=True)
             ligand = cls.from_sdf(file_path=local_file_path)
         elif smiles:
             ligand = cls.from_smiles(smiles=smiles)
@@ -2021,7 +2019,7 @@ class LigandSet:
             if file_path:
                 remote_paths.append(file_path)
 
-        local_paths = client.files.download_files(
+        local_paths = client.files.download_many(
             files=remote_paths,
             lazy=True,
         )

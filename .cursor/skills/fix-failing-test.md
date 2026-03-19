@@ -80,7 +80,7 @@ for pocket_data in response["functionOutputs"]["pockets"]:
     remote_path = pocket_data["file_path"]
     local_path = Path("tests/fixtures/files") / remote_path
     local_path.parent.mkdir(parents=True, exist_ok=True)
-    client.files.download_file(remote_path=remote_path, local_path=str(local_path))
+    client.files.download(remote_path=remote_path, local_path=str(local_path))
 ```
 
 ### Step 4: Verify locally

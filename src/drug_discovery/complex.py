@@ -194,7 +194,7 @@ class Complex:
             for r in individual_results:
                 outputs = r.function_outputs[0]
                 output_file = outputs["system"]["system_pdb_file_path"]
-                local_path = self.client.files.download_file(
+                local_path = self.client.files.download(
                     remote_path=output_file,
                     lazy=True,
                 )
@@ -216,7 +216,7 @@ class Complex:
         # and protein.upload() is so that we can make one call to upload_files, instead
         # of several
 
-        remote_files = self.client.files.list_files_in_dir(
+        remote_files = self.client.files.list(
             remote_path="entities/",
             recursive=True,
         )
@@ -229,7 +229,7 @@ class Complex:
             if ligand._remote_path not in remote_files:
                 files_to_upload[str(ligand.to_sdf())] = ligand._remote_path
 
-        self.client.files.upload_files(files=files_to_upload)
+        self.client.files.upload_many(files=files_to_upload)
 
     def _repr_pretty_(self, p, cycle):
         """pretty print a Complex object"""

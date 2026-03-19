@@ -187,7 +187,7 @@ def test_create_ligand_lv1():
 def test_create_protein_lv1():
     """Test creating a protein; 409 (already exists) is also a pass."""
     client = DeepOriginClient()
-    client.files.upload_file(_BRD_PDB_LOCAL, _BRD_PDB_REMOTE)
+    client.files.upload(_BRD_PDB_LOCAL, _BRD_PDB_REMOTE)
 
     try:
         response = client.entities.create_protein(file_path=_BRD_PDB_REMOTE)
@@ -243,7 +243,7 @@ def test_get_ligands_empty_ids():
 def test_get_protein_lv1():
     """Test getting a protein by ID."""
     client = DeepOriginClient()
-    client.files.upload_file(_BRD_PDB_LOCAL, _BRD_PDB_REMOTE)
+    client.files.upload(_BRD_PDB_LOCAL, _BRD_PDB_REMOTE)
 
     results = client.entities.search_proteins(file_path=_BRD_PDB_REMOTE)
     if not results["data"]:
