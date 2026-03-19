@@ -56,7 +56,7 @@ class ABFE(WorkflowStep):
 
         results_files = dict.fromkeys(results_files, None)
 
-        results_files = self.parent.client.files.download_files(
+        results_files = self.parent.client.files.download_many(
             files=results_files,
             skip_errors=True,
         )
@@ -443,7 +443,7 @@ class ABFE(WorkflowStep):
             # Check for valid windows
 
             # figure out valid windows
-            files = self.parent.client.files.list_files_in_dir(
+            files = self.parent.client.files.list(
                 remote_path=str(remote_base),
             )
             xtc_files = [
@@ -479,7 +479,7 @@ class ABFE(WorkflowStep):
         files_to_download.append(remote_xtc_file)
         files_to_download = dict.fromkeys(map(str, files_to_download), None)
 
-        self.parent.client.files.download_files(
+        self.parent.client.files.download_many(
             files=files_to_download,
             lazy=True,
         )
@@ -515,7 +515,7 @@ class ABFE(WorkflowStep):
             ) from None
         file = file[0]
 
-        local_path = self.parent.client.files.download_file(
+        local_path = self.parent.client.files.download(
             file,
             lazy=True,
         )
@@ -543,7 +543,7 @@ class ABFE(WorkflowStep):
             ) from None
         file = file[0]
 
-        local_path = self.parent.client.files.download_file(
+        local_path = self.parent.client.files.download(
             file,
             lazy=True,
         )
@@ -566,6 +566,6 @@ class ABFE(WorkflowStep):
 
         remote_base = Path(df.iloc[0]["user_outputs"]["output_file"]["key"])
 
-        files = self.parent.client.files.list_files_in_dir(remote_base)
+        files = self.parent.client.files.list(remote_base)
 
         return files

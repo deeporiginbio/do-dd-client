@@ -198,7 +198,7 @@ def constrained_dock(
     output_files = outputs.get("output_files", {})
     for filename, remote_path in output_files.items():
         local_path = str(Path(extract_dir) / filename)
-        client.files.download_file(
+        client.files.download(
             remote_path=remote_path,
             local_path=local_path,
         )

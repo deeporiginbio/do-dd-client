@@ -5,7 +5,7 @@ from __future__ import annotations
 import concurrent.futures
 from pathlib import Path
 import time
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Literal, overload
 
 import httpx
 from tqdm import tqdm
@@ -21,9 +21,11 @@ _MISSING_URL_FIELD = "Signed URL response missing 'url' field"
 
 
 class Files:
-    """Files API wrapper.
+    """Files API wrapper for org file storage (list, upload, download, delete).
 
-    Provides access to files-related endpoints through the DeepOriginClient.
+    For guidance on choosing between ``upload`` / ``upload_many`` / ``upload_tree``,
+    ``download`` / ``download_many``, and related methods, see
+    ``docs/platform/ref/files.md`` (section *Choosing a method*).
     """
 
     def __init__(self, client: DeepOriginClient) -> None:
@@ -44,7 +46,7 @@ class Files:
         max_keys: int | None,
         prefix: str | None,
     ) -> dict[str, str | int | bool]:
-        """Build parameters dictionary for list_files_in_dir API call.
+        """Build parameters dictionary for :meth:`Files.list` API call.
 
         Args:
             recursive: If True, recursively list files in subdirectories.
@@ -99,8 +101,8 @@ class Files:
         """
         return response.get("continuation_token") or response.get("continuationToken")
 
-    def get_signed_url(self, remote_path: str, *, upload: bool = False) -> str:
-        """Get a signed URL for uploading or downloading a file.
+    def signed_url(self, remote_path: str, *, upload: bool = False) -> str:
+        """Return a signed URL for uploading or downloading a file.
 
         Args:
             remote_path: The remote file path.
@@ -152,7 +154,7 @@ class Files:
         Raises:
             httpx.HTTPStatusError: If the PUT fails after all retries.
         """
-        signed_url = self.get_signed_url(remote_path, upload=True)
+        signed_url = self.signed_url(remote_path, upload=True)
 
         file_content = local_path.read_bytes()
 
@@ -211,7 +213,7 @@ class Files:
             f"local_path must be an existing file or directory: {local_path}"
         )
 
-    def upload_files_via_signed_url(
+    def upload_tree(
         self,
         local_path: str | Path | list[str | Path],
         remote_dir: str,
@@ -221,7 +223,10 @@ class Files:
         retry_backoff_factor: float = 1.0,
         skip_errors: bool = False,
     ) -> list[str]:
-        """Upload local files or a directory to a remote directory using signed URLs.
+        """Upload a local file, directory tree, or file list under a remote directory.
+
+        Uses signed URLs and parallel workers. Directory uploads preserve relative
+        paths under ``remote_dir``.
 
         Accepts either a list of file paths or a single directory path. When a
         directory is provided, all files inside it are collected recursively and
@@ -283,104 +288,103 @@ class Files:
             error_msgs = "\n".join(
                 f"Upload failed for {lp}: {err}" for lp, err in errors
             )
-            raise RuntimeError(
-                f"Some uploads failed in upload_files_via_signed_url:\n{error_msgs}"
-            )
+            raise RuntimeError(f"Some uploads failed in upload_tree:\n{error_msgs}")
 
         return results
 
-    def list_files_in_dir(
+    @overload
+    def list(
         self,
         remote_path: str,
         *,
+        metadata: Literal[False] = False,
         recursive: bool = True,
         last_count: int | None = None,
         delimiter: str | None = None,
         max_keys: int | None = None,
         prefix: str | None = None,
     ) -> list[str]:
-        """List files in a directory.
+        """List remote object keys under a path (default).
 
-        Automatically handles pagination using continuation tokens. All pages
-        are fetched and combined into a single list.
+        Omit ``metadata`` or set ``metadata=False`` to get a ``list[str]`` of
+        remote keys. Pagination is handled automatically.
 
         Args:
-            remote_path: The path to the directory to list files from.
-            recursive: If True, recursively list files in subdirectories.
-                Defaults to True.
-            last_count: Used for pagination - the last count of objects in the
-                bucket. Defaults to None.
-            delimiter: Used to group results by a common prefix (e.g., "/").
-                Defaults to None.
+            remote_path: Directory path to list from.
+            metadata: Must be ``False`` for this overload (default).
+            recursive: If True, include objects in subdirectories.
+            last_count: Pagination hint for the backing store.
+            delimiter: Group keys by a common prefix (e.g. ``"/"``).
             max_keys: Page size (cannot exceed 1000).
-                Defaults to None.
-            prefix: Path prefix to filter results. Defaults to None.
+            prefix: Filter keys by this path prefix.
 
         Returns:
-            List of file paths found in the specified directory.
+            List of remote key strings.
         """
-        all_files: list[str] = []
-        continuation_token: str | None = None
+        ...
 
-        while True:
-            params = self._build_list_params(
-                recursive=recursive,
-                last_count=last_count,
-                continuation_token=continuation_token,
-                delimiter=delimiter,
-                max_keys=max_keys,
-                prefix=prefix,
-            )
-
-            response = self._c.get_json(
-                f"/files/{self._c.org_key}/directory/{remote_path}",
-                params=params,
-            )
-
-            all_files.extend(self._extract_file_keys(response))
-
-            continuation_token = self._get_continuation_token(response)
-            if not continuation_token:
-                break
-
-        return all_files
-
-    def list_files(
+    @overload
+    def list(
         self,
         remote_path: str,
         *,
+        metadata: Literal[True],
         recursive: bool = True,
         last_count: int | None = None,
         delimiter: str | None = None,
         max_keys: int | None = None,
         prefix: str | None = None,
     ) -> list[dict]:
-        """List files in a directory with full metadata.
+        """List remote objects with full metadata from the API.
 
-        Like :meth:`list_files_in_dir` but returns the complete file objects
-        from the API (Key, LastModified, ETag, Size, StorageClass, etc.)
-        instead of just the keys.
+        Set ``metadata=True`` to get a ``list[dict]`` (e.g. ``Key``, ``Size``,
+        ``ETag``, ``LastModified``). Pagination is handled automatically.
+
+        Args:
+            remote_path: Directory path to list from.
+            metadata: Must be ``True`` for this overload.
+            recursive: If True, include objects in subdirectories.
+            last_count: Pagination hint for the backing store.
+            delimiter: Group results by a common prefix (e.g. ``"/"``).
+            max_keys: Page size (cannot exceed 1000).
+            prefix: Filter results by this path prefix.
+
+        Returns:
+            List of file metadata dictionaries from the API.
+        """
+        ...
+
+    def list(
+        self,
+        remote_path: str,
+        *,
+        metadata: bool = False,
+        recursive: bool = True,
+        last_count: int | None = None,
+        delimiter: str | None = None,
+        max_keys: int | None = None,
+        prefix: str | None = None,
+    ) -> list[str] | list[dict]:
+        """List objects under a remote path.
 
         Automatically handles pagination using continuation tokens.
 
         Args:
-            remote_path: The path to the directory to list files from.
+            remote_path: Directory path to list from.
+            metadata: If False (default), return remote keys only. If True,
+                return full file objects from the API (``Key``, ``LastModified``,
+                ``ETag``, ``Size``, etc.).
             recursive: If True, recursively list files in subdirectories.
-                Defaults to True.
-            last_count: Used for pagination - the last count of objects in the
-                bucket. Defaults to None.
-            delimiter: Used to group results by a common prefix (e.g., "/").
-                Defaults to None.
+            last_count: Pagination hint — last count of objects in the bucket.
+            delimiter: Group results by a common prefix (e.g. ``"/"``).
             max_keys: Page size (cannot exceed 1000).
-                Defaults to None.
-            prefix: Path prefix to filter results. Defaults to None.
+            prefix: Path prefix to filter results.
 
         Returns:
-            List of file metadata dictionaries. Each dict contains keys such as
-            ``Key``, ``LastModified``, ``ETag``, ``Size``, ``StorageClass``,
-            and ``ChecksumAlgorithm``.
+            Either a list of remote keys or a list of metadata dicts.
         """
-        all_files: list[dict] = []
+        all_keys: list[str] = []
+        all_objects: list[dict] = []
         continuation_token: str | None = None
 
         while True:
@@ -398,16 +402,19 @@ class Files:
                 params=params,
             )
 
-            if "data" in response and isinstance(response["data"], list):
-                all_files.extend(response["data"])
+            if metadata:
+                if "data" in response and isinstance(response["data"], list):
+                    all_objects.extend(response["data"])
+            else:
+                all_keys.extend(self._extract_file_keys(response))
 
             continuation_token = self._get_continuation_token(response)
             if not continuation_token:
                 break
 
-        return all_files
+        return all_objects if metadata else all_keys
 
-    def upload_file(
+    def upload(
         self,
         local_path: str | Path,
         remote_path: str | Path,
@@ -444,17 +451,17 @@ class Files:
 
         return response.json()
 
-    def upload_files(
+    def upload_many(
         self,
         *,
         files: dict[str, str],
         max_workers: int = 20,
     ) -> list[dict]:
-        """Upload multiple files in parallel.
+        """Upload multiple files in parallel via multipart upload.
 
         Args:
-            files: A dictionary mapping local paths to remote paths.
-                Format: {local_path: remote_path}
+            files: Mapping of local paths to remote paths.
+            max_workers: Maximum concurrent uploads.
 
         Returns:
             List of upload response dictionaries.
@@ -462,13 +469,13 @@ class Files:
         Raises:
             RuntimeError: If any upload fails, with details about all failures.
         """
-        results = []
-        errors = []
+        results: list[dict] = []
+        errors: list[tuple[str, str, Exception]] = []
 
         with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
             future_to_pair = {
                 executor.submit(
-                    self.upload_file,
+                    self.upload,
                     local_path,
                     remote_path,
                 ): (local_path, remote_path)
@@ -490,51 +497,67 @@ class Files:
                     for lp, rp, err in errors
                 ]
             )
-            raise RuntimeError(f"Some uploads failed in upload_files:\n{error_msgs}")
+            raise RuntimeError(f"Some uploads failed in upload_many:\n{error_msgs}")
 
         return results
 
-    def download_file(
+    def download(
         self,
         remote_path: str,
         *,
         local_path: str | Path | None = None,
         lazy: bool = False,
         download_to_dir: str | Path | None = None,
+        direct: bool = False,
     ) -> str:
-        """Download a single file from UFA to ~/.deeporigin/, or some other local path.
+        """Download a remote file to a local path.
+
+        By default uses a signed URL and streams the body to disk (good for large
+        files). Set ``direct=True`` to use the HTTP GET file endpoint instead
+        (no signed-URL round trip; body is buffered in memory).
 
         Args:
-            remote_path: The remote path of the file to download.
-            local_path: The local path to save the file to. If None, uses ~/.deeporigin/.
-            lazy: If True, and the file exists locally, return the local path without downloading.
-            download_to_dir: If provided, the file will be downloaded to this directory.
-                The local path will be constructed by joining download_to_dir with the
-                basename of remote_path. Ignored if local_path is provided.
+            remote_path: Remote file path.
+            local_path: Local path to save to. If None, uses ``~/.deeporigin/``
+                (signed-URL mode uses ``remote_path`` with leading slashes
+                stripped; direct mode uses ``remote_path`` as given).
+            lazy: If True and the file already exists locally, skip downloading.
+            download_to_dir: Save using the basename of ``remote_path`` under
+                this directory (ignored if ``local_path`` is set).
+            direct: If True, download via ``GET /files/{org}/{path}`` instead of
+                a signed URL.
 
         Returns:
             The local path where the file was saved.
         """
-        # Determine local path
-        if local_path is not None:
-            local_path = Path(local_path)
+        dest: Path
+        if direct:
+            if local_path is not None:
+                dest = Path(local_path)
+            elif download_to_dir is not None:
+                dest = Path(download_to_dir) / Path(remote_path).name
+            else:
+                dest = _ensure_do_folder() / remote_path
+        elif local_path is not None:
+            dest = Path(local_path)
         elif download_to_dir is not None:
             download_to_dir_path = Path(download_to_dir)
-            # Extract basename from remote_path (handle both / and \ separators)
             remote_basename = Path(remote_path).name
-            local_path = download_to_dir_path / remote_basename
+            dest = download_to_dir_path / remote_basename
         else:
             do_folder = _ensure_do_folder()
-            local_path = do_folder / remote_path.lstrip("/")
+            dest = do_folder / remote_path.lstrip("/")
 
-        # Create parent directories
-        local_path.parent.mkdir(parents=True, exist_ok=True)
+        dest.parent.mkdir(parents=True, exist_ok=True)
 
-        # Handle lazy mode
-        if lazy and local_path.exists():
-            return str(local_path)
+        if lazy and dest.exists():
+            return str(dest)
 
-        # Get signed URL
+        if direct:
+            response = self._c._get(f"/files/{self._c.org_key}/{remote_path}")
+            dest.write_bytes(response.content)
+            return str(dest)
+
         signed_url_response = self._c.get_json(
             f"/files/{self._c.org_key}/signedUrl/{remote_path}",
         )
@@ -544,21 +567,17 @@ class Files:
 
         signed_url = signed_url_response["url"]
 
-        # Download file using httpx directly (signed_url is a complete URL)
-        # Use a fresh client without base_url to avoid URL prefixing issues
-        # Stream the response to avoid loading large files into memory
         with httpx.Client() as download_client:
             with download_client.stream("GET", signed_url) as download_response:
                 download_response.raise_for_status()
 
-                # Stream file content directly to disk
-                with open(local_path, "wb") as f:
+                with open(dest, "wb") as f:
                     for chunk in download_response.iter_bytes():
                         f.write(chunk)
 
-        return str(local_path)
+        return str(dest)
 
-    def download_files(
+    def download_many(
         self,
         *,
         files: dict[str, str | None] | list[str],
@@ -569,35 +588,29 @@ class Files:
         """Download multiple files in parallel.
 
         Args:
-            files: Either a dictionary mapping remote paths to local paths, or a
-                list of remote paths. Format: {remote_path: local_path or None} or
-                [remote_path1, remote_path2, ...]. If a list is provided, local
-                paths default to None (uses default location ~/.deeporigin/).
-            skip_errors: If True, don't raise RuntimeError on failures.
-                Defaults to False.
-            lazy: If True, skip downloading if file already exists locally.
-                Defaults to True.
-            max_workers: Maximum number of concurrent downloads. Defaults to 20.
+            files: Mapping of remote paths to local paths (or None for default
+                ``~/.deeporigin/`` layout), or a list of remote paths.
+            skip_errors: If True, collect failures instead of raising.
+            lazy: If True, skip download when the local file already exists.
+            max_workers: Maximum concurrent downloads.
 
         Returns:
             List of local paths where files were saved.
 
         Raises:
-            RuntimeError: If any download fails and skip_errors is False,
-                with details about all failures.
+            RuntimeError: If any download fails and ``skip_errors`` is False.
         """
-        # Convert list to dict if needed
         if isinstance(files, list):
             files = dict.fromkeys(files, None)
 
-        results = []
-        errors = []
+        results: list[str] = []
+        errors: list[tuple[str, str | None, Exception]] = []
 
         with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
             future_to_pair = {
                 executor.submit(
-                    self.download_file,
-                    remote_path=remote_path,
+                    self.download,
+                    remote_path,
                     local_path=local_path,
                     lazy=lazy,
                 ): (remote_path, local_path)
@@ -624,13 +637,11 @@ class Files:
                     for rp, lp, err in errors
                 ]
             )
-            raise RuntimeError(
-                f"Some downloads failed in download_files:\n{error_msgs}"
-            )
+            raise RuntimeError(f"Some downloads failed in download_many:\n{error_msgs}")
 
         return results
 
-    def delete_file(
+    def delete(
         self,
         remote_path: str,
         *,
@@ -669,7 +680,7 @@ class Files:
         if not data:
             raise RuntimeError(f"Failed to delete file {remote_path}")
 
-    def delete_files(
+    def delete_many(
         self,
         remote_paths: list[str],
         *,
@@ -680,23 +691,21 @@ class Files:
         """Delete multiple files in parallel.
 
         Args:
-            remote_paths: List of remote file paths to delete.
-            skip_errors: If True, don't raise RuntimeError on failures.
-                Defaults to False.
-            max_workers: Maximum number of concurrent deletions. Defaults to 20.
-            timeout: Request timeout in seconds for each deletion. If None, uses the client's default timeout.
+            remote_paths: Remote file paths to delete.
+            skip_errors: If True, don't raise on failures.
+            max_workers: Maximum concurrent deletions.
+            timeout: Per-request timeout in seconds.
 
         Raises:
-            RuntimeError: If any deletion fails and skip_errors is False,
-                with details about all failures.
+            RuntimeError: If any deletion fails and ``skip_errors`` is False.
         """
-        errors = []
+        errors: list[tuple[str, Exception]] = []
 
         with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
             future_to_path = {
                 executor.submit(
-                    self.delete_file,
-                    remote_path=remote_path,
+                    self.delete,
+                    remote_path,
                     timeout=timeout,
                 ): remote_path
                 for remote_path in remote_paths
@@ -716,57 +725,21 @@ class Files:
                     for rp, err in errors
                 ]
             )
-            raise RuntimeError(f"Some deletions failed in delete_files:\n{error_msgs}")
+            raise RuntimeError(f"Some deletions failed in delete_many:\n{error_msgs}")
 
-    def get_file(
-        self,
-        remote_path: str,
-        *,
-        local_path: str | Path | None = None,
-        download_to_dir: str | Path | None = None,
-    ) -> str:
-        """Download a file directly via the GET endpoint (no signed URL round-trip).
+    def stat(self, remote_path: str) -> dict[str, str]:
+        """Return file metadata from a HEAD request (no body download).
 
         Args:
-            remote_path: The remote file path to download.
-            local_path: Where to save the file locally. If None, defaults to
-                ``~/.deeporigin/<remote_path>``.
-            download_to_dir: If provided and ``local_path`` is None, save the
-                file into this directory using the remote file's basename.
+            remote_path: Remote file path.
 
         Returns:
-            The local path where the file was saved.
-        """
-        if local_path is not None:
-            dest = Path(local_path)
-        elif download_to_dir is not None:
-            dest = Path(download_to_dir) / Path(remote_path).name
-        else:
-            dest = _ensure_do_folder() / remote_path
-
-        dest.parent.mkdir(parents=True, exist_ok=True)
-
-        response = self._c._get(f"/files/{self._c.org_key}/{remote_path}")
-
-        dest.write_bytes(response.content)
-        return str(dest)
-
-    def head_file(self, remote_path: str) -> dict[str, str]:
-        """Get file metadata headers without downloading the file body.
-
-        Performs a HEAD request against ``/files/{orgKey}/{filePath}``.
-
-        Args:
-            remote_path: The remote file path to query.
-
-        Returns:
-            Dictionary of HTTP response headers (content-type, content-length,
-            last-modified, etag, etc.).
+            HTTP response headers (content-type, content-length, etag, etc.).
         """
         response = self._c._head(f"/files/{self._c.org_key}/{remote_path}")
         return dict(response.headers)
 
-    def upload_file_from_url(
+    def upload_from_url(
         self,
         remote_path: str,
         *,
@@ -790,7 +763,7 @@ class Files:
         )
         return response.json()
 
-    def download_as_zip(
+    def download_zip(
         self,
         remote_path: str,
         *,

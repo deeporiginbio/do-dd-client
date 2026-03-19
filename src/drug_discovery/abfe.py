@@ -339,7 +339,7 @@ class ABFE(Execution, QuoteMixin, AsyncExecutableMixin):
         if not remote_path:
             return None
 
-        local_path = client.files.download_file(
+        local_path = client.files.download(
             remote_path=remote_path,
             lazy=True,
         )

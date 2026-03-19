@@ -456,7 +456,7 @@ class Docking(Execution, QuoteMixin, SyncExecutableMixin, AsyncExecutableMixin):
         if not remote_paths:
             return None
 
-        local_paths = self.client.files.download_files(files=remote_paths, lazy=True)
+        local_paths = self.client.files.download_many(files=remote_paths, lazy=True)
 
         result = LigandSet()
         for path in local_paths:

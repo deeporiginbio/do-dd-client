@@ -54,7 +54,7 @@ class RBFE(WorkflowStep):
             print("No RBFE results found for this protein.")
             return None
 
-        self.parent.client.files.download_files(
+        self.parent.client.files.download_many(
             results_files,
         )
 

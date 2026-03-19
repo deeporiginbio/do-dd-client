@@ -53,7 +53,7 @@ def _make_poses_from_dock_results(
     sdf_files: set[str] = set()
     for outputs in result.function_outputs:
         for pose in outputs.get("poses", []):
-            local_path = client.files.download_file(
+            local_path = client.files.download(
                 remote_path=pose["file_path"],
                 lazy=True,
             )
@@ -122,7 +122,7 @@ class Protein(Entity):
             )
 
         # Download the file
-        local_file_path = client.files.download_file(remote_path=file_path)
+        local_file_path = client.files.download(remote_path=file_path)
 
         # Create Protein instance from the downloaded file
         protein = cls.from_file(file_path=local_file_path)

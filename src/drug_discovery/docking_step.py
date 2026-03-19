@@ -116,7 +116,7 @@ class Docking(WorkflowStep):
 
         id_local_paths: list[str] = []
         if remote_paths:
-            id_local_paths = self.parent.client.files.download_files(
+            id_local_paths = self.parent.client.files.download_many(
                 files=remote_paths,
                 lazy=True,
             )
@@ -157,7 +157,7 @@ class Docking(WorkflowStep):
             pd.DataFrame | None | list[str]: DataFrame of results, None if no results found, or list of file paths.
         """
 
-        files = self.parent.client.files.list_files_in_dir(
+        files = self.parent.client.files.list(
             remote_path="tool-runs/docking/" + self.parent.protein.to_hash() + "/",
         )
 
@@ -176,7 +176,7 @@ class Docking(WorkflowStep):
         # Convert list to dict where each file path is a key with None as value
         results_files_dict = dict.fromkeys(results_files)
 
-        self.parent.client.files.download_files(
+        self.parent.client.files.download_many(
             files=results_files_dict,
         )
 
