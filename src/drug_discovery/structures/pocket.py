@@ -57,6 +57,7 @@ class Pocket(Entity):
     box_size_z: Optional[float] = None
 
     props: Optional[dict[str, Any]] = field(default_factory=dict)
+    _client: Optional[DeepOriginClient] = field(default=None, repr=False)
 
     def __post_init__(self):
         if self.local_path is not None and self.coordinates is None:
@@ -107,7 +108,7 @@ class Pocket(Entity):
         """
         if self.coordinates is not None:
             return self.coordinates
-        local = self.download()
+        local = self.download(client=self._client)
         self._load_coordinates_from_file(local)
         return self.coordinates
 
@@ -139,13 +140,23 @@ class Pocket(Entity):
         """Write pocket coordinates to a PDB file.
 
         Args:
-            file_path: Destination path. When ``None`` a temporary file is used.
+            file_path: Destination path. When ``None`` a temporary file is
+                created; the caller is responsible for deleting it when done.
 
         Returns:
             The path the file was written to.
         """
         if file_path is None:
-            file_path = Path(tempfile.mkdtemp()) / f"{self.name or 'pocket'}.pdb"
+            fd = tempfile.NamedTemporaryFile(
+                mode="w",
+                delete=False,
+                suffix=".pdb",
+                prefix=f"{self.name or 'pocket'}_",
+            )
+            path = Path(fd.name)
+            fd.write(self._to_pdb_string())
+            fd.close()
+            return str(path)
         path = Path(file_path)
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(self._to_pdb_string())
@@ -399,6 +410,8 @@ class Pocket(Entity):
     def from_json(
         cls,
         data: list[dict[str, Any]],
+        *,
+        client: Optional["DeepOriginClient"] = None,
     ) -> list[Self]:
         """Create a list of Pocket objects from a JSON pocket list.
 
@@ -415,6 +428,9 @@ class Pocket(Entity):
         Args:
             data: List of pocket dicts, e.g. the value of the ``"pockets"``
                 key returned by the pocket-finder tool.
+            client: Optional client to use for lazy downloads. When provided,
+                stored on each Pocket and used by :meth:`download` when
+                coordinates are first accessed.
 
         Returns:
             List of Pocket objects with properties populated from the dicts.
@@ -462,6 +478,7 @@ class Pocket(Entity):
                 protein_id=entry.get("protein_id"),
                 props=props,
                 color=colors[idx % len(colors)],
+                _client=client,
                 **attr_kwargs,
             )
             pockets.append(pocket)
@@ -495,7 +512,7 @@ class Pocket(Entity):
             entry["remote_path"] = entry.pop("file_path")
             pockets_data.append(entry)
 
-        return cls.from_json(pockets_data)
+        return cls.from_json(pockets_data, client=client)
 
     @classmethod
     def from_id(
@@ -537,7 +554,7 @@ class Pocket(Entity):
         pocket_data["id"] = record["id"]
         pocket_data["remote_path"] = pocket_data.pop("file_path")
 
-        return cls.from_json([pocket_data])[0]
+        return cls.from_json([pocket_data], client=client)[0]
 
     @classmethod
     def from_result(
@@ -595,7 +612,7 @@ class Pocket(Entity):
             pocket_data["remote_path"] = pocket_data.pop("file_path")
             pockets_data.append(pocket_data)
 
-        return cls.from_json(pockets_data)
+        return cls.from_json(pockets_data, client=client)
 
     @classmethod
     def from_ligand(

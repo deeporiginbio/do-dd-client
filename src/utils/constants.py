@@ -12,6 +12,9 @@ LOCAL_ENDPOINT_GATEWAY = "http://127.0.0.1:6010"
 LOCAL_ENDPOINT_MOCK = "http://127.0.0.1:4931"
 """Default base URL for ``DO_ENV=local`` (API mock server; ``make mock-server``)."""
 
+LOCAL_ENDPOINT_DEFAULT = LOCAL_ENDPOINT_MOCK
+"""Deprecated alias for ``LOCAL_ENDPOINT_MOCK``. Use ``LOCAL_ENDPOINT_MOCK`` or ``LOCAL_ENDPOINT_GATEWAY``."""
+
 API_ENDPOINT = {
     "prod": "https://api.deeporigin.io",
     "staging": "https://api.staging.deeporigin.io",
