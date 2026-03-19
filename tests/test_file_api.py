@@ -2,6 +2,7 @@
 
 import os
 import tempfile
+import uuid
 
 import pytest
 
@@ -391,7 +392,7 @@ def test_upload_files_multipart_lv1():
     if client.env == "local":
         pytest.skip("Requires a real file service (use --env dev/staging/prod)")
 
-    remote_dir = "testing-multipart-upload"
+    remote_dir = f"testing-multipart-upload-{uuid.uuid4()}"
     num_files = 10
 
     with tempfile.TemporaryDirectory() as tmpdir:
