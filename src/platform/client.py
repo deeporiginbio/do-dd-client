@@ -11,7 +11,17 @@ from __future__ import annotations
 import json
 import os
 import time
-from typing import Any, Callable, Dict, Optional, Self, Set, Tuple, get_args
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    Callable,
+    Dict,
+    Optional,
+    Self,
+    Set,
+    Tuple,
+    get_args,
+)
 import uuid
 import weakref
 
@@ -20,19 +30,21 @@ import httpx
 from deeporigin.auth import get_token
 from deeporigin.config import get_value
 from deeporigin.exceptions import DeepOriginException
-from deeporigin.platform.billing import Billing
-from deeporigin.platform.clusters import Clusters
-from deeporigin.platform.entities import Entities
-from deeporigin.platform.executions import Executions
-from deeporigin.platform.files import Files
-from deeporigin.platform.functions import Functions
-from deeporigin.platform.organizations import Organizations
-from deeporigin.platform.progress_reports import ProgressReports
-from deeporigin.platform.projects import Projects
-from deeporigin.platform.results import Results
-from deeporigin.platform.tools import Tools
 from deeporigin.utils.constants import API_ENDPOINT, ENV_VARIABLES, ENVS
 from deeporigin.utils.env import _ensure_do_folder
+
+if TYPE_CHECKING:
+    from deeporigin.platform.billing import Billing
+    from deeporigin.platform.clusters import Clusters
+    from deeporigin.platform.entities import Entities
+    from deeporigin.platform.executions import Executions
+    from deeporigin.platform.files import Files
+    from deeporigin.platform.functions import Functions
+    from deeporigin.platform.organizations import Organizations
+    from deeporigin.platform.progress_reports import ProgressReports
+    from deeporigin.platform.projects import Projects
+    from deeporigin.platform.results import Results
+    from deeporigin.platform.tools import Tools
 
 # Cache for local token to ensure consistency across calls
 _LOCAL_TOKEN_CACHE: str | None = None
@@ -174,6 +186,18 @@ class DeepOriginClient:
         # Different parameters create different cached instances
         client3 = DeepOriginClient(tag="my-tag")  # Different instance
     """
+
+    tools: Tools | None
+    functions: Functions | None
+    clusters: Clusters | None
+    files: Files | None
+    executions: Executions | None
+    organizations: Organizations | None
+    billing: Billing | None
+    entities: Entities | None
+    results: Results | None
+    progress_reports: ProgressReports | None
+    projects: Projects | None
 
     # class-level registry for singleton instances
     # Key: (base_url, token, org_key, tag, _app, _session); org_key/tag/_session may be None
@@ -356,17 +380,82 @@ class DeepOriginClient:
         self._org_key = org_key
         self.base_url = base_url.rstrip("/") + "/"
 
-        self.tools = Tools(self)
-        self.functions = Functions(self)
-        self.clusters = Clusters(self)
-        self.files = Files(self)
-        self.executions = Executions(self)
-        self.organizations = Organizations(self)
-        self.billing = Billing(self)
-        self.entities = Entities(self)
-        self.results = Results(self)
-        self.progress_reports = ProgressReports(self)
-        self.projects = Projects(self)
+        try:
+            from deeporigin.platform.tools import Tools
+
+            self.tools = Tools(self)
+        except ImportError:
+            self.tools = None
+
+        try:
+            from deeporigin.platform.functions import Functions
+
+            self.functions = Functions(self)
+        except ImportError:
+            self.functions = None
+
+        try:
+            from deeporigin.platform.clusters import Clusters
+
+            self.clusters = Clusters(self)
+        except ImportError:
+            self.clusters = None
+
+        try:
+            from deeporigin.platform.files import Files
+
+            self.files = Files(self)
+        except ImportError:
+            self.files = None
+
+        try:
+            from deeporigin.platform.executions import Executions
+
+            self.executions = Executions(self)
+        except ImportError:
+            self.executions = None
+
+        try:
+            from deeporigin.platform.organizations import Organizations
+
+            self.organizations = Organizations(self)
+        except ImportError:
+            self.organizations = None
+
+        try:
+            from deeporigin.platform.billing import Billing
+
+            self.billing = Billing(self)
+        except ImportError:
+            self.billing = None
+
+        try:
+            from deeporigin.platform.entities import Entities
+
+            self.entities = Entities(self)
+        except ImportError:
+            self.entities = None
+
+        try:
+            from deeporigin.platform.results import Results
+
+            self.results = Results(self)
+        except ImportError:
+            self.results = None
+
+        try:
+            from deeporigin.platform.progress_reports import ProgressReports
+
+            self.progress_reports = ProgressReports(self)
+        except ImportError:
+            self.progress_reports = None
+
+        try:
+            from deeporigin.platform.projects import Projects
+
+            self.projects = Projects(self)
+        except ImportError:
+            self.projects = None
 
         # Retry configuration
         self.max_retries = max_retries

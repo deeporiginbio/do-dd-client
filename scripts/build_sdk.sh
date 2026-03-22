@@ -3,22 +3,30 @@ set -euo pipefail
 
 # script that builds the low level SDK for the Deep Origin Platform
 
-# clean previously copied files to keep runs idempotent
-rm -rf platform-sdk/src/platform platform-sdk/src/utils
-rm -f platform-sdk/src/auth.py platform-sdk/src/config.py platform-sdk/src/exceptions.py
-rm -f platform-sdk/src/__init__.py
-mkdir -p platform-sdk/src platform-sdk/src/utils
+# Remove staged copies under platform-sdk/src (keeps e.g. VERSION); recreate empty dirs.
+clean_platform_sdk_staging() {
+  rm -rf platform-sdk/src/platform platform-sdk/src/utils
+  rm -f platform-sdk/src/auth.py platform-sdk/src/config.py platform-sdk/src/exceptions.py
+  rm -f platform-sdk/src/__init__.py
+  mkdir -p platform-sdk/src platform-sdk/src/utils
+}
 
-# copy required files to the platform-sdk directory
-cp -r src/platform platform-sdk/src/
-cp -r src/__init__.py platform-sdk/src/__init__.py
-cp -r src/utils/core.py platform-sdk/src/utils/core.py
-cp -r src/utils/constants.py platform-sdk/src/utils/constants.py
-cp -r src/utils/network.py platform-sdk/src/utils/network.py
-cp -r src/utils/__init__.py platform-sdk/src/utils/__init__.py
-cp -r src/auth.py platform-sdk/src/auth.py
-cp -r src/exceptions.py platform-sdk/src/exceptions.py
-cp -r src/config.py platform-sdk/src/config.py
+clean_platform_sdk_staging
+
+# copy required files to the platform-sdk directory (subset of platform package).
+# Platform: only Files API — client.py attaches other sub-APIs when those modules exist (ImportError -> None).
+mkdir -p platform-sdk/src/platform
+cp src/platform/__init__.py platform-sdk/src/platform/
+cp src/platform/client.py platform-sdk/src/platform/
+cp src/platform/files.py platform-sdk/src/platform/
+cp src/__init__.py platform-sdk/src/__init__.py
+cp src/utils/constants.py platform-sdk/src/utils/constants.py
+cp src/utils/env.py platform-sdk/src/utils/env.py
+cp src/utils/display.py platform-sdk/src/utils/display.py
+cp src/utils/__init__.py platform-sdk/src/utils/__init__.py
+cp src/auth.py platform-sdk/src/auth.py
+cp src/exceptions.py platform-sdk/src/exceptions.py
+cp src/config.py platform-sdk/src/config.py
 
 # in every .py file, replace "from deeporigin" with "from do_sdk_platform"
 python3 - <<'PY'
@@ -30,4 +38,7 @@ for path in Path("platform-sdk/src").rglob("*.py"):
 PY
 
 # run uv build in the platform-sdk directory
-cd platform-sdk && uv build 
+cd platform-sdk && uv build
+cd ..
+
+clean_platform_sdk_staging
