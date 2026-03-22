@@ -1,0 +1,1254 @@
+"""Synchronous API client for the DeepOrigin Platform.
+
+This module provides a minimal synchronous HTTP client for interacting with the
+DeepOrigin Platform API. The client includes built-in authentication, singleton
+caching for connection reuse, and convenient access to platform resources like
+tools, functions, clusters, files, and executions.
+"""
+
+from __future__ import annotations
+
+import json
+import os
+import time
+from typing import Any, Callable, Dict, Optional, Self, Set, Tuple, get_args
+import uuid
+import weakref
+
+import httpx
+
+from deeporigin_sdk.auth import get_token
+from deeporigin_sdk.config import get_value
+from deeporigin_sdk.exceptions import DeepOriginException
+from deeporigin_sdk.platform.billing import Billing
+from deeporigin_sdk.platform.clusters import Clusters
+from deeporigin_sdk.platform.entities import Entities
+from deeporigin_sdk.platform.executions import Executions
+from deeporigin_sdk.platform.files import Files
+from deeporigin_sdk.platform.functions import Functions
+from deeporigin_sdk.platform.organizations import Organizations
+from deeporigin_sdk.platform.progress_reports import ProgressReports
+from deeporigin_sdk.platform.projects import Projects
+from deeporigin_sdk.platform.results import Results
+from deeporigin_sdk.platform.tools import Tools
+from deeporigin_sdk.utils.constants import API_ENDPOINT, ENV_VARIABLES, ENVS
+from deeporigin_sdk.utils.env import _ensure_do_folder
+
+# Cache for local token to ensure consistency across calls
+_LOCAL_TOKEN_CACHE: str | None = None
+
+
+def _generate_local_token() -> str:
+    """Generate a dummy JWT token for local testing.
+
+    Returns:
+        A JWT token string for local environment testing.
+    """
+    global _LOCAL_TOKEN_CACHE
+
+    # Return cached token if available to ensure consistency
+    if _LOCAL_TOKEN_CACHE is not None:
+        return _LOCAL_TOKEN_CACHE
+
+    import jwt
+
+    now = int(time.time())
+    one_year_seconds = 365 * 24 * 60 * 60
+    decoded_token = {
+        "exp": now + one_year_seconds,
+        "iat": now,
+        "jti": "onrtro:11f26c41-4d64-15dc-cc13-bfbbfedbd744",
+        "iss": "https://local.deeporigin.io/realms/deeporigin",
+        "aud": ["do-app", "auth-service"],
+        "sub": "6b06d8f8-1f55-472c-a86c-f19651ba4b20",
+        "typ": "Bearer",
+        "azp": "pa-token-365d",
+        "sid": "3516d772-185c-6422-6bd8-5f7f34cf6a71",
+        "scope": "organizations:owner long-live-token",
+        "email_verified": True,
+        "name": "Local User",
+        "given_name": "Local",
+        "family_name": "User",
+        "email": "user@deeporigin.com",
+    }
+    _LOCAL_TOKEN_CACHE = jwt.encode(decoded_token, "secret")
+    return _LOCAL_TOKEN_CACHE
+
+
+def _resolve_token_and_org_key(
+    env: ENVS,
+    token: str | None = None,
+    org_key: str | None = None,
+    base_url: str | None = None,
+) -> Tuple[str | None, str | None, str | None]:
+    """Resolve token and org_key based on environment and parameters.
+
+    For local environment: uses DO_AUTH_TOKEN and DO_ORG_KEY if set (e.g. from
+    E2E runner with real Keycloak token); otherwise auto-generates a token and
+    sets org_key to "deeporigin" for unit tests with mock server.
+    For other environments, environment variables override explicit parameters.
+
+    Args:
+        env: Environment name (e.g., 'prod', 'staging', 'local').
+        token: Explicit token parameter. May be None.
+        org_key: Explicit org_key parameter. May be None.
+        base_url: Base URL parameter. May be updated for local environment.
+
+    Returns:
+        A tuple of (resolved_token, resolved_org_key, resolved_base_url).
+    """
+    # Special handling for local environment
+    if env == "local":
+        if ENV_VARIABLES["access_token"] in os.environ:
+            resolved_token = os.environ[ENV_VARIABLES["access_token"]]
+        elif token is not None:
+            resolved_token = token
+        else:
+            resolved_token = _generate_local_token()
+        if ENV_VARIABLES["org_key"] in os.environ:
+            resolved_org_key = os.environ[ENV_VARIABLES["org_key"]]
+        elif org_key is not None:
+            resolved_org_key = org_key
+        else:
+            resolved_org_key = "deeporigin"
+        if base_url is None:
+            resolved_base_url = API_ENDPOINT["local"]
+        else:
+            resolved_base_url = base_url
+    else:
+        # Environment variables ALWAYS override explicit parameters and skip disk reads
+        if ENV_VARIABLES["access_token"] in os.environ:
+            resolved_token = os.environ[ENV_VARIABLES["access_token"]]
+        elif token is None:
+            resolved_token = get_token()
+        else:
+            resolved_token = token
+
+        if ENV_VARIABLES["org_key"] in os.environ:
+            resolved_org_key = os.environ[ENV_VARIABLES["org_key"]]
+        elif org_key is None:
+            resolved_org_key = get_value()["org_key"]
+        else:
+            resolved_org_key = org_key
+
+        resolved_base_url = base_url
+
+    return resolved_token, resolved_org_key, resolved_base_url
+
+
+def _infer_env_from_base_url(base_url: str) -> ENVS:
+    """Infer the environment name from a base URL.
+
+    Args:
+        base_url: The API base URL string.
+
+    Returns:
+        The inferred environment name.
+    """
+    if "dev" in base_url:
+        return "dev"
+    elif "staging" in base_url:
+        return "staging"
+    elif "127.0.0.1" in base_url or "localhost" in base_url:
+        return "local"
+    else:
+        return "prod"
+
+
+class DeepOriginClient:
+    """
+    Minimal synchronous API client with built-in singleton cache.
+
+    The client automatically caches instances based on (base_url, token, org_key, tag).
+    This means calling `DeepOriginClient()` multiple times with the same parameters
+    will return the same cached instance, reusing the connection pool.
+
+    If called without arguments, reads config from disk. Can also pass explicit
+    token, org_key, base_url, and tag parameters.
+
+    Example:
+        # Both of these return the same cached instance
+        client1 = DeepOriginClient()
+        client2 = DeepOriginClient()  # Same instance as client1
+
+        # Different parameters create different cached instances
+        client3 = DeepOriginClient(tag="my-tag")  # Different instance
+    """
+
+    # class-level registry for singleton instances
+    # Key: (base_url, token, org_key, tag, _app, _session); org_key/tag/_session may be None
+    _instances: Dict[
+        Tuple[str, str, str | None, str | None, str, str | None], "DeepOriginClient"
+    ] = {}
+
+    def __new__(
+        cls,
+        *,
+        token: str | None = None,
+        org_key: str | None = None,
+        env: ENVS | None = None,
+        base_url: str | None = None,
+        timeout: float = 10.0,
+        max_retries: int = 3,
+        retryable_status_codes: Set[int] | None = None,
+        retry_backoff_factor: float = 1.0,
+        max_retry_delay: float = 60.0,
+        record: bool = False,
+        tag: str | None = None,
+        _app: str = "python-client",
+        _session: str | None = None,
+    ) -> Self:
+        """Create a new instance or return a cached one based on cache key.
+
+        This method implements singleton-like behavior by checking the cache
+        before creating a new instance. If a cached instance exists with the
+        same (base_url, token, org_key, tag, _app, _session), it returns that
+        instance instead.
+
+        Args:
+            token: Authentication token.
+            org_key: Organization key.
+            env: Environment name.
+            base_url: Base URL for the API.
+            timeout: Request timeout in seconds.
+            max_retries: Maximum number of retry attempts.
+            retryable_status_codes: Set of HTTP status codes that should trigger retry.
+            retry_backoff_factor: Multiplier for exponential backoff.
+            max_retry_delay: Maximum delay in seconds between retry attempts.
+            record: Whether to record function run responses.
+            tag: Optional tag to use for all function runs.
+            _app: Internal app identifier; part of cache key. Defaults to
+                "python-client". Used in tool/function execution payloads.
+            _session: Internal session identifier; part of cache key. When None,
+                a UUID v4 is generated on first init. Used in tool/function payloads.
+
+        Returns:
+            A DeepOriginClient instance (cached if available, new otherwise).
+        """
+        # Resolve env and base_url first (same logic as __init__)
+        if ENV_VARIABLES["base_url"] in os.environ:
+            base_url = os.environ[ENV_VARIABLES["base_url"]]
+            env = _infer_env_from_base_url(base_url)
+        elif ENV_VARIABLES["env"] in os.environ:
+            env = os.environ[ENV_VARIABLES["env"]]
+            if env not in get_args(ENVS):
+                raise ValueError(
+                    f"Invalid environment in DO_ENV: {env}. Must be one of: dev, prod, staging, local"
+                )
+            if base_url is None:
+                base_url = API_ENDPOINT[env]
+        elif env is None and base_url is None:
+            env = get_value()["env"]
+            base_url = API_ENDPOINT[env]
+        elif env is None and base_url is not None:
+            raise ValueError("env is required when base_url is provided")
+        elif env is not None and base_url is None:
+            base_url = API_ENDPOINT[env]
+
+        # Resolve token and org_key
+        token, org_key, base_url = _resolve_token_and_org_key(
+            env=env, token=token, org_key=org_key, base_url=base_url
+        )
+
+        # Normalize base_url for the key
+        normalized_base_url = base_url.rstrip("/") + "/"
+        key = (normalized_base_url, token, org_key, tag, _app, _session)
+
+        # Return cached instance if it exists
+        if key in cls._instances:
+            return cls._instances[key]
+
+        # Create new instance and store cache key for O(1) registry detachment
+        instance = super().__new__(cls)
+        instance._cache_key = key  # type: ignore[attr-defined]
+        cls._instances[key] = instance
+        return instance
+
+    def __init__(
+        self,
+        *,
+        token: str | None = None,
+        org_key: str | None = None,
+        env: ENVS | None = None,
+        base_url: str | None = None,
+        timeout: float = 10.0,
+        max_retries: int = 3,
+        retryable_status_codes: Set[int] | None = None,
+        retry_backoff_factor: float = 1.0,
+        max_retry_delay: float = 60.0,
+        record: bool = False,
+        tag: str | None = None,
+        _app: str = "python-client",
+        _session: str | None = None,
+    ):
+        """Initialize a DeepOrigin Platform client.
+
+        Environment variables (DO_AUTH_TOKEN, DO_ORG_KEY, DO_ENV)
+        ALWAYS override explicit parameters and configuration files. If environment
+        variables are set, disk configuration is NOT read.
+
+        If environment variables are not set, explicit parameters are used. If
+        parameters are None, values are read from configuration files on disk.
+        The client creates an HTTP connection pool and initializes access to
+        platform resources (tools, functions, clusters, files, executions).
+
+        Args:
+            token: Authentication token. Overridden by DO_AUTH_TOKEN env var.
+            org_key: Organization key. Overridden by DO_ORG_KEY env var.
+            env: Environment name (e.g., 'prod', 'staging'). Overridden by
+                DO_ENV env var. If None and base_url is None, reads from config.
+            base_url: Base URL for the API. If None, derived from env or config.
+            timeout: Request timeout in seconds.
+            max_retries: Maximum number of retry attempts for failed requests.
+                Defaults to 3. Set to 0 to disable retries.
+            retryable_status_codes: Set of HTTP status codes that should trigger
+                a retry. Defaults to {429, 500, 502, 503, 504}.
+            retry_backoff_factor: Multiplier for exponential backoff between retries.
+                Delay = min(retry_backoff_factor * (2 ** attempt_number), max_retry_delay).
+                The delay grows exponentially but is capped at max_retry_delay to prevent
+                excessive wait times. Defaults to 1.0.
+            max_retry_delay: Maximum delay in seconds between retry attempts. The exponential
+                backoff delay will be capped at this value. Defaults to 60.0 seconds.
+            record: Whether to record function run responses to fixture files for testing.
+                Defaults to False.
+            tag: Optional tag to use for all function runs. If set, this tag will be
+                automatically included in all function execution requests unless explicitly
+                overridden in the function call. Defaults to None.
+            _app: Internal app identifier; part of cache key. Defaults to
+                "python-client". Sent in tool/function execution payloads.
+            _session: Internal session identifier; part of cache key. When None, a
+                UUID v4 is generated. Sent in tool/function execution payloads.
+        """
+
+        # Check if instance is already initialized (returned from cache)
+        if hasattr(self, "_client"):
+            # Instance is already initialized, just update mutable attributes if needed
+            if tag is not None and self.tag != tag:
+                self.tag = tag
+            return
+
+        # Handle env and base_url resolution first (needed for local check)
+        if ENV_VARIABLES["base_url"] in os.environ:
+            base_url = os.environ[ENV_VARIABLES["base_url"]]
+            env = _infer_env_from_base_url(base_url)
+        elif ENV_VARIABLES["env"] in os.environ:
+            env = os.environ[ENV_VARIABLES["env"]]
+            if env not in get_args(ENVS):
+                raise ValueError(
+                    f"Invalid environment in DO_ENV: {env}. Must be one of: dev, prod, staging, local"
+                )
+            if base_url is None:
+                base_url = API_ENDPOINT[env]
+        elif env is None and base_url is None:
+            env = get_value()["env"]
+            base_url = API_ENDPOINT[env]
+        elif env is None and base_url is not None:
+            raise ValueError("env is required when base_url is provided")
+        elif env is not None and base_url is None:
+            base_url = API_ENDPOINT[env]
+        self.env = env
+
+        # Resolve token and org_key based on environment
+        token, org_key, base_url = _resolve_token_and_org_key(
+            env=env, token=token, org_key=org_key, base_url=base_url
+        )
+
+        self._org_key = org_key
+        self.base_url = base_url.rstrip("/") + "/"
+
+        self.tools = Tools(self)
+        self.functions = Functions(self)
+        self.clusters = Clusters(self)
+        self.files = Files(self)
+        self.executions = Executions(self)
+        self.organizations = Organizations(self)
+        self.billing = Billing(self)
+        self.entities = Entities(self)
+        self.results = Results(self)
+        self.progress_reports = ProgressReports(self)
+        self.projects = Projects(self)
+
+        # Retry configuration
+        self.max_retries = max_retries
+        self.retryable_status_codes = (
+            retryable_status_codes
+            if retryable_status_codes is not None
+            else {429, 500, 502, 503, 504}
+        )
+        self.retry_backoff_factor = retry_backoff_factor
+        self.max_retry_delay = max_retry_delay
+        self.record = record
+        self.tag = tag
+        self._app = _app
+        self._session = str(uuid.uuid4()) if _session is None else _session
+
+        # Initialize _client first (before setting token property)
+        self._client = httpx.Client(
+            base_url=self.base_url,
+            headers={
+                "Accept": "application/json",
+            },
+            timeout=timeout,
+        )
+
+        # Set token property which will update headers automatically
+        self.token = token
+
+        # ensure sockets close if GC happens
+        self._finalizer = weakref.finalize(self, self._client.close)
+
+    @property
+    def org_key(self) -> str:
+        """Get the organization key.
+
+        Returns:
+            The organization key string.
+
+        Raises:
+            DeepOriginException: If org_key is not set
+        """
+        if self._org_key is None or self._org_key == "":
+            raise DeepOriginException(
+                title="Organization Key Required",
+                message="The organization key is not set or is empty. Please configure it before using the client, using the `config` module.",
+                fix="Use `config.set_org(org_key)` to set the organization key.",
+                level="danger",
+            )
+        return self._org_key
+
+    @property
+    def token(self) -> str:
+        """Get the authentication token.
+
+        Returns:
+            The authentication token string.
+        """
+        return self._token
+
+    @token.setter
+    def token(self, value: str) -> None:
+        """Set the authentication token and update the Authorization header.
+
+        Args:
+            value: The new authentication token.
+        """
+        self._token = value
+        if hasattr(self, "_client"):
+            self._client.headers["Authorization"] = f"Bearer {value}"
+
+    def __repr__(self) -> str:
+        """Return a string representation of the client.
+
+        Returns:
+            A string showing the client's name (from token), org_key, and base_url.
+        """
+        from deeporigin_sdk import auth
+
+        name = "Unknown"
+        try:
+            decoded_token = auth.decode_access_token(self.token)
+            name = decoded_token.get("name", "Unknown")
+        except Exception:
+            # If token decoding fails, use "Unknown"
+            pass
+
+        repr_str = f"DeepOrigin Platform Client for {name} (org_key={self.org_key}, base_url={self.base_url})"
+
+        if self.tag is not None:
+            repr_str += f" (tag={self.tag})"
+        return repr_str
+
+    # -------- Singleton helpers --------
+    @classmethod
+    def get(
+        cls,
+        *,
+        token: str | None = None,
+        org_key: str | None = None,
+        env: ENVS | None = None,
+        base_url: str | None = None,
+        timeout: float = 10.0,
+        max_retries: int = 3,
+        retryable_status_codes: Set[int] | None = None,
+        retry_backoff_factor: float = 1.0,
+        max_retry_delay: float = 60.0,
+        record: bool = False,
+        replace: bool = False,
+        tag: str | None = None,
+        _app: str = "python-client",
+        _session: str | None = None,
+    ) -> Self:
+        """
+        Get a cached client instance.
+
+        This is a convenience method that calls the constructor. Since the constructor
+        now uses the singleton cache automatically, `DeepOriginClient()` and
+        `DeepOriginClient.get()` behave identically.
+
+        If `replace=True`, closes and recreates the cached instance.
+
+        Args:
+            token: Authentication token. If None, reads from config.
+            org_key: Organization key. If None, reads from config.
+            env: Environment name (e.g., 'prod', 'staging'). If None and
+                base_url is None, reads from config.
+            base_url: Base URL for the API. If None, derived from env or config.
+            timeout: Request timeout in seconds.
+            max_retries: Maximum number of retry attempts for failed requests.
+                Defaults to 3. Set to 0 to disable retries.
+            retryable_status_codes: Set of HTTP status codes that should trigger
+                a retry. Defaults to {429, 500, 502, 503, 504}.
+            retry_backoff_factor: Multiplier for exponential backoff between retries.
+                Delay = min(retry_backoff_factor * (2 ** attempt_number), max_retry_delay).
+                The delay grows exponentially but is capped at max_retry_delay to prevent
+                excessive wait times. Defaults to 1.0.
+            max_retry_delay: Maximum delay in seconds between retry attempts. The exponential
+                backoff delay will be capped at this value. Defaults to 60.0 seconds.
+            record: Whether to record function run responses to fixture files for testing.
+                Defaults to False.
+            replace: If True, close and recreate the cached instance.
+            tag: Optional tag to use for all function runs. If set, this tag will be
+                automatically included in all function execution requests unless explicitly
+                overridden in the function call. Defaults to None.
+            _app: Internal app identifier; part of cache key. Defaults to
+                "python-client".
+            _session: Internal session identifier; part of cache key. When None, a
+                UUID v4 is generated on first init.
+
+        Returns:
+            A cached DeepOriginClient instance.
+        """
+        # If replace is True, we need to close and remove the cached instance first
+        if replace:
+            # Resolve env and base_url to compute the cache key
+            if ENV_VARIABLES["base_url"] in os.environ:
+                base_url_for_key = os.environ[ENV_VARIABLES["base_url"]]
+                env_for_key = _infer_env_from_base_url(base_url_for_key)
+            elif ENV_VARIABLES["env"] in os.environ:
+                env_for_key = os.environ[ENV_VARIABLES["env"]]
+                if env_for_key not in get_args(ENVS):
+                    raise ValueError(
+                        f"Invalid environment in DO_ENV: {env_for_key}. Must be one of: dev, prod, staging, local"
+                    )
+                if base_url is None:
+                    base_url_for_key = API_ENDPOINT[env_for_key]
+                else:
+                    base_url_for_key = base_url
+            elif env is None and base_url is None:
+                env_for_key = get_value()["env"]
+                base_url_for_key = API_ENDPOINT[env_for_key]
+            elif env is None and base_url is not None:
+                raise ValueError("env is required when base_url is provided")
+            elif env is not None and base_url is None:
+                base_url_for_key = API_ENDPOINT[env]
+                env_for_key = env
+            else:
+                base_url_for_key = base_url
+                env_for_key = env
+
+            # Resolve token and org_key for the key
+            token_for_key, org_key_for_key, base_url_for_key = (
+                _resolve_token_and_org_key(
+                    env=env_for_key,
+                    token=token,
+                    org_key=org_key,
+                    base_url=base_url_for_key,
+                )
+            )
+
+            # Normalize and create key
+            normalized_base_url = base_url_for_key.rstrip("/") + "/"
+            key = (
+                normalized_base_url,
+                token_for_key,
+                org_key_for_key,
+                tag,
+                _app,
+                _session,
+            )
+
+            # Close and remove if it exists
+            if key in cls._instances:
+                try:
+                    cls._instances[key].close()
+                finally:
+                    cls._instances.pop(key, None)
+
+        # Now just call the constructor - __new__ will handle caching
+        return cls(
+            token=token,
+            org_key=org_key,
+            env=env,
+            base_url=base_url,
+            timeout=timeout,
+            max_retries=max_retries,
+            retryable_status_codes=retryable_status_codes,
+            retry_backoff_factor=retry_backoff_factor,
+            max_retry_delay=max_retry_delay,
+            record=record,
+            tag=tag,
+            _app=_app,
+            _session=_session,
+        )
+
+    @classmethod
+    def from_env(
+        cls,
+        env: ENVS | None = None,
+        *,
+        base_url: str | None = None,
+        timeout: float = 10.0,
+        max_retries: int = 3,
+        retryable_status_codes: Set[int] | None = None,
+        retry_backoff_factor: float = 1.0,
+        max_retry_delay: float = 60.0,
+        record: bool = False,
+        _app: str = "python-client",
+        _session: str | None = None,
+    ) -> Self:
+        """Create a client instance from environment configuration.
+
+        Reads configuration from environment variables (DO_AUTH_TOKEN,
+        DO_ORG_KEY, DO_ENV) or from
+        disk files (~/.DeepOrigin/api_tokens.json and config.json).
+
+        Args:
+            env: Environment name (e.g., 'prod', 'staging', 'local'). If None,
+                reads from DO_ENV environment variable or config file.
+            base_url: Base URL for the API. If None, derived from env (defaults
+                to http://127.0.0.1:4931 for 'local').
+            timeout: Request timeout in seconds.
+            max_retries: Maximum number of retry attempts for failed requests.
+                Defaults to 3. Set to 0 to disable retries.
+            retryable_status_codes: Set of HTTP status codes that should trigger
+                a retry. Defaults to {429, 500, 502, 503, 504}.
+            retry_backoff_factor: Multiplier for exponential backoff between retries.
+                Delay = min(retry_backoff_factor * (2 ** attempt_number), max_retry_delay).
+                The delay grows exponentially but is capped at max_retry_delay to prevent
+                excessive wait times. Defaults to 1.0.
+            max_retry_delay: Maximum delay in seconds between retry attempts. The exponential
+                backoff delay will be capped at this value. Defaults to 60.0 seconds.
+            record: Whether to record function run responses to fixture files for testing.
+                Defaults to False.
+
+        Returns:
+            A new DeepOriginClient instance configured from environment variables
+            or files.
+        """
+        # DO_BASE_URL takes priority: infer env from the URL
+        if base_url is None and ENV_VARIABLES["base_url"] in os.environ:
+            base_url = os.environ[ENV_VARIABLES["base_url"]]
+            env = _infer_env_from_base_url(base_url)
+
+        # Determine environment
+        if env is None:
+            env = os.environ.get(ENV_VARIABLES["env"]) or get_value()["env"]
+            if not env:
+                env = "prod"  # default
+
+        # Validate env is a valid ENVS type
+        if env not in get_args(ENVS):
+            raise ValueError(
+                f"Invalid environment: {env}. Must be one of: dev, prod, staging, local"
+            )
+
+        if env == "local":
+            LOCAL_TOKEN = _generate_local_token()
+            if base_url is None:
+                base_url = API_ENDPOINT["local"]
+            return cls(
+                token=LOCAL_TOKEN,
+                org_key="deeporigin",
+                env="local",
+                base_url=base_url,
+                timeout=timeout,
+                record=record,
+                _app=_app,
+                _session=_session,
+            )
+
+        # Get token for the specified environment (reads from env vars or files)
+        token = get_token(env=env)
+
+        # Get org_key (reads from env vars or config file)
+        org_key = get_value()["org_key"]
+
+        if base_url is None:
+            base_url = API_ENDPOINT[env]
+
+        return cls(
+            token=token,
+            org_key=org_key,
+            env=env,
+            base_url=base_url,
+            timeout=timeout,
+            max_retries=max_retries,
+            retryable_status_codes=retryable_status_codes,
+            retry_backoff_factor=retry_backoff_factor,
+            max_retry_delay=max_retry_delay,
+            record=record,
+            _app=_app,
+            _session=_session,
+        )
+
+    @classmethod
+    def from_headers(
+        cls, headers, *, _app: str = "python-client", _session: str | None = None
+    ) -> Self:
+        """Create a client instance from HTTP headers. Useful for creating a client within a served tool.
+
+        Args:
+            headers: headers from the HTTP request
+
+        Returns:
+            A new DeepOriginClient instance configured from the headers.
+        """
+        # check that the necessary headers are present
+        required_keys = [
+            "X-Do-Auth-Token",
+            "X-Do-Org-Key",
+            "X-Do-Execution-Id",
+            "X-Do-Base-Url",
+        ]
+        missing = [k for k in required_keys if not headers.get(k)]
+        if missing:
+            raise ValueError(f"Missing required headers: {', '.join(missing)}")
+
+        base_url = headers["X-Do-Base-Url"]
+        env = _infer_env_from_base_url(base_url)
+
+        return cls(
+            token=headers["X-Do-Auth-Token"],
+            org_key=headers["X-Do-Org-Key"],
+            base_url=base_url,
+            env=env,
+            _app=_app,
+            _session=_session,
+        )
+
+    @classmethod
+    def from_env_variables(
+        cls,
+        *,
+        timeout: float = 10.0,
+        max_retries: int = 3,
+        retryable_status_codes: Set[int] | None = None,
+        retry_backoff_factor: float = 1.0,
+        max_retry_delay: float = 60.0,
+        record: bool = False,
+        _app: str = "python-client",
+        _session: str | None = None,
+    ) -> Self:
+        """Create a client instance exclusively from environment variables.
+
+        Reads DO_AUTH_TOKEN, DO_ORG_KEY, and DO_BASE_URL from environment
+        variables. Unlike the default constructor or ``from_env``, this
+        method never falls back to configuration files on disk -- missing
+        environment variables cause an immediate error.
+
+        The environment name is inferred from the base URL
+        (e.g. ``https://api.dev.deeporigin.io`` → ``"dev"``).
+
+        Args:
+            timeout: Request timeout in seconds.
+            max_retries: Maximum number of retry attempts for failed requests.
+            retryable_status_codes: Set of HTTP status codes that trigger a retry.
+            retry_backoff_factor: Multiplier for exponential backoff between retries.
+            max_retry_delay: Maximum delay in seconds between retry attempts.
+            record: Whether to record function run responses to fixture files.
+
+        Returns:
+            A new DeepOriginClient instance.
+
+        Raises:
+            ValueError: If required environment variables are missing.
+        """
+        token = os.environ.get(ENV_VARIABLES["access_token"])
+        org_key = os.environ.get(ENV_VARIABLES["org_key"])
+        base_url = os.environ.get(ENV_VARIABLES["base_url"])
+
+        missing: list[str] = []
+        if not token:
+            missing.append(ENV_VARIABLES["access_token"])
+        if not org_key:
+            missing.append(ENV_VARIABLES["org_key"])
+        if not base_url:
+            missing.append(ENV_VARIABLES["base_url"])
+        if missing:
+            raise ValueError(
+                f"Missing required environment variables: {', '.join(missing)}"
+            )
+
+        env: ENVS = _infer_env_from_base_url(base_url)
+
+        return cls(
+            token=token,
+            org_key=org_key,
+            env=env,
+            base_url=base_url,
+            timeout=timeout,
+            max_retries=max_retries,
+            retryable_status_codes=retryable_status_codes,
+            retry_backoff_factor=retry_backoff_factor,
+            max_retry_delay=max_retry_delay,
+            record=record,
+            _app=_app,
+            _session=_session,
+        )
+
+    @classmethod
+    def close_all(cls) -> None:
+        """Close all cached client instances and clear the registry.
+
+        This method closes all HTTP connections for cached client instances
+        and removes them from the singleton registry. Useful for cleanup or
+        when switching between different configurations.
+        """
+        # Create a copy of values to avoid "dictionary changed size during iteration"
+        # error when close() modifies the dictionary
+        instances = list(cls._instances.values())
+        for inst in instances:
+            inst.close()
+        cls._instances.clear()
+
+    def check_token(self) -> None:
+        """Check if the token is expired."""
+
+        from deeporigin_sdk import auth
+
+        if auth.is_token_expired(self.token):
+            raise DeepOriginException(
+                title="Token Expired",
+                message="Token is expired. Please refer to https://client-docs.deeporigin.io/how-to/auth.html to get a new token.",
+                level="danger",
+            )
+
+    def health(self) -> dict:
+        """Check health of all platform services.
+
+        Calls each service health endpoint and returns a combined response.
+        The top-level ``status`` is ``"ok"`` only when every service reports
+        ``"ok"``; otherwise it is ``"error"``.
+
+        Returns:
+            Dictionary with per-service health and an aggregate ``status``.
+        """
+        services = {
+            "billing": "/billing/health",
+            "entities": "/data-platform/health",
+            "files": "/files/health",
+            "tools": "/tools/health",
+        }
+        combined: dict[str, Any] = {}
+        for name, path in services.items():
+            try:
+                combined[name] = self.get_json(path)
+            except Exception as exc:
+                combined[name] = {"status": "error", "error": str(exc)}
+
+        all_ok = all(svc.get("status") == "ok" for svc in combined.values())
+        combined["status"] = "ok" if all_ok else "error"
+        return combined
+
+    # Removing from registry when explicitly closed
+    def _detach_from_registry(self) -> None:
+        """Remove this instance from the singleton registry.
+
+        This is called automatically when the client is closed to ensure
+        the registry doesn't hold references to closed clients. Uses the
+        stored cache key for O(1) removal.
+        """
+        key = getattr(self, "_cache_key", None)
+        if key is not None and self._instances.get(key) is self:
+            self._instances.pop(key, None)
+        else:
+            # Fallback: remove all keys that point to this instance
+            for k, inst in list(self._instances.items()):
+                if inst is self:
+                    self._instances.pop(k, None)
+        try:
+            del self._cache_key  # type: ignore[attr-defined]
+        except AttributeError:
+            pass
+
+    # -------- Low-level helpers --------
+    def _should_retry(
+        self,
+        error: Exception,
+    ) -> bool:
+        """Determine if a request should be retried based on the error.
+
+        Args:
+            error: The exception that occurred.
+
+        Returns:
+            True if the request should be retried, False otherwise.
+        """
+        if self.max_retries == 0:
+            return False
+
+        # Retry on network errors and timeouts
+        if isinstance(error, (httpx.NetworkError, httpx.TimeoutException)):
+            return True
+
+        # Retry on specific HTTP status codes
+        if isinstance(error, httpx.HTTPStatusError):
+            return error.response.status_code in self.retryable_status_codes
+
+        return False
+
+    def _retry_request(
+        self,
+        request_func: Callable[[], httpx.Response],
+        method: str,
+        path: str,
+        body: dict | None = None,
+    ) -> httpx.Response:
+        """Execute an HTTP request with retry logic.
+
+        Args:
+            request_func: A callable that executes the HTTP request and returns
+                a Response. Should raise httpx exceptions on failure.
+            method: HTTP method name (e.g., 'GET', 'POST') for error handling.
+            path: API endpoint path for error handling.
+            body: Optional request body for error handling.
+
+        Returns:
+            The HTTP response object.
+
+        Raises:
+            httpx.HTTPStatusError: If the request fails after all retries.
+            httpx.NetworkError: If network errors persist after all retries.
+            httpx.TimeoutException: If timeouts persist after all retries.
+        """
+        for attempt in range(self.max_retries + 1):
+            try:
+                response = request_func()
+                response.raise_for_status()
+                return response
+            except httpx.HTTPStatusError as e:
+                if self._should_retry(e) and attempt < self.max_retries:
+                    delay = min(
+                        self.retry_backoff_factor * (2**attempt), self.max_retry_delay
+                    )
+                    time.sleep(delay)
+                    continue
+                # Not retryable or out of retries - handle HTTPStatusError specially
+                self._handle_request_error(method, path, e, body=body)
+            except (httpx.NetworkError, httpx.TimeoutException) as e:
+                if self._should_retry(e) and attempt < self.max_retries:
+                    delay = min(
+                        self.retry_backoff_factor * (2**attempt), self.max_retry_delay
+                    )
+                    time.sleep(delay)
+                    continue
+                raise
+
+    def _handle_request_error(
+        self,
+        method: str,
+        path: str,
+        error: httpx.HTTPStatusError,
+        body: Optional[dict] = None,
+    ) -> None:
+        """Handle HTTP request errors by extracting error details and saving curl command.
+
+        Args:
+            method: HTTP method (e.g., 'POST', 'PUT').
+            path: API endpoint path (relative to base_url).
+            error: The HTTPStatusError that was raised.
+            body: Optional JSON body that was sent with the request.
+
+        Raises:
+            DeepOriginException: Always raises with error details and curl command filepath.
+        """
+        # Extract error message and details from response
+        error_message = None
+        error_details = None
+        try:
+            # Try to parse JSON error response
+            error_data = error.response.json()
+
+            # Common error message fields in API responses
+            if isinstance(error_data, dict):
+                error_message = (
+                    error_data.get("message")
+                    or error_data.get("error")
+                    or error_data.get("detail")
+                )
+                # Extract errors array if present
+                if "errors" in error_data:
+                    error_details = json.dumps(error_data["errors"], indent=2)
+            if error_message is None:
+                # Fallback to string representation of entire error_data
+                error_message = str(error_data)
+        except json.JSONDecodeError:
+            # Fall back to text response
+            try:
+                error_message = error.response.text
+            except Exception:
+                error_message = f"HTTP {error.response.status_code}"
+
+        # Build curl command to reproduce the request
+        full_url = self.base_url.rstrip("/") + "/" + path.lstrip("/")
+
+        # Build curl command parts
+        curl_parts = ["curl", "-X", method.upper()]
+
+        # Add headers (include Content-Type for JSON if body is present)
+        headers = dict(self._client.headers)
+        if body is not None and not any(
+            key.lower() == "content-type" for key in headers.keys()
+        ):
+            headers["Content-Type"] = "application/json"
+
+        # Redact sensitive headers before writing to disk
+        sanitized_headers = {}
+        for header_name, header_value in headers.items():
+            if header_name.lower() == "authorization":
+                sanitized_headers[header_name] = "Bearer [REDACTED]"
+            else:
+                sanitized_headers[header_name] = header_value
+
+        for header_name, header_value in sanitized_headers.items():
+            escaped_value = str(header_value).replace('"', '\\"')
+            curl_parts.extend(["-H", f'"{header_name}: {escaped_value}"'])
+
+        # Add JSON body if present
+        if body is not None:
+            body_json = json.dumps(body)
+            curl_parts.extend(["-d", f"'{body_json}'"])
+
+        # Add URL
+        curl_parts.append(f'"{full_url}"')
+
+        # Combine into full curl command
+        curl_command = " \\\n  ".join(curl_parts)
+
+        # Save to file with UUID name
+        file_uuid = str(uuid.uuid4())
+        filename = f"{file_uuid}.txt"
+        filepath = _ensure_do_folder() / filename
+
+        with open(filepath, "w") as f:
+            f.write(curl_command)
+
+        # Build message with error details
+        message_parts = [
+            f"A {method.upper()} request to the platform API failed (HTTP {error.response.status_code})."
+        ]
+        if error_message:
+            message_parts.append(f"Error message: {error_message}")
+        if error_details:
+            message_parts.append(f"Validation errors:\n{error_details}")
+        message_parts.append(
+            f"Curl command to reproduce the request saved to: {filepath}"
+        )
+
+        raise DeepOriginException(
+            title="Request to platform API failed.",
+            message=" ".join(message_parts),
+            fix="Please contact support at https://help.deeporigin.com and provide this text file.",
+            level="danger",
+        ) from None
+
+    def _get(self, path: str, **kwargs) -> httpx.Response:
+        """Perform a GET request and raise on error.
+
+        Args:
+            path: API endpoint path (relative to base_url).
+            **kwargs: Additional arguments passed to httpx.Client.get().
+
+        Returns:
+            The HTTP response object.
+
+        Raises:
+            httpx.HTTPStatusError: If the response status code indicates an error.
+        """
+        self.check_token()
+
+        def request() -> httpx.Response:
+            return self._client.get(path, **kwargs)
+
+        return self._retry_request(request, "GET", path, body=None)
+
+    def _post(self, path: str, body: Optional[dict] = None, **kwargs) -> httpx.Response:
+        """Perform a POST request and raise on error.
+
+        Args:
+            path: API endpoint path (relative to base_url).
+            body: JSON data to send in the request body.
+            **kwargs: Additional arguments passed to httpx.Client.post().
+
+        Returns:
+            The HTTP response object.
+
+        Raises:
+            httpx.HTTPStatusError: If the response status code indicates an error.
+        """
+        self.check_token()
+
+        def request() -> httpx.Response:
+            return self._client.post(path, json=body, **kwargs)
+
+        return self._retry_request(request, "POST", path, body=body)
+
+    def _put(self, path: str, **kwargs) -> httpx.Response:
+        """Perform a PUT request and raise on error.
+
+        Args:
+            path: API endpoint path (relative to base_url).
+            **kwargs: Additional arguments passed to httpx.Client.put().
+
+        Returns:
+            The HTTP response object.
+
+        Raises:
+            httpx.HTTPStatusError: If the response status code indicates an error.
+        """
+        self.check_token()
+
+        def request() -> httpx.Response:
+            return self._client.put(path, **kwargs)
+
+        body = kwargs.get("json")
+        return self._retry_request(request, "PUT", path, body=body)
+
+    def _patch(self, path: str, **kwargs) -> httpx.Response:
+        """Perform a PATCH request and raise on error.
+
+        Args:
+            path: API endpoint path (relative to base_url).
+            **kwargs: Additional arguments passed to httpx.Client.patch().
+
+        Returns:
+            The HTTP response object.
+
+        Raises:
+            httpx.HTTPStatusError: If the response status code indicates an error.
+        """
+        self.check_token()
+
+        def request() -> httpx.Response:
+            return self._client.patch(path, **kwargs)
+
+        body = kwargs.get("json")
+        return self._retry_request(request, "PATCH", path, body=body)
+
+    def _head(self, path: str, **kwargs) -> httpx.Response:
+        """Perform a HEAD request and raise on error.
+
+        Args:
+            path: API endpoint path (relative to base_url).
+            **kwargs: Additional arguments passed to httpx.Client.head().
+
+        Returns:
+            The HTTP response object.
+
+        Raises:
+            httpx.HTTPStatusError: If the response status code indicates an error.
+        """
+        self.check_token()
+
+        def request() -> httpx.Response:
+            return self._client.head(path, **kwargs)
+
+        return self._retry_request(request, "HEAD", path, body=None)
+
+    def _delete(self, path: str, **kwargs) -> httpx.Response:
+        """Perform a DELETE request and raise on error.
+
+        Args:
+            path: API endpoint path (relative to base_url).
+            **kwargs: Additional arguments passed to httpx.Client.delete().
+
+        Returns:
+            The HTTP response object.
+
+        Raises:
+            httpx.HTTPStatusError: If the response status code indicates an error.
+        """
+        self.check_token()
+
+        def request() -> httpx.Response:
+            return self._client.delete(path, **kwargs)
+
+        body = kwargs.get("json")
+        return self._retry_request(request, "DELETE", path, body=body)
+
+    # -------- Convenience wrappers --------
+    def get_json(self, path: str, **kwargs) -> Any:
+        """Perform a GET request and return the JSON response.
+
+        Args:
+            path: API endpoint path (relative to base_url).
+            **kwargs: Additional arguments passed to httpx.Client.get().
+
+        Returns:
+            The JSON-decoded response body.
+
+        Raises:
+            httpx.HTTPStatusError: If the response status code indicates an error.
+        """
+        return self._get(path, **kwargs).json()
+
+    def post_json(self, path: str, body: dict[str, Any], **kwargs) -> Any:
+        """Perform a POST request and return the JSON response.
+
+        Args:
+            path: API endpoint path (relative to base_url).
+            body: JSON data to send in the request body.
+            **kwargs: Additional arguments passed to httpx.Client.post().
+
+        Returns:
+            The JSON-decoded response body.
+
+        Raises:
+            httpx.HTTPStatusError: If the response status code indicates an error.
+        """
+        return self._post(path, body=body, **kwargs).json()
+
+    def delete_json(self, path: str, **kwargs) -> Any:
+        """Perform a DELETE request and return the JSON response.
+
+        Args:
+            path: API endpoint path (relative to base_url).
+            **kwargs: Additional arguments passed to httpx.Client.delete().
+
+        Returns:
+            The JSON-decoded response body.
+
+        Raises:
+            httpx.HTTPStatusError: If the response status code indicates an error.
+        """
+        return self._delete(path, **kwargs).json()
+
+    # -------- Lifecycle --------
+    def close(self) -> None:
+        """Close the HTTP client connection and remove from registry.
+
+        This method closes the underlying HTTP transport and removes this
+        instance from the singleton registry. After calling close(), the
+        client should not be used for further requests.
+        """
+        # close transport and remove from registry
+        try:
+            self._client.close()
+        finally:
+            self._detach_from_registry()
+
+    def __enter__(self) -> "DeepOriginClient":
+        """Enter the context manager.
+
+        Returns:
+            The client instance itself.
+        """
+        return self
+
+    def __exit__(self, *args) -> None:
+        """Exit the context manager and close the client.
+
+        Args:
+            *args: Exception information (ignored).
+        """
+        self.close()
