@@ -48,7 +48,7 @@ PROVIDER = Literal["ufa", "s3"]
 
 # tool, function keys and versions
 DOCKING_TOOL_KEY = "deeporigin.bulk-docking"
-DOCKING_TOOL_VERSION = "0.7.7"
+DOCKING_TOOL_VERSION = "0.7.8"
 DOCKING_FUNCTION_KEY = "deeporigin.docking"
 DOCKING_FUNCTION_VERSION = "0.7.1"
 POCKET_FINDER_FUNCTION_KEY = "deeporigin.pocketfinder"
@@ -57,7 +57,7 @@ CONSTRAINED_DOCKING_FUNCTION_KEY = "deeporigin.constrained-docking"
 MOL_PROPS_FUNCTION_KEY_PREFIX = "deeporigin.mol-props"
 PROTONATION_FUNCTION_KEY = "deeporigin.mol-props-protonation"
 ABFE_TOOL_KEY = "deeporigin.abfe-end-to-end"
-ABFE_TOOL_VERSION = "0.2.35"
+ABFE_TOOL_VERSION = "0.2.36"
 SYSPREP_FUNCTION_KEY = "deeporigin.system-prep"
 SYSPREP_FUNCTION_VERSION = "0.7.6"
 
