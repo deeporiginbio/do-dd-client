@@ -35,3 +35,9 @@ ENV_VARIABLES = {
 
 UFA_PROVIDER = "ufa"
 """Provider identifier for UFA (Unified File Access) storage."""
+
+SYSPREP_NO_OUTPUT_PATHS_MSG = (
+    "System preparation did not return output paths. "
+    "The function run may have failed or returned an unexpected format."
+)
+"""Used by ``SystemPrep.run`` when binding/solvation/PDB paths are missing."""

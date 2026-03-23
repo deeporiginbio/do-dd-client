@@ -6,7 +6,7 @@ Usage (ABFE)::
     sysprep.quote()
     prepared = sysprep.run()   # returns PreparedSystem
     # Use prepared.binding_xml_path, prepared.solvation_xml_path, etc.
-    # Or use sysprep.get_results() to fetch previously computed systems.
+    # Or use sysprep.get_results() to list previously computed systems.
 
 Usage (RBFE)::
 
@@ -27,6 +27,7 @@ from deeporigin.platform.constants import (
     SYSPREP_FUNCTION_KEY,
     SYSPREP_FUNCTION_VERSION,
 )
+from deeporigin.utils.constants import SYSPREP_NO_OUTPUT_PATHS_MSG
 
 
 class SystemPrep(Execution, QuoteMixin, SyncExecutableMixin):
@@ -45,9 +46,6 @@ class SystemPrep(Execution, QuoteMixin, SyncExecutableMixin):
         ligand: Ligand used for preparation (ABFE mode only).
         ligand1: First ligand (RBFE mode only).
         ligand2: Second ligand (RBFE mode only).
-        binding_xml_path: Remote path to binding XML (set after successful ``run()``).
-        solvation_xml_path: Remote path to solvation XML (set after successful ``run()``).
-        system_pdb_path: Remote path to system PDB (set after successful ``run()``).
     """
 
     tool_key: str = SYSPREP_FUNCTION_KEY
@@ -130,10 +128,6 @@ class SystemPrep(Execution, QuoteMixin, SyncExecutableMixin):
         self._protonate_protein = protonate_protein
         self._box_size = box_size
 
-        self.binding_xml_path: str | None = None
-        self.solvation_xml_path: str | None = None
-        self.system_pdb_path: str | None = None
-
     @property
     def protein(self) -> Protein:
         """Protein structure used for preparation."""
@@ -215,8 +209,7 @@ class SystemPrep(Execution, QuoteMixin, SyncExecutableMixin):
         """Execute system preparation (blocking).
 
         Calls the platform system-prep function (ABFE or RBFE path), parses the
-        response, sets ``binding_xml_path``, ``solvation_xml_path``, and
-        ``system_pdb_path`` on this instance, and returns a ``PreparedSystem``.
+        response, and returns a ``PreparedSystem`` with output paths and metadata.
         To fetch previously computed systems without re-running, use
         :meth:`get_results`.
 
@@ -279,11 +272,7 @@ class SystemPrep(Execution, QuoteMixin, SyncExecutableMixin):
                     raise ValueError(
                         "No prepared-system result found for this execution."
                     )
-                prepared = PreparedSystem._from_record(records[0])
-                self.binding_xml_path = prepared.binding_xml_path
-                self.solvation_xml_path = prepared.solvation_xml_path
-                self.system_pdb_path = prepared.system_pdb_path
-                return prepared
+                return PreparedSystem._from_record(records[0])
             except Exception:
                 import warnings
 
@@ -294,30 +283,27 @@ class SystemPrep(Execution, QuoteMixin, SyncExecutableMixin):
                 )
 
         if not result.function_outputs:
-            raise ValueError(
-                "System preparation did not return output paths. "
-                "The function run may have failed or returned an unexpected format."
-            )
+            raise ValueError(SYSPREP_NO_OUTPUT_PATHS_MSG)
 
         outputs = result.function_outputs[0]
-        system = outputs.get("system", {})
+        system = outputs.get("system")
+        if system is None:
+            raise ValueError(SYSPREP_NO_OUTPUT_PATHS_MSG)
+        binding_xml_path: str | None = None
+        solvation_xml_path: str | None = None
+        system_pdb_path: str | None = None
         if isinstance(system, dict):
-            self.binding_xml_path = system.get("binding_xml_file_path")
-            self.solvation_xml_path = system.get("solvation_xml_ligand1_file_path")
-            self.system_pdb_path = system.get("system_pdb_file_path")
+            binding_xml_path = system.get("binding_xml_file_path")
+            solvation_xml_path = system.get("solvation_xml_ligand1_file_path")
+            system_pdb_path = system.get("system_pdb_file_path")
 
-        if not (
-            self.binding_xml_path and self.solvation_xml_path and self.system_pdb_path
-        ):
-            raise ValueError(
-                "System preparation did not return output paths. "
-                "The function run may have failed or returned an unexpected format."
-            )
+        if not (binding_xml_path and solvation_xml_path and system_pdb_path):
+            raise ValueError(SYSPREP_NO_OUTPUT_PATHS_MSG)
 
         return PreparedSystem(
-            binding_xml_path=self.binding_xml_path,
-            solvation_xml_path=self.solvation_xml_path,
-            system_pdb_path=self.system_pdb_path,
+            binding_xml_path=binding_xml_path,
+            solvation_xml_path=solvation_xml_path,
+            system_pdb_path=system_pdb_path,
             protein_id=self.protein.id,
             ligand1_id=self._ligand_ids()[0],
             ligand2_id=self._ligand_ids()[1],

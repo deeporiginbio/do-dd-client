@@ -399,11 +399,19 @@ def create_data_platform_router(
         except FileNotFoundError:
             pass
 
-        # Strip compute_job_id from filters — fixture IDs won't match
-        # dynamically-generated execution IDs.
-        safe_filter = {k: v for k, v in filter_dict.items() if k != "compute_job_id"}
+        # Records injected by function runs (same list the tools router appends to).
+        all_results.extend(results)
 
-        page = _apply_eq_filters(all_results, safe_filter)[:limit]
+        filtered = _apply_eq_filters(all_results, filter_dict)
+        if not filtered and filter_dict.get("compute_job_id", {}).get("eq") is not None:
+            # Fixture IDs won't match dynamic execution IDs; keep legacy behaviour
+            # when no injected row matches.
+            safe_filter = {
+                k: v for k, v in filter_dict.items() if k != "compute_job_id"
+            }
+            filtered = _apply_eq_filters(all_results, safe_filter)
+
+        page = filtered[:limit]
         if select:
             page = [{k: v for k, v in r.items() if k in select} for r in page]
 

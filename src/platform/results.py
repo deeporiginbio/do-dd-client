@@ -301,14 +301,17 @@ class Results:
             filter_dict["compute_job_id"] = {"eq": compute_job_id}
         if padding is not None:
             filter_dict["padding"] = {"eq": padding}
-        if add_H_atoms is not None:
-            filter_dict["add_H_atoms"] = {"eq": add_H_atoms}
+        # there is a bug upstream that is causing the add_H_atoms field to be called add_h_atoms
+        # while this is sorted out we're disabling this filter for now
+        # if add_H_atoms is not None:
+        #     filter_dict["add_h_atoms"] = {"eq": add_H_atoms}
         if retain_waters is not None:
             filter_dict["retain_waters"] = {"eq": retain_waters}
         if protonate_protein is not None:
             filter_dict["protonate_protein"] = {"eq": protonate_protein}
         if tool_version is not None:
             filter_dict["tool_version"] = {"eq": tool_version}
+
         return self.get(filter_dict=filter_dict, limit=limit, select=select)
 
     def get_abfe_results(

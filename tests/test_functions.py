@@ -9,10 +9,10 @@ from conftest import check_function_exists
 from deeporigin.drug_discovery import (
     Ligand,
     Pocket,
+    PocketFinder,
     Protein,
 )
 from deeporigin.functions.docking import dock
-from deeporigin.functions.pocket_finder import find_pockets
 from deeporigin.functions.result import FunctionResult
 from deeporigin.functions.sysprep import for_abfe
 from deeporigin.platform import DeepOriginClient
@@ -44,22 +44,59 @@ def test_molprops_lv2(client: DeepOriginClient):
     assert "logS" in props, "Expected logS to be in the properties"
 
 
-def test_pocket_finder_lv2(client: DeepOriginClient, brd_protein: Protein):
-    """Test pocket finder function returns FunctionResult with pockets."""
+@pytest.mark.parametrize(
+    "protein_fixture",
+    [
+        pytest.param("brd_protein", id="backend_only"),
+        pytest.param("registered_protein", id="data_platform"),
+    ],
+)
+def test_pocket_finder_lv2(
+    client: DeepOriginClient,
+    protein_fixture: str,
+    request: pytest.FixtureRequest,
+) -> None:
+    """Exercise pocket finder with upload-only vs data-platform–registered protein.
+
+    ``brd_protein`` checks the tool end-to-end using file path only (no platform
+    entity in the fixture). ``registered_protein`` additionally asserts
+    platform-linked IDs and ``Pocket.from_result`` hydration.
+    """
     if not check_function_exists(
         client, POCKET_FINDER_FUNCTION_KEY, POCKET_FINDER_FUNCTION_VERSION
     ):
         pytest.skip("Pocket finder function does not exist")
 
-    result = find_pockets(
-        protein=brd_protein,
-        pocket_count=1,
+    protein: Protein = request.getfixturevalue(protein_fixture)
+    num_pockets = 1
+
+    pf = PocketFinder(
+        protein,
+        pocket_count=num_pockets,
         client=client,
     )
+    pockets = pf.run()
 
-    assert isinstance(result, FunctionResult), (
-        "Expected find_pockets() to return a FunctionResult"
-    )
+    assert len(pockets) == num_pockets, f"Expected {num_pockets} pockets"
+    pocket = pockets[0]
+    assert isinstance(pocket, Pocket), "Expected Pocket object"
+
+    if protein_fixture == "registered_protein":
+        assert pocket.protein_id == protein.id, (
+            "Pocket protein_id should match protein.id"
+        )
+        pockets_from_result = Pocket.from_result(
+            execution_id=pf.id,
+            client=client,
+        )
+        assert len(pockets_from_result) == num_pockets, (
+            f"Expected {num_pockets} pockets from result"
+        )
+        pocket_from_result = pockets_from_result[0]
+        assert isinstance(pocket_from_result, Pocket), "Expected Pocket object"
+        assert pocket_from_result.protein_id == protein.id, (
+            "Pocket protein_id should match protein.id"
+        )
 
 
 def test_docking_lv2(
@@ -86,28 +123,65 @@ def test_docking_lv2(
     )
 
 
+@pytest.mark.parametrize(
+    ("protein_fixture", "ligand_fixture"),
+    [
+        pytest.param("brd_protein", "brd_ligand", id="backend_only"),
+        pytest.param("registered_protein", "registered_ligand", id="data_platform"),
+    ],
+)
 def test_sysprep_lv2(
     client: DeepOriginClient,
-    brd_protein: Protein,
-    brd_ligand: Ligand,
-):
-    """Test system preparation returns FunctionResult with prepared_systems."""
+    protein_fixture: str,
+    ligand_fixture: str,
+    request: pytest.FixtureRequest,
+) -> None:
+    """Exercise ABFE system prep with upload-only vs data-platform entities.
+
+    ``brd_*`` checks the tool end-to-end with file paths only. ``registered_*``
+    additionally checks the result-explorer row for this job (tool key, protein
+    id, stored ``data`` payload).
+    """
     if not check_function_exists(
         client, SYSPREP_FUNCTION_KEY, SYSPREP_FUNCTION_VERSION
     ):
         pytest.skip("System prep function does not exist")
 
+    protein: Protein = request.getfixturevalue(protein_fixture)
+    ligand: Ligand = request.getfixturevalue(ligand_fixture)
+
     result = for_abfe(
         client=client,
-        protein=brd_protein,
-        ligand=brd_ligand,
+        protein=protein,
+        ligand=ligand,
         add_H_atoms=True,
         protonate_protein=True,
     )
 
     assert isinstance(result, FunctionResult), (
-        "Expected sim.prepare() to return a FunctionResult"
+        "Expected for_abfe() to return a FunctionResult"
     )
+
+    if protein_fixture == "registered_protein":
+        execution_id = result._responses[0]["id"]
+
+        function_outputs = result._responses[0]["functionOutputs"]
+        assert "system" in function_outputs.keys(), (
+            f"Expected system in function data, got {function_outputs.keys()}"
+        )
+
+        response = client.results.get_prepared_systems(
+            compute_job_id=execution_id,
+            protein_id=protein.id,
+        )
+        records = response["data"]
+        assert len(records) >= 1, "Expected a prepared-system row for this compute job"
+        record = records[0]
+        assert record.get("compute_job_id") == execution_id
+        assert record.get("tool_key") == SYSPREP_FUNCTION_KEY
+        data = record["data"]
+        assert isinstance(data, dict) and len(data) > 0
+        assert data.get("protein_id") == protein.id
 
 
 def test_protonation_lv2(client: DeepOriginClient):
