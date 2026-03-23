@@ -796,7 +796,7 @@ class DeepOriginClient:
         required_keys = [
             "X-Do-Auth-Token",
             "X-Do-Org-Key",
-            "X-Do-Execution-Id",
+            # "X-Do-Execution-Id", # this is not required, because this can be used in billing parsers which don't have an execution id
             "X-Do-Base-Url",
         ]
         missing = [k for k in required_keys if not headers.get(k)]
