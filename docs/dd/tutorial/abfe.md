@@ -119,6 +119,28 @@ job.watch()
 
 This makes the widget auto-update, and monitor the status of the job till it reaches a terminal state (`Cancelled`, `Succeeded`, or `Failed`). 
 
+If you are using the jobs-centric [`ABFE`](../../ref/abfe.md) class with a prepared system, after `abfe.start()` you can monitor in Jupyter in two ways:
+
+- **Non-blocking cell** (same idea as `job.watch()`): the cell returns immediately while the widget keeps updating; you can run other cells in the meantime.
+
+```{.python notest}
+task = await abfe.watch()
+```
+
+- **Blocking cell**: the cell does not finish until the execution reaches a terminal state.
+
+```{.python notest}
+await abfe.watch_async()
+```
+
+In a plain Python script (no running event loop), use:
+
+```{.python notest}
+import asyncio
+
+asyncio.run(abfe.watch_async())
+```
+
 
 !!! tip "Monitoring Jobs"
     For more details about how to monitor jobs, look at this [How To section](../how-to/job.md).

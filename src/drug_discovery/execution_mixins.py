@@ -6,6 +6,8 @@ These mixins are combined with ``Execution`` to build concrete types:
 - ``SyncExecutableMixin`` -- blocking, stateless execution via ``run()``
 - ``AsyncExecutableMixin`` -- async, stateful execution via ``start()``
 - ``JupyterVizMixin`` -- notebook rendering via ``_repr_html_()``
+- ``NotebookWatchMixin`` -- live Jupyter HTML polling via ``watch_async()`` (see
+  ``deeporigin.drug_discovery.notebook_watch_mixin``)
 """
 
 from __future__ import annotations
