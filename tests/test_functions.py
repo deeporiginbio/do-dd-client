@@ -44,6 +44,24 @@ def test_molprops_lv2(client: DeepOriginClient):
     assert "logS" in props, "Expected logS to be in the properties"
 
 
+def test_pocket_finder_quote_lv1(
+    client: DeepOriginClient,
+    registered_protein: Protein,
+) -> None:
+    """PocketFinder.quote() returns an estimate without running the tool."""
+    if not check_function_exists(
+        client, POCKET_FINDER_FUNCTION_KEY, POCKET_FINDER_FUNCTION_VERSION
+    ):
+        pytest.skip("Pocket finder function does not exist")
+
+    pf = PocketFinder(protein=registered_protein, client=client)
+    pf.quote()
+    assert pf.estimate is not None, "Estimate should be set"
+    assert pf.cost is None, (
+        "Cost should be None because the pocket finder is not run yet"
+    )
+
+
 @pytest.mark.parametrize(
     "protein_fixture",
     [
