@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import concurrent.futures
 import os
-import tempfile
 from pathlib import Path
+import tempfile
 import time
 from typing import TYPE_CHECKING, Literal, overload
 
@@ -578,9 +578,7 @@ class Files:
 
         signed_url = signed_url_response["url"]
 
-        tmp = tempfile.NamedTemporaryFile(
-            dir=dest.parent, suffix=".tmp", delete=False
-        )
+        tmp = tempfile.NamedTemporaryFile(dir=dest.parent, suffix=".tmp", delete=False)
         try:
             with tmp:
                 with httpx.Client() as download_client:
