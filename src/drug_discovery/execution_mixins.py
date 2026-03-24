@@ -119,7 +119,7 @@ class AsyncExecutableMixin:
         if self.status is None:
             self._start_impl(**kwargs)
         elif self.status == "Quoted":
-            self.client.executions.confirm(execution_id=self.id)
+            self.client.executions.confirm(self.id)
             self.sync()
         else:
             raise ValueError(
@@ -157,7 +157,7 @@ class AsyncExecutableMixin:
                 f"Only jobs in {cancellable} can be cancelled."
             )
 
-        self.client.executions.cancel(execution_id=self.id)
+        self.client.executions.cancel(self.id)
         self.sync()
 
     def sync(self) -> None:
@@ -169,7 +169,7 @@ class AsyncExecutableMixin:
         if self.id is None:
             raise ValueError("Cannot sync: no execution has been started (id is None).")
 
-        result = self.client.executions.get_execution(execution_id=self.id)
+        result = self.client.executions.get(self.id)
         if result:
             self._execution_dto = result
             self.status = result.get("status")
@@ -207,7 +207,7 @@ class AsyncExecutableMixin:
         if client is None:
             client = DeepOriginClient.get()
 
-        dto = client.executions.get_execution(execution_id=id)
+        dto = client.executions.get(id)
         tool_info = dto["tool"]
 
         # Bypass __init__ so subclasses can rehydrate domain fields

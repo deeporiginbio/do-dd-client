@@ -361,11 +361,11 @@ class Job:
             self.client = DeepOriginClient.get()
 
         # use
-        result = self.client.executions.get_execution(execution_id=self.id)
+        execution = self.client.executions.get(self.id)
 
-        if result:
-            self._attributes = result
-            self.status = result.get("status")
+        if execution:
+            self._attributes = execution
+            self.status = execution.get("status")
 
     def _get_running_time(self) -> Optional[int]:
         """Get the running time of the job.
@@ -857,7 +857,7 @@ class Job:
         data["approveAmount"] = 0
 
         # Submit the new execution
-        response_dto = self.client.tools.run(
+        response_dto = self.client.executions.create(
             tool_key=tool_key,
             tool_version=tool_version,
             data=data,

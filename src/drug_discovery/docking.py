@@ -10,6 +10,11 @@ Usage::
     # async (persisted, large batches)
     docking.quote()
     docking.start()
+    # Jupyter — non-blocking cell (like legacy Job.watch):
+    #     task = await docking.watch()
+    # Jupyter — block until the job finishes:
+    #     await docking.watch_async()
+    # Script (blocking): asyncio.run(docking.watch_async())
     docking.sync()
     poses = docking.get_results()
 """
@@ -27,6 +32,7 @@ from deeporigin.drug_discovery.execution_mixins import (
     QuoteMixin,
     SyncExecutableMixin,
 )
+from deeporigin.drug_discovery.notebook_watch_mixin import NotebookWatchMixin
 from deeporigin.drug_discovery.structures.ligand import Ligand, LigandSet
 from deeporigin.drug_discovery.structures.pocket import Pocket
 from deeporigin.drug_discovery.structures.protein import Protein
@@ -40,7 +46,9 @@ Number = float | int
 
 
 @beartype
-class Docking(Execution, QuoteMixin, SyncExecutableMixin, AsyncExecutableMixin):
+class Docking(
+    Execution, QuoteMixin, SyncExecutableMixin, AsyncExecutableMixin, NotebookWatchMixin
+):
     """Molecular docking supporting both sync and async execution.
 
     Sync path (``run()``): uses the functions API for small ligand sets.
@@ -48,7 +56,9 @@ class Docking(Execution, QuoteMixin, SyncExecutableMixin, AsyncExecutableMixin):
 
     Async path (``start()``): uses the tools API.
     Creates a persisted execution trackable via ``sync()``, ``from_id()``,
-    and ``list()``.
+    and ``list()``. In Jupyter, use ``await docking.watch()`` or
+    ``await docking.watch_async()`` for live job HTML (see
+    :class:`~deeporigin.drug_discovery.notebook_watch_mixin.NotebookWatchMixin`).
 
     Attributes:
         protein: Target protein structure.

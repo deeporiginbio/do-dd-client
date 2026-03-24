@@ -335,8 +335,7 @@ class ABFE(Execution, QuoteMixin, AsyncExecutableMixin, NotebookWatchMixin):
             return None
 
         if self._execution_dto is None:
-            result = client.executions.get_execution(execution_id=self.id)
-            self._execution_dto = result
+            self._execution_dto = client.executions.get(self.id)
 
         user_outputs = self._execution_dto.get("userOutputs", {})
         summary_info = user_outputs.get("abfe_results_summary", {})
