@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import concurrent.futures
+import os
+import tempfile
 from pathlib import Path
 import time
 from typing import TYPE_CHECKING, Literal, overload
@@ -555,7 +557,16 @@ class Files:
 
         if direct:
             response = self._c._get(f"/files/{self._c.org_key}/{remote_path}")
-            dest.write_bytes(response.content)
+            tmp = tempfile.NamedTemporaryFile(
+                dir=dest.parent, suffix=".tmp", delete=False
+            )
+            try:
+                with tmp:
+                    tmp.write(response.content)
+                os.replace(tmp.name, dest)
+            except BaseException:
+                os.unlink(tmp.name)
+                raise
             return str(dest)
 
         signed_url_response = self._c.get_json(
@@ -567,13 +578,20 @@ class Files:
 
         signed_url = signed_url_response["url"]
 
-        with httpx.Client() as download_client:
-            with download_client.stream("GET", signed_url) as download_response:
-                download_response.raise_for_status()
-
-                with open(dest, "wb") as f:
-                    for chunk in download_response.iter_bytes():
-                        f.write(chunk)
+        tmp = tempfile.NamedTemporaryFile(
+            dir=dest.parent, suffix=".tmp", delete=False
+        )
+        try:
+            with tmp:
+                with httpx.Client() as download_client:
+                    with download_client.stream("GET", signed_url) as download_response:
+                        download_response.raise_for_status()
+                        for chunk in download_response.iter_bytes():
+                            tmp.write(chunk)
+            os.replace(tmp.name, dest)
+        except BaseException:
+            os.unlink(tmp.name)
+            raise
 
         return str(dest)
 
