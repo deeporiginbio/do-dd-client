@@ -5,6 +5,11 @@ Usage::
     abfe = ABFE(prepared_system=prepared_system)
     abfe.quote()
     abfe.start()
+    # Jupyter — non-blocking cell (like legacy Job.watch):
+    #     task = await abfe.watch()
+    # Jupyter — block until the job finishes:
+    #     await abfe.watch_async()
+    # Script (blocking): asyncio.run(abfe.watch_async())
     abfe.sync()
     results = abfe.get_results()
 """
@@ -17,6 +22,7 @@ import pandas as pd
 
 from deeporigin.drug_discovery.execution import Execution
 from deeporigin.drug_discovery.execution_mixins import AsyncExecutableMixin, QuoteMixin
+from deeporigin.drug_discovery.notebook_watch_mixin import NotebookWatchMixin
 from deeporigin.drug_discovery.structures.prepared_system import PreparedSystem
 from deeporigin.platform.client import DeepOriginClient
 from deeporigin.platform.constants import ABFE_TOOL_KEY, ABFE_TOOL_VERSION
@@ -128,7 +134,7 @@ class ABFEParams:
         }
 
 
-class ABFE(Execution, QuoteMixin, AsyncExecutableMixin):
+class ABFE(Execution, QuoteMixin, AsyncExecutableMixin, NotebookWatchMixin):
     """Absolute Binding Free Energy calculation (async-only).
 
     Requires a ``PreparedSystem`` from system preparation before ``start()``.

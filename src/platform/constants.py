@@ -57,7 +57,7 @@ CONSTRAINED_DOCKING_FUNCTION_KEY = "deeporigin.constrained-docking"
 MOL_PROPS_FUNCTION_KEY_PREFIX = "deeporigin.mol-props"
 PROTONATION_FUNCTION_KEY = "deeporigin.mol-props-protonation"
 ABFE_TOOL_KEY = "deeporigin.abfe-end-to-end"
-ABFE_TOOL_VERSION = "0.2.36"
+ABFE_TOOL_VERSION = "0.2.37"
 SYSPREP_FUNCTION_KEY = "deeporigin.system-prep"
 SYSPREP_FUNCTION_VERSION = "0.7.6"
 

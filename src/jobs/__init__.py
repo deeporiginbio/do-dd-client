@@ -14,6 +14,7 @@ from deeporigin.drug_discovery.execution_mixins import (
     QuoteMixin,
     SyncExecutableMixin,
 )
+from deeporigin.drug_discovery.notebook_watch_mixin import NotebookWatchMixin
 from deeporigin.drug_discovery.pocket_finder import PocketFinder
 from deeporigin.platform.constants import PlatformStatus
 
@@ -25,6 +26,7 @@ __all__ = [
     "SyncExecutableMixin",
     "AsyncExecutableMixin",
     "JupyterVizMixin",
+    "NotebookWatchMixin",
     "PocketFinder",
     "Docking",
 ]

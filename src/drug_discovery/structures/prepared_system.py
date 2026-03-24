@@ -3,12 +3,12 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Optional, Self
+from typing import Any, Optional, Self
 
 from beartype import beartype
 
-if TYPE_CHECKING:
-    from deeporigin.platform.client import DeepOriginClient
+from deeporigin.exceptions import DeepOriginException
+from deeporigin.platform.client import DeepOriginClient
 
 
 @dataclass
@@ -54,6 +54,43 @@ class PreparedSystem:
             parts.append(f"ligand2_id={self.ligand2_id!r}")
         parts.append(workflow)
         return "PreparedSystem(" + ", ".join(parts) + ")"
+
+    @beartype
+    def show(self) -> Any:
+        """Visualize the prepared system structure in a Jupyter notebook using MolStar.
+
+        Downloads the system PDB from the platform and renders it with the same
+        protein-only viewer as :meth:`Protein.show` when called without optional
+        pocket or ligand arguments.
+
+        Returns:
+            Output from :func:`deeporigin.utils.notebook.render_html` (Jupyter
+            ``display`` or marimo HTML wrapper, depending on environment).
+
+        Raises:
+            DeepOriginException: If ``system_pdb_path`` is missing or empty.
+        """
+        if not self.system_pdb_path:
+            raise DeepOriginException(
+                "Cannot show PreparedSystem: system_pdb_path is empty.",
+            ) from None
+
+        client = DeepOriginClient.get()
+        local_pdb = client.files.download(
+            remote_path=self.system_pdb_path,
+            lazy=True,
+        )
+
+        from deeporigin_molstar import ProteinViewer
+
+        from deeporigin.utils.notebook import render_html
+
+        protein_viewer = ProteinViewer(
+            data=local_pdb,
+            format="pdb",
+        )
+        html_content = protein_viewer.render_protein()
+        return render_html(html_content)
 
     @classmethod
     def _from_record(cls, record: dict) -> Self:
@@ -106,7 +143,7 @@ class PreparedSystem:
         add_H_atoms: bool | None = None,  # NOSONAR
         retain_waters: bool | None = None,
         protonate_protein: bool | None = None,
-        client: Optional["DeepOriginClient"] = None,
+        client: Optional[DeepOriginClient] = None,
     ) -> list[Self]:
         """Create PreparedSystem objects from system-prep results in the data platform.
 
@@ -129,7 +166,6 @@ class PreparedSystem:
         Raises:
             ValueError: If no prepared-system results are found for the given filters.
         """
-        from deeporigin.platform.client import DeepOriginClient
 
         if client is None:
             client = DeepOriginClient.get()

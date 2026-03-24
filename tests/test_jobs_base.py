@@ -375,13 +375,10 @@ class TestSystemPrepConstruction:
     """SystemPrep construction and attribute access."""
 
     def test_defaults(self, protein, ligand):
-        """Fresh SystemPrep has None for output paths and estimate/cost."""
+        """Fresh SystemPrep has no run outputs; estimate/cost unset until run/quote."""
         sp = SystemPrep(protein=protein, ligand=ligand)
         assert sp.protein is protein
         assert sp.ligand is ligand
-        assert sp.binding_xml_path is None
-        assert sp.solvation_xml_path is None
-        assert sp.system_pdb_path is None
         assert sp.id is None
         assert sp.estimate is None
         assert sp.cost is None
@@ -482,10 +479,10 @@ class TestSystemPrepNoAsyncMethods:
 
 
 class TestSystemPrepRunParsesOutputs:
-    """run() parses function outputs, sets paths on SystemPrep, and returns PreparedSystem."""
+    """run() parses function outputs and returns PreparedSystem with paths."""
 
     def test_run_sets_paths_and_returns_prepared_system(self, protein, ligand):
-        """When for_abfe() returns completed result with system dict, run() sets paths and returns PreparedSystem."""
+        """When for_abfe() returns completed result with system dict, run() returns PreparedSystem with paths."""
         mock_outputs = {
             "system": {
                 "binding_xml_file_path": "some/dir/bsm_system.xml",
@@ -518,9 +515,6 @@ class TestSystemPrepRunParsesOutputs:
         assert out.binding_xml_path == "some/dir/bsm_system.xml"
         assert out.solvation_xml_path == "some/dir/solvation_ligand1.xml"
         assert out.system_pdb_path == "some/dir/system.pdb"
-        assert sp.binding_xml_path == "some/dir/bsm_system.xml"
-        assert sp.solvation_xml_path == "some/dir/solvation_ligand1.xml"
-        assert sp.system_pdb_path == "some/dir/system.pdb"
         assert sp.cost == 1.5
 
     def test_run_rbfe_calls_rbfe_and_sets_paths(self, protein, ligand):
@@ -555,9 +549,8 @@ class TestSystemPrepRunParsesOutputs:
             out = sp.run()
         assert isinstance(out, PreparedSystem)
         assert out.binding_xml_path == "rbfe/dir/bsm_system.xml"
-        assert sp.binding_xml_path == "rbfe/dir/bsm_system.xml"
-        assert sp.solvation_xml_path == "rbfe/dir/solvation_ligand1.xml"
-        assert sp.system_pdb_path == "rbfe/dir/system.pdb"
+        assert out.solvation_xml_path == "rbfe/dir/solvation_ligand1.xml"
+        assert out.system_pdb_path == "rbfe/dir/system.pdb"
         assert sp.cost == 2.0
 
     def test_run_calls_function_and_returns_prepared_system(self, protein, ligand):
@@ -590,9 +583,8 @@ class TestSystemPrepRunParsesOutputs:
             out = sp.run()
         assert isinstance(out, PreparedSystem)
         assert out.binding_xml_path == "fresh/bsm_system.xml"
-        assert sp.binding_xml_path == "fresh/bsm_system.xml"
-        assert sp.solvation_xml_path == "fresh/solvation_ligand1.xml"
-        assert sp.system_pdb_path == "fresh/system.pdb"
+        assert out.solvation_xml_path == "fresh/solvation_ligand1.xml"
+        assert out.system_pdb_path == "fresh/system.pdb"
 
     def test_get_results_returns_prepared_systems_from_platform(self, protein, ligand):
         """get_results() calls PreparedSystem.from_result with instance params."""
