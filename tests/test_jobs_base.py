@@ -302,7 +302,7 @@ class TestAsyncExecutableMixin:
         with patch.object(job, "sync") as mock_sync:
             job.start()
 
-        mock_client.executions.confirm.assert_called_once_with(execution_id="exec-123")
+        mock_client.executions.confirm.assert_called_once_with("exec-123")
         mock_sync.assert_called_once()
 
 
