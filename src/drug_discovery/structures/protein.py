@@ -122,7 +122,7 @@ class Protein(Entity):
             )
 
         # Download the file
-        local_file_path = client.files.download(remote_path=file_path)
+        local_file_path = client.files.download(remote_path=file_path, lazy=True)
 
         # Create Protein instance from the downloaded file
         protein = cls.from_file(file_path=local_file_path)
