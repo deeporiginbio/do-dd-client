@@ -174,6 +174,7 @@ class AsyncExecutableMixin:
             self._execution_dto = result
             self.status = result.get("status")
             self.progress = result.get("progressReport")
+            self._name = result.get("name")
 
             quotation = result.get("quotationResult") or {}
             successful = quotation.get("successfulQuotations", [])
@@ -193,7 +194,8 @@ class AsyncExecutableMixin:
 
         Creates a bare instance via ``object.__new__`` (bypassing
         ``__init__``), fetches the execution DTO, and populates the
-        common execution fields.  Subclasses should call
+        common execution fields (including :attr:`~deeporigin.drug_discovery.execution.Execution.name`
+        from the DTO ``name`` field).  Subclasses should call
         ``super().from_id()`` then rehydrate domain-specific fields
         from ``instance._execution_dto["userInputs"]``.
 
@@ -225,6 +227,7 @@ class AsyncExecutableMixin:
         instance.status = dto.get("status")
         instance.progress = dto.get("progressReport")
         instance._execution_dto = dto
+        instance._name = dto.get("name")
 
         quotation = dto.get("quotationResult", {})
         successful = quotation.get("successfulQuotations", [])

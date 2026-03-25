@@ -66,9 +66,9 @@ def _make_poses_from_dock_results(
 class Protein(Entity):
     """A class representing a protein structure with various manipulation and analysis capabilities."""
 
-    # Core attributes
-    structure: np.ndarray = field(repr=False)
+    # Core attributes (``structure`` is None until a local file is loaded or :meth:`download` runs.)
     name: str
+    structure: Any | None = field(default=None, repr=False)
     file_path: Optional[Path] = None
     pdb_id: Optional[str] = None
     info: Optional[dict] = None
@@ -94,13 +94,28 @@ class Protein(Entity):
         return cls.from_pdb_id(pdb_id)
 
     @classmethod
-    def from_id(cls, id: str, *, client: Optional[DeepOriginClient] = None) -> Self:
+    def from_id(
+        cls,
+        id: str,
+        *,
+        client: Optional[DeepOriginClient] = None,
+        download: bool = True,
+        remote_path_override: Optional[str] = None,
+    ) -> Self:
         """
         Create a Protein instance from a Deep Origin Data Platform ID.
 
         Args:
             id: The Deep Origin Data Platform ID of the protein.
             client: Optional DeepOriginClient instance. If not provided, uses the default client.
+            download: If True (default), download the structure file and load coordinates.
+                If False, fetch metadata only and set :attr:`remote_path` to the platform
+                file path (``remote_path_override`` or the record's ``file_path``) without
+                downloading; :attr:`structure` stays ``None`` until :meth:`download` or
+                :meth:`load_structure_from_local`.
+            remote_path_override: When ``download`` is False, use this as ``remote_path``
+                instead of the API record's ``file_path`` (e.g. the path stored on the
+                execution ``userInputs``).
 
         Returns:
             Protein: A new Protein instance.
@@ -114,18 +129,43 @@ class Protein(Entity):
 
         data = client.entities.get_protein(id=id)
 
-        # Check if file_path exists
         file_path = data.get("file_path")
         if not file_path:
             raise ValueError(
                 f"Protein {id} does not have a file_path. Cannot create Protein instance without structure file."
             )
 
+        if not download:
+            remote_path = (
+                remote_path_override if remote_path_override is not None else file_path
+            )
+            name = (
+                data.get("protein_name")
+                or data.get("pdb_id")
+                or data.get("gene_symbol")
+                or id
+            )
+            pdb_id = data.get("pdb_id")
+            protein = cls(
+                name=name,
+                structure=None,
+                file_path=None,
+                pdb_id=pdb_id,
+                info=None,
+                atom_types=None,
+                block_type="pdb",
+                block_content=None,
+                id=data.get("id"),
+                remote_path=remote_path,
+            )
+            return protein
+
         # Download the file
         local_file_path = client.files.download(remote_path=file_path, lazy=True)
 
         # Create Protein instance from the downloaded file
         protein = cls.from_file(file_path=local_file_path)
+        protein.remote_path = file_path
 
         # Set the ID from the data
         protein.id = data.get("id")
@@ -142,6 +182,69 @@ class Protein(Entity):
             protein.pdb_id = data["pdb_id"]
 
         return protein
+
+    def _hydrate_structure_from_file(self, path: str | Path) -> None:
+        """Populate :attr:`structure` and related fields from a local structure file."""
+        path = Path(path)
+        loaded = Protein.from_file(path)
+        self.structure = loaded.structure
+        self.file_path = loaded.file_path
+        self.atom_types = loaded.atom_types
+        self.block_type = loaded.block_type
+        self.block_content = loaded.block_content
+
+    def download(
+        self,
+        *,
+        lazy: bool = True,
+        client: DeepOriginClient | None = None,
+    ) -> str:
+        """Download the remote structure file and load :attr:`structure` from it.
+
+        If :attr:`structure` is already loaded (e.g. from :meth:`from_pdb_id` or
+        :meth:`from_file`), syncs ``Entity.local_path`` from :attr:`file_path` when
+        needed and returns without hitting the files API.
+
+        Otherwise delegates to :meth:`Entity.download`, then parses the returned
+        path with :meth:`from_file` when :attr:`structure` is still ``None``.
+
+        Args:
+            client: DeepOriginClient instance. If None, uses the default client.
+
+        Returns:
+            Local file path returned by the files client, or an existing on-disk
+            path when the structure was already loaded from a local file.
+        """
+        if self.structure is not None:
+            if self.local_path is None and self.file_path is not None:
+                self.local_path = str(self.file_path)
+            if self.local_path is not None:
+                return self.local_path
+            return ""
+
+        path_str = super().download(client=client, lazy=lazy)
+        self._hydrate_structure_from_file(path_str)
+        return path_str
+
+    def load_structure_from_local(self, path: str | Path | None = None) -> None:
+        """Load :attr:`structure` from disk without using the remote API.
+
+        Args:
+            path: Path to a PDB/mmCIF file. If None, uses ``file_path`` or
+                ``local_path`` (see :class:`Entity`).
+        """
+        if path is not None:
+            self._hydrate_structure_from_file(path)
+            return
+        if self.file_path is not None:
+            self._hydrate_structure_from_file(self.file_path)
+            return
+        if self.local_path is not None:
+            self._hydrate_structure_from_file(self.local_path)
+            return
+        raise ValueError(
+            "No local file path; pass path= or set file_path / local_path first."
+        )
 
     @classmethod
     def from_pdb_id(cls, pdb_id: str, struct_ind: int = 0) -> Self:
@@ -184,8 +287,8 @@ class Protein(Entity):
             )
 
             return cls(
-                structure=structure,
                 name=pdb_id,
+                structure=structure,
                 file_path=file_path,
                 pdb_id=pdb_id,
                 info=get_protein_info_dict(pdb_id),
@@ -245,8 +348,8 @@ class Protein(Entity):
             structure = cls.select_structure(structure, struct_ind)
 
             return cls(
-                structure=structure,
                 name=file_path.stem,
+                structure=structure,
                 file_path=file_path,
                 atom_types=structure.atom_name,
                 block_type=block_type,
@@ -324,6 +427,11 @@ class Protein(Entity):
             >>> for seq in sequences:
             ...     print(seq)
         """
+        if self.file_path is None:
+            raise ValueError(
+                "No local structure file; call download() or load_structure_from_local() first."
+            )
+
         from Bio.PDB import PDBParser, PPBuilder
 
         parser = PDBParser(QUIET=True)
@@ -386,6 +494,7 @@ class Protein(Entity):
 
         if client is None:
             client = DeepOriginClient.get()
+        self.download(lazy=True, client=client)
 
         if ligands is None and ligand is None:
             raise DeepOriginException(
@@ -488,6 +597,8 @@ class Protein(Entity):
 
     @property
     def coordinates(self):
+        self.download(lazy=True)
+        assert self.structure is not None
         return self.structure.coord
 
     def _filter_hetatm_records(
@@ -503,6 +614,7 @@ class Protein(Entity):
         Returns:
         - AtomArray: Filtered HETATM records from the structure.
         """
+        self.download(lazy=True)
         hetatm_records = self.structure[self.structure.hetero]
         res_names_upper = np.char.upper(hetatm_records.res_name)
 
@@ -533,6 +645,7 @@ class Protein(Entity):
         Returns:
         - AtomArray: Filtered chain records from the structure.
         """
+        self.download(lazy=True)
         if chain_ids is None or "ALL" in chain_ids:
             return self.structure
         else:
@@ -650,6 +763,7 @@ class Protein(Entity):
 
 
         """
+        self.download(lazy=True)
         metals = METALS
         if remove_metals:
             exclude_metals_upper = [metal.upper() for metal in remove_metals]
@@ -685,6 +799,7 @@ class Protein(Entity):
         Args:
             exclude_resnames (Optional[list[str]]): List of residue names to exclude.
         """
+        self.download(lazy=True)
         if exclude_resnames is not None:
             b_resn = np.isin(self.structure.res_name, exclude_resnames)
             self.structure = self.structure[~b_resn]
@@ -694,12 +809,15 @@ class Protein(Entity):
         Remove water molecules from the protein structure in place.
 
         """
+        self.download(lazy=True)
         from biotite.structure import filter_solvent
 
         self.structure = self.structure[~filter_solvent(self.structure)]
 
     def find_missing_residues(self) -> dict[str, list[tuple[int, int]]]:
         """find missing residues in the protein structure"""
+
+        self.download(lazy=True)
 
         import os
         import tempfile
@@ -745,6 +863,7 @@ class Protein(Entity):
         Returns:
             Tuple[list[str], list[str]]
         """
+        self.download(lazy=True)
         hetatm_records = self.structure[self.structure.hetero]
         water_residue_names = ["HOH", "WAT"]
         hetatm_records = hetatm_records[
@@ -784,6 +903,8 @@ class Protein(Entity):
         Returns:
             Ligand: The extracted ligand molecule.
         """
+        self.download(lazy=True)
+
         from rdkit import Chem
 
         if exclude_resnames is None:
@@ -1077,6 +1198,8 @@ class Protein(Entity):
 
 
         """
+
+        self.download(lazy=True)
 
         if file_path is None:
             file_path = PROTEINS_DIR / (self.to_hash() + ".pdb")
@@ -1425,10 +1548,8 @@ class Protein(Entity):
 
         self.upload(client=client, remote_path=remote_path)
 
-        file_path = self._remote_path
-
         kwargs: dict[str, Any] = {
-            "file_path": file_path,
+            "file_path": self.remote_path,
         }
 
         if self.pdb_id is not None:
@@ -1476,9 +1597,7 @@ class Protein(Entity):
 
         self.upload(client=client, remote_path=remote_path)
 
-        file_path = self._remote_path
-
-        response = client.entities.search_proteins(file_path=file_path)
+        response = client.entities.search_proteins(file_path=self.remote_path)
         data = response["data"]
 
         if data:
@@ -1492,6 +1611,7 @@ class Protein(Entity):
     def update_coordinates(self, coords: np.ndarray):
         """update coordinates of the protein structure"""
 
+        self.download(lazy=True)
         self.structure.coord = coords
 
     @property

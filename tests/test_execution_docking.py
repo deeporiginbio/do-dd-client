@@ -7,6 +7,7 @@ import pytest
 from conftest import check_function_exists, check_tool_exists
 from deeporigin.drug_discovery.docking import Docking
 from deeporigin.drug_discovery.structures.ligand import Ligand, LigandSet
+from deeporigin.platform.client import DeepOriginClient
 from deeporigin.platform.constants import (
     DOCKING_FUNCTION_KEY,
     DOCKING_FUNCTION_VERSION,
@@ -14,6 +15,41 @@ from deeporigin.platform.constants import (
     DOCKING_TOOL_VERSION,
     TERMINAL_STATES,
 )
+
+
+def test_docking_from_id_rehydrates_without_downloading_structure_files(monkeypatch):
+    """from_id sets remote_path from userInputs and does not call files.download.
+
+    Uses the local mock server (``--env local``): execution and entity rows come
+    from ``tests/fixtures/executions/exec-dock-1.json`` and related fixtures.
+    """
+
+    def _fail_download(*_args, **_kwargs):
+        raise AssertionError(
+            "files.download must not be called when rehydrating Docking.from_id"
+        )
+
+    client = DeepOriginClient()
+    monkeypatch.setattr(client.files, "download", _fail_download)
+
+    exec_id = "exec-dock-1"
+    protein_id = "prot-1"
+    lig_id = "lig-1"
+    remote_protein_path = "entities/proteins/abc.pdb"
+    remote_mol_path = "entities/ligands/lig.sdf"
+    expected_ligand_smiles = "C1C2C3CC2C13"
+
+    docking = Docking.from_id(exec_id, client=client)
+
+    assert docking.name == "dock-from-id-test"
+    assert docking.protein.id == protein_id
+    assert docking.protein.remote_path == remote_protein_path
+    assert docking.protein.structure is None
+    assert len(docking.ligands) == 1
+    lig = list(docking.ligands)[0]
+    assert lig.id == lig_id
+    assert lig.remote_path == remote_mol_path
+    assert lig.smiles == expected_ligand_smiles
 
 
 def test_docking_accepts_single_ligand(

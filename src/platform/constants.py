@@ -48,7 +48,7 @@ PROVIDER = Literal["ufa", "s3"]
 
 # tool, function keys and versions
 DOCKING_TOOL_KEY = "deeporigin.bulk-docking"
-DOCKING_TOOL_VERSION = "0.7.8"
+DOCKING_TOOL_VERSION = "0.8.2"
 DOCKING_FUNCTION_KEY = "deeporigin.docking"
 DOCKING_FUNCTION_VERSION = "0.7.1"
 POCKET_FINDER_FUNCTION_KEY = "deeporigin.pocketfinder"

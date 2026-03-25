@@ -439,7 +439,7 @@ class Docking(WorkflowStep):
                 "box_size": list(box_size),
                 "pocket_center": list(pocket_center),
                 "protein": {
-                    "file_path": self.parent.protein._remote_path,
+                    "file_path": self.parent.protein.remote_path,
                 },
                 "ligands": [
                     {

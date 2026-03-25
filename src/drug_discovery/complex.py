@@ -223,11 +223,21 @@ class Complex:
 
         files_to_upload = {}
 
-        if self.protein._remote_path not in remote_files:
-            files_to_upload[str(self.protein.to_pdb())] = self.protein._remote_path
+        if self.protein.remote_path is None:
+            self.protein.remote_path = (
+                f"{self.protein._remote_path_base}{self.protein.to_hash()}"
+                f"{self.protein._preferred_ext}"
+            )
+        if self.protein.remote_path not in remote_files:
+            files_to_upload[str(self.protein.to_pdb())] = self.protein.remote_path
         for ligand in self.ligands:
-            if ligand._remote_path not in remote_files:
-                files_to_upload[str(ligand.to_sdf())] = ligand._remote_path
+            if ligand.remote_path is None:
+                ligand.remote_path = (
+                    f"{ligand._remote_path_base}{ligand.to_hash()}"
+                    f"{ligand._preferred_ext}"
+                )
+            if ligand.remote_path not in remote_files:
+                files_to_upload[str(ligand.to_sdf())] = ligand.remote_path
 
         self.client.files.upload_many(files=files_to_upload)
 

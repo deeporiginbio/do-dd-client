@@ -21,7 +21,7 @@ Usage::
 
 import concurrent.futures
 import os
-from typing import Self
+from typing import Any, Self
 
 from beartype import beartype
 import numpy as np
@@ -43,6 +43,14 @@ from deeporigin.platform.constants import (
 )
 
 Number = float | int
+
+
+def _ligand_tool_input_row(lig: Ligand) -> dict[str, Any]:
+    """Build one ligand entry for tool ``userInputs`` (id, smiles, optional mol_file)."""
+    row: dict[str, Any] = {"id": lig.id, "smiles": lig.smiles}
+    if lig.remote_path is not None:
+        row["mol_file"] = lig.remote_path
+    return row
 
 
 @beartype
@@ -311,6 +319,8 @@ class Docking(
             self.ligands.sync(client=self.client)
 
         ligands = list(self.ligands)
+        for lig in ligands:
+            lig.upload(client=self.client)
 
         default_box = float(2 * np.cbrt(self.pocket.volume or 0))
         box_size_x = (
@@ -330,9 +340,17 @@ class Docking(
         )
         pocket_center = self.pocket.get_center().tolist()
 
+        protein_ref = (
+            self.protein.file_path
+            if self.protein.file_path is not None
+            else self.protein.remote_path
+        )
+        protein_hash = ""
+        if self.protein.structure is not None:
+            protein_hash = self.protein.to_hash()
         metadata = {
-            "protein_file": os.path.basename(self.protein.file_path),
-            "protein_hash": self.protein.to_hash(),
+            "protein_file": os.path.basename(str(protein_ref)) if protein_ref else "",
+            "protein_hash": protein_hash,
         }
 
         pocket_params = {
@@ -348,15 +366,9 @@ class Docking(
             "pocket": pocket_params,
             "protein": {
                 "id": self.protein.id,
-                "file_path": self.protein._remote_path,
+                "file_path": self.protein.remote_path,
             },
-            "ligands": [
-                {
-                    "id": lig.id,
-                    "smiles": lig.smiles,
-                }
-                for lig in ligands
-            ],
+            "ligands": [_ligand_tool_input_row(lig) for lig in ligands],
         }
 
         return params, metadata
@@ -371,7 +383,11 @@ class Docking(
         """Construct a Docking instance from an existing platform execution ID.
 
         Fetches the execution record and rehydrates the protein, pocket,
-        and ligands from the stored ``userInputs``.
+        and ligands from the stored ``userInputs``. Protein and ligand
+        structure files are not downloaded; ``Protein.remote_path`` and each
+        ligand's ``remote_path`` are set from the execution payload (and API
+        metadata) so you can call :meth:`~deeporigin.drug_discovery.structures.entity.Entity.download`
+        later if needed.
 
         Args:
             id: Platform execution ID.
@@ -407,11 +423,15 @@ class Docking(
                 Protein.from_id,
                 protein_id,
                 client=instance.client,
+                download=False,
+                remote_path_override=protein_input.get("file_path"),
             )
             fut_ligands = executor.submit(
                 LigandSet.from_ids,
                 [lig["id"] for lig in ligands_input],
                 client=instance.client,
+                download=False,
+                ligand_inputs=ligands_input,
             )
             if pocket_id is not None:
                 fut_pocket = executor.submit(

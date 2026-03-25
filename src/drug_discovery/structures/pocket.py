@@ -299,6 +299,11 @@ class Pocket(Entity):
         Returns:
             A Pocket object matching the above design.
         """
+        if protein.structure is None:
+            raise ValueError(
+                "Protein has no loaded structure; call protein.download() or "
+                "protein.load_structure_from_local() first."
+            )
 
         structure = protein.structure
 

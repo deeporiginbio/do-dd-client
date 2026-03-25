@@ -336,27 +336,54 @@ class Ligand(Entity):
 
     @classmethod
     def _from_platform_record(
-        cls, data: dict[str, Any], *, client: DeepOriginClient
+        cls,
+        data: dict[str, Any],
+        *,
+        client: DeepOriginClient,
+        download: bool = True,
+        mol_file_override: str | None = None,
     ) -> Self:
         """Create a Ligand instance from a platform ligand record.
 
         Args:
             data: Ligand record returned by the platform entities API.
             client: DeepOrigin client used to download associated files.
+            download: If True (default), download the mol file when present.
+                If False, build from SMILES only and set :attr:`remote_path` to the
+                platform mol file path without downloading.
+            mol_file_override: Optional remote path (e.g. from execution ``userInputs``)
+                used when ``download`` is False; falls back to ``data['mol_file']``.
 
         Returns:
             Ligand: A new Ligand instance.
 
         Raises:
             ValueError: If the ligand data contains neither a mol file nor a
-                SMILES string.
+                SMILES string, or if ``download`` is False and a mol file exists
+                but no SMILES is available to hydrate the molecule.
         """
-        mol_file = data.get("mol_file")
+        mol_file = (
+            mol_file_override if mol_file_override is not None else data.get("mol_file")
+        )
         smiles = data.get("smiles") or data.get("canonical_smiles")
+
+        if mol_file and not download:
+            if not smiles:
+                raise ValueError(
+                    f"Ligand {data.get('id')}: cannot rehydrate without download when no "
+                    "SMILES is present on the record."
+                )
+            ligand = cls.from_smiles(smiles=smiles, name=data.get("name") or "")
+            ligand.id = data.get("id")
+            ligand.remote_path = mol_file
+            if data.get("name"):
+                ligand.name = data["name"]
+            return ligand
 
         if mol_file:
             local_file_path = client.files.download(remote_path=mol_file, lazy=True)
             ligand = cls.from_sdf(file_path=local_file_path)
+            ligand.remote_path = mol_file
         elif smiles:
             ligand = cls.from_smiles(smiles=smiles)
         else:
@@ -373,7 +400,13 @@ class Ligand(Entity):
         return ligand
 
     @classmethod
-    def from_id(cls, id: str, *, client: Optional[DeepOriginClient] = None) -> Self:
+    def from_id(
+        cls,
+        id: str,
+        *,
+        client: Optional[DeepOriginClient] = None,
+        download: bool = True,
+    ) -> Self:
         """Create a Ligand instance from a Deep Origin Data Platform ID.
 
         Fetches the ligand record from the platform. If the record has an
@@ -384,6 +417,8 @@ class Ligand(Entity):
             id: The Deep Origin Data Platform ID of the ligand.
             client: Optional DeepOriginClient instance. If not provided, uses
                 the default client.
+            download: If False, skip mol file download and hydrate from SMILES with
+                ``remote_path`` set to the platform mol file path.
 
         Returns:
             Ligand: A new Ligand instance.
@@ -396,7 +431,7 @@ class Ligand(Entity):
             client = DeepOriginClient.get()
 
         data = client.entities.get_ligand(id=id)
-        return cls._from_platform_record(data=data, client=client)
+        return cls._from_platform_record(data=data, client=client, download=download)
 
     def process_mol(self) -> None:
         """
@@ -975,8 +1010,43 @@ class Ligand(Entity):
         return self.write_to_file(output_path=output_path, output_format="mol")
 
     @beartype
-    def to_sdf(self, output_path: Optional[str] = None) -> str:
-        """Write the ligand to an SDF file."""
+    def _ensure_mol_from_remote_file(
+        self,
+        *,
+        client: Optional[DeepOriginClient] = None,
+    ) -> None:
+        """If only :attr:`remote_path` is set, download the SDF and reload :attr:`mol`.
+
+        Ligands rehydrated with ``from_id(..., download=False)`` have ``remote_path``
+        but no local ``file_path``; :attr:`mol` may be 2D from SMILES. Export paths
+        such as :meth:`to_sdf` need coordinates from the remote structure file.
+        """
+
+        if self.remote_path is None or self.file_path is not None:
+            return
+        if client is None:
+            client = DeepOriginClient.get()
+        local_path = self.download(client=client, lazy=True)
+        loaded = Ligand.from_sdf(local_path)
+        self.mol = loaded.mol
+        self.file_path = loaded.file_path
+
+    @beartype
+    def to_sdf(
+        self,
+        output_path: Optional[str] = None,
+        *,
+        client: Optional[DeepOriginClient] = None,
+    ) -> str:
+        """Write the ligand to an SDF file.
+
+        Args:
+            output_path: Path for the SDF file, or default under ``LIGANDS_DIR``.
+            client: Optional client used when downloading from :attr:`remote_path`
+                if ``file_path`` is not yet set.
+        """
+
+        self._ensure_mol_from_remote_file(client=client)
 
         if output_path is None:
             output_path = LIGANDS_DIR / (self.to_hash() + ".sdf")
@@ -1086,7 +1156,7 @@ class Ligand(Entity):
         mol_file: str | None = None
         if self.file_path is not None:
             self.upload(client=client, remote_path=remote_path)
-            mol_file = self._remote_path
+            mol_file = self.remote_path
 
         kwargs: dict[str, Any] = {
             "smiles": self.smiles if self.smiles is not None else self.canonical_smiles,
@@ -1147,7 +1217,7 @@ class Ligand(Entity):
             client = DeepOriginClient.get()
 
         if remote_path is not None:
-            self._remote_path_override = remote_path
+            self.remote_path = remote_path
 
         smiles_value = self.smiles if self.smiles is not None else self.canonical_smiles
         response = client.entities.search_ligands(smiles=smiles_value)
@@ -1179,7 +1249,11 @@ class Ligand(Entity):
             "variant_name_tag": "",
         }
         if self.file_path is not None:
-            row["mol_file"] = self._remote_path
+            if self.remote_path is None:
+                raise ValueError(
+                    "remote_path is required when file_path is set; call upload() first."
+                )
+            row["mol_file"] = self.remote_path
         if self.name is not None:
             row["name"] = self.name
         if self.mol is not None:
@@ -2218,19 +2292,31 @@ class LigandSet:
             ) from e
 
     @beartype
-    def to_sdf(self, output_path: Optional[str] = None) -> str:
-        """
-        Write all ligands in the set to a single SDF file, preserving all properties from each Ligand's mol field.
+    def to_sdf(
+        self,
+        output_path: Optional[str] = None,
+        *,
+        client: Optional[DeepOriginClient] = None,
+    ) -> str:
+        """Write all ligands to one SDF file, preserving properties from each ``mol``.
+
+        When a ligand has ``remote_path`` but no local ``file_path`` (e.g. from
+        ``from_id(..., download=False)``), each ligand is downloaded and the
+        ``mol`` is rebuilt from that file before writing so 3D coordinates are kept.
 
         Args:
-            output_path (str): The path to the output SDF file.
+            output_path: Path to the output SDF file.
+            client: Optional client for per-ligand downloads from ``remote_path``.
 
         Returns:
-            str: The path to the written SDF file.
+            Path to the written SDF file.
         """
         from pathlib import Path
 
         from rdkit import Chem
+
+        if client is None:
+            client = DeepOriginClient.get()
 
         if output_path is None:
             output_path = f"{tempfile.mkstemp()[1]}.sdf"
@@ -2239,6 +2325,7 @@ class LigandSet:
         writer = Chem.SDWriter(str(path))
         try:
             for ligand in self.ligands:
+                ligand._ensure_mol_from_remote_file(client=client)
                 # Ensure all properties are set on the RDKit Mol object
                 if ligand.name is not None:
                     ligand.set_property("_Name", ligand.name)
@@ -2377,12 +2464,20 @@ class LigandSet:
         ids: list[str],
         *,
         client: DeepOriginClient | None = None,
+        download: bool = True,
+        ligand_inputs: list[dict[str, Any]] | None = None,
     ) -> Self:
         """Create a LigandSet by fetching ligands from the platform by ID.
 
         Args:
             ids: List of Deep Origin Data Platform ligand IDs.
             client: Optional API client. Uses the default if not provided.
+            download: If True (default), download mol files when present. If False,
+                hydrate from SMILES and set ``remote_path`` from the record (or
+                ``mol_file`` on the matching ``ligand_inputs`` row) without downloading.
+            ligand_inputs: Optional list of dicts (e.g. execution ``userInputs.ligands``)
+                keyed by ``id``; ``mol_file`` on a row overrides the API path when
+                ``download`` is False.
 
         Returns:
             A new LigandSet containing the rehydrated ligands.
@@ -2401,9 +2496,20 @@ class LigandSet:
                 f"Failed to rehydrate all requested ligands. Missing IDs: {missing_ids}"
             )
 
+        def _mol_file_override(ligand_id: str) -> str | None:
+            if not ligand_inputs:
+                return None
+            for row in ligand_inputs:
+                if row.get("id") == ligand_id:
+                    return row.get("mol_file")
+            return None
+
         def _build(ligand_id: str) -> "Ligand":
             return Ligand._from_platform_record(
-                data=records_by_id[ligand_id], client=client
+                data=records_by_id[ligand_id],
+                client=client,
+                download=download,
+                mol_file_override=_mol_file_override(ligand_id),
             )
 
         with concurrent.futures.ThreadPoolExecutor(max_workers=20) as executor:

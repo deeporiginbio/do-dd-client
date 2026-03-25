@@ -1,7 +1,7 @@
 """
 This module defines the Entity class for handling file uploads to a remote server in the context of drug discovery structures.
 
-The Entity class provides methods to manage and upload files, such as protein structure files, to a remote storage system using the DeepOrigin FilesClient.
+The Entity class provides methods to manage file uploads, such as protein structure files, to a remote storage system using the DeepOrigin FilesClient.
 """
 
 from abc import ABC, abstractmethod
@@ -17,7 +17,10 @@ class Entity(ABC):
     """
     Represents an entity with file upload capabilities to a remote server.
 
-    This class manages the remote path and provides an upload method to ensure that the entity's file is uploaded to the remote storage if it does not already exist there. It uses the DeepOrigin FilesClient for remote file operations.
+    ``local_path`` is set when the entity was created from a local file or after
+    :meth:`download`. ``remote_path`` is set when created from platform metadata or
+    after :meth:`upload`. Call :meth:`upload` before passing paths to remote tools;
+    call :meth:`download` when you need a local file for display or analysis.
     """
 
     id: str | None = field(default=None, kw_only=True)
@@ -34,19 +37,12 @@ class Entity(ABC):
         """Dump state to a file"""
         ...
 
-    @property
-    def _remote_path(self) -> str:
-        """The path for the entity on the remote server.
-
-        Returns the override set via :meth:`upload` or :meth:`sync` if one
-        exists, otherwise falls back to the default hash-based path.
-        """
-        override = getattr(self, "_remote_path_override", None)
-        if override is not None:
-            return override
-        return f"{self._remote_path_base}{self.to_hash()}{self._preferred_ext}"
-
-    def download(self, *, client: DeepOriginClient | None = None) -> str:
+    def download(
+        self,
+        *,
+        lazy: bool = True,
+        client: DeepOriginClient | None = None,
+    ) -> str:
         """Download the entity file from remote storage.
 
         No-ops if ``local_path`` is already set.
@@ -68,7 +64,8 @@ class Entity(ABC):
             client = DeepOriginClient.get()
         self.local_path = client.files.download(
             remote_path=self.remote_path,
-            lazy=True,
+            lazy=lazy,
+            local_path=self.local_path,
         )
         return self.local_path
 
@@ -77,23 +74,27 @@ class Entity(ABC):
         *,
         client: DeepOriginClient | None = None,
         remote_path: str | None = None,
-    ):
+    ) -> None:
         """Upload the entity to the remote server.
 
         Args:
             client: DeepOriginClient instance. If None, uses DeepOriginClient.get().
-            remote_path: Custom remote path to upload to. When provided, this
-                overrides the default hash-based path for this entity
-                permanently (affecting subsequent ``_remote_path`` lookups).
+            remote_path: Custom remote path to upload to. When provided, sets
+                :attr:`remote_path` before uploading. If :attr:`remote_path` is
+                still unset, it is set to the default hash-based path.
         """
 
         if client is None:
             client = DeepOriginClient.get()
 
         if remote_path is not None:
-            self._remote_path_override = remote_path
+            self.remote_path = remote_path
+        if self.remote_path is None:
+            self.remote_path = (
+                f"{self._remote_path_base}{self.to_hash()}{self._preferred_ext}"
+            )
 
         client.files.upload(
             self.to_file(),
-            remote_path=self._remote_path,
+            remote_path=self.remote_path,
         )
