@@ -22,7 +22,22 @@ def test_from_dto_maps_fields_and_complete() -> None:
     assert display.execution_id == "e1-uuid"
     assert display.status == "Running"
     assert display.name == "my-run"
-    assert display.complete == 42.0
+    assert display.complete == pytest.approx(42)
+    assert display.tool_key is None
+    assert display.tool_version is None
+
+
+def test_from_dto_maps_tool_key_and_version() -> None:
+    """from_dto reads tool key and version from the ``tool`` object."""
+    dto = {
+        "executionId": "e1",
+        "status": "Running",
+        "tool": {"key": "deeporigin.bulk-docking", "version": "0.8.2"},
+        "progressReport": None,
+    }
+    display = ExecutionDisplay.from_dto(dto)
+    assert display.tool_key == "deeporigin.bulk-docking"
+    assert display.tool_version == "0.8.2"
 
 
 def test_from_dto_raises_without_execution_id() -> None:
@@ -111,8 +126,12 @@ def test_will_auto_update_adds_spinner() -> None:
 
 def test_parse_complete_clamps() -> None:
     """Completion is clamped to 0–100."""
-    assert _parse_complete_from_progress_report(json.dumps({"complete": 150})) == 100.0
-    assert _parse_complete_from_progress_report(json.dumps({"complete": -5})) == 0.0
+    assert _parse_complete_from_progress_report(
+        json.dumps({"complete": 150})
+    ) == pytest.approx(100)
+    assert _parse_complete_from_progress_report(
+        json.dumps({"complete": -5})
+    ) == pytest.approx(0)
 
 
 def test_from_pending_shows_notice_and_omits_execution_id_row() -> None:
@@ -120,8 +139,37 @@ def test_from_pending_shows_notice_and_omits_execution_id_row() -> None:
     html = ExecutionDisplay.from_pending(name="My job", status=None).render_html()
     assert "No platform execution ID yet" in html
     assert "<dt" not in html
-    assert "<strong>My job</strong>" in html
+    assert "fw-semibold" in html
+    assert "My job" in html
     assert "New" in html
+
+
+def test_card_header_shows_tool_key_and_version() -> None:
+    """Tool key and version are rendered under the title in the card header."""
+    html = ExecutionDisplay.from_dto(
+        {
+            "executionId": "e1",
+            "status": "Running",
+            "name": "Run",
+            "tool": {"key": "deeporigin.abfe-end-to-end", "version": "0.2.37"},
+            "progressReport": None,
+        }
+    ).render_html()
+    assert "deeporigin.abfe-end-to-end" in html
+    assert "v0.2.37" in html
+    assert "card-header" in html
+
+
+def test_from_pending_passes_tool_metadata() -> None:
+    """from_pending can show tool key/version before an execution exists."""
+    html = ExecutionDisplay.from_pending(
+        name="Prep",
+        status=None,
+        tool_key="deeporigin.system-prep",
+        tool_version="0.7.6",
+    ).render_html()
+    assert "deeporigin.system-prep" in html
+    assert "v0.7.6" in html
 
 
 def test_card_header_uses_name_else_execution_id() -> None:
@@ -134,7 +182,7 @@ def test_card_header_uses_name_else_execution_id() -> None:
             "progressReport": None,
         }
     ).render_html()
-    assert "<strong>Docking run</strong>" in with_name
+    assert "Docking run" in with_name
     assert "uuid-aaa" in with_name
 
     no_name = ExecutionDisplay.from_dto(
@@ -144,7 +192,7 @@ def test_card_header_uses_name_else_execution_id() -> None:
             "progressReport": None,
         }
     ).render_html()
-    assert "<strong>uuid-bbb</strong>" in no_name
+    assert "uuid-bbb" in no_name
 
 
 def test_execution_id_shown_below_progress_bar() -> None:
@@ -172,4 +220,4 @@ def test_from_dto_dict_progress_report() -> None:
         "progressReport": {"complete": 33},
     }
     display = ExecutionDisplay.from_dto(dto)
-    assert display.complete == 33.0
+    assert display.complete == pytest.approx(33)

@@ -75,20 +75,33 @@ class ExecutionDisplay:
         execution_id: Platform execution UUID string, or ``None`` if nothing has been submitted.
         name: Optional user label from the execution.
         status: Lifecycle status (see :data:`~deeporigin.platform.constants.PlatformStatus`).
+        tool_key: Platform tool identifier from the execution DTO, if known.
+        tool_version: Tool version string from the execution DTO, if known.
     """
 
     complete: float | int
     execution_id: str | None
     name: str | None
     status: str
+    tool_key: str | None = None
+    tool_version: str | None = None
 
     @classmethod
-    def from_pending(cls, *, name: str | None, status: str | None) -> Self:
+    def from_pending(
+        cls,
+        *,
+        name: str | None,
+        status: str | None,
+        tool_key: str | None = None,
+        tool_version: str | None = None,
+    ) -> Self:
         """Build a display for an object that has not received a platform execution ID yet.
 
         Args:
             name: Optional user label (e.g. from :class:`~deeporigin.drug_discovery.execution.Execution`).
             status: Current lifecycle status, or ``None`` before any lifecycle state.
+            tool_key: Optional tool key (e.g. from the execution class ``tool_key``).
+            tool_version: Optional tool version (e.g. from ``tool_version``).
 
         Returns:
             Display model with ``status`` defaulting to ``\"New\"`` when missing.
@@ -99,6 +112,8 @@ class ExecutionDisplay:
             execution_id=None,
             name=name,
             status=st,
+            tool_key=tool_key,
+            tool_version=tool_version,
         )
 
     @classmethod
@@ -125,11 +140,23 @@ class ExecutionDisplay:
         else:
             name = str(raw_name)
         complete = _parse_complete_from_progress_report(dto.get("progressReport"))
+        tool_key: str | None = None
+        tool_version: str | None = None
+        raw_tool = dto.get("tool")
+        if isinstance(raw_tool, dict):
+            k = raw_tool.get("key")
+            v = raw_tool.get("version")
+            if k is not None and str(k).strip():
+                tool_key = str(k).strip()
+            if v is not None and str(v).strip():
+                tool_version = str(v).strip()
         return cls(
             complete=complete,
             execution_id=str(execution_id),
             name=name,
             status=str(status),
+            tool_key=tool_key,
+            tool_version=tool_version,
         )
 
     def _card_header_title(self) -> str:
@@ -139,6 +166,22 @@ class ExecutionDisplay:
         if self.execution_id:
             return self.execution_id
         return "New"
+
+    def _tool_metadata_html(self) -> str:
+        """Subtitle under the card title: tool key and version when available."""
+        if self.tool_key is None and self.tool_version is None:
+            return ""
+        chunks: list[str] = []
+        if self.tool_key is not None:
+            chunks.append(
+                f'<code class="small text-body-secondary text-break">{html.escape(self.tool_key, quote=True)}</code>'
+            )
+        if self.tool_version is not None:
+            chunks.append(
+                f'<span class="text-muted">v{html.escape(self.tool_version, quote=True)}</span>'
+            )
+        inner = ' <span class="text-muted" aria-hidden="true">·</span> '.join(chunks)
+        return f'<div class="small mt-1">{inner}</div>'
 
     def render_html(self, *, will_auto_update: bool = False) -> str:
         """Render a self-contained Bootstrap 5 card HTML fragment.
@@ -151,6 +194,7 @@ class ExecutionDisplay:
         """
         esc_status = html.escape(self.status, quote=True)
         esc_title = html.escape(self._card_header_title(), quote=True)
+        tool_meta = self._tool_metadata_html()
         badge_bg = html.escape(_status_badge_bg_class(self.status), quote=True)
         last_updated = time.strftime("%Y-%m-%d %H:%M:%S")
         uid = f"exec_disp_{uuid.uuid4().hex}"
@@ -189,20 +233,24 @@ class ExecutionDisplay:
                 'role="progressbar"></div></div>'
             )
 
-        live_html = ""
+        live_inline = ""
         if will_auto_update:
-            live_html = (
-                '<div class="d-flex align-items-center gap-2 mt-1">'
+            live_inline = (
+                '<span class="d-inline-flex align-items-center gap-1 text-muted" '
+                'title="Refreshing automatically">'
                 '<span class="spinner-border spinner-border-sm text-primary" '
                 'role="status" aria-hidden="true"></span>'
                 "<span>Live updates…</span>"
-                "</div>"
+                "</span>"
             )
 
         return f"""<div id="{html.escape(uid, quote=True)}" class="deeporigin-exec-display">
 <link href="{html.escape(BOOTSTRAP_5_CSS_CDN_URL, quote=True)}" rel="stylesheet">
 <div class="card shadow-sm" style="max-width: 42rem;">
-<div class="card-header py-2"><strong>{esc_title}</strong></div>
+<div class="card-header py-2">
+<div class="fw-semibold">{esc_title}</div>
+{tool_meta}
+</div>
 <div class="card-body py-3">
 {pending_notice}
 {progress_block}
@@ -210,10 +258,12 @@ class ExecutionDisplay:
 </div>
 <div class="card-footer small py-2">
 <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
+<div class="d-flex align-items-center flex-wrap gap-2">
 <div class="text-muted">Last updated: {html.escape(last_updated, quote=True)}</div>
+{live_inline}
+</div>
 <span class="badge rounded-pill bg-{badge_bg}">{esc_status}</span>
 </div>
-{live_html}
 </div>
 </div>
 </div>"""

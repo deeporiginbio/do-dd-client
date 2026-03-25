@@ -24,6 +24,17 @@ from deeporigin.platform.constants import TERMINAL_STATES
 _MAX_CONSECUTIVE_ERRORS = 10
 
 
+def _strip_or_none(value: object) -> str | None:
+    """Return a stripped non-empty string, or ``None`` for missing or blank values.
+
+    Used when passing tool metadata into :class:`~deeporigin.platform.execution_display.ExecutionDisplay`.
+    """
+    if value is None:
+        return None
+    s = str(value).strip()
+    return s if s else None
+
+
 class NotebookWatchMixin:
     """Poll ``sync()`` and refresh a Jupyter HTML display for one execution.
 
@@ -111,6 +122,8 @@ class NotebookWatchMixin:
             html = ExecutionDisplay.from_pending(
                 name=self.name,
                 status=self.status,
+                tool_key=_strip_or_none(getattr(self, "tool_key", None)),
+                tool_version=_strip_or_none(getattr(self, "tool_version", None)),
             ).render_html(will_auto_update=False)
         else:
             html = self._render_execution_html(will_auto_update=False)

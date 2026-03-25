@@ -325,29 +325,32 @@ class Docking(
         Args:
             approve_amount: Pre-approved spend amount.
         """
-        from deeporigin.drug_discovery import utils
-        from deeporigin.platform.job import Job
 
         params, metadata = self._build_tool_inputs()
 
-        execution_dto = utils._start_tool_run(
-            params=params,
-            metadata=metadata,
-            tool="Docking",
-            tool_version=self.tool_version,
-            client=self.client,
-            approve_amount=approve_amount,
-        )
+        payload: dict[str, Any] = {
+            "inputs": params,
+            "outputs": {},
+            "metadata": metadata,
+        }
+        if self.name is not None:
+            payload["name"] = self.name
+        if approve_amount is not None:
+            payload["approveAmount"] = approve_amount
 
-        job = Job.from_dto(execution_dto, client=self.client)
-        self._id = job.id
-        self.status = job.status
+        execution_dto = self.client.executions.create(
+            data=payload,
+            tool_key=self.tool_key,
+            tool_version=self.tool_version,
+        )
+        self._id = execution_dto.get("executionId")
+        self.status = execution_dto.get("status")
 
     def _build_tool_inputs(self) -> tuple[dict, dict]:
         """Build params and metadata for a tool run.
 
         Syncs protein and ligands to the platform, then constructs
-        the payload dicts needed by ``_start_tool_run``.
+        the params and metadata passed to ``client.executions.create``.
 
         Returns:
             A tuple of (params, metadata).
