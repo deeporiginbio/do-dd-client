@@ -35,12 +35,7 @@ class SyncOnlyJob(Execution, QuoteMixin, SyncExecutableMixin):
 
     def __init__(self, name: str) -> None:
         super().__init__()
-        self._name = name
-
-    @property
-    def name(self) -> str:
-        """Immutable job name."""
-        return self._name
+        self.name = name
 
 
 class AsyncJob(Execution, QuoteMixin, AsyncExecutableMixin):
@@ -51,12 +46,7 @@ class AsyncJob(Execution, QuoteMixin, AsyncExecutableMixin):
 
     def __init__(self, name: str) -> None:
         super().__init__()
-        self._name = name
-
-    @property
-    def name(self) -> str:
-        """Immutable job name."""
-        return self._name
+        self.name = name
 
 
 # ===========================================================================
@@ -129,18 +119,30 @@ class TestExecutionReadOnly:
         assert job.estimate is None
         assert job.cost is None
 
+    def test_name_defaults_to_none_without_constructor_set(self):
+        """name is None when not set by a subclass constructor."""
+        job = Execution()
+        assert job.name is None
+
 
 class TestExecutionImmutableFields:
-    """Immutable input field enforcement."""
+    """Name is mutable until id is set, then read-only."""
 
-    def test_immutable_field_blocked(self):
-        """Assigning to an immutable field raises AttributeError."""
+    def test_name_blocked_when_id_set(self):
+        """Assigning name raises AttributeError once id is set."""
         job = SyncOnlyJob("original")
+        job._id = "exec-1"
         with pytest.raises(AttributeError, match="name"):
             job.name = "changed"
 
-    def test_immutable_field_readable(self):
-        """Immutable fields are readable after construction."""
+    def test_name_mutable_when_id_none(self):
+        """name may be changed while id is unset."""
+        job = SyncOnlyJob("original")
+        job.name = "changed"
+        assert job.name == "changed"
+
+    def test_name_readable(self):
+        """name is readable after construction."""
         job = SyncOnlyJob("hello")
         assert job.name == "hello"
 
@@ -302,7 +304,7 @@ class TestAsyncExecutableMixin:
         with patch.object(job, "sync") as mock_sync:
             job.start()
 
-        mock_client.executions.confirm.assert_called_once_with(execution_id="exec-123")
+        mock_client.executions.confirm.assert_called_once_with("exec-123")
         mock_sync.assert_called_once()
 
 

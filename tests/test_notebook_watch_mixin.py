@@ -48,7 +48,7 @@ def test_watch_async_terminal_immediately(mock_update_display, mock_display):
     )
     dto = _minimal_dto(status="Succeeded")
     mock_client = MagicMock()
-    mock_client.executions.get_execution.return_value = dto
+    mock_client.executions.get.return_value = dto
 
     abfe = ABFE(prepared_system=ps)
     abfe.client = mock_client
@@ -76,7 +76,7 @@ def test_watch_async_polls_until_terminal(mock_update_display, mock_display):
     succeeded = _minimal_dto(status="Succeeded")
 
     mock_client = MagicMock()
-    mock_client.executions.get_execution.side_effect = [running, succeeded]
+    mock_client.executions.get.side_effect = [running, succeeded]
 
     abfe = ABFE(prepared_system=ps)
     abfe.client = mock_client
@@ -87,7 +87,7 @@ def test_watch_async_polls_until_terminal(mock_update_display, mock_display):
     with patch.object(abfe, "_render_job_html", return_value="<html>x</html>"):
         asyncio.run(abfe.watch_async(interval=0.001))
 
-    assert mock_client.executions.get_execution.call_count >= 2
+    assert mock_client.executions.get.call_count >= 2
     assert mock_update_display.call_count >= 1
 
 
@@ -115,7 +115,7 @@ def test_watch_async_raises_when_dto_missing_after_sync(
         system_pdb_path="p.pdb",
     )
     mock_client = MagicMock()
-    mock_client.executions.get_execution.return_value = None
+    mock_client.executions.get.return_value = None
 
     abfe = ABFE(prepared_system=ps)
     abfe.client = mock_client

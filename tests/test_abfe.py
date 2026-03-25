@@ -124,7 +124,7 @@ def test_abfe_from_id_rehydrates_prepared_system_lv0():
     }
 
     mock_client = MagicMock()
-    mock_client.executions.get_execution.return_value = fake_dto
+    mock_client.executions.get.return_value = fake_dto
 
     abfe = ABFE.from_id("exec-123", client=mock_client)
 

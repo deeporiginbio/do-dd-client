@@ -10,13 +10,18 @@ Usage::
     # async (persisted, large batches)
     docking.quote()
     docking.start()
+    # Jupyter — non-blocking cell (like legacy Job.watch):
+    #     task = await docking.watch()
+    # Jupyter — block until the job finishes:
+    #     await docking.watch_async()
+    # Script (blocking): asyncio.run(docking.watch_async())
     docking.sync()
     poses = docking.get_results()
 """
 
 import concurrent.futures
 import os
-from typing import Self
+from typing import Any, Self
 
 from beartype import beartype
 import numpy as np
@@ -27,6 +32,7 @@ from deeporigin.drug_discovery.execution_mixins import (
     QuoteMixin,
     SyncExecutableMixin,
 )
+from deeporigin.drug_discovery.notebook_watch_mixin import NotebookWatchMixin
 from deeporigin.drug_discovery.structures.ligand import Ligand, LigandSet
 from deeporigin.drug_discovery.structures.pocket import Pocket
 from deeporigin.drug_discovery.structures.protein import Protein
@@ -39,8 +45,18 @@ from deeporigin.platform.constants import (
 Number = float | int
 
 
+def _ligand_tool_input_row(lig: Ligand) -> dict[str, Any]:
+    """Build one ligand entry for tool ``userInputs`` (id, smiles, optional mol_file)."""
+    row: dict[str, Any] = {"id": lig.id, "smiles": lig.smiles}
+    if lig.remote_path is not None:
+        row["mol_file"] = lig.remote_path
+    return row
+
+
 @beartype
-class Docking(Execution, QuoteMixin, SyncExecutableMixin, AsyncExecutableMixin):
+class Docking(
+    Execution, QuoteMixin, SyncExecutableMixin, AsyncExecutableMixin, NotebookWatchMixin
+):
     """Molecular docking supporting both sync and async execution.
 
     Sync path (``run()``): uses the functions API for small ligand sets.
@@ -48,7 +64,9 @@ class Docking(Execution, QuoteMixin, SyncExecutableMixin, AsyncExecutableMixin):
 
     Async path (``start()``): uses the tools API.
     Creates a persisted execution trackable via ``sync()``, ``from_id()``,
-    and ``list()``.
+    and ``list()``. In Jupyter, use ``await docking.watch()`` or
+    ``await docking.watch_async()`` for live job HTML (see
+    :class:`~deeporigin.drug_discovery.notebook_watch_mixin.NotebookWatchMixin`).
 
     Attributes:
         protein: Target protein structure.
@@ -301,6 +319,8 @@ class Docking(Execution, QuoteMixin, SyncExecutableMixin, AsyncExecutableMixin):
             self.ligands.sync(client=self.client)
 
         ligands = list(self.ligands)
+        for lig in ligands:
+            lig.upload(client=self.client)
 
         default_box = float(2 * np.cbrt(self.pocket.volume or 0))
         box_size_x = (
@@ -320,9 +340,17 @@ class Docking(Execution, QuoteMixin, SyncExecutableMixin, AsyncExecutableMixin):
         )
         pocket_center = self.pocket.get_center().tolist()
 
+        protein_ref = (
+            self.protein.file_path
+            if self.protein.file_path is not None
+            else self.protein.remote_path
+        )
+        protein_hash = ""
+        if self.protein.structure is not None:
+            protein_hash = self.protein.to_hash()
         metadata = {
-            "protein_file": os.path.basename(self.protein.file_path),
-            "protein_hash": self.protein.to_hash(),
+            "protein_file": os.path.basename(str(protein_ref)) if protein_ref else "",
+            "protein_hash": protein_hash,
         }
 
         pocket_params = {
@@ -338,15 +366,9 @@ class Docking(Execution, QuoteMixin, SyncExecutableMixin, AsyncExecutableMixin):
             "pocket": pocket_params,
             "protein": {
                 "id": self.protein.id,
-                "file_path": self.protein._remote_path,
+                "file_path": self.protein.remote_path,
             },
-            "ligands": [
-                {
-                    "id": lig.id,
-                    "smiles": lig.smiles,
-                }
-                for lig in ligands
-            ],
+            "ligands": [_ligand_tool_input_row(lig) for lig in ligands],
         }
 
         return params, metadata
@@ -361,7 +383,11 @@ class Docking(Execution, QuoteMixin, SyncExecutableMixin, AsyncExecutableMixin):
         """Construct a Docking instance from an existing platform execution ID.
 
         Fetches the execution record and rehydrates the protein, pocket,
-        and ligands from the stored ``userInputs``.
+        and ligands from the stored ``userInputs``. Protein and ligand
+        structure files are not downloaded; ``Protein.remote_path`` and each
+        ligand's ``remote_path`` are set from the execution payload (and API
+        metadata) so you can call :meth:`~deeporigin.drug_discovery.structures.entity.Entity.download`
+        later if needed.
 
         Args:
             id: Platform execution ID.
@@ -397,11 +423,15 @@ class Docking(Execution, QuoteMixin, SyncExecutableMixin, AsyncExecutableMixin):
                 Protein.from_id,
                 protein_id,
                 client=instance.client,
+                download=False,
+                remote_path_override=protein_input.get("file_path"),
             )
             fut_ligands = executor.submit(
                 LigandSet.from_ids,
                 [lig["id"] for lig in ligands_input],
                 client=instance.client,
+                download=False,
+                ligand_inputs=ligands_input,
             )
             if pocket_id is not None:
                 fut_pocket = executor.submit(

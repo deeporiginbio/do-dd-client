@@ -23,7 +23,7 @@ class ProgressReports:
         """
         self._c = client
 
-    def get(self, *, execution_id: str) -> dict[str, Any]:
+    def get(self, execution_id: str) -> dict[str, Any]:
         """Get progress reports for a tool execution.
 
         Searches the data platform executions table for records matching

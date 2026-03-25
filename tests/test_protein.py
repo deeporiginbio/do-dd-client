@@ -409,3 +409,13 @@ def test_protein_sync_lv1():
     protein.remove_water()
     protein.sync()
     assert protein.id is not None
+
+
+def test_protein_download_raises_when_structure_loaded_without_paths() -> None:
+    """download() must not return an empty string when no local path exists."""
+    protein = Protein.from_file(BRD_DATA_DIR / "brd.pdb")
+    protein.file_path = None
+    protein.local_path = None
+    assert protein.structure is not None
+    with pytest.raises(ValueError, match="local file path"):
+        protein.download()

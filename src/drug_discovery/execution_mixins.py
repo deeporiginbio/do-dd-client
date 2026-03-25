@@ -119,7 +119,7 @@ class AsyncExecutableMixin:
         if self.status is None:
             self._start_impl(**kwargs)
         elif self.status == "Quoted":
-            self.client.executions.confirm(execution_id=self.id)
+            self.client.executions.confirm(self.id)
             self.sync()
         else:
             raise ValueError(
@@ -157,7 +157,7 @@ class AsyncExecutableMixin:
                 f"Only jobs in {cancellable} can be cancelled."
             )
 
-        self.client.executions.cancel(execution_id=self.id)
+        self.client.executions.cancel(self.id)
         self.sync()
 
     def sync(self) -> None:
@@ -169,11 +169,12 @@ class AsyncExecutableMixin:
         if self.id is None:
             raise ValueError("Cannot sync: no execution has been started (id is None).")
 
-        result = self.client.executions.get_execution(execution_id=self.id)
+        result = self.client.executions.get(self.id)
         if result:
             self._execution_dto = result
             self.status = result.get("status")
             self.progress = result.get("progressReport")
+            self._name = result.get("name")
 
             quotation = result.get("quotationResult") or {}
             successful = quotation.get("successfulQuotations", [])
@@ -193,7 +194,8 @@ class AsyncExecutableMixin:
 
         Creates a bare instance via ``object.__new__`` (bypassing
         ``__init__``), fetches the execution DTO, and populates the
-        common execution fields.  Subclasses should call
+        common execution fields (including :attr:`~deeporigin.drug_discovery.execution.Execution.name`
+        from the DTO ``name`` field).  Subclasses should call
         ``super().from_id()`` then rehydrate domain-specific fields
         from ``instance._execution_dto["userInputs"]``.
 
@@ -207,7 +209,7 @@ class AsyncExecutableMixin:
         if client is None:
             client = DeepOriginClient.get()
 
-        dto = client.executions.get_execution(execution_id=id)
+        dto = client.executions.get(id)
         tool_info = dto["tool"]
 
         # Bypass __init__ so subclasses can rehydrate domain fields
@@ -225,6 +227,7 @@ class AsyncExecutableMixin:
         instance.status = dto.get("status")
         instance.progress = dto.get("progressReport")
         instance._execution_dto = dto
+        instance._name = dto.get("name")
 
         quotation = dto.get("quotationResult", {})
         successful = quotation.get("successfulQuotations", [])

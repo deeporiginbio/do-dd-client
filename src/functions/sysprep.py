@@ -38,10 +38,17 @@ def _build_sysprep_payload(
     """
     protein.sync(lazy=True, client=client)
     ligand1.sync(lazy=True, client=client)
+    if ligand2 is not None:
+        ligand2.sync(lazy=True, client=client)
+
+    protein.ensure_remote_path(client=client, label="Protein")
+    ligand1.ensure_remote_path(client=client, label="Ligand")
+    if ligand2 is not None:
+        ligand2.ensure_remote_path(client=client, label="Second ligand")
 
     payload = {
-        "protein": {"id": protein.id, "file_path": protein._remote_path},
-        "ligand1": {"id": ligand1.id, "file_path": ligand1._remote_path},
+        "protein": {"id": protein.id, "file_path": protein.remote_path},
+        "ligand1": {"id": ligand1.id, "file_path": ligand1.remote_path},
         "add_H_atoms": add_H_atoms,
         "protonate_protein": protonate_protein,
         "retain_waters": retain_waters,
@@ -52,13 +59,7 @@ def _build_sysprep_payload(
         payload["box_size"] = box_size
 
     if ligand2 is not None:
-        ligand2.sync(lazy=True, client=client)
-        payload["ligand2"] = {"id": ligand2.id, "file_path": ligand2._remote_path}
-
-    protein.upload(client=client)
-    ligand1.upload(client=client)
-    if ligand2 is not None:
-        ligand2.upload(client=client)
+        payload["ligand2"] = {"id": ligand2.id, "file_path": ligand2.remote_path}
 
     return payload
 

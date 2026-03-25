@@ -39,9 +39,10 @@ def find_pockets(
         raise ValueError("pocket_min_size must be at least 1") from None
 
     protein.sync(lazy=True, client=client)
+    protein.ensure_remote_path(client=client, label="Protein")
 
     payload = {
-        "protein": {"file_path": protein._remote_path},
+        "protein": {"file_path": protein.remote_path},
         "pocket_count": pocket_count,
         "pocket_min_size": pocket_min_size,
     }

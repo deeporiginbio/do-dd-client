@@ -30,6 +30,7 @@ class Execution:
         id: Platform execution ID, set after ``start()`` or by ``from_id()``.
         estimate: Cost estimate in dollars, set by ``quote()``.
         cost: Actual cost in dollars, set after execution completes.
+        name: Optional user label; writable until ``id`` is set, then read-only.
         tool_key: Platform tool key identifying this execution type.
         tool_version: Version of the tool to use.
     """
@@ -41,6 +42,7 @@ class Execution:
         self._id: str | None = None
         self._estimate: float | None = None
         self._cost: float | None = None
+        self._name: str | None = None
 
         if client is None:
             from deeporigin.platform.client import DeepOriginClient
@@ -68,6 +70,21 @@ class Execution:
 
         This property cannot be set manually."""
         return self._cost
+
+    @property
+    def name(self) -> str | None:
+        """Optional user-defined label for this execution.
+
+        May be set or changed only while ``id`` is unset. After an execution
+        ID exists, ``name`` is read-only."""
+        return self._name
+
+    @name.setter
+    def name(self, value: str | None) -> None:
+        """Set ``name`` only before the platform assigns an execution ``id``."""
+        if self._id is not None:
+            raise AttributeError("cannot assign to 'name': execution id is already set")
+        self._name = value
 
     def _set_status(self, new_status: str) -> None:
         """Validate and apply a lifecycle state transition.
@@ -115,6 +132,8 @@ class Execution:
     def __repr__(self) -> str:
         """Return a concise summary of the execution."""
         parts: list[str] = [type(self).__name__]
+        if self._name is not None:
+            parts.append(f"name={self._name!r}")
         if self.id:
             parts.append(f"id={self.id!r}")
         status = getattr(self, "status", None)

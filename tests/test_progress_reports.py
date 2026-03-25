@@ -8,7 +8,7 @@ def test_get_progress_reports():
     client = DeepOriginClient()
     execution_id = "docking-test-execution-12345"
 
-    response = client.progress_reports.get(execution_id=execution_id)
+    response = client.progress_reports.get(execution_id)
 
     assert isinstance(response, dict), "Expected a dictionary response"
     assert "data" in response, "Expected 'data' key in response"

@@ -182,18 +182,18 @@ class RBFE(WorkflowStep):
             self.jobs = []
 
         metadata = dict(
-            protein_file=os.path.basename(self.parent.protein._remote_path),
-            ligand1_file=os.path.basename(ligand1._remote_path),
-            ligand2_file=os.path.basename(ligand2._remote_path),
+            protein_file=os.path.basename(self.parent.protein.remote_path),
+            ligand1_file=os.path.basename(ligand1.remote_path),
+            ligand2_file=os.path.basename(ligand2.remote_path),
             ligand1_smiles=ligand1.smiles,
             ligand2_smiles=ligand2.smiles,
         )
 
         job_id = utils._start_tool_run(
             metadata=metadata,
-            ligand1_path=ligand1._remote_path,
-            ligand2_path=ligand2._remote_path,
-            protein_path=self.parent.protein._remote_path,
+            ligand1_path=ligand1.remote_path,
+            ligand2_path=ligand2.remote_path,
+            protein_path=self.parent.protein.remote_path,
             params=self._params["end_to_end"],
             tool="RBFE",
             tool_version=self.tool_version,

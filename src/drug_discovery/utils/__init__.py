@@ -68,7 +68,7 @@ def _start_tool_run(
     if approve_amount is not None:
         payload["approveAmount"] = approve_amount
 
-    response = client.tools.run(
+    response = client.executions.create(
         data=payload,
         tool_key=tool_mapper[tool],
         tool_version=tool_version,

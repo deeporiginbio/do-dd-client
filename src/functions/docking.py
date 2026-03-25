@@ -74,6 +74,7 @@ def dock(
 
     protein.sync(lazy=True, client=client)
     ligand.sync(lazy=True, client=client)
+    protein.ensure_remote_path(client=client, label="Protein")
 
     if pocket.pocket_center is not None:
         pocket_center = list(pocket.pocket_center)
@@ -82,7 +83,7 @@ def dock(
 
     protein_data = {
         "id": protein.id,
-        "file_path": protein._remote_path,
+        "file_path": protein.remote_path,
     }
 
     ligand_data = {
@@ -162,8 +163,8 @@ def constrained_dock(
     ligand.upload(client=client)
 
     payload = {
-        "protein_path": protein._remote_path,
-        "ligand_path": ligand._remote_path,
+        "protein_path": protein.remote_path,
+        "ligand_path": ligand.remote_path,
         "box_size": list(box_size),
         "constraints": constraints,
         "protein": {"pocket_center": pocket_center_list},
