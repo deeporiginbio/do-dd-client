@@ -220,7 +220,10 @@ class Protein(Entity):
                 self.local_path = str(self.file_path)
             if self.local_path is not None:
                 return self.local_path
-            return ""
+            raise ValueError(
+                "Structure is loaded but no local file path is set; set file_path or "
+                "local_path, or reload via download() to obtain a valid path."
+            )
 
         path_str = super().download(client=client, lazy=lazy)
         self._hydrate_structure_from_file(path_str)

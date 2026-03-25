@@ -37,6 +37,57 @@ class Entity(ABC):
         """Dump state to a file"""
         ...
 
+    @abstractmethod
+    def sync(
+        self,
+        *,
+        lazy: bool = False,
+        client: Optional[DeepOriginClient] = None,
+        remote_path: Optional[str] = None,
+    ) -> None:
+        """Sync this entity to the data platform (upload and/or register as needed).
+
+        Subclasses define how records are created or linked; all share the
+        convention that ``lazy=True`` may skip work when an ID is already set.
+
+        Args:
+            lazy: If True, implementations may return early when already synced.
+            client: DeepOrigin client. If None, implementations typically use
+                ``DeepOriginClient.get()``.
+            remote_path: Optional explicit remote storage path for uploads.
+        """
+        ...
+
+    def ensure_remote_path(
+        self,
+        *,
+        client: DeepOriginClient,
+        label: str,
+    ) -> None:
+        """Ensure :attr:`remote_path` is set after a lazy :meth:`sync` may have no-oped.
+
+        If the entity already has a platform ``id`` but ``remote_path`` was never
+        populated (e.g. rehydrated metadata only), ``sync(lazy=True)`` returns
+        early. This performs a full sync when needed, then raises if the path is
+        still missing.
+
+        Args:
+            client: Authenticated client for sync/upload.
+            label: Human-readable name for error messages (e.g. ``"Protein"``).
+
+        Raises:
+            ValueError: If ``remote_path`` cannot be determined after sync.
+        """
+        if self.remote_path:
+            return
+        self.sync(lazy=False, client=client)
+        if not self.remote_path:
+            raise ValueError(
+                f"{label} remote_path is not set and could not be synchronized. "
+                "Ensure the structure has been uploaded or created via the "
+                "Deep Origin API before calling this function."
+            )
+
     def download(
         self,
         *,

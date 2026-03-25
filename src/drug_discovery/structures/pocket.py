@@ -18,11 +18,11 @@ import numpy as np
 
 if TYPE_CHECKING:
     from deeporigin.functions.result import FunctionResult
-    from deeporigin.platform.client import DeepOriginClient
 
 from deeporigin.drug_discovery.constants import POCKETS_BASE_DIR
 from deeporigin.drug_discovery.structures.entity import Entity
 from deeporigin.drug_discovery.structures.ligand import Ligand
+from deeporigin.platform.client import DeepOriginClient
 
 
 @dataclass
@@ -161,6 +161,30 @@ class Pocket(Entity):
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(self._to_pdb_string())
         return str(path)
+
+    def sync(
+        self,
+        *,
+        lazy: bool = False,
+        client: Optional[DeepOriginClient] = None,
+        remote_path: Optional[str] = None,
+    ) -> None:
+        """Upload pocket coordinates to remote storage.
+
+        Unlike :class:`Protein` and :class:`Ligand`, pockets are not looked up
+        in the entities API; this only uploads the generated PDB so
+        :attr:`remote_path` is set for tools that need a file reference.
+
+        Args:
+            lazy: If True, skip when the pocket already has a platform ``id``.
+            client: DeepOrigin client. If None, uses :meth:`DeepOriginClient.get`.
+            remote_path: Optional explicit destination path on the file server.
+        """
+        if lazy and self.id is not None:
+            return
+        if client is None:
+            client = DeepOriginClient.get()
+        self.upload(client=client, remote_path=remote_path)
 
     @classmethod
     def from_pdb_file(
