@@ -54,6 +54,33 @@ def _ligand_tool_input_row(lig: Ligand) -> dict[str, Any]:
 
 
 @beartype
+def _docking_default_name(*, protein: Protein, ligands: LigandSet) -> str:
+    """Build a short human-readable label for a Docking execution.
+
+    Uses ``protein.name`` and either the ligand count, a single ligand's name, or its SMILES.
+
+    Args:
+        protein: Target protein (``name`` is required).
+        ligands: Ligands to dock.
+
+    Returns:
+        A string such as ``Docking kras to 12 ligands.`` or ``Docking kras to CCO``.
+    """
+    p = protein.name
+    n = len(ligands)
+    if n == 0:
+        return f"Docking {p} to 0 ligands."
+    if n == 1:
+        lig = ligands[0]
+        if lig.name is not None and lig.name.strip():
+            lig_label = lig.name.strip()
+        else:
+            lig_label = lig.smiles if lig.smiles else "unnamed ligand"
+        return f"Docking {p} to {lig_label}"
+    return f"Docking {p} to {n} ligands."
+
+
+@beartype
 class Docking(
     Execution, QuoteMixin, SyncExecutableMixin, AsyncExecutableMixin, NotebookWatchMixin
 ):
@@ -72,6 +99,7 @@ class Docking(
         protein: Target protein structure.
         ligands: Set of ligands to dock.
         pocket: Binding pocket defining the docking box.
+        name: Execution label, set automatically from protein and ligands unless overridden.
     """
 
     tool_key: str = DOCKING_TOOL_KEY
@@ -86,6 +114,7 @@ class Docking(
         smiles_list: list[str] | None = None,
         tool_version: str = DOCKING_TOOL_VERSION,
         client: DeepOriginClient | None = None,
+        name: str | None = None,
     ) -> None:
         """Create a Docking execution.
 
@@ -101,6 +130,9 @@ class Docking(
             tool_version: Platform tool version to run. Settable so callers
                 can pin or upgrade independently of the SDK release.
             client: Optional API client.
+            name: Optional execution label. When omitted, set from ``protein.name``
+                and the ligands (e.g. ``Docking kras to 5 ligands.`` or
+                ``Docking kras to <SMILES or ligand name>`` for a single ligand).
         """
         provided = sum(x is not None for x in (ligand, ligands, smiles_list))
         if provided != 1:
@@ -122,6 +154,12 @@ class Docking(
         self._protein = protein
         self._pocket = pocket
         self._ligands = ligands
+
+        self.name = (
+            name
+            if name is not None
+            else _docking_default_name(protein=protein, ligands=ligands)
+        )
 
     @property
     def protein(self) -> Protein:
@@ -374,30 +412,29 @@ class Docking(
         return params, metadata
 
     @classmethod
-    def from_id(
+    def from_dto(
         cls,
-        id: str,
+        dto: dict,
         *,
         client: DeepOriginClient | None = None,
     ) -> Self:
-        """Construct a Docking instance from an existing platform execution ID.
+        """Construct a Docking instance from an execution DTO.
 
-        Fetches the execution record and rehydrates the protein, pocket,
-        and ligands from the stored ``userInputs``. Protein and ligand
-        structure files are not downloaded; ``Protein.remote_path`` and each
-        ligand's ``remote_path`` are set from the execution payload (and API
-        metadata) so you can call :meth:`~deeporigin.drug_discovery.structures.entity.Entity.download`
+        Rehydrates the protein, pocket, and ligands from the stored
+        ``userInputs``. Protein and ligand structure files are not downloaded;
+        ``Protein.remote_path`` and each ligand's ``remote_path`` are set from
+        the execution payload (and API metadata) so you can call
+        :meth:`~deeporigin.drug_discovery.structures.entity.Entity.download`
         later if needed.
 
         Args:
-            id: Platform execution ID.
+            dto: Execution payload (same shape as ``client.executions.get``).
             client: Optional API client. Uses the default if not provided.
 
         Returns:
-            A fully-hydrated Docking instance with status synced from
-            the platform.
+            A fully-hydrated Docking instance with status from the DTO.
         """
-        instance = super().from_id(id, client=client)
+        instance = super().from_dto(dto, client=client)
         inputs = instance._execution_dto["userInputs"]
 
         pocket_input = inputs.get("pocket", {})
@@ -456,6 +493,28 @@ class Docking(
             )
 
         return instance
+
+    @classmethod
+    def from_id(
+        cls,
+        id: str,
+        *,
+        client: DeepOriginClient | None = None,
+    ) -> Self:
+        """Construct a Docking instance from an existing platform execution ID.
+
+        Fetches the execution record via the API and delegates to
+        :meth:`from_dto`.
+
+        Args:
+            id: Platform execution ID.
+            client: Optional API client. Uses the default if not provided.
+
+        Returns:
+            A fully-hydrated Docking instance with status synced from
+            the platform.
+        """
+        return super().from_id(id, client=client)
 
     def get_results(self) -> LigandSet | None:
         """Retrieve docking results from the platform.

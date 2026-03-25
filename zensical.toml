@@ -60,6 +60,7 @@ nav = [
     {"tools" = "platform/ref/tools.md"},
     {"files" = "platform/ref/files.md"},
     {"executions" = "platform/ref/executions.md"},
+    {"execution_display" = "platform/ref/execution_display.md"},
     {"jobs" = "platform/ref/jobs.md"},
     {"clusters" = "platform/ref/clusters.md"},
     {"functions" = "platform/ref/functions.md"},

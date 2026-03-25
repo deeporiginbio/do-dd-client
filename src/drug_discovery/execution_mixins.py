@@ -80,8 +80,9 @@ class SyncExecutableMixin:
 
 
 class AsyncExecutableMixin:
-    """Adds ``start()``, ``cancel()``, ``sync()``, ``from_id()``, and ``list()``
-    for asynchronous, stateful execution backed by the platform tools API.
+    """Adds ``start()``, ``cancel()``, ``sync()``, ``from_id()``, ``from_dto()``,
+    and ``list()`` for asynchronous, stateful execution backed by the platform
+    tools API.
 
     Classes that include this mixin gain ``status`` and ``progress`` attributes
     tracking the platform lifecycle and execution progress respectively.
@@ -189,18 +190,23 @@ class AsyncExecutableMixin:
                     self._cost = float(price)
 
     @classmethod
-    def from_id(cls, id: str, *, client: DeepOriginClient | None = None) -> Self:
-        """Construct an instance from an existing platform execution ID.
+    def from_dto(
+        cls,
+        dto: dict,
+        *,
+        client: DeepOriginClient | None = None,
+    ) -> Self:
+        """Construct an instance from an execution DTO returned by the platform API.
 
         Creates a bare instance via ``object.__new__`` (bypassing
-        ``__init__``), fetches the execution DTO, and populates the
-        common execution fields (including :attr:`~deeporigin.drug_discovery.execution.Execution.name`
-        from the DTO ``name`` field).  Subclasses should call
-        ``super().from_id()`` then rehydrate domain-specific fields
-        from ``instance._execution_dto["userInputs"]``.
+        ``__init__``) and populates the common execution fields (including
+        :attr:`~deeporigin.drug_discovery.execution.Execution.name` from the
+        DTO ``name`` field).  Subclasses should call ``super().from_dto()``
+        then rehydrate domain-specific fields from
+        ``instance._execution_dto["userInputs"]``.
 
         Args:
-            id: Platform execution ID.
+            dto: Execution payload (same shape as ``client.executions.get``).
             client: Optional API client. Uses the default if not provided.
 
         Returns:
@@ -209,7 +215,6 @@ class AsyncExecutableMixin:
         if client is None:
             client = DeepOriginClient.get()
 
-        dto = client.executions.get(id)
         tool_info = dto["tool"]
 
         # Bypass __init__ so subclasses can rehydrate domain fields
@@ -239,6 +244,26 @@ class AsyncExecutableMixin:
                 instance._cost = float(price)
 
         return instance
+
+    @classmethod
+    def from_id(cls, id: str, *, client: DeepOriginClient | None = None) -> Self:
+        """Construct an instance from an existing platform execution ID.
+
+        Fetches the execution DTO via ``client.executions.get`` and delegates
+        to :meth:`from_dto`.
+
+        Args:
+            id: Platform execution ID.
+            client: Optional API client. Uses the default if not provided.
+
+        Returns:
+            A partially-hydrated instance with common fields populated.
+        """
+        if client is None:
+            client = DeepOriginClient.get()
+
+        dto = client.executions.get(id)
+        return cls.from_dto(dto, client=client)
 
     @classmethod
     def list(

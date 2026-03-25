@@ -78,8 +78,8 @@ def test_abfe_quote_cannot_be_called_twice_lv0():
         abfe.quote()
 
 
-def test_abfe_from_id_rehydrates_prepared_system_lv0():
-    """from_id should rehydrate prepared_system and params from the DTO."""
+def test_abfe_from_dto_rehydrates_prepared_system_lv0():
+    """from_dto should rehydrate prepared_system and params from the DTO."""
     fake_dto = {
         "executionId": "exec-123",
         "status": "Succeeded",
@@ -124,9 +124,8 @@ def test_abfe_from_id_rehydrates_prepared_system_lv0():
     }
 
     mock_client = MagicMock()
-    mock_client.executions.get.return_value = fake_dto
 
-    abfe = ABFE.from_id("exec-123", client=mock_client)
+    abfe = ABFE.from_dto(fake_dto, client=mock_client)
 
     assert abfe.id == "exec-123"
     assert abfe.status == "Succeeded"

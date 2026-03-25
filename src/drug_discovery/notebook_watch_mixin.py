@@ -27,9 +27,15 @@ _MAX_CONSECUTIVE_ERRORS = 10
 class NotebookWatchMixin:
     """Poll ``sync()`` and refresh a Jupyter HTML display for one execution.
 
-    Requires a class that provides ``id``, ``sync()``, ``status``, ``_execution_dto``,
-    and ``client`` (e.g. composed with :class:`~deeporigin.drug_discovery.execution_mixins.AsyncExecutableMixin`).
+    Must be mixed with :class:`~deeporigin.drug_discovery.execution.Execution` and
+    :class:`~deeporigin.drug_discovery.execution_mixins.AsyncExecutableMixin` so
+    ``id``, ``status``, ``sync()``, ``client``, and ``_execution_dto`` are normal
+    instance attributes (see
+    :meth:`~deeporigin.drug_discovery.execution_mixins.AsyncExecutableMixin.__init__`).
     """
+
+    # Populated by AsyncExecutableMixin; referenced here for type checkers.
+    _execution_dto: dict | None
 
     _watch_task: Task | None
     _display_id: str | None
@@ -45,7 +51,7 @@ class NotebookWatchMixin:
     @beartype
     def _is_terminal(self) -> bool:
         """Return True if the execution is in a platform terminal state."""
-        status = getattr(self, "status", None)
+        status = self.status
         return status is not None and status in TERMINAL_STATES
 
     @beartype
@@ -69,11 +75,11 @@ class NotebookWatchMixin:
         )
 
     @beartype
-    def _render_job_html(self, *, will_auto_update: bool) -> str:
-        """Render the full job card HTML via the legacy :class:`~deeporigin.platform.job.Job` view.
+    def _render_execution_html(self, *, will_auto_update: bool) -> str:
+        """Render the execution card HTML (:class:`~deeporigin.platform.execution_display.ExecutionDisplay`).
 
         Args:
-            will_auto_update: Whether the template may show a live-update spinner.
+            will_auto_update: Whether the footer may show a live-update spinner.
 
         Returns:
             Rendered HTML string.
@@ -81,27 +87,33 @@ class NotebookWatchMixin:
         Raises:
             ValueError: If there is no execution DTO after a successful sync path.
         """
-        from deeporigin.platform.job import Job
+        from deeporigin.platform.execution_display import ExecutionDisplay
 
-        dto = getattr(self, "_execution_dto", None)
+        dto = self._execution_dto
         if dto is None:
             raise ValueError(
                 "No execution data available. Call sync() first or ensure the execution exists."
             )
-        client = getattr(self, "client", None)
-        job = Job.from_dto(dto, client=client)
-        return job._render_view(will_auto_update=will_auto_update)
+        return ExecutionDisplay.from_dto(dto).render_html(
+            will_auto_update=will_auto_update
+        )
 
     @beartype
     def show(self) -> None:
-        """Display the current execution in Jupyter using the standard job HTML view.
+        """Display the current execution in Jupyter using the execution card HTML view.
 
-        Raises:
-            ValueError: If no execution has been started.
+        If no platform execution ID exists yet, shows the same card with a short notice
+        instead of raising (see :meth:`~deeporigin.platform.execution_display.ExecutionDisplay.from_pending`).
         """
-        if getattr(self, "id", None) is None:
-            raise ValueError("No execution has been started. Call start() first.")
-        html = self._render_job_html(will_auto_update=False)
+        from deeporigin.platform.execution_display import ExecutionDisplay
+
+        if self.id is None:
+            html = ExecutionDisplay.from_pending(
+                name=self.name,
+                status=self.status,
+            ).render_html(will_auto_update=False)
+        else:
+            html = self._render_execution_html(will_auto_update=False)
         display(HTML(html))
 
     @beartype
@@ -137,7 +149,7 @@ class NotebookWatchMixin:
         with suppress(Exception):
             await asyncio.to_thread(self.sync)
         with suppress(Exception):
-            final_html = self._render_job_html(will_auto_update=False)
+            final_html = self._render_execution_html(will_auto_update=False)
             update_display(HTML(final_html), display_id=display_id)
         self._display_id = None
 
@@ -149,7 +161,7 @@ class NotebookWatchMixin:
                 await asyncio.to_thread(self.sync)
                 if self._execution_dto is None:
                     raise ValueError("Execution DTO missing after sync.")
-                html = self._render_job_html(will_auto_update=True)
+                html = self._render_execution_html(will_auto_update=True)
                 update_display(HTML(html), display_id=display_id)
                 self._last_html = html
                 consecutive_errors = 0
@@ -188,7 +200,7 @@ class NotebookWatchMixin:
         Raises:
             ValueError: If ``id`` is None, or execution data is missing when required.
         """
-        if getattr(self, "id", None) is None:
+        if self.id is None:
             raise ValueError(
                 "Cannot watch: no execution has been started (id is None)."
             )
@@ -202,12 +214,12 @@ class NotebookWatchMixin:
 
             if self._execution_dto is None:
                 raise ValueError(
-                    "No execution data after sync. Cannot render job view."
+                    "No execution data after sync. Cannot render execution view."
                 )
 
             if self._is_terminal():
                 self._display_no_active_job_message()
-                html = self._render_job_html(will_auto_update=False)
+                html = self._render_execution_html(will_auto_update=False)
                 display(HTML(html))
                 return
 

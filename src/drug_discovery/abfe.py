@@ -172,25 +172,25 @@ class ABFE(Execution, QuoteMixin, AsyncExecutableMixin, NotebookWatchMixin):
         self._params = params if params is not None else ABFEParams()
 
     @classmethod
-    def from_id(
+    def from_dto(
         cls,
-        id: str,
+        dto: dict,
         *,
         client: DeepOriginClient | None = None,
     ) -> Self:
-        """Construct an ABFE instance from an existing platform execution ID.
+        """Construct an ABFE instance from an execution DTO.
 
-        Fetches the execution record and rehydrates ``prepared_system`` and
-        ``_params`` from the stored ``userInputs`` and ``metadata``.
+        Rehydrates ``prepared_system`` and ``_params`` from the stored
+        ``userInputs`` and ``metadata``.
 
         Args:
-            id: Platform execution ID.
+            dto: Execution payload (same shape as ``client.executions.get``).
             client: Optional API client. Uses the default if not provided.
 
         Returns:
-            A fully-hydrated ABFE instance with status synced from the platform.
+            A fully-hydrated ABFE instance with status from the DTO.
         """
-        instance = super().from_id(id, client=client)
+        instance = super().from_dto(dto, client=client)
         inputs = instance._execution_dto.get("userInputs", {})
         metadata = instance._execution_dto.get("metadata", {})
 
@@ -245,6 +245,27 @@ class ABFE(Execution, QuoteMixin, AsyncExecutableMixin, NotebookWatchMixin):
         instance._params = ABFEParams(**kwargs)
 
         return instance
+
+    @classmethod
+    def from_id(
+        cls,
+        id: str,
+        *,
+        client: DeepOriginClient | None = None,
+    ) -> Self:
+        """Construct an ABFE instance from an existing platform execution ID.
+
+        Fetches the execution record via the API and delegates to
+        :meth:`from_dto`.
+
+        Args:
+            id: Platform execution ID.
+            client: Optional API client. Uses the default if not provided.
+
+        Returns:
+            A fully-hydrated ABFE instance with status synced from the platform.
+        """
+        return super().from_id(id, client=client)
 
     @property
     def params(self) -> ABFEParams:
