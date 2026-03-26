@@ -90,12 +90,26 @@ class AsyncExecutableMixin:
 
     status: PlatformStatus | None
     progress: dict | None
+    app: str | None
+    approve_amount: int | None
+    created_at: str | None
+    created_by: str | None
+    started_at: str | None
+    completed_at: str | None
+    session: str | None
 
     def __init__(self) -> None:
         """Initialize async-specific state."""
         super().__init__()
         self.status = None
         self.progress = None
+        self.app = None
+        self.approve_amount = None
+        self.created_at = None
+        self.created_by = None
+        self.started_at = None
+        self.completed_at = None
+        self.session = None
         self._execution_dto: dict | None = None
 
     def start(self, **kwargs) -> None:
@@ -176,6 +190,13 @@ class AsyncExecutableMixin:
             self.status = result.get("status")
             self.progress = result.get("progressReport")
             self._name = result.get("name")
+            self.app = result.get("app")
+            self.approve_amount = result.get("approveAmount")
+            self.created_at = result.get("createdAt")
+            self.created_by = result.get("createdBy")
+            self.started_at = result.get("startedAt")
+            self.completed_at = result.get("completedAt")
+            self.session = result.get("session")
 
             quotation = result.get("quotationResult") or {}
             successful = quotation.get("successfulQuotations", [])
@@ -216,6 +237,13 @@ class AsyncExecutableMixin:
             client = DeepOriginClient.get()
 
         tool_info = dto["tool"]
+        dto_tool_key = tool_info["key"]
+        expected_tool_key = cls.tool_key
+        if dto_tool_key != expected_tool_key:
+            raise ValueError(
+                "Cannot rehydrate execution from DTO: "
+                f"tool key mismatch (dto={dto_tool_key!r}, class={expected_tool_key!r})."
+            )
 
         # Bypass __init__ so subclasses can rehydrate domain fields
         # (e.g. _protein, _ligands) from the DTO instead of constructor args.
@@ -226,11 +254,18 @@ class AsyncExecutableMixin:
         instance._id = dto["executionId"]
         instance._estimate = None
         instance._cost = None
-        instance.tool_key = tool_info["key"]
+        instance.tool_key = expected_tool_key
         instance.tool_version = tool_info["version"]
 
         instance.status = dto.get("status")
         instance.progress = dto.get("progressReport")
+        instance.app = dto.get("app")
+        instance.approve_amount = dto.get("approveAmount")
+        instance.created_at = dto.get("createdAt")
+        instance.created_by = dto.get("createdBy")
+        instance.started_at = dto.get("startedAt")
+        instance.completed_at = dto.get("completedAt")
+        instance.session = dto.get("session")
         instance._execution_dto = dto
         instance._name = dto.get("name")
 

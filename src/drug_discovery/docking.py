@@ -46,11 +46,8 @@ Number = float | int
 
 
 def _ligand_tool_input_row(lig: Ligand) -> dict[str, Any]:
-    """Build one ligand entry for tool ``userInputs`` (id, smiles, optional mol_file)."""
-    row: dict[str, Any] = {"id": lig.id, "smiles": lig.smiles}
-    if lig.remote_path is not None:
-        row["mol_file"] = lig.remote_path
-    return row
+    """Build one ligand entry for tool ``userInputs`` (id and smiles only)."""
+    return {"id": lig.id, "smiles": lig.smiles}
 
 
 @beartype

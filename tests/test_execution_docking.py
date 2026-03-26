@@ -1,11 +1,17 @@
 """Tests for the Docking execution class."""
 
+import json
+from pathlib import Path
 import time
 
 import pytest
 
 from conftest import check_function_exists, check_tool_exists
-from deeporigin.drug_discovery.docking import Docking, _docking_default_name
+from deeporigin.drug_discovery.docking import (
+    Docking,
+    _docking_default_name,
+    _ligand_tool_input_row,
+)
 from deeporigin.drug_discovery.structures.ligand import Ligand, LigandSet
 from deeporigin.platform.constants import (
     DOCKING_FUNCTION_KEY,
@@ -14,6 +20,40 @@ from deeporigin.platform.constants import (
     DOCKING_TOOL_VERSION,
     TERMINAL_STATES,
 )
+
+
+def test_docking_from_dto_maps_async_execution_fields_from_fixture(
+    client,
+) -> None:
+    """from_dto maps common async execution fields from fixture DTO."""
+    fixture_path = (
+        Path(__file__).parent / "fixtures/executions/docking-test-execution.json"
+    )
+    dto = json.loads(fixture_path.read_text())
+
+    docking = Docking.from_dto(dto, client=client)
+
+    assert docking.completed_at == dto["completedAt"]
+    assert docking.id == dto["executionId"]
+    assert docking.created_by == dto["createdBy"]
+    assert docking.created_at == dto["createdAt"]
+    assert docking.started_at == dto["startedAt"]
+    assert docking.session == dto["session"]
+    assert docking.status == dto["status"]
+    assert docking.app == dto["app"]
+    assert docking.approve_amount == dto["approveAmount"]
+
+
+def test_docking_from_dto_raises_on_tool_key_mismatch(client) -> None:
+    """from_dto fails fast when DTO tool key does not match Docking.tool_key."""
+    fixture_path = (
+        Path(__file__).parent / "fixtures/executions/docking-test-execution.json"
+    )
+    dto = json.loads(fixture_path.read_text())
+    dto["tool"]["key"] = "deeporigin.abfe-end-to-end"
+
+    with pytest.raises(ValueError, match="tool key mismatch"):
+        Docking.from_dto(dto, client=client)
 
 
 def test_docking_accepts_single_ligand(
@@ -31,6 +71,18 @@ def test_docking_accepts_single_ligand(
     assert docking.name == (
         f"Docking {registered_protein.name} to {registered_ligand.name.strip()}"
     )
+
+
+def test_ligand_tool_input_row_excludes_mol_file() -> None:
+    """Bulk-docking userInputs include only schema-defined ligand fields."""
+    ligand = Ligand.from_smiles("CCO")
+    ligand.id = "lig-123"
+    ligand.remote_path = "entities/ligands/lig-123.sdf"
+
+    row = _ligand_tool_input_row(ligand)
+
+    assert row == {"id": "lig-123", "smiles": "CCO"}
+    assert "mol_file" not in row
 
 
 def test_docking_default_name_helper():

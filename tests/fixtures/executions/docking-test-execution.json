@@ -1,34 +1,110 @@
 {
-    "executionId": "docking-test-execution-12345",
-    "createdAt": "2025-11-18T15:22:35.271Z",
-    "updatedAt": "2025-11-18T15:22:35.271Z",
-    "resourceId": "rkzoie44xi997crx7s46j",
-    "userInputs": {
-        "smiles_list": [
-            "CCO",
-            "CCN"
+    "app": "python-client",
+    "approveAmount": null,
+    "billing": null,
+    "billingTransaction": {
+        "items": [
+            {
+                "actionRequest": null,
+                "authorizationId": "69c424c51f1e25e8b467e585",
+                "isApproved": true,
+                "itemCode": "DO_DOCK",
+                "priceEach": 0.2,
+                "priceTotal": 1.6,
+                "purchaseApprovalComment": null,
+                "qty": 8
+            }
+        ],
+        "orgId": "deeporigin",
+        "status": "Approved",
+        "totalCost": 1.6,
+        "transactionId": "69c424c51f1e25e8b467e583"
+    },
+    "cluster": {
+        "id": "d638d3cd-833f-476b-87fe-ca6d76e66049"
+    },
+    "completedAt": "2026-03-26T08:34:03.000Z",
+    "createdAt": "2026-03-25T18:08:28.059Z",
+    "createdBy": "6b96d8f8-0f55-474c-a86c-e09651ba4b20",
+    "executionId": "72554167-7712-4d99-859c-e8601c87dea8",
+    "executionType": "tool",
+    "metadata": {},
+    "name": "Docking brd to 8 ligands.",
+    "orgKey": "deeporigin",
+    "progressReport": {
+        "complete": 100,
+        "docked": [
+            "COCCn1cc(-c2cccc(C(=O)N(C)C)c2)c2cc[nH]c2c1=O",
+            "CCCCn1cc(-c2cccc(C(=O)N(C)C)c2)c2cc[nH]c2c1=O",
+            "C=CCCn1cc(-c2cccc(C(=O)N(C)C)c2)c2cc[nH]c2c1=O",
+            "C/C=C/Cn1cc(-c2cccc(C(=O)N(C)C)c2)c2cc[nH]c2c1=O",
+            "CCn1cc(-c2cccc(C(=O)N(C)C)c2)c2cc[nH]c2c1=O",
+            "CCCn1cc(-c2cccc(C(=O)N(C)C)c2)c2cc[nH]c2c1=O",
+            "C=CCn1cc(-c2cccc(C(=O)N(C)C)c2)c2cc[nH]c2c1=O",
+            "CN(C)C(=O)c1cccc(-c2cn(C)c(=O)c3[nH]ccc23)c1"
+        ],
+        "failed": []
+    },
+    "projectId": null,
+    "quotationResult": {
+        "anyFailed": false,
+        "failedQuotations": [],
+        "successfulQuotations": [
+            {
+                "itemCode": "DO_DOCK",
+                "orgId": "deeporigin",
+                "priceEach": 0.2,
+                "priceTotal": 1.6,
+                "pricingRecordType": "regular",
+                "pricingRecords": [
+                    {
+                        "itemKey": "DO_DOCK",
+                        "itemName": "Docking",
+                        "priceEach": 0.2,
+                        "qty": 8,
+                        "tierQtyFrom": 0,
+                        "tierQtyTo": 0,
+                        "totalPrice": 1.6
+                    }
+                ],
+                "qty": 8,
+                "status": "OK"
+            }
         ]
     },
-    "userOutputs": {},
-    "status": "Succeeded",
-    "metadata": {
-        "protein_file": "test_protein.pdb"
-    },
-    "approveAmount": 0,
-    "cluster": {
-        "id": "d638d3cd-833f-476b-87fe-ca6d76e66049",
-        "createdAt": "2024-06-11T16:53:45.922Z",
-        "updatedAt": "2025-03-27T20:23:30.842Z",
-        "hostname": "https://cluster.us-west-2.edge.deeporigin.io",
-        "name": "DeepOrigin Cluster - us-west-2",
-        "orgKey": null,
-        "enabled": true,
-        "status": "healthy"
-    },
-    "orgKey": "deeporigin",
-    "createdBy": "google-apps|srinivas@deeporigin.com",
+    "resourceId": "l7u2h9m5h3g7utzke5l7w",
+    "session": "f8a98c5e-18ed-4b5e-b08a-f38a21d11254",
+    "startedAt": "2026-03-26T08:32:28.000Z",
+    "status": "Failed",
+    "statusReason": null,
+    "tag": null,
     "tool": {
         "key": "deeporigin.bulk-docking",
-        "version": "0.4.6"
-    }
+        "version": "3.0.0-19"
+    },
+    "type": "ToolExecution",
+    "updatedAt": "2026-03-26T12:07:52.195Z",
+    "userInputs": {
+        "ligands": [
+            {
+                "id": "brd-2",
+                "smiles": "C/C=C/Cn1cc(-c2cccc(C(=O)N(C)C)c2)c2cc[nH]c2c1=O"
+            }
+        ],
+        "pocket": {
+            "box_size_x": 14.409664294429042,
+            "box_size_y": 14.409664294429042,
+            "box_size_z": 14.409664294429042,
+            "center": [
+                -13.400676727294922,
+                -5.5482563972473145,
+                14.189638137817383
+            ]
+        },
+        "protein": {
+            "file_path": "testing/brd.pdb",
+            "id": "brd"
+        }
+    },
+    "userOutputs": {}
 }
