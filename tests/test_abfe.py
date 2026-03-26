@@ -1,13 +1,21 @@
 """tests for abfe"""
 
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 import pytest
 
 from deeporigin.drug_discovery import BRD_DATA_DIR, Complex, Ligand, Protein
-from deeporigin.drug_discovery.abfe import ABFE, ABFEParams
+from deeporigin.drug_discovery.abfe import (
+    ABFE,
+    ABFEParams,
+    _abfe_default_name,
+    _ligand_display_label_from_entity,
+    _protein_display_name_from_entity,
+)
 from deeporigin.drug_discovery.structures.prepared_system import PreparedSystem
 from deeporigin.exceptions import DeepOriginException
+from deeporigin.platform.client import DeepOriginClient
+from deeporigin.platform.constants import ABFE_TOOL_KEY
 
 
 def test_abfe_charged_ligand_lv0():
@@ -83,7 +91,7 @@ def test_abfe_from_dto_rehydrates_prepared_system_lv0():
     fake_dto = {
         "executionId": "exec-123",
         "status": "Succeeded",
-        "tool": {"key": "abfe-e2e", "version": "0.1.0"},
+        "tool": {"key": ABFE_TOOL_KEY, "version": "0.1.0"},
         "quotationResult": {
             "successfulQuotations": [{"priceTotal": 42.0}],
         },
@@ -139,9 +147,9 @@ def test_abfe_from_dto_rehydrates_prepared_system_lv0():
 
     params = abfe.params
     assert isinstance(params, ABFEParams)
-    assert params.dt == 0.002
-    assert params.temperature == 300.0
-    assert params.cutoff == 1.0
+    assert params.dt == pytest.approx(0.002)
+    assert params.temperature == pytest.approx(300.0)
+    assert params.cutoff == pytest.approx(1.0)
     assert params.repeats == 2
     assert params.binding_n_windows == 24
     assert params.solvation_n_windows == 16
@@ -191,3 +199,168 @@ def test_abfe_duplicate_lv0():
     assert dup.prepared_system is ps
     assert dup.params is params
     assert dup.tool_version == "0.2.0"
+
+
+def test_abfe_default_name_helper_resolves_entities_lv0():
+    """_abfe_default_name should load entities and format ABFE: protein with ligand."""
+    get_protein = MagicMock(
+        return_value={
+            "protein_name": "Protein X",
+            "pdb_id": "1abc",
+        }
+    )
+    get_ligand = MagicMock(
+        return_value={
+            "name": "Ligand Y",
+            "smiles": "CCO",
+        }
+    )
+    prepared_system = PreparedSystem(
+        binding_xml_path="path/binding.xml",
+        solvation_xml_path="path/solvation.xml",
+        system_pdb_path="path/system.pdb",
+        protein_id="prot-123",
+        ligand1_id="lig-456",
+    )
+    client = DeepOriginClient()
+    with (
+        patch.object(client.entities, "get_protein", get_protein),
+        patch.object(client.entities, "get_ligand", get_ligand),
+    ):
+        assert (
+            _abfe_default_name(prepared_system=prepared_system, client=client)
+            == "ABFE: Protein X with Ligand Y"
+        )
+    get_protein.assert_called_once_with(id="prot-123")
+    get_ligand.assert_called_once_with(id="lig-456")
+
+
+def test_abfe_default_name_ligand_smiles_when_no_name_lv0():
+    """Ligand label uses canonical_smiles or smiles when name is absent."""
+    prepared_system = PreparedSystem(
+        binding_xml_path="b.xml",
+        solvation_xml_path="s.xml",
+        system_pdb_path="p.pdb",
+        protein_id="p1",
+        ligand1_id="l1",
+    )
+    client = DeepOriginClient()
+    with (
+        patch.object(
+            client.entities,
+            "get_protein",
+            return_value={"pdb_id": "1ABC"},
+        ),
+        patch.object(
+            client.entities,
+            "get_ligand",
+            return_value={"canonical_smiles": "CCO"},
+        ),
+    ):
+        assert (
+            _abfe_default_name(prepared_system=prepared_system, client=client)
+            == "ABFE: 1ABC with CCO"
+        )
+
+
+def test_abfe_default_name_unknown_ids_lv0():
+    """Missing IDs use unknown labels and do not call the entities API."""
+    get_protein = MagicMock()
+    get_ligand = MagicMock()
+    no_ids = PreparedSystem(
+        binding_xml_path="path/binding.xml",
+        solvation_xml_path="path/solvation.xml",
+        system_pdb_path="path/system.pdb",
+        protein_id=None,
+        ligand1_id=None,
+    )
+    client = DeepOriginClient()
+    with (
+        patch.object(client.entities, "get_protein", get_protein),
+        patch.object(client.entities, "get_ligand", get_ligand),
+    ):
+        assert (
+            _abfe_default_name(prepared_system=no_ids, client=client)
+            == "ABFE: unknown protein with unknown ligand"
+        )
+    get_protein.assert_not_called()
+    get_ligand.assert_not_called()
+
+
+def test_abfe_default_name_api_error_falls_back_to_id_lv0():
+    """When get_protein fails, fall back to the protein entity ID string."""
+    get_protein = MagicMock(side_effect=OSError("unavailable"))
+    get_ligand = MagicMock(return_value={"name": "Named"})
+    ps = PreparedSystem(
+        binding_xml_path="b.xml",
+        solvation_xml_path="s.xml",
+        system_pdb_path="p.pdb",
+        protein_id="prot-123",
+        ligand1_id="lig-456",
+    )
+    client = DeepOriginClient()
+    with (
+        patch.object(client.entities, "get_protein", get_protein),
+        patch.object(client.entities, "get_ligand", get_ligand),
+    ):
+        assert (
+            _abfe_default_name(prepared_system=ps, client=client)
+            == "ABFE: prot-123 with Named"
+        )
+
+
+def test_entity_label_helpers_lv0():
+    """Entity helpers match platform field precedence."""
+    assert (
+        _protein_display_name_from_entity(
+            entity={"gene_symbol": "GENE", "pdb_id": "1x"},
+            fallback_id="fid",
+        )
+        == "1x"
+    )
+    assert (
+        _ligand_display_label_from_entity(
+            entity={"name": "", "smiles": "N"},
+            fallback_id="lid",
+        )
+        == "N"
+    )
+
+
+def test_abfe_sets_default_name_on_construction_lv0():
+    """ABFE should set a generated name when name is not provided."""
+    prepared_system = PreparedSystem(
+        binding_xml_path="path/binding.xml",
+        solvation_xml_path="path/solvation.xml",
+        system_pdb_path="path/system.pdb",
+        protein_id="prot-1",
+        ligand1_id="lig-1",
+    )
+    client = DeepOriginClient()
+    with (
+        patch.object(
+            client.entities,
+            "get_protein",
+            return_value={"protein_name": "MyProt"},
+        ),
+        patch.object(
+            client.entities,
+            "get_ligand",
+            return_value={"name": "MyLig"},
+        ),
+    ):
+        abfe = ABFE(prepared_system=prepared_system, client=client)
+        assert abfe.name == "ABFE: MyProt with MyLig"
+
+
+def test_abfe_accepts_explicit_name_override_lv0():
+    """ABFE should respect an explicit name override."""
+    prepared_system = PreparedSystem(
+        binding_xml_path="path/binding.xml",
+        solvation_xml_path="path/solvation.xml",
+        system_pdb_path="path/system.pdb",
+        protein_id="prot-1",
+        ligand1_id="lig-1",
+    )
+    abfe = ABFE(prepared_system=prepared_system, name="Custom ABFE label")
+    assert abfe.name == "Custom ABFE label"

@@ -76,17 +76,18 @@ def test_render_html_progress_bar_by_complete(
 
 
 @pytest.mark.parametrize(
-    ("status", "expected_bg_class"),
+    ("status", "expected_bg_class", "expect_progress_bar"),
     [
-        ("Succeeded", "bg-success"),
-        ("Failed", "bg-danger"),
-        ("Quoted", "bg-secondary"),
-        ("Running", "bg-primary"),
+        ("Succeeded", "bg-success", False),
+        ("Failed", "bg-danger", False),
+        ("Quoted", "bg-secondary", False),
+        ("Running", "bg-primary", True),
     ],
 )
 def test_render_html_status_badge_colors(
     status: str,
     expected_bg_class: str,
+    expect_progress_bar: bool,
 ) -> None:
     """Footer status uses Bootstrap badges with contextual colors."""
     dto = {
@@ -98,6 +99,10 @@ def test_render_html_status_badge_colors(
     assert expected_bg_class in html
     assert "badge" in html
     assert status in html
+    if expect_progress_bar:
+        assert 'role="progressbar"' in html
+    else:
+        assert 'role="progressbar"' not in html
 
 
 def test_render_html_escapes_injection() -> None:
@@ -142,6 +147,7 @@ def test_from_pending_shows_notice_and_omits_execution_id_row() -> None:
     assert "fw-semibold" in html
     assert "My job" in html
     assert "New" in html
+    assert 'role="progressbar"' not in html
 
 
 def test_card_header_shows_tool_key_and_version() -> None:
@@ -221,3 +227,29 @@ def test_from_dto_dict_progress_report() -> None:
     }
     display = ExecutionDisplay.from_dto(dto)
     assert display.complete == pytest.approx(33)
+
+
+def test_parse_complete_batches_averages_sub_job_completes() -> None:
+    """Batched progress (dict of workflow id -> {complete}) uses mean complete."""
+    batched = {
+        "workflow-a-1": {"complete": 0},
+        "workflow-a-2": {"complete": 0},
+        "workflow-a-3": {"complete": 100},
+        "workflow-a-4": {"complete": 100},
+    }
+    assert _parse_complete_from_progress_report(batched) == pytest.approx(50.0)
+    assert _parse_complete_from_progress_report(json.dumps(batched)) == pytest.approx(
+        50.0
+    )
+
+
+def test_parse_complete_flat_complete_not_confused_with_batch() -> None:
+    """Single-key flat ``{complete: n}`` still uses top-level complete."""
+    assert _parse_complete_from_progress_report({"complete": 42}) == pytest.approx(42)
+
+
+def test_parse_complete_mixed_batch_falls_back_to_top_level() -> None:
+    """If not every top-level value is a dict with ``complete``, use flat ``complete``."""
+    assert _parse_complete_from_progress_report(
+        {"sub": {"complete": 100}, "complete": 7}
+    ) == pytest.approx(7)

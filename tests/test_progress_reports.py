@@ -1,12 +1,22 @@
 """Tests for the ProgressReports API wrapper."""
 
+import json
+from pathlib import Path
+
 from deeporigin.platform.client import DeepOriginClient
 
 
+def _docking_test_execution_id() -> str:
+    """``executionId`` from ``fixtures/executions/docking-test-execution.json``."""
+    path = Path(__file__).parent / "fixtures/executions/docking-test-execution.json"
+    with path.open(encoding="utf-8") as f:
+        return str(json.load(f)["executionId"])
+
+
 def test_get_progress_reports():
-    """Test fetching progress reports for a known execution ID."""
+    """Test fetching progress reports for a known execution ID (docking fixture)."""
     client = DeepOriginClient()
-    execution_id = "docking-test-execution-12345"
+    execution_id = _docking_test_execution_id()
 
     response = client.progress_reports.get(execution_id)
 

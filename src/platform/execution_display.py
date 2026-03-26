@@ -33,8 +33,33 @@ def _status_badge_bg_class(status: str) -> str:
     return _STATUS_BADGE_VARIANT.get(status, "secondary")
 
 
+def _mean_complete_from_batch_subjobs(data: dict) -> float | None:
+    """If ``data`` is a dict of sub-job dicts each with ``complete``, return their mean.
+
+    Returns:
+        Mean in ``[0, 100]``, or ``None`` if ``data`` is not in that batched shape.
+    """
+    if not data:
+        return None
+    batch_values: list[float] = []
+    for v in data.values():
+        if not isinstance(v, dict) or "complete" not in v:
+            return None
+        try:
+            batch_values.append(float(v["complete"]))
+        except (TypeError, ValueError):
+            return None
+    avg = sum(batch_values) / len(batch_values)
+    return max(0.0, min(100.0, avg))
+
+
 def _parse_complete_from_progress_report(progress_report: object) -> float:
     """Extract a 0–100 completion value from ``progressReport`` JSON.
+
+    Supports a flat ``{"complete": n}`` shape and batched runs where every
+    top-level value is a dict with its own ``complete`` (e.g. per sub-job
+    workflow keys). In the batched case, the displayed value is the
+    arithmetic mean of those ``complete`` values.
 
     Args:
         progress_report: Raw DTO field (``None``, ``str`` JSON, or ``dict``).
@@ -57,6 +82,9 @@ def _parse_complete_from_progress_report(progress_report: object) -> float:
         return 0.0
     if data is None:
         return 0.0
+    batched = _mean_complete_from_batch_subjobs(data)
+    if batched is not None:
+        return batched
     raw = data.get("complete", 0)
     try:
         v = float(raw)
@@ -71,7 +99,8 @@ class ExecutionDisplay:
     """Display model for a single platform execution in Jupyter HTML.
 
     Attributes:
-        complete: Progress 0–100 from ``progressReport``; ``0`` means an indeterminate bar.
+        complete: Progress 0–100 from ``progressReport``; ``0`` means an indeterminate bar
+            when :attr:`status` is ``"Running"`` (the bar is hidden for other statuses).
         execution_id: Platform execution UUID string, or ``None`` if nothing has been submitted.
         name: Optional user label from the execution.
         status: Lifecycle status (see :data:`~deeporigin.platform.constants.PlatformStatus`).
@@ -191,6 +220,9 @@ class ExecutionDisplay:
 
         Returns:
             HTML string safe for :class:`IPython.display.HTML`.
+
+        Note:
+            The progress bar is rendered only when :attr:`status` is ``"Running"``.
         """
         esc_status = html.escape(self.status, quote=True)
         esc_title = html.escape(self._card_header_title(), quote=True)
@@ -213,25 +245,30 @@ class ExecutionDisplay:
                 '<div class="small text-muted mt-2 text-break">'
                 f"<code>{esc_id}</code></div>"
             )
-        pct = float(self.complete)
-        if pct > 0:
-            width = min(100.0, pct)
-            width_s = html.escape(f"{width:.1f}".rstrip("0").rstrip("."), quote=True)
-            progress_block = (
-                f'<div class="progress" style="height: 22px;" role="progress" '
-                f'aria-label="Execution progress">'
-                f'<div class="progress-bar" role="progressbar" '
-                f'style="width: {width_s}%;" '
-                f'aria-valuenow="{width_s}" aria-valuemin="0" aria-valuemax="100">'
-                f"{width_s}%</div></div>"
-            )
+        if self.status == "Running":
+            pct = float(self.complete)
+            if pct > 0:
+                width = min(100.0, pct)
+                width_s = html.escape(
+                    f"{width:.1f}".rstrip("0").rstrip("."), quote=True
+                )
+                progress_block = (
+                    f'<div class="progress" style="height: 22px;" role="progress" '
+                    f'aria-label="Execution progress">'
+                    f'<div class="progress-bar" role="progressbar" '
+                    f'style="width: {width_s}%;" '
+                    f'aria-valuenow="{width_s}" aria-valuemin="0" aria-valuemax="100">'
+                    f"{width_s}%</div></div>"
+                )
+            else:
+                progress_block = (
+                    '<div class="progress" style="height: 22px;" role="progress" '
+                    'aria-label="Execution progress (indeterminate)">'
+                    '<div class="progress-bar progress-bar-striped progress-bar-animated w-100" '
+                    'role="progressbar"></div></div>'
+                )
         else:
-            progress_block = (
-                '<div class="progress" style="height: 22px;" role="progress" '
-                'aria-label="Execution progress (indeterminate)">'
-                '<div class="progress-bar progress-bar-striped progress-bar-animated w-100" '
-                'role="progressbar"></div></div>'
-            )
+            progress_block = ""
 
         live_inline = ""
         if will_auto_update:
