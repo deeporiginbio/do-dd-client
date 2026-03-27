@@ -93,6 +93,36 @@ def _parse_complete_from_progress_report(progress_report: object) -> float:
     return max(0.0, min(100.0, v))
 
 
+def _count_workflow_children_from_progress_report(progress_report: object) -> int:
+    """Count top-level keys in ``progressReport`` whose names contain ``workflow``.
+
+    Used when a parent execution aggregates child runs (e.g. workflow batch keys
+    like ``workflow-…-123``).
+
+    Args:
+        progress_report: Raw DTO field (``None``, ``str`` JSON, or ``dict``).
+
+    Returns:
+        Number of keys whose string form contains ``workflow`` (case-insensitive).
+    """
+    if progress_report is None:
+        return 0
+    data: dict | None
+    if isinstance(progress_report, dict):
+        data = progress_report
+    elif isinstance(progress_report, str):
+        try:
+            parsed = json.loads(progress_report)
+        except (json.JSONDecodeError, TypeError):
+            return 0
+        data = parsed if isinstance(parsed, dict) else None
+    else:
+        return 0
+    if not data:
+        return 0
+    return sum(1 for k in data if isinstance(k, str) and "workflow" in k.lower())
+
+
 @beartype
 @dataclass
 class ExecutionDisplay:
@@ -106,6 +136,8 @@ class ExecutionDisplay:
         status: Lifecycle status (see :data:`~deeporigin.platform.constants.PlatformStatus`).
         tool_key: Platform tool identifier from the execution DTO, if known.
         tool_version: Tool version string from the execution DTO, if known.
+        workflow_child_count: Number of ``progressReport`` top-level keys whose names
+            contain ``workflow`` (child executions in a workflow batch); ``0`` if none.
     """
 
     complete: float | int
@@ -114,6 +146,7 @@ class ExecutionDisplay:
     status: str
     tool_key: str | None = None
     tool_version: str | None = None
+    workflow_child_count: int = 0
 
     @classmethod
     def from_pending(
@@ -143,6 +176,7 @@ class ExecutionDisplay:
             status=st,
             tool_key=tool_key,
             tool_version=tool_version,
+            workflow_child_count=0,
         )
 
     @classmethod
@@ -168,7 +202,11 @@ class ExecutionDisplay:
             name = None
         else:
             name = str(raw_name)
-        complete = _parse_complete_from_progress_report(dto.get("progressReport"))
+        raw_progress = dto.get("progressReport")
+        complete = _parse_complete_from_progress_report(raw_progress)
+        workflow_child_count = _count_workflow_children_from_progress_report(
+            raw_progress
+        )
         tool_key: str | None = None
         tool_version: str | None = None
         raw_tool = dto.get("tool")
@@ -186,6 +224,7 @@ class ExecutionDisplay:
             status=str(status),
             tool_key=tool_key,
             tool_version=tool_version,
+            workflow_child_count=workflow_child_count,
         )
 
     def _card_header_title(self) -> str:
@@ -281,6 +320,18 @@ class ExecutionDisplay:
                 "</span>"
             )
 
+        wf_n = int(self.workflow_child_count)
+        if wf_n > 0:
+            wf_label = html.escape(f"WORKFLOW ({wf_n}x)", quote=True)
+            workflow_badge = (
+                '<span class="badge rounded-pill bg-secondary-subtle text-secondary-emphasis '
+                'border border-secondary-subtle align-middle" '
+                'style="font-variant: small-caps; letter-spacing: 0.04em;" '
+                f'title="This run includes {wf_n} workflow child execution(s)">{wf_label}</span>'
+            )
+        else:
+            workflow_badge = ""
+
         return f"""<div id="{html.escape(uid, quote=True)}" class="deeporigin-exec-display">
 <link href="{html.escape(BOOTSTRAP_5_CSS_CDN_URL, quote=True)}" rel="stylesheet">
 <div class="card shadow-sm" style="max-width: 42rem;">
@@ -299,7 +350,10 @@ class ExecutionDisplay:
 <div class="text-muted">Last updated: {html.escape(last_updated, quote=True)}</div>
 {live_inline}
 </div>
+<div class="d-flex align-items-center flex-wrap gap-2">
+{workflow_badge}
 <span class="badge rounded-pill bg-{badge_bg}">{esc_status}</span>
+</div>
 </div>
 </div>
 </div>

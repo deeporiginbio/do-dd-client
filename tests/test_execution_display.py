@@ -6,6 +6,7 @@ import pytest
 
 from deeporigin.platform.execution_display import (
     ExecutionDisplay,
+    _count_workflow_children_from_progress_report,
     _parse_complete_from_progress_report,
 )
 
@@ -253,3 +254,58 @@ def test_parse_complete_mixed_batch_falls_back_to_top_level() -> None:
     assert _parse_complete_from_progress_report(
         {"sub": {"complete": 100}, "complete": 7}
     ) == pytest.approx(7)
+
+
+def test_count_workflow_children_matches_workflow_keys() -> None:
+    """Keys containing ``workflow`` (case-insensitive) are counted as child slots."""
+    pr = {
+        "workflow-ppu1d9qkoqdkufjnck1e9-1597457250": {"complete": 0},
+        "workflow-ppu1d9qkoqdkufjnck1e9-2853961406": {"complete": 0},
+        "other": {"complete": 50},
+    }
+    assert _count_workflow_children_from_progress_report(pr) == 2
+    assert _count_workflow_children_from_progress_report(json.dumps(pr)) == 2
+    assert _count_workflow_children_from_progress_report(None) == 0
+
+
+def test_from_dto_sets_workflow_child_count() -> None:
+    """from_dto records how many workflow batch keys are in progressReport."""
+    batched = {
+        "workflow-a": {"complete": 0},
+        "workflow-b": {"complete": 0},
+        "workflow-c": {"complete": 0},
+        "workflow-d": {"complete": 0},
+    }
+    display = ExecutionDisplay.from_dto(
+        {"executionId": "e1", "status": "Running", "progressReport": batched}
+    )
+    assert display.workflow_child_count == 4
+
+
+def test_render_html_workflow_footer_badge() -> None:
+    """Footer shows WORKFLOW (Nx) when progressReport has workflow child keys."""
+    dto = {
+        "executionId": "e1",
+        "status": "Running",
+        "progressReport": {
+            "workflow-x-1": {"complete": 0},
+            "workflow-x-2": {"complete": 0},
+            "workflow-x-3": {"complete": 0},
+        },
+    }
+    html = ExecutionDisplay.from_dto(dto).render_html()
+    assert "WORKFLOW (3x)" in html
+    assert "font-variant: small-caps" in html
+    assert "bg-secondary-subtle" in html
+
+
+def test_render_html_no_workflow_badge_when_absent() -> None:
+    """No workflow badge when there are no workflow-* keys."""
+    html = ExecutionDisplay.from_dto(
+        {
+            "executionId": "e1",
+            "status": "Running",
+            "progressReport": json.dumps({"complete": 10}),
+        }
+    ).render_html()
+    assert "WORKFLOW (" not in html
