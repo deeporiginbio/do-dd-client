@@ -47,8 +47,9 @@ BOOTSTRAP_5_CSS_CDN_URL = (
 )
 """Bootstrap 5 stylesheet URL for self-contained HTML fragments (e.g. notebook cards)."""
 
-TOOL_EXECUTION_POST_TIMEOUT_SECONDS = 600.0
+TOOL_EXECUTION_POST_TIMEOUT_SECONDS = 120.0
 """HTTP timeout (seconds) for POST ``/tools/.../executions`` (quote and run).
 
-Matches ``Functions.run`` long-timeout behavior: server may take minutes to
-respond while the execution is created or quoted."""
+Matches ``Functions.run`` long-timeout behavior: 120s allows the server time to
+respond while the execution is created or quoted, beyond the client's default
+short timeout."""
