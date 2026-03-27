@@ -1,17 +1,18 @@
 """Simplified configuration management for Deep Origin client.
 
-This module stores and retrieves only two configuration values:
-`env` and `org_key`.
+This module stores and retrieves configuration values including ``env``,
+``org_key``, and optional ``project_id`` (current data platform project).
 
 Behavior:
-- If the config file does not exist, it is created with `env=prod` and an
-  empty `org_key`.
+- If the config file does not exist, it is created with defaults.
 - If the config file exists, it is read and a dictionary is returned.
+- ``project_id`` is read from disk only (not overridden by environment
+  variables), so CI and scripts do not inherit a stale project selection.
 """
 
 import json
 import os
-from typing import TYPE_CHECKING, Literal
+from typing import TYPE_CHECKING, Any, Literal
 
 if TYPE_CHECKING:
     import pandas as pd
@@ -27,6 +28,9 @@ __all__ = [
     "set_org",
     "get_env",
     "set_env",
+    "get_project_id",
+    "set_project_id",
+    "clear_project_id",
     "get_value",
     "CONFIG_JSON_LOCATION",
 ]
@@ -36,7 +40,7 @@ def _ensure_config_file_exists() -> None:
     """Ensure the configuration file exists; create with defaults if missing."""
 
     if not os.path.isfile(CONFIG_JSON_LOCATION):
-        default_data: dict = {"env": "prod", "org_key": ""}
+        default_data: dict = {"env": "prod", "org_key": "", "project_id": None}
         os.makedirs(os.path.dirname(CONFIG_JSON_LOCATION), exist_ok=True)
         with open(CONFIG_JSON_LOCATION, "w") as file:
             json.dump(default_data, file, indent=2)
@@ -101,7 +105,7 @@ def set_env(value: str) -> None:
     _set_value("env", value)
 
 
-def _set_value(key: Literal["env", "org_key"], value) -> None:
+def _set_value(key: Literal["env", "org_key"], value: Any) -> None:
     """Internal helper to set a configuration value.
 
     Args:
@@ -127,17 +131,67 @@ def _set_value(key: Literal["env", "org_key"], value) -> None:
     print(f"{check} {key} {arrow} {value}")
 
 
+def _merge_config_disk(updates: dict[str, Any]) -> None:
+    """Merge key-value pairs into the on-disk config file."""
+
+    _ensure_config_file_exists()
+    with open(CONFIG_JSON_LOCATION, "r") as file:
+        data = json.load(file) or {}
+    data.update(updates)
+    with open(CONFIG_JSON_LOCATION, "w") as file:
+        json.dump(data, file, indent=2)
+
+
+def get_project_id() -> str | None:
+    """Return the current data platform project id from the config file.
+
+    This value is not overridden by environment variables.
+
+    Returns:
+        The project id string, or None if no project is selected.
+    """
+
+    _ensure_config_file_exists()
+    with open(CONFIG_JSON_LOCATION, "r") as file:
+        data = json.load(file) or {}
+    raw = data.get("project_id")
+    if raw is None or raw == "":
+        return None
+    return str(raw)
+
+
+def set_project_id(value: str | None) -> None:
+    """Persist the current project id (or clear it).
+
+    Args:
+        value: Platform project id, or None to clear the current project.
+    """
+
+    _merge_config_disk({"project_id": value})
+    if _supports_unicode_output():
+        check, arrow = "✔︎", "→"
+    else:
+        check, arrow = "OK", "->"
+    display = value if value is not None else "(cleared)"
+    print(f"{check} project_id {arrow} {display}")
+
+
+def clear_project_id() -> None:
+    """Remove the current project from the config file."""
+
+    set_project_id(None)
+
+
 def get_value() -> dict:
     """Get the configuration values.
 
     Creates the file with defaults if it doesn't exist, then returns a dict
-    with keys `env` and `org_key`.
-
-    Args:
-        config_file_location: Optional custom path for the config file.
+    with keys ``env``, ``org_key``, and ``project_id``.
 
     Returns:
-        A dictionary with keys `env` and `org_key`.
+        A dictionary with keys ``env``, ``org_key``, and ``project_id``.
+        ``project_id`` comes from the disk file only; ``env`` and ``org_key``
+        may be overridden by environment variables.
     """
 
     _ensure_config_file_exists()
@@ -148,6 +202,7 @@ def get_value() -> dict:
     # Fill defaults if missing
     env = data.get("env", "prod")
     org_key = data.get("org_key", None)
+    project_id = data.get("project_id", None)
 
     # env variables override config file
     if ENV_VARIABLES["env"] in os.environ:
@@ -155,7 +210,7 @@ def get_value() -> dict:
     if ENV_VARIABLES["org_key"] in os.environ:
         org_key = os.environ[ENV_VARIABLES["org_key"]]
 
-    return {"env": env, "org_key": org_key}
+    return {"env": env, "org_key": org_key, "project_id": project_id}
 
 
 def list_orgs() -> "pd.DataFrame":

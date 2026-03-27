@@ -54,6 +54,7 @@ class MockServer:
         self._execution_start_times: dict[str, datetime] = {}
         self._ligands: dict[str, dict[str, Any]] = {}
         self._proteins: dict[str, dict[str, Any]] = {}
+        self._projects: dict[str, dict[str, Any]] = {}
         self._results: list[dict[str, Any]] = []
         # Tool-specific mock execution durations (in seconds)
         self._mock_execution_durations: dict[str, float] = {
@@ -252,6 +253,7 @@ class MockServer:
         dp_router = data_platform.create_data_platform_router(
             ligands=self._ligands,
             proteins=self._proteins,
+            projects=self._projects,
             results=self._results,
             executions=self._executions,
             load_fixture=self._load_fixture,

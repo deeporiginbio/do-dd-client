@@ -378,6 +378,8 @@ class Ligand(Entity):
             ligand.remote_path = mol_file
             if data.get("name"):
                 ligand.name = data["name"]
+            if data.get("project_id") is not None:
+                ligand.project_id = str(data["project_id"])
             return ligand
 
         if mol_file:
@@ -396,6 +398,9 @@ class Ligand(Entity):
 
         if data.get("name"):
             ligand.name = data["name"]
+
+        if data.get("project_id") is not None:
+            ligand.project_id = str(data["project_id"])
 
         return ligand
 
@@ -1179,6 +1184,10 @@ class Ligand(Entity):
             except Exception:
                 pass
 
+        proj_id = self.resolved_project_id()
+        if proj_id is not None:
+            kwargs["project_id"] = proj_id
+
         result = client.entities.create_ligand(**kwargs)
 
         if "data" in result and "id" in result["data"]:
@@ -1219,13 +1228,22 @@ class Ligand(Entity):
         if remote_path is not None:
             self.remote_path = remote_path
 
+        proj_id = self.resolved_project_id()
+        scope_filter: dict[str, Any] = {}
+        if proj_id is not None:
+            scope_filter["project_id"] = proj_id
+
         smiles_value = self.smiles if self.smiles is not None else self.canonical_smiles
-        response = client.entities.search_ligands(smiles=smiles_value)
+        response = client.entities.search_ligands(
+            smiles=smiles_value,
+            filter_dict=scope_filter if scope_filter else None,
+        )
         data = response["data"]
 
         if not data:
             response = client.entities.search_ligands(
-                canonical_smiles=self.canonical_smiles
+                canonical_smiles=self.canonical_smiles,
+                filter_dict=scope_filter if scope_filter else None,
             )
             data = response["data"]
 
@@ -1273,6 +1291,10 @@ class Ligand(Entity):
                 row.setdefault("formal_charge", 0)
         else:
             row["formal_charge"] = 0
+
+        proj_id = self.resolved_project_id()
+        if proj_id is not None:
+            row["project_id"] = proj_id
         return row
 
     @beartype
@@ -2415,10 +2437,16 @@ class LigandSet:
                 "mol before calling sync()."
             )
 
+        proj_id = ligands_to_sync[0].resolved_project_id() if ligands_to_sync else None
+        scope_filter: dict[str, Any] = {}
+        if proj_id is not None:
+            scope_filter["project_id"] = proj_id
+
         smiles_list = [lig.canonical_smiles for lig in ligands_to_sync]
         response = client.entities.search_ligands(
             smiles_list=smiles_list,
             limit=len(smiles_list),
+            filter_dict=scope_filter if scope_filter else None,
         )
         existing_by_smiles = self._index_by_canonical_smiles(response.get("data", []))
 

@@ -68,6 +68,12 @@ def _start_tool_run(
     if approve_amount is not None:
         payload["approveAmount"] = approve_amount
 
+    from deeporigin.config import get_project_id
+
+    proj_id = get_project_id()
+    if proj_id is not None:
+        payload["projectId"] = proj_id
+
     response = client.executions.create(
         data=payload,
         tool_key=tool_mapper[tool],

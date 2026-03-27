@@ -157,6 +157,9 @@ class Protein(Entity):
                 block_content=None,
                 id=data.get("id"),
                 remote_path=remote_path,
+                project_id=str(data["project_id"])
+                if data.get("project_id") is not None
+                else None,
             )
             return protein
 
@@ -180,6 +183,9 @@ class Protein(Entity):
 
         if data.get("pdb_id"):
             protein.pdb_id = data["pdb_id"]
+
+        if data.get("project_id") is not None:
+            protein.project_id = str(data["project_id"])
 
         return protein
 
@@ -1562,6 +1568,10 @@ class Protein(Entity):
             kwargs["protein_length"] = self.length
         kwargs["protein_name"] = self.name
 
+        proj_id = self.resolved_project_id()
+        if proj_id is not None:
+            kwargs["project_id"] = proj_id
+
         result = client.entities.create_protein(**kwargs)
 
         if "data" in result and "id" in result["data"]:
@@ -1600,7 +1610,14 @@ class Protein(Entity):
 
         self.upload(client=client, remote_path=remote_path)
 
-        response = client.entities.search_proteins(file_path=self.remote_path)
+        proj_id = self.resolved_project_id()
+        if proj_id is not None:
+            response = client.entities.search_proteins(
+                file_path=self.remote_path,
+                project_id=proj_id,
+            )
+        else:
+            response = client.entities.search_proteins(file_path=self.remote_path)
         data = response["data"]
 
         if data:

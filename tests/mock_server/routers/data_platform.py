@@ -279,6 +279,7 @@ def create_data_platform_router(
     *,
     ligands: dict[str, dict[str, Any]],
     proteins: dict[str, dict[str, Any]],
+    projects: dict[str, dict[str, Any]],
     results: list[dict[str, Any]],
     executions: dict[str, dict[str, Any]] | None = None,
     load_fixture: Callable[[str], dict[str, Any]],
@@ -288,6 +289,7 @@ def create_data_platform_router(
     Args:
         ligands: In-memory storage for ligands.
         proteins: In-memory storage for proteins.
+        projects: In-memory storage for data platform projects.
         results: In-memory list of result-explorer records.
         executions: In-memory storage for executions (keyed by executionId).
         load_fixture: Callable to load fixture data by name.
@@ -300,6 +302,7 @@ def create_data_platform_router(
     _entity_stores: dict[str, dict[str, dict[str, Any]]] = {
         "ligands": ligands,
         "proteins": proteins,
+        "projects": projects,
     }
 
     # Reverse index: (canonical_smiles, variant_name_tag) → ligand_id.
@@ -449,8 +452,12 @@ def create_data_platform_router(
         store = _entity_stores.get(entity, {})
 
         # Protein.sync() searches by uploaded file_path (hash-based or custom).
-        # Always resolve to the canonical BRD fixture + stable ID.
-        if entity == "proteins" and "file_path" in filter_dict:
+        # Always resolve to the canonical BRD fixture + stable ID when unscoped.
+        if (
+            entity == "proteins"
+            and "file_path" in filter_dict
+            and "project_id" not in filter_dict
+        ):
             if MOCK_CANONICAL_PROTEIN_ID not in proteins:
                 proteins[MOCK_CANONICAL_PROTEIN_ID] = copy.deepcopy(
                     _base_canonical_protein_record()
@@ -460,16 +467,62 @@ def create_data_platform_router(
                 "count": 1,
             }
 
+        if entity == "executions" and executions is not None:
+            dp_rows: dict[str, dict[str, Any]] = {}
+            for _ex_key, ex in executions.items():
+                eid = ex.get("executionId") or _ex_key
+                tool = ex.get("tool") or {}
+                dp_rows[str(eid)] = {
+                    "id": str(eid),
+                    "tool_key": tool.get("key"),
+                    "tool_version": tool.get("version"),
+                    "status": ex.get("status"),
+                    "started_at": ex.get("startedAt"),
+                    "completed_at": ex.get("completedAt"),
+                    "compute_job_id": ex.get("executionId"),
+                    "project_id": ex.get("projectId"),
+                    "deleted": False,
+                }
+            return _apply_search_filters(
+                dp_rows, filter_dict, limit=limit, offset=offset
+            )
+
         return _apply_search_filters(store, filter_dict, limit=limit, offset=offset)
 
-    @router.post("/data-platform/{org_key}/projects/search")
-    async def list_projects(org_key: str, request: Request) -> dict[str, Any]:
-        """List projects."""
-        await request.json()
-        return {
-            "data": [],
-            "count": 0,
+    @router.post("/data-platform/{org_key}/projects")
+    async def create_project(org_key: str, request: Request) -> dict[str, Any]:
+        """Create a project row."""
+        body = await request.json()
+        set_data = body.get("set", {})
+        returning = body.get("returning", [])
+
+        name = set_data.get("name", "")
+        slug = set_data.get("slug") or f"proj-{uuid.uuid4().hex[:12]}"
+        pid = "09" + str(uuid.uuid4()).replace("-", "").upper()[:11]
+        now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z"
+        record: dict[str, Any] = {
+            "id": pid,
+            "version": 1,
+            "valid_from": now,
+            "valid_to": None,
+            "modified_by": "mock-server",
+            "deleted": False,
+            "project_id": None,
+            "subtable_name": "projects",
+            "name": name,
+            "slug": slug,
+            "description": set_data.get("description"),
+            "tags": None,
+            "notes": None,
+            "url_token": None,
         }
+        projects[pid] = record
+
+        response_data = record.copy()
+        if returning:
+            response_data = {k: v for k, v in response_data.items() if k in returning}
+
+        return {"data": response_data, "meta": {"inserted": 1}}
 
     @router.post("/data-platform/{org_key}/ligands")
     async def create_ligand(org_key: str, request: Request) -> dict[str, Any]:

@@ -23,7 +23,11 @@ def mock_client_config():
         ) as mock_check_token,
     ):
         mock_get_token.return_value = "test_token"
-        mock_get_value.return_value = {"env": "local", "org_key": "test_org"}
+        mock_get_value.return_value = {
+            "env": "local",
+            "org_key": "test_org",
+            "project_id": None,
+        }
         mock_check_token.return_value = None
         yield
 

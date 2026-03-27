@@ -267,6 +267,9 @@ def create_tools_router(
             "orgKey": org_key,
             "tool": {"key": tool_key, "version": tool_version},
         }
+        proj = body.get("projectId")
+        if proj is not None:
+            execution["projectId"] = proj
 
         tool_fixture_dir = fixtures_dir / tool_key
         if tool_fixture_dir.exists():

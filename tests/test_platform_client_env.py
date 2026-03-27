@@ -102,7 +102,11 @@ def test_do_base_url_with_from_env() -> None:
         patch("deeporigin.platform.client.get_value") as mock_get_value,
     ):
         mock_get_token.return_value = "token-dev"
-        mock_get_value.return_value = {"env": "prod", "org_key": "test-org"}
+        mock_get_value.return_value = {
+            "env": "prod",
+            "org_key": "test-org",
+            "project_id": None,
+        }
 
         client = DeepOriginClient.from_env()
 
@@ -178,7 +182,11 @@ def test_from_env_reads_token_and_org_key_from_files() -> None:
         patch("deeporigin.platform.client.get_value") as mock_get_value,
     ):
         mock_get_token.return_value = "token_from_file"
-        mock_get_value.return_value = {"env": "prod", "org_key": "org_from_config"}
+        mock_get_value.return_value = {
+            "env": "prod",
+            "org_key": "org_from_config",
+            "project_id": None,
+        }
 
         client = DeepOriginClient.from_env(env="prod")
 
@@ -196,7 +204,11 @@ def test_from_env_with_explicit_env() -> None:
         patch("deeporigin.platform.client.get_value") as mock_get_value,
     ):
         mock_get_token.return_value = "token_staging"
-        mock_get_value.return_value = {"env": "prod", "org_key": "org_from_config"}
+        mock_get_value.return_value = {
+            "env": "prod",
+            "org_key": "org_from_config",
+            "project_id": None,
+        }
 
         client = DeepOriginClient.from_env(env="staging")
 
@@ -213,7 +225,11 @@ def test_from_env_reads_token_from_file() -> None:
         patch("deeporigin.platform.client.get_value") as mock_get_value,
     ):
         mock_get_token.return_value = "token_from_file"
-        mock_get_value.return_value = {"env": "prod", "org_key": "org_from_config"}
+        mock_get_value.return_value = {
+            "env": "prod",
+            "org_key": "org_from_config",
+            "project_id": None,
+        }
 
         client = DeepOriginClient.from_env(env="prod")
 

@@ -21,11 +21,32 @@ class Entity(ABC):
     :meth:`download`. ``remote_path`` is set when created from platform metadata or
     after :meth:`upload`. Call :meth:`upload` before passing paths to remote tools;
     call :meth:`download` when you need a local file for display or analysis.
+
+    ``project_id`` optionally pins the data platform project for this row. When
+    unset, :meth:`resolved_project_id` falls back to the current project in
+    ``~/.deeporigin/config.json``.
     """
 
     id: str | None = field(default=None, kw_only=True)
     remote_path: str | None = field(default=None, kw_only=True)
     local_path: str | None = field(default=None, kw_only=True)
+    project_id: str | None = field(default=None, kw_only=True)
+
+    def resolved_project_id(self) -> str | None:
+        """Data platform project id for API calls.
+
+        Returns :attr:`project_id` when set; otherwise the configured current
+        project from :func:`deeporigin.config.get_project_id`.
+
+        Returns:
+            Project id string, or None if neither is set.
+        """
+
+        if self.project_id is not None:
+            return self.project_id
+        from deeporigin.config import get_project_id
+
+        return get_project_id()
 
     @abstractmethod
     def to_hash(self) -> str:
