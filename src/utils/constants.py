@@ -47,6 +47,16 @@ BOOTSTRAP_5_CSS_CDN_URL = (
 )
 """Bootstrap 5 stylesheet URL for self-contained HTML fragments (e.g. notebook cards)."""
 
+DOCKING_RESULTS_DATAFRAME_COLUMNS: tuple[str, ...] = (
+    "ID",
+    "protein ID",
+    "ligand ID",
+    "pocket ID",
+    "binding energy",
+    "pose_score",
+)
+"""Column order for :meth:`deeporigin.drug_discovery.docking.Docking.get_results`."""
+
 TOOL_EXECUTION_POST_TIMEOUT_SECONDS = 120.0
 """HTTP timeout (seconds) for POST ``/tools/.../executions`` (quote and run).
 

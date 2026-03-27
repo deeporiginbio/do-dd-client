@@ -4,6 +4,7 @@ import json
 from pathlib import Path
 import time
 
+import pandas as pd
 import pytest
 
 from conftest import check_function_exists, check_tool_exists
@@ -20,6 +21,7 @@ from deeporigin.platform.constants import (
     DOCKING_TOOL_VERSION,
     TERMINAL_STATES,
 )
+from deeporigin.utils.constants import DOCKING_RESULTS_DATAFRAME_COLUMNS
 
 
 def test_docking_from_dto_maps_async_execution_fields_from_fixture(
@@ -202,6 +204,74 @@ def test_docking_run_lv2(
         assert pose.smiles is not None, "Pose should have SMILES"
 
 
+def test_docking_get_results_dataframe_from_api_rows_lv1(
+    monkeypatch,
+    client,
+    registered_protein,
+    registered_pocket,
+    registered_ligand,
+) -> None:
+    """get_results maps pose API rows to a DataFrame with expected columns."""
+    docking = Docking(
+        protein=registered_protein,
+        pocket=registered_pocket,
+        ligand=registered_ligand,
+        client=client,
+    )
+    docking._id = "0acc1213-4aa1-48e7-ada9-fbd6331f01d9"
+
+    pose_rows = [
+        {
+            "id": "0921B27C5YXZ7",
+            "tool_key": "deeporigin.bulk-docking",
+            "data": {
+                "file_path": "tool-runs/uuid/pose.sdf",
+                "ligand_id": "08DK80B7DYTXH",
+                "pocket_id": "08HXY85NDYYXG",
+                "pose_score": 0.9767475,
+                "protein_id": "08CEVZZPNYV31",
+                "binding_energy": -8.131386,
+            },
+            "compute_job_id": "0acc1213-4aa1-48e7-ada9-fbd6331f01d9",
+        }
+    ]
+    monkeypatch.setattr(docking, "_list_pose_records", lambda: pose_rows)
+
+    df = docking.get_results()
+    assert df is not None
+    assert isinstance(df, pd.DataFrame)
+    assert list(df.columns) == list(DOCKING_RESULTS_DATAFRAME_COLUMNS)
+    assert len(df) == 1
+    row = df.iloc[0]
+    assert row["ID"] == "0921B27C5YXZ7"
+    assert row["protein ID"] == "08CEVZZPNYV31"
+    assert row["ligand ID"] == "08DK80B7DYTXH"
+    assert row["pocket ID"] == "08HXY85NDYYXG"
+    assert row["binding energy"] == pytest.approx(-8.131386)
+    assert row["pose_score"] == pytest.approx(0.9767475)
+
+
+def test_docking_get_results_empty_returns_none_lv1(
+    monkeypatch,
+    client,
+    registered_protein,
+    registered_pocket,
+    registered_ligand,
+) -> None:
+    """get_results returns None when the API returns no pose rows."""
+    docking = Docking(
+        protein=registered_protein,
+        pocket=registered_pocket,
+        ligand=registered_ligand,
+        client=client,
+    )
+    docking._id = "job-id"
+
+    monkeypatch.setattr(docking, "_list_pose_records", lambda: [])
+
+    assert docking.get_results() is None
+
+
 def test_docking_start_sync_get_results_lv3(
     client,
     registered_protein,
@@ -249,8 +319,13 @@ def test_docking_start_sync_get_results_lv3(
         f"Expected status Succeeded, got {docking.status!r}"
     )
 
-    poses = docking.get_results()
-    assert poses is not None, "get_results() should return poses after Succeeded"
+    df = docking.get_results()
+    assert df is not None, "get_results() should return a DataFrame after Succeeded"
+    assert list(df.columns) == list(DOCKING_RESULTS_DATAFRAME_COLUMNS)
+    assert len(df) >= 1, "Expected at least one result row"
+
+    poses = docking.get_poses()
+    assert poses is not None, "get_poses() should return poses after Succeeded"
     assert len(poses) >= 1, "Expected at least one pose"
     for pose in poses:
         assert isinstance(pose, Ligand), "Each pose should be a Ligand"

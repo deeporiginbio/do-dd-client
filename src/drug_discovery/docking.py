@@ -16,7 +16,8 @@ Usage::
     #     await docking.watch_async()
     # Script (blocking): asyncio.run(docking.watch_async())
     docking.sync()
-    poses = docking.get_results()
+    df = docking.get_results()
+    poses = docking.get_poses()
 """
 
 import concurrent.futures
@@ -25,6 +26,7 @@ from typing import Any, Self
 
 from beartype import beartype
 import numpy as np
+import pandas as pd
 
 from deeporigin.drug_discovery.execution import Execution
 from deeporigin.drug_discovery.execution_mixins import (
@@ -41,6 +43,7 @@ from deeporigin.platform.constants import (
     DOCKING_TOOL_KEY,
     DOCKING_TOOL_VERSION,
 )
+from deeporigin.utils.constants import DOCKING_RESULTS_DATAFRAME_COLUMNS
 
 Number = float | int
 
@@ -516,13 +519,11 @@ class Docking(
         """
         return super().from_id(id, client=client)
 
-    def get_results(self) -> LigandSet | None:
-        """Retrieve docking results from the platform.
-
-        Downloads result SDF files and returns a ``LigandSet``.
+    def _list_pose_records(self) -> list[dict[str, Any]]:
+        """Return raw pose rows from ``client.results.get_poses`` for this job.
 
         Returns:
-            A ``LigandSet`` of docked poses, or ``None`` if no results yet.
+            The ``data`` list from the results API.
 
         Raises:
             ValueError: If no execution has been started.
@@ -531,13 +532,61 @@ class Docking(
             raise ValueError("No execution has been started. Call start() first.")
 
         response = self.client.results.get_poses(
-            protein_id=self.protein.id,
             compute_job_id=self.id,
+            limit=None,
         )
-        records = response.get("data", [])
+        raw = response.get("data", [])
+        return raw if isinstance(raw, list) else []
+
+    def get_results(self) -> pd.DataFrame | None:
+        """Retrieve docking results as a table (no structure download).
+
+        Columns: ID, protein ID, ligand ID, pocket ID, binding energy, pose_score.
+
+        Returns:
+            A DataFrame with one row per pose record, or ``None`` if the API
+            returns no pose rows yet.
+
+        Raises:
+            ValueError: If no execution has been started.
+        """
+        records = self._list_pose_records()
+        if not records:
+            return None
+
+        rows: list[dict[str, Any]] = []
+        for record in records:
+            data = record.get("data") or {}
+            if not isinstance(data, dict):
+                data = {}
+            rows.append(
+                {
+                    "ID": record.get("id"),
+                    "protein ID": data.get("protein_id"),
+                    "ligand ID": data.get("ligand_id"),
+                    "pocket ID": data.get("pocket_id"),
+                    "binding energy": data.get("binding_energy"),
+                    "pose_score": data.get("pose_score"),
+                }
+            )
+
+        return pd.DataFrame(rows, columns=list(DOCKING_RESULTS_DATAFRAME_COLUMNS))
+
+    def get_poses(self) -> LigandSet | None:
+        """Download pose SDFs from the platform and return a ``LigandSet``.
+
+        Returns:
+            A ``LigandSet`` of docked poses, or ``None`` if no pose files yet.
+
+        Raises:
+            ValueError: If no execution has been started.
+        """
+        records = self._list_pose_records()
         remote_paths: list[str] = []
         for record in records:
             data = record.get("data", {})
+            if not isinstance(data, dict):
+                continue
             fp = data.get("file_path")
             if fp:
                 remote_paths.append(fp)
