@@ -9,14 +9,18 @@ import uuid
 if TYPE_CHECKING:
     from deeporigin.platform.client import DeepOriginClient
 
+# Must match ``projects`` schema fields (snake_case). Versioned entities expose
+# ``canonical_id`` at the API; ``renderRowForClient`` maps it to ``id`` when
+# appropriate — include ``canonical_id`` so the created row is returned.
+# Do not use ``id`` or ``project_id`` here: the former is storage-only for
+# versioned rows, and ``project_id`` is not a column on ``projects``.
 PROJECT_RETURNING_FIELDS = [
-    "id",
+    "canonical_id",
     "version",
     "valid_from",
     "valid_to",
     "modified_by",
     "deleted",
-    "project_id",
     "subtable_name",
     "name",
     "slug",
@@ -58,16 +62,18 @@ class Projects:
         """
         self._c = client
 
-    def list(self) -> dict[str, Any]:
-        """List projects via search (empty filter).
+    def list(self, *, limit: int | None = 100) -> dict[str, Any]:
+        """List projects via search (non-deleted rows only).
+
+        Args:
+            limit: Maximum rows to return. Defaults to 100 (data platform default
+                when a limit is applied). Pass ``None`` to omit ``limit`` from the
+                request body (server default applies).
 
         Returns:
             Dictionary containing the list of projects (``data``, ``count``).
         """
-        return self._c.post_json(
-            f"/data-platform/{self._c.org_key}/projects/search",
-            body={"filter": {"deleted": False}},
-        )
+        return self.search(limit=limit)
 
     def search(
         self,

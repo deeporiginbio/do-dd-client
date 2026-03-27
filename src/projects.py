@@ -38,18 +38,42 @@ def _require_project_id() -> str:
 
 
 @beartype
-def current() -> str | None:
-    """Return the current data platform project id from local config.
+def current() -> tuple[str, str | None] | None:
+    """Return the current project id and display name.
+
+    The id is read from ``~/.deeporigin/config.json``. The name is loaded from
+    the data platform via :meth:`deeporigin.platform.projects.Projects.get`.
 
     Returns:
-        Project id string, or None if none is selected.
+        ``(project_id, name)`` when a project is selected. ``name`` is ``None``
+        if the Projects API is unavailable or the project row could not be
+        resolved.
+
+        ``None`` when no project is selected.
     """
 
-    return get_project_id()
+    pid = get_project_id()
+    if pid is None:
+        return None
+    client = DeepOriginClient.get()
+    if client.projects is None:
+        return (pid, None)
+    try:
+        row = client.projects.get(project_id=pid)["data"]
+    except DeepOriginException:
+        return (pid, None)
+    raw = row.get("name")
+    return (pid, str(raw) if raw is not None else None)
 
 
-def list_projects() -> Any:
-    """List all projects as a DataFrame.
+@beartype
+def list(*, limit: int | None = 100) -> Any:  # noqa: A001
+    """List projects as a DataFrame.
+
+    Args:
+        limit: Maximum rows to return. Defaults to 100 (matches the data platform
+            default for project search). Pass ``None`` to omit ``limit`` from the
+            API request (server default applies).
 
     Returns:
         DataFrame with columns ``id``, ``name``, ``description`` only.
@@ -61,13 +85,8 @@ def list_projects() -> Any:
     import pandas as pd
 
     client = DeepOriginClient.get()
-    if client.projects is None:
-        raise DeepOriginException(
-            title=PROJECTS_UNAVAILABLE_TITLE,
-            message=PROJECTS_UNAVAILABLE_DETAIL,
-            level="danger",
-        )
-    raw = client.projects.list()
+
+    raw = client.projects.list(limit=limit)
     rows = raw.get("data") or []
     if not rows:
         return pd.DataFrame(columns=["id", "name", "description"])
@@ -103,7 +122,7 @@ def create(
         )
     result = client.projects.create(name=name, description=description)
     data = result.get("data") or {}
-    pid = data.get("id")
+    pid = data.get("id") or data.get("canonical_id")
     if pid is None:
         raise DeepOriginException(
             title="Project create failed",
@@ -411,8 +430,6 @@ def set_proteins(proteins: List[Protein]) -> None:
     for p in proteins:
         p.sync(client=client)
 
-
-list = list_projects
 
 __all__ = [
     "clear_project_id",

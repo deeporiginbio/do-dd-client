@@ -1618,9 +1618,14 @@ class Protein(Entity):
 
         Returns:
             None. As a side effect, uploads the protein (if necessary) and updates
-            ``self.id`` with the ID of the existing or newly created protein record.
+            ``self.id`` with the ID of the existing or newly created protein record,
+            and sets :attr:`project_id` when a project scope applies or the platform
+            row includes ``project_id``.
         """
         if lazy and self.id is not None:
+            proj_id = self.resolved_project_id()
+            if proj_id is not None:
+                self.project_id = proj_id
             return
 
         if client is None:
@@ -1629,6 +1634,9 @@ class Protein(Entity):
         self.upload(client=client, remote_path=remote_path)
 
         proj_id = self.resolved_project_id()
+        if proj_id is not None:
+            self.project_id = proj_id
+
         if proj_id is not None:
             response = client.entities.search_proteins(
                 file_path=self.remote_path,
@@ -1642,6 +1650,9 @@ class Protein(Entity):
             existing_protein = data[0]
             if "id" in existing_protein:
                 self.id = existing_protein["id"]
+            ep = existing_protein.get("project_id")
+            if ep is not None:
+                self.project_id = str(ep)
             return
 
         self.register(client=client)

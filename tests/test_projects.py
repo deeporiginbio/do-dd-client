@@ -3,7 +3,7 @@
 import json
 from pathlib import Path
 from typing import Any
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, call
 
 import pytest
 
@@ -44,6 +44,68 @@ def test_get_value_includes_project_id(
     assert cfg.get_value()["project_id"] == "xyz"
 
 
+def test_projects_current_none_when_unconfigured(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """current() is None when no project id is stored."""
+
+    monkeypatch.setattr("deeporigin.projects.get_project_id", lambda: None)
+    from deeporigin.projects import current
+
+    assert current() is None
+
+
+def test_projects_current_returns_id_and_name(monkeypatch: pytest.MonkeyPatch) -> None:
+    """current() returns (id, name) from config and Projects.get."""
+
+    monkeypatch.setattr("deeporigin.projects.get_project_id", lambda: "pid-1")
+    mock_projects = MagicMock()
+    mock_projects.get.return_value = {"data": {"name": "My Lab", "id": "pid-1"}}
+    mock_client = MagicMock()
+    mock_client.projects = mock_projects
+    monkeypatch.setattr("deeporigin.projects.DeepOriginClient.get", lambda: mock_client)
+
+    from deeporigin.projects import current
+
+    assert current() == ("pid-1", "My Lab")
+    mock_projects.get.assert_called_once_with(project_id="pid-1")
+
+
+def test_projects_current_name_none_when_projects_unavailable(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """current() returns (id, None) when the Projects API is not on the client."""
+
+    monkeypatch.setattr("deeporigin.projects.get_project_id", lambda: "pid-1")
+    mock_client = MagicMock()
+    mock_client.projects = None
+    monkeypatch.setattr("deeporigin.projects.DeepOriginClient.get", lambda: mock_client)
+
+    from deeporigin.projects import current
+
+    assert current() == ("pid-1", None)
+
+
+def test_projects_current_name_none_when_project_missing(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """current() returns (id, None) when Projects.get raises."""
+
+    monkeypatch.setattr("deeporigin.projects.get_project_id", lambda: "gone")
+    mock_projects = MagicMock()
+    mock_projects.get.side_effect = DeepOriginException(
+        title="Project not found",
+        message="missing",
+    )
+    mock_client = MagicMock()
+    mock_client.projects = mock_projects
+    monkeypatch.setattr("deeporigin.projects.DeepOriginClient.get", lambda: mock_client)
+
+    from deeporigin.projects import current
+
+    assert current() == ("gone", None)
+
+
 def test_ligands_requires_current_project(monkeypatch: pytest.MonkeyPatch) -> None:
     """ligands() raises when no project is selected."""
 
@@ -81,6 +143,14 @@ def test_projects_list_builds_dataframe(monkeypatch: pytest.MonkeyPatch) -> None
     assert df.iloc[0]["id"] == "p1"
     assert df.iloc[0]["name"] == "Alpha"
     assert isinstance(df, pd.DataFrame)
+    mock_projects.list.assert_called_once_with(limit=100)
+
+    df2 = projects_list(limit=50)
+    assert len(df2) == 1
+    assert mock_projects.list.call_args_list == [
+        call(limit=100),
+        call(limit=50),
+    ]
 
 
 def test_projects_create_sets_config_when_load(
@@ -161,3 +231,28 @@ def test_platform_projects_search_merges_deleted() -> None:
 
     assert calls[0]["filter"]["deleted"] is False
     assert calls[0]["filter"]["name"] == "x"
+
+
+def test_platform_projects_list_delegates_to_search_with_limit() -> None:
+    """Projects.list forwards limit to the search endpoint."""
+
+    from deeporigin.platform.projects import Projects
+
+    calls: list[dict[str, Any]] = []
+
+    def fake_post_json(path: str, body: dict[str, Any], **kwargs: Any) -> dict:
+        calls.append(body)
+        return {"data": [], "count": 0}
+
+    client = MagicMock()
+    client.org_key = "org"
+    client.post_json = fake_post_json
+
+    p = Projects(client)
+    p.list()
+    p.list(limit=50)
+    p.list(limit=None)
+
+    assert calls[0]["limit"] == 100
+    assert calls[1]["limit"] == 50
+    assert "limit" not in calls[2]
