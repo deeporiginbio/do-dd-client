@@ -13,10 +13,8 @@
     "functionOutputs": [
         {
             "smiles": "Fc1c(-c2cccc3ccccc23)ncc2c(N3C[C@H]4CC[C@@H](C3)N4)nc(OCC34CCCN3CCC4)nc12",
-            "pains": {
-                "has_pains": null,
-                "pains_fragments": []
-            }
+            "has_pains": null,
+            "pains_fragments": []
         }
     ],
     "status": "Completed",

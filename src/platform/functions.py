@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from deeporigin.exceptions import DeepOriginException
+from deeporigin.utils.constants import TOOL_EXECUTION_POST_TIMEOUT_SECONDS
 
 if TYPE_CHECKING:
     from deeporigin.platform.client import DeepOriginClient
@@ -82,9 +83,9 @@ class Functions:
         if quote:
             body["approveAmount"] = 0
 
-        # functions need a longer timeout
+        # functions need a longer timeout (same ceiling as tool executions.create)
         original_timeout = self._c._client.timeout
-        self._c._client.timeout = 600
+        self._c._client.timeout = TOOL_EXECUTION_POST_TIMEOUT_SECONDS
 
         # Build endpoint URL based on whether version is provided
         if version is None:

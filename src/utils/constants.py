@@ -41,3 +41,25 @@ SYSPREP_NO_OUTPUT_PATHS_MSG = (
     "The function run may have failed or returned an unexpected format."
 )
 """Used by ``SystemPrep.run`` when binding/solvation/PDB paths are missing."""
+
+BOOTSTRAP_5_CSS_CDN_URL = (
+    "https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css"
+)
+"""Bootstrap 5 stylesheet URL for self-contained HTML fragments (e.g. notebook cards)."""
+
+DOCKING_RESULTS_DATAFRAME_COLUMNS: tuple[str, ...] = (
+    "ID",
+    "protein ID",
+    "ligand ID",
+    "pocket ID",
+    "binding energy",
+    "pose_score",
+)
+"""Column order for :meth:`deeporigin.drug_discovery.docking.Docking.get_results`."""
+
+TOOL_EXECUTION_POST_TIMEOUT_SECONDS = 120.0
+"""HTTP timeout (seconds) for POST ``/tools/.../executions`` (quote and run).
+
+Matches ``Functions.run`` long-timeout behavior: 120s allows the server time to
+respond while the execution is created or quoted, beyond the client's default
+short timeout."""

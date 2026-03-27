@@ -9,6 +9,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional
 
+from deeporigin.exceptions import DeepOriginException
 from deeporigin.platform.client import DeepOriginClient
 
 
@@ -87,6 +88,41 @@ class Entity(ABC):
                 "Ensure the structure has been uploaded or created via the "
                 "Deep Origin API before calling this function."
             )
+
+    def _assert_rehydrated_for_file_export(
+        self,
+        *,
+        entity_label: str,
+        format_name: str,
+    ) -> None:
+        """Require a local file when :attr:`remote_path` is set.
+
+        Subclasses use this for :meth:`to_file` and format-specific writers that do
+        not perform network I/O. Call :meth:`download` first (or use
+        ``from_id(..., download=True)``).
+
+        Args:
+            entity_label: Class name for errors (e.g. ``Ligand`` or ``Protein``).
+            format_name: Format label for errors (e.g. ``SDF`` or ``PDB``).
+
+        Raises:
+            DeepOriginException: If :attr:`remote_path` is set but neither
+                ``file_path`` (when present on the subclass) nor :attr:`local_path`
+                is set.
+        """
+        if self.remote_path is None:
+            return
+        file_path = getattr(self, "file_path", None)
+        if file_path is not None or self.local_path is not None:
+            return
+        raise DeepOriginException(
+            title=f"{entity_label} not rehydrated",
+            message=(
+                f"Cannot write {format_name}: remote_path is set but no local file is available. "
+                f"Call {entity_label}.download() to fetch the structure file, or use "
+                "from_id(..., download=True)."
+            ),
+        )
 
     def download(
         self,

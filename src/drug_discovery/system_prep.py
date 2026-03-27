@@ -148,6 +148,11 @@ class SystemPrep(Execution, QuoteMixin, SyncExecutableMixin):
         """Second ligand (RBFE mode). None in ABFE mode."""
         return self._ligand2
 
+    @property
+    def padding(self) -> float:
+        """Padding distance in nm around the system."""
+        return self._padding
+
     def __repr__(self) -> str:
         """Return a concise summary of this SystemPrep."""
         parts = ["SystemPrep("]

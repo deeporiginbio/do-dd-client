@@ -16,7 +16,8 @@ Usage::
     #     await docking.watch_async()
     # Script (blocking): asyncio.run(docking.watch_async())
     docking.sync()
-    poses = docking.get_results()
+    df = docking.get_results()
+    poses = docking.get_poses()
 """
 
 import concurrent.futures
@@ -25,6 +26,7 @@ from typing import Any, Self
 
 from beartype import beartype
 import numpy as np
+import pandas as pd
 
 from deeporigin.drug_discovery.execution import Execution
 from deeporigin.drug_discovery.execution_mixins import (
@@ -41,16 +43,41 @@ from deeporigin.platform.constants import (
     DOCKING_TOOL_KEY,
     DOCKING_TOOL_VERSION,
 )
+from deeporigin.utils.constants import DOCKING_RESULTS_DATAFRAME_COLUMNS
 
 Number = float | int
 
 
 def _ligand_tool_input_row(lig: Ligand) -> dict[str, Any]:
-    """Build one ligand entry for tool ``userInputs`` (id, smiles, optional mol_file)."""
-    row: dict[str, Any] = {"id": lig.id, "smiles": lig.smiles}
-    if lig.remote_path is not None:
-        row["mol_file"] = lig.remote_path
-    return row
+    """Build one ligand entry for tool ``userInputs`` (id and smiles only)."""
+    return {"id": lig.id, "smiles": lig.smiles}
+
+
+@beartype
+def _docking_default_name(*, protein: Protein, ligands: LigandSet) -> str:
+    """Build a short human-readable label for a Docking execution.
+
+    Uses ``protein.name`` and either the ligand count, a single ligand's name, or its SMILES.
+
+    Args:
+        protein: Target protein (``name`` is required).
+        ligands: Ligands to dock.
+
+    Returns:
+        A string such as ``Docking kras to 12 ligands.`` or ``Docking kras to CCO``.
+    """
+    p = protein.name
+    n = len(ligands)
+    if n == 0:
+        return f"Docking {p} to 0 ligands."
+    if n == 1:
+        lig = ligands[0]
+        if lig.name is not None and lig.name.strip():
+            lig_label = lig.name.strip()
+        else:
+            lig_label = lig.smiles if lig.smiles else "unnamed ligand"
+        return f"Docking {p} to {lig_label}"
+    return f"Docking {p} to {n} ligands."
 
 
 @beartype
@@ -72,6 +99,7 @@ class Docking(
         protein: Target protein structure.
         ligands: Set of ligands to dock.
         pocket: Binding pocket defining the docking box.
+        name: Execution label, set automatically from protein and ligands unless overridden.
     """
 
     tool_key: str = DOCKING_TOOL_KEY
@@ -86,6 +114,7 @@ class Docking(
         smiles_list: list[str] | None = None,
         tool_version: str = DOCKING_TOOL_VERSION,
         client: DeepOriginClient | None = None,
+        name: str | None = None,
     ) -> None:
         """Create a Docking execution.
 
@@ -101,6 +130,9 @@ class Docking(
             tool_version: Platform tool version to run. Settable so callers
                 can pin or upgrade independently of the SDK release.
             client: Optional API client.
+            name: Optional execution label. When omitted, set from ``protein.name``
+                and the ligands (e.g. ``Docking kras to 5 ligands.`` or
+                ``Docking kras to <SMILES or ligand name>`` for a single ligand).
         """
         provided = sum(x is not None for x in (ligand, ligands, smiles_list))
         if provided != 1:
@@ -122,6 +154,12 @@ class Docking(
         self._protein = protein
         self._pocket = pocket
         self._ligands = ligands
+
+        self.name = (
+            name
+            if name is not None
+            else _docking_default_name(protein=protein, ligands=ligands)
+        )
 
     @property
     def protein(self) -> Protein:
@@ -287,29 +325,32 @@ class Docking(
         Args:
             approve_amount: Pre-approved spend amount.
         """
-        from deeporigin.drug_discovery import utils
-        from deeporigin.platform.job import Job
 
         params, metadata = self._build_tool_inputs()
 
-        execution_dto = utils._start_tool_run(
-            params=params,
-            metadata=metadata,
-            tool="Docking",
-            tool_version=self.tool_version,
-            client=self.client,
-            approve_amount=approve_amount,
-        )
+        payload: dict[str, Any] = {
+            "inputs": params,
+            "outputs": {},
+            "metadata": metadata,
+        }
+        if self.name is not None:
+            payload["name"] = self.name
+        if approve_amount is not None:
+            payload["approveAmount"] = approve_amount
 
-        job = Job.from_dto(execution_dto, client=self.client)
-        self._id = job.id
-        self.status = job.status
+        execution_dto = self.client.executions.create(
+            data=payload,
+            tool_key=self.tool_key,
+            tool_version=self.tool_version,
+        )
+        self._id = execution_dto.get("executionId")
+        self.status = execution_dto.get("status")
 
     def _build_tool_inputs(self) -> tuple[dict, dict]:
         """Build params and metadata for a tool run.
 
         Syncs protein and ligands to the platform, then constructs
-        the payload dicts needed by ``_start_tool_run``.
+        the params and metadata passed to ``client.executions.create``.
 
         Returns:
             A tuple of (params, metadata).
@@ -374,30 +415,29 @@ class Docking(
         return params, metadata
 
     @classmethod
-    def from_id(
+    def from_dto(
         cls,
-        id: str,
+        dto: dict,
         *,
         client: DeepOriginClient | None = None,
     ) -> Self:
-        """Construct a Docking instance from an existing platform execution ID.
+        """Construct a Docking instance from an execution DTO.
 
-        Fetches the execution record and rehydrates the protein, pocket,
-        and ligands from the stored ``userInputs``. Protein and ligand
-        structure files are not downloaded; ``Protein.remote_path`` and each
-        ligand's ``remote_path`` are set from the execution payload (and API
-        metadata) so you can call :meth:`~deeporigin.drug_discovery.structures.entity.Entity.download`
+        Rehydrates the protein, pocket, and ligands from the stored
+        ``userInputs``. Protein and ligand structure files are not downloaded;
+        ``Protein.remote_path`` and each ligand's ``remote_path`` are set from
+        the execution payload (and API metadata) so you can call
+        :meth:`~deeporigin.drug_discovery.structures.entity.Entity.download`
         later if needed.
 
         Args:
-            id: Platform execution ID.
+            dto: Execution payload (same shape as ``client.executions.get``).
             client: Optional API client. Uses the default if not provided.
 
         Returns:
-            A fully-hydrated Docking instance with status synced from
-            the platform.
+            A fully-hydrated Docking instance with status from the DTO.
         """
-        instance = super().from_id(id, client=client)
+        instance = super().from_dto(dto, client=client)
         inputs = instance._execution_dto["userInputs"]
 
         pocket_input = inputs.get("pocket", {})
@@ -457,13 +497,33 @@ class Docking(
 
         return instance
 
-    def get_results(self) -> LigandSet | None:
-        """Retrieve docking results from the platform.
+    @classmethod
+    def from_id(
+        cls,
+        id: str,
+        *,
+        client: DeepOriginClient | None = None,
+    ) -> Self:
+        """Construct a Docking instance from an existing platform execution ID.
 
-        Downloads result SDF files and returns a ``LigandSet``.
+        Fetches the execution record via the API and delegates to
+        :meth:`from_dto`.
+
+        Args:
+            id: Platform execution ID.
+            client: Optional API client. Uses the default if not provided.
 
         Returns:
-            A ``LigandSet`` of docked poses, or ``None`` if no results yet.
+            A fully-hydrated Docking instance with status synced from
+            the platform.
+        """
+        return super().from_id(id, client=client)
+
+    def _list_pose_records(self) -> list[dict[str, Any]]:
+        """Return raw pose rows from ``client.results.get_poses`` for this job.
+
+        Returns:
+            The ``data`` list from the results API.
 
         Raises:
             ValueError: If no execution has been started.
@@ -472,13 +532,61 @@ class Docking(
             raise ValueError("No execution has been started. Call start() first.")
 
         response = self.client.results.get_poses(
-            protein_id=self.protein.id,
             compute_job_id=self.id,
+            limit=None,
         )
-        records = response.get("data", [])
+        raw = response.get("data", [])
+        return raw if isinstance(raw, list) else []
+
+    def get_results(self) -> pd.DataFrame | None:
+        """Retrieve docking results as a table (no structure download).
+
+        Columns: ID, protein ID, ligand ID, pocket ID, binding energy, pose_score.
+
+        Returns:
+            A DataFrame with one row per pose record, or ``None`` if the API
+            returns no pose rows yet.
+
+        Raises:
+            ValueError: If no execution has been started.
+        """
+        records = self._list_pose_records()
+        if not records:
+            return None
+
+        rows: list[dict[str, Any]] = []
+        for record in records:
+            data = record.get("data") or {}
+            if not isinstance(data, dict):
+                data = {}
+            rows.append(
+                {
+                    "ID": record.get("id"),
+                    "protein ID": data.get("protein_id"),
+                    "ligand ID": data.get("ligand_id"),
+                    "pocket ID": data.get("pocket_id"),
+                    "binding energy": data.get("binding_energy"),
+                    "pose_score": data.get("pose_score"),
+                }
+            )
+
+        return pd.DataFrame(rows, columns=list(DOCKING_RESULTS_DATAFRAME_COLUMNS))
+
+    def get_poses(self) -> LigandSet | None:
+        """Download pose SDFs from the platform and return a ``LigandSet``.
+
+        Returns:
+            A ``LigandSet`` of docked poses, or ``None`` if no pose files yet.
+
+        Raises:
+            ValueError: If no execution has been started.
+        """
+        records = self._list_pose_records()
         remote_paths: list[str] = []
         for record in records:
             data = record.get("data", {})
+            if not isinstance(data, dict):
+                continue
             fp = data.get("file_path")
             if fp:
                 remote_paths.append(fp)

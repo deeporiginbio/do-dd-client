@@ -492,6 +492,18 @@ def test_ligand_property_management():
     assert ligand.get_property("non_existent") is None
 
 
+def test_to_sdf_requires_rehydration_when_remote_path_only():
+    """to_sdf/to_file must not perform I/O; fail if remote_path set but no local file."""
+    ligand = Ligand.from_smiles("CCO", name="Ethanol")
+    ligand.remote_path = "entities/ligands/fake.sdf"
+
+    with pytest.raises(DeepOriginException, match="not rehydrated"):
+        ligand.to_sdf()
+
+    with pytest.raises(DeepOriginException, match="not rehydrated"):
+        ligand.to_file()
+
+
 def test_ligand_file_writing():
     """Test file writing methods"""
     ligand = Ligand.from_smiles("CCO", name="Ethanol")
