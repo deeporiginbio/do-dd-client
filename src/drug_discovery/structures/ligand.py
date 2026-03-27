@@ -1010,32 +1010,6 @@ class Ligand(Entity):
         return self.write_to_file(output_path=output_path, output_format="mol")
 
     @beartype
-    def _assert_rehydrated_for_sdf_export(self) -> None:
-        """Require a local file when :attr:`remote_path` is set.
-
-        If the ligand was created with ``from_id(..., download=False)``, only
-        :attr:`remote_path` is set until :meth:`download` runs. :meth:`to_sdf` and
-        :meth:`to_file` do not perform I/O; call ``download(client=...)`` first (or use
-        ``from_id(..., download=True)``).
-
-        Raises:
-            DeepOriginException: If :attr:`remote_path` is set but neither
-                :attr:`file_path` nor :attr:`local_path` is set.
-        """
-        if self.remote_path is None:
-            return
-        if self.file_path is not None or self.local_path is not None:
-            return
-        raise DeepOriginException(
-            title="Ligand not rehydrated",
-            message=(
-                "Cannot write SDF: remote_path is set but no local file is available. "
-                "Call Ligand.download() to fetch the structure file, or use "
-                "from_id(..., download=True)."
-            ),
-        )
-
-    @beartype
     def to_sdf(
         self,
         output_path: Optional[str] = None,
@@ -1050,7 +1024,10 @@ class Ligand(Entity):
             output_path: Path for the SDF file, or default under ``LIGANDS_DIR``.
         """
 
-        self._assert_rehydrated_for_sdf_export()
+        self._assert_rehydrated_for_file_export(
+            entity_label="Ligand",
+            format_name="SDF",
+        )
 
         if output_path is None:
             output_path = LIGANDS_DIR / (self.to_hash() + ".sdf")
@@ -2323,7 +2300,10 @@ class LigandSet:
         writer = Chem.SDWriter(str(path))
         try:
             for ligand in self.ligands:
-                ligand._assert_rehydrated_for_sdf_export()
+                ligand._assert_rehydrated_for_file_export(
+                    entity_label="Ligand",
+                    format_name="SDF",
+                )
                 # Ensure all properties are set on the RDKit Mol object
                 if ligand.name is not None:
                     ligand.set_property("_Name", ligand.name)
