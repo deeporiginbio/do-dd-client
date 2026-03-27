@@ -1165,7 +1165,7 @@ class Ligand(Entity):
             except Exception:
                 pass
 
-        proj_id = self.resolved_project_id()
+        proj_id = self.resolved_project_id(client=client)
         if proj_id is not None:
             kwargs["project_id"] = proj_id
 
@@ -1209,7 +1209,7 @@ class Ligand(Entity):
         if remote_path is not None:
             self.remote_path = remote_path
 
-        proj_id = self.resolved_project_id()
+        proj_id = self.resolved_project_id(client=client)
         scope_filter: dict[str, Any] = {}
         if proj_id is not None:
             scope_filter["project_id"] = proj_id
@@ -1236,8 +1236,12 @@ class Ligand(Entity):
 
         self.register(client=client, remote_path=remote_path)
 
-    def _to_row(self) -> dict[str, Any]:
+    def _to_row(self, *, client: DeepOriginClient | None = None) -> dict[str, Any]:
         """Build a batch-create row dict from this ligand.
+
+        Args:
+            client: Used with :meth:`resolved_project_id` when ``project_id``
+                is not set on this ligand.
 
         Returns:
             Dict suitable for ``batch_create_ligands`` rows.
@@ -1273,7 +1277,7 @@ class Ligand(Entity):
         else:
             row["formal_charge"] = 0
 
-        proj_id = self.resolved_project_id()
+        proj_id = self.resolved_project_id(client=client)
         if proj_id is not None:
             row["project_id"] = proj_id
         return row
@@ -1310,6 +1314,13 @@ class Ligand(Entity):
 
         return MolToImage(self.mol)
 
+    def _ligand_viewer_html(self) -> str:
+        """Raw HTML from the molstar viewer for this ligand (no iframe / display)."""
+        sdf_file = self.to_sdf()
+        viewer = MoleculeViewer(str(sdf_file), format="sdf")
+        ligand_config = viewer.get_ligand_visualization_config()
+        return viewer.render_ligand(ligand_config=ligand_config)
+
     def show(self) -> str | None:
         """
         Visualize the current state of the ligand molecule.
@@ -1323,11 +1334,7 @@ class Ligand(Entity):
 
         """
         try:
-            sdf_file = self.to_sdf()
-
-            viewer = MoleculeViewer(str(sdf_file), format="sdf")
-            ligand_config = viewer.get_ligand_visualization_config()
-            html = viewer.render_ligand(ligand_config=ligand_config)
+            html = self._ligand_viewer_html()
 
             from deeporigin.utils.notebook import render_html
 
@@ -1344,7 +1351,12 @@ class Ligand(Entity):
         """
         try:
             print(self.mol)
-            return self.show()
+            html = self._ligand_viewer_html()
+            from deeporigin.utils.notebook import get_notebook_environment, render_html
+
+            if get_notebook_environment() == "marimo":
+                return render_html(html)
+            return render_html(html, return_iframe_string=True)
         except Exception as e:
             print(f"Warning: Failed to generate HTML representation: {str(e)}")
             return self.__str__()
@@ -2415,7 +2427,11 @@ class LigandSet:
                 "mol before calling sync()."
             )
 
-        proj_id = ligands_to_sync[0].resolved_project_id() if ligands_to_sync else None
+        proj_id = (
+            ligands_to_sync[0].resolved_project_id(client=client)
+            if ligands_to_sync
+            else None
+        )
         scope_filter: dict[str, Any] = {}
         if proj_id is not None:
             scope_filter["project_id"] = proj_id
@@ -2443,7 +2459,7 @@ class LigandSet:
             if lig.file_path is not None:
                 lig.upload(client=client)
 
-        rows = [lig._to_row() for lig in to_create]
+        rows = [lig._to_row(client=client) for lig in to_create]
         result = client.entities.batch_create_ligands(rows=rows)
         created_by_smiles = self._index_by_canonical_smiles(result.get("data", []))
 

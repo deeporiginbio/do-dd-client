@@ -78,6 +78,20 @@ def _apply_search_filters(
     for key, value in filter_dict.items():
         if key in skip_keys:
             continue
+        # Fixture ligands are stored with project_id=None (unscoped). When the
+        # client searches with a concrete project_id, still match those rows so
+        # sync() can resolve pre-seeded BRD ligands without a duplicate insert.
+        if key == "project_id":
+            if isinstance(value, dict) and "eq" in value:
+                target = value["eq"]
+            else:
+                target = value
+            results = [
+                r
+                for r in results
+                if r.get("project_id") == target or r.get("project_id") is None
+            ]
+            continue
         if isinstance(value, dict):
             if "in" in value:
                 allowed = (

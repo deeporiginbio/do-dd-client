@@ -95,17 +95,15 @@ client = DeepOriginClient.get(
     retry_backoff_factor=0.5,  # Delay = 0.5 * (2 ** attempt_number)
 )
 
-# Customize which status codes trigger retries
-client = DeepOriginClient.get(
-    max_retries=3,
-    retryable_status_codes={429, 500, 502, 503, 504, 408},  # Include 408 (Request Timeout)
-)
+# Default retry status codes are ``deeporigin.utils.constants.HTTP_RETRYABLE_STATUS_CODES``.
+# Override on the instance if needed (advanced):
+# client.retryable_status_codes = frozenset({429, 500, 502, 503, 504, 408})
 ```
 
 ### Retry Parameters
 
 - `max_retries`: Maximum number of retry attempts (default: 3). Set to 0 to disable retries.
-- `retryable_status_codes`: Set of HTTP status codes that should trigger a retry (default: `{429, 500, 502, 503, 504}`).
+- Retryable HTTP status codes are fixed at import time; see ``HTTP_RETRYABLE_STATUS_CODES`` in ``deeporigin.utils.constants``. You can assign ``client.retryable_status_codes`` after construction for rare overrides.
 - `retry_backoff_factor`: Multiplier for exponential backoff between retries. The delay before retry attempt `n` is calculated as `retry_backoff_factor * (2 ** n)` seconds. Default: 1.0.
 
 ### Example: Handling Rate Limits
@@ -119,7 +117,6 @@ from deeporigin.platform.client import DeepOriginClient
 client = DeepOriginClient.get(
     max_retries=5,
     retry_backoff_factor=2.0,  # Longer delays between retries
-    retryable_status_codes={429, 500, 502, 503, 504},
 )
 
 # The client will automatically retry on 429 errors with increasing delays

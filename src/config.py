@@ -6,8 +6,10 @@ This module stores and retrieves configuration values including ``env``,
 Behavior:
 - If the config file does not exist, it is created with defaults.
 - If the config file exists, it is read and a dictionary is returned.
-- ``project_id`` is read from disk only (not overridden by environment
-  variables), so CI and scripts do not inherit a stale project selection.
+- ``project_id`` on disk is used when constructing
+  :class:`~deeporigin.platform.client.DeepOriginClient` (unless ``DO_PROJECT_ID``
+  is set). Persisting a new selection with :func:`set_project_id` clears the
+  client cache so the next client picks it up.
 """
 
 import json
@@ -143,9 +145,11 @@ def _merge_config_disk(updates: dict[str, Any]) -> None:
 
 
 def get_project_id() -> str | None:
-    """Return the current data platform project id from the config file.
+    """Return the persisted data platform project id from the config file.
 
-    This value is not overridden by environment variables.
+    The :class:`~deeporigin.platform.client.DeepOriginClient` resolves its
+    ``project_id`` from ``DO_PROJECT_ID`` first, then this file, when no explicit
+    ``project_id`` is passed to the constructor.
 
     Returns:
         The project id string, or None if no project is selected.
@@ -163,11 +167,18 @@ def get_project_id() -> str | None:
 def set_project_id(value: str | None) -> None:
     """Persist the current project id (or clear it).
 
+    Clears cached :class:`~deeporigin.platform.client.DeepOriginClient`
+    instances so the next :meth:`~deeporigin.platform.client.DeepOriginClient.get`
+    loads the updated selection.
+
     Args:
         value: Platform project id, or None to clear the current project.
     """
 
     _merge_config_disk({"project_id": value})
+    from deeporigin.platform.client import DeepOriginClient
+
+    DeepOriginClient.close_all()
     if _supports_unicode_output():
         check, arrow = "✔︎", "→"
     else:
@@ -190,8 +201,9 @@ def get_value() -> dict:
 
     Returns:
         A dictionary with keys ``env``, ``org_key``, and ``project_id``.
-        ``project_id`` comes from the disk file only; ``env`` and ``org_key``
-        may be overridden by environment variables.
+        ``project_id`` is the on-disk value only (not merged with ``DO_PROJECT_ID``;
+        the client applies ``DO_PROJECT_ID`` at construction time). ``env`` and
+        ``org_key`` may be overridden by environment variables.
     """
 
     _ensure_config_file_exists()

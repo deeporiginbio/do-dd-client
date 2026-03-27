@@ -10,6 +10,19 @@ from deeporigin.platform import DeepOriginClient
 
 FIXTURES_DIR = Path(__file__).parent / "fixtures"
 
+
+@pytest.fixture(autouse=True)
+def _reset_deeporigin_client_cache() -> None:
+    """Drop cached clients so each test builds from current on-disk config.
+
+    :class:`~deeporigin.platform.client.DeepOriginClient` resolves
+    ``project_id`` at construction time; without a reset, a stale singleton
+    would diverge from ``~/.deeporigin/config.json`` until
+    :meth:`~deeporigin.platform.client.DeepOriginClient.close_all` runs.
+    """
+    DeepOriginClient.close_all()
+
+
 PROTEIN_REMOTE_PATH = "testing/brd.pdb"
 LIGAND_REMOTE_PATH = "testing/brd-2.sdf"
 POCKET_PDB_PATH = FIXTURES_DIR / "files" / "pocketfinder" / "pocket_1.pdb"

@@ -208,7 +208,7 @@ def test_client_tag_none_explicitly_passed():
 
 
 def test_client_app_session_same_params_same_instance():
-    """Same (base_url, token, org_key, tag, _app, _session) yields same cached instance."""
+    """Same (base_url, token, org_key, project_id, tag, _app, _session) yields same cached instance."""
     DeepOriginClient.close_all()
 
     client1 = DeepOriginClient(env="local")

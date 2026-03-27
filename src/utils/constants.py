@@ -26,11 +26,15 @@ API_ENDPOINT = {
 DEFAULT_SEARCH_PAGE_SIZE = 100
 """Default page size for paginated entity search requests."""
 
+HTTP_RETRYABLE_STATUS_CODES: frozenset[int] = frozenset((429, 500, 502, 503, 504))
+"""HTTP status codes for which :class:`~deeporigin.platform.client.DeepOriginClient` retries requests."""
+
 ENV_VARIABLES = {
     "access_token": "DO_AUTH_TOKEN",
     "org_key": "DO_ORG_KEY",
     "env": "DO_ENV",
     "base_url": "DO_BASE_URL",
+    "project_id": "DO_PROJECT_ID",
 }
 
 UFA_PROVIDER = "ufa"

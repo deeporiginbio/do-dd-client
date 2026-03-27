@@ -176,15 +176,27 @@ def render_html(
     html: str,
     *,
     height: int = 600,
+    return_iframe_string: bool = False,
 ):
     """Render HTML in a Jupyter or marimo Notebook cell with configurable height.
 
     Args:
         html (str): Raw HTML content to display.
         height (int): Height of the iframe in pixels.
+        return_iframe_string: If True (Jupyter only), return the iframe markup without
+            calling ``display``. Used by ``_repr_html_`` so notebook execution (e.g.
+            nbconvert) receives a string instead of ``None`` from ``display()``.
+
+    Returns:
+        In marimo: a ``mo.Html`` wrapper. In Jupyter, ``None`` after ``display`` unless
+        ``return_iframe_string`` is True, in which case the iframe HTML string.
     """
 
     if get_notebook_environment() == "marimo":
+        if return_iframe_string:
+            raise ValueError(
+                "return_iframe_string is not supported in marimo; use default rendering."
+            )
         import base64
 
         import marimo as mo
@@ -203,4 +215,6 @@ def render_html(
                     style="width:100%; height:{height}px; border:0;">
             </iframe>
         """
+        if return_iframe_string:
+            return iframe_code
         return display(HTML(iframe_code))

@@ -73,9 +73,7 @@ def _start_tool_run(
     if name is not None:
         payload["name"] = name
 
-    from deeporigin.config import get_project_id
-
-    proj_id = get_project_id()
+    proj_id = client.project_id
     if proj_id is not None:
         payload["projectId"] = proj_id
 

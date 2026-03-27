@@ -9,8 +9,9 @@ Requires the **core** optional dependency (includes `pandas`) for DataFrame help
 ## Configuration
 
 The current project id is stored in `~/.deeporigin/config.json` under `project_id`.
-It is read via `deeporigin.config.get_project_id()` and is not overridden by
-environment variables (unlike `org_key` / `env`).
+`DeepOriginClient` exposes it as `client.project_id`: `DO_PROJECT_ID` overrides
+the on-disk value, and changing the selection with `set_project_id` clears the
+client cache so the next `DeepOriginClient.get()` picks up the new id.
 
 ## API reference
 

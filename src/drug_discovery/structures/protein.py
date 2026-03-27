@@ -1586,7 +1586,7 @@ class Protein(Entity):
             kwargs["protein_length"] = self.length
         kwargs["protein_name"] = self.name
 
-        proj_id = self.resolved_project_id()
+        proj_id = self.resolved_project_id(client=client)
         if proj_id is not None:
             kwargs["project_id"] = proj_id
 
@@ -1623,7 +1623,9 @@ class Protein(Entity):
             row includes ``project_id``.
         """
         if lazy and self.id is not None:
-            proj_id = self.resolved_project_id()
+            if client is None:
+                client = DeepOriginClient.get()
+            proj_id = self.resolved_project_id(client=client)
             if proj_id is not None:
                 self.project_id = proj_id
             return
@@ -1633,7 +1635,7 @@ class Protein(Entity):
 
         self.upload(client=client, remote_path=remote_path)
 
-        proj_id = self.resolved_project_id()
+        proj_id = self.resolved_project_id(client=client)
         if proj_id is not None:
             self.project_id = proj_id
 

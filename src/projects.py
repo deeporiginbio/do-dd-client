@@ -10,7 +10,7 @@ from typing import Any
 from beartype import beartype
 from beartype.typing import List
 
-from deeporigin.config import clear_project_id, get_project_id, set_project_id
+from deeporigin.config import clear_project_id, set_project_id
 from deeporigin.drug_discovery.structures.ligand import LigandSet
 from deeporigin.drug_discovery.structures.protein import Protein
 from deeporigin.exceptions import DeepOriginException
@@ -26,7 +26,7 @@ from deeporigin.utils.constants import (
 def _require_project_id() -> str:
     """Return the current project id or raise."""
 
-    pid = get_project_id()
+    pid = DeepOriginClient.get().project_id
     if pid is None:
         raise DeepOriginException(
             title="No current project",
@@ -41,8 +41,10 @@ def _require_project_id() -> str:
 def current() -> tuple[str, str | None] | None:
     """Return the current project id and display name.
 
-    The id is read from ``~/.deeporigin/config.json``. The name is loaded from
-    the data platform via :meth:`deeporigin.platform.projects.Projects.get`.
+    The id comes from :attr:`deeporigin.platform.client.DeepOriginClient.project_id`
+    (``DO_PROJECT_ID``, explicit selection, or ``~/.deeporigin/config.json``).
+    The name is loaded from the data platform via
+    :meth:`deeporigin.platform.projects.Projects.get`.
 
     Returns:
         ``(project_id, name)`` when a project is selected. ``name`` is ``None``
@@ -52,10 +54,10 @@ def current() -> tuple[str, str | None] | None:
         ``None`` when no project is selected.
     """
 
-    pid = get_project_id()
+    client = DeepOriginClient.get()
+    pid = client.project_id
     if pid is None:
         return None
-    client = DeepOriginClient.get()
     if client.projects is None:
         return (pid, None)
     try:

@@ -205,7 +205,7 @@ def test_max_retries_exhausted(mock_client_config):
 
 
 def test_custom_retryable_status_codes(mock_client_config):
-    """Test that custom retryable status codes work."""
+    """Test assigning ``retryable_status_codes`` on the client instance."""
     call_count_500 = {"count": 0}
     call_count_503 = {"count": 0}
 
@@ -227,8 +227,8 @@ def test_custom_retryable_status_codes(mock_client_config):
         env="local",
         base_url="http://test",
         max_retries=2,
-        retryable_status_codes={503, 504},
     )
+    client_500.retryable_status_codes = frozenset({503, 504})
     client_500._client = httpx.Client(transport=transport_500, base_url="http://test")
 
     with pytest.raises(DeepOriginException):
@@ -245,8 +245,8 @@ def test_custom_retryable_status_codes(mock_client_config):
         env="local",
         base_url="http://test",
         max_retries=2,
-        retryable_status_codes={503, 504},
     )
+    client_503.retryable_status_codes = frozenset({503, 504})
     client_503._client = httpx.Client(transport=transport_503, base_url="http://test")
 
     result = client_503._get("/test")

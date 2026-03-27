@@ -24,8 +24,8 @@ class Entity(ABC):
     call :meth:`download` when you need a local file for display or analysis.
 
     ``project_id`` optionally pins the data platform project for this row. When
-    unset, :meth:`resolved_project_id` falls back to the current project in
-    ``~/.deeporigin/config.json``.
+    unset, pass the :class:`~deeporigin.platform.client.DeepOriginClient` into
+    :meth:`resolved_project_id` so the id comes from the client.
     """
 
     id: str | None = field(default=None, kw_only=True)
@@ -33,21 +33,26 @@ class Entity(ABC):
     local_path: str | None = field(default=None, kw_only=True)
     project_id: str | None = field(default=None, kw_only=True)
 
-    def resolved_project_id(self) -> str | None:
+    def resolved_project_id(self, client: DeepOriginClient | None = None) -> str | None:
         """Data platform project id for API calls.
 
-        Returns :attr:`project_id` when set; otherwise the configured current
-        project from :func:`deeporigin.config.get_project_id`.
+        Returns :attr:`project_id` when set; otherwise ``client.project_id`` when
+        ``client`` is given; otherwise ``None``. Does not read the filesystem.
+
+        Args:
+            client: Optional platform client (e.g. the one passed to
+                :meth:`sync`).
 
         Returns:
-            Project id string, or None if neither is set.
+            Project id string, or None if neither the entity nor the client
+            provides one.
         """
 
         if self.project_id is not None:
             return self.project_id
-        from deeporigin.config import get_project_id
-
-        return get_project_id()
+        if client is not None:
+            return client.project_id
+        return None
 
     @abstractmethod
     def to_hash(self) -> str:

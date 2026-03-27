@@ -18,7 +18,6 @@ from typing import (
     Dict,
     Optional,
     Self,
-    Set,
     Tuple,
     get_args,
 )
@@ -30,7 +29,12 @@ import httpx
 from deeporigin.auth import get_token
 from deeporigin.config import get_value
 from deeporigin.exceptions import DeepOriginException
-from deeporigin.utils.constants import API_ENDPOINT, ENV_VARIABLES, ENVS
+from deeporigin.utils.constants import (
+    API_ENDPOINT,
+    ENV_VARIABLES,
+    ENVS,
+    HTTP_RETRYABLE_STATUS_CODES,
+)
 from deeporigin.utils.env import _ensure_do_folder
 
 if TYPE_CHECKING:
@@ -167,16 +171,42 @@ def _infer_env_from_base_url(base_url: str) -> ENVS:
         return "prod"
 
 
+def _resolve_project_id_for_client(explicit: str | None = None) -> str | None:
+    """Resolve data platform project id for client construction.
+
+    Precedence: ``DO_PROJECT_ID`` environment variable, then explicit
+    ``project_id`` argument, then :func:`deeporigin.config.get_project_id`
+    (persisted selection in ``~/.deeporigin/config.json``).
+
+    Args:
+        explicit: Optional project id passed to :class:`DeepOriginClient`.
+
+    Returns:
+        Project id string, or ``None`` if unset.
+    """
+    env_key = ENV_VARIABLES["project_id"]
+    if env_key in os.environ:
+        raw = os.environ[env_key].strip()
+        return raw if raw else None
+    if explicit is not None:
+        s = str(explicit).strip()
+        return s if s else None
+    from deeporigin.config import get_project_id
+
+    return get_project_id()
+
+
 class DeepOriginClient:
     """
     Minimal synchronous API client with built-in singleton cache.
 
-    The client automatically caches instances based on (base_url, token, org_key, tag).
+    The client automatically caches instances based on
+    (base_url, token, org_key, project_id, tag, _app, _session).
     This means calling `DeepOriginClient()` multiple times with the same parameters
     will return the same cached instance, reusing the connection pool.
 
     If called without arguments, reads config from disk. Can also pass explicit
-    token, org_key, base_url, and tag parameters.
+    token, org_key, base_url, project_id, and tag parameters.
 
     Example:
         # Both of these return the same cached instance
@@ -200,9 +230,10 @@ class DeepOriginClient:
     projects: Projects | None
 
     # class-level registry for singleton instances
-    # Key: (base_url, token, org_key, tag, _app, _session); org_key/tag/_session may be None
+    # Key: (base_url, token, org_key, project_id, tag, _app, _session); optional fields may be None
     _instances: Dict[
-        Tuple[str, str, str | None, str | None, str, str | None], "DeepOriginClient"
+        Tuple[str, str, str | None, str | None, str | None, str, str | None],
+        "DeepOriginClient",
     ] = {}
 
     def __new__(
@@ -212,9 +243,9 @@ class DeepOriginClient:
         org_key: str | None = None,
         env: ENVS | None = None,
         base_url: str | None = None,
+        project_id: str | None = None,
         timeout: float = 10.0,
         max_retries: int = 3,
-        retryable_status_codes: Set[int] | None = None,
         retry_backoff_factor: float = 1.0,
         max_retry_delay: float = 60.0,
         record: bool = False,
@@ -236,7 +267,6 @@ class DeepOriginClient:
             base_url: Base URL for the API.
             timeout: Request timeout in seconds.
             max_retries: Maximum number of retry attempts.
-            retryable_status_codes: Set of HTTP status codes that should trigger retry.
             retry_backoff_factor: Multiplier for exponential backoff.
             max_retry_delay: Maximum delay in seconds between retry attempts.
             record: Whether to record function run responses.
@@ -274,9 +304,19 @@ class DeepOriginClient:
             env=env, token=token, org_key=org_key, base_url=base_url
         )
 
+        resolved_project_id = _resolve_project_id_for_client(project_id)
+
         # Normalize base_url for the key
         normalized_base_url = base_url.rstrip("/") + "/"
-        key = (normalized_base_url, token, org_key, tag, _app, _session)
+        key = (
+            normalized_base_url,
+            token,
+            org_key,
+            resolved_project_id,
+            tag,
+            _app,
+            _session,
+        )
 
         # Return cached instance if it exists
         if key in cls._instances:
@@ -295,9 +335,9 @@ class DeepOriginClient:
         org_key: str | None = None,
         env: ENVS | None = None,
         base_url: str | None = None,
+        project_id: str | None = None,
         timeout: float = 10.0,
         max_retries: int = 3,
-        retryable_status_codes: Set[int] | None = None,
         retry_backoff_factor: float = 1.0,
         max_retry_delay: float = 60.0,
         record: bool = False,
@@ -307,9 +347,10 @@ class DeepOriginClient:
     ):
         """Initialize a DeepOrigin Platform client.
 
-        Environment variables (DO_AUTH_TOKEN, DO_ORG_KEY, DO_ENV)
-        ALWAYS override explicit parameters and configuration files. If environment
-        variables are set, disk configuration is NOT read.
+        Environment variables (DO_AUTH_TOKEN, DO_ORG_KEY, DO_ENV, DO_PROJECT_ID)
+        ALWAYS override explicit parameters and configuration files where
+        applicable. If environment variables are set, disk configuration is NOT
+        read for those keys.
 
         If environment variables are not set, explicit parameters are used. If
         parameters are None, values are read from configuration files on disk.
@@ -322,11 +363,11 @@ class DeepOriginClient:
             env: Environment name (e.g., 'prod', 'staging'). Overridden by
                 DO_ENV env var. If None and base_url is None, reads from config.
             base_url: Base URL for the API. If None, derived from env or config.
+            project_id: Data platform project id. Overridden by DO_PROJECT_ID
+                env var. If None, reads from ``project_id`` in on-disk config.
             timeout: Request timeout in seconds.
             max_retries: Maximum number of retry attempts for failed requests.
                 Defaults to 3. Set to 0 to disable retries.
-            retryable_status_codes: Set of HTTP status codes that should trigger
-                a retry. Defaults to {429, 500, 502, 503, 504}.
             retry_backoff_factor: Multiplier for exponential backoff between retries.
                 Delay = min(retry_backoff_factor * (2 ** attempt_number), max_retry_delay).
                 The delay grows exponentially but is capped at max_retry_delay to prevent
@@ -378,6 +419,7 @@ class DeepOriginClient:
         )
 
         self._org_key = org_key
+        self._project_id = _resolve_project_id_for_client(project_id)
         self.base_url = base_url.rstrip("/") + "/"
 
         try:
@@ -459,11 +501,7 @@ class DeepOriginClient:
 
         # Retry configuration
         self.max_retries = max_retries
-        self.retryable_status_codes = (
-            retryable_status_codes
-            if retryable_status_codes is not None
-            else {429, 500, 502, 503, 504}
-        )
+        self.retryable_status_codes = HTTP_RETRYABLE_STATUS_CODES
         self.retry_backoff_factor = retry_backoff_factor
         self.max_retry_delay = max_retry_delay
         self.record = record
@@ -504,6 +542,19 @@ class DeepOriginClient:
                 level="danger",
             )
         return self._org_key
+
+    @property
+    def project_id(self) -> str | None:
+        """Data platform project id for this client instance.
+
+        Resolved at construction: ``DO_PROJECT_ID`` overrides an explicit
+        ``project_id`` argument, which overrides the value in
+        ``~/.deeporigin/config.json``.
+
+        Returns:
+            Project id string, or ``None`` if no project is selected.
+        """
+        return self._project_id
 
     @property
     def token(self) -> str:
@@ -556,9 +607,9 @@ class DeepOriginClient:
         org_key: str | None = None,
         env: ENVS | None = None,
         base_url: str | None = None,
+        project_id: str | None = None,
         timeout: float = 10.0,
         max_retries: int = 3,
-        retryable_status_codes: Set[int] | None = None,
         retry_backoff_factor: float = 1.0,
         max_retry_delay: float = 60.0,
         record: bool = False,
@@ -582,11 +633,10 @@ class DeepOriginClient:
             env: Environment name (e.g., 'prod', 'staging'). If None and
                 base_url is None, reads from config.
             base_url: Base URL for the API. If None, derived from env or config.
+            project_id: Data platform project id. ``DO_PROJECT_ID`` overrides when set.
             timeout: Request timeout in seconds.
             max_retries: Maximum number of retry attempts for failed requests.
                 Defaults to 3. Set to 0 to disable retries.
-            retryable_status_codes: Set of HTTP status codes that should trigger
-                a retry. Defaults to {429, 500, 502, 503, 504}.
             retry_backoff_factor: Multiplier for exponential backoff between retries.
                 Delay = min(retry_backoff_factor * (2 ** attempt_number), max_retry_delay).
                 The delay grows exponentially but is capped at max_retry_delay to prevent
@@ -645,12 +695,15 @@ class DeepOriginClient:
                 )
             )
 
+            resolved_project_id = _resolve_project_id_for_client(project_id)
+
             # Normalize and create key
             normalized_base_url = base_url_for_key.rstrip("/") + "/"
             key = (
                 normalized_base_url,
                 token_for_key,
                 org_key_for_key,
+                resolved_project_id,
                 tag,
                 _app,
                 _session,
@@ -669,9 +722,9 @@ class DeepOriginClient:
             org_key=org_key,
             env=env,
             base_url=base_url,
+            project_id=project_id,
             timeout=timeout,
             max_retries=max_retries,
-            retryable_status_codes=retryable_status_codes,
             retry_backoff_factor=retry_backoff_factor,
             max_retry_delay=max_retry_delay,
             record=record,
@@ -688,7 +741,6 @@ class DeepOriginClient:
         base_url: str | None = None,
         timeout: float = 10.0,
         max_retries: int = 3,
-        retryable_status_codes: Set[int] | None = None,
         retry_backoff_factor: float = 1.0,
         max_retry_delay: float = 60.0,
         record: bool = False,
@@ -709,8 +761,6 @@ class DeepOriginClient:
             timeout: Request timeout in seconds.
             max_retries: Maximum number of retry attempts for failed requests.
                 Defaults to 3. Set to 0 to disable retries.
-            retryable_status_codes: Set of HTTP status codes that should trigger
-                a retry. Defaults to {429, 500, 502, 503, 504}.
             retry_backoff_factor: Multiplier for exponential backoff between retries.
                 Delay = min(retry_backoff_factor * (2 ** attempt_number), max_retry_delay).
                 The delay grows exponentially but is capped at max_retry_delay to prevent
@@ -750,6 +800,7 @@ class DeepOriginClient:
                 org_key="deeporigin",
                 env="local",
                 base_url=base_url,
+                project_id=None,
                 timeout=timeout,
                 record=record,
                 _app=_app,
@@ -770,9 +821,9 @@ class DeepOriginClient:
             org_key=org_key,
             env=env,
             base_url=base_url,
+            project_id=None,
             timeout=timeout,
             max_retries=max_retries,
-            retryable_status_codes=retryable_status_codes,
             retry_backoff_factor=retry_backoff_factor,
             max_retry_delay=max_retry_delay,
             record=record,
@@ -805,12 +856,15 @@ class DeepOriginClient:
 
         base_url = headers["X-Do-Base-Url"]
         env = _infer_env_from_base_url(base_url)
+        raw_pid = headers.get("X-Do-Project-Id")
+        project_id = str(raw_pid).strip() if raw_pid else None
 
         return cls(
             token=headers["X-Do-Auth-Token"],
             org_key=headers["X-Do-Org-Key"],
             base_url=base_url,
             env=env,
+            project_id=project_id,
             _app=_app,
             _session=_session,
         )
@@ -821,7 +875,6 @@ class DeepOriginClient:
         *,
         timeout: float = 10.0,
         max_retries: int = 3,
-        retryable_status_codes: Set[int] | None = None,
         retry_backoff_factor: float = 1.0,
         max_retry_delay: float = 60.0,
         record: bool = False,
@@ -841,7 +894,6 @@ class DeepOriginClient:
         Args:
             timeout: Request timeout in seconds.
             max_retries: Maximum number of retry attempts for failed requests.
-            retryable_status_codes: Set of HTTP status codes that trigger a retry.
             retry_backoff_factor: Multiplier for exponential backoff between retries.
             max_retry_delay: Maximum delay in seconds between retry attempts.
             record: Whether to record function run responses to fixture files.
@@ -875,9 +927,9 @@ class DeepOriginClient:
             org_key=org_key,
             env=env,
             base_url=base_url,
+            project_id=None,
             timeout=timeout,
             max_retries=max_retries,
-            retryable_status_codes=retryable_status_codes,
             retry_backoff_factor=retry_backoff_factor,
             max_retry_delay=max_retry_delay,
             record=record,
@@ -1124,7 +1176,8 @@ class DeepOriginClient:
 
         # Build message with error details
         message_parts = [
-            f"A {method.upper()} request to the platform API failed (HTTP {error.response.status_code})."
+            f"A {method.upper()} request to the platform API failed (HTTP {error.response.status_code}).",
+            f"Platform API base URL: {self.base_url}",
         ]
         if error_message:
             message_parts.append(f"Error message: {error_message}")
