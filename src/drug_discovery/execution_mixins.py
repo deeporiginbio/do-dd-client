@@ -234,7 +234,7 @@ class AsyncExecutableMixin:
             A partially-hydrated instance with common fields populated.
         """
         if client is None:
-            client = DeepOriginClient.get()
+            client = DeepOriginClient()
 
         tool_info = dto["tool"]
         dto_tool_key = tool_info["key"]
@@ -295,7 +295,7 @@ class AsyncExecutableMixin:
             A partially-hydrated instance with common fields populated.
         """
         if client is None:
-            client = DeepOriginClient.get()
+            client = DeepOriginClient()
 
         dto = client.executions.get(id)
         return cls.from_dto(dto, client=client)
@@ -319,7 +319,7 @@ class AsyncExecutableMixin:
         from deeporigin.platform.job import JobList as PlatformJobList
 
         if client is None:
-            client = DeepOriginClient.get()
+            client = DeepOriginClient()
 
         jobs = PlatformJobList.list(
             client=client,

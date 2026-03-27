@@ -47,7 +47,7 @@ class Execution:
         if client is None:
             from deeporigin.platform.client import DeepOriginClient
 
-            client = DeepOriginClient.get()
+            client = DeepOriginClient()
         self.client: DeepOriginClient = client
 
     @property

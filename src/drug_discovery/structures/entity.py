@@ -80,7 +80,7 @@ class Entity(ABC):
         Args:
             lazy: If True, implementations may return early when already synced.
             client: DeepOrigin client. If None, implementations typically use
-                ``DeepOriginClient.get()``.
+                ``DeepOriginClient()``.
             remote_path: Optional explicit remote storage path for uploads.
         """
         ...
@@ -161,7 +161,7 @@ class Entity(ABC):
         No-ops if ``local_path`` is already set.
 
         Args:
-            client: DeepOriginClient instance. If None, uses DeepOriginClient.get().
+            client: DeepOriginClient instance. If None, uses DeepOriginClient().
 
         Returns:
             The local file path.
@@ -174,7 +174,7 @@ class Entity(ABC):
         if self.remote_path is None:
             raise ValueError("No local_path or remote_path available")
         if client is None:
-            client = DeepOriginClient.get()
+            client = DeepOriginClient()
         self.local_path = client.files.download(
             remote_path=self.remote_path,
             lazy=lazy,
@@ -191,14 +191,14 @@ class Entity(ABC):
         """Upload the entity to the remote server.
 
         Args:
-            client: DeepOriginClient instance. If None, uses DeepOriginClient.get().
+            client: DeepOriginClient instance. If None, uses DeepOriginClient().
             remote_path: Custom remote path to upload to. When provided, sets
                 :attr:`remote_path` before uploading. If :attr:`remote_path` is
                 still unset, it is set to the default hash-based path.
         """
 
         if client is None:
-            client = DeepOriginClient.get()
+            client = DeepOriginClient()
 
         if remote_path is not None:
             self.remote_path = remote_path

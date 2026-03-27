@@ -433,7 +433,7 @@ class Ligand(Entity):
                 SMILES string.
         """
         if client is None:
-            client = DeepOriginClient.get()
+            client = DeepOriginClient()
 
         data = client.entities.get_ligand(id=id)
         return cls._from_platform_record(data=data, client=client, download=download)
@@ -685,7 +685,7 @@ class Ligand(Entity):
                 states. Only species with abundance above this threshold are
                 considered. Defaults to 1.0.
             client: DeepOrigin client instance. If None, uses
-                ``DeepOriginClient.get()``.
+                ``DeepOriginClient()``.
             use_cache: Whether to use cached protonation results.
             quote: If True, request a cost estimate without executing.
 
@@ -695,7 +695,7 @@ class Ligand(Entity):
         from deeporigin.functions.protonation import protonate
 
         if client is None:
-            client = DeepOriginClient.get()
+            client = DeepOriginClient()
 
         result = protonate(
             smiles=self.smiles,
@@ -1124,7 +1124,7 @@ class Ligand(Entity):
         canonical SMILES.
 
         Args:
-            client: DeepOriginClient instance. If None, uses DeepOriginClient.get().
+            client: DeepOriginClient instance. If None, uses DeepOriginClient().
             remote_path: Custom remote path to upload to. Overrides the
                 default hash-based path.
 
@@ -1137,7 +1137,7 @@ class Ligand(Entity):
             only the SMILES will be used (no file upload will occur).
         """
         if client is None:
-            client = DeepOriginClient.get()
+            client = DeepOriginClient()
 
         mol_file: str | None = None
         if self.file_path is not None:
@@ -1191,7 +1191,7 @@ class Ligand(Entity):
         Args:
             lazy: If True, skip syncing when the ligand already has an ID.
                 Defaults to False.
-            client: DeepOriginClient instance. If None, uses DeepOriginClient.get().
+            client: DeepOriginClient instance. If None, uses DeepOriginClient().
             remote_path: Custom remote path to upload to. Overrides the
                 default hash-based path.
 
@@ -1204,7 +1204,7 @@ class Ligand(Entity):
             return
 
         if client is None:
-            client = DeepOriginClient.get()
+            client = DeepOriginClient()
 
         if remote_path is not None:
             self.remote_path = remote_path
@@ -1408,7 +1408,7 @@ class Ligand(Entity):
         from deeporigin.functions.molprops import molprops
 
         if client is None:
-            client = DeepOriginClient.get()
+            client = DeepOriginClient()
 
         props = molprops(
             smiles_list=[self.smiles],
@@ -2091,7 +2091,7 @@ class LigandSet:
             ValueError: If no docking results are found for the protein.
         """
         if client is None:
-            client = DeepOriginClient.get()
+            client = DeepOriginClient()
 
         response = client.results.get_poses(
             protein_id=protein_id,
@@ -2248,7 +2248,7 @@ class LigandSet:
                 states. Defaults to 1.0.
             use_cache: Whether to use cached protonation results.
             client: DeepOrigin client instance. If None, uses
-                ``DeepOriginClient.get()``.
+                ``DeepOriginClient()``.
             quote: If True, request a cost estimate without executing.
 
         Returns:
@@ -2285,7 +2285,7 @@ class LigandSet:
         """
 
         if client is None:
-            client = DeepOriginClient.get()
+            client = DeepOriginClient()
 
         from deeporigin.functions.molprops import molprops
 
@@ -2403,13 +2403,13 @@ class LigandSet:
         Args:
             lazy: If True, skip syncing ligands that already have an id.
             client: DeepOriginClient instance. If None, uses
-                DeepOriginClient.get().
+                DeepOriginClient().
         """
         if not self.ligands:
             return
 
         if client is None:
-            client = DeepOriginClient.get()
+            client = DeepOriginClient()
 
         ligands_to_sync = (
             [lig for lig in self.ligands if lig.id is None]
@@ -2509,7 +2509,7 @@ class LigandSet:
             and preserves the order of the requested IDs.
         """
         if client is None:
-            client = DeepOriginClient.get()
+            client = DeepOriginClient()
         records = client.entities.get_ligands(ids=ids)
         records_by_id = {record["id"]: record for record in records if record.get("id")}
         missing_ids = [ligand_id for ligand_id in ids if ligand_id not in records_by_id]

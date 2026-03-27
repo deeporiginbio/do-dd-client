@@ -78,6 +78,7 @@ class Projects:
     def search(
         self,
         *,
+        name: str | None = None,
         filter_dict: dict[str, Any] | None = None,
         limit: int | None = 100,
         offset: int | None = None,
@@ -86,7 +87,14 @@ class Projects:
     ) -> dict[str, Any]:
         """Search projects with optional filters.
 
+        The data platform applies ``filter`` as column predicates: plain values
+        use equality; objects use operators (e.g. ``{"name": {"icontains": "x"}}``).
+        See platform ``buildFilterWhere`` / entity search validation for supported ops.
+
         Args:
+            name: If set, restricts to rows whose ``name`` matches this substring
+                (case-insensitive), via ``{"icontains": name}``. Applied after
+                ``filter_dict`` and overrides a ``name`` key there.
             filter_dict: Extra filter criteria (``deleted`` is set False if omitted).
             limit: Maximum rows to return.
             offset: Skip offset.
@@ -101,6 +109,8 @@ class Projects:
         if filter_dict is not None:
             fd = filter_dict.copy()
             fd.setdefault("deleted", False)
+        if name is not None:
+            fd["name"] = {"icontains": name}
         body["filter"] = fd
         if limit is not None:
             body["limit"] = limit

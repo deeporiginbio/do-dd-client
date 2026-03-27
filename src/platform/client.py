@@ -4,6 +4,13 @@ This module provides a minimal synchronous HTTP client for interacting with the
 DeepOrigin Platform API. The client includes built-in authentication, singleton
 caching for connection reuse, and convenient access to platform resources like
 tools, functions, clusters, files, and executions.
+
+Construct a client using the no-arg constructor or one of three factory methods:
+
+- ``DeepOriginClient()`` — smart default: env vars if all present, else disk config
+- ``DeepOriginClient.from_headers(headers)`` — served tool (HTTP request headers)
+- ``DeepOriginClient.from_env_variables()`` — provisioned container (OS env vars only)
+- ``DeepOriginClient.from_disk(env=...)`` — interactive / Jupyter (``~/.deeporigin/``)
 """
 
 from __future__ import annotations
@@ -62,7 +69,6 @@ def _generate_local_token() -> str:
     """
     global _LOCAL_TOKEN_CACHE
 
-    # Return cached token if available to ensure consistency
     if _LOCAL_TOKEN_CACHE is not None:
         return _LOCAL_TOKEN_CACHE
 
@@ -91,130 +97,137 @@ def _generate_local_token() -> str:
     return _LOCAL_TOKEN_CACHE
 
 
-def _resolve_token_and_org_key(
-    env: ENVS,
-    token: str | None = None,
-    org_key: str | None = None,
-    base_url: str | None = None,
-) -> Tuple[str | None, str | None, str | None]:
-    """Resolve token and org_key based on environment and parameters.
+class _DeepOriginMeta(type):
+    """Metaclass that owns singleton caching and the no-arg priority chain.
 
-    For local environment: uses DO_AUTH_TOKEN and DO_ORG_KEY if set (e.g. from
-    E2E runner with real Keycloak token); otherwise auto-generates a token and
-    sets org_key to "deeporigin" for unit tests with mock server.
-    For other environments, environment variables override explicit parameters.
+    **Why a metaclass instead of __new__ + __init__?**
 
-    Args:
-        env: Environment name (e.g., 'prod', 'staging', 'local').
-        token: Explicit token parameter. May be None.
-        org_key: Explicit org_key parameter. May be None.
-        base_url: Base URL parameter. May be updated for local environment.
+    Python always calls ``__init__`` after ``__new__``, *even when ``__new__``
+    returns an already-initialized cached instance*.  A plain ``__new__``-based
+    singleton therefore forces ``__init__`` to carry awkward early-return guards:
 
-    Returns:
-        A tuple of (resolved_token, resolved_org_key, resolved_base_url).
+    .. code-block:: python
+
+        def __init__(self, ...):
+            if base_url is None:   # no-arg path already handled by __new__
+                return
+            if hasattr(self, "_client"):  # returned from cache, already set up
+                return
+            ...  # actual initialisation
+
+    Those guards make ``__init__`` hard to reason about because it has three
+    distinct entry points bundled into one method.
+
+    The metaclass ``__call__`` runs *before* ``__new__`` and ``__init__`` and
+    can return an existing object without ever invoking ``__init__``.  This
+    keeps ``__init__`` a clean, unconditional initialiser that always runs
+    exactly once per new instance:
+
+    .. code-block:: text
+
+        _DeepOriginMeta.__call__
+        │
+        ├── no-arg path  → delegates to from_env_variables / from_local / from_disk
+        │                  returns directly; __init__ is never called
+        │
+        ├── cache hit    → returns cls._instances[key]
+        │                  __init__ is never called
+        │
+        └── cache miss   → super().__call__(...)  # __new__ + __init__ run exactly once
+                           stores result in cache, returns
     """
-    # Special handling for local environment
-    if env == "local":
-        if ENV_VARIABLES["access_token"] in os.environ:
-            resolved_token = os.environ[ENV_VARIABLES["access_token"]]
-        elif token is not None:
-            resolved_token = token
-        else:
-            resolved_token = _generate_local_token()
-        if ENV_VARIABLES["org_key"] in os.environ:
-            resolved_org_key = os.environ[ENV_VARIABLES["org_key"]]
-        elif org_key is not None:
-            resolved_org_key = org_key
-        else:
-            resolved_org_key = "deeporigin"
+
+    def __call__(
+        cls,
+        *,
+        base_url: str | None = None,
+        token: str | None = None,
+        org_key: str | None = None,
+        project_id: str | None = None,
+        _app: str = "python-client",
+        _session: str | None = None,
+        **kwargs: Any,
+    ) -> "DeepOriginClient":
+        """Intercept construction to handle caching and the no-arg priority chain.
+
+        Args:
+            base_url: API base URL. When ``None`` (with no other core fields),
+                triggers the no-arg priority chain.
+            token: Authentication token.
+            org_key: Organization key.
+            project_id: Data platform project id.
+            _app: Internal app identifier; part of the cache key.
+            _session: Internal session identifier; part of the cache key.
+            **kwargs: Forwarded to ``__init__`` for new instances.
+
+        Returns:
+            A ``DeepOriginClient`` instance (cached or newly created).
+        """
+        # ---- no-arg priority chain ----
+        if base_url is None and token is None and org_key is None:
+            env_token = os.environ.get(ENV_VARIABLES["access_token"])
+            env_org = os.environ.get(ENV_VARIABLES["org_key"])
+            env_base_url = os.environ.get(ENV_VARIABLES["base_url"])
+            if env_token and env_org and env_base_url:
+                return cls.from_env_variables()
+            # Route to from_local when DO_ENV=local; pass hint to from_disk otherwise
+            # (from_disk itself never reads environment variables)
+            env_hint = os.environ.get(ENV_VARIABLES["env"]) or None
+            if env_hint == "local":
+                return cls.from_local()
+            return cls.from_disk(env_hint)
+
+        # ---- singleton cache lookup ----
         if base_url is None:
-            resolved_base_url = API_ENDPOINT["local"]
-        else:
-            resolved_base_url = base_url
-    else:
-        # Environment variables ALWAYS override explicit parameters and skip disk reads
-        if ENV_VARIABLES["access_token"] in os.environ:
-            resolved_token = os.environ[ENV_VARIABLES["access_token"]]
-        elif token is None:
-            resolved_token = get_token()
-        else:
-            resolved_token = token
+            raise ValueError(
+                "base_url is required when constructing with explicit credentials."
+            )
+        normalized_base_url = base_url.rstrip("/") + "/"
+        key = (normalized_base_url, token, org_key, project_id, _app, _session)
 
-        if ENV_VARIABLES["org_key"] in os.environ:
-            resolved_org_key = os.environ[ENV_VARIABLES["org_key"]]
-        elif org_key is None:
-            resolved_org_key = get_value()["org_key"]
-        else:
-            resolved_org_key = org_key
+        if key in cls._instances:
+            return cls._instances[key]
 
-        resolved_base_url = base_url
-
-    return resolved_token, resolved_org_key, resolved_base_url
-
-
-def _infer_env_from_base_url(base_url: str) -> ENVS:
-    """Infer the environment name from a base URL.
-
-    Args:
-        base_url: The API base URL string.
-
-    Returns:
-        The inferred environment name.
-    """
-    if "dev" in base_url:
-        return "dev"
-    elif "staging" in base_url:
-        return "staging"
-    elif "127.0.0.1" in base_url or "localhost" in base_url:
-        return "local"
-    else:
-        return "prod"
+        # ---- first-time construction: __new__ + __init__ run exactly once ----
+        instance = super().__call__(
+            base_url=base_url,
+            token=token,
+            org_key=org_key,
+            project_id=project_id,
+            _app=_app,
+            _session=_session,
+            **kwargs,
+        )
+        instance._cache_key = key
+        cls._instances[key] = instance
+        return instance
 
 
-def _resolve_project_id_for_client(explicit: str | None = None) -> str | None:
-    """Resolve data platform project id for client construction.
+class DeepOriginClient(metaclass=_DeepOriginMeta):
+    """Minimal synchronous API client with built-in singleton cache.
 
-    Precedence: ``DO_PROJECT_ID`` environment variable, then explicit
-    ``project_id`` argument, then :func:`deeporigin.config.get_project_id`
-    (persisted selection in ``~/.deeporigin/config.json``).
+    The four core fields (``base_url``, ``token``, ``org_key``, ``project_id``)
+    are set at construction time and exposed as read-only properties. Optional
+    mutable attributes (``tag``, ``record``, ``max_retries``, etc.) can be
+    modified after construction.
 
-    Args:
-        explicit: Optional project id passed to :class:`DeepOriginClient`.
+    The singleton cache keys on
+    ``(base_url, token, org_key, project_id, _app, _session)``. Calling the
+    constructor multiple times with the same resolved values returns the same
+    cached instance and reuses the underlying connection pool.
 
-    Returns:
-        Project id string, or ``None`` if unset.
-    """
-    env_key = ENV_VARIABLES["project_id"]
-    if env_key in os.environ:
-        raw = os.environ[env_key].strip()
-        return raw if raw else None
-    if explicit is not None:
-        s = str(explicit).strip()
-        return s if s else None
-    from deeporigin.config import get_project_id
+    Examples:
+        # No-arg: prefers OS env vars, falls back to ~/.deeporigin/
+        client = DeepOriginClient()
 
-    return get_project_id()
+        # Served tool — reads from HTTP request headers
+        client = DeepOriginClient.from_headers(request.headers)
 
+        # Provisioned container — strictly from OS env vars, raises if any missing
+        client = DeepOriginClient.from_env_variables()
 
-class DeepOriginClient:
-    """
-    Minimal synchronous API client with built-in singleton cache.
-
-    The client automatically caches instances based on
-    (base_url, token, org_key, project_id, tag, _app, _session).
-    This means calling `DeepOriginClient()` multiple times with the same parameters
-    will return the same cached instance, reusing the connection pool.
-
-    If called without arguments, reads config from disk. Can also pass explicit
-    token, org_key, base_url, project_id, and tag parameters.
-
-    Example:
-        # Both of these return the same cached instance
-        client1 = DeepOriginClient()
-        client2 = DeepOriginClient()  # Same instance as client1
-
-        # Different parameters create different cached instances
-        client3 = DeepOriginClient(tag="my-tag")  # Different instance
+        # Interactive / Jupyter — reads from ~/.deeporigin/ config files
+        client = DeepOriginClient.from_disk(env="prod")
     """
 
     tools: Tools | None
@@ -229,112 +242,28 @@ class DeepOriginClient:
     progress_reports: ProgressReports | None
     projects: Projects | None
 
-    # class-level registry for singleton instances
-    # Key: (base_url, token, org_key, project_id, tag, _app, _session); optional fields may be None
+    # Singleton registry — managed by _DeepOriginMeta.__call__.
+    # Key: (base_url, token, org_key, project_id, _app, _session)
     _instances: Dict[
-        Tuple[str, str, str | None, str | None, str | None, str, str | None],
+        Tuple[str, str | None, str | None, str | None, str, str | None],
         "DeepOriginClient",
     ] = {}
 
-    def __new__(
-        cls,
-        *,
-        token: str | None = None,
-        org_key: str | None = None,
-        env: ENVS | None = None,
-        base_url: str | None = None,
-        project_id: str | None = None,
-        timeout: float = 10.0,
-        max_retries: int = 3,
-        retry_backoff_factor: float = 1.0,
-        max_retry_delay: float = 60.0,
-        record: bool = False,
-        tag: str | None = None,
-        _app: str = "python-client",
-        _session: str | None = None,
-    ) -> Self:
-        """Create a new instance or return a cached one based on cache key.
+    def __new__(cls, **_kwargs: Any) -> "DeepOriginClient":
+        """Allocate a bare instance.
 
-        This method implements singleton-like behavior by checking the cache
-        before creating a new instance. If a cached instance exists with the
-        same (base_url, token, org_key, tag, _app, _session), it returns that
-        instance instead.
-
-        Args:
-            token: Authentication token.
-            org_key: Organization key.
-            env: Environment name.
-            base_url: Base URL for the API.
-            timeout: Request timeout in seconds.
-            max_retries: Maximum number of retry attempts.
-            retry_backoff_factor: Multiplier for exponential backoff.
-            max_retry_delay: Maximum delay in seconds between retry attempts.
-            record: Whether to record function run responses.
-            tag: Optional tag to use for all function runs.
-            _app: Internal app identifier; part of cache key. Defaults to
-                "python-client". Used in tool/function execution payloads.
-            _session: Internal session identifier; part of cache key. When None,
-                a UUID v4 is generated on first init. Used in tool/function payloads.
-
-        Returns:
-            A DeepOriginClient instance (cached if available, new otherwise).
+        All caching and the no-arg priority chain live in
+        ``_DeepOriginMeta.__call__``.  By the time ``__new__`` is reached we
+        already know this is a first-time construction, so just allocate.
         """
-        # Resolve env and base_url first (same logic as __init__)
-        if ENV_VARIABLES["base_url"] in os.environ:
-            base_url = os.environ[ENV_VARIABLES["base_url"]]
-            env = _infer_env_from_base_url(base_url)
-        elif ENV_VARIABLES["env"] in os.environ:
-            env = os.environ[ENV_VARIABLES["env"]]
-            if env not in get_args(ENVS):
-                raise ValueError(
-                    f"Invalid environment in DO_ENV: {env}. Must be one of: dev, prod, staging, local"
-                )
-            if base_url is None:
-                base_url = API_ENDPOINT[env]
-        elif env is None and base_url is None:
-            env = get_value()["env"]
-            base_url = API_ENDPOINT[env]
-        elif env is None and base_url is not None:
-            raise ValueError("env is required when base_url is provided")
-        elif env is not None and base_url is None:
-            base_url = API_ENDPOINT[env]
-
-        # Resolve token and org_key
-        token, org_key, base_url = _resolve_token_and_org_key(
-            env=env, token=token, org_key=org_key, base_url=base_url
-        )
-
-        resolved_project_id = _resolve_project_id_for_client(project_id)
-
-        # Normalize base_url for the key
-        normalized_base_url = base_url.rstrip("/") + "/"
-        key = (
-            normalized_base_url,
-            token,
-            org_key,
-            resolved_project_id,
-            tag,
-            _app,
-            _session,
-        )
-
-        # Return cached instance if it exists
-        if key in cls._instances:
-            return cls._instances[key]
-
-        # Create new instance and store cache key for O(1) registry detachment
-        instance = super().__new__(cls)
-        instance._cache_key = key  # type: ignore[attr-defined]
-        cls._instances[key] = instance
-        return instance
+        return super().__new__(cls)
 
     def __init__(
         self,
         *,
-        token: str | None = None,
+        base_url: str,
+        token: str,
         org_key: str | None = None,
-        env: ENVS | None = None,
-        base_url: str | None = None,
         project_id: str | None = None,
         timeout: float = 10.0,
         max_retries: int = 3,
@@ -344,83 +273,36 @@ class DeepOriginClient:
         tag: str | None = None,
         _app: str = "python-client",
         _session: str | None = None,
-    ):
-        """Initialize a DeepOrigin Platform client.
+    ) -> None:
+        """Initialize a new ``DeepOriginClient`` instance.
 
-        Environment variables (DO_AUTH_TOKEN, DO_ORG_KEY, DO_ENV, DO_PROJECT_ID)
-        ALWAYS override explicit parameters and configuration files where
-        applicable. If environment variables are set, disk configuration is NOT
-        read for those keys.
+        Called exactly once per unique ``(base_url, token, org_key, project_id,
+        _app, _session)`` tuple.  Caching and the no-arg priority chain are
+        handled by ``_DeepOriginMeta.__call__`` before this method is ever
+        reached, so no guards are needed here.
 
-        If environment variables are not set, explicit parameters are used. If
-        parameters are None, values are read from configuration files on disk.
-        The client creates an HTTP connection pool and initializes access to
-        platform resources (tools, functions, clusters, files, executions).
+        Prefer the no-arg constructor ``DeepOriginClient()`` or one of the
+        factory class methods over calling this directly.
 
         Args:
-            token: Authentication token. Overridden by DO_AUTH_TOKEN env var.
-            org_key: Organization key. Overridden by DO_ORG_KEY env var.
-            env: Environment name (e.g., 'prod', 'staging'). Overridden by
-                DO_ENV env var. If None and base_url is None, reads from config.
-            base_url: Base URL for the API. If None, derived from env or config.
-            project_id: Data platform project id. Overridden by DO_PROJECT_ID
-                env var. If None, reads from ``project_id`` in on-disk config.
+            base_url: API base URL.
+            token: Authentication token.
+            org_key: Organization key.
+            project_id: Data platform project id. Optional.
             timeout: Request timeout in seconds.
-            max_retries: Maximum number of retry attempts for failed requests.
-                Defaults to 3. Set to 0 to disable retries.
+            max_retries: Maximum retry attempts. Set to 0 to disable.
             retry_backoff_factor: Multiplier for exponential backoff between retries.
-                Delay = min(retry_backoff_factor * (2 ** attempt_number), max_retry_delay).
-                The delay grows exponentially but is capped at max_retry_delay to prevent
-                excessive wait times. Defaults to 1.0.
-            max_retry_delay: Maximum delay in seconds between retry attempts. The exponential
-                backoff delay will be capped at this value. Defaults to 60.0 seconds.
-            record: Whether to record function run responses to fixture files for testing.
-                Defaults to False.
-            tag: Optional tag to use for all function runs. If set, this tag will be
-                automatically included in all function execution requests unless explicitly
-                overridden in the function call. Defaults to None.
-            _app: Internal app identifier; part of cache key. Defaults to
-                "python-client". Sent in tool/function execution payloads.
-            _session: Internal session identifier; part of cache key. When None, a
-                UUID v4 is generated. Sent in tool/function execution payloads.
+                Delay = min(retry_backoff_factor * (2 ** attempt), max_retry_delay).
+            max_retry_delay: Maximum delay in seconds between retry attempts.
+            record: Whether to record function run responses for testing.
+            tag: Optional tag applied to all function runs.
+            _app: Internal app identifier. Part of the singleton cache key.
+            _session: Internal session identifier. Part of the singleton cache key.
+                A UUID v4 is generated when ``None``.
         """
-
-        # Check if instance is already initialized (returned from cache)
-        if hasattr(self, "_client"):
-            # Instance is already initialized, just update mutable attributes if needed
-            if tag is not None and self.tag != tag:
-                self.tag = tag
-            return
-
-        # Handle env and base_url resolution first (needed for local check)
-        if ENV_VARIABLES["base_url"] in os.environ:
-            base_url = os.environ[ENV_VARIABLES["base_url"]]
-            env = _infer_env_from_base_url(base_url)
-        elif ENV_VARIABLES["env"] in os.environ:
-            env = os.environ[ENV_VARIABLES["env"]]
-            if env not in get_args(ENVS):
-                raise ValueError(
-                    f"Invalid environment in DO_ENV: {env}. Must be one of: dev, prod, staging, local"
-                )
-            if base_url is None:
-                base_url = API_ENDPOINT[env]
-        elif env is None and base_url is None:
-            env = get_value()["env"]
-            base_url = API_ENDPOINT[env]
-        elif env is None and base_url is not None:
-            raise ValueError("env is required when base_url is provided")
-        elif env is not None and base_url is None:
-            base_url = API_ENDPOINT[env]
-        self.env = env
-
-        # Resolve token and org_key based on environment
-        token, org_key, base_url = _resolve_token_and_org_key(
-            env=env, token=token, org_key=org_key, base_url=base_url
-        )
-
+        self._base_url = base_url.rstrip("/") + "/"
         self._org_key = org_key
-        self._project_id = _resolve_project_id_for_client(project_id)
-        self.base_url = base_url.rstrip("/") + "/"
+        self._project_id = project_id
 
         try:
             from deeporigin.platform.tools import Tools
@@ -499,7 +381,6 @@ class DeepOriginClient:
         except ImportError:
             self.projects = None
 
-        # Retry configuration
         self.max_retries = max_retries
         self.retryable_status_codes = HTTP_RETRYABLE_STATUS_CODES
         self.retry_backoff_factor = retry_backoff_factor
@@ -509,20 +390,27 @@ class DeepOriginClient:
         self._app = _app
         self._session = str(uuid.uuid4()) if _session is None else _session
 
-        # Initialize _client first (before setting token property)
         self._client = httpx.Client(
-            base_url=self.base_url,
-            headers={
-                "Accept": "application/json",
-            },
+            base_url=self._base_url,
+            headers={"Accept": "application/json"},
             timeout=timeout,
         )
 
-        # Set token property which will update headers automatically
+        # token setter syncs the Authorization header
         self.token = token
 
-        # ensure sockets close if GC happens
         self._finalizer = weakref.finalize(self, self._client.close)
+
+    # -------- Core read-only properties --------
+
+    @property
+    def base_url(self) -> str:
+        """Get the API base URL.
+
+        Returns:
+            The base URL string.
+        """
+        return self._base_url
 
     @property
     def org_key(self) -> str:
@@ -532,7 +420,7 @@ class DeepOriginClient:
             The organization key string.
 
         Raises:
-            DeepOriginException: If org_key is not set
+            DeepOriginException: If org_key is not set.
         """
         if self._org_key is None or self._org_key == "":
             raise DeepOriginException(
@@ -546,10 +434,6 @@ class DeepOriginClient:
     @property
     def project_id(self) -> str | None:
         """Data platform project id for this client instance.
-
-        Resolved at construction: ``DO_PROJECT_ID`` overrides an explicit
-        ``project_id`` argument, which overrides the value in
-        ``~/.deeporigin/config.json``.
 
         Returns:
             Project id string, or ``None`` if no project is selected.
@@ -576,6 +460,22 @@ class DeepOriginClient:
         if hasattr(self, "_client"):
             self._client.headers["Authorization"] = f"Bearer {value}"
 
+    @property
+    def env(self) -> ENVS:
+        """Infer the deployment environment from the base URL.
+
+        Returns:
+            One of ``"dev"``, ``"staging"``, ``"local"``, ``"prod"``.
+        """
+        url = self._base_url
+        if "dev" in url:
+            return "dev"
+        if "staging" in url:
+            return "staging"
+        if "127.0.0.1" in url or "localhost" in url:
+            return "local"
+        return "prod"
+
     def __repr__(self) -> str:
         """Return a string representation of the client.
 
@@ -589,265 +489,45 @@ class DeepOriginClient:
             decoded_token = auth.decode_access_token(self.token)
             name = decoded_token.get("name", "Unknown")
         except Exception:
-            # If token decoding fails, use "Unknown"
             pass
 
-        repr_str = f"DeepOrigin Platform Client for {name} (org_key={self.org_key}, base_url={self.base_url})"
-
+        repr_str = f"DeepOrigin Platform Client for {name} (org_key={self._org_key}, base_url={self._base_url})"
         if self.tag is not None:
             repr_str += f" (tag={self.tag})"
         return repr_str
 
-    # -------- Singleton helpers --------
-    @classmethod
-    def get(
-        cls,
-        *,
-        token: str | None = None,
-        org_key: str | None = None,
-        env: ENVS | None = None,
-        base_url: str | None = None,
-        project_id: str | None = None,
-        timeout: float = 10.0,
-        max_retries: int = 3,
-        retry_backoff_factor: float = 1.0,
-        max_retry_delay: float = 60.0,
-        record: bool = False,
-        replace: bool = False,
-        tag: str | None = None,
-        _app: str = "python-client",
-        _session: str | None = None,
-    ) -> Self:
-        """
-        Get a cached client instance.
-
-        This is a convenience method that calls the constructor. Since the constructor
-        now uses the singleton cache automatically, `DeepOriginClient()` and
-        `DeepOriginClient.get()` behave identically.
-
-        If `replace=True`, closes and recreates the cached instance.
-
-        Args:
-            token: Authentication token. If None, reads from config.
-            org_key: Organization key. If None, reads from config.
-            env: Environment name (e.g., 'prod', 'staging'). If None and
-                base_url is None, reads from config.
-            base_url: Base URL for the API. If None, derived from env or config.
-            project_id: Data platform project id. ``DO_PROJECT_ID`` overrides when set.
-            timeout: Request timeout in seconds.
-            max_retries: Maximum number of retry attempts for failed requests.
-                Defaults to 3. Set to 0 to disable retries.
-            retry_backoff_factor: Multiplier for exponential backoff between retries.
-                Delay = min(retry_backoff_factor * (2 ** attempt_number), max_retry_delay).
-                The delay grows exponentially but is capped at max_retry_delay to prevent
-                excessive wait times. Defaults to 1.0.
-            max_retry_delay: Maximum delay in seconds between retry attempts. The exponential
-                backoff delay will be capped at this value. Defaults to 60.0 seconds.
-            record: Whether to record function run responses to fixture files for testing.
-                Defaults to False.
-            replace: If True, close and recreate the cached instance.
-            tag: Optional tag to use for all function runs. If set, this tag will be
-                automatically included in all function execution requests unless explicitly
-                overridden in the function call. Defaults to None.
-            _app: Internal app identifier; part of cache key. Defaults to
-                "python-client".
-            _session: Internal session identifier; part of cache key. When None, a
-                UUID v4 is generated on first init.
-
-        Returns:
-            A cached DeepOriginClient instance.
-        """
-        # If replace is True, we need to close and remove the cached instance first
-        if replace:
-            # Resolve env and base_url to compute the cache key
-            if ENV_VARIABLES["base_url"] in os.environ:
-                base_url_for_key = os.environ[ENV_VARIABLES["base_url"]]
-                env_for_key = _infer_env_from_base_url(base_url_for_key)
-            elif ENV_VARIABLES["env"] in os.environ:
-                env_for_key = os.environ[ENV_VARIABLES["env"]]
-                if env_for_key not in get_args(ENVS):
-                    raise ValueError(
-                        f"Invalid environment in DO_ENV: {env_for_key}. Must be one of: dev, prod, staging, local"
-                    )
-                if base_url is None:
-                    base_url_for_key = API_ENDPOINT[env_for_key]
-                else:
-                    base_url_for_key = base_url
-            elif env is None and base_url is None:
-                env_for_key = get_value()["env"]
-                base_url_for_key = API_ENDPOINT[env_for_key]
-            elif env is None and base_url is not None:
-                raise ValueError("env is required when base_url is provided")
-            elif env is not None and base_url is None:
-                base_url_for_key = API_ENDPOINT[env]
-                env_for_key = env
-            else:
-                base_url_for_key = base_url
-                env_for_key = env
-
-            # Resolve token and org_key for the key
-            token_for_key, org_key_for_key, base_url_for_key = (
-                _resolve_token_and_org_key(
-                    env=env_for_key,
-                    token=token,
-                    org_key=org_key,
-                    base_url=base_url_for_key,
-                )
-            )
-
-            resolved_project_id = _resolve_project_id_for_client(project_id)
-
-            # Normalize and create key
-            normalized_base_url = base_url_for_key.rstrip("/") + "/"
-            key = (
-                normalized_base_url,
-                token_for_key,
-                org_key_for_key,
-                resolved_project_id,
-                tag,
-                _app,
-                _session,
-            )
-
-            # Close and remove if it exists
-            if key in cls._instances:
-                try:
-                    cls._instances[key].close()
-                finally:
-                    cls._instances.pop(key, None)
-
-        # Now just call the constructor - __new__ will handle caching
-        return cls(
-            token=token,
-            org_key=org_key,
-            env=env,
-            base_url=base_url,
-            project_id=project_id,
-            timeout=timeout,
-            max_retries=max_retries,
-            retry_backoff_factor=retry_backoff_factor,
-            max_retry_delay=max_retry_delay,
-            record=record,
-            tag=tag,
-            _app=_app,
-            _session=_session,
-        )
-
-    @classmethod
-    def from_env(
-        cls,
-        env: ENVS | None = None,
-        *,
-        base_url: str | None = None,
-        timeout: float = 10.0,
-        max_retries: int = 3,
-        retry_backoff_factor: float = 1.0,
-        max_retry_delay: float = 60.0,
-        record: bool = False,
-        _app: str = "python-client",
-        _session: str | None = None,
-    ) -> Self:
-        """Create a client instance from environment configuration.
-
-        Reads configuration from environment variables (DO_AUTH_TOKEN,
-        DO_ORG_KEY, DO_ENV) or from
-        disk files (~/.DeepOrigin/api_tokens.json and config.json).
-
-        Args:
-            env: Environment name (e.g., 'prod', 'staging', 'local'). If None,
-                reads from DO_ENV environment variable or config file.
-            base_url: Base URL for the API. If None, derived from env (defaults
-                to http://127.0.0.1:4931 for 'local').
-            timeout: Request timeout in seconds.
-            max_retries: Maximum number of retry attempts for failed requests.
-                Defaults to 3. Set to 0 to disable retries.
-            retry_backoff_factor: Multiplier for exponential backoff between retries.
-                Delay = min(retry_backoff_factor * (2 ** attempt_number), max_retry_delay).
-                The delay grows exponentially but is capped at max_retry_delay to prevent
-                excessive wait times. Defaults to 1.0.
-            max_retry_delay: Maximum delay in seconds between retry attempts. The exponential
-                backoff delay will be capped at this value. Defaults to 60.0 seconds.
-            record: Whether to record function run responses to fixture files for testing.
-                Defaults to False.
-
-        Returns:
-            A new DeepOriginClient instance configured from environment variables
-            or files.
-        """
-        # DO_BASE_URL takes priority: infer env from the URL
-        if base_url is None and ENV_VARIABLES["base_url"] in os.environ:
-            base_url = os.environ[ENV_VARIABLES["base_url"]]
-            env = _infer_env_from_base_url(base_url)
-
-        # Determine environment
-        if env is None:
-            env = os.environ.get(ENV_VARIABLES["env"]) or get_value()["env"]
-            if not env:
-                env = "prod"  # default
-
-        # Validate env is a valid ENVS type
-        if env not in get_args(ENVS):
-            raise ValueError(
-                f"Invalid environment: {env}. Must be one of: dev, prod, staging, local"
-            )
-
-        if env == "local":
-            LOCAL_TOKEN = _generate_local_token()
-            if base_url is None:
-                base_url = API_ENDPOINT["local"]
-            return cls(
-                token=LOCAL_TOKEN,
-                org_key="deeporigin",
-                env="local",
-                base_url=base_url,
-                project_id=None,
-                timeout=timeout,
-                record=record,
-                _app=_app,
-                _session=_session,
-            )
-
-        # Get token for the specified environment (reads from env vars or files)
-        token = get_token(env=env)
-
-        # Get org_key (reads from env vars or config file)
-        org_key = get_value()["org_key"]
-
-        if base_url is None:
-            base_url = API_ENDPOINT[env]
-
-        return cls(
-            token=token,
-            org_key=org_key,
-            env=env,
-            base_url=base_url,
-            project_id=None,
-            timeout=timeout,
-            max_retries=max_retries,
-            retry_backoff_factor=retry_backoff_factor,
-            max_retry_delay=max_retry_delay,
-            record=record,
-            _app=_app,
-            _session=_session,
-        )
+    # -------- Factory classmethods --------
 
     @classmethod
     def from_headers(
-        cls, headers, *, _app: str = "python-client", _session: str | None = None
+        cls,
+        headers: Any,
+        *,
+        _app: str = "python-client",
+        _session: str | None = None,
     ) -> Self:
-        """Create a client instance from HTTP headers. Useful for creating a client within a served tool.
+        """Create a client from HTTP request headers.
+
+        Use this inside a served tool handler where the platform injects the
+        caller's credentials and routing info as headers.
+
+        Required headers: ``X-Do-Auth-Token``, ``X-Do-Org-Key``, ``X-Do-Base-Url``.
+        Optional header: ``X-Do-Project-Id``.
 
         Args:
-            headers: headers from the HTTP request
+            headers: HTTP request headers object (must support ``.get()``).
+            _app: Internal app identifier.
+            _session: Internal session identifier.
 
         Returns:
-            A new DeepOriginClient instance configured from the headers.
+            A configured ``DeepOriginClient`` instance.
+
+        Raises:
+            ValueError: If any required header is missing.
         """
-        # check that the necessary headers are present
         required_keys = [
             "X-Do-Auth-Token",
             "X-Do-Org-Key",
-            # "X-Do-Execution-Id", # this is not required, because this can be used in billing parsers which don't have an execution id
             "X-Do-Base-Url",
         ]
         missing = [k for k in required_keys if not headers.get(k)]
@@ -855,7 +535,6 @@ class DeepOriginClient:
             raise ValueError(f"Missing required headers: {', '.join(missing)}")
 
         base_url = headers["X-Do-Base-Url"]
-        env = _infer_env_from_base_url(base_url)
         raw_pid = headers.get("X-Do-Project-Id")
         project_id = str(raw_pid).strip() if raw_pid else None
 
@@ -863,7 +542,6 @@ class DeepOriginClient:
             token=headers["X-Do-Auth-Token"],
             org_key=headers["X-Do-Org-Key"],
             base_url=base_url,
-            env=env,
             project_id=project_id,
             _app=_app,
             _session=_session,
@@ -881,32 +559,34 @@ class DeepOriginClient:
         _app: str = "python-client",
         _session: str | None = None,
     ) -> Self:
-        """Create a client instance exclusively from environment variables.
+        """Create a client strictly from OS environment variables.
 
-        Reads DO_AUTH_TOKEN, DO_ORG_KEY, and DO_BASE_URL from environment
-        variables. Unlike the default constructor or ``from_env``, this
-        method never falls back to configuration files on disk -- missing
-        environment variables cause an immediate error.
+        Use this inside a provisioned container where the platform injects
+        credentials as environment variables. Never falls back to disk config:
+        missing variables raise immediately.
 
-        The environment name is inferred from the base URL
-        (e.g. ``https://api.dev.deeporigin.io`` → ``"dev"``).
+        Required variables: ``DO_AUTH_TOKEN``, ``DO_ORG_KEY``, ``DO_BASE_URL``.
+        Optional variable: ``DO_PROJECT_ID``.
 
         Args:
             timeout: Request timeout in seconds.
-            max_retries: Maximum number of retry attempts for failed requests.
+            max_retries: Maximum retry attempts. Set to 0 to disable.
             retry_backoff_factor: Multiplier for exponential backoff between retries.
             max_retry_delay: Maximum delay in seconds between retry attempts.
-            record: Whether to record function run responses to fixture files.
+            record: Whether to record function run responses for testing.
+            _app: Internal app identifier.
+            _session: Internal session identifier.
 
         Returns:
-            A new DeepOriginClient instance.
+            A configured ``DeepOriginClient`` instance.
 
         Raises:
-            ValueError: If required environment variables are missing.
+            ValueError: If any required environment variable is missing.
         """
         token = os.environ.get(ENV_VARIABLES["access_token"])
         org_key = os.environ.get(ENV_VARIABLES["org_key"])
         base_url = os.environ.get(ENV_VARIABLES["base_url"])
+        project_id_raw = os.environ.get(ENV_VARIABLES["project_id"])
 
         missing: list[str] = []
         if not token:
@@ -920,14 +600,13 @@ class DeepOriginClient:
                 f"Missing required environment variables: {', '.join(missing)}"
             )
 
-        env: ENVS = _infer_env_from_base_url(base_url)
+        project_id = project_id_raw.strip() if project_id_raw else None
 
         return cls(
+            base_url=base_url,
             token=token,
             org_key=org_key,
-            env=env,
-            base_url=base_url,
-            project_id=None,
+            project_id=project_id,
             timeout=timeout,
             max_retries=max_retries,
             retry_backoff_factor=retry_backoff_factor,
@@ -938,6 +617,124 @@ class DeepOriginClient:
         )
 
     @classmethod
+    def from_disk(
+        cls,
+        env: ENVS | None = None,
+        *,
+        timeout: float = 10.0,
+        max_retries: int = 3,
+        retry_backoff_factor: float = 1.0,
+        max_retry_delay: float = 60.0,
+        record: bool = False,
+        _app: str = "python-client",
+        _session: str | None = None,
+    ) -> Self:
+        """Create a client from ``~/.deeporigin/`` config files.
+
+        Use this for interactive work in Jupyter notebooks or CLI sessions where
+        credentials are stored on disk after running ``deeporigin login``.
+
+        For local development use :meth:`from_local` instead.
+
+        Environment selection order: explicit ``env`` parameter → value in
+        ``~/.deeporigin/config.json``.
+
+        Args:
+            env: Deployment target (``"prod"``, ``"staging"``, ``"dev"``).
+                When ``None``, reads from disk config. ``"local"`` is not
+                accepted here — use :meth:`from_local`.
+            timeout: Request timeout in seconds.
+            max_retries: Maximum retry attempts. Set to 0 to disable.
+            retry_backoff_factor: Multiplier for exponential backoff between retries.
+            max_retry_delay: Maximum delay in seconds between retry attempts.
+            record: Whether to record function run responses for testing.
+            _app: Internal app identifier.
+            _session: Internal session identifier.
+
+        Returns:
+            A configured ``DeepOriginClient`` instance.
+
+        Raises:
+            ValueError: If the resolved environment is not a valid ``ENVS`` value.
+        """
+        if env is None:
+            env = get_value()["env"] or "prod"
+
+        valid = [e for e in get_args(ENVS) if e != "local"]
+        if env not in valid:
+            raise ValueError(
+                f"Invalid environment: {env!r}. Must be one of: dev, prod, staging. "
+                f"For local development use DeepOriginClient.from_local()."
+            )
+
+        token = get_token(env=env)
+        org_key = get_value()["org_key"]
+        base_url = API_ENDPOINT[env]
+        from deeporigin.config import get_project_id
+
+        project_id = get_project_id()
+
+        return cls(
+            base_url=base_url,
+            token=token,
+            org_key=org_key,
+            project_id=project_id,
+            timeout=timeout,
+            max_retries=max_retries,
+            retry_backoff_factor=retry_backoff_factor,
+            max_retry_delay=max_retry_delay,
+            record=record,
+            _app=_app,
+            _session=_session,
+        )
+
+    @classmethod
+    def from_local(
+        cls,
+        *,
+        timeout: float = 10.0,
+        max_retries: int = 3,
+        retry_backoff_factor: float = 1.0,
+        max_retry_delay: float = 60.0,
+        record: bool = False,
+        _app: str = "python-client",
+        _session: str | None = None,
+    ) -> Self:
+        """Create a client for local development.
+
+        Generates a dummy JWT token and points at the local mock server
+        (``http://127.0.0.1:4931``). No disk reads, no environment variable
+        reads — suitable for unit tests and local stack development.
+
+        Args:
+            timeout: Request timeout in seconds.
+            max_retries: Maximum retry attempts. Set to 0 to disable.
+            retry_backoff_factor: Multiplier for exponential backoff between retries.
+            max_retry_delay: Maximum delay in seconds between retry attempts.
+            record: Whether to record function run responses for testing.
+            _app: Internal app identifier.
+            _session: Internal session identifier.
+
+        Returns:
+            A configured ``DeepOriginClient`` instance pointed at the local mock server.
+        """
+        return cls(
+            base_url=API_ENDPOINT["local"],
+            token=_generate_local_token(),
+            org_key="deeporigin",
+            project_id=None,
+            timeout=timeout,
+            max_retries=max_retries,
+            retry_backoff_factor=retry_backoff_factor,
+            max_retry_delay=max_retry_delay,
+            record=record,
+            _app=_app,
+            _session=_session,
+        )
+
+    # -------- Singleton helpers --------
+
+    @classmethod
     def close_all(cls) -> None:
         """Close all cached client instances and clear the registry.
 
@@ -945,8 +742,6 @@ class DeepOriginClient:
         and removes them from the singleton registry. Useful for cleanup or
         when switching between different configurations.
         """
-        # Create a copy of values to avoid "dictionary changed size during iteration"
-        # error when close() modifies the dictionary
         instances = list(cls._instances.values())
         for inst in instances:
             inst.close()
@@ -954,7 +749,6 @@ class DeepOriginClient:
 
     def check_token(self) -> None:
         """Check if the token is expired."""
-
         from deeporigin import auth
 
         if auth.is_token_expired(self.token):
@@ -991,19 +785,16 @@ class DeepOriginClient:
         combined["status"] = "ok" if all_ok else "error"
         return combined
 
-    # Removing from registry when explicitly closed
     def _detach_from_registry(self) -> None:
         """Remove this instance from the singleton registry.
 
-        This is called automatically when the client is closed to ensure
-        the registry doesn't hold references to closed clients. Uses the
-        stored cache key for O(1) removal.
+        Called automatically when the client is closed. Uses the stored cache
+        key for O(1) removal.
         """
         key = getattr(self, "_cache_key", None)
         if key is not None and self._instances.get(key) is self:
             self._instances.pop(key, None)
         else:
-            # Fallback: remove all keys that point to this instance
             for k, inst in list(self._instances.items()):
                 if inst is self:
                     self._instances.pop(k, None)
@@ -1013,10 +804,8 @@ class DeepOriginClient:
             pass
 
     # -------- Low-level helpers --------
-    def _should_retry(
-        self,
-        error: Exception,
-    ) -> bool:
+
+    def _should_retry(self, error: Exception) -> bool:
         """Determine if a request should be retried based on the error.
 
         Args:
@@ -1028,11 +817,9 @@ class DeepOriginClient:
         if self.max_retries == 0:
             return False
 
-        # Retry on network errors and timeouts
         if isinstance(error, (httpx.NetworkError, httpx.TimeoutException)):
             return True
 
-        # Retry on specific HTTP status codes
         if isinstance(error, httpx.HTTPStatusError):
             return error.response.status_code in self.retryable_status_codes
 
@@ -1074,7 +861,6 @@ class DeepOriginClient:
                     )
                     time.sleep(delay)
                     continue
-                # Not retryable or out of retries - handle HTTPStatusError specially
                 self._handle_request_error(method, path, e, body=body)
             except (httpx.NetworkError, httpx.TimeoutException) as e:
                 if self._should_retry(e) and attempt < self.max_retries:
@@ -1103,47 +889,37 @@ class DeepOriginClient:
         Raises:
             DeepOriginException: Always raises with error details and curl command filepath.
         """
-        # Extract error message and details from response
         error_message = None
         error_details = None
         try:
-            # Try to parse JSON error response
             error_data = error.response.json()
 
-            # Common error message fields in API responses
             if isinstance(error_data, dict):
                 error_message = (
                     error_data.get("message")
                     or error_data.get("error")
                     or error_data.get("detail")
                 )
-                # Extract errors array if present
                 if "errors" in error_data:
                     error_details = json.dumps(error_data["errors"], indent=2)
             if error_message is None:
-                # Fallback to string representation of entire error_data
                 error_message = str(error_data)
         except json.JSONDecodeError:
-            # Fall back to text response
             try:
                 error_message = error.response.text
             except Exception:
                 error_message = f"HTTP {error.response.status_code}"
 
-        # Build curl command to reproduce the request
-        full_url = self.base_url.rstrip("/") + "/" + path.lstrip("/")
+        full_url = self._base_url.rstrip("/") + "/" + path.lstrip("/")
 
-        # Build curl command parts
         curl_parts = ["curl", "-X", method.upper()]
 
-        # Add headers (include Content-Type for JSON if body is present)
         headers = dict(self._client.headers)
         if body is not None and not any(
             key.lower() == "content-type" for key in headers.keys()
         ):
             headers["Content-Type"] = "application/json"
 
-        # Redact sensitive headers before writing to disk
         sanitized_headers = {}
         for header_name, header_value in headers.items():
             if header_name.lower() == "authorization":
@@ -1155,18 +931,14 @@ class DeepOriginClient:
             escaped_value = str(header_value).replace('"', '\\"')
             curl_parts.extend(["-H", f'"{header_name}: {escaped_value}"'])
 
-        # Add JSON body if present
         if body is not None:
             body_json = json.dumps(body)
             curl_parts.extend(["-d", f"'{body_json}'"])
 
-        # Add URL
         curl_parts.append(f'"{full_url}"')
 
-        # Combine into full curl command
         curl_command = " \\\n  ".join(curl_parts)
 
-        # Save to file with UUID name
         file_uuid = str(uuid.uuid4())
         filename = f"{file_uuid}.txt"
         filepath = _ensure_do_folder() / filename
@@ -1174,10 +946,9 @@ class DeepOriginClient:
         with open(filepath, "w") as f:
             f.write(curl_command)
 
-        # Build message with error details
         message_parts = [
             f"A {method.upper()} request to the platform API failed (HTTP {error.response.status_code}).",
-            f"Platform API base URL: {self.base_url}",
+            f"Platform API base URL: {self._base_url}",
         ]
         if error_message:
             message_parts.append(f"Error message: {error_message}")
@@ -1194,7 +965,7 @@ class DeepOriginClient:
             level="danger",
         ) from None
 
-    def _get(self, path: str, **kwargs) -> httpx.Response:
+    def _get(self, path: str, **kwargs: Any) -> httpx.Response:
         """Perform a GET request and raise on error.
 
         Args:
@@ -1203,9 +974,6 @@ class DeepOriginClient:
 
         Returns:
             The HTTP response object.
-
-        Raises:
-            httpx.HTTPStatusError: If the response status code indicates an error.
         """
         self.check_token()
 
@@ -1214,7 +982,9 @@ class DeepOriginClient:
 
         return self._retry_request(request, "GET", path, body=None)
 
-    def _post(self, path: str, body: Optional[dict] = None, **kwargs) -> httpx.Response:
+    def _post(
+        self, path: str, body: Optional[dict] = None, **kwargs: Any
+    ) -> httpx.Response:
         """Perform a POST request and raise on error.
 
         Args:
@@ -1224,9 +994,6 @@ class DeepOriginClient:
 
         Returns:
             The HTTP response object.
-
-        Raises:
-            httpx.HTTPStatusError: If the response status code indicates an error.
         """
         self.check_token()
 
@@ -1235,7 +1002,7 @@ class DeepOriginClient:
 
         return self._retry_request(request, "POST", path, body=body)
 
-    def _put(self, path: str, **kwargs) -> httpx.Response:
+    def _put(self, path: str, **kwargs: Any) -> httpx.Response:
         """Perform a PUT request and raise on error.
 
         Args:
@@ -1244,9 +1011,6 @@ class DeepOriginClient:
 
         Returns:
             The HTTP response object.
-
-        Raises:
-            httpx.HTTPStatusError: If the response status code indicates an error.
         """
         self.check_token()
 
@@ -1256,7 +1020,7 @@ class DeepOriginClient:
         body = kwargs.get("json")
         return self._retry_request(request, "PUT", path, body=body)
 
-    def _patch(self, path: str, **kwargs) -> httpx.Response:
+    def _patch(self, path: str, **kwargs: Any) -> httpx.Response:
         """Perform a PATCH request and raise on error.
 
         Args:
@@ -1265,9 +1029,6 @@ class DeepOriginClient:
 
         Returns:
             The HTTP response object.
-
-        Raises:
-            httpx.HTTPStatusError: If the response status code indicates an error.
         """
         self.check_token()
 
@@ -1277,7 +1038,7 @@ class DeepOriginClient:
         body = kwargs.get("json")
         return self._retry_request(request, "PATCH", path, body=body)
 
-    def _head(self, path: str, **kwargs) -> httpx.Response:
+    def _head(self, path: str, **kwargs: Any) -> httpx.Response:
         """Perform a HEAD request and raise on error.
 
         Args:
@@ -1286,9 +1047,6 @@ class DeepOriginClient:
 
         Returns:
             The HTTP response object.
-
-        Raises:
-            httpx.HTTPStatusError: If the response status code indicates an error.
         """
         self.check_token()
 
@@ -1297,7 +1055,7 @@ class DeepOriginClient:
 
         return self._retry_request(request, "HEAD", path, body=None)
 
-    def _delete(self, path: str, **kwargs) -> httpx.Response:
+    def _delete(self, path: str, **kwargs: Any) -> httpx.Response:
         """Perform a DELETE request and raise on error.
 
         Args:
@@ -1306,9 +1064,6 @@ class DeepOriginClient:
 
         Returns:
             The HTTP response object.
-
-        Raises:
-            httpx.HTTPStatusError: If the response status code indicates an error.
         """
         self.check_token()
 
@@ -1319,7 +1074,8 @@ class DeepOriginClient:
         return self._retry_request(request, "DELETE", path, body=body)
 
     # -------- Convenience wrappers --------
-    def get_json(self, path: str, **kwargs) -> Any:
+
+    def get_json(self, path: str, **kwargs: Any) -> Any:
         """Perform a GET request and return the JSON response.
 
         Args:
@@ -1328,13 +1084,10 @@ class DeepOriginClient:
 
         Returns:
             The JSON-decoded response body.
-
-        Raises:
-            httpx.HTTPStatusError: If the response status code indicates an error.
         """
         return self._get(path, **kwargs).json()
 
-    def post_json(self, path: str, body: dict[str, Any], **kwargs) -> Any:
+    def post_json(self, path: str, body: dict[str, Any], **kwargs: Any) -> Any:
         """Perform a POST request and return the JSON response.
 
         Args:
@@ -1344,13 +1097,10 @@ class DeepOriginClient:
 
         Returns:
             The JSON-decoded response body.
-
-        Raises:
-            httpx.HTTPStatusError: If the response status code indicates an error.
         """
         return self._post(path, body=body, **kwargs).json()
 
-    def delete_json(self, path: str, **kwargs) -> Any:
+    def delete_json(self, path: str, **kwargs: Any) -> Any:
         """Perform a DELETE request and return the JSON response.
 
         Args:
@@ -1359,21 +1109,17 @@ class DeepOriginClient:
 
         Returns:
             The JSON-decoded response body.
-
-        Raises:
-            httpx.HTTPStatusError: If the response status code indicates an error.
         """
         return self._delete(path, **kwargs).json()
 
     # -------- Lifecycle --------
+
     def close(self) -> None:
         """Close the HTTP client connection and remove from registry.
 
-        This method closes the underlying HTTP transport and removes this
-        instance from the singleton registry. After calling close(), the
-        client should not be used for further requests.
+        After calling ``close()``, this instance should not be used for
+        further requests.
         """
-        # close transport and remove from registry
         try:
             self._client.close()
         finally:
@@ -1387,7 +1133,7 @@ class DeepOriginClient:
         """
         return self
 
-    def __exit__(self, *args) -> None:
+    def __exit__(self, *args: Any) -> None:
         """Exit the context manager and close the client.
 
         Args:

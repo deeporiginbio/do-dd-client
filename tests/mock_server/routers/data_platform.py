@@ -100,6 +100,15 @@ def _apply_search_filters(
                 results = [r for r in results if r.get(key) in allowed]
             elif "eq" in value:
                 results = [r for r in results if r.get(key) == value["eq"]]
+            elif "icontains" in value:
+                needle = value["icontains"]
+                if isinstance(needle, str):
+                    n = needle.lower()
+                    results = [
+                        r
+                        for r in results
+                        if isinstance(r.get(key), str) and n in r.get(key, "").lower()
+                    ]
             elif "gte" in value:
                 results = [
                     r
@@ -516,6 +525,7 @@ def create_data_platform_router(
         now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z"
         record: dict[str, Any] = {
             "id": pid,
+            "canonical_id": pid,
             "version": 1,
             "valid_from": now,
             "valid_to": None,

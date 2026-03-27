@@ -11,7 +11,7 @@ def test_billing_tag_end_to_end_lv2():
     we do so by running a few functions with some unique tag, and then comparing our estimate of cost vs what was reported by the platform."""
 
     tag = str(uuid.uuid4())
-    client = DeepOriginClient.get()
+    client = DeepOriginClient()
 
     if client.env == "local":
         # can't run on local, so skip

@@ -168,8 +168,7 @@ def set_project_id(value: str | None) -> None:
     """Persist the current project id (or clear it).
 
     Clears cached :class:`~deeporigin.platform.client.DeepOriginClient`
-    instances so the next :meth:`~deeporigin.platform.client.DeepOriginClient.get`
-    loads the updated selection.
+    instances so the next ``DeepOriginClient()`` loads the updated selection.
 
     Args:
         value: Platform project id, or None to clear the current project.
@@ -235,7 +234,7 @@ def list_orgs() -> "pd.DataFrame":
 
     from deeporigin.platform.client import DeepOriginClient
 
-    client = DeepOriginClient.get()
+    client = DeepOriginClient()
     orgs = client.organizations.list()
 
     # Extract only the required columns and map orgKey to key

@@ -18,15 +18,13 @@ from deeporigin.platform.client import DeepOriginClient
 from deeporigin.utils.constants import (
     ENTITIES_UNAVAILABLE_DETAIL,
     ENTITIES_UNAVAILABLE_TITLE,
-    PROJECTS_UNAVAILABLE_DETAIL,
-    PROJECTS_UNAVAILABLE_TITLE,
 )
 
 
 def _require_project_id() -> str:
     """Return the current project id or raise."""
 
-    pid = DeepOriginClient.get().project_id
+    pid = DeepOriginClient().project_id
     if pid is None:
         raise DeepOriginException(
             title="No current project",
@@ -48,18 +46,15 @@ def current() -> tuple[str, str | None] | None:
 
     Returns:
         ``(project_id, name)`` when a project is selected. ``name`` is ``None``
-        if the Projects API is unavailable or the project row could not be
-        resolved.
+        if the project row could not be resolved.
 
         ``None`` when no project is selected.
     """
 
-    client = DeepOriginClient.get()
+    client = DeepOriginClient()
     pid = client.project_id
     if pid is None:
         return None
-    if client.projects is None:
-        return (pid, None)
     try:
         row = client.projects.get(project_id=pid)["data"]
     except DeepOriginException:
@@ -86,7 +81,7 @@ def list(*, limit: int | None = 100) -> Any:  # noqa: A001
 
     import pandas as pd
 
-    client = DeepOriginClient.get()
+    client = DeepOriginClient()
 
     raw = client.projects.list(limit=limit)
     rows = raw.get("data") or []
@@ -105,26 +100,46 @@ def create(
     *,
     description: str | None = None,
     load: bool = True,
-) -> None:
-    """Create a project on the data platform.
+    client: DeepOriginClient | None = None,
+) -> str:
+    """Create a project on the data platform, or select an existing one by name.
+
+    If a non-deleted project already exists with the same display ``name`` (exact
+    match), that row is used and no new project is created. Otherwise a new
+    project is created. When multiple rows share the same name, the first search
+    hit is used.
 
     Args:
         name: Project display name.
-        description: Optional description.
-        load: When True (default), set the new project as current in
+        description: Optional description. Used only when a new project is
+            created; an existing match is not updated.
+        load: When True (default), set the resolved project as current in
             ``~/.deeporigin/config.json``.
+        client: Platform client to use. Defaults to ``DeepOriginClient()``.
+
+    Returns:
+        The project id (canonical id string from the data platform).
     """
 
-    client = DeepOriginClient.get()
-    if client.projects is None:
-        raise DeepOriginException(
-            title=PROJECTS_UNAVAILABLE_TITLE,
-            message=PROJECTS_UNAVAILABLE_DETAIL,
-            level="danger",
-        )
-    result = client.projects.create(name=name, description=description)
-    data = result.get("data") or {}
-    pid = data.get("id") or data.get("canonical_id")
+    if client is None:
+        client = DeepOriginClient()
+
+    existing = client.projects.search(name=name, limit=1)
+    rows = [r for r in existing.get("data") or [] if r.get("name") == name]
+    if rows:
+        row = rows[0]
+        pid = row.get("id") or row.get("canonical_id")
+    else:
+        result = client.projects.create(name=name, description=description)
+        data = result.get("data") or {}
+        pid = data.get("id") or data.get("canonical_id")
+        if pid is None:
+            raise DeepOriginException(
+                title="Project create failed",
+                message="API did not return a project id.",
+                level="danger",
+            )
+
     if pid is None:
         raise DeepOriginException(
             title="Project create failed",
@@ -133,6 +148,8 @@ def create(
         )
     if load:
         set_project_id(str(pid))
+
+    return str(pid)
 
 
 @beartype
@@ -148,13 +165,7 @@ def load(identifier: str) -> None:
         DeepOriginException: If no matching project exists.
     """
 
-    client = DeepOriginClient.get()
-    if client.projects is None:
-        raise DeepOriginException(
-            title=PROJECTS_UNAVAILABLE_TITLE,
-            message=PROJECTS_UNAVAILABLE_DETAIL,
-            level="danger",
-        )
+    client = DeepOriginClient()
 
     raw = client.projects.list()
     rows: List[dict[str, Any]] = raw.get("data") or []
@@ -194,7 +205,7 @@ def ligands() -> Any:
     import pandas as pd
 
     pid = _require_project_id()
-    client = DeepOriginClient.get()
+    client = DeepOriginClient()
     if client.entities is None:
         raise DeepOriginException(
             title=ENTITIES_UNAVAILABLE_TITLE,
@@ -204,16 +215,16 @@ def ligands() -> Any:
     raw = client.entities.search_ligands(
         filter_dict={"project_id": pid},
         limit=None,
-        select=["id", "name", "smiles", "canonical_smiles"],
+        select=["id", "name", "smiles"],
     )
     rows = raw.get("data") or []
     if not rows:
-        return pd.DataFrame(columns=["id", "name", "smiles", "canonical_smiles"])
+        return pd.DataFrame(columns=["id", "name", "smiles"])
     df = pd.DataFrame(rows)
-    for col in ("id", "name", "smiles", "canonical_smiles"):
+    for col in ("id", "name", "smiles"):
         if col not in df.columns:
             df[col] = None
-    return df[["id", "name", "smiles", "canonical_smiles"]]
+    return df[["id", "name", "smiles"]]
 
 
 @beartype
@@ -231,7 +242,7 @@ def proteins() -> Any:
     import pandas as pd
 
     pid = _require_project_id()
-    client = DeepOriginClient.get()
+    client = DeepOriginClient()
     if client.entities is None:
         raise DeepOriginException(
             title=ENTITIES_UNAVAILABLE_TITLE,
@@ -273,7 +284,7 @@ def executions() -> Any:
     import pandas as pd
 
     pid = _require_project_id()
-    client = DeepOriginClient.get()
+    client = DeepOriginClient()
     if client.entities is None:
         raise DeepOriginException(
             title=ENTITIES_UNAVAILABLE_TITLE,
@@ -341,7 +352,7 @@ def get_ligands(
     """
 
     pid = _require_project_id()
-    client = DeepOriginClient.get()
+    client = DeepOriginClient()
     if client.entities is None:
         raise DeepOriginException(
             title=ENTITIES_UNAVAILABLE_TITLE,
@@ -377,7 +388,7 @@ def get_proteins(
     """
 
     pid = _require_project_id()
-    client = DeepOriginClient.get()
+    client = DeepOriginClient()
     if client.entities is None:
         raise DeepOriginException(
             title=ENTITIES_UNAVAILABLE_TITLE,
@@ -412,7 +423,7 @@ def set_ligands(ligands: LigandSet) -> None:
     """
 
     _require_project_id()
-    client = DeepOriginClient.get()
+    client = DeepOriginClient()
     ligands.sync(client=client)
 
 
@@ -428,7 +439,7 @@ def set_proteins(proteins: List[Protein]) -> None:
     """
 
     _require_project_id()
-    client = DeepOriginClient.get()
+    client = DeepOriginClient()
     for p in proteins:
         p.sync(client=client)
 

@@ -6,10 +6,7 @@ from unittest.mock import patch
 
 import pytest
 
-from deeporigin.platform.client import (
-    DeepOriginClient,
-    _infer_env_from_base_url,
-)
+from deeporigin.platform.client import DeepOriginClient
 from deeporigin.utils.constants import ENV_VARIABLES
 
 
@@ -32,32 +29,11 @@ def clear_env_and_cache() -> Generator[None, None, None]:
                 os.environ[k] = v
 
 
-# ---- _infer_env_from_base_url ----
-
-
-def test_infer_env_dev() -> None:
-    """Test that a dev URL is identified as dev."""
-    assert _infer_env_from_base_url("https://api.dev.deeporigin.io") == "dev"
-
-
-def test_infer_env_staging() -> None:
-    """Test that a staging URL is identified as staging."""
-    assert _infer_env_from_base_url("https://api.staging.deeporigin.io") == "staging"
-
-
-def test_infer_env_prod() -> None:
-    """Test that a prod URL is identified as prod."""
-    assert _infer_env_from_base_url("https://api.deeporigin.io") == "prod"
-
-
-def test_infer_env_local() -> None:
-    """Test that localhost URLs are identified as local."""
-    assert _infer_env_from_base_url("http://127.0.0.1:4931") == "local"
-    assert _infer_env_from_base_url("http://localhost:4931") == "local"
+# ---- No-arg constructor priority chain ----
 
 
 def test_do_env_local_defaults_to_mock_base_url() -> None:
-    """``DO_ENV=local`` should default the client to the mock API (port 4931)."""
+    """``DO_ENV=local`` with no auth vars routes DeepOriginClient() through from_disk."""
     os.environ["DO_ENV"] = "local"
     client = DeepOriginClient()
 
@@ -65,11 +41,8 @@ def test_do_env_local_defaults_to_mock_base_url() -> None:
     assert client.base_url.rstrip("/") == "http://127.0.0.1:4931"
 
 
-# ---- DO_BASE_URL in constructor ----
-
-
 def test_do_base_url_env_sets_base_url_and_env() -> None:
-    """Test that DO_BASE_URL overrides default env/base_url resolution."""
+    """All three required env vars set → DeepOriginClient() uses from_env_variables."""
     os.environ["DO_BASE_URL"] = "https://api.dev.deeporigin.io"
     os.environ["DO_AUTH_TOKEN"] = "test-token"
     os.environ["DO_ORG_KEY"] = "test-org"
@@ -81,7 +54,7 @@ def test_do_base_url_env_sets_base_url_and_env() -> None:
 
 
 def test_do_base_url_takes_priority_over_do_env() -> None:
-    """Test that DO_BASE_URL wins when both DO_BASE_URL and DO_ENV are set."""
+    """DO_BASE_URL wins when both DO_BASE_URL and DO_ENV are set (via from_env_variables)."""
     os.environ["DO_BASE_URL"] = "https://api.staging.deeporigin.io"
     os.environ["DO_ENV"] = "prod"
     os.environ["DO_AUTH_TOKEN"] = "test-token"
@@ -91,27 +64,6 @@ def test_do_base_url_takes_priority_over_do_env() -> None:
 
     assert client.env == "staging"
     assert "staging" in client.base_url
-
-
-def test_do_base_url_with_from_env() -> None:
-    """Test that from_env respects DO_BASE_URL."""
-    os.environ["DO_BASE_URL"] = "https://api.dev.deeporigin.io"
-
-    with (
-        patch("deeporigin.platform.client.get_token") as mock_get_token,
-        patch("deeporigin.platform.client.get_value") as mock_get_value,
-    ):
-        mock_get_token.return_value = "token-dev"
-        mock_get_value.return_value = {
-            "env": "prod",
-            "org_key": "test-org",
-            "project_id": None,
-        }
-
-        client = DeepOriginClient.from_env()
-
-        assert client.env == "dev"
-        assert client.base_url.rstrip("/") == "https://api.dev.deeporigin.io"
 
 
 # ---- from_env_variables ----
@@ -172,11 +124,11 @@ def test_from_env_variables_missing_base_url_raises() -> None:
         DeepOriginClient.from_env_variables()
 
 
-# ---- Existing from_env tests ----
+# ---- from_disk ----
 
 
-def test_from_env_reads_token_and_org_key_from_files() -> None:
-    """Test that from_env reads token from api_tokens.json and org_key from config."""
+def test_from_disk_reads_token_and_org_key_from_files() -> None:
+    """Test that from_disk reads token from api_tokens.json and org_key from config."""
     with (
         patch("deeporigin.platform.client.get_token") as mock_get_token,
         patch("deeporigin.platform.client.get_value") as mock_get_value,
@@ -188,7 +140,7 @@ def test_from_env_reads_token_and_org_key_from_files() -> None:
             "project_id": None,
         }
 
-        client = DeepOriginClient.from_env(env="prod")
+        client = DeepOriginClient.from_disk(env="prod")
 
         assert client.token == "token_from_file"
         assert client.org_key == "org_from_config"
@@ -197,8 +149,8 @@ def test_from_env_reads_token_and_org_key_from_files() -> None:
         mock_get_value.assert_called_once()
 
 
-def test_from_env_with_explicit_env() -> None:
-    """Test that from_env uses explicit env parameter when provided."""
+def test_from_disk_with_explicit_env() -> None:
+    """Test that from_disk uses explicit env parameter when provided."""
     with (
         patch("deeporigin.platform.client.get_token") as mock_get_token,
         patch("deeporigin.platform.client.get_value") as mock_get_value,
@@ -210,7 +162,7 @@ def test_from_env_with_explicit_env() -> None:
             "project_id": None,
         }
 
-        client = DeepOriginClient.from_env(env="staging")
+        client = DeepOriginClient.from_disk(env="staging")
 
         assert client.token == "token_staging"
         assert client.org_key == "org_from_config"
@@ -218,8 +170,8 @@ def test_from_env_with_explicit_env() -> None:
         mock_get_token.assert_called_once_with(env="staging")
 
 
-def test_from_env_reads_token_from_file() -> None:
-    """Test that from_env reads token from file."""
+def test_from_disk_reads_token_from_file() -> None:
+    """Test that from_disk reads token from file."""
     with (
         patch("deeporigin.platform.client.get_token") as mock_get_token,
         patch("deeporigin.platform.client.get_value") as mock_get_value,
@@ -231,6 +183,6 @@ def test_from_env_reads_token_from_file() -> None:
             "project_id": None,
         }
 
-        client = DeepOriginClient.from_env(env="prod")
+        client = DeepOriginClient.from_disk(env="prod")
 
         assert client.token == "token_from_file"

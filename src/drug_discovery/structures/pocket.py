@@ -177,13 +177,13 @@ class Pocket(Entity):
 
         Args:
             lazy: If True, skip when the pocket already has a platform ``id``.
-            client: DeepOrigin client. If None, uses :meth:`DeepOriginClient.get`.
+            client: DeepOrigin client. If None, uses ``DeepOriginClient()``.
             remote_path: Optional explicit destination path on the file server.
         """
         if lazy and self.id is not None:
             return
         if client is None:
-            client = DeepOriginClient.get()
+            client = DeepOriginClient()
         self.upload(client=client, remote_path=remote_path)
 
     @classmethod
@@ -570,7 +570,7 @@ class Pocket(Entity):
         from deeporigin.platform.client import DeepOriginClient
 
         if client is None:
-            client = DeepOriginClient.get()
+            client = DeepOriginClient()
 
         response = client.results.get_pockets(id=id)
         records = response.get("data", [])
@@ -619,7 +619,7 @@ class Pocket(Entity):
         from deeporigin.platform.client import DeepOriginClient
 
         if client is None:
-            client = DeepOriginClient.get()
+            client = DeepOriginClient()
 
         response = client.results.get_pockets(
             protein_id=protein_id,

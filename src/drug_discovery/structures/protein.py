@@ -125,7 +125,7 @@ class Protein(Entity):
             RuntimeError: If the file cannot be downloaded or loaded.
         """
         if client is None:
-            client = DeepOriginClient.get()
+            client = DeepOriginClient()
 
         data = client.entities.get_protein(id=id)
 
@@ -502,7 +502,7 @@ class Protein(Entity):
         """
 
         if client is None:
-            client = DeepOriginClient.get()
+            client = DeepOriginClient()
         self.download(lazy=True, client=client)
 
         if ligands is None and ligand is None:
@@ -1562,7 +1562,7 @@ class Protein(Entity):
         record, regardless of whether one already exists for this file path.
 
         Args:
-            client: DeepOriginClient instance. If None, uses DeepOriginClient.get().
+            client: DeepOriginClient instance. If None, uses DeepOriginClient().
             remote_path: Custom remote path to upload to. Overrides the
                 default hash-based path.
 
@@ -1571,7 +1571,7 @@ class Protein(Entity):
             to the newly created record's ID.
         """
         if client is None:
-            client = DeepOriginClient.get()
+            client = DeepOriginClient()
 
         self.upload(client=client, remote_path=remote_path)
 
@@ -1612,7 +1612,7 @@ class Protein(Entity):
         Args:
             lazy: If True, skip syncing when the protein already has an ID.
                 Defaults to False.
-            client: DeepOriginClient instance. If None, uses DeepOriginClient.get().
+            client: DeepOriginClient instance. If None, uses DeepOriginClient().
             remote_path: Custom remote path to upload to. Overrides the
                 default hash-based path.
 
@@ -1624,14 +1624,14 @@ class Protein(Entity):
         """
         if lazy and self.id is not None:
             if client is None:
-                client = DeepOriginClient.get()
+                client = DeepOriginClient()
             proj_id = self.resolved_project_id(client=client)
             if proj_id is not None:
                 self.project_id = proj_id
             return
 
         if client is None:
-            client = DeepOriginClient.get()
+            client = DeepOriginClient()
 
         self.upload(client=client, remote_path=remote_path)
 
