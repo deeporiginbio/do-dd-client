@@ -4,16 +4,34 @@ on:
   pull_request:
     paths:
       - '**/*.py'
+  push:
+    branches:
+      - main
+    paths:
+      - '**/*.py'
 
 
 jobs:
 
   sonarcloud:
     runs-on: ubuntu-latest
+    needs: [code-formatting-syntax-and-docstrings]
     steps:
     - uses: actions/checkout@v4
       with:
         fetch-depth: 0
+    - name: Install uv
+      uses: astral-sh/setup-uv@v6
+      with:
+        version: "0.5.27"
+    - name: Set up Python
+      run: uv python install
+    - name: Install dependencies
+      run: uv sync --extra test --extra tools --extra plots --extra core
+    - name: Generate coverage report
+      run: |
+        uv run coverage run -m pytest --env local
+        uv run coverage xml
     - name: SonarCloud Scan
       uses: sonarsource/sonarqube-scan-action@49e14673f8dd1e50bab5d7ba5b0c4702c5bfd66c  # v4.1.0
       env:
