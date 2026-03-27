@@ -1202,13 +1202,31 @@ class Protein(Entity):
         """
         Write the protein structure to a PDB file.
 
+        This is a local operation: it serializes the current :attr:`structure`. If the
+        protein has :attr:`remote_path` but no local file yet, raise; rehydrate with
+        :meth:`download` first.
+
         Args:
             file_path (str): Path where the PDB file will be written.
 
+        Raises:
+            DeepOriginException: If ``remote_path`` is set but no local file exists yet,
+                or if :attr:`structure` is not loaded.
 
         """
 
-        self.download(lazy=True)
+        self._assert_rehydrated_for_file_export(
+            entity_label="Protein",
+            format_name="PDB",
+        )
+        if self.structure is None:
+            raise DeepOriginException(
+                title="Protein structure not loaded",
+                message=(
+                    "Cannot write PDB: structure is not loaded. "
+                    "Call download() or load_structure_from_local(), or load from file / PDB ID."
+                ),
+            )
 
         if file_path is None:
             file_path = PROTEINS_DIR / (self.to_hash() + ".pdb")

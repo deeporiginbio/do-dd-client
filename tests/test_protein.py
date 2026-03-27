@@ -18,6 +18,21 @@ def test_load_protein_from_cif_structure_factor():
         _ = Protein.from_file(cif_path)
 
 
+def test_to_pdb_requires_rehydration_when_remote_path_only():
+    """to_pdb/to_file must not perform I/O; fail if remote_path set but no local file."""
+    protein = Protein(
+        name="test",
+        structure=None,
+        remote_path="entities/proteins/fake.pdb",
+    )
+
+    with pytest.raises(DeepOriginException, match="not rehydrated"):
+        protein.to_pdb()
+
+    with pytest.raises(DeepOriginException, match="not rehydrated"):
+        protein.to_file()
+
+
 def test_from_file_lv0():
     protein = Protein.from_file(BRD_DATA_DIR / "brd.pdb")
 

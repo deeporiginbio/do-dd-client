@@ -652,6 +652,12 @@ You can add hydrogens to ligands, which is often necessary before generating 3D 
     ligand = Ligand.from_smiles("NCCc1c[nH]c2ccc(O)cc12")
     ligand.to_sdf()
     ```
+
+    !!! note "Platform ligands without a local file"
+        If the ligand was loaded with `from_id(..., download=False)`, it has `remote_path`
+        but no local file yet. Call `download(client=...)` before `to_sdf()` or `to_file()`,
+        or use `from_id(..., download=True)`.
+
 === "LigandSet"
 
     To write a `LigandSet` to a SDF file, use:

@@ -9,3 +9,5 @@ from deeporigin.platform.client import DeepOriginClient
 
 client = DeepOriginClient()
 ```
+
+Notebook execution widgets: [Execution display](ref/execution_display.md).

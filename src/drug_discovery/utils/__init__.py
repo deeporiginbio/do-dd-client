@@ -39,6 +39,7 @@ def _start_tool_run(
     client: DeepOriginClient,
     outputs: dict | None = None,
     approve_amount: int | None = None,
+    name: str | None = None,
 ) -> dict:
     """Submit a tool execution to the platform.
 
@@ -50,6 +51,7 @@ def _start_tool_run(
         client: API client.
         outputs: Output file specification. Defaults to empty.
         approve_amount: Pre-approved spend amount.
+        name: Optional execution label.
 
     Returns:
         The execution DTO from the API.
@@ -67,6 +69,9 @@ def _start_tool_run(
 
     if approve_amount is not None:
         payload["approveAmount"] = approve_amount
+
+    if name is not None:
+        payload["name"] = name
 
     from deeporigin.config import get_project_id
 

@@ -452,6 +452,11 @@ file_path = protein.to_pdb("prepared_protein.pdb")
 
 If no file path is provided, the protein will be saved to a default location based on its hash.
 
+!!! note "Platform proteins without a local file"
+    If the protein was loaded with `from_id(..., download=False)`, it has `remote_path`
+    but no local file yet. Call `download(client=...)` before `to_pdb()` or `to_file()`,
+    or use `from_id(..., download=True)`.
+
 ### Docking ligands
 
 You can dock ligands into pockets of the protein. See the [Docking guide](docking.md) for detailed information.

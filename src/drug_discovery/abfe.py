@@ -28,6 +28,97 @@ from deeporigin.platform.client import DeepOriginClient
 from deeporigin.platform.constants import ABFE_TOOL_KEY, ABFE_TOOL_VERSION
 
 
+@beartype
+def _protein_display_name_from_entity(*, entity: dict, fallback_id: str) -> str:
+    """Resolve a display label from a protein entity record.
+
+    Preference order matches :meth:`deeporigin.drug_discovery.structures.protein.Protein.from_id`.
+
+    Args:
+        entity: Raw protein dict from ``client.entities.get_protein``.
+        fallback_id: Value to use when no suitable name field is present.
+
+    Returns:
+        Non-empty display string for the protein.
+    """
+    for key in ("protein_name", "pdb_id", "gene_symbol"):
+        value = entity.get(key)
+        if value is not None and str(value).strip():
+            return str(value).strip()
+    return fallback_id
+
+
+@beartype
+def _ligand_display_label_from_entity(*, entity: dict, fallback_id: str) -> str:
+    """Resolve ligand label: name when set, otherwise canonical or input SMILES.
+
+    Args:
+        entity: Raw ligand dict from ``client.entities.get_ligand``.
+        fallback_id: Value to use when no name or SMILES is present.
+
+    Returns:
+        Non-empty display string for the ligand.
+    """
+    name = entity.get("name")
+    if name is not None and str(name).strip():
+        return str(name).strip()
+    smiles = entity.get("canonical_smiles") or entity.get("smiles")
+    if smiles is not None and str(smiles).strip():
+        return str(smiles).strip()
+    return fallback_id
+
+
+@beartype
+def _abfe_default_name(
+    *,
+    prepared_system: PreparedSystem,
+    client: DeepOriginClient,
+) -> str:
+    """Build a short human-readable label for an ABFE execution.
+
+    Loads protein and ligand records via ``client.entities`` when IDs are set,
+    then formats ``ABFE: <protein> with <ligand>``. The ligand segment uses
+    SMILES when the entity has no name. On fetch failure, falls back to the
+    corresponding ID string.
+
+    Args:
+        prepared_system: Prepared system carrying protein and ligand entity IDs.
+        client: API client used to resolve entities.
+
+    Returns:
+        A string such as ``ABFE: BRD4 with CCO`` or ``ABFE: BRD4 with lig-456``
+        when metadata is missing.
+    """
+    pid = prepared_system.protein_id
+    lid = prepared_system.ligand1_id
+    protein_id_str = pid.strip() if pid is not None and pid.strip() else ""
+    ligand_id_str = lid.strip() if lid is not None and lid.strip() else ""
+
+    if protein_id_str:
+        try:
+            protein_label = _protein_display_name_from_entity(
+                entity=client.entities.get_protein(id=protein_id_str),
+                fallback_id=protein_id_str,
+            )
+        except Exception:
+            protein_label = protein_id_str
+    else:
+        protein_label = "unknown protein"
+
+    if ligand_id_str:
+        try:
+            ligand_label = _ligand_display_label_from_entity(
+                entity=client.entities.get_ligand(id=ligand_id_str),
+                fallback_id=ligand_id_str,
+            )
+        except Exception:
+            ligand_label = ligand_id_str
+    else:
+        ligand_label = "unknown ligand"
+
+    return f"ABFE: {protein_label} with {ligand_label}"
+
+
 @dataclass(frozen=True)
 class ABFEParams:
     """ABFE calculation parameters.
@@ -141,6 +232,7 @@ class ABFE(Execution, QuoteMixin, AsyncExecutableMixin, NotebookWatchMixin):
 
     Attributes:
         prepared_system: Prepared system containing binding and solvation XML paths.
+        name: Execution label, set from platform entities when IDs are present unless overridden.
     """
 
     tool_key: str = ABFE_TOOL_KEY
@@ -153,6 +245,7 @@ class ABFE(Execution, QuoteMixin, AsyncExecutableMixin, NotebookWatchMixin):
         params: ABFEParams | None = None,
         tool_version: str = ABFE_TOOL_VERSION,
         client: DeepOriginClient | None = None,
+        name: str | None = None,
     ) -> None:
         """Create an ABFE execution from a prepared system.
 
@@ -162,35 +255,42 @@ class ABFE(Execution, QuoteMixin, AsyncExecutableMixin, NotebookWatchMixin):
             tool_version: Platform tool version to run. Settable so callers
                 can pin or upgrade independently of the SDK release.
             client: Optional API client.
+            name: Optional execution label. When omitted, derived by fetching
+                protein and ligand entities when ``prepared_system`` IDs are set.
         """
         super().__init__(client=client)
         self.tool_version = tool_version
 
         self.prepared_system = prepared_system
+        self.name = (
+            name
+            if name is not None
+            else _abfe_default_name(prepared_system=prepared_system, client=self.client)
+        )
 
         # Store parameters in a frozen dataclass
         self._params = params if params is not None else ABFEParams()
 
     @classmethod
-    def from_id(
+    def from_dto(
         cls,
-        id: str,
+        dto: dict,
         *,
         client: DeepOriginClient | None = None,
     ) -> Self:
-        """Construct an ABFE instance from an existing platform execution ID.
+        """Construct an ABFE instance from an execution DTO.
 
-        Fetches the execution record and rehydrates ``prepared_system`` and
-        ``_params`` from the stored ``userInputs`` and ``metadata``.
+        Rehydrates ``prepared_system`` and ``_params`` from the stored
+        ``userInputs`` and ``metadata``.
 
         Args:
-            id: Platform execution ID.
+            dto: Execution payload (same shape as ``client.executions.get``).
             client: Optional API client. Uses the default if not provided.
 
         Returns:
-            A fully-hydrated ABFE instance with status synced from the platform.
+            A fully-hydrated ABFE instance with status from the DTO.
         """
-        instance = super().from_id(id, client=client)
+        instance = super().from_dto(dto, client=client)
         inputs = instance._execution_dto.get("userInputs", {})
         metadata = instance._execution_dto.get("metadata", {})
 
@@ -246,6 +346,27 @@ class ABFE(Execution, QuoteMixin, AsyncExecutableMixin, NotebookWatchMixin):
 
         return instance
 
+    @classmethod
+    def from_id(
+        cls,
+        id: str,
+        *,
+        client: DeepOriginClient | None = None,
+    ) -> Self:
+        """Construct an ABFE instance from an existing platform execution ID.
+
+        Fetches the execution record via the API and delegates to
+        :meth:`from_dto`.
+
+        Args:
+            id: Platform execution ID.
+            client: Optional API client. Uses the default if not provided.
+
+        Returns:
+            A fully-hydrated ABFE instance with status synced from the platform.
+        """
+        return super().from_id(id, client=client)
+
     @property
     def params(self) -> ABFEParams:
         """ABFE calculation parameters (read-only)."""
@@ -262,16 +383,19 @@ class ABFE(Execution, QuoteMixin, AsyncExecutableMixin, NotebookWatchMixin):
         Populates ``self.estimate``. Uses the tools API with
         ``approve_amount=0`` to get a quotation.
         """
-        from deeporigin.drug_discovery import utils
+        payload = {
+            "inputs": self._build_params(),
+            "outputs": self._build_outputs(),
+            "metadata": self._build_metadata(),
+            "approveAmount": 0,
+        }
+        if self.name is not None:
+            payload["name"] = self.name
 
-        execution_dto = utils._start_tool_run(
-            params=self._build_params(),
-            metadata=self._build_metadata(),
-            outputs=self._build_outputs(),
-            tool="ABFE",
+        execution_dto = self.client.executions.create(
+            data=payload,
+            tool_key=self.tool_key,
             tool_version=self.tool_version,
-            client=self.client,
-            approve_amount=0,
         )
 
         quotation = execution_dto.get("quotationResult", {})
@@ -294,17 +418,22 @@ class ABFE(Execution, QuoteMixin, AsyncExecutableMixin, NotebookWatchMixin):
         Args:
             approve_amount: Pre-approved spend amount. If None, uses default.
         """
-        from deeporigin.drug_discovery import utils
         from deeporigin.platform.job import Job
 
-        execution_dto = utils._start_tool_run(
-            params=self._build_params(),
-            metadata=self._build_metadata(),
-            outputs=self._build_outputs(),
-            tool="ABFE",
+        payload = {
+            "inputs": self._build_params(),
+            "outputs": self._build_outputs(),
+            "metadata": self._build_metadata(),
+        }
+        if self.name is not None:
+            payload["name"] = self.name
+        if approve_amount is not None:
+            payload["approveAmount"] = approve_amount
+
+        execution_dto = self.client.executions.create(
+            data=payload,
+            tool_key=self.tool_key,
             tool_version=self.tool_version,
-            client=self.client,
-            approve_amount=approve_amount,
         )
 
         job = Job.from_dto(execution_dto, client=self.client)

@@ -267,6 +267,15 @@ def test_ligand_set_from_csv():
         LigandSet.from_csv("nonexistent.csv")
 
 
+def test_ligandset_to_sdf_requires_rehydration_when_remote_path_only():
+    """LigandSet.to_sdf fails if any ligand has remote_path but no local file."""
+    ligands = LigandSet.from_smiles(["CCO", "c1ccccc1"])
+    ligands.ligands[0].remote_path = "entities/ligands/fake.sdf"
+
+    with pytest.raises(DeepOriginException, match="not rehydrated"):
+        ligands.to_sdf()
+
+
 @pytest.mark.parametrize("filename,expected_count", SDF_TEST_CASES)
 def test_sdf_roundtrip(filename, expected_count):
     """Test that we can roundtrip a LigandSet to an SDF file and back for all SDF_TEST_CASES"""

@@ -1015,43 +1015,24 @@ class Ligand(Entity):
         return self.write_to_file(output_path=output_path, output_format="mol")
 
     @beartype
-    def _ensure_mol_from_remote_file(
-        self,
-        *,
-        client: Optional[DeepOriginClient] = None,
-    ) -> None:
-        """If only :attr:`remote_path` is set, download the SDF and reload :attr:`mol`.
-
-        Ligands rehydrated with ``from_id(..., download=False)`` have ``remote_path``
-        but no local ``file_path``; :attr:`mol` may be 2D from SMILES. Export paths
-        such as :meth:`to_sdf` need coordinates from the remote structure file.
-        """
-
-        if self.remote_path is None or self.file_path is not None:
-            return
-        if client is None:
-            client = DeepOriginClient.get()
-        local_path = self.download(client=client, lazy=True)
-        loaded = Ligand.from_sdf(local_path)
-        self.mol = loaded.mol
-        self.file_path = loaded.file_path
-
-    @beartype
     def to_sdf(
         self,
         output_path: Optional[str] = None,
-        *,
-        client: Optional[DeepOriginClient] = None,
     ) -> str:
         """Write the ligand to an SDF file.
 
+        This is a local operation: it serializes the current :attr:`mol`. If the ligand
+        has :attr:`remote_path` but no local file yet, raise; rehydrate with
+        :meth:`download` first.
+
         Args:
             output_path: Path for the SDF file, or default under ``LIGANDS_DIR``.
-            client: Optional client used when downloading from :attr:`remote_path`
-                if ``file_path`` is not yet set.
         """
 
-        self._ensure_mol_from_remote_file(client=client)
+        self._assert_rehydrated_for_file_export(
+            entity_label="Ligand",
+            format_name="SDF",
+        )
 
         if output_path is None:
             output_path = LIGANDS_DIR / (self.to_hash() + ".sdf")
@@ -2317,18 +2298,15 @@ class LigandSet:
     def to_sdf(
         self,
         output_path: Optional[str] = None,
-        *,
-        client: Optional[DeepOriginClient] = None,
     ) -> str:
         """Write all ligands to one SDF file, preserving properties from each ``mol``.
 
-        When a ligand has ``remote_path`` but no local ``file_path`` (e.g. from
-        ``from_id(..., download=False)``), each ligand is downloaded and the
-        ``mol`` is rebuilt from that file before writing so 3D coordinates are kept.
+        This is a local operation. Each ligand must already be rehydrated if it has
+        ``remote_path`` but no local file (call :meth:`Ligand.download` first, or use
+        ``from_id(..., download=True)``).
 
         Args:
             output_path: Path to the output SDF file.
-            client: Optional client for per-ligand downloads from ``remote_path``.
 
         Returns:
             Path to the written SDF file.
@@ -2337,9 +2315,6 @@ class LigandSet:
 
         from rdkit import Chem
 
-        if client is None:
-            client = DeepOriginClient.get()
-
         if output_path is None:
             output_path = f"{tempfile.mkstemp()[1]}.sdf"
 
@@ -2347,7 +2322,10 @@ class LigandSet:
         writer = Chem.SDWriter(str(path))
         try:
             for ligand in self.ligands:
-                ligand._ensure_mol_from_remote_file(client=client)
+                ligand._assert_rehydrated_for_file_export(
+                    entity_label="Ligand",
+                    format_name="SDF",
+                )
                 # Ensure all properties are set on the RDKit Mol object
                 if ligand.name is not None:
                     ligand.set_property("_Name", ligand.name)
