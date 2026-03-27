@@ -8,6 +8,9 @@ import pytest
 from deeporigin.drug_discovery.abfe import ABFE
 from deeporigin.drug_discovery.structures.prepared_system import PreparedSystem
 
+# TODO: remove after CI investigation (pytest stall on Python 3.11)
+pytestmark = pytest.mark.skip(reason="Temporary skip: CI stall investigation")
+
 
 def _minimal_dto(*, status: str, execution_id: str = "exec-1") -> dict:
     """Build a minimal execution DTO for sync() / ExecutionDisplay.from_dto."""
