@@ -51,7 +51,6 @@ class Ligand(Entity):
     """
 
     identifier: str | None = None
-    file_path: str | None = None
     smiles: str | None = None
     block_type: str | None = None
     block_content: str | None = None
@@ -331,7 +330,7 @@ class Ligand(Entity):
             raise DeepOriginException(
                 f"SDF file '{file_path}' must contain exactly one molecule, but found {len(ligands)}. If you want to work with a set of ligands in a SDF file, use LigandSet.from_sdf instead."
             ) from None
-        ligands[0].file_path = str(path)
+        ligands[0].local_path = str(path)
         return ligands[0]
 
     @classmethod
@@ -736,8 +735,8 @@ class Ligand(Entity):
 
     def __post_init__(self):
         """
-        Initialize a Ligand instance from an identifier, file path, SMILES string,
-        block content, or direct Molecule object.
+        Initialize a Ligand instance from an identifier, SMILES string,
+        block content, or direct Molecule object (``mol`` must be set).
         """
 
         # check that a mol exists
@@ -1140,7 +1139,7 @@ class Ligand(Entity):
             client = DeepOriginClient()
 
         mol_file: str | None = None
-        if self.file_path is not None:
+        if self.local_path is not None:
             self.upload(client=client, remote_path=remote_path)
             mol_file = self.remote_path
 
@@ -1251,10 +1250,10 @@ class Ligand(Entity):
             "smiles": smiles_value,
             "variant_name_tag": "",
         }
-        if self.file_path is not None:
+        if self.local_path is not None:
             if self.remote_path is None:
                 raise ValueError(
-                    "remote_path is required when file_path is set; call upload() first."
+                    "remote_path is required when local_path is set; call upload() first."
                 )
             row["mol_file"] = self.remote_path
         if self.name is not None:
@@ -2002,7 +2001,7 @@ class LigandSet:
                         mol,
                         properties=mol.GetPropsAsDict(),
                     )
-                    ligand.file_path = str(path)
+                    ligand.local_path = str(path)
                     ligands.append(ligand)
                 except Exception as e:
                     print(
@@ -2136,7 +2135,7 @@ class LigandSet:
             this_file = str(sdf_file)
             this_set = cls.from_sdf(this_file)
             for ligand in this_set.ligands:
-                ligand.file_path = this_file
+                ligand.local_path = this_file
             ligands.extend(this_set.ligands)
 
         # Process CSV files
@@ -2145,7 +2144,7 @@ class LigandSet:
             this_file = str(csv_file)
             this_set = cls.from_csv(this_file)
             for ligand in this_set.ligands:
-                ligand.file_path = this_file
+                ligand.local_path = this_file
             ligands.extend(this_set.ligands)
 
         return cls(ligands=ligands)
@@ -2392,7 +2391,7 @@ class LigandSet:
            ``search_ligands(smiles_list=…)``).
         2. For ligands that already exist remotely, updates the local ``id``.
         3. For ligands that are new, uploads files to remote storage (if a
-           file_path is present) and batch-creates them in a single API call.
+           local_path is present) and batch-creates them in a single API call.
         4. Updates the local ``id`` values from the created records.
 
         .. note::
@@ -2456,7 +2455,7 @@ class LigandSet:
             return
 
         for lig in to_create:
-            if lig.file_path is not None:
+            if lig.local_path is not None:
                 lig.upload(client=client)
 
         rows = [lig._to_row(client=client) for lig in to_create]

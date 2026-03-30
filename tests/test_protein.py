@@ -78,7 +78,7 @@ def test_from_name_lv0(pytestconfig):
 def test_from_pdb_id_lv0():
     conotoxin = Protein.from_pdb_id("2JUQ")
 
-    os.remove(conotoxin.file_path)
+    os.remove(conotoxin.local_path)
 
     _ = Protein.from_pdb_id("2JUQ")
 
@@ -377,7 +377,7 @@ def test_from_file_cif():
 
     assert protein.name == "1EBY"
     assert protein.block_type == "cif"
-    assert protein.file_path == cif_path.resolve()
+    assert protein.local_path == str(cif_path.resolve())
     assert len(protein.structure) > 0
     assert protein.block_content is not None
     assert (
@@ -429,7 +429,6 @@ def test_protein_sync_lv1():
 def test_protein_download_raises_when_structure_loaded_without_paths() -> None:
     """download() must not return an empty string when no local path exists."""
     protein = Protein.from_file(BRD_DATA_DIR / "brd.pdb")
-    protein.file_path = None
     protein.local_path = None
     assert protein.structure is not None
     with pytest.raises(ValueError, match="local file path"):

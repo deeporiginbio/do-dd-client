@@ -132,14 +132,12 @@ class Entity(ABC):
             format_name: Format label for errors (e.g. ``SDF`` or ``PDB``).
 
         Raises:
-            DeepOriginException: If :attr:`remote_path` is set but neither
-                ``file_path`` (when present on the subclass) nor :attr:`local_path`
-                is set.
+            DeepOriginException: If :attr:`remote_path` is set but
+                :attr:`local_path` is not set.
         """
         if self.remote_path is None:
             return
-        file_path = getattr(self, "file_path", None)
-        if file_path is not None or self.local_path is not None:
+        if self.local_path is not None:
             return
         raise DeepOriginException(
             title=f"{entity_label} not rehydrated",

@@ -122,8 +122,8 @@ def test_ligand_from_smiles(smiles, name, expected_atoms, equivalent_smiles):
     # Verify the name was set correctly
     assert ligand.name == name
 
-    # Verify that the file field is None
-    assert ligand.file_path is None
+    # Verify that the local file field is None
+    assert ligand.local_path is None
 
     # Verify that the molecule was properly initialized
     assert ligand.mol is not None
@@ -159,8 +159,8 @@ def test_ligand_from_identifier(identifier, expected_atoms):
     # Verify the name was set correctly
     assert ligand.name == identifier
 
-    # Verify that the file field is None
-    assert ligand.file_path is None
+    # Verify that the local file field is None
+    assert ligand.local_path is None
 
     # Verify that the molecule was properly initialized
     assert ligand.mol is not None
@@ -204,8 +204,8 @@ def test_ligand_from_rdkit_mol():
         # Verify the name was set correctly
         assert ligand.name == "TestLigand"
 
-        # Verify that the file field is None
-        assert ligand.file_path is None
+        # Verify that the local file field is None
+        assert ligand.local_path is None
 
         # Verify that the molecule was properly initialized
         assert ligand.mol is not None
@@ -227,8 +227,8 @@ def test_ligand_from_sdf():
     assert ligand.mol is not None
     assert ligand.mol.GetNumAtoms() > 0
 
-    # Verify that the file_path was set correctly
-    assert ligand.file_path == sdf_file
+    # Verify that local_path was set correctly
+    assert ligand.local_path == sdf_file
 
     # Verify that the ligand has a name
     assert ligand.name is not None
@@ -276,7 +276,7 @@ def test_ligand_hash(sdf_file, hash_value):
 def test_ligand_errors(ligand):
     with pytest.raises(DeepOriginException):  # noqa: B017
         Ligand(
-            file_path=ligand["file"],
+            local_path=ligand["file"],
             smiles=ligand["smiles_string"],
         )
 
@@ -295,8 +295,8 @@ def test_ligand(ligand):
     assert result.mol is not None
     assert result.mol.GetNumAtoms() > 0
     assert (
-        result.file_path == ligand["file"]
-    )  # Single ligand case should have file_path
+        result.local_path == ligand["file"]
+    )  # Single ligand case should have local_path
 
 
 def test_ligand_from_sdf_multiple_raises():

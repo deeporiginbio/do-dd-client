@@ -80,8 +80,10 @@ class Docking(WorkflowStep):
         from deeporigin_molstar.src.viewers import DockingViewer
 
         docking_viewer = DockingViewer()
+        p = self.parent.protein
+        protein_local = p.local_path or p.download(lazy=True, client=self.parent.client)
         html_content = docking_viewer.render_with_separate_crystal(
-            protein_data=str(self.parent.protein.file_path),
+            protein_data=str(protein_local),
             protein_format="pdb",
             ligands_data=file_paths,
             ligand_format="sdf",
@@ -370,7 +372,10 @@ class Docking(WorkflowStep):
                 level="danger",
             ) from None
 
-        protein_basename = os.path.basename(self.parent.protein.file_path)
+        p = self.parent.protein
+        protein_basename = os.path.basename(
+            str(p.local_path or p.remote_path or ""),
+        )
 
         if output_dir_path is None:
             output_dir_path = "tool-runs/docking/" + self.parent.protein.to_hash() + "/"
