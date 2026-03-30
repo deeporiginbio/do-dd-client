@@ -13,11 +13,12 @@ FIXTURES_DIR = Path(__file__).parent / "fixtures"
 
 @pytest.fixture(autouse=True)
 def _reset_deeporigin_client_cache() -> None:
-    """Drop cached clients so each test builds from current on-disk config.
+    """Drop cached clients so each test gets a fresh client.
 
-    :class:`~deeporigin.platform.client.DeepOriginClient` resolves
-    ``project_id`` at construction time; without a reset, a stale singleton
-    would diverge from ``~/.deeporigin/config.json`` until
+    :class:`~deeporigin.platform.client.DeepOriginClient` is a singleton; the
+    cache key omits ``project_id`` because it is mutable (see
+    :func:`deeporigin.projects.load`). Without a reset, a test could see another
+    test's ``project_id`` or other client state until
     :meth:`~deeporigin.platform.client.DeepOriginClient.close_all` runs.
     """
     DeepOriginClient.close_all()

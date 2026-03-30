@@ -312,7 +312,7 @@ def executions() -> Any:
                 "status",
                 "started_at",
                 "completed_at",
-                "compute_job_id",
+                "execution_id",
             ]
         )
     df = pd.DataFrame(rows)

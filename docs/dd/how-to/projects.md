@@ -8,10 +8,14 @@ Requires the **core** optional dependency (includes `pandas`) for DataFrame help
 
 ## Configuration
 
-The current project id is stored in `~/.deeporigin/config.json` under `project_id`.
-`DeepOriginClient` exposes it as `client.project_id`: `DO_PROJECT_ID` overrides
-the on-disk value, and changing the selection with `set_project_id` clears the
-client cache so the next `DeepOriginClient.get()` picks up the new id.
+The active project is whatever
+`DeepOriginClient().project_id` holds in memory.
+
+When `DO_AUTH_TOKEN`, `DO_ORG_KEY`, and `DO_BASE_URL` are all set, the no-arg
+`DeepOriginClient()` resolves via environment variables and optional `DO_PROJECT_ID`.
+Otherwise the client is built from disk (`from_disk`) with `project_id` unset until
+you call `projects.load(...)` or `projects.create(...)`, which assign
+`client.project_id` for that process (again, no disk write).
 
 ## API reference
 

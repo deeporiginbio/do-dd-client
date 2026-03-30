@@ -2,7 +2,7 @@ import os
 
 import pytest
 
-from deeporigin.drug_discovery import DATA_DIR
+from deeporigin.drug_discovery import BRD_DATA_DIR, DATA_DIR
 from deeporigin.drug_discovery.structures.ligand import Ligand, LigandSet
 from deeporigin.exceptions import DeepOriginException
 from deeporigin.platform.client import DeepOriginClient
@@ -977,20 +977,15 @@ def test_render_view_no_structure_badge_when_mixed():
 
 
 def test_ligand_set_sync_lv1():
-    """Test syncing a LigandSet to the data platform.
+    """Test syncing a LigandSet to the data platform using BRD ligands.
 
-    Creates ligands from SMILES, syncs them, then syncs again to verify
-    that existing ligands are found rather than re-created.
+    Loads BRD ligands from BRD_DATA_DIR, syncs them, then syncs again to
+    verify that existing ligands are found rather than re-created.
     """
-    smiles_list = [
-        "CCO",
-        "CCCO",
-        "CCCCO",
-    ]
-    ligands = LigandSet.from_smiles(smiles_list)
-    for i, lig in enumerate(ligands):
-        lig.name = f"sync-test-{i}"
+    sdf_files = sorted(BRD_DATA_DIR.glob("*.sdf"))[:3]
+    assert sdf_files, "No SDF files found in BRD_DATA_DIR"
 
+    ligands = LigandSet.from_sdf_files([str(p) for p in sdf_files])
     ligands.sync()
 
     for lig in ligands:
@@ -998,8 +993,8 @@ def test_ligand_set_sync_lv1():
 
     first_ids = [lig.id for lig in ligands]
 
-    # Sync again — same canonical SMILES should match existing records
-    ligands2 = LigandSet.from_smiles(smiles_list)
+    # Sync again — same canonical SMILES should match existing records, not create new ones.
+    ligands2 = LigandSet.from_sdf_files([str(p) for p in sdf_files])
     ligands2.sync()
 
     for lig in ligands2:
