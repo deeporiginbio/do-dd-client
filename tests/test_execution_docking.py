@@ -160,11 +160,15 @@ def test_docking_quote_cannot_be_called_twice_lv0(
 
 
 def test_docking_quote_lv1(
+    client,
     registered_protein,
     registered_pocket,
     registered_ligand,
 ):
     """Docking quote() raises ValueError if called after a quotation already exists."""
+    if not check_tool_exists(client, DOCKING_TOOL_KEY, DOCKING_TOOL_VERSION):
+        pytest.skip("Docking tool does not exist")
+
     docking = Docking(
         protein=registered_protein,
         pocket=registered_pocket,

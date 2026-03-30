@@ -1,13 +1,63 @@
-"""Tests for the Projects API wrapper."""
+"""Tests for the data platform Projects API wrapper."""
 
-from deeporigin.platform.client import DeepOriginClient
+import uuid
+
+from deeporigin.platform import DeepOriginClient
 
 
-def test_list_projects_lv1():
-    """Test listing projects."""
+def test_projects_search_name_icontains() -> None:
+    """``search(name=...)`` sends icontains and filters by project name."""
+    client = DeepOriginClient.from_local()
+    suffix = uuid.uuid4().hex[:8]
+    unique_a = f"Alpha Project {suffix}"
+    unique_b = f"Beta Workspace {suffix}"
+
+    client.projects.create(name=unique_a)
+    client.projects.create(name=unique_b)
+
+    alpha_only = client.projects.search(name="alpha", limit=50)
+    names_a = {r.get("name") for r in alpha_only.get("data") or []}
+    assert unique_a in names_a
+    assert unique_b not in names_a
+
+    beta_only = client.projects.search(name="beta", limit=50)
+    names_b = {r.get("name") for r in beta_only.get("data") or []}
+    assert unique_b in names_b
+    assert unique_a not in names_b
+
+
+def test_projects_search_name_overrides_filter_dict_name() -> None:
+    """Explicit ``name`` wins over ``filter_dict['name']``."""
+    client = DeepOriginClient.from_local()
+    suffix = uuid.uuid4().hex[:8]
+    unique_a = f"Gamma Proj {suffix}"
+    unique_b = f"Delta Proj {suffix}"
+    client.projects.create(name=unique_a)
+    client.projects.create(name=unique_b)
+
+    r = client.projects.search(
+        name="gamma",
+        filter_dict={"name": {"icontains": "delta"}},
+        limit=50,
+    )
+    names = {row.get("name") for row in r.get("data") or []}
+    assert unique_a in names
+    assert unique_b not in names
+
+
+def test_projects_user_create_upserts_by_exact_name() -> None:
+    """``deeporigin.projects.create`` reuses an existing project with the same name."""
+    from deeporigin.projects import create
+
+    DeepOriginClient.from_local()
+    suffix = uuid.uuid4().hex[:8]
+    name = f"Upsert User Create {suffix}"
+    first_id = create(name=name, load=False)
+    second_id = create(name=name, load=False)
+    assert isinstance(first_id, str)
+    assert first_id == second_id
+
     client = DeepOriginClient()
-    response = client.projects.list()
-
-    assert isinstance(response, dict), "Expected a dictionary response"
-    assert "data" in response, "Expected 'data' key in response"
-    assert isinstance(response["data"], list), "Expected 'data' to be a list"
+    r = client.projects.search(filter_dict={"name": {"eq": name}}, limit=10)
+    rows = r.get("data") or []
+    assert len(rows) == 1

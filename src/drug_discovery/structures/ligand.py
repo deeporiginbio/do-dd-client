@@ -51,7 +51,6 @@ class Ligand(Entity):
     """
 
     identifier: str | None = None
-    file_path: str | None = None
     smiles: str | None = None
     block_type: str | None = None
     block_content: str | None = None
@@ -331,7 +330,7 @@ class Ligand(Entity):
             raise DeepOriginException(
                 f"SDF file '{file_path}' must contain exactly one molecule, but found {len(ligands)}. If you want to work with a set of ligands in a SDF file, use LigandSet.from_sdf instead."
             ) from None
-        ligands[0].file_path = str(path)
+        ligands[0].local_path = str(path)
         return ligands[0]
 
     @classmethod
@@ -378,6 +377,8 @@ class Ligand(Entity):
             ligand.remote_path = mol_file
             if data.get("name"):
                 ligand.name = data["name"]
+            if data.get("project_id") is not None:
+                ligand.project_id = str(data["project_id"])
             return ligand
 
         if mol_file:
@@ -396,6 +397,9 @@ class Ligand(Entity):
 
         if data.get("name"):
             ligand.name = data["name"]
+
+        if data.get("project_id") is not None:
+            ligand.project_id = str(data["project_id"])
 
         return ligand
 
@@ -428,7 +432,7 @@ class Ligand(Entity):
                 SMILES string.
         """
         if client is None:
-            client = DeepOriginClient.get()
+            client = DeepOriginClient()
 
         data = client.entities.get_ligand(id=id)
         return cls._from_platform_record(data=data, client=client, download=download)
@@ -680,7 +684,7 @@ class Ligand(Entity):
                 states. Only species with abundance above this threshold are
                 considered. Defaults to 1.0.
             client: DeepOrigin client instance. If None, uses
-                ``DeepOriginClient.get()``.
+                ``DeepOriginClient()``.
             use_cache: Whether to use cached protonation results.
             quote: If True, request a cost estimate without executing.
 
@@ -690,7 +694,7 @@ class Ligand(Entity):
         from deeporigin.functions.protonation import protonate
 
         if client is None:
-            client = DeepOriginClient.get()
+            client = DeepOriginClient()
 
         result = protonate(
             smiles=self.smiles,
@@ -731,8 +735,8 @@ class Ligand(Entity):
 
     def __post_init__(self):
         """
-        Initialize a Ligand instance from an identifier, file path, SMILES string,
-        block content, or direct Molecule object.
+        Initialize a Ligand instance from an identifier, SMILES string,
+        block content, or direct Molecule object (``mol`` must be set).
         """
 
         # check that a mol exists
@@ -1119,7 +1123,7 @@ class Ligand(Entity):
         canonical SMILES.
 
         Args:
-            client: DeepOriginClient instance. If None, uses DeepOriginClient.get().
+            client: DeepOriginClient instance. If None, uses DeepOriginClient().
             remote_path: Custom remote path to upload to. Overrides the
                 default hash-based path.
 
@@ -1132,10 +1136,10 @@ class Ligand(Entity):
             only the SMILES will be used (no file upload will occur).
         """
         if client is None:
-            client = DeepOriginClient.get()
+            client = DeepOriginClient()
 
         mol_file: str | None = None
-        if self.file_path is not None:
+        if self.local_path is not None:
             self.upload(client=client, remote_path=remote_path)
             mol_file = self.remote_path
 
@@ -1160,6 +1164,10 @@ class Ligand(Entity):
             except Exception:
                 pass
 
+        proj_id = self.resolved_project_id(client=client)
+        if proj_id is not None:
+            kwargs["project_id"] = proj_id
+
         result = client.entities.create_ligand(**kwargs)
 
         if "data" in result and "id" in result["data"]:
@@ -1182,7 +1190,7 @@ class Ligand(Entity):
         Args:
             lazy: If True, skip syncing when the ligand already has an ID.
                 Defaults to False.
-            client: DeepOriginClient instance. If None, uses DeepOriginClient.get().
+            client: DeepOriginClient instance. If None, uses DeepOriginClient().
             remote_path: Custom remote path to upload to. Overrides the
                 default hash-based path.
 
@@ -1195,18 +1203,27 @@ class Ligand(Entity):
             return
 
         if client is None:
-            client = DeepOriginClient.get()
+            client = DeepOriginClient()
 
         if remote_path is not None:
             self.remote_path = remote_path
 
+        proj_id = self.resolved_project_id(client=client)
+        scope_filter: dict[str, Any] = {}
+        if proj_id is not None:
+            scope_filter["project_id"] = proj_id
+
         smiles_value = self.smiles if self.smiles is not None else self.canonical_smiles
-        response = client.entities.search_ligands(smiles=smiles_value)
+        response = client.entities.search_ligands(
+            smiles=smiles_value,
+            filter_dict=scope_filter if scope_filter else None,
+        )
         data = response["data"]
 
         if not data:
             response = client.entities.search_ligands(
-                canonical_smiles=self.canonical_smiles
+                canonical_smiles=self.canonical_smiles,
+                filter_dict=scope_filter if scope_filter else None,
             )
             data = response["data"]
 
@@ -1218,8 +1235,12 @@ class Ligand(Entity):
 
         self.register(client=client, remote_path=remote_path)
 
-    def _to_row(self) -> dict[str, Any]:
+    def _to_row(self, *, client: DeepOriginClient | None = None) -> dict[str, Any]:
         """Build a batch-create row dict from this ligand.
+
+        Args:
+            client: Used with :meth:`resolved_project_id` when ``project_id``
+                is not set on this ligand.
 
         Returns:
             Dict suitable for ``batch_create_ligands`` rows.
@@ -1229,10 +1250,10 @@ class Ligand(Entity):
             "smiles": smiles_value,
             "variant_name_tag": "",
         }
-        if self.file_path is not None:
+        if self.local_path is not None:
             if self.remote_path is None:
                 raise ValueError(
-                    "remote_path is required when file_path is set; call upload() first."
+                    "remote_path is required when local_path is set; call upload() first."
                 )
             row["mol_file"] = self.remote_path
         if self.name is not None:
@@ -1254,6 +1275,10 @@ class Ligand(Entity):
                 row.setdefault("formal_charge", 0)
         else:
             row["formal_charge"] = 0
+
+        proj_id = self.resolved_project_id(client=client)
+        if proj_id is not None:
+            row["project_id"] = proj_id
         return row
 
     @beartype
@@ -1288,6 +1313,13 @@ class Ligand(Entity):
 
         return MolToImage(self.mol)
 
+    def _ligand_viewer_html(self) -> str:
+        """Raw HTML from the molstar viewer for this ligand (no iframe / display)."""
+        sdf_file = self.to_sdf()
+        viewer = MoleculeViewer(str(sdf_file), format="sdf")
+        ligand_config = viewer.get_ligand_visualization_config()
+        return viewer.render_ligand(ligand_config=ligand_config)
+
     def show(self) -> str | None:
         """
         Visualize the current state of the ligand molecule.
@@ -1301,11 +1333,7 @@ class Ligand(Entity):
 
         """
         try:
-            sdf_file = self.to_sdf()
-
-            viewer = MoleculeViewer(str(sdf_file), format="sdf")
-            ligand_config = viewer.get_ligand_visualization_config()
-            html = viewer.render_ligand(ligand_config=ligand_config)
+            html = self._ligand_viewer_html()
 
             from deeporigin.utils.notebook import render_html
 
@@ -1322,7 +1350,12 @@ class Ligand(Entity):
         """
         try:
             print(self.mol)
-            return self.show()
+            html = self._ligand_viewer_html()
+            from deeporigin.utils.notebook import get_notebook_environment, render_html
+
+            if get_notebook_environment() == "marimo":
+                return render_html(html)
+            return render_html(html, return_iframe_string=True)
         except Exception as e:
             print(f"Warning: Failed to generate HTML representation: {str(e)}")
             return self.__str__()
@@ -1374,7 +1407,7 @@ class Ligand(Entity):
         from deeporigin.functions.molprops import molprops
 
         if client is None:
-            client = DeepOriginClient.get()
+            client = DeepOriginClient()
 
         props = molprops(
             smiles_list=[self.smiles],
@@ -1968,7 +2001,7 @@ class LigandSet:
                         mol,
                         properties=mol.GetPropsAsDict(),
                     )
-                    ligand.file_path = str(path)
+                    ligand.local_path = str(path)
                     ligands.append(ligand)
                 except Exception as e:
                     print(
@@ -2057,7 +2090,7 @@ class LigandSet:
             ValueError: If no docking results are found for the protein.
         """
         if client is None:
-            client = DeepOriginClient.get()
+            client = DeepOriginClient()
 
         response = client.results.get_poses(
             protein_id=protein_id,
@@ -2102,7 +2135,7 @@ class LigandSet:
             this_file = str(sdf_file)
             this_set = cls.from_sdf(this_file)
             for ligand in this_set.ligands:
-                ligand.file_path = this_file
+                ligand.local_path = this_file
             ligands.extend(this_set.ligands)
 
         # Process CSV files
@@ -2111,7 +2144,7 @@ class LigandSet:
             this_file = str(csv_file)
             this_set = cls.from_csv(this_file)
             for ligand in this_set.ligands:
-                ligand.file_path = this_file
+                ligand.local_path = this_file
             ligands.extend(this_set.ligands)
 
         return cls(ligands=ligands)
@@ -2214,7 +2247,7 @@ class LigandSet:
                 states. Defaults to 1.0.
             use_cache: Whether to use cached protonation results.
             client: DeepOrigin client instance. If None, uses
-                ``DeepOriginClient.get()``.
+                ``DeepOriginClient()``.
             quote: If True, request a cost estimate without executing.
 
         Returns:
@@ -2251,7 +2284,7 @@ class LigandSet:
         """
 
         if client is None:
-            client = DeepOriginClient.get()
+            client = DeepOriginClient()
 
         from deeporigin.functions.molprops import molprops
 
@@ -2358,7 +2391,7 @@ class LigandSet:
            ``search_ligands(smiles_list=…)``).
         2. For ligands that already exist remotely, updates the local ``id``.
         3. For ligands that are new, uploads files to remote storage (if a
-           file_path is present) and batch-creates them in a single API call.
+           local_path is present) and batch-creates them in a single API call.
         4. Updates the local ``id`` values from the created records.
 
         .. note::
@@ -2369,13 +2402,13 @@ class LigandSet:
         Args:
             lazy: If True, skip syncing ligands that already have an id.
             client: DeepOriginClient instance. If None, uses
-                DeepOriginClient.get().
+                DeepOriginClient().
         """
         if not self.ligands:
             return
 
         if client is None:
-            client = DeepOriginClient.get()
+            client = DeepOriginClient()
 
         ligands_to_sync = (
             [lig for lig in self.ligands if lig.id is None]
@@ -2393,10 +2426,20 @@ class LigandSet:
                 "mol before calling sync()."
             )
 
+        proj_id = (
+            ligands_to_sync[0].resolved_project_id(client=client)
+            if ligands_to_sync
+            else None
+        )
+        scope_filter: dict[str, Any] = {}
+        if proj_id is not None:
+            scope_filter["project_id"] = proj_id
+
         smiles_list = [lig.canonical_smiles for lig in ligands_to_sync]
         response = client.entities.search_ligands(
             smiles_list=smiles_list,
             limit=len(smiles_list),
+            filter_dict=scope_filter if scope_filter else None,
         )
         existing_by_smiles = self._index_by_canonical_smiles(response.get("data", []))
 
@@ -2412,10 +2455,10 @@ class LigandSet:
             return
 
         for lig in to_create:
-            if lig.file_path is not None:
+            if lig.local_path is not None:
                 lig.upload(client=client)
 
-        rows = [lig._to_row() for lig in to_create]
+        rows = [lig._to_row(client=client) for lig in to_create]
         result = client.entities.batch_create_ligands(rows=rows)
         created_by_smiles = self._index_by_canonical_smiles(result.get("data", []))
 
@@ -2465,7 +2508,7 @@ class LigandSet:
             and preserves the order of the requested IDs.
         """
         if client is None:
-            client = DeepOriginClient.get()
+            client = DeepOriginClient()
         records = client.entities.get_ligands(ids=ids)
         records_by_id = {record["id"]: record for record in records if record.get("id")}
         missing_ids = [ligand_id for ligand_id in ids if ligand_id not in records_by_id]

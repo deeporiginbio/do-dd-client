@@ -73,6 +73,10 @@ def _start_tool_run(
     if name is not None:
         payload["name"] = name
 
+    proj_id = client.project_id
+    if proj_id is not None:
+        payload["projectId"] = proj_id
+
     response = client.executions.create(
         data=payload,
         tool_key=tool_mapper[tool],

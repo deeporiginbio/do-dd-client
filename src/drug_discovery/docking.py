@@ -381,11 +381,7 @@ class Docking(
         )
         pocket_center = self.pocket.get_center().tolist()
 
-        protein_ref = (
-            self.protein.file_path
-            if self.protein.file_path is not None
-            else self.protein.remote_path
-        )
+        protein_ref = self.protein.local_path or self.protein.remote_path
         protein_hash = ""
         if self.protein.structure is not None:
             protein_hash = self.protein.to_hash()

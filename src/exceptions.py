@@ -55,9 +55,9 @@ class DeepOriginException(Exception):
             }
             reset = "\033[0m"
             color = level_colors.get(self.level, reset)
-            lines.append(f"{color}╔═ {self.title} ═╗{reset}")
+            lines.append(f"{color}{self.title}{reset}")
         else:
-            lines.append(f"╔═ {self.title} ═╗")
+            lines.append(self.title)
 
         # Add body
         if self.body:

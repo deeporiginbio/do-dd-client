@@ -358,7 +358,7 @@ class Job:
         """
 
         if self.client is None:
-            self.client = DeepOriginClient.get()
+            self.client = DeepOriginClient()
 
         # use
         execution = self.client.executions.get(self.id)
@@ -819,7 +819,7 @@ class Job:
             DeepOriginException: If the tool execution fails.
         """
         if self.client is None:
-            self.client = DeepOriginClient.get()
+            self.client = DeepOriginClient()
 
         if self._attributes is None:
             raise ValueError(
@@ -1515,7 +1515,7 @@ class JobList:
         user_id_to_name: Optional[dict[str, str]] = None
         if resolve_user_names:
             if client is None:
-                client = DeepOriginClient.get()
+                client = DeepOriginClient()
 
             users = client.organizations.users()
 
@@ -1640,7 +1640,7 @@ class JobList:
             A new JobList instance containing the fetched jobs.
         """
         if client is None:
-            client = DeepOriginClient.get()
+            client = DeepOriginClient()
 
         # Start from page 0 if not specified
         current_page = page if page is not None else 0

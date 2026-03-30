@@ -1,17 +1,18 @@
 """Simplified configuration management for Deep Origin client.
 
-This module stores and retrieves only two configuration values:
-`env` and `org_key`.
+This module stores and retrieves configuration values including ``env`` and
+``org_key``. Project selection is held in the
+:class:`~deeporigin.platform.client.DeepOriginClient` instance only — nothing
+project-related is persisted to disk.
 
 Behavior:
-- If the config file does not exist, it is created with `env=prod` and an
-  empty `org_key`.
+- If the config file does not exist, it is created with defaults.
 - If the config file exists, it is read and a dictionary is returned.
 """
 
 import json
 import os
-from typing import TYPE_CHECKING, Literal
+from typing import TYPE_CHECKING, Any, Literal
 
 if TYPE_CHECKING:
     import pandas as pd
@@ -101,7 +102,7 @@ def set_env(value: str) -> None:
     _set_value("env", value)
 
 
-def _set_value(key: Literal["env", "org_key"], value) -> None:
+def _set_value(key: Literal["env", "org_key"], value: Any) -> None:
     """Internal helper to set a configuration value.
 
     Args:
@@ -131,13 +132,11 @@ def get_value() -> dict:
     """Get the configuration values.
 
     Creates the file with defaults if it doesn't exist, then returns a dict
-    with keys `env` and `org_key`.
-
-    Args:
-        config_file_location: Optional custom path for the config file.
+    with keys ``env`` and ``org_key``.
 
     Returns:
-        A dictionary with keys `env` and `org_key`.
+        A dictionary with keys ``env`` and ``org_key``. ``env`` and
+        ``org_key`` may be overridden by environment variables.
     """
 
     _ensure_config_file_exists()
@@ -168,7 +167,7 @@ def list_orgs() -> "pd.DataFrame":
 
     from deeporigin.platform.client import DeepOriginClient
 
-    client = DeepOriginClient.get()
+    client = DeepOriginClient()
     orgs = client.organizations.list()
 
     # Extract only the required columns and map orgKey to key

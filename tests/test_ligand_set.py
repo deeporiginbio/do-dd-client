@@ -2,7 +2,7 @@ import os
 
 import pytest
 
-from deeporigin.drug_discovery import DATA_DIR
+from deeporigin.drug_discovery import BRD_DATA_DIR, DATA_DIR
 from deeporigin.drug_discovery.structures.ligand import Ligand, LigandSet
 from deeporigin.exceptions import DeepOriginException
 from deeporigin.platform.client import DeepOriginClient
@@ -56,18 +56,18 @@ def test_ligand_set_from_sdf_files_lv0():
     # All should be Ligand objects
     for ligand in ligands.ligands:
         assert isinstance(ligand, Ligand), "Expected a Ligand object"
-        assert ligand.file_path in file_paths, (
-            "Expected ligand.file_path to match source file"
+        assert ligand.local_path in file_paths, (
+            "Expected ligand.local_path to match source file"
         )
-        assert os.path.exists(ligand.file_path), (
-            "Expected ligand.file_path to exist on disk"
+        assert os.path.exists(ligand.local_path), (
+            "Expected ligand.local_path to exist on disk"
         )
 
     # Test with single file (should work the same as from_sdf)
     single_file_paths = [str(brd_file)]
     single_ligands = LigandSet.from_sdf_files(single_file_paths)
     assert len(single_ligands.ligands) == 8
-    assert all(lig.file_path == str(brd_file) for lig in single_ligands.ligands), (
+    assert all(lig.local_path == str(brd_file) for lig in single_ligands.ligands), (
         "Expected all ligands to keep their source file path"
     )
     assert set(single_ligands.to_smiles()) == set(
@@ -247,7 +247,7 @@ def test_ligand_set_from_csv():
     assert isinstance(first_ligand, Ligand)
     assert first_ligand.mol is not None
     assert first_ligand.mol.GetNumAtoms() > 0
-    assert first_ligand.file_path is None
+    assert first_ligand.local_path is None
 
     # Verify properties were correctly loaded
     props = ["score", "binding_energy", "pose_score"]
@@ -389,8 +389,8 @@ def test_from_dir():
     assert len(ligands) == 8
 
     for ligand in ligands:
-        assert ligand.file_path is not None
-        assert os.path.exists(ligand.file_path)
+        assert ligand.local_path is not None
+        assert os.path.exists(ligand.local_path)
 
 
 def test_mcs():
@@ -977,20 +977,15 @@ def test_render_view_no_structure_badge_when_mixed():
 
 
 def test_ligand_set_sync_lv1():
-    """Test syncing a LigandSet to the data platform.
+    """Test syncing a LigandSet to the data platform using BRD ligands.
 
-    Creates ligands from SMILES, syncs them, then syncs again to verify
-    that existing ligands are found rather than re-created.
+    Loads BRD ligands from BRD_DATA_DIR, syncs them, then syncs again to
+    verify that existing ligands are found rather than re-created.
     """
-    smiles_list = [
-        "CCO",
-        "CCCO",
-        "CCCCO",
-    ]
-    ligands = LigandSet.from_smiles(smiles_list)
-    for i, lig in enumerate(ligands):
-        lig.name = f"sync-test-{i}"
+    sdf_files = sorted(BRD_DATA_DIR.glob("*.sdf"))[:3]
+    assert sdf_files, "No SDF files found in BRD_DATA_DIR"
 
+    ligands = LigandSet.from_sdf_files([str(p) for p in sdf_files])
     ligands.sync()
 
     for lig in ligands:
@@ -998,8 +993,8 @@ def test_ligand_set_sync_lv1():
 
     first_ids = [lig.id for lig in ligands]
 
-    # Sync again — same canonical SMILES should match existing records
-    ligands2 = LigandSet.from_smiles(smiles_list)
+    # Sync again — same canonical SMILES should match existing records, not create new ones.
+    ligands2 = LigandSet.from_sdf_files([str(p) for p in sdf_files])
     ligands2.sync()
 
     for lig in ligands2:

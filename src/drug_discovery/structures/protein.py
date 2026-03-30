@@ -69,7 +69,6 @@ class Protein(Entity):
     # Core attributes (``structure`` is None until a local file is loaded or :meth:`download` runs.)
     name: str
     structure: Any | None = field(default=None, repr=False)
-    file_path: Optional[Path] = None
     pdb_id: Optional[str] = None
     info: Optional[dict] = None
     atom_types: Optional[np.ndarray] = None
@@ -125,7 +124,7 @@ class Protein(Entity):
             RuntimeError: If the file cannot be downloaded or loaded.
         """
         if client is None:
-            client = DeepOriginClient.get()
+            client = DeepOriginClient()
 
         data = client.entities.get_protein(id=id)
 
@@ -149,7 +148,6 @@ class Protein(Entity):
             protein = cls(
                 name=name,
                 structure=None,
-                file_path=None,
                 pdb_id=pdb_id,
                 info=None,
                 atom_types=None,
@@ -157,6 +155,9 @@ class Protein(Entity):
                 block_content=None,
                 id=data.get("id"),
                 remote_path=remote_path,
+                project_id=str(data["project_id"])
+                if data.get("project_id") is not None
+                else None,
             )
             return protein
 
@@ -181,6 +182,9 @@ class Protein(Entity):
         if data.get("pdb_id"):
             protein.pdb_id = data["pdb_id"]
 
+        if data.get("project_id") is not None:
+            protein.project_id = str(data["project_id"])
+
         return protein
 
     def _hydrate_structure_from_file(self, path: str | Path) -> None:
@@ -188,7 +192,7 @@ class Protein(Entity):
         path = Path(path)
         loaded = Protein.from_file(path)
         self.structure = loaded.structure
-        self.file_path = loaded.file_path
+        self.local_path = loaded.local_path
         self.atom_types = loaded.atom_types
         self.block_type = loaded.block_type
         self.block_content = loaded.block_content
@@ -202,8 +206,8 @@ class Protein(Entity):
         """Download the remote structure file and load :attr:`structure` from it.
 
         If :attr:`structure` is already loaded (e.g. from :meth:`from_pdb_id` or
-        :meth:`from_file`), syncs ``Entity.local_path`` from :attr:`file_path` when
-        needed and returns without hitting the files API.
+        :meth:`from_file`), returns :attr:`local_path` when set without hitting
+        the files API.
 
         Otherwise delegates to :meth:`Entity.download`, then parses the returned
         path with :meth:`from_file` when :attr:`structure` is still ``None``.
@@ -216,13 +220,11 @@ class Protein(Entity):
             path when the structure was already loaded from a local file.
         """
         if self.structure is not None:
-            if self.local_path is None and self.file_path is not None:
-                self.local_path = str(self.file_path)
             if self.local_path is not None:
                 return self.local_path
             raise ValueError(
-                "Structure is loaded but no local file path is set; set file_path or "
-                "local_path, or reload via download() to obtain a valid path."
+                "Structure is loaded but no local file path is set; set local_path "
+                "or reload via download() to obtain a valid path."
             )
 
         path_str = super().download(client=client, lazy=lazy)
@@ -233,21 +235,16 @@ class Protein(Entity):
         """Load :attr:`structure` from disk without using the remote API.
 
         Args:
-            path: Path to a PDB/mmCIF file. If None, uses ``file_path`` or
-                ``local_path`` (see :class:`Entity`).
+            path: Path to a PDB/mmCIF file. If None, uses :attr:`local_path`
+                (see :class:`Entity`).
         """
         if path is not None:
             self._hydrate_structure_from_file(path)
             return
-        if self.file_path is not None:
-            self._hydrate_structure_from_file(self.file_path)
-            return
         if self.local_path is not None:
             self._hydrate_structure_from_file(self.local_path)
             return
-        raise ValueError(
-            "No local file path; pass path= or set file_path / local_path first."
-        )
+        raise ValueError("No local file path; pass path= or set local_path first.")
 
     @classmethod
     def from_pdb_id(cls, pdb_id: str, struct_ind: int = 0) -> Self:
@@ -292,7 +289,7 @@ class Protein(Entity):
             return cls(
                 name=pdb_id,
                 structure=structure,
-                file_path=file_path,
+                local_path=str(file_path),
                 pdb_id=pdb_id,
                 info=get_protein_info_dict(pdb_id),
                 atom_types=structure.atom_name,
@@ -353,7 +350,7 @@ class Protein(Entity):
             return cls(
                 name=file_path.stem,
                 structure=structure,
-                file_path=file_path,
+                local_path=str(file_path),
                 atom_types=structure.atom_name,
                 block_type=block_type,
                 block_content=block_content,
@@ -430,7 +427,7 @@ class Protein(Entity):
             >>> for seq in sequences:
             ...     print(seq)
         """
-        if self.file_path is None:
+        if self.local_path is None:
             raise ValueError(
                 "No local structure file; call download() or load_structure_from_local() first."
             )
@@ -438,7 +435,7 @@ class Protein(Entity):
         from Bio.PDB import PDBParser, PPBuilder
 
         parser = PDBParser(QUIET=True)
-        structure = parser.get_structure("X", self.file_path)
+        structure = parser.get_structure("X", self.local_path)
 
         ppb = PPBuilder()
         sequences = []
@@ -496,7 +493,7 @@ class Protein(Entity):
         """
 
         if client is None:
-            client = DeepOriginClient.get()
+            client = DeepOriginClient()
         self.download(lazy=True, client=client)
 
         if ligands is None and ligand is None:
@@ -939,13 +936,13 @@ class Protein(Entity):
         elif self.block_content:
             # Split by newline and add newlines back to match file reading behavior
             content_lines = [line + "\n" for line in self.block_content.split("\n")]
-        elif self.file_path:
+        elif self.local_path:
             # Read file line by line to preserve newlines
-            with open(self.file_path, "r") as f:
+            with open(self.local_path, "r") as f:
                 content_lines = list(f)
         else:
             raise ValueError(
-                "No block_content or file_path available to extract ligand from."
+                "No block_content or local_path available to extract ligand from."
             )
 
         # First pass: collect HETATM lines and their residue names
@@ -1169,11 +1166,10 @@ class Protein(Entity):
         Raises:
         - Exception: If writing the new structure fails.
         """
-        base_name = self.file_path.stem if self.file_path else "modified_structure"
+        local = Path(self.local_path) if self.local_path else None
+        base_name = local.stem if local else "modified_structure"
         new_file_name = f"{base_name}{suffix}.pdb"
-        parent_dir = (
-            self.file_path.parent if self.file_path else Path(tempfile.gettempdir())
-        )
+        parent_dir = local.parent if local else Path(tempfile.gettempdir())
         new_file_path = parent_dir / new_file_name
 
         if new_file_path.exists():
@@ -1538,7 +1534,7 @@ class Protein(Entity):
             return self.__str__()
 
     def __str__(self):
-        info_str = f"Name: {self.name}\nFile Path: {self.file_path}\n"
+        info_str = f"Name: {self.name}\nLocal path: {self.local_path}\nRemote path: {self.remote_path}\n"
         if self.info:
             info_str += f"Info: {self.info}\n"
         return f"Protein:\n  {info_str}"
@@ -1556,7 +1552,7 @@ class Protein(Entity):
         record, regardless of whether one already exists for this file path.
 
         Args:
-            client: DeepOriginClient instance. If None, uses DeepOriginClient.get().
+            client: DeepOriginClient instance. If None, uses DeepOriginClient().
             remote_path: Custom remote path to upload to. Overrides the
                 default hash-based path.
 
@@ -1565,7 +1561,7 @@ class Protein(Entity):
             to the newly created record's ID.
         """
         if client is None:
-            client = DeepOriginClient.get()
+            client = DeepOriginClient()
 
         self.upload(client=client, remote_path=remote_path)
 
@@ -1576,9 +1572,13 @@ class Protein(Entity):
         if self.pdb_id is not None:
             kwargs["pdb_id"] = self.pdb_id
 
-        if getattr(self, "file_path", None) is not None:
+        if self.local_path is not None:
             kwargs["protein_length"] = self.length
         kwargs["protein_name"] = self.name
+
+        proj_id = self.resolved_project_id(client=client)
+        if proj_id is not None:
+            kwargs["project_id"] = proj_id
 
         result = client.entities.create_protein(**kwargs)
 
@@ -1602,29 +1602,49 @@ class Protein(Entity):
         Args:
             lazy: If True, skip syncing when the protein already has an ID.
                 Defaults to False.
-            client: DeepOriginClient instance. If None, uses DeepOriginClient.get().
+            client: DeepOriginClient instance. If None, uses DeepOriginClient().
             remote_path: Custom remote path to upload to. Overrides the
                 default hash-based path.
 
         Returns:
             None. As a side effect, uploads the protein (if necessary) and updates
-            ``self.id`` with the ID of the existing or newly created protein record.
+            ``self.id`` with the ID of the existing or newly created protein record,
+            and sets :attr:`project_id` when a project scope applies or the platform
+            row includes ``project_id``.
         """
         if lazy and self.id is not None:
+            if client is None:
+                client = DeepOriginClient()
+            proj_id = self.resolved_project_id(client=client)
+            if proj_id is not None:
+                self.project_id = proj_id
             return
 
         if client is None:
-            client = DeepOriginClient.get()
+            client = DeepOriginClient()
 
         self.upload(client=client, remote_path=remote_path)
 
-        response = client.entities.search_proteins(file_path=self.remote_path)
+        proj_id = self.resolved_project_id(client=client)
+        if proj_id is not None:
+            self.project_id = proj_id
+
+        if proj_id is not None:
+            response = client.entities.search_proteins(
+                file_path=self.remote_path,
+                project_id=proj_id,
+            )
+        else:
+            response = client.entities.search_proteins(file_path=self.remote_path)
         data = response["data"]
 
         if data:
             existing_protein = data[0]
             if "id" in existing_protein:
                 self.id = existing_protein["id"]
+            ep = existing_protein.get("project_id")
+            if ep is not None:
+                self.project_id = str(ep)
             return
 
         self.register(client=client)

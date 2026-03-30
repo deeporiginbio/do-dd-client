@@ -424,6 +424,7 @@ class Entities:
         cursor: str | None = None,
         pdb_id: str | None = None,
         file_path: str | None = None,
+        project_id: str | None = None,
         min_molecular_weight: float | int | None = None,
         max_molecular_weight: float | int | None = None,
         sequence: str | None = None,
@@ -440,6 +441,7 @@ class Entities:
             cursor: Cursor for pagination.
             pdb_id: Filter by PDB ID.
             file_path: Filter by file path.
+            project_id: Filter by data platform project id.
             min_molecular_weight: Minimum molecular weight filter (inclusive).
             max_molecular_weight: Maximum molecular weight filter (inclusive).
             sequence: Filter by FASTA sequence (exact match).
@@ -460,6 +462,8 @@ class Entities:
             filter_dict["pdb_id"] = pdb_id
         if file_path is not None:
             filter_dict["file_path"] = file_path
+        if project_id is not None:
+            filter_dict["project_id"] = project_id
 
         props = []
         if min_molecular_weight is not None:

@@ -8,8 +8,10 @@ environment variables when keywords are omitted:
 - `DO_AUTH_TOKEN`
 - `DO_ENV` (defaults to "prod" if not provided)
 - `DO_ORG_KEY`
+- `DO_PROJECT_ID` (optional data platform project id)
 
-The client automatically caches instances based on (base_url, token, org_key, tag),
+The client automatically caches instances based on
+(base_url, token, org_key, _app, _session),
 so calling `DeepOriginClient()` multiple times with the same parameters returns
 the same cached instance, reusing connection pools.
 

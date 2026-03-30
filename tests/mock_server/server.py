@@ -21,7 +21,9 @@ import uvicorn
 from .routers import billing, data_platform, entities, files, tools
 from .routers.data_platform import (
     MOCK_CANONICAL_PROTEIN_ID,
+    MOCK_DEFAULT_PROJECT_ID,
     _base_canonical_protein_record,
+    _base_default_project_record,
 )
 
 
@@ -54,6 +56,7 @@ class MockServer:
         self._execution_start_times: dict[str, datetime] = {}
         self._ligands: dict[str, dict[str, Any]] = {}
         self._proteins: dict[str, dict[str, Any]] = {}
+        self._projects: dict[str, dict[str, Any]] = {}
         self._results: list[dict[str, Any]] = []
         # Tool-specific mock execution durations (in seconds)
         self._mock_execution_durations: dict[str, float] = {
@@ -64,6 +67,7 @@ class MockServer:
         self._load_ligand_fixtures()
         self._load_result_explorer_fixtures()
         self._seed_canonical_mock_protein()
+        self._seed_default_project()
         self._setup_routes()
 
     def _load_fixture(self, fixture_name: str) -> dict[str, Any]:
@@ -242,6 +246,13 @@ class MockServer:
                 _base_canonical_protein_record()
             )
 
+    def _seed_default_project(self) -> None:
+        """Ensure one stable project row exists so projects.current() resolves it."""
+        if MOCK_DEFAULT_PROJECT_ID not in self._projects:
+            self._projects[MOCK_DEFAULT_PROJECT_ID] = copy.deepcopy(
+                _base_default_project_record()
+            )
+
     def _setup_routes(self) -> None:
         """Set up all API routes."""
         # Include file-related routes
@@ -252,6 +263,7 @@ class MockServer:
         dp_router = data_platform.create_data_platform_router(
             ligands=self._ligands,
             proteins=self._proteins,
+            projects=self._projects,
             results=self._results,
             executions=self._executions,
             load_fixture=self._load_fixture,

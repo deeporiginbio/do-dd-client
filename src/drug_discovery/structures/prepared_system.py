@@ -75,7 +75,7 @@ class PreparedSystem:
                 "Cannot show PreparedSystem: system_pdb_path is empty.",
             ) from None
 
-        client = DeepOriginClient.get()
+        client = DeepOriginClient()
         local_pdb = client.files.download(
             remote_path=self.system_pdb_path,
             lazy=True,
@@ -168,7 +168,7 @@ class PreparedSystem:
         """
 
         if client is None:
-            client = DeepOriginClient.get()
+            client = DeepOriginClient()
 
         padding_int: int | None = None
         if padding is not None:

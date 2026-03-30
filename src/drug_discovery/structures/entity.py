@@ -22,11 +22,37 @@ class Entity(ABC):
     :meth:`download`. ``remote_path`` is set when created from platform metadata or
     after :meth:`upload`. Call :meth:`upload` before passing paths to remote tools;
     call :meth:`download` when you need a local file for display or analysis.
+
+    ``project_id`` optionally pins the data platform project for this row. When
+    unset, pass the :class:`~deeporigin.platform.client.DeepOriginClient` into
+    :meth:`resolved_project_id` so the id comes from the client.
     """
 
     id: str | None = field(default=None, kw_only=True)
     remote_path: str | None = field(default=None, kw_only=True)
     local_path: str | None = field(default=None, kw_only=True)
+    project_id: str | None = field(default=None, kw_only=True)
+
+    def resolved_project_id(self, client: DeepOriginClient | None = None) -> str | None:
+        """Data platform project id for API calls.
+
+        Returns :attr:`project_id` when set; otherwise ``client.project_id`` when
+        ``client`` is given; otherwise ``None``. Does not read the filesystem.
+
+        Args:
+            client: Optional platform client (e.g. the one passed to
+                :meth:`sync`).
+
+        Returns:
+            Project id string, or None if neither the entity nor the client
+            provides one.
+        """
+
+        if self.project_id is not None:
+            return self.project_id
+        if client is not None:
+            return client.project_id
+        return None
 
     @abstractmethod
     def to_hash(self) -> str:
@@ -54,7 +80,7 @@ class Entity(ABC):
         Args:
             lazy: If True, implementations may return early when already synced.
             client: DeepOrigin client. If None, implementations typically use
-                ``DeepOriginClient.get()``.
+                ``DeepOriginClient()``.
             remote_path: Optional explicit remote storage path for uploads.
         """
         ...
@@ -106,14 +132,12 @@ class Entity(ABC):
             format_name: Format label for errors (e.g. ``SDF`` or ``PDB``).
 
         Raises:
-            DeepOriginException: If :attr:`remote_path` is set but neither
-                ``file_path`` (when present on the subclass) nor :attr:`local_path`
-                is set.
+            DeepOriginException: If :attr:`remote_path` is set but
+                :attr:`local_path` is not set.
         """
         if self.remote_path is None:
             return
-        file_path = getattr(self, "file_path", None)
-        if file_path is not None or self.local_path is not None:
+        if self.local_path is not None:
             return
         raise DeepOriginException(
             title=f"{entity_label} not rehydrated",
@@ -135,7 +159,7 @@ class Entity(ABC):
         No-ops if ``local_path`` is already set.
 
         Args:
-            client: DeepOriginClient instance. If None, uses DeepOriginClient.get().
+            client: DeepOriginClient instance. If None, uses DeepOriginClient().
 
         Returns:
             The local file path.
@@ -148,7 +172,7 @@ class Entity(ABC):
         if self.remote_path is None:
             raise ValueError("No local_path or remote_path available")
         if client is None:
-            client = DeepOriginClient.get()
+            client = DeepOriginClient()
         self.local_path = client.files.download(
             remote_path=self.remote_path,
             lazy=lazy,
@@ -165,14 +189,14 @@ class Entity(ABC):
         """Upload the entity to the remote server.
 
         Args:
-            client: DeepOriginClient instance. If None, uses DeepOriginClient.get().
+            client: DeepOriginClient instance. If None, uses DeepOriginClient().
             remote_path: Custom remote path to upload to. When provided, sets
                 :attr:`remote_path` before uploading. If :attr:`remote_path` is
                 still unset, it is set to the default hash-based path.
         """
 
         if client is None:
-            client = DeepOriginClient.get()
+            client = DeepOriginClient()
 
         if remote_path is not None:
             self.remote_path = remote_path

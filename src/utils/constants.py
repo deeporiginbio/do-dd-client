@@ -26,15 +26,33 @@ API_ENDPOINT = {
 DEFAULT_SEARCH_PAGE_SIZE = 100
 """Default page size for paginated entity search requests."""
 
+HTTP_RETRYABLE_STATUS_CODES: frozenset[int] = frozenset((429, 500, 502, 503, 504))
+"""HTTP status codes for which :class:`~deeporigin.platform.client.DeepOriginClient` retries requests."""
+
 ENV_VARIABLES = {
     "access_token": "DO_AUTH_TOKEN",
     "org_key": "DO_ORG_KEY",
     "env": "DO_ENV",
     "base_url": "DO_BASE_URL",
+    "project_id": "DO_PROJECT_ID",
 }
 
 UFA_PROVIDER = "ufa"
 """Provider identifier for UFA (Unified File Access) storage."""
+
+PROJECTS_UNAVAILABLE_TITLE = "Projects unavailable"
+"""Title for errors when ``DeepOriginClient.projects`` is missing."""
+
+PROJECTS_UNAVAILABLE_DETAIL = (
+    "DeepOriginClient was created without platform projects support."
+)
+"""Detail message when the client has no projects API."""
+
+ENTITIES_UNAVAILABLE_TITLE = "Entities unavailable"
+"""Title for errors when ``DeepOriginClient.entities`` is missing."""
+
+ENTITIES_UNAVAILABLE_DETAIL = "DeepOriginClient was created without entities support."
+"""Detail message when the client has no entities API."""
 
 SYSPREP_NO_OUTPUT_PATHS_MSG = (
     "System preparation did not return output paths. "

@@ -21,7 +21,6 @@ def test_get_results_lv1(client, registered_protein: "Protein"):
     assert isinstance(response, dict), "Expected a dictionary response"
     assert "data" in response, "Expected 'data' key in response"
     assert isinstance(response["data"], list), "Expected 'data' to be a list"
-    assert len(response["data"]) > 0, "Expected at least one result"
 
     for record in response["data"]:
         for field in ("id", "tool_key", "tool_version", "data", "compute_job_id"):

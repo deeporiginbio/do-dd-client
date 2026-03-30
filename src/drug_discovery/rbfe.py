@@ -3,6 +3,7 @@
 The RBFE object instantiated here is contained in the Complex class is meant to be used within that class."""
 
 import os
+from pathlib import Path
 from typing import Optional
 
 from beartype import beartype
@@ -41,9 +42,16 @@ class RBFE(WorkflowStep):
 
         This method returns a dataframe showing the results of RBFE runs associated with this simulation session. The ligand file name and ΔG are shown, together with user-supplied properties"""
 
+        p = self.parent.protein
+        if p.local_path:
+            protein_name = Path(p.local_path).name
+        elif p.remote_path:
+            protein_name = Path(p.remote_path).name
+        else:
+            protein_name = ""
         files = utils.find_files_on_ufa(
             tool="RBFE",
-            protein=self.parent.protein.file_path.name,
+            protein=protein_name,
             client=self.parent.client,
         )
 
