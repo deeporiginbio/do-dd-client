@@ -10,7 +10,6 @@ from typing import Any
 from beartype import beartype
 from beartype.typing import List
 
-from deeporigin.config import clear_project_id, set_project_id
 from deeporigin.drug_discovery.structures.ligand import LigandSet
 from deeporigin.drug_discovery.structures.protein import Protein
 from deeporigin.exceptions import DeepOriginException
@@ -40,7 +39,7 @@ def current() -> tuple[str, str | None] | None:
     """Return the current project id and display name.
 
     The id comes from :attr:`deeporigin.platform.client.DeepOriginClient.project_id`
-    (``DO_PROJECT_ID``, explicit selection, or ``~/.deeporigin/config.json``).
+    (set via ``DO_PROJECT_ID`` env var, :func:`create`, or :func:`load`).
     The name is loaded from the data platform via
     :meth:`deeporigin.platform.projects.Projects.get`.
 
@@ -113,8 +112,8 @@ def create(
         name: Project display name.
         description: Optional description. Used only when a new project is
             created; an existing match is not updated.
-        load: When True (default), set the resolved project as current in
-            ``~/.deeporigin/config.json``.
+        load: When True (default), set the resolved project as active on the
+            client instance.
         client: Platform client to use. Defaults to ``DeepOriginClient()``.
 
     Returns:
@@ -147,25 +146,27 @@ def create(
             level="danger",
         )
     if load:
-        set_project_id(str(pid))
+        client.project_id = str(pid)
 
     return str(pid)
 
 
 @beartype
-def load(identifier: str) -> None:
+def load(identifier: str, *, client: DeepOriginClient | None = None) -> None:
     """Select a project by id, name, or slug.
 
-    Persists the resolved project id to ``~/.deeporigin/config.json``.
+    Sets ``client.project_id`` to the resolved id. No disk writes are performed.
 
     Args:
         identifier: Project id, name, or slug string.
+        client: Platform client to use. Defaults to ``DeepOriginClient()``.
 
     Raises:
         DeepOriginException: If no matching project exists.
     """
 
-    client = DeepOriginClient()
+    if client is None:
+        client = DeepOriginClient()
 
     raw = client.projects.list()
     rows: List[dict[str, Any]] = raw.get("data") or []
@@ -173,13 +174,13 @@ def load(identifier: str) -> None:
     for row in rows:
         rid = str(row.get("id", ""))
         if rid == ident:
-            set_project_id(rid)
+            client.project_id = rid
             return
         if str(row.get("name", "")) == ident:
-            set_project_id(str(row["id"]))
+            client.project_id = str(row["id"])
             return
         if str(row.get("slug", "")) == ident:
-            set_project_id(str(row["id"]))
+            client.project_id = str(row["id"])
             return
 
     raise DeepOriginException(
@@ -191,7 +192,7 @@ def load(identifier: str) -> None:
 
 
 @beartype
-def ligands() -> Any:
+def ligands(*, client: DeepOriginClient | None = None) -> Any:
     """Ligands in the current project as a DataFrame.
 
     Returns:
@@ -205,13 +206,9 @@ def ligands() -> Any:
     import pandas as pd
 
     pid = _require_project_id()
-    client = DeepOriginClient()
-    if client.entities is None:
-        raise DeepOriginException(
-            title=ENTITIES_UNAVAILABLE_TITLE,
-            message=ENTITIES_UNAVAILABLE_DETAIL,
-            level="danger",
-        )
+    if client is None:
+        client = DeepOriginClient()
+
     raw = client.entities.search_ligands(
         filter_dict={"project_id": pid},
         limit=None,
@@ -445,7 +442,6 @@ def set_proteins(proteins: List[Protein]) -> None:
 
 
 __all__ = [
-    "clear_project_id",
     "create",
     "current",
     "executions",

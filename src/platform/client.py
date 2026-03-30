@@ -183,7 +183,10 @@ class _DeepOriginMeta(type):
                 "base_url is required when constructing with explicit credentials."
             )
         normalized_base_url = base_url.rstrip("/") + "/"
-        key = (normalized_base_url, token, org_key, project_id, _app, _session)
+        # project_id is intentionally excluded from the cache key: it is a
+        # mutable field updated by projects.load() and must not create duplicate
+        # singletons.
+        key = (normalized_base_url, token, org_key, _app, _session)
 
         if key in cls._instances:
             return cls._instances[key]
@@ -211,10 +214,11 @@ class DeepOriginClient(metaclass=_DeepOriginMeta):
     mutable attributes (``tag``, ``record``, ``max_retries``, etc.) can be
     modified after construction.
 
-    The singleton cache keys on
-    ``(base_url, token, org_key, project_id, _app, _session)``. Calling the
-    constructor multiple times with the same resolved values returns the same
-    cached instance and reuses the underlying connection pool.
+    The singleton cache keys on ``(base_url, token, org_key, _app, _session)``.
+    Calling the constructor multiple times with the same resolved values returns
+    the same cached instance and reuses the underlying connection pool.
+    ``project_id`` is intentionally mutable — use :func:`deeporigin.projects.load`
+    to change the active project without creating a new client.
 
     Examples:
         # No-arg: prefers OS env vars, falls back to ~/.deeporigin/
@@ -243,9 +247,11 @@ class DeepOriginClient(metaclass=_DeepOriginMeta):
     projects: Projects | None
 
     # Singleton registry — managed by _DeepOriginMeta.__call__.
-    # Key: (base_url, token, org_key, project_id, _app, _session)
+    # Key: (base_url, token, org_key, _app, _session)
+    # project_id is NOT part of the key because it is mutable (updated by
+    # projects.load()) — including it would create duplicate singletons.
     _instances: Dict[
-        Tuple[str, str | None, str | None, str | None, str, str | None],
+        Tuple[str, str | None, str | None, str, str | None],
         "DeepOriginClient",
     ] = {}
 
@@ -439,6 +445,17 @@ class DeepOriginClient(metaclass=_DeepOriginMeta):
             Project id string, or ``None`` if no project is selected.
         """
         return self._project_id
+
+    @project_id.setter
+    def project_id(self, value: str | None) -> None:
+        """Set the active project id.
+
+        Use :func:`deeporigin.projects.load` instead of setting this directly.
+
+        Args:
+            value: Project id string, or ``None`` to deselect.
+        """
+        self._project_id = value
 
     @property
     def token(self) -> str:
@@ -670,15 +687,12 @@ class DeepOriginClient(metaclass=_DeepOriginMeta):
         token = get_token(env=env)
         org_key = get_value()["org_key"]
         base_url = API_ENDPOINT[env]
-        from deeporigin.config import get_project_id
-
-        project_id = get_project_id()
 
         return cls(
             base_url=base_url,
             token=token,
             org_key=org_key,
-            project_id=project_id,
+            project_id=None,
             timeout=timeout,
             max_retries=max_retries,
             retry_backoff_factor=retry_backoff_factor,

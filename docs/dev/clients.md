@@ -36,7 +36,7 @@ client = DeepOriginClient()
 
 ### From HTTP request headers — served tool
 
-```python
+```{.python notest}
 client = DeepOriginClient.from_headers(request.headers)
 ```
 
@@ -45,7 +45,7 @@ Optional header: `X-Do-Project-Id`.
 
 ### From OS environment variables — provisioned container
 
-```python
+```{.python notest}
 client = DeepOriginClient.from_env_variables()
 ```
 
@@ -60,7 +60,7 @@ export DO_BASE_URL="https://api.deeporigin.io"
 
 ### From disk config files — interactive use
 
-```python
+```{.python notest}
 client = DeepOriginClient.from_disk(env="prod")
 ```
 
@@ -73,7 +73,7 @@ to load.
 To make actions in multiple organizations, or as multiple users, a `client` can be
 passed to every function.
 
-```python
+```{.python notest}
 from deeporigin.platform.client import DeepOriginClient
 
 client = DeepOriginClient.from_disk(env="prod")
@@ -93,7 +93,7 @@ The `env` property is computed from `base_url` and returns one of `"prod"`, `"st
 
 Optional mutable attributes can be set after construction:
 
-```python
+```{.python notest}
 client.tag = "my-experiment"
 client.max_retries = 5
 client.record = True
@@ -116,7 +116,7 @@ The client does not retry on client errors (4xx status codes except 429), as the
 
 You can customize retry behavior when creating a client:
 
-```python
+```{.python notest}
 from deeporigin.platform.client import DeepOriginClient
 
 # Disable retries
@@ -137,7 +137,7 @@ client = DeepOriginClient.from_disk(env="prod", max_retries=5, retry_backoff_fac
 
 When dealing with rate-limited APIs, you can increase retries and customize the backoff:
 
-```python
+```{.python notest}
 from deeporigin.platform.client import DeepOriginClient
 
 client = DeepOriginClient.from_disk(

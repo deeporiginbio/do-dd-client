@@ -21,7 +21,9 @@ import uvicorn
 from .routers import billing, data_platform, entities, files, tools
 from .routers.data_platform import (
     MOCK_CANONICAL_PROTEIN_ID,
+    MOCK_DEFAULT_PROJECT_ID,
     _base_canonical_protein_record,
+    _base_default_project_record,
 )
 
 
@@ -65,6 +67,7 @@ class MockServer:
         self._load_ligand_fixtures()
         self._load_result_explorer_fixtures()
         self._seed_canonical_mock_protein()
+        self._seed_default_project()
         self._setup_routes()
 
     def _load_fixture(self, fixture_name: str) -> dict[str, Any]:
@@ -241,6 +244,13 @@ class MockServer:
         if MOCK_CANONICAL_PROTEIN_ID not in self._proteins:
             self._proteins[MOCK_CANONICAL_PROTEIN_ID] = copy.deepcopy(
                 _base_canonical_protein_record()
+            )
+
+    def _seed_default_project(self) -> None:
+        """Ensure one stable project row exists so projects.current() resolves it."""
+        if MOCK_DEFAULT_PROJECT_ID not in self._projects:
+            self._projects[MOCK_DEFAULT_PROJECT_ID] = copy.deepcopy(
+                _base_default_project_record()
             )
 
     def _setup_routes(self) -> None:

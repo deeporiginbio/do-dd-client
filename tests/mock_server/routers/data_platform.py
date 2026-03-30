@@ -14,6 +14,31 @@ from rdkit import Chem
 MOCK_CANONICAL_PROTEIN_ID = "brd"
 MOCK_CANONICAL_PROTEIN_FILE_PATH = "testing/brd.pdb"
 
+MOCK_DEFAULT_PROJECT_NAME = "python-client-test-project-kfsresf"
+MOCK_DEFAULT_PROJECT_ID = "09DEFAULTPROJECT00"
+
+
+def _base_default_project_record() -> dict[str, Any]:
+    """Return the default in-memory project row pre-seeded in the mock server."""
+    now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z"
+    return {
+        "id": MOCK_DEFAULT_PROJECT_ID,
+        "canonical_id": MOCK_DEFAULT_PROJECT_ID,
+        "version": 1,
+        "valid_from": now,
+        "valid_to": None,
+        "modified_by": "mock-server",
+        "deleted": False,
+        "project_id": None,
+        "subtable_name": "projects",
+        "name": MOCK_DEFAULT_PROJECT_NAME,
+        "slug": "python-client-test-project",
+        "description": None,
+        "tags": None,
+        "notes": None,
+        "url_token": None,
+    }
+
 
 def _base_canonical_protein_record() -> dict[str, Any]:
     """Return the default in-memory protein row for the mock canonical BRD structure."""

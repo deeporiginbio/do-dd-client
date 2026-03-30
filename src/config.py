@@ -1,15 +1,13 @@
 """Simplified configuration management for Deep Origin client.
 
-This module stores and retrieves configuration values including ``env``,
-``org_key``, and optional ``project_id`` (current data platform project).
+This module stores and retrieves configuration values including ``env`` and
+``org_key``. Project selection is held in the
+:class:`~deeporigin.platform.client.DeepOriginClient` instance only — nothing
+project-related is persisted to disk.
 
 Behavior:
 - If the config file does not exist, it is created with defaults.
 - If the config file exists, it is read and a dictionary is returned.
-- ``project_id`` on disk is used when constructing
-  :class:`~deeporigin.platform.client.DeepOriginClient` (unless ``DO_PROJECT_ID``
-  is set). Persisting a new selection with :func:`set_project_id` clears the
-  client cache so the next client picks it up.
 """
 
 import json
@@ -30,9 +28,6 @@ __all__ = [
     "set_org",
     "get_env",
     "set_env",
-    "get_project_id",
-    "set_project_id",
-    "clear_project_id",
     "get_value",
     "CONFIG_JSON_LOCATION",
 ]
@@ -42,7 +37,7 @@ def _ensure_config_file_exists() -> None:
     """Ensure the configuration file exists; create with defaults if missing."""
 
     if not os.path.isfile(CONFIG_JSON_LOCATION):
-        default_data: dict = {"env": "prod", "org_key": "", "project_id": None}
+        default_data: dict = {"env": "prod", "org_key": ""}
         os.makedirs(os.path.dirname(CONFIG_JSON_LOCATION), exist_ok=True)
         with open(CONFIG_JSON_LOCATION, "w") as file:
             json.dump(default_data, file, indent=2)
@@ -133,75 +128,14 @@ def _set_value(key: Literal["env", "org_key"], value: Any) -> None:
     print(f"{check} {key} {arrow} {value}")
 
 
-def _merge_config_disk(updates: dict[str, Any]) -> None:
-    """Merge key-value pairs into the on-disk config file."""
-
-    _ensure_config_file_exists()
-    with open(CONFIG_JSON_LOCATION, "r") as file:
-        data = json.load(file) or {}
-    data.update(updates)
-    with open(CONFIG_JSON_LOCATION, "w") as file:
-        json.dump(data, file, indent=2)
-
-
-def get_project_id() -> str | None:
-    """Return the persisted data platform project id from the config file.
-
-    The :class:`~deeporigin.platform.client.DeepOriginClient` resolves its
-    ``project_id`` from ``DO_PROJECT_ID`` first, then this file, when no explicit
-    ``project_id`` is passed to the constructor.
-
-    Returns:
-        The project id string, or None if no project is selected.
-    """
-
-    _ensure_config_file_exists()
-    with open(CONFIG_JSON_LOCATION, "r") as file:
-        data = json.load(file) or {}
-    raw = data.get("project_id")
-    if raw is None or raw == "":
-        return None
-    return str(raw)
-
-
-def set_project_id(value: str | None) -> None:
-    """Persist the current project id (or clear it).
-
-    Clears cached :class:`~deeporigin.platform.client.DeepOriginClient`
-    instances so the next ``DeepOriginClient()`` loads the updated selection.
-
-    Args:
-        value: Platform project id, or None to clear the current project.
-    """
-
-    _merge_config_disk({"project_id": value})
-    from deeporigin.platform.client import DeepOriginClient
-
-    DeepOriginClient.close_all()
-    if _supports_unicode_output():
-        check, arrow = "✔︎", "→"
-    else:
-        check, arrow = "OK", "->"
-    display = value if value is not None else "(cleared)"
-    print(f"{check} project_id {arrow} {display}")
-
-
-def clear_project_id() -> None:
-    """Remove the current project from the config file."""
-
-    set_project_id(None)
-
-
 def get_value() -> dict:
     """Get the configuration values.
 
     Creates the file with defaults if it doesn't exist, then returns a dict
-    with keys ``env``, ``org_key``, and ``project_id``.
+    with keys ``env`` and ``org_key``.
 
     Returns:
-        A dictionary with keys ``env``, ``org_key``, and ``project_id``.
-        ``project_id`` is the on-disk value only (not merged with ``DO_PROJECT_ID``;
-        the client applies ``DO_PROJECT_ID`` at construction time). ``env`` and
+        A dictionary with keys ``env`` and ``org_key``. ``env`` and
         ``org_key`` may be overridden by environment variables.
     """
 
@@ -213,7 +147,6 @@ def get_value() -> dict:
     # Fill defaults if missing
     env = data.get("env", "prod")
     org_key = data.get("org_key", None)
-    project_id = data.get("project_id", None)
 
     # env variables override config file
     if ENV_VARIABLES["env"] in os.environ:
@@ -221,7 +154,7 @@ def get_value() -> dict:
     if ENV_VARIABLES["org_key"] in os.environ:
         org_key = os.environ[ENV_VARIABLES["org_key"]]
 
-    return {"env": env, "org_key": org_key, "project_id": project_id}
+    return {"env": env, "org_key": org_key}
 
 
 def list_orgs() -> "pd.DataFrame":
