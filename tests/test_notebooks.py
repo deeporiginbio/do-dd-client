@@ -55,3 +55,8 @@ def test_pocketfinder_notebook():
 def test_docking_notebook():
     """Execute the docking notebook end-to-end."""
     _execute_notebook(NOTEBOOKS_DIR / "docking-single-ligand.ipynb")
+
+
+def test_projects_notebook():
+    """Execute the docking notebook end-to-end."""
+    _execute_notebook(NOTEBOOKS_DIR / "projects.ipynb")
