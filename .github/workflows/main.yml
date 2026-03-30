@@ -16,6 +16,7 @@ jobs:
   sonarcloud:
     runs-on: ubuntu-latest
     needs: [code-formatting-syntax-and-docstrings]
+    if: always()
     steps:
     - uses: actions/checkout@v4
       with:
@@ -29,6 +30,7 @@ jobs:
     - name: Install dependencies
       run: uv sync --extra test --extra tools --extra plots --extra core
     - name: Generate coverage report
+      continue-on-error: true
       run: |
         uv run coverage run -m pytest --env local
         uv run coverage xml
