@@ -112,8 +112,7 @@ class Entity(ABC):
         """
         if self.remote_path is None:
             return
-        remote_path = getattr(self, "remote_path", None)
-        if remote_path is not None or self.local_path is not None:
+        if self.remote_path is not None or self.local_path is not None:
             return
         raise DeepOriginException(
             title=f"{entity_label} not rehydrated",
