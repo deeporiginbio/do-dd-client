@@ -80,7 +80,7 @@ In production, when a function completes, a message-queue flow writes structured
 
 The mock server emulates this with `_inject_result_explorer_records`. After a function run returns, it checks the `output_key_map`:
 
-```python
+```{.python notest}
 output_key_map = {
     "deeporigin.pocketfinder": "pockets",
     "deeporigin.docking": "poses",
@@ -144,7 +144,7 @@ Ligand IDs are **deterministic** — derived from a SHA-256 hash of the canonica
 
 To use the mock server with your code, configure the `DeepOriginClient` to point to the mock server URL:
 
-```python
+```{.python notest}
 from deeporigin.platform.client import DeepOriginClient
 
 client = DeepOriginClient(
