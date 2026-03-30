@@ -169,13 +169,18 @@ class _DeepOriginMeta(type):
             env_org = os.environ.get(ENV_VARIABLES["org_key"])
             env_base_url = os.environ.get(ENV_VARIABLES["base_url"])
             if env_token and env_org and env_base_url:
-                return cls.from_env_variables()
-            # Route to from_local when DO_ENV=local; pass hint to from_disk otherwise
-            # (from_disk itself never reads environment variables)
-            env_hint = os.environ.get(ENV_VARIABLES["env"]) or None
-            if env_hint == "local":
-                return cls.from_local()
-            return cls.from_disk(env_hint)
+                instance = cls.from_env_variables()
+            else:
+                # Route to from_local when DO_ENV=local; pass hint to from_disk otherwise
+                # (from_disk itself never reads environment variables)
+                env_hint = os.environ.get(ENV_VARIABLES["env"]) or None
+                if env_hint == "local":
+                    instance = cls.from_local()
+                else:
+                    instance = cls.from_disk(env_hint)
+            if project_id is not None:
+                instance.project_id = project_id
+            return instance
 
         # ---- singleton cache lookup ----
         if base_url is None:

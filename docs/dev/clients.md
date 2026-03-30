@@ -22,10 +22,12 @@ There are four ways to construct a `DeepOriginClient`:
 The no-arg constructor uses a priority chain:
 
 1. If `DO_AUTH_TOKEN`, `DO_ORG_KEY`, and `DO_BASE_URL` are all set in the environment → uses `from_env_variables()`
-2. Otherwise → uses `from_disk()`
+2. Else if `DO_ENV=local` → uses `from_local()` (points to a locally running mock server)
+3. Otherwise → uses `from_disk()`
 
-This means code that calls `DeepOriginClient()` works correctly in both contexts:
-- **Tests**: the test harness injects env vars, so the client reads them automatically
+This means code that calls `DeepOriginClient()` works correctly in all contexts:
+- **Tests (local mock)**: `DO_ENV=local` routes to `from_local()` automatically
+- **CI / containers**: all three env vars present, so `from_env_variables()` is used
 - **Interactive use**: no env vars set, so disk config is used transparently
 
 ```python
@@ -82,12 +84,13 @@ tools = client.tools.list()
 
 ## The four core fields
 
-Once constructed, the core fields are read-only:
+`base_url` and `org_key` are set at construction and effectively read-only.
+`token` and `project_id` are mutable via setters:
 
-- `client.base_url` — API base URL
-- `client.token` — authentication token (the setter also updates the Authorization header)
-- `client.org_key` — organization key
-- `client.project_id` — data platform project id (may be `None`)
+- `client.base_url` — API base URL (read-only after construction)
+- `client.token` — authentication token; the setter also refreshes the `Authorization` header
+- `client.org_key` — organization key (read-only after construction)
+- `client.project_id` — data platform project id (may be `None`; updated by `projects.load()`)
 
 The `env` property is computed from `base_url` and returns one of `"prod"`, `"staging"`, `"dev"`, `"local"`.
 
