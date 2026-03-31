@@ -1,9 +1,11 @@
 """Tests for environment variable fallbacks in platform DeepOriginClient."""
 
 import os
+import time
 from typing import Generator
 from unittest.mock import patch
 
+import jwt
 import pytest
 
 from deeporigin.platform.client import DeepOriginClient
@@ -115,13 +117,41 @@ def test_from_env_variables_missing_org_key_raises() -> None:
         DeepOriginClient.from_env_variables()
 
 
-def test_from_env_variables_missing_base_url_raises() -> None:
-    """Test that missing DO_BASE_URL raises ValueError."""
-    os.environ["DO_AUTH_TOKEN"] = "tok"
+def test_from_env_variables_infers_base_url_from_token_when_missing() -> None:
+    """When DO_BASE_URL is unset, infer API URL from the JWT issuer."""
+    token = jwt.encode(
+        {
+            "iss": "https://login.dev.deeporigin.io/realms/deeporigin",
+            "exp": int(time.time()) + 3600,
+        },
+        "secret",
+        algorithm="HS256",
+    )
+    os.environ["DO_AUTH_TOKEN"] = token
     os.environ["DO_ORG_KEY"] = "org"
 
-    with pytest.raises(ValueError, match="DO_BASE_URL"):
-        DeepOriginClient.from_env_variables()
+    client = DeepOriginClient.from_env_variables()
+
+    assert client.base_url.rstrip("/") == "https://api.dev.deeporigin.io"
+    assert client.env == "dev"
+
+
+def test_explicit_constructor_infers_base_url_from_token() -> None:
+    """``DeepOriginClient(token=..., org_key=...)`` may omit ``base_url``."""
+    token = jwt.encode(
+        {
+            "iss": "https://login.staging.deeporigin.io/realms/deeporigin",
+            "exp": int(time.time()) + 3600,
+        },
+        "secret",
+        algorithm="HS256",
+    )
+
+    client = DeepOriginClient(token=token, org_key="my-org")
+
+    assert client.base_url.rstrip("/") == "https://api.staging.deeporigin.io"
+    assert client.env == "staging"
+    assert client.org_key == "my-org"
 
 
 # ---- from_disk ----

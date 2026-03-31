@@ -8,6 +8,7 @@ from deeporigin.drug_discovery import BRD_DATA_DIR
 from deeporigin.drug_discovery.constants import SUPPORTED_ATOM_SYMBOLS
 from deeporigin.drug_discovery.structures import Ligand
 from deeporigin.exceptions import DeepOriginException
+from deeporigin.platform.client import DeepOriginClient
 
 # Import shared test fixtures
 from tests.utils_ligands import (
@@ -742,3 +743,19 @@ def test_ligand_sync(sdf_file):
     ligand = Ligand.from_sdf(sdf_file)
     ligand.sync()
     assert ligand.id is not None
+
+
+def test_ligand_upload_lv1():
+    """check that we can upload a ligand to ufa"""
+
+    if DeepOriginClient().env == "local":
+        pytest.skip("Skipping test in local environment")
+
+    ligand = Ligand.from_smiles("CCO")
+    ligand.upload()
+
+    ligand = Ligand.from_smiles("CCO")
+
+    # check that we can upload twice
+    ligand.upload()
+    ligand.upload()

@@ -33,7 +33,7 @@ import weakref
 
 import httpx
 
-from deeporigin.auth import get_token
+from deeporigin.auth import get_token, token_to_env
 from deeporigin.config import get_value
 from deeporigin.exceptions import DeepOriginException
 from deeporigin.utils.constants import (
@@ -97,6 +97,19 @@ def _generate_local_token() -> str:
     return _LOCAL_TOKEN_CACHE
 
 
+def _base_url_for_token(token: str) -> str:
+    """Resolve platform API base URL from a JWT using its issuer claim.
+
+    Args:
+        token: Access token string.
+
+    Returns:
+        Gateway URL for the environment implied by :func:`~deeporigin.auth.token_to_env`.
+    """
+    env = token_to_env(token)
+    return API_ENDPOINT[env]
+
+
 class _DeepOriginMeta(type):
     """Metaclass that owns singleton caching and the no-arg priority chain.
 
@@ -152,7 +165,9 @@ class _DeepOriginMeta(type):
 
         Args:
             base_url: API base URL. When ``None`` (with no other core fields),
-                triggers the no-arg priority chain.
+                triggers the no-arg priority chain. When ``None`` but ``token`` is
+                set, the URL is inferred from the token issuer (see
+                :func:`~deeporigin.auth.token_to_env`).
             token: Authentication token.
             org_key: Organization key.
             project_id: Data platform project id.
@@ -184,9 +199,12 @@ class _DeepOriginMeta(type):
 
         # ---- singleton cache lookup ----
         if base_url is None:
-            raise ValueError(
-                "base_url is required when constructing with explicit credentials."
-            )
+            if token is None:
+                raise ValueError(
+                    "base_url is required when constructing with explicit credentials "
+                    "unless token is provided (base URL is inferred from the token)."
+                )
+            base_url = _base_url_for_token(token)
         normalized_base_url = base_url.rstrip("/") + "/"
         # project_id is intentionally excluded from the cache key: it is a
         # mutable field updated by projects.load() and must not create duplicate
@@ -587,7 +605,9 @@ class DeepOriginClient(metaclass=_DeepOriginMeta):
         credentials as environment variables. Never falls back to disk config:
         missing variables raise immediately.
 
-        Required variables: ``DO_AUTH_TOKEN``, ``DO_ORG_KEY``, ``DO_BASE_URL``.
+        Required variables: ``DO_AUTH_TOKEN``, ``DO_ORG_KEY``.
+        ``DO_BASE_URL`` is optional if ``DO_AUTH_TOKEN`` is set — the API URL is
+        inferred from the token issuer when ``DO_BASE_URL`` is unset.
         Optional variable: ``DO_PROJECT_ID``.
 
         Args:
@@ -615,12 +635,13 @@ class DeepOriginClient(metaclass=_DeepOriginMeta):
             missing.append(ENV_VARIABLES["access_token"])
         if not org_key:
             missing.append(ENV_VARIABLES["org_key"])
-        if not base_url:
-            missing.append(ENV_VARIABLES["base_url"])
         if missing:
             raise ValueError(
                 f"Missing required environment variables: {', '.join(missing)}"
             )
+
+        if not base_url:
+            base_url = _base_url_for_token(token)
 
         project_id = project_id_raw.strip() if project_id_raw else None
 
