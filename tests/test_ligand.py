@@ -746,10 +746,12 @@ def test_ligand_sync(sdf_file):
 
 
 def test_ligand_upload_lv1():
-    """check that we can upload a ligand to ufa"""
+    """Upload ligand to UFA; requires a real platform file service."""
 
     if DeepOriginClient().env == "local":
-        pytest.skip("Skipping test in local environment")
+        pytest.skip(
+            "Requires a real file service (UFA); not available with --env local."
+        )
 
     ligand = Ligand.from_smiles("CCO")
     ligand.upload()

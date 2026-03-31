@@ -7,7 +7,10 @@ tools, functions, clusters, files, and executions.
 
 Construct a client using the no-arg constructor or one of three factory methods:
 
-- ``DeepOriginClient()`` — smart default: env vars if all present, else disk config
+- ``DeepOriginClient()`` — if ``DO_AUTH_TOKEN`` and ``DO_ORG_KEY`` are set, delegates
+  to :meth:`DeepOriginClient.from_env_variables` (``DO_BASE_URL`` is optional; when
+  unset the API URL is inferred from the JWT issuer). Otherwise uses disk config
+  or the local mock, depending on ``DO_ENV``.
 - ``DeepOriginClient.from_headers(headers)`` — served tool (HTTP request headers)
 - ``DeepOriginClient.from_env_variables()`` — provisioned container (OS env vars only)
 - ``DeepOriginClient.from_disk(env=...)`` — interactive / Jupyter (``~/.deeporigin/``)
@@ -105,8 +108,27 @@ def _base_url_for_token(token: str) -> str:
 
     Returns:
         Gateway URL for the environment implied by :func:`~deeporigin.auth.token_to_env`.
+
+    Raises:
+        DeepOriginException: If the token cannot be decoded (caller should set
+            ``DO_BASE_URL`` / ``base_url`` explicitly or supply a valid JWT).
     """
-    env = token_to_env(token)
+    import jwt
+
+    try:
+        env = token_to_env(token)
+    except jwt.exceptions.PyJWTError as exc:
+        raise DeepOriginException(
+            title="Invalid access token",
+            message=(
+                "Could not infer the platform API base URL from the access token."
+            ),
+            fix=(
+                "Set DO_BASE_URL or base_url explicitly, or provide a valid JWT "
+                "with a recognizable issuer."
+            ),
+            level="danger",
+        ) from exc
     return API_ENDPOINT[env]
 
 
@@ -166,8 +188,11 @@ class _DeepOriginMeta(type):
         Args:
             base_url: API base URL. When ``None`` (with no other core fields),
                 triggers the no-arg priority chain. When ``None`` but ``token`` is
-                set, the URL is inferred from the token issuer (see
-                :func:`~deeporigin.auth.token_to_env`).
+                explicitly provided, the URL is inferred from the token issuer (see
+                :func:`~deeporigin.auth.token_to_env`). The no-arg path that reads
+                OS env vars uses :meth:`~DeepOriginClient.from_env_variables` when
+                ``DO_AUTH_TOKEN`` and ``DO_ORG_KEY`` are set; ``DO_BASE_URL`` may be
+                omitted in that case.
             token: Authentication token.
             org_key: Organization key.
             project_id: Data platform project id.
@@ -182,8 +207,7 @@ class _DeepOriginMeta(type):
         if base_url is None and token is None and org_key is None:
             env_token = os.environ.get(ENV_VARIABLES["access_token"])
             env_org = os.environ.get(ENV_VARIABLES["org_key"])
-            env_base_url = os.environ.get(ENV_VARIABLES["base_url"])
-            if env_token and env_org and env_base_url:
+            if env_token and env_org:
                 instance = cls.from_env_variables()
             else:
                 # Route to from_local when DO_ENV=local; pass hint to from_disk otherwise
@@ -252,7 +276,7 @@ class DeepOriginClient(metaclass=_DeepOriginMeta):
         # Served tool — reads from HTTP request headers
         client = DeepOriginClient.from_headers(request.headers)
 
-        # Provisioned container — strictly from OS env vars, raises if any missing
+        # Provisioned container — DO_AUTH_TOKEN and DO_ORG_KEY required; DO_BASE_URL optional
         client = DeepOriginClient.from_env_variables()
 
         # Interactive / Jupyter — reads from ~/.deeporigin/ config files

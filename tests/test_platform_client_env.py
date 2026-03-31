@@ -8,8 +8,14 @@ from unittest.mock import patch
 import jwt
 import pytest
 
+from deeporigin.exceptions import DeepOriginException
 from deeporigin.platform.client import DeepOriginClient
 from deeporigin.utils.constants import ENV_VARIABLES
+
+
+def _jwt_str(token: str | bytes) -> str:
+    """Normalize PyJWT output for ``os.environ`` (some versions return bytes)."""
+    return token.decode("utf-8") if isinstance(token, bytes) else token
 
 
 @pytest.fixture(autouse=True)
@@ -44,7 +50,7 @@ def test_do_env_local_defaults_to_mock_base_url() -> None:
 
 
 def test_do_base_url_env_sets_base_url_and_env() -> None:
-    """All three required env vars set → DeepOriginClient() uses from_env_variables."""
+    """``DO_AUTH_TOKEN``, ``DO_ORG_KEY``, and ``DO_BASE_URL`` set → ``from_env_variables``."""
     os.environ["DO_BASE_URL"] = "https://api.dev.deeporigin.io"
     os.environ["DO_AUTH_TOKEN"] = "test-token"
     os.environ["DO_ORG_KEY"] = "test-org"
@@ -119,13 +125,15 @@ def test_from_env_variables_missing_org_key_raises() -> None:
 
 def test_from_env_variables_infers_base_url_from_token_when_missing() -> None:
     """When DO_BASE_URL is unset, infer API URL from the JWT issuer."""
-    token = jwt.encode(
-        {
-            "iss": "https://login.dev.deeporigin.io/realms/deeporigin",
-            "exp": int(time.time()) + 3600,
-        },
-        "secret",
-        algorithm="HS256",
+    token = _jwt_str(
+        jwt.encode(
+            {
+                "iss": "https://login.dev.deeporigin.io/realms/deeporigin",
+                "exp": int(time.time()) + 3600,
+            },
+            "secret",
+            algorithm="HS256",
+        )
     )
     os.environ["DO_AUTH_TOKEN"] = token
     os.environ["DO_ORG_KEY"] = "org"
@@ -138,13 +146,15 @@ def test_from_env_variables_infers_base_url_from_token_when_missing() -> None:
 
 def test_explicit_constructor_infers_base_url_from_token() -> None:
     """``DeepOriginClient(token=..., org_key=...)`` may omit ``base_url``."""
-    token = jwt.encode(
-        {
-            "iss": "https://login.staging.deeporigin.io/realms/deeporigin",
-            "exp": int(time.time()) + 3600,
-        },
-        "secret",
-        algorithm="HS256",
+    token = _jwt_str(
+        jwt.encode(
+            {
+                "iss": "https://login.staging.deeporigin.io/realms/deeporigin",
+                "exp": int(time.time()) + 3600,
+            },
+            "secret",
+            algorithm="HS256",
+        )
     )
 
     client = DeepOriginClient(token=token, org_key="my-org")
@@ -152,6 +162,36 @@ def test_explicit_constructor_infers_base_url_from_token() -> None:
     assert client.base_url.rstrip("/") == "https://api.staging.deeporigin.io"
     assert client.env == "staging"
     assert client.org_key == "my-org"
+
+
+def test_no_arg_uses_env_when_token_and_org_without_base_url() -> None:
+    """No-arg ``DeepOriginClient()`` uses env when only token+org are set (JWT infers URL)."""
+    token = _jwt_str(
+        jwt.encode(
+            {
+                "iss": "https://login.dev.deeporigin.io/realms/deeporigin",
+                "exp": int(time.time()) + 3600,
+            },
+            "secret",
+            algorithm="HS256",
+        )
+    )
+    os.environ["DO_AUTH_TOKEN"] = token
+    os.environ["DO_ORG_KEY"] = "env-org"
+
+    client = DeepOriginClient()
+
+    assert client.base_url.rstrip("/") == "https://api.dev.deeporigin.io"
+    assert client.org_key == "env-org"
+
+
+def test_from_env_variables_invalid_token_no_base_url_raises() -> None:
+    """Malformed token with no ``DO_BASE_URL`` yields a clear error."""
+    os.environ["DO_AUTH_TOKEN"] = "not-a-jwt"
+    os.environ["DO_ORG_KEY"] = "org"
+
+    with pytest.raises(DeepOriginException, match="Invalid access token"):
+        DeepOriginClient.from_env_variables()
 
 
 # ---- from_disk ----
