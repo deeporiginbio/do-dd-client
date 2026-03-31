@@ -76,8 +76,8 @@ def dock(
     ligand.sync(lazy=True, client=client)
     protein.ensure_remote_path(client=client, label="Protein")
 
-    if pocket.pocket_center is not None:
-        pocket_center = list(pocket.pocket_center)
+    if pocket.center is not None:
+        pocket_center = list(pocket.center)
     else:
         pocket_center = pocket.get_center().tolist()
 

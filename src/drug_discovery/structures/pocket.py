@@ -51,7 +51,7 @@ class Pocket(Entity):
     hydrophobicity: Optional[float] = None
     drugability_score: Optional[float] = None
     polarity: Optional[float] = None
-    pocket_center: Optional[list[float]] = None
+    center: Optional[list[float]] = None
     box_size_x: Optional[float] = None
     box_size_y: Optional[float] = None
     box_size_z: Optional[float] = None
@@ -256,8 +256,8 @@ class Pocket(Entity):
             table_data.append(["Protein ID", self.protein_id])
         table_data.append(["Color", self.color])
 
-        if self.pocket_center is not None:
-            cx, cy, cz = self.pocket_center
+        if self.center is not None:
+            cx, cy, cz = self.center
             table_data.append(["Center", f"({cx:.2f}, {cy:.2f}, {cz:.2f})"])
 
         if all(
@@ -292,14 +292,14 @@ class Pocket(Entity):
     def get_center(self) -> np.ndarray:
         """Get the center of the pocket.
 
-        Returns the pre-computed ``pocket_center`` when available, otherwise
+        Returns the pre-computed ``center`` when available, otherwise
         falls back to computing the mean of the loaded coordinates.
 
         Returns:
             np.ndarray: A numpy array of shape (3,) with the pocket center.
         """
-        if self.pocket_center is not None:
-            return np.asarray(self.pocket_center, dtype=float)
+        if self.center is not None:
+            return np.asarray(self.center, dtype=float)
         coords = self._ensure_coordinates()
         return coords.mean(axis=0)
 
@@ -386,7 +386,7 @@ class Pocket(Entity):
             "hydrophobicity",
             "drugability_score",
             "polarity",
-            "pocket_center",
+            "center",
             "box_size_x",
             "box_size_y",
             "box_size_z",
@@ -398,6 +398,7 @@ class Pocket(Entity):
         "polar_SASA": "polar_sasa",
         "apolar_SASA": "apolar_sasa",
         "polar_apolar_SASA_ratio": "polar_apolar_sasa_ratio",
+        "pocket_center": "center",
     }
 
     @staticmethod

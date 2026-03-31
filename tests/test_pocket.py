@@ -199,7 +199,7 @@ def test_from_function_result_lv0():
     assert pocket.coordinates is None
     assert pocket.protein_id == "brd"
     assert pocket.volume == pytest.approx(300)
-    assert pocket.pocket_center == pytest.approx([-13.521, -4.944, 15.457], abs=1e-3)
+    assert pocket.center == pytest.approx([-13.521, -4.944, 15.457], abs=1e-3)
     assert pocket.box_size_x == pytest.approx(14)
     assert pocket.box_size_y == pytest.approx(14)
     assert pocket.box_size_z == pytest.approx(19)
@@ -245,8 +245,8 @@ def test_from_id_lv2(
     assert pocket.local_path is None
     assert pocket.coordinates is None
     assert pocket.protein_id is not None
-    assert pocket.pocket_center is not None
-    assert len(pocket.pocket_center) == 3
+    assert pocket.center is not None
+    assert len(pocket.center) == 3
     assert pocket.box_size_x is not None
     assert pocket.box_size_y is not None
     assert pocket.box_size_z is not None
@@ -262,8 +262,8 @@ def test_from_id_lv2(
     assert fetched.remote_path is not None
     assert fetched.local_path is None
     assert fetched.protein_id == pocket.protein_id
-    assert fetched.pocket_center is not None
-    assert len(fetched.pocket_center) == 3
+    assert fetched.center is not None
+    assert len(fetched.center) == 3
     assert fetched.box_size_x is not None
     assert fetched.box_size_y is not None
     assert fetched.box_size_z is not None

@@ -188,12 +188,24 @@ class Entity(ABC):
     ) -> None:
         """Upload the entity to the remote server.
 
+        Serializes via :meth:`to_file` with :attr:`remote_path` temporarily
+        cleared so subclasses that guard exports when only remote metadata is
+        present (e.g. :meth:`Ligand.to_sdf`) still write from in-memory state
+        on repeat uploads.
+
         Args:
             client: DeepOriginClient instance. If None, uses DeepOriginClient().
             remote_path: Custom remote path to upload to. When provided, sets
                 :attr:`remote_path` before uploading. If :attr:`remote_path` is
                 still unset, it is set to the default hash-based path.
         """
+
+        stashed_remote_path = self.remote_path
+        self.remote_path = None
+        try:
+            local_file = self.to_file()
+        finally:
+            self.remote_path = stashed_remote_path
 
         if client is None:
             client = DeepOriginClient()
@@ -206,6 +218,6 @@ class Entity(ABC):
             )
 
         client.files.upload(
-            self.to_file(),
+            local_file,
             remote_path=self.remote_path,
         )
