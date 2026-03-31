@@ -14,6 +14,17 @@ def test_client_tag_set_on_creation():
     assert client.tag == "test-tag-1"
 
 
+def test_org_key_set_after_creation():
+    """Organization key can be overridden on the client after construction."""
+    DeepOriginClient.close_all()
+
+    client = DeepOriginClient.from_local()
+    assert client.org_key == "deeporigin"
+
+    client.org_key = "foo-bar"
+    assert client.org_key == "foo-bar"
+
+
 def test_client_tag_set_on_existing_client():
     """Tag can be set on an existing client instance."""
     DeepOriginClient.close_all()

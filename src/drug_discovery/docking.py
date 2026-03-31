@@ -195,7 +195,7 @@ class Docking(
         try:
             center = self.pocket.get_center().tolist()
             fmt = ", ".join(f"{c:.2f}" for c in center)
-            parts.append(f"  pocket_center=[{fmt}],")
+            parts.append(f"  center=[{fmt}],")
         except Exception:
             pass
 
@@ -485,7 +485,7 @@ class Docking(
         else:
             instance._pocket = Pocket(
                 id=None,
-                pocket_center=pocket_input.get("center"),
+                center=pocket_input.get("center"),
                 box_size_x=pocket_input.get("box_size_x"),
                 box_size_y=pocket_input.get("box_size_y"),
                 box_size_z=pocket_input.get("box_size_z"),

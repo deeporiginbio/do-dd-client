@@ -232,16 +232,18 @@ class _DeepOriginMeta(type):
 class DeepOriginClient(metaclass=_DeepOriginMeta):
     """Minimal synchronous API client with built-in singleton cache.
 
-    The four core fields (``base_url``, ``token``, ``org_key``, ``project_id``)
-    are set at construction time and exposed as read-only properties. Optional
-    mutable attributes (``tag``, ``record``, ``max_retries``, etc.) can be
-    modified after construction.
+    ``base_url`` and ``token`` are fixed after construction (though ``token``
+    may be reassigned via the ``token`` setter). ``org_key`` and ``project_id``
+    may be updated on the instance; use :func:`deeporigin.config.set_org` to
+    persist a default organization. Other mutable attributes (``tag``,
+    ``record``, ``max_retries``, etc.) can also be changed after construction.
 
     The singleton cache keys on ``(base_url, token, org_key, _app, _session)``.
     Calling the constructor multiple times with the same resolved values returns
     the same cached instance and reuses the underlying connection pool.
-    ``project_id`` is intentionally mutable — use :func:`deeporigin.projects.load`
-    to change the active project without creating a new client.
+    Changing ``org_key`` or ``project_id`` on an instance does not change the
+    cache key — use :func:`deeporigin.projects.load` for project selection
+    workflows that coordinate with the projects API.
 
     Examples:
         # No-arg: prefers OS env vars, falls back to ~/.deeporigin/
@@ -430,7 +432,7 @@ class DeepOriginClient(metaclass=_DeepOriginMeta):
 
         self._finalizer = weakref.finalize(self, self._client.close)
 
-    # -------- Core read-only properties --------
+    # -------- Core properties --------
 
     @property
     def base_url(self) -> str:
@@ -455,10 +457,26 @@ class DeepOriginClient(metaclass=_DeepOriginMeta):
             raise DeepOriginException(
                 title="Organization Key Required",
                 message="The organization key is not set or is empty. Please configure it before using the client, using the `config` module.",
-                fix="Use `config.set_org(org_key)` to set the organization key.",
+                fix=(
+                    "Assign `client.org_key = ...` for this session, or use "
+                    "`config.set_org(org_key)` to persist the default organization."
+                ),
                 level="danger",
             )
         return self._org_key
+
+    @org_key.setter
+    def org_key(self, value: str | None) -> None:
+        """Set the organization key for subsequent API calls.
+
+        This only updates the client in memory. Use :func:`deeporigin.config.set_org`
+        to persist the default organization in ``~/.deeporigin/``.
+
+        Args:
+            value: Organization key string, or ``None`` to clear (the getter will
+                raise until set to a non-empty string again).
+        """
+        self._org_key = value
 
     @property
     def project_id(self) -> str | None:

@@ -84,12 +84,13 @@ tools = client.tools.list()
 
 ## The four core fields
 
-`base_url` and `org_key` are set at construction and effectively read-only.
+`base_url` is fixed after construction. `org_key` may be reassigned on the
+client (e.g. `client.org_key = "my-org"`) or persisted via `config.set_org`.
 `token` and `project_id` are mutable via setters:
 
 - `client.base_url` — API base URL (read-only after construction)
 - `client.token` — authentication token; the setter also refreshes the `Authorization` header
-- `client.org_key` — organization key (read-only after construction)
+- `client.org_key` — organization key (mutable; does not persist unless you use `config.set_org`)
 - `client.project_id` — data platform project id (may be `None`; updated by `projects.load()`)
 
 The `env` property is computed from `base_url` and returns one of `"prod"`, `"staging"`, `"dev"`, `"local"`.
