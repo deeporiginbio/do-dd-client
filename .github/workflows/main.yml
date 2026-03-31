@@ -12,9 +12,7 @@ on:
     paths:
       - '**/*.py'
       - '.github/workflows/**'
-      - 'sonar-project.properties'
-      - '.github/workflows/**'
-      - 'sonar-project.properties'
+      - 'sonar-project.properties''
 
 
 jobs:
@@ -106,19 +104,9 @@ jobs:
         run: uv sync --extra test --extra tools --extra plots --extra core
 
       - name: "run tests using a mock client"
-        if: "!(matrix.os == 'ubuntu-latest' && matrix.python-version == '3.11')"
-        run: uv run pytest --env local
-
-      - name: "run tests using a mock client (with coverage)"
-        if: matrix.os == 'ubuntu-latest' && matrix.python-version == '3.11'
         run: uv run coverage run -m pytest --env local
 
       - name: "test docs with pytest markdown-docs"
-        if: "!(matrix.os == 'ubuntu-latest' && matrix.python-version == '3.11')"
-        run: uv run pytest -x docs --env local --markdown-docs --markdown-docs-syntax=superfences
-
-      - name: "test docs with pytest markdown-docs (with coverage)"
-        if: matrix.os == 'ubuntu-latest' && matrix.python-version == '3.11'
         run: uv run coverage run --append -m pytest -x docs --env local --markdown-docs --markdown-docs-syntax=superfences
 
       - name: Generate coverage XML
