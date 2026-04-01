@@ -2,6 +2,9 @@
 
 This guide explains how to visualize molecular dynamics trajectories from Absolute Binding Free Energy (ABFE) simulations in Deep Origin.
 
+!!! warning "Deprecated: `Complex` in examples"
+    The examples below use `sim.abfe` on a legacy [`Complex`](../ref/complex.md). Prefer the [`ABFE`](../ref/abfe.md) class directly for new code.
+
 ## Overview
 
 ABFE simulations generate molecular dynamics trajectories that show how ligands interact with proteins over time. Visualizing these trajectories can provide valuable insights into binding mechanisms, protein-ligand interactions, and conformational changes.
@@ -20,7 +23,7 @@ Deep Origin provides tools to easily visualize these trajectories using the `sho
 
 The `show_trajectory` method allows you to visualize either the molecular dynamics (md) phase or the binding phase of an ABFE run.
 
-Before using this method, you'll need to have a properly set up Complex object with completed ABFE calculations. For a complete walkthrough of setting up your environment, creating a Complex object, and running ABFE calculations, please refer to the [Getting Started](../tutorial/getting-started.md) tutorial.
+Before using this method, you'll need completed ABFE calculations (historically tied to a legacy `Complex`). For a walkthrough that uses the deprecated `Complex` path, see [Getting Started](../tutorial/getting-started.md). Prefer configuring [`ABFE`](../ref/abfe.md) directly for new work.
 
 Once you've completed the steps in the tutorial and have run your ABFE calculations, you can return to this guide to visualize the trajectories.
 
@@ -75,4 +78,4 @@ If you encounter issues when visualizing trajectories:
 ## Additional Resources
 
 - For more information on running ABFE simulations, see the [ABFE documentation](../tutorial/abfe.md)
-- For details on the `Complex` class, refer to the [API reference](../ref/abfe.md)
+- For the `ABFE` class API, see the [ABFE reference](../ref/abfe.md). The legacy [`Complex`](../ref/complex.md) type is deprecated.

@@ -197,7 +197,7 @@ When working with docking results, you often have multiple poses for the same mo
 
 ```{.python notest}
 
-# assuming poses comes from protein.dock() or Complex.docking.get_results()
+# assuming poses comes from protein.dock() or Complex.docking.get_results() (Complex is deprecated; prefer Docking)
 
 # Filter to keep only the best pose per molecule (by binding energy)
 best_poses = poses.filter_top_poses()

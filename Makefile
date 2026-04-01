@@ -32,8 +32,8 @@ docs-build:
 	uv run --extra docs zensical build
 
 docs-serve: install
-	@echo "Serving docs locally..."
-	uv run --extra docs zensical serve
+	@echo "Serving docs locally on http://localhost:5566 ..."
+	uv run --extra docs zensical serve --dev-addr localhost:5566
 
 # run mock server for local development and testing
 mock-server:
