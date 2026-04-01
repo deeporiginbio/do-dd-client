@@ -50,9 +50,9 @@ nav = [
       {"rbfe" = "dd/ref/rbfe.md"},
     ]},
     {"Notebooks" = [
-      {"ABFE" = "notebooks/html/abfe.html"},
+      {"Pocketfinder" = "notebooks/html/pocketfinder.html"},
       {"Docking a Single Ligand" = "notebooks/html/docking-single-ligand.html"},
-      {"Docking Many Ligands" = "notebooks/html/docking-many-ligands.html"},
+      {"Projects" = "notebooks/html/projects.html"},
     ]},
   ]},
   {"Platform API" = [
