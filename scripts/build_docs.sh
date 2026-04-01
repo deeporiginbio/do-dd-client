@@ -10,8 +10,21 @@ echo "📦 Installing dependencies..."
 uv sync --extra docs --extra core --extra tools --extra test --extra plots
 echo "✅ Dependencies installed"
 
-# Convert notebooks to HTML if they exist
-if [ -d "docs/notebooks/clean" ] && [ "$(ls -A docs/notebooks/clean/*.ipynb 2>/dev/null)" ]; then
+# Convert notebooks to HTML — same set as tests/test_notebooks.py (test_*_notebook)
+DOC_NOTEBOOKS=(
+  docs/notebooks/clean/pocketfinder.ipynb
+  docs/notebooks/clean/docking-single-ligand.ipynb
+  docs/notebooks/clean/projects.ipynb
+)
+doc_notebooks_all_present=true
+for _nb in "${DOC_NOTEBOOKS[@]}"; do
+  if [ ! -f "$_nb" ]; then
+    doc_notebooks_all_present=false
+    break
+  fi
+done
+
+if [ "$doc_notebooks_all_present" = true ]; then
   echo "📓 Converting notebooks to HTML..."
   mkdir -p docs/notebooks/html
   
@@ -37,8 +50,8 @@ EOF
   echo "🔧 Registering Python kernel..."
   uv run python -m ipykernel install --user --name python3 --display-name "Python 3"
   
-  # Convert notebooks to HTML with execution
-  uv run jupyter nbconvert --to html --execute docs/notebooks/clean/*.ipynb --output-dir docs/notebooks/html
+  # Convert notebooks to HTML with execution (only notebooks covered by test_notebooks.py)
+  uv run jupyter nbconvert --to html --execute "${DOC_NOTEBOOKS[@]}" --output-dir docs/notebooks/html
   echo "✅ Notebooks converted and executed"
   
   # Stop mock server
