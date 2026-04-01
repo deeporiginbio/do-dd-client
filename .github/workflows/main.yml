@@ -12,7 +12,7 @@ on:
     paths:
       - '**/*.py'
       - '.github/workflows/**'
-      - 'sonar-project.properties''
+      - 'sonar-project.properties'
 
 
 jobs:
