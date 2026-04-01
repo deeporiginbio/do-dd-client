@@ -1,6 +1,7 @@
 This document describes how to create a `Complex` object, that can be used to run [Docking](./docking.md), [ABFE](../tutorial/abfe.md) and [RBFE](../tutorial/rbfe.md).
 
-
+!!! warning "Deprecated: `Complex`"
+    The [`Complex`](../ref/complex.md) class is deprecated. Prefer [`Docking`](../ref/docking.md), [`ABFE`](../ref/abfe.md), [`RBFE`](../ref/rbfe.md), [`PocketFinder`](./find-pockets.md), and `SystemPrep` for new projects. This how-to remains for legacy notebooks.
 
 ## Creating a Complex
 

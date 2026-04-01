@@ -90,7 +90,7 @@ The `Job` class allows you to view jobs on Deep Origin, track and visualize thei
 Typically, tools will return `Job` objects when you run them. For example, starting a docking or ABFE run will return a job object:
 
 ```{.python notest}
-# here, sim is a Complex
+# here, sim is a legacy Complex (deprecated; prefer Docking API)
 job = sim.docking.run(pocket=pockets[0])
 ```
 

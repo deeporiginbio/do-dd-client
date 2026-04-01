@@ -1,6 +1,9 @@
 # Getting started with the Drug Discovery toolbox
 
-This document describes how to use the Drug Discovery toolbox to perform docking and run ABFE and RBFE runs on Deep Origin. 
+This document describes how to use the Drug Discovery toolbox to perform docking and run ABFE and RBFE runs on Deep Origin.
+
+!!! warning "Deprecated: `Complex`"
+    The [`Complex`](../ref/complex.md) class is deprecated. New code should use [`Docking`](../ref/docking.md), [`ABFE`](../ref/abfe.md), [`RBFE`](../ref/rbfe.md), [`PocketFinder`](../how-to/find-pockets.md), and `SystemPrep` instead. The steps below document the legacy `Complex` workflow.
 
 ## Prerequisites 
 
@@ -27,7 +30,7 @@ Ligands can be imported from SDF files or SMILES strings. To run ABFE and RBFE, 
 
 ## Creating a `Complex` object
 
-The core of the Drug Discovery toolbox is the [`Complex`](../ref/complex.md) class, that acts as a container for a [`Protein`](../ref/protein.md) and a set of [`Ligands`](../ref/ligand.md).
+This tutorial uses the legacy [`Complex`](../ref/complex.md) class as a container for a [`Protein`](../ref/protein.md) and a set of [`Ligands`](../ref/ligand.md). Prefer the dedicated APIs listed in the warning above for new work.
 
 The `Complex` object can be created using:
 

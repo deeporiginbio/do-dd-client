@@ -1,10 +1,12 @@
 # RBFE
 
 !!! danger "RBFE API is in development"
-    RBFE functionality is still under development. 
+    RBFE functionality is still under development.
 
+!!! warning "Deprecated: `Complex`"
+    This tutorial uses the deprecated [`Complex`](../ref/complex.md) type. For new code, use [`RBFE`](../ref/rbfe.md) and related APIs instead of orchestrating RBFE through `Complex`.
 
-This document describes how to run a [RBFE :octicons-link-external-16:](https://en.wikipedia.org/wiki/Free-energy_perturbation) simulation using Deep Origin tools. 
+This document describes how to run a [RBFE :octicons-link-external-16:](https://en.wikipedia.org/wiki/Free-energy_perturbation) simulation using Deep Origin tools.
 
 ## Prerequisites
 

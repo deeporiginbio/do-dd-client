@@ -1,7 +1,9 @@
 # Docking
 
-This document describes how to [dock :octicons-link-external-16:](https://en.wikipedia.org/wiki/Docking_(molecular)) a large set of ligands to a protein  using Deep Origin tools. 
+This document describes how to [dock :octicons-link-external-16:](https://en.wikipedia.org/wiki/Docking_(molecular)) a large set of ligands to a protein  using Deep Origin tools.
 
+!!! warning "Deprecated: `Complex`"
+    This tutorial uses the deprecated [`Complex`](../ref/complex.md) type. For new code, use [`Docking`](../ref/docking.md), [`PocketFinder`](../how-to/find-pockets.md), and related APIs instead of building workflows through `Complex`.
 
 !!! tip "Looking to dock a few ligands?"
     This document describes how to dock more than a handful of ligands (>10) using a batch job. To dock a single (or a few ligands), you might prefer to use the `.dock()` function of the `Protein` class, as [described here](../how-to/docking.md). 

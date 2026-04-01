@@ -1,5 +1,8 @@
 # `deeporigin.drug_discovery.Complex`
 
+!!! warning "Deprecated"
+    `Complex` is deprecated. For new code, use the workflow-specific APIs [`Docking`](docking.md), [`ABFE`](abfe.md), [`RBFE`](rbfe.md), [`PocketFinder`](../how-to/find-pockets.md), and `SystemPrep` instead.
+
 ::: src.drug_discovery.complex.Complex
     options:
       docstring_style: google

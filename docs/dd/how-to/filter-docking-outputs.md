@@ -1,6 +1,9 @@
-This document describes how to filter the outputs of Docking based on various properties. 
+This document describes how to filter the outputs of Docking based on various properties.
 
-Here we assume that you have constructed a `Complex` object and successfully run [Docking](../tutorial/docking.md). 
+!!! warning "Deprecated: `Complex`"
+    The examples below use the deprecated [`Complex`](../ref/complex.md) type. New workflows should use [`Docking`](../ref/docking.md) (and related APIs) instead of `Complex.docking`.
+
+Here we assume that you have constructed a `Complex` object and successfully run [Docking](../tutorial/docking.md).
 Following convention, we assume that the `Complex` object is called `sim`.
 
 ## Fetch docked poses

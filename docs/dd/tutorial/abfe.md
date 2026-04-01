@@ -1,6 +1,9 @@
 # ABFE
 
-This document describes how to run a [ABFE :octicons-link-external-16:](https://en.wikipedia.org/wiki/Free-energy_perturbation) simulation using Deep Origin tools. 
+This document describes how to run a [ABFE :octicons-link-external-16:](https://en.wikipedia.org/wiki/Free-energy_perturbation) simulation using Deep Origin tools.
+
+!!! warning "Deprecated: `Complex`"
+    This tutorial uses the deprecated [`Complex`](../ref/complex.md) type. For new code, use [`ABFE`](../ref/abfe.md), `SystemPrep`, and related APIs instead of orchestrating ABFE through `Complex`.
 
 ## Prerequisites
 
