@@ -126,6 +126,40 @@ def test_client_tag_explicit_override():
     client.post_json = original_post_json
 
 
+def test_functions_run_includes_client_project_id():
+    """When client.project_id is set, function run body includes projectId."""
+    DeepOriginClient.close_all()
+
+    client = DeepOriginClient.from_local()
+    client.project_id = "test-project-uuid"
+
+    captured_body = {}
+
+    original_post_json = client.post_json
+
+    def mock_post_json(endpoint: str, *, body: dict) -> dict:
+        nonlocal captured_body
+        captured_body = body.copy()
+        return {
+            "status": "Completed",
+            "functionOutputs": {"result": "success"},
+        }
+
+    client.post_json = mock_post_json
+
+    with patch.object(
+        client.clusters, "get_default_cluster_id", return_value="test-cluster-id"
+    ):
+        client.functions.run(
+            key="test.function",
+            params={"test": "param"},
+        )
+
+        assert captured_body["projectId"] == "test-project-uuid"
+
+    client.post_json = original_post_json
+
+
 def test_no_arg_constructor_returns_same_instance():
     """DeepOriginClient() called twice with the same resolved config returns the same instance."""
     DeepOriginClient.close_all()

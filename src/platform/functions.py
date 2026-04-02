@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from deeporigin.exceptions import DeepOriginException
 from deeporigin.utils.constants import TOOL_EXECUTION_POST_TIMEOUT_SECONDS
@@ -62,6 +62,11 @@ class Functions:
             tag: Optional tag for the execution.
             quote: Whether to request a quote instead of running the function.
 
+        Note:
+            If :attr:`~deeporigin.platform.client.DeepOriginClient.project_id` is
+            set on the client, it is sent in the JSON body as ``projectId``
+            (``FunctionExecutionParams`` in tools-service).
+
         Returns:
             Dictionary containing the execution response from the API.
         """
@@ -72,7 +77,7 @@ class Functions:
         if tag is None:
             tag = self._c.tag
 
-        body: dict[str, dict | str] = {
+        body: dict[str, dict | Any] = {
             "params": params,
             "inputs": params,  # we're sending both params and inputs because the APIs across dev/staging/prod are different
             "clusterId": cluster_id,
@@ -97,6 +102,10 @@ class Functions:
 
         body["app"] = self._c._app
         body["session"] = self._c._session
+
+        proj_id = self._c.project_id
+        if proj_id is not None:
+            body["projectId"] = proj_id
 
         response = self._c.post_json(
             endpoint,

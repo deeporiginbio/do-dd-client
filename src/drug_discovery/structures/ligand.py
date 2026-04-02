@@ -2568,7 +2568,7 @@ class LigandSet:
                     return row.get("mol_file")
             return None
 
-        def _build(ligand_id: str) -> "Ligand":
+        def _build(ligand_id: str) -> Ligand:
             return Ligand._from_platform_record(
                 data=records_by_id[ligand_id],
                 client=client,
