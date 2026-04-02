@@ -1,4 +1,4 @@
-"""pytest configuration file
+"""pytest configuration file.
 
 This governs the arguments we can pass pytest and sets up the local test server.
 
