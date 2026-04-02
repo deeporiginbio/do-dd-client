@@ -267,3 +267,20 @@ def test_from_id_lv2(
     assert fetched.box_size_x is not None
     assert fetched.box_size_y is not None
     assert fetched.box_size_z is not None
+
+
+def test_from_remote_file_sets_remote_path_and_loads_coordinates_lv0() -> None:
+    """from_remote_file downloads via the client and sets remote_path."""
+    from unittest.mock import MagicMock
+
+    remote = "org/files/pocket.pdb"
+    local_pdb = str(_BRD_PDB)
+    client = MagicMock()
+    client.files.download.return_value = local_pdb
+
+    pocket = Pocket.from_remote_file(remote, client=client)
+
+    client.files.download.assert_called_once_with(remote_path=remote, lazy=True)
+    assert pocket.remote_path == remote
+    assert pocket.local_path == local_pdb
+    assert pocket.coordinates is not None

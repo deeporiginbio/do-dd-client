@@ -362,6 +362,48 @@ class Protein(Entity):
                 f"Failed to create Protein from file {file_path}: {str(e)}"
             ) from e
 
+    @classmethod
+    def from_remote_file(
+        cls,
+        remote_path: str,
+        *,
+        client: DeepOriginClient | None = None,
+        lazy: bool = True,
+        struct_ind: int = 0,
+        validate: bool = True,
+    ) -> Self:
+        """Create a Protein from a structure file stored on the platform.
+
+        Downloads the file via :meth:`deeporigin.platform.files.FilesClient.download`,
+        then loads it with :meth:`from_file`. Supported formats are PDB, PDBQT, and mmCIF.
+
+        Args:
+            remote_path: Platform file path (e.g. org storage path) to the structure file.
+            client: DeepOrigin client used for download. If ``None``, uses
+                ``DeepOriginClient()``.
+            lazy: Passed to ``files.download``; if ``True``, skip download when the
+                file already exists locally at the default cache location.
+            struct_ind: Index of the structure to select if multiple are present (see
+                :meth:`from_file`).
+            validate: Whether to validate PDB files when reading (see :meth:`from_file`).
+
+        Returns:
+            Protein: A protein with :attr:`~deeporigin.drug_discovery.structures.entity.Entity.remote_path`
+            set to ``remote_path`` and :attr:`~deeporigin.drug_discovery.structures.entity.Entity.local_path`
+            set to the downloaded file path.
+        """
+        if client is None:
+            client = DeepOriginClient()
+
+        local_file_path = client.files.download(remote_path=remote_path, lazy=lazy)
+        protein = cls.from_file(
+            local_file_path,
+            struct_ind=struct_ind,
+            validate=validate,
+        )
+        protein.remote_path = remote_path
+        return protein
+
     @staticmethod
     def load_structure_from_block(block_content: str, block_type: str):
         """Load a protein structure from block content.

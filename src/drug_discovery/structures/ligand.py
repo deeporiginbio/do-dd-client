@@ -334,6 +334,49 @@ class Ligand(Entity):
         return ligands[0]
 
     @classmethod
+    def from_remote_file(
+        cls,
+        remote_path: str,
+        *,
+        client: DeepOriginClient | None = None,
+        lazy: bool = True,
+        sanitize: bool = True,
+        remove_hydrogens: bool = False,
+    ) -> Self:
+        """Create a Ligand from an SDF file stored on the platform.
+
+        Downloads the file via :meth:`deeporigin.platform.files.FilesClient.download`,
+        then loads it with :meth:`from_sdf`. The SDF must contain exactly one molecule.
+
+        Args:
+            remote_path: Platform file path (e.g. org storage path) to the SDF file.
+            client: DeepOrigin client used for download. If ``None``, uses
+                ``DeepOriginClient()``.
+            lazy: Passed to ``files.download``; if ``True``, skip download when the
+                file already exists locally at the default cache location.
+            sanitize: Whether to sanitize molecules when reading the SDF (see
+                :meth:`from_sdf`).
+            remove_hydrogens: Whether to strip hydrogens when reading the SDF (see
+                :meth:`from_sdf`).
+
+        Returns:
+            Ligand: A ligand with :attr:`~deeporigin.drug_discovery.structures.entity.Entity.remote_path`
+            set to ``remote_path`` and :attr:`~deeporigin.drug_discovery.structures.entity.Entity.local_path`
+            set to the downloaded file path.
+        """
+        if client is None:
+            client = DeepOriginClient()
+
+        local_file_path = client.files.download(remote_path=remote_path, lazy=lazy)
+        ligand = cls.from_sdf(
+            local_file_path,
+            sanitize=sanitize,
+            remove_hydrogens=remove_hydrogens,
+        )
+        ligand.remote_path = remote_path
+        return ligand
+
+    @classmethod
     def _from_platform_record(
         cls,
         data: dict[str, Any],

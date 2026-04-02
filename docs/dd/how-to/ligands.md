@@ -20,6 +20,17 @@ There are two classes that help you work with ligands:
     ligand = Ligand.from_sdf(BRD_DATA_DIR / "brd-2.sdf")
     ```
 
+    To load a single-molecule SDF from org file storage, download and parse in one step with
+    [`Ligand.from_remote_file`](../ref/ligand.md):
+
+    ```python
+    from deeporigin.drug_discovery import Ligand
+    from deeporigin.platform.client import DeepOriginClient
+
+    client = DeepOriginClient()
+    ligand = Ligand.from_remote_file("path/in/bucket/ligand.sdf", client=client)
+    ```
+
 === "Many Ligands"
 
     A `LigandSet` can be constructed from a SDF File:

@@ -433,3 +433,20 @@ def test_protein_download_raises_when_structure_loaded_without_paths() -> None:
     assert protein.structure is not None
     with pytest.raises(ValueError, match="local file path"):
         protein.download()
+
+
+def test_from_remote_file_sets_remote_path_lv0() -> None:
+    """from_remote_file downloads via the client and sets remote_path."""
+    from unittest.mock import patch
+
+    from deeporigin.platform.client import DeepOriginClient
+
+    remote = "org/files/protein.pdb"
+    local_pdb = str(BRD_DATA_DIR / "brd.pdb")
+    client = DeepOriginClient()
+    with patch.object(client.files, "download", return_value=local_pdb) as dl:
+        protein = Protein.from_remote_file(remote, client=client)
+    dl.assert_called_once_with(remote_path=remote, lazy=True)
+    assert protein.remote_path == remote
+    assert protein.local_path == local_pdb
+    assert protein.structure is not None

@@ -237,6 +237,44 @@ class Pocket(Entity):
         )
         return pocket
 
+    @classmethod
+    def from_remote_file(
+        cls,
+        remote_path: str,
+        *,
+        client: DeepOriginClient | None = None,
+        lazy: bool = True,
+        name: Optional[str] = None,
+        **kwargs: Any,
+    ) -> Self:
+        """Create a Pocket from a PDB file stored on the platform.
+
+        Downloads the file via :meth:`deeporigin.platform.files.FilesClient.download`,
+        then loads it with :meth:`from_pdb_file`.
+
+        Args:
+            remote_path: Platform file path (e.g. org storage path) to the PDB file.
+            client: DeepOrigin client used for download. If ``None``, uses
+                ``DeepOriginClient()``.
+            lazy: Passed to ``files.download``; if ``True``, skip download when the
+                file already exists locally at the default cache location.
+            name: Optional pocket name; defaults to the downloaded file stem (see
+                :meth:`from_pdb_file`).
+            **kwargs: Additional arguments passed to :meth:`from_pdb_file`.
+
+        Returns:
+            Pocket: A pocket with :attr:`~deeporigin.drug_discovery.structures.entity.Entity.remote_path`
+            set to ``remote_path`` and :attr:`~deeporigin.drug_discovery.structures.entity.Entity.local_path`
+            set to the downloaded file path.
+        """
+        if client is None:
+            client = DeepOriginClient()
+
+        local_file_path = client.files.download(remote_path=remote_path, lazy=lazy)
+        pocket = cls.from_pdb_file(local_file_path, name=name, **kwargs)
+        pocket.remote_path = remote_path
+        return pocket
+
     def _fmt(self, value: float | None, unit: str = "") -> str:
         """Format a numeric value for display, returning 'N/A' when None."""
         if value is None:
