@@ -146,9 +146,13 @@ class MockServer:
         Sources (in order):
         1. ``src/data/brd/*.sdf``  (BRD_DATA_DIR package-data ligands)
         2. ``tests/fixtures/ligands-brd-all.sdf``
-        3. ``tests/fixtures/42-ligands.sdf``
-        4. ``tests/fixtures/brd-7.sdf``
-        5. ``tests/fixtures/ligand_*.json``
+        3. ``tests/fixtures/brd-7.sdf``
+        4. ``tests/fixtures/ligand_*.json``
+
+        Non-BRD pools such as ``42-ligands.sdf`` are intentionally not loaded so
+        mock ``search_ligands`` results stay BRD-only (project-scoped queries still
+        match fixture rows scoped to ``MOCK_DEFAULT_PROJECT_ID`` or legacy
+        ``project_id is None``).
 
         Deduplication is by canonical SMILES — the first occurrence wins.
         IDs are derived deterministically from the canonical SMILES so that
@@ -181,7 +185,7 @@ class MockServer:
                 "valid_to": None,
                 "modified_by": "mock-server",
                 "deleted": False,
-                "project_id": None,
+                "project_id": MOCK_DEFAULT_PROJECT_ID,
                 "subtable_name": "ligands",
                 "smiles": canonical,
                 "canonical_smiles": canonical,
@@ -215,7 +219,7 @@ class MockServer:
             for sdf_file in sorted(brd_dir.glob("*.sdf")):
                 _ingest_sdf(sdf_file, use_stem_as_id=True)
 
-        for sdf_name in ("ligands-brd-all.sdf", "42-ligands.sdf", "brd-7.sdf"):
+        for sdf_name in ("ligands-brd-all.sdf", "brd-7.sdf"):
             sdf_path = self._fixtures_dir / sdf_name
             if sdf_path.exists():
                 _ingest_sdf(sdf_path)
@@ -226,6 +230,8 @@ class MockServer:
             canonical = data.get("canonical_smiles", "")
             if canonical and canonical not in seen_smiles:
                 seen_smiles.add(canonical)
+                if data.get("project_id") is None:
+                    data = {**data, "project_id": MOCK_DEFAULT_PROJECT_ID}
                 self._ligands[data["id"]] = data
 
     def _load_result_explorer_fixtures(self) -> None:
