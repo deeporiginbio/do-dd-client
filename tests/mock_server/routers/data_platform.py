@@ -15,6 +15,7 @@ MOCK_CANONICAL_PROTEIN_ID = "brd"
 MOCK_CANONICAL_PROTEIN_FILE_PATH = "testing/brd.pdb"
 
 MOCK_DEFAULT_PROJECT_NAME = "python-client-test-project-kfsresf"
+# Stable id for the in-memory mock data platform only (not a public SDK constant).
 MOCK_DEFAULT_PROJECT_ID = "09DEFAULTPROJECT00"
 
 
@@ -103,9 +104,10 @@ def _apply_search_filters(
     for key, value in filter_dict.items():
         if key in skip_keys:
             continue
-        # Fixture ligands are stored with project_id=None (unscoped). When the
-        # client searches with a concrete project_id, still match those rows so
-        # sync() can resolve pre-seeded BRD ligands without a duplicate insert.
+        # Fixture ligands use ``MOCK_DEFAULT_PROJECT_ID`` (or legacy None).
+        # When the client searches with a different concrete project_id, still
+        # match those rows so sync() can resolve pre-seeded BRD ligands without
+        # a duplicate insert.
         if key == "project_id":
             if isinstance(value, dict) and "eq" in value:
                 target = value["eq"]
@@ -114,7 +116,9 @@ def _apply_search_filters(
             results = [
                 r
                 for r in results
-                if r.get("project_id") == target or r.get("project_id") is None
+                if r.get("project_id") == target
+                or r.get("project_id") is None
+                or r.get("project_id") == MOCK_DEFAULT_PROJECT_ID
             ]
             continue
         if isinstance(value, dict):
@@ -215,7 +219,7 @@ def _make_ligand_record(smiles: str, extra: dict[str, Any]) -> dict[str, Any]:
         "valid_to": None,
         "modified_by": "test-user",
         "deleted": False,
-        "project_id": None,
+        "project_id": MOCK_DEFAULT_PROJECT_ID,
         "subtable_name": "ligands",
         "canonical_smiles": canonical,
         "smiles": smiles,
