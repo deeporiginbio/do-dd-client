@@ -1,0 +1,2913 @@
+{
+    "data": [
+        {
+            "compute_job_id": "bdcc1213-4aa1-48e7-ada9-fbd6331f01d9",
+            "data": {
+                "binding_energy": -8.149494,
+                "box_size_x": 14.409664294429042,
+                "box_size_y": 14.409664294429042,
+                "box_size_z": 14.409664294429042,
+                "file_path": "tool-runs/62245c66-4cfa-4821-9295-10e533d56a7e/dd1789fa-e6e9-4c02-be99-65a51a31f91d.sdf",
+                "ligand_id": "08DK80B7DYTXH",
+                "pocket_center": [
+                    -13.400676727294922,
+                    -5.5482563972473145,
+                    14.189638137817383
+                ],
+                "pocket_id": "08HXY85NDYYXG",
+                "pose_score": 0.9781563,
+                "protein_id": "08CEVZZPNYV31"
+            },
+            "id": "0960TR2G5YXV1",
+            "tool_key": "deeporigin.bulk-docking",
+            "tool_version": "3.0.0-20"
+        },
+        {
+            "compute_job_id": "bdcc1213-4aa1-48e7-ada9-fbd6331f01d9",
+            "data": {
+                "binding_energy": -9.068379,
+                "box_size_x": 14.409664294429042,
+                "box_size_y": 14.409664294429042,
+                "box_size_z": 14.409664294429042,
+                "file_path": "tool-runs/62245c66-4cfa-4821-9295-10e533d56a7e/bd416b69-c69d-450d-b97f-267ad8fb1711.sdf",
+                "ligand_id": "08DK80B7DYTXH",
+                "pocket_center": [
+                    -13.400676727294922,
+                    -5.5482563972473145,
+                    14.189638137817383
+                ],
+                "pocket_id": "08HXY85NDYYXG",
+                "pose_score": 0.8922146,
+                "protein_id": "08CEVZZPNYV31"
+            },
+            "id": "0960TR2J5YXV2",
+            "tool_key": "deeporigin.bulk-docking",
+            "tool_version": "3.0.0-20"
+        },
+        {
+            "compute_job_id": "bdcc1213-4aa1-48e7-ada9-fbd6331f01d9",
+            "data": {
+                "binding_energy": -7.7376475,
+                "box_size_x": 14.409664294429042,
+                "box_size_y": 14.409664294429042,
+                "box_size_z": 14.409664294429042,
+                "file_path": "tool-runs/62245c66-4cfa-4821-9295-10e533d56a7e/61721e07-8cac-4a02-90f9-658fe5623c4e.sdf",
+                "ligand_id": "08DK80B7DYTXH",
+                "pocket_center": [
+                    -13.400676727294922,
+                    -5.5482563972473145,
+                    14.189638137817383
+                ],
+                "pocket_id": "08HXY85NDYYXG",
+                "pose_score": 0.8634038,
+                "protein_id": "08CEVZZPNYV31"
+            },
+            "id": "0960TR2JDYXV3",
+            "tool_key": "deeporigin.bulk-docking",
+            "tool_version": "3.0.0-20"
+        },
+        {
+            "compute_job_id": "bdcc1213-4aa1-48e7-ada9-fbd6331f01d9",
+            "data": {
+                "binding_energy": -9.059668,
+                "box_size_x": 14.409664294429042,
+                "box_size_y": 14.409664294429042,
+                "box_size_z": 14.409664294429042,
+                "file_path": "tool-runs/62245c66-4cfa-4821-9295-10e533d56a7e/7e3eae1e-ffde-4cb1-9444-7999b25969a5.sdf",
+                "ligand_id": "08DK80B7DYTXH",
+                "pocket_center": [
+                    -13.400676727294922,
+                    -5.5482563972473145,
+                    14.189638137817383
+                ],
+                "pocket_id": "08HXY85NDYYXG",
+                "pose_score": 0.8102539,
+                "protein_id": "08CEVZZPNYV31"
+            },
+            "id": "0960TR2JXYXV4",
+            "tool_key": "deeporigin.bulk-docking",
+            "tool_version": "3.0.0-20"
+        },
+        {
+            "compute_job_id": "bdcc1213-4aa1-48e7-ada9-fbd6331f01d9",
+            "data": {
+                "binding_energy": -8.538985,
+                "box_size_x": 14.409664294429042,
+                "box_size_y": 14.409664294429042,
+                "box_size_z": 14.409664294429042,
+                "file_path": "tool-runs/62245c66-4cfa-4821-9295-10e533d56a7e/27e8a163-14a0-4da9-8f42-9b920f452d93.sdf",
+                "ligand_id": "08DK80B7DYTXH",
+                "pocket_center": [
+                    -13.400676727294922,
+                    -5.5482563972473145,
+                    14.189638137817383
+                ],
+                "pocket_id": "08HXY85NDYYXG",
+                "pose_score": 0.7754134,
+                "protein_id": "08CEVZZPNYV31"
+            },
+            "id": "0960TR2K5YXV5",
+            "tool_key": "deeporigin.bulk-docking",
+            "tool_version": "3.0.0-20"
+        },
+        {
+            "compute_job_id": "bdcc1213-4aa1-48e7-ada9-fbd6331f01d9",
+            "data": {
+                "binding_energy": -8.171902,
+                "box_size_x": 14.409664294429042,
+                "box_size_y": 14.409664294429042,
+                "box_size_z": 14.409664294429042,
+                "file_path": "tool-runs/62245c66-4cfa-4821-9295-10e533d56a7e/aaa5ce15-7064-4f0b-9fee-ad3577674773.sdf",
+                "ligand_id": "08DK80B7DYTXH",
+                "pocket_center": [
+                    -13.400676727294922,
+                    -5.5482563972473145,
+                    14.189638137817383
+                ],
+                "pocket_id": "08HXY85NDYYXG",
+                "pose_score": 0.76642144,
+                "protein_id": "08CEVZZPNYV31"
+            },
+            "id": "0960TR2KDYXV6",
+            "tool_key": "deeporigin.bulk-docking",
+            "tool_version": "3.0.0-20"
+        },
+        {
+            "compute_job_id": "bdcc1213-4aa1-48e7-ada9-fbd6331f01d9",
+            "data": {
+                "binding_energy": -7.1771507,
+                "box_size_x": 14.409664294429042,
+                "box_size_y": 14.409664294429042,
+                "box_size_z": 14.409664294429042,
+                "file_path": "tool-runs/62245c66-4cfa-4821-9295-10e533d56a7e/460b1493-ab8e-4af9-aa0f-044133044bb5.sdf",
+                "ligand_id": "08DK80B7DYTXH",
+                "pocket_center": [
+                    -13.400676727294922,
+                    -5.5482563972473145,
+                    14.189638137817383
+                ],
+                "pocket_id": "08HXY85NDYYXG",
+                "pose_score": 0.70112956,
+                "protein_id": "08CEVZZPNYV31"
+            },
+            "id": "0960TR2KNYXV7",
+            "tool_key": "deeporigin.bulk-docking",
+            "tool_version": "3.0.0-20"
+        },
+        {
+            "compute_job_id": "bdcc1213-4aa1-48e7-ada9-fbd6331f01d9",
+            "data": {
+                "binding_energy": -7.1644325,
+                "box_size_x": 14.409664294429042,
+                "box_size_y": 14.409664294429042,
+                "box_size_z": 14.409664294429042,
+                "file_path": "tool-runs/62245c66-4cfa-4821-9295-10e533d56a7e/644fcbed-27c8-416d-9609-0c192435bb0d.sdf",
+                "ligand_id": "08DK80B7DYTXH",
+                "pocket_center": [
+                    -13.400676727294922,
+                    -5.5482563972473145,
+                    14.189638137817383
+                ],
+                "pocket_id": "08HXY85NDYYXG",
+                "pose_score": 0.6620151,
+                "protein_id": "08CEVZZPNYV31"
+            },
+            "id": "0960TR2KXYXV8",
+            "tool_key": "deeporigin.bulk-docking",
+            "tool_version": "3.0.0-20"
+        },
+        {
+            "compute_job_id": "bdcc1213-4aa1-48e7-ada9-fbd6331f01d9",
+            "data": {
+                "binding_energy": -7.006537,
+                "box_size_x": 14.409664294429042,
+                "box_size_y": 14.409664294429042,
+                "box_size_z": 14.409664294429042,
+                "file_path": "tool-runs/62245c66-4cfa-4821-9295-10e533d56a7e/d95ada49-92d0-42d8-9c99-b62c19856b9c.sdf",
+                "ligand_id": "08DK80B7DYTXH",
+                "pocket_center": [
+                    -13.400676727294922,
+                    -5.5482563972473145,
+                    14.189638137817383
+                ],
+                "pocket_id": "08HXY85NDYYXG",
+                "pose_score": 0.65328205,
+                "protein_id": "08CEVZZPNYV31"
+            },
+            "id": "0960TR2M5YXV9",
+            "tool_key": "deeporigin.bulk-docking",
+            "tool_version": "3.0.0-20"
+        },
+        {
+            "compute_job_id": "bdcc1213-4aa1-48e7-ada9-fbd6331f01d9",
+            "data": {
+                "binding_energy": -6.236003,
+                "box_size_x": 14.409664294429042,
+                "box_size_y": 14.409664294429042,
+                "box_size_z": 14.409664294429042,
+                "file_path": "tool-runs/62245c66-4cfa-4821-9295-10e533d56a7e/d9bfdd07-8ec8-44bf-8c0a-4f644edaaf14.sdf",
+                "ligand_id": "08DK80B7DYTXH",
+                "pocket_center": [
+                    -13.400676727294922,
+                    -5.5482563972473145,
+                    14.189638137817383
+                ],
+                "pocket_id": "08HXY85NDYYXG",
+                "pose_score": 0.6455864,
+                "protein_id": "08CEVZZPNYV31"
+            },
+            "id": "0960TR2MDYXVA",
+            "tool_key": "deeporigin.bulk-docking",
+            "tool_version": "3.0.0-20"
+        },
+        {
+            "compute_job_id": "bdcc1213-4aa1-48e7-ada9-fbd6331f01d9",
+            "data": {
+                "binding_energy": -6.34871,
+                "box_size_x": 14.409664294429042,
+                "box_size_y": 14.409664294429042,
+                "box_size_z": 14.409664294429042,
+                "file_path": "tool-runs/62245c66-4cfa-4821-9295-10e533d56a7e/908f5bb5-54bc-41c9-a826-80782db23922.sdf",
+                "ligand_id": "08DK80B7DYTXH",
+                "pocket_center": [
+                    -13.400676727294922,
+                    -5.5482563972473145,
+                    14.189638137817383
+                ],
+                "pocket_id": "08HXY85NDYYXG",
+                "pose_score": 0.61744434,
+                "protein_id": "08CEVZZPNYV31"
+            },
+            "id": "0960TR2MNYXVB",
+            "tool_key": "deeporigin.bulk-docking",
+            "tool_version": "3.0.0-20"
+        },
+        {
+            "compute_job_id": "bdcc1213-4aa1-48e7-ada9-fbd6331f01d9",
+            "data": {
+                "binding_energy": -7.2724566,
+                "box_size_x": 14.409664294429042,
+                "box_size_y": 14.409664294429042,
+                "box_size_z": 14.409664294429042,
+                "file_path": "tool-runs/62245c66-4cfa-4821-9295-10e533d56a7e/cc2ff3fc-8f71-4628-953a-06e50a49ada1.sdf",
+                "ligand_id": "08DK80B7DYTXH",
+                "pocket_center": [
+                    -13.400676727294922,
+                    -5.5482563972473145,
+                    14.189638137817383
+                ],
+                "pocket_id": "08HXY85NDYYXG",
+                "pose_score": 0.60112166,
+                "protein_id": "08CEVZZPNYV31"
+            },
+            "id": "0960TR2MXYXVC",
+            "tool_key": "deeporigin.bulk-docking",
+            "tool_version": "3.0.0-20"
+        },
+        {
+            "compute_job_id": "bdcc1213-4aa1-48e7-ada9-fbd6331f01d9",
+            "data": {
+                "binding_energy": -6.4975643,
+                "box_size_x": 14.409664294429042,
+                "box_size_y": 14.409664294429042,
+                "box_size_z": 14.409664294429042,
+                "file_path": "tool-runs/62245c66-4cfa-4821-9295-10e533d56a7e/bf838d32-4d4d-4f6e-a72c-88ce019d53e2.sdf",
+                "ligand_id": "08DK80B7DYTXH",
+                "pocket_center": [
+                    -13.400676727294922,
+                    -5.5482563972473145,
+                    14.189638137817383
+                ],
+                "pocket_id": "08HXY85NDYYXG",
+                "pose_score": 0.57922596,
+                "protein_id": "08CEVZZPNYV31"
+            },
+            "id": "0960TR2NDYXVD",
+            "tool_key": "deeporigin.bulk-docking",
+            "tool_version": "3.0.0-20"
+        },
+        {
+            "compute_job_id": "bdcc1213-4aa1-48e7-ada9-fbd6331f01d9",
+            "data": {
+                "binding_energy": -6.7947164,
+                "box_size_x": 14.409664294429042,
+                "box_size_y": 14.409664294429042,
+                "box_size_z": 14.409664294429042,
+                "file_path": "tool-runs/62245c66-4cfa-4821-9295-10e533d56a7e/990a260a-750a-4278-9fef-f4aa4f2369c7.sdf",
+                "ligand_id": "08DK80B7DYTXH",
+                "pocket_center": [
+                    -13.400676727294922,
+                    -5.5482563972473145,
+                    14.189638137817383
+                ],
+                "pocket_id": "08HXY85NDYYXG",
+                "pose_score": 0.57901955,
+                "protein_id": "08CEVZZPNYV31"
+            },
+            "id": "0960TR2NNYXVE",
+            "tool_key": "deeporigin.bulk-docking",
+            "tool_version": "3.0.0-20"
+        },
+        {
+            "compute_job_id": "bdcc1213-4aa1-48e7-ada9-fbd6331f01d9",
+            "data": {
+                "binding_energy": -8.165489,
+                "box_size_x": 14.409664294429042,
+                "box_size_y": 14.409664294429042,
+                "box_size_z": 14.409664294429042,
+                "file_path": "tool-runs/62245c66-4cfa-4821-9295-10e533d56a7e/a63aa573-3083-4f8b-99bd-2c2fd81fa226.sdf",
+                "ligand_id": "08DK80B7DYTXH",
+                "pocket_center": [
+                    -13.400676727294922,
+                    -5.5482563972473145,
+                    14.189638137817383
+                ],
+                "pocket_id": "08HXY85NDYYXG",
+                "pose_score": 0.54730886,
+                "protein_id": "08CEVZZPNYV31"
+            },
+            "id": "0960TR2NXYXVF",
+            "tool_key": "deeporigin.bulk-docking",
+            "tool_version": "3.0.0-20"
+        },
+        {
+            "compute_job_id": "bdcc1213-4aa1-48e7-ada9-fbd6331f01d9",
+            "data": {
+                "binding_energy": -7.3582983,
+                "box_size_x": 14.409664294429042,
+                "box_size_y": 14.409664294429042,
+                "box_size_z": 14.409664294429042,
+                "file_path": "tool-runs/62245c66-4cfa-4821-9295-10e533d56a7e/b0fb8d37-da86-41af-ab66-f182f6d1c5df.sdf",
+                "ligand_id": "08DK80B7DYTXH",
+                "pocket_center": [
+                    -13.400676727294922,
+                    -5.5482563972473145,
+                    14.189638137817383
+                ],
+                "pocket_id": "08HXY85NDYYXG",
+                "pose_score": 0.5375831,
+                "protein_id": "08CEVZZPNYV31"
+            },
+            "id": "0960TR2P5YXVG",
+            "tool_key": "deeporigin.bulk-docking",
+            "tool_version": "3.0.0-20"
+        },
+        {
+            "compute_job_id": "bdcc1213-4aa1-48e7-ada9-fbd6331f01d9",
+            "data": {
+                "binding_energy": -8.161737,
+                "box_size_x": 14.409664294429042,
+                "box_size_y": 14.409664294429042,
+                "box_size_z": 14.409664294429042,
+                "file_path": "tool-runs/62245c66-4cfa-4821-9295-10e533d56a7e/3432ff4b-f60d-4efc-b320-af6e867f6c25.sdf",
+                "ligand_id": "08DK802XNYTXA",
+                "pocket_center": [
+                    -13.400676727294922,
+                    -5.5482563972473145,
+                    14.189638137817383
+                ],
+                "pocket_id": "08HXY85NDYYXG",
+                "pose_score": 0.9793272,
+                "protein_id": "08CEVZZPNYV31"
+            },
+            "id": "0960TVN1XYXWP",
+            "tool_key": "deeporigin.bulk-docking",
+            "tool_version": "3.0.0-20"
+        },
+        {
+            "compute_job_id": "bdcc1213-4aa1-48e7-ada9-fbd6331f01d9",
+            "data": {
+                "binding_energy": -9.074623,
+                "box_size_x": 14.409664294429042,
+                "box_size_y": 14.409664294429042,
+                "box_size_z": 14.409664294429042,
+                "file_path": "tool-runs/62245c66-4cfa-4821-9295-10e533d56a7e/42fa1eb4-54c1-4b96-9920-8dcc9f65d3c4.sdf",
+                "ligand_id": "08DK802XNYTXA",
+                "pocket_center": [
+                    -13.400676727294922,
+                    -5.5482563972473145,
+                    14.189638137817383
+                ],
+                "pocket_id": "08HXY85NDYYXG",
+                "pose_score": 0.91794175,
+                "protein_id": "08CEVZZPNYV31"
+            },
+            "id": "0960TVN3XYXWQ",
+            "tool_key": "deeporigin.bulk-docking",
+            "tool_version": "3.0.0-20"
+        },
+        {
+            "compute_job_id": "bdcc1213-4aa1-48e7-ada9-fbd6331f01d9",
+            "data": {
+                "binding_energy": -7.725367,
+                "box_size_x": 14.409664294429042,
+                "box_size_y": 14.409664294429042,
+                "box_size_z": 14.409664294429042,
+                "file_path": "tool-runs/62245c66-4cfa-4821-9295-10e533d56a7e/9c770e90-6a06-478d-b04f-a2c50359671a.sdf",
+                "ligand_id": "08DK802XNYTXA",
+                "pocket_center": [
+                    -13.400676727294922,
+                    -5.5482563972473145,
+                    14.189638137817383
+                ],
+                "pocket_id": "08HXY85NDYYXG",
+                "pose_score": 0.8785406,
+                "protein_id": "08CEVZZPNYV31"
+            },
+            "id": "0960TVN45YXWR",
+            "tool_key": "deeporigin.bulk-docking",
+            "tool_version": "3.0.0-20"
+        },
+        {
+            "compute_job_id": "bdcc1213-4aa1-48e7-ada9-fbd6331f01d9",
+            "data": {
+                "binding_energy": -8.910378,
+                "box_size_x": 14.409664294429042,
+                "box_size_y": 14.409664294429042,
+                "box_size_z": 14.409664294429042,
+                "file_path": "tool-runs/62245c66-4cfa-4821-9295-10e533d56a7e/e3764ddb-81b3-4eac-848b-13d92152556b.sdf",
+                "ligand_id": "08DK802XNYTXA",
+                "pocket_center": [
+                    -13.400676727294922,
+                    -5.5482563972473145,
+                    14.189638137817383
+                ],
+                "pocket_id": "08HXY85NDYYXG",
+                "pose_score": 0.7907935,
+                "protein_id": "08CEVZZPNYV31"
+            },
+            "id": "0960TVN4NYXWS",
+            "tool_key": "deeporigin.bulk-docking",
+            "tool_version": "3.0.0-20"
+        },
+        {
+            "compute_job_id": "bdcc1213-4aa1-48e7-ada9-fbd6331f01d9",
+            "data": {
+                "binding_energy": -8.511039,
+                "box_size_x": 14.409664294429042,
+                "box_size_y": 14.409664294429042,
+                "box_size_z": 14.409664294429042,
+                "file_path": "tool-runs/62245c66-4cfa-4821-9295-10e533d56a7e/85d40e88-0542-416e-b1d1-b3399125a1a3.sdf",
+                "ligand_id": "08DK802XNYTXA",
+                "pocket_center": [
+                    -13.400676727294922,
+                    -5.5482563972473145,
+                    14.189638137817383
+                ],
+                "pocket_id": "08HXY85NDYYXG",
+                "pose_score": 0.77791035,
+                "protein_id": "08CEVZZPNYV31"
+            },
+            "id": "0960TVN4XYXWT",
+            "tool_key": "deeporigin.bulk-docking",
+            "tool_version": "3.0.0-20"
+        },
+        {
+            "compute_job_id": "bdcc1213-4aa1-48e7-ada9-fbd6331f01d9",
+            "data": {
+                "binding_energy": -8.378538,
+                "box_size_x": 14.409664294429042,
+                "box_size_y": 14.409664294429042,
+                "box_size_z": 14.409664294429042,
+                "file_path": "tool-runs/62245c66-4cfa-4821-9295-10e533d56a7e/bdf4c86c-114d-49a3-8017-dbc7e1361b85.sdf",
+                "ligand_id": "08DK802XNYTXA",
+                "pocket_center": [
+                    -13.400676727294922,
+                    -5.5482563972473145,
+                    14.189638137817383
+                ],
+                "pocket_id": "08HXY85NDYYXG",
+                "pose_score": 0.73264104,
+                "protein_id": "08CEVZZPNYV31"
+            },
+            "id": "0960TVN55YXWV",
+            "tool_key": "deeporigin.bulk-docking",
+            "tool_version": "3.0.0-20"
+        },
+        {
+            "compute_job_id": "bdcc1213-4aa1-48e7-ada9-fbd6331f01d9",
+            "data": {
+                "binding_energy": -6.27919,
+                "box_size_x": 14.409664294429042,
+                "box_size_y": 14.409664294429042,
+                "box_size_z": 14.409664294429042,
+                "file_path": "tool-runs/62245c66-4cfa-4821-9295-10e533d56a7e/7183d3ed-6939-4c3d-9a02-69271b191abe.sdf",
+                "ligand_id": "08DK802XNYTXA",
+                "pocket_center": [
+                    -13.400676727294922,
+                    -5.5482563972473145,
+                    14.189638137817383
+                ],
+                "pocket_id": "08HXY85NDYYXG",
+                "pose_score": 0.6392994,
+                "protein_id": "08CEVZZPNYV31"
+            },
+            "id": "0960TVN5DYXWW",
+            "tool_key": "deeporigin.bulk-docking",
+            "tool_version": "3.0.0-20"
+        },
+        {
+            "compute_job_id": "bdcc1213-4aa1-48e7-ada9-fbd6331f01d9",
+            "data": {
+                "binding_energy": -6.0890374,
+                "box_size_x": 14.409664294429042,
+                "box_size_y": 14.409664294429042,
+                "box_size_z": 14.409664294429042,
+                "file_path": "tool-runs/62245c66-4cfa-4821-9295-10e533d56a7e/857cc6df-3eaf-4eb2-b3a9-9da8057ba9f6.sdf",
+                "ligand_id": "08DK802XNYTXA",
+                "pocket_center": [
+                    -13.400676727294922,
+                    -5.5482563972473145,
+                    14.189638137817383
+                ],
+                "pocket_id": "08HXY85NDYYXG",
+                "pose_score": 0.6066243,
+                "protein_id": "08CEVZZPNYV31"
+            },
+            "id": "0960TVN5NYXWX",
+            "tool_key": "deeporigin.bulk-docking",
+            "tool_version": "3.0.0-20"
+        },
+        {
+            "compute_job_id": "bdcc1213-4aa1-48e7-ada9-fbd6331f01d9",
+            "data": {
+                "binding_energy": -7.3159766,
+                "box_size_x": 14.409664294429042,
+                "box_size_y": 14.409664294429042,
+                "box_size_z": 14.409664294429042,
+                "file_path": "tool-runs/62245c66-4cfa-4821-9295-10e533d56a7e/945ac900-f3b1-46bd-ac74-38dd7f0357d8.sdf",
+                "ligand_id": "08DK802XNYTXA",
+                "pocket_center": [
+                    -13.400676727294922,
+                    -5.5482563972473145,
+                    14.189638137817383
+                ],
+                "pocket_id": "08HXY85NDYYXG",
+                "pose_score": 0.6051318,
+                "protein_id": "08CEVZZPNYV31"
+            },
+            "id": "0960TVN6DYXWY",
+            "tool_key": "deeporigin.bulk-docking",
+            "tool_version": "3.0.0-20"
+        },
+        {
+            "compute_job_id": "bdcc1213-4aa1-48e7-ada9-fbd6331f01d9",
+            "data": {
+                "binding_energy": -7.3393607,
+                "box_size_x": 14.409664294429042,
+                "box_size_y": 14.409664294429042,
+                "box_size_z": 14.409664294429042,
+                "file_path": "tool-runs/62245c66-4cfa-4821-9295-10e533d56a7e/13ab5fd6-8cfc-42f7-9f97-92b21ea6844d.sdf",
+                "ligand_id": "08DK802XNYTXA",
+                "pocket_center": [
+                    -13.400676727294922,
+                    -5.5482563972473145,
+                    14.189638137817383
+                ],
+                "pocket_id": "08HXY85NDYYXG",
+                "pose_score": 0.6049141,
+                "protein_id": "08CEVZZPNYV31"
+            },
+            "id": "0960TVN75YXWZ",
+            "tool_key": "deeporigin.bulk-docking",
+            "tool_version": "3.0.0-20"
+        },
+        {
+            "compute_job_id": "bdcc1213-4aa1-48e7-ada9-fbd6331f01d9",
+            "data": {
+                "binding_energy": -7.5417414,
+                "box_size_x": 14.409664294429042,
+                "box_size_y": 14.409664294429042,
+                "box_size_z": 14.409664294429042,
+                "file_path": "tool-runs/62245c66-4cfa-4821-9295-10e533d56a7e/9620697a-4f44-44f7-83b0-c6eff4fd43a2.sdf",
+                "ligand_id": "08DK802XNYTXA",
+                "pocket_center": [
+                    -13.400676727294922,
+                    -5.5482563972473145,
+                    14.189638137817383
+                ],
+                "pocket_id": "08HXY85NDYYXG",
+                "pose_score": 0.5825724,
+                "protein_id": "08CEVZZPNYV31"
+            },
+            "id": "0960TVN7NYXX0",
+            "tool_key": "deeporigin.bulk-docking",
+            "tool_version": "3.0.0-20"
+        },
+        {
+            "compute_job_id": "bdcc1213-4aa1-48e7-ada9-fbd6331f01d9",
+            "data": {
+                "binding_energy": -8.172955,
+                "box_size_x": 14.409664294429042,
+                "box_size_y": 14.409664294429042,
+                "box_size_z": 14.409664294429042,
+                "file_path": "tool-runs/62245c66-4cfa-4821-9295-10e533d56a7e/b77ac5c6-c62a-4770-9039-8dfba08546d8.sdf",
+                "ligand_id": "08DK802XNYTXA",
+                "pocket_center": [
+                    -13.400676727294922,
+                    -5.5482563972473145,
+                    14.189638137817383
+                ],
+                "pocket_id": "08HXY85NDYYXG",
+                "pose_score": 0.56860995,
+                "protein_id": "08CEVZZPNYV31"
+            },
+            "id": "0960TVN7XYXX1",
+            "tool_key": "deeporigin.bulk-docking",
+            "tool_version": "3.0.0-20"
+        },
+        {
+            "compute_job_id": "bdcc1213-4aa1-48e7-ada9-fbd6331f01d9",
+            "data": {
+                "binding_energy": -7.265025,
+                "box_size_x": 14.409664294429042,
+                "box_size_y": 14.409664294429042,
+                "box_size_z": 14.409664294429042,
+                "file_path": "tool-runs/62245c66-4cfa-4821-9295-10e533d56a7e/17818239-5158-4fa3-9a6a-ac77c2ce79af.sdf",
+                "ligand_id": "08DK802XNYTXA",
+                "pocket_center": [
+                    -13.400676727294922,
+                    -5.5482563972473145,
+                    14.189638137817383
+                ],
+                "pocket_id": "08HXY85NDYYXG",
+                "pose_score": 0.5636208,
+                "protein_id": "08CEVZZPNYV31"
+            },
+            "id": "0960TVN8NYXX2",
+            "tool_key": "deeporigin.bulk-docking",
+            "tool_version": "3.0.0-20"
+        },
+        {
+            "compute_job_id": "bdcc1213-4aa1-48e7-ada9-fbd6331f01d9",
+            "data": {
+                "binding_energy": -7.2367086,
+                "box_size_x": 14.409664294429042,
+                "box_size_y": 14.409664294429042,
+                "box_size_z": 14.409664294429042,
+                "file_path": "tool-runs/62245c66-4cfa-4821-9295-10e533d56a7e/fc56f484-671f-49c5-bd61-28574f5ed022.sdf",
+                "ligand_id": "08DK802XNYTXA",
+                "pocket_center": [
+                    -13.400676727294922,
+                    -5.5482563972473145,
+                    14.189638137817383
+                ],
+                "pocket_id": "08HXY85NDYYXG",
+                "pose_score": 0.56254727,
+                "protein_id": "08CEVZZPNYV31"
+            },
+            "id": "0960TVN95YXX3",
+            "tool_key": "deeporigin.bulk-docking",
+            "tool_version": "3.0.0-20"
+        },
+        {
+            "compute_job_id": "bdcc1213-4aa1-48e7-ada9-fbd6331f01d9",
+            "data": {
+                "binding_energy": -7.6319914,
+                "box_size_x": 14.409664294429042,
+                "box_size_y": 14.409664294429042,
+                "box_size_z": 14.409664294429042,
+                "file_path": "tool-runs/62245c66-4cfa-4821-9295-10e533d56a7e/bf159417-8593-4024-a9c8-d09750456182.sdf",
+                "ligand_id": "08DK802XNYTXA",
+                "pocket_center": [
+                    -13.400676727294922,
+                    -5.5482563972473145,
+                    14.189638137817383
+                ],
+                "pocket_id": "08HXY85NDYYXG",
+                "pose_score": 0.5398437,
+                "protein_id": "08CEVZZPNYV31"
+            },
+            "id": "0960TVN9DYXX4",
+            "tool_key": "deeporigin.bulk-docking",
+            "tool_version": "3.0.0-20"
+        },
+        {
+            "compute_job_id": "bdcc1213-4aa1-48e7-ada9-fbd6331f01d9",
+            "data": {
+                "binding_energy": -7.48042,
+                "box_size_x": 14.409664294429042,
+                "box_size_y": 14.409664294429042,
+                "box_size_z": 14.409664294429042,
+                "file_path": "tool-runs/62245c66-4cfa-4821-9295-10e533d56a7e/1ad332ea-16f4-4e8d-8a36-6c3e70e4f237.sdf",
+                "ligand_id": "08DK802XNYTXA",
+                "pocket_center": [
+                    -13.400676727294922,
+                    -5.5482563972473145,
+                    14.189638137817383
+                ],
+                "pocket_id": "08HXY85NDYYXG",
+                "pose_score": 0.525353,
+                "protein_id": "08CEVZZPNYV31"
+            },
+            "id": "0960TVN9XYXX5",
+            "tool_key": "deeporigin.bulk-docking",
+            "tool_version": "3.0.0-20"
+        },
+        {
+            "compute_job_id": "bdcc1213-4aa1-48e7-ada9-fbd6331f01d9",
+            "data": {
+                "binding_energy": -8.259457,
+                "box_size_x": 14.409664294429042,
+                "box_size_y": 14.409664294429042,
+                "box_size_z": 14.409664294429042,
+                "file_path": "tool-runs/62245c66-4cfa-4821-9295-10e533d56a7e/384489d4-dff9-49eb-965f-55f4a83771b9.sdf",
+                "ligand_id": "08BT9WM0NYVFY",
+                "pocket_center": [
+                    -13.400676727294922,
+                    -5.5482563972473145,
+                    14.189638137817383
+                ],
+                "pocket_id": "08HXY85NDYYXG",
+                "pose_score": 0.8957634,
+                "protein_id": "08CEVZZPNYV31"
+            },
+            "id": "0960TXMF5YXYB",
+            "tool_key": "deeporigin.bulk-docking",
+            "tool_version": "3.0.0-20"
+        },
+        {
+            "compute_job_id": "bdcc1213-4aa1-48e7-ada9-fbd6331f01d9",
+            "data": {
+                "binding_energy": -9.005517,
+                "box_size_x": 14.409664294429042,
+                "box_size_y": 14.409664294429042,
+                "box_size_z": 14.409664294429042,
+                "file_path": "tool-runs/62245c66-4cfa-4821-9295-10e533d56a7e/3dbb7566-57ad-4031-87e7-fff92da49be4.sdf",
+                "ligand_id": "08BT9WM0NYVFY",
+                "pocket_center": [
+                    -13.400676727294922,
+                    -5.5482563972473145,
+                    14.189638137817383
+                ],
+                "pocket_id": "08HXY85NDYYXG",
+                "pose_score": 0.86033446,
+                "protein_id": "08CEVZZPNYV31"
+            },
+            "id": "0960TXMFNYXYC",
+            "tool_key": "deeporigin.bulk-docking",
+            "tool_version": "3.0.0-20"
+        },
+        {
+            "compute_job_id": "bdcc1213-4aa1-48e7-ada9-fbd6331f01d9",
+            "data": {
+                "binding_energy": -7.1190343,
+                "box_size_x": 14.409664294429042,
+                "box_size_y": 14.409664294429042,
+                "box_size_z": 14.409664294429042,
+                "file_path": "tool-runs/62245c66-4cfa-4821-9295-10e533d56a7e/3def55e3-97db-40e8-8b11-1fa9878e893f.sdf",
+                "ligand_id": "08BT9WM0NYVFY",
+                "pocket_center": [
+                    -13.400676727294922,
+                    -5.5482563972473145,
+                    14.189638137817383
+                ],
+                "pocket_id": "08HXY85NDYYXG",
+                "pose_score": 0.84133095,
+                "protein_id": "08CEVZZPNYV31"
+            },
+            "id": "0960TXMFXYXYD",
+            "tool_key": "deeporigin.bulk-docking",
+            "tool_version": "3.0.0-20"
+        },
+        {
+            "compute_job_id": "bdcc1213-4aa1-48e7-ada9-fbd6331f01d9",
+            "data": {
+                "binding_energy": -8.613664,
+                "box_size_x": 14.409664294429042,
+                "box_size_y": 14.409664294429042,
+                "box_size_z": 14.409664294429042,
+                "file_path": "tool-runs/62245c66-4cfa-4821-9295-10e533d56a7e/0fc48584-f31a-4bd5-9774-c50f550b3d79.sdf",
+                "ligand_id": "08BT9WM0NYVFY",
+                "pocket_center": [
+                    -13.400676727294922,
+                    -5.5482563972473145,
+                    14.189638137817383
+                ],
+                "pocket_id": "08HXY85NDYYXG",
+                "pose_score": 0.801098,
+                "protein_id": "08CEVZZPNYV31"
+            },
+            "id": "0960TXMG5YXYE",
+            "tool_key": "deeporigin.bulk-docking",
+            "tool_version": "3.0.0-20"
+        },
+        {
+            "compute_job_id": "bdcc1213-4aa1-48e7-ada9-fbd6331f01d9",
+            "data": {
+                "binding_energy": -7.4535155,
+                "box_size_x": 14.409664294429042,
+                "box_size_y": 14.409664294429042,
+                "box_size_z": 14.409664294429042,
+                "file_path": "tool-runs/62245c66-4cfa-4821-9295-10e533d56a7e/21bfbe5e-8990-40bf-ae01-5986dc6a24ad.sdf",
+                "ligand_id": "08BT9WM0NYVFY",
+                "pocket_center": [
+                    -13.400676727294922,
+                    -5.5482563972473145,
+                    14.189638137817383
+                ],
+                "pocket_id": "08HXY85NDYYXG",
+                "pose_score": 0.79210734,
+                "protein_id": "08CEVZZPNYV31"
+            },
+            "id": "0960TXMGNYXYF",
+            "tool_key": "deeporigin.bulk-docking",
+            "tool_version": "3.0.0-20"
+        },
+        {
+            "compute_job_id": "bdcc1213-4aa1-48e7-ada9-fbd6331f01d9",
+            "data": {
+                "binding_energy": -7.7857366,
+                "box_size_x": 14.409664294429042,
+                "box_size_y": 14.409664294429042,
+                "box_size_z": 14.409664294429042,
+                "file_path": "tool-runs/62245c66-4cfa-4821-9295-10e533d56a7e/1d41330a-73ac-4869-8fbd-110c90032f03.sdf",
+                "ligand_id": "08BT9WM0NYVFY",
+                "pocket_center": [
+                    -13.400676727294922,
+                    -5.5482563972473145,
+                    14.189638137817383
+                ],
+                "pocket_id": "08HXY85NDYYXG",
+                "pose_score": 0.7834758,
+                "protein_id": "08CEVZZPNYV31"
+            },
+            "id": "0960TXMGXYXYG",
+            "tool_key": "deeporigin.bulk-docking",
+            "tool_version": "3.0.0-20"
+        },
+        {
+            "compute_job_id": "bdcc1213-4aa1-48e7-ada9-fbd6331f01d9",
+            "data": {
+                "binding_energy": -7.155039,
+                "box_size_x": 14.409664294429042,
+                "box_size_y": 14.409664294429042,
+                "box_size_z": 14.409664294429042,
+                "file_path": "tool-runs/62245c66-4cfa-4821-9295-10e533d56a7e/dc5e29f0-28be-43ff-ab42-3a932083a6f4.sdf",
+                "ligand_id": "08BT9WM0NYVFY",
+                "pocket_center": [
+                    -13.400676727294922,
+                    -5.5482563972473145,
+                    14.189638137817383
+                ],
+                "pocket_id": "08HXY85NDYYXG",
+                "pose_score": 0.6945414,
+                "protein_id": "08CEVZZPNYV31"
+            },
+            "id": "0960TXMH5YXYH",
+            "tool_key": "deeporigin.bulk-docking",
+            "tool_version": "3.0.0-20"
+        },
+        {
+            "compute_job_id": "bdcc1213-4aa1-48e7-ada9-fbd6331f01d9",
+            "data": {
+                "binding_energy": -6.6734886,
+                "box_size_x": 14.409664294429042,
+                "box_size_y": 14.409664294429042,
+                "box_size_z": 14.409664294429042,
+                "file_path": "tool-runs/62245c66-4cfa-4821-9295-10e533d56a7e/2acd550e-eea7-4e9d-98c2-6210fda67cc3.sdf",
+                "ligand_id": "08BT9WM0NYVFY",
+                "pocket_center": [
+                    -13.400676727294922,
+                    -5.5482563972473145,
+                    14.189638137817383
+                ],
+                "pocket_id": "08HXY85NDYYXG",
+                "pose_score": 0.646517,
+                "protein_id": "08CEVZZPNYV31"
+            },
+            "id": "0960TXMHDYXYJ",
+            "tool_key": "deeporigin.bulk-docking",
+            "tool_version": "3.0.0-20"
+        },
+        {
+            "compute_job_id": "bdcc1213-4aa1-48e7-ada9-fbd6331f01d9",
+            "data": {
+                "binding_energy": -6.117964,
+                "box_size_x": 14.409664294429042,
+                "box_size_y": 14.409664294429042,
+                "box_size_z": 14.409664294429042,
+                "file_path": "tool-runs/62245c66-4cfa-4821-9295-10e533d56a7e/e5c300c7-638e-4b78-97fe-d304982dd70a.sdf",
+                "ligand_id": "08BT9WM0NYVFY",
+                "pocket_center": [
+                    -13.400676727294922,
+                    -5.5482563972473145,
+                    14.189638137817383
+                ],
+                "pocket_id": "08HXY85NDYYXG",
+                "pose_score": 0.6451503,
+                "protein_id": "08CEVZZPNYV31"
+            },
+            "id": "0960TXMHNYXYK",
+            "tool_key": "deeporigin.bulk-docking",
+            "tool_version": "3.0.0-20"
+        },
+        {
+            "compute_job_id": "bdcc1213-4aa1-48e7-ada9-fbd6331f01d9",
+            "data": {
+                "binding_energy": -6.7026024,
+                "box_size_x": 14.409664294429042,
+                "box_size_y": 14.409664294429042,
+                "box_size_z": 14.409664294429042,
+                "file_path": "tool-runs/62245c66-4cfa-4821-9295-10e533d56a7e/cee6e50b-c57e-46ae-82dd-e608ecb9d370.sdf",
+                "ligand_id": "08BT9WM0NYVFY",
+                "pocket_center": [
+                    -13.400676727294922,
+                    -5.5482563972473145,
+                    14.189638137817383
+                ],
+                "pocket_id": "08HXY85NDYYXG",
+                "pose_score": 0.6349604,
+                "protein_id": "08CEVZZPNYV31"
+            },
+            "id": "0960TXMHXYXYM",
+            "tool_key": "deeporigin.bulk-docking",
+            "tool_version": "3.0.0-20"
+        },
+        {
+            "compute_job_id": "bdcc1213-4aa1-48e7-ada9-fbd6331f01d9",
+            "data": {
+                "binding_energy": -5.7936234,
+                "box_size_x": 14.409664294429042,
+                "box_size_y": 14.409664294429042,
+                "box_size_z": 14.409664294429042,
+                "file_path": "tool-runs/62245c66-4cfa-4821-9295-10e533d56a7e/009f47ad-ce3b-4707-92b9-45cc207b4e93.sdf",
+                "ligand_id": "08BT9WM0NYVFY",
+                "pocket_center": [
+                    -13.400676727294922,
+                    -5.5482563972473145,
+                    14.189638137817383
+                ],
+                "pocket_id": "08HXY85NDYYXG",
+                "pose_score": 0.6238871,
+                "protein_id": "08CEVZZPNYV31"
+            },
+            "id": "0960TXMJ5YXYN",
+            "tool_key": "deeporigin.bulk-docking",
+            "tool_version": "3.0.0-20"
+        },
+        {
+            "compute_job_id": "bdcc1213-4aa1-48e7-ada9-fbd6331f01d9",
+            "data": {
+                "binding_energy": -7.3142657,
+                "box_size_x": 14.409664294429042,
+                "box_size_y": 14.409664294429042,
+                "box_size_z": 14.409664294429042,
+                "file_path": "tool-runs/62245c66-4cfa-4821-9295-10e533d56a7e/de2b3c69-d994-4cfa-b6b0-e6d23364e094.sdf",
+                "ligand_id": "08BT9WM0NYVFY",
+                "pocket_center": [
+                    -13.400676727294922,
+                    -5.5482563972473145,
+                    14.189638137817383
+                ],
+                "pocket_id": "08HXY85NDYYXG",
+                "pose_score": 0.56460255,
+                "protein_id": "08CEVZZPNYV31"
+            },
+            "id": "0960TXMJDYXYP",
+            "tool_key": "deeporigin.bulk-docking",
+            "tool_version": "3.0.0-20"
+        },
+        {
+            "compute_job_id": "bdcc1213-4aa1-48e7-ada9-fbd6331f01d9",
+            "data": {
+                "binding_energy": -6.637021,
+                "box_size_x": 14.409664294429042,
+                "box_size_y": 14.409664294429042,
+                "box_size_z": 14.409664294429042,
+                "file_path": "tool-runs/62245c66-4cfa-4821-9295-10e533d56a7e/651f9a0c-0cd4-41f6-b010-9467aa1d7f6f.sdf",
+                "ligand_id": "08BT9WM0NYVFY",
+                "pocket_center": [
+                    -13.400676727294922,
+                    -5.5482563972473145,
+                    14.189638137817383
+                ],
+                "pocket_id": "08HXY85NDYYXG",
+                "pose_score": 0.55194634,
+                "protein_id": "08CEVZZPNYV31"
+            },
+            "id": "0960TXMJNYXYQ",
+            "tool_key": "deeporigin.bulk-docking",
+            "tool_version": "3.0.0-20"
+        },
+        {
+            "compute_job_id": "bdcc1213-4aa1-48e7-ada9-fbd6331f01d9",
+            "data": {
+                "binding_energy": -7.49217,
+                "box_size_x": 14.409664294429042,
+                "box_size_y": 14.409664294429042,
+                "box_size_z": 14.409664294429042,
+                "file_path": "tool-runs/62245c66-4cfa-4821-9295-10e533d56a7e/60201830-30ae-4932-bab1-b32ab99a06f6.sdf",
+                "ligand_id": "08BT9WM0NYVFY",
+                "pocket_center": [
+                    -13.400676727294922,
+                    -5.5482563972473145,
+                    14.189638137817383
+                ],
+                "pocket_id": "08HXY85NDYYXG",
+                "pose_score": 0.5357277,
+                "protein_id": "08CEVZZPNYV31"
+            },
+            "id": "0960TXMJXYXYR",
+            "tool_key": "deeporigin.bulk-docking",
+            "tool_version": "3.0.0-20"
+        },
+        {
+            "compute_job_id": "bdcc1213-4aa1-48e7-ada9-fbd6331f01d9",
+            "data": {
+                "binding_energy": -7.1898255,
+                "box_size_x": 14.409664294429042,
+                "box_size_y": 14.409664294429042,
+                "box_size_z": 14.409664294429042,
+                "file_path": "tool-runs/62245c66-4cfa-4821-9295-10e533d56a7e/ad901502-1f7f-47cd-94ec-8cfa2fa4c9cd.sdf",
+                "ligand_id": "08BT9WM0NYVFY",
+                "pocket_center": [
+                    -13.400676727294922,
+                    -5.5482563972473145,
+                    14.189638137817383
+                ],
+                "pocket_id": "08HXY85NDYYXG",
+                "pose_score": 0.5318334,
+                "protein_id": "08CEVZZPNYV31"
+            },
+            "id": "0960TXMK5YXYS",
+            "tool_key": "deeporigin.bulk-docking",
+            "tool_version": "3.0.0-20"
+        },
+        {
+            "compute_job_id": "bdcc1213-4aa1-48e7-ada9-fbd6331f01d9",
+            "data": {
+                "binding_energy": -7.4019794,
+                "box_size_x": 14.409664294429042,
+                "box_size_y": 14.409664294429042,
+                "box_size_z": 14.409664294429042,
+                "file_path": "tool-runs/62245c66-4cfa-4821-9295-10e533d56a7e/f5296d71-a332-464b-8706-5c1416da461b.sdf",
+                "ligand_id": "08BT9WM0NYVFY",
+                "pocket_center": [
+                    -13.400676727294922,
+                    -5.5482563972473145,
+                    14.189638137817383
+                ],
+                "pocket_id": "08HXY85NDYYXG",
+                "pose_score": 0.49919006,
+                "protein_id": "08CEVZZPNYV31"
+            },
+            "id": "0960TXMKDYXYT",
+            "tool_key": "deeporigin.bulk-docking",
+            "tool_version": "3.0.0-20"
+        },
+        {
+            "compute_job_id": "bdcc1213-4aa1-48e7-ada9-fbd6331f01d9",
+            "data": {
+                "binding_energy": -8.350749,
+                "box_size_x": 14.409664294429042,
+                "box_size_y": 14.409664294429042,
+                "box_size_z": 14.409664294429042,
+                "file_path": "tool-runs/62245c66-4cfa-4821-9295-10e533d56a7e/125b9a27-8a1d-4dec-aa29-668e836f6c54.sdf",
+                "ligand_id": "08DK7ZSNXYTX2",
+                "pocket_center": [
+                    -13.400676727294922,
+                    -5.5482563972473145,
+                    14.189638137817383
+                ],
+                "pocket_id": "08HXY85NDYYXG",
+                "pose_score": 0.95261353,
+                "protein_id": "08CEVZZPNYV31"
+            },
+            "id": "0960TYQP5YY00",
+            "tool_key": "deeporigin.bulk-docking",
+            "tool_version": "3.0.0-20"
+        },
+        {
+            "compute_job_id": "bdcc1213-4aa1-48e7-ada9-fbd6331f01d9",
+            "data": {
+                "binding_energy": -9.268466,
+                "box_size_x": 14.409664294429042,
+                "box_size_y": 14.409664294429042,
+                "box_size_z": 14.409664294429042,
+                "file_path": "tool-runs/62245c66-4cfa-4821-9295-10e533d56a7e/cbc18c70-a340-404d-a78d-b1f11e10b114.sdf",
+                "ligand_id": "08DK7ZSNXYTX2",
+                "pocket_center": [
+                    -13.400676727294922,
+                    -5.5482563972473145,
+                    14.189638137817383
+                ],
+                "pocket_id": "08HXY85NDYYXG",
+                "pose_score": 0.90892553,
+                "protein_id": "08CEVZZPNYV31"
+            },
+            "id": "0960TYQPDYY01",
+            "tool_key": "deeporigin.bulk-docking",
+            "tool_version": "3.0.0-20"
+        },
+        {
+            "compute_job_id": "bdcc1213-4aa1-48e7-ada9-fbd6331f01d9",
+            "data": {
+                "binding_energy": -7.8174286,
+                "box_size_x": 14.409664294429042,
+                "box_size_y": 14.409664294429042,
+                "box_size_z": 14.409664294429042,
+                "file_path": "tool-runs/62245c66-4cfa-4821-9295-10e533d56a7e/adec2a15-c53b-4b22-8f5c-8277022f106b.sdf",
+                "ligand_id": "08DK7ZSNXYTX2",
+                "pocket_center": [
+                    -13.400676727294922,
+                    -5.5482563972473145,
+                    14.189638137817383
+                ],
+                "pocket_id": "08HXY85NDYYXG",
+                "pose_score": 0.8621796,
+                "protein_id": "08CEVZZPNYV31"
+            },
+            "id": "0960TYQPXYY02",
+            "tool_key": "deeporigin.bulk-docking",
+            "tool_version": "3.0.0-20"
+        },
+        {
+            "compute_job_id": "bdcc1213-4aa1-48e7-ada9-fbd6331f01d9",
+            "data": {
+                "binding_energy": -8.317462,
+                "box_size_x": 14.409664294429042,
+                "box_size_y": 14.409664294429042,
+                "box_size_z": 14.409664294429042,
+                "file_path": "tool-runs/62245c66-4cfa-4821-9295-10e533d56a7e/d9bbc41c-98e8-406e-a6e9-2aa808a00cc8.sdf",
+                "ligand_id": "08DK7ZSNXYTX2",
+                "pocket_center": [
+                    -13.400676727294922,
+                    -5.5482563972473145,
+                    14.189638137817383
+                ],
+                "pocket_id": "08HXY85NDYYXG",
+                "pose_score": 0.7974711,
+                "protein_id": "08CEVZZPNYV31"
+            },
+            "id": "0960TYQQ5YY03",
+            "tool_key": "deeporigin.bulk-docking",
+            "tool_version": "3.0.0-20"
+        },
+        {
+            "compute_job_id": "bdcc1213-4aa1-48e7-ada9-fbd6331f01d9",
+            "data": {
+                "binding_energy": -8.823211,
+                "box_size_x": 14.409664294429042,
+                "box_size_y": 14.409664294429042,
+                "box_size_z": 14.409664294429042,
+                "file_path": "tool-runs/62245c66-4cfa-4821-9295-10e533d56a7e/57d8f3c7-38e2-48c7-9a84-8be42ae7e2fc.sdf",
+                "ligand_id": "08DK7ZSNXYTX2",
+                "pocket_center": [
+                    -13.400676727294922,
+                    -5.5482563972473145,
+                    14.189638137817383
+                ],
+                "pocket_id": "08HXY85NDYYXG",
+                "pose_score": 0.7911463,
+                "protein_id": "08CEVZZPNYV31"
+            },
+            "id": "0960TYQQDYY04",
+            "tool_key": "deeporigin.bulk-docking",
+            "tool_version": "3.0.0-20"
+        },
+        {
+            "compute_job_id": "bdcc1213-4aa1-48e7-ada9-fbd6331f01d9",
+            "data": {
+                "binding_energy": -8.207895,
+                "box_size_x": 14.409664294429042,
+                "box_size_y": 14.409664294429042,
+                "box_size_z": 14.409664294429042,
+                "file_path": "tool-runs/62245c66-4cfa-4821-9295-10e533d56a7e/7fd2685c-a33f-49fc-84df-2e58aa179c26.sdf",
+                "ligand_id": "08DK7ZSNXYTX2",
+                "pocket_center": [
+                    -13.400676727294922,
+                    -5.5482563972473145,
+                    14.189638137817383
+                ],
+                "pocket_id": "08HXY85NDYYXG",
+                "pose_score": 0.74785686,
+                "protein_id": "08CEVZZPNYV31"
+            },
+            "id": "0960TYQQXYY05",
+            "tool_key": "deeporigin.bulk-docking",
+            "tool_version": "3.0.0-20"
+        },
+        {
+            "compute_job_id": "bdcc1213-4aa1-48e7-ada9-fbd6331f01d9",
+            "data": {
+                "binding_energy": -6.8681803,
+                "box_size_x": 14.409664294429042,
+                "box_size_y": 14.409664294429042,
+                "box_size_z": 14.409664294429042,
+                "file_path": "tool-runs/62245c66-4cfa-4821-9295-10e533d56a7e/e1e8b3e1-1cd4-496b-8688-74d588d1927d.sdf",
+                "ligand_id": "08DK7ZSNXYTX2",
+                "pocket_center": [
+                    -13.400676727294922,
+                    -5.5482563972473145,
+                    14.189638137817383
+                ],
+                "pocket_id": "08HXY85NDYYXG",
+                "pose_score": 0.6779623,
+                "protein_id": "08CEVZZPNYV31"
+            },
+            "id": "0960TYQRDYY06",
+            "tool_key": "deeporigin.bulk-docking",
+            "tool_version": "3.0.0-20"
+        },
+        {
+            "compute_job_id": "bdcc1213-4aa1-48e7-ada9-fbd6331f01d9",
+            "data": {
+                "binding_energy": -6.8257856,
+                "box_size_x": 14.409664294429042,
+                "box_size_y": 14.409664294429042,
+                "box_size_z": 14.409664294429042,
+                "file_path": "tool-runs/62245c66-4cfa-4821-9295-10e533d56a7e/c4d3178c-a0ce-4a06-bd53-0712cc1d7b94.sdf",
+                "ligand_id": "08DK7ZSNXYTX2",
+                "pocket_center": [
+                    -13.400676727294922,
+                    -5.5482563972473145,
+                    14.189638137817383
+                ],
+                "pocket_id": "08HXY85NDYYXG",
+                "pose_score": 0.6679197,
+                "protein_id": "08CEVZZPNYV31"
+            },
+            "id": "0960TYQRNYY07",
+            "tool_key": "deeporigin.bulk-docking",
+            "tool_version": "3.0.0-20"
+        },
+        {
+            "compute_job_id": "bdcc1213-4aa1-48e7-ada9-fbd6331f01d9",
+            "data": {
+                "binding_energy": -6.6518755,
+                "box_size_x": 14.409664294429042,
+                "box_size_y": 14.409664294429042,
+                "box_size_z": 14.409664294429042,
+                "file_path": "tool-runs/62245c66-4cfa-4821-9295-10e533d56a7e/c8c27df5-5cf5-4b73-b951-b3283088ff73.sdf",
+                "ligand_id": "08DK7ZSNXYTX2",
+                "pocket_center": [
+                    -13.400676727294922,
+                    -5.5482563972473145,
+                    14.189638137817383
+                ],
+                "pocket_id": "08HXY85NDYYXG",
+                "pose_score": 0.65918356,
+                "protein_id": "08CEVZZPNYV31"
+            },
+            "id": "0960TYQSXYY08",
+            "tool_key": "deeporigin.bulk-docking",
+            "tool_version": "3.0.0-20"
+        },
+        {
+            "compute_job_id": "bdcc1213-4aa1-48e7-ada9-fbd6331f01d9",
+            "data": {
+                "binding_energy": -6.9783325,
+                "box_size_x": 14.409664294429042,
+                "box_size_y": 14.409664294429042,
+                "box_size_z": 14.409664294429042,
+                "file_path": "tool-runs/62245c66-4cfa-4821-9295-10e533d56a7e/41fb74af-109a-45fd-bc1a-faa60eccdafe.sdf",
+                "ligand_id": "08DK7ZSNXYTX2",
+                "pocket_center": [
+                    -13.400676727294922,
+                    -5.5482563972473145,
+                    14.189638137817383
+                ],
+                "pocket_id": "08HXY85NDYYXG",
+                "pose_score": 0.6166256,
+                "protein_id": "08CEVZZPNYV31"
+            },
+            "id": "0960TYQTDYY09",
+            "tool_key": "deeporigin.bulk-docking",
+            "tool_version": "3.0.0-20"
+        },
+        {
+            "compute_job_id": "bdcc1213-4aa1-48e7-ada9-fbd6331f01d9",
+            "data": {
+                "binding_energy": -5.87053,
+                "box_size_x": 14.409664294429042,
+                "box_size_y": 14.409664294429042,
+                "box_size_z": 14.409664294429042,
+                "file_path": "tool-runs/62245c66-4cfa-4821-9295-10e533d56a7e/c83edfe3-2d9c-4af7-a48f-e4011b7279dd.sdf",
+                "ligand_id": "08DK7ZSNXYTX2",
+                "pocket_center": [
+                    -13.400676727294922,
+                    -5.5482563972473145,
+                    14.189638137817383
+                ],
+                "pocket_id": "08HXY85NDYYXG",
+                "pose_score": 0.5959352,
+                "protein_id": "08CEVZZPNYV31"
+            },
+            "id": "0960TYQTNYY0A",
+            "tool_key": "deeporigin.bulk-docking",
+            "tool_version": "3.0.0-20"
+        },
+        {
+            "compute_job_id": "bdcc1213-4aa1-48e7-ada9-fbd6331f01d9",
+            "data": {
+                "binding_energy": -7.3386755,
+                "box_size_x": 14.409664294429042,
+                "box_size_y": 14.409664294429042,
+                "box_size_z": 14.409664294429042,
+                "file_path": "tool-runs/62245c66-4cfa-4821-9295-10e533d56a7e/d51493f7-c8cb-4dcc-9cb5-c0c4510ce2fc.sdf",
+                "ligand_id": "08DK7ZSNXYTX2",
+                "pocket_center": [
+                    -13.400676727294922,
+                    -5.5482563972473145,
+                    14.189638137817383
+                ],
+                "pocket_id": "08HXY85NDYYXG",
+                "pose_score": 0.5908545,
+                "protein_id": "08CEVZZPNYV31"
+            },
+            "id": "0960TYQV5YY0B",
+            "tool_key": "deeporigin.bulk-docking",
+            "tool_version": "3.0.0-20"
+        },
+        {
+            "compute_job_id": "bdcc1213-4aa1-48e7-ada9-fbd6331f01d9",
+            "data": {
+                "binding_energy": -7.309818,
+                "box_size_x": 14.409664294429042,
+                "box_size_y": 14.409664294429042,
+                "box_size_z": 14.409664294429042,
+                "file_path": "tool-runs/62245c66-4cfa-4821-9295-10e533d56a7e/01a30b0c-300f-4170-8c1a-428d3136865f.sdf",
+                "ligand_id": "08DK7ZSNXYTX2",
+                "pocket_center": [
+                    -13.400676727294922,
+                    -5.5482563972473145,
+                    14.189638137817383
+                ],
+                "pocket_id": "08HXY85NDYYXG",
+                "pose_score": 0.57705635,
+                "protein_id": "08CEVZZPNYV31"
+            },
+            "id": "0960TYQVDYY0C",
+            "tool_key": "deeporigin.bulk-docking",
+            "tool_version": "3.0.0-20"
+        },
+        {
+            "compute_job_id": "bdcc1213-4aa1-48e7-ada9-fbd6331f01d9",
+            "data": {
+                "binding_energy": -6.3364735,
+                "box_size_x": 14.409664294429042,
+                "box_size_y": 14.409664294429042,
+                "box_size_z": 14.409664294429042,
+                "file_path": "tool-runs/62245c66-4cfa-4821-9295-10e533d56a7e/3665267a-6418-4ac7-8fb5-58c98916f50c.sdf",
+                "ligand_id": "08DK7ZSNXYTX2",
+                "pocket_center": [
+                    -13.400676727294922,
+                    -5.5482563972473145,
+                    14.189638137817383
+                ],
+                "pocket_id": "08HXY85NDYYXG",
+                "pose_score": 0.56812304,
+                "protein_id": "08CEVZZPNYV31"
+            },
+            "id": "0960TYQVNYY0D",
+            "tool_key": "deeporigin.bulk-docking",
+            "tool_version": "3.0.0-20"
+        },
+        {
+            "compute_job_id": "bdcc1213-4aa1-48e7-ada9-fbd6331f01d9",
+            "data": {
+                "binding_energy": -7.373506,
+                "box_size_x": 14.409664294429042,
+                "box_size_y": 14.409664294429042,
+                "box_size_z": 14.409664294429042,
+                "file_path": "tool-runs/62245c66-4cfa-4821-9295-10e533d56a7e/69e959c3-be99-416b-b928-fba3e85c587f.sdf",
+                "ligand_id": "08DK7ZSNXYTX2",
+                "pocket_center": [
+                    -13.400676727294922,
+                    -5.5482563972473145,
+                    14.189638137817383
+                ],
+                "pocket_id": "08HXY85NDYYXG",
+                "pose_score": 0.52903384,
+                "protein_id": "08CEVZZPNYV31"
+            },
+            "id": "0960TYQVXYY0E",
+            "tool_key": "deeporigin.bulk-docking",
+            "tool_version": "3.0.0-20"
+        },
+        {
+            "compute_job_id": "bdcc1213-4aa1-48e7-ada9-fbd6331f01d9",
+            "data": {
+                "binding_energy": -8.083343,
+                "box_size_x": 14.409664294429042,
+                "box_size_y": 14.409664294429042,
+                "box_size_z": 14.409664294429042,
+                "file_path": "tool-runs/62245c66-4cfa-4821-9295-10e533d56a7e/af8495fb-2294-40e2-8300-fa67d80c34cc.sdf",
+                "ligand_id": "08DK7ZSNXYTX2",
+                "pocket_center": [
+                    -13.400676727294922,
+                    -5.5482563972473145,
+                    14.189638137817383
+                ],
+                "pocket_id": "08HXY85NDYYXG",
+                "pose_score": 0.5225583,
+                "protein_id": "08CEVZZPNYV31"
+            },
+            "id": "0960TYQWDYY0F",
+            "tool_key": "deeporigin.bulk-docking",
+            "tool_version": "3.0.0-20"
+        },
+        {
+            "compute_job_id": "bdcc1213-4aa1-48e7-ada9-fbd6331f01d9",
+            "data": {
+                "binding_energy": -8.316535,
+                "box_size_x": 14.409664294429042,
+                "box_size_y": 14.409664294429042,
+                "box_size_z": 14.409664294429042,
+                "file_path": "tool-runs/62245c66-4cfa-4821-9295-10e533d56a7e/15b16b52-a891-4d84-9224-56724af5ab8b.sdf",
+                "ligand_id": "08DKACBCXYTXX",
+                "pocket_center": [
+                    -13.400676727294922,
+                    -5.5482563972473145,
+                    14.189638137817383
+                ],
+                "pocket_id": "08HXY85NDYYXG",
+                "pose_score": 0.9473896,
+                "protein_id": "08CEVZZPNYV31"
+            },
+            "id": "0960TZ1VNYY1N",
+            "tool_key": "deeporigin.bulk-docking",
+            "tool_version": "3.0.0-20"
+        },
+        {
+            "compute_job_id": "bdcc1213-4aa1-48e7-ada9-fbd6331f01d9",
+            "data": {
+                "binding_energy": -9.271906,
+                "box_size_x": 14.409664294429042,
+                "box_size_y": 14.409664294429042,
+                "box_size_z": 14.409664294429042,
+                "file_path": "tool-runs/62245c66-4cfa-4821-9295-10e533d56a7e/3e82f811-1f02-43d0-b38f-f6131f89cf44.sdf",
+                "ligand_id": "08DKACBCXYTXX",
+                "pocket_center": [
+                    -13.400676727294922,
+                    -5.5482563972473145,
+                    14.189638137817383
+                ],
+                "pocket_id": "08HXY85NDYYXG",
+                "pose_score": 0.9144711,
+                "protein_id": "08CEVZZPNYV31"
+            },
+            "id": "0960TZ1WDYY1P",
+            "tool_key": "deeporigin.bulk-docking",
+            "tool_version": "3.0.0-20"
+        },
+        {
+            "compute_job_id": "bdcc1213-4aa1-48e7-ada9-fbd6331f01d9",
+            "data": {
+                "binding_energy": -7.6197867,
+                "box_size_x": 14.409664294429042,
+                "box_size_y": 14.409664294429042,
+                "box_size_z": 14.409664294429042,
+                "file_path": "tool-runs/62245c66-4cfa-4821-9295-10e533d56a7e/5a722d21-d0ad-4da3-9376-11f65229d6c2.sdf",
+                "ligand_id": "08DKACBCXYTXX",
+                "pocket_center": [
+                    -13.400676727294922,
+                    -5.5482563972473145,
+                    14.189638137817383
+                ],
+                "pocket_id": "08HXY85NDYYXG",
+                "pose_score": 0.8613407,
+                "protein_id": "08CEVZZPNYV31"
+            },
+            "id": "0960TZ1WXYY1Q",
+            "tool_key": "deeporigin.bulk-docking",
+            "tool_version": "3.0.0-20"
+        },
+        {
+            "compute_job_id": "bdcc1213-4aa1-48e7-ada9-fbd6331f01d9",
+            "data": {
+                "binding_energy": -7.7998304,
+                "box_size_x": 14.409664294429042,
+                "box_size_y": 14.409664294429042,
+                "box_size_z": 14.409664294429042,
+                "file_path": "tool-runs/62245c66-4cfa-4821-9295-10e533d56a7e/a73af1e1-76d1-434c-92d2-d4ff15d684bc.sdf",
+                "ligand_id": "08DKACBCXYTXX",
+                "pocket_center": [
+                    -13.400676727294922,
+                    -5.5482563972473145,
+                    14.189638137817383
+                ],
+                "pocket_id": "08HXY85NDYYXG",
+                "pose_score": 0.854745,
+                "protein_id": "08CEVZZPNYV31"
+            },
+            "id": "0960TZ1X5YY1R",
+            "tool_key": "deeporigin.bulk-docking",
+            "tool_version": "3.0.0-20"
+        },
+        {
+            "compute_job_id": "bdcc1213-4aa1-48e7-ada9-fbd6331f01d9",
+            "data": {
+                "binding_energy": -8.940798,
+                "box_size_x": 14.409664294429042,
+                "box_size_y": 14.409664294429042,
+                "box_size_z": 14.409664294429042,
+                "file_path": "tool-runs/62245c66-4cfa-4821-9295-10e533d56a7e/6465c07e-f60e-49b2-9ea7-10495489d065.sdf",
+                "ligand_id": "08DKACBCXYTXX",
+                "pocket_center": [
+                    -13.400676727294922,
+                    -5.5482563972473145,
+                    14.189638137817383
+                ],
+                "pocket_id": "08HXY85NDYYXG",
+                "pose_score": 0.79816425,
+                "protein_id": "08CEVZZPNYV31"
+            },
+            "id": "0960TZ1XNYY1S",
+            "tool_key": "deeporigin.bulk-docking",
+            "tool_version": "3.0.0-20"
+        },
+        {
+            "compute_job_id": "bdcc1213-4aa1-48e7-ada9-fbd6331f01d9",
+            "data": {
+                "binding_energy": -8.555375,
+                "box_size_x": 14.409664294429042,
+                "box_size_y": 14.409664294429042,
+                "box_size_z": 14.409664294429042,
+                "file_path": "tool-runs/62245c66-4cfa-4821-9295-10e533d56a7e/7b0eb95b-0b72-4e63-a76c-0640f60feab2.sdf",
+                "ligand_id": "08DKACBCXYTXX",
+                "pocket_center": [
+                    -13.400676727294922,
+                    -5.5482563972473145,
+                    14.189638137817383
+                ],
+                "pocket_id": "08HXY85NDYYXG",
+                "pose_score": 0.7808567,
+                "protein_id": "08CEVZZPNYV31"
+            },
+            "id": "0960TZ1XXYY1T",
+            "tool_key": "deeporigin.bulk-docking",
+            "tool_version": "3.0.0-20"
+        },
+        {
+            "compute_job_id": "bdcc1213-4aa1-48e7-ada9-fbd6331f01d9",
+            "data": {
+                "binding_energy": -8.217868,
+                "box_size_x": 14.409664294429042,
+                "box_size_y": 14.409664294429042,
+                "box_size_z": 14.409664294429042,
+                "file_path": "tool-runs/62245c66-4cfa-4821-9295-10e533d56a7e/5e4f3b2e-095a-484e-9e48-e23ad0f20c1c.sdf",
+                "ligand_id": "08DKACBCXYTXX",
+                "pocket_center": [
+                    -13.400676727294922,
+                    -5.5482563972473145,
+                    14.189638137817383
+                ],
+                "pocket_id": "08HXY85NDYYXG",
+                "pose_score": 0.76473284,
+                "protein_id": "08CEVZZPNYV31"
+            },
+            "id": "0960TZ1Y5YY1V",
+            "tool_key": "deeporigin.bulk-docking",
+            "tool_version": "3.0.0-20"
+        },
+        {
+            "compute_job_id": "bdcc1213-4aa1-48e7-ada9-fbd6331f01d9",
+            "data": {
+                "binding_energy": -6.5037265,
+                "box_size_x": 14.409664294429042,
+                "box_size_y": 14.409664294429042,
+                "box_size_z": 14.409664294429042,
+                "file_path": "tool-runs/62245c66-4cfa-4821-9295-10e533d56a7e/3380abf3-d8c6-4869-82bc-a7cef5aac7f0.sdf",
+                "ligand_id": "08DKACBCXYTXX",
+                "pocket_center": [
+                    -13.400676727294922,
+                    -5.5482563972473145,
+                    14.189638137817383
+                ],
+                "pocket_id": "08HXY85NDYYXG",
+                "pose_score": 0.67045414,
+                "protein_id": "08CEVZZPNYV31"
+            },
+            "id": "0960TZ1YNYY1W",
+            "tool_key": "deeporigin.bulk-docking",
+            "tool_version": "3.0.0-20"
+        },
+        {
+            "compute_job_id": "bdcc1213-4aa1-48e7-ada9-fbd6331f01d9",
+            "data": {
+                "binding_energy": -6.164734,
+                "box_size_x": 14.409664294429042,
+                "box_size_y": 14.409664294429042,
+                "box_size_z": 14.409664294429042,
+                "file_path": "tool-runs/62245c66-4cfa-4821-9295-10e533d56a7e/13400dcd-9ea3-44f6-9592-38d85df2e231.sdf",
+                "ligand_id": "08DKACBCXYTXX",
+                "pocket_center": [
+                    -13.400676727294922,
+                    -5.5482563972473145,
+                    14.189638137817383
+                ],
+                "pocket_id": "08HXY85NDYYXG",
+                "pose_score": 0.64801735,
+                "protein_id": "08CEVZZPNYV31"
+            },
+            "id": "0960TZ1YXYY1X",
+            "tool_key": "deeporigin.bulk-docking",
+            "tool_version": "3.0.0-20"
+        },
+        {
+            "compute_job_id": "bdcc1213-4aa1-48e7-ada9-fbd6331f01d9",
+            "data": {
+                "binding_energy": -6.7150683,
+                "box_size_x": 14.409664294429042,
+                "box_size_y": 14.409664294429042,
+                "box_size_z": 14.409664294429042,
+                "file_path": "tool-runs/62245c66-4cfa-4821-9295-10e533d56a7e/fa261c07-0d61-421a-ae53-fbed98425917.sdf",
+                "ligand_id": "08DKACBCXYTXX",
+                "pocket_center": [
+                    -13.400676727294922,
+                    -5.5482563972473145,
+                    14.189638137817383
+                ],
+                "pocket_id": "08HXY85NDYYXG",
+                "pose_score": 0.62267286,
+                "protein_id": "08CEVZZPNYV31"
+            },
+            "id": "0960TZ1Z5YY1Y",
+            "tool_key": "deeporigin.bulk-docking",
+            "tool_version": "3.0.0-20"
+        },
+        {
+            "compute_job_id": "bdcc1213-4aa1-48e7-ada9-fbd6331f01d9",
+            "data": {
+                "binding_energy": -6.494478,
+                "box_size_x": 14.409664294429042,
+                "box_size_y": 14.409664294429042,
+                "box_size_z": 14.409664294429042,
+                "file_path": "tool-runs/62245c66-4cfa-4821-9295-10e533d56a7e/84ffe179-7f29-48db-9045-485ba7cde35b.sdf",
+                "ligand_id": "08DKACBCXYTXX",
+                "pocket_center": [
+                    -13.400676727294922,
+                    -5.5482563972473145,
+                    14.189638137817383
+                ],
+                "pocket_id": "08HXY85NDYYXG",
+                "pose_score": 0.586074,
+                "protein_id": "08CEVZZPNYV31"
+            },
+            "id": "0960TZ1ZNYY1Z",
+            "tool_key": "deeporigin.bulk-docking",
+            "tool_version": "3.0.0-20"
+        },
+        {
+            "compute_job_id": "bdcc1213-4aa1-48e7-ada9-fbd6331f01d9",
+            "data": {
+                "binding_energy": -6.8037224,
+                "box_size_x": 14.409664294429042,
+                "box_size_y": 14.409664294429042,
+                "box_size_z": 14.409664294429042,
+                "file_path": "tool-runs/62245c66-4cfa-4821-9295-10e533d56a7e/83587467-63a6-47d5-8489-c0baecd1f45f.sdf",
+                "ligand_id": "08DKACBCXYTXX",
+                "pocket_center": [
+                    -13.400676727294922,
+                    -5.5482563972473145,
+                    14.189638137817383
+                ],
+                "pocket_id": "08HXY85NDYYXG",
+                "pose_score": 0.5811336,
+                "protein_id": "08CEVZZPNYV31"
+            },
+            "id": "0960TZ205YY20",
+            "tool_key": "deeporigin.bulk-docking",
+            "tool_version": "3.0.0-20"
+        },
+        {
+            "compute_job_id": "bdcc1213-4aa1-48e7-ada9-fbd6331f01d9",
+            "data": {
+                "binding_energy": -6.258379,
+                "box_size_x": 14.409664294429042,
+                "box_size_y": 14.409664294429042,
+                "box_size_z": 14.409664294429042,
+                "file_path": "tool-runs/62245c66-4cfa-4821-9295-10e533d56a7e/24f473c1-ffde-4523-974f-16ea969c0c71.sdf",
+                "ligand_id": "08DKACBCXYTXX",
+                "pocket_center": [
+                    -13.400676727294922,
+                    -5.5482563972473145,
+                    14.189638137817383
+                ],
+                "pocket_id": "08HXY85NDYYXG",
+                "pose_score": 0.5373096,
+                "protein_id": "08CEVZZPNYV31"
+            },
+            "id": "0960TZ20NYY21",
+            "tool_key": "deeporigin.bulk-docking",
+            "tool_version": "3.0.0-20"
+        },
+        {
+            "compute_job_id": "bdcc1213-4aa1-48e7-ada9-fbd6331f01d9",
+            "data": {
+                "binding_energy": -6.799947,
+                "box_size_x": 14.409664294429042,
+                "box_size_y": 14.409664294429042,
+                "box_size_z": 14.409664294429042,
+                "file_path": "tool-runs/62245c66-4cfa-4821-9295-10e533d56a7e/f8a7c7f8-2205-4950-ae6e-d84007b4fc01.sdf",
+                "ligand_id": "08DKACBCXYTXX",
+                "pocket_center": [
+                    -13.400676727294922,
+                    -5.5482563972473145,
+                    14.189638137817383
+                ],
+                "pocket_id": "08HXY85NDYYXG",
+                "pose_score": 0.5218182,
+                "protein_id": "08CEVZZPNYV31"
+            },
+            "id": "0960TZ215YY22",
+            "tool_key": "deeporigin.bulk-docking",
+            "tool_version": "3.0.0-20"
+        },
+        {
+            "compute_job_id": "bdcc1213-4aa1-48e7-ada9-fbd6331f01d9",
+            "data": {
+                "binding_energy": -7.389194,
+                "box_size_x": 14.409664294429042,
+                "box_size_y": 14.409664294429042,
+                "box_size_z": 14.409664294429042,
+                "file_path": "tool-runs/62245c66-4cfa-4821-9295-10e533d56a7e/fb6e20ec-e32e-4fbb-99fc-ed8e00ed1fd0.sdf",
+                "ligand_id": "08DKACBCXYTXX",
+                "pocket_center": [
+                    -13.400676727294922,
+                    -5.5482563972473145,
+                    14.189638137817383
+                ],
+                "pocket_id": "08HXY85NDYYXG",
+                "pose_score": 0.51761603,
+                "protein_id": "08CEVZZPNYV31"
+            },
+            "id": "0960TZ21DYY23",
+            "tool_key": "deeporigin.bulk-docking",
+            "tool_version": "3.0.0-20"
+        },
+        {
+            "compute_job_id": "bdcc1213-4aa1-48e7-ada9-fbd6331f01d9",
+            "data": {
+                "binding_energy": -8.163108,
+                "box_size_x": 14.409664294429042,
+                "box_size_y": 14.409664294429042,
+                "box_size_z": 14.409664294429042,
+                "file_path": "tool-runs/62245c66-4cfa-4821-9295-10e533d56a7e/d216c4bf-68fd-417d-9587-200308191762.sdf",
+                "ligand_id": "08DKACBCXYTXX",
+                "pocket_center": [
+                    -13.400676727294922,
+                    -5.5482563972473145,
+                    14.189638137817383
+                ],
+                "pocket_id": "08HXY85NDYYXG",
+                "pose_score": 0.5168885,
+                "protein_id": "08CEVZZPNYV31"
+            },
+            "id": "0960TZ21XYY24",
+            "tool_key": "deeporigin.bulk-docking",
+            "tool_version": "3.0.0-20"
+        },
+        {
+            "compute_job_id": "bdcc1213-4aa1-48e7-ada9-fbd6331f01d9",
+            "data": {
+                "binding_energy": -8.506574,
+                "box_size_x": 14.409664294429042,
+                "box_size_y": 14.409664294429042,
+                "box_size_z": 14.409664294429042,
+                "file_path": "tool-runs/62245c66-4cfa-4821-9295-10e533d56a7e/2e9dbcaf-d73f-45f5-9678-5fdc9bc84c7d.sdf",
+                "ligand_id": "08CEYMV4DYV39",
+                "pocket_center": [
+                    -13.400676727294922,
+                    -5.5482563972473145,
+                    14.189638137817383
+                ],
+                "pocket_id": "08HXY85NDYYXG",
+                "pose_score": 0.99147356,
+                "protein_id": "08CEVZZPNYV31"
+            },
+            "id": "0960TZ2YNYY39",
+            "tool_key": "deeporigin.bulk-docking",
+            "tool_version": "3.0.0-20"
+        },
+        {
+            "compute_job_id": "bdcc1213-4aa1-48e7-ada9-fbd6331f01d9",
+            "data": {
+                "binding_energy": -9.272645,
+                "box_size_x": 14.409664294429042,
+                "box_size_y": 14.409664294429042,
+                "box_size_z": 14.409664294429042,
+                "file_path": "tool-runs/62245c66-4cfa-4821-9295-10e533d56a7e/6b6b69be-9b4a-44fd-ac4c-c7d6ebeb8a78.sdf",
+                "ligand_id": "08CEYMV4DYV39",
+                "pocket_center": [
+                    -13.400676727294922,
+                    -5.5482563972473145,
+                    14.189638137817383
+                ],
+                "pocket_id": "08HXY85NDYYXG",
+                "pose_score": 0.93267596,
+                "protein_id": "08CEVZZPNYV31"
+            },
+            "id": "0960TZ2Z5YY3A",
+            "tool_key": "deeporigin.bulk-docking",
+            "tool_version": "3.0.0-20"
+        },
+        {
+            "compute_job_id": "bdcc1213-4aa1-48e7-ada9-fbd6331f01d9",
+            "data": {
+                "binding_energy": -7.5465117,
+                "box_size_x": 14.409664294429042,
+                "box_size_y": 14.409664294429042,
+                "box_size_z": 14.409664294429042,
+                "file_path": "tool-runs/62245c66-4cfa-4821-9295-10e533d56a7e/ff2edeaf-92bf-45f1-ba5e-3121032b8c6f.sdf",
+                "ligand_id": "08CEYMV4DYV39",
+                "pocket_center": [
+                    -13.400676727294922,
+                    -5.5482563972473145,
+                    14.189638137817383
+                ],
+                "pocket_id": "08HXY85NDYYXG",
+                "pose_score": 0.84497213,
+                "protein_id": "08CEVZZPNYV31"
+            },
+            "id": "0960TZ2ZDYY3B",
+            "tool_key": "deeporigin.bulk-docking",
+            "tool_version": "3.0.0-20"
+        },
+        {
+            "compute_job_id": "bdcc1213-4aa1-48e7-ada9-fbd6331f01d9",
+            "data": {
+                "binding_energy": -8.349278,
+                "box_size_x": 14.409664294429042,
+                "box_size_y": 14.409664294429042,
+                "box_size_z": 14.409664294429042,
+                "file_path": "tool-runs/62245c66-4cfa-4821-9295-10e533d56a7e/b2539fc8-fd6e-4917-b766-12e45f05cb7d.sdf",
+                "ligand_id": "08CEYMV4DYV39",
+                "pocket_center": [
+                    -13.400676727294922,
+                    -5.5482563972473145,
+                    14.189638137817383
+                ],
+                "pocket_id": "08HXY85NDYYXG",
+                "pose_score": 0.81071925,
+                "protein_id": "08CEVZZPNYV31"
+            },
+            "id": "0960TZ2ZNYY3C",
+            "tool_key": "deeporigin.bulk-docking",
+            "tool_version": "3.0.0-20"
+        },
+        {
+            "compute_job_id": "bdcc1213-4aa1-48e7-ada9-fbd6331f01d9",
+            "data": {
+                "binding_energy": -8.031014,
+                "box_size_x": 14.409664294429042,
+                "box_size_y": 14.409664294429042,
+                "box_size_z": 14.409664294429042,
+                "file_path": "tool-runs/62245c66-4cfa-4821-9295-10e533d56a7e/c3d1f433-46d6-4c2b-9a4c-d6a68b99094c.sdf",
+                "ligand_id": "08CEYMV4DYV39",
+                "pocket_center": [
+                    -13.400676727294922,
+                    -5.5482563972473145,
+                    14.189638137817383
+                ],
+                "pocket_id": "08HXY85NDYYXG",
+                "pose_score": 0.79533523,
+                "protein_id": "08CEVZZPNYV31"
+            },
+            "id": "0960TZ30DYY3D",
+            "tool_key": "deeporigin.bulk-docking",
+            "tool_version": "3.0.0-20"
+        },
+        {
+            "compute_job_id": "bdcc1213-4aa1-48e7-ada9-fbd6331f01d9",
+            "data": {
+                "binding_energy": -8.662207,
+                "box_size_x": 14.409664294429042,
+                "box_size_y": 14.409664294429042,
+                "box_size_z": 14.409664294429042,
+                "file_path": "tool-runs/62245c66-4cfa-4821-9295-10e533d56a7e/30aa80f9-4c90-4590-af7a-85eabf23e13a.sdf",
+                "ligand_id": "08CEYMV4DYV39",
+                "pocket_center": [
+                    -13.400676727294922,
+                    -5.5482563972473145,
+                    14.189638137817383
+                ],
+                "pocket_id": "08HXY85NDYYXG",
+                "pose_score": 0.7824614,
+                "protein_id": "08CEVZZPNYV31"
+            },
+            "id": "0960TZ30NYY3E",
+            "tool_key": "deeporigin.bulk-docking",
+            "tool_version": "3.0.0-20"
+        },
+        {
+            "compute_job_id": "bdcc1213-4aa1-48e7-ada9-fbd6331f01d9",
+            "data": {
+                "binding_energy": -6.6888943,
+                "box_size_x": 14.409664294429042,
+                "box_size_y": 14.409664294429042,
+                "box_size_z": 14.409664294429042,
+                "file_path": "tool-runs/62245c66-4cfa-4821-9295-10e533d56a7e/1dd0873d-5327-4dcd-a619-63a296d158e9.sdf",
+                "ligand_id": "08CEYMV4DYV39",
+                "pocket_center": [
+                    -13.400676727294922,
+                    -5.5482563972473145,
+                    14.189638137817383
+                ],
+                "pocket_id": "08HXY85NDYYXG",
+                "pose_score": 0.66158074,
+                "protein_id": "08CEVZZPNYV31"
+            },
+            "id": "0960TZ315YY3F",
+            "tool_key": "deeporigin.bulk-docking",
+            "tool_version": "3.0.0-20"
+        },
+        {
+            "compute_job_id": "bdcc1213-4aa1-48e7-ada9-fbd6331f01d9",
+            "data": {
+                "binding_energy": -7.0648303,
+                "box_size_x": 14.409664294429042,
+                "box_size_y": 14.409664294429042,
+                "box_size_z": 14.409664294429042,
+                "file_path": "tool-runs/62245c66-4cfa-4821-9295-10e533d56a7e/951b964e-503b-41d6-9400-3622fe1f80c8.sdf",
+                "ligand_id": "08CEYMV4DYV39",
+                "pocket_center": [
+                    -13.400676727294922,
+                    -5.5482563972473145,
+                    14.189638137817383
+                ],
+                "pocket_id": "08HXY85NDYYXG",
+                "pose_score": 0.65663666,
+                "protein_id": "08CEVZZPNYV31"
+            },
+            "id": "0960TZ31DYY3G",
+            "tool_key": "deeporigin.bulk-docking",
+            "tool_version": "3.0.0-20"
+        },
+        {
+            "compute_job_id": "bdcc1213-4aa1-48e7-ada9-fbd6331f01d9",
+            "data": {
+                "binding_energy": -6.9459157,
+                "box_size_x": 14.409664294429042,
+                "box_size_y": 14.409664294429042,
+                "box_size_z": 14.409664294429042,
+                "file_path": "tool-runs/62245c66-4cfa-4821-9295-10e533d56a7e/08c503bd-7eb3-4a2e-a5a5-e8a98535e03e.sdf",
+                "ligand_id": "08CEYMV4DYV39",
+                "pocket_center": [
+                    -13.400676727294922,
+                    -5.5482563972473145,
+                    14.189638137817383
+                ],
+                "pocket_id": "08HXY85NDYYXG",
+                "pose_score": 0.6407788,
+                "protein_id": "08CEVZZPNYV31"
+            },
+            "id": "0960TZ31NYY3H",
+            "tool_key": "deeporigin.bulk-docking",
+            "tool_version": "3.0.0-20"
+        },
+        {
+            "compute_job_id": "bdcc1213-4aa1-48e7-ada9-fbd6331f01d9",
+            "data": {
+                "binding_energy": -6.7612643,
+                "box_size_x": 14.409664294429042,
+                "box_size_y": 14.409664294429042,
+                "box_size_z": 14.409664294429042,
+                "file_path": "tool-runs/62245c66-4cfa-4821-9295-10e533d56a7e/9c11ee58-9425-4072-b5cd-f04b893b2af3.sdf",
+                "ligand_id": "08CEYMV4DYV39",
+                "pocket_center": [
+                    -13.400676727294922,
+                    -5.5482563972473145,
+                    14.189638137817383
+                ],
+                "pocket_id": "08HXY85NDYYXG",
+                "pose_score": 0.6122044,
+                "protein_id": "08CEVZZPNYV31"
+            },
+            "id": "0960TZ31XYY3J",
+            "tool_key": "deeporigin.bulk-docking",
+            "tool_version": "3.0.0-20"
+        },
+        {
+            "compute_job_id": "bdcc1213-4aa1-48e7-ada9-fbd6331f01d9",
+            "data": {
+                "binding_energy": -6.6451263,
+                "box_size_x": 14.409664294429042,
+                "box_size_y": 14.409664294429042,
+                "box_size_z": 14.409664294429042,
+                "file_path": "tool-runs/62245c66-4cfa-4821-9295-10e533d56a7e/43c378e4-4a9a-4aff-94b9-42e01ab46565.sdf",
+                "ligand_id": "08CEYMV4DYV39",
+                "pocket_center": [
+                    -13.400676727294922,
+                    -5.5482563972473145,
+                    14.189638137817383
+                ],
+                "pocket_id": "08HXY85NDYYXG",
+                "pose_score": 0.6084942,
+                "protein_id": "08CEVZZPNYV31"
+            },
+            "id": "0960TZ325YY3K",
+            "tool_key": "deeporigin.bulk-docking",
+            "tool_version": "3.0.0-20"
+        },
+        {
+            "compute_job_id": "bdcc1213-4aa1-48e7-ada9-fbd6331f01d9",
+            "data": {
+                "binding_energy": -6.6360626,
+                "box_size_x": 14.409664294429042,
+                "box_size_y": 14.409664294429042,
+                "box_size_z": 14.409664294429042,
+                "file_path": "tool-runs/62245c66-4cfa-4821-9295-10e533d56a7e/2541c9c0-8f6e-438e-b621-5ba6f10b04e9.sdf",
+                "ligand_id": "08CEYMV4DYV39",
+                "pocket_center": [
+                    -13.400676727294922,
+                    -5.5482563972473145,
+                    14.189638137817383
+                ],
+                "pocket_id": "08HXY85NDYYXG",
+                "pose_score": 0.605717,
+                "protein_id": "08CEVZZPNYV31"
+            },
+            "id": "0960TZ32NYY3M",
+            "tool_key": "deeporigin.bulk-docking",
+            "tool_version": "3.0.0-20"
+        },
+        {
+            "compute_job_id": "bdcc1213-4aa1-48e7-ada9-fbd6331f01d9",
+            "data": {
+                "binding_energy": -7.2664104,
+                "box_size_x": 14.409664294429042,
+                "box_size_y": 14.409664294429042,
+                "box_size_z": 14.409664294429042,
+                "file_path": "tool-runs/62245c66-4cfa-4821-9295-10e533d56a7e/df515af7-8ae0-4c00-bcdd-3c35f7f71f96.sdf",
+                "ligand_id": "08CEYMV4DYV39",
+                "pocket_center": [
+                    -13.400676727294922,
+                    -5.5482563972473145,
+                    14.189638137817383
+                ],
+                "pocket_id": "08HXY85NDYYXG",
+                "pose_score": 0.5936557,
+                "protein_id": "08CEVZZPNYV31"
+            },
+            "id": "0960TZ32XYY3N",
+            "tool_key": "deeporigin.bulk-docking",
+            "tool_version": "3.0.0-20"
+        },
+        {
+            "compute_job_id": "bdcc1213-4aa1-48e7-ada9-fbd6331f01d9",
+            "data": {
+                "binding_energy": -6.691761,
+                "box_size_x": 14.409664294429042,
+                "box_size_y": 14.409664294429042,
+                "box_size_z": 14.409664294429042,
+                "file_path": "tool-runs/62245c66-4cfa-4821-9295-10e533d56a7e/0deb1f68-9f9b-4d44-83f2-7febad793b71.sdf",
+                "ligand_id": "08CEYMV4DYV39",
+                "pocket_center": [
+                    -13.400676727294922,
+                    -5.5482563972473145,
+                    14.189638137817383
+                ],
+                "pocket_id": "08HXY85NDYYXG",
+                "pose_score": 0.575721,
+                "protein_id": "08CEVZZPNYV31"
+            },
+            "id": "0960TZ335YY3P",
+            "tool_key": "deeporigin.bulk-docking",
+            "tool_version": "3.0.0-20"
+        },
+        {
+            "compute_job_id": "bdcc1213-4aa1-48e7-ada9-fbd6331f01d9",
+            "data": {
+                "binding_energy": -7.579542,
+                "box_size_x": 14.409664294429042,
+                "box_size_y": 14.409664294429042,
+                "box_size_z": 14.409664294429042,
+                "file_path": "tool-runs/62245c66-4cfa-4821-9295-10e533d56a7e/270e285c-be7b-4d1c-be69-f6c3b603f059.sdf",
+                "ligand_id": "08CEYMV4DYV39",
+                "pocket_center": [
+                    -13.400676727294922,
+                    -5.5482563972473145,
+                    14.189638137817383
+                ],
+                "pocket_id": "08HXY85NDYYXG",
+                "pose_score": 0.572763,
+                "protein_id": "08CEVZZPNYV31"
+            },
+            "id": "0960TZ33DYY3Q",
+            "tool_key": "deeporigin.bulk-docking",
+            "tool_version": "3.0.0-20"
+        },
+        {
+            "compute_job_id": "bdcc1213-4aa1-48e7-ada9-fbd6331f01d9",
+            "data": {
+                "binding_energy": -6.992301,
+                "box_size_x": 14.409664294429042,
+                "box_size_y": 14.409664294429042,
+                "box_size_z": 14.409664294429042,
+                "file_path": "tool-runs/62245c66-4cfa-4821-9295-10e533d56a7e/d513fc21-05a3-4839-aa3a-ae614ea54b28.sdf",
+                "ligand_id": "08CEYMV4DYV39",
+                "pocket_center": [
+                    -13.400676727294922,
+                    -5.5482563972473145,
+                    14.189638137817383
+                ],
+                "pocket_id": "08HXY85NDYYXG",
+                "pose_score": 0.5720497,
+                "protein_id": "08CEVZZPNYV31"
+            },
+            "id": "0960TZ33NYY3R",
+            "tool_key": "deeporigin.bulk-docking",
+            "tool_version": "3.0.0-20"
+        },
+        {
+            "compute_job_id": "bdcc1213-4aa1-48e7-ada9-fbd6331f01d9",
+            "data": {
+                "binding_energy": -8.449438,
+                "box_size_x": 14.409664294429042,
+                "box_size_y": 14.409664294429042,
+                "box_size_z": 14.409664294429042,
+                "file_path": "tool-runs/62245c66-4cfa-4821-9295-10e533d56a7e/d5495dec-9c67-40f8-aaf8-545633004434.sdf",
+                "ligand_id": "08DK8031NYTXD",
+                "pocket_center": [
+                    -13.400676727294922,
+                    -5.5482563972473145,
+                    14.189638137817383
+                ],
+                "pocket_id": "08HXY85NDYYXG",
+                "pose_score": 0.93259215,
+                "protein_id": "08CEVZZPNYV31"
+            },
+            "id": "0960V1ATNYY51",
+            "tool_key": "deeporigin.bulk-docking",
+            "tool_version": "3.0.0-20"
+        },
+        {
+            "compute_job_id": "bdcc1213-4aa1-48e7-ada9-fbd6331f01d9",
+            "data": {
+                "binding_energy": -9.3217945,
+                "box_size_x": 14.409664294429042,
+                "box_size_y": 14.409664294429042,
+                "box_size_z": 14.409664294429042,
+                "file_path": "tool-runs/62245c66-4cfa-4821-9295-10e533d56a7e/911f80b8-478e-4945-9c9b-447b2d84fddb.sdf",
+                "ligand_id": "08DK8031NYTXD",
+                "pocket_center": [
+                    -13.400676727294922,
+                    -5.5482563972473145,
+                    14.189638137817383
+                ],
+                "pocket_id": "08HXY85NDYYXG",
+                "pose_score": 0.89157337,
+                "protein_id": "08CEVZZPNYV31"
+            },
+            "id": "0960V1AV5YY52",
+            "tool_key": "deeporigin.bulk-docking",
+            "tool_version": "3.0.0-20"
+        },
+        {
+            "compute_job_id": "bdcc1213-4aa1-48e7-ada9-fbd6331f01d9",
+            "data": {
+                "binding_energy": -7.401568,
+                "box_size_x": 14.409664294429042,
+                "box_size_y": 14.409664294429042,
+                "box_size_z": 14.409664294429042,
+                "file_path": "tool-runs/62245c66-4cfa-4821-9295-10e533d56a7e/a350fc1e-72ff-4150-b2eb-77b65638243e.sdf",
+                "ligand_id": "08DK8031NYTXD",
+                "pocket_center": [
+                    -13.400676727294922,
+                    -5.5482563972473145,
+                    14.189638137817383
+                ],
+                "pocket_id": "08HXY85NDYYXG",
+                "pose_score": 0.8600236,
+                "protein_id": "08CEVZZPNYV31"
+            },
+            "id": "0960V1AVDYY53",
+            "tool_key": "deeporigin.bulk-docking",
+            "tool_version": "3.0.0-20"
+        },
+        {
+            "compute_job_id": "bdcc1213-4aa1-48e7-ada9-fbd6331f01d9",
+            "data": {
+                "binding_energy": -8.074522,
+                "box_size_x": 14.409664294429042,
+                "box_size_y": 14.409664294429042,
+                "box_size_z": 14.409664294429042,
+                "file_path": "tool-runs/62245c66-4cfa-4821-9295-10e533d56a7e/daca6183-34aa-485f-80f3-a216694b86d9.sdf",
+                "ligand_id": "08DK8031NYTXD",
+                "pocket_center": [
+                    -13.400676727294922,
+                    -5.5482563972473145,
+                    14.189638137817383
+                ],
+                "pocket_id": "08HXY85NDYYXG",
+                "pose_score": 0.81621695,
+                "protein_id": "08CEVZZPNYV31"
+            },
+            "id": "0960V1AVNYY54",
+            "tool_key": "deeporigin.bulk-docking",
+            "tool_version": "3.0.0-20"
+        },
+        {
+            "compute_job_id": "bdcc1213-4aa1-48e7-ada9-fbd6331f01d9",
+            "data": {
+                "binding_energy": -8.710315,
+                "box_size_x": 14.409664294429042,
+                "box_size_y": 14.409664294429042,
+                "box_size_z": 14.409664294429042,
+                "file_path": "tool-runs/62245c66-4cfa-4821-9295-10e533d56a7e/955d52c0-f319-49c3-a234-149ae327010f.sdf",
+                "ligand_id": "08DK8031NYTXD",
+                "pocket_center": [
+                    -13.400676727294922,
+                    -5.5482563972473145,
+                    14.189638137817383
+                ],
+                "pocket_id": "08HXY85NDYYXG",
+                "pose_score": 0.7682939,
+                "protein_id": "08CEVZZPNYV31"
+            },
+            "id": "0960V1AVXYY55",
+            "tool_key": "deeporigin.bulk-docking",
+            "tool_version": "3.0.0-20"
+        },
+        {
+            "compute_job_id": "bdcc1213-4aa1-48e7-ada9-fbd6331f01d9",
+            "data": {
+                "binding_energy": -6.8403077,
+                "box_size_x": 14.409664294429042,
+                "box_size_y": 14.409664294429042,
+                "box_size_z": 14.409664294429042,
+                "file_path": "tool-runs/62245c66-4cfa-4821-9295-10e533d56a7e/e490da97-d3ea-44bd-ba01-2d875a58b076.sdf",
+                "ligand_id": "08DK8031NYTXD",
+                "pocket_center": [
+                    -13.400676727294922,
+                    -5.5482563972473145,
+                    14.189638137817383
+                ],
+                "pocket_id": "08HXY85NDYYXG",
+                "pose_score": 0.749054,
+                "protein_id": "08CEVZZPNYV31"
+            },
+            "id": "0960V1AW5YY56",
+            "tool_key": "deeporigin.bulk-docking",
+            "tool_version": "3.0.0-20"
+        },
+        {
+            "compute_job_id": "bdcc1213-4aa1-48e7-ada9-fbd6331f01d9",
+            "data": {
+                "binding_energy": -7.6221304,
+                "box_size_x": 14.409664294429042,
+                "box_size_y": 14.409664294429042,
+                "box_size_z": 14.409664294429042,
+                "file_path": "tool-runs/62245c66-4cfa-4821-9295-10e533d56a7e/25866578-8c6b-4293-bd87-b769e212eb67.sdf",
+                "ligand_id": "08DK8031NYTXD",
+                "pocket_center": [
+                    -13.400676727294922,
+                    -5.5482563972473145,
+                    14.189638137817383
+                ],
+                "pocket_id": "08HXY85NDYYXG",
+                "pose_score": 0.73455864,
+                "protein_id": "08CEVZZPNYV31"
+            },
+            "id": "0960V1AWDYY57",
+            "tool_key": "deeporigin.bulk-docking",
+            "tool_version": "3.0.0-20"
+        },
+        {
+            "compute_job_id": "bdcc1213-4aa1-48e7-ada9-fbd6331f01d9",
+            "data": {
+                "binding_energy": -5.9665613,
+                "box_size_x": 14.409664294429042,
+                "box_size_y": 14.409664294429042,
+                "box_size_z": 14.409664294429042,
+                "file_path": "tool-runs/62245c66-4cfa-4821-9295-10e533d56a7e/ebf56d48-4ef0-4ed8-a939-78397b31ae39.sdf",
+                "ligand_id": "08DK8031NYTXD",
+                "pocket_center": [
+                    -13.400676727294922,
+                    -5.5482563972473145,
+                    14.189638137817383
+                ],
+                "pocket_id": "08HXY85NDYYXG",
+                "pose_score": 0.6704774,
+                "protein_id": "08CEVZZPNYV31"
+            },
+            "id": "0960V1AWNYY58",
+            "tool_key": "deeporigin.bulk-docking",
+            "tool_version": "3.0.0-20"
+        },
+        {
+            "compute_job_id": "bdcc1213-4aa1-48e7-ada9-fbd6331f01d9",
+            "data": {
+                "binding_energy": -6.689847,
+                "box_size_x": 14.409664294429042,
+                "box_size_y": 14.409664294429042,
+                "box_size_z": 14.409664294429042,
+                "file_path": "tool-runs/62245c66-4cfa-4821-9295-10e533d56a7e/da2b61aa-f09b-4154-a7ac-6283f2bfe7e2.sdf",
+                "ligand_id": "08DK8031NYTXD",
+                "pocket_center": [
+                    -13.400676727294922,
+                    -5.5482563972473145,
+                    14.189638137817383
+                ],
+                "pocket_id": "08HXY85NDYYXG",
+                "pose_score": 0.66340977,
+                "protein_id": "08CEVZZPNYV31"
+            },
+            "id": "0960V1AWXYY59",
+            "tool_key": "deeporigin.bulk-docking",
+            "tool_version": "3.0.0-20"
+        },
+        {
+            "compute_job_id": "bdcc1213-4aa1-48e7-ada9-fbd6331f01d9",
+            "data": {
+                "binding_energy": -6.6976714,
+                "box_size_x": 14.409664294429042,
+                "box_size_y": 14.409664294429042,
+                "box_size_z": 14.409664294429042,
+                "file_path": "tool-runs/62245c66-4cfa-4821-9295-10e533d56a7e/97e19b3e-9b95-4274-9b52-d5404162eabf.sdf",
+                "ligand_id": "08DK8031NYTXD",
+                "pocket_center": [
+                    -13.400676727294922,
+                    -5.5482563972473145,
+                    14.189638137817383
+                ],
+                "pocket_id": "08HXY85NDYYXG",
+                "pose_score": 0.6328368,
+                "protein_id": "08CEVZZPNYV31"
+            },
+            "id": "0960V1AX5YY5A",
+            "tool_key": "deeporigin.bulk-docking",
+            "tool_version": "3.0.0-20"
+        },
+        {
+            "compute_job_id": "bdcc1213-4aa1-48e7-ada9-fbd6331f01d9",
+            "data": {
+                "binding_energy": -6.897601,
+                "box_size_x": 14.409664294429042,
+                "box_size_y": 14.409664294429042,
+                "box_size_z": 14.409664294429042,
+                "file_path": "tool-runs/62245c66-4cfa-4821-9295-10e533d56a7e/1055601a-4fb3-4c64-bd47-a553f09773ce.sdf",
+                "ligand_id": "08DK8031NYTXD",
+                "pocket_center": [
+                    -13.400676727294922,
+                    -5.5482563972473145,
+                    14.189638137817383
+                ],
+                "pocket_id": "08HXY85NDYYXG",
+                "pose_score": 0.6292067,
+                "protein_id": "08CEVZZPNYV31"
+            },
+            "id": "0960V1AXDYY5B",
+            "tool_key": "deeporigin.bulk-docking",
+            "tool_version": "3.0.0-20"
+        },
+        {
+            "compute_job_id": "bdcc1213-4aa1-48e7-ada9-fbd6331f01d9",
+            "data": {
+                "binding_energy": -6.852706,
+                "box_size_x": 14.409664294429042,
+                "box_size_y": 14.409664294429042,
+                "box_size_z": 14.409664294429042,
+                "file_path": "tool-runs/62245c66-4cfa-4821-9295-10e533d56a7e/6e9ae03a-d1b1-479d-9727-f5b989e35ee7.sdf",
+                "ligand_id": "08DK8031NYTXD",
+                "pocket_center": [
+                    -13.400676727294922,
+                    -5.5482563972473145,
+                    14.189638137817383
+                ],
+                "pocket_id": "08HXY85NDYYXG",
+                "pose_score": 0.58765614,
+                "protein_id": "08CEVZZPNYV31"
+            },
+            "id": "0960V1AXNYY5C",
+            "tool_key": "deeporigin.bulk-docking",
+            "tool_version": "3.0.0-20"
+        },
+        {
+            "compute_job_id": "bdcc1213-4aa1-48e7-ada9-fbd6331f01d9",
+            "data": {
+                "binding_energy": -7.846774,
+                "box_size_x": 14.409664294429042,
+                "box_size_y": 14.409664294429042,
+                "box_size_z": 14.409664294429042,
+                "file_path": "tool-runs/62245c66-4cfa-4821-9295-10e533d56a7e/51bd7d42-4a2a-4477-a515-5d1a480ab71f.sdf",
+                "ligand_id": "08DK8031NYTXD",
+                "pocket_center": [
+                    -13.400676727294922,
+                    -5.5482563972473145,
+                    14.189638137817383
+                ],
+                "pocket_id": "08HXY85NDYYXG",
+                "pose_score": 0.5856058,
+                "protein_id": "08CEVZZPNYV31"
+            },
+            "id": "0960V1AXXYY5D",
+            "tool_key": "deeporigin.bulk-docking",
+            "tool_version": "3.0.0-20"
+        },
+        {
+            "compute_job_id": "bdcc1213-4aa1-48e7-ada9-fbd6331f01d9",
+            "data": {
+                "binding_energy": -7.134488,
+                "box_size_x": 14.409664294429042,
+                "box_size_y": 14.409664294429042,
+                "box_size_z": 14.409664294429042,
+                "file_path": "tool-runs/62245c66-4cfa-4821-9295-10e533d56a7e/41e83fea-a725-411f-a960-c29db3afea4e.sdf",
+                "ligand_id": "08DK8031NYTXD",
+                "pocket_center": [
+                    -13.400676727294922,
+                    -5.5482563972473145,
+                    14.189638137817383
+                ],
+                "pocket_id": "08HXY85NDYYXG",
+                "pose_score": 0.5778241,
+                "protein_id": "08CEVZZPNYV31"
+            },
+            "id": "0960V1AY5YY5E",
+            "tool_key": "deeporigin.bulk-docking",
+            "tool_version": "3.0.0-20"
+        },
+        {
+            "compute_job_id": "bdcc1213-4aa1-48e7-ada9-fbd6331f01d9",
+            "data": {
+                "binding_energy": -6.7072597,
+                "box_size_x": 14.409664294429042,
+                "box_size_y": 14.409664294429042,
+                "box_size_z": 14.409664294429042,
+                "file_path": "tool-runs/62245c66-4cfa-4821-9295-10e533d56a7e/76e43e8a-0dcd-43d7-8418-dcfdcbca77c0.sdf",
+                "ligand_id": "08DK8031NYTXD",
+                "pocket_center": [
+                    -13.400676727294922,
+                    -5.5482563972473145,
+                    14.189638137817383
+                ],
+                "pocket_id": "08HXY85NDYYXG",
+                "pose_score": 0.5659339,
+                "protein_id": "08CEVZZPNYV31"
+            },
+            "id": "0960V1AYDYY5F",
+            "tool_key": "deeporigin.bulk-docking",
+            "tool_version": "3.0.0-20"
+        },
+        {
+            "compute_job_id": "bdcc1213-4aa1-48e7-ada9-fbd6331f01d9",
+            "data": {
+                "binding_energy": -6.5037985,
+                "box_size_x": 14.409664294429042,
+                "box_size_y": 14.409664294429042,
+                "box_size_z": 14.409664294429042,
+                "file_path": "tool-runs/62245c66-4cfa-4821-9295-10e533d56a7e/6214060d-558f-4070-81a7-ac762e94ebda.sdf",
+                "ligand_id": "08DK8031NYTXD",
+                "pocket_center": [
+                    -13.400676727294922,
+                    -5.5482563972473145,
+                    14.189638137817383
+                ],
+                "pocket_id": "08HXY85NDYYXG",
+                "pose_score": 0.53976476,
+                "protein_id": "08CEVZZPNYV31"
+            },
+            "id": "0960V1AYNYY5G",
+            "tool_key": "deeporigin.bulk-docking",
+            "tool_version": "3.0.0-20"
+        },
+        {
+            "compute_job_id": "bdcc1213-4aa1-48e7-ada9-fbd6331f01d9",
+            "data": {
+                "binding_energy": -8.335307,
+                "box_size_x": 14.409664294429042,
+                "box_size_y": 14.409664294429042,
+                "box_size_z": 14.409664294429042,
+                "file_path": "tool-runs/62245c66-4cfa-4821-9295-10e533d56a7e/437c13fe-c107-4a5f-960c-8b04f92e37cb.sdf",
+                "ligand_id": "08DK7ZSPXYTX4",
+                "pocket_center": [
+                    -13.400676727294922,
+                    -5.5482563972473145,
+                    14.189638137817383
+                ],
+                "pocket_id": "08HXY85NDYYXG",
+                "pose_score": 0.9738115,
+                "protein_id": "08CEVZZPNYV31"
+            },
+            "id": "0960V1T95YY6P",
+            "tool_key": "deeporigin.bulk-docking",
+            "tool_version": "3.0.0-20"
+        },
+        {
+            "compute_job_id": "bdcc1213-4aa1-48e7-ada9-fbd6331f01d9",
+            "data": {
+                "binding_energy": -9.348542,
+                "box_size_x": 14.409664294429042,
+                "box_size_y": 14.409664294429042,
+                "box_size_z": 14.409664294429042,
+                "file_path": "tool-runs/62245c66-4cfa-4821-9295-10e533d56a7e/05ab92df-f086-41e3-948d-b7425f8a6600.sdf",
+                "ligand_id": "08DK7ZSPXYTX4",
+                "pocket_center": [
+                    -13.400676727294922,
+                    -5.5482563972473145,
+                    14.189638137817383
+                ],
+                "pocket_id": "08HXY85NDYYXG",
+                "pose_score": 0.8768087,
+                "protein_id": "08CEVZZPNYV31"
+            },
+            "id": "0960V1T9NYY6Q",
+            "tool_key": "deeporigin.bulk-docking",
+            "tool_version": "3.0.0-20"
+        },
+        {
+            "compute_job_id": "bdcc1213-4aa1-48e7-ada9-fbd6331f01d9",
+            "data": {
+                "binding_energy": -7.2896466,
+                "box_size_x": 14.409664294429042,
+                "box_size_y": 14.409664294429042,
+                "box_size_z": 14.409664294429042,
+                "file_path": "tool-runs/62245c66-4cfa-4821-9295-10e533d56a7e/b25d26e5-4c3c-4872-a2d1-9a430c7785d6.sdf",
+                "ligand_id": "08DK7ZSPXYTX4",
+                "pocket_center": [
+                    -13.400676727294922,
+                    -5.5482563972473145,
+                    14.189638137817383
+                ],
+                "pocket_id": "08HXY85NDYYXG",
+                "pose_score": 0.87628216,
+                "protein_id": "08CEVZZPNYV31"
+            },
+            "id": "0960V1T9XYY6R",
+            "tool_key": "deeporigin.bulk-docking",
+            "tool_version": "3.0.0-20"
+        },
+        {
+            "compute_job_id": "bdcc1213-4aa1-48e7-ada9-fbd6331f01d9",
+            "data": {
+                "binding_energy": -8.294846,
+                "box_size_x": 14.409664294429042,
+                "box_size_y": 14.409664294429042,
+                "box_size_z": 14.409664294429042,
+                "file_path": "tool-runs/62245c66-4cfa-4821-9295-10e533d56a7e/4dce8ec7-395f-41b6-991a-13085d0a895f.sdf",
+                "ligand_id": "08DK7ZSPXYTX4",
+                "pocket_center": [
+                    -13.400676727294922,
+                    -5.5482563972473145,
+                    14.189638137817383
+                ],
+                "pocket_id": "08HXY85NDYYXG",
+                "pose_score": 0.804371,
+                "protein_id": "08CEVZZPNYV31"
+            },
+            "id": "0960V1TADYY6S",
+            "tool_key": "deeporigin.bulk-docking",
+            "tool_version": "3.0.0-20"
+        },
+        {
+            "compute_job_id": "bdcc1213-4aa1-48e7-ada9-fbd6331f01d9",
+            "data": {
+                "binding_energy": -8.690569,
+                "box_size_x": 14.409664294429042,
+                "box_size_y": 14.409664294429042,
+                "box_size_z": 14.409664294429042,
+                "file_path": "tool-runs/62245c66-4cfa-4821-9295-10e533d56a7e/3645563a-a056-4a28-8ec7-84f289d25d68.sdf",
+                "ligand_id": "08DK7ZSPXYTX4",
+                "pocket_center": [
+                    -13.400676727294922,
+                    -5.5482563972473145,
+                    14.189638137817383
+                ],
+                "pocket_id": "08HXY85NDYYXG",
+                "pose_score": 0.7798912,
+                "protein_id": "08CEVZZPNYV31"
+            },
+            "id": "0960V1TANYY6T",
+            "tool_key": "deeporigin.bulk-docking",
+            "tool_version": "3.0.0-20"
+        },
+        {
+            "compute_job_id": "bdcc1213-4aa1-48e7-ada9-fbd6331f01d9",
+            "data": {
+                "binding_energy": -7.750485,
+                "box_size_x": 14.409664294429042,
+                "box_size_y": 14.409664294429042,
+                "box_size_z": 14.409664294429042,
+                "file_path": "tool-runs/62245c66-4cfa-4821-9295-10e533d56a7e/0e668e7a-a41d-47ab-8db9-a36271342dd0.sdf",
+                "ligand_id": "08DK7ZSPXYTX4",
+                "pocket_center": [
+                    -13.400676727294922,
+                    -5.5482563972473145,
+                    14.189638137817383
+                ],
+                "pocket_id": "08HXY85NDYYXG",
+                "pose_score": 0.7700988,
+                "protein_id": "08CEVZZPNYV31"
+            },
+            "id": "0960V1TAXYY6V",
+            "tool_key": "deeporigin.bulk-docking",
+            "tool_version": "3.0.0-20"
+        },
+        {
+            "compute_job_id": "bdcc1213-4aa1-48e7-ada9-fbd6331f01d9",
+            "data": {
+                "binding_energy": -6.9472127,
+                "box_size_x": 14.409664294429042,
+                "box_size_y": 14.409664294429042,
+                "box_size_z": 14.409664294429042,
+                "file_path": "tool-runs/62245c66-4cfa-4821-9295-10e533d56a7e/81b2b29a-1973-4301-a6b0-f0de30d96a89.sdf",
+                "ligand_id": "08DK7ZSPXYTX4",
+                "pocket_center": [
+                    -13.400676727294922,
+                    -5.5482563972473145,
+                    14.189638137817383
+                ],
+                "pocket_id": "08HXY85NDYYXG",
+                "pose_score": 0.7413881,
+                "protein_id": "08CEVZZPNYV31"
+            },
+            "id": "0960V1TB5YY6W",
+            "tool_key": "deeporigin.bulk-docking",
+            "tool_version": "3.0.0-20"
+        },
+        {
+            "compute_job_id": "bdcc1213-4aa1-48e7-ada9-fbd6331f01d9",
+            "data": {
+                "binding_energy": -6.316098,
+                "box_size_x": 14.409664294429042,
+                "box_size_y": 14.409664294429042,
+                "box_size_z": 14.409664294429042,
+                "file_path": "tool-runs/62245c66-4cfa-4821-9295-10e533d56a7e/5eda5152-a443-4f43-8474-892303407f11.sdf",
+                "ligand_id": "08DK7ZSPXYTX4",
+                "pocket_center": [
+                    -13.400676727294922,
+                    -5.5482563972473145,
+                    14.189638137817383
+                ],
+                "pocket_id": "08HXY85NDYYXG",
+                "pose_score": 0.6941202,
+                "protein_id": "08CEVZZPNYV31"
+            },
+            "id": "0960V1TBDYY6X",
+            "tool_key": "deeporigin.bulk-docking",
+            "tool_version": "3.0.0-20"
+        },
+        {
+            "compute_job_id": "bdcc1213-4aa1-48e7-ada9-fbd6331f01d9",
+            "data": {
+                "binding_energy": -6.706633,
+                "box_size_x": 14.409664294429042,
+                "box_size_y": 14.409664294429042,
+                "box_size_z": 14.409664294429042,
+                "file_path": "tool-runs/62245c66-4cfa-4821-9295-10e533d56a7e/899353e0-f44f-484d-a207-edb20de8289d.sdf",
+                "ligand_id": "08DK7ZSPXYTX4",
+                "pocket_center": [
+                    -13.400676727294922,
+                    -5.5482563972473145,
+                    14.189638137817383
+                ],
+                "pocket_id": "08HXY85NDYYXG",
+                "pose_score": 0.6660558,
+                "protein_id": "08CEVZZPNYV31"
+            },
+            "id": "0960V1TBNYY6Y",
+            "tool_key": "deeporigin.bulk-docking",
+            "tool_version": "3.0.0-20"
+        },
+        {
+            "compute_job_id": "bdcc1213-4aa1-48e7-ada9-fbd6331f01d9",
+            "data": {
+                "binding_energy": -6.7520504,
+                "box_size_x": 14.409664294429042,
+                "box_size_y": 14.409664294429042,
+                "box_size_z": 14.409664294429042,
+                "file_path": "tool-runs/62245c66-4cfa-4821-9295-10e533d56a7e/071ea294-4af5-48ab-aa03-3da6e56feb5a.sdf",
+                "ligand_id": "08DK7ZSPXYTX4",
+                "pocket_center": [
+                    -13.400676727294922,
+                    -5.5482563972473145,
+                    14.189638137817383
+                ],
+                "pocket_id": "08HXY85NDYYXG",
+                "pose_score": 0.6453784,
+                "protein_id": "08CEVZZPNYV31"
+            },
+            "id": "0960V1TBXYY6Z",
+            "tool_key": "deeporigin.bulk-docking",
+            "tool_version": "3.0.0-20"
+        },
+        {
+            "compute_job_id": "bdcc1213-4aa1-48e7-ada9-fbd6331f01d9",
+            "data": {
+                "binding_energy": -7.1527395,
+                "box_size_x": 14.409664294429042,
+                "box_size_y": 14.409664294429042,
+                "box_size_z": 14.409664294429042,
+                "file_path": "tool-runs/62245c66-4cfa-4821-9295-10e533d56a7e/baa82eb9-1cb3-4966-842f-e3d65e2a8aca.sdf",
+                "ligand_id": "08DK7ZSPXYTX4",
+                "pocket_center": [
+                    -13.400676727294922,
+                    -5.5482563972473145,
+                    14.189638137817383
+                ],
+                "pocket_id": "08HXY85NDYYXG",
+                "pose_score": 0.6111442,
+                "protein_id": "08CEVZZPNYV31"
+            },
+            "id": "0960V1TC5YY70",
+            "tool_key": "deeporigin.bulk-docking",
+            "tool_version": "3.0.0-20"
+        },
+        {
+            "compute_job_id": "bdcc1213-4aa1-48e7-ada9-fbd6331f01d9",
+            "data": {
+                "binding_energy": -5.9273243,
+                "box_size_x": 14.409664294429042,
+                "box_size_y": 14.409664294429042,
+                "box_size_z": 14.409664294429042,
+                "file_path": "tool-runs/62245c66-4cfa-4821-9295-10e533d56a7e/df2ab801-4d65-4c00-8a48-e724913181d5.sdf",
+                "ligand_id": "08DK7ZSPXYTX4",
+                "pocket_center": [
+                    -13.400676727294922,
+                    -5.5482563972473145,
+                    14.189638137817383
+                ],
+                "pocket_id": "08HXY85NDYYXG",
+                "pose_score": 0.5611989,
+                "protein_id": "08CEVZZPNYV31"
+            },
+            "id": "0960V1TCDYY71",
+            "tool_key": "deeporigin.bulk-docking",
+            "tool_version": "3.0.0-20"
+        },
+        {
+            "compute_job_id": "bdcc1213-4aa1-48e7-ada9-fbd6331f01d9",
+            "data": {
+                "binding_energy": -7.1925225,
+                "box_size_x": 14.409664294429042,
+                "box_size_y": 14.409664294429042,
+                "box_size_z": 14.409664294429042,
+                "file_path": "tool-runs/62245c66-4cfa-4821-9295-10e533d56a7e/63cdd04a-83f1-4c87-8c58-183cd631c9bd.sdf",
+                "ligand_id": "08DK7ZSPXYTX4",
+                "pocket_center": [
+                    -13.400676727294922,
+                    -5.5482563972473145,
+                    14.189638137817383
+                ],
+                "pocket_id": "08HXY85NDYYXG",
+                "pose_score": 0.5553785,
+                "protein_id": "08CEVZZPNYV31"
+            },
+            "id": "0960V1TCXYY72",
+            "tool_key": "deeporigin.bulk-docking",
+            "tool_version": "3.0.0-20"
+        },
+        {
+            "compute_job_id": "bdcc1213-4aa1-48e7-ada9-fbd6331f01d9",
+            "data": {
+                "binding_energy": -7.2860465,
+                "box_size_x": 14.409664294429042,
+                "box_size_y": 14.409664294429042,
+                "box_size_z": 14.409664294429042,
+                "file_path": "tool-runs/62245c66-4cfa-4821-9295-10e533d56a7e/d116bd17-d755-426f-ad81-002e6352dc2b.sdf",
+                "ligand_id": "08DK7ZSPXYTX4",
+                "pocket_center": [
+                    -13.400676727294922,
+                    -5.5482563972473145,
+                    14.189638137817383
+                ],
+                "pocket_id": "08HXY85NDYYXG",
+                "pose_score": 0.554692,
+                "protein_id": "08CEVZZPNYV31"
+            },
+            "id": "0960V1TD5YY73",
+            "tool_key": "deeporigin.bulk-docking",
+            "tool_version": "3.0.0-20"
+        },
+        {
+            "compute_job_id": "bdcc1213-4aa1-48e7-ada9-fbd6331f01d9",
+            "data": {
+                "binding_energy": -6.4642134,
+                "box_size_x": 14.409664294429042,
+                "box_size_y": 14.409664294429042,
+                "box_size_z": 14.409664294429042,
+                "file_path": "tool-runs/62245c66-4cfa-4821-9295-10e533d56a7e/a61c245f-8c65-4798-8749-9f188d909471.sdf",
+                "ligand_id": "08DK7ZSPXYTX4",
+                "pocket_center": [
+                    -13.400676727294922,
+                    -5.5482563972473145,
+                    14.189638137817383
+                ],
+                "pocket_id": "08HXY85NDYYXG",
+                "pose_score": 0.54828435,
+                "protein_id": "08CEVZZPNYV31"
+            },
+            "id": "0960V1TDDYY74",
+            "tool_key": "deeporigin.bulk-docking",
+            "tool_version": "3.0.0-20"
+        },
+        {
+            "compute_job_id": "bdcc1213-4aa1-48e7-ada9-fbd6331f01d9",
+            "data": {
+                "binding_energy": -7.674993,
+                "box_size_x": 14.409664294429042,
+                "box_size_y": 14.409664294429042,
+                "box_size_z": 14.409664294429042,
+                "file_path": "tool-runs/62245c66-4cfa-4821-9295-10e533d56a7e/352b13c2-5aac-477b-9ada-8226e81abe2d.sdf",
+                "ligand_id": "08DK7ZSPXYTX4",
+                "pocket_center": [
+                    -13.400676727294922,
+                    -5.5482563972473145,
+                    14.189638137817383
+                ],
+                "pocket_id": "08HXY85NDYYXG",
+                "pose_score": 0.5192195,
+                "protein_id": "08CEVZZPNYV31"
+            },
+            "id": "0960V1TDNYY75",
+            "tool_key": "deeporigin.bulk-docking",
+            "tool_version": "3.0.0-20"
+        }
+    ],
+    "meta": {
+        "count": 28,
+        "executionTimeMs": "12.55",
+        "hasMore": false,
+        "limit": 100,
+        "output_schemas": [
+            {
+                "fields": {
+                    "binding_energy": {
+                        "X-Data-Type": "Pose.binding_energy",
+                        "X-Indexable": true,
+                        "description": "Binding energy of the pose",
+                        "type": "number",
+                        "x-data-type": "Pose.binding_energy",
+                        "x-indexable": true
+                    },
+                    "box_size_x": {
+                        "X-Data-Type": "Pocket.box_size_x",
+                        "description": "Docking box X dimension in angstroms",
+                        "type": "number",
+                        "x-data-type": "Pocket.box_size_x",
+                        "x-display-name": "Box Size X"
+                    },
+                    "box_size_y": {
+                        "X-Data-Type": "Pocket.box_size_y",
+                        "description": "Docking box Y dimension in angstroms",
+                        "type": "number",
+                        "x-data-type": "Pocket.box_size_y",
+                        "x-display-name": "Box Size Y"
+                    },
+                    "box_size_z": {
+                        "X-Data-Type": "Pocket.box_size_z",
+                        "description": "Docking box Z dimension in angstroms",
+                        "type": "number",
+                        "x-data-type": "Pocket.box_size_z",
+                        "x-display-name": "Box Size Z"
+                    },
+                    "file_path": {
+                        "X-Data-Type": "Pose.file_path",
+                        "description": "Path to the pose file (SDF format)",
+                        "format": "file",
+                        "type": "string",
+                        "x-data-type": "Pose.file_path"
+                    },
+                    "ligand_id": {
+                        "X-Data-Type": "Ligand.id",
+                        "X-Key": true,
+                        "description": "ID of the ligand that was docked",
+                        "type": "string",
+                        "x-data-type": "Ligand.id",
+                        "x-key": true
+                    },
+                    "pocket_center": {
+                        "X-Data-Type": "Pocket.center",
+                        "description": "XYZ coordinates of the pocket center in angstroms",
+                        "items": {
+                            "type": "number"
+                        },
+                        "maxItems": 3,
+                        "minItems": 3,
+                        "type": "number[]",
+                        "x-data-type": "Pocket.center"
+                    },
+                    "pocket_id": {
+                        "X-Data-Type": "Pocket.id",
+                        "description": "Pocket ID",
+                        "type": "string",
+                        "x-data-type": "Pocket.id"
+                    },
+                    "pose_score": {
+                        "X-Data-Type": "Pose.pose_score",
+                        "X-Indexable": true,
+                        "description": "Score of the pose",
+                        "type": "number",
+                        "x-data-type": "Pose.pose_score",
+                        "x-indexable": true
+                    },
+                    "protein_id": {
+                        "X-Data-Type": "Protein.id",
+                        "X-Key": true,
+                        "description": "ID of the protein this pose was docked against",
+                        "type": "string",
+                        "x-data-type": "Protein.id",
+                        "x-key": true
+                    }
+                },
+                "result_table_name": "results__poses",
+                "tool_key": "deeporigin.bulk-docking",
+                "tool_version": "3.0.0-20"
+            }
+        ],
+        "previousCursor": "eyJpZCI6IlxceDA0OTgxYjBhYjdkZjc4YTUiLCJfX3NvcnQiOiJpZDphc2MifQ"
+    }
+}

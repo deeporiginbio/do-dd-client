@@ -57,6 +57,11 @@ def test_docking_notebook():
     _execute_notebook(NOTEBOOKS_DIR / "docking-single-ligand.ipynb")
 
 
+def test_bulk_docking_notebook():
+    """Execute the docking notebook end-to-end."""
+    _execute_notebook(NOTEBOOKS_DIR / "docking-many-ligands.ipynb")
+
+
 def test_projects_notebook():
     """Execute the docking notebook end-to-end."""
     _execute_notebook(NOTEBOOKS_DIR / "projects.ipynb")

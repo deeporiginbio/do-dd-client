@@ -14,6 +14,10 @@ from rdkit import Chem
 MOCK_CANONICAL_PROTEIN_ID = "brd"
 MOCK_CANONICAL_PROTEIN_FILE_PATH = "testing/brd.pdb"
 
+# Pocket id aligned with ``tests/fixtures/tool-runs/deeporigin.bulk-docking/quote.json``
+# and PocketFinder-style mocks (``pocket.id`` on tool inputs).
+MOCK_CANONICAL_POCKET_ID = "pocket-test-id"
+
 MOCK_DEFAULT_PROJECT_NAME = "python-client-test-project-kfsresf"
 # Stable id for the in-memory mock data platform only (not a public SDK constant).
 MOCK_DEFAULT_PROJECT_ID = "09DEFAULTPROJECT00"
@@ -414,10 +418,14 @@ def create_data_platform_router(
 
     @router.post("/data-platform/{org_key}/result-explorer/search")
     async def search_result_explorer(org_key: str, request: Request) -> dict[str, Any]:
-        """Search result-explorer records with ``{"field": {"eq": value}}`` filters."""
+        """Search result-explorer records with ``{"field": {"eq": value}}`` filters.
+
+        The local mock returns every matching row in one response (no ``limit`` /
+        pagination cap) so callers such as :meth:`Docking.get_results` receive full
+        pose sets (e.g. 128 bulk-docking rows) in a single request.
+        """
         body = await request.json()
         filter_dict = body.get("filter", {})
-        limit = body.get("limit", 100)
         select = body.get("select")
 
         # Build the full pool of fixture-backed results first, then filter.
@@ -466,7 +474,7 @@ def create_data_platform_router(
             }
             filtered = _apply_eq_filters(all_results, safe_filter)
 
-        page = filtered[:limit]
+        page = filtered
         if select:
             page = [{k: v for k, v in r.items() if k in select} for r in page]
 
