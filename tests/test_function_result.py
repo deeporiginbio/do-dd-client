@@ -39,9 +39,9 @@ def test_function_result_estimate_paid() -> None:
 
 def test_function_result_estimate_quoted_status() -> None:
     """Both Quoted and Approved are valid estimate statuses."""
-    assert FunctionResult([_quoted_response(price_total=0.0)]).estimate == pytest.approx(
-        0.0
-    )
+    assert FunctionResult(
+        [_quoted_response(price_total=0.0)]
+    ).estimate == pytest.approx(0.0)
 
 
 @pytest.mark.parametrize("status", ["Succeeded", "Completed", "Running"])
