@@ -8,6 +8,7 @@ import pytest
 from conftest import check_function_exists
 from deeporigin.drug_discovery import (
     Ligand,
+    Molprops,
     Pocket,
     PocketFinder,
     Protein,
@@ -26,22 +27,28 @@ from deeporigin.platform.constants import (
     SYSPREP_FUNCTION_KEY,
     SYSPREP_FUNCTION_VERSION,
 )
+from deeporigin.utils.constants import MOLPROPS_PROPERTY_KEYS
 
 
 def test_molprops_lv2(client: DeepOriginClient):
-    if not check_function_exists(client, f"{MOL_PROPS_FUNCTION_KEY_PREFIX}-logp"):
-        pytest.skip("Mol props function does not exist")
+    missing_molprops = [
+        f"{MOL_PROPS_FUNCTION_KEY_PREFIX}-{p}"
+        for p in sorted(MOLPROPS_PROPERTY_KEYS)
+        if not check_function_exists(client, f"{MOL_PROPS_FUNCTION_KEY_PREFIX}-{p}")
+    ]
+    if missing_molprops:
+        pytest.skip(f"Mol props functions not available: {missing_molprops}")
 
     ligand = Ligand.from_smiles(
         "Fc1c(-c2cccc3ccccc23)ncc2c(N3C[C@H]4CC[C@@H](C3)N4)nc(OCC34CCCN3CCC4)nc12"
     )
 
-    props = ligand.admet_properties(use_cache=False)
+    mp = Molprops(ligands=[ligand], use_cache=False, client=client)
+    mp.run()
 
-    assert isinstance(props, dict), "Expected a dictionary"
-    assert "logP" in props, "Expected logP to be in the properties"
-    assert "logD" in props, "Expected logD to be in the properties"
-    assert "logS" in props, "Expected logS to be in the properties"
+    assert ligand.get_property("logP") is not None or ligand.log_p is not None
+    assert ligand.get_property("logD") is not None or ligand.log_d is not None
+    assert ligand.get_property("logS") is not None or ligand.log_s is not None
 
 
 def test_pocket_finder_quote_lv1(

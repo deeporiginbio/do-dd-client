@@ -38,6 +38,18 @@ RDLogger.DisableLog("rdApp.*")
 
 FILE_FORMATS = Literal["mol", "mol2", "pdb", "pdbqt", "xyz", "sdf"]
 
+# Keys returned by merged molprops API rows → Ligand attribute names (snake_case).
+_MOLPROPS_RESPONSE_TO_ATTR: dict[str, str] = {
+    "logS": "log_s",
+    "logD": "log_d",
+    "logP": "log_p",
+    "hERG": "herg",
+    "cyp": "cyp",
+    "ames": "ames",
+    "has_pains": "has_pains",
+    "pains_fragments": "pains_fragments",
+}
+
 
 @dataclass
 @beartype
@@ -47,6 +59,10 @@ class Ligand(Entity):
     The Ligand class provides functionality to create, manipulate, and analyze small molecules
     (ligands) in computational drug discovery. It supports various input formats and provides
     methods for property prediction, visualization, and file operations.
+
+    After running :class:`~deeporigin.drug_discovery.molprops.Molprops`, predicted ADMET values
+    are available on dedicated attributes (``log_s``, ``log_d``, ``log_p``, ``herg``, ``cyp``,
+    ``ames``, ``has_pains``, ``pains_fragments``) as well as in :attr:`properties`.
 
     """
 
@@ -64,6 +80,15 @@ class Ligand(Entity):
     properties: dict = field(default_factory=dict)
     mol: Chem.Mol | None = None
     protonated_at_ph: float | None = None
+    # Molprops / ADMET (populated by Molprops.run(); API keys logS/logD/logP/hERG map here)
+    log_s: float | None = None
+    log_d: float | None = None
+    log_p: float | None = None
+    herg: dict[str, Any] | None = None
+    cyp: dict[str, Any] | None = None
+    ames: dict[str, Any] | None = None
+    has_pains: bool | None = None
+    pains_fragments: list[Any] | None = None
 
     # Additional attributes that are initialized in __post_init__
     available_for_docking: bool = field(init=False, default=True)
@@ -1436,32 +1461,14 @@ class Ligand(Entity):
         return str(ligands_base_dir)
 
     @beartype
-    def admet_properties(
-        self,
-        *,
-        use_cache: bool = True,
-        client: Optional[DeepOriginClient] = None,
-    ) -> dict:
-        """
-        Predict ADMET properties for the ligand using DO's molprops model.
+    def _apply_molprops_result(self, props: dict[str, Any]) -> None:
+        """Apply merged molprops API row to ADMET fields and ``properties``."""
 
-        """
-
-        from deeporigin.functions.molprops import molprops
-
-        if client is None:
-            client = DeepOriginClient()
-
-        props = molprops(
-            smiles_list=[self.smiles],
-            use_cache=use_cache,
-            properties={"pains", "logs", "logd", "herg", "cyp", "logp", "ames"},
-            client=client,
-        )[0]  # should be only one in the list
+        for api_key, attr_name in _MOLPROPS_RESPONSE_TO_ATTR.items():
+            if api_key in props:
+                setattr(self, attr_name, props[api_key])
         for key, value in props.items():
             self.set_property(key, value)
-
-        return props
 
     def update_coordinates(self, coordinates: np.ndarray):
         """update coordinates of the ligand structure"""
@@ -2312,41 +2319,6 @@ class LigandSet:
         result = FunctionResult(all_responses)
         result.ligands = [] if quote else list(self.ligands)
         return result
-
-    @beartype
-    def admet_properties(
-        self,
-        use_cache: bool = True,
-        client: Optional[DeepOriginClient] = None,
-    ):
-        """
-        Predict ADMET properties for all ligands in the set.
-        This calls the admet_properties() method on each Ligand in the set.
-        Returns a list of the results for each ligand.
-        Shows a progress bar using tqdm.
-        """
-
-        if client is None:
-            client = DeepOriginClient()
-
-        from deeporigin.functions.molprops import molprops
-
-        try:
-            responses = molprops(
-                smiles_list=self.to_smiles(),
-                use_cache=use_cache,
-                properties={"pains", "logs", "logd", "herg", "cyp", "logp", "ames"},
-                client=client,
-            )
-            for response, ligand in zip(responses, self.ligands, strict=True):
-                for key, value in response.items():
-                    ligand.set_property(key, value)
-
-        except Exception as e:
-            raise DeepOriginException(
-                title="Failed to predict ADMET properties",
-                message=f"Failed to predict ADMET properties: {str(e)}",
-            ) from e
 
     @beartype
     def to_sdf(

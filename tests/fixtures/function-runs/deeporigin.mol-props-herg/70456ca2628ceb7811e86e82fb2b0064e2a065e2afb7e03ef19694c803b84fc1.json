@@ -1,20 +1,24 @@
 {
-    "id": "03ac7cb4-2598-4492-a9fd-7815589af7bd",
-    "createdAt": "2025-12-18T15:02:04.156Z",
-    "updatedAt": "2025-12-18T15:02:04.482Z",
+    "id": "babe43c0-637a-42a5-98de-93eea8cbbeca",
+    "createdAt": "2025-12-18T15:02:02.313Z",
+    "updatedAt": "2025-12-18T15:02:02.700Z",
     "userInputs": {
         "inputs": {
-            "smiles_list": [
-                "Fc1c(-c2cccc3ccccc23)ncc2c(N3C[C@H]4CC[C@@H](C3)N4)nc(OCC34CCCN3CCC4)nc12"
+            "ligands": [
+                {
+                    "id": "0",
+                    "smiles": "Fc1c(-c2cccc3ccccc23)ncc2c(N3C[C@H]4CC[C@@H](C3)N4)nc(OCC34CCCN3CCC4)nc12"
+                }
             ]
         },
         "clusterId": "d638d3cd-833f-476b-87fe-ca6d76e66049"
     },
     "functionOutputs": [
         {
-            "smiles": "Fc1c(-c2cccc3ccccc23)ncc2c(N3C[C@H]4CC[C@@H](C3)N4)nc(OCC34CCCN3CCC4)nc12",
-            "has_pains": null,
-            "pains_fragments": []
+            "hERG": {
+                "probability": 0.4749162495136261
+            },
+            "ligand_id": "0"
         }
     ],
     "status": "Completed",
@@ -36,18 +40,18 @@
         "successfulQuotations": [
             {
                 "status": "OK",
-                "itemCode": "DO_PAINS",
+                "itemCode": "DO_HERG",
                 "orgId": "deeporigin",
                 "qty": 1,
-                "priceEach": 0,
-                "priceTotal": 0,
+                "priceEach": 0.02,
+                "priceTotal": 0.02,
                 "pricingRecordType": "regular",
                 "pricingRecords": [
                     {
-                        "itemKey": "DO_PAINS",
-                        "itemName": "DO Pains",
-                        "priceEach": 0,
-                        "totalPrice": 0,
+                        "itemKey": "DO_HERG",
+                        "itemName": "hERG inhibition",
+                        "priceEach": 0.02,
+                        "totalPrice": 0.02,
                         "qty": 1,
                         "tierQtyFrom": 0,
                         "tierQtyTo": 0
@@ -57,18 +61,18 @@
         ]
     },
     "function": {
-        "id": "1bc72992-46d1-49fd-90ad-8c55a9e9b946",
-        "createdAt": "2025-12-11T00:06:34.684Z",
-        "updatedAt": "2025-12-11T00:06:34.684Z",
-        "functionManifest": "94276866-c3f6-4b76-9c09-c37ebcf4cf52",
+        "id": "5415452a-5d46-429c-bb32-b52031f32fd4",
+        "createdAt": "2025-12-11T00:06:37.440Z",
+        "updatedAt": "2025-12-11T00:06:37.440Z",
+        "functionManifest": "1404d84e-bf9f-483c-83f9-c60e21bb0351",
         "version": "0.1.4",
         "enabled": true,
         "manifestBody": {
-            "key": "deeporigin.mol-props-pains",
+            "key": "deeporigin.mol-props-herg",
             "version": "0.1.4",
             "executor": {
-                "name": "deeporigin-mol-props-pains",
-                "path": "/pains",
+                "name": "deeporigin-mol-props-herg",
+                "path": "/herg",
                 "port": {
                     "name": "http1",
                     "port": 8000,
@@ -86,17 +90,28 @@
                 "scaleDownDelaySeconds": 60,
                 "responseStartTimeoutSeconds": 3600
             },
-            "billingCode": "DO_PAINS",
+            "billingCode": "DO_HERG",
             "inputSchema": {
                 "type": "object",
                 "required": [
-                    "smiles_list"
+                    "ligands"
                 ],
                 "properties": {
-                    "smiles_list": {
+                    "ligands": {
                         "type": "array",
                         "items": {
-                            "type": "string"
+                            "type": "object",
+                            "properties": {
+                                "id": {
+                                    "type": "string"
+                                },
+                                "smiles": {
+                                    "type": "string"
+                                }
+                            },
+                            "required": [
+                                "smiles"
+                            ]
                         }
                     }
                 },
@@ -104,7 +119,7 @@
             },
             "functionManifestVersion": "1"
         },
-        "billingCode": "DO_PAINS",
-        "resourceId": "function-bmwku2255c1kidtustdtr"
+        "billingCode": "DO_HERG",
+        "resourceId": "function-sno0fzkhc4fhpor070y9s"
     }
 }

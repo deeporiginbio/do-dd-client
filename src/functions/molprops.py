@@ -1,6 +1,6 @@
-"""This module implements a low level function to perform molecular property predictions
-using the DeepOrigin API.
-"""
+"""Low-level molecular property predictions via the DeepOrigin functions API."""
+
+from __future__ import annotations
 
 from collections import defaultdict
 from copy import deepcopy
@@ -9,8 +9,15 @@ import os
 from pathlib import Path
 from typing import Optional
 
+from beartype import beartype
+
+from deeporigin.functions.result import FunctionResult
 from deeporigin.platform.client import DeepOriginClient
-from deeporigin.platform.constants import MOL_PROPS_FUNCTION_KEY_PREFIX
+from deeporigin.platform.constants import (
+    MOL_PROPS_FUNCTION_KEY_PREFIX,
+    MOL_PROPS_FUNCTION_VERSION,
+)
+from deeporigin.utils.constants import MOLPROPS_DEFAULT_PROPERTIES
 from deeporigin.utils.env import _ensure_do_folder
 from deeporigin.utils.hashing import hash_dict
 
@@ -19,99 +26,220 @@ CACHE_DIR = str(_ensure_do_folder() / "molprops")
 # Ensure cache directory exists
 os.makedirs(CACHE_DIR, exist_ok=True)
 
+# Merged molprops rows use ``ligand_id`` (toolbox molprops output schemas).
+MOLPROPS_MERGE_KEY = "ligand_id"
 
+
+@beartype
+def molprops_ligands_payload(ligands: list[dict[str, str]]) -> list[dict[str, str]]:
+    """Build ``ligands`` entries for molprops function requests.
+
+    Each item must include ``smiles``. Optional ``id`` defaults to the zero-based
+    index as a string so outputs can be merged by ``ligand_id``.
+
+    Args:
+        ligands: One dict per molecule, with ``smiles`` and optional ``id``.
+
+    Returns:
+        Normalized list suitable for the API ``ligands`` array.
+
+    Raises:
+        ValueError: If a row is missing ``smiles``.
+    """
+    out: list[dict[str, str]] = []
+    for i, row in enumerate(ligands):
+        smiles = row.get("smiles")
+        if smiles is None or smiles == "":
+            raise ValueError(f'ligands[{i}] must include a non-empty "smiles" string.')
+        lid = row["id"] if "id" in row else str(i)
+        out.append({"id": lid, "smiles": smiles})
+    return out
+
+
+@beartype
 def molprops(
-    smiles_list: list[str],
+    ligands: list[dict[str, str]],
     properties: Optional[set[str]] = None,
     *,
     client: DeepOriginClient,
     use_cache: bool = True,
-) -> dict:
-    """
-    Run molecular property prediction using the DeepOrigin API.
+) -> list[dict]:
+    """Run molecular property prediction using the DeepOrigin API.
 
     Args:
-        smiles_string (str): SMILES string for the molecule
-        use_cache (bool): Whether to use the cache
+        ligands: One dict per molecule; each must have ``smiles`` and may include
+            ``id`` (defaults to ``0``, ``1``, … by position as strings).
+        properties: Subset of molprops keys; defaults to the full ADMET bundle.
+        client: Deep Origin API client.
+        use_cache: Whether to read/write disk cache for completed runs.
 
     Returns:
-        str: Path to the cached SDF file containing the results
+        Merged list of dicts, one per ligand, with keys from each property run.
+    """
+
+    merged, _raw = molprops_merged_with_raw_responses(
+        ligands=ligands,
+        properties=properties,
+        client=client,
+        use_cache=use_cache,
+    )
+    return merged
+
+
+@beartype
+def molprops_merged_with_raw_responses(
+    ligands: list[dict[str, str]],
+    properties: Optional[set[str]] = None,
+    *,
+    client: DeepOriginClient,
+    use_cache: bool = True,
+) -> tuple[list[dict], list[dict]]:
+    """Run molprops for each property, merge rows per ligand, and return raw API responses.
+
+    Args:
+        ligands: One dict per molecule; each must have ``smiles`` and may include ``id``.
+        properties: Subset of molprops keys; ``None`` means :data:`~deeporigin.utils.constants.MOLPROPS_DEFAULT_PROPERTIES`.
+        client: Deep Origin API client.
+        use_cache: Whether to use disk cache for completed (non-quote) runs.
+
+    Returns:
+        Tuple of (merged list of dicts per ligand, list of one full API response dict per property).
     """
 
     if properties is None:
-        properties = {"logp", "logd", "logs", "ames", "pains", "herg", "cyp"}
+        properties_set: set[str] = set(MOLPROPS_DEFAULT_PROPERTIES)
+    else:
+        properties_set = set(properties)
 
-    payload = {
-        "smiles_list": smiles_list,
-    }
+    payload = {"ligands": molprops_ligands_payload(ligands)}
+    outputs_per_prop: list[list[dict]] = []
+    raw_responses: list[dict] = []
 
-    # Create hash of inputs
-    response = []
-    for prop in properties:
-        this_response = get_single_property(
+    for prop in sorted(properties_set):
+        function_outputs, raw = get_single_property(
             payload=payload,
             prop=prop,
             use_cache=use_cache,
             client=client,
+            quote=False,
         )
+        outputs_per_prop.append(function_outputs)
+        raw_responses.append(raw)
 
-        response.append(this_response)
-
-    # Merge based on smiles
-    response = merge_dict_lists(response)
-    return response
+    merged = merge_dict_lists(outputs_per_prop, key=MOLPROPS_MERGE_KEY)
+    return merged, raw_responses
 
 
+@beartype
+def molprops_quote(
+    ligands: list[dict[str, str]],
+    properties: set[str],
+    *,
+    client: DeepOriginClient,
+) -> FunctionResult:
+    """Request cost estimates for molprops runs (one API call per property, no cache).
+
+    Args:
+        ligands: One dict per molecule; each must have ``smiles`` and may include ``id``.
+        properties: Non-empty subset of molprops property keys.
+        client: Deep Origin API client.
+
+    Returns:
+        ``FunctionResult`` whose ``estimate`` sums quoted prices across property calls.
+    """
+
+    payload = {"ligands": molprops_ligands_payload(ligands)}
+    raw_list: list[dict] = []
+    for prop in sorted(properties):
+        _fo, raw = get_single_property(
+            payload=payload,
+            prop=prop,
+            use_cache=False,
+            client=client,
+            quote=True,
+        )
+        raw_list.append(raw)
+    return FunctionResult(raw_list)
+
+
+@beartype
 def get_single_property(
     *,
     payload: dict,
     prop: str,
     client: DeepOriginClient,
     use_cache: bool = True,
-) -> dict:
+    quote: bool = False,
+) -> tuple[list[dict], dict | None]:
+    """Fetch one molprops model's outputs and optionally the full API response.
+
+    Args:
+        payload: Request body (must include ``ligands``).
+        prop: Property key suffix (e.g. ``logp``).
+        client: Deep Origin API client.
+        use_cache: Whether to use disk cache (ignored when ``quote=True``).
+        quote: If True, request a quotation only; cache is not used.
+
+    Returns:
+        ``(function_outputs, raw_response)``. ``raw_response`` is ``None`` for legacy
+        cache files that stored only the function output list.
     """
-    Get a single property for a molecule using the DeepOrigin API.
-    """
+
     cache_hash = hash_dict({"property": prop, **payload})
     response_file = str(Path(CACHE_DIR) / f"{cache_hash}.json")
 
-    # Check if cached result exists
-    if os.path.exists(response_file) and use_cache:
-        # Read cached response
-        with open(response_file, "r") as file:
-            response = json.load(file)
+    if not quote and os.path.exists(response_file) and use_cache:
+        with open(response_file) as file:
+            cached = json.load(file)
+        if isinstance(cached, list):
+            synthetic_raw = {
+                "status": "Completed",
+                "functionOutputs": cached,
+                "quotationResult": {"successfulQuotations": []},
+            }
+            return cached, synthetic_raw
+        function_outputs = cached.get("functionOutputs")
+        if function_outputs is None:
+            return [], cached
+        if isinstance(function_outputs, dict):
+            return [function_outputs], cached
+        return function_outputs, cached
 
-        return response
-
-    # Prepare the request payload
-
-    response = client.functions.run(
+    raw = client.functions.run(
         key=f"{MOL_PROPS_FUNCTION_KEY_PREFIX}-{prop}",
         params=payload,
+        version=MOL_PROPS_FUNCTION_VERSION,
+        quote=quote,
     )
 
-    response = response["functionOutputs"]
+    fo = raw.get("functionOutputs")
+    if fo is None:
+        function_outputs: list[dict] = []
+    elif isinstance(fo, dict):
+        function_outputs = [fo]
+    else:
+        function_outputs = fo
 
-    # Write JSON response to cache
-    # Ensure parent directory exists before writing
-    Path(response_file).parent.mkdir(parents=True, exist_ok=True)
-    with open(response_file, "w") as file:
-        json.dump(response, file)
+    if not quote:
+        Path(response_file).parent.mkdir(parents=True, exist_ok=True)
+        with open(response_file, "w") as file:
+            json.dump(raw, file)
 
-    return response
+    return function_outputs, raw
 
 
-def merge_dict_lists(dict_lists, key="smiles"):
+def merge_dict_lists(dict_lists, key="ligand_id"):
     """
     Merge N lists of dicts by a common key.
 
     Args:
         dict_lists: iterable of lists of dicts
-        key: key to merge on (default: 'smiles')
+        key: key to merge on (default: ``ligand_id`` for molprops)
 
     Returns:
         List of merged dicts, one per unique key value.
     """
+
     merged = defaultdict(dict)
     for lst in dict_lists:
         for d in lst:

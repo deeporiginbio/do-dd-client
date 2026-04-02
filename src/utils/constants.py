@@ -81,3 +81,11 @@ TOOL_EXECUTION_POST_TIMEOUT_SECONDS = 120.0
 Matches ``Functions.run`` long-timeout behavior: 120s allows the server time to
 respond while the execution is created or quoted, beyond the client's default
 short timeout."""
+
+MOLPROPS_PROPERTY_KEYS: frozenset[str] = frozenset(
+    ("ames", "cyp", "herg", "logd", "logp", "logs", "pains"),
+)
+"""Allowed molprops function suffix keys (``deeporigin.mol-props-<key>``)."""
+
+MOLPROPS_DEFAULT_PROPERTIES: frozenset[str] = MOLPROPS_PROPERTY_KEYS
+"""Default full ADMET bundle for :class:`~deeporigin.drug_discovery.molprops.Molprops`."""
