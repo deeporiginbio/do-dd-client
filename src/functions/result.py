@@ -74,13 +74,19 @@ class FunctionResult:
 
     @property
     def estimate(self) -> float | None:
-        """Total cost estimate in dollars (set when ``quote=True`` was used)."""
+        """Total cost estimate in dollars (set when ``quote=True`` was used).
+
+        Returns ``0.0`` when the platform quotes a zero price (e.g. free tier).
+        Returns ``None`` when no successful quotation with a ``priceTotal`` is present.
+        """
         if not self._responses:
             return None
         if not all(r.get("status") in self._ESTIMATE_STATUSES for r in self._responses):
             return None
-        total = sum(self._get_price(r) or 0 for r in self._responses)
-        return total if total > 0 else None
+        prices = [self._get_price(r) for r in self._responses]
+        if any(p is None for p in prices):
+            return None
+        return float(sum(prices))
 
     @property
     def cost(self) -> float | None:
