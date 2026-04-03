@@ -18,8 +18,13 @@ from typing import Any
 from fastapi import FastAPI
 import uvicorn
 
+from .constants import (
+    MOCK_BULK_DOCKING_EXECUTION_ID,
+    MOCK_BULK_DOCKING_POSES_SDF_PATH,
+)
 from .routers import billing, data_platform, entities, files, tools
 from .routers.data_platform import (
+    MOCK_CANONICAL_POCKET_ID,
     MOCK_CANONICAL_PROTEIN_ID,
     MOCK_DEFAULT_PROJECT_ID,
     _base_canonical_protein_record,
@@ -40,8 +45,8 @@ class MockServer:
         Args:
             port: Port to run the server on. If 0, uses any available port.
                 Note: Tests use port 4931 (configured in conftest.py).
-            docking_speed: Number of dockings to simulate per second for bulk-docking
-                executions. Default is 1.0.
+            docking_speed: Dockings per second used to derive simulated bulk-docking
+                duration (``num_ligands / docking_speed`` seconds). Default is ``0.5``.
         """
         self.app = FastAPI()
         self.port = port
@@ -234,16 +239,69 @@ class MockServer:
                     data = {**data, "project_id": MOCK_DEFAULT_PROJECT_ID}
                 self._ligands[data["id"]] = data
 
+    def _ordered_brd_ligand_ids(self, *, limit: int = 8) -> list[str]:
+        """Return up to ``limit`` BRD ligand ids (``brd-2`` …) in stable file order."""
+        brd_dir = Path(__file__).parent.parent.parent / "src" / "data" / "brd"
+        stems: list[str] = []
+        if brd_dir.is_dir():
+            for sdf in sorted(brd_dir.glob("brd-*.sdf")):
+                stems.append(sdf.stem)
+        if len(stems) >= limit:
+            return stems[:limit]
+        fallback = sorted(k for k in self._ligands if k.startswith("brd-"))
+        return fallback[:limit] if len(fallback) >= limit else fallback
+
+    def _sanitize_bulk_docking_result_explorer_records(
+        self, records: list[dict[str, Any]]
+    ) -> None:
+        """Normalize bulk-docking pose rows for the local mock (IDs, pocket, paths).
+
+        Expects poses in file order: 16 rows per ligand for eight BRD ligands
+        (``brd-2`` … ``brd-9`` from ``src/data/brd``), 128 rows total.
+        """
+        brd_ids = self._ordered_brd_ligand_ids(limit=8)
+        if not brd_ids:
+            return
+
+        poses_per_ligand = 16
+        sdf_path = MOCK_BULK_DOCKING_POSES_SDF_PATH
+
+        for i, row in enumerate(records):
+            row["compute_job_id"] = MOCK_BULK_DOCKING_EXECUTION_ID
+            if row.get("tool_key") is None:
+                row["tool_key"] = "deeporigin.bulk-docking"
+            row.setdefault("result_type", "pose")
+
+            lig_index = min(i // poses_per_ligand, len(brd_ids) - 1)
+            ligand_id = brd_ids[lig_index]
+
+            data = row.get("data")
+            if not isinstance(data, dict):
+                data = {}
+                row["data"] = data
+
+            data["pocket_id"] = MOCK_CANONICAL_POCKET_ID
+            data["protein_id"] = MOCK_CANONICAL_PROTEIN_ID
+            data["ligand_id"] = ligand_id
+            data["file_path"] = sdf_path
+
     def _load_result_explorer_fixtures(self) -> None:
         """Load result-explorer fixture files into the in-memory results store.
 
         Scans ``tests/fixtures/result-explorer-*.json`` for files containing a
         ``data`` list and appends all records.
+
+        Files whose names start with ``result-explorer-bulk-docking`` are
+        post-processed for mock-local pocket/protein/ligand ids and a shared
+        ``file_path`` to ``MOCK_BULK_DOCKING_POSES_SDF_PATH``.
         """
         for json_path in sorted(self._fixtures_dir.glob("result-explorer-*.json")):
             with open(json_path) as f:
                 fixture: dict[str, Any] = json.load(f)
-            self._results.extend(fixture.get("data", []))
+            rows = fixture.get("data", [])
+            if json_path.name.startswith("result-explorer-bulk-docking"):
+                self._sanitize_bulk_docking_result_explorer_records(rows)
+            self._results.extend(rows)
 
     def _seed_canonical_mock_protein(self) -> None:
         """Ensure one stable protein row exists for sync/register and get_protein."""

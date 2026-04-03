@@ -18,6 +18,8 @@ import uuid
 
 from fastapi import APIRouter, HTTPException, Request
 
+from ..constants import MOCK_BULK_DOCKING_EXECUTION_ID
+
 
 def _generate_resource_id() -> str:
     """Generate a random resource ID.
@@ -126,19 +128,29 @@ def create_tools_router(
         with open(fixture_path) as f:
             return json.load(f)
 
+    def _ligand_count(user_inputs: dict[str, Any]) -> int:
+        """Count ligands from bulk-docking ``userInputs`` (``ligands`` or ``smiles_list``)."""
+        ligands = user_inputs.get("ligands") or []
+        smiles_list = user_inputs.get("smiles_list") or []
+        if ligands:
+            return len(ligands)
+        if smiles_list:
+            return len(smiles_list)
+        return 1
+
     def _get_bulk_docking_progress_report(
         execution: dict[str, Any], execution_id: str
-    ) -> str | None:
-        """Get progress report for bulk-docking execution."""
+    ) -> dict[str, Any] | None:
+        """Update bulk-docking execution progress and return ``progressReport`` JSON."""
         status = execution.get("status")
 
         if status == "Succeeded":
-            user_inputs = execution.get("userInputs", {})
-            smiles_list = user_inputs.get("smiles_list", [])
-            if smiles_list:
-                lines = ["ligand docked"] * len(smiles_list)
-                return "\n".join(lines)
-            return None
+            existing = execution.get("progressReport")
+            if isinstance(existing, dict) and "complete" in existing:
+                return existing
+            report = {"complete": 100}
+            execution["progressReport"] = report
+            return report
 
         if status in ("Failed", "Cancelled"):
             return None
@@ -150,26 +162,31 @@ def create_tools_router(
             return None
 
         user_inputs = execution.get("userInputs", {})
-        smiles_list = user_inputs.get("smiles_list", [])
-        if not smiles_list:
-            return None
+        n_ligands = max(1, _ligand_count(user_inputs))
+
+        speed = docking_speed if docking_speed > 0 else 0.5
+        duration_seconds = n_ligands / speed
 
         start_time = execution_start_times[execution_id]
         now = datetime.now(timezone.utc)
         elapsed_seconds = (now - start_time).total_seconds()
 
-        num_dockings = int(docking_speed * elapsed_seconds)
-        num_dockings = min(num_dockings, len(smiles_list))
+        if duration_seconds <= 0:
+            complete = 100
+        else:
+            complete = int(min(100.0, (elapsed_seconds / duration_seconds) * 100.0))
 
-        lines = ["ligand docked"] * num_dockings
-        progress_report = "\n".join(lines)
-
-        if num_dockings >= len(smiles_list):
+        if complete >= 100:
             execution["status"] = "Succeeded"
-            execution["completedAt"] = now.strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z"
-            execution["updatedAt"] = now.strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z"
+            ts = now.strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z"
+            execution["completedAt"] = ts
+            execution["updatedAt"] = ts
+            execution["progressReport"] = {"complete": 100}
+            return execution["progressReport"]
 
-        return progress_report
+        execution["progressReport"] = {"complete": complete}
+        execution["updatedAt"] = now.strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z"
+        return execution["progressReport"]
 
     def _get_progress_report(execution: dict[str, Any], tool_key: str) -> str | None:
         """Get progress report for an execution based on elapsed time."""
@@ -782,7 +799,7 @@ def create_tools_router(
         now = datetime.now(timezone.utc)
         timestamp = now.strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z"
 
-        fixture["executionId"] = str(uuid.uuid4())
+        fixture["executionId"] = MOCK_BULK_DOCKING_EXECUTION_ID
         fixture["createdAt"] = timestamp
         fixture["updatedAt"] = timestamp
         fixture["resourceId"] = _generate_resource_id()
@@ -834,6 +851,9 @@ def create_tools_router(
             )
 
         execution_id = execution["executionId"]
+        if tool_key == "deeporigin.bulk-docking":
+            # New quote replaces any prior run; drop stale confirm/start times.
+            execution_start_times.pop(execution_id, None)
         executions[execution_id] = execution
 
         return _normalize_execution(execution)
