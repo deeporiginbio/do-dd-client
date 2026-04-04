@@ -433,6 +433,10 @@ ADMET (Absorption, Distribution, Metabolism, Excretion, and Toxicity) properties
     mp.run()
     ```
 
+    For many ligands, pass ``batch_size`` (e.g. ``10``) so each property request sends at most that many molecules per API call. Omit it (default) to send all ligands in one payload per property, as before.
+
+    ``quote()`` requests a price using only the **first** ligand, then multiplies that total by the number of ligands (linear scaling). It does not use ``batch_size``.
+
     !!! note "Mutation Behavior"
         `Molprops.run()` mutates each ligand by filling dedicated ADMET attributes (see below), storing values in `ligand.properties`, and setting RDKit molecule properties.
 
@@ -494,6 +498,8 @@ ADMET (Absorption, Distribution, Metabolism, Excretion, and Toxicity) properties
 
     Molprops(ligands=ligands).run()
     ```
+
+    The same ``batch_size`` and quoting behavior as in the single-ligand tab applies.
 
     !!! note "Mutation Behavior"
         `Molprops.run()` mutates each ligand by filling the same dedicated ADMET attributes and `.properties` as the single-ligand case.

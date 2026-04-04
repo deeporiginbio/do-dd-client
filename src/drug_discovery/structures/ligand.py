@@ -1666,6 +1666,36 @@ class LigandSet:
         else:
             return NotImplemented
 
+    def batches(self, batch_size: int | None) -> list[list[Ligand]]:
+        """Split this set into consecutive chunks of ligands (same order as :attr:`ligands`).
+
+        Args:
+            batch_size: Maximum ligands per chunk. ``None`` returns a single chunk
+                containing all ligands (including when the set is empty). Must be an
+                ``int`` when not ``None``; other types are rejected by runtime type
+                checking. When the number of ligands is not a multiple of ``batch_size``,
+                the **last** batch is shorter (it holds the remainder only).
+
+        Returns:
+            Non-empty list of batches when ``batch_size`` is ``None``; otherwise a list
+            of one or more consecutive slices of :attr:`ligands`.
+
+        Raises:
+            ValueError: If ``batch_size`` is set and not positive.
+            beartype.roar.BeartypeCallHintParamViolation: If ``batch_size`` is neither
+                ``None`` nor an ``int`` (e.g. a ``float`` or ``str``).
+        """
+
+        if batch_size is None:
+            return [self.ligands]
+        if batch_size <= 0:
+            raise ValueError("batch_size must be positive when set.")
+        out: list[list[Ligand]] = []
+        ligands = self.ligands
+        for i in range(0, len(ligands), batch_size):
+            out.append(ligands[i : i + batch_size])
+        return out
+
     def random_sample(self, n: int) -> Self:
         """
         Return a new LigandSet containing n randomly selected ligands.

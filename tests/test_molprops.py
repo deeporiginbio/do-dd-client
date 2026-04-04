@@ -13,6 +13,14 @@ def test_molprops_accepts_props_list() -> None:
     assert mp.properties == frozenset({"ames", "logp"})
 
 
+def test_molprops_batch_size_property() -> None:
+    lig = Ligand.from_smiles("C")
+    mp = Molprops(ligands=[lig], props=["logp"], batch_size=5)
+    assert mp.batch_size == 5
+    mp_default = Molprops(ligands=[lig], props=["logp"])
+    assert mp_default.batch_size is None
+
+
 def test_molprops_props_and_properties_exclusive() -> None:
     lig = Ligand.from_smiles("CCO")
     with pytest.raises(ValueError, match="only one of props or properties"):

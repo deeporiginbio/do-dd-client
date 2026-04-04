@@ -86,7 +86,6 @@ def molprops(
     return merged
 
 
-@beartype
 def molprops_merged_with_raw_responses(
     ligands: list[dict[str, str]],
     properties: Optional[set[str]] = None,
@@ -162,7 +161,6 @@ def molprops_quote(
     return FunctionResult(raw_list)
 
 
-@beartype
 def get_single_property(
     *,
     payload: dict,
@@ -170,7 +168,7 @@ def get_single_property(
     client: DeepOriginClient,
     use_cache: bool = True,
     quote: bool = False,
-) -> tuple[list[dict], dict | None]:
+) -> tuple[list[dict], dict]:
     """Fetch one molprops model's outputs and optionally the full API response.
 
     Args:
@@ -181,8 +179,7 @@ def get_single_property(
         quote: If True, request a quotation only; cache is not used.
 
     Returns:
-        ``(function_outputs, raw_response)``. ``raw_response`` is ``None`` for legacy
-        cache files that stored only the function output list.
+        ``(function_outputs, raw_response)`` with the full API or cache payload.
     """
 
     cache_hash = hash_dict({"property": prop, **payload})
