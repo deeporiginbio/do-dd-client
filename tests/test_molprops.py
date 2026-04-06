@@ -2,8 +2,7 @@
 
 import pytest
 
-from deeporigin.drug_discovery import Ligand, Molprops
-from deeporigin.functions.molprops import molprops_ligands_payload
+from deeporigin.drug_discovery import Ligand, LigandSet, Molprops
 
 
 def test_molprops_accepts_props_list() -> None:
@@ -33,20 +32,24 @@ def test_molprops_empty_props_raises() -> None:
         Molprops(ligands=[lig], props=[])
 
 
-def test_molprops_ligands_payload_default_ids() -> None:
+def test_ligand_set_to_dict_default_ids() -> None:
     """Positional default ``id`` values match the merge key used in API responses."""
-    assert molprops_ligands_payload([{"smiles": "C"}, {"smiles": "CC"}]) == [
+    ls = LigandSet(
+        ligands=[Ligand.from_smiles("C"), Ligand.from_smiles("CC")],
+    )
+    assert ls.to_dict() == [
         {"id": "0", "smiles": "C"},
         {"id": "1", "smiles": "CC"},
     ]
 
 
-def test_molprops_ligands_payload_explicit_id() -> None:
-    assert molprops_ligands_payload([{"id": "lig-a", "smiles": "C"}]) == [
-        {"id": "lig-a", "smiles": "C"},
-    ]
+def test_ligand_set_to_dict_explicit_id() -> None:
+    ls = LigandSet(ligands=[Ligand.from_smiles("C", id="lig-a")])
+    assert ls.to_dict() == [{"id": "lig-a", "smiles": "C"}]
 
 
-def test_molprops_ligands_payload_missing_smiles_raises() -> None:
+def test_ligand_set_to_dict_missing_smiles_raises() -> None:
+    lig = Ligand.from_smiles("C")
+    lig.smiles = ""
     with pytest.raises(ValueError, match="smiles"):
-        molprops_ligands_payload([{}])
+        LigandSet(ligands=[lig]).to_dict()

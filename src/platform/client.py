@@ -1065,13 +1065,20 @@ class DeepOriginClient(metaclass=_DeepOriginMeta):
         return self._retry_request(request, "GET", path, body=None)
 
     def _post(
-        self, path: str, body: Optional[dict] = None, **kwargs: Any
+        self,
+        path: str,
+        body: Optional[dict] = None,
+        *,
+        retry: bool = True,
+        **kwargs: Any,
     ) -> httpx.Response:
         """Perform a POST request and raise on error.
 
         Args:
             path: API endpoint path (relative to base_url).
             body: JSON data to send in the request body.
+            retry: If False, perform a single HTTP attempt (no client-level retries).
+                Used for idempotent-sensitive function execution POSTs.
             **kwargs: Additional arguments passed to httpx.Client.post().
 
         Returns:
@@ -1081,6 +1088,14 @@ class DeepOriginClient(metaclass=_DeepOriginMeta):
 
         def request() -> httpx.Response:
             return self._client.post(path, json=body, **kwargs)
+
+        if not retry:
+            try:
+                response = request()
+                response.raise_for_status()
+                return response
+            except httpx.HTTPStatusError as e:
+                self._handle_request_error("POST", path, e, body=body)
 
         return self._retry_request(request, "POST", path, body=body)
 
@@ -1169,18 +1184,26 @@ class DeepOriginClient(metaclass=_DeepOriginMeta):
         """
         return self._get(path, **kwargs).json()
 
-    def post_json(self, path: str, body: dict[str, Any], **kwargs: Any) -> Any:
+    def post_json(
+        self,
+        path: str,
+        body: dict[str, Any],
+        *,
+        retry: bool = True,
+        **kwargs: Any,
+    ) -> Any:
         """Perform a POST request and return the JSON response.
 
         Args:
             path: API endpoint path (relative to base_url).
             body: JSON data to send in the request body.
+            retry: If False, perform a single HTTP attempt (no client-level retries).
             **kwargs: Additional arguments passed to httpx.Client.post().
 
         Returns:
             The JSON-decoded response body.
         """
-        return self._post(path, body=body, **kwargs).json()
+        return self._post(path, body=body, retry=retry, **kwargs).json()
 
     def delete_json(self, path: str, **kwargs: Any) -> Any:
         """Perform a DELETE request and return the JSON response.

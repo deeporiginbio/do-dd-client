@@ -2,7 +2,10 @@
 
 from unittest.mock import patch
 
+import httpx
+
 from deeporigin.platform.client import DeepOriginClient
+from deeporigin.utils.constants import FUNCTION_RUN_POST_TIMEOUT_SECONDS
 
 
 def test_client_tag_set_on_creation():
@@ -63,7 +66,7 @@ def test_client_tag_used_in_function_run():
 
     original_post_json = client.post_json
 
-    def mock_post_json(endpoint: str, *, body: dict) -> dict:
+    def mock_post_json(endpoint: str, *, body: dict, **kwargs) -> dict:
         nonlocal captured_body
         captured_body = body.copy()
         return {
@@ -99,7 +102,7 @@ def test_client_tag_explicit_override():
 
     original_post_json = client.post_json
 
-    def mock_post_json(endpoint: str, *, body: dict) -> dict:
+    def mock_post_json(endpoint: str, *, body: dict, **kwargs) -> dict:
         nonlocal captured_body
         captured_body = body.copy()
         return {
@@ -126,6 +129,41 @@ def test_client_tag_explicit_override():
     client.post_json = original_post_json
 
 
+def test_functions_run_sets_http_client_timeout_for_duration_of_request():
+    """``functions.run`` temporarily sets the httpx client timeout to 600s."""
+    DeepOriginClient.close_all()
+
+    client = DeepOriginClient.from_local()
+    original_timeout = client._client.timeout
+
+    timeouts_during_post: list[object] = []
+
+    original_post_json = client.post_json
+
+    def mock_post_json(endpoint: str, *, body: dict, **kwargs) -> dict:
+        timeouts_during_post.append(client._client.timeout)
+        return {
+            "status": "Completed",
+            "functionOutputs": {"result": "success"},
+        }
+
+    client.post_json = mock_post_json
+
+    with patch.object(
+        client.clusters, "get_default_cluster_id", return_value="test-cluster-id"
+    ):
+        client.functions.run(
+            key="test.function",
+            params={"test": "param"},
+        )
+
+    assert len(timeouts_during_post) == 1
+    assert timeouts_during_post[0] == httpx.Timeout(FUNCTION_RUN_POST_TIMEOUT_SECONDS)
+    assert client._client.timeout == original_timeout
+
+    client.post_json = original_post_json
+
+
 def test_functions_run_includes_client_project_id():
     """When client.project_id is set, function run body includes projectId."""
     DeepOriginClient.close_all()
@@ -137,7 +175,7 @@ def test_functions_run_includes_client_project_id():
 
     original_post_json = client.post_json
 
-    def mock_post_json(endpoint: str, *, body: dict) -> dict:
+    def mock_post_json(endpoint: str, *, body: dict, **kwargs) -> dict:
         nonlocal captured_body
         captured_body = body.copy()
         return {
@@ -185,7 +223,7 @@ def test_client_tag_none_explicitly_passed():
 
     original_post_json = client.post_json
 
-    def mock_post_json(endpoint: str, *, body: dict) -> dict:
+    def mock_post_json(endpoint: str, *, body: dict, **kwargs) -> dict:
         nonlocal captured_body
         captured_body = body.copy()
         return {

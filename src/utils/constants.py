@@ -78,9 +78,14 @@ DOCKING_RESULTS_DATAFRAME_COLUMNS: tuple[str, ...] = (
 TOOL_EXECUTION_POST_TIMEOUT_SECONDS = 120.0
 """HTTP timeout (seconds) for POST ``/tools/.../executions`` (quote and run).
 
-Matches ``Functions.run`` long-timeout behavior: 120s allows the server time to
-respond while the execution is created or quoted, beyond the client's default
-short timeout."""
+120s allows the server time to respond while the execution is created or quoted,
+beyond the client's default short timeout."""
+
+FUNCTION_RUN_POST_TIMEOUT_SECONDS = 600.0
+"""HTTP timeout (seconds) for :meth:`~deeporigin.platform.functions.Functions.run`.
+
+Synchronous function runs can take longer than tool execution POSTs; 600s aligns
+with typical server-side ``timeoutSeconds`` for function workloads."""
 
 MOLPROPS_PROPERTY_KEYS: frozenset[str] = frozenset(
     ("ames", "cyp", "herg", "logd", "logp", "logs", "pains"),

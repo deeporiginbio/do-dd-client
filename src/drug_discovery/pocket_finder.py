@@ -93,13 +93,12 @@ class PocketFinder(Execution, QuoteMixin, SyncExecutableMixin):
         """
         from deeporigin.functions.pocket_finder import find_pockets as _find_pockets
 
-        client = self.client
-
         result = _find_pockets(
             protein=self.protein,
             pocket_count=self.pocket_count,
             pocket_min_size=self.pocket_min_size,
-            client=client,
+            client=self.client,
+            tool_version=self.tool_version,
             quote=True,
         )
 
@@ -115,15 +114,14 @@ class PocketFinder(Execution, QuoteMixin, SyncExecutableMixin):
         Returns:
             List of ``Pocket`` objects found in the protein.
         """
-        client = self.client
-
         from deeporigin.functions.pocket_finder import find_pockets as _find_pockets
 
         result = _find_pockets(
             protein=self.protein,
             pocket_count=self.pocket_count,
             pocket_min_size=self.pocket_min_size,
-            client=client,
+            client=self.client,
+            tool_version=self.tool_version,
             quote=False,
         )
 
@@ -134,7 +132,7 @@ class PocketFinder(Execution, QuoteMixin, SyncExecutableMixin):
             try:
                 pockets = Pocket.from_result(
                     execution_id=execution_id,
-                    client=client,
+                    client=self.client,
                 )
             except Exception:
                 import warnings
@@ -146,29 +144,15 @@ class PocketFinder(Execution, QuoteMixin, SyncExecutableMixin):
                 )
                 pockets = Pocket.from_function_result(
                     result=result,
-                    client=client,
+                    client=self.client,
                 )
         else:
             pockets = Pocket.from_function_result(
                 result=result,
-                client=client,
+                client=self.client,
             )
 
         self._cost = result.cost
         self.status = result.status
 
         return pockets
-
-    def get_results(self) -> list[Pocket]:
-        """Retrieve previously computed pockets from the platform.
-
-        Fetches pocket results for this protein via the results API,
-        without re-running the computation.
-
-        Returns:
-            List of ``Pocket`` objects retrieved from the platform.
-        """
-        return Pocket.from_result(
-            protein_id=self.protein.id,
-            client=self.client,
-        )

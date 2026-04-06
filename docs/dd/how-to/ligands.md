@@ -486,7 +486,7 @@ ADMET (Absorption, Distribution, Metabolism, Excretion, and Toxicity) properties
 
 === "LigandSets"
 
-    Pass a `LigandSet` (or a list of ligands) to `Molprops`. With more than one ligand, a progress bar is shown via `tqdm`:
+    Pass a `LigandSet` (or a list of ligands) to `Molprops`. A `tqdm` progress bar appears only when ``batch_size`` is set so that more than one API batch runs; it tracks ligands completed and shows **ligands/s**.
 
     ```{.python notest}
     from deeporigin.drug_discovery import LigandSet, Molprops, DATA_DIR

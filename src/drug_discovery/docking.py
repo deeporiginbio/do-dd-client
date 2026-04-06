@@ -254,25 +254,22 @@ class Docking(
             _make_poses_from_dock_results,
         )
         from deeporigin.functions.docking import dock as _dock
-        from deeporigin.functions.parallel import run_func_in_parallel
         from deeporigin.functions.result import FunctionResult
 
         client = self.client
         ligands = list(self.ligands)
 
-        args = [
-            {
-                "protein": self.protein,
-                "pocket": self.pocket,
-                "ligand": ligand,
-                "client": client,
-                "quote": False,
-            }
-            for ligand in ligands
-        ]
-
-        data = run_func_in_parallel(func=_dock, args=args)
-        individual_results = [r for r in data["results"] if r is not None]
+        individual_results: list[FunctionResult] = []
+        for ligand in ligands:
+            individual_results.append(
+                _dock(
+                    protein=self.protein,
+                    pocket=self.pocket,
+                    ligand=ligand,
+                    client=client,
+                    quote=False,
+                )
+            )
         all_responses = [fr.response for fr in individual_results]
 
         if not all_responses:

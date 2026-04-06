@@ -1696,6 +1696,31 @@ class LigandSet:
             out.append(ligands[i : i + batch_size])
         return out
 
+    def to_dict(self) -> list[dict[str, str]]:
+        """Convert this set to a list of dicts, one per ligand.
+
+        Each dict has ``id`` (platform id when set, else ``"0"``, ``"1"``, … by
+        position in this set) and ``smiles``. For batched API calls with globally
+        unique ids, ensure each :class:`Ligand` ``id`` is set before building the set.
+
+        Returns:
+            One ``{"id": ..., "smiles": ...}`` dict per ligand, in order.
+
+        Raises:
+            ValueError: If a ligand has no non-empty ``smiles``.
+        """
+
+        out: list[dict[str, str]] = []
+        for j, lg in enumerate(self.ligands):
+            sm = lg.smiles
+            if sm is None or sm == "":
+                raise ValueError(
+                    f'ligands[{j}] must include a non-empty "smiles" string.'
+                )
+            lid = lg.id if lg.id is not None else str(j)
+            out.append({"id": lid, "smiles": sm})
+        return out
+
     def random_sample(self, n: int) -> Self:
         """
         Return a new LigandSet containing n randomly selected ligands.

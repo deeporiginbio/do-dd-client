@@ -31,26 +31,6 @@ from deeporigin.utils.constants import (
 )
 
 
-@beartype
-def _ligands_param_for_api(
-    ligand_set: LigandSet,
-    *,
-    start_index: int = 0,
-) -> list[dict[str, str]]:
-    """Build molprops ``ligands`` request items (``id`` + ``smiles`` per toolbox schema).
-
-    Callers must only pass ligands that already have ``smiles`` set.
-    """
-
-    return [
-        {
-            "id": lg.id if lg.id is not None else str(start_index + j),
-            "smiles": lg.smiles,
-        }
-        for j, lg in enumerate(ligand_set.ligands)
-    ]
-
-
 def _validate_molprops_properties(properties: set[str] | None) -> set[str]:
     """Return the resolved property set or raise if any key is unknown."""
 
@@ -108,7 +88,6 @@ class Molprops(Execution, QuoteMixin, SyncExecutableMixin):
         props: list[str] | None = None,
         properties: set[str] | None = None,
         batch_size: int | None = None,
-        use_cache: bool = True,
         client: DeepOriginClient | None = None,
     ) -> None:
         """Configure a molprops run for one or more ligands.
@@ -123,7 +102,6 @@ class Molprops(Execution, QuoteMixin, SyncExecutableMixin):
             batch_size: For :meth:`run`, cap how many molecules are sent per
                 property request. ``None`` sends all ligands in one payload per property
                 (legacy behavior). Does not affect :meth:`quote` (see below).
-            use_cache: Whether to use the local disk cache for completed runs.
             client: Optional API client.
 
         Raises:
@@ -142,7 +120,6 @@ class Molprops(Execution, QuoteMixin, SyncExecutableMixin):
             raise ValueError("batch_size must be a positive integer when set.")
         self._batch_size = batch_size
         self._properties = _resolve_molprops_props(props=props, properties=properties)
-        self._use_cache = use_cache
         self._quoted = False
 
     @property
@@ -196,11 +173,9 @@ class Molprops(Execution, QuoteMixin, SyncExecutableMixin):
     def _quote_impl(self) -> None:
         """Populate ``estimate`` from single-ligand quotes scaled by ligand count."""
 
-        ligands_param = _ligands_param_for_api(LigandSet(ligands=self._ligands))
-        n_ligands = len(ligands_param)
-        ligands_quote = [ligands_param[0]]
+        n_ligands = len(self._ligands)
         result = molprops_quote(
-            ligands=ligands_quote,
+            LigandSet(ligands=[self._ligands[0]]),
             properties=self._properties,
             client=self.client,
         )
@@ -214,35 +189,45 @@ class Molprops(Execution, QuoteMixin, SyncExecutableMixin):
         Total USD :attr:`cost` is the sum of per-property completed runs (see
         :class:`~deeporigin.functions.result.FunctionResult`).
 
+        Ligands without a platform ``id`` are assigned ``"0"``, ``"1"``, … here so
+        batched requests merge on stable ``ligand_id`` values.
+
+        A ``tqdm`` bar is shown only when there is more than one API **batch**
+        (i.e. ``batch_size`` splits the run). The bar advances by ligands
+        completed and reports **ligands/s**, not batches/s. There is no progress
+        bar for applying results to ligands.
+
         Returns:
             ``self`` for chaining.
         """
+        for idx, lig in enumerate(self._ligands):
+            if lig.id is None:
+                lig.id = str(idx)
         ligand_set = LigandSet(ligands=self._ligands)
         merged: list[dict] = []
         raw_responses: list[dict] = []
-        start_index = 0
-        for batch_ligands in ligand_set.batches(self._batch_size):
-            batch_param = _ligands_param_for_api(
-                LigandSet(ligands=batch_ligands), start_index=start_index
-            )
-            start_index += len(batch_ligands)
-            batch_merged, batch_raw = molprops_merged_with_raw_responses(
-                ligands=batch_param,
-                properties=self._properties,
-                client=self.client,
-                use_cache=self._use_cache,
-            )
-            merged.extend(batch_merged)
-            raw_responses.extend(batch_raw)
+        batches = ligand_set.batches(self._batch_size)
+        n_ligands = len(self._ligands)
+        use_batch_bar = len(batches) > 1
+        with tqdm(
+            total=n_ligands,
+            desc="Molprops",
+            unit="ligand",
+            disable=not use_batch_bar,
+        ) as pbar:
+            for batch_ligands in batches:
+                batch_merged, batch_raw = molprops_merged_with_raw_responses(
+                    LigandSet(ligands=batch_ligands),
+                    properties=self._properties,
+                    client=self.client,
+                )
+                merged.extend(batch_merged)
+                raw_responses.extend(batch_raw)
+                pbar.update(len(batch_ligands))
         fr = FunctionResult(raw_responses)
         if fr.cost is not None:
             self._cost = fr.cost
 
-        pairs = list(zip(merged, self._ligands, strict=True))
-        if len(pairs) > 1:
-            for row, lig in tqdm(pairs, desc="Molprops", unit="ligand"):
-                lig._apply_molprops_result(row)
-        else:
-            for row, lig in pairs:
-                lig._apply_molprops_result(row)
+        for row, lig in zip(merged, self._ligands, strict=True):
+            lig._apply_molprops_result(row)
         return self
