@@ -4,16 +4,19 @@
     "updatedAt": "2025-12-18T15:02:00.876Z",
     "userInputs": {
         "inputs": {
-            "smiles_list": [
-                "Fc1c(-c2cccc3ccccc23)ncc2c(N3C[C@H]4CC[C@@H](C3)N4)nc(OCC34CCCN3CCC4)nc12"
+            "ligands": [
+                {
+                    "id": "0",
+                    "smiles": "Fc1c(-c2cccc3ccccc23)ncc2c(N3C[C@H]4CC[C@@H](C3)N4)nc(OCC34CCCN3CCC4)nc12"
+                }
             ]
         },
         "clusterId": "d638d3cd-833f-476b-87fe-ca6d76e66049"
     },
     "functionOutputs": [
         {
-            "smiles": "Fc1c(-c2cccc3ccccc23)ncc2c(N3C[C@H]4CC[C@@H](C3)N4)nc(OCC34CCCN3CCC4)nc12",
-            "logP": 4.47109317779541
+            "logP": 4.47109317779541,
+            "ligand_id": "0"
         }
     ],
     "status": "Completed",
@@ -89,13 +92,24 @@
             "inputSchema": {
                 "type": "object",
                 "required": [
-                    "smiles_list"
+                    "ligands"
                 ],
                 "properties": {
-                    "smiles_list": {
+                    "ligands": {
                         "type": "array",
                         "items": {
-                            "type": "string"
+                            "type": "object",
+                            "properties": {
+                                "id": {
+                                    "type": "string"
+                                },
+                                "smiles": {
+                                    "type": "string"
+                                }
+                            },
+                            "required": [
+                                "smiles"
+                            ]
                         }
                     }
                 },

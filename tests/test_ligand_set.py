@@ -1039,3 +1039,23 @@ def test_batch_create_ligands_lv1():
         assert lig.canonical_smiles is not None, (
             f"Expected canonical_smiles for {lig.smiles}"
         )
+
+
+def test_ligand_set_batches_none_is_single_chunk() -> None:
+    ligands = [Ligand.from_smiles("C"), Ligand.from_smiles("CC")]
+    ls = LigandSet(ligands=ligands)
+    assert ls.batches(None) == [ligands]
+
+
+def test_ligand_set_batches_chunk_sizes() -> None:
+    ligands = [Ligand.from_smiles(s) for s in ["C", "CC", "CCC", "CCCC"]]
+    ls = LigandSet(ligands=ligands)
+    assert ls.batches(2) == [ligands[0:2], ligands[2:4]]
+    assert ls.batches(3) == [ligands[0:3], ligands[3:4]]
+
+
+@pytest.mark.parametrize("bad", [0, -1])
+def test_ligand_set_batches_invalid_size_raises(bad: int) -> None:
+    ls = LigandSet(ligands=[Ligand.from_smiles("C")])
+    with pytest.raises(ValueError, match="batch_size"):
+        ls.batches(bad)

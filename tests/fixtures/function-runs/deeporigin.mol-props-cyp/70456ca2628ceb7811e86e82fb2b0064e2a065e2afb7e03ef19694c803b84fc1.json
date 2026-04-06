@@ -1,19 +1,30 @@
 {
-    "id": "cb7eb429-0ed6-4d3b-b604-09f85917272a",
-    "createdAt": "2025-12-18T15:02:03.567Z",
-    "updatedAt": "2025-12-18T15:02:03.974Z",
+    "id": "383e75e2-0e7d-4cb3-8bd4-eeffc8468755",
+    "createdAt": "2025-12-18T15:02:01.735Z",
+    "updatedAt": "2025-12-18T15:02:02.140Z",
     "userInputs": {
         "inputs": {
-            "smiles_list": [
-                "Fc1c(-c2cccc3ccccc23)ncc2c(N3C[C@H]4CC[C@@H](C3)N4)nc(OCC34CCCN3CCC4)nc12"
+            "ligands": [
+                {
+                    "id": "0",
+                    "smiles": "Fc1c(-c2cccc3ccccc23)ncc2c(N3C[C@H]4CC[C@@H](C3)N4)nc(OCC34CCCN3CCC4)nc12"
+                }
             ]
         },
         "clusterId": "d638d3cd-833f-476b-87fe-ca6d76e66049"
     },
     "functionOutputs": [
         {
-            "smiles": "Fc1c(-c2cccc3ccccc23)ncc2c(N3C[C@H]4CC[C@@H](C3)N4)nc(OCC34CCCN3CCC4)nc12",
-            "logS": -3.892117738723755
+            "cyp": {
+                "probabilities": {
+                    "cyp1a2": 0.5363125205039978,
+                    "cyp2c9": 0.7018876075744629,
+                    "cyp2c19": 0.6438205242156982,
+                    "cyp2d6": 0.8363492488861084,
+                    "cyp3a4": 0.9160778522491455
+                }
+            },
+            "ligand_id": "0"
         }
     ],
     "status": "Completed",
@@ -35,7 +46,7 @@
         "successfulQuotations": [
             {
                 "status": "OK",
-                "itemCode": "DO_SOLUBILITY",
+                "itemCode": "DO_CYP",
                 "orgId": "deeporigin",
                 "qty": 1,
                 "priceEach": 0.02,
@@ -43,8 +54,8 @@
                 "pricingRecordType": "regular",
                 "pricingRecords": [
                     {
-                        "itemKey": "DO_SOLUBILITY",
-                        "itemName": "Solubility (LogS)",
+                        "itemKey": "DO_CYP",
+                        "itemName": "CYP binding",
                         "priceEach": 0.02,
                         "totalPrice": 0.02,
                         "qty": 1,
@@ -56,18 +67,18 @@
         ]
     },
     "function": {
-        "id": "24e46c63-8c14-48dd-9d5a-72c5f9e08a34",
-        "createdAt": "2025-12-11T00:06:32.468Z",
-        "updatedAt": "2025-12-11T00:06:32.468Z",
-        "functionManifest": "62fee37a-a889-40d3-9b1d-31fe1ac78b3c",
+        "id": "581710a5-b8ef-4c90-970a-a21b94772f2a",
+        "createdAt": "2025-12-11T00:06:26.802Z",
+        "updatedAt": "2025-12-11T00:06:26.802Z",
+        "functionManifest": "ad60bb08-5232-40bb-885a-9e165e3d0474",
         "version": "0.1.4",
         "enabled": true,
         "manifestBody": {
-            "key": "deeporigin.mol-props-logs",
+            "key": "deeporigin.mol-props-cyp",
             "version": "0.1.4",
             "executor": {
-                "name": "deeporigin-mol-props-logs",
-                "path": "/logS",
+                "name": "deeporigin-mol-props-cyp",
+                "path": "/cyp",
                 "port": {
                     "name": "http1",
                     "port": 8000,
@@ -85,17 +96,28 @@
                 "scaleDownDelaySeconds": 60,
                 "responseStartTimeoutSeconds": 3600
             },
-            "billingCode": "DO_SOLUBILITY",
+            "billingCode": "DO_CYP",
             "inputSchema": {
                 "type": "object",
                 "required": [
-                    "smiles_list"
+                    "ligands"
                 ],
                 "properties": {
-                    "smiles_list": {
+                    "ligands": {
                         "type": "array",
                         "items": {
-                            "type": "string"
+                            "type": "object",
+                            "properties": {
+                                "id": {
+                                    "type": "string"
+                                },
+                                "smiles": {
+                                    "type": "string"
+                                }
+                            },
+                            "required": [
+                                "smiles"
+                            ]
                         }
                     }
                 },
@@ -103,7 +125,7 @@
             },
             "functionManifestVersion": "1"
         },
-        "billingCode": "DO_SOLUBILITY",
-        "resourceId": "function-kjl84gl4e6euajo2ha942"
+        "billingCode": "DO_CYP",
+        "resourceId": "function-5lerjp3bc1dz4chatv6al"
     }
 }

@@ -3,6 +3,7 @@ import uuid
 import pytest
 
 from deeporigin.platform.client import DeepOriginClient
+from deeporigin.platform.constants import MOL_PROPS_FUNCTION_VERSION
 
 
 def test_billing_tag_end_to_end_lv2():
@@ -24,8 +25,14 @@ def test_billing_tag_end_to_end_lv2():
         response = client.functions.run(
             key="deeporigin.mol-props-logd",
             params={
-                "smiles_list": ["O=c1c(Oc2ccc(F)cc2F)cc2cnc(NC3CCOCC3)nc2n1C[C@H](O)CO"]
+                "ligands": [
+                    {
+                        "id": "0",
+                        "smiles": "O=c1c(Oc2ccc(F)cc2F)cc2cnc(NC3CCOCC3)nc2n1C[C@H](O)CO",
+                    }
+                ]
             },
+            version=MOL_PROPS_FUNCTION_VERSION,
         )
 
         client_total_cost += response["quotationResult"]["successfulQuotations"][0][

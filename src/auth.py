@@ -229,7 +229,9 @@ def decode_access_token(token: str) -> dict:
 
     # Decode the JWT using the public key
     return jwt.decode(
-        token, algorithms=header["alg"], options={"verify_signature": False}
+        token,
+        algorithms=header["alg"],
+        options={"verify_signature": False},
     )
 
 

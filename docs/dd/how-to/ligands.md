@@ -419,73 +419,92 @@ ADMET (Absorption, Distribution, Metabolism, Excretion, and Toxicity) properties
 
 === "Ligands"
 
-    You can predict ADMET properties for a ligand using the `admet_properties` method:
+    Use :class:`~deeporigin.drug_discovery.molprops.Molprops` to predict ADMET properties for one or more ligands:
 
     ```{.python notest}
-    # Predict ADMET properties
-    properties = ligand.admet_properties()
+    from deeporigin.drug_discovery import Molprops
+
+    mp = Molprops(ligands=[ligand])
+    mp.quote()  # optional: total estimate in mp.estimate
+    mp.run()  # mutates ligands; total USD in mp.cost when available
+
+    # Or request only some models (keys match platform suffixes: ames, logp, logd, …):
+    mp = Molprops(ligands=[ligand], props=["ames", "logp"])
+    mp.run()
     ```
 
-    !!! note "Mutation Behavior"
-        The `admet_properties()` method mutates the ligand object by storing all predicted properties in `ligand.properties`. The method also returns a dictionary of the properties.
+    For many ligands, pass ``batch_size`` (e.g. ``10``) so each property request sends at most that many molecules per API call. Omit it (default) to send all ligands in one payload per property, as before.
 
-    The method returns a dictionary containing various ADMET-related predictions:
+    ``quote()`` requests a price using only the **first** ligand, then multiplies that total by the number of ligands (linear scaling). It does not use ``batch_size``.
+
+    !!! note "Mutation Behavior"
+        `Molprops.run()` mutates each ligand by filling dedicated ADMET attributes (see below), storing values in `ligand.properties`, and setting RDKit molecule properties.
+
+    The return value is a single flat dict (one merged row per ligand), for example:
 
     ```python
     {
         'smiles': 'Cn1c(=O)n(Cc2ccccc2)c(=O)c2c1nc(SCCO)n2Cc1ccccc1',
-        'properties': {
-            'logS': -4.004,  # Aqueous solubility
-            'logP': 3.686,   # Partition coefficient
-            'logD': 2.528,   # Distribution coefficient
-            'hERG': {'probability': 0.264},  # hERG inhibition risk
-            'ames': {'probability': 0.213}, # Ames mutagenicity
-            'cyp': {     # Cytochrome P450 inhibition
-                'probabilities': {
-                    'cyp1a2': 0.134,
-                    'cyp2c9': 0.744,
-                    'cyp2c19': 0.853,
-                    'cyp2d6': 0.0252,
-                    'cyp3a4': 0.4718
-                }
+        'logS': -4.004,  # Aqueous solubility
+        'logP': 3.686,   # Partition coefficient
+        'logD': 2.528,   # Distribution coefficient
+        'hERG': {'probability': 0.264},  # hERG inhibition risk
+        'ames': {'probability': 0.213},  # Ames mutagenicity
+        'cyp': {  # Cytochrome P450 inhibition
+            'probabilities': {
+                'cyp1a2': 0.134,
+                'cyp2c9': 0.744,
+                'cyp2c19': 0.853,
+                'cyp2d6': 0.0252,
+                'cyp3a4': 0.4718,
             },
-            'pains': {    # PAINS (Pan Assay Interference Compounds)
-                'has_pains': None,
-                'pains_fragments': []
-            }
-        }
+        },
+        'has_pains': None,  # PAINS (Pan Assay Interference Compounds)
+        'pains_fragments': [],
     }
     ```
 
-    The predicted properties are automatically stored in the ligand's properties dictionary and can be accessed later using the `get_property` method:
+    The same values are exposed as first-class attributes (Python `snake_case` names for the scalar lipophilicity/solubility predictions):
+
+    | API key (in dict / `get_property`) | Ligand attribute |
+    |-----------------------------------|------------------|
+    | `logS` | `ligand.log_s` |
+    | `logD` | `ligand.log_d` |
+    | `logP` | `ligand.log_p` |
+    | `hERG` | `ligand.herg` |
+    | `cyp` | `ligand.cyp` |
+    | `ames` | `ligand.ames` |
+    | `has_pains` | `ligand.has_pains` |
+    | `pains_fragments` | `ligand.pains_fragments` |
+
+    You can read predictions from attributes or from the properties bag:
 
     ```{.python notest}
-    # Access a specific property
-    logP = ligand.get_property('logP')
+    log_p = ligand.log_p
+    log_p = ligand.get_property('logP')
     ```
-
-    !!! note "Property Storage"
-        All predicted properties are automatically stored in the ligand's properties dictionary and can be accessed at any time using the `get_property` method.
 
 === "LigandSets"
 
-    You can predict ADMET properties for all ligands in a `LigandSet` using the `admet_properties` method. This will call the prediction for each ligand and display a progress bar using `tqdm`:
+    Pass a `LigandSet` (or a list of ligands) to `Molprops`. A `tqdm` progress bar appears only when ``batch_size`` is set so that more than one API batch runs; it tracks ligands completed and shows **ligands/s**.
 
     ```{.python notest}
-    from deeporigin.drug_discovery import LigandSet, DATA_DIR
+    from deeporigin.drug_discovery import LigandSet, Molprops, DATA_DIR
 
     ligands = LigandSet.from_csv(
         file_path=DATA_DIR / "ligands" / "ligands.csv",
         smiles_column="SMILES"
     )
 
-    ligands.admet_properties()  
+    Molprops(ligands=ligands).run()
     ```
 
-    !!! note "Mutation Behavior"
-        The `admet_properties()` method mutates all ligands in the set by storing predicted properties in each ligand's `.properties` attribute.
+    The same ``batch_size`` and quoting behavior as in the single-ligand tab applies.
 
-    The properties are stored in each ligand's `.properties` attribute for later access.
+    !!! note "Mutation Behavior"
+        `Molprops.run()` mutates each ligand by filling the same dedicated ADMET attributes and `.properties` as the single-ligand case.
+
+    The properties are stored on each ligand (attributes and `.properties`) for later access.
 
     To view ADMET properties of all ligands in the ligand set, simply view the ligandset as a dataframe using:
 

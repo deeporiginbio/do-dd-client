@@ -16,6 +16,16 @@
       show_if_no_docstring: true
       group_by_category: true
 
+## ADMET (molprops) attributes
+
+After you run [`Molprops`](../how-to/ligands.md#predicting-admet-properties) on the ligand, scalar and structured predictions from the Deep Origin molprops tools are stored on the ligand as well as in `properties` and RDKit properties:
+
+- `log_s`, `log_d`, `log_p` — map to API keys `logS`, `logD`, `logP`
+- `herg`, `cyp`, `ames` — nested structures keyed as `hERG`, `cyp`, `ames` in the API response
+- `has_pains`, `pains_fragments` — PAINS screening results
+
+Until molprops has been run successfully (via `Molprops`), these fields remain `None`.
+
 ## Preparation
 
 Use `Ligand.prepare()` to perform common preparation steps before docking:

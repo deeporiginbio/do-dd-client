@@ -38,6 +38,18 @@ RDLogger.DisableLog("rdApp.*")
 
 FILE_FORMATS = Literal["mol", "mol2", "pdb", "pdbqt", "xyz", "sdf"]
 
+# Keys returned by merged molprops API rows → Ligand attribute names (snake_case).
+_MOLPROPS_RESPONSE_TO_ATTR: dict[str, str] = {
+    "logS": "log_s",
+    "logD": "log_d",
+    "logP": "log_p",
+    "hERG": "herg",
+    "cyp": "cyp",
+    "ames": "ames",
+    "has_pains": "has_pains",
+    "pains_fragments": "pains_fragments",
+}
+
 
 @dataclass
 @beartype
@@ -47,6 +59,10 @@ class Ligand(Entity):
     The Ligand class provides functionality to create, manipulate, and analyze small molecules
     (ligands) in computational drug discovery. It supports various input formats and provides
     methods for property prediction, visualization, and file operations.
+
+    After running :class:`~deeporigin.drug_discovery.molprops.Molprops`, predicted ADMET values
+    are available on dedicated attributes (``log_s``, ``log_d``, ``log_p``, ``herg``, ``cyp``,
+    ``ames``, ``has_pains``, ``pains_fragments``) as well as in :attr:`properties`.
 
     """
 
@@ -64,6 +80,15 @@ class Ligand(Entity):
     properties: dict = field(default_factory=dict)
     mol: Chem.Mol | None = None
     protonated_at_ph: float | None = None
+    # Molprops / ADMET (populated by Molprops.run(); API keys logS/logD/logP/hERG map here)
+    log_s: float | None = None
+    log_d: float | None = None
+    log_p: float | None = None
+    herg: dict[str, Any] | None = None
+    cyp: dict[str, Any] | None = None
+    ames: dict[str, Any] | None = None
+    has_pains: bool | None = None
+    pains_fragments: list[Any] | None = None
 
     # Additional attributes that are initialized in __post_init__
     available_for_docking: bool = field(init=False, default=True)
@@ -1436,32 +1461,14 @@ class Ligand(Entity):
         return str(ligands_base_dir)
 
     @beartype
-    def admet_properties(
-        self,
-        *,
-        use_cache: bool = True,
-        client: Optional[DeepOriginClient] = None,
-    ) -> dict:
-        """
-        Predict ADMET properties for the ligand using DO's molprops model.
+    def _apply_molprops_result(self, props: dict[str, Any]) -> None:
+        """Apply merged molprops API row to ADMET fields and ``properties``."""
 
-        """
-
-        from deeporigin.functions.molprops import molprops
-
-        if client is None:
-            client = DeepOriginClient()
-
-        props = molprops(
-            smiles_list=[self.smiles],
-            use_cache=use_cache,
-            properties={"pains", "logs", "logd", "herg", "cyp", "logp", "ames"},
-            client=client,
-        )[0]  # should be only one in the list
+        for api_key, attr_name in _MOLPROPS_RESPONSE_TO_ATTR.items():
+            if api_key in props:
+                setattr(self, attr_name, props[api_key])
         for key, value in props.items():
             self.set_property(key, value)
-
-        return props
 
     def update_coordinates(self, coordinates: np.ndarray):
         """update coordinates of the ligand structure"""
@@ -1658,6 +1665,61 @@ class LigandSet:
             return LigandSet(ligands=other + self.ligands)
         else:
             return NotImplemented
+
+    def batches(self, batch_size: int | None) -> list[list[Ligand]]:
+        """Split this set into consecutive chunks of ligands (same order as :attr:`ligands`).
+
+        Args:
+            batch_size: Maximum ligands per chunk. ``None`` returns a single chunk
+                containing all ligands (including when the set is empty). Must be an
+                ``int`` when not ``None``; other types are rejected by runtime type
+                checking. When the number of ligands is not a multiple of ``batch_size``,
+                the **last** batch is shorter (it holds the remainder only).
+
+        Returns:
+            Non-empty list of batches when ``batch_size`` is ``None``; otherwise a list
+            of one or more consecutive slices of :attr:`ligands`.
+
+        Raises:
+            ValueError: If ``batch_size`` is set and not positive.
+            beartype.roar.BeartypeCallHintParamViolation: If ``batch_size`` is neither
+                ``None`` nor an ``int`` (e.g. a ``float`` or ``str``).
+        """
+
+        if batch_size is None:
+            return [self.ligands]
+        if batch_size <= 0:
+            raise ValueError("batch_size must be positive when set.")
+        out: list[list[Ligand]] = []
+        ligands = self.ligands
+        for i in range(0, len(ligands), batch_size):
+            out.append(ligands[i : i + batch_size])
+        return out
+
+    def to_dict(self) -> list[dict[str, str]]:
+        """Convert this set to a list of dicts, one per ligand.
+
+        Each dict has ``id`` (platform id when set, else ``"0"``, ``"1"``, … by
+        position in this set) and ``smiles``. For batched API calls with globally
+        unique ids, ensure each :class:`Ligand` ``id`` is set before building the set.
+
+        Returns:
+            One ``{"id": ..., "smiles": ...}`` dict per ligand, in order.
+
+        Raises:
+            ValueError: If a ligand has no non-empty ``smiles``.
+        """
+
+        out: list[dict[str, str]] = []
+        for j, lg in enumerate(self.ligands):
+            sm = lg.smiles
+            if sm is None or sm == "":
+                raise ValueError(
+                    f'ligands[{j}] must include a non-empty "smiles" string.'
+                )
+            lid = lg.id if lg.id is not None else str(j)
+            out.append({"id": lid, "smiles": sm})
+        return out
 
     def random_sample(self, n: int) -> Self:
         """
@@ -2312,41 +2374,6 @@ class LigandSet:
         result = FunctionResult(all_responses)
         result.ligands = [] if quote else list(self.ligands)
         return result
-
-    @beartype
-    def admet_properties(
-        self,
-        use_cache: bool = True,
-        client: Optional[DeepOriginClient] = None,
-    ):
-        """
-        Predict ADMET properties for all ligands in the set.
-        This calls the admet_properties() method on each Ligand in the set.
-        Returns a list of the results for each ligand.
-        Shows a progress bar using tqdm.
-        """
-
-        if client is None:
-            client = DeepOriginClient()
-
-        from deeporigin.functions.molprops import molprops
-
-        try:
-            responses = molprops(
-                smiles_list=self.to_smiles(),
-                use_cache=use_cache,
-                properties={"pains", "logs", "logd", "herg", "cyp", "logp", "ames"},
-                client=client,
-            )
-            for response, ligand in zip(responses, self.ligands, strict=True):
-                for key, value in response.items():
-                    ligand.set_property(key, value)
-
-        except Exception as e:
-            raise DeepOriginException(
-                title="Failed to predict ADMET properties",
-                message=f"Failed to predict ADMET properties: {str(e)}",
-            ) from e
 
     @beartype
     def to_sdf(

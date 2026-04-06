@@ -56,6 +56,7 @@ def dock(
     protein: Protein,
     ligand: Ligand,
     pocket: Pocket,
+    tool_version: str = DOCKING_FUNCTION_VERSION,
     quote: bool = False,
 ) -> FunctionResult:
     """Run molecular docking using the DeepOrigin API.
@@ -66,6 +67,8 @@ def dock(
         ligand: Ligand object to dock.
         pocket: Pocket object defining the docking region. Box size
             and pocket center are derived from the pocket.
+        tool_version: Function version for ``deeporigin.docking`` (defaults to
+            :data:`~deeporigin.platform.constants.DOCKING_FUNCTION_VERSION`).
         quote: If True, request a cost estimate without executing.
 
     Returns:
@@ -108,7 +111,7 @@ def dock(
 
     response = client.functions.run(
         key=DOCKING_FUNCTION_KEY,
-        version=DOCKING_FUNCTION_VERSION,
+        version=tool_version,
         params=payload,
         quote=quote,
     )

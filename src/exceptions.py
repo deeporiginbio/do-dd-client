@@ -34,9 +34,13 @@ class DeepOriginException(Exception):
 
             ip = get_ipython()
             if ip is not None and "pytest" not in sys.modules:
-                # In notebook, let the custom handler display HTML
-                # Return minimal string to avoid double display
-                return self.title
+                # Prefer full detail in tracebacks and logging; the HTML card is separate.
+                lines = [self.title]
+                if self.body:
+                    lines.append(self.body)
+                if self.footer:
+                    lines.append(self.footer)
+                return "\n".join(lines)
         except ImportError:
             # IPython is not available; fall back to console output formatting below.
             pass

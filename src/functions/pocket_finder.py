@@ -15,6 +15,7 @@ def find_pockets(
     pocket_count: int = 5,
     pocket_min_size: int = 30,
     client: DeepOriginClient,
+    tool_version: str = POCKET_FINDER_FUNCTION_VERSION,
     quote: bool = False,
 ) -> FunctionResult:
     """Find protein binding pockets in a PDB structure.
@@ -27,6 +28,8 @@ def find_pockets(
         pocket_count: Maximum number of pockets to detect. Defaults to 5.
         pocket_min_size: Minimum size of pockets to consider. Defaults to 30.
         client: Authenticated Deep Origin client.
+        tool_version: Function version for ``deeporigin.pocketfinder`` (defaults to
+            :data:`~deeporigin.platform.constants.POCKET_FINDER_FUNCTION_VERSION`).
         quote: If True, request a cost estimate without executing.
 
     Returns:
@@ -51,7 +54,7 @@ def find_pockets(
 
     response = client.functions.run(
         key=POCKET_FINDER_FUNCTION_KEY,
-        version=POCKET_FINDER_FUNCTION_VERSION,
+        version=tool_version,
         params=payload,
         quote=quote,
     )

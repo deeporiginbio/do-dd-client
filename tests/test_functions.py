@@ -3,16 +3,20 @@
 These are meant to be run against a live instance.
 """
 
+from unittest.mock import MagicMock
+
 import pytest
 
 from conftest import check_function_exists
 from deeporigin.drug_discovery import (
     Ligand,
+    Molprops,
     Pocket,
     PocketFinder,
     Protein,
 )
 from deeporigin.functions.docking import dock
+from deeporigin.functions.pocket_finder import find_pockets
 from deeporigin.functions.result import FunctionResult
 from deeporigin.functions.sysprep import for_abfe
 from deeporigin.platform import DeepOriginClient
@@ -26,22 +30,28 @@ from deeporigin.platform.constants import (
     SYSPREP_FUNCTION_KEY,
     SYSPREP_FUNCTION_VERSION,
 )
+from deeporigin.utils.constants import MOLPROPS_PROPERTY_KEYS
 
 
 def test_molprops_lv2(client: DeepOriginClient):
-    if not check_function_exists(client, f"{MOL_PROPS_FUNCTION_KEY_PREFIX}-logp"):
-        pytest.skip("Mol props function does not exist")
+    missing_molprops = [
+        f"{MOL_PROPS_FUNCTION_KEY_PREFIX}-{p}"
+        for p in sorted(MOLPROPS_PROPERTY_KEYS)
+        if not check_function_exists(client, f"{MOL_PROPS_FUNCTION_KEY_PREFIX}-{p}")
+    ]
+    if missing_molprops:
+        pytest.skip(f"Mol props functions not available: {missing_molprops}")
 
     ligand = Ligand.from_smiles(
         "Fc1c(-c2cccc3ccccc23)ncc2c(N3C[C@H]4CC[C@@H](C3)N4)nc(OCC34CCCN3CCC4)nc12"
     )
 
-    props = ligand.admet_properties(use_cache=False)
+    mp = Molprops(ligands=[ligand], client=client)
+    mp.run()
 
-    assert isinstance(props, dict), "Expected a dictionary"
-    assert "logP" in props, "Expected logP to be in the properties"
-    assert "logD" in props, "Expected logD to be in the properties"
-    assert "logS" in props, "Expected logS to be in the properties"
+    assert ligand.get_property("logP") is not None or ligand.log_p is not None
+    assert ligand.get_property("logD") is not None or ligand.log_d is not None
+    assert ligand.get_property("logS") is not None or ligand.log_s is not None
 
 
 def test_pocket_finder_quote_lv1(
@@ -115,6 +125,81 @@ def test_pocket_finder_lv2(
         assert pocket_from_result.protein_id == protein.id, (
             "Pocket protein_id should match protein.id"
         )
+
+
+def test_dock_respects_tool_version_override() -> None:
+    """``dock()`` passes ``tool_version`` through to ``functions.run``."""
+    client = MagicMock()
+    client.functions.run.return_value = {"id": "exec-1", "status": "Completed"}
+
+    protein = MagicMock()
+    protein.id = "p1"
+    protein.remote_path = "/remote/protein.pdb"
+
+    ligand = MagicMock()
+    ligand.id = "l1"
+    ligand.smiles = "CCO"
+
+    pocket = MagicMock()
+    pocket.center = [0.0, 0.0, 0.0]
+    pocket.id = "pk1"
+    pocket.box_size_x = None
+    pocket.box_size_y = None
+    pocket.box_size_z = None
+
+    custom = "9.9.9-test"
+    dock(
+        client=client,
+        protein=protein,
+        ligand=ligand,
+        pocket=pocket,
+        tool_version=custom,
+    )
+
+    run_kw = client.functions.run.call_args.kwargs
+    assert run_kw["key"] == DOCKING_FUNCTION_KEY
+    assert run_kw["version"] == custom
+
+    dock(
+        client=client,
+        protein=protein,
+        ligand=ligand,
+        pocket=pocket,
+    )
+    run_kw_default = client.functions.run.call_args.kwargs
+    assert run_kw_default["version"] == DOCKING_FUNCTION_VERSION
+
+
+def test_find_pockets_respects_tool_version_override() -> None:
+    """``find_pockets()`` passes ``tool_version`` through to ``functions.run``."""
+    client = MagicMock()
+    client.functions.run.return_value = {"id": "exec-pf", "status": "Completed"}
+
+    protein = MagicMock()
+    protein.id = "p1"
+    protein.remote_path = "/remote/protein.pdb"
+
+    custom = "8.8.8-pf"
+    find_pockets(
+        protein=protein,
+        pocket_count=2,
+        pocket_min_size=40,
+        client=client,
+        tool_version=custom,
+    )
+
+    run_kw = client.functions.run.call_args.kwargs
+    assert run_kw["key"] == POCKET_FINDER_FUNCTION_KEY
+    assert run_kw["version"] == custom
+
+    find_pockets(
+        protein=protein,
+        pocket_count=2,
+        pocket_min_size=40,
+        client=client,
+    )
+    run_kw_default = client.functions.run.call_args.kwargs
+    assert run_kw_default["version"] == POCKET_FINDER_FUNCTION_VERSION
 
 
 def test_docking_lv2(

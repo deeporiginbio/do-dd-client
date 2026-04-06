@@ -261,6 +261,24 @@ def test_retry_on_post_request(mock_client_config):
     assert call_count["count"] == 2
 
 
+def test_post_json_single_attempt_when_retry_disabled(mock_client_config):
+    """POST with retry=False does not repeat on retryable HTTP errors."""
+    call_count = {"count": 0}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        call_count["count"] += 1
+        return httpx.Response(500, json={"error": "Server Error"}, request=request)
+
+    transport = httpx.MockTransport(handler)
+    client = DeepOriginClient.from_local(max_retries=3)
+    client._client = httpx.Client(transport=transport, base_url="http://test")
+
+    with pytest.raises(DeepOriginException):
+        client.post_json("/test", body={"data": "test"}, retry=False)
+
+    assert call_count["count"] == 1
+
+
 def test_retry_preserves_request_body(mock_client_config):
     """Test that retries preserve the original request body."""
     call_count = {"count": 0}
