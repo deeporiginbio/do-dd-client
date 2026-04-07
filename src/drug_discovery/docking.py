@@ -1,24 +1,4 @@
-"""Docking -- unified sync + async molecular docking execution.
-
-Usage::
-
-    docking = Docking(protein=protein, ligands=ligands, pocket=pocket)
-
-    # sync (blocking, small sets)
-    poses = docking.run()
-
-    # async (persisted, large batches)
-    docking.quote()
-    docking.start()
-    # Jupyter — non-blocking cell (like legacy Job.watch):
-    #     task = await docking.watch()
-    # Jupyter — block until the job finishes:
-    #     await docking.watch_async()
-    # Script (blocking): asyncio.run(docking.watch_async())
-    docking.sync()
-    df = docking.get_results()
-    poses = docking.get_poses()
-"""
+"""A unified class to perform molecular docking on DeepOrigin."""
 
 import concurrent.futures
 import os
