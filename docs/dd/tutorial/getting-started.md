@@ -3,7 +3,7 @@
 This document describes how to use the Drug Discovery toolbox to perform docking and run ABFE and RBFE runs on Deep Origin.
 
 !!! warning "Deprecated: `Complex`"
-    The [`Complex`](../ref/complex.md) class is deprecated. New code should use [`Docking`](../ref/docking.md), [`ABFE`](../ref/abfe.md), [`RBFE`](../ref/rbfe.md), [`PocketFinder`](../how-to/find-pockets.md), and `SystemPrep` instead. The steps below document the legacy `Complex` workflow.
+    The [`Complex`](../ref/complex.md) class will be deprecated soon. New code should use the (soon to be released) [`Docking`](../ref/docking.md), [`ABFE`](../ref/abfe.md), [`RBFE`](../ref/rbfe.md), [`PocketFinder`](../how-to/find-pockets.md), and `SystemPrep` instead. The steps below document the legacy `Complex` workflow.
 
 ## Prerequisites 
 

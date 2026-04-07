@@ -1,5 +1,8 @@
 # `deeporigin.drug_discovery.rbfe`
 
+!!! warning "Not yet released"
+    This class isn't yet available on the latest release of the deeporigin client. Use the `Complex` class and methods on `Protein` and `Ligand` objects. 
+
 ::: src.drug_discovery.rbfe
     options:
       docstring_style: google
