@@ -57,6 +57,7 @@ def dock(
     ligand: Ligand,
     pocket: Pocket,
     tool_version: str = DOCKING_FUNCTION_VERSION,
+    effort: int = 3,
     quote: bool = False,
 ) -> FunctionResult:
     """Run molecular docking using the DeepOrigin API.
@@ -69,11 +70,16 @@ def dock(
             and pocket center are derived from the pocket.
         tool_version: Function version for ``deeporigin.docking`` (defaults to
             :data:`~deeporigin.platform.constants.DOCKING_FUNCTION_VERSION`).
+        effort: Docking effort level (1 = fastest, 5 = most thorough).
         quote: If True, request a cost estimate without executing.
 
     Returns:
         FunctionResult wrapping the full API response.
     """
+    if not 1 <= effort <= 5:
+        raise DeepOriginException(
+            f"effort must be between 1 and 5 inclusive, got {effort}"
+        ) from None
 
     protein.sync(lazy=True, client=client)
     ligand.sync(lazy=True, client=client)
@@ -104,8 +110,9 @@ def dock(
         pocket_data["id"] = pocket.id
 
     payload = {
+        "effort": effort,
         "protein": protein_data,
-        "ligand": ligand_data,
+        "ligands": [ligand_data],
         "pocket": pocket_data,
     }
 

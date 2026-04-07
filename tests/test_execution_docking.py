@@ -44,6 +44,7 @@ def test_docking_from_dto_maps_async_execution_fields_from_fixture(
     assert docking.status == dto["status"]
     assert docking.app == dto["app"]
     assert docking.approve_amount == dto["approveAmount"]
+    assert docking.effort == Docking.effort
 
 
 def test_docking_from_dto_raises_on_tool_key_mismatch(client) -> None:
@@ -66,7 +67,9 @@ def test_docking_accepts_single_ligand(
         protein=registered_protein,
         pocket=registered_pocket,
         ligand=registered_ligand,
+        effort=5,
     )
+    assert docking.effort == 5
     assert isinstance(docking.ligands, LigandSet)
     assert len(docking.ligands) == 1
     assert list(docking.ligands)[0].smiles == registered_ligand.smiles

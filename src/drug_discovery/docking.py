@@ -79,10 +79,12 @@ class Docking(
         protein: Target protein structure.
         ligands: Set of ligands to dock.
         pocket: Binding pocket defining the docking box.
+        effort: Docking effort level (1 = fastest, 5 = most thorough).
         name: Execution label, set automatically from protein and ligands unless overridden.
     """
 
     tool_key: str = DOCKING_TOOL_KEY
+    effort: int = 3
 
     def __init__(
         self,
@@ -93,6 +95,7 @@ class Docking(
         ligands: LigandSet | None = None,
         smiles_list: list[str] | None = None,
         tool_version: str = DOCKING_TOOL_VERSION,
+        effort: int = 3,
         client: DeepOriginClient | None = None,
         name: str | None = None,
     ) -> None:
@@ -109,6 +112,8 @@ class Docking(
                 and ``ligands``. Converted to a ``LigandSet`` during construction.
             tool_version: Platform tool version to run. Settable so callers
                 can pin or upgrade independently of the SDK release.
+            effort: Docking effort level (1 = fastest, 5 = most thorough).
+                Defaults to :attr:`effort` on the class (3).
             client: Optional API client.
             name: Optional execution label. When omitted, set from ``protein.name``
                 and the ligands (e.g. ``Docking kras to 5 ligands.`` or
@@ -130,6 +135,7 @@ class Docking(
 
         super().__init__(client=client)
         self.tool_version = tool_version
+        self.effort = effort
 
         self._protein = protein
         self._pocket = pocket
@@ -247,6 +253,7 @@ class Docking(
                     pocket=self.pocket,
                     ligand=ligand,
                     client=client,
+                    effort=self.effort,
                     quote=False,
                 )
             )
@@ -377,6 +384,7 @@ class Docking(
             pocket_params["id"] = self.pocket.id
 
         params = {
+            "effort": self.effort,
             "pocket": pocket_params,
             "protein": {
                 "id": self.protein.id,
@@ -457,6 +465,8 @@ class Docking(
 
         instance._protein = fut_protein.result()
         instance._ligands = fut_ligands.result()
+        raw_effort = inputs.get("effort")
+        instance.effort = int(raw_effort) if raw_effort is not None else cls.effort
         if fut_pocket is not None:
             instance._pocket = fut_pocket.result()
         else:

@@ -50,17 +50,22 @@ PROVIDER = Literal["ufa", "s3"]
 DOCKING_TOOL_KEY = "deeporigin.bulk-docking"
 DOCKING_TOOL_VERSION = "3.0.0-22"
 DOCKING_FUNCTION_KEY = "deeporigin.docking"
-DOCKING_FUNCTION_VERSION = "1.0.0"
+DOCKING_FUNCTION_VERSION = "1.0.1"
+
 POCKET_FINDER_FUNCTION_KEY = "deeporigin.pocketfinder"
 POCKET_FINDER_FUNCTION_VERSION = "0.5.4"
+
 CONSTRAINED_DOCKING_FUNCTION_KEY = "deeporigin.constrained-docking"
+
 MOL_PROPS_FUNCTION_KEY_PREFIX = "deeporigin.mol-props"
 PROTONATION_FUNCTION_KEY = "deeporigin.mol-props-protonation"
+MOL_PROPS_FUNCTION_VERSION = "0.2.0"
+
 ABFE_TOOL_KEY = "deeporigin.abfe-end-to-end"
 ABFE_TOOL_VERSION = "0.2.37"
+
 SYSPREP_FUNCTION_KEY = "deeporigin.system-prep"
 SYSPREP_FUNCTION_VERSION = "0.7.6"
-MOL_PROPS_FUNCTION_VERSION = "0.2.0"
 
 FUNCTION_VERSION_MAP: dict[str, str] = {
     DOCKING_FUNCTION_KEY: DOCKING_FUNCTION_VERSION,
