@@ -200,13 +200,16 @@ class Docking(
         parts.append(")")
         return "\n".join(parts)
 
-    def _quote_impl(self) -> None:
-        """Request a cost estimate for docking.
+    def get_quote_execution_dto(self) -> dict[str, Any]:
+        """Build the docking quote payload and return the tools API execution DTO.
 
-        Submits an execution with ``approve_amount=0`` to get a quotation
-        without running the job. Populates ``self.estimate``.
+        Submits ``approveAmount=0`` via ``executions.create``. Parsing and state
+        assignment are handled by :meth:`~deeporigin.drug_discovery.execution_mixins.QuoteMixin._apply_quotation_dto`.
+
+        Returns:
+            Raw execution dictionary from the platform.
         """
-
+        self._ensure_platform_inputs()
         params, metadata = self._build_tool_inputs()
 
         payload: dict[str, Any] = {
@@ -218,24 +221,11 @@ class Docking(
             payload["name"] = self.name
         payload["approveAmount"] = 0
 
-        execution_dto = self.client.executions.create(
+        return self.client.executions.create(
             data=payload,
             tool_key=self.tool_key,
             tool_version=self.tool_version,
         )
-
-        import json
-
-        print(json.dumps(execution_dto, indent=4))
-
-        quotation = execution_dto.get("quotationResult") or {}
-        successful = quotation.get("successfulQuotations") or []
-        if successful:
-            price = successful[0].get("priceTotal")
-            if price is not None:
-                self._estimate = float(price)
-                self._id = execution_dto.get("executionId")
-                self.status = execution_dto.get("status")
 
     def run(self) -> LigandSet:
         """Execute docking synchronously (blocking).
@@ -319,6 +309,7 @@ class Docking(
             approve_amount: Pre-approved spend amount.
         """
 
+        self._ensure_platform_inputs()
         params, metadata = self._build_tool_inputs()
 
         payload: dict[str, Any] = {
@@ -339,23 +330,26 @@ class Docking(
         self._id = execution_dto.get("executionId")
         self.status = execution_dto.get("status")
 
-    def _build_tool_inputs(self) -> tuple[dict, dict]:
-        """Build params and metadata for a tool run.
+    def _ensure_platform_inputs(self) -> None:
+        """Sync protein and ligands to the data platform.
 
-        Syncs protein and ligands to the platform, then constructs
-        the params and metadata passed to ``client.executions.create``.
+        Docking tool inputs use only ligand ``id`` and ``smiles`` (see
+        :func:`_ligand_tool_input_row`); ligand structure files are not required.
+        Mutates remote state so :meth:`_build_tool_inputs` can read IDs and paths.
+        """
+        self.protein.sync(client=self.client, lazy=True)
+        self.ligands.sync(client=self.client, lazy=True)
+
+    def _build_tool_inputs(self) -> tuple[dict, dict]:
+        """Build params and metadata for ``client.executions.create``.
+
+        Does not sync or upload; call :meth:`_ensure_platform_inputs` first when
+        inputs may not yet exist on the platform.
 
         Returns:
             A tuple of (params, metadata).
         """
-        self.protein.sync(client=self.client)
-        if self.ligands is not None:
-            self.ligands.sync(client=self.client)
-
         ligands = list(self.ligands)
-        for lig in ligands:
-            lig.upload(client=self.client)
-
         default_box = float(2 * np.cbrt(self.pocket.volume or 0))
         box_size_x = (
             self.pocket.box_size_x

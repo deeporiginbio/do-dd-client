@@ -2,6 +2,7 @@
 
 import os
 from pathlib import Path
+from typing import Any
 from unittest.mock import patch
 
 import pytest
@@ -47,6 +48,22 @@ class AsyncJob(Execution, QuoteMixin, AsyncExecutableMixin):
     def __init__(self, name: str) -> None:
         super().__init__()
         self.name = name
+
+
+class ToolsApiQuoteJob(Execution, QuoteMixin):
+    """Minimal tools-API quote job for QuoteMixin DTO tests."""
+
+    tool_key = "test.tools-quote"
+    tool_version = "0.0.1"
+
+    def __init__(self, dto: dict[str, Any]) -> None:
+        """Store ``dto`` for :meth:`get_quote_execution_dto` to return."""
+        super().__init__()
+        self._quote_dto = dto
+
+    def get_quote_execution_dto(self) -> dict[str, Any]:
+        """Return the canned execution DTO supplied at construction."""
+        return self._quote_dto
 
 
 # ===========================================================================
@@ -209,7 +226,7 @@ class TestQuoteMixin:
     """QuoteMixin.quote() guards and delegates to _quote_impl."""
 
     def test_default_quote_impl_raises(self):
-        """Unoverridden _quote_impl() raises NotImplementedError."""
+        """Unoverridden get_quote_execution_dto() raises NotImplementedError."""
         mixin = QuoteMixin()
         with pytest.raises(NotImplementedError):
             mixin.quote()
@@ -231,9 +248,74 @@ class TestQuoteMixin:
             job.quote()
 
     def test_quote_allowed_when_fresh(self):
-        """quote() passes the guard when status is None and id is None."""
+        """quote() passes the guard then raises NotImplementedError from get_quote_execution_dto."""
         job = AsyncJob("x")
         with pytest.raises(NotImplementedError):
+            job.quote()
+
+
+class TestQuoteMixinToolsApi:
+    """Shared _apply_quotation_dto validation for tools-API quotes."""
+
+    def test_quote_sets_state_from_valid_dto(self) -> None:
+        """quote() sets estimate, id, and status from a valid execution DTO."""
+        dto = {
+            "executionId": "ex-1",
+            "status": "Quoted",
+            "quotationResult": {
+                "successfulQuotations": [{"priceTotal": 12.5}],
+            },
+        }
+        job = ToolsApiQuoteJob(dto)
+        job.quote()
+        assert job.estimate == 12.5
+        assert job.id == "ex-1"
+        assert job.status == "Quoted"
+
+    def test_quote_raises_when_quotation_result_missing(self) -> None:
+        """quote() raises RuntimeError when quotationResult is absent."""
+        dto = {"executionId": "ex-1", "status": "Quoted"}
+        job = ToolsApiQuoteJob(dto)
+        with pytest.raises(
+            RuntimeError, match="Quote failed: quotationResult is missing"
+        ):
+            job.quote()
+
+    def test_quote_raises_when_successful_quotations_missing(self) -> None:
+        """quote() raises RuntimeError when successfulQuotations is absent."""
+        dto = {
+            "executionId": "ex-1",
+            "status": "Quoted",
+            "quotationResult": {},
+        }
+        job = ToolsApiQuoteJob(dto)
+        with pytest.raises(
+            RuntimeError, match="Quote failed: successfulQuotations is missing"
+        ):
+            job.quote()
+
+    def test_quote_raises_when_no_successful_quotations(self) -> None:
+        """quote() raises RuntimeError when successfulQuotations is empty."""
+        dto = {
+            "executionId": "ex-1",
+            "status": "Quoted",
+            "quotationResult": {"successfulQuotations": []},
+        }
+        job = ToolsApiQuoteJob(dto)
+        with pytest.raises(
+            RuntimeError, match="Quote failed: no successful quotations"
+        ):
+            job.quote()
+
+    def test_quote_raises_when_price_total_missing(self) -> None:
+        """quote() raises RuntimeError when priceTotal is absent."""
+        dto = {
+            "executionId": "ex-1",
+            "status": "Quoted",
+            "quotationResult": {"successfulQuotations": [{}]},
+        }
+        job = ToolsApiQuoteJob(dto)
+        with pytest.raises(RuntimeError, match="Quote failed: priceTotal is missing"):
             job.quote()
 
 

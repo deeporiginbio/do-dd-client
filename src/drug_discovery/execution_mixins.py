@@ -2,7 +2,8 @@
 
 These mixins are combined with ``Execution`` to build concrete types:
 
-- ``QuoteMixin`` -- cost estimation via the functions or tools API
+- ``QuoteMixin`` -- cost estimation via the functions or tools API (tools API:
+  implement ``get_quote_execution_dto``; shared validation in ``_apply_quotation_dto``)
 - ``SyncExecutableMixin`` -- blocking, stateless execution via ``run()``
 - ``AsyncExecutableMixin`` -- async, stateful execution via ``start()``
 - ``JupyterVizMixin`` -- notebook rendering via ``_repr_html_()``
@@ -12,7 +13,7 @@ These mixins are combined with ``Execution`` to build concrete types:
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from deeporigin.platform.client import DeepOriginClient
 from deeporigin.platform.constants import PlatformStatus
@@ -26,7 +27,13 @@ if TYPE_CHECKING:
 class QuoteMixin:
     """Adds ``quote()`` to request a cost estimate before execution.
 
-    Subclasses override ``_quote_impl()`` rather than ``quote()`` directly.
+    Tools-API executors implement :meth:`get_quote_execution_dto` to build the
+    payload and return the raw execution DTO from ``executions.create``; shared
+    parsing lives in :meth:`_apply_quotation_dto`.
+
+    Function-based flows may override :meth:`_quote_impl` entirely instead of
+    :meth:`get_quote_execution_dto`.
+
     ``quote()`` enforces that a quotation can only be requested once: it raises
     if ``status`` is already ``"Quoted"`` or an execution ID is already assigned.
     """
@@ -54,13 +61,73 @@ class QuoteMixin:
             )
         self._quote_impl()
 
-    def _quote_impl(self) -> None:
-        """Perform the actual quotation request. Must be overridden by subclasses.
+    def get_quote_execution_dto(self) -> dict[str, Any]:
+        """Build the quote payload and return the tools API execution DTO.
+
+        Tools-API subclasses implement this to call ``client.executions.create``
+        with ``approveAmount: 0``. Function-based subclasses that override
+        :meth:`_quote_impl` instead do not implement this method.
+
+        Returns:
+            Raw execution dictionary from the platform.
 
         Raises:
-            NotImplementedError: Always, unless overridden.
+            NotImplementedError: If neither this method nor a full
+                :meth:`_quote_impl` override is provided.
         """
-        raise NotImplementedError
+        raise NotImplementedError(
+            "Subclasses using the tools API must implement get_quote_execution_dto(), "
+            "or override _quote_impl() for a non-tools quote path."
+        )
+
+    def _apply_quotation_dto(self, execution_dto: dict[str, Any]) -> None:
+        """Validate ``quotationResult`` and set estimate, id, and status.
+
+        Args:
+            execution_dto: Response body from ``executions.create`` or equivalent.
+
+        Raises:
+            RuntimeError: If ``quotationResult`` or ``successfulQuotations`` is
+                missing or invalid, there are no successful quotations, or
+                ``priceTotal`` is missing on the first successful row.
+        """
+        if (
+            "quotationResult" not in execution_dto
+            or execution_dto["quotationResult"] is None
+        ):
+            raise RuntimeError("Quote failed: quotationResult is missing.")
+        quotation = execution_dto["quotationResult"]
+        if not isinstance(quotation, dict):
+            raise RuntimeError("Quote failed: quotationResult is invalid.")
+        if (
+            "successfulQuotations" not in quotation
+            or quotation["successfulQuotations"] is None
+        ):
+            raise RuntimeError("Quote failed: successfulQuotations is missing.")
+        successful = quotation["successfulQuotations"]
+        if not isinstance(successful, list):
+            raise RuntimeError("Quote failed: successfulQuotations is invalid.")
+        if not successful:
+            raise RuntimeError("Quote failed: no successful quotations.")
+        price = successful[0].get("priceTotal")
+        if price is None:
+            raise RuntimeError("Quote failed: priceTotal is missing.")
+
+        self._estimate = float(price)
+        self._id = execution_dto.get("executionId")
+        self.status = execution_dto.get("status")
+
+    def _quote_impl(self) -> None:
+        """Fetch a tools API quote DTO and apply it to this execution.
+
+        Default for tools-API jobs. Override entirely for function-based quoting.
+
+        Raises:
+            NotImplementedError: If :meth:`get_quote_execution_dto` is not implemented.
+            RuntimeError: If the API response fails quotation validation.
+        """
+        dto = self.get_quote_execution_dto()
+        self._apply_quotation_dto(dto)
 
 
 class SyncExecutableMixin:

@@ -15,7 +15,7 @@ Usage::
 """
 
 from dataclasses import dataclass
-from typing import Self
+from typing import Any, Self
 
 from beartype import beartype
 import pandas as pd
@@ -377,11 +377,14 @@ class ABFE(Execution, QuoteMixin, AsyncExecutableMixin, NotebookWatchMixin):
         """Prevent modification of params after construction."""
         raise AttributeError("params can only be set in the constructor")
 
-    def _quote_impl(self) -> None:
-        """Request a cost estimate for the ABFE calculation.
+    def get_quote_execution_dto(self) -> dict[str, Any]:
+        """Build the ABFE quote payload and return the tools API execution DTO.
 
-        Populates ``self.estimate``. Uses the tools API with
-        ``approve_amount=0`` to get a quotation.
+        Uses ``approveAmount=0`` via ``executions.create``. Parsing and state
+        assignment are handled by :meth:`~deeporigin.drug_discovery.execution_mixins.QuoteMixin._apply_quotation_dto`.
+
+        Returns:
+            Raw execution dictionary from the platform.
         """
         payload = {
             "inputs": self._build_params(),
@@ -392,20 +395,11 @@ class ABFE(Execution, QuoteMixin, AsyncExecutableMixin, NotebookWatchMixin):
         if self.name is not None:
             payload["name"] = self.name
 
-        execution_dto = self.client.executions.create(
+        return self.client.executions.create(
             data=payload,
             tool_key=self.tool_key,
             tool_version=self.tool_version,
         )
-
-        quotation = execution_dto.get("quotationResult", {})
-        successful = quotation.get("successfulQuotations", [])
-        if successful:
-            price = successful[0].get("priceTotal")
-            if price is not None:
-                self._estimate = float(price)
-                self._id = execution_dto.get("executionId")
-                self.status = execution_dto.get("status")
 
     @beartype
     def _start_impl(
