@@ -206,21 +206,30 @@ class Docking(
         Submits an execution with ``approve_amount=0`` to get a quotation
         without running the job. Populates ``self.estimate``.
         """
-        from deeporigin.drug_discovery import utils
 
         params, metadata = self._build_tool_inputs()
 
-        execution_dto = utils._start_tool_run(
-            params=params,
-            metadata=metadata,
-            tool="Docking",
+        payload: dict[str, Any] = {
+            "inputs": params,
+            "outputs": {},
+            "metadata": metadata,
+        }
+        if self.name is not None:
+            payload["name"] = self.name
+        payload["approveAmount"] = 0
+
+        execution_dto = self.client.executions.create(
+            data=payload,
+            tool_key=self.tool_key,
             tool_version=self.tool_version,
-            client=self.client,
-            approve_amount=0,
         )
 
-        quotation = execution_dto.get("quotationResult", {})
-        successful = quotation.get("successfulQuotations", [])
+        import json
+
+        print(json.dumps(execution_dto, indent=4))
+
+        quotation = execution_dto.get("quotationResult") or {}
+        successful = quotation.get("successfulQuotations") or []
         if successful:
             price = successful[0].get("priceTotal")
             if price is not None:

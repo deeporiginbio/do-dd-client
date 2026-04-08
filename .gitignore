@@ -5,6 +5,8 @@ uv.lock
 scratch/
 __marimo__/*
 
+scripts/*.html
+
 # notebooks
 .ipynb_checkpoints
 docs/notebooks/dirty/

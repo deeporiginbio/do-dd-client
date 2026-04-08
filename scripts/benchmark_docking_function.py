@@ -7,6 +7,10 @@ early.
 If the output CSV already exists, completed (ligand_id, effort, repeat_number)
 combinations are skipped so you can resume without redoing finished runs. Docking
 failures are logged and do not stop the benchmark.
+
+Rows missing ``binding_energy`` are filled at startup from
+``client.results.get(compute_job_id=execution_id)`` (lowest score per job), so
+re-running the script backfills older CSVs without re-docking.
 """
 
 from __future__ import annotations
@@ -29,6 +33,7 @@ from deeporigin.drug_discovery import (
     Pocket,
     Protein,
 )
+from deeporigin.platform.client import DeepOriginClient
 
 DEFAULT_OUTPUT_CSV = Path(__file__).resolve().parent / "benchmark_docking_results.csv"
 
@@ -63,6 +68,94 @@ def _best_binding_energy(poses: LigandSet) -> float | None:
         except (TypeError, ValueError):
             continue
     return min(values) if values else None
+
+
+@beartype
+def _lowest_binding_energy_from_results(
+    client: DeepOriginClient,
+    execution_id: str,
+) -> float | None:
+    """Minimum ``binding_energy`` from result-explorer rows for a compute job.
+
+    Uses :meth:`~deeporigin.platform.results.Results.get` with
+    ``compute_job_id`` (same as docking execution id).     Pose records store scores under ``data["binding_energy"]``.
+
+    Args:
+        client: API client.
+        execution_id: Docking execution / compute job id.
+
+    Returns:
+        Lowest binding energy in kcal/mol, or ``None`` if no scores are present.
+    """
+    response = client.results.get(compute_job_id=execution_id, limit=None)
+    values: list[float] = []
+    for record in response.get("data") or []:
+        if not isinstance(record, dict):
+            continue
+        data = record.get("data")
+        if not isinstance(data, dict):
+            continue
+        raw = data.get("binding_energy")
+        if raw is None:
+            continue
+        try:
+            values.append(float(raw))
+        except (TypeError, ValueError):
+            continue
+    return min(values) if values else None
+
+
+@beartype
+def _is_missing_binding_energy(value: object) -> bool:
+    """True if CSV cell should be treated as missing binding energy."""
+    try:
+        if pd.isna(value):
+            return True
+    except (TypeError, ValueError):
+        pass
+    if isinstance(value, str) and value.strip() == "":
+        return True
+    return False
+
+
+@beartype
+def backfill_binding_energies(
+    *,
+    output_csv: Path,
+    client: DeepOriginClient | None = None,
+) -> int:
+    """Write lowest binding energies from result-explorer into rows that lack them.
+
+    Args:
+        output_csv: Benchmark CSV path.
+        client: API client; default :class:`~deeporigin.platform.client.DeepOriginClient`.
+
+    Returns:
+        Number of rows updated.
+    """
+    if client is None:
+        client = DeepOriginClient()
+    if not output_csv.is_file() or output_csv.stat().st_size == 0:
+        return 0
+    df = pd.read_csv(output_csv)
+    if "binding_energy" not in df.columns or "execution_id" not in df.columns:
+        return 0
+    updated = 0
+    for idx, row in df.iterrows():
+        if not _is_missing_binding_energy(row["binding_energy"]):
+            continue
+        eid = row["execution_id"]
+        if _is_missing_binding_energy(eid):
+            continue
+        execution_id = str(eid).strip()
+        low = _lowest_binding_energy_from_results(client, execution_id)
+        if low is None:
+            continue
+        df.at[idx, "binding_energy"] = low
+        updated += 1
+    if updated:
+        df.to_csv(output_csv, index=False)
+    return updated
 
 
 @beartype
@@ -133,7 +226,14 @@ def _run_one_docking(
         t0 = time.perf_counter()
         poses = docking.run()
         elapsed = time.perf_counter() - t0
-        binding_energy = _best_binding_energy(poses)
+        binding_energy: float | None = None
+        if docking.id is not None:
+            binding_energy = _lowest_binding_energy_from_results(
+                docking.client,
+                docking.id,
+            )
+        if binding_energy is None:
+            binding_energy = _best_binding_energy(poses)
     except Exception:
         print(
             f"[benchmark] ERROR ligand_id={ligand.id!r} "
@@ -176,6 +276,14 @@ def run_benchmark(*, output_csv: Path | None = None) -> pd.DataFrame:
         (full file contents after the run).
     """
     out_path = output_csv if output_csv is not None else DEFAULT_OUTPUT_CSV
+
+    n_backfill = backfill_binding_energies(output_csv=out_path)
+    if n_backfill:
+        print(
+            f"[benchmark] backfilled binding_energy for {n_backfill} row(s) "
+            f"via result-explorer ({out_path!s})",
+            flush=True,
+        )
 
     completed_keys = _load_completed_run_keys(out_path)
     if completed_keys:

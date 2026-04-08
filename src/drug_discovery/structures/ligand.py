@@ -1252,8 +1252,9 @@ class Ligand(Entity):
         """Sync the ligand to the data platform.
 
         Uploads the ligand file and links to an existing record if one with
-        the same canonical SMILES already exists, otherwise creates a new
-        record via :meth:`register`.
+        the same canonical SMILES already exists (setting ``id`` and
+        ``remote_path`` from the record's ``mol_file`` when present), otherwise
+        creates a new record via :meth:`register`.
 
         Args:
             lazy: If True, skip syncing when the ligand already has an ID.
@@ -1299,6 +1300,9 @@ class Ligand(Entity):
             existing_ligand = data[0]
             if "id" in existing_ligand:
                 self.id = existing_ligand["id"]
+            mol_file = existing_ligand.get("mol_file")
+            if mol_file:
+                self.remote_path = mol_file
             return
 
         self.register(client=client, remote_path=remote_path)
@@ -2459,7 +2463,8 @@ class LigandSet:
         1. Searches the data platform for existing ligands whose
            ``canonical_smiles`` match (batched into a single request via
            ``search_ligands(smiles_list=…)``).
-        2. For ligands that already exist remotely, updates the local ``id``.
+        2. For ligands that already exist remotely, updates the local ``id`` and
+           sets ``remote_path`` from the record's ``mol_file`` when present.
         3. For ligands that are new, uploads files to remote storage (if a
            local_path is present) and batch-creates them in a single API call.
         4. Updates the local ``id`` values from the created records.
@@ -2518,6 +2523,9 @@ class LigandSet:
             record = existing_by_smiles.get(lig.canonical_smiles)
             if record is not None:
                 lig.id = record["id"]
+                mol_file = record.get("mol_file")
+                if mol_file:
+                    lig.remote_path = mol_file
             else:
                 to_create.append(lig)
 
@@ -2536,6 +2544,9 @@ class LigandSet:
             record = created_by_smiles.get(lig.canonical_smiles)
             if record is not None:
                 lig.id = record["id"]
+                mol_file = record.get("mol_file")
+                if mol_file:
+                    lig.remote_path = mol_file
 
     @classmethod
     def from_smiles(cls, smiles: list[str] | set[str]) -> Self:

@@ -1003,6 +1003,11 @@ def test_ligand_set_sync_lv1():
     second_ids = [lig.id for lig in ligands2]
     assert first_ids == second_ids, "IDs should match on re-sync"
 
+    for lig in ligands2:
+        assert lig.remote_path is not None, (
+            f"Expected remote_path after re-sync (existing record) for {lig.smiles}"
+        )
+
 
 def test_ligand_set_sync_lazy_lv1():
     """Test that lazy=True skips ligands that already have an id."""

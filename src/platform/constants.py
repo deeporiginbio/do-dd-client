@@ -47,10 +47,10 @@ NON_FAILED_STATES = {"Succeeded", "Running", "Queued", "Created"}
 PROVIDER = Literal["ufa", "s3"]
 
 # tool, function keys and versions
-DOCKING_TOOL_KEY = "deeporigin.bulk-docking"
-DOCKING_TOOL_VERSION = "3.0.0-22"
+DOCKING_TOOL_KEY = "deeporigin.docking"
+DOCKING_TOOL_VERSION = "3.0.0-26"
 DOCKING_FUNCTION_KEY = "deeporigin.docking"
-DOCKING_FUNCTION_VERSION = "1.0.1"
+DOCKING_FUNCTION_VERSION = "1.0.2"
 
 POCKET_FINDER_FUNCTION_KEY = "deeporigin.pocketfinder"
 POCKET_FINDER_FUNCTION_VERSION = "0.5.4"
