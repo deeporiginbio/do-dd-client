@@ -59,7 +59,7 @@ Key points:
 - Pass `record=True, replace=True` to `DeepOriginClient.get()` so the singleton client records responses.
 - Use `use_cache=False` to force fresh API calls.
 - Pass `client=client` explicitly to ensure the recording client is used.
-- **Each test must be independent.** If a test needs output from another function (e.g. docking needs a pocket), load it from a fixture file rather than calling the upstream function. For example, load a pocket PDB from `tests/fixtures/files/` using `Pocket.from_pdb_file()` instead of calling `protein.find_pockets()`.
+- **Each test must be independent.** If a test needs output from another function (e.g. docking needs a pocket), load it from a fixture file rather than calling the upstream function. For example, load a pocket PDB from `tests/fixtures/files/` using `Pocket.from_pdb_file()` instead of running `PocketFinder` or other remote calls just to obtain a pocket.
 
 ### Step 3: Save referenced files to `tests/fixtures/files/`
 
