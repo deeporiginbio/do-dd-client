@@ -79,10 +79,12 @@ class Docking(
         protein: Target protein structure.
         ligands: Set of ligands to dock.
         pocket: Binding pocket defining the docking box.
+        effort: Docking effort level (1 = fastest, 5 = most thorough).
         name: Execution label, set automatically from protein and ligands unless overridden.
     """
 
     tool_key: str = DOCKING_TOOL_KEY
+    effort: int = 3
 
     def __init__(
         self,
@@ -93,6 +95,7 @@ class Docking(
         ligands: LigandSet | None = None,
         smiles_list: list[str] | None = None,
         tool_version: str = DOCKING_TOOL_VERSION,
+        effort: int = 3,
         client: DeepOriginClient | None = None,
         name: str | None = None,
     ) -> None:
@@ -109,6 +112,8 @@ class Docking(
                 and ``ligands``. Converted to a ``LigandSet`` during construction.
             tool_version: Platform tool version to run. Settable so callers
                 can pin or upgrade independently of the SDK release.
+            effort: Docking effort level (1 = fastest, 5 = most thorough).
+                Defaults to :attr:`effort` on the class (3).
             client: Optional API client.
             name: Optional execution label. When omitted, set from ``protein.name``
                 and the ligands (e.g. ``Docking kras to 5 ligands.`` or
@@ -130,6 +135,7 @@ class Docking(
 
         super().__init__(client=client)
         self.tool_version = tool_version
+        self.effort = effort
 
         self._protein = protein
         self._pocket = pocket
@@ -194,33 +200,32 @@ class Docking(
         parts.append(")")
         return "\n".join(parts)
 
-    def _quote_impl(self) -> None:
-        """Request a cost estimate for docking.
+    def get_quote_execution_dto(self) -> dict[str, Any]:
+        """Build the docking quote payload and return the tools API execution DTO.
 
-        Submits an execution with ``approve_amount=0`` to get a quotation
-        without running the job. Populates ``self.estimate``.
+        Submits ``approveAmount=0`` via ``executions.create``. Parsing and state
+        assignment are handled by :meth:`~deeporigin.drug_discovery.execution_mixins.QuoteMixin._apply_quotation_dto`.
+
+        Returns:
+            Raw execution dictionary from the platform.
         """
-        from deeporigin.drug_discovery import utils
-
+        self._ensure_platform_inputs()
         params, metadata = self._build_tool_inputs()
 
-        execution_dto = utils._start_tool_run(
-            params=params,
-            metadata=metadata,
-            tool="Docking",
-            tool_version=self.tool_version,
-            client=self.client,
-            approve_amount=0,
-        )
+        payload: dict[str, Any] = {
+            "inputs": params,
+            "outputs": {},
+            "metadata": metadata,
+        }
+        if self.name is not None:
+            payload["name"] = self.name
+        payload["approveAmount"] = 0
 
-        quotation = execution_dto.get("quotationResult", {})
-        successful = quotation.get("successfulQuotations", [])
-        if successful:
-            price = successful[0].get("priceTotal")
-            if price is not None:
-                self._estimate = float(price)
-                self._id = execution_dto.get("executionId")
-                self.status = execution_dto.get("status")
+        return self.client.executions.create(
+            data=payload,
+            tool_key=self.tool_key,
+            tool_version=self.tool_version,
+        )
 
     def run(self) -> LigandSet:
         """Execute docking synchronously (blocking).
@@ -247,6 +252,7 @@ class Docking(
                     pocket=self.pocket,
                     ligand=ligand,
                     client=client,
+                    effort=self.effort,
                     quote=False,
                 )
             )
@@ -303,6 +309,7 @@ class Docking(
             approve_amount: Pre-approved spend amount.
         """
 
+        self._ensure_platform_inputs()
         params, metadata = self._build_tool_inputs()
 
         payload: dict[str, Any] = {
@@ -323,23 +330,26 @@ class Docking(
         self._id = execution_dto.get("executionId")
         self.status = execution_dto.get("status")
 
-    def _build_tool_inputs(self) -> tuple[dict, dict]:
-        """Build params and metadata for a tool run.
+    def _ensure_platform_inputs(self) -> None:
+        """Sync protein and ligands to the data platform.
 
-        Syncs protein and ligands to the platform, then constructs
-        the params and metadata passed to ``client.executions.create``.
+        Docking tool inputs use only ligand ``id`` and ``smiles`` (see
+        :func:`_ligand_tool_input_row`); ligand structure files are not required.
+        Mutates remote state so :meth:`_build_tool_inputs` can read IDs and paths.
+        """
+        self.protein.sync(client=self.client, lazy=True)
+        self.ligands.sync(client=self.client, lazy=True)
+
+    def _build_tool_inputs(self) -> tuple[dict, dict]:
+        """Build params and metadata for ``client.executions.create``.
+
+        Does not sync or upload; call :meth:`_ensure_platform_inputs` first when
+        inputs may not yet exist on the platform.
 
         Returns:
             A tuple of (params, metadata).
         """
-        self.protein.sync(client=self.client)
-        if self.ligands is not None:
-            self.ligands.sync(client=self.client)
-
         ligands = list(self.ligands)
-        for lig in ligands:
-            lig.upload(client=self.client)
-
         default_box = float(2 * np.cbrt(self.pocket.volume or 0))
         box_size_x = (
             self.pocket.box_size_x
@@ -377,6 +387,7 @@ class Docking(
             pocket_params["id"] = self.pocket.id
 
         params = {
+            "effort": self.effort,
             "pocket": pocket_params,
             "protein": {
                 "id": self.protein.id,
@@ -457,6 +468,8 @@ class Docking(
 
         instance._protein = fut_protein.result()
         instance._ligands = fut_ligands.result()
+        raw_effort = inputs.get("effort")
+        instance.effort = int(raw_effort) if raw_effort is not None else cls.effort
         if fut_pocket is not None:
             instance._pocket = fut_pocket.result()
         else:

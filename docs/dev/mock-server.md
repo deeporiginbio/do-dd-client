@@ -56,7 +56,7 @@ Where `PORT` is the port number to run the server on (default: 8000).
 
 ## How Function Runs Work
 
-This is the most complex part of the mock server. When client code calls a function (e.g., `protein.dock()` or `protein.find_pockets()`), the following happens end-to-end:
+This is the most complex part of the mock server. When client code calls a function (e.g., `protein.dock()` or `PocketFinder(protein).run()`), the following happens end-to-end:
 
 ### 1. Request hashing and fixture lookup
 

@@ -19,6 +19,7 @@ def _build_result_filter(
     ligand_id: str | list[str] | None = None,
     compute_job_id: str | None = None,
     tool_version: str | None = None,
+    effort: int | None = None,
     pocket_count: int | None = None,
     pocket_min_size: int | None = None,
 ) -> dict[str, Any]:
@@ -33,6 +34,7 @@ def _build_result_filter(
             a list uses ``in``.
         compute_job_id: Compute job ID (passed as-is, no operator wrapper).
         tool_version: Tool version (uses ``eq``).
+        effort: Docking effort level (uses ``eq``).
         pocket_count: Maximum number of pockets (uses ``eq``).
         pocket_min_size: Minimum pocket volume in cubic Angstroms (uses ``eq``).
 
@@ -58,6 +60,8 @@ def _build_result_filter(
         filter_dict["compute_job_id"] = {"eq": compute_job_id}
     if tool_version is not None:
         filter_dict["tool_version"] = {"eq": tool_version}
+    if effort is not None:
+        filter_dict["effort"] = {"eq": effort}
     if pocket_count is not None:
         filter_dict["pocket_count"] = {"eq": pocket_count}
     if pocket_min_size is not None:
@@ -159,6 +163,7 @@ class Results:
         ligand_id: str | list[str] | None = None,
         compute_job_id: str | None = None,
         tool_version: str | None = None,
+        effort: int | None = None,
         limit: int | None = 100,
         select: list[str] | None = None,
     ) -> dict:
@@ -172,6 +177,7 @@ class Results:
             ligand_id: Optional ligand ID (or list of IDs) to filter by.
             compute_job_id: Optional compute job ID to filter by.
             tool_version: Optional tool version to filter by.
+            effort: Optional docking effort level (1–5) to filter by.
             limit: Maximum total number of results to return. Defaults to 1000.
             select: List of fields to select. Defaults to
                 ``["id", "tool_key", "tool_version", "data", "compute_job_id"]``.
@@ -195,6 +201,8 @@ class Results:
             filter_dict["compute_job_id"] = {"eq": compute_job_id}
         if tool_version is not None:
             filter_dict["tool_version"] = {"eq": tool_version}
+        if effort is not None:
+            filter_dict["effort"] = {"eq": effort}
         return self.get(filter_dict=filter_dict, limit=limit, select=select)
 
     def get_pockets(

@@ -172,7 +172,12 @@ class MockServer:
         seen_smiles: set[str] = set()
         now_ts = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z"
 
-        def _ingest_mol(mol: Chem.Mol, *, ligand_id: str | None = None) -> None:
+        def _ingest_mol(
+            mol: Chem.Mol,
+            *,
+            ligand_id: str | None = None,
+            mol_file_remote: str | None = None,
+        ) -> None:
             """Convert an RDKit Mol into a ligand record and store it."""
             canonical = Chem.MolToSmiles(mol)
             if canonical in seen_smiles:
@@ -183,7 +188,7 @@ class MockServer:
             if ligand_id is None:
                 ligand_id = self._make_ligand_id(canonical)
 
-            self._ligands[ligand_id] = {
+            record: dict[str, Any] = {
                 "id": ligand_id,
                 "version": 1,
                 "valid_from": now_ts,
@@ -206,16 +211,22 @@ class MockServer:
                 "rotatable_bond_count": Descriptors.NumRotatableBonds(mol),
                 "tpsa": Descriptors.TPSA(mol),
             }
+            # Align with production search rows: mol_file so sync() can set remote_path
+            # when matching pre-seeded BRD ligands (fixtures under files/testing/).
+            if mol_file_remote is not None:
+                record["mol_file"] = mol_file_remote
+            self._ligands[ligand_id] = record
 
         def _ingest_sdf(path: Path, *, use_stem_as_id: bool = False) -> None:
             """Parse all molecules from an SDF file."""
             supplier = Chem.SDMolSupplier(str(path), removeHs=True)
+            mol_file_remote = f"testing/{path.stem}.sdf" if use_stem_as_id else None
             for mol in supplier:
                 if mol is None:
                     continue
                 try:
                     lid = path.stem if use_stem_as_id else None
-                    _ingest_mol(mol, ligand_id=lid)
+                    _ingest_mol(mol, ligand_id=lid, mol_file_remote=mol_file_remote)
                 except Exception:
                     continue
 

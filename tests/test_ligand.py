@@ -743,6 +743,12 @@ def test_ligand_sync(sdf_file):
     ligand = Ligand.from_sdf(sdf_file)
     ligand.sync()
     assert ligand.id is not None
+    assert ligand.remote_path is not None
+
+    ligand2 = Ligand.from_sdf(sdf_file)
+    ligand2.sync()
+    assert ligand2.id == ligand.id
+    assert ligand2.remote_path == ligand.remote_path
 
 
 def test_ligand_upload_lv1():

@@ -15,6 +15,7 @@ from deeporigin.drug_discovery import (
     PocketFinder,
     Protein,
 )
+from deeporigin.exceptions import DeepOriginException
 from deeporigin.functions.docking import dock
 from deeporigin.functions.pocket_finder import find_pockets
 from deeporigin.functions.result import FunctionResult
@@ -168,6 +169,71 @@ def test_dock_respects_tool_version_override() -> None:
     )
     run_kw_default = client.functions.run.call_args.kwargs
     assert run_kw_default["version"] == DOCKING_FUNCTION_VERSION
+
+
+def test_dock_passes_effort_in_params() -> None:
+    """``dock()`` includes ``effort`` in the function payload (default 3)."""
+    client = MagicMock()
+    client.functions.run.return_value = {"id": "exec-1", "status": "Completed"}
+
+    protein = MagicMock()
+    protein.id = "p1"
+    protein.remote_path = "/remote/protein.pdb"
+
+    ligand = MagicMock()
+    ligand.id = "l1"
+    ligand.smiles = "CCO"
+
+    pocket = MagicMock()
+    pocket.center = [0.0, 0.0, 0.0]
+    pocket.id = "pk1"
+    pocket.box_size_x = None
+    pocket.box_size_y = None
+    pocket.box_size_z = None
+
+    dock(
+        client=client,
+        protein=protein,
+        ligand=ligand,
+        pocket=pocket,
+    )
+    params = client.functions.run.call_args.kwargs["params"]
+    assert params["effort"] == 3
+    assert params["ligands"] == [{"id": "l1", "smiles": "CCO"}]
+
+    dock(
+        client=client,
+        protein=protein,
+        ligand=ligand,
+        pocket=pocket,
+        effort=5,
+    )
+    assert client.functions.run.call_args.kwargs["params"]["effort"] == 5
+
+
+def test_dock_rejects_effort_out_of_range() -> None:
+    """``dock()`` raises when ``effort`` is outside 1–5."""
+    client = MagicMock()
+    protein = MagicMock()
+    protein.id = "p1"
+    protein.remote_path = "/remote/protein.pdb"
+    ligand = MagicMock()
+    ligand.id = "l1"
+    ligand.smiles = "CCO"
+    pocket = MagicMock()
+    pocket.center = [0.0, 0.0, 0.0]
+    pocket.box_size_x = None
+    pocket.box_size_y = None
+    pocket.box_size_z = None
+
+    with pytest.raises(DeepOriginException):
+        dock(
+            client=client,
+            protein=protein,
+            ligand=ligand,
+            pocket=pocket,
+            effort=0,
+        )
 
 
 def test_find_pockets_respects_tool_version_override() -> None:

@@ -14,7 +14,7 @@ import io
 import os
 from pathlib import Path
 import tempfile
-from typing import Any, NoReturn, Optional, Self
+from typing import Any, Optional, Self
 
 from beartype import beartype
 import Bio.Seq
@@ -500,143 +500,6 @@ class Protein(Entity):
         protein = Protein.from_file(file_path)
         self.structure = protein.structure
 
-    def dock(
-        self,
-        *,
-        ligand: Optional[Ligand] = None,
-        ligands: Optional[LigandSet | list[Ligand]] = None,
-        pocket: Pocket,
-        use_cache: bool = True,
-        reference_pose: Optional[Ligand] = None,
-        client: Optional[DeepOriginClient] = None,
-        quote: bool = False,
-    ) -> FunctionResult:
-        """Dock a ligand into a specific pocket of the protein.
-
-        Returns a ``FunctionResult`` whose ``.poses`` attribute lazily
-        resolves to a ``LigandSet`` of docking poses. When ``quote=True``,
-        ``.poses`` is ``None`` and ``.estimate`` gives the
-        cost in dollars.
-
-        Args:
-            ligand: The ligand to dock into the protein pocket.
-            ligands: A set of ligands to dock into the protein pocket.
-            pocket: The specific pocket in the protein where the ligand
-                should be docked.
-            use_cache: Whether to use cached results if available.
-            reference_pose: A reference pose for constrained docking. If
-                provided, constraints are computed from the MCS of the
-                reference pose and all ligands.
-            client: DeepOrigin client instance.
-            quote: If True, request a cost estimate without executing.
-
-        Returns:
-            FunctionResult: A FunctionResult with a lazy ``.poses`` attribute (LigandSet).
-        """
-
-        if client is None:
-            client = DeepOriginClient()
-        self.download(lazy=True, client=client)
-
-        if ligands is None and ligand is None:
-            raise DeepOriginException(
-                "Either ligand or ligands must be provided to protein.dock()"
-            ) from None
-
-        if ligand is not None and ligands is None:
-            ligands = [ligand]
-
-        if isinstance(ligands, list):
-            ligands = LigandSet(ligands)
-
-        if reference_pose is not None:
-            # perform constrained docking
-
-            all_ligands = LigandSet([reference_pose] + ligands)
-
-            mcs_mol = all_ligands.mcs()
-
-            constraints = ligands.compute_constraints(
-                reference=reference_pose,
-                mcs_mol=mcs_mol,
-            )
-
-            args = [
-                {
-                    "client": client,
-                    "protein": self,
-                    "ligand": ligand,
-                    "pocket": pocket,
-                    "constraints": constraint,
-                    "use_cache": use_cache,
-                    "quote": quote,
-                }
-                for ligand, constraint in zip(ligands, constraints, strict=True)
-            ]
-
-            from deeporigin.functions.docking import constrained_dock
-
-            all_responses: list[dict] = []
-            all_top_poses: list[str] = []
-            for arg in args:
-                cdock_result = constrained_dock(**arg)
-                all_responses.extend(cdock_result.responses)
-
-                if not quote:
-                    result_files = cdock_result.downloaded_files
-                    top_pose = next(
-                        (
-                            f
-                            for f in result_files
-                            if "top" in Path(f).name.lower() and f.endswith(".sdf")
-                        ),
-                        result_files[0] if result_files else None,
-                    )
-                    if top_pose:
-                        all_top_poses.append(top_pose)
-
-            result = FunctionResult(all_responses)
-            if quote:
-                result.poses = None
-            else:
-                result.poses = LigandSet.from_sdf_files(all_top_poses)
-            return result
-        else:
-            # perform normal docking
-
-            from deeporigin.functions.docking import dock
-            from deeporigin.functions.parallel import run_func_in_parallel
-
-            args = [
-                {
-                    "protein": self,
-                    "pocket": pocket,
-                    "ligand": ligand,
-                    "client": client,
-                    "quote": quote,
-                }
-                for ligand in ligands
-            ]
-
-            data = run_func_in_parallel(func=dock, args=args)
-
-            individual_results = [r for r in data["results"] if r is not None]
-            all_responses = [fr.response for fr in individual_results]
-
-            if not all_responses:
-                all_responses = [{"status": "Failed"}]
-
-            result = FunctionResult(all_responses)
-
-            if quote:
-                result.poses = None  # type: ignore
-            else:
-                result.poses = _make_poses_from_dock_results(
-                    result=result,
-                    client=client,
-                )
-            return result
-
     @property
     def coordinates(self):
         self.download(lazy=True)
@@ -753,35 +616,6 @@ class Protein(Entity):
             raise ValueError(f"No chains found for the provided chain IDs: {chain_ids}")
         return self._create_new_protein_with_structure(
             chain_records, suffix=f"_chains_{'_'.join(chain_ids)}"
-        )
-
-    @beartype
-    def find_pockets(
-        self,
-        pocket_count: int = 1,
-        pocket_min_size: int = 30,
-        client: Optional[DeepOriginClient] = None,
-        quote: bool = False,
-    ) -> NoReturn:
-        """Deprecated. Use :class:`deeporigin.drug_discovery.pocket_finder.PocketFinder` instead.
-
-        This method is deprecated. Use ``PocketFinder`` to find binding pockets:
-
-        - ``PocketFinder(protein, pocket_count=..., pocket_min_size=...).run()``
-          returns a list of :class:`Pocket` objects.
-        - ``PocketFinder(protein).quote()`` populates ``.estimate`` for cost
-          estimation without executing.
-
-        Raises:
-            MethodDeprecatedError: Always, directing users to PocketFinder.
-        """
-        from deeporigin.exceptions import MethodDeprecatedError
-
-        raise MethodDeprecatedError(
-            "Protein.find_pockets() is deprecated. "
-            "Use PocketFinder from deeporigin.drug_discovery instead: "
-            "e.g. PocketFinder(protein, pocket_count=1, pocket_min_size=30).run() for execution, "
-            "or PocketFinder(protein).quote() for a cost estimate."
         )
 
     @beartype

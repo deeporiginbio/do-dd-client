@@ -496,7 +496,13 @@ def create_tools_router(
         inputs = body.get("inputs", body.get("params", {}))
         protein = inputs.get("protein", {})
         protein_id = protein.get("id") if isinstance(protein, dict) else None
-        ligand = inputs.get("ligand1", inputs.get("ligand", {}))
+        ligand = inputs.get("ligand1") or inputs.get("ligand")
+        if not ligand:
+            ligands_list = inputs.get("ligands")
+            if isinstance(ligands_list, list) and ligands_list:
+                ligand = ligands_list[0]
+        if ligand is None:
+            ligand = {}
         ligand_id = ligand.get("id") if isinstance(ligand, dict) else None
 
         if protein_id or ligand_id:

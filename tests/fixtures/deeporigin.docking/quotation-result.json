@@ -1,0 +1,26 @@
+{
+    "anyFailed": false,
+    "failedQuotations": [],
+    "successfulQuotations": [
+        {
+            "itemCode": "DO_DOCK",
+            "orgId": "deeporigin",
+            "priceEach": 0.2,
+            "priceTotal": 0.2,
+            "pricingRecordType": "regular",
+            "pricingRecords": [
+                {
+                    "itemKey": "DO_DOCK",
+                    "itemName": "Docking",
+                    "priceEach": 0.2,
+                    "qty": 1,
+                    "tierQtyFrom": 0,
+                    "tierQtyTo": 0,
+                    "totalPrice": 0.2
+                }
+            ],
+            "qty": 1,
+            "status": "OK"
+        }
+    ]
+}

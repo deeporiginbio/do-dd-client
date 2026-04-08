@@ -44,6 +44,7 @@ def test_docking_from_dto_maps_async_execution_fields_from_fixture(
     assert docking.status == dto["status"]
     assert docking.app == dto["app"]
     assert docking.approve_amount == dto["approveAmount"]
+    assert docking.effort == Docking.effort
 
 
 def test_docking_from_dto_raises_on_tool_key_mismatch(client) -> None:
@@ -66,7 +67,9 @@ def test_docking_accepts_single_ligand(
         protein=registered_protein,
         pocket=registered_pocket,
         ligand=registered_ligand,
+        effort=5,
     )
+    assert docking.effort == 5
     assert isinstance(docking.ligands, LigandSet)
     assert len(docking.ligands) == 1
     assert list(docking.ligands)[0].smiles == registered_ligand.smiles
@@ -85,6 +88,35 @@ def test_ligand_tool_input_row_excludes_mol_file() -> None:
 
     assert row == {"id": "lig-123", "smiles": "CCO"}
     assert "mol_file" not in row
+
+
+def test_docking_build_tool_inputs_does_not_sync(
+    monkeypatch,
+    client,
+    registered_protein,
+    registered_pocket,
+    registered_ligand,
+) -> None:
+    """_build_tool_inputs only serializes state; it does not call sync."""
+
+    def _fail(*_args, **_kwargs) -> None:
+        raise AssertionError("sync must not be called from _build_tool_inputs")
+
+    docking = Docking(
+        protein=registered_protein,
+        pocket=registered_pocket,
+        ligand=registered_ligand,
+        client=client,
+    )
+    monkeypatch.setattr(docking.protein, "sync", _fail)
+    monkeypatch.setattr(docking.ligands, "sync", _fail)
+
+    params, metadata = docking._build_tool_inputs()
+
+    assert params["effort"] == docking.effort
+    assert params["protein"]["id"] == registered_protein.id
+    assert params["ligands"][0]["smiles"] == registered_ligand.smiles
+    assert "protein_hash" in metadata
 
 
 def test_docking_default_name_helper():
@@ -178,6 +210,116 @@ def test_docking_quote_lv1(
 
     assert docking.estimate is not None, "Estimate should be set"
     assert docking.cost is None, "Cost should be None"
+
+
+def test_docking_quote_impl_raises_when_quotation_result_missing(
+    monkeypatch,
+    client,
+    registered_protein,
+    registered_pocket,
+    registered_ligand,
+) -> None:
+    """Quote flow raises RuntimeError when quotationResult is absent."""
+    docking = Docking(
+        protein=registered_protein,
+        pocket=registered_pocket,
+        ligand=registered_ligand,
+        client=client,
+    )
+
+    def _fake_create(*_a: object, **_k: object) -> dict:
+        return {"executionId": "exec-1", "status": "Quoted"}
+
+    monkeypatch.setattr(client.executions, "create", _fake_create)
+
+    with pytest.raises(RuntimeError, match="Quote failed: quotationResult is missing"):
+        docking._quote_impl()
+
+
+def test_docking_quote_impl_raises_when_successful_quotations_missing(
+    monkeypatch,
+    client,
+    registered_protein,
+    registered_pocket,
+    registered_ligand,
+) -> None:
+    """Quote flow raises RuntimeError when successfulQuotations is absent."""
+    docking = Docking(
+        protein=registered_protein,
+        pocket=registered_pocket,
+        ligand=registered_ligand,
+        client=client,
+    )
+
+    def _fake_create(*_a: object, **_k: object) -> dict:
+        return {
+            "executionId": "exec-1",
+            "status": "Quoted",
+            "quotationResult": {},
+        }
+
+    monkeypatch.setattr(client.executions, "create", _fake_create)
+
+    with pytest.raises(
+        RuntimeError, match="Quote failed: successfulQuotations is missing"
+    ):
+        docking._quote_impl()
+
+
+def test_docking_quote_impl_raises_when_no_successful_quotations(
+    monkeypatch,
+    client,
+    registered_protein,
+    registered_pocket,
+    registered_ligand,
+) -> None:
+    """Quote flow raises RuntimeError when successfulQuotations is empty."""
+    docking = Docking(
+        protein=registered_protein,
+        pocket=registered_pocket,
+        ligand=registered_ligand,
+        client=client,
+    )
+
+    def _fake_create(*_a: object, **_k: object) -> dict:
+        return {
+            "executionId": "exec-1",
+            "status": "Quoted",
+            "quotationResult": {"successfulQuotations": []},
+        }
+
+    monkeypatch.setattr(client.executions, "create", _fake_create)
+
+    with pytest.raises(RuntimeError, match="Quote failed: no successful quotations"):
+        docking._quote_impl()
+
+
+def test_docking_quote_impl_raises_when_price_total_missing(
+    monkeypatch,
+    client,
+    registered_protein,
+    registered_pocket,
+    registered_ligand,
+) -> None:
+    """Quote flow raises RuntimeError when priceTotal is absent."""
+    docking = Docking(
+        protein=registered_protein,
+        pocket=registered_pocket,
+        ligand=registered_ligand,
+        client=client,
+    )
+
+    def _fake_create(*_a: object, **_k: object) -> dict:
+        return {
+            "executionId": "exec-1",
+            "status": "Quoted",
+            "quotationResult": {"successfulQuotations": [{}]},
+        }
+
+    monkeypatch.setattr(client.executions, "create", _fake_create)
+
+    with pytest.raises(RuntimeError, match="Quote failed: priceTotal is missing"):
+        docking._quote_impl()
 
 
 def test_docking_run_lv2(

@@ -12,7 +12,6 @@ import numpy as np
 import pytest
 
 from deeporigin.drug_discovery import BRD_DATA_DIR, Pocket, Protein
-from deeporigin.exceptions import MethodDeprecatedError
 
 if TYPE_CHECKING:
     from deeporigin.platform import DeepOriginClient
@@ -219,15 +218,6 @@ def test_from_residue_num_lv0():
     assert isinstance(
         custom_pocket.get_center(), np.ndarray
     ) and custom_pocket.get_center().shape == (3,)
-
-
-def test_protein_find_pockets_deprecated_lv0():
-    """Protein.find_pockets() is deprecated; it raises MethodDeprecatedError."""
-    protein = Protein.from_file(_BRD_PDB)
-    with pytest.raises(MethodDeprecatedError) as exc_info:
-        protein.find_pockets(pocket_count=1)
-    assert "PocketFinder" in str(exc_info.value)
-    assert "deprecated" in str(exc_info.value).lower()
 
 
 def test_from_id_lv2(
