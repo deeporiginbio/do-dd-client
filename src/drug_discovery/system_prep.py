@@ -299,7 +299,7 @@ class SystemPrep(Execution, QuoteMixin, SyncExecutableMixin):
         system_pdb_path: str | None = None
         if isinstance(system, dict):
             binding_xml_path = system.get("binding_xml_file_path")
-            solvation_xml_path = system.get("solvation_xml_ligand1_file_path")
+            solvation_xml_path = system.get("solvation_xml_ligand_file_path")
             system_pdb_path = system.get("system_pdb_file_path")
 
         if not (binding_xml_path and solvation_xml_path and system_pdb_path):

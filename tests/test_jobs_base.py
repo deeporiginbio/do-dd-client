@@ -570,7 +570,7 @@ class TestSystemPrepRunParsesOutputs:
         mock_outputs = {
             "system": {
                 "binding_xml_file_path": "some/dir/bsm_system.xml",
-                "solvation_xml_ligand1_file_path": "some/dir/solvation_ligand1.xml",
+                "solvation_xml_ligand_file_path": "some/dir/solvation_ligand.xml",
                 "system_pdb_file_path": "some/dir/system.pdb",
             },
         }
@@ -597,7 +597,7 @@ class TestSystemPrepRunParsesOutputs:
 
         assert isinstance(out, PreparedSystem)
         assert out.binding_xml_path == "some/dir/bsm_system.xml"
-        assert out.solvation_xml_path == "some/dir/solvation_ligand1.xml"
+        assert out.solvation_xml_path == "some/dir/solvation_ligand.xml"
         assert out.system_pdb_path == "some/dir/system.pdb"
         assert sp.cost == 1.5
 
@@ -608,7 +608,7 @@ class TestSystemPrepRunParsesOutputs:
         mock_outputs = {
             "system": {
                 "binding_xml_file_path": "rbfe/dir/bsm_system.xml",
-                "solvation_xml_ligand1_file_path": "rbfe/dir/solvation_ligand1.xml",
+                "solvation_xml_ligand_file_path": "rbfe/dir/solvation_ligand.xml",
                 "system_pdb_file_path": "rbfe/dir/system.pdb",
             },
         }
@@ -633,7 +633,7 @@ class TestSystemPrepRunParsesOutputs:
             out = sp.run()
         assert isinstance(out, PreparedSystem)
         assert out.binding_xml_path == "rbfe/dir/bsm_system.xml"
-        assert out.solvation_xml_path == "rbfe/dir/solvation_ligand1.xml"
+        assert out.solvation_xml_path == "rbfe/dir/solvation_ligand.xml"
         assert out.system_pdb_path == "rbfe/dir/system.pdb"
         assert sp.cost == 2.0
 
@@ -642,7 +642,7 @@ class TestSystemPrepRunParsesOutputs:
         mock_outputs = {
             "system": {
                 "binding_xml_file_path": "fresh/bsm_system.xml",
-                "solvation_xml_ligand1_file_path": "fresh/solvation_ligand1.xml",
+                "solvation_xml_ligand_file_path": "fresh/solvation_ligand.xml",
                 "system_pdb_file_path": "fresh/system.pdb",
             },
         }
@@ -667,7 +667,7 @@ class TestSystemPrepRunParsesOutputs:
             out = sp.run()
         assert isinstance(out, PreparedSystem)
         assert out.binding_xml_path == "fresh/bsm_system.xml"
-        assert out.solvation_xml_path == "fresh/solvation_ligand1.xml"
+        assert out.solvation_xml_path == "fresh/solvation_ligand.xml"
         assert out.system_pdb_path == "fresh/system.pdb"
 
     def test_get_results_returns_prepared_systems_from_platform(self, protein, ligand):

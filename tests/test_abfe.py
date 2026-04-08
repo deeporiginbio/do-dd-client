@@ -98,7 +98,7 @@ def test_abfe_from_dto_rehydrates_prepared_system_lv0():
         "userInputs": {
             "prepared_system": {
                 "binding_xml_file_path": "remote/binding.xml",
-                "solvation_xml_ligand1_file_path": "remote/solvation.xml",
+                "solvation_xml_ligand_file_path": "remote/solvation.xml",
             },
             "binding": {
                 "annihilate": True,

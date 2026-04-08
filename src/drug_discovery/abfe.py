@@ -196,7 +196,7 @@ class ABFEParams:
         return {
             "prepared_system": {
                 "binding_xml_file_path": binding_xml_path,
-                "solvation_xml_ligand1_file_path": solvation_xml_path,
+                "solvation_xml_ligand_file_path": solvation_xml_path,
             },
             "binding": {
                 "annihilate": self.annihilate,
@@ -302,7 +302,7 @@ class ABFE(Execution, QuoteMixin, AsyncExecutableMixin, NotebookWatchMixin):
         instance.prepared_system = PreparedSystem(
             binding_xml_path=prepared_system_input.get("binding_xml_file_path", ""),
             solvation_xml_path=prepared_system_input.get(
-                "solvation_xml_ligand1_file_path", ""
+                "solvation_xml_ligand_file_path", ""
             ),
             system_pdb_path="",
             protein_id=metadata.get("protein_id"),

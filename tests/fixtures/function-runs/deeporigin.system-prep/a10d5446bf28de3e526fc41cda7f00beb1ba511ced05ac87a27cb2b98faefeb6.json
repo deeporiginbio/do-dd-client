@@ -1,23 +1,264 @@
 {
-    "id": "07e2f29d-5aae-40bb-bd83-5fe16bf76ddc",
+    "cluster": {
+        "cloudAccountId": null,
+        "cloudRegion": null,
+        "createdAt": "2024-06-11T16:53:45.922Z",
+        "enabled": true,
+        "hostname": "https://cluster.us-west-2.dev.deeporigin.io",
+        "id": "d638d3cd-833f-476b-87fe-ca6d76e66049",
+        "name": "DeepOrigin Cluster - us-west-2",
+        "orgKey": null,
+        "status": "healthy",
+        "updatedAt": "2025-03-27T20:23:30.842Z"
+    },
     "createdAt": "2026-03-11T00:41:27.838Z",
-    "updatedAt": "2026-03-11T00:42:32.474Z",
-    "userInputs": {
-        "inputs": {
-            "protein": {
-                "id": "brd",
-                "file_path": "tests/brd.pdb"
+    "createdBy": "6b96d8f8-0f55-474c-a86c-e09651ba4b20",
+    "function": {
+        "billingCode": "DO_SYSTEM_PREP",
+        "createdAt": "2026-03-03T23:38:40.206Z",
+        "enabled": true,
+        "functionManifest": "44c45423-00dd-45c9-ac1b-bd27bc9103f3",
+        "id": "558fecc0-fdd6-412a-a8d8-ca3f66bc024b",
+        "manifestBody": {
+            "billingCode": "DO_SYSTEM_PREP",
+            "executor": {
+                "containerConcurrency": 1,
+                "image": "645946264134.dkr.ecr.us-west-2.amazonaws.com/functions/sysprep:0.7.2",
+                "maxScale": 1,
+                "method": "POST",
+                "minScale": 1,
+                "name": "deeporigin-system-prep",
+                "path": "/sysprep",
+                "port": {
+                    "name": "http1",
+                    "port": 8080,
+                    "protocol": "TCP"
+                },
+                "resourceRequirements": {
+                    "cpu": 2,
+                    "memory": 8
+                },
+                "responseStartTimeoutSeconds": 3600,
+                "scaleDownDelaySeconds": 60,
+                "timeoutSeconds": 600
             },
-            "ligand1": {
-                "id": "08DK80B7DYTXH",
-                "file_path": "tests/brd-2.sdf"
+            "functionManifestVersion": "1",
+            "inputSchema": {
+                "$schema": "http://json-schema.org/draft-07/schema#",
+                "additionalProperties": false,
+                "description": "Input schema for system preparation",
+                "properties": {
+                    "add_H_atoms": {
+                        "description": "Whether to add hydrogen atoms to the ligand",
+                        "type": "boolean",
+                        "x-display-name": "Add Hydrogen Atoms",
+                        "x-user-input": true
+                    },
+                    "box_size": {
+                        "description": "Simulation box dimensions (X, Y, Z) in nm",
+                        "items": {
+                            "type": "number"
+                        },
+                        "maxItems": 3,
+                        "minItems": 3,
+                        "type": "array",
+                        "x-display-name": "Box Size",
+                        "x-user-input": true
+                    },
+                    "ligand1": {
+                        "description": "First ligand structure for system preparation",
+                        "properties": {
+                            "file_path": {
+                                "description": "Path to the ligand SDF file",
+                                "format": "file",
+                                "type": "string",
+                                "x-data-type": "Ligand.file_path",
+                                "x-deeporigin-path": "/deeporigin/inputs/ligand.sdf"
+                            },
+                            "id": {
+                                "description": "Ligand ID",
+                                "type": "string",
+                                "x-data-type": "Ligand.id"
+                            }
+                        },
+                        "required": [
+                            "file_path"
+                        ],
+                        "type": "object",
+                        "x-data-type": "Ligand"
+                    },
+                    "ligand2": {
+                        "description": "Second ligand for RBFE system preparation. When provided, runs RBFE prep instead of ABFE.",
+                        "properties": {
+                            "file_path": {
+                                "description": "Path to the ligand SDF file",
+                                "format": "file",
+                                "type": "string",
+                                "x-data-type": "Ligand.file_path",
+                                "x-deeporigin-path": "/deeporigin/inputs/ligand2.sdf"
+                            },
+                            "id": {
+                                "description": "Ligand ID",
+                                "type": "string",
+                                "x-data-type": "Ligand.id"
+                            }
+                        },
+                        "required": [
+                            "file_path"
+                        ],
+                        "type": "object",
+                        "x-data-type": "Ligand"
+                    },
+                    "padding": {
+                        "description": "Padding distance in nm to use around the system",
+                        "type": "number",
+                        "x-display-name": "Padding",
+                        "x-user-input": true
+                    },
+                    "protein": {
+                        "description": "Protein structure for system preparation",
+                        "properties": {
+                            "file_path": {
+                                "description": "Path to the protein PDB file",
+                                "format": "file",
+                                "type": "string",
+                                "x-data-type": "Protein.file_path",
+                                "x-deeporigin-path": "/deeporigin/inputs/protein.pdb"
+                            },
+                            "id": {
+                                "description": "Protein ID",
+                                "type": "string",
+                                "x-data-type": "Protein.id"
+                            }
+                        },
+                        "required": [
+                            "file_path"
+                        ],
+                        "type": "object",
+                        "x-data-type": "Protein"
+                    },
+                    "protonate_protein": {
+                        "description": "Whether to protonate the protein",
+                        "type": "boolean",
+                        "x-display-name": "Protonate Protein",
+                        "x-user-input": true
+                    },
+                    "retain_waters": {
+                        "description": "Whether to keep water molecules in the system",
+                        "type": "boolean",
+                        "x-display-name": "Retain Waters",
+                        "x-user-input": true
+                    }
+                },
+                "required": [
+                    "protein",
+                    "ligand1",
+                    "add_H_atoms",
+                    "protonate_protein",
+                    "retain_waters",
+                    "padding"
+                ],
+                "type": "object"
             },
-            "add_H_atoms": true,
-            "protonate_protein": true,
-            "retain_waters": false,
-            "padding": 1
+            "key": "deeporigin.system-prep",
+            "outputSchema": {
+                "$schema": "http://json-schema.org/draft-07/schema",
+                "description": "Output schema for system preparation results",
+                "properties": {
+                    "system": {
+                        "description": "Prepared molecular system, which acts as an input to FEP",
+                        "properties": {
+                            "add_H_atoms": {
+                                "description": "Whether hydrogen atoms were added to the ligand",
+                                "type": "boolean",
+                                "x-data-type": "PreparedSystem.add_H_atoms",
+                                "x-display-name": "Add Hydrogen Atoms"
+                            },
+                            "binding_xml_file_path": {
+                                "description": "Path to the binding XML file",
+                                "format": "file",
+                                "type": "string",
+                                "x-data-type": "PreparedSystem.binding_xml_file_path"
+                            },
+                            "box_size": {
+                                "description": "Simulation box dimensions (X, Y, Z) in nm",
+                                "items": {
+                                    "type": "number"
+                                },
+                                "maxItems": 3,
+                                "minItems": 3,
+                                "type": "array",
+                                "x-data-type": "PreparedSystem.box_size",
+                                "x-display-name": "Box Size"
+                            },
+                            "ligand1_id": {
+                                "description": "ID of the first ligand used in system preparation",
+                                "type": "string",
+                                "x-data-type": "Ligand.id",
+                                "x-key": true
+                            },
+                            "ligand2_id": {
+                                "description": "ID of the second ligand used in RBFE system preparation",
+                                "type": "string",
+                                "x-data-type": "Ligand.id",
+                                "x-key": true
+                            },
+                            "padding": {
+                                "description": "Padding distance in nm used around the system",
+                                "type": "number",
+                                "x-data-type": "PreparedSystem.padding",
+                                "x-display-name": "Padding"
+                            },
+                            "protein_id": {
+                                "description": "ID of the protein used in system preparation",
+                                "type": "string",
+                                "x-data-type": "Protein.id",
+                                "x-key": true
+                            },
+                            "protonate_protein": {
+                                "description": "Whether the protein was protonated",
+                                "type": "boolean",
+                                "x-data-type": "PreparedSystem.protonate_protein",
+                                "x-display-name": "Protonate Protein"
+                            },
+                            "retain_waters": {
+                                "description": "Whether water molecules were retained in the system",
+                                "type": "boolean",
+                                "x-data-type": "PreparedSystem.retain_waters",
+                                "x-display-name": "Retain Waters"
+                            },
+                            "solvation_xml_ligand_file_path": {
+                                "description": "Path to the solvation XML file for the ligand(s)",
+                                "format": "file",
+                                "type": "string",
+                                "x-data-type": "PreparedSystem.solvation_xml_ligand_file_path"
+                            },
+                            "system_pdb_file_path": {
+                                "description": "Path to the prepared system PDB file",
+                                "format": "file",
+                                "type": "string",
+                                "x-data-type": "PreparedSystem.system_pdb_file_path"
+                            }
+                        },
+                        "required": [
+                            "protein_id",
+                            "ligand1_id",
+                            "solvation_xml_ligand_file_path",
+                            "system_pdb_file_path",
+                            "binding_xml_file_path"
+                        ],
+                        "type": "object",
+                        "x-data-type": "PreparedSystem",
+                        "x-result-group": "preparedsystems"
+                    }
+                },
+                "type": "object"
+            },
+            "version": "0.7.2"
         },
-        "clusterId": "d638d3cd-833f-476b-87fe-ca6d76e66049"
+        "resourceId": "function-v8iqlecdph2ji61p5t74j",
+        "updatedAt": "2026-03-04T15:34:33.295Z",
+        "version": "0.7.2"
     },
     "functionOutputs": {
         "system": {
@@ -28,34 +269,19 @@
             "protein_id": "brd",
             "protonate_protein": true,
             "retain_waters": false,
-            "solvation_xml_ligand1_file_path": "tool-runs/07e2f29d-5aae-40bb-bd83-5fe16bf76ddc/solvation_ligand1.xml",
+            "solvation_xml_ligand_file_path": "tool-runs/07e2f29d-5aae-40bb-bd83-5fe16bf76ddc/solvation_ligand.xml",
             "system_pdb_file_path": "tool-runs/07e2f29d-5aae-40bb-bd83-5fe16bf76ddc/system.pdb"
         }
     },
-    "status": "Completed",
-    "cluster": {
-        "id": "d638d3cd-833f-476b-87fe-ca6d76e66049",
-        "createdAt": "2024-06-11T16:53:45.922Z",
-        "updatedAt": "2025-03-27T20:23:30.842Z",
-        "hostname": "https://cluster.us-west-2.dev.deeporigin.io",
-        "name": "DeepOrigin Cluster - us-west-2",
-        "orgKey": null,
-        "enabled": true,
-        "status": "healthy",
-        "cloudAccountId": null,
-        "cloudRegion": null
-    },
+    "id": "07e2f29d-5aae-40bb-bd83-5fe16bf76ddc",
     "orgKey": "deeporigin",
-    "createdBy": "6b96d8f8-0f55-474c-a86c-e09651ba4b20",
     "quotationResult": {
         "anyFailed": false,
         "failedQuotations": [],
         "successfulQuotations": [
             {
-                "status": "OK",
                 "itemCode": "DO_SYSTEM_PREP",
                 "orgId": "deeporigin",
-                "qty": 1,
                 "priceEach": 0,
                 "priceTotal": 0,
                 "pricingRecordType": "regular",
@@ -64,266 +290,34 @@
                         "itemKey": "DO_SYSTEM_PREP",
                         "itemName": "DO_SYSTEM_PREP",
                         "priceEach": 0,
-                        "totalPrice": 0,
                         "qty": 1,
                         "tierQtyFrom": 0,
-                        "tierQtyTo": 0
+                        "tierQtyTo": 0,
+                        "totalPrice": 0
                     }
-                ]
+                ],
+                "qty": 1,
+                "status": "OK"
             }
         ]
     },
-    "function": {
-        "id": "558fecc0-fdd6-412a-a8d8-ca3f66bc024b",
-        "createdAt": "2026-03-03T23:38:40.206Z",
-        "updatedAt": "2026-03-04T15:34:33.295Z",
-        "functionManifest": "44c45423-00dd-45c9-ac1b-bd27bc9103f3",
-        "version": "0.7.2",
-        "enabled": true,
-        "manifestBody": {
-            "key": "deeporigin.system-prep",
-            "version": "0.7.2",
-            "executor": {
-                "name": "deeporigin-system-prep",
-                "path": "/sysprep",
-                "port": {
-                    "name": "http1",
-                    "port": 8080,
-                    "protocol": "TCP"
-                },
-                "image": "645946264134.dkr.ecr.us-west-2.amazonaws.com/functions/sysprep:0.7.2",
-                "method": "POST",
-                "maxScale": 1,
-                "minScale": 1,
-                "timeoutSeconds": 600,
-                "containerConcurrency": 1,
-                "resourceRequirements": {
-                    "cpu": 2,
-                    "memory": 8
-                },
-                "scaleDownDelaySeconds": 60,
-                "responseStartTimeoutSeconds": 3600
+    "status": "Completed",
+    "updatedAt": "2026-03-11T00:42:32.474Z",
+    "userInputs": {
+        "clusterId": "d638d3cd-833f-476b-87fe-ca6d76e66049",
+        "inputs": {
+            "add_H_atoms": true,
+            "ligand1": {
+                "file_path": "tests/brd-2.sdf",
+                "id": "08DK80B7DYTXH"
             },
-            "billingCode": "DO_SYSTEM_PREP",
-            "inputSchema": {
-                "type": "object",
-                "$schema": "http://json-schema.org/draft-07/schema#",
-                "required": [
-                    "protein",
-                    "ligand1",
-                    "add_H_atoms",
-                    "protonate_protein",
-                    "retain_waters",
-                    "padding"
-                ],
-                "properties": {
-                    "ligand1": {
-                        "type": "object",
-                        "required": [
-                            "file_path"
-                        ],
-                        "properties": {
-                            "id": {
-                                "type": "string",
-                                "description": "Ligand ID",
-                                "x-data-type": "Ligand.id"
-                            },
-                            "file_path": {
-                                "type": "string",
-                                "format": "file",
-                                "description": "Path to the ligand SDF file",
-                                "x-data-type": "Ligand.file_path",
-                                "x-deeporigin-path": "/deeporigin/inputs/ligand.sdf"
-                            }
-                        },
-                        "description": "First ligand structure for system preparation",
-                        "x-data-type": "Ligand"
-                    },
-                    "ligand2": {
-                        "type": "object",
-                        "required": [
-                            "file_path"
-                        ],
-                        "properties": {
-                            "id": {
-                                "type": "string",
-                                "description": "Ligand ID",
-                                "x-data-type": "Ligand.id"
-                            },
-                            "file_path": {
-                                "type": "string",
-                                "format": "file",
-                                "description": "Path to the ligand SDF file",
-                                "x-data-type": "Ligand.file_path",
-                                "x-deeporigin-path": "/deeporigin/inputs/ligand2.sdf"
-                            }
-                        },
-                        "description": "Second ligand for RBFE system preparation. When provided, runs RBFE prep instead of ABFE.",
-                        "x-data-type": "Ligand"
-                    },
-                    "padding": {
-                        "type": "number",
-                        "description": "Padding distance in nm to use around the system",
-                        "x-user-input": true,
-                        "x-display-name": "Padding"
-                    },
-                    "protein": {
-                        "type": "object",
-                        "required": [
-                            "file_path"
-                        ],
-                        "properties": {
-                            "id": {
-                                "type": "string",
-                                "description": "Protein ID",
-                                "x-data-type": "Protein.id"
-                            },
-                            "file_path": {
-                                "type": "string",
-                                "format": "file",
-                                "description": "Path to the protein PDB file",
-                                "x-data-type": "Protein.file_path",
-                                "x-deeporigin-path": "/deeporigin/inputs/protein.pdb"
-                            }
-                        },
-                        "description": "Protein structure for system preparation",
-                        "x-data-type": "Protein"
-                    },
-                    "box_size": {
-                        "type": "array",
-                        "items": {
-                            "type": "number"
-                        },
-                        "maxItems": 3,
-                        "minItems": 3,
-                        "description": "Simulation box dimensions (X, Y, Z) in nm",
-                        "x-user-input": true,
-                        "x-display-name": "Box Size"
-                    },
-                    "add_H_atoms": {
-                        "type": "boolean",
-                        "description": "Whether to add hydrogen atoms to the ligand",
-                        "x-user-input": true,
-                        "x-display-name": "Add Hydrogen Atoms"
-                    },
-                    "retain_waters": {
-                        "type": "boolean",
-                        "description": "Whether to keep water molecules in the system",
-                        "x-user-input": true,
-                        "x-display-name": "Retain Waters"
-                    },
-                    "protonate_protein": {
-                        "type": "boolean",
-                        "description": "Whether to protonate the protein",
-                        "x-user-input": true,
-                        "x-display-name": "Protonate Protein"
-                    }
-                },
-                "description": "Input schema for system preparation",
-                "additionalProperties": false
+            "padding": 1,
+            "protein": {
+                "file_path": "tests/brd.pdb",
+                "id": "brd"
             },
-            "outputSchema": {
-                "type": "object",
-                "$schema": "http://json-schema.org/draft-07/schema",
-                "properties": {
-                    "system": {
-                        "type": "object",
-                        "required": [
-                            "protein_id",
-                            "ligand1_id",
-                            "solvation_xml_ligand1_file_path",
-                            "system_pdb_file_path",
-                            "binding_xml_file_path"
-                        ],
-                        "properties": {
-                            "padding": {
-                                "type": "number",
-                                "description": "Padding distance in nm used around the system",
-                                "x-data-type": "PreparedSystem.padding",
-                                "x-display-name": "Padding"
-                            },
-                            "box_size": {
-                                "type": "array",
-                                "items": {
-                                    "type": "number"
-                                },
-                                "maxItems": 3,
-                                "minItems": 3,
-                                "description": "Simulation box dimensions (X, Y, Z) in nm",
-                                "x-data-type": "PreparedSystem.box_size",
-                                "x-display-name": "Box Size"
-                            },
-                            "ligand1_id": {
-                                "type": "string",
-                                "x-key": true,
-                                "description": "ID of the first ligand used in system preparation",
-                                "x-data-type": "Ligand.id"
-                            },
-                            "ligand2_id": {
-                                "type": "string",
-                                "x-key": true,
-                                "description": "ID of the second ligand used in RBFE system preparation",
-                                "x-data-type": "Ligand.id"
-                            },
-                            "protein_id": {
-                                "type": "string",
-                                "x-key": true,
-                                "description": "ID of the protein used in system preparation",
-                                "x-data-type": "Protein.id"
-                            },
-                            "add_H_atoms": {
-                                "type": "boolean",
-                                "description": "Whether hydrogen atoms were added to the ligand",
-                                "x-data-type": "PreparedSystem.add_H_atoms",
-                                "x-display-name": "Add Hydrogen Atoms"
-                            },
-                            "retain_waters": {
-                                "type": "boolean",
-                                "description": "Whether water molecules were retained in the system",
-                                "x-data-type": "PreparedSystem.retain_waters",
-                                "x-display-name": "Retain Waters"
-                            },
-                            "protonate_protein": {
-                                "type": "boolean",
-                                "description": "Whether the protein was protonated",
-                                "x-data-type": "PreparedSystem.protonate_protein",
-                                "x-display-name": "Protonate Protein"
-                            },
-                            "system_pdb_file_path": {
-                                "type": "string",
-                                "format": "file",
-                                "description": "Path to the prepared system PDB file",
-                                "x-data-type": "PreparedSystem.system_pdb_file_path"
-                            },
-                            "binding_xml_file_path": {
-                                "type": "string",
-                                "format": "file",
-                                "description": "Path to the binding XML file",
-                                "x-data-type": "PreparedSystem.binding_xml_file_path"
-                            },
-                            "solvation_xml_ligand1_file_path": {
-                                "type": "string",
-                                "format": "file",
-                                "description": "Path to the solvation XML file for the first ligand",
-                                "x-data-type": "PreparedSystem.solvation_xml_ligand1_file_path"
-                            },
-                            "solvation_xml_ligand2_file_path": {
-                                "type": "string",
-                                "format": "file",
-                                "description": "Path to the solvation XML file for the second ligand (RBFE only)",
-                                "x-data-type": "PreparedSystem.solvation_xml_ligand2_file_path"
-                            }
-                        },
-                        "description": "Prepared molecular system, which acts as an input to FEP",
-                        "x-data-type": "PreparedSystem",
-                        "x-result-group": "preparedsystems"
-                    }
-                },
-                "description": "Output schema for system preparation results"
-            },
-            "functionManifestVersion": "1"
-        },
-        "billingCode": "DO_SYSTEM_PREP",
-        "resourceId": "function-v8iqlecdph2ji61p5t74j"
+            "protonate_protein": true,
+            "retain_waters": false
+        }
     }
 }
