@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
-from deeporigin.platform.constants import ABFE_TOOL_KEY
 from deeporigin.utils.constants import DEFAULT_SEARCH_PAGE_SIZE
 
 if TYPE_CHECKING:
@@ -351,7 +350,7 @@ class Results:
             ``meta`` from the final response.
         """
         filter_dict: dict[str, Any] = {
-            "tool_key": {"eq": ABFE_TOOL_KEY},
+            "props": [{"column": "result_type", "op": "eq", "value": "abferesult"}]
         }
 
         if protein_id is not None:
