@@ -338,6 +338,7 @@ def create_data_platform_router(
     projects: dict[str, dict[str, Any]],
     results: list[dict[str, Any]],
     executions: dict[str, dict[str, Any]] | None = None,
+    datasets: dict[str, dict[str, Any]] | None = None,
     load_fixture: Callable[[str], dict[str, Any]],
 ) -> APIRouter:
     """Create a router for data-platform endpoints.
@@ -348,12 +349,15 @@ def create_data_platform_router(
         projects: In-memory storage for data platform projects.
         results: In-memory list of result-explorer records.
         executions: In-memory storage for executions (keyed by executionId).
+        datasets: In-memory storage for datasets (keyed by dataset ID).
         load_fixture: Callable to load fixture data by name.
 
     Returns:
         APIRouter instance with data-platform routes.
     """
     router = APIRouter()
+
+    _datasets: dict[str, dict[str, Any]] = datasets if datasets is not None else {}
 
     _entity_stores: dict[str, dict[str, dict[str, Any]]] = {
         "ligands": ligands,
@@ -499,6 +503,113 @@ def create_data_platform_router(
         if with_history:
             response["with_history"] = True
         return response
+
+    # ---- Admin dataset endpoints (registered before catch-all entity routes) ----
+
+    @router.post("/data-platform/admin/datasets/search")
+    async def admin_search_datasets(request: Request) -> dict[str, Any]:
+        """Search datasets (admin)."""
+        body = await request.json()
+        filter_dict = body.get("filter", {})
+        limit = body.get("limit", 100)
+        offset = body.get("offset", 0)
+        search_term = body.get("search")
+
+        results_list = list(_datasets.values())
+
+        if search_term:
+            term = search_term.lower()
+            results_list = [
+                r
+                for r in results_list
+                if term in (r.get("name") or "").lower()
+                or term in (r.get("summary") or "").lower()
+                or term in (r.get("description") or "").lower()
+            ]
+
+        for key, value in filter_dict.items():
+            if isinstance(value, dict) and "in" in value:
+                allowed = value["in"]
+                results_list = [
+                    r
+                    for r in results_list
+                    if isinstance(r.get(key), list)
+                    and all(t in r[key] for t in allowed)
+                ]
+            elif isinstance(value, dict) and "eq" in value:
+                results_list = [r for r in results_list if r.get(key) == value["eq"]]
+            elif not isinstance(value, dict):
+                results_list = [r for r in results_list if r.get(key) == value]
+
+        total = len(results_list)
+
+        if body.get("with_total_count"):
+            return {"data": [], "meta": {"count": 0, "limit": 0, "total_count": total}}
+
+        page = results_list[offset : offset + limit]
+        return {"data": page, "meta": {"count": total, "limit": limit}}
+
+    @router.get("/data-platform/admin/datasets/{dataset_id}")
+    def admin_get_dataset(dataset_id: str) -> dict[str, Any]:
+        """Get a dataset by ID (admin)."""
+        from fastapi import HTTPException
+
+        if dataset_id not in _datasets:
+            raise HTTPException(
+                status_code=404, detail=f"Dataset {dataset_id} not found"
+            )
+        return {"data": _datasets[dataset_id]}
+
+    @router.post("/data-platform/admin/datasets")
+    async def admin_create_dataset(request: Request) -> dict[str, Any]:
+        """Create a dataset (admin)."""
+        body = await request.json()
+        set_data = body.get("set", {})
+        did = "ds-" + str(uuid.uuid4()).replace("-", "")[:12]
+        now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z"
+        record: dict[str, Any] = {
+            "id": did,
+            "version": 1,
+            "valid_from": now,
+            "valid_to": None,
+            "modified_by": "mock-server",
+            "deleted": False,
+            **set_data,
+        }
+        _datasets[did] = record
+        return {"data": record, "meta": {"inserted": 1}}
+
+    @router.patch("/data-platform/admin/datasets/{dataset_id}")
+    async def admin_update_dataset(dataset_id: str, request: Request) -> dict[str, Any]:
+        """Update a dataset (admin)."""
+        from fastapi import HTTPException
+
+        if dataset_id not in _datasets:
+            raise HTTPException(
+                status_code=404, detail=f"Dataset {dataset_id} not found"
+            )
+        body = await request.json()
+        set_data = body.get("set", {})
+        _datasets[dataset_id].update(set_data)
+        return {"data": _datasets[dataset_id], "meta": {"affected": 1}}
+
+    @router.post("/data-platform/admin/datasets/{dataset_id}/import")
+    async def admin_trigger_import(dataset_id: str, request: Request) -> dict[str, Any]:
+        """Trigger a dataset import (admin)."""
+        from fastapi import HTTPException
+
+        if dataset_id not in _datasets:
+            raise HTTPException(
+                status_code=404, detail=f"Dataset {dataset_id} not found"
+            )
+        body = await request.json()
+        if not body.get("orgKey") or not body.get("clusterId"):
+            raise HTTPException(
+                status_code=400, detail="orgKey and clusterId are required"
+            )
+        return {"executionId": f"exec-{uuid.uuid4().hex[:12]}"}
+
+    # ---- Generic entity search (catch-all, must come after static routes) ----
 
     @router.post("/data-platform/{org_key}/{entity}/search")
     async def search_entity(
