@@ -466,6 +466,26 @@ def create_data_platform_router(
         except FileNotFoundError:
             pass
 
+        try:
+            run_sp = load_fixture("function-runs/deeporigin.system-prep/run")
+            manifest_sp = run_sp.get("function", {}).get("manifestBody", {})
+            func_sp = run_sp.get("function", {})
+            system_out = run_sp.get("functionOutputs", {}).get("system")
+            if isinstance(system_out, dict):
+                all_results.append(
+                    {
+                        "id": run_sp["id"],
+                        "tool_key": manifest_sp.get("key", "deeporigin.system-prep"),
+                        "tool_version": func_sp.get("version")
+                        or manifest_sp.get("version", "0.0.0"),
+                        "result_type": "preparedsystem",
+                        "data": system_out,
+                        "compute_job_id": run_sp["id"],
+                    }
+                )
+        except FileNotFoundError:
+            pass
+
         # Records injected by function runs (same list the tools router appends to).
         all_results.extend(results)
 
