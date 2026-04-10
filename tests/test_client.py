@@ -3,6 +3,7 @@
 from unittest.mock import patch
 
 import httpx
+import pytest
 
 from deeporigin.platform.client import DeepOriginClient
 from deeporigin.utils.constants import FUNCTION_RUN_POST_TIMEOUT_SECONDS
@@ -308,3 +309,55 @@ def test_client_close_all_clears_registry():
 
     DeepOriginClient.close_all()
     assert len(DeepOriginClient._instances) == 0
+
+
+def test_from_headers_accepts_lowercase_dict_keys():
+    """``dict(request.headers)`` uses lowercase keys; ``from_headers`` still resolves."""
+    DeepOriginClient.close_all()
+    headers = {
+        "x-do-auth-token": "tok",
+        "x-do-org-key": "org",
+        "x-do-base-url": "https://api.example.com",
+    }
+    client = DeepOriginClient.from_headers(headers)
+    assert client.token == "tok"
+    assert client.org_key == "org"
+    assert client.base_url == "https://api.example.com/"
+
+
+def test_from_headers_accepts_canonical_header_names():
+    """Canonical ``X-Do-*`` header names still work."""
+    DeepOriginClient.close_all()
+    headers = {
+        "X-Do-Auth-Token": "tok2",
+        "X-Do-Org-Key": "org2",
+        "X-Do-Base-Url": "https://api2.example.com",
+    }
+    client = DeepOriginClient.from_headers(headers)
+    assert client.token == "tok2"
+    assert client.org_key == "org2"
+    assert client.base_url == "https://api2.example.com/"
+
+
+def test_from_headers_optional_project_id_lowercase_key():
+    """``X-Do-Project-Id`` is read when the dict uses lowercase keys."""
+    DeepOriginClient.close_all()
+    headers = {
+        "x-do-auth-token": "t",
+        "x-do-org-key": "o",
+        "x-do-base-url": "https://api.example.com",
+        "x-do-project-id": "proj-1",
+    }
+    client = DeepOriginClient.from_headers(headers)
+    assert client.project_id == "proj-1"
+
+
+def test_from_headers_still_raises_when_required_missing():
+    """Missing required headers still raises ``ValueError``."""
+    DeepOriginClient.close_all()
+    headers = {"x-do-auth-token": "t"}
+    with pytest.raises(ValueError) as exc_info:
+        DeepOriginClient.from_headers(headers)
+    msg = str(exc_info.value)
+    assert "X-Do-Org-Key" in msg
+    assert "X-Do-Base-Url" in msg
