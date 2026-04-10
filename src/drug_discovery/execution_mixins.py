@@ -336,7 +336,7 @@ class AsyncExecutableMixin:
         instance._execution_dto = dto
         instance._name = dto.get("name")
 
-        quotation = dto.get("quotationResult", {})
+        quotation = dto.get("quotationResult") or {}
         successful = quotation.get("successfulQuotations", [])
         if successful:
             price = successful[0].get("priceTotal")
