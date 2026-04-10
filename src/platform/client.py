@@ -254,6 +254,29 @@ class _DeepOriginMeta(type):
         return instance
 
 
+def _get_header_value(headers: Any, name: str) -> Any:
+    """Return header *name* from *headers* using case-insensitive fallback.
+
+    Starlette/FastAPI ``Headers`` implement case-insensitive ``.get``. Plain
+    ``dict(request.headers)`` uses lowercase keys only, so canonical names like
+    ``X-Do-Auth-Token`` do not match without trying ``name.lower()``.
+
+    Args:
+        headers: Mapping with ``.get`` (e.g. Starlette ``Headers`` or ``dict``).
+        name: Canonical header name (e.g. ``X-Do-Auth-Token``).
+
+    Returns:
+        The header value, or ``None`` if missing or empty.
+    """
+    if headers is None:
+        return None
+    for key in (name, name.lower(), name.upper()):
+        v = headers.get(key)
+        if v not in (None, ""):
+            return v
+    return None
+
+
 class DeepOriginClient(metaclass=_DeepOriginMeta):
     """Minimal synchronous API client with built-in singleton cache.
 
@@ -605,6 +628,9 @@ class DeepOriginClient(metaclass=_DeepOriginMeta):
         Required headers: ``X-Do-Auth-Token``, ``X-Do-Org-Key``, ``X-Do-Base-Url``.
         Optional header: ``X-Do-Project-Id``.
 
+        Header lookup is case-insensitive and supports plain ``dict`` values
+        produced from ``dict(request.headers)`` (lowercase keys).
+
         Args:
             headers: HTTP request headers object (must support ``.get()``).
             _app: Internal app identifier.
@@ -621,17 +647,17 @@ class DeepOriginClient(metaclass=_DeepOriginMeta):
             "X-Do-Org-Key",
             "X-Do-Base-Url",
         ]
-        missing = [k for k in required_keys if not headers.get(k)]
+        missing = [k for k in required_keys if not _get_header_value(headers, k)]
         if missing:
             raise ValueError(f"Missing required headers: {', '.join(missing)}")
 
-        base_url = headers["X-Do-Base-Url"]
-        raw_pid = headers.get("X-Do-Project-Id")
+        base_url = _get_header_value(headers, "X-Do-Base-Url")
+        raw_pid = _get_header_value(headers, "X-Do-Project-Id")
         project_id = str(raw_pid).strip() if raw_pid else None
 
         return cls(
-            token=headers["X-Do-Auth-Token"],
-            org_key=headers["X-Do-Org-Key"],
+            token=_get_header_value(headers, "X-Do-Auth-Token"),
+            org_key=_get_header_value(headers, "X-Do-Org-Key"),
             base_url=base_url,
             project_id=project_id,
             _app=_app,
