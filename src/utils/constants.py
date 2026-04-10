@@ -72,6 +72,7 @@ DOCKING_RESULTS_DATAFRAME_COLUMNS: tuple[str, ...] = (
     "pocket ID",
     "binding energy",
     "pose_score",
+    "best_pose",
 )
 """Column order for :meth:`deeporigin.drug_discovery.docking.Docking.get_results`."""
 

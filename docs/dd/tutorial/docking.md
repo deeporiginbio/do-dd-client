@@ -187,6 +187,8 @@ Each docked pose is assigned a Pose Score and a Binding Energy.
 - The `pose_score` is a score that evaluates the quality of each ligand's pose, where higher scores indicate better predicted binding poses. This score can be more informative than binding energy for identifying the optimal conformation.
 - The `binding_energy` is the predicted binding energy typically used to estimate the strength of interaction between the ligand and the protein. The units are in kcal/mol and generally the lower energy scores (more negative values) mean higher chances that the ligand would bind to the protein strongly.
 
+When you load tabular results with `Docking.get_results()`, each row includes a `best_pose` boolean: `True` for the single pose with the highest `pose_score` among poses for that ligand (for example, one of sixteen poses per ligand), and `False` for the others.
+
 
 We can view the pose scores and binding energies of all ligands using:
 

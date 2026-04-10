@@ -527,7 +527,8 @@ class Docking(
     def get_results(self) -> pd.DataFrame | None:
         """Retrieve docking results as a table (no structure download).
 
-        Columns: ID, protein ID, ligand ID, pocket ID, binding energy, pose_score.
+        Columns: ID, protein ID, ligand ID, pocket ID, binding energy, pose_score,
+        best_pose.
 
         Returns:
             A DataFrame with one row per pose record, or ``None`` if the API
@@ -553,6 +554,7 @@ class Docking(
                     "pocket ID": data.get("pocket_id"),
                     "binding energy": data.get("binding_energy"),
                     "pose_score": data.get("pose_score"),
+                    "best_pose": data.get("best_pose"),
                 }
             )
 

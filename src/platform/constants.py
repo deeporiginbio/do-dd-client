@@ -62,7 +62,10 @@ PROTONATION_FUNCTION_KEY = "deeporigin.mol-props-protonation"
 MOL_PROPS_FUNCTION_VERSION = "0.2.0"
 
 ABFE_TOOL_KEY = "deeporigin.abfe-end-to-end"
-ABFE_TOOL_VERSION = "0.2.37"
+ABFE_TOOL_VERSION = "0.2.39"
+
+RBFE_TOOL_KEY = "deeporigin.rbfe-end-to-end"
+RBFE_TOOL_VERSION = "0.2.39"
 
 SYSPREP_FUNCTION_KEY = "deeporigin.system-prep"
 SYSPREP_FUNCTION_VERSION = "0.8.0"

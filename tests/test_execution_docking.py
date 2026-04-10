@@ -377,6 +377,7 @@ def test_docking_get_results_dataframe_from_api_rows_lv1(
                 "pose_score": 0.9767475,
                 "protein_id": "08CEVZZPNYV31",
                 "binding_energy": -8.131386,
+                "best_pose": True,
             },
             "compute_job_id": "0acc1213-4aa1-48e7-ada9-fbd6331f01d9",
         }
@@ -395,6 +396,7 @@ def test_docking_get_results_dataframe_from_api_rows_lv1(
     assert row["pocket ID"] == "08HXY85NDYYXG"
     assert row["binding energy"] == pytest.approx(-8.131386)
     assert row["pose_score"] == pytest.approx(0.9767475)
+    assert row["best_pose"]
 
 
 def test_docking_get_results_empty_returns_none_lv1(

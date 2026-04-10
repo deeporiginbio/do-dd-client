@@ -176,14 +176,13 @@ class ABFEParams:
     def to_dict(
         self,
         *,
-        binding_xml_path: str,
-        solvation_xml_path: str,
+        prepared_system: PreparedSystem,
     ) -> dict:
         """Build the tool input parameters dict.
 
         Args:
-            binding_xml_path: Remote path to the binding XML file.
-            solvation_xml_path: Remote path to the solvation XML file.
+            prepared_system: Prepared system with XML paths and entity IDs (same
+                shape as system-prep ``system`` output).
 
         Returns:
             Parameters dict ready to be passed to the ABFE tool.
@@ -193,11 +192,18 @@ class ABFEParams:
             "cutoff": self.cutoff,
             "dt": self.dt,
         }
+        ps_out: dict = {
+            "binding_xml_file_path": prepared_system.binding_xml_path,
+            "solvation_xml_ligand_file_path": prepared_system.solvation_xml_path,
+        }
+        if prepared_system.protein_id is not None:
+            ps_out["protein_id"] = prepared_system.protein_id
+        if prepared_system.ligand1_id is not None:
+            ps_out["ligand1_id"] = prepared_system.ligand1_id
+        if prepared_system.ligand2_id is not None:
+            ps_out["ligand2_id"] = prepared_system.ligand2_id
         return {
-            "prepared_system": {
-                "binding_xml_file_path": binding_xml_path,
-                "solvation_xml_ligand_file_path": solvation_xml_path,
-            },
+            "prepared_system": ps_out,
             "binding": {
                 "annihilate": self.annihilate,
                 "emeq_md_options": md_options,
@@ -305,8 +311,12 @@ class ABFE(Execution, QuoteMixin, AsyncExecutableMixin, NotebookWatchMixin):
                 "solvation_xml_ligand_file_path", ""
             ),
             system_pdb_path="",
-            protein_id=metadata.get("protein_id"),
-            ligand1_id=metadata.get("ligand_id"),
+            protein_id=prepared_system_input.get("protein_id")
+            or metadata.get("protein_id"),
+            ligand1_id=prepared_system_input.get("ligand1_id")
+            or metadata.get("ligand1_id")
+            or metadata.get("ligand_id"),
+            ligand2_id=prepared_system_input.get("ligand2_id"),
         )
 
         _BINDING_KEY_MAP = {
@@ -476,17 +486,14 @@ class ABFE(Execution, QuoteMixin, AsyncExecutableMixin, NotebookWatchMixin):
 
     def _build_params(self) -> dict:
         """Construct the tool input parameters dict."""
-        return self.params.to_dict(
-            binding_xml_path=self.prepared_system.binding_xml_path,
-            solvation_xml_path=self.prepared_system.solvation_xml_path,
-        )
+        return self.params.to_dict(prepared_system=self.prepared_system)
 
     def __repr__(self) -> str:
         """Return a string representation showing protein and ligand IDs."""
         ps = getattr(self, "prepared_system", None)
         if ps is None:
             return super().__repr__()
-        return f"ABFE(protein_id={ps.protein_id!r}, ligand_id={ps.ligand1_id!r})"
+        return f"ABFE(protein_id={ps.protein_id!r}, ligand1_id={ps.ligand1_id!r})"
 
     def _build_metadata(self) -> dict:
         """Construct execution metadata."""
@@ -494,7 +501,7 @@ class ABFE(Execution, QuoteMixin, AsyncExecutableMixin, NotebookWatchMixin):
         if self.prepared_system.protein_id:
             metadata["protein_id"] = self.prepared_system.protein_id
         if self.prepared_system.ligand1_id:
-            metadata["ligand_id"] = self.prepared_system.ligand1_id
+            metadata["ligand1_id"] = self.prepared_system.ligand1_id
         return metadata
 
     def _build_outputs(self) -> dict:
