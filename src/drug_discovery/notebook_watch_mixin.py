@@ -59,6 +59,17 @@ class NotebookWatchMixin:
         self._display_id = None
         self._last_html = None
 
+    def _init_after_from_dto(self) -> None:
+        """Set notebook watch attributes when the instance skipped ``__init__``.
+
+        :meth:`~deeporigin.drug_discovery.execution_mixins.AsyncExecutableMixin.from_dto`
+        builds instances with ``object.__new__``, so this mixin is never
+        initialized unless we patch up here.
+        """
+        self._watch_task = None
+        self._display_id = None
+        self._last_html = None
+
     @beartype
     def _is_terminal(self) -> bool:
         """Return True if the execution is in a platform terminal state."""

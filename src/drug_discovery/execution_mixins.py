@@ -289,8 +289,10 @@ class AsyncExecutableMixin:
         Creates a bare instance via ``object.__new__`` (bypassing
         ``__init__``) and populates the common execution fields (including
         :attr:`~deeporigin.drug_discovery.execution.Execution.name` from the
-        DTO ``name`` field).  Subclasses should call ``super().from_dto()``
-        then rehydrate domain-specific fields from
+        DTO ``name`` field).  If the instance defines ``_init_after_from_dto``
+        (e.g. :class:`~deeporigin.drug_discovery.notebook_watch_mixin.NotebookWatchMixin`),
+        it is called after common fields are set.  Subclasses should call
+        ``super().from_dto()`` then rehydrate domain-specific fields from
         ``instance._execution_dto["userInputs"]``.
 
         Args:
@@ -344,6 +346,10 @@ class AsyncExecutableMixin:
                 instance._estimate = float(price)
             if instance.status == "Succeeded" and price is not None:
                 instance._cost = float(price)
+
+        post_init = getattr(instance, "_init_after_from_dto", None)
+        if post_init is not None:
+            post_init()
 
         return instance
 

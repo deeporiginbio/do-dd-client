@@ -48,7 +48,7 @@ PROVIDER = Literal["ufa", "s3"]
 
 # tool, function keys and versions
 DOCKING_TOOL_KEY = "deeporigin.docking"
-DOCKING_TOOL_VERSION = "3.0.0-26"
+DOCKING_TOOL_VERSION = "3.0.0-29"
 DOCKING_FUNCTION_KEY = "deeporigin.docking"
 DOCKING_FUNCTION_VERSION = "1.0.2"
 
