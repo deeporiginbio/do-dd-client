@@ -108,14 +108,12 @@ class PreparedSystem:
         """
         data = record.get("data") or {}
         binding = data.get("binding_xml_file_path")
-        solvation = data.get("solvation_xml_ligand1_file_path") or data.get(
-            "solvation_xml_ligand2_file_path"
-        )
+        solvation = data.get("solvation_xml_ligand_file_path")
         system_pdb = data.get("system_pdb_file_path")
         if not (binding and solvation and system_pdb):
             raise ValueError(
                 "Record missing required paths (binding_xml_file_path, "
-                "solvation_xml_*_file_path, system_pdb_file_path)."
+                "solvation_xml_ligand_file_path, system_pdb_file_path)."
             )
         return cls(
             id=record.get("id"),

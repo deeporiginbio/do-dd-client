@@ -47,6 +47,20 @@ def test_docking_from_dto_maps_async_execution_fields_from_fixture(
     assert docking.effort == Docking.effort
 
 
+def test_docking_from_dto_initializes_notebook_watch_state(client) -> None:
+    """from_dto skips __init__; notebook watch attrs must exist for stop_watching."""
+    fixture_path = (
+        Path(__file__).parent / "fixtures/executions/docking-test-execution.json"
+    )
+    dto = json.loads(fixture_path.read_text())
+
+    docking = Docking.from_dto(dto, client=client)
+    assert docking._watch_task is None
+    assert docking._display_id is None
+    assert docking._last_html is None
+    docking.stop_watching()
+
+
 def test_docking_from_dto_raises_on_tool_key_mismatch(client) -> None:
     """from_dto fails fast when DTO tool key does not match Docking.tool_key."""
     fixture_path = (
@@ -377,6 +391,7 @@ def test_docking_get_results_dataframe_from_api_rows_lv1(
                 "pose_score": 0.9767475,
                 "protein_id": "08CEVZZPNYV31",
                 "binding_energy": -8.131386,
+                "best_pose": True,
             },
             "compute_job_id": "0acc1213-4aa1-48e7-ada9-fbd6331f01d9",
         }
@@ -395,6 +410,7 @@ def test_docking_get_results_dataframe_from_api_rows_lv1(
     assert row["pocket ID"] == "08HXY85NDYYXG"
     assert row["binding energy"] == pytest.approx(-8.131386)
     assert row["pose_score"] == pytest.approx(0.9767475)
+    assert row["best_pose"]
 
 
 def test_docking_get_results_empty_returns_none_lv1(

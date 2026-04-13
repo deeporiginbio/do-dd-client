@@ -119,6 +119,22 @@ class Executions:
             f"/tools/{self._c.org_key}/tools/executions/{execution_id}"
         )
 
+    def from_data_platform(self, data_platform_execution_id: str) -> dict:
+        """Get an execution from the data-platform API by its execution identifier.
+
+        This identifier is not the same as the tools-service ``execution_id`` used
+        by :meth:`get`.
+
+        Args:
+            data_platform_execution_id: Data-platform execution ID (e.g. from search UIs).
+
+        Returns:
+            Dictionary containing the execution record from the data platform.
+        """
+        return self._c.get_json(
+            f"/data-platform/{self._c.org_key}/executions/{data_platform_execution_id}"
+        )
+
     def cancel(self, execution_id: str) -> None:
         """Cancel a tool execution.
 

@@ -325,7 +325,7 @@ class Results:
         self,
         *,
         protein_id: str | None = None,
-        ligand_id: str | list[str] | None = None,
+        ligand1_id: str | list[str] | None = None,
         compute_job_id: str | None = None,
         tool_version: str | None = None,
         limit: int | None = 1000,
@@ -338,7 +338,7 @@ class Results:
 
         Args:
             protein_id: Optional protein ID to filter by.
-            ligand_id: Optional ligand ID (or list of IDs) to filter by.
+            ligand1_id: Optional ligand ID (or list of IDs) to filter by.
             compute_job_id: Optional compute job ID to filter by.
             tool_version: Optional tool version to filter by.
             limit: Maximum total number of results to return. Defaults to 1000.
@@ -355,11 +355,11 @@ class Results:
 
         if protein_id is not None:
             filter_dict["protein_id"] = {"eq": protein_id}
-        if ligand_id is not None:
-            if isinstance(ligand_id, list):
-                filter_dict["ligand_id"] = {"in": ligand_id}
+        if ligand1_id is not None:
+            if isinstance(ligand1_id, list):
+                filter_dict["ligand1_id"] = {"in": ligand1_id}
             else:
-                filter_dict["ligand_id"] = {"eq": ligand_id}
+                filter_dict["ligand1_id"] = {"eq": ligand1_id}
         if compute_job_id is not None:
             filter_dict["compute_job_id"] = {"eq": compute_job_id}
         if tool_version is not None:

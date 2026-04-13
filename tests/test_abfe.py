@@ -98,7 +98,9 @@ def test_abfe_from_dto_rehydrates_prepared_system_lv0():
         "userInputs": {
             "prepared_system": {
                 "binding_xml_file_path": "remote/binding.xml",
-                "solvation_xml_ligand1_file_path": "remote/solvation.xml",
+                "solvation_xml_ligand_file_path": "remote/solvation.xml",
+                "protein_id": "prot-abc",
+                "ligand1_id": "lig-xyz",
             },
             "binding": {
                 "annihilate": True,
@@ -125,10 +127,7 @@ def test_abfe_from_dto_rehydrates_prepared_system_lv0():
                 "test_run": 1,
             },
         },
-        "metadata": {
-            "protein_id": "prot-abc",
-            "ligand_id": "lig-xyz",
-        },
+        "metadata": {},
     }
 
     mock_client = MagicMock()
@@ -158,6 +157,50 @@ def test_abfe_from_dto_rehydrates_prepared_system_lv0():
 
     assert "prot-abc" in repr(abfe)
     assert "lig-xyz" in repr(abfe)
+
+
+def test_abfe_from_dto_legacy_metadata_ligand_id_lv0():
+    """from_dto falls back to metadata.ligand_id when prepared_system omits ligand1_id."""
+    fake_dto = {
+        "executionId": "exec-legacy",
+        "status": "Succeeded",
+        "tool": {"key": ABFE_TOOL_KEY, "version": "0.1.0"},
+        "quotationResult": {"successfulQuotations": [{"priceTotal": 1.0}]},
+        "userInputs": {
+            "prepared_system": {
+                "binding_xml_file_path": "remote/b.xml",
+                "solvation_xml_ligand_file_path": "remote/s.xml",
+            },
+            "binding": {
+                "annihilate": True,
+                "emeq_md_options": {"T": 300.0, "cutoff": 1.0, "dt": 0.002},
+                "n_windows": 8,
+                "npt_reduce_restraints_ns": 1.0,
+                "nvt_heating_ns": 0.5,
+                "prod_md_options": {"T": 300.0, "cutoff": 1.0, "dt": 0.002},
+                "repeats": 1,
+                "replex_period_ps": 2.0,
+                "steps": 100,
+                "test_run": 1,
+            },
+            "solvation": {
+                "annihilate": True,
+                "emeq_md_options": {"T": 300.0, "cutoff": 1.0, "dt": 0.002},
+                "n_windows": 8,
+                "npt_reduce_restraints_ns": 0.1,
+                "nvt_heating_ns": 0.05,
+                "prod_md_options": {"T": 300.0, "cutoff": 1.0, "dt": 0.002},
+                "repeats": 1,
+                "replex_period_ps": 2.0,
+                "steps": 50,
+                "test_run": 1,
+            },
+        },
+        "metadata": {"protein_id": "p-old", "ligand_id": "l-old"},
+    }
+    abfe = ABFE.from_dto(fake_dto, client=MagicMock())
+    assert abfe.prepared_system.protein_id == "p-old"
+    assert abfe.prepared_system.ligand1_id == "l-old"
 
 
 def test_abfe_from_id_repr_without_prepared_system_lv0():

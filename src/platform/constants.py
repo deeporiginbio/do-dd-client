@@ -48,7 +48,7 @@ PROVIDER = Literal["ufa", "s3"]
 
 # tool, function keys and versions
 DOCKING_TOOL_KEY = "deeporigin.docking"
-DOCKING_TOOL_VERSION = "3.0.0-26"
+DOCKING_TOOL_VERSION = "3.0.0-29"
 DOCKING_FUNCTION_KEY = "deeporigin.docking"
 DOCKING_FUNCTION_VERSION = "1.0.2"
 
@@ -62,10 +62,13 @@ PROTONATION_FUNCTION_KEY = "deeporigin.mol-props-protonation"
 MOL_PROPS_FUNCTION_VERSION = "0.2.0"
 
 ABFE_TOOL_KEY = "deeporigin.abfe-end-to-end"
-ABFE_TOOL_VERSION = "0.2.37"
+ABFE_TOOL_VERSION = "0.2.39"
+
+RBFE_TOOL_KEY = "deeporigin.rbfe-end-to-end"
+RBFE_TOOL_VERSION = "0.2.39"
 
 SYSPREP_FUNCTION_KEY = "deeporigin.system-prep"
-SYSPREP_FUNCTION_VERSION = "0.7.6"
+SYSPREP_FUNCTION_VERSION = "0.8.0"
 
 FUNCTION_VERSION_MAP: dict[str, str] = {
     DOCKING_FUNCTION_KEY: DOCKING_FUNCTION_VERSION,

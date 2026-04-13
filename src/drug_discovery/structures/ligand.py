@@ -2750,10 +2750,16 @@ class LigandSet:
         Raises:
             DeepOriginException: If pose score property is missing or invalid.
         """
-        pose_score_str = ligand.properties.get("POSE SCORE")
+        props = ligand.properties
+        if "POSE SCORE" in props:
+            pose_score_str = props["POSE SCORE"]
+        elif "pose_score" in props:
+            pose_score_str = props["pose_score"]
+        else:
+            pose_score_str = None
         if pose_score_str is None:
             raise DeepOriginException(
-                f"Ligand {ligand.name or 'unnamed'} missing 'POSE SCORE' property"
+                f"Ligand {ligand.name or 'unnamed'} missing 'POSE SCORE' or 'pose_score' property"
             )
 
         try:

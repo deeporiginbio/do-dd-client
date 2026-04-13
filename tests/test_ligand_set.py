@@ -222,12 +222,36 @@ def test_filter_top_poses_error_handling():
         test_ligand1.properties["Binding Energy"] = "-7.0"  # Restore valid value
         del test_ligand1.properties["POSE SCORE"]
         no_score_set = LigandSet(ligands=[test_ligand1, test_ligand2])
-        with pytest.raises(DeepOriginException, match="missing 'POSE SCORE' property"):
+        with pytest.raises(
+            DeepOriginException,
+            match="missing 'POSE SCORE' or 'pose_score' property",
+        ):
             no_score_set.filter_top_poses(by_pose_score=True)
 
         # Restore original properties
         test_ligand1.properties = original_properties1
         test_ligand2.properties = original_properties2
+
+
+def test_filter_top_poses_accepts_pose_score_snake_case():
+    """Ranking by pose score accepts the ``pose_score`` property name alone."""
+    ligand_set = LigandSet.from_sdf("tests/fixtures/brd-all-poses.sdf")
+    if len(ligand_set) < 2:
+        pytest.skip("need at least two ligands")
+    ligand_a = ligand_set.ligands[0]
+    ligand_b = ligand_set.ligands[1]
+    ligand_a.properties = ligand_a.properties.copy()
+    ligand_b.properties = ligand_b.properties.copy()
+    ligand_a.properties["SMILES"] = ligand_b.properties["SMILES"] = "shared_smiles"
+    ligand_a.properties.pop("POSE SCORE", None)
+    ligand_b.properties.pop("POSE SCORE", None)
+    ligand_a.properties["pose_score"] = "0.3"
+    ligand_b.properties["pose_score"] = "0.9"
+    filtered = LigandSet(ligands=[ligand_a, ligand_b]).filter_top_poses(
+        by_pose_score=True
+    )
+    assert len(filtered) == 1
+    assert filtered.ligands[0].properties["pose_score"] == "0.9"
 
 
 def test_ligand_set_from_csv():

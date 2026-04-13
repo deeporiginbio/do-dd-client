@@ -48,11 +48,18 @@ def test_get_prepared_systems(client):
     assert isinstance(response, dict), "Expected a dictionary response"
     assert "data" in response, "Expected 'data' key in response"
     assert isinstance(response["data"], list), "Expected 'data' to be a list"
+    assert len(response["data"]) >= 1, (
+        "Mock should expose at least one prepared-system fixture"
+    )
     for record in response["data"]:
         for field in ("id", "tool_key", "tool_version", "data", "compute_job_id"):
             assert field in record, f"Expected '{field}' key in record"
         assert record.get("tool_key") == SYSPREP_FUNCTION_KEY, (
             "Expected all records to be system-prep results"
+        )
+        data = record.get("data") or {}
+        assert data.get("solvation_xml_ligand_file_path"), (
+            "Expected solvation_xml_ligand_file_path in prepared-system data"
         )
 
 
@@ -78,6 +85,22 @@ def test_get_prepared_systems_with_filters(client, registered_protein: "Protein"
         assert data.get("add_H_atoms") is True
         assert data.get("retain_waters") is False
         assert data.get("protonate_protein") is True
+
+
+def test_prepared_system_from_result_hydrates_paths(
+    client, registered_protein: "Protein"
+):
+    """PreparedSystem.from_result returns rows when the mock exposes system-prep data."""
+    from deeporigin.drug_discovery.structures.prepared_system import PreparedSystem
+
+    systems = PreparedSystem.from_result(
+        protein_id=registered_protein.id, client=client
+    )
+    assert len(systems) >= 1
+    ps = systems[0]
+    assert ps.binding_xml_path
+    assert ps.solvation_xml_path
+    assert ps.system_pdb_path
 
 
 def test_get_abfe_results(client):
