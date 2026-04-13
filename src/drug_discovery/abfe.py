@@ -387,11 +387,12 @@ class ABFE(Execution, QuoteMixin, AsyncExecutableMixin, NotebookWatchMixin):
         """Prevent modification of params after construction."""
         raise AttributeError("params can only be set in the constructor")
 
-    def get_quote_execution_dto(self) -> dict[str, Any]:
+    def _get_quote(self) -> dict[str, Any]:
         """Build the ABFE quote payload and return the tools API execution DTO.
 
         Uses ``approveAmount=0`` via ``executions.create``. Parsing and state
-        assignment are handled by :meth:`~deeporigin.drug_discovery.execution_mixins.QuoteMixin._apply_quotation_dto`.
+        assignment are handled by
+        :meth:`~deeporigin.drug_discovery.execution_mixins.QuoteMixin._quote_apply`.
 
         Returns:
             Raw execution dictionary from the platform.

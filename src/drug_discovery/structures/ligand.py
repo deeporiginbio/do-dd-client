@@ -2174,6 +2174,37 @@ class LigandSet:
         return cls(ligands=all_ligands)
 
     @classmethod
+    def from_docking_results(
+        cls,
+        *,
+        result: FunctionResult,
+        client: DeepOriginClient,
+    ) -> Self:
+        """Build a LigandSet from function-API docking responses (embedded pose paths).
+
+        Reads ``functionOutputs`` from each wrapped response, downloads pose SDF
+        files via ``client.files``, and merges ligands with :meth:`from_sdf_files`.
+        For hydrated poses from the data platform by execution id, use
+        :meth:`from_docking_result` instead.
+
+        Args:
+            result: ``FunctionResult`` wrapping one or more docking API responses.
+            client: Client used to download remote pose files.
+
+        Returns:
+            A ``LigandSet`` built from the downloaded SDF files.
+        """
+        sdf_files: set[str] = set()
+        for outputs in result.function_outputs:
+            for pose in outputs.get("poses", []):
+                local_path = client.files.download(
+                    remote_path=pose["file_path"],
+                    lazy=True,
+                )
+                sdf_files.add(local_path)
+        return cls.from_sdf_files(list(sdf_files))
+
+    @classmethod
     def from_docking_result(
         cls,
         *,

@@ -18,8 +18,12 @@ from deeporigin.drug_discovery.notebook_watch_mixin import NotebookWatchMixin
 from deeporigin.drug_discovery.structures.ligand import Ligand, LigandSet
 from deeporigin.drug_discovery.structures.pocket import Pocket
 from deeporigin.drug_discovery.structures.protein import Protein
+from deeporigin.exceptions import DeepOriginException
+from deeporigin.functions.result import FunctionResult
 from deeporigin.platform.client import DeepOriginClient
 from deeporigin.platform.constants import (
+    DOCKING_FUNCTION_KEY,
+    DOCKING_FUNCTION_VERSION,
     DOCKING_TOOL_KEY,
     DOCKING_TOOL_VERSION,
 )
@@ -31,6 +35,14 @@ Number = float | int
 def _ligand_tool_input_row(lig: Ligand) -> dict[str, Any]:
     """Build one ligand entry for tool ``userInputs`` (id and smiles only)."""
     return {"id": lig.id, "smiles": lig.smiles}
+
+
+def _docking_pocket_axis_size(pocket: Pocket, axis: str) -> float:
+    """Return box size for *axis* on *pocket*, defaulting to 20.0 Å."""
+    val = getattr(pocket, f"box_size_{axis}", None)
+    if val is not None:
+        return float(val)
+    return 20.0
 
 
 @beartype
@@ -200,11 +212,12 @@ class Docking(
         parts.append(")")
         return "\n".join(parts)
 
-    def get_quote_execution_dto(self) -> dict[str, Any]:
+    def _get_quote(self) -> dict[str, Any]:
         """Build the docking quote payload and return the tools API execution DTO.
 
         Submits ``approveAmount=0`` via ``executions.create``. Parsing and state
-        assignment are handled by :meth:`~deeporigin.drug_discovery.execution_mixins.QuoteMixin._apply_quotation_dto`.
+        assignment are handled by
+        :meth:`~deeporigin.drug_discovery.execution_mixins.QuoteMixin._quote_apply`.
 
         Returns:
             Raw execution dictionary from the platform.
@@ -235,28 +248,52 @@ class Docking(
         Returns:
             A ``LigandSet`` of docked poses.
         """
-        from deeporigin.drug_discovery.structures.protein import (
-            _make_poses_from_dock_results,
-        )
-        from deeporigin.functions.docking import dock as _dock
-        from deeporigin.functions.result import FunctionResult
+        if not 1 <= self.effort <= 5:
+            raise DeepOriginException(
+                f"effort must be between 1 and 5 inclusive, got {self.effort}"
+            ) from None
 
         client = self.client
+        protein = self.protein
+        pocket = self.pocket
         ligands = list(self.ligands)
 
-        individual_results: list[FunctionResult] = []
+        protein.sync(lazy=True, client=client)
+        protein.ensure_remote_path(client=client, label="Protein")
+
+        if pocket.center is not None:
+            pocket_center = list(pocket.center)
+        else:
+            pocket_center = pocket.get_center().tolist()
+
+        pocket_data: dict[str, Any] = {
+            "center": pocket_center,
+            "box_size_x": _docking_pocket_axis_size(pocket, "x"),
+            "box_size_y": _docking_pocket_axis_size(pocket, "y"),
+            "box_size_z": _docking_pocket_axis_size(pocket, "z"),
+        }
+        if pocket.id is not None:
+            pocket_data["id"] = pocket.id
+
+        protein_data = {"id": protein.id, "file_path": protein.remote_path}
+
+        all_responses: list[dict[str, Any]] = []
         for ligand in ligands:
-            individual_results.append(
-                _dock(
-                    protein=self.protein,
-                    pocket=self.pocket,
-                    ligand=ligand,
-                    client=client,
-                    effort=self.effort,
+            ligand.sync(lazy=True, client=client)
+            payload = {
+                "effort": self.effort,
+                "protein": protein_data,
+                "ligands": [{"id": ligand.id, "smiles": ligand.smiles}],
+                "pocket": pocket_data,
+            }
+            all_responses.append(
+                client.functions.run(
+                    key=DOCKING_FUNCTION_KEY,
+                    version=DOCKING_FUNCTION_VERSION,
+                    params=payload,
                     quote=False,
                 )
             )
-        all_responses = [fr.response for fr in individual_results]
 
         if not all_responses:
             all_responses = [{"status": "Failed"}]
@@ -291,12 +328,7 @@ class Docking(
                 stacklevel=2,
             )
 
-        poses = _make_poses_from_dock_results(
-            result=result,
-            client=client,
-        )
-
-        return poses
+        return LigandSet.from_docking_results(result=result, client=client)
 
     def _start_impl(
         self,

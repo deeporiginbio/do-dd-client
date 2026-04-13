@@ -226,7 +226,7 @@ def test_docking_quote_lv1(
     assert docking.cost is None, "Cost should be None"
 
 
-def test_docking_quote_impl_raises_when_quotation_result_missing(
+def test_docking_quote_raises_when_quotation_result_missing(
     monkeypatch,
     client,
     registered_protein,
@@ -247,10 +247,10 @@ def test_docking_quote_impl_raises_when_quotation_result_missing(
     monkeypatch.setattr(client.executions, "create", _fake_create)
 
     with pytest.raises(RuntimeError, match="Quote failed: quotationResult is missing"):
-        docking._quote_impl()
+        docking.quote()
 
 
-def test_docking_quote_impl_raises_when_successful_quotations_missing(
+def test_docking_quote_raises_when_successful_quotations_missing(
     monkeypatch,
     client,
     registered_protein,
@@ -277,10 +277,10 @@ def test_docking_quote_impl_raises_when_successful_quotations_missing(
     with pytest.raises(
         RuntimeError, match="Quote failed: successfulQuotations is missing"
     ):
-        docking._quote_impl()
+        docking.quote()
 
 
-def test_docking_quote_impl_raises_when_no_successful_quotations(
+def test_docking_quote_raises_when_no_successful_quotations(
     monkeypatch,
     client,
     registered_protein,
@@ -305,10 +305,10 @@ def test_docking_quote_impl_raises_when_no_successful_quotations(
     monkeypatch.setattr(client.executions, "create", _fake_create)
 
     with pytest.raises(RuntimeError, match="Quote failed: no successful quotations"):
-        docking._quote_impl()
+        docking.quote()
 
 
-def test_docking_quote_impl_raises_when_price_total_missing(
+def test_docking_quote_raises_when_price_total_missing(
     monkeypatch,
     client,
     registered_protein,
@@ -333,7 +333,7 @@ def test_docking_quote_impl_raises_when_price_total_missing(
     monkeypatch.setattr(client.executions, "create", _fake_create)
 
     with pytest.raises(RuntimeError, match="Quote failed: priceTotal is missing"):
-        docking._quote_impl()
+        docking.quote()
 
 
 def test_docking_run_lv2(

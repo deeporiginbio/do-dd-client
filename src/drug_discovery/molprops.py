@@ -167,10 +167,10 @@ class Molprops(Execution, QuoteMixin, SyncExecutableMixin):
             )
         if self.id is not None:
             raise ValueError(f"Cannot quote: execution already has id {self.id!r}.")
-        self._quote_impl()
+        self._populate_estimate_from_quote()
         self._quoted = True
 
-    def _quote_impl(self) -> None:
+    def _populate_estimate_from_quote(self) -> None:
         """Populate ``estimate`` from single-ligand quotes scaled by ligand count."""
 
         n_ligands = len(self._ligands)
