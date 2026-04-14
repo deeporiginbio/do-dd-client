@@ -22,8 +22,6 @@ from deeporigin.platform.constants import PlatformStatus
 if TYPE_CHECKING:
     from typing import Self
 
-    from deeporigin.platform.job import JobList
-
 
 class QuoteMixin:
     """Adds ``quote()`` to request a cost estimate before execution.
@@ -378,7 +376,7 @@ class AsyncExecutableMixin:
         *,
         client: DeepOriginClient | None = None,
         status: list[str] | None = None,
-    ) -> JobList:
+    ) -> list[Self]:
         """List executions of this tool type from the platform.
 
         Args:
@@ -386,22 +384,50 @@ class AsyncExecutableMixin:
             status: Optional list of statuses to filter by.
 
         Returns:
-            A ``JobList`` of matching executions.
+            Instances of this class, one per matching execution.
         """
-        from deeporigin.platform.job import JobList as PlatformJobList
-
         if client is None:
             client = DeepOriginClient()
 
-        jobs = PlatformJobList.list(
-            client=client,
-            tool_key=cls.tool_key,
-        )
+        current_page = 0
+        page_size = 1000
+        all_dtos: list[dict] = []
+
+        while True:
+            response = client.executions.list(
+                page=current_page,
+                page_size=page_size,
+                tool_key=cls.tool_key,
+            )
+
+            if not isinstance(response, dict):
+                all_dtos.extend(response if isinstance(response, list) else [])
+                break
+
+            page_dtos = response.get("data", [])
+            all_dtos.extend(page_dtos)
+
+            count = response.get("count", 0)
+
+            if count > page_size:
+                if len(page_dtos) < page_size:
+                    break
+                if len(all_dtos) >= count:
+                    break
+                current_page += 1
+            else:
+                break
+
+        all_dtos = [
+            dto for dto in all_dtos if dto.get("tool", {}).get("key") == tool_key
+        ]
+
+        instances = [cls.from_dto(dto, client=client) for dto in all_dtos]
 
         if status is not None:
-            jobs = jobs.filter(status=status)
+            instances = [i for i in instances if i.status in status]
 
-        return jobs
+        return instances
 
 
 class JupyterVizMixin:

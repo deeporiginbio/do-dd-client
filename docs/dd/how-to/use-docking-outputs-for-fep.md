@@ -3,6 +3,9 @@ This document describes how to use the outputs of Docking as inputs to FEP tools
 !!! warning "Deprecated: `Complex`"
     The steps below assume the legacy [`Complex`](../ref/complex.md) workflow. Prefer [`Docking`](../ref/docking.md), [`ABFE`](../ref/abfe.md), and `SystemPrep` when starting new projects.
 
+!!! warning "Deprecated: `docking_step` / `sim.docking`"
+    The `docking_step` module was removed; `Complex.docking` no longer exists. Use [`Docking`](../ref/docking.md) instead of `sim.docking` in the examples below.
+
 ## Assumptions
 
 We assume that you have

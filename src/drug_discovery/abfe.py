@@ -1,18 +1,4 @@
-"""ABFE -- async-only absolute binding free energy execution.
-
-Usage::
-
-    abfe = ABFE(prepared_system=prepared_system)
-    abfe.quote()
-    abfe.start()
-    # Jupyter — non-blocking cell (like legacy Job.watch):
-    #     task = await abfe.watch()
-    # Jupyter — block until the job finishes:
-    #     await abfe.watch_async()
-    # Script (blocking): asyncio.run(abfe.watch_async())
-    abfe.sync()
-    results = abfe.get_results()
-"""
+"""ABFE -- class to run and control absolute binding free energy calculations."""
 
 from dataclasses import dataclass
 from typing import Any, Self
@@ -423,8 +409,6 @@ class ABFE(Execution, QuoteMixin, AsyncExecutableMixin, NotebookWatchMixin):
         Args:
             approve_amount: Pre-approved spend amount. If None, uses default.
         """
-        from deeporigin.platform.job import Job
-
         payload = {
             "inputs": self._build_params(),
             "outputs": self._build_outputs(),
@@ -441,11 +425,14 @@ class ABFE(Execution, QuoteMixin, AsyncExecutableMixin, NotebookWatchMixin):
             tool_version=self.tool_version,
         )
 
-        job = Job.from_dto(execution_dto, client=self.client)
+        execution_id = execution_dto.get("executionId")
+        if execution_id is None:
+            msg = "Execution response must contain 'executionId'"
+            raise ValueError(msg)
 
         self._execution_dto = execution_dto
-        self._id = job.id
-        self.status = job.status
+        self._id = execution_id
+        self.status = execution_dto.get("status")
 
     def get_results(self) -> pd.DataFrame | None:
         """Retrieve ABFE results as a DataFrame.

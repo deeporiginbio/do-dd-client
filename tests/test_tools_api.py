@@ -2,9 +2,7 @@
 
 import pytest
 
-from deeporigin.drug_discovery.constants import tool_mapper
 from deeporigin.platform.client import DeepOriginClient
-from deeporigin.platform.job import Job, JobList
 
 
 def test_get_executions_lv1():
@@ -80,52 +78,6 @@ def test_get_all_function_lv1():
         "resourceId",
     ]:
         assert key in function.keys(), f"Expected function to have key {key}"
-
-
-def test_job_lv1():
-    client = DeepOriginClient()
-    response = client.executions.list()
-    jobs = response.get("data", [])
-    execution_id = jobs[0]["executionId"]
-    job = Job.from_id(execution_id, client=client)
-
-    assert execution_id == job.id
-
-
-def test_job_from_dto_lv1():
-    """Test Job.from_dto() creates a Job without making a network request."""
-    client = DeepOriginClient()
-    response = client.executions.list()
-    jobs = response.get("data", [])
-    execution_dto = jobs[0]
-
-    # Create job from DTO (should not make network request)
-    job = Job.from_dto(execution_dto, client=client)
-
-    assert execution_dto["executionId"] == job.id
-    assert execution_dto["status"] == job.status
-    assert job._attributes == execution_dto
-    # Verify that _skip_sync was set (though it's a private field)
-    assert job._skip_sync is True
-
-
-def test_job_df_lv1():
-    client = DeepOriginClient()
-    jobs = JobList.list(client=client)
-    _ = jobs.to_dataframe(client=client)
-
-
-@pytest.mark.dependency()
-def test_job_df_filtering_lv1():
-    client = DeepOriginClient()
-    tool_key = tool_mapper["Docking"]
-
-    jobs = JobList.list(client=client)
-    df = jobs.filter(tool_key=tool_key).to_dataframe(client=client)
-
-    assert len(df["tool_key"].unique()) <= 1, (
-        f"should at most be one tool key. Instead there were {len(df['tool_key'].unique())}"
-    )
 
 
 def test_job_status_logic_lv0():

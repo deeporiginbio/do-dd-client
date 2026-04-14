@@ -1,13 +1,14 @@
-This document describes how to create a `Complex` object, that can be used to run [Docking](./docking.md), [ABFE](../tutorial/abfe.md) and [RBFE](../tutorial/rbfe.md).
+This document describes how to create a `Complex` object, that can be used to run [Docking](./docking.md), [ABFE](../tutorial/abfe.md), and historically [RBFE](../tutorial/rbfe.md) (the `Complex.rbfe` helper is [removed](../ref/rbfe.md)).
 
 !!! warning "Deprecated: `Complex`"
-    The [`Complex`](../ref/complex.md) class is deprecated. Prefer [`Docking`](../ref/docking.md), [`ABFE`](../ref/abfe.md), [`RBFE`](../ref/rbfe.md), [`PocketFinder`](./find-pockets.md), and `SystemPrep` for new projects. This how-to remains for legacy notebooks.
+    The [`Complex`](../ref/complex.md) class is deprecated. Prefer [`Docking`](../ref/docking.md), [`ABFE`](../ref/abfe.md), [`PocketFinder`](./find-pockets.md), and `SystemPrep` for new projects. The legacy [`RBFE`](../ref/rbfe.md) helper is removed. This how-to remains for legacy notebooks.
+
 
 ## Creating a Complex
 
 ### From a directory 
 
-```python
+```{.python notest}
 # here, we're using the example data directory
 from deeporigin.drug_discovery import Complex, BRD_DATA_DIR
 
@@ -23,7 +24,7 @@ The directory should contain:
 
 A `Complex` object can be also be constructed using [`Protein`](./proteins.md) and [`Ligand`](./ligands.md) objects. 
 
-```python
+```{.python notest}
 from deeporigin.drug_discovery import Complex, BRD_DATA_DIR, Protein, Ligand
 
 protein = Protein.from_file(BRD_DATA_DIR / "brd.pdb")
@@ -37,7 +38,7 @@ sim = Complex(protein=protein, ligands=[ligand])
 
 A `Complex` object can also be constructed using [`Protein`](./proteins.md) and [`LigandSet`](./ligands.md) objects. 
 
-```python
+```{.python notest}
 from deeporigin.drug_discovery import Complex, BRD_DATA_DIR, Protein, LigandSet
 
 protein = Protein.from_file(BRD_DATA_DIR / "brd.pdb")
@@ -50,7 +51,7 @@ sim = Complex(protein=protein, ligands=ligands)
 
 You can modify a Complex object by adding or replacing ligands. 
 
-```python
+```{.python notest}
 from deeporigin.drug_discovery import Complex, Protein, Ligand, BRD_DATA_DIR
 protein = Protein.from_file(BRD_DATA_DIR / "brd.pdb")
 ligand = Ligand.from_sdf(BRD_DATA_DIR / "brd-2.sdf")

@@ -9,7 +9,6 @@ calculations.
 from importlib.resources import files
 
 __all__ = [
-    "Complex",
     "Protein",
     "Ligand",
     "Pocket",
@@ -30,11 +29,7 @@ BRD_DATA_DIR = DATA_DIR / "brd"
 
 
 def __getattr__(name):
-    if name == "Complex":
-        from .complex import Complex
-
-        return Complex
-    elif name == "Protein":
+    if name == "Protein":
         from .structures.protein import Protein
 
         return Protein

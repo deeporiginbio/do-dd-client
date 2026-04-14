@@ -1,17 +1,16 @@
-!!! warning "Unreleased code"
-    This page describes APIs and workflows for which we haven't released a package yet. This functionality is coming soon!
-
-
 # Docking
 
-This document describes how to [dock :octicons-link-external-16:](https://en.wikipedia.org/wiki/Docking_(molecular)) ligands to a protein  using Deep Origin tools.
+This document describes how to [dock :octicons-link-external-16:](https://en.wikipedia.org/wiki/Docking_(molecular)) a large set of ligands to a protein  using Deep Origin tools.
 
+!!! warning "Deprecated"
+    This tutorial uses deprecated APIs. New APIs to use Docking will be released soon. 
 
-
+!!! tip "Looking to dock a few ligands?"
+    This document describes how to dock more than a handful of ligands (>10) using a batch job. To dock a single (or a few ligands), you might prefer to use the `.dock()` function of the `Protein` class, as [described here](../how-to/docking.md). 
 
 ## Prerequisites
 
-We assume that we have loaded a protein and some ligands into a project:
+We assume that we have an initialized and configured a `Complex` object:
 
 ```{.python notest}
 from deeporigin.drug_discovery import Complex, BRD_DATA_DIR, PocketFinder

@@ -1,20 +1,5 @@
-# `deeporigin.drug_discovery.Complex`
+# `deeporigin.drug_discovery.Complex` (removed)
 
-!!! warning "Deprecated"
-    `Complex` is deprecated. For new code, use the workflow-specific APIs [`Docking`](docking.md), [`ABFE`](abfe.md), [`RBFE`](rbfe.md), [`PocketFinder`](../how-to/find-pockets.md), and `SystemPrep` instead.
+> **Removed:** The `Complex` type and its legacy workflow helpers are no longer part of the SDK. That included `Complex.prepare`, the former `Complex.abfe` path (`complex_abfe` module), and `Complex.rbfe` (`rbfe` module). Use [`Docking`](docking.md), [`ABFE`](abfe.md), [`PocketFinder`](../how-to/find-pockets.md), and `SystemPrep` from `deeporigin.drug_discovery.system_prep` (or `deeporigin.functions.sysprep`) instead. The former [`RBFE`](rbfe.md) helper documentation applies to removed RBFE-on-Complex code as well.
 
-::: src.drug_discovery.complex.Complex
-    options:
-      docstring_style: google
-      show_root_heading: false
-      show_category_heading: true
-      show_object_full_path: false
-      show_root_toc_entry: false
-      inherited_members: true
-      members_order: alphabetical
-      filters:
-        - "!^_"  # Exclude private members (names starting with "_")
-      show_signature: true
-      show_signature_annotations: true
-      show_if_no_docstring: true
-      group_by_category: true
+Historical tutorials under `dd/tutorial/` and how-tos that referenced `Complex` are retained only as context for old notebooks.

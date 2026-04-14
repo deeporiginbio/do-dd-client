@@ -3,8 +3,8 @@
 !!! danger "RBFE API is in development"
     RBFE functionality is still under development.
 
-!!! warning "Deprecated: `Complex`"
-    This tutorial uses the deprecated [`Complex`](../ref/complex.md) type. For new code, use [`RBFE`](../ref/rbfe.md) and related APIs instead of orchestrating RBFE through `Complex`.
+!!! warning "Removed: `Complex.rbfe` / `deeporigin.drug_discovery.rbfe`"
+    The [`RBFE`](../ref/rbfe.md) module and `Complex.rbfe` are no longer in the SDK. This tutorial is **historical** (legacy `Complex` orchestration). Prefer `SystemPrep` and platform RBFE tools for new work.
 
 This document describes how to run a [RBFE :octicons-link-external-16:](https://en.wikipedia.org/wiki/Free-energy_perturbation) simulation using Deep Origin tools.
 
