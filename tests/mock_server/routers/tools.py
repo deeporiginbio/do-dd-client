@@ -426,6 +426,22 @@ def create_tools_router(
             ]
         }
 
+    @router.get("/tools/protected/tools/{tool_key}/{tool_version}/definitions")
+    def get_tool_by_key_and_version(tool_key: str, tool_version: str) -> dict[str, Any]:
+        """Get a single tool definition by key and version."""
+        if tool_key == "nonexistent-tool":
+            raise HTTPException(status_code=404, detail="Tool not found")
+        return {
+            "key": tool_key,
+            "name": f"Tool {tool_key}",
+            "version": tool_version,
+            "inputs": {},
+            "executors": [],
+            "description": "Mock tool definition",
+            "toolManifestVersion": "1.0.0",
+            "enabled": True,
+        }
+
     @router.get("/tools/protected/functions/definitions")
     def list_functions() -> list[dict[str, Any]]:
         """List all function definitions."""

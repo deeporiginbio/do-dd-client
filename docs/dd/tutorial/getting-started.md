@@ -47,7 +47,7 @@ The 3D structure of the protein can be viewed using the built-in `show` method i
 ```python
 from deeporigin.drug_discovery import Protein, BRD_DATA_DIR
 
-protein = Protein.from_dir(BRD_DATA_DIR)
+protein = Protein.from_file(BRD_DATA_DIR / "brd.pdb")
 
 protein.show()
 ```
