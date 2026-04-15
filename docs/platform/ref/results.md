@@ -29,6 +29,26 @@ results = client.results.with_ligands(
 )
 ```
 
+## CLI
+
+With the package installed, the `deeporigin` console script wraps the same APIs. Docking poses match
+`DeepOriginClient().results.get_poses(...)`; response JSON is printed to stdout:
+
+```bash
+deeporigin results get-poses --limit 1 --effort 1
+```
+
+Run `deeporigin results get-poses --help` for all options (filters, `--select`, `--ligand-id`, etc.).
+
+Binding pockets match `DeepOriginClient().results.get_pockets(...)`:
+
+```bash
+deeporigin results get-pockets --protein 08BSPN61NYVE3
+deeporigin results get-pockets --limit 1
+deeporigin results get-pockets --pocket-count 1
+```
+
+Use `-p` as a short flag for `--protein`. See `deeporigin results get-pockets --help` for `--record-id`, filters, and `--select`.
 
 ::: src.platform.results.Results
     options:

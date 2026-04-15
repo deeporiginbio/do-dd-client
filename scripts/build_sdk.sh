@@ -7,6 +7,7 @@ set -euo pipefail
 clean_platform_sdk_staging() {
   rm -rf platform-sdk/src/platform platform-sdk/src/utils
   rm -f platform-sdk/src/auth.py platform-sdk/src/config.py platform-sdk/src/exceptions.py
+  rm -f platform-sdk/src/cli.py
   rm -f platform-sdk/src/__init__.py
   mkdir -p platform-sdk/src platform-sdk/src/utils
 }
@@ -29,6 +30,7 @@ cp src/utils/__init__.py platform-sdk/src/utils/__init__.py
 cp src/auth.py platform-sdk/src/auth.py
 cp src/exceptions.py platform-sdk/src/exceptions.py
 cp src/config.py platform-sdk/src/config.py
+cp src/cli.py platform-sdk/src/cli.py
 
 # in every .py file, replace "from deeporigin" with "from deeporigin_sdk"
 python3 - <<'PY'
