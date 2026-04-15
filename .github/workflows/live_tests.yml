@@ -41,11 +41,11 @@ jobs:
       fail-fast: false
       matrix:
         python-version: ["3.13"]
-        env: ${{ fromJSON( ((github.event_name == 'workflow_call' || github.event_name == 'release') && inputs.env != '') && format('["{0}"]', inputs.env) || '["dev","staging","prod"]' ) }}
+        env: ${{ fromJSON((inputs.env && format('["{0}"]', inputs.env)) || '["dev","staging","prod"]') }}
 
     steps:
-      - name: Validate workflow_call inputs
-        if: github.event_name == 'workflow_call'
+      - name: Validate workflow inputs
+        if: ${{ inputs.env != '' }}
         run: |
           case "${{ inputs.env }}" in dev|staging|prod) ;; *) echo "Invalid env: ${{ inputs.env }}"; exit 1 ;; esac
           case "${{ inputs.test_level }}" in lv1|lv2) ;; *) echo "Invalid test_level: ${{ inputs.test_level }}"; exit 1 ;; esac
@@ -90,7 +90,7 @@ jobs:
       - name: Set test level
         id: test_level
         run: |
-          LEVEL="${{ github.event.inputs.test_level || (github.event_name == 'workflow_call' && inputs.test_level) || 'lv1' }}"
+          LEVEL="${{ inputs.test_level || github.event.inputs.test_level || 'lv1' }}"
           echo "TEST_LEVEL=${LEVEL}" >> "$GITHUB_ENV"
 
       - name: "Running tests against a live instance"
