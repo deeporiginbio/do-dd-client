@@ -1,10 +1,10 @@
+!!! warning "Deprecated code"
+    This page describes workflows and code that are deprecated. They will be soon be replaced by new APIs that allow for better functionality.
+
+
 # Getting started with the Drug Discovery toolbox
 
-!!! warning "Unreleased code"
-    This page describes APIs and workflows for which we haven't released a package yet. This functionality is coming soon!
-
-
-This document describes how to use the Drug Discovery toolbox to perform docking and run ABFE and RBFE runs on Deep Origin.
+This document describes how to use the Drug Discovery toolbox to perform docking and run ABFE runs on Deep Origin.
 
 
 ## Prerequisites 
@@ -17,20 +17,11 @@ Make sure you have [:material-page-previous: installed](../../install.md), [:mat
     Following these instructions will install the deeporigin client in an isolated environment using `uv`, and will start a Jupyter instance that you will need for the rest of this tutorial.
 
 
-## Projects
-
-Work in Deep Origin is organized in Projects. You can create a new project using:
-
-```{.python notest}
-from deeporigin import projects 
-project.create("my-test-project")
-```
-
 ## Input data
 
-Docking, ABFE, and RBFE require a protein to be in a PDB file as input.
+Docking and ABFE require a protein to be in a PDB file as input.
 
-Ligands can be imported from SDF files or SMILES strings. To run ABFE and RBFE, the ligand must be in a SDF file.
+Ligands can be imported from SDF files or SMILES strings. To run ABFE, the ligand must be in a SDF file.
 
 !!! tip "Example data"
     If you want to explore these tools using some example data, we provide the [BRD4 protein](https://pubs.acs.org/doi/10.1021/acs.jctc.0c00660) and a few ligands. This is built into the `deeporigin` package and can be accessed using:
@@ -39,17 +30,47 @@ Ligands can be imported from SDF files or SMILES strings. To run ABFE and RBFE, 
     from deeporigin.drug_discovery import BRD_DATA_DIR
     ```
 
+## Creating a `Complex` object
 
-### Loading a Protein
+This tutorial uses the legacy [`Complex`](../ref/complex.md) class as a container for a [`Protein`](../ref/protein.md) and a set of [`Ligands`](../ref/ligand.md). Prefer the dedicated APIs listed in the warning above for new work.
+
+The `Complex` object can be created using:
+
+```{.python notest}
+from deeporigin.drug_discovery import Complex, BRD_DATA_DIR
+
+# here, we're using the example data directory
+sim = Complex.from_dir(BRD_DATA_DIR)
+```
+
+## Inspecting the `Complex` object
+
+Inspecting the object shows that it contains a protein and 8 ligands:
+
+```{.python notest}
+from deeporigin.drug_discovery import Complex, BRD_DATA_DIR
+
+sim = Complex.from_dir(BRD_DATA_DIR)
+
+sim
+```
+
+
+!!! success "Expected output"
+    ```{.python notest}
+    Complex(protein=brd.pdb with 8 ligands)
+    ```
+
+### Viewing the Protein
 
 The 3D structure of the protein can be viewed using the built-in `show` method in the `Protein` class:
 
-```python
-from deeporigin.drug_discovery import Protein, BRD_DATA_DIR
+```{.python notest}
+from deeporigin.drug_discovery import Complex, BRD_DATA_DIR
 
-protein = Protein.from_file(BRD_DATA_DIR / "brd.pdb")
+sim = Complex.from_dir(BRD_DATA_DIR)
 
-protein.show()
+sim.protein.show()
 ```
 
 This generates a 3D visualization of the protein, similar to:
@@ -62,29 +83,17 @@ This generates a 3D visualization of the protein, similar to:
     title="Protein visualization"
 ></iframe>
 
-To upload the protein to our project, we can use:
+### Listing Ligands
+
+We can further inspect the ligands by inspecting the `ligands` attribute:
 
 ```{.python notest}
-protein.sync()
+from deeporigin.drug_discovery import Complex, BRD_DATA_DIR
+
+sim = Complex.from_dir(BRD_DATA_DIR)
+
+sim.ligands
 ```
-
-We verify that the protein is now in our project using:
-
-```{.python notest}
-projects.proteins()
-```
-
-### Loading Ligands
-
-We can load a ligand set using:
-
-```python
-from deeporigin.drug_discovery import LigandSet, BRD_DATA_DIR
-
-ligands = LigandSet.from_dir(BRD_DATA_DIR)
-ligands
-```
-
 and you should see something similar to:
     
 <div style='width: 500px; padding: 15px; border: 1px solid #ddd; border-radius: 6px; background-color: #f9f9f9;'><h3 style='margin-top: 0; color: #333;'>LigandSet with 8 ligands</h3><p style='margin: 8px 0;'><strong>8</strong> unique SMILES</p><p style='margin: 8px 0;'>Properties: initial_smiles, r_exp_dg</p><div style='margin-top: 12px; padding-top: 12px; border-top: 1px solid #ddd;'><p style='margin: 4px 0; font-size: 0.9em; color: #666;'><em>Use <code>.to_dataframe()</code> to convert to a dataframe, <code>.show_df()</code> to view dataframewith structures, or <code>.show()</code> for 3D visualization</em></p></div></div>
@@ -99,12 +108,12 @@ and you should see something similar to:
 
 We can also 3D structures using:
 
-```python
-from deeporigin.drug_discovery import LigandSet, BRD_DATA_DIR
+```{.python notest}
+from deeporigin.drug_discovery import Complex, BRD_DATA_DIR
 
-ligands = LigandSet.from_dir(BRD_DATA_DIR)
+sim = Complex.from_dir(BRD_DATA_DIR)
 
-ligands.show()
+sim.ligands.show()
 ```
 
 
@@ -116,18 +125,8 @@ ligands.show()
     title="Ligand visualization"
 ></iframe>
 
-We can now load these ligands into our project:
 
-```{.python notest}
-ligands.sync()
-```
 
-And we can verify that our project contains these ligands:
-
-```{.python notest}
-projects.ligands()
-```
-
-That's it! We are now ready to perform [:material-page-next: docking](./docking.md), [:material-page-next: ABFE](./abfe.md), and [:material-page-next: RBFE](./rbfe.md).
+That's it! We are now ready to perform [:material-page-next: docking](./docking.md) and [:material-page-next: ABFE](./abfe.md).
 
 

@@ -5,6 +5,7 @@ import pytest
 from deeporigin.drug_discovery import BRD_DATA_DIR, DATA_DIR
 from deeporigin.drug_discovery.structures.ligand import Ligand, LigandSet
 from deeporigin.exceptions import DeepOriginException
+from deeporigin.functions.result import FunctionResult
 from deeporigin.platform.client import DeepOriginClient
 
 # Import shared test fixtures
@@ -1088,3 +1089,31 @@ def test_ligand_set_batches_invalid_size_raises(bad: int) -> None:
     ls = LigandSet(ligands=[Ligand.from_smiles("C")])
     with pytest.raises(ValueError, match="batch_size"):
         ls.batches(bad)
+
+
+def test_ligand_set_from_docking_results_lv0(monkeypatch: pytest.MonkeyPatch) -> None:
+    """from_docking_results collects poses from functionOutputs and loads SDFs."""
+    brd_file = str(DATA_DIR / "ligands" / "ligands-brd-all.sdf")
+    client = DeepOriginClient()
+    calls: list[object] = []
+
+    def _fake_download(*_a: object, **_k: object) -> str:
+        calls.append(None)
+        return brd_file
+
+    monkeypatch.setattr(client.files, "download", _fake_download)
+    result = FunctionResult(
+        [
+            {
+                "functionOutputs": {
+                    "poses": [
+                        {"file_path": "remote/a.sdf"},
+                        {"file_path": "remote/b.sdf"},
+                    ],
+                },
+            }
+        ]
+    )
+    ls = LigandSet.from_docking_results(result=result, client=client)
+    assert len(calls) == 2
+    assert len(ls) == 8

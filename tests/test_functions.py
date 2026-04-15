@@ -34,6 +34,26 @@ from deeporigin.platform.constants import (
 from deeporigin.utils.constants import MOLPROPS_PROPERTY_KEYS
 
 
+def test_functions_list_lv1(client: DeepOriginClient) -> None:
+    """``Functions.list()`` returns definitions and caches the list on the client."""
+    first = client.functions.list()
+    assert isinstance(first, list), "Expected a list"
+    assert len(first) > 0, "Expected at least one function definition"
+
+    fn = first[0]
+    for key in [
+        "version",
+        "enabled",
+        "manifestBody",
+        "billingCode",
+        "resourceId",
+    ]:
+        assert key in fn, f"Expected function definition to have key {key}"
+
+    second = client.functions.list()
+    assert second is first, "Expected repeated list() to return the cached list"
+
+
 def test_molprops_lv2(client: DeepOriginClient):
     missing_molprops = [
         f"{MOL_PROPS_FUNCTION_KEY_PREFIX}-{p}"

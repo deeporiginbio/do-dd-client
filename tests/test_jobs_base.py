@@ -57,11 +57,11 @@ class ToolsApiQuoteJob(Execution, QuoteMixin):
     tool_version = "0.0.1"
 
     def __init__(self, dto: dict[str, Any]) -> None:
-        """Store ``dto`` for :meth:`get_quote_execution_dto` to return."""
+        """Store ``dto`` for :meth:`_get_quote` to return."""
         super().__init__()
         self._quote_dto = dto
 
-    def get_quote_execution_dto(self) -> dict[str, Any]:
+    def _get_quote(self) -> dict[str, Any]:
         """Return the canned execution DTO supplied at construction."""
         return self._quote_dto
 
@@ -223,10 +223,10 @@ class TestExecutionRepr:
 
 
 class TestQuoteMixin:
-    """QuoteMixin.quote() guards and delegates to _quote_impl."""
+    """QuoteMixin.quote() runs _quote_setup, _get_quote, _quote_apply."""
 
-    def test_default_quote_impl_raises(self):
-        """Unoverridden get_quote_execution_dto() raises NotImplementedError."""
+    def test_default_get_quote_raises(self):
+        """Unoverridden _get_quote() raises NotImplementedError."""
         mixin = QuoteMixin()
         with pytest.raises(NotImplementedError):
             mixin.quote()
@@ -248,14 +248,14 @@ class TestQuoteMixin:
             job.quote()
 
     def test_quote_allowed_when_fresh(self):
-        """quote() passes the guard then raises NotImplementedError from get_quote_execution_dto."""
+        """quote() passes the guard then raises NotImplementedError from _get_quote."""
         job = AsyncJob("x")
         with pytest.raises(NotImplementedError):
             job.quote()
 
 
 class TestQuoteMixinToolsApi:
-    """Shared _apply_quotation_dto validation for tools-API quotes."""
+    """Shared _quote_apply validation for tools-API quotes."""
 
     def test_quote_sets_state_from_valid_dto(self) -> None:
         """quote() sets estimate, id, and status from a valid execution DTO."""
@@ -671,23 +671,35 @@ class TestSystemPrepRunParsesOutputs:
         assert out.system_pdb_path == "fresh/system.pdb"
 
     def test_get_results_returns_prepared_systems_from_platform(self, protein, ligand):
-        """get_results() calls PreparedSystem.from_result with instance params."""
-        mock_systems = [
-            PreparedSystem(
-                binding_xml_path="p/bsm.xml",
-                solvation_xml_path="p/solv.xml",
-                system_pdb_path="p/system.pdb",
-            )
-        ]
-        with patch(
-            "deeporigin.drug_discovery.structures.prepared_system.PreparedSystem.from_result",
-            return_value=mock_systems,
-        ) as from_result:
-            sp = SystemPrep(protein=protein, ligand=ligand)
+        """get_results() fetches by compute_job_id == execution id."""
+        exec_id = "sysprep-exec-abc"
+        mock_record = {
+            "id": "rec-1",
+            "compute_job_id": exec_id,
+            "data": {
+                "binding_xml_file_path": "p/bsm.xml",
+                "solvation_xml_ligand_file_path": "p/solv.xml",
+                "system_pdb_file_path": "p/system.pdb",
+                "protein_id": protein.id,
+                "ligand1_id": ligand.id,
+            },
+        }
+        sp = SystemPrep(protein=protein, ligand=ligand)
+        sp._id = exec_id
+        with patch.object(
+            sp.client.results,
+            "get",
+            return_value={"data": [mock_record]},
+        ) as get_rows:
             results = sp.get_results()
-        from_result.assert_called_once()
-        call_kw = from_result.call_args[1]
-        assert call_kw["protein_id"] == protein.id
-        assert call_kw["ligand1_id"] == ligand.id
-        assert call_kw["ligand2_id"] is None
-        assert results == mock_systems
+        get_rows.assert_called_once_with(compute_job_id=exec_id, limit=None)
+        assert len(results) == 1
+        assert results[0].binding_xml_path == "p/bsm.xml"
+        assert results[0].solvation_xml_path == "p/solv.xml"
+        assert results[0].system_pdb_path == "p/system.pdb"
+
+    def test_get_results_requires_execution_id(self, protein, ligand):
+        """get_results() raises when run() has not set id."""
+        sp = SystemPrep(protein=protein, ligand=ligand)
+        with pytest.raises(ValueError, match="no execution has been started"):
+            sp.get_results()

@@ -204,11 +204,14 @@ This will read all `.sdf` and `.csv` files in the directory and combine them int
 
 ### Filtering Top Poses
 
+!!! warning "Deprecated: `docking_step` / `Complex.docking`"
+    The `docking_step` module was removed; `Complex.docking` no longer exists. Prefer [`Docking`](../ref/docking.md) for docking outputs.
+
 When working with docking results, you often have multiple poses for the same molecule. The `filter_top_poses()` method helps you select only the best pose for each unique molecule:
 
 ```{.python notest}
 
-# assuming poses comes from protein.dock() or Complex.docking.get_results() (Complex is deprecated; prefer Docking)
+# assuming poses comes from protein.dock() or Docking.run() / tool results (Complex.docking was removed)
 
 # Filter to keep only the best pose per molecule (by binding energy)
 best_poses = poses.filter_top_poses()

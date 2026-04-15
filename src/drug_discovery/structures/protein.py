@@ -27,38 +27,12 @@ from deeporigin.drug_discovery.constants import (
     STATE_DUMP_PATH,
 )
 from deeporigin.exceptions import DeepOriginException
-from deeporigin.functions.result import FunctionResult
 from deeporigin.platform.client import DeepOriginClient
 from deeporigin.utils.env import _ensure_do_folder
 
 from .entity import Entity
 from .ligand import Ligand, LigandSet
 from .pocket import Pocket
-
-
-def _make_poses_from_dock_results(
-    *,
-    result: FunctionResult,
-    client: DeepOriginClient,
-) -> LigandSet:
-    """Download docking pose SDF files and build a LigandSet.
-
-    Args:
-        result: FunctionResult wrapping one or more docking responses.
-        client: DeepOrigin client for downloading files.
-
-    Returns:
-        A LigandSet constructed from the downloaded SDF files.
-    """
-    sdf_files: set[str] = set()
-    for outputs in result.function_outputs:
-        for pose in outputs.get("poses", []):
-            local_path = client.files.download(
-                remote_path=pose["file_path"],
-                lazy=True,
-            )
-            sdf_files.add(local_path)
-    return LigandSet.from_sdf_files(list(sdf_files))
 
 
 @dataclass

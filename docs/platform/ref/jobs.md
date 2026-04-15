@@ -1,6 +1,8 @@
 # Jobs API
 
-The `Job` and `JobList` classes provide a high-level interface for working with tool executions (jobs) on Deep Origin.
+> **Removed:** The `Job` and `JobList` helper types are no longer part of the SDK. This page keeps the **previous** documentation for that API (behavior, methods, and examples) so you can interpret older notebooks and migrations. It does not describe a supported import path in current releases.
+
+What follows describes how `Job` and `JobList` worked when they were available: a high-level interface for tool executions (jobs) on Deep Origin.
 
 ## JobList
 
@@ -9,6 +11,7 @@ The `Job` and `JobList` classes provide a high-level interface for working with 
 ### Creating a JobList
 
 ```{.python notest}
+# Historical SDKs only (module and classes removed).
 from deeporigin.platform.job import JobList
 
 # Fetch jobs from the API
@@ -114,23 +117,6 @@ specific_jobs = jobs.filter(
 )
 ```
 
-::: src.platform.job.JobList
-    options:
-      heading_level: 2
-      docstring_style: google
-      show_root_heading: true
-      show_category_heading: true
-      show_object_full_path: false
-      show_root_toc_entry: false
-      inherited_members: true
-      members_order: alphabetical
-      filters:
-        - "!^_"  # Exclude private members (names starting with "_")
-      show_signature: true
-      show_signature_annotations: true
-      show_if_no_docstring: true
-      group_by_category: true
-
 ## Job
 
 `Job` represents a single computational job that can be monitored and managed.
@@ -140,6 +126,7 @@ specific_jobs = jobs.filter(
 The `duplicate()` method allows you to create a new job with the same parameters as an existing job:
 
 ```{.python notest}
+# Historical SDKs only (module and classes removed).
 from deeporigin.platform.job import Job
 
 # Get an existing job
@@ -150,21 +137,3 @@ new_job = job.duplicate()
 ```
 
 The `duplicate()` method extracts the necessary fields from the original job (userInputs, userOutputs, orgKey, tag, and tool) and submits them as a new execution. The platform will fill in all other fields (executionId, status, timestamps, etc.).
-
-::: src.platform.job.Job
-    options:
-      heading_level: 2
-      docstring_style: google
-      show_root_heading: true
-      show_category_heading: true
-      show_object_full_path: false
-      show_root_toc_entry: false
-      inherited_members: true
-      members_order: alphabetical
-      filters:
-        - "!^_"  # Exclude private members (names starting with "_")
-      show_signature: true
-      show_signature_annotations: true
-      show_if_no_docstring: true
-      group_by_category: true
-

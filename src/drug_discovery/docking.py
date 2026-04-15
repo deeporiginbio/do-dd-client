@@ -18,8 +18,12 @@ from deeporigin.drug_discovery.notebook_watch_mixin import NotebookWatchMixin
 from deeporigin.drug_discovery.structures.ligand import Ligand, LigandSet
 from deeporigin.drug_discovery.structures.pocket import Pocket
 from deeporigin.drug_discovery.structures.protein import Protein
+from deeporigin.exceptions import DeepOriginException
+from deeporigin.functions.result import FunctionResult
 from deeporigin.platform.client import DeepOriginClient
 from deeporigin.platform.constants import (
+    DOCKING_FUNCTION_KEY,
+    DOCKING_FUNCTION_VERSION,
     DOCKING_TOOL_KEY,
     DOCKING_TOOL_VERSION,
 )
@@ -28,13 +32,45 @@ from deeporigin.utils.constants import DOCKING_RESULTS_DATAFRAME_COLUMNS
 Number = float | int
 
 
+def _pose_rows_from_result_explorer(response: dict[str, Any]) -> list[dict[str, Any]]:
+    """Keep pose rows from a :meth:`Execution.get_results` result-explorer response.
+
+    ``Result.get`` may return mixed result types for a ``compute_job_id``; docking
+    tables only include rows where ``result_type`` is missing (legacy) or ``pose``.
+
+    Args:
+        response: Dict with a ``data`` list of result-explorer records.
+
+    Returns:
+        Pose records only, in order.
+    """
+    raw = response.get("data", [])
+    if not isinstance(raw, list):
+        return []
+    out: list[dict[str, Any]] = []
+    for record in raw:
+        if not isinstance(record, dict):
+            continue
+        if record.get("result_type", "pose") != "pose":
+            continue
+        out.append(record)
+    return out
+
+
 def _ligand_tool_input_row(lig: Ligand) -> dict[str, Any]:
     """Build one ligand entry for tool ``userInputs`` (id and smiles only)."""
     return {"id": lig.id, "smiles": lig.smiles}
 
 
-@beartype
-def _docking_default_name(*, protein: Protein, ligands: LigandSet) -> str:
+def _docking_pocket_axis_size(pocket: Pocket, axis: str) -> float:
+    """Return box size for *axis* on *pocket*, defaulting to 20.0 Å."""
+    val = getattr(pocket, f"box_size_{axis}", None)
+    if val is not None:
+        return float(val)
+    return 20.0
+
+
+def _docking_default_name(protein: Protein, ligands: LigandSet) -> str:
     """Build a short human-readable label for a Docking execution.
 
     Uses ``protein.name`` and either the ligand count, a single ligand's name, or its SMILES.
@@ -51,7 +87,7 @@ def _docking_default_name(*, protein: Protein, ligands: LigandSet) -> str:
     if n == 0:
         return f"Docking {p} to 0 ligands."
     if n == 1:
-        lig = ligands[0]
+        lig = ligands.ligands[0]
         if lig.name is not None and lig.name.strip():
             lig_label = lig.name.strip()
         else:
@@ -130,7 +166,7 @@ class Docking(
 
         if ligand is not None:
             ligands = LigandSet(ligands=[ligand])
-        elif ligands is None:
+        elif ligands is None and smiles_list is not None:
             ligands = LigandSet.from_smiles(smiles_list)
 
         super().__init__(client=client)
@@ -142,9 +178,7 @@ class Docking(
         self._ligands = ligands
 
         self.name = (
-            name
-            if name is not None
-            else _docking_default_name(protein=protein, ligands=ligands)
+            name if name is not None else _docking_default_name(protein, ligands)
         )
 
     @property
@@ -200,11 +234,12 @@ class Docking(
         parts.append(")")
         return "\n".join(parts)
 
-    def get_quote_execution_dto(self) -> dict[str, Any]:
+    def _get_quote(self) -> dict[str, Any]:
         """Build the docking quote payload and return the tools API execution DTO.
 
         Submits ``approveAmount=0`` via ``executions.create``. Parsing and state
-        assignment are handled by :meth:`~deeporigin.drug_discovery.execution_mixins.QuoteMixin._apply_quotation_dto`.
+        assignment are handled by
+        :meth:`~deeporigin.drug_discovery.execution_mixins.QuoteMixin._quote_apply`.
 
         Returns:
             Raw execution dictionary from the platform.
@@ -235,28 +270,52 @@ class Docking(
         Returns:
             A ``LigandSet`` of docked poses.
         """
-        from deeporigin.drug_discovery.structures.protein import (
-            _make_poses_from_dock_results,
-        )
-        from deeporigin.functions.docking import dock as _dock
-        from deeporigin.functions.result import FunctionResult
+        if not 1 <= self.effort <= 5:
+            raise DeepOriginException(
+                f"effort must be between 1 and 5 inclusive, got {self.effort}"
+            ) from None
 
         client = self.client
+        protein = self.protein
+        pocket = self.pocket
         ligands = list(self.ligands)
 
-        individual_results: list[FunctionResult] = []
+        protein.sync(lazy=True, client=client)
+        protein.ensure_remote_path(client=client, label="Protein")
+
+        if pocket.center is not None:
+            pocket_center = list(pocket.center)
+        else:
+            pocket_center = pocket.get_center().tolist()
+
+        pocket_data: dict[str, Any] = {
+            "center": pocket_center,
+            "box_size_x": _docking_pocket_axis_size(pocket, "x"),
+            "box_size_y": _docking_pocket_axis_size(pocket, "y"),
+            "box_size_z": _docking_pocket_axis_size(pocket, "z"),
+        }
+        if pocket.id is not None:
+            pocket_data["id"] = pocket.id
+
+        protein_data = {"id": protein.id, "file_path": protein.remote_path}
+
+        all_responses: list[dict[str, Any]] = []
         for ligand in ligands:
-            individual_results.append(
-                _dock(
-                    protein=self.protein,
-                    pocket=self.pocket,
-                    ligand=ligand,
-                    client=client,
-                    effort=self.effort,
+            ligand.sync(lazy=True, client=client)
+            payload = {
+                "effort": self.effort,
+                "protein": protein_data,
+                "ligands": [{"id": ligand.id, "smiles": ligand.smiles}],
+                "pocket": pocket_data,
+            }
+            all_responses.append(
+                client.functions.run(
+                    key=DOCKING_FUNCTION_KEY,
+                    version=DOCKING_FUNCTION_VERSION,
+                    params=payload,
                     quote=False,
                 )
             )
-        all_responses = [fr.response for fr in individual_results]
 
         if not all_responses:
             all_responses = [{"status": "Failed"}]
@@ -291,12 +350,7 @@ class Docking(
                 stacklevel=2,
             )
 
-        poses = _make_poses_from_dock_results(
-            result=result,
-            client=client,
-        )
-
-        return poses
+        return LigandSet.from_docking_results(result=result, client=client)
 
     def _start_impl(
         self,
@@ -505,30 +559,14 @@ class Docking(
         """
         return super().from_id(id, client=client)
 
-    def _list_pose_records(self) -> list[dict[str, Any]]:
-        """Return raw pose rows from ``client.results.get_poses`` for this job.
-
-        Returns:
-            The ``data`` list from the results API.
-
-        Raises:
-            ValueError: If no execution has been started.
-        """
-        if self.id is None:
-            raise ValueError("No execution has been started. Call start() first.")
-
-        response = self.client.results.get_poses(
-            compute_job_id=self.id,
-            limit=None,
-        )
-        raw = response.get("data", [])
-        return raw if isinstance(raw, list) else []
-
     def get_results(self) -> pd.DataFrame | None:
         """Retrieve docking results as a table (no structure download).
 
         Columns: ID, protein ID, ligand ID, pocket ID, binding energy, pose_score,
         best_pose.
+
+        Uses :meth:`~deeporigin.drug_discovery.execution.Execution.get_results` and
+        keeps only pose rows.
 
         Returns:
             A DataFrame with one row per pose record, or ``None`` if the API
@@ -537,7 +575,7 @@ class Docking(
         Raises:
             ValueError: If no execution has been started.
         """
-        records = self._list_pose_records()
+        records = _pose_rows_from_result_explorer(super().get_results())
         if not records:
             return None
 
@@ -569,7 +607,7 @@ class Docking(
         Raises:
             ValueError: If no execution has been started.
         """
-        records = self._list_pose_records()
+        records = _pose_rows_from_result_explorer(super().get_results())
         remote_paths: list[str] = []
         for record in records:
             data = record.get("data", {})

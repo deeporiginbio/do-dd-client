@@ -1,5 +1,7 @@
 # Job control
 
+> **Deprecated:** The legacy module `deeporigin.platform.job` was removed. Use `from deeporigin.platform.tool_jobs import Job, JobList` (replacing old `deeporigin.tools.job` imports as well). The workflows below are otherwise unchanged.
+
 This document describes how to monitor, inspect, cancel and control jobs started on Deep Origin. 
 
 ## Job dataframes
@@ -10,7 +12,7 @@ This document describes how to monitor, inspect, cancel and control jobs started
 To view all Jobs on Deep Origin, use:
 
 ```python
-from deeporigin.platform.job import JobList
+from deeporigin.platform.tool_jobs import JobList
 
 df = JobList.list().filter(require_metadata=True).to_dataframe()
 ```
@@ -35,7 +37,7 @@ A dataframe with the following columns will be returned:
 Only jobs matching certain status(es) can be retrieved. For example,
 
 ```python
-from deeporigin.platform.job import JobList
+from deeporigin.platform.tool_jobs import JobList
 
 df = JobList.list().filter(status=["Running"], require_metadata=True).to_dataframe()
 ```
@@ -45,7 +47,7 @@ only retrieves currently running jobs.
 Multiple statuses can be retrieved using a single function call:
 
 ```python
-from deeporigin.platform.job import JobList
+from deeporigin.platform.tool_jobs import JobList
 
 df = JobList.list().filter(status=["Running", "Succeeded"], require_metadata=True).to_dataframe()
 ```
@@ -57,7 +59,7 @@ df = JobList.list().filter(status=["Running", "Succeeded"], require_metadata=Tru
 By default, the job dataframe does not include information about metadata, inputs, and outputs. These can be included in the dataframe using:
 
 ```python
-from deeporigin.platform.job import JobList
+from deeporigin.platform.tool_jobs import JobList
 
 df = JobList.list().filter(require_metadata=True).to_dataframe(
     include_metadata=True,
@@ -71,7 +73,7 @@ df = JobList.list().filter(require_metadata=True).to_dataframe(
 By default, user IDs are not resolved to names. To use user names in the dataframe, use:
 
 ```python
-from deeporigin.platform.job import JobList
+from deeporigin.platform.tool_jobs import JobList
 
 df = JobList.list().filter(require_metadata=True).to_dataframe(
     resolve_user_names=True,
@@ -89,8 +91,11 @@ The `Job` class allows you to view jobs on Deep Origin, track and visualize thei
 
 Typically, tools will return `Job` objects when you run them. For example, starting a docking or ABFE run will return a job object:
 
+!!! warning "Deprecated: `sim.docking`"
+    The `docking_step` module was removed; `Complex.docking` no longer exists. Use [`Docking`](../ref/docking.md) (`start()`, `quote()`, etc.) instead of `sim.docking.run`.
+
 ```{.python notest}
-# here, sim is a legacy Complex (deprecated; prefer Docking API)
+# Legacy example only — sim.docking is removed; use Docking from drug_discovery.docking
 job = sim.docking.run(pocket=pockets[0])
 ```
 
@@ -99,7 +104,7 @@ job = sim.docking.run(pocket=pockets[0])
 A `Job` can also be constructed from a single execution ID:
 
 ```{.python notest}
-from deeporigin.tools.job import Job
+from deeporigin.platform.tool_jobs import Job
 
 # construct a job from a single ID
 job = Job.from_id("job-id")
@@ -110,7 +115,7 @@ job = Job.from_id("job-id")
 A `Job` can also be constructed from a full execution description (DTO) without making a network request. This is faster than `from_id()` when you already have the execution data:
 
 ```{.python notest}
-from deeporigin.tools.job import Job
+from deeporigin.platform.tool_jobs import Job
 
 # construct a job from a DTO (no network request)
 execution_dto = {

@@ -1,20 +1,5 @@
-# `deeporigin.drug_discovery.rbfe`
+# `deeporigin.drug_discovery.rbfe` (removed)
 
-!!! warning "Not yet released"
-    This class isn't yet available on the latest release of the deeporigin client. Use the `Complex` class and methods on `Protein` and `Ligand` objects. 
+> **Removed:** The `RBFE` helper that was attached to [`Complex`](complex.md) as `Complex.rbfe` is no longer part of the SDK. RBFE system preparation and platform tools may still exist under other modules (for example `SystemPrep` with two ligands, `deeporigin.functions.sysprep.for_rbfe`, and the `deeporigin.rbfe-end-to-end` tool key); this page no longer documents a `deeporigin.drug_discovery.rbfe` module.
 
-::: src.drug_discovery.rbfe
-    options:
-      docstring_style: google
-      show_root_heading: false
-      show_category_heading: true
-      show_object_full_path: false
-      show_root_toc_entry: false
-      inherited_members: true
-      members_order: alphabetical
-      filters:
-        - "!^_"  # Exclude private members (names starting with "_")
-      show_signature: true
-      show_signature_annotations: true
-      show_if_no_docstring: true
-      group_by_category: true
+The tutorial [RBFE](../tutorial/rbfe.md) described the legacy `Complex` workflow; it is retained only as historical context.

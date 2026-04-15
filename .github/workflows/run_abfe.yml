@@ -56,5 +56,5 @@ jobs:
       - name: Install dependencies
         run: uv sync --extra tools --extra test --extra plots --extra core
 
-      - name: Run ABFE script
-        run: uv run tests/run_abfe.py
+      - name: Run ABFE unit tests
+        run: uv run pytest tests/test_abfe.py -q --env ${{ inputs.env }}

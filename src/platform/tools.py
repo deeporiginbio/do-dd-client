@@ -47,3 +47,19 @@ class Tools:
             List of tool definition dictionaries for all versions of the tool.
         """
         return self._c.get_json(f"/tools/protected/tools/{tool_key}/definitions")
+
+    def get(self, *, tool_key: str, tool_version: str) -> dict:
+        """Return a single tool definition for the given key and version.
+
+        Uses ``GET /tools/protected/tools/{toolKey}/{toolVersion}/definitions``.
+
+        Args:
+            tool_key: Tool identifier.
+            tool_version: Exact version string to match.
+
+        Returns:
+            Tool definition dict (includes ``inputs``, ``key``, ``version``, etc.).
+        """
+        return self._c.get_json(
+            f"/tools/protected/tools/{tool_key}/{tool_version}/definitions"
+        )

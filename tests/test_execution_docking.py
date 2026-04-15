@@ -12,7 +12,9 @@ from deeporigin.drug_discovery.docking import (
     Docking,
     _docking_default_name,
     _ligand_tool_input_row,
+    _pose_rows_from_result_explorer,
 )
+from deeporigin.drug_discovery.execution import Execution
 from deeporigin.drug_discovery.structures.ligand import Ligand, LigandSet
 from deeporigin.platform.constants import (
     DOCKING_FUNCTION_KEY,
@@ -139,27 +141,24 @@ def test_docking_default_name_helper():
     from deeporigin.drug_discovery.structures.protein import Protein
 
     protein = Protein.from_file(BRD_DATA_DIR / "brd.pdb")
-    assert _docking_default_name(protein=protein, ligands=LigandSet()) == (
+    assert _docking_default_name(protein, LigandSet()) == (
         f"Docking {protein.name} to 0 ligands."
     )
 
     a = Ligand.from_smiles("CC", name="")
     b = Ligand.from_smiles("CCC", name="")
-    assert _docking_default_name(
-        protein=protein,
-        ligands=LigandSet(ligands=[a, b]),
-    ) == (f"Docking {protein.name} to 2 ligands.")
+    assert _docking_default_name(protein, LigandSet(ligands=[a, b])) == (
+        f"Docking {protein.name} to 2 ligands."
+    )
 
-    assert _docking_default_name(
-        protein=protein,
-        ligands=LigandSet(ligands=[a]),
-    ) == (f"Docking {protein.name} to {a.smiles}")
+    assert _docking_default_name(protein, LigandSet(ligands=[a])) == (
+        f"Docking {protein.name} to {a.smiles}"
+    )
 
     named = Ligand.from_smiles("CC", name="  my-inhibitor  ")
-    assert _docking_default_name(
-        protein=protein,
-        ligands=LigandSet(ligands=[named]),
-    ) == (f"Docking {protein.name} to my-inhibitor")
+    assert _docking_default_name(protein, LigandSet(ligands=[named])) == (
+        f"Docking {protein.name} to my-inhibitor"
+    )
 
 
 def test_docking_accepts_explicit_name_override(
@@ -226,7 +225,7 @@ def test_docking_quote_lv1(
     assert docking.cost is None, "Cost should be None"
 
 
-def test_docking_quote_impl_raises_when_quotation_result_missing(
+def test_docking_quote_raises_when_quotation_result_missing(
     monkeypatch,
     client,
     registered_protein,
@@ -247,10 +246,10 @@ def test_docking_quote_impl_raises_when_quotation_result_missing(
     monkeypatch.setattr(client.executions, "create", _fake_create)
 
     with pytest.raises(RuntimeError, match="Quote failed: quotationResult is missing"):
-        docking._quote_impl()
+        docking.quote()
 
 
-def test_docking_quote_impl_raises_when_successful_quotations_missing(
+def test_docking_quote_raises_when_successful_quotations_missing(
     monkeypatch,
     client,
     registered_protein,
@@ -277,10 +276,10 @@ def test_docking_quote_impl_raises_when_successful_quotations_missing(
     with pytest.raises(
         RuntimeError, match="Quote failed: successfulQuotations is missing"
     ):
-        docking._quote_impl()
+        docking.quote()
 
 
-def test_docking_quote_impl_raises_when_no_successful_quotations(
+def test_docking_quote_raises_when_no_successful_quotations(
     monkeypatch,
     client,
     registered_protein,
@@ -305,10 +304,10 @@ def test_docking_quote_impl_raises_when_no_successful_quotations(
     monkeypatch.setattr(client.executions, "create", _fake_create)
 
     with pytest.raises(RuntimeError, match="Quote failed: no successful quotations"):
-        docking._quote_impl()
+        docking.quote()
 
 
-def test_docking_quote_impl_raises_when_price_total_missing(
+def test_docking_quote_raises_when_price_total_missing(
     monkeypatch,
     client,
     registered_protein,
@@ -333,7 +332,7 @@ def test_docking_quote_impl_raises_when_price_total_missing(
     monkeypatch.setattr(client.executions, "create", _fake_create)
 
     with pytest.raises(RuntimeError, match="Quote failed: priceTotal is missing"):
-        docking._quote_impl()
+        docking.quote()
 
 
 def test_docking_run_lv2(
@@ -396,7 +395,11 @@ def test_docking_get_results_dataframe_from_api_rows_lv1(
             "compute_job_id": "0acc1213-4aa1-48e7-ada9-fbd6331f01d9",
         }
     ]
-    monkeypatch.setattr(docking, "_list_pose_records", lambda: pose_rows)
+    monkeypatch.setattr(
+        Execution,
+        "get_results",
+        lambda self: {"data": pose_rows},
+    )
 
     df = docking.get_results()
     assert df is not None
@@ -411,6 +414,19 @@ def test_docking_get_results_dataframe_from_api_rows_lv1(
     assert row["binding energy"] == pytest.approx(-8.131386)
     assert row["pose_score"] == pytest.approx(0.9767475)
     assert row["best_pose"]
+
+
+def test_pose_rows_from_result_explorer_keeps_pose_and_legacy_rows_lv1() -> None:
+    """Mixed result-explorer rows are filtered to poses (and legacy rows without type)."""
+    response = {
+        "data": [
+            {"id": "pocket-1", "result_type": "pocket", "data": {}},
+            {"id": "pose-1", "result_type": "pose", "data": {"ligand_id": "L1"}},
+            {"id": "legacy", "data": {"ligand_id": "L2"}},
+        ]
+    }
+    rows = _pose_rows_from_result_explorer(response)
+    assert [r["id"] for r in rows] == ["pose-1", "legacy"]
 
 
 def test_docking_get_results_empty_returns_none_lv1(
@@ -429,7 +445,7 @@ def test_docking_get_results_empty_returns_none_lv1(
     )
     docking._id = "job-id"
 
-    monkeypatch.setattr(docking, "_list_pose_records", lambda: [])
+    monkeypatch.setattr(Execution, "get_results", lambda self: {"data": []})
 
     assert docking.get_results() is None
 

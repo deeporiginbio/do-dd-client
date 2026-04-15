@@ -6,7 +6,7 @@ Usage (ABFE)::
     sysprep.quote()
     prepared = sysprep.run()   # returns PreparedSystem
     # Use prepared.binding_xml_path, prepared.solvation_xml_path, etc.
-    # Or use sysprep.get_results() to list previously computed systems.
+    # Or use sysprep.get_results() after run() to reload from the platform by execution id.
 
 Usage (RBFE)::
 
@@ -15,6 +15,10 @@ Usage (RBFE)::
     prepared = sysprep.run()
 """
 
+from __future__ import annotations
+
+from typing import Any
+
 from beartype import beartype
 
 from deeporigin.drug_discovery.execution import Execution
@@ -22,6 +26,7 @@ from deeporigin.drug_discovery.execution_mixins import QuoteMixin, SyncExecutabl
 from deeporigin.drug_discovery.structures.ligand import Ligand
 from deeporigin.drug_discovery.structures.prepared_system import PreparedSystem
 from deeporigin.drug_discovery.structures.protein import Protein
+from deeporigin.functions.sysprep import _build_sysprep_payload
 from deeporigin.platform.client import DeepOriginClient
 from deeporigin.platform.constants import (
     SYSPREP_FUNCTION_KEY,
@@ -172,43 +177,38 @@ class SystemPrep(Execution, QuoteMixin, SyncExecutableMixin):
             return (self.ligand1.id, self.ligand2.id)
         return (self.ligand.id, None)
 
-    def _quote_impl(self) -> None:
-        """Request a cost estimate for system preparation.
-
-        Populates ``self.estimate`` with the estimated cost in dollars.
-        Does not mutate output paths or run the function.
-        """
+    def _get_quote(self) -> dict[str, Any]:
+        """Call the functions API with ``quote=True`` and return the raw response."""
         if self._is_rbfe:
-            from deeporigin.functions.sysprep import for_rbfe as _for_rbfe
-
-            result = _for_rbfe(
-                protein=self.protein,
-                ligand1=self.ligand1,
-                ligand2=self.ligand2,
+            payload = _build_sysprep_payload(
+                protein=self._protein,
+                ligand1=self._ligand1,
+                ligand2=self._ligand2,
                 padding=self._padding,
                 retain_waters=self._retain_waters,
                 add_H_atoms=self._add_H_atoms,
                 protonate_protein=self._protonate_protein,
                 box_size=self._box_size,
                 client=self.client,
-                quote=True,
             )
         else:
-            from deeporigin.functions.sysprep import for_abfe as _for_abfe
-
-            result = _for_abfe(
-                protein=self.protein,
-                ligand=self.ligand,
+            payload = _build_sysprep_payload(
+                protein=self._protein,
+                ligand1=self._ligand,
+                ligand2=None,
                 padding=self._padding,
                 retain_waters=self._retain_waters,
                 add_H_atoms=self._add_H_atoms,
                 protonate_protein=self._protonate_protein,
                 box_size=self._box_size,
                 client=self.client,
-                quote=True,
             )
-        if result.estimate is not None:
-            self._estimate = result.estimate
+        return self.client.functions.run(
+            key=SYSPREP_FUNCTION_KEY,
+            version=self.tool_version,
+            params=payload,
+            quote=True,
+        )
 
     def run(self) -> PreparedSystem:
         """Execute system preparation (blocking).
@@ -319,23 +319,34 @@ class SystemPrep(Execution, QuoteMixin, SyncExecutableMixin):
         )
 
     def get_results(self) -> list[PreparedSystem]:
-        """Retrieve previously computed prepared systems from the platform.
+        """Load prepared-system result records for this execution from the platform.
 
-        Fetches prepared-system results for this instance's protein/ligand(s)
-        and params via the results API, without re-running the computation.
+        Calls :meth:`~deeporigin.drug_discovery.execution.Execution.get_results` (same
+        result-explorer response as other executions), then builds
+        :class:`PreparedSystem` from each row that contains the required output paths.
+
+        Uses the platform execution :attr:`~deeporigin.drug_discovery.execution_mixins.QuoteMixin.id`
+        (function execution / compute job id) set by :meth:`run`.
 
         Returns:
-            List of PreparedSystem objects matching the instance's inputs and options.
+            One or more :class:`PreparedSystem` instances from the results API for
+            this execution.
+
+        Raises:
+            ValueError: If :attr:`id` is unset (see :meth:`~deeporigin.drug_discovery.execution.Execution.get_results`),
+                if the API returns no rows for this execution id, or if no rows parse as
+                a prepared system.
         """
-        ligand1_id, ligand2_id = self._ligand_ids()
-        padding_int = int(round(self._padding))
-        return PreparedSystem.from_result(
-            protein_id=self.protein.id,
-            ligand1_id=ligand1_id,
-            ligand2_id=ligand2_id,
-            padding=padding_int,
-            add_H_atoms=self._add_H_atoms,
-            retain_waters=self._retain_waters,
-            protonate_protein=self._protonate_protein,
-            client=self.client,
-        )
+        response = super().get_results()
+        records = response.get("data", [])
+        if not records:
+            raise ValueError("No prepared-system results found for this execution id.")
+        out: list[PreparedSystem] = []
+        for record in records:
+            try:
+                out.append(PreparedSystem._from_record(record))
+            except ValueError:
+                continue
+        if not out:
+            raise ValueError("No valid prepared-system records for this execution id.")
+        return out

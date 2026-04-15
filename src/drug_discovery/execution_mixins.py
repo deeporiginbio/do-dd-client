@@ -2,8 +2,9 @@
 
 These mixins are combined with ``Execution`` to build concrete types:
 
-- ``QuoteMixin`` -- cost estimation via the functions or tools API (tools API:
-  implement ``get_quote_execution_dto``; shared validation in ``_apply_quotation_dto``)
+- ``QuoteMixin`` -- platform execution ``id`` / ``_id``, cost estimation via
+  ``quote`` → ``_quote_setup``, ``_get_quote``, ``_quote_apply`` (tools API:
+  implement ``_get_quote``; shared parsing in ``_quote_apply``)
 - ``SyncExecutableMixin`` -- blocking, stateless execution via ``run()``
 - ``AsyncExecutableMixin`` -- async, stateful execution via ``start()``
 - ``JupyterVizMixin`` -- notebook rendering via ``_repr_html_()``
@@ -13,6 +14,7 @@ These mixins are combined with ``Execution`` to build concrete types:
 
 from __future__ import annotations
 
+import builtins
 from typing import TYPE_CHECKING, Any
 
 from deeporigin.platform.client import DeepOriginClient
@@ -21,31 +23,58 @@ from deeporigin.platform.constants import PlatformStatus
 if TYPE_CHECKING:
     from typing import Self
 
-    from deeporigin.platform.job import JobList
-
 
 class QuoteMixin:
-    """Adds ``quote()`` to request a cost estimate before execution.
+    """Adds platform execution :attr:`id` and ``quote()`` for cost estimates.
 
-    Tools-API executors implement :meth:`get_quote_execution_dto` to build the
-    payload and return the raw execution DTO from ``executions.create``; shared
-    parsing lives in :meth:`_apply_quotation_dto`.
+    The tools-service execution id is stored in :attr:`_id` and exposed read-only
+    via :attr:`id` (set by :meth:`_quote_apply`, async ``start()``, sync
+    ``run()``, or rehydration helpers depending on the concrete class).
 
-    Function-based flows may override :meth:`_quote_impl` entirely instead of
-    :meth:`get_quote_execution_dto`.
+    Default flow: :meth:`quote` calls :meth:`_quote_setup`, :meth:`_get_quote`,
+    then :meth:`_quote_apply`. Tools-API jobs implement :meth:`_get_quote` to
+    call ``executions.create`` with ``approveAmount: 0`` and return the raw
+    execution dict; :meth:`_quote_apply` validates ``quotationResult`` and sets
+    estimate, id, and status.
+
+    Function-based or custom flows may override :meth:`quote` entirely (typically
+    calling :meth:`_quote_setup` first, then setting state without a tools DTO).
 
     ``quote()`` enforces that a quotation can only be requested once: it raises
     if ``status`` is already ``"Quoted"`` or an execution ID is already assigned.
     """
 
+    _id: str | None
+
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
+        """Initialize execution id storage."""
+        super().__init__(*args, **kwargs)
+        self._id = None
+
+    @property
+    def id(self) -> str | None:
+        """Platform execution ID when set (read-only)."""
+        return self._id
+
     def quote(self) -> None:
         """Request a cost estimate.
 
-        Guards against re-quoting: raises if the execution has already been
-        quoted (``status == "Quoted"``) or if an execution ID has been assigned.
+        Runs :meth:`_quote_setup`, :meth:`_get_quote`, and :meth:`_quote_apply`.
 
         Raises:
             ValueError: If the execution has already been quoted or started.
+            NotImplementedError: If :meth:`_get_quote` is not implemented.
+            RuntimeError: If the API response fails quotation validation.
+        """
+        self._quote_setup()
+        dto = self._get_quote()
+        self._quote_apply(dto)
+
+    def _quote_setup(self) -> None:
+        """Guard: allow at most one quote before an execution id exists.
+
+        Raises:
+            ValueError: If status is ``Quoted`` or an execution id is set.
         """
         id_ = getattr(self, "id", None)
         status = getattr(self, "status", None)
@@ -59,28 +88,25 @@ class QuoteMixin:
             raise ValueError(
                 f"Cannot quote: execution already has id {id_!r} in {status!r} state."
             )
-        self._quote_impl()
 
-    def get_quote_execution_dto(self) -> dict[str, Any]:
-        """Build the quote payload and return the tools API execution DTO.
+    def _get_quote(self) -> dict[str, Any]:
+        """Build the quote request and return the tools API execution DTO.
 
-        Tools-API subclasses implement this to call ``client.executions.create``
-        with ``approveAmount: 0``. Function-based subclasses that override
-        :meth:`_quote_impl` instead do not implement this method.
+        Subclasses using the default :meth:`quote` implement this to call
+        ``client.executions.create`` with ``approveAmount: 0``.
 
         Returns:
             Raw execution dictionary from the platform.
 
         Raises:
-            NotImplementedError: If neither this method nor a full
-                :meth:`_quote_impl` override is provided.
+            NotImplementedError: Unless overridden.
         """
         raise NotImplementedError(
-            "Subclasses using the tools API must implement get_quote_execution_dto(), "
-            "or override _quote_impl() for a non-tools quote path."
+            "Subclasses must implement _get_quote() for the tools API, or override "
+            "quote() for a non-tools quote path."
         )
 
-    def _apply_quotation_dto(self, execution_dto: dict[str, Any]) -> None:
+    def _quote_apply(self, execution_dto: dict[str, Any]) -> None:
         """Validate ``quotationResult`` and set estimate, id, and status.
 
         Args:
@@ -117,18 +143,6 @@ class QuoteMixin:
         self._id = execution_dto.get("executionId")
         self.status = execution_dto.get("status")
 
-    def _quote_impl(self) -> None:
-        """Fetch a tools API quote DTO and apply it to this execution.
-
-        Default for tools-API jobs. Override entirely for function-based quoting.
-
-        Raises:
-            NotImplementedError: If :meth:`get_quote_execution_dto` is not implemented.
-            RuntimeError: If the API response fails quotation validation.
-        """
-        dto = self.get_quote_execution_dto()
-        self._apply_quotation_dto(dto)
-
 
 class SyncExecutableMixin:
     """Adds ``run()`` for synchronous, blocking execution.
@@ -155,6 +169,10 @@ class AsyncExecutableMixin:
     tracking the platform lifecycle and execution progress respectively.
     """
 
+    tool_key: str
+    client: DeepOriginClient
+    # Same backing field as :attr:`QuoteMixin._id` when both mixins are used.
+    _id: str | None
     status: PlatformStatus | None
     progress: dict | None
     app: str | None
@@ -201,7 +219,7 @@ class AsyncExecutableMixin:
         if self.status is None:
             self._start_impl(**kwargs)
         elif self.status == "Quoted":
-            self.client.executions.confirm(self.id)
+            self.client.executions.confirm(self._id)
             self.sync()
         else:
             raise ValueError(
@@ -227,7 +245,7 @@ class AsyncExecutableMixin:
             ValueError: If the job has no execution ID.
             ValueError: If the job is not in a cancellable state.
         """
-        if self.id is None:
+        if self._id is None:
             raise ValueError(
                 "Cannot cancel: no execution has been started (id is None)."
             )
@@ -239,7 +257,7 @@ class AsyncExecutableMixin:
                 f"Only jobs in {cancellable} can be cancelled."
             )
 
-        self.client.executions.cancel(self.id)
+        self.client.executions.cancel(self._id)
         self.sync()
 
     def sync(self) -> None:
@@ -248,10 +266,10 @@ class AsyncExecutableMixin:
         Raises:
             ValueError: If the job has no execution ID.
         """
-        if self.id is None:
+        if self._id is None:
             raise ValueError("Cannot sync: no execution has been started (id is None).")
 
-        result = self.client.executions.get(self.id)
+        result = self.client.executions.get(self._id)
         if result:
             self._execution_dto = result
             self.status = result.get("status")
@@ -378,8 +396,8 @@ class AsyncExecutableMixin:
         cls,
         *,
         client: DeepOriginClient | None = None,
-        status: list[str] | None = None,
-    ) -> JobList:
+        status: builtins.list[str] | None = None,
+    ) -> builtins.list[Self]:
         """List executions of this tool type from the platform.
 
         Args:
@@ -387,22 +405,50 @@ class AsyncExecutableMixin:
             status: Optional list of statuses to filter by.
 
         Returns:
-            A ``JobList`` of matching executions.
+            Instances of this class, one per matching execution.
         """
-        from deeporigin.platform.job import JobList as PlatformJobList
-
         if client is None:
             client = DeepOriginClient()
 
-        jobs = PlatformJobList.list(
-            client=client,
-            tool_key=cls.tool_key,
-        )
+        current_page = 0
+        page_size = 1000
+        all_dtos: builtins.list[dict] = []
+
+        while True:
+            response = client.executions.list(
+                page=current_page,
+                page_size=page_size,
+                tool_key=cls.tool_key,
+            )
+
+            if not isinstance(response, dict):
+                all_dtos.extend(response if isinstance(response, builtins.list) else [])
+                break
+
+            page_dtos = response.get("data", [])
+            all_dtos.extend(page_dtos)
+
+            count = response.get("count", 0)
+
+            if count > page_size:
+                if len(page_dtos) < page_size:
+                    break
+                if len(all_dtos) >= count:
+                    break
+                current_page += 1
+            else:
+                break
+
+        all_dtos = [
+            dto for dto in all_dtos if dto.get("tool", {}).get("key") == cls.tool_key
+        ]
+
+        instances = [cls.from_dto(dto, client=client) for dto in all_dtos]
 
         if status is not None:
-            jobs = jobs.filter(status=status)
+            instances = [i for i in instances if i.status in status]
 
-        return jobs
+        return instances
 
 
 class JupyterVizMixin:
