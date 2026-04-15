@@ -39,13 +39,13 @@ def get_poses(
     *,
     protein_id: str | None = typer.Option(None, help="Optional protein ID filter."),
     ligand_id: Annotated[
-        list[str],
+        list[str] | None,
         typer.Option(
             "--ligand-id",
             "-l",
             help="Ligand ID (repeat for multiple).",
         ),
-    ] = [],
+    ] = None,
     compute_job_id: str | None = typer.Option(None, help="Optional compute job ID."),
     tool_version: str | None = typer.Option(None, help="Optional tool version."),
     effort: int | None = typer.Option(
@@ -58,11 +58,13 @@ def get_poses(
     ),
     limit: int | None = typer.Option(100, help="Maximum number of results."),
     select: Annotated[
-        list[str],
+        list[str] | None,
         typer.Option("--select", help="Field to select (repeat for multiple)."),
-    ] = [],
+    ] = None,
 ) -> None:
     """Fetch docking poses via ``DeepOriginClient().results.get_poses`` and print JSON."""
+    ligand_id = ligand_id or []
+    select = select or []
     client = DeepOriginClient()
     raw = client.results.get_poses(
         protein_id=protein_id,
@@ -99,11 +101,12 @@ def get_pockets(
     tool_version: str | None = typer.Option(None, help="Optional tool version."),
     limit: int | None = typer.Option(1000, help="Maximum number of results."),
     select: Annotated[
-        list[str],
+        list[str] | None,
         typer.Option("--select", help="Field to select (repeat for multiple)."),
-    ] = [],
+    ] = None,
 ) -> None:
     """Fetch binding pockets via ``DeepOriginClient().results.get_pockets`` and print JSON."""
+    select = select or []
     client = DeepOriginClient()
     raw = client.results.get_pockets(
         id=record_id,
