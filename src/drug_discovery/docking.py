@@ -32,6 +32,31 @@ from deeporigin.utils.constants import DOCKING_RESULTS_DATAFRAME_COLUMNS
 Number = float | int
 
 
+def _pose_rows_from_result_explorer(response: dict[str, Any]) -> list[dict[str, Any]]:
+    """Keep pose rows from a :meth:`Execution.get_results` result-explorer response.
+
+    ``Result.get`` may return mixed result types for a ``compute_job_id``; docking
+    tables only include rows where ``result_type`` is missing (legacy) or ``pose``.
+
+    Args:
+        response: Dict with a ``data`` list of result-explorer records.
+
+    Returns:
+        Pose records only, in order.
+    """
+    raw = response.get("data", [])
+    if not isinstance(raw, list):
+        return []
+    out: list[dict[str, Any]] = []
+    for record in raw:
+        if not isinstance(record, dict):
+            continue
+        if record.get("result_type", "pose") != "pose":
+            continue
+        out.append(record)
+    return out
+
+
 def _ligand_tool_input_row(lig: Ligand) -> dict[str, Any]:
     """Build one ligand entry for tool ``userInputs`` (id and smiles only)."""
     return {"id": lig.id, "smiles": lig.smiles}
@@ -537,30 +562,14 @@ class Docking(
         """
         return super().from_id(id, client=client)
 
-    def _list_pose_records(self) -> list[dict[str, Any]]:
-        """Return raw pose rows from ``client.results.get_poses`` for this job.
-
-        Returns:
-            The ``data`` list from the results API.
-
-        Raises:
-            ValueError: If no execution has been started.
-        """
-        if self.id is None:
-            raise ValueError("No execution has been started. Call start() first.")
-
-        response = self.client.results.get_poses(
-            compute_job_id=self.id,
-            limit=None,
-        )
-        raw = response.get("data", [])
-        return raw if isinstance(raw, list) else []
-
     def get_results(self) -> pd.DataFrame | None:
         """Retrieve docking results as a table (no structure download).
 
         Columns: ID, protein ID, ligand ID, pocket ID, binding energy, pose_score,
         best_pose.
+
+        Uses :meth:`~deeporigin.drug_discovery.execution.Execution.get_results` and
+        keeps only pose rows.
 
         Returns:
             A DataFrame with one row per pose record, or ``None`` if the API
@@ -569,7 +578,7 @@ class Docking(
         Raises:
             ValueError: If no execution has been started.
         """
-        records = self._list_pose_records()
+        records = _pose_rows_from_result_explorer(super().get_results())
         if not records:
             return None
 
@@ -601,7 +610,7 @@ class Docking(
         Raises:
             ValueError: If no execution has been started.
         """
-        records = self._list_pose_records()
+        records = _pose_rows_from_result_explorer(super().get_results())
         remote_paths: list[str] = []
         for record in records:
             data = record.get("data", {})

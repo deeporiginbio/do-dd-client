@@ -5,9 +5,26 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from deeporigin.platform.constants import ABFE_TOOL_KEY, SYSPREP_FUNCTION_KEY
+from deeporigin.platform.results import _build_result_filter
 
 if TYPE_CHECKING:
     from deeporigin.drug_discovery import Protein
+
+
+def test_build_result_filter_eq_and_omits_none():
+    """Non-list values use eq; None values are skipped."""
+    assert _build_result_filter(protein_id="p1", effort=3) == {
+        "protein_id": {"eq": "p1"},
+        "effort": {"eq": 3},
+    }
+    assert _build_result_filter(protein_id=None, x=1) == {"x": {"eq": 1}}
+
+
+def test_build_result_filter_list_uses_in():
+    """List values use the in operator."""
+    assert _build_result_filter(ligand_id=["a", "b"]) == {
+        "ligand_id": {"in": ["a", "b"]},
+    }
 
 
 def test_get_results_lv1(client, registered_protein: "Protein"):

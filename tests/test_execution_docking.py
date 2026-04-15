@@ -12,7 +12,9 @@ from deeporigin.drug_discovery.docking import (
     Docking,
     _docking_default_name,
     _ligand_tool_input_row,
+    _pose_rows_from_result_explorer,
 )
+from deeporigin.drug_discovery.execution import Execution
 from deeporigin.drug_discovery.structures.ligand import Ligand, LigandSet
 from deeporigin.platform.constants import (
     DOCKING_FUNCTION_KEY,
@@ -396,7 +398,11 @@ def test_docking_get_results_dataframe_from_api_rows_lv1(
             "compute_job_id": "0acc1213-4aa1-48e7-ada9-fbd6331f01d9",
         }
     ]
-    monkeypatch.setattr(docking, "_list_pose_records", lambda: pose_rows)
+    monkeypatch.setattr(
+        Execution,
+        "get_results",
+        lambda self: {"data": pose_rows},
+    )
 
     df = docking.get_results()
     assert df is not None
@@ -411,6 +417,19 @@ def test_docking_get_results_dataframe_from_api_rows_lv1(
     assert row["binding energy"] == pytest.approx(-8.131386)
     assert row["pose_score"] == pytest.approx(0.9767475)
     assert row["best_pose"]
+
+
+def test_pose_rows_from_result_explorer_keeps_pose_and_legacy_rows_lv1() -> None:
+    """Mixed result-explorer rows are filtered to poses (and legacy rows without type)."""
+    response = {
+        "data": [
+            {"id": "pocket-1", "result_type": "pocket", "data": {}},
+            {"id": "pose-1", "result_type": "pose", "data": {"ligand_id": "L1"}},
+            {"id": "legacy", "data": {"ligand_id": "L2"}},
+        ]
+    }
+    rows = _pose_rows_from_result_explorer(response)
+    assert [r["id"] for r in rows] == ["pose-1", "legacy"]
 
 
 def test_docking_get_results_empty_returns_none_lv1(
@@ -429,7 +448,7 @@ def test_docking_get_results_empty_returns_none_lv1(
     )
     docking._id = "job-id"
 
-    monkeypatch.setattr(docking, "_list_pose_records", lambda: [])
+    monkeypatch.setattr(Execution, "get_results", lambda self: {"data": []})
 
     assert docking.get_results() is None
 

@@ -10,62 +10,29 @@ if TYPE_CHECKING:
     from deeporigin.platform.client import DeepOriginClient
 
 
-def _build_result_filter(
-    *,
-    id: str | None = None,
-    tool_key: str | list[str] | None = None,
-    protein_id: str | None = None,
-    ligand_id: str | list[str] | None = None,
-    compute_job_id: str | None = None,
-    tool_version: str | None = None,
-    effort: int | None = None,
-    pocket_count: int | None = None,
-    pocket_min_size: int | None = None,
-) -> dict[str, Any]:
-    """Build a filter dict for result-explorer queries.
+def _build_result_filter(**kwargs: Any) -> dict[str, Any]:
+    """Build equality filter fields for result-explorer queries.
+
+    Each non-``None`` keyword becomes ``name: {"eq": value}``. Values that are
+    ``list`` use ``{"in": value}`` instead (for fields such as ``tool_key``,
+    ``ligand_id``, ``ligand1_id``).
 
     Args:
-        id: Record ID (uses ``eq``).
-        tool_key: Tool ID (or list of IDs). A single string uses ``eq``;
-            a list uses ``in``.
-        protein_id: Protein ID (uses ``eq``).
-        ligand_id: Ligand ID (or list of IDs). A single string uses ``eq``;
-            a list uses ``in``.
-        compute_job_id: Compute job ID (passed as-is, no operator wrapper).
-        tool_version: Tool version (uses ``eq``).
-        effort: Docking effort level (uses ``eq``).
-        pocket_count: Maximum number of pockets (uses ``eq``).
-        pocket_min_size: Minimum pocket volume in cubic Angstroms (uses ``eq``).
+        **kwargs: Field names and values. ``None`` values are omitted.
 
     Returns:
-        Filter dictionary ready to pass to the result-explorer search API.
+        Filter fragment (no ``props`` / ``result_type``) for merging into a
+        full result-explorer ``filter`` dict.
     """
-    filter_dict: dict[str, Any] = {}
-    if id is not None:
-        filter_dict["id"] = {"eq": id}
-    if tool_key is not None:
-        if isinstance(tool_key, list):
-            filter_dict["tool_key"] = {"in": tool_key}
+    out: dict[str, Any] = {}
+    for key, value in kwargs.items():
+        if value is None:
+            continue
+        if isinstance(value, list):
+            out[key] = {"in": value}
         else:
-            filter_dict["tool_key"] = {"eq": tool_key}
-    if protein_id is not None:
-        filter_dict["protein_id"] = {"eq": protein_id}
-    if ligand_id is not None:
-        if isinstance(ligand_id, list):
-            filter_dict["ligand_id"] = {"in": ligand_id}
-        else:
-            filter_dict["ligand_id"] = {"eq": ligand_id}
-    if compute_job_id is not None:
-        filter_dict["compute_job_id"] = {"eq": compute_job_id}
-    if tool_version is not None:
-        filter_dict["tool_version"] = {"eq": tool_version}
-    if effort is not None:
-        filter_dict["effort"] = {"eq": effort}
-    if pocket_count is not None:
-        filter_dict["pocket_count"] = {"eq": pocket_count}
-    if pocket_min_size is not None:
-        filter_dict["pocket_min_size"] = {"eq": pocket_min_size}
-    return filter_dict
+            out[key] = {"eq": value}
+    return out
 
 
 class Results:
@@ -163,6 +130,7 @@ class Results:
         compute_job_id: str | None = None,
         tool_version: str | None = None,
         effort: int | None = None,
+        best_pose: bool | None = None,
         limit: int | None = 100,
         select: list[str] | None = None,
     ) -> dict:
@@ -177,6 +145,8 @@ class Results:
             compute_job_id: Optional compute job ID to filter by.
             tool_version: Optional tool version to filter by.
             effort: Optional docking effort level (1–5) to filter by.
+            best_pose: When set, only rows whose ``data.best_pose`` matches this
+                value (typically ``True`` for the top pose per ligand).
             limit: Maximum total number of results to return. Defaults to 1000.
             select: List of fields to select. Defaults to
                 ``["id", "tool_key", "tool_version", "data", "compute_job_id"]``.
@@ -188,20 +158,16 @@ class Results:
         filter_dict: dict[str, Any] = {
             "props": [{"column": "result_type", "op": "eq", "value": "pose"}]
         }
-
-        if protein_id is not None:
-            filter_dict["protein_id"] = {"eq": protein_id}
-        if ligand_id is not None:
-            if isinstance(ligand_id, list):
-                filter_dict["ligand_id"] = {"in": ligand_id}
-            else:
-                filter_dict["ligand_id"] = {"eq": ligand_id}
-        if compute_job_id is not None:
-            filter_dict["compute_job_id"] = {"eq": compute_job_id}
-        if tool_version is not None:
-            filter_dict["tool_version"] = {"eq": tool_version}
-        if effort is not None:
-            filter_dict["effort"] = {"eq": effort}
+        filter_dict.update(
+            _build_result_filter(
+                protein_id=protein_id,
+                ligand_id=ligand_id,
+                compute_job_id=compute_job_id,
+                tool_version=tool_version,
+                effort=effort,
+                best_pose=best_pose,
+            )
+        )
         return self.get(filter_dict=filter_dict, limit=limit, select=select)
 
     def get_pockets(
@@ -239,19 +205,16 @@ class Results:
         filter_dict: dict[str, Any] = {
             "props": [{"column": "result_type", "op": "eq", "value": "pocket"}]
         }
-
-        if id is not None:
-            filter_dict["id"] = {"eq": id}
-        if protein_id is not None:
-            filter_dict["protein_id"] = {"eq": protein_id}
-        if compute_job_id is not None:
-            filter_dict["compute_job_id"] = {"eq": compute_job_id}
-        if pocket_count is not None:
-            filter_dict["pocket_count"] = {"eq": pocket_count}
-        if pocket_min_size is not None:
-            filter_dict["pocket_min_size"] = {"eq": pocket_min_size}
-        if tool_version is not None:
-            filter_dict["tool_version"] = {"eq": tool_version}
+        filter_dict.update(
+            _build_result_filter(
+                id=id,
+                protein_id=protein_id,
+                compute_job_id=compute_job_id,
+                pocket_count=pocket_count,
+                pocket_min_size=pocket_min_size,
+                tool_version=tool_version,
+            )
+        )
         return self.get(filter_dict=filter_dict, limit=limit, select=select)
 
     def get_prepared_systems(
@@ -297,27 +260,22 @@ class Results:
         filter_dict: dict[str, Any] = {
             "props": [{"column": "result_type", "op": "eq", "value": "preparedsystem"}]
         }
-
-        if protein_id is not None:
-            filter_dict["protein_id"] = {"eq": protein_id}
-        if ligand1_id is not None:
-            filter_dict["ligand1_id"] = {"eq": ligand1_id}
-        if ligand2_id is not None:
-            filter_dict["ligand2_id"] = {"eq": ligand2_id}
-        if compute_job_id is not None:
-            filter_dict["compute_job_id"] = {"eq": compute_job_id}
-        if padding is not None:
-            filter_dict["padding"] = {"eq": padding}
+        filter_dict.update(
+            _build_result_filter(
+                protein_id=protein_id,
+                ligand1_id=ligand1_id,
+                ligand2_id=ligand2_id,
+                compute_job_id=compute_job_id,
+                padding=padding,
+                retain_waters=retain_waters,
+                protonate_protein=protonate_protein,
+                tool_version=tool_version,
+            )
+        )
         # there is a bug upstream that is causing the add_H_atoms field to be called add_h_atoms
         # while this is sorted out we're disabling this filter for now
         # if add_H_atoms is not None:
         #     filter_dict["add_h_atoms"] = {"eq": add_H_atoms}
-        if retain_waters is not None:
-            filter_dict["retain_waters"] = {"eq": retain_waters}
-        if protonate_protein is not None:
-            filter_dict["protonate_protein"] = {"eq": protonate_protein}
-        if tool_version is not None:
-            filter_dict["tool_version"] = {"eq": tool_version}
 
         return self.get(filter_dict=filter_dict, limit=limit, select=select)
 
@@ -352,18 +310,14 @@ class Results:
         filter_dict: dict[str, Any] = {
             "props": [{"column": "result_type", "op": "eq", "value": "abferesult"}]
         }
-
-        if protein_id is not None:
-            filter_dict["protein_id"] = {"eq": protein_id}
-        if ligand1_id is not None:
-            if isinstance(ligand1_id, list):
-                filter_dict["ligand1_id"] = {"in": ligand1_id}
-            else:
-                filter_dict["ligand1_id"] = {"eq": ligand1_id}
-        if compute_job_id is not None:
-            filter_dict["compute_job_id"] = {"eq": compute_job_id}
-        if tool_version is not None:
-            filter_dict["tool_version"] = {"eq": tool_version}
+        filter_dict.update(
+            _build_result_filter(
+                protein_id=protein_id,
+                ligand1_id=ligand1_id,
+                compute_job_id=compute_job_id,
+                tool_version=tool_version,
+            )
+        )
         return self.get(filter_dict=filter_dict, limit=limit, select=select)
 
     def with_ligands(

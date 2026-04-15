@@ -10,7 +10,7 @@ concrete execution types like ``PocketFinder``, ``Docking``, and ``ABFE``.
 from __future__ import annotations
 
 import copy
-from typing import TYPE_CHECKING, Self
+from typing import TYPE_CHECKING, Any, Self
 
 from deeporigin.platform.constants import ALLOWED_STATUS_TRANSITIONS
 
@@ -128,6 +128,21 @@ class Execution:
         if client is not None:
             new.client = client
         return new
+
+    def get_results(self) -> dict[str, Any]:
+        """Fetch results for this execution from the data platform.
+
+        Returns:
+            Result-explorer response dict with ``data`` and ``meta`` keys.
+
+        Raises:
+            ValueError: If the execution has no ID yet.
+        """
+        if self._id is None:
+            raise ValueError(
+                "Cannot get results: no execution has been started (id is None)."
+            )
+        return self.client.results.get(compute_job_id=self._id, limit=None)
 
     def __repr__(self) -> str:
         """Return a concise summary of the execution."""
