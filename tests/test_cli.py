@@ -43,6 +43,22 @@ def test_results_get_poses_invokes_api_and_prints_json(cli_runner: CliRunner) ->
     )
 
 
+def test_results_get_poses_protein_flag(cli_runner: CliRunner) -> None:
+    """``--protein`` / ``-p`` map to ``protein_id`` (same flags as ``get-pockets``)."""
+    mock_client = MagicMock()
+    mock_client.results.get_poses.return_value = {"data": [], "meta": {}}
+
+    with patch("deeporigin.cli.DeepOriginClient", return_value=mock_client):
+        result = cli_runner.invoke(
+            app,
+            ["results", "get-poses", "-p", "PID1", "--limit", "5"],
+        )
+
+    assert result.exit_code == 0
+    mock_client.results.get_poses.assert_called_once()
+    assert mock_client.results.get_poses.call_args.kwargs["protein_id"] == "PID1"
+
+
 def test_results_get_poses_repeatable_ligand_id(cli_runner: CliRunner) -> None:
     """Multiple ``--ligand-id`` values are passed as a list."""
     mock_client = MagicMock()

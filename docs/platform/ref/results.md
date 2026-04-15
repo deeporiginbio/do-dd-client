@@ -36,9 +36,10 @@ With the package installed, the `deeporigin` console script wraps the same APIs.
 
 ```bash
 deeporigin results get-poses --limit 1 --effort 1
+deeporigin results get-poses --protein 08BSPN61NYVE3 --limit 1 --effort 1
 ```
 
-Run `deeporigin results get-poses --help` for all options (filters, `--select`, `--ligand-id`, etc.).
+Run `deeporigin results get-poses --help` for all options (filters, `--select`, `--ligand-id`, etc.). The protein filter uses `--protein` / `-p`, same as **get-pockets** below.
 
 Binding pockets match `DeepOriginClient().results.get_pockets(...)`:
 
@@ -48,7 +49,7 @@ deeporigin results get-pockets --limit 1
 deeporigin results get-pockets --pocket-count 1
 ```
 
-Use `-p` as a short flag for `--protein`. See `deeporigin results get-pockets --help` for `--record-id`, filters, and `--select`.
+For both **get-poses** and **get-pockets**, use `-p` as a short flag for `--protein`. See `deeporigin results get-pockets --help` for `--record-id`, filters, and `--select`.
 
 ::: src.platform.results.Results
     options:

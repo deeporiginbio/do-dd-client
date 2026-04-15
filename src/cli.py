@@ -37,7 +37,12 @@ def _normalize_ligand_id(ligand_id: list[str]) -> str | list[str] | None:
 @results_app.command("get-poses")
 def get_poses(
     *,
-    protein_id: str | None = typer.Option(None, help="Optional protein ID filter."),
+    protein_id: str | None = typer.Option(
+        None,
+        "--protein",
+        "-p",
+        help="Optional protein ID filter.",
+    ),
     ligand_id: Annotated[
         list[str] | None,
         typer.Option(
