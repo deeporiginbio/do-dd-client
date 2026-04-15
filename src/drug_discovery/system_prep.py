@@ -321,26 +321,23 @@ class SystemPrep(Execution, QuoteMixin, SyncExecutableMixin):
     def get_results(self) -> list[PreparedSystem]:
         """Load prepared-system result records for this execution from the platform.
 
-        Uses :attr:`~deeporigin.drug_discovery.execution.Execution.id` (the function
-        execution / compute job id) set by :meth:`run`. Does not match on protein,
-        ligand, or options alone.
+        Calls :meth:`~deeporigin.drug_discovery.execution.Execution.get_results` (same
+        result-explorer response as other executions), then builds
+        :class:`PreparedSystem` from each row that contains the required output paths.
+
+        Uses the platform execution :attr:`~deeporigin.drug_discovery.execution_mixins.QuoteMixin.id`
+        (function execution / compute job id) set by :meth:`run`.
 
         Returns:
             One or more :class:`PreparedSystem` instances from the results API for
             this execution.
 
         Raises:
-            ValueError: If :attr:`id` is unset (call :meth:`run` first) or no
-                prepared-system records exist for this execution id.
+            ValueError: If :attr:`id` is unset (see :meth:`~deeporigin.drug_discovery.execution.Execution.get_results`),
+                if the API returns no rows for this execution id, or if no rows parse as
+                a prepared system.
         """
-        if self.id is None:
-            raise ValueError(
-                "Cannot get results: no execution id. Call run() first so the "
-                "platform records this system-prep job."
-            )
-        response = self.client.results.get_prepared_systems(
-            compute_job_id=self.id,
-        )
+        response = super().get_results()
         records = response.get("data", [])
         if not records:
             raise ValueError("No prepared-system results found for this execution id.")

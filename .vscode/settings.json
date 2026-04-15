@@ -13,8 +13,9 @@
         "reportMissingImports": "none",
         "reportMissingModuleSource": "none"
     },
+    "python.defaultInterpreterPath": "${workspaceFolder}/.venv/bin/python",
     "python.analysis.extraPaths": [
-        "./src"
+        "${workspaceFolder}"
     ],
     "sonarlint.connectedMode.project": {
         "connectionId": "formiclabs",
@@ -53,6 +54,7 @@
         "Kekulization",
         "Kekulize",
         "Konnektor",
+        "kras",
         "kwargs",
         "ligandability",
         "ligandset",

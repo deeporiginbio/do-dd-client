@@ -688,11 +688,11 @@ class TestSystemPrepRunParsesOutputs:
         sp._id = exec_id
         with patch.object(
             sp.client.results,
-            "get_prepared_systems",
+            "get",
             return_value={"data": [mock_record]},
-        ) as get_ps:
+        ) as get_rows:
             results = sp.get_results()
-        get_ps.assert_called_once_with(compute_job_id=exec_id)
+        get_rows.assert_called_once_with(compute_job_id=exec_id, limit=None)
         assert len(results) == 1
         assert results[0].binding_xml_path == "p/bsm.xml"
         assert results[0].solvation_xml_path == "p/solv.xml"
@@ -701,5 +701,5 @@ class TestSystemPrepRunParsesOutputs:
     def test_get_results_requires_execution_id(self, protein, ligand):
         """get_results() raises when run() has not set id."""
         sp = SystemPrep(protein=protein, ligand=ligand)
-        with pytest.raises(ValueError, match="no execution id"):
+        with pytest.raises(ValueError, match="no execution has been started"):
             sp.get_results()

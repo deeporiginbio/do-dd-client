@@ -21,16 +21,17 @@ if TYPE_CHECKING:
 class Execution:
     """Base class for all execution types in the jobs-centric API.
 
-    System-managed fields (``id``, ``estimate``, ``cost``) are exposed as
-    read-only properties.  Subclasses should use the same ``@property``
-    pattern for user-supplied input fields that must not change after
-    construction.
+    System-managed fields ``estimate`` and ``cost`` are exposed as read-only
+    properties. Platform execution ``id`` is defined on
+    :class:`~deeporigin.drug_discovery.execution_mixins.QuoteMixin` (typical job
+    classes include that mixin). Subclasses should use the same ``@property``
+    pattern for user-supplied input
+    fields that must not change after construction.
 
     Attributes:
-        id: Platform execution ID, set after ``start()`` or by ``from_id()``.
         estimate: Cost estimate in dollars, set by ``quote()``.
         cost: Actual cost in dollars, set after execution completes.
-        name: Optional user label; writable until ``id`` is set, then read-only.
+        name: Optional user label; writable until execution ``id`` is set, then read-only.
         tool_key: Platform tool key identifying this execution type.
         tool_version: Version of the tool to use.
     """
@@ -39,7 +40,6 @@ class Execution:
 
     def __init__(self, *, client: DeepOriginClient | None = None) -> None:
         super().__init__()
-        self._id: str | None = None
         self._estimate: float | None = None
         self._cost: float | None = None
         self._name: str | None = None
@@ -49,13 +49,6 @@ class Execution:
 
             client = DeepOriginClient()
         self.client: DeepOriginClient = client
-
-    @property
-    def id(self) -> str | None:
-        """Platform execution ID, set after ``start()`` or by ``from_id()``
-
-        id cannot be set manually."""
-        return self._id
 
     @property
     def estimate(self) -> float | None:
@@ -82,7 +75,7 @@ class Execution:
     @name.setter
     def name(self, value: str | None) -> None:
         """Set ``name`` only before the platform assigns an execution ``id``."""
-        if self._id is not None:
+        if getattr(self, "_id", None) is not None:
             raise AttributeError("cannot assign to 'name': execution id is already set")
         self._name = value
 
@@ -119,7 +112,8 @@ class Execution:
             A new instance sharing the same domain-specific configuration.
         """
         new = copy.copy(self)
-        new._id = None
+        if hasattr(new, "_id"):
+            new._id = None
         new._estimate = None
         new._cost = None
         for attr in ("status", "progress", "_execution_dto"):
@@ -129,7 +123,7 @@ class Execution:
             new.client = client
         return new
 
-    def get_results(self) -> dict[str, Any]:
+    def get_results(self) -> Any:
         """Fetch results for this execution from the data platform.
 
         Returns:
@@ -138,19 +132,21 @@ class Execution:
         Raises:
             ValueError: If the execution has no ID yet.
         """
-        if self._id is None:
+        exec_id = getattr(self, "_id", None)
+        if exec_id is None:
             raise ValueError(
                 "Cannot get results: no execution has been started (id is None)."
             )
-        return self.client.results.get(compute_job_id=self._id, limit=None)
+        return self.client.results.get(compute_job_id=exec_id, limit=None)
 
     def __repr__(self) -> str:
         """Return a concise summary of the execution."""
         parts: list[str] = [type(self).__name__]
         if self._name is not None:
             parts.append(f"name={self._name!r}")
-        if self.id:
-            parts.append(f"id={self.id!r}")
+        exec_id = getattr(self, "_id", None)
+        if exec_id:
+            parts.append(f"id={exec_id!r}")
         status = getattr(self, "status", None)
         if status:
             parts.append(f"status={status!r}")

@@ -2,9 +2,9 @@
 
 These mixins are combined with ``Execution`` to build concrete types:
 
-- ``QuoteMixin`` -- cost estimation via ``quote`` → ``_quote_setup``,
-  ``_get_quote``, ``_quote_apply`` (tools API: implement ``_get_quote``;
-  shared parsing in ``_quote_apply``)
+- ``QuoteMixin`` -- platform execution ``id`` / ``_id``, cost estimation via
+  ``quote`` → ``_quote_setup``, ``_get_quote``, ``_quote_apply`` (tools API:
+  implement ``_get_quote``; shared parsing in ``_quote_apply``)
 - ``SyncExecutableMixin`` -- blocking, stateless execution via ``run()``
 - ``AsyncExecutableMixin`` -- async, stateful execution via ``start()``
 - ``JupyterVizMixin`` -- notebook rendering via ``_repr_html_()``
@@ -14,6 +14,7 @@ These mixins are combined with ``Execution`` to build concrete types:
 
 from __future__ import annotations
 
+import builtins
 from typing import TYPE_CHECKING, Any
 
 from deeporigin.platform.client import DeepOriginClient
@@ -24,7 +25,11 @@ if TYPE_CHECKING:
 
 
 class QuoteMixin:
-    """Adds ``quote()`` to request a cost estimate before execution.
+    """Adds platform execution :attr:`id` and ``quote()`` for cost estimates.
+
+    The tools-service execution id is stored in :attr:`_id` and exposed read-only
+    via :attr:`id` (set by :meth:`_quote_apply`, async ``start()``, sync
+    ``run()``, or rehydration helpers depending on the concrete class).
 
     Default flow: :meth:`quote` calls :meth:`_quote_setup`, :meth:`_get_quote`,
     then :meth:`_quote_apply`. Tools-API jobs implement :meth:`_get_quote` to
@@ -38,6 +43,18 @@ class QuoteMixin:
     ``quote()`` enforces that a quotation can only be requested once: it raises
     if ``status`` is already ``"Quoted"`` or an execution ID is already assigned.
     """
+
+    _id: str | None
+
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
+        """Initialize execution id storage."""
+        super().__init__(*args, **kwargs)
+        self._id = None
+
+    @property
+    def id(self) -> str | None:
+        """Platform execution ID when set (read-only)."""
+        return self._id
 
     def quote(self) -> None:
         """Request a cost estimate.
@@ -152,6 +169,10 @@ class AsyncExecutableMixin:
     tracking the platform lifecycle and execution progress respectively.
     """
 
+    tool_key: str
+    client: DeepOriginClient
+    # Same backing field as :attr:`QuoteMixin._id` when both mixins are used.
+    _id: str | None
     status: PlatformStatus | None
     progress: dict | None
     app: str | None
@@ -198,7 +219,7 @@ class AsyncExecutableMixin:
         if self.status is None:
             self._start_impl(**kwargs)
         elif self.status == "Quoted":
-            self.client.executions.confirm(self.id)
+            self.client.executions.confirm(self._id)
             self.sync()
         else:
             raise ValueError(
@@ -224,7 +245,7 @@ class AsyncExecutableMixin:
             ValueError: If the job has no execution ID.
             ValueError: If the job is not in a cancellable state.
         """
-        if self.id is None:
+        if self._id is None:
             raise ValueError(
                 "Cannot cancel: no execution has been started (id is None)."
             )
@@ -236,7 +257,7 @@ class AsyncExecutableMixin:
                 f"Only jobs in {cancellable} can be cancelled."
             )
 
-        self.client.executions.cancel(self.id)
+        self.client.executions.cancel(self._id)
         self.sync()
 
     def sync(self) -> None:
@@ -245,10 +266,10 @@ class AsyncExecutableMixin:
         Raises:
             ValueError: If the job has no execution ID.
         """
-        if self.id is None:
+        if self._id is None:
             raise ValueError("Cannot sync: no execution has been started (id is None).")
 
-        result = self.client.executions.get(self.id)
+        result = self.client.executions.get(self._id)
         if result:
             self._execution_dto = result
             self.status = result.get("status")
@@ -375,8 +396,8 @@ class AsyncExecutableMixin:
         cls,
         *,
         client: DeepOriginClient | None = None,
-        status: list[str] | None = None,
-    ) -> list[Self]:
+        status: builtins.list[str] | None = None,
+    ) -> builtins.list[Self]:
         """List executions of this tool type from the platform.
 
         Args:
@@ -391,7 +412,7 @@ class AsyncExecutableMixin:
 
         current_page = 0
         page_size = 1000
-        all_dtos: list[dict] = []
+        all_dtos: builtins.list[dict] = []
 
         while True:
             response = client.executions.list(
@@ -401,7 +422,7 @@ class AsyncExecutableMixin:
             )
 
             if not isinstance(response, dict):
-                all_dtos.extend(response if isinstance(response, list) else [])
+                all_dtos.extend(response if isinstance(response, builtins.list) else [])
                 break
 
             page_dtos = response.get("data", [])
@@ -419,7 +440,7 @@ class AsyncExecutableMixin:
                 break
 
         all_dtos = [
-            dto for dto in all_dtos if dto.get("tool", {}).get("key") == tool_key
+            dto for dto in all_dtos if dto.get("tool", {}).get("key") == cls.tool_key
         ]
 
         instances = [cls.from_dto(dto, client=client) for dto in all_dtos]

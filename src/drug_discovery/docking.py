@@ -70,8 +70,7 @@ def _docking_pocket_axis_size(pocket: Pocket, axis: str) -> float:
     return 20.0
 
 
-@beartype
-def _docking_default_name(*, protein: Protein, ligands: LigandSet) -> str:
+def _docking_default_name(protein: Protein, ligands: LigandSet) -> str:
     """Build a short human-readable label for a Docking execution.
 
     Uses ``protein.name`` and either the ligand count, a single ligand's name, or its SMILES.
@@ -88,7 +87,7 @@ def _docking_default_name(*, protein: Protein, ligands: LigandSet) -> str:
     if n == 0:
         return f"Docking {p} to 0 ligands."
     if n == 1:
-        lig = ligands[0]
+        lig = ligands.ligands[0]
         if lig.name is not None and lig.name.strip():
             lig_label = lig.name.strip()
         else:
@@ -167,7 +166,7 @@ class Docking(
 
         if ligand is not None:
             ligands = LigandSet(ligands=[ligand])
-        elif ligands is None:
+        elif ligands is None and smiles_list is not None:
             ligands = LigandSet.from_smiles(smiles_list)
 
         super().__init__(client=client)
@@ -179,9 +178,7 @@ class Docking(
         self._ligands = ligands
 
         self.name = (
-            name
-            if name is not None
-            else _docking_default_name(protein=protein, ligands=ligands)
+            name if name is not None else _docking_default_name(protein, ligands)
         )
 
     @property

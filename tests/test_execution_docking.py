@@ -141,27 +141,24 @@ def test_docking_default_name_helper():
     from deeporigin.drug_discovery.structures.protein import Protein
 
     protein = Protein.from_file(BRD_DATA_DIR / "brd.pdb")
-    assert _docking_default_name(protein=protein, ligands=LigandSet()) == (
+    assert _docking_default_name(protein, LigandSet()) == (
         f"Docking {protein.name} to 0 ligands."
     )
 
     a = Ligand.from_smiles("CC", name="")
     b = Ligand.from_smiles("CCC", name="")
-    assert _docking_default_name(
-        protein=protein,
-        ligands=LigandSet(ligands=[a, b]),
-    ) == (f"Docking {protein.name} to 2 ligands.")
+    assert _docking_default_name(protein, LigandSet(ligands=[a, b])) == (
+        f"Docking {protein.name} to 2 ligands."
+    )
 
-    assert _docking_default_name(
-        protein=protein,
-        ligands=LigandSet(ligands=[a]),
-    ) == (f"Docking {protein.name} to {a.smiles}")
+    assert _docking_default_name(protein, LigandSet(ligands=[a])) == (
+        f"Docking {protein.name} to {a.smiles}"
+    )
 
     named = Ligand.from_smiles("CC", name="  my-inhibitor  ")
-    assert _docking_default_name(
-        protein=protein,
-        ligands=LigandSet(ligands=[named]),
-    ) == (f"Docking {protein.name} to my-inhibitor")
+    assert _docking_default_name(protein, LigandSet(ligands=[named])) == (
+        f"Docking {protein.name} to my-inhibitor"
+    )
 
 
 def test_docking_accepts_explicit_name_override(
