@@ -9,8 +9,12 @@ dependencies = [
     "httpx",
     "pyjwt",
     "tqdm",
+    "typer",
 ]
 dynamic = ["version"]
+
+[project.scripts]
+deeporigin = "deeporigin_sdk.cli:app"
 
 
 [tool.setuptools]

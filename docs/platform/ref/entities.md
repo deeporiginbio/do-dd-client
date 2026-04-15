@@ -35,6 +35,16 @@ result = client.entities.delete(entity="proteins", entity_id="08BSPN61NYVE3")
 models = client.entities.list_models()
 ```
 
+## CLI
+
+Fetch a single protein (same as ``client.entities.get_protein(id=...)``); response JSON is printed to stdout:
+
+```bash
+deeporigin entities get-protein --id 08BSPN61NYVE3
+deeporigin entities get-ligand --id LIG123
+```
+
+Use ``-i`` as a short flag for ``--id``. Command names are singular (**get-protein**, **get-ligand**) to match ``get_protein`` / ``get_ligand`` and a single-ID lookup; ``results get-poses`` follows the same verb style.
 
 ::: src.platform.entities.Entities
     options:

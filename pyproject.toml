@@ -17,8 +17,12 @@ dependencies = [
     "httpx",
     "pyjwt",
     "tqdm",
+    "typer",
 ]
 dynamic = ["version"]
+
+[project.scripts]
+deeporigin = "deeporigin.cli:app"
 
 [project.optional-dependencies]
 core = [
