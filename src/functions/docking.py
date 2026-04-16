@@ -187,6 +187,7 @@ def constrained_dock(
 
     response = client.functions.run(
         key=TOOL_KEYS_AND_VERSIONS["constrained_docking"]["function_key"],
+        version=TOOL_KEYS_AND_VERSIONS["constrained_docking"]["function_version"],
         params=payload,
         quote=quote,
     )

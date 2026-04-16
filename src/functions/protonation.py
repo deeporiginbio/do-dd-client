@@ -60,6 +60,7 @@ def protonate(
     else:
         response = client.functions.run(
             key=TOOL_KEYS_AND_VERSIONS["mol_props"]["protonation_function_key"],
+            version=TOOL_KEYS_AND_VERSIONS["mol_props"]["function_version"],
             params=payload,
             quote=quote,
         )
