@@ -28,10 +28,7 @@ from deeporigin.drug_discovery.structures.prepared_system import PreparedSystem
 from deeporigin.drug_discovery.structures.protein import Protein
 from deeporigin.functions.sysprep import _build_sysprep_payload
 from deeporigin.platform.client import DeepOriginClient
-from deeporigin.platform.constants import (
-    SYSPREP_FUNCTION_KEY,
-    SYSPREP_FUNCTION_VERSION,
-)
+from deeporigin.platform.constants import TOOL_KEYS_AND_VERSIONS
 from deeporigin.utils.constants import SYSPREP_NO_OUTPUT_PATHS_MSG
 
 
@@ -53,7 +50,7 @@ class SystemPrep(Execution, QuoteMixin, SyncExecutableMixin):
         ligand2: Second ligand (RBFE mode only).
     """
 
-    tool_key: str = SYSPREP_FUNCTION_KEY
+    tool_key: str = TOOL_KEYS_AND_VERSIONS["sysprep"]["function_key"]
 
     @beartype
     def __init__(
@@ -68,7 +65,7 @@ class SystemPrep(Execution, QuoteMixin, SyncExecutableMixin):
         add_H_atoms: bool = True,  # NOSONAR
         protonate_protein: bool = True,
         box_size: list[float] | None = None,
-        tool_version: str = SYSPREP_FUNCTION_VERSION,
+        tool_version: str = TOOL_KEYS_AND_VERSIONS["sysprep"]["function_version"],
         client: DeepOriginClient | None = None,
     ) -> None:
         """Create a SystemPrep for ABFE (single ligand) or RBFE (ligand pair).
@@ -204,7 +201,7 @@ class SystemPrep(Execution, QuoteMixin, SyncExecutableMixin):
                 client=self.client,
             )
         return self.client.functions.run(
-            key=SYSPREP_FUNCTION_KEY,
+            key=TOOL_KEYS_AND_VERSIONS["sysprep"]["function_key"],
             version=self.tool_version,
             params=payload,
             quote=True,

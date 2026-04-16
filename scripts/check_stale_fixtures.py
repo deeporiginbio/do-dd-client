@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-"""Detect stale function-run fixtures whose version doesn't match constants.py.
+"""Detect stale function-run fixtures whose version doesn't match ``TOOL_KEYS_AND_VERSIONS``.
 
 A fixture is "stale" when the function version baked into the fixture JSON
 (``function.version`` or ``function.manifestBody.version``) does not match the
-canonical version declared in ``src/platform/constants.py``.
+canonical version in ``deeporigin.platform.constants.TOOL_KEYS_AND_VERSIONS``.
 
 Pre-existing stale fixtures can be temporarily allowlisted in ``ALLOWLIST``
 so that the check passes while they await regeneration.  Remove entries as
@@ -20,13 +20,11 @@ Usage:
 from __future__ import annotations
 
 import json
-import re
-import sys
 from pathlib import Path
+import sys
 
 SCRIPT_DIR = Path(__file__).parent
 PROJECT_ROOT = SCRIPT_DIR.parent
-CONSTANTS_FILE = PROJECT_ROOT / "src" / "platform" / "constants.py"
 FIXTURES_DIR = PROJECT_ROOT / "tests" / "fixtures" / "function-runs"
 
 # Pre-existing stale fixtures that are tracked but not yet regenerated.
@@ -38,37 +36,29 @@ ALLOWLIST: set[str] = {
 }
 
 
-def _parse_function_versions(constants_path: Path) -> dict[str, str]:
-    """Build a {function_key: version} map from constants.py.
+def _ensure_pkg_path() -> None:
+    root = str(PROJECT_ROOT)
+    if root not in sys.path:
+        sys.path.insert(0, root)
 
-    Looks for paired declarations like::
 
-        SYSPREP_FUNCTION_KEY = "deeporigin.system-prep"
-        SYSPREP_FUNCTION_VERSION = "0.7.2"
+def _expected_version_for_function_key(function_key: str) -> str | None:
+    """Return the expected manifest version for *function_key*, or None if not tracked."""
 
-    Args:
-        constants_path: Path to the constants module.
+    _ensure_pkg_path()
+    from deeporigin.platform.constants import TOOL_KEYS_AND_VERSIONS
 
-    Returns:
-        Mapping of function key string to expected version string.
-    """
-    content = constants_path.read_text()
-
-    keys: dict[str, str] = {}
-    for match in re.finditer(r'(\w+)_FUNCTION_KEY\s*=\s*"([^"]+)"', content):
-        prefix = match.group(1)
-        keys[prefix] = match.group(2)
-
-    versions: dict[str, str] = {}
-    for match in re.finditer(r'(\w+)_FUNCTION_VERSION\s*=\s*"([^"]+)"', content):
-        prefix = match.group(1)
-        versions[prefix] = match.group(2)
-
-    return {
-        keys[prefix]: versions[prefix]
-        for prefix in keys
-        if prefix in versions
-    }
+    t = TOOL_KEYS_AND_VERSIONS
+    for name, spec in t.items():
+        if name == "mol_props":
+            continue
+        fk = spec.get("function_key")
+        if fk == function_key:
+            return spec.get("function_version")
+    mp = t["mol_props"]
+    if function_key == mp["protonation_function_key"]:
+        return mp["function_version"]
+    return None
 
 
 def _fixture_version(fixture_path: Path) -> str | None:
@@ -100,8 +90,6 @@ def main() -> int:
     Returns:
         0 if no stale fixtures found (ignoring allowlisted), 1 otherwise.
     """
-    expected = _parse_function_versions(CONSTANTS_FILE)
-
     stale: list[tuple[Path, str, str]] = []
     allowed: list[tuple[Path, str, str]] = []
 
@@ -110,10 +98,9 @@ def main() -> int:
             continue
 
         function_key = function_dir.name
-        if function_key not in expected:
+        expected_version = _expected_version_for_function_key(function_key)
+        if expected_version is None:
             continue
-
-        expected_version = expected[function_key]
 
         for fixture_path in sorted(function_dir.glob("*.json")):
             version = _fixture_version(fixture_path)

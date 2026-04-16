@@ -21,12 +21,7 @@ from deeporigin.drug_discovery.structures.protein import Protein
 from deeporigin.exceptions import DeepOriginException
 from deeporigin.functions.result import FunctionResult
 from deeporigin.platform.client import DeepOriginClient
-from deeporigin.platform.constants import (
-    DOCKING_FUNCTION_KEY,
-    DOCKING_FUNCTION_VERSION,
-    DOCKING_TOOL_KEY,
-    DOCKING_TOOL_VERSION,
-)
+from deeporigin.platform.constants import TOOL_KEYS_AND_VERSIONS
 from deeporigin.utils.constants import DOCKING_RESULTS_DATAFRAME_COLUMNS
 
 Number = float | int
@@ -119,7 +114,7 @@ class Docking(
         name: Execution label, set automatically from protein and ligands unless overridden.
     """
 
-    tool_key: str = DOCKING_TOOL_KEY
+    tool_key: str = TOOL_KEYS_AND_VERSIONS["docking"]["tool_key"]
     effort: int = 3
 
     def __init__(
@@ -130,7 +125,7 @@ class Docking(
         ligand: Ligand | None = None,
         ligands: LigandSet | None = None,
         smiles_list: list[str] | None = None,
-        tool_version: str = DOCKING_TOOL_VERSION,
+        tool_version: str = TOOL_KEYS_AND_VERSIONS["docking"]["tool_version"],
         effort: int = 3,
         client: DeepOriginClient | None = None,
         name: str | None = None,
@@ -310,8 +305,8 @@ class Docking(
             }
             all_responses.append(
                 client.functions.run(
-                    key=DOCKING_FUNCTION_KEY,
-                    version=DOCKING_FUNCTION_VERSION,
+                    key=TOOL_KEYS_AND_VERSIONS["docking"]["function_key"],
+                    version=TOOL_KEYS_AND_VERSIONS["docking"]["function_version"],
                     params=payload,
                     quote=False,
                 )

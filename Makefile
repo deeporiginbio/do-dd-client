@@ -10,11 +10,11 @@ chosen_tests=""
 org_key="deeporigin"
 
 test: 
-	uv run ruff format .
-	uv run ruff check --select I . --fix
-	uv run interrogate -c pyproject.toml -vv . -f 100 --omit-covered-files
-	uv run pytest -x --failed-first -k $(chosen_tests) --env local --org_key $(org_key)
-	uv run pytest -x docs --markdown-docs --markdown-docs-syntax=superfences --env local
+	uv run --extra lint ruff format .
+	uv run --extra lint ruff check --select I . --fix
+	uv run --extra test interrogate -c pyproject.toml -vv . -f 100 --omit-covered-files
+	uv run --extra test pytest -x --failed-first -k $(chosen_tests) --env local --org_key $(org_key)
+	uv run --extra test pytest -x docs --markdown-docs --markdown-docs-syntax=superfences --env local
 
 # set up jupyter dev kernel
 jupyter:

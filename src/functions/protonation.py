@@ -8,7 +8,7 @@ from beartype import beartype
 
 from deeporigin.functions.result import FunctionResult
 from deeporigin.platform.client import DeepOriginClient
-from deeporigin.platform.constants import PROTONATION_FUNCTION_KEY
+from deeporigin.platform.constants import TOOL_KEYS_AND_VERSIONS
 from deeporigin.utils.constants import number
 from deeporigin.utils.env import _ensure_do_folder
 from deeporigin.utils.hashing import hash_dict
@@ -59,7 +59,8 @@ def protonate(
             response = {"functionOutputs": response, "status": "Completed"}
     else:
         response = client.functions.run(
-            key=PROTONATION_FUNCTION_KEY,
+            key=TOOL_KEYS_AND_VERSIONS["mol_props"]["protonation_function_key"],
+            version=TOOL_KEYS_AND_VERSIONS["mol_props"]["function_version"],
             params=payload,
             quote=quote,
         )

@@ -10,10 +10,7 @@ from beartype import beartype
 from deeporigin.drug_discovery.structures.ligand import LigandSet
 from deeporigin.functions.result import FunctionResult
 from deeporigin.platform.client import DeepOriginClient
-from deeporigin.platform.constants import (
-    MOL_PROPS_FUNCTION_KEY_PREFIX,
-    MOL_PROPS_FUNCTION_VERSION,
-)
+from deeporigin.platform.constants import TOOL_KEYS_AND_VERSIONS
 from deeporigin.utils.constants import MOLPROPS_DEFAULT_PROPERTIES
 
 # Merged molprops rows use ``ligand_id`` (toolbox molprops output schemas).
@@ -137,9 +134,9 @@ def get_single_property(
     """
 
     raw = client.functions.run(
-        key=f"{MOL_PROPS_FUNCTION_KEY_PREFIX}-{prop}",
+        key=f"{TOOL_KEYS_AND_VERSIONS['mol_props']['function_key_prefix']}-{prop}",
         params=payload,
-        version=MOL_PROPS_FUNCTION_VERSION,
+        version=TOOL_KEYS_AND_VERSIONS["mol_props"]["function_version"],
         quote=quote,
     )
 

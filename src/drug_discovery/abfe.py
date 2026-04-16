@@ -11,7 +11,7 @@ from deeporigin.drug_discovery.execution_mixins import AsyncExecutableMixin, Quo
 from deeporigin.drug_discovery.notebook_watch_mixin import NotebookWatchMixin
 from deeporigin.drug_discovery.structures.prepared_system import PreparedSystem
 from deeporigin.platform.client import DeepOriginClient
-from deeporigin.platform.constants import ABFE_TOOL_KEY, ABFE_TOOL_VERSION
+from deeporigin.platform.constants import TOOL_KEYS_AND_VERSIONS
 
 
 @beartype
@@ -227,7 +227,7 @@ class ABFE(Execution, QuoteMixin, AsyncExecutableMixin, NotebookWatchMixin):
         name: Execution label, set from platform entities when IDs are present unless overridden.
     """
 
-    tool_key: str = ABFE_TOOL_KEY
+    tool_key: str = TOOL_KEYS_AND_VERSIONS["abfe"]["tool_key"]
 
     @beartype
     def __init__(
@@ -235,7 +235,7 @@ class ABFE(Execution, QuoteMixin, AsyncExecutableMixin, NotebookWatchMixin):
         *,
         prepared_system: PreparedSystem,
         params: ABFEParams | None = None,
-        tool_version: str = ABFE_TOOL_VERSION,
+        tool_version: str = TOOL_KEYS_AND_VERSIONS["abfe"]["tool_version"],
         client: DeepOriginClient | None = None,
         name: str | None = None,
     ) -> None:

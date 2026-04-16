@@ -21,16 +21,7 @@ from deeporigin.functions.pocket_finder import find_pockets
 from deeporigin.functions.result import FunctionResult
 from deeporigin.functions.sysprep import for_abfe
 from deeporigin.platform import DeepOriginClient
-from deeporigin.platform.constants import (
-    DOCKING_FUNCTION_KEY,
-    DOCKING_FUNCTION_VERSION,
-    MOL_PROPS_FUNCTION_KEY_PREFIX,
-    POCKET_FINDER_FUNCTION_KEY,
-    POCKET_FINDER_FUNCTION_VERSION,
-    PROTONATION_FUNCTION_KEY,
-    SYSPREP_FUNCTION_KEY,
-    SYSPREP_FUNCTION_VERSION,
-)
+from deeporigin.platform.constants import TOOL_KEYS_AND_VERSIONS
 from deeporigin.utils.constants import MOLPROPS_PROPERTY_KEYS
 
 
@@ -54,14 +45,16 @@ def test_functions_list_lv1(client: DeepOriginClient) -> None:
     assert second is first, "Expected repeated list() to return the cached list"
 
 
-def test_molprops_lv2(client: DeepOriginClient):
+def test_molprops_lv1(client: DeepOriginClient):
+    mp = TOOL_KEYS_AND_VERSIONS["mol_props"]
     missing_molprops = [
-        f"{MOL_PROPS_FUNCTION_KEY_PREFIX}-{p}"
+        f"{mp['function_key_prefix']}-{p}"
         for p in sorted(MOLPROPS_PROPERTY_KEYS)
-        if not check_function_exists(client, f"{MOL_PROPS_FUNCTION_KEY_PREFIX}-{p}")
+        if not check_function_exists(client, f"{mp['function_key_prefix']}-{p}")
     ]
-    if missing_molprops:
-        pytest.skip(f"Mol props functions not available: {missing_molprops}")
+    assert not missing_molprops, (
+        f"Mol props functions not registered on platform: {missing_molprops}"
+    )
 
     ligand = Ligand.from_smiles(
         "Fc1c(-c2cccc3ccccc23)ncc2c(N3C[C@H]4CC[C@@H](C3)N4)nc(OCC34CCCN3CCC4)nc12"
@@ -80,10 +73,11 @@ def test_pocket_finder_quote_lv1(
     registered_protein: Protein,
 ) -> None:
     """PocketFinder.quote() returns an estimate without running the tool."""
-    if not check_function_exists(
-        client, POCKET_FINDER_FUNCTION_KEY, POCKET_FINDER_FUNCTION_VERSION
-    ):
-        pytest.skip("Pocket finder function does not exist")
+    assert check_function_exists(
+        client,
+        TOOL_KEYS_AND_VERSIONS["pocket_finder"]["function_key"],
+        TOOL_KEYS_AND_VERSIONS["pocket_finder"]["function_version"],
+    ), "Pocket finder function not registered on platform (expected key/version)."
 
     pf = PocketFinder(protein=registered_protein, client=client)
     pf.quote()
@@ -111,10 +105,11 @@ def test_pocket_finder_lv2(
     entity in the fixture). ``registered_protein`` additionally asserts
     platform-linked IDs and ``Pocket.from_result`` hydration.
     """
-    if not check_function_exists(
-        client, POCKET_FINDER_FUNCTION_KEY, POCKET_FINDER_FUNCTION_VERSION
-    ):
-        pytest.skip("Pocket finder function does not exist")
+    assert check_function_exists(
+        client,
+        TOOL_KEYS_AND_VERSIONS["pocket_finder"]["function_key"],
+        TOOL_KEYS_AND_VERSIONS["pocket_finder"]["function_version"],
+    ), "Pocket finder function not registered on platform (expected key/version)."
 
     protein: Protein = request.getfixturevalue(protein_fixture)
     num_pockets = 1
@@ -178,7 +173,7 @@ def test_dock_respects_tool_version_override() -> None:
     )
 
     run_kw = client.functions.run.call_args.kwargs
-    assert run_kw["key"] == DOCKING_FUNCTION_KEY
+    assert run_kw["key"] == TOOL_KEYS_AND_VERSIONS["docking"]["function_key"]
     assert run_kw["version"] == custom
 
     dock(
@@ -188,7 +183,10 @@ def test_dock_respects_tool_version_override() -> None:
         pocket=pocket,
     )
     run_kw_default = client.functions.run.call_args.kwargs
-    assert run_kw_default["version"] == DOCKING_FUNCTION_VERSION
+    assert (
+        run_kw_default["version"]
+        == TOOL_KEYS_AND_VERSIONS["docking"]["function_version"]
+    )
 
 
 def test_dock_passes_effort_in_params() -> None:
@@ -275,7 +273,7 @@ def test_find_pockets_respects_tool_version_override() -> None:
     )
 
     run_kw = client.functions.run.call_args.kwargs
-    assert run_kw["key"] == POCKET_FINDER_FUNCTION_KEY
+    assert run_kw["key"] == TOOL_KEYS_AND_VERSIONS["pocket_finder"]["function_key"]
     assert run_kw["version"] == custom
 
     find_pockets(
@@ -285,7 +283,10 @@ def test_find_pockets_respects_tool_version_override() -> None:
         client=client,
     )
     run_kw_default = client.functions.run.call_args.kwargs
-    assert run_kw_default["version"] == POCKET_FINDER_FUNCTION_VERSION
+    assert (
+        run_kw_default["version"]
+        == TOOL_KEYS_AND_VERSIONS["pocket_finder"]["function_version"]
+    )
 
 
 def test_docking_lv2(
@@ -295,10 +296,11 @@ def test_docking_lv2(
     registered_pocket: Pocket,
 ):
     """Test docking function."""
-    if not check_function_exists(
-        client, DOCKING_FUNCTION_KEY, DOCKING_FUNCTION_VERSION
-    ):
-        pytest.skip("Docking function does not exist")
+    assert check_function_exists(
+        client,
+        TOOL_KEYS_AND_VERSIONS["docking"]["function_key"],
+        TOOL_KEYS_AND_VERSIONS["docking"]["function_version"],
+    ), "Docking function not registered on platform (expected key/version)."
 
     result = dock(
         client=client,
@@ -331,10 +333,11 @@ def test_sysprep_lv2(
     additionally checks the result-explorer row for this job (tool key, protein
     id, stored ``data`` payload).
     """
-    if not check_function_exists(
-        client, SYSPREP_FUNCTION_KEY, SYSPREP_FUNCTION_VERSION
-    ):
-        pytest.skip("System prep function does not exist")
+    assert check_function_exists(
+        client,
+        TOOL_KEYS_AND_VERSIONS["sysprep"]["function_key"],
+        TOOL_KEYS_AND_VERSIONS["sysprep"]["function_version"],
+    ), "System prep function not registered on platform (expected key/version)."
 
     protein: Protein = request.getfixturevalue(protein_fixture)
     ligand: Ligand = request.getfixturevalue(ligand_fixture)
@@ -367,7 +370,9 @@ def test_sysprep_lv2(
         assert len(records) >= 1, "Expected a prepared-system row for this compute job"
         record = records[0]
         assert record.get("compute_job_id") == execution_id
-        assert record.get("tool_key") == SYSPREP_FUNCTION_KEY
+        assert (
+            record.get("tool_key") == TOOL_KEYS_AND_VERSIONS["sysprep"]["function_key"]
+        )
         data = record["data"]
         assert isinstance(data, dict) and len(data) > 0
         assert data.get("protein_id") == protein.id
@@ -375,8 +380,11 @@ def test_sysprep_lv2(
 
 def test_protonation_lv2(client: DeepOriginClient):
     """Test protonation function returns FunctionResult with ligands."""
-    if not check_function_exists(client, PROTONATION_FUNCTION_KEY):
-        pytest.skip("Protonation function does not exist")
+    assert check_function_exists(
+        client,
+        TOOL_KEYS_AND_VERSIONS["mol_props"]["protonation_function_key"],
+        TOOL_KEYS_AND_VERSIONS["mol_props"]["function_version"],
+    ), "Protonation function not registered on platform (expected key/version)."
 
     ligand = Ligand.from_smiles("C=CCCn1cc(-c2cccc(C(=O)N(C)C)c2)c2cc[nH]c2c1=O")
 
