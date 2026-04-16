@@ -5,7 +5,7 @@ from beartype import beartype
 from deeporigin.drug_discovery.structures import Ligand, Protein
 from deeporigin.functions.result import FunctionResult
 from deeporigin.platform.client import DeepOriginClient
-from deeporigin.platform.constants import SYSPREP_FUNCTION_KEY, SYSPREP_FUNCTION_VERSION
+from deeporigin.platform.constants import TOOL_KEYS_AND_VERSIONS
 
 
 def _build_sysprep_payload(
@@ -107,8 +107,8 @@ def for_abfe(
     )
 
     response = client.functions.run(
-        key=SYSPREP_FUNCTION_KEY,
-        version=SYSPREP_FUNCTION_VERSION,
+        key=TOOL_KEYS_AND_VERSIONS["sysprep"]["function_key"],
+        version=TOOL_KEYS_AND_VERSIONS["sysprep"]["function_version"],
         params=payload,
         quote=quote,
     )
@@ -161,8 +161,8 @@ def for_rbfe(
     )
 
     response = client.functions.run(
-        key=SYSPREP_FUNCTION_KEY,
-        version=SYSPREP_FUNCTION_VERSION,
+        key=TOOL_KEYS_AND_VERSIONS["sysprep"]["function_key"],
+        version=TOOL_KEYS_AND_VERSIONS["sysprep"]["function_version"],
         params=payload,
         quote=quote,
     )

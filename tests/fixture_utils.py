@@ -5,7 +5,7 @@ from __future__ import annotations
 import re
 from typing import Any
 
-from deeporigin.platform.constants import FUNCTION_VERSION_MAP
+from deeporigin.platform.constants import TOOL_KEYS_AND_VERSIONS
 
 
 def patch_fixture_version(response: dict[str, Any]) -> dict[str, Any]:
@@ -13,12 +13,11 @@ def patch_fixture_version(response: dict[str, Any]) -> dict[str, Any]:
 
     Replaces ``function.version``, ``function.manifestBody.version``, and
     the Docker image tag in ``function.manifestBody.executor.image`` so that
-    fixtures stay in sync with the version constants in
-    ``deeporigin.platform.constants`` without manual edits.
+    fixtures stay in sync with ``TOOL_KEYS_AND_VERSIONS`` without manual edits.
 
     Mutates *response* in place and returns it for convenience.  If the
-    fixture has no ``function`` block or the function key is not in
-    ``FUNCTION_VERSION_MAP``, the dict is returned unchanged.
+    fixture has no ``function`` block or the manifest key is not one of
+    docking, pocket finder, or sysprep, the dict is returned unchanged.
 
     Args:
         response: A single function-run response dict loaded from a fixture.
@@ -35,7 +34,16 @@ def patch_fixture_version(response: dict[str, Any]) -> dict[str, Any]:
         return response
 
     key = manifest.get("key")
-    target_version = FUNCTION_VERSION_MAP.get(key) if key else None
+    t = TOOL_KEYS_AND_VERSIONS
+    target_version = (
+        {
+            t["docking"]["function_key"]: t["docking"]["function_version"],
+            t["pocket_finder"]["function_key"]: t["pocket_finder"]["function_version"],
+            t["sysprep"]["function_key"]: t["sysprep"]["function_version"],
+        }.get(key)
+        if key
+        else None
+    )
     if target_version is None:
         return response
 

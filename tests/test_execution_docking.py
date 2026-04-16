@@ -16,13 +16,7 @@ from deeporigin.drug_discovery.docking import (
 )
 from deeporigin.drug_discovery.execution import Execution
 from deeporigin.drug_discovery.structures.ligand import Ligand, LigandSet
-from deeporigin.platform.constants import (
-    DOCKING_FUNCTION_KEY,
-    DOCKING_FUNCTION_VERSION,
-    DOCKING_TOOL_KEY,
-    DOCKING_TOOL_VERSION,
-    TERMINAL_STATES,
-)
+from deeporigin.platform.constants import TERMINAL_STATES, TOOL_KEYS_AND_VERSIONS
 from deeporigin.utils.constants import DOCKING_RESULTS_DATAFRAME_COLUMNS
 
 
@@ -211,8 +205,11 @@ def test_docking_quote_lv1(
     registered_ligand,
 ):
     """Docking quote() raises ValueError if called after a quotation already exists."""
-    if not check_tool_exists(client, DOCKING_TOOL_KEY, DOCKING_TOOL_VERSION):
-        pytest.skip("Docking tool does not exist")
+    assert check_tool_exists(
+        client,
+        TOOL_KEYS_AND_VERSIONS["docking"]["tool_key"],
+        TOOL_KEYS_AND_VERSIONS["docking"]["tool_version"],
+    ), "Docking tool not registered on platform (expected key/version)."
 
     docking = Docking(
         protein=registered_protein,
@@ -342,10 +339,11 @@ def test_docking_run_lv2(
     registered_ligand,
 ):
     """Run docking synchronously via run() and assert poses returned."""
-    if not check_function_exists(
-        client, DOCKING_FUNCTION_KEY, DOCKING_FUNCTION_VERSION
-    ):
-        pytest.skip("Docking function does not exist")
+    assert check_function_exists(
+        client,
+        TOOL_KEYS_AND_VERSIONS["docking"]["function_key"],
+        TOOL_KEYS_AND_VERSIONS["docking"]["function_version"],
+    ), "Docking function not registered on platform (expected key/version)."
 
     docking = Docking(
         protein=registered_protein,
@@ -460,8 +458,11 @@ def test_docking_start_sync_get_results_lv3(
     if client.env == "local":
         pytest.skip("start/sync/get_results docking flow not run against local mock")
 
-    if not check_tool_exists(client, DOCKING_TOOL_KEY, DOCKING_TOOL_VERSION):
-        pytest.skip("Docking tool does not exist")
+    assert check_tool_exists(
+        client,
+        TOOL_KEYS_AND_VERSIONS["docking"]["tool_key"],
+        TOOL_KEYS_AND_VERSIONS["docking"]["tool_version"],
+    ), "Docking tool not registered on platform (expected key/version)."
 
     docking = Docking(
         protein=registered_protein,

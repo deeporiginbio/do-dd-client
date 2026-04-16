@@ -3,7 +3,7 @@ import uuid
 import pytest
 
 from deeporigin.platform.client import DeepOriginClient
-from deeporigin.platform.constants import MOL_PROPS_FUNCTION_VERSION
+from deeporigin.platform.constants import TOOL_KEYS_AND_VERSIONS
 
 
 def test_billing_tag_end_to_end_lv2():
@@ -32,7 +32,7 @@ def test_billing_tag_end_to_end_lv2():
                     }
                 ]
             },
-            version=MOL_PROPS_FUNCTION_VERSION,
+            version=TOOL_KEYS_AND_VERSIONS["mol_props"]["function_version"],
         )
 
         client_total_cost += response["quotationResult"]["successfulQuotations"][0][

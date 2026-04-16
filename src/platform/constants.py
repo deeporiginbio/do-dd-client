@@ -46,32 +46,39 @@ NON_FAILED_STATES = {"Succeeded", "Running", "Queued", "Created"}
 # Possible providers for files that work with the tools API
 PROVIDER = Literal["ufa", "s3"]
 
-# tool, function keys and versions
-DOCKING_TOOL_KEY = "deeporigin.docking"
-DOCKING_TOOL_VERSION = "3.0.0-29"
-DOCKING_FUNCTION_KEY = "deeporigin.docking"
-DOCKING_FUNCTION_VERSION = "2.0.0"
-
-POCKET_FINDER_FUNCTION_KEY = "deeporigin.pocketfinder"
-POCKET_FINDER_FUNCTION_VERSION = "0.5.4"
-
-CONSTRAINED_DOCKING_FUNCTION_KEY = "deeporigin.constrained-docking"
-
-MOL_PROPS_FUNCTION_KEY_PREFIX = "deeporigin.mol-props"
-PROTONATION_FUNCTION_KEY = "deeporigin.mol-props-protonation"
-MOL_PROPS_FUNCTION_VERSION = "0.2.0"
-
-ABFE_TOOL_KEY = "deeporigin.abfe-end-to-end"
-ABFE_TOOL_VERSION = "0.2.39"
-
-RBFE_TOOL_KEY = "deeporigin.rbfe-end-to-end"
-RBFE_TOOL_VERSION = "0.2.39"
-
-SYSPREP_FUNCTION_KEY = "deeporigin.system-prep"
-SYSPREP_FUNCTION_VERSION = "0.8.0"
-
-FUNCTION_VERSION_MAP: dict[str, str] = {
-    DOCKING_FUNCTION_KEY: DOCKING_FUNCTION_VERSION,
-    POCKET_FINDER_FUNCTION_KEY: POCKET_FINDER_FUNCTION_VERSION,
-    SYSPREP_FUNCTION_KEY: SYSPREP_FUNCTION_VERSION,
+# Single registry for platform tools/functions: iterate ``TOOL_KEYS_AND_VERSIONS``
+# to verify tools and functions are registered (see keys per entry below).
+# Optional fields are omitted when not applicable.
+TOOL_KEYS_AND_VERSIONS: dict[str, dict[str, str]] = {
+    "docking": {
+        "tool_key": "deeporigin.docking",
+        "tool_version": "2.0.1",
+        "function_key": "deeporigin.docking",
+        "function_version": "2.0.1",
+    },
+    "pocket_finder": {
+        "function_key": "deeporigin.pocketfinder",
+        "function_version": "0.6.0",
+    },
+    "constrained_docking": {
+        "function_key": "deeporigin.constrained-docking",
+        "function_version": "2.0.1",
+    },
+    "mol_props": {
+        "function_key_prefix": "deeporigin.mol-props",
+        "protonation_function_key": "deeporigin.mol-props-protonation",
+        "function_version": "0.2.0",
+    },
+    "abfe": {
+        "tool_key": "deeporigin.abfe-end-to-end",
+        "tool_version": "0.2.39",
+    },
+    "rbfe": {
+        "tool_key": "deeporigin.rbfe-end-to-end",
+        "tool_version": "0.2.39",
+    },
+    "sysprep": {
+        "function_key": "deeporigin.system-prep",
+        "function_version": "0.9.0",
+    },
 }

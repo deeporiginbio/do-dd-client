@@ -403,8 +403,6 @@ def _viz_func_docking(job) -> str:
 
     speed = total_docked / total_running_time if total_running_time > 0 else 0
 
-    from deeporigin.utils.notebook import render_progress_bar
-
     return render_progress_bar(
         completed=total_docked,
         total=total_ligands,

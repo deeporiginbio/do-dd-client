@@ -13,7 +13,7 @@ from deeporigin.drug_discovery.abfe import (
 )
 from deeporigin.drug_discovery.structures.prepared_system import PreparedSystem
 from deeporigin.platform.client import DeepOriginClient
-from deeporigin.platform.constants import ABFE_TOOL_KEY
+from deeporigin.platform.constants import TOOL_KEYS_AND_VERSIONS
 
 
 def test_abfe_quote_cannot_be_called_twice_lv0():
@@ -38,7 +38,10 @@ def test_abfe_from_dto_rehydrates_prepared_system_lv0():
     fake_dto = {
         "executionId": "exec-123",
         "status": "Succeeded",
-        "tool": {"key": ABFE_TOOL_KEY, "version": "0.1.0"},
+        "tool": {
+            "key": TOOL_KEYS_AND_VERSIONS["abfe"]["tool_key"],
+            "version": "0.1.0",
+        },
         "quotationResult": {
             "successfulQuotations": [{"priceTotal": 42.0}],
         },
@@ -111,7 +114,10 @@ def test_abfe_from_dto_legacy_metadata_ligand_id_lv0():
     fake_dto = {
         "executionId": "exec-legacy",
         "status": "Succeeded",
-        "tool": {"key": ABFE_TOOL_KEY, "version": "0.1.0"},
+        "tool": {
+            "key": TOOL_KEYS_AND_VERSIONS["abfe"]["tool_key"],
+            "version": "0.1.0",
+        },
         "quotationResult": {"successfulQuotations": [{"priceTotal": 1.0}]},
         "userInputs": {
             "prepared_system": {

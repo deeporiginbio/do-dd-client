@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from deeporigin.platform.constants import ABFE_TOOL_KEY, SYSPREP_FUNCTION_KEY
+from deeporigin.platform.constants import TOOL_KEYS_AND_VERSIONS
 from deeporigin.platform.results import _build_result_filter
 
 if TYPE_CHECKING:
@@ -71,9 +71,9 @@ def test_get_prepared_systems(client):
     for record in response["data"]:
         for field in ("id", "tool_key", "tool_version", "data", "compute_job_id"):
             assert field in record, f"Expected '{field}' key in record"
-        assert record.get("tool_key") == SYSPREP_FUNCTION_KEY, (
-            "Expected all records to be system-prep results"
-        )
+        assert (
+            record.get("tool_key") == TOOL_KEYS_AND_VERSIONS["sysprep"]["function_key"]
+        ), "Expected all records to be system-prep results"
         data = record.get("data") or {}
         assert data.get("solvation_xml_ligand_file_path"), (
             "Expected solvation_xml_ligand_file_path in prepared-system data"
@@ -95,7 +95,9 @@ def test_get_prepared_systems_with_filters(client, registered_protein: "Protein"
     assert "data" in response, "Expected 'data' key in response"
     assert isinstance(response["data"], list), "Expected 'data' to be a list"
     for record in response["data"]:
-        assert record.get("tool_key") == SYSPREP_FUNCTION_KEY
+        assert (
+            record.get("tool_key") == TOOL_KEYS_AND_VERSIONS["sysprep"]["function_key"]
+        )
         data = record.get("data") or {}
         assert data.get("protein_id") == protein_id
         assert data.get("padding") == 1
@@ -130,7 +132,7 @@ def test_get_abfe_results(client):
     for record in response["data"]:
         for field in ("id", "tool_key", "tool_version", "data", "compute_job_id"):
             assert field in record, f"Expected '{field}' key in record"
-        assert record.get("tool_key") == ABFE_TOOL_KEY, (
+        assert record.get("tool_key") == TOOL_KEYS_AND_VERSIONS["abfe"]["tool_key"], (
             "Expected all records to be ABFE results"
         )
 
@@ -144,4 +146,4 @@ def test_get_abfe_results_with_filters(client):
     assert isinstance(response["data"], list), "Expected 'data' to be a list"
     assert len(response["data"]) <= 10, "Expected at most 10 results"
     for record in response["data"]:
-        assert record.get("tool_key") == ABFE_TOOL_KEY
+        assert record.get("tool_key") == TOOL_KEYS_AND_VERSIONS["abfe"]["tool_key"]

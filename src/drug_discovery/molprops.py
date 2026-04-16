@@ -24,7 +24,7 @@ from deeporigin.functions.molprops import (
 )
 from deeporigin.functions.result import FunctionResult
 from deeporigin.platform.client import DeepOriginClient
-from deeporigin.platform.constants import MOL_PROPS_FUNCTION_KEY_PREFIX
+from deeporigin.platform.constants import TOOL_KEYS_AND_VERSIONS
 from deeporigin.utils.constants import (
     MOLPROPS_DEFAULT_PROPERTIES,
     MOLPROPS_PROPERTY_KEYS,
@@ -141,7 +141,8 @@ class Molprops(Execution, QuoteMixin, SyncExecutableMixin):
     def tool_keys(self) -> tuple[str, ...]:
         """Platform function keys invoked for this configuration (one per property)."""
         return tuple(
-            f"{MOL_PROPS_FUNCTION_KEY_PREFIX}-{p}" for p in sorted(self._properties)
+            f"{TOOL_KEYS_AND_VERSIONS['mol_props']['function_key_prefix']}-{p}"
+            for p in sorted(self._properties)
         )
 
     @property

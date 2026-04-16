@@ -13,11 +13,7 @@ from deeporigin.drug_discovery.structures import Ligand, Pocket, Protein
 from deeporigin.exceptions import DeepOriginException
 from deeporigin.functions.result import FunctionResult
 from deeporigin.platform.client import DeepOriginClient
-from deeporigin.platform.constants import (
-    CONSTRAINED_DOCKING_FUNCTION_KEY,
-    DOCKING_FUNCTION_KEY,
-    DOCKING_FUNCTION_VERSION,
-)
+from deeporigin.platform.constants import TOOL_KEYS_AND_VERSIONS
 from deeporigin.utils.env import _ensure_do_folder
 from deeporigin.utils.hashing import hash_dict
 
@@ -56,7 +52,7 @@ def dock(
     protein: Protein,
     ligand: Ligand,
     pocket: Pocket,
-    tool_version: str = DOCKING_FUNCTION_VERSION,
+    tool_version: str = TOOL_KEYS_AND_VERSIONS["docking"]["function_version"],
     effort: int = 3,
     quote: bool = False,
 ) -> FunctionResult:
@@ -69,7 +65,7 @@ def dock(
         pocket: Pocket object defining the docking region. Box size
             and pocket center are derived from the pocket.
         tool_version: Function version for ``deeporigin.docking`` (defaults to
-            :data:`~deeporigin.platform.constants.DOCKING_FUNCTION_VERSION`).
+            ``TOOL_KEYS_AND_VERSIONS["docking"]["function_version"]``).
         effort: Docking effort level (1 = fastest, 5 = most thorough).
         quote: If True, request a cost estimate without executing.
 
@@ -117,7 +113,7 @@ def dock(
     }
 
     response = client.functions.run(
-        key=DOCKING_FUNCTION_KEY,
+        key=TOOL_KEYS_AND_VERSIONS["docking"]["function_key"],
         version=tool_version,
         params=payload,
         quote=quote,
@@ -190,7 +186,7 @@ def constrained_dock(
         return result
 
     response = client.functions.run(
-        key=CONSTRAINED_DOCKING_FUNCTION_KEY,
+        key=TOOL_KEYS_AND_VERSIONS["constrained_docking"]["function_key"],
         params=payload,
         quote=quote,
     )

@@ -19,10 +19,7 @@ from deeporigin.drug_discovery.structures.pocket import Pocket
 from deeporigin.drug_discovery.structures.protein import Protein
 from deeporigin.functions.result import FunctionResult
 from deeporigin.platform.client import DeepOriginClient
-from deeporigin.platform.constants import (
-    POCKET_FINDER_FUNCTION_KEY,
-    POCKET_FINDER_FUNCTION_VERSION,
-)
+from deeporigin.platform.constants import TOOL_KEYS_AND_VERSIONS
 
 
 class PocketFinder(Execution, QuoteMixin, SyncExecutableMixin):
@@ -38,7 +35,7 @@ class PocketFinder(Execution, QuoteMixin, SyncExecutableMixin):
         pocket_min_size: Minimum pocket volume in cubic Angstroms.
     """
 
-    tool_key: str = POCKET_FINDER_FUNCTION_KEY
+    tool_key: str = TOOL_KEYS_AND_VERSIONS["pocket_finder"]["function_key"]
 
     @beartype
     def __init__(
@@ -47,7 +44,7 @@ class PocketFinder(Execution, QuoteMixin, SyncExecutableMixin):
         *,
         pocket_count: int = 1,
         pocket_min_size: int = 30,
-        tool_version: str = POCKET_FINDER_FUNCTION_VERSION,
+        tool_version: str = TOOL_KEYS_AND_VERSIONS["pocket_finder"]["function_version"],
         client: DeepOriginClient | None = None,
     ) -> None:
         """Create a PocketFinder for the given protein.
@@ -118,7 +115,7 @@ class PocketFinder(Execution, QuoteMixin, SyncExecutableMixin):
         """Call the functions API with ``quote=True`` and return the raw response."""
         self._ensure_protein_remote()
         return self.client.functions.run(
-            key=POCKET_FINDER_FUNCTION_KEY,
+            key=TOOL_KEYS_AND_VERSIONS["pocket_finder"]["function_key"],
             version=self.tool_version,
             params=self._pocket_finder_function_params(),
             quote=True,
@@ -135,7 +132,7 @@ class PocketFinder(Execution, QuoteMixin, SyncExecutableMixin):
         """
         self._ensure_protein_remote()
         raw = self.client.functions.run(
-            key=POCKET_FINDER_FUNCTION_KEY,
+            key=TOOL_KEYS_AND_VERSIONS["pocket_finder"]["function_key"],
             version=self.tool_version,
             params=self._pocket_finder_function_params(),
             quote=False,
