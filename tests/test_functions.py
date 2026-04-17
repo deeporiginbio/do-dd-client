@@ -60,7 +60,11 @@ def test_molprops_lv1(client: DeepOriginClient):
         "Fc1c(-c2cccc3ccccc23)ncc2c(N3C[C@H]4CC[C@@H](C3)N4)nc(OCC34CCCN3CCC4)nc12"
     )
 
-    mp = Molprops(ligands=[ligand], client=client)
+    mp = Molprops(
+        ligands=[ligand],
+        client=client,
+        properties={"logs", "logd", "logp", "herg"},
+    )
     mp.run()
 
     assert ligand.get_property("logP") is not None or ligand.log_p is not None

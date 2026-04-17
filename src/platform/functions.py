@@ -54,7 +54,8 @@ class Functions:
 
         Args:
             key: Key of the function to run.
-            params: Function execution parameters.
+            params: Function execution parameters (sent in the request body as
+                ``inputs``, matching ``FunctionExecutionParams`` in tools-service).
             version: Version of the function to run. If None, runs the latest
                 enabled version.
             cluster_id: Cluster ID to run the function on. If None, uses the
@@ -83,8 +84,7 @@ class Functions:
             tag = self._c.tag
 
         body: dict[str, dict | Any] = {
-            "params": params,
-            "inputs": params,  # we're sending both params and inputs because the APIs across dev/staging/prod are different
+            "inputs": params,
             "clusterId": cluster_id,
         }
         if tag is not None:
