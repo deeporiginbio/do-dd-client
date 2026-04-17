@@ -2,6 +2,13 @@
 
 The Results API provides access to result-explorer endpoints in the data platform.
 
+When `client.project_id` is set, all `Results` search methods (`get`, `get_poses`,
+`get_pockets`, `get_prepared_systems`, `get_abfe_results`, and `with_ligands`)
+automatically add `filter.project_id = {"eq": client.project_id}`.
+
+If you also pass `filter_dict["project_id"]`, it must match `client.project_id`.
+Conflicting values raise a `ValueError`.
+
 ```{.python notest}
 from deeporigin.platform.client import DeepOriginClient
 
