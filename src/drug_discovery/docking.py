@@ -387,7 +387,7 @@ class Docking(
                 "pocket": pocket_data,
             }
             all_responses.append(
-                client.functions.run(
+                client.functions.run(  # ty: ignore[unresolved-attribute]
                     key=TOOL_KEYS_AND_VERSIONS["docking"]["function_key"],
                     version=TOOL_KEYS_AND_VERSIONS["docking"]["function_version"],
                     params=payload,
@@ -631,12 +631,14 @@ class Docking(
             )
 
         meta = execution.get("metadata") or {}
-        raw_batch = meta.get("batchSize")
-        if raw_batch is not None and isinstance(raw_batch, (int, float)):
-            bs = int(raw_batch)
-            instance._batch_size = bs if bs > 0 else 16
-        else:
-            instance._batch_size = 16
+        raw_batch = execution.get("batchSize")
+        if raw_batch is None:
+            raw_batch = meta.get("batchSize")
+        try:
+            bs = int(raw_batch) if raw_batch is not None else 16
+        except (TypeError, ValueError):
+            bs = 16
+        instance._batch_size = bs if bs > 0 else 16
 
         return instance
 

@@ -305,10 +305,10 @@ class Entities:
         to buffers server-side (see ``coerceCanonicalIdInFilter`` in
         data-platform-service).
 
-        Soft-deleted and non-current versions are not returned; the search
-        endpoint unconditionally constrains to ``deleted = false`` and
-        ``valid_to IS NULL`` for immutable tables. Callers that need those
-        rows should fall back to per-ID :meth:`get_ligand` calls.
+        The filter includes ``deleted: false`` for parity with :meth:`search`.
+        Non-current versions may still be excluded server-side depending on
+        platform rules. Callers that need soft-deleted or historical rows
+        should fall back to per-ID :meth:`get_ligand` calls.
 
         Args:
             ids: List of ligand IDs to retrieve.
@@ -326,7 +326,7 @@ class Entities:
         response = self._c.post_json(
             f"/data-platform/{self._c.org_key}/ligands/search",
             body={
-                "filter": {"id": {"in": unique_ids}},
+                "filter": {"id": {"in": unique_ids}, "deleted": False},
                 "limit": len(unique_ids),
             },
         )

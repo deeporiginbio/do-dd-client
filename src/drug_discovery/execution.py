@@ -143,7 +143,9 @@ class Execution:
 
         Raises:
             ValueError: If the execution has no ID yet.
-            TypeError: If unknown keyword arguments are passed.
+            TypeError: If unknown keyword arguments are passed, or if
+                ``filter_dict`` is combined with pose-specific arguments
+                (``best_pose``, ``protein_id``, etc.).
         """
         exec_id = getattr(self, "_id", None)
         if exec_id is None:
@@ -152,8 +154,16 @@ class Execution:
             )
         limit = kwargs.pop("limit", None)
         select = kwargs.pop("select", None)
+        filter_dict = kwargs.pop("filter_dict", None)
 
-        if _RESULTS_GET_POSE_KWARGS & kwargs.keys():
+        pose_keys = _RESULTS_GET_POSE_KWARGS & kwargs.keys()
+        if pose_keys and filter_dict is not None:
+            raise TypeError(
+                "get_results() cannot combine filter_dict with pose-specific "
+                f"arguments ({', '.join(sorted(pose_keys))})."
+            )
+
+        if pose_keys:
             return self.client.results.get_poses(
                 compute_job_id=exec_id,
                 limit=limit,
@@ -161,7 +171,6 @@ class Execution:
                 **kwargs,
             )
 
-        filter_dict = kwargs.pop("filter_dict", None)
         if kwargs:
             bad = ", ".join(sorted(kwargs))
             raise TypeError(f"get_results() got unexpected keyword arguments: {bad}")

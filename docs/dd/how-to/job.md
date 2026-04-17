@@ -1,5 +1,12 @@
 # Job control
 
+!!! warning "Outdated page"
+    This how-to has not been updated for the current SDK. The imports and
+    APIs it references (including deprecated paths shown below) may be removed
+    or behave differently. Use the executions API, drug-discovery execution
+    types (for example Docking), and platform docs for supported workflows
+    until this page is rewritten.
+
 > **Deprecated:** The legacy module `deeporigin.platform.job` was removed. Use `from deeporigin.platform.tool_jobs import Job, JobList` (replacing old `deeporigin.tools.job` imports as well). The workflows below are otherwise unchanged.
 
 This document describes how to monitor, inspect, cancel and control jobs started on Deep Origin. 
