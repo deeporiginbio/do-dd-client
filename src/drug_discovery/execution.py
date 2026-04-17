@@ -17,11 +17,6 @@ from deeporigin.platform.constants import ALLOWED_STATUS_TRANSITIONS
 if TYPE_CHECKING:
     from deeporigin.platform.client import DeepOriginClient
 
-# Kwargs understood by :meth:`Results.get_poses` (not raw :meth:`Results.get`).
-_RESULTS_GET_POSE_KWARGS = frozenset(
-    {"best_pose", "protein_id", "ligand_id", "tool_version", "effort"}
-)
-
 
 class Execution:
     """Base class for all execution types in the jobs-centric API.
@@ -131,56 +126,29 @@ class Execution:
     def get_results(self, **kwargs: Any) -> Any:
         """Fetch results for this execution from the data platform.
 
+        Thin wrapper around :meth:`deeporigin.platform.results.Results.get`
+        scoped to this execution's ``compute_job_id``. Subclasses that need
+        result-type-specific filtering (e.g. poses, prepared systems) should
+        override this method and call the appropriate ``Results`` wrapper
+        directly rather than teaching this base method about those filters.
+
         Args:
-            **kwargs: Passed to :meth:`deeporigin.platform.results.Results.get`,
-                or to :meth:`~deeporigin.platform.results.Results.get_poses` when
-                any pose-specific filter is set (``best_pose``, ``protein_id``,
-                ``ligand_id``, ``tool_version``, ``effort``). ``limit`` and
-                ``select`` are forwarded to whichever call is used.
+            **kwargs: Forwarded verbatim to
+                :meth:`~deeporigin.platform.results.Results.get` (typically
+                ``filter_dict``, ``limit``, ``select``).
 
         Returns:
             Result-explorer response dict with ``data`` and ``meta`` keys.
 
         Raises:
             ValueError: If the execution has no ID yet.
-            TypeError: If unknown keyword arguments are passed, or if
-                ``filter_dict`` is combined with pose-specific arguments
-                (``best_pose``, ``protein_id``, etc.).
         """
         exec_id = getattr(self, "_id", None)
         if exec_id is None:
             raise ValueError(
                 "Cannot get results: no execution has been started (id is None)."
             )
-        limit = kwargs.pop("limit", None)
-        select = kwargs.pop("select", None)
-        filter_dict = kwargs.pop("filter_dict", None)
-
-        pose_keys = _RESULTS_GET_POSE_KWARGS & kwargs.keys()
-        if pose_keys and filter_dict is not None:
-            raise TypeError(
-                "get_results() cannot combine filter_dict with pose-specific "
-                f"arguments ({', '.join(sorted(pose_keys))})."
-            )
-
-        if pose_keys:
-            return self.client.results.get_poses(
-                compute_job_id=exec_id,
-                limit=limit,
-                select=select,
-                **kwargs,
-            )
-
-        if kwargs:
-            bad = ", ".join(sorted(kwargs))
-            raise TypeError(f"get_results() got unexpected keyword arguments: {bad}")
-
-        return self.client.results.get(
-            filter_dict=filter_dict,
-            compute_job_id=exec_id,
-            limit=limit,
-            select=select,
-        )
+        return self.client.results.get(compute_job_id=exec_id, **kwargs)
 
     def __repr__(self) -> str:
         """Return a concise summary of the execution."""

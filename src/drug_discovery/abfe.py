@@ -434,43 +434,52 @@ class ABFE(Execution, QuoteMixin, AsyncExecutableMixin, NotebookWatchMixin):
         self._id = execution_id
         self.status = execution_dto.get("status")
 
-    def get_results(self) -> pd.DataFrame | None:
+    def get_results(self, **kwargs: Any) -> pd.DataFrame | None:
         """Retrieve ABFE results as a DataFrame.
 
-        Downloads the results CSV from the platform and returns a
-        DataFrame with the binding free energy and related data.
+        Uses :meth:`~deeporigin.drug_discovery.execution.Execution.get_results`
+        (ABFE rows from the result explorer for this execution), then builds a
+        one-row table from the first matching record's ``data`` payload.
+
+        Args:
+            **kwargs: Forwarded to :meth:`~deeporigin.drug_discovery.execution.Execution.get_results`
+                (typically ``limit``, ``select``, and optionally ``filter_dict`` merged
+                with the ABFE result-type constraint).
 
         Returns:
             A DataFrame with ABFE results, or ``None`` if not yet available.
 
         Raises:
             ValueError: If no execution has been started.
+            TypeError: If unsupported keyword arguments are passed (see the base method).
         """
-        if self.id is None:
-            raise ValueError("No execution has been started. Call start() first.")
-
-        client = self.client
-
         self.sync()
         if self.status != "Succeeded":
             return None
 
-        if self._execution_dto is None:
-            self._execution_dto = client.executions.get(self.id)
+        limit = kwargs.pop("limit", 1)
+        select = kwargs.pop("select", None)
+        user_filter = kwargs.pop("filter_dict", None)
+        if kwargs:
+            bad = ", ".join(sorted(kwargs))
+            raise TypeError(f"get_results() got unexpected keyword arguments: {bad}")
+        abfe_filter = {
+            "props": [{"column": "result_type", "op": "eq", "value": "abferesult"}]
+        }
+        filter_dict = {**(user_filter or {}), **abfe_filter}
 
-        user_outputs = self._execution_dto.get("userOutputs", {})
-        summary_info = user_outputs.get("abfe_results_summary", {})
-        remote_path = summary_info.get("key")
-
-        if not remote_path:
-            return None
-
-        local_path = client.files.download(
-            remote_path=remote_path,
-            lazy=True,
+        response = super().get_results(
+            filter_dict=filter_dict,
+            limit=limit,
+            select=select,
         )
-
-        return pd.read_csv(local_path, nrows=1)
+        records = response.get("data") or []
+        if not records:
+            return None
+        row = records[0].get("data")
+        if not isinstance(row, dict) or not row:
+            return None
+        return pd.json_normalize([row])
 
     def _build_params(self) -> dict:
         """Construct the tool input parameters dict."""

@@ -99,31 +99,6 @@ def _ensure_entity_remote_path(
     Entity.ensure_remote_path(entity, client=client, label=label)
 
 
-def _pose_rows_from_result_explorer(response: dict[str, Any]) -> list[dict[str, Any]]:
-    """Keep pose rows from a :meth:`Execution.get_results` result-explorer response.
-
-    ``Result.get`` may return mixed result types for a ``compute_job_id``; docking
-    tables only include rows where ``result_type`` is missing (legacy) or ``pose``.
-
-    Args:
-        response: Dict with a ``data`` list of result-explorer records.
-
-    Returns:
-        Pose records only, in order.
-    """
-    raw = response.get("data", [])
-    if not isinstance(raw, list):
-        return []
-    out: list[dict[str, Any]] = []
-    for record in raw:
-        if not isinstance(record, dict):
-            continue
-        if record.get("result_type", "pose") != "pose":
-            continue
-        out.append(record)
-    return out
-
-
 def _ligand_tool_input_row(lig: Ligand) -> dict[str, Any]:
     """Build one ligand entry for tool ``userInputs`` (id and smiles only)."""
     return {"id": lig.id, "smiles": lig.smiles}
@@ -664,16 +639,16 @@ class Docking(
         """
         return super().from_id(id, client=client)
 
-    def get_results(self, *, all_poses: bool = False) -> pd.DataFrame | None:
+    def get_results(self, *, all_poses: bool = False, **kwargs) -> pd.DataFrame | None:
         """Retrieve docking results as a table (no structure download).
 
         Columns: ID, protein ID, ligand ID, pocket ID, binding energy, pose_score,
         best_pose.
 
-        Uses :meth:`~deeporigin.drug_discovery.execution.Execution.get_results` and
-        keeps only pose rows. By default (``all_poses=False``) the platform query
-        includes only the best pose per ligand; pass ``all_poses=True`` for every
-        pose row.
+        Uses :meth:`~deeporigin.drug_discovery.execution.Execution.get_results`
+        to fetch result rows for this execution. By default
+        (``all_poses=False``) the query is restricted to the best pose per
+        ligand; pass ``all_poses=True`` for every pose row.
 
         Returns:
             A DataFrame with one row per pose record, or ``None`` if the API
@@ -682,10 +657,9 @@ class Docking(
         Raises:
             ValueError: If no execution has been started.
         """
-        kwargs: dict[str, Any] = {}
-        if not all_poses:
-            kwargs["best_pose"] = True
-        records = _pose_rows_from_result_explorer(super().get_results(**kwargs))
+        filter_dict = None if all_poses else {"best_pose": {"eq": True}}
+        response = super().get_results(filter_dict=filter_dict, limit=None)
+        records = response.get("data", [])
         if not records:
             return None
 
@@ -744,10 +718,9 @@ class Docking(
         Raises:
             ValueError: If no execution has been started.
         """
-        kwargs: dict[str, Any] = {}
-        if not all_poses:
-            kwargs["best_pose"] = True
-        records = _pose_rows_from_result_explorer(super().get_results(**kwargs))
+        filter_dict = None if all_poses else {"best_pose": {"eq": True}}
+        response = super().get_results(filter_dict=filter_dict, limit=None)
+        records = response.get("data", [])
         remote_paths: list[str] = []
         for record in records:
             data = record.get("data", {})
