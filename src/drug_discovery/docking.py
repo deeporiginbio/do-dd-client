@@ -2,7 +2,7 @@
 
 import concurrent.futures
 import os
-from typing import Any, Self
+from typing import Any, Protocol, Self, cast
 
 from beartype import beartype
 import numpy as np
@@ -15,6 +15,7 @@ from deeporigin.drug_discovery.execution_mixins import (
     SyncExecutableMixin,
 )
 from deeporigin.drug_discovery.notebook_watch_mixin import NotebookWatchMixin
+from deeporigin.drug_discovery.structures.entity import Entity
 from deeporigin.drug_discovery.structures.ligand import Ligand, LigandSet
 from deeporigin.drug_discovery.structures.pocket import Pocket
 from deeporigin.drug_discovery.structures.protein import Protein
@@ -22,9 +23,80 @@ from deeporigin.exceptions import DeepOriginException
 from deeporigin.functions.result import FunctionResult
 from deeporigin.platform.client import DeepOriginClient
 from deeporigin.platform.constants import TOOL_KEYS_AND_VERSIONS
+from deeporigin.platform.executions import Executions
 from deeporigin.utils.constants import DOCKING_RESULTS_DATAFRAME_COLUMNS
 
 Number = float | int
+
+
+class _SupportsEntitySync(Protocol):
+    """Structural type for :meth:`Entity.sync` (avoids confusion with execution ``sync()``)."""
+
+    def sync(
+        self,
+        *,
+        lazy: bool = False,
+        client: DeepOriginClient | None = None,
+        remote_path: str | None = None,
+    ) -> None: ...
+
+
+class _SupportsLigandSetSync(Protocol):
+    """Structural type for :meth:`LigandSet.sync`."""
+
+    def sync(
+        self,
+        *,
+        lazy: bool = False,
+        client: DeepOriginClient | None = None,
+    ) -> None: ...
+
+
+def _require_executions(client: DeepOriginClient) -> Executions:
+    """Return ``client.executions`` or raise if the executions API is unavailable."""
+    ex = client.executions
+    if ex is None:
+        raise DeepOriginException(
+            title="Executions API unavailable",
+            message="The tools executions API is not available in this installation.",
+            fix="Use a full deeporigin install with platform.executions included.",
+        )
+    return ex
+
+
+def _sync_entity(
+    entity: Entity,
+    *,
+    lazy: bool = False,
+    client: DeepOriginClient,
+) -> None:
+    """Call :meth:`Entity.sync` on *entity*.
+
+    ``Docking`` also inherits ``AsyncExecutableMixin.sync(self)``, so attribute
+    access to ``sync`` on nested entities can confuse static analysis; cast via
+    :class:`_SupportsEntitySync` so the checker uses the entity API signature.
+    """
+    cast(_SupportsEntitySync, entity).sync(lazy=lazy, client=client)
+
+
+def _sync_ligand_set(
+    ligands: LigandSet,
+    *,
+    lazy: bool = False,
+    client: DeepOriginClient,
+) -> None:
+    """Call :meth:`LigandSet.sync` for the same reason as :func:`_sync_entity`."""
+    cast(_SupportsLigandSetSync, ligands).sync(lazy=lazy, client=client)
+
+
+def _ensure_entity_remote_path(
+    entity: Entity,
+    *,
+    client: DeepOriginClient,
+    label: str,
+) -> None:
+    """Call :meth:`Entity.ensure_remote_path` without MRO ambiguity."""
+    Entity.ensure_remote_path(entity, client=client, label=label)
 
 
 def _pose_rows_from_result_explorer(response: dict[str, Any]) -> list[dict[str, Any]]:
@@ -170,6 +242,7 @@ class Docking(
             ligands = LigandSet(ligands=[ligand])
         elif ligands is None and smiles_list is not None:
             ligands = LigandSet.from_smiles(smiles_list)
+        assert ligands is not None  # guaranteed by exactly-one-of validation above
 
         if batch_size <= 0:
             raise ValueError("batch_size must be a positive integer.")
@@ -218,11 +291,13 @@ class Docking(
         if hasattr(self.pocket, "id") and self.pocket.id is not None:
             parts.append(f"  pocket_id={self.pocket.id!r},")
 
-        try:
-            box_size = float(2 * np.cbrt(self.pocket.volume))
-            parts.append(f"  box_size={box_size:.2f},")
-        except Exception:
-            pass
+        vol = self.pocket.volume
+        if vol is not None:
+            try:
+                box_size = float(2 * np.cbrt(vol))
+                parts.append(f"  box_size={box_size:.2f},")
+            except Exception:
+                pass
 
         try:
             center = self.pocket.get_center().tolist()
@@ -259,7 +334,7 @@ class Docking(
         self._ensure_platform_inputs()
         payload = self._make_payload(approve_amount=0)
 
-        return self.client.executions.create(
+        return _require_executions(self.client).create(
             data=payload,
             tool_key=self.tool_key,
             tool_version=self.tool_version,
@@ -283,8 +358,8 @@ class Docking(
         pocket = self.pocket
         ligands = list(self.ligands)
 
-        protein.sync(lazy=True, client=client)
-        protein.ensure_remote_path(client=client, label="Protein")
+        _sync_entity(protein, lazy=True, client=client)
+        _ensure_entity_remote_path(protein, client=client, label="Protein")
 
         if pocket.center is not None:
             pocket_center = list(pocket.center)
@@ -304,7 +379,7 @@ class Docking(
 
         all_responses: list[dict[str, Any]] = []
         for ligand in ligands:
-            ligand.sync(lazy=True, client=client)
+            _sync_entity(ligand, lazy=True, client=client)
             payload = {
                 "effort": self.effort,
                 "protein": protein_data,
@@ -369,7 +444,7 @@ class Docking(
         self._ensure_platform_inputs()
         payload = self._make_payload(approve_amount=approve_amount)
 
-        execution_dto = self.client.executions.create(
+        execution_dto = _require_executions(self.client).create(
             data=payload,
             tool_key=self.tool_key,
             tool_version=self.tool_version,
@@ -384,8 +459,8 @@ class Docking(
         :func:`_ligand_tool_input_row`); ligand structure files are not required.
         Mutates remote state so :meth:`_build_tool_inputs` can read IDs and paths.
         """
-        self.protein.sync(client=self.client, lazy=True)
-        self.ligands.sync(client=self.client, lazy=True)
+        _sync_entity(self.protein, client=self.client, lazy=True)
+        _sync_ligand_set(self.ligands, client=self.client, lazy=True)
 
     def _build_tool_inputs(self) -> tuple[dict, dict]:
         """Build params and metadata for ``client.executions.create``.
