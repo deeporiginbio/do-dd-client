@@ -1112,6 +1112,13 @@ def test_ligand_set_sync_empty():
     empty.sync()  # should not raise
 
 
+def test_ligand_set_sync_rejects_unsupported_atoms():
+    """sync() raises before platform calls if any ligand to sync has unsupported atoms."""
+    ls = LigandSet(ligands=[Ligand.from_smiles("CCO"), Ligand.from_smiles("B")])
+    with pytest.raises(DeepOriginException, match="Cannot sync ligand set"):
+        ls.sync()
+
+
 def test_ligand_set_sync_duplicate_smiles_lv1():
     """Syncing a LigandSet with duplicate canonical SMILES should succeed.
 

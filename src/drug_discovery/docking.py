@@ -568,7 +568,10 @@ class Docking(
             A fully-hydrated Docking instance with status from the DTO.
         """
         instance = super().from_dto(dto, client=client)
-        inputs = instance._execution_dto["userInputs"]
+        execution = instance._execution_dto
+        if execution is None:
+            raise RuntimeError("from_dto did not set _execution_dto")
+        inputs = execution.get("userInputs", {})
 
         pocket_input = inputs.get("pocket", {})
         pocket_id = pocket_input.get("id") or inputs.get("pocket_id")
@@ -627,7 +630,7 @@ class Docking(
                 box_size_z=pocket_input.get("box_size_z"),
             )
 
-        meta = instance._execution_dto.get("metadata") or {}
+        meta = execution.get("metadata") or {}
         raw_batch = meta.get("batchSize")
         if raw_batch is not None and isinstance(raw_batch, (int, float)):
             bs = int(raw_batch)
@@ -702,6 +705,29 @@ class Docking(
             )
 
         return pd.DataFrame(rows, columns=list(DOCKING_RESULTS_DATAFRAME_COLUMNS))
+
+    def get_undocked_ligands(self) -> LigandSet | None:
+        """Get a list of ligands that failed to dock.
+
+        Note: we cannot rely on the tool progress report to determine failed ligands,
+        because catastrophic tool failures will not update the progress report.
+
+        Returns:
+            A ``LigandSet`` of failed ligands, or ``None`` if no failed ligands yet.
+        """
+
+        results = self.client.results.get_poses(
+            compute_job_id=self.id,
+            best_pose=True,
+            limit=None,  # important -- pass limit=None to get all results
+        )
+        results = results["data"]
+        docked_ids = {result["data"]["ligand_id"] for result in results}
+        all_ids = {ligand.id for ligand in self.ligands}
+        missing_ids = all_ids.difference(docked_ids)
+        return LigandSet(
+            [ligand for ligand in self.ligands if ligand.id in missing_ids]
+        )
 
     def get_poses(self, *, all_poses: bool = False) -> LigandSet | None:
         """Download pose SDFs from the platform and return a ``LigandSet``.

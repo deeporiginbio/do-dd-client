@@ -2715,12 +2715,14 @@ class LigandSet:
             lazy: If True, skip syncing ligands that already have an id.
             client: DeepOriginClient instance. If None, uses
                 DeepOriginClient().
+
+        Raises:
+            DeepOriginException: If any ligand to be synced contains atom types
+                outside :data:`~deeporigin.drug_discovery.constants.SUPPORTED_ATOM_SYMBOLS`.
+            ValueError: If any ligand to be synced has no ``canonical_smiles``.
         """
         if not self.ligands:
             return
-
-        if client is None:
-            client = DeepOriginClient()
 
         ligands_to_sync = (
             [lig for lig in self.ligands if lig.id is None]
@@ -2730,6 +2732,17 @@ class LigandSet:
         if not ligands_to_sync:
             return
 
+        unsupported = [lig for lig in ligands_to_sync if lig.has_unsupported_atoms()]
+        if unsupported:
+            symbols = sorted(
+                {s for lig in unsupported for s in lig.unsupported_atom_symbols()}
+            )
+            raise DeepOriginException(
+                f"Cannot sync ligand set: {len(unsupported)} ligand(s) contain "
+                f"unsupported atom type(s) for docking workflows: {', '.join(symbols)}. "
+                "Fix or remove those atoms before calling sync()."
+            )
+
         invalid = [lig for lig in ligands_to_sync if lig.canonical_smiles is None]
         if invalid:
             raise ValueError(
@@ -2737,6 +2750,9 @@ class LigandSet:
                 "cannot be synced. Ensure every ligand has a valid SMILES or "
                 "mol before calling sync()."
             )
+
+        if client is None:
+            client = DeepOriginClient()
 
         proj_id = (
             ligands_to_sync[0].resolved_project_id(client=client)

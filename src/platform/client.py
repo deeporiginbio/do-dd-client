@@ -29,6 +29,7 @@ from typing import (
     Optional,
     Self,
     Tuple,
+    cast,
     get_args,
 )
 import uuid
@@ -311,12 +312,12 @@ class DeepOriginClient(metaclass=_DeepOriginMeta):
     functions: Functions | None
     clusters: Clusters | None
     datasets: Datasets | None
-    files: Files | None
+    files: Files  # client always has files
     executions: Executions | None
     organizations: Organizations | None
     billing: Billing | None
     entities: Entities | None
-    results: Results | None
+    results: Results  # client always has results
     progress_reports: ProgressReports | None
     projects: Projects | None
 
@@ -384,87 +385,86 @@ class DeepOriginClient(metaclass=_DeepOriginMeta):
         self._org_key = org_key
         self._project_id = project_id
 
+        _client = cast(
+            Any, self
+        )  # ``self`` is ``Self``; wrappers expect ``DeepOriginClient``
+
         try:
             from deeporigin.platform.tools import Tools
 
-            self.tools = Tools(self)
+            self.tools = Tools(_client)
         except ImportError:
             self.tools = None
 
         try:
             from deeporigin.platform.functions import Functions
 
-            self.functions = Functions(self)
+            self.functions = Functions(_client)
         except ImportError:
             self.functions = None
 
         try:
             from deeporigin.platform.clusters import Clusters
 
-            self.clusters = Clusters(self)
+            self.clusters = Clusters(_client)
         except ImportError:
             self.clusters = None
 
-        try:
-            from deeporigin.platform.files import Files
+        # files is always available
+        from deeporigin.platform.files import Files
 
-            self.files = Files(self)
-        except ImportError:
-            self.files = None
+        self.files = Files(_client)
 
         try:
             from deeporigin.platform.executions import Executions
 
-            self.executions = Executions(self)
+            self.executions = Executions(_client)
         except ImportError:
             self.executions = None
 
         try:
             from deeporigin.platform.organizations import Organizations
 
-            self.organizations = Organizations(self)
+            self.organizations = Organizations(_client)
         except ImportError:
             self.organizations = None
 
         try:
             from deeporigin.platform.billing import Billing
 
-            self.billing = Billing(self)
+            self.billing = Billing(_client)
         except ImportError:
             self.billing = None
 
         try:
             from deeporigin.platform.entities import Entities
 
-            self.entities = Entities(self)
+            self.entities = Entities(_client)
         except ImportError:
             self.entities = None
 
-        try:
-            from deeporigin.platform.results import Results
+        from deeporigin.platform.results import Results
 
-            self.results = Results(self)
-        except ImportError:
-            self.results = None
+        self.results = Results(_client)
 
         try:
             from deeporigin.platform.progress_reports import ProgressReports
 
-            self.progress_reports = ProgressReports(self)
+            self.progress_reports = ProgressReports(_client)
         except ImportError:
             self.progress_reports = None
 
         try:
             from deeporigin.platform.projects import Projects
 
-            self.projects = Projects(self)
+            self.projects = Projects(_client)
         except ImportError:
             self.projects = None
 
         try:
             from deeporigin.platform.datasets import Datasets
 
-            self.datasets = Datasets(self)
+            self.datasets = Datasets(_client)
         except ImportError:
             self.datasets = None
 
