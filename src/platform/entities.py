@@ -296,20 +296,41 @@ class Entities:
         return self.get(entity="ligands", entity_id=id)
 
     def get_ligands(self, ids: list[str]) -> list[dict]:
-        """Get multiple ligands by their IDs.
+        """Get multiple ligands by their IDs in a single search request.
 
-        Convenience wrapper around :meth:`search_ligands` that filters by ID.
+        Sends one ``POST /ligands/search`` with an ``{"id": {"in": ids}}``
+        filter and ``limit = len(ids)``, bypassing :meth:`search_ligands` so
+        no default pagination limit applies. The platform translates the
+        ``id`` filter to the canonical-id column and decodes the string IDs
+        to buffers server-side (see ``coerceCanonicalIdInFilter`` in
+        data-platform-service).
+
+        The filter includes ``deleted: false`` for parity with :meth:`search`.
+        Non-current versions may still be excluded server-side depending on
+        platform rules. Callers that need soft-deleted or historical rows
+        should fall back to per-ID :meth:`get_ligand` calls.
 
         Args:
             ids: List of ligand IDs to retrieve.
 
         Returns:
-            List of dictionaries for the matching ligands.
+            List of dictionaries for the matching ligands. Missing IDs are
+            omitted; callers should diff returned IDs against ``ids`` when
+            completeness matters.
         """
         if len(ids) == 0:
             return []
 
-        return self.search_ligands(filter_dict={"id": {"in": ids}})["data"]
+        unique_ids = list(dict.fromkeys(ids))
+
+        response = self._c.post_json(
+            f"/data-platform/{self._c.org_key}/ligands/search",
+            body={
+                "filter": {"id": {"in": unique_ids}, "deleted": False},
+                "limit": len(unique_ids),
+            },
+        )
+        return response.get("data", [])
 
     def create_ligand(
         self,

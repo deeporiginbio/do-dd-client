@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import builtins
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -22,7 +23,7 @@ class Tools:
         """
         self._c = client
 
-    def list(self) -> list[dict]:
+    def list(self) -> builtins.list[dict]:
         """List all available tool definitions.
 
         Returns:
@@ -37,7 +38,7 @@ class Tools:
         else:
             return []
 
-    def get_by_key(self, *, tool_key: str) -> list[dict]:
+    def get_by_key(self, *, tool_key: str) -> builtins.list[dict]:
         """Get all versions of a tool definition by tool key.
 
         Args:

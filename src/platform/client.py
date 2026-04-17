@@ -29,7 +29,9 @@ from typing import (
     Optional,
     Self,
     Tuple,
+    cast,
     get_args,
+    overload,
 )
 import uuid
 import weakref
@@ -311,12 +313,12 @@ class DeepOriginClient(metaclass=_DeepOriginMeta):
     functions: Functions | None
     clusters: Clusters | None
     datasets: Datasets | None
-    files: Files | None
+    files: Files  # client always has files
     executions: Executions | None
     organizations: Organizations | None
     billing: Billing | None
     entities: Entities | None
-    results: Results | None
+    results: Results  # client always has results
     progress_reports: ProgressReports | None
     projects: Projects | None
 
@@ -338,11 +340,53 @@ class DeepOriginClient(metaclass=_DeepOriginMeta):
         """
         return super().__new__(cls)
 
+    @overload
+    def __init__(
+        self,
+        *,
+        project_id: str | None = None,
+    ) -> None: ...
+
+    @overload
+    def __init__(
+        self,
+        *,
+        token: str,
+        org_key: str | None = None,
+        project_id: str | None = None,
+        timeout: float = 10.0,
+        max_retries: int = 3,
+        retry_backoff_factor: float = 1.0,
+        max_retry_delay: float = 60.0,
+        record: bool = False,
+        tag: str | None = None,
+        _app: str = "python-client",
+        _session: str | None = None,
+    ) -> None: ...
+
+    @overload
     def __init__(
         self,
         *,
         base_url: str,
-        token: str,
+        token: str | None = None,
+        org_key: str | None = None,
+        project_id: str | None = None,
+        timeout: float = 10.0,
+        max_retries: int = 3,
+        retry_backoff_factor: float = 1.0,
+        max_retry_delay: float = 60.0,
+        record: bool = False,
+        tag: str | None = None,
+        _app: str = "python-client",
+        _session: str | None = None,
+    ) -> None: ...
+
+    def __init__(
+        self,
+        *,
+        base_url: str | None = None,
+        token: str | None = None,
         org_key: str | None = None,
         project_id: str | None = None,
         timeout: float = 10.0,
@@ -359,14 +403,14 @@ class DeepOriginClient(metaclass=_DeepOriginMeta):
         Called exactly once per unique ``(base_url, token, org_key, project_id,
         _app, _session)`` tuple.  Caching and the no-arg priority chain are
         handled by ``_DeepOriginMeta.__call__`` before this method is ever
-        reached, so no guards are needed here.
+        reached.
 
-        Prefer the no-arg constructor ``DeepOriginClient()`` or one of the
-        factory class methods over calling this directly.
+        Prefer ``DeepOriginClient()`` or a factory class method over calling
+        this method directly.
 
         Args:
-            base_url: API base URL.
-            token: Authentication token.
+            base_url: API base URL (required whenever this initializer runs).
+            token: Authentication token, or ``None`` if requests do not use bearer auth.
             org_key: Organization key.
             project_id: Data platform project id. Optional.
             timeout: Request timeout in seconds.
@@ -380,91 +424,95 @@ class DeepOriginClient(metaclass=_DeepOriginMeta):
             _session: Internal session identifier. Part of the singleton cache key.
                 A UUID v4 is generated when ``None``.
         """
+        if base_url is None:
+            raise RuntimeError(
+                "DeepOriginClient.__init__ requires base_url. Use DeepOriginClient() "
+                "for automatic configuration."
+            )
         self._base_url = base_url.rstrip("/") + "/"
         self._org_key = org_key
         self._project_id = project_id
 
+        _client = cast(
+            Any, self
+        )  # ``self`` is ``Self``; wrappers expect ``DeepOriginClient``
+
         try:
             from deeporigin.platform.tools import Tools
 
-            self.tools = Tools(self)
+            self.tools = Tools(_client)
         except ImportError:
             self.tools = None
 
         try:
             from deeporigin.platform.functions import Functions
 
-            self.functions = Functions(self)
+            self.functions = Functions(_client)
         except ImportError:
             self.functions = None
 
         try:
             from deeporigin.platform.clusters import Clusters
 
-            self.clusters = Clusters(self)
+            self.clusters = Clusters(_client)
         except ImportError:
             self.clusters = None
 
-        try:
-            from deeporigin.platform.files import Files
+        # files is always available
+        from deeporigin.platform.files import Files
 
-            self.files = Files(self)
-        except ImportError:
-            self.files = None
+        self.files = Files(_client)
 
         try:
             from deeporigin.platform.executions import Executions
 
-            self.executions = Executions(self)
+            self.executions = Executions(_client)
         except ImportError:
             self.executions = None
 
         try:
             from deeporigin.platform.organizations import Organizations
 
-            self.organizations = Organizations(self)
+            self.organizations = Organizations(_client)
         except ImportError:
             self.organizations = None
 
         try:
             from deeporigin.platform.billing import Billing
 
-            self.billing = Billing(self)
+            self.billing = Billing(_client)
         except ImportError:
             self.billing = None
 
         try:
             from deeporigin.platform.entities import Entities
 
-            self.entities = Entities(self)
+            self.entities = Entities(_client)
         except ImportError:
             self.entities = None
 
-        try:
-            from deeporigin.platform.results import Results
+        from deeporigin.platform.results import Results
 
-            self.results = Results(self)
-        except ImportError:
-            self.results = None
+        self.results = Results(_client)
 
         try:
             from deeporigin.platform.progress_reports import ProgressReports
 
-            self.progress_reports = ProgressReports(self)
+            self.progress_reports = ProgressReports(_client)
         except ImportError:
             self.progress_reports = None
 
         try:
             from deeporigin.platform.projects import Projects
 
-            self.projects = Projects(self)
+            self.projects = Projects(_client)
         except ImportError:
             self.projects = None
 
         try:
             from deeporigin.platform.datasets import Datasets
 
-            self.datasets = Datasets(self)
+            self.datasets = Datasets(_client)
         except ImportError:
             self.datasets = None
 
@@ -483,8 +531,10 @@ class DeepOriginClient(metaclass=_DeepOriginMeta):
             timeout=timeout,
         )
 
-        # token setter syncs the Authorization header
-        self.token = token
+        if token is None:
+            self._token = None
+        else:
+            self.token = token
 
         self._finalizer = weakref.finalize(self, self._client.close)
 
@@ -555,24 +605,27 @@ class DeepOriginClient(metaclass=_DeepOriginMeta):
         self._project_id = value
 
     @property
-    def token(self) -> str:
+    def token(self) -> str | None:
         """Get the authentication token.
 
         Returns:
-            The authentication token string.
+            The authentication token string, or ``None`` if unset.
         """
         return self._token
 
     @token.setter
-    def token(self, value: str) -> None:
+    def token(self, value: str | None) -> None:
         """Set the authentication token and update the Authorization header.
 
         Args:
-            value: The new authentication token.
+            value: The new authentication token, or ``None`` to clear bearer auth.
         """
         self._token = value
         if hasattr(self, "_client"):
-            self._client.headers["Authorization"] = f"Bearer {value}"
+            if value is None:
+                self._client.headers.pop("Authorization", None)
+            else:
+                self._client.headers["Authorization"] = f"Bearer {value}"
 
     @property
     def env(self) -> ENVS:
@@ -600,8 +653,9 @@ class DeepOriginClient(metaclass=_DeepOriginMeta):
 
         name = "Unknown"
         try:
-            decoded_token = auth.decode_access_token(self.token)
-            name = decoded_token.get("name", "Unknown")
+            if self._token is not None:
+                decoded_token = auth.decode_access_token(self._token)
+                name = decoded_token.get("name", "Unknown")
         except Exception:
             pass
 
@@ -868,7 +922,17 @@ class DeepOriginClient(metaclass=_DeepOriginMeta):
         """Check if the token is expired."""
         from deeporigin import auth
 
-        if auth.is_token_expired(self.token):
+        if self._token is None:
+            raise DeepOriginException(
+                title="Authentication Required",
+                message="No access token is set on this client.",
+                fix=(
+                    "Configure credentials via DeepOriginClient(), "
+                    "`config.set_org`, or environment variables."
+                ),
+                level="danger",
+            )
+        if auth.is_token_expired(self._token):
             raise DeepOriginException(
                 title="Token Expired",
                 message="Token is expired. Please refer to https://client-docs.deeporigin.io/how-to/auth.html to get a new token.",

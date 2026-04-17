@@ -1,5 +1,6 @@
 import os
 from pathlib import Path
+import tempfile
 
 import numpy as np
 import pytest
@@ -109,7 +110,6 @@ def test_ligand_from_smiles(smiles, name, expected_atoms, equivalent_smiles):
     ligand = Ligand.from_smiles(
         smiles=smiles,
         name=name,
-        save_to_file=False,
     )
 
     # Verify the ligand has either the exact SMILES string or an equivalent one
@@ -242,6 +242,40 @@ def test_ligand_from_sdf():
     assert isinstance(ligand.properties, dict)
 
 
+def test_ligand_from_file_matches_from_sdf():
+    """from_file validates and loads the same as from_sdf for a real SDF."""
+    brd7_ligand = next(ligand for ligand in ligands if "brd-7.sdf" in ligand["file"])
+    sdf_file = brd7_ligand["file"]
+    a = Ligand.from_sdf(sdf_file)
+    b = Ligand.from_file(sdf_file)
+    assert a.smiles == b.smiles
+    assert a.local_path == b.local_path
+
+
+def test_ligand_from_file_rejects_non_sdf_extension():
+    brd7_ligand = next(ligand for ligand in ligands if "brd-7.sdf" in ligand["file"])
+    sdf_path = Path(brd7_ligand["file"])
+    with tempfile.NamedTemporaryFile(suffix=".txt", delete=False) as f:
+        f.write(sdf_path.read_bytes())
+        tmp = f.name
+    try:
+        with pytest.raises(DeepOriginException, match="Expected an SDF file"):
+            Ligand.from_file(tmp)
+    finally:
+        os.unlink(tmp)
+
+
+def test_ligand_from_file_rejects_bad_content():
+    with tempfile.NamedTemporaryFile(suffix=".sdf", mode="w", delete=False) as f:
+        f.write("not a molecule file\n")
+        tmp = f.name
+    try:
+        with pytest.raises(DeepOriginException, match="does not appear to contain"):
+            Ligand.from_file(tmp)
+    finally:
+        os.unlink(tmp)
+
+
 def test_ligand_base64():
     brd7_ligand = next(ligand for ligand in ligands if "brd-7.sdf" in ligand["file"])
     sdf_file = brd7_ligand["file"]
@@ -275,7 +309,7 @@ def test_ligand_hash(sdf_file, hash_value):
 
 @pytest.mark.parametrize("ligand", bad_ligands)
 def test_ligand_errors(ligand):
-    with pytest.raises(DeepOriginException):  # noqa: B017
+    with pytest.raises(TypeError):
         Ligand(
             local_path=ligand["file"],
             smiles=ligand["smiles_string"],
@@ -395,6 +429,14 @@ def test_ligand_prepare_rejects_unsupported_atoms():
     lig = Ligand.from_smiles("B")
     with pytest.raises(DeepOriginException, match="Unsupported atom types"):
         lig.prepare()
+
+
+def test_ligand_has_unsupported_atoms():
+    """has_unsupported_atoms matches SUPPORTED_ATOM_SYMBOLS membership on mol."""
+    assert not Ligand.from_smiles("CCO").has_unsupported_atoms()
+    boron = Ligand.from_smiles("B")
+    assert boron.has_unsupported_atoms()
+    assert boron.unsupported_atom_symbols() == ["B"]
 
 
 def test_ligand_prepare_rejects_wildcard_atoms():
@@ -666,11 +708,6 @@ def test_ligand_file_path_handling():
     directory = ligand._get_directory()
     assert Path(directory).exists()
     assert "ligands" in directory
-
-    # Test that save_to_file works when enabled
-    ligand.save_to_file = True
-    # This would create a file in the directory, but we'll skip the actual file creation
-    # to avoid cluttering the test environment
 
 
 def test_ligand_protonated_at_ph():

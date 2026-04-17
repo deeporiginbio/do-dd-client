@@ -34,7 +34,14 @@ class Datasets:
         """
         if self._c.env == "local":
             return
-        claims = decode_access_token(self._c.token)
+        tok = self._c.token
+        if tok is None:
+            raise DeepOriginException(
+                title="Authentication Required",
+                message="No access token is set on the client.",
+                level="danger",
+            )
+        claims = decode_access_token(tok)
         roles: list[str] = claims.get("realm_access", {}).get("roles", [])
         if _SUPERUSER_REALM_ROLE not in roles:
             raise DeepOriginException(

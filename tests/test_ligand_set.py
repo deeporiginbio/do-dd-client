@@ -1,4 +1,6 @@
 import os
+from pathlib import Path
+import tempfile
 
 import pytest
 
@@ -35,6 +37,47 @@ def test_ligand_set_from_sdf_file_lv0(filename, expected_count):
     assert len(ligands.ligands) == expected_count, f"Expected {expected_count} ligands"
     for ligand in ligands.ligands:
         assert isinstance(ligand, Ligand), "Expected a Ligand object"
+
+
+def test_ligand_set_from_file_matches_from_sdf():
+    """from_file validates and loads the same as from_sdf."""
+    filename = DATA_DIR / "ligands" / "ligands-brd-all.sdf"
+    a = LigandSet.from_sdf(filename)
+    b = LigandSet.from_file(filename)
+    assert len(a.ligands) == len(b.ligands)
+    assert [x.smiles for x in a.ligands] == [x.smiles for x in b.ligands]
+
+
+def test_ligand_set_from_file_matches_from_csv():
+    """from_file validates and loads the same as from_csv."""
+    csv_path = DATA_DIR / "ligands" / "ligands.csv"
+    a = LigandSet.from_csv(str(csv_path), smiles_column="SMILES")
+    b = LigandSet.from_file(csv_path, smiles_column="SMILES")
+    assert len(a.ligands) == len(b.ligands)
+    assert [x.smiles for x in a.ligands] == [x.smiles for x in b.ligands]
+
+
+def test_ligand_set_from_file_rejects_non_sdf_extension():
+    sdf_path = DATA_DIR / "ligands" / "ligands-brd-all.sdf"
+    with tempfile.NamedTemporaryFile(suffix=".txt", delete=False) as f:
+        f.write(Path(sdf_path).read_bytes())
+        tmp = f.name
+    try:
+        with pytest.raises(DeepOriginException, match="Unsupported file type"):
+            LigandSet.from_file(tmp)
+    finally:
+        os.unlink(tmp)
+
+
+def test_ligand_set_from_file_rejects_bad_content():
+    with tempfile.NamedTemporaryFile(suffix=".sdf", mode="w", delete=False) as f:
+        f.write("not a molecule file\n")
+        tmp = f.name
+    try:
+        with pytest.raises(DeepOriginException, match="does not appear to contain"):
+            LigandSet.from_file(tmp)
+    finally:
+        os.unlink(tmp)
 
 
 def test_ligand_set_from_sdf_files_lv0():
@@ -253,6 +296,17 @@ def test_filter_top_poses_accepts_pose_score_snake_case():
     )
     assert len(filtered) == 1
     assert filtered.ligands[0].properties["pose_score"] == "0.9"
+
+
+def test_ligand_set_filter_unsupported():
+    """filter_unsupported drops ligands with atoms outside SUPPORTED_ATOM_SYMBOLS."""
+    ok = Ligand.from_smiles("CCO")
+    bad = Ligand.from_smiles("B")
+    original = LigandSet(ligands=[ok, bad])
+    filtered = original.filter_unsupported()
+    assert len(filtered) == 1
+    assert filtered.ligands[0].smiles == ok.smiles
+    assert len(original) == 2
 
 
 def test_ligand_set_from_csv():
@@ -1056,6 +1110,30 @@ def test_ligand_set_sync_empty():
     """Test that syncing an empty LigandSet is a no-op."""
     empty = LigandSet(ligands=[])
     empty.sync()  # should not raise
+
+
+def test_ligand_set_sync_rejects_unsupported_atoms():
+    """sync() raises before platform calls if any ligand to sync has unsupported atoms."""
+    ls = LigandSet(ligands=[Ligand.from_smiles("CCO"), Ligand.from_smiles("B")])
+    with pytest.raises(DeepOriginException, match="Cannot sync ligand set"):
+        ls.sync()
+
+
+def test_ligand_set_sync_duplicate_smiles_lv1():
+    """Syncing a LigandSet with duplicate canonical SMILES should succeed.
+
+    The platform enforces a uniqueness constraint on
+    ``(project_scope_key, canonical_smiles, variant_name_tag)``, so sync()
+    must dedupe before calling ``batch_create_ligands``. All duplicates
+    should end up pointing at the same platform record.
+    """
+    smiles = "CCO"
+    ligands = LigandSet(ligands=[Ligand.from_smiles(smiles) for _ in range(3)])
+    ligands.sync()
+
+    ids = [lig.id for lig in ligands]
+    assert all(i is not None for i in ids), "Every duplicate should receive an id"
+    assert len(set(ids)) == 1, "All duplicates should share the same platform id"
 
 
 def test_batch_create_ligands_lv1():

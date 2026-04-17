@@ -49,6 +49,65 @@ class Results:
         """
         self._c = client
 
+    def _apply_project_scope(
+        self,
+        *,
+        filter_dict: dict[str, Any],
+    ) -> dict[str, Any]:
+        """Apply client-level project scoping to a filter dictionary.
+
+        If ``client.project_id`` is set, this method enforces
+        ``{"project_id": {"eq": client.project_id}}``. When a caller also
+        provides a ``project_id`` filter with a conflicting value, it raises
+        ``ValueError``.
+
+        Args:
+            filter_dict: Existing filter dictionary.
+
+        Returns:
+            A copied filter dictionary with normalized ``project_id`` shape
+            when project scope applies.
+
+        Raises:
+            ValueError: If the caller-provided ``project_id`` filter conflicts
+                with ``client.project_id`` or has an unsupported shape while
+                ``client.project_id`` is set.
+        """
+        scoped_filter = filter_dict.copy()
+        client_project_id = self._c.project_id
+        incoming_project_filter = scoped_filter.get("project_id")
+
+        if incoming_project_filter is not None:
+            incoming_project_id: str | None = None
+            if isinstance(incoming_project_filter, dict):
+                if "eq" in incoming_project_filter:
+                    incoming_project_id = incoming_project_filter["eq"]
+                elif client_project_id is not None:
+                    raise ValueError(
+                        "When client.project_id is set, filter_dict['project_id'] "
+                        "must be a scalar or {'eq': ...}."
+                    )
+            else:
+                incoming_project_id = incoming_project_filter
+
+            if (
+                client_project_id is not None
+                and incoming_project_id is not None
+                and incoming_project_id != client_project_id
+            ):
+                raise ValueError(
+                    "Conflicting project scope: filter_dict['project_id'] does not "
+                    "match client.project_id."
+                )
+
+            if incoming_project_id is not None:
+                scoped_filter["project_id"] = {"eq": incoming_project_id}
+                return scoped_filter
+
+        if client_project_id is not None:
+            scoped_filter["project_id"] = {"eq": client_project_id}
+        return scoped_filter
+
     def get(
         self,
         *,
@@ -67,6 +126,9 @@ class Results:
         Automatically paginates using cursor-based pagination until all
         matching records have been fetched.
 
+        When ``client.project_id`` is set, this method automatically enforces
+        ``filter.project_id == client.project_id``.
+
         Args:
             filter_dict: Raw filter criteria forwarded to the
                 result-explorer search endpoint.
@@ -82,6 +144,7 @@ class Results:
         """
         if filter_dict is None:
             filter_dict = {}
+        filter_dict = self._apply_project_scope(filter_dict=filter_dict)
         if compute_job_id is not None:
             filter_dict["compute_job_id"] = {"eq": compute_job_id}
         if select is None:
@@ -139,6 +202,9 @@ class Results:
         Convenience wrapper around :meth:`get` with
         ``result_type="pose"``.
 
+        Project scope is inherited from :meth:`get`: when
+        ``client.project_id`` is set, only rows for that project are returned.
+
         Args:
             protein_id: Optional protein ID to filter by.
             ligand_id: Optional ligand ID (or list of IDs) to filter by.
@@ -186,6 +252,9 @@ class Results:
 
         Convenience wrapper around :meth:`get` with
         ``result_type="pocket"``.
+
+        Project scope is inherited from :meth:`get`: when
+        ``client.project_id`` is set, only rows for that project are returned.
 
         Args:
             id: Optional record ID to fetch a specific pocket.
@@ -238,6 +307,9 @@ class Results:
         ``tool_key="deeporigin.system-prep"``. Optional args filter on the
         tool result ``data`` (e.g. protein_id, ligand1_id, padding,
         add_H_atoms, retain_waters, protonate_protein).
+
+        Project scope is inherited from :meth:`get`: when
+        ``client.project_id`` is set, only rows for that project are returned.
 
         Args:
             protein_id: Optional protein ID to filter by.
@@ -294,6 +366,9 @@ class Results:
         Convenience wrapper around :meth:`get` with
         ``tool_key="deeporigin.abfe-end-to-end"``.
 
+        Project scope is inherited from :meth:`get`: when
+        ``client.project_id`` is set, only rows for that project are returned.
+
         Args:
             protein_id: Optional protein ID to filter by.
             ligand1_id: Optional ligand ID (or list of IDs) to filter by.
@@ -333,6 +408,9 @@ class Results:
     ) -> dict:
         """Search ligands joined with tool results (wide pivot view).
 
+        When ``client.project_id`` is set, this method automatically enforces
+        ``filter.project_id == client.project_id``.
+
         Args:
             cursor: Cursor for pagination.
             experiments: List of experiment filters, each containing toolId and
@@ -351,6 +429,7 @@ class Results:
         else:
             filter_dict = filter_dict.copy()
             filter_dict["deleted"] = False
+        filter_dict = self._apply_project_scope(filter_dict=filter_dict)
 
         body: dict[str, Any] = {}
         if cursor is not None:

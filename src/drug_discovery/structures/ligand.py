@@ -10,7 +10,7 @@ import os
 from pathlib import Path
 import random
 import tempfile
-from typing import Any, Literal, Optional, Self
+from typing import Any, Callable, Literal, Optional, Self
 import warnings
 
 from beartype import beartype
@@ -51,6 +51,65 @@ _MOLPROPS_RESPONSE_TO_ATTR: dict[str, str] = {
 }
 
 
+def _sdf_marker_present_in_prefix(path: Path, *, max_bytes: int = 16384) -> bool:
+    """Return True if the start of the file looks like MOL/SDF text."""
+
+    with path.open("rb") as f:
+        chunk = f.read(max_bytes)
+    if not chunk.strip():
+        return False
+    text = chunk.decode("utf-8-sig", errors="replace")
+    return "$$$$" in text or "V2000" in text or "V3000" in text or "M  END" in text
+
+
+def _assert_readable_file_with_extension(
+    path: Path,
+    *,
+    suffix: str,
+    expected_description: str,
+    content_ok: Callable[[Path], bool] | None = None,
+    content_error: str | None = None,
+) -> None:
+    """Raise if ``path`` is not a regular file with the expected suffix (and optional content check)."""
+
+    if not path.exists():
+        raise FileNotFoundError(f"The file '{path}' does not exist.")
+    if not path.is_file():
+        raise DeepOriginException(f"The path '{path}' is not a regular file.")
+    if path.suffix.lower() != suffix:
+        raise DeepOriginException(
+            f"Expected {expected_description}, got suffix {path.suffix!r} for '{path}'."
+        )
+    if content_ok is not None and not content_ok(path):
+        raise DeepOriginException(
+            content_error or f"File '{path}' failed content validation."
+        )
+
+
+def _assert_path_is_sdf(path: Path) -> None:
+    """Raise if ``path`` is not a readable SDF file (extension and content check)."""
+
+    _assert_readable_file_with_extension(
+        path,
+        suffix=".sdf",
+        expected_description="an SDF file (.sdf extension)",
+        content_ok=_sdf_marker_present_in_prefix,
+        content_error=(
+            f"File '{path}' does not appear to contain a MOL or SDF structure block."
+        ),
+    )
+
+
+def _assert_path_is_csv(path: Path) -> None:
+    """Raise if ``path`` is not a readable CSV file (extension check)."""
+
+    _assert_readable_file_with_extension(
+        path,
+        suffix=".csv",
+        expected_description="a CSV file (.csv extension)",
+    )
+
+
 @dataclass
 @beartype
 class Ligand(Entity):
@@ -64,6 +123,9 @@ class Ligand(Entity):
     are available on dedicated attributes (``log_s``, ``log_d``, ``log_p``, ``herg``, ``cyp``,
     ``ames``, ``has_pains``, ``pains_fragments``) as well as in :attr:`properties`.
 
+    The RDKit molecule must be passed as the keyword-only argument ``mol`` (typically via
+    :meth:`from_smiles`, :meth:`from_rdkit_mol`, or similar factory methods).
+
     """
 
     identifier: str | None = None
@@ -76,9 +138,8 @@ class Ligand(Entity):
     xref_ins_code: str | None = None
     xref_residue_id: str | None = None
     xref_protein_chain_id: str | None = None
-    save_to_file: bool = False
     properties: dict = field(default_factory=dict)
-    mol: Chem.Mol | None = None
+    mol: Chem.Mol = field(kw_only=True)
     protonated_at_ph: float | None = None
     # Molprops / ADMET (populated by Molprops.run(); API keys logS/logD/logP/hERG map here)
     log_s: float | None = None
@@ -102,7 +163,6 @@ class Ligand(Entity):
         cls,
         mol: Chem.rdchem.Mol,
         name: Optional[str] = None,
-        save_to_file: bool = False,
         **kwargs: Any,
     ) -> Self:
         """
@@ -111,7 +171,6 @@ class Ligand(Entity):
         Args:
             mol (Chem.rdchem.Mol): RDKit molecule object to convert to a Ligand
             name (str, optional): Name of the ligand. Defaults to "".
-            save_to_file (bool, optional): Whether to save the ligand to file. Defaults to False.
             **kwargs: Additional arguments to pass to the constructor
 
         """
@@ -126,7 +185,6 @@ class Ligand(Entity):
         return cls(
             mol=mol,
             name=name,
-            save_to_file=save_to_file,
             **kwargs,
         )
 
@@ -135,7 +193,6 @@ class Ligand(Entity):
         cls,
         smiles: str,
         name: str = "",
-        save_to_file: bool = False,
         **kwargs: Any,
     ) -> Self:
         """
@@ -144,7 +201,6 @@ class Ligand(Entity):
         Args:
             smiles (str): SMILES string representing the ligand
             name (str, optional): Name of the ligand. Defaults to "".
-            save_to_file (bool, optional): Whether to save the ligand to file. Defaults to False.
             **kwargs: Additional arguments to pass to the constructor
 
         Returns:
@@ -169,41 +225,6 @@ class Ligand(Entity):
             mol=mol,
             smiles=smiles,
             name=name,
-            save_to_file=save_to_file,
-            **kwargs,
-        )
-
-    @classmethod
-    def from_block_content(
-        cls,
-        block_content: str,
-        block_type: str,
-        name: str = "",
-        save_to_file: bool = False,
-        **kwargs: Any,
-    ) -> Self:
-        """
-        Create a Ligand instance from block content.
-
-        Args:
-            block_content (str): String containing the molecule data
-            block_type (str): Format of the block content ('mol', 'mol2', 'sdf', 'pdb')
-            name (str, optional): Name of the ligand. Defaults to "".
-            save_to_file (bool, optional): Whether to save the ligand to file. Defaults to False.
-            **kwargs: Additional arguments to pass to the constructor
-
-        Returns:
-            Ligand: A new Ligand instance
-        """
-
-        mol = cls.mol_from_block(block_type, block_content)
-
-        return cls(
-            block_content=block_content,
-            block_type=block_type,
-            mol=mol,
-            name=name,
-            save_to_file=save_to_file,
             **kwargs,
         )
 
@@ -238,6 +259,12 @@ class Ligand(Entity):
             ) from None
 
         mol = Chem.MolFromSmiles(smiles)
+        if mol is None:
+            raise DeepOriginException(
+                title="Error resolving SMILES string",
+                message=f"Invalid SMILES returned for {identifier!r}.",
+                fix="Please try a different identifier.",
+            )
 
         return cls(mol=mol, name=identifier)
 
@@ -246,7 +273,6 @@ class Ligand(Entity):
         cls,
         base64_string: str,
         name: str = "",
-        save_to_file: bool = False,
         **kwargs: Any,
     ) -> Self:
         """
@@ -255,7 +281,6 @@ class Ligand(Entity):
         Args:
             base64_string (str): Base64 encoded SDF content
             name (str, optional): Name of the ligand. Defaults to "".
-            save_to_file (bool, optional): Whether to save the ligand to file. Defaults to False.
             **kwargs: Additional arguments to pass to the constructor
 
         Returns:
@@ -295,6 +320,35 @@ class Ligand(Entity):
             raise DeepOriginException(
                 f"Failed to create Ligand from base64 string: {str(e)}"
             ) from None
+
+    @classmethod
+    def from_file(
+        cls,
+        file_path: str | Path,
+        *,
+        sanitize: bool = True,
+        remove_hydrogens: bool = False,
+    ) -> Self:
+        """
+        Create a Ligand from a file after verifying it is an SDF (extension and content).
+
+        This delegates to :meth:`from_sdf` after validation.
+
+        Args:
+            file_path: Path to the SDF file.
+            sanitize: Whether to sanitize molecules. Defaults to True.
+            remove_hydrogens: Whether to remove hydrogens. Defaults to False.
+
+        Returns:
+            Ligand: The Ligand instance created from the SDF file.
+
+        Raises:
+            FileNotFoundError: If the file does not exist.
+            DeepOriginException: If the path is not an SDF file or loading fails.
+        """
+        path = Path(file_path)
+        _assert_path_is_sdf(path)
+        return cls.from_sdf(path, sanitize=sanitize, remove_hydrogens=remove_hydrogens)
 
     @classmethod
     def from_sdf(
@@ -502,6 +556,7 @@ class Ligand(Entity):
         if client is None:
             client = DeepOriginClient()
 
+        assert client.entities is not None, "client.entities is None"
         data = client.entities.get_ligand(id=id)
         return cls._from_platform_record(data=data, client=client, download=download)
 
@@ -525,6 +580,20 @@ class Ligand(Entity):
 
         self.mol = stripped_mol
 
+    def unsupported_atom_symbols(self) -> list[str]:
+        """Sorted unique atom symbols in :attr:`mol` not in ``SUPPORTED_ATOM_SYMBOLS``."""
+        return sorted(
+            {
+                sym
+                for sym in (a.GetSymbol() for a in self.mol.GetAtoms())
+                if sym not in SUPPORTED_ATOM_SYMBOLS
+            }
+        )
+
+    def has_unsupported_atoms(self) -> bool:
+        """Whether :attr:`mol` contains any atom type not supported for docking workflows."""
+        return bool(self.unsupported_atom_symbols())
+
     def prepare(self, *, remove_hydrogens: bool = False) -> Self:
         """Prepare the ligand for downstream workflows.
 
@@ -547,9 +616,6 @@ class Ligand(Entity):
                                multiple non-identical fragments are detected.
         """
         # Start from current molecule
-        if self.mol is None:
-            raise DeepOriginException("Ligand has no molecule to prepare.")
-
         # 1) Salt removal and kekulization (reuse process_mol)
         self.process_mol()
 
@@ -584,12 +650,16 @@ class Ligand(Entity):
             )
 
         # Check for other unsupported atom types
-        unsupported = sorted(
-            {sym for sym in atom_symbols if sym not in SUPPORTED_ATOM_SYMBOLS}
-        )
+        unsupported = self.unsupported_atom_symbols()
         if unsupported:
+            smiles_hint = (
+                self.smiles
+                if self.smiles is not None
+                else Chem.MolToSmiles(self.mol, canonical=True)
+            )
             raise DeepOriginException(
-                f"Unsupported atom types found in ligand: {', '.join(unsupported)}"
+                f"Unsupported atom types found in ligand: {', '.join(unsupported)}",
+                f"For ligand with SMILES: {smiles_hint!r}",
             )
 
         # Update smiles and properties to reflect prepared state
@@ -652,7 +722,7 @@ class Ligand(Entity):
         if add_hydrogens:
             self.add_hydrogens()
 
-        AllChem.EmbedMolecule(self.mol, randomSeed=seed)
+        AllChem.EmbedMolecule(self.mol, randomSeed=seed)  # ty: ignore[unresolved-attribute]
         self.set_conformer_id(0)
 
     def add_hydrogens(self, add_coordinates: bool = True):
@@ -803,21 +873,17 @@ class Ligand(Entity):
 
     def __post_init__(self):
         """
-        Initialize a Ligand instance from an identifier, SMILES string,
-        block content, or direct Molecule object (``mol`` must be set).
-        """
+        Finalize a Ligand after construction (canonical SMILES, 2D coords, file props).
 
-        # check that a mol exists
-        if self.mol is None:
-            raise DeepOriginException(
-                "mol must be provided when initializing from an identifier, file path, SMILES string, or block content."
-            )
+        Pass a molecule via the keyword argument ``mol`` (see class factories such as
+        :meth:`from_smiles` and :meth:`from_rdkit_mol`).
+        """
 
         self.process_mol()
         self.smiles = Chem.MolToSmiles(Chem.RemoveHs(self.mol), canonical=True)
 
         if not self.mol.GetConformers():
-            AllChem.Compute2DCoords(self.mol)
+            AllChem.Compute2DCoords(self.mol)  # type: ignore[attr-defined]
 
         self.set_conformer_id()
 
@@ -836,8 +902,6 @@ class Ligand(Entity):
             self.properties[key] = value
 
         self.available_for_docking = not self.contains_boron
-        if self.save_to_file:
-            self.write_to_file(output_format="sdf")
 
     @property
     def contains_boron(self) -> bool:
@@ -868,8 +932,6 @@ class Ligand(Entity):
         Returns:
             int: The sum of formal charges of all atoms in the molecule.
         """
-        if self.mol is None:
-            raise DeepOriginException("Cannot compute formal charge: molecule is None")
         return sum(atom.GetFormalCharge() for atom in self.mol.GetAtoms())
 
     @property
@@ -879,10 +941,6 @@ class Ligand(Entity):
         Returns:
             float: The exact molecular weight in atomic mass units.
         """
-        if self.mol is None:
-            raise DeepOriginException(
-                "Cannot compute molecular weight: molecule is None"
-            )
         return rdMolDescriptors.CalcExactMolWt(self.mol)
 
     @property
@@ -892,10 +950,6 @@ class Ligand(Entity):
         Returns:
             int: The number of hydrogen bond donors.
         """
-        if self.mol is None:
-            raise DeepOriginException(
-                "Cannot compute H-bond donor count: molecule is None"
-            )
         return rdMolDescriptors.CalcNumHBD(self.mol)
 
     @property
@@ -905,10 +959,6 @@ class Ligand(Entity):
         Returns:
             int: The number of hydrogen bond acceptors.
         """
-        if self.mol is None:
-            raise DeepOriginException(
-                "Cannot compute H-bond acceptor count: molecule is None"
-            )
         return rdMolDescriptors.CalcNumHBA(self.mol)
 
     @property
@@ -918,10 +968,6 @@ class Ligand(Entity):
         Returns:
             int: The number of rotatable bonds.
         """
-        if self.mol is None:
-            raise DeepOriginException(
-                "Cannot compute rotatable bond count: molecule is None"
-            )
         return rdMolDescriptors.CalcNumRotatableBonds(self.mol)
 
     @property
@@ -931,8 +977,6 @@ class Ligand(Entity):
         Returns:
             float: The TPSA value in square Angstroms.
         """
-        if self.mol is None:
-            raise DeepOriginException("Cannot compute TPSA: molecule is None")
         return rdMolDescriptors.CalcTPSA(self.mol)
 
     @property
@@ -945,21 +989,8 @@ class Ligand(Entity):
         - Returns implicit-H SMILES by default (explicit Hs removed).
         - Preserves stereochemistry if present.
         """
-        mol = None
-
-        if self.mol is not None:
-            mol = self.mol
-        elif self.smiles is not None:
-            mol = Chem.MolFromSmiles(self.smiles)
-            if mol is None:
-                raise DeepOriginException(f"Invalid SMILES: {self.smiles!r}")
-        else:
-            raise DeepOriginException(
-                "Cannot compute canonical SMILES: missing mol and smiles"
-            )
-
         # Remove explicit Hs so we don't emit `[H]...` everywhere
-        mol = Chem.RemoveHs(mol)
+        mol = Chem.RemoveHs(self.mol)
 
         # ensure sanitization:
         Chem.SanitizeMol(mol)
@@ -1221,22 +1252,21 @@ class Ligand(Entity):
         if self.name is not None:
             kwargs["name"] = self.name
 
-        if self.mol is not None:
-            try:
-                kwargs["formal_charge"] = self.formal_charge
-                kwargs["molecular_weight"] = self.molecular_weight
-                kwargs["hbond_donor_count"] = self.hbond_donor_count
-                kwargs["hbond_acceptor_count"] = self.hbond_acceptor_count
-                kwargs["rotatable_bond_count"] = self.rotatable_bond_count
-                kwargs["tpsa"] = self.tpsa
-            except Exception:
-                pass
+        try:
+            kwargs["formal_charge"] = self.formal_charge
+            kwargs["molecular_weight"] = self.molecular_weight
+            kwargs["hbond_donor_count"] = self.hbond_donor_count
+            kwargs["hbond_acceptor_count"] = self.hbond_acceptor_count
+            kwargs["rotatable_bond_count"] = self.rotatable_bond_count
+            kwargs["tpsa"] = self.tpsa
+        except Exception:
+            pass
 
         proj_id = self.resolved_project_id(client=client)
         if proj_id is not None:
             kwargs["project_id"] = proj_id
 
-        result = client.entities.create_ligand(**kwargs)
+        result = client.entities.create_ligand(**kwargs)  # ty: ignore[unresolved-attribute]
 
         if "data" in result and "id" in result["data"]:
             self.id = result["data"]["id"]
@@ -1283,14 +1313,14 @@ class Ligand(Entity):
             scope_filter["project_id"] = proj_id
 
         smiles_value = self.smiles if self.smiles is not None else self.canonical_smiles
-        response = client.entities.search_ligands(
+        response = client.entities.search_ligands(  # ty: ignore[unresolved-attribute]
             smiles=smiles_value,
             filter_dict=scope_filter if scope_filter else None,
         )
         data = response["data"]
 
         if not data:
-            response = client.entities.search_ligands(
+            response = client.entities.search_ligands(  # ty: ignore[unresolved-attribute]
                 canonical_smiles=self.canonical_smiles,
                 filter_dict=scope_filter if scope_filter else None,
             )
@@ -1330,23 +1360,20 @@ class Ligand(Entity):
             row["mol_file"] = self.remote_path
         if self.name is not None:
             row["name"] = self.name
-        if self.mol is not None:
-            try:
-                row["formal_charge"] = self.formal_charge
-                row["molecular_weight"] = self.molecular_weight
-                row["hbond_donor_count"] = self.hbond_donor_count
-                row["hbond_acceptor_count"] = self.hbond_acceptor_count
-                row["rotatable_bond_count"] = self.rotatable_bond_count
-                row["tpsa"] = self.tpsa
-            except Exception:
-                warnings.warn(
-                    f"Could not compute molecular descriptors for "
-                    f"'{smiles_value}'; formal_charge defaults to 0.",
-                    stacklevel=2,
-                )
-                row.setdefault("formal_charge", 0)
-        else:
-            row["formal_charge"] = 0
+        try:
+            row["formal_charge"] = self.formal_charge
+            row["molecular_weight"] = self.molecular_weight
+            row["hbond_donor_count"] = self.hbond_donor_count
+            row["hbond_acceptor_count"] = self.hbond_acceptor_count
+            row["rotatable_bond_count"] = self.rotatable_bond_count
+            row["tpsa"] = self.tpsa
+        except Exception:
+            warnings.warn(
+                f"Could not compute molecular descriptors for "
+                f"'{smiles_value}'; formal_charge defaults to 0.",
+                stacklevel=2,
+            )
+            row.setdefault("formal_charge", 0)
 
         proj_id = self.resolved_project_id(client=client)
         if proj_id is not None:
@@ -1749,6 +1776,16 @@ class LigandSet:
         sampled_ligands = random.sample(self.ligands, n)  # NOSONAR
         return LigandSet(ligands=sampled_ligands)
 
+    def filter_unsupported(self) -> Self:
+        """
+        Return a new set excluding ligands whose molecules contain atom types
+        outside :data:`~deeporigin.drug_discovery.constants.SUPPORTED_ATOM_SYMBOLS`
+        (see :meth:`Ligand.has_unsupported_atoms`).
+        """
+        return LigandSet(
+            ligands=[lg for lg in self.ligands if not lg.has_unsupported_atoms()]
+        )
+
     def __str__(self) -> str:
         """Return string representation of the LigandSet.
 
@@ -2064,6 +2101,49 @@ class LigandSet:
             ) from e
 
         return cls(ligands=ligands)
+
+    @classmethod
+    def from_file(
+        cls,
+        file_path: str | Path,
+        *,
+        sanitize: bool = True,
+        remove_hydrogens: bool = False,
+        smiles_column: str = "smiles",
+    ) -> Self:
+        """
+        Create a LigandSet from an SDF or CSV file.
+
+        ``.sdf`` paths are validated as SDF (extension and content) and loaded with
+        :meth:`from_sdf`. ``.csv`` paths are validated as CSV (extension) and loaded with
+        :meth:`from_csv`.
+
+        Args:
+            file_path: Path to an ``.sdf`` or ``.csv`` file.
+            sanitize: Whether to sanitize molecules (SDF only). Defaults to True.
+            remove_hydrogens: Whether to remove hydrogens (SDF only). Defaults to False.
+            smiles_column: Name of the SMILES column (CSV only). Defaults to ``"smiles"``.
+
+        Returns:
+            LigandSet: Ligands created from the file.
+
+        Raises:
+            FileNotFoundError: If the file does not exist.
+            DeepOriginException: If the path is not a supported file type or loading fails.
+        """
+        path = Path(file_path)
+        suffix = path.suffix.lower()
+        if suffix == ".sdf":
+            _assert_path_is_sdf(path)
+            return cls.from_sdf(
+                path, sanitize=sanitize, remove_hydrogens=remove_hydrogens
+            )
+        if suffix == ".csv":
+            _assert_path_is_csv(path)
+            return cls.from_csv(path, smiles_column=smiles_column)
+        raise DeepOriginException(
+            f"Unsupported file type {suffix!r} for '{path}'. Expected .sdf or .csv."
+        )
 
     @classmethod
     def from_sdf(
@@ -2481,6 +2561,48 @@ class LigandSet:
         return index
 
     @beartype
+    def upload(
+        self,
+        *,
+        client: Optional[DeepOriginClient] = None,
+        max_workers: int = 20,
+    ) -> None:
+        """Upload structure files for ligands that have a local file.
+
+        For each ligand with non-``None`` :attr:`~Ligand.local_path`, serializes
+        and assigns :attr:`~Ligand.remote_path` (same contract as
+        :meth:`Ligand.upload`), then uploads all files in parallel via
+        :meth:`deeporigin.platform.files.FilesClient.upload_many`. Ligands
+        without ``local_path`` are skipped.
+
+        Args:
+            client: DeepOrigin client. If None, uses ``DeepOriginClient()``.
+            max_workers: Maximum concurrent uploads (passed to ``upload_many``).
+        """
+
+        to_upload = [lig for lig in self.ligands if lig.local_path is not None]
+        if not to_upload:
+            return
+        if client is None:
+            client = DeepOriginClient()
+        files: dict[str, str] = {}
+        for lig in to_upload:
+            stashed_remote_path = lig.remote_path
+            lig.remote_path = None
+            try:
+                local_file = lig.to_file()
+            finally:
+                lig.remote_path = stashed_remote_path
+
+            if lig.remote_path is None:
+                lig.remote_path = (
+                    f"{lig._remote_path_base}{lig.to_hash()}{lig._preferred_ext}"
+                )
+            files[str(local_file)] = lig.remote_path
+
+        client.files.upload_many(files=files, max_workers=max_workers)
+
+    @beartype
     def sync(
         self,
         *,
@@ -2498,6 +2620,9 @@ class LigandSet:
            sets ``remote_path`` from the record's ``mol_file`` when present.
         3. For ligands that are new, uploads files to remote storage (if a
            local_path is present) and batch-creates them in a single API call.
+           Ligands sharing a canonical SMILES (e.g. multiple poses of the
+           same molecule in an SDF) are deduplicated before the create call;
+           all duplicates end up pointing at the single platform record.
         4. Updates the local ``id`` values from the created records.
 
         .. note::
@@ -2509,12 +2634,14 @@ class LigandSet:
             lazy: If True, skip syncing ligands that already have an id.
             client: DeepOriginClient instance. If None, uses
                 DeepOriginClient().
+
+        Raises:
+            DeepOriginException: If any ligand to be synced contains atom types
+                outside :data:`~deeporigin.drug_discovery.constants.SUPPORTED_ATOM_SYMBOLS`.
+            ValueError: If any ligand to be synced has no ``canonical_smiles``.
         """
         if not self.ligands:
             return
-
-        if client is None:
-            client = DeepOriginClient()
 
         ligands_to_sync = (
             [lig for lig in self.ligands if lig.id is None]
@@ -2524,6 +2651,17 @@ class LigandSet:
         if not ligands_to_sync:
             return
 
+        unsupported = [lig for lig in ligands_to_sync if lig.has_unsupported_atoms()]
+        if unsupported:
+            symbols = sorted(
+                {s for lig in unsupported for s in lig.unsupported_atom_symbols()}
+            )
+            raise DeepOriginException(
+                f"Cannot sync ligand set: {len(unsupported)} ligand(s) contain "
+                f"unsupported atom type(s) for docking workflows: {', '.join(symbols)}. "
+                "Fix or remove those atoms before calling sync()."
+            )
+
         invalid = [lig for lig in ligands_to_sync if lig.canonical_smiles is None]
         if invalid:
             raise ValueError(
@@ -2531,6 +2669,9 @@ class LigandSet:
                 "cannot be synced. Ensure every ligand has a valid SMILES or "
                 "mol before calling sync()."
             )
+
+        if client is None:
+            client = DeepOriginClient()
 
         proj_id = (
             ligands_to_sync[0].resolved_project_id(client=client)
@@ -2541,10 +2682,13 @@ class LigandSet:
         if proj_id is not None:
             scope_filter["project_id"] = proj_id
 
-        smiles_list = [lig.canonical_smiles for lig in ligands_to_sync]
+        # De-duplicate the search by canonical SMILES -- ``smiles_list`` maps
+        # to an ``in`` filter, so duplicates add no information but inflate
+        # the request.
+        unique_smiles_list = list({lig.canonical_smiles for lig in ligands_to_sync})
         response = client.entities.search_ligands(
-            smiles_list=smiles_list,
-            limit=len(smiles_list),
+            smiles_list=unique_smiles_list,
+            limit=len(unique_smiles_list),
             filter_dict=scope_filter if scope_filter else None,
         )
         existing_by_smiles = self._index_by_canonical_smiles(response.get("data", []))
@@ -2563,19 +2707,36 @@ class LigandSet:
         if not to_create:
             return
 
+        # The platform enforces a uniqueness constraint on
+        # ``(project_scope_key, canonical_smiles, variant_name_tag)``, so a
+        # batch can contain at most one row per canonical SMILES. A single
+        # input (e.g. a bulk docking SDF) can easily include the same molecule
+        # multiple times as different poses/conformers, which all share the
+        # same canonical SMILES. Pick one representative per canonical SMILES
+        # for the create call, then fan the resulting id/mol_file back out to
+        # every duplicate.
+        representatives: list[Ligand] = []
+        duplicates_by_smiles: dict[str, list[Ligand]] = {}
         for lig in to_create:
-            if lig.local_path is not None:
-                lig.upload(client=client)
+            cs = lig.canonical_smiles
+            if cs not in duplicates_by_smiles:
+                duplicates_by_smiles[cs] = []
+                representatives.append(lig)
+            duplicates_by_smiles[cs].append(lig)
 
-        rows = [lig._to_row(client=client) for lig in to_create]
+        LigandSet(ligands=representatives).upload(client=client)
+
+        rows = [lig._to_row(client=client) for lig in representatives]
         result = client.entities.batch_create_ligands(rows=rows)
         created_by_smiles = self._index_by_canonical_smiles(result.get("data", []))
 
-        for lig in to_create:
-            record = created_by_smiles.get(lig.canonical_smiles)
-            if record is not None:
+        for cs, duplicates in duplicates_by_smiles.items():
+            record = created_by_smiles.get(cs)
+            if record is None:
+                continue
+            mol_file = record.get("mol_file")
+            for lig in duplicates:
                 lig.id = record["id"]
-                mol_file = record.get("mol_file")
                 if mol_file:
                     lig.remote_path = mol_file
 
