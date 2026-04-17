@@ -1092,6 +1092,23 @@ def test_ligand_set_sync_empty():
     empty.sync()  # should not raise
 
 
+def test_ligand_set_sync_duplicate_smiles_lv1():
+    """Syncing a LigandSet with duplicate canonical SMILES should succeed.
+
+    The platform enforces a uniqueness constraint on
+    ``(project_scope_key, canonical_smiles, variant_name_tag)``, so sync()
+    must dedupe before calling ``batch_create_ligands``. All duplicates
+    should end up pointing at the same platform record.
+    """
+    smiles = "CCO"
+    ligands = LigandSet(ligands=[Ligand.from_smiles(smiles) for _ in range(3)])
+    ligands.sync()
+
+    ids = [lig.id for lig in ligands]
+    assert all(i is not None for i in ids), "Every duplicate should receive an id"
+    assert len(set(ids)) == 1, "All duplicates should share the same platform id"
+
+
 def test_batch_create_ligands_lv1():
     """Test batch creating ligands via LigandSet.sync()."""
     client = DeepOriginClient()

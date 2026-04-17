@@ -2626,6 +2626,9 @@ class LigandSet:
            sets ``remote_path`` from the record's ``mol_file`` when present.
         3. For ligands that are new, uploads files to remote storage (if a
            local_path is present) and batch-creates them in a single API call.
+           Ligands sharing a canonical SMILES (e.g. multiple poses of the
+           same molecule in an SDF) are deduplicated before the create call;
+           all duplicates end up pointing at the single platform record.
         4. Updates the local ``id`` values from the created records.
 
         .. note::
@@ -2669,10 +2672,13 @@ class LigandSet:
         if proj_id is not None:
             scope_filter["project_id"] = proj_id
 
-        smiles_list = [lig.canonical_smiles for lig in ligands_to_sync]
+        # De-duplicate the search by canonical SMILES -- ``smiles_list`` maps
+        # to an ``in`` filter, so duplicates add no information but inflate
+        # the request.
+        unique_smiles_list = list({lig.canonical_smiles for lig in ligands_to_sync})
         response = client.entities.search_ligands(
-            smiles_list=smiles_list,
-            limit=len(smiles_list),
+            smiles_list=unique_smiles_list,
+            limit=len(unique_smiles_list),
             filter_dict=scope_filter if scope_filter else None,
         )
         existing_by_smiles = self._index_by_canonical_smiles(response.get("data", []))
@@ -2691,17 +2697,36 @@ class LigandSet:
         if not to_create:
             return
 
-        LigandSet(ligands=to_create).upload(client=client)
+        # The platform enforces a uniqueness constraint on
+        # ``(project_scope_key, canonical_smiles, variant_name_tag)``, so a
+        # batch can contain at most one row per canonical SMILES. A single
+        # input (e.g. a bulk docking SDF) can easily include the same molecule
+        # multiple times as different poses/conformers, which all share the
+        # same canonical SMILES. Pick one representative per canonical SMILES
+        # for the create call, then fan the resulting id/mol_file back out to
+        # every duplicate.
+        representatives: list[Ligand] = []
+        duplicates_by_smiles: dict[str, list[Ligand]] = {}
+        for lig in to_create:
+            cs = lig.canonical_smiles
+            if cs not in duplicates_by_smiles:
+                duplicates_by_smiles[cs] = []
+                representatives.append(lig)
+            duplicates_by_smiles[cs].append(lig)
 
-        rows = [lig._to_row(client=client) for lig in to_create]
+        LigandSet(ligands=representatives).upload(client=client)
+
+        rows = [lig._to_row(client=client) for lig in representatives]
         result = client.entities.batch_create_ligands(rows=rows)
         created_by_smiles = self._index_by_canonical_smiles(result.get("data", []))
 
-        for lig in to_create:
-            record = created_by_smiles.get(lig.canonical_smiles)
-            if record is not None:
+        for cs, duplicates in duplicates_by_smiles.items():
+            record = created_by_smiles.get(cs)
+            if record is None:
+                continue
+            mol_file = record.get("mol_file")
+            for lig in duplicates:
                 lig.id = record["id"]
-                mol_file = record.get("mol_file")
                 if mol_file:
                     lig.remote_path = mol_file
 
