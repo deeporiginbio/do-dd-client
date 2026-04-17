@@ -283,8 +283,8 @@ class ABFE(Execution, QuoteMixin, AsyncExecutableMixin, NotebookWatchMixin):
             A fully-hydrated ABFE instance with status from the DTO.
         """
         instance = super().from_dto(dto, client=client)
-        inputs = instance._execution_dto.get("userInputs", {})
-        metadata = instance._execution_dto.get("metadata", {})
+        inputs = instance._execution_dto.get("userInputs", {})  # ty:ignore[unresolved-attribute]
+        metadata = instance._execution_dto.get("metadata", {})  # ty:ignore[unresolved-attribute]
 
         prepared_system_input = inputs.get("prepared_system", {})
         binding = inputs.get("binding", {})
@@ -392,18 +392,14 @@ class ABFE(Execution, QuoteMixin, AsyncExecutableMixin, NotebookWatchMixin):
         if self.name is not None:
             payload["name"] = self.name
 
-        return self.client.executions.create(
+        return self.client.executions.create(  # ty:ignore[unresolved-attribute]
             data=payload,
             tool_key=self.tool_key,
             tool_version=self.tool_version,
         )
 
     @beartype
-    def _start_impl(
-        self,
-        *,
-        approve_amount: int | None = None,
-    ) -> None:
+    def _start_impl(self, **kwargs) -> None:
         """Submit the ABFE execution to the platform.
 
         Args:
@@ -416,10 +412,8 @@ class ABFE(Execution, QuoteMixin, AsyncExecutableMixin, NotebookWatchMixin):
         }
         if self.name is not None:
             payload["name"] = self.name
-        if approve_amount is not None:
-            payload["approveAmount"] = approve_amount
 
-        execution_dto = self.client.executions.create(
+        execution_dto = self.client.executions.create(  # ty:ignore[unresolved-attribute]
             data=payload,
             tool_key=self.tool_key,
             tool_version=self.tool_version,

@@ -405,19 +405,10 @@ class Docking(
 
         return LigandSet.from_docking_results(result=result, client=client)
 
-    def _start_impl(
-        self,
-        *,
-        approve_amount: int | None = None,
-    ) -> None:
-        """Submit docking as a persisted async execution.
-
-        Args:
-            approve_amount: Pre-approved spend amount.
-        """
-
+    def _start_impl(self, **kwargs) -> None:
+        """Submit docking as a persisted async execution."""
         self._ensure_platform_inputs()
-        payload = self._make_payload(approve_amount=approve_amount)
+        payload = self._make_payload()
 
         execution_dto = _require_executions(self.client).create(
             data=payload,

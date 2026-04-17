@@ -251,7 +251,7 @@ class AsyncExecutableMixin:
         if self.status is None:
             self._start_impl(**kwargs)
         elif self.status == "Quoted":
-            self.client.executions.confirm(self._id)
+            self.client.executions.confirm(self._id)  # ty:ignore[unresolved-attribute]
             self.sync()
         else:
             raise ValueError(
