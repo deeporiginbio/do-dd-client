@@ -11,7 +11,7 @@ This document describes how to monitor, inspect, cancel and control jobs started
 
 To view all Jobs on Deep Origin, use:
 
-```python
+```{.python notest}
 from deeporigin.platform.tool_jobs import JobList
 
 df = JobList.list().filter(require_metadata=True).to_dataframe()
@@ -36,7 +36,7 @@ A dataframe with the following columns will be returned:
 
 Only jobs matching certain status(es) can be retrieved. For example,
 
-```python
+```{.python notest}
 from deeporigin.platform.tool_jobs import JobList
 
 df = JobList.list().filter(status=["Running"], require_metadata=True).to_dataframe()
@@ -46,7 +46,7 @@ only retrieves currently running jobs.
 
 Multiple statuses can be retrieved using a single function call:
 
-```python
+```{.python notest}
 from deeporigin.platform.tool_jobs import JobList
 
 df = JobList.list().filter(status=["Running", "Succeeded"], require_metadata=True).to_dataframe()
@@ -58,7 +58,7 @@ df = JobList.list().filter(status=["Running", "Succeeded"], require_metadata=Tru
 
 By default, the job dataframe does not include information about metadata, inputs, and outputs. These can be included in the dataframe using:
 
-```python
+```{.python notest}
 from deeporigin.platform.tool_jobs import JobList
 
 df = JobList.list().filter(require_metadata=True).to_dataframe(
@@ -72,7 +72,7 @@ df = JobList.list().filter(require_metadata=True).to_dataframe(
 
 By default, user IDs are not resolved to names. To use user names in the dataframe, use:
 
-```python
+```{.python notest}
 from deeporigin.platform.tool_jobs import JobList
 
 df = JobList.list().filter(require_metadata=True).to_dataframe(

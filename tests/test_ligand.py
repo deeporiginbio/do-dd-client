@@ -432,6 +432,14 @@ def test_ligand_prepare_rejects_unsupported_atoms():
         lig.prepare()
 
 
+def test_ligand_has_unsupported_atoms():
+    """has_unsupported_atoms matches SUPPORTED_ATOM_SYMBOLS membership on mol."""
+    assert not Ligand.from_smiles("CCO").has_unsupported_atoms()
+    boron = Ligand.from_smiles("B")
+    assert boron.has_unsupported_atoms()
+    assert boron.unsupported_atom_symbols() == ["B"]
+
+
 def test_ligand_prepare_rejects_wildcard_atoms():
     """Ligands with wildcard ('*') atoms should be rejected by prepare()."""
 

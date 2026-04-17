@@ -48,13 +48,22 @@ def test_ligand_set_from_file_matches_from_sdf():
     assert [x.smiles for x in a.ligands] == [x.smiles for x in b.ligands]
 
 
+def test_ligand_set_from_file_matches_from_csv():
+    """from_file validates and loads the same as from_csv."""
+    csv_path = DATA_DIR / "ligands" / "ligands.csv"
+    a = LigandSet.from_csv(str(csv_path), smiles_column="SMILES")
+    b = LigandSet.from_file(csv_path, smiles_column="SMILES")
+    assert len(a.ligands) == len(b.ligands)
+    assert [x.smiles for x in a.ligands] == [x.smiles for x in b.ligands]
+
+
 def test_ligand_set_from_file_rejects_non_sdf_extension():
     sdf_path = DATA_DIR / "ligands" / "ligands-brd-all.sdf"
     with tempfile.NamedTemporaryFile(suffix=".txt", delete=False) as f:
         f.write(Path(sdf_path).read_bytes())
         tmp = f.name
     try:
-        with pytest.raises(DeepOriginException, match="Expected an SDF file"):
+        with pytest.raises(DeepOriginException, match="Unsupported file type"):
             LigandSet.from_file(tmp)
     finally:
         os.unlink(tmp)
@@ -287,6 +296,17 @@ def test_filter_top_poses_accepts_pose_score_snake_case():
     )
     assert len(filtered) == 1
     assert filtered.ligands[0].properties["pose_score"] == "0.9"
+
+
+def test_ligand_set_filter_unsupported():
+    """filter_unsupported drops ligands with atoms outside SUPPORTED_ATOM_SYMBOLS."""
+    ok = Ligand.from_smiles("CCO")
+    bad = Ligand.from_smiles("B")
+    original = LigandSet(ligands=[ok, bad])
+    filtered = original.filter_unsupported()
+    assert len(filtered) == 1
+    assert filtered.ligands[0].smiles == ok.smiles
+    assert len(original) == 2
 
 
 def test_ligand_set_from_csv():

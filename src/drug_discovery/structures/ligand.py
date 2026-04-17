@@ -10,7 +10,7 @@ import os
 from pathlib import Path
 import random
 import tempfile
-from typing import Any, Literal, Optional, Self
+from typing import Any, Callable, Literal, Optional, Self
 import warnings
 
 from beartype import beartype
@@ -62,21 +62,52 @@ def _sdf_marker_present_in_prefix(path: Path, *, max_bytes: int = 16384) -> bool
     return "$$$$" in text or "V2000" in text or "V3000" in text or "M  END" in text
 
 
-def _assert_path_is_sdf(path: Path) -> None:
-    """Raise if ``path`` is not a readable SDF file (extension and content check)."""
+def _assert_readable_file_with_extension(
+    path: Path,
+    *,
+    suffix: str,
+    expected_description: str,
+    content_ok: Callable[[Path], bool] | None = None,
+    content_error: str | None = None,
+) -> None:
+    """Raise if ``path`` is not a regular file with the expected suffix (and optional content check)."""
 
     if not path.exists():
         raise FileNotFoundError(f"The file '{path}' does not exist.")
     if not path.is_file():
         raise DeepOriginException(f"The path '{path}' is not a regular file.")
-    if path.suffix.lower() != ".sdf":
+    if path.suffix.lower() != suffix:
         raise DeepOriginException(
-            f"Expected an SDF file (.sdf extension), got suffix {path.suffix!r} for '{path}'."
+            f"Expected {expected_description}, got suffix {path.suffix!r} for '{path}'."
         )
-    if not _sdf_marker_present_in_prefix(path):
+    if content_ok is not None and not content_ok(path):
         raise DeepOriginException(
+            content_error or f"File '{path}' failed content validation."
+        )
+
+
+def _assert_path_is_sdf(path: Path) -> None:
+    """Raise if ``path`` is not a readable SDF file (extension and content check)."""
+
+    _assert_readable_file_with_extension(
+        path,
+        suffix=".sdf",
+        expected_description="an SDF file (.sdf extension)",
+        content_ok=_sdf_marker_present_in_prefix,
+        content_error=(
             f"File '{path}' does not appear to contain a MOL or SDF structure block."
-        )
+        ),
+    )
+
+
+def _assert_path_is_csv(path: Path) -> None:
+    """Raise if ``path`` is not a readable CSV file (extension check)."""
+
+    _assert_readable_file_with_extension(
+        path,
+        suffix=".csv",
+        expected_description="a CSV file (.csv extension)",
+    )
 
 
 @dataclass
@@ -582,6 +613,22 @@ class Ligand(Entity):
 
         self.mol = stripped_mol
 
+    def unsupported_atom_symbols(self) -> list[str]:
+        """Sorted unique atom symbols in :attr:`mol` not in ``SUPPORTED_ATOM_SYMBOLS``."""
+        if self.mol is None:
+            return []
+        return sorted(
+            {
+                sym
+                for sym in (a.GetSymbol() for a in self.mol.GetAtoms())
+                if sym not in SUPPORTED_ATOM_SYMBOLS
+            }
+        )
+
+    def has_unsupported_atoms(self) -> bool:
+        """Whether :attr:`mol` contains any atom type not supported for docking workflows."""
+        return bool(self.unsupported_atom_symbols())
+
     def prepare(self, *, remove_hydrogens: bool = False) -> Self:
         """Prepare the ligand for downstream workflows.
 
@@ -641,12 +688,16 @@ class Ligand(Entity):
             )
 
         # Check for other unsupported atom types
-        unsupported = sorted(
-            {sym for sym in atom_symbols if sym not in SUPPORTED_ATOM_SYMBOLS}
-        )
+        unsupported = self.unsupported_atom_symbols()
         if unsupported:
+            smiles_hint = (
+                self.smiles
+                if self.smiles is not None
+                else Chem.MolToSmiles(self.mol, canonical=True)
+            )
             raise DeepOriginException(
-                f"Unsupported atom types found in ligand: {', '.join(unsupported)}"
+                f"Unsupported atom types found in ligand: {', '.join(unsupported)}",
+                f"For ligand with SMILES: {smiles_hint!r}",
             )
 
         # Update smiles and properties to reflect prepared state
@@ -1806,6 +1857,16 @@ class LigandSet:
         sampled_ligands = random.sample(self.ligands, n)  # NOSONAR
         return LigandSet(ligands=sampled_ligands)
 
+    def filter_unsupported(self) -> Self:
+        """
+        Return a new set excluding ligands whose molecules contain atom types
+        outside :data:`~deeporigin.drug_discovery.constants.SUPPORTED_ATOM_SYMBOLS`
+        (see :meth:`Ligand.has_unsupported_atoms`).
+        """
+        return LigandSet(
+            ligands=[lg for lg in self.ligands if not lg.has_unsupported_atoms()]
+        )
+
     def __str__(self) -> str:
         """Return string representation of the LigandSet.
 
@@ -2129,27 +2190,41 @@ class LigandSet:
         *,
         sanitize: bool = True,
         remove_hydrogens: bool = False,
+        smiles_column: str = "smiles",
     ) -> Self:
         """
-        Create a LigandSet from a file after verifying it is an SDF (extension and content).
+        Create a LigandSet from an SDF or CSV file.
 
-        This delegates to :meth:`from_sdf` after validation.
+        ``.sdf`` paths are validated as SDF (extension and content) and loaded with
+        :meth:`from_sdf`. ``.csv`` paths are validated as CSV (extension) and loaded with
+        :meth:`from_csv`.
 
         Args:
-            file_path: Path to the SDF file.
-            sanitize: Whether to sanitize molecules. Defaults to True.
-            remove_hydrogens: Whether to remove hydrogens. Defaults to False.
+            file_path: Path to an ``.sdf`` or ``.csv`` file.
+            sanitize: Whether to sanitize molecules (SDF only). Defaults to True.
+            remove_hydrogens: Whether to remove hydrogens (SDF only). Defaults to False.
+            smiles_column: Name of the SMILES column (CSV only). Defaults to ``"smiles"``.
 
         Returns:
-            LigandSet: Ligands created from the SDF file.
+            LigandSet: Ligands created from the file.
 
         Raises:
             FileNotFoundError: If the file does not exist.
-            DeepOriginException: If the path is not an SDF file or loading fails.
+            DeepOriginException: If the path is not a supported file type or loading fails.
         """
         path = Path(file_path)
-        _assert_path_is_sdf(path)
-        return cls.from_sdf(path, sanitize=sanitize, remove_hydrogens=remove_hydrogens)
+        suffix = path.suffix.lower()
+        if suffix == ".sdf":
+            _assert_path_is_sdf(path)
+            return cls.from_sdf(
+                path, sanitize=sanitize, remove_hydrogens=remove_hydrogens
+            )
+        if suffix == ".csv":
+            _assert_path_is_csv(path)
+            return cls.from_csv(path, smiles_column=smiles_column)
+        raise DeepOriginException(
+            f"Unsupported file type {suffix!r} for '{path}'. Expected .sdf or .csv."
+        )
 
     @classmethod
     def from_sdf(
