@@ -70,7 +70,16 @@ def _coerce_ligands(raw: Any) -> LigandSet:
             if isinstance(row, Ligand):
                 out.append(row)
             elif isinstance(row, dict):
-                out.append(Ligand(id=row.get("id"), smiles=row.get("smiles")))
+                smiles = row.get("smiles")
+                if not smiles or not isinstance(smiles, str):
+                    raise TypeError(
+                        "ligand dict must include a non-empty string 'smiles' key"
+                    )
+                ligand_kwargs: dict[str, Any] = {}
+                lid = row.get("id")
+                if lid is not None:
+                    ligand_kwargs["id"] = lid
+                out.append(Ligand.from_smiles(smiles, **ligand_kwargs))
             else:
                 raise TypeError(
                     f"ligand row must be dict or Ligand, got {type(row).__name__}"

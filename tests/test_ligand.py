@@ -110,7 +110,6 @@ def test_ligand_from_smiles(smiles, name, expected_atoms, equivalent_smiles):
     ligand = Ligand.from_smiles(
         smiles=smiles,
         name=name,
-        save_to_file=False,
     )
 
     # Verify the ligand has either the exact SMILES string or an equivalent one
@@ -310,7 +309,7 @@ def test_ligand_hash(sdf_file, hash_value):
 
 @pytest.mark.parametrize("ligand", bad_ligands)
 def test_ligand_errors(ligand):
-    with pytest.raises(DeepOriginException):  # noqa: B017
+    with pytest.raises(TypeError):
         Ligand(
             local_path=ligand["file"],
             smiles=ligand["smiles_string"],
@@ -709,11 +708,6 @@ def test_ligand_file_path_handling():
     directory = ligand._get_directory()
     assert Path(directory).exists()
     assert "ligands" in directory
-
-    # Test that save_to_file works when enabled
-    ligand.save_to_file = True
-    # This would create a file in the directory, but we'll skip the actual file creation
-    # to avoid cluttering the test environment
 
 
 def test_ligand_protonated_at_ph():
