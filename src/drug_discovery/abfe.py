@@ -428,52 +428,44 @@ class ABFE(Execution, QuoteMixin, AsyncExecutableMixin, NotebookWatchMixin):
         self._id = execution_id
         self.status = execution_dto.get("status")
 
-    def get_results(self, **kwargs: Any) -> pd.DataFrame | None:
+    def get_results(self, **_kwargs: Any) -> pd.DataFrame | None:
         """Retrieve ABFE results as a DataFrame.
 
         Uses :meth:`~deeporigin.drug_discovery.execution.Execution.get_results`
-        (ABFE rows from the result explorer for this execution), then builds a
-        one-row table from the first matching record's ``data`` payload.
-
-        Args:
-            **kwargs: Forwarded to :meth:`~deeporigin.drug_discovery.execution.Execution.get_results`
-                (typically ``limit``, ``select``, and optionally ``filter_dict`` merged
-                with the ABFE result-type constraint).
+        (results for this execution by id), then builds a one-row table from the
+        first record's ``data`` payload. Keyword arguments are accepted for
+        signature compatibility with the base class but are not forwarded.
 
         Returns:
             A DataFrame with ABFE results, or ``None`` if not yet available.
 
         Raises:
             ValueError: If no execution has been started.
-            TypeError: If unsupported keyword arguments are passed (see the base method).
         """
         self.sync()
         if self.status != "Succeeded":
             return None
 
-        limit = kwargs.pop("limit", 1)
-        select = kwargs.pop("select", None)
-        user_filter = kwargs.pop("filter_dict", None)
-        if kwargs:
-            bad = ", ".join(sorted(kwargs))
-            raise TypeError(f"get_results() got unexpected keyword arguments: {bad}")
-        abfe_filter = {
-            "props": [{"column": "result_type", "op": "eq", "value": "abferesult"}]
-        }
-        filter_dict = {**(user_filter or {}), **abfe_filter}
-
-        response = super().get_results(
-            filter_dict=filter_dict,
-            limit=limit,
-            select=select,
-        )
+        response = super().get_results()
         records = response.get("data") or []
         if not records:
             return None
         row = records[0].get("data")
         if not isinstance(row, dict) or not row:
             return None
-        return pd.json_normalize([row])
+        df = pd.json_normalize([row])
+        drop_roots = frozenset({"binding_analysis", "solvation_analysis"})
+        to_drop = [
+            c
+            for c in df.columns
+            if c in drop_roots or c.split(".", 1)[0] in drop_roots
+        ]
+        if to_drop:
+            df = df.drop(columns=to_drop)
+        priority = ["protein_id", "ligand1_id", "total", "unit"]
+        head = [c for c in priority if c in df.columns]
+        tail = [c for c in df.columns if c not in head]
+        return df[head + tail]
 
     def _build_params(self) -> dict:
         """Construct the tool input parameters dict."""
