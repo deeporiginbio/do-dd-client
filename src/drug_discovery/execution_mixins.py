@@ -15,6 +15,7 @@ These mixins are combined with ``Execution`` to build concrete types:
 from __future__ import annotations
 
 import builtins
+from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Any
 
 from deeporigin.platform.client import DeepOriginClient
@@ -22,6 +23,15 @@ from deeporigin.platform.constants import PlatformStatus
 
 if TYPE_CHECKING:
     from typing import Self
+
+
+def _parse_iso_timestamp_utc(value: str) -> datetime:
+    """Parse a tools API ISO-8601 timestamp (e.g. ``startedAt``, ``completedAt``) to UTC."""
+    normalized = value[:-1] + "+00:00" if value.endswith("Z") else value
+    parsed = datetime.fromisoformat(normalized)
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    return parsed.astimezone(timezone.utc)
 
 
 class QuoteMixin:
@@ -166,7 +176,9 @@ class AsyncExecutableMixin:
     tools API.
 
     Classes that include this mixin gain ``status`` and ``progress`` attributes
-    tracking the platform lifecycle and execution progress respectively.
+    tracking the platform lifecycle and execution progress respectively, and a
+    :attr:`runtime` property for elapsed seconds from ``startedAt`` to ``completedAt``
+    (or now if still running) when ``startedAt`` is known.
     """
 
     tool_key: str
@@ -196,6 +208,26 @@ class AsyncExecutableMixin:
         self.completed_at = None
         self.session = None
         self._execution_dto: dict | None = None
+
+    @property
+    def runtime(self) -> float | None:
+        """Seconds from ``_execution_dto["startedAt"]`` to ``completedAt`` or now.
+
+        When ``completedAt`` is set, uses that as the end time; otherwise uses
+        the current UTC time. Returns ``None`` if ``startedAt`` is unknown.
+        """
+        if self._execution_dto is None:
+            return None
+        started_raw = self._execution_dto.get("startedAt")
+        if not started_raw:
+            return None
+        started = _parse_iso_timestamp_utc(started_raw)
+        completed_raw = self._execution_dto.get("completedAt")
+        if completed_raw:
+            end = _parse_iso_timestamp_utc(completed_raw)
+        else:
+            end = datetime.now(timezone.utc)
+        return (end - started).total_seconds()
 
     def start(self, **kwargs) -> None:
         """Submit a persisted execution to the platform.

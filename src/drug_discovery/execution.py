@@ -17,6 +17,11 @@ from deeporigin.platform.constants import ALLOWED_STATUS_TRANSITIONS
 if TYPE_CHECKING:
     from deeporigin.platform.client import DeepOriginClient
 
+# Kwargs understood by :meth:`Results.get_poses` (not raw :meth:`Results.get`).
+_RESULTS_GET_POSE_KWARGS = frozenset(
+    {"best_pose", "protein_id", "ligand_id", "tool_version", "effort"}
+)
+
 
 class Execution:
     """Base class for all execution types in the jobs-centric API.
@@ -123,21 +128,50 @@ class Execution:
             new.client = client
         return new
 
-    def get_results(self) -> Any:
+    def get_results(self, **kwargs: Any) -> Any:
         """Fetch results for this execution from the data platform.
+
+        Args:
+            **kwargs: Passed to :meth:`deeporigin.platform.results.Results.get`,
+                or to :meth:`~deeporigin.platform.results.Results.get_poses` when
+                any pose-specific filter is set (``best_pose``, ``protein_id``,
+                ``ligand_id``, ``tool_version``, ``effort``). ``limit`` and
+                ``select`` are forwarded to whichever call is used.
 
         Returns:
             Result-explorer response dict with ``data`` and ``meta`` keys.
 
         Raises:
             ValueError: If the execution has no ID yet.
+            TypeError: If unknown keyword arguments are passed.
         """
         exec_id = getattr(self, "_id", None)
         if exec_id is None:
             raise ValueError(
                 "Cannot get results: no execution has been started (id is None)."
             )
-        return self.client.results.get(compute_job_id=exec_id, limit=None)
+        limit = kwargs.pop("limit", None)
+        select = kwargs.pop("select", None)
+
+        if _RESULTS_GET_POSE_KWARGS & kwargs.keys():
+            return self.client.results.get_poses(
+                compute_job_id=exec_id,
+                limit=limit,
+                select=select,
+                **kwargs,
+            )
+
+        filter_dict = kwargs.pop("filter_dict", None)
+        if kwargs:
+            bad = ", ".join(sorted(kwargs))
+            raise TypeError(f"get_results() got unexpected keyword arguments: {bad}")
+
+        return self.client.results.get(
+            filter_dict=filter_dict,
+            compute_job_id=exec_id,
+            limit=limit,
+            select=select,
+        )
 
     def __repr__(self) -> str:
         """Return a concise summary of the execution."""
