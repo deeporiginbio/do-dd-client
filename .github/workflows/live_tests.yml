@@ -96,4 +96,17 @@ jobs:
       - name: "Running tests against a live instance"
         env:
           TARGET_ENV: ${{ matrix.env }}
-        run: uv run pytest --env "$TARGET_ENV" -k "$TEST_LEVEL"
+        run: |
+          uv run pytest --env "$TARGET_ENV" -k "$TEST_LEVEL" \
+            --junitxml=sdk-test-results.xml \
+            --html=sdk-report.html --self-contained-html
+
+      - name: Upload SDK test artifacts
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: sdk-test-results-${{ matrix.env }}-${{ github.run_id }}-${{ github.run_attempt }}
+          if-no-files-found: warn
+          path: |
+            sdk-report.html
+            sdk-test-results.xml
