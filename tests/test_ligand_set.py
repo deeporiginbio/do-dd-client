@@ -1,4 +1,6 @@
 import os
+from pathlib import Path
+import tempfile
 
 import pytest
 
@@ -35,6 +37,38 @@ def test_ligand_set_from_sdf_file_lv0(filename, expected_count):
     assert len(ligands.ligands) == expected_count, f"Expected {expected_count} ligands"
     for ligand in ligands.ligands:
         assert isinstance(ligand, Ligand), "Expected a Ligand object"
+
+
+def test_ligand_set_from_file_matches_from_sdf():
+    """from_file validates and loads the same as from_sdf."""
+    filename = DATA_DIR / "ligands" / "ligands-brd-all.sdf"
+    a = LigandSet.from_sdf(filename)
+    b = LigandSet.from_file(filename)
+    assert len(a.ligands) == len(b.ligands)
+    assert [x.smiles for x in a.ligands] == [x.smiles for x in b.ligands]
+
+
+def test_ligand_set_from_file_rejects_non_sdf_extension():
+    sdf_path = DATA_DIR / "ligands" / "ligands-brd-all.sdf"
+    with tempfile.NamedTemporaryFile(suffix=".txt", delete=False) as f:
+        f.write(Path(sdf_path).read_bytes())
+        tmp = f.name
+    try:
+        with pytest.raises(DeepOriginException, match="Expected an SDF file"):
+            LigandSet.from_file(tmp)
+    finally:
+        os.unlink(tmp)
+
+
+def test_ligand_set_from_file_rejects_bad_content():
+    with tempfile.NamedTemporaryFile(suffix=".sdf", mode="w", delete=False) as f:
+        f.write("not a molecule file\n")
+        tmp = f.name
+    try:
+        with pytest.raises(DeepOriginException, match="does not appear to contain"):
+            LigandSet.from_file(tmp)
+    finally:
+        os.unlink(tmp)
 
 
 def test_ligand_set_from_sdf_files_lv0():

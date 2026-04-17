@@ -1,5 +1,6 @@
 import os
 from pathlib import Path
+import tempfile
 
 import numpy as np
 import pytest
@@ -240,6 +241,40 @@ def test_ligand_from_sdf():
 
     # Verify that the ligand has properties (SDF files typically contain properties)
     assert isinstance(ligand.properties, dict)
+
+
+def test_ligand_from_file_matches_from_sdf():
+    """from_file validates and loads the same as from_sdf for a real SDF."""
+    brd7_ligand = next(ligand for ligand in ligands if "brd-7.sdf" in ligand["file"])
+    sdf_file = brd7_ligand["file"]
+    a = Ligand.from_sdf(sdf_file)
+    b = Ligand.from_file(sdf_file)
+    assert a.smiles == b.smiles
+    assert a.local_path == b.local_path
+
+
+def test_ligand_from_file_rejects_non_sdf_extension():
+    brd7_ligand = next(ligand for ligand in ligands if "brd-7.sdf" in ligand["file"])
+    sdf_path = Path(brd7_ligand["file"])
+    with tempfile.NamedTemporaryFile(suffix=".txt", delete=False) as f:
+        f.write(sdf_path.read_bytes())
+        tmp = f.name
+    try:
+        with pytest.raises(DeepOriginException, match="Expected an SDF file"):
+            Ligand.from_file(tmp)
+    finally:
+        os.unlink(tmp)
+
+
+def test_ligand_from_file_rejects_bad_content():
+    with tempfile.NamedTemporaryFile(suffix=".sdf", mode="w", delete=False) as f:
+        f.write("not a molecule file\n")
+        tmp = f.name
+    try:
+        with pytest.raises(DeepOriginException, match="does not appear to contain"):
+            Ligand.from_file(tmp)
+    finally:
+        os.unlink(tmp)
 
 
 def test_ligand_base64():

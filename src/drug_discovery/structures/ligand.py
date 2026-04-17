@@ -51,6 +51,34 @@ _MOLPROPS_RESPONSE_TO_ATTR: dict[str, str] = {
 }
 
 
+def _sdf_marker_present_in_prefix(path: Path, *, max_bytes: int = 16384) -> bool:
+    """Return True if the start of the file looks like MOL/SDF text."""
+
+    with path.open("rb") as f:
+        chunk = f.read(max_bytes)
+    if not chunk.strip():
+        return False
+    text = chunk.decode("utf-8-sig", errors="replace")
+    return "$$$$" in text or "V2000" in text or "V3000" in text or "M  END" in text
+
+
+def _assert_path_is_sdf(path: Path) -> None:
+    """Raise if ``path`` is not a readable SDF file (extension and content check)."""
+
+    if not path.exists():
+        raise FileNotFoundError(f"The file '{path}' does not exist.")
+    if not path.is_file():
+        raise DeepOriginException(f"The path '{path}' is not a regular file.")
+    if path.suffix.lower() != ".sdf":
+        raise DeepOriginException(
+            f"Expected an SDF file (.sdf extension), got suffix {path.suffix!r} for '{path}'."
+        )
+    if not _sdf_marker_present_in_prefix(path):
+        raise DeepOriginException(
+            f"File '{path}' does not appear to contain a MOL or SDF structure block."
+        )
+
+
 @dataclass
 @beartype
 class Ligand(Entity):
@@ -295,6 +323,35 @@ class Ligand(Entity):
             raise DeepOriginException(
                 f"Failed to create Ligand from base64 string: {str(e)}"
             ) from None
+
+    @classmethod
+    def from_file(
+        cls,
+        file_path: str | Path,
+        *,
+        sanitize: bool = True,
+        remove_hydrogens: bool = False,
+    ) -> Self:
+        """
+        Create a Ligand from a file after verifying it is an SDF (extension and content).
+
+        This delegates to :meth:`from_sdf` after validation.
+
+        Args:
+            file_path: Path to the SDF file.
+            sanitize: Whether to sanitize molecules. Defaults to True.
+            remove_hydrogens: Whether to remove hydrogens. Defaults to False.
+
+        Returns:
+            Ligand: The Ligand instance created from the SDF file.
+
+        Raises:
+            FileNotFoundError: If the file does not exist.
+            DeepOriginException: If the path is not an SDF file or loading fails.
+        """
+        path = Path(file_path)
+        _assert_path_is_sdf(path)
+        return cls.from_sdf(path, sanitize=sanitize, remove_hydrogens=remove_hydrogens)
 
     @classmethod
     def from_sdf(
@@ -2066,6 +2123,35 @@ class LigandSet:
         return cls(ligands=ligands)
 
     @classmethod
+    def from_file(
+        cls,
+        file_path: str | Path,
+        *,
+        sanitize: bool = True,
+        remove_hydrogens: bool = False,
+    ) -> Self:
+        """
+        Create a LigandSet from a file after verifying it is an SDF (extension and content).
+
+        This delegates to :meth:`from_sdf` after validation.
+
+        Args:
+            file_path: Path to the SDF file.
+            sanitize: Whether to sanitize molecules. Defaults to True.
+            remove_hydrogens: Whether to remove hydrogens. Defaults to False.
+
+        Returns:
+            LigandSet: Ligands created from the SDF file.
+
+        Raises:
+            FileNotFoundError: If the file does not exist.
+            DeepOriginException: If the path is not an SDF file or loading fails.
+        """
+        path = Path(file_path)
+        _assert_path_is_sdf(path)
+        return cls.from_sdf(path, sanitize=sanitize, remove_hydrogens=remove_hydrogens)
+
+    @classmethod
     def from_sdf(
         cls,
         file_path: str | Path,
@@ -2481,6 +2567,48 @@ class LigandSet:
         return index
 
     @beartype
+    def upload(
+        self,
+        *,
+        client: Optional[DeepOriginClient] = None,
+        max_workers: int = 20,
+    ) -> None:
+        """Upload structure files for ligands that have a local file.
+
+        For each ligand with non-``None`` :attr:`~Ligand.local_path`, serializes
+        and assigns :attr:`~Ligand.remote_path` (same contract as
+        :meth:`Ligand.upload`), then uploads all files in parallel via
+        :meth:`deeporigin.platform.files.FilesClient.upload_many`. Ligands
+        without ``local_path`` are skipped.
+
+        Args:
+            client: DeepOrigin client. If None, uses ``DeepOriginClient()``.
+            max_workers: Maximum concurrent uploads (passed to ``upload_many``).
+        """
+
+        to_upload = [lig for lig in self.ligands if lig.local_path is not None]
+        if not to_upload:
+            return
+        if client is None:
+            client = DeepOriginClient()
+        files: dict[str, str] = {}
+        for lig in to_upload:
+            stashed_remote_path = lig.remote_path
+            lig.remote_path = None
+            try:
+                local_file = lig.to_file()
+            finally:
+                lig.remote_path = stashed_remote_path
+
+            if lig.remote_path is None:
+                lig.remote_path = (
+                    f"{lig._remote_path_base}{lig.to_hash()}{lig._preferred_ext}"
+                )
+            files[str(local_file)] = lig.remote_path
+
+        client.files.upload_many(files=files, max_workers=max_workers)
+
+    @beartype
     def sync(
         self,
         *,
@@ -2563,9 +2691,7 @@ class LigandSet:
         if not to_create:
             return
 
-        for lig in to_create:
-            if lig.local_path is not None:
-                lig.upload(client=client)
+        LigandSet(ligands=to_create).upload(client=client)
 
         rows = [lig._to_row(client=client) for lig in to_create]
         result = client.entities.batch_create_ligands(rows=rows)
