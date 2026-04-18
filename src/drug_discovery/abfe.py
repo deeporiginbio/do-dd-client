@@ -456,9 +456,7 @@ class ABFE(Execution, QuoteMixin, AsyncExecutableMixin, NotebookWatchMixin):
         df = pd.json_normalize([row])
         drop_roots = frozenset({"binding_analysis", "solvation_analysis"})
         to_drop = [
-            c
-            for c in df.columns
-            if c in drop_roots or c.split(".", 1)[0] in drop_roots
+            c for c in df.columns if c in drop_roots or c.split(".", 1)[0] in drop_roots
         ]
         if to_drop:
             df = df.drop(columns=to_drop)
