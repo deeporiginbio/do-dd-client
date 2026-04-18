@@ -34,6 +34,45 @@ def test_list_executions_by_tool_key_lv1():
         assert execution.get("tool", {}).get("key") == "deeporigin.bulk-docking"
 
 
+def test_search_executions_project_scope_lv1():
+    """The data-platform /executions/search endpoint must honor the
+    project_id filter server-side — rows whose non-null project_id does
+    not match should not leak from other projects.
+
+    Rows where ``project_id`` is ``None`` are tolerated: the DTO does not
+    always carry the column (mock server and some real-server shapes
+    omit it), so we only assert on rows that actually expose the field.
+    """
+    client = DeepOriginClient()
+
+    # Find a project that actually has executions, else skip.
+    # Project list may be large; fetch a page and probe each until one has rows.
+    projects = client.projects.list(limit=25).get("data") or []
+    target_project = None
+    for p in projects:
+        pid = p.get("id") or p.get("canonical_id")
+        if not pid:
+            continue
+        resp = client.executions.search(project_id=pid, limit=1)
+        if resp.get("data"):
+            target_project = pid
+            break
+    if target_project is None:
+        pytest.skip("no project with executions visible on this account")
+
+    resp = client.executions.search(project_id=target_project, limit=20)
+    rows = resp.get("data") or []
+    assert isinstance(rows, list)
+    for r in rows:
+        pid = r.get("project_id")
+        if pid is None:
+            continue
+
+        assert pid == target_project, (
+            f"leak: got project_id={pid!r} when filter was {target_project!r}"
+        )
+
+
 def test_list_executions_by_session_lv1():
     """Test listing executions by session — server-side filter must drop
     executions whose non-null session does not match.
