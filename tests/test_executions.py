@@ -32,3 +32,23 @@ def test_list_executions_by_tool_key_lv1():
 
     for execution in executions:
         assert execution.get("tool", {}).get("key") == "deeporigin.bulk-docking"
+
+
+def test_list_executions_by_session_lv1():
+    """Test listing executions by session — server-side filter must drop
+    executions that aren't tagged with the requested session."""
+    client = DeepOriginClient()
+
+    sample = client.executions.list(page_size=200).get("data", [])
+    session = next((e.get("session") for e in sample if e.get("session")), None)
+    if session is None:
+        pytest.skip("no executions carry a session on this account")
+
+    filtered = client.executions.list(session=session)
+    rows = filtered.get("data", [])
+    assert isinstance(rows, list), "Expected a list"
+    for execution in rows:
+        assert execution.get("session") == session, (
+            f"server returned row with session={execution.get('session')!r} "
+            f"when filter was {session!r}"
+        )

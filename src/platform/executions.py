@@ -76,6 +76,7 @@ class Executions:
         page_size: int | None = None,
         order: str | None = None,
         tool_key: str | None = None,
+        session: str | None = None,
     ) -> dict:
         """List tool executions with pagination and filtering.
 
@@ -84,6 +85,11 @@ class Executions:
             page_size: Page size of the pagination (max 10,000).
             order: Order of the pagination, e.g., "executionId? asc", "completedAt? desc".
             tool_key: Tool key to filter by.
+            session: Session identifier to filter by. Returns only executions
+                tagged with this session on creation (see ``executions.create``
+                where ``payload["session"] = self._c._session``). Without this,
+                the endpoint returns all executions the caller can see, not
+                just ones from the caller's own client.
 
         Returns:
             Dictionary containing paginated execution data.
@@ -96,10 +102,16 @@ class Executions:
         if order is not None:
             params["order"] = order
 
+        filter_dict: dict = {}
         if tool_key is not None:
+            filter_dict["tool"] = {"toolManifest": {"key": tool_key}}
+        if session is not None:
+            filter_dict["session"] = session
+
+        if filter_dict:
             import json
 
-            params["filter"] = json.dumps({"tool": {"toolManifest": {"key": tool_key}}})
+            params["filter"] = json.dumps(filter_dict)
 
         return self._c.get_json(
             f"/tools/{self._c.org_key}/tools/executions",
