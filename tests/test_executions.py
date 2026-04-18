@@ -58,6 +58,5 @@ def test_list_executions_by_session_lv1():
         if sess is None:
             continue  # server pass-through for unassigned-session rows
         assert sess == target, (
-            f"server returned row with session={sess!r} "
-            f"when filter was {target!r}"
+            f"server returned row with session={sess!r} when filter was {target!r}"
         )
