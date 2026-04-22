@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from deeporigin.platform.client import DeepOriginClient
@@ -76,6 +76,7 @@ class Executions:
         page_size: int | None = None,
         order: str | None = None,
         tool_key: str | None = None,
+        session: str | None = None,
     ) -> dict:
         """List tool executions with pagination and filtering.
 
@@ -84,6 +85,11 @@ class Executions:
             page_size: Page size of the pagination (max 10,000).
             order: Order of the pagination, e.g., "executionId? asc", "completedAt? desc".
             tool_key: Tool key to filter by.
+            session: Session identifier to filter by. Returns only executions
+                tagged with this session on creation (see ``executions.create``
+                where ``payload["session"] = self._c._session``). Without this,
+                the endpoint returns all executions the caller can see, not
+                just ones from the caller's own client.
 
         Returns:
             Dictionary containing paginated execution data.
@@ -96,10 +102,16 @@ class Executions:
         if order is not None:
             params["order"] = order
 
+        filter_dict: dict = {}
         if tool_key is not None:
+            filter_dict["tool"] = {"toolManifest": {"key": tool_key}}
+        if session is not None:
+            filter_dict["session"] = session
+
+        if filter_dict:
             import json
 
-            params["filter"] = json.dumps({"tool": {"toolManifest": {"key": tool_key}}})
+            params["filter"] = json.dumps(filter_dict)
 
         return self._c.get_json(
             f"/tools/{self._c.org_key}/tools/executions",
@@ -117,6 +129,79 @@ class Executions:
         """
         return self._c.get_json(
             f"/tools/{self._c.org_key}/tools/executions/{execution_id}"
+        )
+
+    def search(
+        self,
+        *,
+        project_id: str | None = None,
+        tool_key: str | None = None,
+        status: str | None = None,
+        extra_props: list[dict[str, Any]] | None = None,
+        limit: int | None = None,
+        offset: int | None = None,
+        select: list[str] | None = None,
+        with_total_count: bool = False,
+    ) -> dict:
+        """Search executions via the data-platform endpoint.
+
+        Unlike :meth:`list` (which hits the tools-service, has no project
+        scoping, and returns a DTO shape missing ``project_id`` on most
+        rows), this method hits
+        ``POST /data-platform/{org}/executions/search`` which:
+
+        - exposes ``project_id`` as a first-class column and applies it as
+          a server-side filter when provided,
+        - returns rows with snake_case columns (``tool_key``,
+          ``started_at``, ``project_id``, ...) and ``tags`` (``app`` +
+          ``session``) / ``compute_metadata`` (``userInputs``, ...) as
+          nested objects,
+        - supports the standard data-platform ``{"props": [...]}`` filter
+          grammar with ``eq`` / ``neq`` / ``in`` / ... ops.
+
+        Args:
+            project_id: Scope to this project. **Strongly recommended** —
+                without it the response spans every execution the caller
+                can see.
+            tool_key: Equality filter on ``tool_key`` (e.g.
+                ``"deeporigin.bulk-docking"``).
+            status: Equality filter on ``status`` (e.g. ``"Completed"``,
+                ``"Failed"``, ``"Running"``).
+            extra_props: Additional filter props appended to the
+                built-in ones. Each prop is a dict with
+                ``{"column": str, "op": str, "value": Any}``.
+            limit: Max rows to return.
+            offset: Skip offset.
+            select: Columns to select; all columns by default.
+            with_total_count: When True, the server returns a total count
+                alongside the page (may be slower).
+
+        Returns:
+            The raw response dict, typically ``{"data": [...], "meta": {...}}``.
+        """
+        props: list[dict[str, Any]] = []
+        if project_id is not None:
+            props.append({"column": "project_id", "op": "eq", "value": project_id})
+        if tool_key is not None:
+            props.append({"column": "tool_key", "op": "eq", "value": tool_key})
+        if status is not None:
+            props.append({"column": "status", "op": "eq", "value": status})
+        if extra_props:
+            props.extend(extra_props)
+
+        body: dict[str, Any] = {"filter": {"props": props}}
+        if limit is not None:
+            body["limit"] = limit
+        if offset is not None:
+            body["offset"] = offset
+        if select is not None:
+            body["select"] = select
+        if with_total_count:
+            body["with_total_count"] = True
+
+        return self._c.post_json(
+            f"/data-platform/{self._c.org_key}/executions/search",
+            body=body,
         )
 
     def from_data_platform(self, data_platform_execution_id: str) -> dict:
