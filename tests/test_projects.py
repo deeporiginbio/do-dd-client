@@ -30,8 +30,12 @@ def test_projects_search_name_overrides_filter_dict_name(
 ) -> None:
     """Explicit ``name`` wins over ``filter_dict['name']``."""
     run_id = str(uuid.uuid4())
-    unique_a = f"CLI test test_projects_search_name_overrides_filter {run_id} Gamma Proj"
-    unique_b = f"CLI test test_projects_search_name_overrides_filter {run_id} Delta Proj"
+    unique_a = (
+        f"CLI test test_projects_search_name_overrides_filter {run_id} Gamma Proj"
+    )
+    unique_b = (
+        f"CLI test test_projects_search_name_overrides_filter {run_id} Delta Proj"
+    )
     client.projects.create(name=unique_a)
     client.projects.create(name=unique_b)
 
