@@ -123,7 +123,11 @@ def create(
     if client is None:
         client = DeepOriginClient()
 
-    existing = client.projects.search(name=name, limit=1)
+    # Use exact name match, not icontains (``name=`` in search is substring match).
+    existing = client.projects.search(
+        filter_dict={"name": {"eq": name}},
+        limit=100,
+    )
     rows = [r for r in existing.get("data") or [] if r.get("name") == name]
     if rows:
         row = rows[0]
