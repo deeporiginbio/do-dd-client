@@ -25,22 +25,22 @@ class UserLogs:
 
     def search(
         self,
-        compute_job_id: str,
+        compute_job_id: str | None = None,
         *,
         limit: int | None = None,
         offset: int | None = None,
         select: list[str] | None = None,
         with_total_count: bool = False,
     ) -> dict:
-        """Search user log rows for a compute job.
+        """Search user log rows, optionally scoped to a compute job.
 
         Calls ``POST /data-platform/{orgKey}/user_logs/search`` with
-        ``compute_job_id`` as an ``eq`` filter (same pattern as
+        an optional ``compute_job_id`` ``eq`` filter (same pattern as
         :meth:`deeporigin.platform.executions.Executions.search` for
-        executions).
+        executions) when provided.
 
         Args:
-            compute_job_id: The compute job identifier to match.
+            compute_job_id: If set, restrict results to this compute job.
             limit: Max rows to return.
             offset: Skip offset.
             select: Columns to select; all columns by default.
@@ -51,9 +51,11 @@ class UserLogs:
             The raw response dict, typically ``{"data": [...], "meta": {...}}``
             (exact keys depend on the service).
         """
-        props: list[dict[str, Any]] = [
-            {"column": "compute_job_id", "op": "eq", "value": compute_job_id}
-        ]
+        props: list[dict[str, Any]] = []
+        if compute_job_id is not None:
+            props.append(
+                {"column": "compute_job_id", "op": "eq", "value": compute_job_id}
+            )
         body: dict[str, Any] = {"filter": {"props": props}}
         if limit is not None:
             body["limit"] = limit

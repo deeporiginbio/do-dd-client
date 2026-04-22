@@ -31,9 +31,7 @@ BRD_SMILES = {
 
 
 @pytest.mark.parametrize("filename,expected_count", SDF_TEST_CASES)
-def test_ligand_set_from_sdf_file_lv0(
-    filename, expected_count, client: DeepOriginClient
-):
+def test_ligand_set_from_sdf_file_lv0(filename, expected_count):
     """Test that we can make many ligands from a single SDF file with many molecules"""
     ligands = LigandSet.from_sdf(filename)
     assert len(ligands.ligands) == expected_count, f"Expected {expected_count} ligands"
@@ -41,7 +39,7 @@ def test_ligand_set_from_sdf_file_lv0(
         assert isinstance(ligand, Ligand), "Expected a Ligand object"
 
 
-def test_ligand_set_from_file_matches_from_sdf(client: DeepOriginClient):
+def test_ligand_set_from_file_matches_from_sdf():
     """from_file validates and loads the same as from_sdf."""
     filename = DATA_DIR / "ligands" / "ligands-brd-all.sdf"
     a = LigandSet.from_sdf(filename)
@@ -50,7 +48,7 @@ def test_ligand_set_from_file_matches_from_sdf(client: DeepOriginClient):
     assert [x.smiles for x in a.ligands] == [x.smiles for x in b.ligands]
 
 
-def test_ligand_set_from_file_matches_from_csv(client: DeepOriginClient):
+def test_ligand_set_from_file_matches_from_csv():
     """from_file validates and loads the same as from_csv."""
     csv_path = DATA_DIR / "ligands" / "ligands.csv"
     a = LigandSet.from_csv(str(csv_path), smiles_column="SMILES")
@@ -59,7 +57,7 @@ def test_ligand_set_from_file_matches_from_csv(client: DeepOriginClient):
     assert [x.smiles for x in a.ligands] == [x.smiles for x in b.ligands]
 
 
-def test_ligand_set_from_file_rejects_non_sdf_extension(client: DeepOriginClient):
+def test_ligand_set_from_file_rejects_non_sdf_extension():
     sdf_path = DATA_DIR / "ligands" / "ligands-brd-all.sdf"
     with tempfile.NamedTemporaryFile(suffix=".txt", delete=False) as f:
         f.write(Path(sdf_path).read_bytes())
@@ -71,7 +69,7 @@ def test_ligand_set_from_file_rejects_non_sdf_extension(client: DeepOriginClient
         os.unlink(tmp)
 
 
-def test_ligand_set_from_file_rejects_bad_content(client: DeepOriginClient):
+def test_ligand_set_from_file_rejects_bad_content():
     with tempfile.NamedTemporaryFile(suffix=".sdf", mode="w", delete=False) as f:
         f.write("not a molecule file\n")
         tmp = f.name
@@ -82,7 +80,7 @@ def test_ligand_set_from_file_rejects_bad_content(client: DeepOriginClient):
         os.unlink(tmp)
 
 
-def test_ligand_set_from_sdf_files_lv0(client: DeepOriginClient):
+def test_ligand_set_from_sdf_files_lv0():
     """Test that we can create a LigandSet from multiple SDF files by concatenating them"""
 
     # Get paths to test SDF files
@@ -121,7 +119,7 @@ def test_ligand_set_from_sdf_files_lv0(client: DeepOriginClient):
     )
 
 
-def test_ligand_set_from_sdf_files_error_handling_lv0(client: DeepOriginClient):
+def test_ligand_set_from_sdf_files_error_handling_lv0():
     """Test error handling in from_sdf_files method"""
 
     # Test with non-existent file
@@ -142,7 +140,7 @@ def test_ligand_set_from_sdf_files_error_handling_lv0(client: DeepOriginClient):
         LigandSet.from_sdf_files([str(brd_file), "nonexistent.sdf"])
 
 
-def test_filter_top_poses(client: DeepOriginClient):
+def test_filter_top_poses():
     """Test the filter_top_poses method for selecting best poses"""
 
     # Load test data from the provided SDF file
@@ -187,7 +185,7 @@ def test_filter_top_poses(client: DeepOriginClient):
         print("All ligands had unique initial_smiles, no filtering occurred")
 
 
-def test_filter_top_poses_edge_cases(client: DeepOriginClient):
+def test_filter_top_poses_edge_cases():
     """Test edge cases for filter_top_poses method"""
 
     # Test with empty LigandSet
@@ -218,7 +216,7 @@ def test_filter_top_poses_edge_cases(client: DeepOriginClient):
             assert len(filtered_subset) > 0
 
 
-def test_filter_top_poses_error_handling(client: DeepOriginClient):
+def test_filter_top_poses_error_handling():
     """Test error handling in filter_top_poses method"""
 
     from deeporigin.exceptions import DeepOriginException
@@ -279,7 +277,7 @@ def test_filter_top_poses_error_handling(client: DeepOriginClient):
         test_ligand2.properties = original_properties2
 
 
-def test_filter_top_poses_accepts_pose_score_snake_case(client: DeepOriginClient):
+def test_filter_top_poses_accepts_pose_score_snake_case():
     """Ranking by pose score accepts the ``pose_score`` property name alone."""
     ligand_set = LigandSet.from_sdf("tests/fixtures/brd-all-poses.sdf")
     if len(ligand_set) < 2:
@@ -300,7 +298,7 @@ def test_filter_top_poses_accepts_pose_score_snake_case(client: DeepOriginClient
     assert filtered.ligands[0].properties["pose_score"] == "0.9"
 
 
-def test_ligand_set_filter_unsupported(client: DeepOriginClient):
+def test_ligand_set_filter_unsupported():
     """filter_unsupported drops ligands with atoms outside SUPPORTED_ATOM_SYMBOLS."""
     ok = Ligand.from_smiles("CCO")
     bad = Ligand.from_smiles("B")
@@ -311,7 +309,7 @@ def test_ligand_set_filter_unsupported(client: DeepOriginClient):
     assert len(original) == 2
 
 
-def test_ligand_set_from_csv(client: DeepOriginClient):
+def test_ligand_set_from_csv():
     """Test that we can create Ligands from a CSV file using the from_csv classmethod"""
 
     # Get the path to the test CSV file
@@ -348,9 +346,7 @@ def test_ligand_set_from_csv(client: DeepOriginClient):
         LigandSet.from_csv("nonexistent.csv")
 
 
-def test_ligandset_to_sdf_requires_rehydration_when_remote_path_only(
-    client: DeepOriginClient,
-):
+def test_ligandset_to_sdf_requires_rehydration_when_remote_path_only():
     """LigandSet.to_sdf fails if any ligand has remote_path but no local file."""
     ligands = LigandSet.from_smiles(["CCO", "c1ccccc1"])
     ligands.ligands[0].remote_path = "entities/ligands/fake.sdf"
@@ -360,7 +356,7 @@ def test_ligandset_to_sdf_requires_rehydration_when_remote_path_only(
 
 
 @pytest.mark.parametrize("filename,expected_count", SDF_TEST_CASES)
-def test_sdf_roundtrip(filename, expected_count, client: DeepOriginClient):
+def test_sdf_roundtrip(filename, expected_count):
     """Test that we can roundtrip a LigandSet to an SDF file and back for all SDF_TEST_CASES"""
 
     ligands = LigandSet.from_sdf(filename)
@@ -377,7 +373,7 @@ def test_sdf_roundtrip(filename, expected_count, client: DeepOriginClient):
     os.unlink(sdf_path)
 
 
-def test_to_smiles(client: DeepOriginClient):
+def test_to_smiles():
     """Test that we can convert a LigandSet to SMILES strings"""
 
     ligands = LigandSet.from_sdf(DATA_DIR / "ligands" / "ligands-brd-all.sdf")
@@ -385,7 +381,7 @@ def test_to_smiles(client: DeepOriginClient):
     assert set(ligands.to_smiles()) == BRD_SMILES, "SMILES strings should be the same"
 
 
-def test_from_smiles(client: DeepOriginClient):
+def test_from_smiles():
     """Test that we can create a LigandSet from a list of SMILES strings."""
 
     ligands = LigandSet.from_smiles(BRD_SMILES)
@@ -398,7 +394,7 @@ def test_from_smiles(client: DeepOriginClient):
         assert isinstance(ligand, Ligand)
 
 
-def test_prepare(client: DeepOriginClient):
+def test_prepare():
     """Test that we can prepare a LigandSet"""
 
     ligands = LigandSet.from_smiles(BRD_SMILES)
@@ -412,7 +408,7 @@ def test_prepare(client: DeepOriginClient):
         assert ligand.prepared, "Ligand should be prepared"
 
 
-def test_prepare_remove_hydrogens(client: DeepOriginClient):
+def test_prepare_remove_hydrogens():
     """Test that prepare passes remove_hydrogens parameter correctly"""
 
     ligands = LigandSet.from_smiles({"CCO", "CC"})  # Ethanol and Ethane
@@ -440,7 +436,7 @@ def test_prepare_remove_hydrogens(client: DeepOriginClient):
         assert "H" in ligand.smiles, "Hydrogens should be preserved in SMILES"
 
 
-def test_prepare_rejects_multiple_fragments(client: DeepOriginClient):
+def test_prepare_rejects_multiple_fragments():
     """Test that prepare raises exception when ligands have multiple non-identical fragments"""
 
     # Create a ligand with multiple non-identical fragments
@@ -451,21 +447,21 @@ def test_prepare_rejects_multiple_fragments(client: DeepOriginClient):
         ligands.prepare()
 
 
-def test_embed(client: DeepOriginClient):
+def test_embed():
     """Test that we can minimize a LigandSet"""
 
     ligands = LigandSet.from_smiles(BRD_SMILES)
     ligands.embed()
 
 
-def test_show(client: DeepOriginClient):
+def test_show():
     """Test that we can show a LigandSet"""
 
     ligands = LigandSet.from_smiles(BRD_SMILES)
     ligands.show()
 
 
-def test_from_dir(client: DeepOriginClient):
+def test_from_dir():
     """Test that we can create a LigandSet from a directory"""
 
     ligands = LigandSet.from_dir(DATA_DIR / "brd")
@@ -476,7 +472,7 @@ def test_from_dir(client: DeepOriginClient):
         assert os.path.exists(ligand.local_path)
 
 
-def test_mcs(client: DeepOriginClient):
+def test_mcs():
     """Test that we can generate the MCS for a set of ligands"""
 
     from deeporigin.drug_discovery import BRD_DATA_DIR, LigandSet
@@ -485,7 +481,7 @@ def test_mcs(client: DeepOriginClient):
     ligands.mcs()
 
 
-def test_compute_constraints(client: DeepOriginClient):
+def test_compute_constraints():
     """Test that we can align a ligandset to a reference ligand"""
 
     from deeporigin.drug_discovery import BRD_DATA_DIR, LigandSet
@@ -494,7 +490,7 @@ def test_compute_constraints(client: DeepOriginClient):
     ligands.compute_constraints(reference=ligands.ligands[0])
 
 
-def test_random_sample(client: DeepOriginClient):
+def test_random_sample():
     """Test the random_sample method of LigandSet"""
 
     # Create a test LigandSet
@@ -525,7 +521,7 @@ def test_random_sample(client: DeepOriginClient):
     assert sample_one.ligands[0] in ligands.ligands
 
 
-def test_random_sample_validation(client: DeepOriginClient):
+def test_random_sample_validation():
     """Test validation in random_sample method"""
 
     test_smiles = ["CCO", "CCCO", "CCCC"]
@@ -549,7 +545,7 @@ def test_random_sample_validation(client: DeepOriginClient):
         ligands.random_sample(10)
 
 
-def test_random_sample_deterministic(client: DeepOriginClient):
+def test_random_sample_deterministic():
     """Test that random_sample returns different results on multiple calls"""
 
     test_smiles = ["CCO", "CCCO", "CCCC", "CCCCC", "CCCCCC", "CCCCCCC"]
@@ -571,7 +567,7 @@ def test_random_sample_deterministic(client: DeepOriginClient):
 
 
 # Test LigandSet functionality
-def test_ligandset_operations(client: DeepOriginClient):
+def test_ligandset_operations():
     """Test basic LigandSet operations"""
     from deeporigin.drug_discovery.structures.ligand import LigandSet
 
@@ -596,7 +592,7 @@ def test_ligandset_operations(client: DeepOriginClient):
     assert ligand2 in ligandset
 
 
-def test_ligandset_addition(client: DeepOriginClient):
+def test_ligandset_addition():
     """Test LigandSet addition operations"""
     from deeporigin.drug_discovery.structures.ligand import LigandSet
 
@@ -619,7 +615,7 @@ def test_ligandset_addition(client: DeepOriginClient):
     assert len(combined) == 2
 
 
-def test_ligandset_from_smiles(client: DeepOriginClient):
+def test_ligandset_from_smiles():
     """Test LigandSet creation from SMILES"""
     from deeporigin.drug_discovery.structures.ligand import LigandSet
 
@@ -633,7 +629,7 @@ def test_ligandset_from_smiles(client: DeepOriginClient):
     assert ligandset[2].smiles == "CCCCO"
 
 
-def test_ligandset_to_dataframe(client: DeepOriginClient):
+def test_ligandset_to_dataframe():
     """Test LigandSet to DataFrame conversion"""
     from deeporigin.drug_discovery.structures.ligand import LigandSet
 
@@ -652,7 +648,7 @@ def test_ligandset_to_dataframe(client: DeepOriginClient):
     assert "logP" in df.columns
 
 
-def test_ligandset_indexing_and_slicing(client: DeepOriginClient):
+def test_ligandset_indexing_and_slicing():
     """Test LigandSet indexing and slicing behavior"""
     from deeporigin.drug_discovery.structures.ligand import LigandSet
 
@@ -686,7 +682,7 @@ def test_ligandset_indexing_and_slicing(client: DeepOriginClient):
     assert len(ligandset) == 4
 
 
-def test_filter_top_poses_single_top_pose(client: DeepOriginClient):
+def test_filter_top_poses_single_top_pose():
     """this is a problematic case, and this should pass
 
     don't remove this test"""
@@ -700,7 +696,7 @@ def test_filter_top_poses_single_top_pose(client: DeepOriginClient):
     assert len(poses) == 1, "Expected 1 poses in the filtered pose set"
 
 
-def test_render_view_with_same_smiles(client: DeepOriginClient):
+def test_render_view_with_same_smiles():
     """Test that _render_view uses 'poses' when all ligands have the same SMILES"""
     from deeporigin.drug_discovery.structures.ligand import LigandSet
 
@@ -722,7 +718,7 @@ def test_render_view_with_same_smiles(client: DeepOriginClient):
     assert "1 unique SMILES" not in html
 
 
-def test_render_view_with_different_smiles(client: DeepOriginClient):
+def test_render_view_with_different_smiles():
     """Test that _render_view uses 'ligands' when ligands have different SMILES"""
     from deeporigin.drug_discovery.structures.ligand import LigandSet
 
@@ -740,7 +736,7 @@ def test_render_view_with_different_smiles(client: DeepOriginClient):
     assert "<strong>2</strong> unique SMILES" in html
 
 
-def test_render_view_single_pose(client: DeepOriginClient):
+def test_render_view_single_pose():
     """Test that _render_view uses 'pose' (singular) for a single ligand with unique SMILES"""
     from deeporigin.drug_discovery.structures.ligand import LigandSet
 
@@ -753,7 +749,7 @@ def test_render_view_single_pose(client: DeepOriginClient):
     assert "1 ligand" in html
 
 
-def test_render_view_single_pose_same_smiles(client: DeepOriginClient):
+def test_render_view_single_pose_same_smiles():
     """Test that _render_view uses 'ligand' for a single ligand even with same SMILES"""
     from deeporigin.drug_discovery.structures.ligand import LigandSet
 
@@ -770,7 +766,7 @@ def test_render_view_single_pose_same_smiles(client: DeepOriginClient):
     assert "1 unique SMILES" not in html
 
 
-def test_render_view_shows_prepared_badge(client: DeepOriginClient):
+def test_render_view_shows_prepared_badge():
     """Test that _render_view shows 'prepared' badge when all ligands are prepared"""
     from deeporigin.drug_discovery.structures.ligand import LigandSet
 
@@ -797,7 +793,7 @@ def test_render_view_shows_prepared_badge(client: DeepOriginClient):
     )
 
 
-def test_render_view_no_prepared_badge_when_partial(client: DeepOriginClient):
+def test_render_view_no_prepared_badge_when_partial():
     """Test that _render_view does not show 'prepared' badge when only some ligands are prepared"""
     from deeporigin.drug_discovery.structures.ligand import LigandSet
 
@@ -818,7 +814,7 @@ def test_render_view_no_prepared_badge_when_partial(client: DeepOriginClient):
     )
 
 
-def test_render_view_shows_prepare_hint_when_unprepared(client: DeepOriginClient):
+def test_render_view_shows_prepare_hint_when_unprepared():
     """Test that _render_view shows prepare hint when any ligand is not prepared"""
     from deeporigin.drug_discovery.structures.ligand import LigandSet
 
@@ -840,7 +836,7 @@ def test_render_view_shows_prepare_hint_when_unprepared(client: DeepOriginClient
     assert "<code>.prepare()</code> to prepare ligands for docking" not in html
 
 
-def test_render_view_shows_prepare_hint_when_partial(client: DeepOriginClient):
+def test_render_view_shows_prepare_hint_when_partial():
     """Test that _render_view shows prepare hint when only some ligands are prepared"""
     from deeporigin.drug_discovery.structures.ligand import LigandSet
 
@@ -857,7 +853,7 @@ def test_render_view_shows_prepare_hint_when_partial(client: DeepOriginClient):
     assert "<code>.prepare()</code> to prepare ligands for docking" in html
 
 
-def test_render_view_shows_not_protonated_badge(client: DeepOriginClient):
+def test_render_view_shows_not_protonated_badge():
     """Test that _render_view shows 'NOT PROTONATED' badge when any ligand is not protonated"""
     from deeporigin.drug_discovery.structures.ligand import LigandSet
 
@@ -890,7 +886,7 @@ def test_render_view_shows_not_protonated_badge(client: DeepOriginClient):
     )
 
 
-def test_render_view_shows_not_protonated_badge_when_partial(client: DeepOriginClient):
+def test_render_view_shows_not_protonated_badge_when_partial():
     """Test that _render_view shows 'NOT PROTONATED' badge when only some ligands are protonated"""
     from deeporigin.drug_discovery.structures.ligand import LigandSet
 
@@ -910,7 +906,7 @@ def test_render_view_shows_not_protonated_badge_when_partial(client: DeepOriginC
     )
 
 
-def test_render_view_shows_protonated_badge_with_ph(client: DeepOriginClient):
+def test_render_view_shows_protonated_badge_with_ph():
     """Test that _render_view shows 'PROTONATED (pH={ph})' badge when all ligands are protonated at the same pH"""
     from deeporigin.drug_discovery.structures.ligand import LigandSet
 
@@ -936,7 +932,7 @@ def test_render_view_shows_protonated_badge_with_ph(client: DeepOriginClient):
     )
 
 
-def test_render_view_shows_protonated_badge_different_ph(client: DeepOriginClient):
+def test_render_view_shows_protonated_badge_different_ph():
     """Test that _render_view shows 'PROTONATED (pH={ph})' badge with different pH values"""
     from deeporigin.drug_discovery.structures.ligand import LigandSet
 
@@ -956,7 +952,7 @@ def test_render_view_shows_protonated_badge_different_ph(client: DeepOriginClien
     )
 
 
-def test_render_view_no_protonated_badge_when_different_ph(client: DeepOriginClient):
+def test_render_view_no_protonated_badge_when_different_ph():
     """Test that _render_view does not show 'PROTONATED' badge when ligands are protonated at different pH values"""
     from deeporigin.drug_discovery.structures.ligand import LigandSet
 
@@ -983,7 +979,7 @@ def test_render_view_no_protonated_badge_when_different_ph(client: DeepOriginCli
     )
 
 
-def test_render_view_shows_2d_badge(client: DeepOriginClient):
+def test_render_view_shows_2d_badge():
     """Test that _render_view shows '2D' badge when all ligands have only 2D structure"""
     from deeporigin.drug_discovery.structures.ligand import LigandSet
 
@@ -1007,7 +1003,7 @@ def test_render_view_shows_2d_badge(client: DeepOriginClient):
     )
 
 
-def test_render_view_shows_3d_badge(client: DeepOriginClient):
+def test_render_view_shows_3d_badge():
     """Test that _render_view shows '3D' badge when all ligands have 3D structure"""
     from deeporigin.drug_discovery.structures.ligand import LigandSet
 
@@ -1033,7 +1029,7 @@ def test_render_view_shows_3d_badge(client: DeepOriginClient):
     )
 
 
-def test_render_view_no_structure_badge_when_mixed(client: DeepOriginClient):
+def test_render_view_no_structure_badge_when_mixed():
     """Test that _render_view does not show structure badge when ligands have mixed 2D/3D structures"""
     from deeporigin.drug_discovery.structures.ligand import LigandSet
 
@@ -1059,7 +1055,7 @@ def test_render_view_no_structure_badge_when_mixed(client: DeepOriginClient):
     )
 
 
-def test_ligand_set_sync_lv1(client: DeepOriginClient):
+def test_ligand_set_sync_lv1():
     """Test syncing a LigandSet to the data platform using BRD ligands.
 
     Loads BRD ligands from BRD_DATA_DIR, syncs them, then syncs again to
@@ -1092,7 +1088,7 @@ def test_ligand_set_sync_lv1(client: DeepOriginClient):
         )
 
 
-def test_ligand_set_sync_lazy_lv1(client: DeepOriginClient):
+def test_ligand_set_sync_lazy_lv1():
     """Test that lazy=True skips ligands that already have an id."""
     smiles_list = ["CCO", "CCCO"]
     ligands = LigandSet.from_smiles(smiles_list)
@@ -1110,20 +1106,20 @@ def test_ligand_set_sync_lazy_lv1(client: DeepOriginClient):
     assert ligands.ligands[1].id == original_ids[1]
 
 
-def test_ligand_set_sync_empty(client: DeepOriginClient):
+def test_ligand_set_sync_empty():
     """Test that syncing an empty LigandSet is a no-op."""
     empty = LigandSet(ligands=[])
     empty.sync()  # should not raise
 
 
-def test_ligand_set_sync_rejects_unsupported_atoms(client: DeepOriginClient):
+def test_ligand_set_sync_rejects_unsupported_atoms():
     """sync() raises before platform calls if any ligand to sync has unsupported atoms."""
     ls = LigandSet(ligands=[Ligand.from_smiles("CCO"), Ligand.from_smiles("B")])
     with pytest.raises(DeepOriginException, match="Cannot sync ligand set"):
         ls.sync()
 
 
-def test_ligand_set_sync_duplicate_smiles_lv1(client: DeepOriginClient):
+def test_ligand_set_sync_duplicate_smiles_lv1():
     """Syncing a LigandSet with duplicate canonical SMILES should succeed.
 
     The platform enforces a uniqueness constraint on
@@ -1152,13 +1148,13 @@ def test_batch_create_ligands_lv1(client: DeepOriginClient):
         )
 
 
-def test_ligand_set_batches_none_is_single_chunk(client: DeepOriginClient) -> None:
+def test_ligand_set_batches_none_is_single_chunk() -> None:
     ligands = [Ligand.from_smiles("C"), Ligand.from_smiles("CC")]
     ls = LigandSet(ligands=ligands)
     assert ls.batches(None) == [ligands]
 
 
-def test_ligand_set_batches_chunk_sizes(client: DeepOriginClient) -> None:
+def test_ligand_set_batches_chunk_sizes() -> None:
     ligands = [Ligand.from_smiles(s) for s in ["C", "CC", "CCC", "CCCC"]]
     ls = LigandSet(ligands=ligands)
     assert ls.batches(2) == [ligands[0:2], ligands[2:4]]
@@ -1166,9 +1162,7 @@ def test_ligand_set_batches_chunk_sizes(client: DeepOriginClient) -> None:
 
 
 @pytest.mark.parametrize("bad", [0, -1])
-def test_ligand_set_batches_invalid_size_raises(
-    bad: int, client: DeepOriginClient
-) -> None:
+def test_ligand_set_batches_invalid_size_raises(bad: int) -> None:
     ls = LigandSet(ligands=[Ligand.from_smiles("C")])
     with pytest.raises(ValueError, match="batch_size"):
         ls.batches(bad)

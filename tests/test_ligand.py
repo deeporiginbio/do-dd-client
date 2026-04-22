@@ -22,7 +22,7 @@ from tests.utils_ligands import (
 base_path = os.path.join(os.path.dirname(__file__), "fixtures")
 
 
-def test_ligand_add_hydrogens(client: DeepOriginClient):
+def test_ligand_add_hydrogens():
     ligand = Ligand.from_smiles("Oc1cccc(-c2nnc3ccc(-c4ccoc4)cn23)c1")
     initial_smiles = ligand.smiles
     ligand.add_hydrogens()
@@ -32,14 +32,14 @@ def test_ligand_add_hydrogens(client: DeepOriginClient):
     assert "H" in ligand.smiles, "Expected the smiles to contain hydrogens"
 
 
-def test_ligand_has_hydrogens(client: DeepOriginClient):
+def test_ligand_has_hydrogens():
     ligand = Ligand.from_smiles("Oc1cccc(-c2nnc3ccc(-c4ccoc4)cn23)c1")
     assert not ligand.has_hydrogens(), "Expected this ligand to not have hydrogens"
     ligand.add_hydrogens()
     assert ligand.has_hydrogens(), "Expected this ligand to have hydrogens"
 
 
-def test_ligand_has_3d_structure(client: DeepOriginClient):
+def test_ligand_has_3d_structure():
     """Test that has_3d_structure correctly identifies ligands with and without 3D coordinates"""
     # Create ligand from SMILES (has 2D coordinates, not 3D)
     ligand = Ligand.from_smiles("CCO", name="ethanol")
@@ -61,7 +61,7 @@ def test_ligand_has_3d_structure(client: DeepOriginClient):
 
 
 @pytest.mark.parametrize("ligand_file", single_ligand_files)
-def test_ligand_hash_stable(ligand_file, client: DeepOriginClient):
+def test_ligand_hash_stable(ligand_file):
     """check that the ligand hash doesn't change if we perform various read-only operations"""
 
     ligand = Ligand.from_sdf(ligand_file)
@@ -86,7 +86,7 @@ def test_ligand_hash_stable(ligand_file, client: DeepOriginClient):
     assert hash_before == hash_after
 
 
-def test_ligand_is_charged(client: DeepOriginClient):
+def test_ligand_is_charged():
     """Test that the is_charged method returns the correct value"""
     ligand = Ligand.from_smiles("C[N+]1=CCCC1", name="Ethanol")
     assert ligand.is_charged(), "Expected this ligand to be charged"
@@ -103,7 +103,7 @@ def test_ligand_is_charged(client: DeepOriginClient):
     ],
 )
 def test_ligand_from_smiles(
-    smiles, name, expected_atoms, equivalent_smiles, client: DeepOriginClient
+    smiles, name, expected_atoms, equivalent_smiles,
 ):
     """Test that we can create a Ligand from a SMILES string using the from_smiles classmethod"""
     from rdkit import Chem
@@ -137,7 +137,7 @@ def test_ligand_from_smiles(
     assert Chem.MolToSmiles(input_mol) == Chem.MolToSmiles(ligand.mol)
 
 
-def test_ligand_from_smiles_invalid(client: DeepOriginClient):
+def test_ligand_from_smiles_invalid():
     """Test that invalid SMILES raises DeepOriginException"""
     with pytest.raises(DeepOriginException, match=r"Cannot create"):
         Ligand.from_smiles(smiles="InvalidSMILES")
@@ -153,7 +153,7 @@ def test_ligand_from_smiles_invalid(client: DeepOriginClient):
         ("Serotonin", 13),  # 5-hydroxytryptamine (5-HT)
     ],
 )
-def test_ligand_from_identifier(identifier, expected_atoms, client: DeepOriginClient):
+def test_ligand_from_identifier(identifier, expected_atoms):
     """Test that we can create a Ligand from common biochemical identifiers using the from_identifier classmethod"""
 
     # Create a ligand using the from_identifier method
@@ -175,7 +175,7 @@ def test_ligand_from_identifier(identifier, expected_atoms, client: DeepOriginCl
     assert coords.shape[0] == expected_atoms
 
 
-def test_ligand_from_identifier_invalid(client: DeepOriginClient):
+def test_ligand_from_identifier_invalid():
     """Test that invalid identifier raises appropriate exception"""
     invalid_id = "InvalidMolecule123"
     with pytest.raises(
@@ -185,7 +185,7 @@ def test_ligand_from_identifier_invalid(client: DeepOriginClient):
         Ligand.from_identifier(identifier=invalid_id)
 
 
-def test_ligand_from_rdkit_mol(client: DeepOriginClient):
+def test_ligand_from_rdkit_mol():
     """Test that we can create a Ligand from an RDKit Mol object using the from_rdkit_mol classmethod"""
     from rdkit import Chem
 
@@ -215,7 +215,7 @@ def test_ligand_from_rdkit_mol(client: DeepOriginClient):
         assert ligand.mol.GetNumAtoms() == mol.GetNumAtoms()
 
 
-def test_ligand_from_sdf(client: DeepOriginClient):
+def test_ligand_from_sdf():
     """Test that we can create a Ligand from an SDF file using the from_sdf classmethod"""
     # Use the brd-7.sdf file which contains exactly one ligand
     # Find the ligand entry for brd-7.sdf from the imported ligands variable
@@ -244,7 +244,7 @@ def test_ligand_from_sdf(client: DeepOriginClient):
     assert isinstance(ligand.properties, dict)
 
 
-def test_ligand_from_file_matches_from_sdf(client: DeepOriginClient):
+def test_ligand_from_file_matches_from_sdf():
     """from_file validates and loads the same as from_sdf for a real SDF."""
     brd7_ligand = next(ligand for ligand in ligands if "brd-7.sdf" in ligand["file"])
     sdf_file = brd7_ligand["file"]
@@ -254,7 +254,7 @@ def test_ligand_from_file_matches_from_sdf(client: DeepOriginClient):
     assert a.local_path == b.local_path
 
 
-def test_ligand_from_file_rejects_non_sdf_extension(client: DeepOriginClient):
+def test_ligand_from_file_rejects_non_sdf_extension():
     brd7_ligand = next(ligand for ligand in ligands if "brd-7.sdf" in ligand["file"])
     sdf_path = Path(brd7_ligand["file"])
     with tempfile.NamedTemporaryFile(suffix=".txt", delete=False) as f:
@@ -267,7 +267,7 @@ def test_ligand_from_file_rejects_non_sdf_extension(client: DeepOriginClient):
         os.unlink(tmp)
 
 
-def test_ligand_from_file_rejects_bad_content(client: DeepOriginClient):
+def test_ligand_from_file_rejects_bad_content():
     with tempfile.NamedTemporaryFile(suffix=".sdf", mode="w", delete=False) as f:
         f.write("not a molecule file\n")
         tmp = f.name
@@ -278,7 +278,7 @@ def test_ligand_from_file_rejects_bad_content(client: DeepOriginClient):
         os.unlink(tmp)
 
 
-def test_ligand_base64(client: DeepOriginClient):
+def test_ligand_base64():
     brd7_ligand = next(ligand for ligand in ligands if "brd-7.sdf" in ligand["file"])
     sdf_file = brd7_ligand["file"]
 
@@ -298,7 +298,7 @@ def test_ligand_base64(client: DeepOriginClient):
         strict=True,
     ),
 )
-def test_ligand_hash(sdf_file, hash_value, client: DeepOriginClient):
+def test_ligand_hash(sdf_file, hash_value):
     """Test the to_hash method that returns SHA256 hash of SDF content"""
 
     ligand = Ligand.from_sdf(sdf_file)
@@ -310,7 +310,7 @@ def test_ligand_hash(sdf_file, hash_value, client: DeepOriginClient):
 
 
 @pytest.mark.parametrize("ligand", bad_ligands)
-def test_ligand_errors(ligand, client: DeepOriginClient):
+def test_ligand_errors(ligand):
     with pytest.raises(TypeError):
         Ligand(
             local_path=ligand["file"],
@@ -319,7 +319,7 @@ def test_ligand_errors(ligand, client: DeepOriginClient):
 
 
 @pytest.mark.parametrize("ligand", ligands)
-def test_ligand(ligand, client: DeepOriginClient):
+def test_ligand(ligand):
     """Test that we can create Ligand instances from various sources"""
     n_ligands = ligand["n_ligands"]
 
@@ -336,7 +336,7 @@ def test_ligand(ligand, client: DeepOriginClient):
     )  # Single ligand case should have local_path
 
 
-def test_ligand_from_sdf_multiple_raises(client: DeepOriginClient):
+def test_ligand_from_sdf_multiple_raises():
     """Test that Ligand.from_sdf raises DeepOriginException for multi-molecule SDF files."""
     with pytest.raises(
         DeepOriginException,
@@ -345,7 +345,7 @@ def test_ligand_from_sdf_multiple_raises(client: DeepOriginClient):
         Ligand.from_sdf(os.path.join(base_path, "ligands-brd-all.sdf"))
 
 
-def test_ligand_mol_from_file(client: DeepOriginClient):
+def test_ligand_mol_from_file():
     """Test the mol_from_file class method"""
     # Test with a valid SDF file
     brd7_ligand = next(ligand for ligand in ligands if "brd-7.sdf" in ligand["file"])
@@ -357,7 +357,7 @@ def test_ligand_mol_from_file(client: DeepOriginClient):
 
 
 @pytest.mark.parametrize("file_type", ["mol", "mol2", "pdb", "xyz", "sdf"])
-def test_ligand_mol_from_file_formats(file_type, client: DeepOriginClient):
+def test_ligand_mol_from_file_formats(file_type):
     """Test mol_from_file with different file formats"""
     # Skip unsupported formats for now (would need test files)
     if file_type in ["mol2", "pdb", "xyz"]:
@@ -375,7 +375,7 @@ def test_ligand_mol_from_file_formats(file_type, client: DeepOriginClient):
 
 
 # Test instance methods
-def test_ligand_process_mol(client: DeepOriginClient):
+def test_ligand_process_mol():
     """Test the process_mol method for salt removal and kekulization"""
 
     # Create a simple molecule
@@ -386,7 +386,7 @@ def test_ligand_process_mol(client: DeepOriginClient):
     assert ligand.mol.GetNumAtoms() == 3
 
 
-def test_ligand_prepare_basic(client: DeepOriginClient):
+def test_ligand_prepare_basic():
     """Prepare should salt-strip, kekulize, and validate atom types"""
 
     ligand = Ligand.from_smiles("CCO", name="Ethanol")
@@ -401,7 +401,7 @@ def test_ligand_prepare_basic(client: DeepOriginClient):
     assert ligand.prepared, "Ligand should be prepared"
 
 
-def test_ligand_prepare_remove_hydrogens(client: DeepOriginClient):
+def test_ligand_prepare_remove_hydrogens():
     """Test prepare with remove_hydrogens parameter"""
 
     ligand = Ligand.from_smiles("CCO", name="Ethanol")
@@ -424,7 +424,7 @@ def test_ligand_prepare_remove_hydrogens(client: DeepOriginClient):
     assert "H" in ligand3.smiles  # Should contain explicit hydrogens
 
 
-def test_ligand_prepare_rejects_unsupported_atoms(client: DeepOriginClient):
+def test_ligand_prepare_rejects_unsupported_atoms():
     """Ligands with unsupported atoms should be rejected by prepare()."""
 
     # Include boron (unsupported) in a simple fragment
@@ -433,7 +433,7 @@ def test_ligand_prepare_rejects_unsupported_atoms(client: DeepOriginClient):
         lig.prepare()
 
 
-def test_ligand_has_unsupported_atoms(client: DeepOriginClient):
+def test_ligand_has_unsupported_atoms():
     """has_unsupported_atoms matches SUPPORTED_ATOM_SYMBOLS membership on mol."""
     assert not Ligand.from_smiles("CCO").has_unsupported_atoms()
     boron = Ligand.from_smiles("B")
@@ -441,7 +441,7 @@ def test_ligand_has_unsupported_atoms(client: DeepOriginClient):
     assert boron.unsupported_atom_symbols() == ["B"]
 
 
-def test_ligand_prepare_rejects_wildcard_atoms(client: DeepOriginClient):
+def test_ligand_prepare_rejects_wildcard_atoms():
     """Ligands with wildcard ('*') atoms should be rejected by prepare()."""
 
     # Try to create a ligand with wildcard atoms
@@ -464,7 +464,7 @@ def test_ligand_prepare_rejects_wildcard_atoms(client: DeepOriginClient):
             lig.prepare()
 
 
-def test_ligand_prepare_rejects_multiple_fragments(client: DeepOriginClient):
+def test_ligand_prepare_rejects_multiple_fragments():
     """Ligands with multiple non-identical fragments should be rejected by prepare()."""
 
     # Create a ligand with multiple non-identical fragments (e.g., salt + ligand)
@@ -474,7 +474,7 @@ def test_ligand_prepare_rejects_multiple_fragments(client: DeepOriginClient):
         lig.prepare()
 
 
-def test_ligand_prepare_accepts_identical_fragments(client: DeepOriginClient):
+def test_ligand_prepare_accepts_identical_fragments():
     """Ligands with multiple identical fragments should be accepted (first fragment kept)."""
 
     # Create a ligand with multiple identical fragments
@@ -485,7 +485,7 @@ def test_ligand_prepare_accepts_identical_fragments(client: DeepOriginClient):
     assert lig.smiles == "CCO"
 
 
-def test_ligand_conformer_management(client: DeepOriginClient):
+def test_ligand_conformer_management():
     """Test conformer-related methods"""
     ligand = Ligand.from_smiles("CCO", name="Ethanol")
 
@@ -502,7 +502,7 @@ def test_ligand_conformer_management(client: DeepOriginClient):
     assert ligand.get_conformer_id() == 5
 
 
-def test_ligand_embed_and_hydrogens(client: DeepOriginClient):
+def test_ligand_embed_and_hydrogens():
     """Test embedding and hydrogen addition methods"""
     ligand = Ligand.from_smiles("CCO", name="Ethanol")
 
@@ -521,7 +521,7 @@ def test_ligand_embed_and_hydrogens(client: DeepOriginClient):
     assert coords.shape[1] == 3  # x, y, z coordinates
 
 
-def test_ligand_property_management(client: DeepOriginClient):
+def test_ligand_property_management():
     """Test property setting and getting methods"""
     ligand = Ligand.from_smiles("CCO", name="Ethanol")
 
@@ -537,7 +537,7 @@ def test_ligand_property_management(client: DeepOriginClient):
     assert ligand.get_property("non_existent") is None
 
 
-def test_to_sdf_requires_rehydration_when_remote_path_only(client: DeepOriginClient):
+def test_to_sdf_requires_rehydration_when_remote_path_only():
     """to_sdf/to_file must not perform I/O; fail if remote_path set but no local file."""
     ligand = Ligand.from_smiles("CCO", name="Ethanol")
     ligand.remote_path = "entities/ligands/fake.sdf"
@@ -549,7 +549,7 @@ def test_to_sdf_requires_rehydration_when_remote_path_only(client: DeepOriginCli
         ligand.to_file()
 
 
-def test_ligand_file_writing(client: DeepOriginClient):
+def test_ligand_file_writing():
     """Test file writing methods"""
     ligand = Ligand.from_smiles("CCO", name="Ethanol")
 
@@ -578,7 +578,7 @@ def test_ligand_file_writing(client: DeepOriginClient):
             Path(path).unlink()
 
 
-def test_ligand_visualization(client: DeepOriginClient):
+def test_ligand_visualization():
     """Test visualization methods"""
     ligand = Ligand.from_smiles("CCO", name="Ethanol")
 
@@ -589,7 +589,7 @@ def test_ligand_visualization(client: DeepOriginClient):
     ligand.show()
 
 
-def test_ligand_coordinate_updates(client: DeepOriginClient):
+def test_ligand_coordinate_updates():
     """Test coordinate update methods"""
     ligand = Ligand.from_smiles("CCO", name="Ethanol")
 
@@ -613,7 +613,7 @@ def test_ligand_coordinate_updates(client: DeepOriginClient):
 
 
 # Test properties
-def test_ligand_coordinates_property(client: DeepOriginClient):
+def test_ligand_coordinates_property():
     """Test the coordinates property"""
     ligand = Ligand.from_smiles("CCO", name="Ethanol")
 
@@ -629,7 +629,7 @@ def test_ligand_coordinates_property(client: DeepOriginClient):
     assert coords.shape[1] == 3
 
 
-def test_ligand_atom_types_property(client: DeepOriginClient):
+def test_ligand_atom_types_property():
     """Test the atom_types property"""
     ligand = Ligand.from_smiles("CCO", name="Ethanol")
 
@@ -641,7 +641,7 @@ def test_ligand_atom_types_property(client: DeepOriginClient):
     assert "O" in atom_types
 
 
-def test_ligand_contains_boron(client: DeepOriginClient):
+def test_ligand_contains_boron():
     """Test the contains_boron property"""
     # Test ligand without boron
     ligand_no_boron = Ligand.from_smiles("CCO", name="Ethanol")
@@ -654,7 +654,7 @@ def test_ligand_contains_boron(client: DeepOriginClient):
     assert hasattr(ligand_no_boron, "contains_boron")
 
 
-def test_ligand_coordinate_mismatch(client: DeepOriginClient):
+def test_ligand_coordinate_mismatch():
     """Test coordinate update with mismatched atom count"""
     ligand = Ligand.from_smiles("CCO", name="Ethanol")
 
@@ -671,7 +671,7 @@ def test_ligand_coordinate_mismatch(client: DeepOriginClient):
         ligand.update_coordinates(wrong_coords)
 
 
-def test_ligand_no_conformers(client: DeepOriginClient):
+def test_ligand_no_conformers():
     """Test handling of molecules without conformers"""
     ligand = Ligand.from_smiles("CCO", name="Ethanol")
 
@@ -690,7 +690,7 @@ def test_ligand_no_conformers(client: DeepOriginClient):
         ligand.update_coordinates(coords)
 
 
-def test_ligand_property_inheritance(client: DeepOriginClient):
+def test_ligand_property_inheritance():
     """Test how properties are handled during initialization"""
     ligand = Ligand.from_smiles("CCO", name="Ethanol")
 
@@ -702,7 +702,7 @@ def test_ligand_property_inheritance(client: DeepOriginClient):
     assert ligand.name == "Ethanol"
 
 
-def test_ligand_file_path_handling(client: DeepOriginClient):
+def test_ligand_file_path_handling():
     """Test file path resolution and directory creation"""
     ligand = Ligand.from_smiles("CCO", name="Ethanol")
 
@@ -712,7 +712,7 @@ def test_ligand_file_path_handling(client: DeepOriginClient):
     assert "ligands" in directory
 
 
-def test_ligand_protonated_at_ph(client: DeepOriginClient):
+def test_ligand_protonated_at_ph():
     """Test the protonated_at_ph attribute"""
     ligand = Ligand.from_smiles("CCO", name="Ethanol")
 
@@ -733,7 +733,7 @@ def test_ligand_protonated_at_ph(client: DeepOriginClient):
     assert ligand.protonated_at_ph is None
 
 
-def test_ligand_protonate_sets_protonated_at_ph(client: DeepOriginClient):
+def test_ligand_protonate_sets_protonated_at_ph():
     """Test that the protonate method sets the protonated_at_ph attribute"""
     ligand = Ligand.from_smiles("C=CCCn1cc(-c2cccc(C(=O)N(C)C)c2)c2cc[nH]c2c1=O")
 
@@ -750,7 +750,7 @@ def test_ligand_protonate_sets_protonated_at_ph(client: DeepOriginClient):
 
 
 # Test utility functions
-def test_ligands_to_dataframe(client: DeepOriginClient):
+def test_ligands_to_dataframe():
     """Test the ligands_to_dataframe utility function"""
     from deeporigin.drug_discovery.structures.ligand import ligands_to_dataframe
 
@@ -777,7 +777,7 @@ def test_ligands_to_dataframe(client: DeepOriginClient):
 @pytest.mark.parametrize(
     "sdf_file", sorted(BRD_DATA_DIR.glob("*.sdf")), ids=lambda p: p.stem
 )
-def test_ligand_sync(sdf_file, client: DeepOriginClient):
+def test_ligand_sync(sdf_file):
     """Test that we can sync a ligand from each BRD SDF file"""
     ligand = Ligand.from_sdf(sdf_file)
     ligand.sync()
