@@ -3,79 +3,87 @@
 This guide explains how to visualize molecular dynamics trajectories from Absolute Binding Free Energy (ABFE) simulations in Deep Origin.
 
 !!! warning "Deprecated: `Complex` in examples"
-    The examples below use `sim.abfe` on a legacy [`Complex`](../ref/complex.md). Prefer the [`ABFE`](../ref/abfe.md) class directly for new code.
+    Older examples referenced a legacy [`Complex`](../ref/complex.md). Prefer the [`ABFE`](../ref/abfe.md) class directly for new code.
 
 ## Overview
 
 ABFE simulations generate molecular dynamics trajectories that show how ligands interact with proteins over time. Visualizing these trajectories can provide valuable insights into binding mechanisms, protein-ligand interactions, and conformational changes.
 
-Deep Origin provides tools to easily visualize these trajectories using the `show_trajectory` method in the `ABFE` class.
+Use :meth:`ABFE.show_trajectory <deeporigin.drug_discovery.abfe.ABFE.show_trajectory>` on a completed execution. Each ABFE job is tied to one prepared system (one primary ligand leg), so you do not pass a separate ligand object: the execution already identifies the run.
 
 ## Prerequisites
 
-- A completed ABFE simulation run
-- Valid ligand ID from your simulation
+- A completed ABFE simulation run (`status` is `Succeeded`)
+- `PreparedSystem` used for the run should include either `system_pdb_path` or `binding_xml_path` (the latter is used to resolve `system.pdb` next to the binding XML on the file store)
 - The Deep Origin Python package properly installed and configured
 
-## Visualizing Trajectories
+## Visualizing trajectories
 
-### Using the `show_trajectory` Method
+### `show_trajectory`
 
-The `show_trajectory` method allows you to visualize either the molecular dynamics (md) phase or the binding phase of an ABFE run.
+The method loads the data-platform result row for this job (the same shape as ``client.results.get(compute_job_id=abfe.id)``), reads remote file paths from that payload, downloads the structure (PDB) and trajectory (XTC), and opens a Mol* viewer in the notebook via :func:`deeporigin.utils.notebook.render_html`.
 
-Before using this method, you'll need completed ABFE calculations (historically tied to a legacy `Complex`). For a walkthrough that uses the deprecated `Complex` path, see [Getting Started](../tutorial/getting-started.md). Prefer configuring [`ABFE`](../ref/abfe.md) directly for new work.
+**Steps**
 
-Once you've completed the steps in the tutorial and have run your ABFE calculations, you can return to this guide to visualize the trajectories.
+| `step` value   | What is shown |
+|----------------|----------------|
+| `md`           | Post-prep MD under `tool-runs/<id>/protein/ligand/simple_md/.../_allatom_trajectory_40ps.xtc` (path derived from binding/solvation trajectory paths in results). |
+| `binding`      | `binding_analysis[*].trajectories["window_<n>"]` — e.g. `solute_trajectory_20ps.xtc` per lambda window. |
+| `solvation`    | Same layout under `solvation_analysis`. |
 
+**Parameters**
 
-### Behind the Scenes
+- `step`: `"md"`, `"binding"`, or `"solvation"`.
+- `window`: Lambda window index, starting at `1`. Used for `binding` and `solvation` only; ignored for `md`.
+- `repeat`: Which repeat block to use inside `binding_analysis` / `solvation_analysis` (matches the `repeat` field when present, otherwise 1-based index in the list).
 
-When you call `show_trajectory`, the following happens:
-1. The method retrieves result files for the specified ABFE run
-2. It extracts the trajectory files from a ZIP archive (if not already extracted)
-3. It generates a 3D visualization using the `deeporigin_molstar` library
-4. The visualization is displayed in your Jupyter notebook
+### Behind the scenes
+
+1. Sync execution status and require `Succeeded`.
+2. Fetch results with `compute_job_id` set to the execution id.
+3. Resolve the XTC path from the result `data` (per step/window/repeat as above).
+4. Resolve the system PDB from `PreparedSystem` (`system_pdb_path`, or `dirname(binding_xml_path)/system.pdb`).
+5. Download PDB and XTC (lazy skip if already cached under `~/.deeporigin/`).
+6. Render with `deeporigin_molstar.ProteinViewer.render_trajectory` and display in the notebook.
 
 ## Examples
 
-### Visualizing Molecular Dynamics Step
+Assume `abfe` is an :class:`~deeporigin.drug_discovery.abfe.ABFE` instance that has finished successfully.
 
 ```{.python notest}
-# Show the molecular dynamics trajectory
-sim.abfe.show_trajectory(ligands=sim.ligands[0], step="md")
+# Post-prep MD trajectory
+abfe.show_trajectory(step="md")
 ```
-
-### Visualizing Binding Step
 
 ```{.python notest}
-# Show the binding trajectory for the default window (window 1)
-sim.abfe.show_trajectory(ligand_id="ligand1", step="binding")
+# Binding leg, default window 1
+abfe.show_trajectory(step="binding")
 
-# Show the binding trajectory for a specific window
-sim.abfe.show_trajectory(ligand_id="ligand1", step="binding", window=5)
+# Binding leg, window 5
+abfe.show_trajectory(step="binding", window=5)
+
+# Solvation leg, second repeat if present
+abfe.show_trajectory(step="solvation", window=3, repeat=2)
 ```
 
-When visualizing the binding step, you can specify which window to visualize using the `window` parameter. The windows represent different stages of the binding process. If you specify an invalid window number, the method will show you a list of available windows.
+If `window` is not present in the results `trajectories` map, the error lists the valid window indices.
 
-<iframe 
-    src="../../images/traj.html" 
-    width="100%" 
-    height="600" 
+<iframe
+    src="../../images/traj.html"
+    width="100%"
+    height="600"
     style="border:none;"
     title="Protein visualization"
 ></iframe>
 
-
 ## Troubleshooting
 
-If you encounter issues when visualizing trajectories:
+- Ensure the ABFE run completed successfully (`Succeeded`).
+- Ensure `PreparedSystem.system_pdb_path` or `binding_xml_path` is set so the viewer can load the topology.
+- For binding/solvation, use a `window` that exists in the results `trajectories` keys (`window_1`, …).
+- Ensure you have disk space and network access for downloads into the local Deep Origin cache.
 
-- Ensure your ABFE run completed successfully
-- Verify that the ligand ID is correct
-- Check that the specified step ("md" or "binding") is available
-- Ensure you have sufficient disk space for extracting trajectory files
+## Additional resources
 
-## Additional Resources
-
-- For more information on running ABFE simulations, see the [ABFE documentation](../tutorial/abfe.md)
-- For the `ABFE` class API, see the [ABFE reference](../ref/abfe.md). The legacy [`Complex`](../ref/complex.md) type is deprecated.
+- [ABFE tutorial](../tutorial/abfe.md)
+- [ABFE reference](../ref/abfe.md) (generated API docs)
