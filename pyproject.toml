@@ -37,6 +37,7 @@ core = [
 lint = ["ruff"]
 test = [
     "pytest",
+    "pytest-html",
     "parameterized",
     "coverage",
     "interrogate",
