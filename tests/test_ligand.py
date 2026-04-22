@@ -103,7 +103,10 @@ def test_ligand_is_charged():
     ],
 )
 def test_ligand_from_smiles(
-    smiles, name, expected_atoms, equivalent_smiles,
+    smiles,
+    name,
+    expected_atoms,
+    equivalent_smiles,
 ):
     """Test that we can create a Ligand from a SMILES string using the from_smiles classmethod"""
     from rdkit import Chem
