@@ -99,6 +99,34 @@ def test_from_json_protein_id_not_in_props_lv0():
     assert "protein_id" not in (pocket.props or {})
 
 
+def test_from_json_project_id_from_client_lv0():
+    """project_id on the client is copied onto each Pocket when JSON omits it."""
+    from unittest.mock import MagicMock
+
+    client = MagicMock()
+    client.project_id = "proj-from-client"
+
+    pocket = Pocket.from_json([{"file_path": str(_BRD_PDB)}], client=client)[0]
+
+    assert pocket.project_id == "proj-from-client"
+    assert "project_id" not in (pocket.props or {})
+
+
+def test_from_json_entry_project_id_overrides_client_lv0():
+    """Explicit project_id in JSON wins over the client default."""
+    from unittest.mock import MagicMock
+
+    client = MagicMock()
+    client.project_id = "client-proj"
+
+    pocket = Pocket.from_json(
+        [{"file_path": str(_BRD_PDB), "project_id": "entry-proj"}],
+        client=client,
+    )[0]
+
+    assert pocket.project_id == "entry-proj"
+
+
 def test_from_json_extra_keys_go_to_props_lv0():
     """Known property keys become attributes; file_path/protein_id are excluded from props."""
     data = [

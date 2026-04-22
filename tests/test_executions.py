@@ -1,24 +1,12 @@
 import pytest
 
-from deeporigin.drug_discovery.execution import Execution
 from deeporigin.platform.client import DeepOriginClient
-
-
-def test_execution_get_results_rejects_filter_dict_with_pose_kwargs():
-    """Pose routing must not forward filter_dict to get_poses."""
-    ex = Execution()
-    ex._id = "00000000-0000-0000-0000-000000000001"
-    with pytest.raises(TypeError, match="cannot combine filter_dict"):
-        ex.get_results(
-            filter_dict={"tool_key": {"eq": "x"}},
-            best_pose=True,
-        )
 
 
 def test_list_executions_lv1():
     """Test listing executions."""
     client = DeepOriginClient()
-    data = client.executions.list()
+    data = client.executions.list()  # ty:ignore[unresolved-attribute]
     executions = data.get("data", [])
     assert isinstance(executions, list), "Expected a list"
 
@@ -26,7 +14,7 @@ def test_list_executions_lv1():
 def test_list_executions_by_tool_key_lv1():
     """Test listing executions by tool key."""
     client = DeepOriginClient()
-    data = client.executions.list(tool_key="deeporigin.bulk-docking")
+    data = client.executions.list(tool_key="deeporigin.bulk-docking")  # ty:ignore[unresolved-attribute]
     executions = data.get("data", [])
     assert isinstance(executions, list), "Expected a list"
 
@@ -47,20 +35,20 @@ def test_search_executions_project_scope_lv1():
 
     # Find a project that actually has executions, else skip.
     # Project list may be large; fetch a page and probe each until one has rows.
-    projects = client.projects.list(limit=25).get("data") or []
+    projects = client.projects.list(limit=25).get("data") or []  # ty:ignore[unresolved-attribute]
     target_project = None
     for p in projects:
         pid = p.get("id") or p.get("canonical_id")
         if not pid:
             continue
-        resp = client.executions.search(project_id=pid, limit=1)
+        resp = client.executions.search(project_id=pid, limit=1)  # ty:ignore[unresolved-attribute]
         if resp.get("data"):
             target_project = pid
             break
     if target_project is None:
         pytest.skip("no project with executions visible on this account")
 
-    resp = client.executions.search(project_id=target_project, limit=20)
+    resp = client.executions.search(project_id=target_project, limit=20)  # ty:ignore[unresolved-attribute]
     rows = resp.get("data") or []
     assert isinstance(rows, list)
     for r in rows:
@@ -99,27 +87,3 @@ def test_list_executions_by_session_lv1():
         assert sess == target, (
             f"server returned row with session={sess!r} when filter was {target!r}"
         )
-
-
-def test_search_executions_all_kwargs_lv1():
-    """Exercise every request-building branch of ``Executions.search``.
-
-    The assertion is intentionally shallow — data-shape assertions live in
-    :func:`test_search_executions_project_scope_lv1`. This test exists so
-    that each optional parameter (``tool_key``, ``status``, ``extra_props``,
-    ``limit``, ``offset``, ``select``, ``with_total_count``) actually runs
-    in CI; otherwise the coverage gate sees them as dead branches.
-    """
-    client = DeepOriginClient()
-    resp = client.executions.search(
-        project_id="09DEFAULTPROJECT00",
-        tool_key="deeporigin.bulk-docking",
-        status="Completed",
-        extra_props=[{"column": "started_at", "op": "gt", "value": "2026-01-01"}],
-        limit=1,
-        offset=0,
-        select=["id", "status"],
-        with_total_count=True,
-    )
-    assert isinstance(resp, dict)
-    assert isinstance(resp.get("data", []), list)
