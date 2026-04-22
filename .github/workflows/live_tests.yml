@@ -92,12 +92,18 @@ jobs:
         run: |
           LEVEL="${{ inputs.test_level || github.event.inputs.test_level || 'lv1' }}"
           echo "TEST_LEVEL=${LEVEL}" >> "$GITHUB_ENV"
+          if [[ "${{ github.event_name }}" == "workflow_call" && "$LEVEL" == "lv2" ]]; then
+            SELECTOR="lv1 or lv2"
+          else
+            SELECTOR="$LEVEL"
+          fi
+          echo "TEST_SELECTOR=${SELECTOR}" >> "$GITHUB_ENV"
 
       - name: "Running tests against a live instance"
         env:
           TARGET_ENV: ${{ matrix.env }}
         run: |
-          uv run pytest --env "$TARGET_ENV" -k "$TEST_LEVEL" \
+          uv run pytest --env "$TARGET_ENV" -k "$TEST_SELECTOR" \
             --junitxml=sdk-test-results.xml \
             --html=sdk-report.html --self-contained-html
 
