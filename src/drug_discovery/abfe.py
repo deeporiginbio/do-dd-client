@@ -1,7 +1,8 @@
 """ABFE -- class to run and control absolute binding free energy calculations."""
 
 from dataclasses import dataclass
-from typing import Any, Self
+from pathlib import Path
+from typing import Any, Literal, Self
 
 from beartype import beartype
 import pandas as pd
@@ -10,6 +11,7 @@ from deeporigin.drug_discovery.execution import Execution
 from deeporigin.drug_discovery.execution_mixins import AsyncExecutableMixin, QuoteMixin
 from deeporigin.drug_discovery.notebook_watch_mixin import NotebookWatchMixin
 from deeporigin.drug_discovery.structures.prepared_system import PreparedSystem
+from deeporigin.exceptions import DeepOriginException
 from deeporigin.platform.client import DeepOriginClient
 from deeporigin.platform.constants import TOOL_KEYS_AND_VERSIONS
 
@@ -103,6 +105,81 @@ def _abfe_default_name(
         ligand_label = "unknown ligand"
 
     return f"ABFE: {protein_label} with {ligand_label}"
+
+
+@beartype
+def _abfe_first_remote_trajectory_path(*, data: dict[str, Any]) -> str:
+    """Return any remote trajectory path string from ABFE result ``data``."""
+    for analysis_key in ("binding_analysis", "solvation_analysis"):
+        blocks = data.get(analysis_key)
+        if not isinstance(blocks, list):
+            continue
+        for block in blocks:
+            if not isinstance(block, dict):
+                continue
+            traj = block.get("trajectories")
+            if not isinstance(traj, dict) or not traj:
+                continue
+            for value in traj.values():
+                if isinstance(value, str) and value.strip():
+                    return value.strip()
+    raise DeepOriginException(
+        title="No trajectory metadata in results",
+        message="Results do not include binding or solvation trajectory paths yet.",
+        fix="Wait for the job to finish and ensure the tool version records trajectories.",
+    ) from None
+
+
+@beartype
+def _abfe_tool_run_root(*, remote_trajectory_path: str) -> str:
+    """Return ``tool-runs/<uuid>`` prefix parsed from a trajectory remote path."""
+    parts = remote_trajectory_path.strip("/").split("/")
+    if len(parts) >= 2 and parts[0] == "tool-runs":
+        return f"{parts[0]}/{parts[1]}"
+    raise DeepOriginException(
+        title="Invalid trajectory path",
+        message=f"Could not locate tool-runs root in {remote_trajectory_path!r}.",
+        fix="Report this path to support if the job completed successfully.",
+    ) from None
+
+
+@beartype
+def _abfe_pick_analysis_block(
+    *,
+    blocks: list[Any],
+    repeat: int,
+) -> dict[str, Any]:
+    """Pick one binding or solvation analysis dict for the given repeat index."""
+    if not blocks:
+        raise DeepOriginException(
+            title="No analysis repeats in results",
+            message="The results payload has no analysis entries for this step.",
+        ) from None
+    for block in blocks:
+        if isinstance(block, dict) and block.get("repeat") == repeat:
+            return block
+    if 1 <= repeat <= len(blocks):
+        candidate = blocks[repeat - 1]
+        if isinstance(candidate, dict):
+            return candidate
+    raise DeepOriginException(
+        title="Invalid repeat index",
+        message=f"No analysis block for repeat={repeat!r}.",
+        fix=f"Use repeat between 1 and {len(blocks)} (or a repeat id present in results).",
+    ) from None
+
+
+@beartype
+def _abfe_sorted_window_numbers(*, trajectories: dict[str, Any]) -> list[int]:
+    """Sorted lambda-window indices from a ``trajectories`` mapping."""
+    out: list[int] = []
+    for key in trajectories:
+        if not isinstance(key, str) or not key.startswith("window_"):
+            continue
+        suffix = key.removeprefix("window_")
+        if suffix.isdigit():
+            out.append(int(suffix))
+    return sorted(out)
 
 
 @dataclass(frozen=True)
@@ -221,6 +298,11 @@ class ABFE(Execution, QuoteMixin, AsyncExecutableMixin, NotebookWatchMixin):
     """Absolute Binding Free Energy calculation (async-only).
 
     Requires a ``PreparedSystem`` from system preparation before ``start()``.
+    After success, :meth:`show_trajectory` can download trajectory and structure
+    files and open a Mol* viewer in Jupyter (or marimo), and
+    :meth:`show_overlap_matrix` / :meth:`show_convergence_time` can display
+    binding or solvation diagnostic PNGs from the ABFE result row for this
+    execution.
 
     Attributes:
         prepared_system: Prepared system containing binding and solvation XML paths.
@@ -283,8 +365,8 @@ class ABFE(Execution, QuoteMixin, AsyncExecutableMixin, NotebookWatchMixin):
             A fully-hydrated ABFE instance with status from the DTO.
         """
         instance = super().from_dto(dto, client=client)
-        inputs = instance._execution_dto.get("userInputs", {})
-        metadata = instance._execution_dto.get("metadata", {})
+        inputs = instance._execution_dto.get("userInputs", {})  # ty:ignore[unresolved-attribute]
+        metadata = instance._execution_dto.get("metadata", {})  # ty:ignore[unresolved-attribute]
 
         prepared_system_input = inputs.get("prepared_system", {})
         binding = inputs.get("binding", {})
@@ -392,18 +474,14 @@ class ABFE(Execution, QuoteMixin, AsyncExecutableMixin, NotebookWatchMixin):
         if self.name is not None:
             payload["name"] = self.name
 
-        return self.client.executions.create(
+        return self.client.executions.create(  # ty:ignore[unresolved-attribute]
             data=payload,
             tool_key=self.tool_key,
             tool_version=self.tool_version,
         )
 
     @beartype
-    def _start_impl(
-        self,
-        *,
-        approve_amount: int | None = None,
-    ) -> None:
+    def _start_impl(self, **kwargs) -> None:
         """Submit the ABFE execution to the platform.
 
         Args:
@@ -416,10 +494,8 @@ class ABFE(Execution, QuoteMixin, AsyncExecutableMixin, NotebookWatchMixin):
         }
         if self.name is not None:
             payload["name"] = self.name
-        if approve_amount is not None:
-            payload["approveAmount"] = approve_amount
 
-        execution_dto = self.client.executions.create(
+        execution_dto = self.client.executions.create(  # ty:ignore[unresolved-attribute]
             data=payload,
             tool_key=self.tool_key,
             tool_version=self.tool_version,
@@ -434,11 +510,13 @@ class ABFE(Execution, QuoteMixin, AsyncExecutableMixin, NotebookWatchMixin):
         self._id = execution_id
         self.status = execution_dto.get("status")
 
-    def get_results(self) -> pd.DataFrame | None:
+    def get_results(self, **_kwargs: Any) -> pd.DataFrame | None:
         """Retrieve ABFE results as a DataFrame.
 
-        Downloads the results CSV from the platform and returns a
-        DataFrame with the binding free energy and related data.
+        Uses :meth:`~deeporigin.drug_discovery.execution.Execution.get_results`
+        (results for this execution by id), then builds a one-row table from the
+        first record's ``data`` payload. Keyword arguments are accepted for
+        signature compatibility with the base class but are not forwarded.
 
         Returns:
             A DataFrame with ABFE results, or ``None`` if not yet available.
@@ -446,31 +524,344 @@ class ABFE(Execution, QuoteMixin, AsyncExecutableMixin, NotebookWatchMixin):
         Raises:
             ValueError: If no execution has been started.
         """
-        if self.id is None:
-            raise ValueError("No execution has been started. Call start() first.")
-
-        client = self.client
-
         self.sync()
         if self.status != "Succeeded":
             return None
 
-        if self._execution_dto is None:
-            self._execution_dto = client.executions.get(self.id)
-
-        user_outputs = self._execution_dto.get("userOutputs", {})
-        summary_info = user_outputs.get("abfe_results_summary", {})
-        remote_path = summary_info.get("key")
-
-        if not remote_path:
+        response = super().get_results()
+        records = response.get("data") or []
+        if not records:
             return None
+        row = records[0].get("data")
+        if not isinstance(row, dict) or not row:
+            return None
+        df = pd.json_normalize([row])
+        drop_roots = frozenset({"binding_analysis", "solvation_analysis"})
+        to_drop = [
+            c for c in df.columns if c in drop_roots or c.split(".", 1)[0] in drop_roots
+        ]
+        if to_drop:
+            df = df.drop(columns=to_drop)
+        priority = ["protein_id", "ligand1_id", "total", "unit"]
+        head = [c for c in priority if c in df.columns]
+        tail = [c for c in df.columns if c not in head]
+        return df[head + tail]
 
-        local_path = client.files.download(
-            remote_path=remote_path,
-            lazy=True,
-        )
+    @beartype
+    def show_trajectory(
+        self,
+        *,
+        step: Literal["md", "binding", "solvation"],
+        window: int = 1,
+        repeat: int = 1,
+    ) -> Any:
+        """Visualize an ABFE trajectory in a notebook using Mol*.
 
-        return pd.read_csv(local_path, nrows=1)
+        Trajectory remote paths are read from this execution's data-platform
+        results (same payload as ``client.results.get(compute_job_id=abfe.id)``):
+        for ``binding`` or ``solvation``, the per-window
+        ``solute_trajectory_20ps.xtc`` paths under ``binding_analysis`` /
+        ``solvation_analysis``. For ``md``, the equilibration/production MD path
+        under ``tool-runs/<id>/protein/ligand/simple_md/...`` is derived from
+        those paths.
+
+        Args:
+            step: ``md`` for the post-prep MD segment; ``binding`` or
+                ``solvation`` for a lambda window from the corresponding leg.
+            window: Lambda window index (1-based). Ignored when ``step`` is
+                ``md``.
+            repeat: Repeat index from the tool results (matched to the
+                ``repeat`` field when present, otherwise 1-based index into the
+                analysis list).
+
+        Returns:
+            Notebook display output from :func:`deeporigin.utils.notebook.render_html`.
+
+        Raises:
+            ValueError: If the execution has not been started (no id).
+            DeepOriginException: If the job is not succeeded, results lack paths,
+                ``window`` is invalid, or no system PDB can be resolved.
+        """
+        if self.id is None:
+            raise ValueError(
+                "Cannot show trajectory: no execution has been started (id is None)."
+            )
+
+        if window < 1:
+            raise DeepOriginException(
+                title="Invalid window number",
+                message="Window number must be greater than 0",
+                fix="Please specify a window number greater than 0",
+            ) from None
+
+        self.sync()
+        if self.status != "Succeeded":
+            raise DeepOriginException(
+                title="Job not complete",
+                message=(
+                    "Trajectory is only available after a successful run. "
+                    f"Current status is {self.status!r}."
+                ),
+                fix="Wait until the execution status is Succeeded, then try again.",
+            ) from None
+
+        response = self.client.results.get(compute_job_id=self.id)
+        records = response.get("data") or []
+        if not records:
+            raise DeepOriginException(
+                title="No results for this execution",
+                message="The data platform returned no result rows for this job.",
+            ) from None
+
+        row = records[0]
+        data = row.get("data")
+        if not isinstance(data, dict) or not data:
+            raise DeepOriginException(
+                title="No result payload",
+                message="The first result record has no data field.",
+            ) from None
+
+        prepared = self.prepared_system
+        if prepared.system_pdb_path:
+            remote_pdb = prepared.system_pdb_path
+        elif prepared.binding_xml_path:
+            remote_pdb = str(Path(prepared.binding_xml_path).parent / "system.pdb")
+        else:
+            raise DeepOriginException(
+                title="No system structure path",
+                message="Cannot locate system.pdb: set prepared_system.system_pdb_path "
+                "or binding_xml_path.",
+            ) from None
+
+        if step in ("binding", "solvation"):
+            analysis_key = (
+                "binding_analysis" if step == "binding" else "solvation_analysis"
+            )
+            blocks = data.get(analysis_key)
+            if not isinstance(blocks, list):
+                raise DeepOriginException(
+                    title="Missing analysis in results",
+                    message=f"Results do not contain a list at {analysis_key!r}.",
+                ) from None
+
+            block = _abfe_pick_analysis_block(blocks=blocks, repeat=repeat)
+            traj = block.get("trajectories")
+            if not isinstance(traj, dict):
+                raise DeepOriginException(
+                    title="Missing trajectories",
+                    message=f"No trajectories map in results for {analysis_key!r}.",
+                ) from None
+
+            window_key = f"window_{window}"
+            if window_key not in traj:
+                valid = _abfe_sorted_window_numbers(trajectories=traj)
+                raise DeepOriginException(
+                    title="Invalid window number",
+                    message=f"Valid windows are: {valid}",
+                ) from None
+
+            remote_xtc = traj[window_key]
+            if not isinstance(remote_xtc, str) or not remote_xtc.strip():
+                raise DeepOriginException(
+                    title="Invalid trajectory path",
+                    message=f"Results entry {window_key!r} is missing or not a path string.",
+                ) from None
+            remote_xtc = remote_xtc.strip()
+        else:
+            sample_path = _abfe_first_remote_trajectory_path(data=data)
+            root = _abfe_tool_run_root(remote_trajectory_path=sample_path)
+            remote_xtc = (
+                f"{root}/protein/ligand/simple_md/simple_md/prod/"
+                "_allatom_trajectory_40ps.xtc"
+            )
+
+        local_pdb = self.client.files.download(remote_pdb, lazy=True)
+        local_xtc = self.client.files.download(remote_xtc, lazy=True)
+
+        print(local_pdb)
+        print(local_xtc)
+
+        from deeporigin_molstar import JupyterViewer, ProteinViewer
+
+        protein_viewer = ProteinViewer(data=local_pdb, format="pdb")
+        html_content = protein_viewer.render_trajectory(local_xtc)
+
+        JupyterViewer.visualize(html_content)
+
+    @beartype
+    def show_overlap_matrix(
+        self,
+        *,
+        run: Literal["binding", "solvation"] = "binding",
+        repeat: int = 1,
+    ) -> None:
+        """Display the overlap-matrix PNG for this execution in Jupyter.
+
+        Reads the first data-platform result row for this job (same payload as
+        ``client.results.get(compute_job_id=abfe.id)``), takes
+        ``overlap_matrix_plot`` from ``binding_analysis`` or
+        ``solvation_analysis`` for the chosen repeat, downloads via
+        :meth:`deeporigin.platform.files.Files.download`, and renders with
+        :class:`IPython.display.Image`.
+
+        Args:
+            run: Which leg of the calculation to show: ``"binding"`` or
+                ``"solvation"``.
+            repeat: Repeat index from the tool results (matched to the
+                ``repeat`` field when present, otherwise 1-based index into the
+                analysis list). Same semantics as :meth:`show_trajectory`.
+
+        Raises:
+            ValueError: If the execution has no platform id yet.
+            DeepOriginException: If the run is not complete, results are missing,
+                or no overlap-matrix plot path is present for the chosen leg.
+        """
+        if self.id is None:
+            raise ValueError(
+                "Cannot show overlap matrix: no execution has been started (id is None)."
+            )
+
+        self.sync()
+        if self.status != "Succeeded":
+            raise DeepOriginException(
+                title="ABFE run is not complete",
+                message=(
+                    "Overlap matrices are only available after a successful run. "
+                    f"Current status is {self.status!r}."
+                ),
+            ) from None
+
+        response = self.client.results.get(compute_job_id=self.id)
+        records = response.get("data") or []
+        if not records:
+            raise DeepOriginException(
+                title="No overlap matrix found for this run",
+                message=(
+                    "Unable to show overlap matrix because there are no result "
+                    "records for this execution."
+                ),
+            ) from None
+
+        row = records[0]
+        data = row.get("data")
+        if not isinstance(data, dict) or not data:
+            raise DeepOriginException(
+                title="No overlap matrix found for this run",
+                message="ABFE result data is missing or not in the expected shape.",
+            ) from None
+
+        analysis_key = "binding_analysis" if run == "binding" else "solvation_analysis"
+        blocks = data.get(analysis_key)
+        if not isinstance(blocks, list):
+            raise DeepOriginException(
+                title="No overlap matrix found for this run",
+                message=f"Results do not contain a list at {analysis_key!r}.",
+            ) from None
+
+        block = _abfe_pick_analysis_block(blocks=blocks, repeat=repeat)
+
+        remote_path = block.get("overlap_matrix_plot")
+        if not isinstance(remote_path, str) or not remote_path.strip():
+            raise DeepOriginException(
+                title="No overlap matrix found for this run",
+                message=(
+                    "Unable to show overlap matrix because overlap_matrix_plot is "
+                    f"not set for the {run} leg."
+                ),
+            ) from None
+
+        local_path = self.client.files.download(remote_path.strip(), lazy=True)
+
+        from IPython.display import Image, display
+
+        display(Image(local_path))
+
+    @beartype
+    def show_convergence_time(
+        self,
+        *,
+        run: Literal["binding", "solvation"] = "binding",
+        repeat: int = 1,
+    ) -> None:
+        """Display the time-convergence PNG for this execution in Jupyter.
+
+        Reads the first data-platform result row for this job (same payload as
+        ``client.results.get(compute_job_id=abfe.id)``), takes ``convergence_plot``
+        from ``binding_analysis`` or ``solvation_analysis`` for the chosen
+        repeat, downloads via :meth:`deeporigin.platform.files.Files.download`,
+        and renders with :class:`IPython.display.Image`.
+
+        Args:
+            run: Which leg of the calculation to show: ``"binding"`` or
+                ``"solvation"``.
+            repeat: Repeat index from the tool results (matched to the
+                ``repeat`` field when present, otherwise 1-based index into the
+                analysis list). Same semantics as :meth:`show_trajectory`.
+
+        Raises:
+            ValueError: If the execution has no platform id yet.
+            DeepOriginException: If the run is not complete, results are missing,
+                or no convergence plot path is present for the chosen leg.
+        """
+        if self.id is None:
+            raise ValueError(
+                "Cannot show convergence plot: no execution has been started (id is None)."
+            )
+
+        self.sync()
+        if self.status != "Succeeded":
+            raise DeepOriginException(
+                title="ABFE run is not complete",
+                message=(
+                    "Convergence plots are only available after a successful run. "
+                    f"Current status is {self.status!r}."
+                ),
+            ) from None
+
+        response = self.client.results.get(compute_job_id=self.id)
+        records = response.get("data") or []
+        if not records:
+            raise DeepOriginException(
+                title="No convergence plot found for this run",
+                message=(
+                    "Unable to show convergence plot because there are no result "
+                    "records for this execution."
+                ),
+            ) from None
+
+        row = records[0]
+        data = row.get("data")
+        if not isinstance(data, dict) or not data:
+            raise DeepOriginException(
+                title="No convergence plot found for this run",
+                message="ABFE result data is missing or not in the expected shape.",
+            ) from None
+
+        analysis_key = "binding_analysis" if run == "binding" else "solvation_analysis"
+        blocks = data.get(analysis_key)
+        if not isinstance(blocks, list):
+            raise DeepOriginException(
+                title="No convergence plot found for this run",
+                message=f"Results do not contain a list at {analysis_key!r}.",
+            ) from None
+
+        block = _abfe_pick_analysis_block(blocks=blocks, repeat=repeat)
+
+        remote_path = block.get("convergence_plot")
+        if not isinstance(remote_path, str) or not remote_path.strip():
+            raise DeepOriginException(
+                title="No convergence plot found for this run",
+                message=(
+                    "Unable to show convergence plot because convergence_plot is "
+                    f"not set for the {run} leg."
+                ),
+            ) from None
+
+        local_path = self.client.files.download(remote_path.strip(), lazy=True)
+
+        from IPython.display import Image, display
+
+        display(Image(local_path))
 
     def _build_params(self) -> dict:
         """Construct the tool input parameters dict."""

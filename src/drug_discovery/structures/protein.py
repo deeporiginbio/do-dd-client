@@ -1143,7 +1143,6 @@ class Protein(Entity):
 
         return sum(1 for _ in structure.get_atoms())
 
-    @beartype
     def to_hash(self) -> str:
         """Convert the protein to SHA256 hash of the PDB file content.
 

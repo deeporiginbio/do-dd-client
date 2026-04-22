@@ -498,7 +498,9 @@ class Pocket(Entity):
                 key returned by the pocket-finder tool.
             client: Optional client to use for lazy downloads. When provided,
                 stored on each Pocket and used by :meth:`download` when
-                coordinates are first accessed.
+                coordinates are first accessed. When an entry omits
+                ``project_id``, each Pocket uses ``getattr(client, "project_id", None)``
+                when a client is given.
 
         Returns:
             List of Pocket objects with properties populated from the dicts.
@@ -518,7 +520,14 @@ class Pocket(Entity):
 
         json_mapped_keys = set(cls._JSON_KEY_MAP.keys())
         reserved_keys = (
-            {"id", "file_path", "local_path", "remote_path", "protein_id"}
+            {
+                "id",
+                "file_path",
+                "local_path",
+                "remote_path",
+                "protein_id",
+                "project_id",
+            }
             | cls._PROPERTY_ATTRS
             | json_mapped_keys
         )
@@ -538,10 +547,15 @@ class Pocket(Entity):
 
             props = {k: v for k, v in entry.items() if k not in reserved_keys}
 
+            project_id: str | None = entry.get("project_id")
+            if project_id is None and client is not None:
+                project_id = getattr(client, "project_id", None)
+
             pocket = cls(
                 id=entry.get("id"),
                 local_path=local_path,
                 remote_path=remote_path,
+                project_id=project_id,
                 name=name,
                 protein_id=entry.get("protein_id"),
                 props=props,

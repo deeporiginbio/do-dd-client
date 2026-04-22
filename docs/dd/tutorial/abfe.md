@@ -240,29 +240,57 @@ To view MD trajectories from this run, refer to this [How-to section](../how-to/
 
 An [FEP overlap matrix](https://pmc.ncbi.nlm.nih.gov/articles/PMC8388617/) is a diagnostic used in free energy perturbation calculations to evaluate how well neighboring λ states sample overlapping regions of configuration space. Each matrix element measures the statistical overlap between configurations from different states based on their energy distributions. The goal is to ensure every state has overlap with its neighbors in both directions – so that  off-diagonal elements are sufficiently larger than zero.
 
-The overlap matrix between windows can be viewed using:
+If you are using the jobs-centric [`ABFE`](../ref/abfe.md) class, the plot path
+is read from the data-platform result for this execution (default `repeat=1`,
+same indexing as `abfe.show_trajectory`).
+In Jupyter:
 
 ```{.python notest}
-sim.abfe.show_overlap_matrix(ligand=ligand, run="binding")
-```  
+abfe.show_overlap_matrix(run="binding")
+```
 
 An image such as the following will be shown:
 
 ![Overlap matrix for Binding Run](../../images/overlap_matrix.png)
 
-To view the overlap matrix for the solvation run, use:
+To view the overlap matrix for the solvation leg:
 
 ```{.python notest}
+abfe.show_overlap_matrix(run="solvation")
+```
+
+On the deprecated [`Complex`](../ref/complex.md) path, the same plot was selected
+per ligand:
+
+```{.python notest}
+sim.abfe.show_overlap_matrix(ligand=ligand, run="binding")
 sim.abfe.show_overlap_matrix(ligand=ligand, run="solvation")
-```  
+```
 
 ### Viewing convergence time plots
 
-To view the convergence time plots for a run, use:
+The time-convergence diagnostic (``convergence_plot`` in the result payload) can
+be shown the same way as the overlap matrix.
+
+With the jobs-centric [`ABFE`](../ref/abfe.md) class (default `repeat=1`, same
+as `abfe.show_overlap_matrix` and `abfe.show_trajectory`):
 
 ```{.python notest}
-sim.abfe.show_convergence_time(ligand=ligand, run="binding")
-```  
+abfe.show_convergence_time(run="binding")
+```
+
 An image such as the following will be shown:
 
 ![Convergence plot for Binding Run](../../images/time_convergence.png)
+
+For the solvation leg:
+
+```{.python notest}
+abfe.show_convergence_time(run="solvation")
+```
+
+On the deprecated [`Complex`](../ref/complex.md) path:
+
+```{.python notest}
+sim.abfe.show_convergence_time(ligand=ligand, run="binding")
+```

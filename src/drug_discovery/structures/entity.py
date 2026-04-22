@@ -7,7 +7,7 @@ The Entity class provides methods to manage file uploads, such as protein struct
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Optional
+from typing import ClassVar, Optional
 
 from deeporigin.exceptions import DeepOriginException
 from deeporigin.platform.client import DeepOriginClient
@@ -32,6 +32,9 @@ class Entity(ABC):
     remote_path: str | None = field(default=None, kw_only=True)
     local_path: str | None = field(default=None, kw_only=True)
     project_id: str | None = field(default=None, kw_only=True)
+
+    _remote_path_base: ClassVar[str] = ""
+    _preferred_ext: ClassVar[str] = ""
 
     def resolved_project_id(self, client: DeepOriginClient | None = None) -> str | None:
         """Data platform project id for API calls.

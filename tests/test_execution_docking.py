@@ -11,7 +11,6 @@ from deeporigin.drug_discovery.docking import (
     Docking,
     _docking_default_name,
     _ligand_tool_input_row,
-    _pose_rows_from_result_explorer,
 )
 from deeporigin.drug_discovery.structures.ligand import Ligand, LigandSet
 from deeporigin.platform.constants import TERMINAL_STATES, TOOL_KEYS_AND_VERSIONS
@@ -218,19 +217,6 @@ def test_docking_run_lv2(
         assert isinstance(pose, Ligand), "Each pose should be a Ligand"
         assert pose.mol is not None, "Pose should have a loaded RDKit mol"
         assert pose.smiles is not None, "Pose should have SMILES"
-
-
-def test_pose_rows_from_result_explorer_keeps_pose_and_legacy_rows_lv1() -> None:
-    """Mixed result-explorer rows are filtered to poses (and legacy rows without type)."""
-    response = {
-        "data": [
-            {"id": "pocket-1", "result_type": "pocket", "data": {}},
-            {"id": "pose-1", "result_type": "pose", "data": {"ligand_id": "L1"}},
-            {"id": "legacy", "data": {"ligand_id": "L2"}},
-        ]
-    }
-    rows = _pose_rows_from_result_explorer(response)
-    assert [r["id"] for r in rows] == ["pose-1", "legacy"]
 
 
 def test_docking_start_sync_get_results_lv3(

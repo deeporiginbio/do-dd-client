@@ -71,7 +71,7 @@ class Files:
         if delimiter is not None:
             params["delimiter"] = delimiter
         if max_keys is not None:
-            params["max-orgKeys"] = max_keys
+            params["max-keys"] = max_keys
         if prefix is not None:
             params["prefix"] = prefix
         return params

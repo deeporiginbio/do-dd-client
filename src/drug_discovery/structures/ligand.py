@@ -10,7 +10,7 @@ import os
 from pathlib import Path
 import random
 import tempfile
-from typing import Any, Callable, Literal, Optional, Self
+from typing import Any, Callable, Literal, Optional, Self, cast
 import warnings
 
 from beartype import beartype
@@ -33,7 +33,7 @@ from deeporigin.utils.env import _ensure_do_folder
 from .entity import Entity
 
 warnings.filterwarnings("ignore", category=UserWarning, module="rdkit")
-RDLogger.DisableLog("rdApp.*")
+RDLogger.DisableLog("rdApp.*")  # ty:ignore[unresolved-attribute]
 
 
 FILE_FORMATS = Literal["mol", "mol2", "pdb", "pdbqt", "xyz", "sdf"]
@@ -637,7 +637,7 @@ class Ligand(Entity):
                 raise DeepOriginException(f"Sanitization failed: {str(e)}") from e
 
         if not self.mol.GetConformers():
-            AllChem.Compute2DCoords(self.mol)
+            AllChem.Compute2DCoords(self.mol)  # ty:ignore[unresolved-attribute]
 
         # 4) Validate atom types
         atom_symbols = [atom.GetSymbol() for atom in self.mol.GetAtoms()]
@@ -1110,7 +1110,8 @@ class Ligand(Entity):
     @beartype
     def to_mol(self, output_path: Optional[str] = None) -> str | Path:
         """Write the ligand to a MOL file."""
-        return self.write_to_file(output_path=output_path, output_format="mol")
+        writer = cast(Callable[..., str | Path], self.write_to_file)
+        return writer(output_path=output_path, output_format="mol")
 
     @beartype
     def to_sdf(
@@ -1383,7 +1384,8 @@ class Ligand(Entity):
     @beartype
     def to_pdb(self, output_path: Optional[str] = None) -> str | Path:
         """Write the ligand to a PDB file."""
-        return self.write_to_file(output_path=output_path, output_format="pdb")
+        writer = cast(Callable[..., str | Path], self.write_to_file)
+        return writer(output_path=output_path, output_format="pdb")
 
     @beartype
     def get_center(self) -> list[number]:
