@@ -1,10 +1,12 @@
+import pytest
+
 from deeporigin.platform.client import DeepOriginClient
 
 
 def test_list_executions_lv1():
     """Test listing executions."""
     client = DeepOriginClient()
-    data = client.executions.list()
+    data = client.executions.list()  # ty:ignore[unresolved-attribute]
     executions = data.get("data", [])
     assert isinstance(executions, list), "Expected a list"
 
@@ -12,7 +14,7 @@ def test_list_executions_lv1():
 def test_list_executions_by_tool_key_lv1():
     """Test listing executions by tool key."""
     client = DeepOriginClient()
-    data = client.executions.list(tool_key="deeporigin.bulk-docking")
+    data = client.executions.list(tool_key="deeporigin.bulk-docking")  # ty:ignore[unresolved-attribute]
     executions = data.get("data", [])
     assert isinstance(executions, list), "Expected a list"
 
@@ -33,20 +35,20 @@ def test_search_executions_project_scope_lv1():
 
     # Find a project that actually has executions, else skip.
     # Project list may be large; fetch a page and probe each until one has rows.
-    projects = client.projects.list(limit=25).get("data") or []
+    projects = client.projects.list(limit=25).get("data") or []  # ty:ignore[unresolved-attribute]
     target_project = None
     for p in projects:
         pid = p.get("id") or p.get("canonical_id")
         if not pid:
             continue
-        resp = client.executions.search(project_id=pid, limit=1)
+        resp = client.executions.search(project_id=pid, limit=1)  # ty:ignore[unresolved-attribute]
         if resp.get("data"):
             target_project = pid
             break
     if target_project is None:
         pytest.skip("no project with executions visible on this account")
 
-    resp = client.executions.search(project_id=target_project, limit=20)
+    resp = client.executions.search(project_id=target_project, limit=20)  # ty:ignore[unresolved-attribute]
     rows = resp.get("data") or []
     assert isinstance(rows, list)
     for r in rows:
@@ -97,7 +99,7 @@ def test_search_executions_all_kwargs_lv1():
     in CI; otherwise the coverage gate sees them as dead branches.
     """
     client = DeepOriginClient()
-    resp = client.executions.search(
+    resp = client.executions.search(  # ty:ignore[unresolved-attribute]
         project_id="09DEFAULTPROJECT00",
         tool_key="deeporigin.bulk-docking",
         status="Completed",
