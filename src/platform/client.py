@@ -3,7 +3,7 @@
 This module provides a minimal synchronous HTTP client for interacting with the
 DeepOrigin Platform API. The client includes built-in authentication, singleton
 caching for connection reuse, and convenient access to platform resources like
-tools, functions, clusters, files, and executions.
+tools, functions, clusters, files, executions, and user logs.
 
 Construct a client using the no-arg constructor or one of three factory methods:
 
@@ -62,6 +62,7 @@ if TYPE_CHECKING:
     from deeporigin.platform.projects import Projects
     from deeporigin.platform.results import Results
     from deeporigin.platform.tools import Tools
+    from deeporigin.platform.user_logs import UserLogs
 
 # Cache for local token to ensure consistency across calls
 _LOCAL_TOKEN_CACHE: str | None = None
@@ -315,6 +316,7 @@ class DeepOriginClient(metaclass=_DeepOriginMeta):
     datasets: Datasets | None
     files: Files  # client always has files
     executions: Executions | None
+    user_logs: UserLogs | None
     organizations: Organizations | None
     billing: Billing | None
     entities: Entities | None
@@ -469,6 +471,13 @@ class DeepOriginClient(metaclass=_DeepOriginMeta):
             self.executions = Executions(_client)
         except ImportError:
             self.executions = None
+
+        try:
+            from deeporigin.platform.user_logs import UserLogs
+
+            self.user_logs = UserLogs(_client)
+        except ImportError:
+            self.user_logs = None
 
         try:
             from deeporigin.platform.organizations import Organizations
