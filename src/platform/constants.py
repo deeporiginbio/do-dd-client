@@ -52,7 +52,7 @@ PROVIDER = Literal["ufa", "s3"]
 TOOL_KEYS_AND_VERSIONS: dict[str, dict[str, str]] = {
     "docking": {
         "tool_key": "deeporigin.docking",
-        "tool_version": "3.0.0-30",
+        "tool_version": "3.0.0-32",
         "function_key": "deeporigin.docking",
         "function_version": "2.0.1",
     },
@@ -79,6 +79,6 @@ TOOL_KEYS_AND_VERSIONS: dict[str, dict[str, str]] = {
     },
     "sysprep": {
         "function_key": "deeporigin.system-prep",
-        "function_version": "0.9.0",
+        "function_version": "0.10.0",
     },
 }

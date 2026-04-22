@@ -102,7 +102,12 @@ def test_ligand_is_charged():
         ("C1=CC=CC=C1", "Benzene_alt", 6, ["c1ccccc1"]),  # Benzene (Kekule notation)
     ],
 )
-def test_ligand_from_smiles(smiles, name, expected_atoms, equivalent_smiles):
+def test_ligand_from_smiles(
+    smiles,
+    name,
+    expected_atoms,
+    equivalent_smiles,
+):
     """Test that we can create a Ligand from a SMILES string using the from_smiles classmethod"""
     from rdkit import Chem
 
@@ -788,10 +793,10 @@ def test_ligand_sync(sdf_file):
     assert ligand2.remote_path == ligand.remote_path
 
 
-def test_ligand_upload_lv1():
+def test_ligand_upload_lv1(client: DeepOriginClient):
     """Upload ligand to UFA; requires a real platform file service."""
 
-    if DeepOriginClient().env == "local":
+    if client.env == "local":
         pytest.skip(
             "Requires a real file service (UFA); not available with --env local."
         )

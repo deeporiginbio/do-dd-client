@@ -1136,9 +1136,8 @@ def test_ligand_set_sync_duplicate_smiles_lv1():
     assert len(set(ids)) == 1, "All duplicates should share the same platform id"
 
 
-def test_batch_create_ligands_lv1():
+def test_batch_create_ligands_lv1(client: DeepOriginClient):
     """Test batch creating ligands via LigandSet.sync()."""
-    client = DeepOriginClient()
     ligands = LigandSet.from_smiles(["CCO", "CCCO"])
     ligands.sync(client=client)
 
@@ -1169,10 +1168,11 @@ def test_ligand_set_batches_invalid_size_raises(bad: int) -> None:
         ls.batches(bad)
 
 
-def test_ligand_set_from_docking_results_lv0(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_ligand_set_from_docking_results_lv0(
+    monkeypatch: pytest.MonkeyPatch, client: DeepOriginClient
+) -> None:
     """from_docking_results collects poses from functionOutputs and loads SDFs."""
     brd_file = str(DATA_DIR / "ligands" / "ligands-brd-all.sdf")
-    client = DeepOriginClient()
     calls: list[object] = []
 
     def _fake_download(*_a: object, **_k: object) -> str:

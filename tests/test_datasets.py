@@ -3,9 +3,8 @@
 from deeporigin.platform import DeepOriginClient
 
 
-def test_create_dataset():
+def test_create_dataset(client: DeepOriginClient):
     """Create a dataset and verify the response shape."""
-    client = DeepOriginClient()
     result = client.datasets.create(
         name="Test Dataset",
         file_path="/datasets/test/data.csv",
@@ -20,9 +19,8 @@ def test_create_dataset():
     assert result["data"]["tags"] == ["HTS", "FBDD"]
 
 
-def test_search_datasets():
+def test_search_datasets(client: DeepOriginClient):
     """Search datasets returns results."""
-    client = DeepOriginClient()
     client.datasets.create(
         name="Search Target",
         file_path="/datasets/search/data.csv",
@@ -35,9 +33,8 @@ def test_search_datasets():
     assert len(result["data"]) > 0
 
 
-def test_search_datasets_with_text_search():
+def test_search_datasets_with_text_search(client: DeepOriginClient):
     """Search datasets using the fulltext search parameter."""
-    client = DeepOriginClient()
     client.datasets.create(
         name="Kinase Inhibitors",
         file_path="/datasets/kinase/data.csv",
@@ -52,9 +49,8 @@ def test_search_datasets_with_text_search():
     assert any("Kinase" in n for n in names)
 
 
-def test_search_datasets_with_total_count():
+def test_search_datasets_with_total_count(client: DeepOriginClient):
     """with_total_count returns meta.total_count and no data rows."""
-    client = DeepOriginClient()
     client.datasets.create(
         name="Count Target",
         file_path="/datasets/count/data.csv",
@@ -67,9 +63,8 @@ def test_search_datasets_with_total_count():
     assert result["meta"]["total_count"] > 0
 
 
-def test_search_datasets_with_tag_filter():
+def test_search_datasets_with_tag_filter(client: DeepOriginClient):
     """Search datasets filtered by tags (AND semantics)."""
-    client = DeepOriginClient()
     client.datasets.create(
         name="Tagged Dataset",
         file_path="/datasets/tagged/data.csv",
@@ -86,9 +81,8 @@ def test_search_datasets_with_tag_filter():
             assert "FBDD" in ds["tags"]
 
 
-def test_get_dataset():
+def test_get_dataset(client: DeepOriginClient):
     """Get a dataset by ID."""
-    client = DeepOriginClient()
     created = client.datasets.create(
         name="Get Target",
         file_path="/datasets/get/data.csv",
@@ -102,9 +96,8 @@ def test_get_dataset():
     assert result["data"]["name"] == "Get Target"
 
 
-def test_update_dataset():
+def test_update_dataset(client: DeepOriginClient):
     """Update a dataset record."""
-    client = DeepOriginClient()
     created = client.datasets.create(
         name="Update Target",
         file_path="/datasets/update/data.csv",
@@ -117,9 +110,8 @@ def test_update_dataset():
     assert result["data"]["description"] == "Updated"
 
 
-def test_trigger_import():
+def test_trigger_import(client: DeepOriginClient):
     """Trigger an import and verify executionId is returned."""
-    client = DeepOriginClient()
     created = client.datasets.create(
         name="Import Target",
         file_path="/datasets/import/data.csv",

@@ -3,17 +3,15 @@ import pytest
 from deeporigin.platform.client import DeepOriginClient
 
 
-def test_list_executions_lv1():
+def test_list_executions_lv1(client: DeepOriginClient):
     """Test listing executions."""
-    client = DeepOriginClient()
     data = client.executions.list()  # ty:ignore[unresolved-attribute]
     executions = data.get("data", [])
     assert isinstance(executions, list), "Expected a list"
 
 
-def test_list_executions_by_tool_key_lv1():
+def test_list_executions_by_tool_key_lv1(client: DeepOriginClient):
     """Test listing executions by tool key."""
-    client = DeepOriginClient()
     data = client.executions.list(tool_key="deeporigin.bulk-docking")  # ty:ignore[unresolved-attribute]
     executions = data.get("data", [])
     assert isinstance(executions, list), "Expected a list"
@@ -22,7 +20,7 @@ def test_list_executions_by_tool_key_lv1():
         assert execution.get("tool", {}).get("key") == "deeporigin.bulk-docking"
 
 
-def test_search_executions_project_scope_lv1():
+def test_search_executions_project_scope_lv1(client: DeepOriginClient):
     """The data-platform /executions/search endpoint must honor the
     project_id filter server-side — rows whose non-null project_id does
     not match should not leak from other projects.
@@ -31,7 +29,6 @@ def test_search_executions_project_scope_lv1():
     always carry the column (mock server and some real-server shapes
     omit it), so we only assert on rows that actually expose the field.
     """
-    client = DeepOriginClient()
 
     # Find a project that actually has executions, else skip.
     # Project list may be large; fetch a page and probe each until one has rows.
@@ -61,7 +58,7 @@ def test_search_executions_project_scope_lv1():
         )
 
 
-def test_list_executions_by_session_lv1():
+def test_list_executions_by_session_lv1(client: DeepOriginClient):
     """Test listing executions by session — server-side filter must drop
     executions whose non-null session does not match.
 
@@ -70,14 +67,12 @@ def test_list_executions_by_session_lv1():
     unassigned and pass it through any filter). Tolerate those and only
     assert on rows that carry a non-null session.
     """
-    client = DeepOriginClient()
-
-    sample = client.executions.list(page_size=200).get("data", [])
+    sample = client.executions.list(page_size=200).get("data", [])  # ty:ignore[unresolved-attribute]
     target = next((e.get("session") for e in sample if e.get("session")), None)
     if target is None:
         pytest.skip("no executions carry a session on this account")
 
-    filtered = client.executions.list(session=target)
+    filtered = client.executions.list(session=target)  # ty:ignore[unresolved-attribute]
     rows = filtered.get("data", [])
     assert isinstance(rows, list), "Expected a list"
     for execution in rows:

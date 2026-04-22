@@ -24,6 +24,7 @@ class PreparedSystem:
         binding_xml_path: Remote path to the binding XML file.
         solvation_xml_path: Remote path to the solvation XML file.
         system_pdb_path: Remote path to the system PDB file.
+        solute_pdb_path: Remote path to the solute-only PDB file, if present.
         protein_id: Protein ID used for preparation.
         ligand1_id: First ligand ID (ABFE or RBFE).
         ligand2_id: Second ligand ID (RBFE only); None for ABFE.
@@ -37,6 +38,7 @@ class PreparedSystem:
     binding_xml_path: str
     solvation_xml_path: str
     system_pdb_path: str
+    solute_pdb_path: Optional[str] = None
     id: Optional[str] = None
     protein_id: Optional[str] = None
     ligand1_id: Optional[str] = None
@@ -56,28 +58,46 @@ class PreparedSystem:
         return "PreparedSystem(" + ", ".join(parts) + ")"
 
     @beartype
-    def show(self) -> Any:
+    def show(self, *, solute: bool = False) -> Any:
         """Visualize the prepared system structure in a Jupyter notebook using MolStar.
 
-        Downloads the system PDB from the platform and renders it with the same
-        protein-only viewer as :meth:`Protein.show` when called without optional
-        pocket or ligand arguments.
+        By default, downloads the full system PDB from the platform. Pass
+        ``solute=True`` to visualize the solute-only structure instead (requires
+        :attr:`solute_pdb_path` to be set).
+
+        Renders with the same protein-only viewer as :meth:`Protein.show` when
+        called without optional pocket or ligand arguments.
+
+        Args:
+            solute: If true, use :attr:`solute_pdb_path`; otherwise
+                :attr:`system_pdb_path`.
 
         Returns:
             Output from :func:`deeporigin.utils.notebook.render_html` (Jupyter
             ``display`` or marimo HTML wrapper, depending on environment).
 
         Raises:
-            DeepOriginException: If ``system_pdb_path`` is missing or empty.
+            DeepOriginException: If the chosen PDB path is missing or empty, or
+                ``solute=True`` but :attr:`solute_pdb_path` is not available.
         """
-        if not self.system_pdb_path:
-            raise DeepOriginException(
-                "Cannot show PreparedSystem: system_pdb_path is empty.",
-            ) from None
+        if solute:
+            if not self.solute_pdb_path:
+                raise DeepOriginException(
+                    "Cannot show PreparedSystem: solute_pdb_path is not set or empty "
+                    "(use solute=False for the full system, or re-fetch results that "
+                    "include solute_pdb_file_path).",
+                ) from None
+            remote = self.solute_pdb_path
+        else:
+            if not self.system_pdb_path:
+                raise DeepOriginException(
+                    "Cannot show PreparedSystem: system_pdb_path is empty.",
+                ) from None
+            remote = self.system_pdb_path
 
         client = DeepOriginClient()
         local_pdb = client.files.download(
-            remote_path=self.system_pdb_path,
+            remote_path=remote,
             lazy=True,
         )
 
@@ -110,6 +130,7 @@ class PreparedSystem:
         binding = data.get("binding_xml_file_path")
         solvation = data.get("solvation_xml_ligand_file_path")
         system_pdb = data.get("system_pdb_file_path")
+        solute_pdb = data.get("solute_pdb_file_path")
         if not (binding and solvation and system_pdb):
             raise ValueError(
                 "Record missing required paths (binding_xml_file_path, "
@@ -120,6 +141,7 @@ class PreparedSystem:
             binding_xml_path=binding,
             solvation_xml_path=solvation,
             system_pdb_path=system_pdb,
+            solute_pdb_path=solute_pdb,
             protein_id=data.get("protein_id"),
             ligand1_id=data.get("ligand1_id"),
             ligand2_id=data.get("ligand2_id"),
@@ -137,6 +159,7 @@ class PreparedSystem:
         protein_id: str | None = None,
         ligand1_id: str | None = None,
         ligand2_id: str | None = None,
+        compute_job_id: str | None = None,
         padding: int | float | None = None,
         add_H_atoms: bool | None = None,  # NOSONAR
         retain_waters: bool | None = None,
@@ -152,6 +175,7 @@ class PreparedSystem:
             protein_id: Optional protein ID to filter by.
             ligand1_id: Optional first ligand ID to filter by.
             ligand2_id: Optional second ligand ID to filter by (RBFE).
+            compute_job_id: Optional compute job ID to filter by.
             padding: Optional padding value to filter by.
             add_H_atoms: Optional add_H_atoms flag to filter by.
             retain_waters: Optional retain_waters flag to filter by.
@@ -176,6 +200,7 @@ class PreparedSystem:
             protein_id=protein_id,
             ligand1_id=ligand1_id,
             ligand2_id=ligand2_id,
+            compute_job_id=compute_job_id,
             padding=padding_int,
             add_H_atoms=add_H_atoms,
             retain_waters=retain_waters,

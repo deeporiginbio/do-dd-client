@@ -294,10 +294,12 @@ class SystemPrep(Execution, QuoteMixin, SyncExecutableMixin):
         binding_xml_path: str | None = None
         solvation_xml_path: str | None = None
         system_pdb_path: str | None = None
+        solute_pdb_path: str | None = None
         if isinstance(system, dict):
             binding_xml_path = system.get("binding_xml_file_path")
             solvation_xml_path = system.get("solvation_xml_ligand_file_path")
             system_pdb_path = system.get("system_pdb_file_path")
+            solute_pdb_path = system.get("solute_pdb_file_path")
 
         if not (binding_xml_path and solvation_xml_path and system_pdb_path):
             raise ValueError(SYSPREP_NO_OUTPUT_PATHS_MSG)
@@ -306,6 +308,7 @@ class SystemPrep(Execution, QuoteMixin, SyncExecutableMixin):
             binding_xml_path=binding_xml_path,
             solvation_xml_path=solvation_xml_path,
             system_pdb_path=system_pdb_path,
+            solute_pdb_path=solute_pdb_path,
             protein_id=self.protein.id,
             ligand1_id=self._ligand_ids()[0],
             ligand2_id=self._ligand_ids()[1],

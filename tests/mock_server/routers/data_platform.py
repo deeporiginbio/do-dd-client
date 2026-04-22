@@ -359,10 +359,20 @@ def create_data_platform_router(
 
     _datasets: dict[str, dict[str, Any]] = datasets if datasets is not None else {}
 
+    # Pre-seed one user_logs row for SDK tests (compute_job_id filter).
+    _user_logs_store: dict[str, dict[str, Any]] = {
+        "ul-mock-1": {
+            "id": "ul-mock-1",
+            "compute_job_id": "MOCK-USER-LOGS-CJ-ID",
+            "line": "mock user log line",
+        }
+    }
+
     _entity_stores: dict[str, dict[str, dict[str, Any]]] = {
         "ligands": ligands,
         "proteins": proteins,
         "projects": projects,
+        "user_logs": _user_logs_store,
     }
 
     # Reverse index: (canonical_smiles, variant_name_tag) → ligand_id.

@@ -6,13 +6,12 @@ from deeporigin.platform.client import DeepOriginClient
 from deeporigin.platform.constants import TOOL_KEYS_AND_VERSIONS
 
 
-def test_billing_tag_end_to_end_lv2():
+def test_billing_tag_end_to_end_lv2(client: DeepOriginClient):
     """Test that the billing tag end to end works
 
     we do so by running a few functions with some unique tag, and then comparing our estimate of cost vs what was reported by the platform."""
 
     tag = str(uuid.uuid4())
-    client = DeepOriginClient()
 
     if client.env == "local":
         # can't run on local, so skip

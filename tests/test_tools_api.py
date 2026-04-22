@@ -5,8 +5,7 @@ import pytest
 from deeporigin.platform.client import DeepOriginClient
 
 
-def test_get_executions_lv1():
-    client = DeepOriginClient()
+def test_get_executions_lv1(client: DeepOriginClient):
     response = client.executions.list()
     jobs = response.get("data", [])
     assert isinstance(jobs, list), "Expected a list"
@@ -29,17 +28,15 @@ def test_get_executions_lv1():
 
 
 @pytest.mark.dependency()
-def test_tools_api_health_lv1():
+def test_tools_api_health_lv1(client: DeepOriginClient):
     """test the health API"""
-    client = DeepOriginClient()
     data = client.get_json("/health")
     assert data["status"] == "ok"
 
 
 @pytest.mark.dependency(depends=["test_tools_api_health_lv1"])
-def test_get_all_tools_lv1():
+def test_get_all_tools_lv1(client: DeepOriginClient):
     """test the tools API"""
-    client = DeepOriginClient()
     tools = client.tools.list()
     assert isinstance(tools, list), "Expected a list"
     assert len(tools) > 0, "Expected at least one tool"
@@ -61,9 +58,8 @@ def test_get_all_tools_lv1():
 
 
 @pytest.mark.dependency(depends=["test_tools_api_health_lv1"])
-def test_get_all_function_lv1():
+def test_get_all_function_lv1(client: DeepOriginClient):
     """Test the functions API list method."""
-    client = DeepOriginClient()
     functions = client.functions.list()
     assert isinstance(functions, list), "Expected a list"
     assert len(functions) > 0, "Expected at least one function"
@@ -80,7 +76,7 @@ def test_get_all_function_lv1():
         assert key in function.keys(), f"Expected function to have key {key}"
 
 
-def test_job_status_logic_lv0():
+def test_job_status_logic_lv0(client: DeepOriginClient):
     """Test the simplified status logic for job rendering."""
     from deeporigin.platform.constants import TERMINAL_STATES
 

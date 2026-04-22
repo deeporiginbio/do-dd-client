@@ -7,6 +7,7 @@ import pytest
 
 from deeporigin.drug_discovery import BRD_DATA_DIR, Protein
 from deeporigin.exceptions import DeepOriginException
+from deeporigin.platform.client import DeepOriginClient
 
 
 def test_load_protein_from_cif_structure_factor():
@@ -435,15 +436,12 @@ def test_protein_download_raises_when_structure_loaded_without_paths() -> None:
         protein.download()
 
 
-def test_from_remote_file_sets_remote_path_lv0() -> None:
+def test_from_remote_file_sets_remote_path_lv0(client: DeepOriginClient) -> None:
     """from_remote_file downloads via the client and sets remote_path."""
     from unittest.mock import patch
 
-    from deeporigin.platform.client import DeepOriginClient
-
     remote = "org/files/protein.pdb"
     local_pdb = str(BRD_DATA_DIR / "brd.pdb")
-    client = DeepOriginClient()
     with patch.object(client.files, "download", return_value=local_pdb) as dl:
         protein = Protein.from_remote_file(remote, client=client)
     dl.assert_called_once_with(remote_path=remote, lazy=True)
