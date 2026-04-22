@@ -55,6 +55,8 @@ class Executions:
 
         if "clusterId" not in payload:
             payload["clusterId"] = self._c.clusters.get_default_cluster_id()
+        if self._c.project_id is not None:
+            payload["projectId"] = self._c.project_id
 
         payload["app"] = self._c._app
         payload["session"] = self._c._session
