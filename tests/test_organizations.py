@@ -3,9 +3,8 @@
 from deeporigin.platform.client import DeepOriginClient
 
 
-def test_list_organizations_lv1():
+def test_list_organizations_lv1(client: DeepOriginClient):
     """Test listing organizations."""
-    client = DeepOriginClient()
     orgs = client.organizations.list()
 
     assert isinstance(orgs, list), "Expected a list"
@@ -27,9 +26,8 @@ def test_list_organizations_lv1():
         assert key in org, f"Expected organization to have key {key}"
 
 
-def test_list_organization_users_lv1():
+def test_list_organization_users_lv1(client: DeepOriginClient):
     """Test listing organization users."""
-    client = DeepOriginClient()
     users = client.organizations.users()
 
     assert isinstance(users, list), "Expected a list"

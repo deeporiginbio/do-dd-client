@@ -379,6 +379,7 @@ class ABFE(Execution, QuoteMixin, AsyncExecutableMixin, NotebookWatchMixin):
                 "solvation_xml_ligand_file_path", ""
             ),
             system_pdb_path="",
+            solute_pdb_path=prepared_system_input.get("solute_pdb_file_path"),
             protein_id=prepared_system_input.get("protein_id")
             or metadata.get("protein_id"),
             ligand1_id=prepared_system_input.get("ligand1_id")

@@ -16,7 +16,7 @@ from deeporigin.platform.client import DeepOriginClient
 from deeporigin.platform.constants import TOOL_KEYS_AND_VERSIONS
 
 
-def test_abfe_quote_cannot_be_called_twice_lv0():
+def test_abfe_quote_cannot_be_called_twice_lv0(client: DeepOriginClient):
     """quote() raises ValueError if called after a quotation already exists."""
     prepared_system = PreparedSystem(
         binding_xml_path="path/binding.xml",
@@ -33,7 +33,7 @@ def test_abfe_quote_cannot_be_called_twice_lv0():
         abfe.quote()
 
 
-def test_abfe_from_dto_rehydrates_prepared_system_lv0():
+def test_abfe_from_dto_rehydrates_prepared_system_lv0(client: DeepOriginClient):
     """from_dto should rehydrate prepared_system and params from the DTO."""
     fake_dto = {
         "executionId": "exec-123",
@@ -109,7 +109,7 @@ def test_abfe_from_dto_rehydrates_prepared_system_lv0():
     assert "lig-xyz" in repr(abfe)
 
 
-def test_abfe_from_dto_legacy_metadata_ligand_id_lv0():
+def test_abfe_from_dto_legacy_metadata_ligand_id_lv0(client: DeepOriginClient):
     """from_dto falls back to metadata.ligand_id when prepared_system omits ligand1_id."""
     fake_dto = {
         "executionId": "exec-legacy",
@@ -156,7 +156,7 @@ def test_abfe_from_dto_legacy_metadata_ligand_id_lv0():
     assert abfe.prepared_system.ligand1_id == "l-old"
 
 
-def test_abfe_from_id_repr_without_prepared_system_lv0():
+def test_abfe_from_id_repr_without_prepared_system_lv0(client: DeepOriginClient):
     """repr should not crash when prepared_system is missing."""
     ps = PreparedSystem(
         binding_xml_path="b.xml",
@@ -169,7 +169,7 @@ def test_abfe_from_id_repr_without_prepared_system_lv0():
     assert "ABFE" in result
 
 
-def test_abfe_duplicate_lv0():
+def test_abfe_duplicate_lv0(client: DeepOriginClient):
     """duplicate() produces a fresh instance with same config but no execution state."""
     ps = PreparedSystem(
         binding_xml_path="path/binding.xml",
@@ -197,7 +197,7 @@ def test_abfe_duplicate_lv0():
     assert dup.tool_version == "0.2.0"
 
 
-def test_abfe_default_name_helper_resolves_entities_lv0():
+def test_abfe_default_name_helper_resolves_entities_lv0(client: DeepOriginClient):
     """_abfe_default_name should load entities and format ABFE: protein with ligand."""
     get_protein = MagicMock(
         return_value={
@@ -218,7 +218,6 @@ def test_abfe_default_name_helper_resolves_entities_lv0():
         protein_id="prot-123",
         ligand1_id="lig-456",
     )
-    client = DeepOriginClient()
     with (
         patch.object(client.entities, "get_protein", get_protein),
         patch.object(client.entities, "get_ligand", get_ligand),
@@ -231,7 +230,7 @@ def test_abfe_default_name_helper_resolves_entities_lv0():
     get_ligand.assert_called_once_with(id="lig-456")
 
 
-def test_abfe_default_name_ligand_smiles_when_no_name_lv0():
+def test_abfe_default_name_ligand_smiles_when_no_name_lv0(client: DeepOriginClient):
     """Ligand label uses canonical_smiles or smiles when name is absent."""
     prepared_system = PreparedSystem(
         binding_xml_path="b.xml",
@@ -240,7 +239,6 @@ def test_abfe_default_name_ligand_smiles_when_no_name_lv0():
         protein_id="p1",
         ligand1_id="l1",
     )
-    client = DeepOriginClient()
     with (
         patch.object(
             client.entities,
@@ -259,7 +257,7 @@ def test_abfe_default_name_ligand_smiles_when_no_name_lv0():
         )
 
 
-def test_abfe_default_name_unknown_ids_lv0():
+def test_abfe_default_name_unknown_ids_lv0(client: DeepOriginClient):
     """Missing IDs use unknown labels and do not call the entities API."""
     get_protein = MagicMock()
     get_ligand = MagicMock()
@@ -270,7 +268,6 @@ def test_abfe_default_name_unknown_ids_lv0():
         protein_id=None,
         ligand1_id=None,
     )
-    client = DeepOriginClient()
     with (
         patch.object(client.entities, "get_protein", get_protein),
         patch.object(client.entities, "get_ligand", get_ligand),
@@ -283,7 +280,7 @@ def test_abfe_default_name_unknown_ids_lv0():
     get_ligand.assert_not_called()
 
 
-def test_abfe_default_name_api_error_falls_back_to_id_lv0():
+def test_abfe_default_name_api_error_falls_back_to_id_lv0(client: DeepOriginClient):
     """When get_protein fails, fall back to the protein entity ID string."""
     get_protein = MagicMock(side_effect=OSError("unavailable"))
     get_ligand = MagicMock(return_value={"name": "Named"})
@@ -294,7 +291,6 @@ def test_abfe_default_name_api_error_falls_back_to_id_lv0():
         protein_id="prot-123",
         ligand1_id="lig-456",
     )
-    client = DeepOriginClient()
     with (
         patch.object(client.entities, "get_protein", get_protein),
         patch.object(client.entities, "get_ligand", get_ligand),
@@ -323,7 +319,7 @@ def test_entity_label_helpers_lv0():
     )
 
 
-def test_abfe_sets_default_name_on_construction_lv0():
+def test_abfe_sets_default_name_on_construction_lv0(client: DeepOriginClient):
     """ABFE should set a generated name when name is not provided."""
     prepared_system = PreparedSystem(
         binding_xml_path="path/binding.xml",
@@ -332,7 +328,6 @@ def test_abfe_sets_default_name_on_construction_lv0():
         protein_id="prot-1",
         ligand1_id="lig-1",
     )
-    client = DeepOriginClient()
     with (
         patch.object(
             client.entities,

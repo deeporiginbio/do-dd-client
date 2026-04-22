@@ -11,9 +11,8 @@ _BRD_PDB_LOCAL = BRD_DATA_DIR / "brd.pdb"
 _BRD_PDB_REMOTE = "testing/brd.pdb"
 
 
-def test_search_entity_lv1():
+def test_search_entity_lv1(client: DeepOriginClient):
     """Test searching an entity."""
-    client = DeepOriginClient()
     response = client.entities.search("ligands")
 
     assert isinstance(response, dict), "Expected a dictionary response"
@@ -21,16 +20,14 @@ def test_search_entity_lv1():
     assert isinstance(response["data"], list), "Expected 'data' to be a list"
 
 
-def test_search_entity_invalid_entity():
+def test_search_entity_invalid_entity(client: DeepOriginClient):
     """Test searching with an invalid entity raises ValueError."""
-    client = DeepOriginClient()
     with pytest.raises(ValueError, match="Invalid entity 'invalid_table'"):
         client.entities.search("invalid_table")
 
 
-def test_search_ligands_lv1():
+def test_search_ligands_lv1(client: DeepOriginClient):
     """Test searching ligands using convenience method."""
-    client = DeepOriginClient()
     response = client.entities.search_ligands(limit=10)
 
     assert isinstance(response, dict), "Expected a dictionary response"
@@ -38,9 +35,8 @@ def test_search_ligands_lv1():
     assert isinstance(response["data"], list), "Expected 'data' to be a list"
 
 
-def test_search_ligands_molecular_weight_lv1():
+def test_search_ligands_molecular_weight_lv1(client: DeepOriginClient):
     """Test searching ligands with molecular weight filters."""
-    client = DeepOriginClient()
     response = client.entities.search_ligands(
         min_molecular_weight=250,
         max_molecular_weight=550,
@@ -51,9 +47,8 @@ def test_search_ligands_molecular_weight_lv1():
     assert isinstance(response["data"], list), "Expected 'data' to be a list"
 
 
-def test_search_ligands_limit_caps_total_results():
+def test_search_ligands_limit_caps_total_results(client: DeepOriginClient):
     """Test that limit caps the total number of results returned."""
-    client = DeepOriginClient()
 
     all_results = client.entities.search_ligands()
     total = len(all_results["data"])
@@ -67,9 +62,8 @@ def test_search_ligands_limit_caps_total_results():
         )
 
 
-def test_search_ligands_smiles_list_lv1():
+def test_search_ligands_smiles_list_lv1(client: DeepOriginClient):
     """Test searching ligands by a list of SMILES strings."""
-    client = DeepOriginClient()
 
     existing = client.entities.search_ligands(limit=3)
     assert len(existing["data"]) >= 2, "Need at least 2 existing ligands for this test"
@@ -88,9 +82,8 @@ def test_search_ligands_smiles_list_lv1():
         assert s in returned_smiles, f"Expected {s} in results"
 
 
-def test_search_ligands_smiles_list_mutually_exclusive():
+def test_search_ligands_smiles_list_mutually_exclusive(client: DeepOriginClient):
     """Test that smiles_list cannot be used with smiles or canonical_smiles."""
-    client = DeepOriginClient()
 
     with pytest.raises(ValueError, match="mutually exclusive"):
         client.entities.search_ligands(smiles_list=["C"], smiles="C")
@@ -99,17 +92,15 @@ def test_search_ligands_smiles_list_mutually_exclusive():
         client.entities.search_ligands(smiles_list=["C"], canonical_smiles="C")
 
 
-def test_search_ligands_empty_smiles_list():
+def test_search_ligands_empty_smiles_list(client: DeepOriginClient):
     """Test that an empty smiles_list returns an empty result immediately."""
-    client = DeepOriginClient()
     response = client.entities.search_ligands(smiles_list=[])
 
     assert response == {"data": [], "count": 0}
 
 
-def test_search_proteins_lv1():
+def test_search_proteins_lv1(client: DeepOriginClient):
     """Test searching proteins using convenience method."""
-    client = DeepOriginClient()
     response = client.entities.search_proteins()
 
     assert isinstance(response, dict), "Expected a dictionary response"
@@ -117,9 +108,8 @@ def test_search_proteins_lv1():
     assert isinstance(response["data"], list), "Expected 'data' to be a list"
 
 
-def test_search_proteins_molecular_weight_lv1():
+def test_search_proteins_molecular_weight_lv1(client: DeepOriginClient):
     """Test searching proteins with molecular weight filters."""
-    client = DeepOriginClient()
     response = client.entities.search_proteins(
         min_molecular_weight=250,
         max_molecular_weight=550,
@@ -130,9 +120,8 @@ def test_search_proteins_molecular_weight_lv1():
     assert isinstance(response["data"], list), "Expected 'data' to be a list"
 
 
-def test_search_proteins_sequence_lv1():
+def test_search_proteins_sequence_lv1(client: DeepOriginClient):
     """Test searching proteins with sequence filter."""
-    client = DeepOriginClient()
     response = client.entities.search_proteins(
         sequence="MKTAYIAKQRQISFVKSHFSRQLEERLGLIEVQAPILSRVGDGTQDNLSGAEKAVQVKVKALPDAQFEVVHSLAKWKRQTLGQHDFSAGEGLYTHMKALRPDEDRLSPLHSVYVDQWDWERVMGDGERQFSTLKSTVEAIWAGIKATEAAVSEEFGLAPFLPDQIHFVHSQELLSRYPDLDAKGRERAIAKDLGAVFLVGIGGKLSDGHRHDVRAPDYDDWSTPSELGHAGLNGDILVWNPVLEDAFELSSMGIRVDADTLKHQLALTGDEDRLELEWHQALLRGEMPQTIGGGIGQSRLTMLLLQLPHIGQVQAGVWPAAVRESVPSLL"
     )
@@ -142,9 +131,8 @@ def test_search_proteins_sequence_lv1():
     assert isinstance(response["data"], list), "Expected 'data' to be a list"
 
 
-def test_list_models_lv1():
+def test_list_models_lv1(client: DeepOriginClient):
     """Test listing models."""
-    client = DeepOriginClient()
     response = client.entities.list_models()
 
     assert isinstance(response, dict), "Expected a dictionary response"
@@ -157,9 +145,8 @@ def test_list_models_lv1():
     assert model["visibility"] == "public", "Expected visibility to be 'public'"
 
 
-def test_create_ligand_lv1():
+def test_create_ligand_lv1(client: DeepOriginClient):
     """Test creating a ligand; 409 (already exists) is also a pass."""
-    client = DeepOriginClient()
     smiles = "Fc1c(-c2cccc3ccccc23)ncc2c(N3C[C@H]4CC[C@@H](C3)N4)nc(OCC34CCCN3CCC4)nc12"
     try:
         response = client.entities.create_ligand(
@@ -184,9 +171,8 @@ def test_create_ligand_lv1():
     assert "canonical_smiles" in data, "Expected 'canonical_smiles' key in data"
 
 
-def test_create_protein_lv1():
+def test_create_protein_lv1(client: DeepOriginClient):
     """Test creating a protein; 409 (already exists) is also a pass."""
-    client = DeepOriginClient()
     client.files.upload(_BRD_PDB_LOCAL, _BRD_PDB_REMOTE)
 
     try:
@@ -203,9 +189,8 @@ def test_create_protein_lv1():
     assert "file_path" in data, "Expected 'file_path' key in data"
 
 
-def test_get_ligand_lv1():
+def test_get_ligand_lv1(client: DeepOriginClient):
     """Test getting a ligand by ID."""
-    client = DeepOriginClient()
     smiles = "Fc1c(-c2cccc3ccccc23)ncc2c(N3C[C@H]4CC[C@@H](C3)N4)nc(OCC34CCCN3CCC4)nc12"
     lig = Ligand.from_smiles(smiles, name="GetLigandTest")
     lig.sync(client=client)
@@ -218,9 +203,8 @@ def test_get_ligand_lv1():
     assert "smiles" in response, "Expected 'smiles' key in response"
 
 
-def test_get_ligands_lv1():
+def test_get_ligands_lv1(client: DeepOriginClient):
     """Test getting multiple ligands by IDs."""
-    client = DeepOriginClient()
     existing = client.entities.search_ligands()
     assert len(existing["data"]) >= 2, "Expected at least 2 existing ligands"
     ids = [record["id"] for record in existing["data"][:2]]
@@ -233,16 +217,14 @@ def test_get_ligands_lv1():
     assert returned_ids == set(ids), "Expected both IDs in response"
 
 
-def test_get_ligands_empty_ids():
+def test_get_ligands_empty_ids(client: DeepOriginClient):
     """Test that get_ligands returns immediately for empty input."""
-    client = DeepOriginClient()
     data = client.entities.get_ligands(ids=[])
     assert data == []
 
 
-def test_get_protein_lv1():
+def test_get_protein_lv1(client: DeepOriginClient):
     """Test getting a protein by ID."""
-    client = DeepOriginClient()
     client.files.upload(_BRD_PDB_LOCAL, _BRD_PDB_REMOTE)
 
     results = client.entities.search_proteins(file_path=_BRD_PDB_REMOTE)

@@ -1,16 +1,12 @@
 """Tests for the data platform Projects API wrapper."""
 
-import uuid
-
 from deeporigin.platform import DeepOriginClient
 
 
-def test_projects_search_name_icontains() -> None:
+def test_projects_search_name_icontains(client: DeepOriginClient) -> None:
     """``search(name=...)`` sends icontains and filters by project name."""
-    client = DeepOriginClient.from_local()
-    suffix = uuid.uuid4().hex[:8]
-    unique_a = f"Alpha Project {suffix}"
-    unique_b = f"Beta Workspace {suffix}"
+    unique_a = "CLI test test_projects_search_name_icontains Alpha Project"
+    unique_b = "CLI test test_projects_search_name_icontains Beta Workspace"
 
     client.projects.create(name=unique_a)
     client.projects.create(name=unique_b)
@@ -26,12 +22,12 @@ def test_projects_search_name_icontains() -> None:
     assert unique_a not in names_b
 
 
-def test_projects_search_name_overrides_filter_dict_name() -> None:
+def test_projects_search_name_overrides_filter_dict_name(
+    client: DeepOriginClient,
+) -> None:
     """Explicit ``name`` wins over ``filter_dict['name']``."""
-    client = DeepOriginClient.from_local()
-    suffix = uuid.uuid4().hex[:8]
-    unique_a = f"Gamma Proj {suffix}"
-    unique_b = f"Delta Proj {suffix}"
+    unique_a = "CLI test test_projects_search_name_overrides_filter Gamma Proj"
+    unique_b = "CLI test test_projects_search_name_overrides_filter Delta Proj"
     client.projects.create(name=unique_a)
     client.projects.create(name=unique_b)
 
@@ -45,19 +41,16 @@ def test_projects_search_name_overrides_filter_dict_name() -> None:
     assert unique_b not in names
 
 
-def test_projects_user_create_upserts_by_exact_name() -> None:
+def test_projects_user_create_upserts_by_exact_name(client: DeepOriginClient) -> None:
     """``deeporigin.projects.create`` reuses an existing project with the same name."""
     from deeporigin.projects import create
 
-    DeepOriginClient.from_local()
-    suffix = uuid.uuid4().hex[:8]
-    name = f"Upsert User Create {suffix}"
+    name = "CLI test test_projects_user_create_upserts_by_exact_name"
     first_id = create(name=name, load=False)
     second_id = create(name=name, load=False)
     assert isinstance(first_id, str)
     assert first_id == second_id
 
-    client = DeepOriginClient()
     r = client.projects.search(filter_dict={"name": {"eq": name}}, limit=10)
     rows = r.get("data") or []
     assert len(rows) == 1

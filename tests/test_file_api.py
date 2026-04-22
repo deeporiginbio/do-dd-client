@@ -9,9 +9,8 @@ import pytest
 from deeporigin.platform.client import DeepOriginClient
 
 
-def test_get_all_files_lv1():
+def test_get_all_files_lv1(client: DeepOriginClient):
     """check that there are some files in entities/"""
-    client = DeepOriginClient()
     files = client.files.list(
         remote_path="entities/",
         recursive=True,
@@ -21,9 +20,8 @@ def test_get_all_files_lv1():
     print(f"Found {len(files)} files")
 
 
-def test_list_files_returns_metadata_lv1():
+def test_list_files_returns_metadata_lv1(client: DeepOriginClient):
     """check that list(metadata=True) returns dicts with metadata."""
-    client = DeepOriginClient()
     files = client.files.list(
         remote_path="entities/",
         recursive=True,
@@ -36,9 +34,8 @@ def test_list_files_returns_metadata_lv1():
     assert "Key" in first, "should contain Key"
 
 
-def test_download_file_lv1():
+def test_download_file_lv1(client: DeepOriginClient):
     """test the file download API"""
-    client = DeepOriginClient()
     files = client.files.list(
         remote_path="entities/",
         recursive=True,
@@ -52,9 +49,8 @@ def test_download_file_lv1():
     assert os.path.exists(local_path), "should have downloaded the file"
 
 
-def test_download_file_with_download_to_dir_lv1():
+def test_download_file_with_download_to_dir_lv1(client: DeepOriginClient):
     """test the file download API with download_to_dir parameter"""
-    client = DeepOriginClient()
     files = client.files.list(
         remote_path="entities/",
         recursive=True,
@@ -79,9 +75,8 @@ def test_download_file_with_download_to_dir_lv1():
         )
 
 
-def test_download_file_local_path_takes_precedence_lv1():
+def test_download_file_local_path_takes_precedence_lv1(client: DeepOriginClient):
     """test that local_path takes precedence over download_to_dir"""
-    client = DeepOriginClient()
     files = client.files.list(
         remote_path="entities/",
         recursive=True,
@@ -108,9 +103,8 @@ def test_download_file_local_path_takes_precedence_lv1():
         assert not local_path.startswith(tmpdir2), "file should not be in tmpdir2"
 
 
-def test_download_files_with_list_lv1():
+def test_download_files_with_list_lv1(client: DeepOriginClient):
     """test the download_many API with a list input."""
-    client = DeepOriginClient()
     files = client.files.list(
         remote_path="entities/",
         recursive=True,
@@ -126,9 +120,8 @@ def test_download_files_with_list_lv1():
     assert os.path.exists(local_paths[0]), "should have downloaded the file"
 
 
-def test_download_files_with_dict_lv1():
+def test_download_files_with_dict_lv1(client: DeepOriginClient):
     """test the download_many API with a dict input."""
-    client = DeepOriginClient()
     files = client.files.list(
         remote_path="entities/",
         recursive=True,
@@ -144,9 +137,8 @@ def test_download_files_with_dict_lv1():
     assert os.path.exists(local_paths[0]), "should have downloaded the file"
 
 
-def test_get_signed_url_upload_lv1():
+def test_get_signed_url_upload_lv1(client: DeepOriginClient):
     """test that we can get a signed upload URL for a file path."""
-    client = DeepOriginClient()
     url = client.files.signed_url(
         "/testing-signed-url/test-upload.txt",
         upload=True,
@@ -155,9 +147,8 @@ def test_get_signed_url_upload_lv1():
     assert url.startswith("http"), "should be a valid URL"
 
 
-def test_get_signed_url_download_lv1():
+def test_get_signed_url_download_lv1(client: DeepOriginClient):
     """test that we can get a signed download URL for an existing file."""
-    client = DeepOriginClient()
     files = client.files.list(
         remote_path="entities/",
         recursive=True,
@@ -169,9 +160,8 @@ def test_get_signed_url_download_lv1():
     assert url.startswith("http"), "should be a valid URL"
 
 
-def test_upload_files_via_signed_url_list_lv1():
+def test_upload_files_via_signed_url_list_lv1(client: DeepOriginClient):
     """test uploading a list of files using signed URLs."""
-    client = DeepOriginClient()
 
     with tempfile.TemporaryDirectory() as tmpdir:
         file_a = os.path.join(tmpdir, "a.txt")
@@ -199,9 +189,8 @@ def test_upload_files_via_signed_url_list_lv1():
     )
 
 
-def test_upload_files_via_signed_url_directory_lv1():
+def test_upload_files_via_signed_url_directory_lv1(client: DeepOriginClient):
     """test uploading a local directory using signed URLs, preserving structure."""
-    client = DeepOriginClient()
 
     with tempfile.TemporaryDirectory() as tmpdir:
         # Create a nested directory structure
@@ -236,9 +225,8 @@ def test_upload_files_via_signed_url_directory_lv1():
     )
 
 
-def test_delete_file_lv1():
+def test_delete_file_lv1(client: DeepOriginClient):
     """test the delete_file API."""
-    client = DeepOriginClient()
     # First upload a file to delete
     test_file_path = "test_delete_file.txt"
     local_test_file = os.path.join(tempfile.gettempdir(), "test_upload_delete.txt")
@@ -263,16 +251,14 @@ def test_delete_file_lv1():
         os.remove(local_test_file)
 
 
-def test_delete_files_empty_list_lv1():
+def test_delete_files_empty_list_lv1(client: DeepOriginClient):
     """test the delete_many API with empty list."""
-    client = DeepOriginClient()
     # Should succeed without doing anything
     client.files.delete_many(remote_paths=[])
 
 
-def test_get_file_lv1():
+def test_get_file_lv1(client: DeepOriginClient):
     """test direct file download via GET endpoint."""
-    client = DeepOriginClient()
     files = client.files.list(
         remote_path="entities/",
         recursive=True,
@@ -290,9 +276,8 @@ def test_get_file_lv1():
         assert os.path.getsize(local_path) > 0, "downloaded file should not be empty"
 
 
-def test_head_file_lv1():
+def test_head_file_lv1(client: DeepOriginClient):
     """test HEAD request returns metadata headers."""
-    client = DeepOriginClient()
     files = client.files.list(
         remote_path="entities/",
         recursive=True,
@@ -305,9 +290,8 @@ def test_head_file_lv1():
     assert "content-type" in headers, "should contain content-type header"
 
 
-def test_upload_file_from_url_lv1():
+def test_upload_file_from_url_lv1(client: DeepOriginClient):
     """test uploading a file by having the server fetch a URL."""
-    client = DeepOriginClient()
 
     remote_path = "testing-upload-from-url/robots.txt"
     result = client.files.upload_from_url(
@@ -321,9 +305,8 @@ def test_upload_file_from_url_lv1():
     client.files.delete(remote_path=remote_path, timeout=60.0)
 
 
-def test_download_as_zip_lv1():
+def test_download_as_zip_lv1(client: DeepOriginClient):
     """test downloading a remote directory as a ZIP archive."""
-    client = DeepOriginClient()
 
     with tempfile.TemporaryDirectory() as tmpdir:
         local_path = client.files.download_zip(
@@ -336,9 +319,8 @@ def test_download_as_zip_lv1():
         assert os.path.getsize(local_path) > 0, "ZIP should not be empty"
 
 
-def test_upload_directory_bulk_lv1():
+def test_upload_directory_bulk_lv1(client: DeepOriginClient):
     """Upload ~100MB directory (100 x 1MB files), verify listing, then clean up."""
-    client = DeepOriginClient()
 
     if client.env == "local":
         pytest.skip("Requires a real file service (use --env dev/staging/prod)")
@@ -385,9 +367,8 @@ def test_upload_directory_bulk_lv1():
     client.files.delete(remote_dir, timeout=60.0)
 
 
-def test_upload_files_multipart_lv1():
+def test_upload_files_multipart_lv1(client: DeepOriginClient):
     """Test parallel multipart upload via upload_many."""
-    client = DeepOriginClient()
 
     if client.env == "local":
         pytest.skip("Requires a real file service (use --env dev/staging/prod)")
@@ -426,9 +407,8 @@ def test_upload_files_multipart_lv1():
     client.files.delete(f"{remote_dir}/", timeout=30.0)
 
 
-def test_round_trip_content_integrity_lv1():
+def test_round_trip_content_integrity_lv1(client: DeepOriginClient):
     """Upload files via signed URL, download them, and verify bytes match."""
-    client = DeepOriginClient()
 
     if client.env == "local":
         pytest.skip("Requires a real file service (use --env dev/staging/prod)")
@@ -472,9 +452,8 @@ def test_round_trip_content_integrity_lv1():
     client.files.delete_many(remote_paths=remote_files, timeout=120.0)
 
 
-def test_list_files_metadata_size_lv1():
+def test_list_files_metadata_size_lv1(client: DeepOriginClient):
     """Upload known-size files, then verify Size in list(metadata=True)."""
-    client = DeepOriginClient()
 
     if client.env == "local":
         pytest.skip("Requires a real file service (use --env dev/staging/prod)")
@@ -520,15 +499,13 @@ def test_list_files_metadata_size_lv1():
     client.files.delete_many(remote_paths=remote_files, timeout=120.0)
 
 
-def test_health_lv1():
+def test_health_lv1(client: DeepOriginClient):
     """test the files service health check."""
-    client = DeepOriginClient()
     result = client.files.health()
     assert isinstance(result, dict), "should return a dict"
 
 
-def test_version_lv1():
+def test_version_lv1(client: DeepOriginClient):
     """test the files service version endpoint."""
-    client = DeepOriginClient()
     result = client.files.version()
     assert isinstance(result, dict), "should return a dict"

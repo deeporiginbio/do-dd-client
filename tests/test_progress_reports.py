@@ -13,9 +13,8 @@ def _docking_test_execution_id() -> str:
         return str(json.load(f)["executionId"])
 
 
-def test_get_progress_reports():
+def test_get_progress_reports(client: DeepOriginClient):
     """Test fetching progress reports for a known execution ID (docking fixture)."""
-    client = DeepOriginClient()
     execution_id = _docking_test_execution_id()
 
     response = client.progress_reports.get(execution_id)
@@ -29,9 +28,8 @@ def test_get_progress_reports():
     assert record["executionId"] == execution_id
 
 
-def test_get_progress_reports_not_found():
+def test_get_progress_reports_not_found(client: DeepOriginClient):
     """Test fetching progress reports for a non-existent execution ID returns empty."""
-    client = DeepOriginClient()
 
     response = client.progress_reports.get(
         execution_id="non-existent-execution-id",

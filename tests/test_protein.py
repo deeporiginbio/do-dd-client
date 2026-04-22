@@ -7,9 +7,10 @@ import pytest
 
 from deeporigin.drug_discovery import BRD_DATA_DIR, Protein
 from deeporigin.exceptions import DeepOriginException
+from deeporigin.platform.client import DeepOriginClient
 
 
-def test_load_protein_from_cif_structure_factor():
+def test_load_protein_from_cif_structure_factor(client: DeepOriginClient):
     """Test that loading a structure factor CIF file (without atom_site) raises a helpful error."""
     cif_path = Path(__file__).parent / "fixtures" / "1NSG-sf.cif"
 
@@ -18,7 +19,7 @@ def test_load_protein_from_cif_structure_factor():
         _ = Protein.from_file(cif_path)
 
 
-def test_to_pdb_requires_rehydration_when_remote_path_only():
+def test_to_pdb_requires_rehydration_when_remote_path_only(client: DeepOriginClient):
     """to_pdb/to_file must not perform I/O; fail if remote_path set but no local file."""
     protein = Protein(
         name="test",
@@ -33,7 +34,7 @@ def test_to_pdb_requires_rehydration_when_remote_path_only():
         protein.to_file()
 
 
-def test_from_file_lv0():
+def test_from_file_lv0(client: DeepOriginClient):
     protein = Protein.from_file(BRD_DATA_DIR / "brd.pdb")
 
     assert (
@@ -42,7 +43,7 @@ def test_from_file_lv0():
     )
 
 
-def test_from_file_invalid_pdb_lv0():
+def test_from_file_invalid_pdb_lv0(client: DeepOriginClient):
     pdb_path = Path(__file__).parent / "fixtures" / "1eby-illegal-element-name.pdb"
     with pytest.raises(
         DeepOriginException,
@@ -51,7 +52,7 @@ def test_from_file_invalid_pdb_lv0():
         _ = Protein.from_file(pdb_path)
 
 
-def test_from_name_lv0(pytestconfig):
+def test_from_name_lv0(pytestconfig, client: DeepOriginClient):
     """Test creating a protein from a name.
 
     Note: This test is skipped when using --mock flag as it requires
@@ -75,7 +76,7 @@ def test_from_name_lv0(pytestconfig):
     assert 10 <= len(sequence_str) <= 100
 
 
-def test_from_pdb_id_lv0():
+def test_from_pdb_id_lv0(client: DeepOriginClient):
     conotoxin = Protein.from_pdb_id("2JUQ")
 
     os.remove(conotoxin.local_path)
@@ -83,12 +84,12 @@ def test_from_pdb_id_lv0():
     _ = Protein.from_pdb_id("2JUQ")
 
 
-def test_from_pdb_id_with_invalid_id_lv0():
+def test_from_pdb_id_with_invalid_id_lv0(client: DeepOriginClient):
     with pytest.raises(DeepOriginException, match=r".*Failed to create Protein.*"):
         Protein.from_pdb_id("foobar")
 
 
-def test_find_missing_residues():
+def test_find_missing_residues(client: DeepOriginClient):
     protein = Protein.from_pdb_id("5QSP")
     missing = protein.find_missing_residues()
     # The expected output is based on the documentation example
@@ -99,12 +100,12 @@ def test_find_missing_residues():
     assert missing == expected
 
 
-def test_pdb_id():
+def test_pdb_id(client: DeepOriginClient):
     protein = Protein.from_pdb_id("1EBY")
     assert protein.pdb_id == "1EBY"
 
 
-def test_extract_ligand():
+def test_extract_ligand(client: DeepOriginClient):
     protein = Protein.from_pdb_id("1EBY")
     ligand = protein.extract_ligand()
 
@@ -114,7 +115,7 @@ def test_extract_ligand():
     )
 
 
-def test_extract_ligand_mutates_protein():
+def test_extract_ligand_mutates_protein(client: DeepOriginClient):
     """Test that extract_ligand both extracts the ligand and removes it from the protein."""
     protein = Protein.from_pdb_id("1EBY")
 
@@ -143,7 +144,7 @@ def test_extract_ligand_mutates_protein():
         assert len(protein.structure) < initial_structure_length
 
 
-def test_extract_ligand_updates_master_record():
+def test_extract_ligand_updates_master_record(client: DeepOriginClient):
     """Test that extract_ligand properly updates the MASTER record in the PDB content."""
     protein = Protein.from_pdb_id("1EBY")
 
@@ -193,7 +194,7 @@ def test_extract_ligand_updates_master_record():
     assert ligand.smiles == expected_smiles
 
 
-def test_protein_base64():
+def test_protein_base64(client: DeepOriginClient):
     """Test that we can convert a Protein to base64 and back"""
     # Create a protein using from_pdb_id
     protein = Protein.from_pdb_id("1EBY")
@@ -216,7 +217,7 @@ def test_protein_base64():
     )
 
 
-def test_protein_hash():
+def test_protein_hash(client: DeepOriginClient):
     """Test that we can convert a Protein to SHA256 hash"""
     # Create a protein using from_pdb_id
     protein = Protein.from_file(BRD_DATA_DIR / "brd.pdb")
@@ -227,7 +228,7 @@ def test_protein_hash():
     ), "Protein hash did not match"
 
 
-def test_extract_ligand_remove_water():
+def test_extract_ligand_remove_water(client: DeepOriginClient):
     """check that we can remove waters after we extract the ligand"""
 
     protein = Protein.from_pdb_id("1EBY")
@@ -236,7 +237,7 @@ def test_extract_ligand_remove_water():
     protein.remove_water()
 
 
-def test_extract_ligand_filters_water():
+def test_extract_ligand_filters_water(client: DeepOriginClient):
     """Test that extract_ligand filters out water molecules (HOH, WAT, H2O)."""
     protein = Protein.from_pdb_id("1EBY")
 
@@ -272,7 +273,7 @@ def test_extract_ligand_filters_water():
     assert water_count_after == water_count_before
 
 
-def test_extract_ligand_with_custom_exclude_resnames():
+def test_extract_ligand_with_custom_exclude_resnames(client: DeepOriginClient):
     """Test that extract_ligand respects custom exclude_resnames parameter."""
     protein = Protein.from_pdb_id("1EBY")
 
@@ -283,7 +284,7 @@ def test_extract_ligand_with_custom_exclude_resnames():
     assert len(ligand.mol.GetAtoms()) > 0
 
 
-def test_extract_ligand_from_cif_with_many_hetatms():
+def test_extract_ligand_from_cif_with_many_hetatms(client: DeepOriginClient):
     """Test that extract_ligand works correctly with CIF files containing many HETATMs including water."""
     cif_path = Path(__file__).parent / "fixtures" / "1nsg-assembly1.cif"
     protein = Protein.from_file(cif_path)
@@ -338,7 +339,7 @@ def test_extract_ligand_from_cif_with_many_hetatms():
             os.remove(temp_pdb_path)
 
 
-def test_extract_ligand_mutates_protein_cif():
+def test_extract_ligand_mutates_protein_cif(client: DeepOriginClient):
     """Test that extract_ligand both extracts the ligand and removes it from a CIF protein."""
     cif_path = Path(__file__).parent / "fixtures" / "1EBY.cif"
     protein = Protein.from_file(cif_path)
@@ -370,7 +371,7 @@ def test_extract_ligand_mutates_protein_cif():
     assert len(protein.structure) < initial_structure_length
 
 
-def test_from_file_cif():
+def test_from_file_cif(client: DeepOriginClient):
     """Test creating a protein from a CIF file."""
     cif_path = Path(__file__).parent / "fixtures" / "1EBY.cif"
     protein = Protein.from_file(cif_path)
@@ -385,7 +386,7 @@ def test_from_file_cif():
     )
 
 
-def test_from_file_invalid_extension():
+def test_from_file_invalid_extension(client: DeepOriginClient):
     """Test that from_file raises ValueError for unsupported file types."""
     # Create a temporary file with an unsupported extension
     import tempfile
@@ -401,7 +402,7 @@ def test_from_file_invalid_extension():
         os.unlink(tmp_path)
 
 
-def test_load_structure_from_block_cif():
+def test_load_structure_from_block_cif(client: DeepOriginClient):
     """Test loading structure from CIF block content."""
     cif_path = Path(__file__).parent / "fixtures" / "1EBY.cif"
     cif_content = cif_path.read_text()
@@ -412,13 +413,13 @@ def test_load_structure_from_block_cif():
     assert hasattr(structure, "coord")
 
 
-def test_load_structure_from_block_invalid_type():
+def test_load_structure_from_block_invalid_type(client: DeepOriginClient):
     """Test that load_structure_from_block raises ValueError for unsupported types."""
     with pytest.raises(ValueError, match=r".*Unsupported block type.*"):
         Protein.load_structure_from_block("test content", "xyz")
 
 
-def test_protein_sync_lv1():
+def test_protein_sync_lv1(client: DeepOriginClient):
     """Test that we can sync a protein"""
     protein = Protein.from_file(BRD_DATA_DIR / "brd.pdb")
     protein.remove_water()
@@ -426,7 +427,9 @@ def test_protein_sync_lv1():
     assert protein.id is not None
 
 
-def test_protein_download_raises_when_structure_loaded_without_paths() -> None:
+def test_protein_download_raises_when_structure_loaded_without_paths(
+    client: DeepOriginClient,
+) -> None:
     """download() must not return an empty string when no local path exists."""
     protein = Protein.from_file(BRD_DATA_DIR / "brd.pdb")
     protein.local_path = None
@@ -435,15 +438,12 @@ def test_protein_download_raises_when_structure_loaded_without_paths() -> None:
         protein.download()
 
 
-def test_from_remote_file_sets_remote_path_lv0() -> None:
+def test_from_remote_file_sets_remote_path_lv0(client: DeepOriginClient) -> None:
     """from_remote_file downloads via the client and sets remote_path."""
     from unittest.mock import patch
 
-    from deeporigin.platform.client import DeepOriginClient
-
     remote = "org/files/protein.pdb"
     local_pdb = str(BRD_DATA_DIR / "brd.pdb")
-    client = DeepOriginClient()
     with patch.object(client.files, "download", return_value=local_pdb) as dl:
         protein = Protein.from_remote_file(remote, client=client)
     dl.assert_called_once_with(remote_path=remote, lazy=True)
