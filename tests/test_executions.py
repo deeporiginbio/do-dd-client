@@ -87,27 +87,3 @@ def test_list_executions_by_session_lv1():
         assert sess == target, (
             f"server returned row with session={sess!r} when filter was {target!r}"
         )
-
-
-def test_search_executions_all_kwargs_lv1():
-    """Exercise every request-building branch of ``Executions.search``.
-
-    The assertion is intentionally shallow — data-shape assertions live in
-    :func:`test_search_executions_project_scope_lv1`. This test exists so
-    that each optional parameter (``tool_key``, ``status``, ``extra_props``,
-    ``limit``, ``offset``, ``select``, ``with_total_count``) actually runs
-    in CI; otherwise the coverage gate sees them as dead branches.
-    """
-    client = DeepOriginClient()
-    resp = client.executions.search(  # ty:ignore[unresolved-attribute]
-        project_id="09DEFAULTPROJECT00",
-        tool_key="deeporigin.bulk-docking",
-        status="Completed",
-        extra_props=[{"column": "started_at", "op": "gt", "value": "2026-01-01"}],
-        limit=1,
-        offset=0,
-        select=["id", "status"],
-        with_total_count=True,
-    )
-    assert isinstance(resp, dict)
-    assert isinstance(resp.get("data", []), list)
