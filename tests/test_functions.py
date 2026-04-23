@@ -9,6 +9,7 @@ from conftest import check_function_exists
 from deeporigin.drug_discovery import (
     Docking,
     Ligand,
+    LigandSet,
     Molprops,
     Pocket,
     PocketFinder,
@@ -273,21 +274,24 @@ def test_protonation_lv2(client: DeepOriginClient):
     ligand = Ligand.from_smiles("C=CCCn1cc(-c2cccc(C(=O)N(C)C)c2)c2cc[nH]c2c1=O")
 
     original_smiles = ligand.smiles
-    result = ligand.protonate(ph=7.4, use_cache=False)
+    job = Protonation(ligand=ligand, ph=7.4, client=client)
+    job.run()
 
-    assert isinstance(result, Protonation), (
-        "Expected ligand.protonate() to return a Protonation instance"
+    assert isinstance(job, Protonation), (
+        "Expected Protonation instance after constructing with ligand="
     )
-    assert isinstance(result.ligands, list), "Expected result.ligands to be a list"
-    assert len(result.ligands) == 1, "Expected result.ligands to contain one ligand"
-    assert result.ligands[0] is ligand, (
-        "Expected result.ligands[0] to be the same ligand"
+    assert isinstance(job.ligands, LigandSet), "Expected job.ligands to be a LigandSet"
+    assert len(job.ligands) == 1, "Expected job.ligands to contain one ligand"
+    assert job.ligands.ligands[0] is ligand, (
+        "Expected primary output ligand to be the same instance as the input ligand"
     )
     assert ligand.smiles == original_smiles, "Expected SMILES to be the same at pH 7.4"
 
-    result = ligand.protonate(ph=11.4, use_cache=False)
+    job_high_ph = Protonation(ligand=ligand, ph=11.4, client=client)
+    job_high_ph.run()
 
-    assert isinstance(result, Protonation)
+    assert isinstance(job_high_ph, Protonation)
+    assert len(job_high_ph.ligands.ligands) == 2
     assert ligand.smiles != original_smiles, (
         "Expected SMILES to be different at pH 11.4"
     )

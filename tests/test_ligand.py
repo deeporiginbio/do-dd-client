@@ -7,6 +7,7 @@ import pytest
 
 from deeporigin.drug_discovery import BRD_DATA_DIR
 from deeporigin.drug_discovery.constants import SUPPORTED_ATOM_SYMBOLS
+from deeporigin.drug_discovery.protonation import Protonation
 from deeporigin.drug_discovery.structures import Ligand
 from deeporigin.exceptions import DeepOriginException
 from deeporigin.platform.client import DeepOriginClient
@@ -736,20 +737,20 @@ def test_ligand_protonated_at_ph():
     assert ligand.protonated_at_ph is None
 
 
-def test_ligand_protonate_sets_protonated_at_ph():
-    """Test that the protonate method sets the protonated_at_ph attribute"""
+def test_ligand_protonate_sets_protonated_at_ph(client: DeepOriginClient):
+    """Test that :class:`Protonation` sets ``protonated_at_ph`` on returned ligands."""
     ligand = Ligand.from_smiles("C=CCCn1cc(-c2cccc(C(=O)N(C)C)c2)c2cc[nH]c2c1=O")
 
     assert ligand.protonated_at_ph is None
 
-    result = ligand.protonate(ph=7.4, use_cache=False)
+    result = Protonation(ligand=ligand, ph=7.4, client=client).run()
     assert ligand.protonated_at_ph == 7.4
     assert isinstance(ligand.protonated_at_ph, float)
     assert len(result.ligands) == 1
 
-    result = ligand.protonate(ph=11.4, use_cache=False)
+    result = Protonation(ligand=ligand, ph=11.4, client=client).run()
     assert ligand.protonated_at_ph == 11.4
-    assert len(result.ligands) == 1
+    assert len(result.ligands) == 2
 
 
 # Test utility functions

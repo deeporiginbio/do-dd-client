@@ -5,6 +5,7 @@ import tempfile
 import pytest
 
 from deeporigin.drug_discovery import BRD_DATA_DIR, DATA_DIR
+from deeporigin.drug_discovery.protonation import Protonation
 from deeporigin.drug_discovery.structures.ligand import Ligand, LigandSet
 from deeporigin.drug_discovery.sync_function_responses import SyncFunctionResponses
 from deeporigin.exceptions import DeepOriginException
@@ -853,7 +854,7 @@ def test_render_view_shows_prepare_hint_when_partial():
     assert "<code>.prepare()</code> to prepare ligands for docking" in html
 
 
-def test_render_view_shows_not_protonated_badge():
+def test_render_view_shows_not_protonated_badge(client: DeepOriginClient):
     """Test that _render_view shows 'NOT PROTONATED' badge when any ligand is not protonated"""
     from deeporigin.drug_discovery.structures.ligand import LigandSet
 
@@ -870,7 +871,8 @@ def test_render_view_shows_not_protonated_badge():
     )
 
     # Protonate all ligands
-    ligand_set.protonate(ph=7.4, use_cache=False)
+    for lig in ligand_set.ligands:
+        Protonation(ligand=lig, ph=7.4, client=client).run()
     html = ligand_set._render_view()
 
     # Should not show NOT PROTONATED badge since all are protonated
@@ -886,7 +888,9 @@ def test_render_view_shows_not_protonated_badge():
     )
 
 
-def test_render_view_shows_not_protonated_badge_when_partial():
+def test_render_view_shows_not_protonated_badge_when_partial(
+    client: DeepOriginClient,
+):
     """Test that _render_view shows 'NOT PROTONATED' badge when only some ligands are protonated"""
     from deeporigin.drug_discovery.structures.ligand import LigandSet
 
@@ -896,7 +900,7 @@ def test_render_view_shows_not_protonated_badge_when_partial():
     ligand_set = LigandSet(ligands=[ligand1, ligand2])
 
     # Protonate only one ligand
-    ligand1.protonate(ph=7.4, use_cache=False)
+    Protonation(ligand=ligand1, ph=7.4, client=client).run()
     html = ligand_set._render_view()
 
     # Should show NOT PROTONATED badge since not all are protonated
@@ -906,7 +910,7 @@ def test_render_view_shows_not_protonated_badge_when_partial():
     )
 
 
-def test_render_view_shows_protonated_badge_with_ph():
+def test_render_view_shows_protonated_badge_with_ph(client: DeepOriginClient):
     """Test that _render_view shows 'PROTONATED (pH={ph})' badge when all ligands are protonated at the same pH"""
     from deeporigin.drug_discovery.structures.ligand import LigandSet
 
@@ -916,7 +920,8 @@ def test_render_view_shows_protonated_badge_with_ph():
     ligand_set = LigandSet(ligands=[ligand1, ligand2])
 
     # Protonate all ligands at pH 7.4
-    ligand_set.protonate(ph=7.4, use_cache=False)
+    for lig in ligand_set.ligands:
+        Protonation(ligand=lig, ph=7.4, client=client).run()
     html = ligand_set._render_view()
 
     # Should show PROTONATED badge with pH 7.4
@@ -932,7 +937,9 @@ def test_render_view_shows_protonated_badge_with_ph():
     )
 
 
-def test_render_view_shows_protonated_badge_different_ph():
+def test_render_view_shows_protonated_badge_different_ph(
+    client: DeepOriginClient,
+):
     """Test that _render_view shows 'PROTONATED (pH={ph})' badge with different pH values"""
     from deeporigin.drug_discovery.structures.ligand import LigandSet
 
@@ -942,7 +949,8 @@ def test_render_view_shows_protonated_badge_different_ph():
     ligand_set = LigandSet(ligands=[ligand1, ligand2])
 
     # Protonate all ligands at pH 11.4
-    ligand_set.protonate(ph=11.4, use_cache=False)
+    for lig in ligand_set.ligands:
+        Protonation(ligand=lig, ph=11.4, client=client).run()
     html = ligand_set._render_view()
 
     # Should show PROTONATED badge with pH 11.4
@@ -952,7 +960,9 @@ def test_render_view_shows_protonated_badge_different_ph():
     )
 
 
-def test_render_view_no_protonated_badge_when_different_ph():
+def test_render_view_no_protonated_badge_when_different_ph(
+    client: DeepOriginClient,
+):
     """Test that _render_view does not show 'PROTONATED' badge when ligands are protonated at different pH values"""
     from deeporigin.drug_discovery.structures.ligand import LigandSet
 
@@ -962,8 +972,8 @@ def test_render_view_no_protonated_badge_when_different_ph():
     ligand_set = LigandSet(ligands=[ligand1, ligand2])
 
     # Protonate ligands at different pH values
-    ligand1.protonate(ph=7.4, use_cache=False)
-    ligand2.protonate(ph=11.4, use_cache=False)
+    Protonation(ligand=ligand1, ph=7.4, client=client).run()
+    Protonation(ligand=ligand2, ph=11.4, client=client).run()
     html = ligand_set._render_view()
 
     # Should not show PROTONATED badge since pH values differ

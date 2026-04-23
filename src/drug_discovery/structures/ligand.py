@@ -19,10 +19,8 @@ import numpy as np
 import pandas as pd
 from rdkit import Chem, RDLogger
 from rdkit.Chem import AllChem, SaltRemover, rdMolDescriptors
-from tqdm import tqdm
 
 from deeporigin.drug_discovery.constants import LIGANDS_DIR, SUPPORTED_ATOM_SYMBOLS
-from deeporigin.drug_discovery.protonation import Protonation
 from deeporigin.drug_discovery.sync_function_responses import SyncFunctionResponses
 from deeporigin.drug_discovery.utils.visualize import jupyter_visualization
 from deeporigin.drug_discovery.validation import validate_fragments
@@ -795,67 +793,6 @@ class Ligand(Entity):
         """
 
         return [a.GetSymbol() for a in self.mol.GetAtoms()]
-
-    @beartype
-    def protonate(
-        self,
-        *,
-        ph: number = 7.4,
-        filter_percentage: number = 1.0,
-        client: Optional[DeepOriginClient] = None,
-        use_cache: bool = True,
-        quote: bool = False,
-    ) -> Protonation:
-        """Protonate the ligand at a given pH using the DeepOrigin API.
-
-        Returns a :class:`~deeporigin.drug_discovery.protonation.Protonation`
-        whose ``.ligands`` attribute lists the protonated ligand after ``run()``.
-        When ``quote=True``, call :meth:`~deeporigin.drug_discovery.protonation.Protonation.quote`
-        instead of ``run()``; ``.ligands`` is left empty until execution.
-
-        The ligand is mutated in place: ``self.mol``, ``self.smiles``, and
-        ``self.protonated_at_ph`` are updated with the most abundant
-        protonation state.
-
-        Args:
-            ph: pH value at which to protonate the ligand. Defaults to 7.4
-                (physiological pH).
-            filter_percentage: Percentage threshold for filtering protonation
-                states. Only species with abundance above this threshold are
-                considered. Defaults to 1.0.
-            client: DeepOrigin client instance. If None, uses
-                ``DeepOriginClient()``.
-            use_cache: Whether to use cached protonation results.
-            quote: If True, request a cost estimate without executing.
-
-        Returns:
-            Protonation: Execution object; after ``run()``, ``.ligands`` is ``[self]``.
-        """
-        if client is None:
-            client = DeepOriginClient()
-
-        job = Protonation(
-            smiles=self.smiles,
-            ph=ph,
-            filter_percentage=filter_percentage,
-            use_cache=use_cache,
-            client=client,
-        )
-
-        if quote:
-            job.quote()
-            job.ligands = []
-            return job
-
-        job.run()
-        outputs = job.function_outputs[0]
-        protonated_smiles = outputs["protonation_states"]["smiles_list"][0]
-        self.mol = Chem.MolFromSmiles(protonated_smiles)
-        self.smiles = protonated_smiles
-        self.protonated_at_ph = ph
-
-        job.ligands = [self]
-        return job
 
     def to_molblock(self) -> str:
         """
@@ -2446,50 +2383,6 @@ class LigandSet:
         for ligand in self.ligands:
             ligand.embed()
         return self
-
-    @beartype
-    def protonate(
-        self,
-        *,
-        ph: number = 7.4,
-        filter_percentage: number = 1.0,
-        use_cache: bool = True,
-        client: Optional[DeepOriginClient] = None,
-        quote: bool = False,
-    ) -> SyncFunctionResponses:
-        """Protonate all ligands in the set.
-
-        Returns a :class:`~deeporigin.drug_discovery.sync_function_responses.SyncFunctionResponses`
-        whose ``.ligands`` attribute contains the protonated ligands after each
-        per-ligand run. When ``quote=True``, ``.ligands`` is empty and
-        ``.estimate`` aggregates quoted prices.
-
-        Args:
-            ph: pH value at which to protonate. Defaults to 7.4.
-            filter_percentage: Percentage threshold for filtering protonation
-                states. Defaults to 1.0.
-            use_cache: Whether to use cached protonation results.
-            client: DeepOrigin client instance. If None, uses
-                ``DeepOriginClient()``.
-            quote: If True, request a cost estimate without executing.
-
-        Returns:
-            SyncFunctionResponses: Aggregated API responses with ``.ligands`` attached.
-        """
-        all_responses: list[dict] = []
-        for ligand in tqdm(self.ligands, desc="Protonating ligands", unit="ligand"):
-            r = ligand.protonate(
-                ph=ph,
-                filter_percentage=filter_percentage,
-                use_cache=use_cache,
-                client=client,
-                quote=quote,
-            )
-            all_responses.extend(r.responses)
-
-        result = SyncFunctionResponses(all_responses)
-        result.ligands = [] if quote else list(self.ligands)
-        return result
 
     @beartype
     def to_sdf(

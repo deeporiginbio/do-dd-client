@@ -474,7 +474,8 @@ def create_tools_router(
             response = load_fixture(f"function-runs/{function_key}/run")
         elif function_key == "deeporigin.mol-props-protonation":
             inputs = body.get("inputs", body.get("params", {}))
-            smiles = inputs.get("smiles", "")
+            ligand_in = inputs.get("ligand") or {}
+            smiles = ligand_in.get("smiles") or inputs.get("smiles", "")
             ph = inputs.get("pH", 7.4)
             return _get_protonation_response(
                 smiles=smiles, ph=ph, inputs=inputs, body=body
