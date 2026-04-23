@@ -26,10 +26,51 @@ from deeporigin.drug_discovery.execution_mixins import QuoteMixin, SyncExecutabl
 from deeporigin.drug_discovery.structures.ligand import Ligand
 from deeporigin.drug_discovery.structures.prepared_system import PreparedSystem
 from deeporigin.drug_discovery.structures.protein import Protein
-from deeporigin.functions.sysprep import _build_sysprep_payload
+from deeporigin.drug_discovery.sync_function_responses import SyncFunctionResponses
 from deeporigin.platform.client import DeepOriginClient
 from deeporigin.platform.constants import TOOL_KEYS_AND_VERSIONS
 from deeporigin.utils.constants import SYSPREP_NO_OUTPUT_PATHS_MSG
+
+
+def _build_sysprep_payload(
+    *,
+    protein: Protein,
+    ligand1: Ligand,
+    ligand2: Ligand | None,
+    padding: float,
+    retain_waters: bool,
+    add_H_atoms: bool,  # NOSONAR
+    protonate_protein: bool,
+    box_size: list[float] | None,
+    client: DeepOriginClient,
+) -> dict:
+    """Build and upload inputs, returning the payload dict for a sysprep call."""
+    protein.sync(lazy=True, client=client)
+    ligand1.sync(lazy=True, client=client)
+    if ligand2 is not None:
+        ligand2.sync(lazy=True, client=client)
+
+    protein.ensure_remote_path(client=client, label="Protein")
+    ligand1.ensure_remote_path(client=client, label="Ligand")
+    if ligand2 is not None:
+        ligand2.ensure_remote_path(client=client, label="Second ligand")
+
+    payload: dict = {
+        "protein": {"id": protein.id, "file_path": protein.remote_path},
+        "ligand1": {"id": ligand1.id, "file_path": ligand1.remote_path},
+        "add_H_atoms": add_H_atoms,
+        "protonate_protein": protonate_protein,
+        "retain_waters": retain_waters,
+        "padding": padding,
+    }
+
+    if box_size is not None:
+        payload["box_size"] = box_size
+
+    if ligand2 is not None:
+        payload["ligand2"] = {"id": ligand2.id, "file_path": ligand2.remote_path}
+
+    return payload
 
 
 class SystemPrep(Execution, QuoteMixin, SyncExecutableMixin):
@@ -207,6 +248,16 @@ class SystemPrep(Execution, QuoteMixin, SyncExecutableMixin):
             quote=True,
         )
 
+    def _quote_impl(self) -> None:
+        """Request a cost estimate using the functions API quotation payload."""
+        dto = self._get_quote()
+        wrapped = SyncFunctionResponses([dto])
+        if wrapped.estimate is None:
+            raise RuntimeError(
+                "Quote failed: no estimate could be parsed from the system-prep response."
+            )
+        self._estimate = wrapped.estimate
+
     def run(self) -> PreparedSystem:
         """Execute system preparation (blocking).
 
@@ -222,9 +273,7 @@ class SystemPrep(Execution, QuoteMixin, SyncExecutableMixin):
             ValueError: If the function run did not return output paths.
         """
         if self._is_rbfe:
-            from deeporigin.functions.sysprep import for_rbfe as _for_rbfe
-
-            result = _for_rbfe(
+            payload = _build_sysprep_payload(
                 protein=self.protein,
                 ligand1=self.ligand1,
                 ligand2=self.ligand2,
@@ -234,27 +283,32 @@ class SystemPrep(Execution, QuoteMixin, SyncExecutableMixin):
                 protonate_protein=self._protonate_protein,
                 box_size=self._box_size,
                 client=self.client,
-                quote=False,
             )
         else:
-            from deeporigin.functions.sysprep import for_abfe as _for_abfe
-
-            result = _for_abfe(
+            payload = _build_sysprep_payload(
                 protein=self.protein,
-                ligand=self.ligand,
+                ligand1=self.ligand,
+                ligand2=None,
                 padding=self._padding,
                 retain_waters=self._retain_waters,
                 add_H_atoms=self._add_H_atoms,
                 protonate_protein=self._protonate_protein,
                 box_size=self._box_size,
                 client=self.client,
-                quote=False,
             )
+
+        raw = self.client.functions.run(
+            key=TOOL_KEYS_AND_VERSIONS["sysprep"]["function_key"],
+            version=self.tool_version,
+            params=payload,
+            quote=False,
+        )
+        result = SyncFunctionResponses([raw])
 
         if result.cost is not None:
             self._cost = result.cost
 
-        execution_id = result._responses[0]["id"]
+        execution_id = result.responses[0]["id"]
         self._id = execution_id
         client = self.client
         ligand1_id, ligand2_id = self._ligand_ids()
@@ -350,3 +404,77 @@ class SystemPrep(Execution, QuoteMixin, SyncExecutableMixin):
         if not out:
             raise ValueError("No valid prepared-system records for this execution id.")
         return out
+
+
+@beartype
+def for_abfe(
+    *,
+    protein: Protein,
+    ligand: Ligand,
+    padding: float = 1.0,
+    retain_waters: bool = False,
+    add_H_atoms: bool = True,  # NOSONAR
+    protonate_protein: bool = True,
+    box_size: list[float] | None = None,
+    client: DeepOriginClient,
+    quote: bool = False,
+) -> SyncFunctionResponses:
+    """Run ABFE system preparation via ``functions.run`` (low-level helper).
+
+    Unlike :class:`SystemPrep`, this does not require platform entity IDs on
+    ``protein`` / ``ligand`` before the call; inputs are synced in
+    :func:`_build_sysprep_payload`.
+    """
+    payload = _build_sysprep_payload(
+        protein=protein,
+        ligand1=ligand,
+        ligand2=None,
+        padding=padding,
+        retain_waters=retain_waters,
+        add_H_atoms=add_H_atoms,
+        protonate_protein=protonate_protein,
+        box_size=box_size,
+        client=client,
+    )
+    raw = client.functions.run(
+        key=TOOL_KEYS_AND_VERSIONS["sysprep"]["function_key"],
+        version=TOOL_KEYS_AND_VERSIONS["sysprep"]["function_version"],
+        params=payload,
+        quote=quote,
+    )
+    return SyncFunctionResponses([raw])
+
+
+@beartype
+def for_rbfe(
+    *,
+    protein: Protein,
+    ligand1: Ligand,
+    ligand2: Ligand,
+    padding: float = 1.0,
+    retain_waters: bool = False,
+    add_H_atoms: bool = True,  # NOSONAR
+    protonate_protein: bool = True,
+    box_size: list[float] | None = None,
+    client: DeepOriginClient,
+    quote: bool = False,
+) -> SyncFunctionResponses:
+    """Run RBFE system preparation via ``functions.run`` (low-level helper)."""
+    payload = _build_sysprep_payload(
+        protein=protein,
+        ligand1=ligand1,
+        ligand2=ligand2,
+        padding=padding,
+        retain_waters=retain_waters,
+        add_H_atoms=add_H_atoms,
+        protonate_protein=protonate_protein,
+        box_size=box_size,
+        client=client,
+    )
+    raw = client.functions.run(
+        key=TOOL_KEYS_AND_VERSIONS["sysprep"]["function_key"],
+        version=TOOL_KEYS_AND_VERSIONS["sysprep"]["function_version"],
+        params=payload,
+        quote=quote,
+    )
+    return SyncFunctionResponses([raw])

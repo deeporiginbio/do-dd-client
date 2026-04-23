@@ -19,8 +19,8 @@ from deeporigin.drug_discovery.structures.entity import Entity
 from deeporigin.drug_discovery.structures.ligand import Ligand, LigandSet
 from deeporigin.drug_discovery.structures.pocket import Pocket
 from deeporigin.drug_discovery.structures.protein import Protein
+from deeporigin.drug_discovery.sync_function_responses import SyncFunctionResponses
 from deeporigin.exceptions import DeepOriginException
-from deeporigin.functions.result import FunctionResult
 from deeporigin.platform.client import DeepOriginClient
 from deeporigin.platform.constants import TOOL_KEYS_AND_VERSIONS
 from deeporigin.platform.executions import Executions
@@ -144,10 +144,11 @@ class Docking(
 ):
     """Molecular docking supporting both sync and async execution.
 
-    Sync path (``run()``): uses the functions API for small ligand sets.
-    Blocking, no execution ID, not recoverable.
+    Sync path (``run()``): uses ``client.functions.run`` for small ligand sets.
+    Blocking; uses :attr:`function_version` for the functions manifest (see
+    :attr:`tool_version` for async jobs).
 
-    Async path (``start()``): uses the tools API.
+    Async path (``start()``): uses ``client.executions.create`` (tools API).
     Creates a persisted execution trackable via ``sync()``, ``from_id()``,
     and ``list()``. In Jupyter, use ``await docking.watch()`` or
     ``await docking.watch_async()`` for live job HTML (see
@@ -158,6 +159,7 @@ class Docking(
         ligands: Set of ligands to dock.
         pocket: Binding pocket defining the docking box.
         effort: Docking effort level (1 = fastest, 5 = most thorough).
+        function_version: Manifest version for :meth:`run` (``functions.run`` only).
         name: Execution label, set automatically from protein and ligands unless overridden.
         batch_size: For async :meth:`start`, workflow batch size (ligands per workflow
             batch), a positive multiple of 4. Defaults to 16. Sent as ``batchSize`` on
@@ -176,6 +178,7 @@ class Docking(
         ligands: LigandSet | None = None,
         smiles_list: list[str] | None = None,
         tool_version: str = TOOL_KEYS_AND_VERSIONS["docking"]["tool_version"],
+        function_version: str = TOOL_KEYS_AND_VERSIONS["docking"]["function_version"],
         effort: int = 3,
         batch_size: int = 16,
         client: DeepOriginClient | None = None,
@@ -192,8 +195,10 @@ class Docking(
                 ``smiles_list``.
             smiles_list: Raw SMILES strings. Mutually exclusive with ``ligand``
                 and ``ligands``. Converted to a ``LigandSet`` during construction.
-            tool_version: Platform tool version to run. Settable so callers
-                can pin or upgrade independently of the SDK release.
+            tool_version: Platform tool version for :meth:`quote` and :meth:`start`
+                (``client.executions.create``).
+            function_version: Functions API manifest version passed to
+                ``client.functions.run`` from :meth:`run` only.
             effort: Docking effort level (1 = fastest, 5 = most thorough).
                 Defaults to :attr:`effort` on the class (3).
             client: Optional API client.
@@ -225,6 +230,7 @@ class Docking(
             raise ValueError("batch_size must be a multiple of 4.")
         super().__init__(client=client)
         self.tool_version = tool_version
+        self._function_version = function_version
         self.effort = effort
         self._batch_size = batch_size
 
@@ -255,6 +261,11 @@ class Docking(
     def batch_size(self) -> int:
         """Workflow batch size for async :meth:`start` (default 16)."""
         return self._batch_size
+
+    @property
+    def function_version(self) -> str:
+        """Functions API version string used by :meth:`run` (``functions.run``)."""
+        return self._function_version
 
     def __repr__(self) -> str:
         """Return a concise summary of this docking execution."""
@@ -364,7 +375,7 @@ class Docking(
             all_responses.append(
                 client.functions.run(  # ty: ignore[unresolved-attribute]
                     key=TOOL_KEYS_AND_VERSIONS["docking"]["function_key"],
-                    version=TOOL_KEYS_AND_VERSIONS["docking"]["function_version"],
+                    version=self._function_version,
                     params=payload,
                     quote=False,
                 )
@@ -373,12 +384,12 @@ class Docking(
         if not all_responses:
             all_responses = [{"status": "Failed"}]
 
-        result = FunctionResult(all_responses)
+        result = SyncFunctionResponses(all_responses)
 
         self._id = result.id
         self._cost = result.cost
 
-        execution_ids = [r["id"] for r in result._responses if r.get("id") is not None]
+        execution_ids = [r["id"] for r in result.responses if r.get("id") is not None]
         ids_ok = self.protein.id is not None and all(
             lig.id is not None for lig in ligands
         )
@@ -605,6 +616,9 @@ class Docking(
         except (TypeError, ValueError):
             bs = 16
         instance._batch_size = bs if bs > 0 else 16
+        instance._function_version = TOOL_KEYS_AND_VERSIONS["docking"][
+            "function_version"
+        ]
 
         return instance
 

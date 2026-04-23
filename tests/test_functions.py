@@ -3,23 +3,22 @@
 These are meant to be run against a live instance.
 """
 
-from unittest.mock import MagicMock
-
 import pytest
 
 from conftest import check_function_exists
 from deeporigin.drug_discovery import (
+    Docking,
     Ligand,
+    LigandSet,
     Molprops,
     Pocket,
     PocketFinder,
     Protein,
 )
+from deeporigin.drug_discovery.structures.prepared_system import PreparedSystem
+from deeporigin.drug_discovery.sync_function_responses import SyncFunctionResponses
+from deeporigin.drug_discovery.system_prep import SystemPrep, for_abfe
 from deeporigin.exceptions import DeepOriginException
-from deeporigin.functions.docking import dock
-from deeporigin.functions.pocket_finder import find_pockets
-from deeporigin.functions.result import FunctionResult
-from deeporigin.functions.sysprep import for_abfe
 from deeporigin.platform import DeepOriginClient
 from deeporigin.platform.constants import TOOL_KEYS_AND_VERSIONS
 from deeporigin.utils.constants import MOLPROPS_PROPERTY_KEYS
@@ -147,175 +146,45 @@ def test_pocket_finder_lv2(
         )
 
 
-def test_dock_respects_tool_version_override() -> None:
-    """``dock()`` passes ``tool_version`` through to ``functions.run``."""
-    client = MagicMock()
-    client.functions.run.return_value = {"id": "exec-1", "status": "Completed"}
-
-    protein = MagicMock()
-    protein.id = "p1"
-    protein.remote_path = "/remote/protein.pdb"
-
-    ligand = MagicMock()
-    ligand.id = "l1"
-    ligand.smiles = "CCO"
-
-    pocket = MagicMock()
-    pocket.center = [0.0, 0.0, 0.0]
-    pocket.id = "pk1"
-    pocket.box_size_x = None
-    pocket.box_size_y = None
-    pocket.box_size_z = None
-
-    custom = "9.9.9-test"
-    dock(
-        client=client,
-        protein=protein,
-        ligand=ligand,
-        pocket=pocket,
-        tool_version=custom,
-    )
-
-    run_kw = client.functions.run.call_args.kwargs
-    assert run_kw["key"] == TOOL_KEYS_AND_VERSIONS["docking"]["function_key"]
-    assert run_kw["version"] == custom
-
-    dock(
-        client=client,
-        protein=protein,
-        ligand=ligand,
-        pocket=pocket,
-    )
-    run_kw_default = client.functions.run.call_args.kwargs
-    assert (
-        run_kw_default["version"]
-        == TOOL_KEYS_AND_VERSIONS["docking"]["function_version"]
-    )
-
-
-def test_dock_passes_effort_in_params() -> None:
-    """``dock()`` includes ``effort`` in the function payload (default 3)."""
-    client = MagicMock()
-    client.functions.run.return_value = {"id": "exec-1", "status": "Completed"}
-
-    protein = MagicMock()
-    protein.id = "p1"
-    protein.remote_path = "/remote/protein.pdb"
-
-    ligand = MagicMock()
-    ligand.id = "l1"
-    ligand.smiles = "CCO"
-
-    pocket = MagicMock()
-    pocket.center = [0.0, 0.0, 0.0]
-    pocket.id = "pk1"
-    pocket.box_size_x = None
-    pocket.box_size_y = None
-    pocket.box_size_z = None
-
-    dock(
-        client=client,
-        protein=protein,
-        ligand=ligand,
-        pocket=pocket,
-    )
-    params = client.functions.run.call_args.kwargs["params"]
-    assert params["effort"] == 3
-    assert params["ligands"] == [{"id": "l1", "smiles": "CCO"}]
-
-    dock(
-        client=client,
-        protein=protein,
-        ligand=ligand,
-        pocket=pocket,
-        effort=5,
-    )
-    assert client.functions.run.call_args.kwargs["params"]["effort"] == 5
-
-
-def test_dock_rejects_effort_out_of_range() -> None:
-    """``dock()`` raises when ``effort`` is outside 1–5."""
-    client = MagicMock()
-    protein = MagicMock()
-    protein.id = "p1"
-    protein.remote_path = "/remote/protein.pdb"
-    ligand = MagicMock()
-    ligand.id = "l1"
-    ligand.smiles = "CCO"
-    pocket = MagicMock()
-    pocket.center = [0.0, 0.0, 0.0]
-    pocket.box_size_x = None
-    pocket.box_size_y = None
-    pocket.box_size_z = None
-
+def test_docking_run_rejects_effort_out_of_range(
+    client: DeepOriginClient,
+    registered_protein: Protein,
+    registered_ligand: Ligand,
+    registered_pocket: Pocket,
+) -> None:
+    """:meth:`Docking.run` raises when ``effort`` is outside 1–5."""
     with pytest.raises(DeepOriginException):
-        dock(
+        Docking(
+            protein=registered_protein,
+            pocket=registered_pocket,
+            ligand=registered_ligand,
             client=client,
-            protein=protein,
-            ligand=ligand,
-            pocket=pocket,
             effort=0,
-        )
-
-
-def test_find_pockets_respects_tool_version_override() -> None:
-    """``find_pockets()`` passes ``tool_version`` through to ``functions.run``."""
-    client = MagicMock()
-    client.functions.run.return_value = {"id": "exec-pf", "status": "Completed"}
-
-    protein = MagicMock()
-    protein.id = "p1"
-    protein.remote_path = "/remote/protein.pdb"
-
-    custom = "8.8.8-pf"
-    find_pockets(
-        protein=protein,
-        pocket_count=2,
-        pocket_min_size=40,
-        client=client,
-        tool_version=custom,
-    )
-
-    run_kw = client.functions.run.call_args.kwargs
-    assert run_kw["key"] == TOOL_KEYS_AND_VERSIONS["pocket_finder"]["function_key"]
-    assert run_kw["version"] == custom
-
-    find_pockets(
-        protein=protein,
-        pocket_count=2,
-        pocket_min_size=40,
-        client=client,
-    )
-    run_kw_default = client.functions.run.call_args.kwargs
-    assert (
-        run_kw_default["version"]
-        == TOOL_KEYS_AND_VERSIONS["pocket_finder"]["function_version"]
-    )
+        ).run()
 
 
 def test_docking_lv2(
     client: DeepOriginClient,
-    brd_protein: Protein,
-    brd_ligand: Ligand,
+    registered_protein: Protein,
+    registered_ligand: Ligand,
     registered_pocket: Pocket,
 ):
-    """Test docking function."""
+    """Exercise synchronous docking via :class:`Docking`."""
     assert check_function_exists(
         client,
         TOOL_KEYS_AND_VERSIONS["docking"]["function_key"],
         TOOL_KEYS_AND_VERSIONS["docking"]["function_version"],
     ), "Docking function not registered on platform (expected key/version)."
 
-    result = dock(
-        client=client,
-        protein=brd_protein,
-        ligand=brd_ligand,
+    poses = Docking(
+        protein=registered_protein,
         pocket=registered_pocket,
-    )
+        ligand=registered_ligand,
+        client=client,
+    ).run()
 
-    assert isinstance(result, FunctionResult), (
-        "Expected protein.dock() to return a FunctionResult"
-    )
+    assert poses is not None
+    assert len(poses) >= 1
 
 
 @pytest.mark.parametrize(
@@ -346,45 +215,56 @@ def test_sysprep_lv2(
     protein: Protein = request.getfixturevalue(protein_fixture)
     ligand: Ligand = request.getfixturevalue(ligand_fixture)
 
-    result = for_abfe(
-        client=client,
+    if protein_fixture == "brd_protein":
+        result = for_abfe(
+            protein=protein,
+            ligand=ligand,
+            client=client,
+            add_H_atoms=True,
+            protonate_protein=True,
+        )
+        assert isinstance(result, SyncFunctionResponses)
+        assert result.response.get("status") == "Completed"
+        return
+
+    sysprep = SystemPrep(
         protein=protein,
         ligand=ligand,
+        client=client,
         add_H_atoms=True,
         protonate_protein=True,
     )
+    prepared = sysprep.run()
 
-    assert isinstance(result, FunctionResult), (
-        "Expected for_abfe() to return a FunctionResult"
+    assert isinstance(prepared, PreparedSystem), (
+        "Expected SystemPrep.run() to return PreparedSystem"
     )
 
-    if protein_fixture == "registered_protein":
-        execution_id = result._responses[0]["id"]
+    execution_id = sysprep.id
+    assert execution_id is not None
+    assert prepared.binding_xml_path
+    assert prepared.solvation_xml_path
+    assert prepared.system_pdb_path
 
-        function_outputs = result._responses[0]["functionOutputs"]
-        assert "system" in function_outputs.keys(), (
-            f"Expected system in function data, got {function_outputs.keys()}"
-        )
-
-        response = client.results.get_prepared_systems(
-            compute_job_id=execution_id,
-            protein_id=protein.id,
-        )
-        records = response["data"]
-        assert len(records) >= 1, "Expected a prepared-system row for this compute job"
-        record = records[0]
-        assert record.get("compute_job_id") == execution_id
-        assert (
-            record.get("tool_key") == TOOL_KEYS_AND_VERSIONS["sysprep"]["function_key"]
-        )
-        data = record["data"]
-        assert isinstance(data, dict) and len(data) > 0
-        assert data.get("protein_id") == protein.id
+    response = client.results.get_prepared_systems(
+        compute_job_id=execution_id,
+        protein_id=protein.id,
+    )
+    records = response["data"]
+    assert len(records) >= 1, "Expected a prepared-system row for this compute job"
+    record = records[0]
+    assert record.get("compute_job_id") == execution_id
+    assert record.get("tool_key") == TOOL_KEYS_AND_VERSIONS["sysprep"]["function_key"]
+    data = record["data"]
+    assert isinstance(data, dict) and len(data) > 0
+    assert data.get("protein_id") == protein.id
 
 
 @pytest.mark.skip(reason="TODO: fix protonation test later")
 def test_protonation_lv2(client: DeepOriginClient):
-    """Test protonation function returns FunctionResult with ligands."""
+    """Test protonation returns Protonation with ligands populated after run."""
+    from deeporigin.drug_discovery.protonation import Protonation
+
     assert check_function_exists(
         client,
         TOOL_KEYS_AND_VERSIONS["mol_props"]["protonation_function_key"],
@@ -394,41 +274,24 @@ def test_protonation_lv2(client: DeepOriginClient):
     ligand = Ligand.from_smiles("C=CCCn1cc(-c2cccc(C(=O)N(C)C)c2)c2cc[nH]c2c1=O")
 
     original_smiles = ligand.smiles
-    result = ligand.protonate(ph=7.4, use_cache=False)
+    job = Protonation(ligand=ligand, ph=7.4, client=client)
+    job.run()
 
-    assert isinstance(result, FunctionResult), (
-        "Expected ligand.protonate() to return a FunctionResult"
+    assert isinstance(job, Protonation), (
+        "Expected Protonation instance after constructing with ligand="
     )
-    assert isinstance(result.ligands, list), "Expected result.ligands to be a list"
-    assert len(result.ligands) == 1, "Expected result.ligands to contain one ligand"
-    assert result.ligands[0] is ligand, (
-        "Expected result.ligands[0] to be the same ligand"
+    assert isinstance(job.ligands, LigandSet), "Expected job.ligands to be a LigandSet"
+    assert len(job.ligands) == 1, "Expected job.ligands to contain one ligand"
+    assert job.ligands.ligands[0] is ligand, (
+        "Expected primary output ligand to be the same instance as the input ligand"
     )
     assert ligand.smiles == original_smiles, "Expected SMILES to be the same at pH 7.4"
 
-    result = ligand.protonate(ph=11.4, use_cache=False)
+    job_high_ph = Protonation(ligand=ligand, ph=11.4, client=client)
+    job_high_ph.run()
 
-    assert isinstance(result, FunctionResult)
+    assert isinstance(job_high_ph, Protonation)
+    assert len(job_high_ph.ligands.ligands) == 2
     assert ligand.smiles != original_smiles, (
         "Expected SMILES to be different at pH 11.4"
     )
-
-
-# def test_loop_modelling(client):
-#     protein = Protein.from_pdb_id("5QSP")
-#     assert len(protein.find_missing_residues()) > 0, "Missing residues should be > 0"
-#     protein.model_loops(use_cache=False, client=client)
-
-#     assert protein.structure is not None, "Structure should not be None"
-
-#     assert len(protein.find_missing_residues()) == 0, "Missing residues should be 0"
-
-
-# def test_konnektor(client):
-#     ligands = LigandSet.from_sdf(DATA_DIR / "ligands" / "ligands-brd-all.sdf")
-
-#     ligands.map_network(use_cache=False, client=client)
-
-#     assert len(ligands.network.keys()) > 0, "Expected network to be non-empty"
-
-#     assert len(ligands.network["edges"]) == 7, "Expected 7 edges"

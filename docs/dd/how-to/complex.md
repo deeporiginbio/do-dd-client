@@ -89,7 +89,7 @@ result = sim.prepare(sim.ligands[0])
 result.prepared_systems[0].show()
 ```
 
-`result` is a [`FunctionResult`](../ref/function-result.md) that wraps the API response. The prepared proteins are available as a list on `result.prepared_systems`.
+`result` is a legacy wrapper object from deprecated `Complex` flows. Prefer `SystemPrep` from `deeporigin.drug_discovery.system_prep`, whose `run()` returns a `PreparedSystem`. New code should not rely on the removed `deeporigin.functions` package.
 
 When preparing all ligands at once, the result aggregates costs and systems:
 

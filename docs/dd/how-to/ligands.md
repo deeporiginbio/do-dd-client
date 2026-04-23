@@ -604,43 +604,49 @@ constraints = ligands.compute_constraints(reference=ligands[1])
 
 ### Protonation
 
-You can protonate ligands at a specific pH. This is useful for preparing ligands for molecular dynamics simulations or other pH-dependent calculations. The `protonate()` method returns a `FunctionResult` whose `.ligands` attribute contains the protonated ligands.
+You can protonate ligands at a specific pH. This is useful for preparing ligands for molecular dynamics simulations or other pH-dependent calculations. Use the `Protonation` class from `deeporigin.drug_discovery`: pass exactly one of `smiles`, `ligand`, or `ligands` (a [`LigandSet`](../ref/ligandset.md) with a single ligand), a `ph`, and a `DeepOriginClient` (see [Clients](../../dev/clients.md)). Call `run()` to execute; it returns a `LigandSet` whose `ligands` list holds the protonated species (most abundant first).
 
 === "Ligand"
 
     ```{.python notest}
-    from deeporigin.drug_discovery import Ligand
+    from deeporigin.drug_discovery import Ligand, Protonation
+    from deeporigin.platform.client import DeepOriginClient
 
+    client = DeepOriginClient()
     ligand = Ligand.from_smiles("c1ccccc1")
-    result = ligand.protonate(ph=7.4)
-    result.ligands  # [ligand] — the protonated ligand
+    result = Protonation(ligand=ligand, ph=7.4, client=client).run()
+    result.ligands  # [ligand] — the protonated ligand (same instance, updated)
     ```
 
     !!! note "Mutation Behavior"
-        The `protonate()` method mutates the ligand object by updating `self.mol` with the protonated structure. Only the most abundant species at the specified pH is retained.
+        When you pass `ligand=` or a one-ligand `ligands=`, `run()` updates the primary `Ligand` in place (`mol`, `smiles`, `protonated_at_ph`). Additional protonation states, if any, are new `Ligand` instances appended after the first.
 
     The `protonated_at_ph` attribute (default: `None`) can be used to track the pH value at which a ligand was protonated. This attribute stores a `float` value representing the pH.
 
     To get a cost estimate without running protonation:
 
     ```{.python notest}
-    result = ligand.protonate(ph=7.4, quote=True)
-    result.estimate  # cost in dollars
-    result.ligands   # [] — empty when quoting
+    job = Protonation(ligand=ligand, ph=7.4, client=client)
+    job.quote()
+    job.estimate  # cost in dollars
     ```
 
-=== "LigandSet"
+=== "Several ligands"
+
+    `Protonation` runs one input structure per job. Protonate each member of a `LigandSet` in a loop (each call uses the same `client`):
 
     ```{.python notest}
-    from deeporigin.drug_discovery import LigandSet
+    from deeporigin.drug_discovery import LigandSet, Protonation
+    from deeporigin.platform.client import DeepOriginClient
 
+    client = DeepOriginClient()
     ligands = LigandSet.from_smiles(["c1ccccc1", "CCO"])
-    result = ligands.protonate(ph=7.4)
-    result.ligands  # list of protonated Ligand objects
+    for lig in ligands:
+        Protonation(ligand=lig, ph=7.4, client=client).run()
     ```
 
     !!! note "Mutation Behavior"
-        The `protonate()` method mutates all ligands in the set. The returned `FunctionResult` aggregates responses from all individual protonation calls.
+        Each `Protonation(...).run()` mutates the corresponding `Ligand` when constructed with `ligand=` as above.
 
 ### Adding Hydrogens
 
