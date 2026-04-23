@@ -62,9 +62,8 @@ class Protonation(Execution, QuoteMixin, SyncExecutableMixin):
         cache_hash = hash_dict(self._payload())
         return str(Path(_CACHE_DIR) / f"{cache_hash}.json")
 
-    def quote(self) -> None:
+    def _quote_impl(self) -> None:
         """Request a cost estimate without executing (no cache read/write)."""
-        self._quote_setup()
         response = self.client.functions.run(
             key=TOOL_KEYS_AND_VERSIONS["mol_props"]["protonation_function_key"],
             version=TOOL_KEYS_AND_VERSIONS["mol_props"]["function_version"],

@@ -7,7 +7,7 @@ Provides :func:`run_func_in_parallel` (thread pool) for batching and retries.
 from collections.abc import Callable
 import concurrent.futures
 import time
-from typing import Any, Optional
+from typing import Any
 
 from beartype import beartype
 
@@ -50,30 +50,33 @@ def run_func_in_parallel(
     total_failures = 0
     durations: list[float | None] = [None] * total
 
-    def call_func_timed(idx: int) -> Optional[tuple]:
-        nonlocal total_failures
+    def call_func_timed(
+        idx: int,
+    ) -> tuple[int, Any | None, float | None, bool]:
         try:
             start = time.time()
             result = func(**args[idx])
             end = time.time()
-            return (idx, result, end - start)
+            return (idx, result, end - start, False)
         except Exception as e:
             print(f"[Error] Call {idx} failed: {e}")
-            total_failures += 1
-            return (idx, None, None)
+            return (idx, None, None, True)
 
     start_time = time.time()
 
     def process_batch(batch_indices: list[int]) -> None:
+        nonlocal total_failures
         with concurrent.futures.ThreadPoolExecutor() as executor:
             batch_results = list(executor.map(call_func_timed, batch_indices))
 
-        for idx, result, duration in batch_results:
+        for idx, result, duration, failed in batch_results:
             if result is not None:
                 results[idx] = result
                 durations[idx] = duration
             else:
                 retries_left[idx] -= 1
+                if failed:
+                    total_failures += 1
 
     while any(
         (result is None and retries > 0)

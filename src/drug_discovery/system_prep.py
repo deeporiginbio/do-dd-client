@@ -248,9 +248,8 @@ class SystemPrep(Execution, QuoteMixin, SyncExecutableMixin):
             quote=True,
         )
 
-    def quote(self) -> None:
+    def _quote_impl(self) -> None:
         """Request a cost estimate using the functions API quotation payload."""
-        self._quote_setup()
         dto = self._get_quote()
         wrapped = SyncFunctionResponses([dto])
         if wrapped.estimate is None:

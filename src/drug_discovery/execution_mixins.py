@@ -41,14 +41,16 @@ class QuoteMixin:
     via :attr:`id` (set by :meth:`_quote_apply`, async ``start()``, sync
     ``run()``, or rehydration helpers depending on the concrete class).
 
-    Default flow: :meth:`quote` calls :meth:`_quote_setup`, :meth:`_get_quote`,
-    then :meth:`_quote_apply`. Tools-API jobs implement :meth:`_get_quote` to
+    Default flow: :meth:`quote` calls :meth:`_quote_setup`, :meth:`_quote_impl`
+    (which uses :meth:`_get_quote` and :meth:`_quote_apply` for tools jobs), then
+    :meth:`_quote_finalize`. Tools-API jobs implement :meth:`_get_quote` to
     call ``executions.create`` with ``approveAmount: 0`` and return the raw
     execution dict; :meth:`_quote_apply` validates ``quotationResult`` and sets
     estimate, id, and status.
 
-    Function-based or custom flows may override :meth:`quote` entirely (typically
-    calling :meth:`_quote_setup` first, then setting state without a tools DTO).
+    Function-based or custom flows should override :meth:`_quote_impl` (after
+    :meth:`_quote_setup` runs) instead of :meth:`quote`, so :meth:`_quote_finalize`
+    can apply the single-quote contract consistently.
 
     ``quote()`` enforces that a quotation can only be requested once: it raises
     if ``status`` is already ``"Quoted"`` or an execution ID is already assigned.
@@ -69,7 +71,7 @@ class QuoteMixin:
     def quote(self) -> None:
         """Request a cost estimate.
 
-        Runs :meth:`_quote_setup`, :meth:`_get_quote`, and :meth:`_quote_apply`.
+        Runs :meth:`_quote_setup`, :meth:`_quote_impl`, and :meth:`_quote_finalize`.
 
         Raises:
             ValueError: If the execution has already been quoted or started.
@@ -77,8 +79,29 @@ class QuoteMixin:
             RuntimeError: If the API response fails quotation validation.
         """
         self._quote_setup()
+        self._quote_impl()
+        self._quote_finalize()
+
+    def _quote_impl(self) -> None:
+        """Perform the quote request and populate estimate (and optional id).
+
+        Default implementation calls the tools API via :meth:`_get_quote` and
+        :meth:`_quote_apply`. Override for function-quote or other non-tools paths.
+        """
         dto = self._get_quote()
         self._quote_apply(dto)
+
+    def _quote_finalize(self) -> None:
+        """Apply the single-quote contract when no platform execution id exists yet.
+
+        Tools-API quotations set ``status`` (and often ``id``) from the execution
+        DTO in :meth:`_quote_apply`. Sync function quotations leave ``id`` unset
+        until :meth:`~deeporigin.drug_discovery.execution_mixins.SyncExecutableMixin.run`;
+        those paths get ``status='Quoted'`` here so :meth:`_quote_setup` blocks
+        repeat quotes.
+        """
+        if self.id is None:
+            self.status = "Quoted"
 
     def _quote_setup(self) -> None:
         """Guard: allow at most one quote before an execution id exists.
