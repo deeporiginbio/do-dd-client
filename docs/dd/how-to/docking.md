@@ -14,41 +14,33 @@ This document describes how to dock ligands to a Protein.
 
 ## Docking a single `Ligand`
 
-A single Ligand can be docked to a Protein using:
+Use [`Docking`](../ref/docking.md) with your protein, pocket, and ligand. Here `pocket` is a `Pocket` from the [Pocket Finder](find-pockets.md) :octicons-book-24: . Synchronous [`Docking.run()`](../ref/docking.md) uses `client.functions.run`; [`Docking.start()`](../ref/docking.md) uses `client.executions.create` for a persisted job. [`Docking.run()`](../ref/docking.md) returns a `LigandSet` of poses.
 
 ```{.python notest}
-result = protein.dock(
-    pocket=pocket,
-    ligand=ligand,
-)
+from deeporigin.drug_discovery import Docking
+
+docking = Docking(protein=protein, pocket=pocket, ligand=ligand)
+poses = docking.run()
 ```
-
-where `pocket` is a `Pocket` object generated using the [Pocket Finder Tool](find-pockets.md) :octicons-book-24: .
-
-You can also call [`Docking`](../ref/docking.md) directly: synchronous [`Docking.run()`](../ref/docking.md) uses `client.functions.run`; [`Docking.start()`](../ref/docking.md) uses `client.executions.create` for a persisted job. [`Docking.run()`](../ref/docking.md) returns a `LigandSet` of poses.
 
 ### Estimating cost
 
-To get a cost estimate without running the docking, use `quote=True`:
+To get a cost estimate without running the docking, call [`quote()`](../ref/docking.md) on the [`Docking`](../ref/docking.md) instance:
 
 ```{.python notest}
-result = protein.dock(
-    pocket=pocket,
-    ligand=ligand,
-    quote=True,
-)
-
-result.estimate  # estimated cost in dollars
-result.cost      # None (function was not executed)
+docking = Docking(protein=protein, pocket=pocket, ligand=ligand)
+docking.quote()       # populates docking.estimate
+docking.estimate      # estimated cost in dollars
+docking.cost          # None until a billable run completes
 ```
 
-After a completed (non-quoted) run, the actual cost is available:
+After a completed run, the actual cost is on the same object:
 
 ```{.python notest}
-result = protein.dock(pocket=pocket, ligand=ligand)
+docking = Docking(protein=protein, pocket=pocket, ligand=ligand)
+poses = docking.run()
 
-result.cost      # actual cost in dollars
-result.estimate  # None (function was executed)
+docking.cost  # actual cost in dollars
 ```
 
 
@@ -57,7 +49,7 @@ result.estimate  # None (function was executed)
 Docked poses for that ligand can be viewed using:
 
 ```{.python notest}
-protein.show(poses=result.poses)
+protein.show(poses=poses)
 ```
 
 You will see something similar to the following. Use the arrows to inspect individual poses. 
@@ -75,7 +67,7 @@ You will see something similar to the following. Use the arrows to inspect indiv
 Every pose is assigned a pose score and a binding energy. These can be viewed using:
 
 ```{.python notest}
-result.poses
+poses
 ```
 
 A widget similar to the following will be shown:
@@ -85,7 +77,7 @@ A widget similar to the following will be shown:
 To work with a dataframe containing this data, use:
 
 ```{.python notest}
-df = result.poses.to_dataframe()
+df = poses.to_dataframe()
 ```
 
 ### Exporting poses to SDF
@@ -94,7 +86,7 @@ Poses can be saved to a SDF file using:
 
 
 ```{.python notest}
-result.poses.to_sdf()
+poses.to_sdf()
 ```
 
 ## Docking a `LigandSet` 
@@ -106,36 +98,31 @@ result.poses.to_sdf()
 
 ### Using Functions
 
-Several ligands in a LigandSet can be docked to a Protein using:
+Several ligands in a LigandSet can be docked by passing `ligands` to [`Docking`](../ref/docking.md):
 
 ```{.python notest}
-result = protein.dock(
-    ligands=ligands,
-    pocket=pocket,
-)
+docking = Docking(protein=protein, pocket=pocket, ligands=ligands)
+poses = docking.run()
 ```
 
-`result.poses` contains all poses for all ligands in the LigandSet. To filter poses to keep only top poses, use:
+`poses` contains all poses for all ligands in the LigandSet. To filter poses to keep only top poses, use:
 
 ```{.python notest}
-top_poses = result.poses.filter_top_poses()
+top_poses = poses.filter_top_poses()
 ```
 
 These poses can be visualized as before:
 
 ```{.python notest}
-protein.show(poses=result.poses)
+protein.show(poses=poses)
 ```
 
 To estimate the cost of docking a full LigandSet without running it:
 
 ```{.python notest}
-result = protein.dock(
-    ligands=ligands,
-    pocket=pocket,
-    quote=True,
-)
-result.estimate  # total estimated cost across all ligands
+docking = Docking(protein=protein, pocket=pocket, ligands=ligands)
+docking.quote()
+docking.estimate  # total estimated cost across all ligands
 ```
 
 
@@ -147,23 +134,20 @@ result.estimate  # total estimated cost across all ligands
 
 We can use constrained docking to dock a Ligand to a Protein while constraining certain atoms to certain locations.
 
-Typically, these constraints are computed a reference docked pose for another (similar) Ligand, using a Maximum Common Substructure (MCS) shared across Ligands. 
+Typically, these constraints are computed from a reference docked pose for another (similar) ligand, using a Maximum Common Substructure (MCS) shared across ligands. 
 
-Assuming we have a docked a Ligand to a Protein, and picked a pose to be the "reference". If we want to dock a `Ligand` to that protein, constrained by `reference_pose`, we use:
+Assuming we have docked a ligand to a protein and picked a pose to be the "reference". When constrained docking is available, it will be configured through [`Docking`](../ref/docking.md) (reference-pose parameters are not exposed yet). A standard run looks like:
 
 ```{.python notest}
-result = protein.dock(
-    ligand=ligand,
-    reference_pose=reference_pose,
-    pocket=pocket,
-)
+docking = Docking(protein=protein, pocket=pocket, ligand=ligand)
+poses = docking.run()
 
 # view poses
-protein.show(poses=result.poses)
+protein.show(poses=poses)
 ```
 
-To view the poses from constrained docking together with the reference pose, use:
+To view new poses together with the reference pose, combine the `LigandSet` values (for example):
 
 ```{.python notest}
-protein.show(poses=reference_pose + result.poses)
+protein.show(poses=reference_pose + poses)
 ```
