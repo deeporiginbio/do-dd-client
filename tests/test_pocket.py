@@ -200,7 +200,7 @@ def test_from_function_result_lv0():
     """from_function_result stores remote_path without downloading."""
     import json
 
-    from deeporigin.functions.result import FunctionResult
+    from deeporigin.drug_discovery.sync_function_responses import SyncFunctionResponses
 
     fixture = Path(__file__).parent / (
         "fixtures/function-runs/deeporigin.pocketfinder/run.json"
@@ -209,7 +209,7 @@ def test_from_function_result_lv0():
 
     response = patch_fixture_version(json.loads(fixture.read_text()))
 
-    result = FunctionResult([response])
+    result = SyncFunctionResponses([response])
 
     class FakeClient:
         """Minimal client stub (no file ops needed -- lazy download)."""

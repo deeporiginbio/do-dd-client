@@ -12,23 +12,25 @@ Usage::
 
 from __future__ import annotations
 
+from collections import defaultdict
+from copy import deepcopy
+
 from beartype import beartype
 from tqdm import tqdm
 
 from deeporigin.drug_discovery.execution import Execution
 from deeporigin.drug_discovery.execution_mixins import QuoteMixin, SyncExecutableMixin
 from deeporigin.drug_discovery.structures.ligand import Ligand, LigandSet
-from deeporigin.functions.molprops import (
-    molprops_merged_with_raw_responses,
-    molprops_quote,
-)
-from deeporigin.functions.result import FunctionResult
+from deeporigin.drug_discovery.sync_function_responses import SyncFunctionResponses
 from deeporigin.platform.client import DeepOriginClient
 from deeporigin.platform.constants import TOOL_KEYS_AND_VERSIONS
 from deeporigin.utils.constants import (
     MOLPROPS_DEFAULT_PROPERTIES,
     MOLPROPS_PROPERTY_KEYS,
 )
+
+# Merged molprops rows use ``ligand_id`` (toolbox molprops output schemas).
+MOLPROPS_MERGE_KEY = "ligand_id"
 
 
 def _validate_molprops_properties(properties: set[str] | None) -> set[str]:
@@ -63,6 +65,101 @@ def _resolve_molprops_props(
     return _validate_molprops_properties(properties)
 
 
+def get_single_property(
+    *,
+    payload: dict,
+    prop: str,
+    client: DeepOriginClient,
+    quote: bool = False,
+) -> tuple[list[dict], dict]:
+    """Fetch one molprops model's outputs and the full API response."""
+    raw = client.functions.run(
+        key=f"{TOOL_KEYS_AND_VERSIONS['mol_props']['function_key_prefix']}-{prop}",
+        params=payload,
+        version=TOOL_KEYS_AND_VERSIONS["mol_props"]["function_version"],
+        quote=quote,
+    )
+
+    fo = raw.get("functionOutputs")
+    if fo is None:
+        function_outputs: list[dict] = []
+    elif isinstance(fo, dict):
+        function_outputs = [fo]
+    else:
+        function_outputs = fo
+
+    return function_outputs, raw
+
+
+def merge_dict_lists(dict_lists, key="ligand_id"):
+    """Merge N lists of dicts by a common key (default ``ligand_id``)."""
+    merged = defaultdict(dict)
+    for lst in dict_lists:
+        for d in lst:
+            k = d[key]
+            merged[k].update(d)
+    if dict_lists:
+        order = [d[key] for d in dict_lists[0]]
+        seen = set()
+        result = []
+        for k in order + [k for k in merged if k not in order]:
+            if k not in seen:
+                result.append(deepcopy(merged[k]))
+                seen.add(k)
+        return result
+    return []
+
+
+def molprops_merged_with_raw_responses(
+    ligand_set: LigandSet,
+    properties: set[str] | None = None,
+    *,
+    client: DeepOriginClient,
+) -> tuple[list[dict], list[dict]]:
+    """Run molprops for each property, merge rows per ligand, and return raw responses."""
+    if properties is None:
+        properties_set: set[str] = set(MOLPROPS_DEFAULT_PROPERTIES)
+    else:
+        properties_set = set(properties)
+
+    payload = {"ligands": ligand_set.to_dict()}
+    outputs_per_prop: list[list[dict]] = []
+    raw_responses: list[dict] = []
+
+    for prop in sorted(properties_set):
+        function_outputs, raw = get_single_property(
+            payload=payload,
+            prop=prop,
+            client=client,
+            quote=False,
+        )
+        outputs_per_prop.append(function_outputs)
+        raw_responses.append(raw)
+
+    merged = merge_dict_lists(outputs_per_prop, key=MOLPROPS_MERGE_KEY)
+    return merged, raw_responses
+
+
+def molprops_quote(
+    ligand_set: LigandSet,
+    properties: set[str],
+    *,
+    client: DeepOriginClient,
+) -> SyncFunctionResponses:
+    """Quote molprops (one API call per property); estimate sums quoted prices."""
+    payload = {"ligands": ligand_set.to_dict()}
+    raw_list: list[dict] = []
+    for prop in sorted(properties):
+        _fo, raw = get_single_property(
+            payload=payload,
+            prop=prop,
+            client=client,
+            quote=True,
+        )
+        raw_list.append(raw)
+    return SyncFunctionResponses(raw_list)
+
+
 class Molprops(Execution, QuoteMixin, SyncExecutableMixin):
     """Predict molprops / ADMET for ligands (composite of several platform functions).
 
@@ -90,25 +187,7 @@ class Molprops(Execution, QuoteMixin, SyncExecutableMixin):
         batch_size: int | None = None,
         client: DeepOriginClient | None = None,
     ) -> None:
-        """Configure a molprops run for one or more ligands.
-
-        Args:
-            ligands: A :class:`LigandSet` or list of :class:`Ligand` instances.
-            props: Molprops keys to run (e.g. ``["ames", "logp"]``). Duplicate names
-                are ignored. Mutually exclusive with ``properties``.
-            properties: Same as ``props`` but as a set; prefer ``props`` for new code.
-                ``None`` for both ``props`` and ``properties`` means the full default bundle
-                (:data:`~deeporigin.utils.constants.MOLPROPS_DEFAULT_PROPERTIES`).
-            batch_size: For :meth:`run`, cap how many molecules are sent per
-                property request. ``None`` sends all ligands in one payload per property
-                (legacy behavior). Does not affect :meth:`quote` (see below).
-            client: Optional API client.
-
-        Raises:
-            ValueError: If ``ligands`` is empty, both ``props`` and ``properties`` are
-                passed, an unknown molprops key is given, or ``batch_size`` is not
-                positive when set.
-        """
+        """Configure a molprops run for one or more ligands."""
         super().__init__(client=client)
         if isinstance(ligands, LigandSet):
             self._ligands: list[Ligand] = list(ligands.ligands)
@@ -188,7 +267,7 @@ class Molprops(Execution, QuoteMixin, SyncExecutableMixin):
         """Execute molprops, mutate ligands, and set :attr:`cost` when pricing is available.
 
         Total USD :attr:`cost` is the sum of per-property completed runs (see
-        :class:`~deeporigin.functions.result.FunctionResult`).
+        :class:`~deeporigin.drug_discovery.sync_function_responses.SyncFunctionResponses`).
 
         Ligands without a platform ``id`` are assigned ``"0"``, ``"1"``, … here so
         batched requests merge on stable ``ligand_id`` values.
@@ -225,7 +304,7 @@ class Molprops(Execution, QuoteMixin, SyncExecutableMixin):
                 merged.extend(batch_merged)
                 raw_responses.extend(batch_raw)
                 pbar.update(len(batch_ligands))
-        fr = FunctionResult(raw_responses)
+        fr = SyncFunctionResponses(raw_responses)
         if fr.cost is not None:
             self._cost = fr.cost
 

@@ -23,13 +23,9 @@ result = protein.dock(
 )
 ```
 
-where `pocket` is a `Pocket` object generated using the [Pocket Finder Tool](find-pockets.md) :octicons-book-24: . 
+where `pocket` is a `Pocket` object generated using the [Pocket Finder Tool](find-pockets.md) :octicons-book-24: .
 
-`result` is a [`FunctionResult`](../ref/function-result.md) that wraps the API response. The docked poses are available as a `LigandSet` on `result.poses`:
-
-```{.python notest}
-poses = result.poses
-```
+You can also call [`Docking`](../ref/docking.md) directly: synchronous [`Docking.run()`](../ref/docking.md) uses `client.functions.run`; [`Docking.start()`](../ref/docking.md) uses `client.executions.create` for a persisted job. [`Docking.run()`](../ref/docking.md) returns a `LigandSet` of poses.
 
 ### Estimating cost
 

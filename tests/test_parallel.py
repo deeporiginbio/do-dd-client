@@ -4,18 +4,10 @@ Tests for the parallel execution utilities.
 
 import time
 
-import pytest
-
-from deeporigin.functions.parallel import (
-    run_func_in_parallel,
-    run_func_in_parallel_async,
-)
+from deeporigin.drug_discovery.parallel import run_func_in_parallel
 
 
-@pytest.mark.parametrize(
-    "parallel_func", [run_func_in_parallel, run_func_in_parallel_async]
-)
-def test_simple_function_parallelization(parallel_func):
+def test_simple_function_parallelization():
     """Test basic parallel execution with a simple function."""
 
     def add_numbers(x, y):
@@ -29,7 +21,7 @@ def test_simple_function_parallelization(parallel_func):
         {"x": 5, "y": 50},
     ]
 
-    results = parallel_func(
+    results = run_func_in_parallel(
         func=add_numbers,
         batch_size=3,
         max_retries=1,
@@ -43,10 +35,7 @@ def test_simple_function_parallelization(parallel_func):
     assert all(duration is not None for duration in results["durations"])
 
 
-@pytest.mark.parametrize(
-    "parallel_func", [run_func_in_parallel, run_func_in_parallel_async]
-)
-def test_function_with_scalar_and_list_arguments(parallel_func):
+def test_function_with_scalar_and_list_arguments():
     """Test parallel execution with mixed scalar and list arguments."""
 
     def multiply_with_offset(x, y, offset=1):
@@ -58,7 +47,7 @@ def test_function_with_scalar_and_list_arguments(parallel_func):
         {"x": 4, "y": 7, "offset": 10},
     ]
 
-    results = parallel_func(
+    results = run_func_in_parallel(
         func=multiply_with_offset,
         batch_size=2,
         max_retries=1,
@@ -70,10 +59,7 @@ def test_function_with_scalar_and_list_arguments(parallel_func):
     assert results["permanent_failures"] == []
 
 
-@pytest.mark.parametrize(
-    "parallel_func", [run_func_in_parallel, run_func_in_parallel_async]
-)
-def test_function_with_retries(parallel_func):
+def test_function_with_retries():
     """Test parallel execution with retries for failed calls."""
 
     call_count = {}
@@ -92,7 +78,7 @@ def test_function_with_retries(parallel_func):
         {"x": 3, "attempt": 0},
     ]
 
-    results = parallel_func(
+    results = run_func_in_parallel(
         func=sometimes_failing_func, batch_size=2, max_retries=2, args=args_list
     )
 
@@ -102,10 +88,7 @@ def test_function_with_retries(parallel_func):
     assert call_count[2] == 2  # x=2 was called twice (failed once, succeeded once)
 
 
-@pytest.mark.parametrize(
-    "parallel_func", [run_func_in_parallel, run_func_in_parallel_async]
-)
-def test_function_with_permanent_failures(parallel_func):
+def test_function_with_permanent_failures():
     """Test parallel execution where some calls permanently fail."""
 
     def always_failing_func(x):
@@ -119,7 +102,7 @@ def test_function_with_permanent_failures(parallel_func):
         {"x": 3},
     ]
 
-    results = parallel_func(
+    results = run_func_in_parallel(
         func=always_failing_func, batch_size=2, max_retries=1, args=args_list
     )
 
@@ -129,16 +112,15 @@ def test_function_with_permanent_failures(parallel_func):
     assert results["durations"][1] is None  # Duration is None for failed call
 
 
-@pytest.mark.parametrize(
-    "parallel_func", [run_func_in_parallel, run_func_in_parallel_async]
-)
-def test_empty_input(parallel_func):
+def test_empty_input():
     """Test parallel execution with empty input."""
 
     def dummy_func(x):
         return x
 
-    results = parallel_func(func=dummy_func, batch_size=5, max_retries=1, args=[])
+    results = run_func_in_parallel(
+        func=dummy_func, batch_size=5, max_retries=1, args=[]
+    )
 
     assert results["results"] == []
     assert results["total_failures"] == 0
@@ -146,16 +128,13 @@ def test_empty_input(parallel_func):
     assert results["elapsed_time"] >= 0
 
 
-@pytest.mark.parametrize(
-    "parallel_func", [run_func_in_parallel, run_func_in_parallel_async]
-)
-def test_single_item_input(parallel_func):
+def test_single_item_input():
     """Test parallel execution with single item input."""
 
     def square_func(x):
         return x * x
 
-    results = parallel_func(
+    results = run_func_in_parallel(
         func=square_func, batch_size=5, max_retries=1, args=[{"x": 5}]
     )
 
@@ -164,10 +143,7 @@ def test_single_item_input(parallel_func):
     assert results["permanent_failures"] == []
 
 
-@pytest.mark.parametrize(
-    "parallel_func", [run_func_in_parallel, run_func_in_parallel_async]
-)
-def test_batch_size_effect(parallel_func):
+def test_batch_size_effect():
     """Test that batch size affects execution timing."""
 
     def slow_func(x):
@@ -177,12 +153,12 @@ def test_batch_size_effect(parallel_func):
     args_list = [{"x": i} for i in range(10)]
 
     # Test with small batch size
-    results_small = parallel_func(
+    results_small = run_func_in_parallel(
         func=slow_func, batch_size=2, max_retries=1, args=args_list
     )
 
     # Test with larger batch size
-    results_large = parallel_func(
+    results_large = run_func_in_parallel(
         func=slow_func, batch_size=10, max_retries=1, args=args_list
     )
 
@@ -191,10 +167,7 @@ def test_batch_size_effect(parallel_func):
     assert results_small["results"] == [0, 2, 4, 6, 8, 10, 12, 14, 16, 18]
 
 
-@pytest.mark.parametrize(
-    "parallel_func", [run_func_in_parallel, run_func_in_parallel_async]
-)
-def test_sleep_between_batches(parallel_func):
+def test_sleep_between_batches():
     """Test that sleep between batches is respected."""
 
     def fast_func(x):
@@ -203,7 +176,7 @@ def test_sleep_between_batches(parallel_func):
     args_list = [{"x": i} for i in range(6)]  # 3 batches of 2
 
     start_time = time.time()
-    results = parallel_func(
+    results = run_func_in_parallel(
         func=fast_func,
         batch_size=2,
         max_retries=1,
@@ -217,10 +190,7 @@ def test_sleep_between_batches(parallel_func):
     assert results["results"] == [0, 1, 2, 3, 4, 5]
 
 
-@pytest.mark.parametrize(
-    "parallel_func", [run_func_in_parallel, run_func_in_parallel_async]
-)
-def test_function_with_complex_return_types(parallel_func):
+def test_function_with_complex_return_types():
     """Test parallel execution with functions returning complex types."""
 
     def create_dict(x, prefix="item"):
@@ -232,7 +202,7 @@ def test_function_with_complex_return_types(parallel_func):
         {"x": 3, "prefix": "test"},
     ]
 
-    results = parallel_func(
+    results = run_func_in_parallel(
         func=create_dict, batch_size=3, max_retries=1, args=args_list
     )
 
@@ -246,10 +216,7 @@ def test_function_with_complex_return_types(parallel_func):
     assert results["total_failures"] == 0
 
 
-@pytest.mark.parametrize(
-    "parallel_func", [run_func_in_parallel, run_func_in_parallel_async]
-)
-def test_function_with_different_argument_sets(parallel_func):
+def test_function_with_different_argument_sets():
     """Test parallel execution where different calls have different arguments."""
 
     def flexible_func(**kwargs):
@@ -267,7 +234,7 @@ def test_function_with_different_argument_sets(parallel_func):
         {"x": 3, "y": 7},  # x + y = 10
     ]
 
-    results = parallel_func(
+    results = run_func_in_parallel(
         func=flexible_func,
         batch_size=2,
         max_retries=1,

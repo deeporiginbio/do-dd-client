@@ -6,8 +6,8 @@ import pytest
 
 from deeporigin.drug_discovery import BRD_DATA_DIR, DATA_DIR
 from deeporigin.drug_discovery.structures.ligand import Ligand, LigandSet
+from deeporigin.drug_discovery.sync_function_responses import SyncFunctionResponses
 from deeporigin.exceptions import DeepOriginException
-from deeporigin.functions.result import FunctionResult
 from deeporigin.platform.client import DeepOriginClient
 
 # Import shared test fixtures
@@ -1180,7 +1180,7 @@ def test_ligand_set_from_docking_results_lv0(
         return brd_file
 
     monkeypatch.setattr(client.files, "download", _fake_download)
-    result = FunctionResult(
+    result = SyncFunctionResponses(
         [
             {
                 "functionOutputs": {

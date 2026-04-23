@@ -604,7 +604,7 @@ constraints = ligands.compute_constraints(reference=ligands[1])
 
 ### Protonation
 
-You can protonate ligands at a specific pH. This is useful for preparing ligands for molecular dynamics simulations or other pH-dependent calculations. The `protonate()` method returns a `FunctionResult` whose `.ligands` attribute contains the protonated ligands.
+You can protonate ligands at a specific pH. This is useful for preparing ligands for molecular dynamics simulations or other pH-dependent calculations. The `Ligand.protonate()` method returns a `Protonation` execution object whose `.ligands` attribute lists the protonated ligand(s) after `run()`. `LigandSet.protonate()` returns a [`SyncFunctionResponses`](../ref/sync-function-responses.md) aggregating each per-ligand response, with `.ligands` set on that object.
 
 === "Ligand"
 
@@ -640,7 +640,7 @@ You can protonate ligands at a specific pH. This is useful for preparing ligands
     ```
 
     !!! note "Mutation Behavior"
-        The `protonate()` method mutates all ligands in the set. The returned `FunctionResult` aggregates responses from all individual protonation calls.
+        The `protonate()` method mutates all ligands in the set. The returned `SyncFunctionResponses` aggregates responses from all individual protonation calls.
 
 ### Adding Hydrogens
 

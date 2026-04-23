@@ -460,20 +460,6 @@ class Protein(Entity):
 
         return sequences
 
-    def model_loops(self, use_cache: bool = True) -> None:
-        """model loops in protein structure"""
-
-        from deeporigin.functions.loop_modelling import model_loops as _model_loops
-
-        pdb_id = self.pdb_id
-
-        if pdb_id is None:
-            raise ValueError("Currently, PDB ID is required to model loops.")
-
-        file_path = _model_loops(pdb_id=pdb_id, use_cache=use_cache)
-        protein = Protein.from_file(file_path)
-        self.structure = protein.structure
-
     @property
     def coordinates(self):
         self.download(lazy=True)

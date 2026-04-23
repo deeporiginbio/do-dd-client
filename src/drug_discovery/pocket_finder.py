@@ -17,7 +17,7 @@ from deeporigin.drug_discovery.execution import Execution
 from deeporigin.drug_discovery.execution_mixins import QuoteMixin, SyncExecutableMixin
 from deeporigin.drug_discovery.structures.pocket import Pocket
 from deeporigin.drug_discovery.structures.protein import Protein
-from deeporigin.functions.result import FunctionResult
+from deeporigin.drug_discovery.sync_function_responses import SyncFunctionResponses
 from deeporigin.platform.client import DeepOriginClient
 from deeporigin.platform.constants import TOOL_KEYS_AND_VERSIONS
 
@@ -121,6 +121,17 @@ class PocketFinder(Execution, QuoteMixin, SyncExecutableMixin):
             quote=True,
         )
 
+    def quote(self) -> None:
+        """Request a cost estimate using the functions API quotation payload."""
+        self._quote_setup()
+        dto = self._get_quote()
+        wrapped = SyncFunctionResponses([dto])
+        if wrapped.estimate is None:
+            raise RuntimeError(
+                "Quote failed: no estimate could be parsed from the pocket-finder response."
+            )
+        self._estimate = wrapped.estimate
+
     @beartype
     def run(self) -> list[Pocket]:
         """Execute pocket finding (blocking).
@@ -137,9 +148,9 @@ class PocketFinder(Execution, QuoteMixin, SyncExecutableMixin):
             params=self._pocket_finder_function_params(),
             quote=False,
         )
-        result = FunctionResult([raw])
+        result = SyncFunctionResponses([raw])
 
-        execution_id = result._responses[0]["id"]
+        execution_id = result.responses[0]["id"]
         self._id = execution_id
 
         if self.protein.id is not None:
@@ -170,3 +181,54 @@ class PocketFinder(Execution, QuoteMixin, SyncExecutableMixin):
         self.status = result.status
 
         return pockets
+
+
+def find_pockets(
+    *,
+    protein: Protein,
+    pocket_count: int = 5,
+    pocket_min_size: int = 30,
+    client: DeepOriginClient,
+    tool_version: str = TOOL_KEYS_AND_VERSIONS["pocket_finder"]["function_version"],
+    quote: bool = False,
+) -> SyncFunctionResponses:
+    """Find binding pockets via ``client.functions.run`` (low-level helper).
+
+    Prefer :class:`PocketFinder` for a workflow object with :meth:`PocketFinder.quote`.
+
+    Args:
+        protein: Protein to analyse (synced as needed).
+        pocket_count: Maximum pockets to return.
+        pocket_min_size: Minimum pocket volume (Å³).
+        client: API client.
+        tool_version: Pocket-finder function version.
+        quote: If True, request a quotation only.
+
+    Returns:
+        :class:`SyncFunctionResponses` wrapping the raw API response.
+
+    Raises:
+        ValueError: If ``pocket_count`` or ``pocket_min_size`` is invalid.
+    """
+    if pocket_count < 1:
+        raise ValueError("pocket_count must be at least 1") from None
+    if pocket_min_size < 1:
+        raise ValueError("pocket_min_size must be at least 1") from None
+
+    protein.sync(lazy=True, client=client)
+    protein.ensure_remote_path(client=client, label="Protein")
+
+    payload = {
+        "protein": {"file_path": protein.remote_path, "id": protein.id},
+        "pocket_count": pocket_count,
+        "pocket_min_size": pocket_min_size,
+    }
+
+    response = client.functions.run(
+        key=TOOL_KEYS_AND_VERSIONS["pocket_finder"]["function_key"],
+        version=tool_version,
+        params=payload,
+        quote=quote,
+    )
+
+    return SyncFunctionResponses([response])

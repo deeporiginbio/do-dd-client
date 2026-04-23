@@ -48,7 +48,7 @@ nav = [
         {"Pocket" = "dd/ref/pocket.md"},
       ]},
       {"docking" = "dd/ref/docking.md"},
-      {"FunctionResult" = "dd/ref/function-result.md"},
+      {"SyncFunctionResponses" = "dd/ref/sync-function-responses.md"},
       {"abfe" = "dd/ref/abfe.md"},
       {"rbfe" = "dd/ref/rbfe.md"},
     ]},

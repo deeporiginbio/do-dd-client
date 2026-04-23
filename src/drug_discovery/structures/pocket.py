@@ -17,7 +17,7 @@ from typing import TYPE_CHECKING, Any, ClassVar, Optional, Self
 import numpy as np
 
 if TYPE_CHECKING:
-    from deeporigin.functions.result import FunctionResult
+    from deeporigin.drug_discovery.sync_function_responses import SyncFunctionResponses
 
 from deeporigin.drug_discovery.constants import POCKETS_BASE_DIR
 from deeporigin.drug_discovery.structures.entity import Entity
@@ -571,17 +571,17 @@ class Pocket(Entity):
     def from_function_result(
         cls,
         *,
-        result: "FunctionResult",
+        result: "SyncFunctionResponses",
         client: "DeepOriginClient",
     ) -> list[Self]:
-        """Build Pocket objects from a pocket-finder ``FunctionResult``.
+        """Build Pocket objects from a pocket-finder ``SyncFunctionResponses``.
 
         Extracts the pocket list and stores the remote paths without
         downloading.  Files are fetched lazily when coordinates are first
         accessed.
 
         Args:
-            result: FunctionResult wrapping a pocket-finder response.
+            result: SyncFunctionResponses wrapping a pocket-finder response.
             client: DeepOrigin client (retained for API compatibility).
 
         Returns:

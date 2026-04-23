@@ -22,6 +22,8 @@ __all__ = [
     "PlatformStatus",
     "SystemPrep",
     "Molprops",
+    "Protonation",
+    "SyncFunctionResponses",
 ]
 
 DATA_DIR = files("deeporigin.data")
@@ -73,6 +75,16 @@ def __getattr__(name):
         from deeporigin.drug_discovery.molprops import Molprops
 
         return Molprops
+    elif name == "Protonation":
+        from deeporigin.drug_discovery.protonation import Protonation
+
+        return Protonation
+    elif name == "SyncFunctionResponses":
+        from deeporigin.drug_discovery.sync_function_responses import (
+            SyncFunctionResponses,
+        )
+
+        return SyncFunctionResponses
     elif name == "Execution":
         from deeporigin.drug_discovery.execution import Execution
 
