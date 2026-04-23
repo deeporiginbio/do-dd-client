@@ -291,23 +291,3 @@ def test_protonation_lv2(client: DeepOriginClient):
     assert ligand.smiles != original_smiles, (
         "Expected SMILES to be different at pH 11.4"
     )
-
-
-# def test_loop_modelling(client):
-#     protein = Protein.from_pdb_id("5QSP")
-#     assert len(protein.find_missing_residues()) > 0, "Missing residues should be > 0"
-#     protein.model_loops(use_cache=False, client=client)
-
-#     assert protein.structure is not None, "Structure should not be None"
-
-#     assert len(protein.find_missing_residues()) == 0, "Missing residues should be 0"
-
-
-# def test_konnektor(client):
-#     ligands = LigandSet.from_sdf(DATA_DIR / "ligands" / "ligands-brd-all.sdf")
-
-#     ligands.map_network(use_cache=False, client=client)
-
-#     assert len(ligands.network.keys()) > 0, "Expected network to be non-empty"
-
-#     assert len(ligands.network["edges"]) == 7, "Expected 7 edges"
