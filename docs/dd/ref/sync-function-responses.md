@@ -4,4 +4,4 @@ Synchronous calls to the platform ``functions.run`` API return a `SyncFunctionRe
 
 For higher-level workflow classes (`Docking`, `PocketFinder`, `SystemPrep`, `Molprops`, `Protonation`), prefer the execution object’s own fields (`estimate`, `cost`, `id`) and domain return types from `run()` where applicable.
 
-:::: deeporigin.drug_discovery.sync_function_responses.SyncFunctionResponses
+::: deeporigin.drug_discovery.sync_function_responses.SyncFunctionResponses
