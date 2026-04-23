@@ -91,12 +91,12 @@ jobs:
         id: test_level
         env:
           INPUT_TEST_LEVEL: ${{ inputs.test_level }}
+          INPUT_ENV: ${{ inputs.env }}
           EVENT_TEST_LEVEL: ${{ github.event.inputs.test_level }}
-          EVENT_NAME: ${{ github.event_name }}
         run: |
           LEVEL="${INPUT_TEST_LEVEL:-${EVENT_TEST_LEVEL:-lv1}}"
           echo "TEST_LEVEL=${LEVEL}" >> "$GITHUB_ENV"
-          if [[ "$EVENT_NAME" == "workflow_call" && "$LEVEL" == "lv2" ]]; then
+          if [[ -n "$INPUT_ENV" && "$LEVEL" == "lv2" ]]; then
             SELECTOR="lv1 or lv2"
           else
             SELECTOR="$LEVEL"
