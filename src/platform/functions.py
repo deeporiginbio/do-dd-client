@@ -112,10 +112,12 @@ class Functions:
         if proj_id is not None:
             body["projectId"] = proj_id
 
+        # Retry on 5xx/429: cold starts and rollouts often return 503 while the
+        # worker is unavailable; the POST is only retried before a success response.
         response = self._c.post_json(
             endpoint,
             body=body,
-            retry=False,
+            retry=True,
         )
         self._c._client.timeout = original_timeout
 

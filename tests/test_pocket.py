@@ -263,6 +263,9 @@ def test_from_id_lv2(
     assert pocket.local_path is None
     assert pocket.coordinates is None
     assert pocket.protein_id is not None
+    # Result rows may omit ``pocket_center`` / box fields; geometry is backfilled
+    # once coordinates are loaded (or via :meth:`Pocket.get_center`).
+    assert pocket.get_center().shape == (3,)
     assert pocket.center is not None
     assert len(pocket.center) == 3
     assert pocket.box_size_x is not None
@@ -280,6 +283,7 @@ def test_from_id_lv2(
     assert fetched.remote_path is not None
     assert fetched.local_path is None
     assert fetched.protein_id == pocket.protein_id
+    assert fetched.get_center().shape == (3,)
     assert fetched.center is not None
     assert len(fetched.center) == 3
     assert fetched.box_size_x is not None

@@ -106,11 +106,38 @@ class Pocket(Entity):
         Raises:
             ValueError: If no coordinates and no file path available.
         """
-        if self.coordinates is not None:
-            return self.coordinates
-        local = self.download(client=self._client)
-        self._load_coordinates_from_file(local)
-        return self.coordinates
+        if self.coordinates is None:
+            local = self.download(client=self._client)
+            self._load_coordinates_from_file(local)
+        coords = self.coordinates
+        if coords is None:
+            raise ValueError(
+                "Pocket coordinates are not available and could not be loaded."
+            )
+        self._backfill_geometry_from_coordinates()
+        return coords
+
+    def _backfill_geometry_from_coordinates(self) -> None:
+        """Populate ``center`` / box sizes from loaded coordinates when the API omits them.
+
+        Result-explorer rows may not repeat ``pocket_center`` or box extents; once
+        coordinates are available we derive the same fields used by docking tools.
+        """
+        coords = self.coordinates
+        if coords is None or len(coords) == 0:
+            return
+        if self.center is None:
+            mean = coords.mean(axis=0)
+            self.center = [float(mean[0]), float(mean[1]), float(mean[2])]
+        if (
+            self.box_size_x is None
+            and self.box_size_y is None
+            and self.box_size_z is None
+        ):
+            span = coords.max(axis=0) - coords.min(axis=0)
+            self.box_size_x = float(max(span[0], 1.0))
+            self.box_size_y = float(max(span[1], 1.0))
+            self.box_size_z = float(max(span[2], 1.0))
 
     def _to_pdb_string(self) -> str:
         """Generate PDB format string from coordinates.
@@ -338,8 +365,10 @@ class Pocket(Entity):
         """
         if self.center is not None:
             return np.asarray(self.center, dtype=float)
-        coords = self._ensure_coordinates()
-        return coords.mean(axis=0)
+        self._ensure_coordinates()
+        if self.center is None:
+            raise ValueError("Pocket has no center and coordinates could not be loaded.")
+        return np.asarray(self.center, dtype=float)
 
     @classmethod
     def from_residue_number(

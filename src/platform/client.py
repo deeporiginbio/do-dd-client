@@ -1186,7 +1186,7 @@ class DeepOriginClient(metaclass=_DeepOriginMeta):
             path: API endpoint path (relative to base_url).
             body: JSON data to send in the request body.
             retry: If False, perform a single HTTP attempt (no client-level retries).
-                Used for idempotent-sensitive function execution POSTs.
+                Prefer True for availability-sensitive POSTs (e.g. function runs).
             **kwargs: Additional arguments passed to httpx.Client.post().
 
         Returns:
