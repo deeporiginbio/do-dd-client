@@ -189,6 +189,16 @@ def test_create_protein_lv1(client: DeepOriginClient):
     assert "file_path" in data, "Expected 'file_path' key in data"
 
 
+def test_batch_create_entity_lv1(client: DeepOriginClient):
+    """Test batch create via generic entity endpoint."""
+    response = client.entities.batch_create("ligands", rows=[{"smiles": "C"}])
+
+    assert isinstance(response, dict), "Expected a dictionary response"
+    assert "data" in response, "Expected 'data' key in response"
+    assert isinstance(response["data"], list), "Expected 'data' to be a list"
+    assert len(response["data"]) == 1, "Expected exactly one created row"
+
+
 def test_get_ligand_lv1(client: DeepOriginClient):
     """Test getting a ligand by ID."""
     smiles = "Fc1c(-c2cccc3ccccc23)ncc2c(N3C[C@H]4CC[C@@H](C3)N4)nc(OCC34CCCN3CCC4)nc12"
