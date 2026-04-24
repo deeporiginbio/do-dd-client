@@ -944,11 +944,7 @@ def create_tools_router(
 
         inputs = body.get("inputs", {}) or {}
         n_lig = len(inputs.get("ligands") or [])
-        if (
-            tool_key == "deeporigin.docking"
-            and body.get("sync") is True
-            and n_lig == 1
-        ):
+        if tool_key == "deeporigin.docking" and body.get("sync") is True and n_lig == 1:
             execution = _create_docking_blocking_run_dto(
                 org_key=org_key,
                 tool_key=tool_key,
