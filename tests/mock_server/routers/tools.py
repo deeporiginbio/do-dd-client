@@ -222,6 +222,8 @@ def create_tools_router(
             execution["status"] = "Succeeded"
             execution["completedAt"] = now.strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z"
             execution["updatedAt"] = now.strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z"
+            if tool_key == "deeporigin.docking":
+                _inject_docking_tool_execution_results(execution)
             progress_reports = _load_progress_reports(tool_key)
             if progress_reports:
                 final_report = progress_reports[-1]
@@ -611,6 +613,40 @@ def create_tools_router(
                 "compute_job_id": execution_id,
             }
             results.append(record)
+
+    def _inject_docking_tool_execution_results(execution: dict[str, Any]) -> None:
+        """Mirror function-run docking into ``results`` when a tool execution completes."""
+        eid = execution.get("executionId")
+        tkey = (execution.get("tool") or {}).get("key")
+        if not eid or tkey != "deeporigin.docking":
+            return
+        if any(r.get("compute_job_id") == eid for r in results):
+            return
+        from tests.fixture_utils import patch_fixture_version
+
+        response = copy.deepcopy(load_fixture("function-runs/deeporigin.docking/run"))
+        patch_fixture_version(response)
+        response["id"] = eid
+        response["status"] = "Completed"
+        user_inputs = execution.get("userInputs", {})
+        protein = (
+            user_inputs.get("protein", {}) if isinstance(user_inputs, dict) else {}
+        )
+        protein_id = protein.get("id") if isinstance(protein, dict) else None
+        ligand_id = None
+        ligands_list = user_inputs.get("ligands") or []
+        if (
+            isinstance(ligands_list, list)
+            and ligands_list
+            and isinstance(ligands_list[0], dict)
+        ):
+            ligand_id = ligands_list[0].get("id")
+        fo = response.get("functionOutputs")
+        if isinstance(fo, dict):
+            response["functionOutputs"] = _replace_ids_in_function_outputs(
+                fo, protein_id=protein_id, ligand_id=ligand_id
+            )
+        _inject_result_explorer_records("deeporigin.docking", response)
 
     @router.post("/tools/{org_key}/functions/{function_key}")
     async def run_function(
