@@ -367,7 +367,9 @@ class Pocket(Entity):
             return np.asarray(self.center, dtype=float)
         self._ensure_coordinates()
         if self.center is None:
-            raise ValueError("Pocket has no center and coordinates could not be loaded.")
+            raise ValueError(
+                "Pocket has no center and coordinates could not be loaded."
+            )
         return np.asarray(self.center, dtype=float)
 
     @classmethod
