@@ -318,6 +318,54 @@ def create_tools_router(
 
         return execution
 
+    def _create_docking_blocking_run_dto(
+        *,
+        org_key: str,
+        tool_key: str,
+        tool_version: str,
+        body: dict[str, Any],
+    ) -> dict[str, Any]:
+        """``Docking.run()``: server blocks; local mock returns ``Succeeded`` in one POST."""
+        now = datetime.now(timezone.utc)
+        ts = now.strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z"
+        eid = str(uuid.uuid4())
+        approve_amount = body.get("approveAmount", 0) or 0
+        execution: dict[str, Any] = {
+            "executionId": eid,
+            "createdAt": ts,
+            "updatedAt": ts,
+            "resourceId": _generate_resource_id(),
+            "status": "Succeeded",
+            "userInputs": body.get("inputs", {}),
+            "userOutputs": body.get("outputs", {}),
+            "metadata": body.get("metadata", {}),
+            "approveAmount": approve_amount,
+            "jobOutputs": None,
+            "resourcesUsed": None,
+            "resourcesRequested": None,
+            "progressReport": json.dumps({"complete": 100}),
+            "statusReason": None,
+            "name": body.get("name"),
+            "orgKey": org_key,
+            "tool": {"key": tool_key, "version": tool_version},
+            "startedAt": ts,
+            "completedAt": ts,
+        }
+        if body.get("projectId") is not None:
+            execution["projectId"] = body["projectId"]
+        tdir = fixtures_dir / tool_key
+        if tdir.exists():
+            qr = tdir / "quotation-result.json"
+            if qr.exists():
+                try:
+                    execution["quotationResult"] = load_fixture(
+                        f"{tool_key}/quotation-result"
+                    )
+                except FileNotFoundError:
+                    pass
+            execution["cluster"] = {"id": str(uuid.uuid4())}
+        return execution
+
     def _get_protonation_response(
         *, smiles: str, ph: float, inputs: dict[str, Any], body: dict[str, Any]
     ) -> dict[str, Any]:
@@ -894,6 +942,23 @@ def create_tools_router(
         if approve_amount is None:
             approve_amount = 0
 
+        inputs = body.get("inputs", {}) or {}
+        n_lig = len(inputs.get("ligands") or [])
+        if (
+            tool_key == "deeporigin.docking"
+            and body.get("sync") is True
+            and n_lig == 1
+        ):
+            execution = _create_docking_blocking_run_dto(
+                org_key=org_key,
+                tool_key=tool_key,
+                tool_version=tool_version,
+                body=body,
+            )
+            eid = execution["executionId"]
+            executions[eid] = execution
+            _inject_docking_tool_execution_results(execution)
+            return _normalize_execution(execution)
         if tool_key == "deeporigin.bulk-docking" and approve_amount == 0:
             execution = _create_bulk_docking_quote(
                 org_key=org_key,

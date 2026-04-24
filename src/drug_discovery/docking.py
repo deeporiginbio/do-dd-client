@@ -2,7 +2,6 @@
 
 import concurrent.futures
 import os
-import time
 from typing import Any, Protocol, Self, cast
 
 from beartype import beartype
@@ -27,21 +26,6 @@ from deeporigin.platform.executions import Executions
 from deeporigin.utils.constants import DOCKING_RESULTS_DATAFRAME_COLUMNS
 
 Number = float | int
-
-# Blocking ``run()``: poll until the platform reports a completed execution (per ligand).
-_DOCKING_RUN_POLL_TIMEOUT_S: float = 3600.0
-_DOCKING_RUN_POLL_INTERVAL_S: float = 0.25
-
-# Tool execution is finished (success or terminal failure) for :meth:`Docking.run` polling.
-_DOCKING_RUN_TERMINAL: frozenset[str] = frozenset(
-    {
-        "Succeeded",
-        "Failed",
-        "Cancelled",
-        "InsufficientFunds",
-        "FailedQuotation",
-    }
-)
 
 
 class _SupportsEntitySync(Protocol):
@@ -163,55 +147,22 @@ def _price_total_from_execution_dto(dto: dict[str, Any]) -> float | None:
     return float(price) if price is not None else None
 
 
-def _wait_until_docking_run_complete(
-    client: DeepOriginClient,
-    execution_id: str,
-    *,
-    initial_dto: dict[str, Any] | None = None,
-    timeout_s: float = _DOCKING_RUN_POLL_TIMEOUT_S,
-    poll_s: float = _DOCKING_RUN_POLL_INTERVAL_S,
-) -> dict[str, Any]:
-    """Block until a tools execution reaches a terminal status (confirm if ``Quoted``)."""
-    executions = _require_executions(client)
-    dto: dict[str, Any] | None = initial_dto
-    deadline = time.monotonic() + timeout_s
-
-    while time.monotonic() < deadline:
-        if dto is None:
-            dto = executions.get(execution_id)
-        status = dto.get("status")
-        if status == "Quoted":
-            executions.confirm(execution_id)
-            dto = None
-            continue
-        if status in _DOCKING_RUN_TERMINAL:
-            return dto
-        time.sleep(poll_s)
-        dto = None
-
-    raise DeepOriginException(
-        title="Docking run timed out",
-        message=(
-            f"Execution {execution_id!r} did not reach a terminal state within {timeout_s}s."
-        ),
-    ) from None
-
-
 @beartype
 class Docking(
     Execution, QuoteMixin, SyncExecutableMixin, AsyncExecutableMixin, NotebookWatchMixin
 ):
     """Molecular docking via the tools API (``client.executions.create``).
 
-    Synchronous :meth:`run` submits one ligand per tools execution, blocking until
-    each run reaches a terminal state (``Quoted`` is confirmed, then the execution
-    is polled until success or failure).
+    The execution request body includes ``sync`` (``true`` = blocking, ``false`` =
+    immediate DTO). :meth:`run` sets ``"sync": true`` and sends **one ligand** per
+    request; the server blocks until the run finishes and returns the completed
+    execution. :meth:`quote` and :meth:`start` set ``"sync": false`` (non-blocking).
 
-    Asynchronous :meth:`start` is for multiple ligands only: one persisted execution
-    with all ligands (workflow / batch). It is an error to call :meth:`start` with
-    a single ligand; use :meth:`run` instead. Track async jobs with ``sync()``,
-    ``from_id()``, and ``list()``. In Jupyter, use ``await docking.watch()`` or
-    ``await docking.watch_async()`` (see
+    :meth:`start` is for multiple ligands only: one ``create`` with all ligands. The
+    call **returns immediately** with an execution DTO. For a single ligand, use
+    :meth:`run` instead of :meth:`start`. Track async jobs with ``.sync()``,
+    ``from_id()``, and ``list()``. In Jupyter, use
+    ``await docking.watch()`` or ``await docking.watch_async()`` (see
     :class:`~deeporigin.drug_discovery.notebook_watch_mixin.NotebookWatchMixin`).
 
     Attributes:
@@ -368,7 +319,7 @@ class Docking(
             Raw execution dictionary from the platform.
         """
         self._ensure_platform_inputs()
-        payload = self._make_payload(approve_amount=0)
+        payload = self._make_payload(approve_amount=0, sync=False)
 
         return _require_executions(self.client).create(
             data=payload,
@@ -387,40 +338,11 @@ class Docking(
             )
         super().start(**kwargs)
 
-    def _create_and_await_one_ligand_run(
-        self,
-        ex: Executions,
-        one: LigandSet,
-    ) -> tuple[str, float | None]:
-        """Create one tools execution (single-ligand inputs) and block until it finishes."""
-        create_dto = ex.create(
-            data=self._make_payload(ligand_set=one),
-            tool_key=self.tool_key,
-            tool_version=self.tool_version,
-        )
-        eid = create_dto.get("executionId")
-        if not eid:
-            raise DeepOriginException(
-                title="Docking run failed",
-                message="tools execution create did not return an executionId.",
-            ) from None
-        final_dto = _wait_until_docking_run_complete(
-            self.client, eid, initial_dto=create_dto
-        )
-        final_status = final_dto.get("status")
-        if final_status != "Succeeded":
-            reason = final_dto.get("statusReason") or final_status
-            raise DeepOriginException(
-                title="Docking run did not succeed",
-                message=f"Execution {eid!r} ended with status {final_status!r}: {reason!r}.",
-            ) from None
-        return eid, _price_total_from_execution_dto(final_dto)
-
     def run(self) -> LigandSet:
-        """Execute docking synchronously (blocking).
+        """Execute docking: one blocking ``executions.create`` per ligand.
 
-        Submits one tools execution per ligand (one ligand in ``inputs.ligands`` at a
-        time) and blocks until each execution completes successfully.
+        The platform holds the request until the run finishes and returns the
+        final execution in the response (no client-side poll loop).
 
         Returns:
             A ``LigandSet`` of docked poses.
@@ -442,9 +364,29 @@ class Docking(
         got_cost = False
 
         for ligand in ligand_list:
-            eid, price = self._create_and_await_one_ligand_run(
-                ex, LigandSet(ligands=[ligand])
+            create_dto = ex.create(
+                data=self._make_payload(
+                    ligand_set=LigandSet(ligands=[ligand]), sync=True
+                ),
+                tool_key=self.tool_key,
+                tool_version=self.tool_version,
             )
+            eid = create_dto.get("executionId")
+            if not eid:
+                raise DeepOriginException(
+                    title="Docking run failed",
+                    message="tools execution create did not return an executionId.",
+                ) from None
+            final_status = create_dto.get("status")
+            if final_status != "Succeeded":
+                reason = create_dto.get("statusReason") or final_status
+                raise DeepOriginException(
+                    title="Docking run did not succeed",
+                    message=(
+                        f"Execution {eid!r} ended with status {final_status!r}: {reason!r}."
+                    ),
+                ) from None
+            price = _price_total_from_execution_dto(create_dto)
             if first_id is None:
                 first_id = eid
             if price is not None:
@@ -480,7 +422,7 @@ class Docking(
     def _start_impl(self, **kwargs) -> None:
         """Submit docking as a persisted async execution."""
         self._ensure_platform_inputs()
-        payload = self._make_payload()
+        payload = self._make_payload(sync=False)
 
         execution_dto = _require_executions(self.client).create(
             data=payload,
@@ -570,24 +512,28 @@ class Docking(
         *,
         ligand_set: LigandSet | None = None,
         approve_amount: int | None = None,
+        sync: bool = False,
     ) -> dict[str, Any]:
-        """Build the body dict for :meth:`_get_quote` and :meth:`_start_impl`.
+        """Build the body dict for :meth:`_get_quote`, :meth:`_start_impl`, and :meth:`run`.
 
         Args:
             ligand_set: Subset of ligands for tool ``inputs`` (default: all
                 :attr:`ligands`).
             approve_amount: When not ``None``, sets ``approveAmount`` on the payload.
                 Use ``0`` for quoting.
+            sync: ``False`` = async (immediate execution DTO). ``True`` = blocking
+                response; use only with a **single** ligand in ``inputs.ligands``.
 
         Returns:
             DTO for ``client.executions.create`` (``inputs``, ``outputs``, ``metadata``,
-            optional ``name``, optional ``approveAmount``, ``batchSize``).
+            ``sync``, optional ``name``, optional ``approveAmount``, ``batchSize``).
         """
         params, metadata = self._build_tool_inputs(ligand_set=ligand_set)
         payload: dict[str, Any] = {
             "inputs": params,
             "outputs": {},
             "metadata": metadata,
+            "sync": sync,
         }
         if self.name is not None:
             payload["name"] = self.name
