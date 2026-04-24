@@ -19,7 +19,6 @@ from deeporigin.drug_discovery.structures.entity import Entity
 from deeporigin.drug_discovery.structures.ligand import Ligand, LigandSet
 from deeporigin.drug_discovery.structures.pocket import Pocket
 from deeporigin.drug_discovery.structures.protein import Protein
-from deeporigin.drug_discovery.sync_function_responses import SyncFunctionResponses
 from deeporigin.exceptions import DeepOriginException
 from deeporigin.platform.client import DeepOriginClient
 from deeporigin.platform.constants import TOOL_KEYS_AND_VERSIONS
@@ -138,20 +137,32 @@ def _docking_default_name(protein: Protein, ligands: LigandSet) -> str:
     return f"Docking {p} to {n} ligands."
 
 
+def _price_total_from_execution_dto(dto: dict[str, Any]) -> float | None:
+    """Return ``priceTotal`` from the first successful quotation, if any."""
+    quotation = dto.get("quotationResult") or {}
+    successful = quotation.get("successfulQuotations") or []
+    if not successful:
+        return None
+    price = successful[0].get("priceTotal")
+    return float(price) if price is not None else None
+
+
 @beartype
 class Docking(
     Execution, QuoteMixin, SyncExecutableMixin, AsyncExecutableMixin, NotebookWatchMixin
 ):
-    """Molecular docking supporting both sync and async execution.
+    """Molecular docking via the tools API (``client.executions.create``).
 
-    Sync path (``run()``): uses ``client.functions.run`` for small ligand sets.
-    Blocking; uses :attr:`function_version` for the functions manifest (see
-    :attr:`tool_version` for async jobs).
+    The execution request body includes ``sync`` (``true`` = blocking, ``false`` =
+    immediate DTO). :meth:`run` sets ``"sync": true`` and sends **one ligand** per
+    request; the server blocks until the run finishes and returns the completed
+    execution. :meth:`quote` and :meth:`start` set ``"sync": false`` (non-blocking).
 
-    Async path (``start()``): uses ``client.executions.create`` (tools API).
-    Creates a persisted execution trackable via ``sync()``, ``from_id()``,
-    and ``list()``. In Jupyter, use ``await docking.watch()`` or
-    ``await docking.watch_async()`` for live job HTML (see
+    :meth:`start` is for multiple ligands only: one ``create`` with all ligands. The
+    call **returns immediately** with an execution DTO. For a single ligand, use
+    :meth:`run` instead of :meth:`start`. Track async jobs with ``.sync()``,
+    ``from_id()``, and ``list()``. In Jupyter, use
+    ``await docking.watch()`` or ``await docking.watch_async()`` (see
     :class:`~deeporigin.drug_discovery.notebook_watch_mixin.NotebookWatchMixin`).
 
     Attributes:
@@ -159,7 +170,6 @@ class Docking(
         ligands: Set of ligands to dock.
         pocket: Binding pocket defining the docking box.
         effort: Docking effort level (1 = fastest, 5 = most thorough).
-        function_version: Manifest version for :meth:`run` (``functions.run`` only).
         name: Execution label, set automatically from protein and ligands unless overridden.
         batch_size: For async :meth:`start`, workflow batch size (ligands per workflow
             batch), a positive multiple of 4. Defaults to 16. Sent as ``batchSize`` on
@@ -167,7 +177,7 @@ class Docking(
     """
 
     tool_key: str = TOOL_KEYS_AND_VERSIONS["docking"]["tool_key"]
-    effort: int = 3
+    effort: int = 1
 
     def __init__(
         self,
@@ -178,8 +188,7 @@ class Docking(
         ligands: LigandSet | None = None,
         smiles_list: list[str] | None = None,
         tool_version: str = TOOL_KEYS_AND_VERSIONS["docking"]["tool_version"],
-        function_version: str = TOOL_KEYS_AND_VERSIONS["docking"]["function_version"],
-        effort: int = 3,
+        effort: int = 1,
         batch_size: int = 16,
         client: DeepOriginClient | None = None,
         name: str | None = None,
@@ -195,10 +204,8 @@ class Docking(
                 ``smiles_list``.
             smiles_list: Raw SMILES strings. Mutually exclusive with ``ligand``
                 and ``ligands``. Converted to a ``LigandSet`` during construction.
-            tool_version: Platform tool version for :meth:`quote` and :meth:`start`
-                (``client.executions.create``).
-            function_version: Functions API manifest version passed to
-                ``client.functions.run`` from :meth:`run` only.
+            tool_version: Platform tool version for :meth:`quote`, :meth:`start`, and
+                :meth:`run` (all use ``client.executions.create``).
             effort: Docking effort level (1 = fastest, 5 = most thorough).
                 Defaults to :attr:`effort` on the class (3).
             client: Optional API client.
@@ -230,7 +237,6 @@ class Docking(
             raise ValueError("batch_size must be a multiple of 4.")
         super().__init__(client=client)
         self.tool_version = tool_version
-        self._function_version = function_version
         self.effort = effort
         self._batch_size = batch_size
 
@@ -261,11 +267,6 @@ class Docking(
     def batch_size(self) -> int:
         """Workflow batch size for async :meth:`start` (default 16)."""
         return self._batch_size
-
-    @property
-    def function_version(self) -> str:
-        """Functions API version string used by :meth:`run` (``functions.run``)."""
-        return self._function_version
 
     def __repr__(self) -> str:
         """Return a concise summary of this docking execution."""
@@ -318,7 +319,7 @@ class Docking(
             Raw execution dictionary from the platform.
         """
         self._ensure_platform_inputs()
-        payload = self._make_payload(approve_amount=0)
+        payload = self._make_payload(approve_amount=0, sync=False)
 
         return _require_executions(self.client).create(
             data=payload,
@@ -326,10 +327,22 @@ class Docking(
             tool_version=self.tool_version,
         )
 
-    def run(self) -> LigandSet:
-        """Execute docking synchronously (blocking).
+    def start(self, **kwargs: Any) -> None:  # type: ignore[override]
+        """Submit a persisted async execution. Requires at least two ligands.
 
-        Uses the functions API. Suitable for small ligand sets.
+        For a single ligand, use :meth:`run` instead.
+        """
+        if len(self.ligands) == 1:
+            raise ValueError(
+                "Cannot start: Docking with a single ligand must use run(), not start()."
+            )
+        super().start(**kwargs)
+
+    def run(self) -> LigandSet:
+        """Execute docking: one blocking ``executions.create`` per ligand.
+
+        The platform holds the request until the run finishes and returns the
+        final execution in the response (no client-side poll loop).
 
         Returns:
             A ``LigandSet`` of docked poses.
@@ -340,86 +353,76 @@ class Docking(
             ) from None
 
         client = self.client
-        protein = self.protein
-        pocket = self.pocket
-        ligands = list(self.ligands)
+        ex = _require_executions(client)
+        ligand_list = list(self.ligands)
 
-        _sync_entity(protein, lazy=True, client=client)
-        _ensure_entity_remote_path(protein, client=client, label="Protein")
+        self._ensure_platform_inputs()
 
-        if pocket.center is not None:
-            pocket_center = list(pocket.center)
-        else:
-            pocket_center = pocket.get_center().tolist()
+        execution_ids: list[str] = []
+        first_id: str | None = None
+        cost_total: float = 0.0
+        got_cost = False
 
-        pocket_data: dict[str, Any] = {
-            "center": pocket_center,
-            "box_size_x": _docking_pocket_axis_size(pocket, "x"),
-            "box_size_y": _docking_pocket_axis_size(pocket, "y"),
-            "box_size_z": _docking_pocket_axis_size(pocket, "z"),
-        }
-        if pocket.id is not None:
-            pocket_data["id"] = pocket.id
-
-        protein_data = {"id": protein.id, "file_path": protein.remote_path}
-
-        all_responses: list[dict[str, Any]] = []
-        for ligand in ligands:
-            _sync_entity(ligand, lazy=True, client=client)
-            payload = {
-                "effort": self.effort,
-                "protein": protein_data,
-                "ligands": [{"id": ligand.id, "smiles": ligand.smiles}],
-                "pocket": pocket_data,
-            }
-            all_responses.append(
-                client.functions.run(  # ty: ignore[unresolved-attribute]
-                    key=TOOL_KEYS_AND_VERSIONS["docking"]["function_key"],
-                    version=self._function_version,
-                    params=payload,
-                    quote=False,
-                )
+        for ligand in ligand_list:
+            create_dto = ex.create(
+                data=self._make_payload(
+                    ligand_set=LigandSet(ligands=[ligand]), sync=True
+                ),
+                tool_key=self.tool_key,
+                tool_version=self.tool_version,
             )
+            eid = create_dto.get("executionId")
+            if not eid:
+                raise DeepOriginException(
+                    title="Docking run failed",
+                    message="tools execution create did not return an executionId.",
+                ) from None
+            final_status = create_dto.get("status")
+            if final_status != "Succeeded":
+                reason = create_dto.get("statusReason") or final_status
+                raise DeepOriginException(
+                    title="Docking run did not succeed",
+                    message=(
+                        f"Execution {eid!r} ended with status {final_status!r}: {reason!r}."
+                    ),
+                ) from None
+            price = _price_total_from_execution_dto(create_dto)
+            if first_id is None:
+                first_id = eid
+            if price is not None:
+                cost_total += price
+                got_cost = True
+            execution_ids.append(eid)
 
-        if not all_responses:
-            all_responses = [{"status": "Failed"}]
+        self._id = first_id
+        self._cost = cost_total if got_cost else None
 
-        result = SyncFunctionResponses(all_responses)
-
-        self._id = result.id
-        self._cost = result.cost
-
-        execution_ids = [r["id"] for r in result.responses if r.get("id") is not None]
         ids_ok = self.protein.id is not None and all(
-            lig.id is not None for lig in ligands
+            lig.id is not None for lig in ligand_list
         )
-        if ids_ok:
-            try:
-                all_poses: list[Ligand] = []
-                for execution_id in execution_ids:
-                    poses_ls = LigandSet.from_docking_result(
-                        execution_id=execution_id,
-                        client=client,
-                    )
-                    all_poses.extend(poses_ls.ligands)
-                if all_poses:
-                    return LigandSet(ligands=all_poses)
-            except Exception:
-                pass
-            import warnings
+        if ids_ok and execution_ids:
+            all_poses: list[Ligand] = []
+            for execution_id in execution_ids:
+                poses_ls = LigandSet.from_docking_result(
+                    execution_id=execution_id,
+                    client=client,
+                )
+                all_poses.extend(poses_ls.ligands)
+            if all_poses:
+                return LigandSet(ligands=all_poses)
 
-            warnings.warn(
-                "Could not load docking poses from the data platform; "
-                "using function response instead. Results may be delayed.",
-                stacklevel=2,
-            )
-
-        return LigandSet.from_docking_results(result=result, client=client)
+        raise DeepOriginException(
+            title="Could not load docking poses",
+            message=(
+                "Executions completed but no poses could be loaded from the data platform. "
+                "Ensure protein and ligand IDs are set and results are available."
+            ),
+        ) from None
 
     def _start_impl(self, **kwargs) -> None:
         """Submit docking as a persisted async execution."""
         self._ensure_platform_inputs()
-        payload = self._make_payload()
+        payload = self._make_payload(sync=False)
 
         execution_dto = _require_executions(self.client).create(
             data=payload,
@@ -439,16 +442,23 @@ class Docking(
         _sync_entity(self.protein, client=self.client, lazy=True)
         _sync_ligand_set(self.ligands, client=self.client, lazy=True)
 
-    def _build_tool_inputs(self) -> tuple[dict, dict]:
+    def _build_tool_inputs(
+        self, *, ligand_set: LigandSet | None = None
+    ) -> tuple[dict, dict]:
         """Build params and metadata for ``client.executions.create``.
 
         Does not sync or upload; call :meth:`_ensure_platform_inputs` first when
         inputs may not yet exist on the platform.
 
+        Args:
+            ligand_set: Ligands to include in tool ``inputs`` (default: all
+                :attr:`ligands`). :meth:`run` passes a single-ligand set per call.
+
         Returns:
             A tuple of (params, metadata).
         """
-        ligands = list(self.ligands)
+        to_dock = self.ligands if ligand_set is None else ligand_set
+        ligands = list(to_dock)
         default_box = float(2 * np.cbrt(self.pocket.volume or 0))
         box_size_x = (
             self.pocket.box_size_x
@@ -497,22 +507,33 @@ class Docking(
 
         return params, metadata
 
-    def _make_payload(self, *, approve_amount: int | None = None) -> dict[str, Any]:
-        """Build the body dict for :meth:`_get_quote` and :meth:`_start_impl`.
+    def _make_payload(
+        self,
+        *,
+        ligand_set: LigandSet | None = None,
+        approve_amount: int | None = None,
+        sync: bool = False,
+    ) -> dict[str, Any]:
+        """Build the body dict for :meth:`_get_quote`, :meth:`_start_impl`, and :meth:`run`.
 
         Args:
+            ligand_set: Subset of ligands for tool ``inputs`` (default: all
+                :attr:`ligands`).
             approve_amount: When not ``None``, sets ``approveAmount`` on the payload.
                 Use ``0`` for quoting.
+            sync: ``False`` = async (immediate execution DTO). ``True`` = blocking
+                response; use only with a **single** ligand in ``inputs.ligands``.
 
         Returns:
             DTO for ``client.executions.create`` (``inputs``, ``outputs``, ``metadata``,
-            optional ``name``, optional ``approveAmount``, ``batchSize``).
+            ``sync``, optional ``name``, optional ``approveAmount``, ``batchSize``).
         """
-        params, metadata = self._build_tool_inputs()
+        params, metadata = self._build_tool_inputs(ligand_set=ligand_set)
         payload: dict[str, Any] = {
             "inputs": params,
             "outputs": {},
             "metadata": metadata,
+            "sync": sync,
         }
         if self.name is not None:
             payload["name"] = self.name
@@ -616,9 +637,6 @@ class Docking(
         except (TypeError, ValueError):
             bs = 16
         instance._batch_size = bs if bs > 0 else 16
-        instance._function_version = TOOL_KEYS_AND_VERSIONS["docking"][
-            "function_version"
-        ]
 
         return instance
 

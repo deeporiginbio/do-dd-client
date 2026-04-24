@@ -5,7 +5,7 @@ These are meant to be run against a live instance.
 
 import pytest
 
-from conftest import check_function_exists
+from conftest import check_function_exists, check_tool_exists
 from deeporigin.drug_discovery import (
     Docking,
     Ligand,
@@ -170,11 +170,11 @@ def test_docking_lv2(
     registered_pocket: Pocket,
 ):
     """Exercise synchronous docking via :class:`Docking`."""
-    assert check_function_exists(
+    assert check_tool_exists(
         client,
-        TOOL_KEYS_AND_VERSIONS["docking"]["function_key"],
-        TOOL_KEYS_AND_VERSIONS["docking"]["function_version"],
-    ), "Docking function not registered on platform (expected key/version)."
+        TOOL_KEYS_AND_VERSIONS["docking"]["tool_key"],
+        TOOL_KEYS_AND_VERSIONS["docking"]["tool_version"],
+    ), "Docking tool not registered on platform (expected key/version)."
 
     poses = Docking(
         protein=registered_protein,
