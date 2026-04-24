@@ -30,7 +30,6 @@ LIGAND_RETURNING_FIELDS = [
     "rotatable_bond_count",
     "tpsa",
     "molecular_weight",
-    "log_p",
     "structure_key",
 ]
 
