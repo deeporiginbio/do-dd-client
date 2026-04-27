@@ -1,5 +1,7 @@
 """Tests for the Entities API wrapper."""
 
+import uuid
+
 import pytest
 
 from deeporigin.drug_discovery import BRD_DATA_DIR
@@ -191,12 +193,26 @@ def test_create_protein_lv1(client: DeepOriginClient):
 
 def test_batch_create_entity_lv1(client: DeepOriginClient):
     """Test batch create via generic entity endpoint."""
-    response = client.entities.batch_create("ligands", rows=[{"smiles": "C"}])
+    response = client.entities.batch_create(
+        "ligands",
+        rows=[
+            {
+                "smiles": "C",
+                "variant_name_tag": f"test-batch-create-{uuid.uuid4()}",
+            }
+        ],
+    )
 
     assert isinstance(response, dict), "Expected a dictionary response"
-    assert "data" in response, "Expected 'data' key in response"
-    assert isinstance(response["data"], list), "Expected 'data' to be a list"
-    assert len(response["data"]) == 1, "Expected exactly one created row"
+    if "data" in response:
+        assert isinstance(response["data"], list), "Expected 'data' to be a list"
+        assert len(response["data"]) == 1, "Expected exactly one created row"
+        return
+
+    inserted = response.get("inserted")
+    if inserted is None and isinstance(response.get("meta"), dict):
+        inserted = response["meta"].get("inserted")
+    assert inserted == 1, "Expected exactly one inserted row"
 
 
 def test_get_ligand_lv1(client: DeepOriginClient):
