@@ -192,7 +192,9 @@ class Executions:
         if status is not None:
             props.append({"column": "status", "op": "eq", "value": status})
         if compute_job_id is not None:
-            props.append({"column": "compute_job_id", "op": "eq", "value": compute_job_id})
+            props.append(
+                {"column": "compute_job_id", "op": "eq", "value": compute_job_id}
+            )
         if extra_props:
             props.extend(extra_props)
 
