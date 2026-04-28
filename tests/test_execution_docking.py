@@ -6,7 +6,7 @@ import time
 
 import pytest
 
-from conftest import check_function_exists, check_tool_exists
+from conftest import check_tool_exists
 from deeporigin.drug_discovery.docking import (
     Docking,
     _docking_default_name,
@@ -190,6 +190,19 @@ def test_docking_quote_lv1(
     assert docking.cost is None, "Cost should be None"
 
 
+def test_docking_start_rejects_single_ligand(
+    registered_protein, registered_pocket, registered_ligand
+) -> None:
+    """start() is only for multi-ligand async; single-ligand must use run()."""
+    docking = Docking(
+        protein=registered_protein,
+        pocket=registered_pocket,
+        ligand=registered_ligand,
+    )
+    with pytest.raises(ValueError, match="run\\("):
+        docking.start()
+
+
 def test_docking_run_lv2(
     client,
     registered_protein,
@@ -197,11 +210,11 @@ def test_docking_run_lv2(
     registered_ligand,
 ):
     """Run docking synchronously via run() and assert poses returned."""
-    assert check_function_exists(
+    assert check_tool_exists(
         client,
-        TOOL_KEYS_AND_VERSIONS["docking"]["function_key"],
-        TOOL_KEYS_AND_VERSIONS["docking"]["function_version"],
-    ), "Docking function not registered on platform (expected key/version)."
+        TOOL_KEYS_AND_VERSIONS["docking"]["tool_key"],
+        TOOL_KEYS_AND_VERSIONS["docking"]["tool_version"],
+    ), "Docking tool not registered on platform (expected key/version)."
 
     docking = Docking(
         protein=registered_protein,
@@ -225,7 +238,7 @@ def test_docking_start_sync_get_results_lv3(
     registered_pocket,
     registered_ligand,
 ):
-    """Start docking asynchronously via start(), sync until done, then get_results()."""
+    """Start docking asynchronously via start() with 2+ ligands; sync; get results."""
     if client.env == "local":
         pytest.skip("start/sync/get_results docking flow not run against local mock")
 
@@ -235,10 +248,14 @@ def test_docking_start_sync_get_results_lv3(
         TOOL_KEYS_AND_VERSIONS["docking"]["tool_version"],
     ), "Docking tool not registered on platform (expected key/version)."
 
+    second = Ligand.from_smiles("CCO")
+    second.sync(client=client, lazy=True)
+    two_ligands = LigandSet(ligands=[registered_ligand, second])
+
     docking = Docking(
         protein=registered_protein,
         pocket=registered_pocket,
-        ligand=registered_ligand,
+        ligands=two_ligands,
         client=client,
     )
     docking.start()

@@ -222,6 +222,8 @@ def create_tools_router(
             execution["status"] = "Succeeded"
             execution["completedAt"] = now.strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z"
             execution["updatedAt"] = now.strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z"
+            if tool_key == "deeporigin.docking":
+                _inject_docking_tool_execution_results(execution)
             progress_reports = _load_progress_reports(tool_key)
             if progress_reports:
                 final_report = progress_reports[-1]
@@ -314,6 +316,54 @@ def create_tools_router(
         execution["startedAt"] = None
         execution["completedAt"] = None
 
+        return execution
+
+    def _create_docking_blocking_run_dto(
+        *,
+        org_key: str,
+        tool_key: str,
+        tool_version: str,
+        body: dict[str, Any],
+    ) -> dict[str, Any]:
+        """``Docking.run()``: server blocks; local mock returns ``Succeeded`` in one POST."""
+        now = datetime.now(timezone.utc)
+        ts = now.strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z"
+        eid = str(uuid.uuid4())
+        approve_amount = body.get("approveAmount", 0) or 0
+        execution: dict[str, Any] = {
+            "executionId": eid,
+            "createdAt": ts,
+            "updatedAt": ts,
+            "resourceId": _generate_resource_id(),
+            "status": "Succeeded",
+            "userInputs": body.get("inputs", {}),
+            "userOutputs": body.get("outputs", {}),
+            "metadata": body.get("metadata", {}),
+            "approveAmount": approve_amount,
+            "jobOutputs": None,
+            "resourcesUsed": None,
+            "resourcesRequested": None,
+            "progressReport": json.dumps({"complete": 100}),
+            "statusReason": None,
+            "name": body.get("name"),
+            "orgKey": org_key,
+            "tool": {"key": tool_key, "version": tool_version},
+            "startedAt": ts,
+            "completedAt": ts,
+        }
+        if body.get("projectId") is not None:
+            execution["projectId"] = body["projectId"]
+        tdir = fixtures_dir / tool_key
+        if tdir.exists():
+            qr = tdir / "quotation-result.json"
+            if qr.exists():
+                try:
+                    execution["quotationResult"] = load_fixture(
+                        f"{tool_key}/quotation-result"
+                    )
+                except FileNotFoundError:
+                    pass
+            execution["cluster"] = {"id": str(uuid.uuid4())}
         return execution
 
     def _get_protonation_response(
@@ -612,6 +662,40 @@ def create_tools_router(
             }
             results.append(record)
 
+    def _inject_docking_tool_execution_results(execution: dict[str, Any]) -> None:
+        """Mirror function-run docking into ``results`` when a tool execution completes."""
+        eid = execution.get("executionId")
+        tkey = (execution.get("tool") or {}).get("key")
+        if not eid or tkey != "deeporigin.docking":
+            return
+        if any(r.get("compute_job_id") == eid for r in results):
+            return
+        from tests.fixture_utils import patch_fixture_version
+
+        response = copy.deepcopy(load_fixture("function-runs/deeporigin.docking/run"))
+        patch_fixture_version(response)
+        response["id"] = eid
+        response["status"] = "Completed"
+        user_inputs = execution.get("userInputs", {})
+        protein = (
+            user_inputs.get("protein", {}) if isinstance(user_inputs, dict) else {}
+        )
+        protein_id = protein.get("id") if isinstance(protein, dict) else None
+        ligand_id = None
+        ligands_list = user_inputs.get("ligands") or []
+        if (
+            isinstance(ligands_list, list)
+            and ligands_list
+            and isinstance(ligands_list[0], dict)
+        ):
+            ligand_id = ligands_list[0].get("id")
+        fo = response.get("functionOutputs")
+        if isinstance(fo, dict):
+            response["functionOutputs"] = _replace_ids_in_function_outputs(
+                fo, protein_id=protein_id, ligand_id=ligand_id
+            )
+        _inject_result_explorer_records("deeporigin.docking", response)
+
     @router.post("/tools/{org_key}/functions/{function_key}")
     async def run_function(
         org_key: str, function_key: str, request: Request
@@ -858,6 +942,19 @@ def create_tools_router(
         if approve_amount is None:
             approve_amount = 0
 
+        inputs = body.get("inputs", {}) or {}
+        n_lig = len(inputs.get("ligands") or [])
+        if tool_key == "deeporigin.docking" and body.get("sync") is True and n_lig == 1:
+            execution = _create_docking_blocking_run_dto(
+                org_key=org_key,
+                tool_key=tool_key,
+                tool_version=tool_version,
+                body=body,
+            )
+            eid = execution["executionId"]
+            executions[eid] = execution
+            _inject_docking_tool_execution_results(execution)
+            return _normalize_execution(execution)
         if tool_key == "deeporigin.bulk-docking" and approve_amount == 0:
             execution = _create_bulk_docking_quote(
                 org_key=org_key,
