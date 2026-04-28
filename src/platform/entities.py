@@ -154,6 +154,38 @@ class Entities:
             f"/data-platform/{self._c.org_key}/{entity}/{entity_id}"
         )
 
+    def batch_create(
+        self,
+        entity: str,
+        *,
+        rows: list[dict[str, Any]],
+        returning: list[str] | None = None,
+    ) -> dict:
+        """Batch create entity rows.
+
+        Calls ``POST /data-platform/{orgKey}/{entity}/batch/create``.
+
+        This method is intentionally generic so tools can persist dataset rows
+        into arbitrary target tables (e.g. result tables), not only the built-in
+        convenience entities like ligands.
+
+        Args:
+            entity: Entity (table) name to batch-create.
+            rows: List of row dicts to persist.
+            returning: Optional list of fields to include in the response.
+
+        Returns:
+            Dictionary containing the batch creation response.
+        """
+        body: dict[str, Any] = {"rows": rows}
+        if returning is not None:
+            body["returning"] = returning
+
+        return self._c.post_json(
+            f"/data-platform/{self._c.org_key}/{entity}/batch/create",
+            body=body,
+        )
+
     # ---- Ligands ----
 
     def search_ligands(

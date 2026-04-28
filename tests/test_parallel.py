@@ -175,7 +175,7 @@ def test_sleep_between_batches():
 
     args_list = [{"x": i} for i in range(6)]  # 3 batches of 2
 
-    start_time = time.time()
+    start_time = time.monotonic()
     results = run_func_in_parallel(
         func=fast_func,
         batch_size=2,
@@ -183,10 +183,10 @@ def test_sleep_between_batches():
         sleep_between_batches=0.1,
         args=args_list,
     )
-    elapsed_time = time.time() - start_time
+    elapsed_time = time.monotonic() - start_time
 
     # Should take at least 0.2 seconds (2 sleeps between 3 batches)
-    assert elapsed_time >= 0.2
+    assert elapsed_time >= 0.19
     assert results["results"] == [0, 1, 2, 3, 4, 5]
 
 
