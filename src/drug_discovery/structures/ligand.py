@@ -1210,7 +1210,6 @@ class Ligand(Entity):
         if "data" in result and "id" in result["data"]:
             self.id = result["data"]["id"]
 
-    @beartype
     def sync(
         self,
         *,
@@ -2496,7 +2495,6 @@ class LigandSet:
 
         client.files.upload_many(files=files, max_workers=max_workers)
 
-    @beartype
     def sync(
         self,
         *,

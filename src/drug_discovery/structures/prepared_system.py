@@ -17,7 +17,8 @@ class PreparedSystem:
     """A prepared protein-ligand system (binding/solvation XML and system PDB paths).
 
     Returned by :meth:`SystemPrep.run() <deeporigin.drug_discovery.system_prep.SystemPrep.run>`
-    or :meth:`PreparedSystem.from_result`. Used as input to ABFE or RBFE workflows.
+    or :meth:`PreparedSystem.from_result` / :meth:`PreparedSystem.from_json`.
+    Used as input to ABFE or RBFE workflows.
 
     Attributes:
         id: Result-explorer record ID, if loaded from the platform.
@@ -113,6 +114,57 @@ class PreparedSystem:
         return render_html(html_content)
 
     @classmethod
+    def from_json(cls, data: dict[str, Any]) -> Self:
+        """Build a ``PreparedSystem`` from API-shaped JSON.
+
+        Use the same keys as result-explorer ``data``, sync ``jobOutputs.system``, or a
+        merged payload from :meth:`_from_record` (paths plus optional metadata).
+
+        Required keys: ``binding_xml_file_path``, ``solvation_xml_ligand_file_path``,
+        ``system_pdb_file_path``. Optional keys include ``solute_pdb_file_path``,
+        ``protein_id``, ``ligand1_id``, ``ligand2_id``, ``padding``, ``add_H_atoms``,
+        ``retain_waters``, ``protonate_protein``, ``id`` (result row id), and
+        ``compute_job_id``.
+
+        Args:
+            data: Dict of paths and metadata.
+
+        Returns:
+            A populated ``PreparedSystem``.
+
+        Raises:
+            ValueError: If required path keys are missing or empty.
+        """
+        binding_xml_path = data.get("binding_xml_file_path")
+        solvation_xml_path = data.get("solvation_xml_ligand_file_path")
+        system_pdb_path = data.get("system_pdb_file_path")
+        if not (binding_xml_path and solvation_xml_path and system_pdb_path):
+            raise ValueError(
+                "PreparedSystem JSON missing required paths (binding_xml_file_path, "
+                "solvation_xml_ligand_file_path, system_pdb_file_path)."
+            )
+        solute_pdb_path = data.get("solute_pdb_file_path")
+
+        raw_padding = data.get("padding")
+        padding_f = float(raw_padding) if raw_padding is not None else None
+
+        return cls(
+            binding_xml_path=binding_xml_path,
+            solvation_xml_path=solvation_xml_path,
+            system_pdb_path=system_pdb_path,
+            solute_pdb_path=solute_pdb_path,
+            id=data.get("id"),
+            protein_id=data.get("protein_id"),
+            ligand1_id=data.get("ligand1_id"),
+            ligand2_id=data.get("ligand2_id"),
+            padding=padding_f,
+            add_H_atoms=data.get("add_H_atoms"),
+            retain_waters=data.get("retain_waters"),
+            protonate_protein=data.get("protonate_protein"),
+            compute_job_id=data.get("compute_job_id"),
+        )
+
+    @classmethod
     def _from_record(cls, record: dict) -> Self:
         """Build a single PreparedSystem from a result-explorer record.
 
@@ -126,31 +178,14 @@ class PreparedSystem:
         Raises:
             ValueError: If the record does not contain required path fields.
         """
-        data = record.get("data") or {}
-        binding = data.get("binding_xml_file_path")
-        solvation = data.get("solvation_xml_ligand_file_path")
-        system_pdb = data.get("system_pdb_file_path")
-        solute_pdb = data.get("solute_pdb_file_path")
-        if not (binding and solvation and system_pdb):
-            raise ValueError(
-                "Record missing required paths (binding_xml_file_path, "
-                "solvation_xml_ligand_file_path, system_pdb_file_path)."
-            )
-        return cls(
-            id=record.get("id"),
-            binding_xml_path=binding,
-            solvation_xml_path=solvation,
-            system_pdb_path=system_pdb,
-            solute_pdb_path=solute_pdb,
-            protein_id=data.get("protein_id"),
-            ligand1_id=data.get("ligand1_id"),
-            ligand2_id=data.get("ligand2_id"),
-            padding=data.get("padding"),
-            add_H_atoms=data.get("add_H_atoms"),
-            retain_waters=data.get("retain_waters"),
-            protonate_protein=data.get("protonate_protein"),
-            compute_job_id=record.get("compute_job_id"),
-        )
+        payload: dict[str, Any] = dict(record.get("data") or {})
+        rid = record.get("id")
+        if rid is not None:
+            payload["id"] = rid
+        cjid = record.get("compute_job_id")
+        if cjid is not None:
+            payload["compute_job_id"] = cjid
+        return cls.from_json(payload)
 
     @classmethod
     def from_result(
@@ -214,7 +249,7 @@ class PreparedSystem:
                 "Run SystemPrep first to prepare a system."
             )
 
-        out: list[PreparedSystem] = []
+        out: list[Self] = []
         for record in records:
             try:
                 out.append(cls._from_record(record))

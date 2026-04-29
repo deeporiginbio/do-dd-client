@@ -1420,7 +1420,6 @@ class Protein(Entity):
         if "data" in result and "id" in result["data"]:
             self.id = result["data"]["id"]
 
-    @beartype
     def sync(
         self,
         *,

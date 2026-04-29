@@ -9,6 +9,7 @@ import pytest
 from conftest import check_tool_exists
 from deeporigin.drug_discovery import BRD_DATA_DIR
 from deeporigin.drug_discovery.pocket_finder import PocketFinder
+from deeporigin.drug_discovery.structures.pocket import Pocket
 from deeporigin.drug_discovery.structures.protein import Protein
 from deeporigin.platform.client import DeepOriginClient
 from deeporigin.platform.constants import TOOL_KEYS_AND_VERSIONS
@@ -86,6 +87,48 @@ def test_pocket_finder_from_dto_falls_back_to_inputs_key(
     PocketFinder.from_dto(dto, client=MagicMock(spec=DeepOriginClient))
 
     mock_protein_from_id.assert_called_once()
+
+
+@patch.object(Pocket, "from_json", autospec=True)
+@patch.object(Pocket, "from_result", autospec=True)
+def test_pocket_finder_get_results_falls_back_to_job_outputs(
+    mock_from_result: MagicMock,
+    mock_from_json: MagicMock,
+) -> None:
+    """When ``from_result`` fails, ``jobOutputs.pockets`` is parsed via ``from_json``."""
+    fake_pocket = MagicMock(spec=Pocket)
+    mock_from_result.side_effect = ValueError("no rows")
+    mock_from_json.return_value = [fake_pocket]
+
+    client = MagicMock(spec=DeepOriginClient)
+    protein = Protein.from_file(BRD_DATA_DIR / "brd.pdb")
+    dto_exec = _minimal_pocket_finder_dto()
+    dto_exec["jobOutputs"] = {"pockets": [{"id": "p1"}]}
+
+    pf = PocketFinder(protein, client=client)
+    pf.update_from_dto(dto_exec)
+
+    out = pf.get_results(dto_exec)
+
+    assert out == [fake_pocket]
+    mock_from_result.assert_called_once_with(
+        execution_id="exec-pf-1",
+        client=client,
+    )
+    mock_from_json.assert_called_once_with(
+        [{"id": "p1"}],
+        client=client,
+    )
+
+
+def test_pocket_finder_get_results_requires_id() -> None:
+    """``get_results`` raises when ``id`` has not been set."""
+    client = MagicMock(spec=DeepOriginClient)
+    protein = Protein.from_file(BRD_DATA_DIR / "brd.pdb")
+    pf = PocketFinder(protein, client=client)
+
+    with pytest.raises(ValueError, match="id is None"):
+        pf.get_results()
 
 
 def test_pocket_finder_update_from_dto_updates_execution_fields() -> None:

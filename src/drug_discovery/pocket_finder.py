@@ -3,8 +3,8 @@
 Usage::
 
     pf = PocketFinder(protein)
-    pf.quote()          # populates pf.estimate
-    pockets = pf.run()  # blocking; populates pf.cost
+    pf.quote()           # populates pf.estimate
+    pockets = pf.run()   # blocking; calls get_results(); populates pf.cost
 """
 
 from __future__ import annotations
@@ -38,7 +38,6 @@ class PocketFinder(Execution, QuoteMixin, SyncExecutableMixin):
 
     tool_key: str = TOOL_KEYS_AND_VERSIONS["pocket_finder"]["tool_key"]
 
-    @beartype
     def __init__(
         self,
         protein: Protein,
@@ -98,19 +97,9 @@ class PocketFinder(Execution, QuoteMixin, SyncExecutableMixin):
     def _ensure_protein_remote(self) -> None:
         """Upload/sync protein and ensure ``remote_path`` is set for the API."""
         self._validate_pocket_params()
+
         self._protein.sync(lazy=True, client=self.client)
         self._protein.ensure_remote_path(client=self.client, label="Protein")
-
-    def _tool_inputs(self) -> dict[str, Any]:
-        """Build tool ``inputs`` for pocket finder."""
-        return {
-            "protein": {
-                "file_path": self._protein.remote_path,
-                "id": self._protein.id,
-            },
-            "pocket_count": self._pocket_count,
-            "pocket_min_size": self._pocket_min_size,
-        }
 
     def _make_payload(
         self,
@@ -120,7 +109,14 @@ class PocketFinder(Execution, QuoteMixin, SyncExecutableMixin):
     ) -> dict[str, Any]:
         """Build the POST body for ``executions.create``."""
         payload: dict[str, Any] = {
-            "inputs": self._tool_inputs(),
+            "inputs": {
+                "protein": {
+                    "file_path": self._protein.remote_path,
+                    "id": self._protein.id,
+                },
+                "pocket_count": self._pocket_count,
+                "pocket_min_size": self._pocket_min_size,
+            },
             "outputs": {},
             "metadata": {},
             "sync": sync,
@@ -131,7 +127,7 @@ class PocketFinder(Execution, QuoteMixin, SyncExecutableMixin):
 
     def _get_quote(self) -> dict[str, Any]:
         """Return the tools API execution DTO for a quotation (``approveAmount=0``)."""
-        self._ensure_protein_remote()
+
         return self.client.executions.create(  # ty:ignore[unresolved-attribute]
             data=self._make_payload(sync=False, approve_amount=0),
             tool_key=self.tool_key,
@@ -177,7 +173,7 @@ class PocketFinder(Execution, QuoteMixin, SyncExecutableMixin):
         ``userInputs`` (falling back to ``inputs`` for older payloads). The
         protein is loaded with ``Protein.from_id(..., download=False)`` and
         ``remote_path_override`` from the stored input, matching
-        :meth:`_tool_inputs` / :meth:`Docking.from_dto`.
+        :meth:`_make_payload` / :meth:`Docking.from_dto`.
 
         Args:
             dto: Execution payload (same shape as ``client.executions.get``).
@@ -205,25 +201,32 @@ class PocketFinder(Execution, QuoteMixin, SyncExecutableMixin):
         return instance
 
     @beartype
-    def run(self) -> list[Pocket]:
-        """Execute pocket finding (blocking).
+    def get_results(self, dto: dict[str, Any] | None = None) -> list[Pocket]:
+        """Load pockets for this execution from the data platform or ``jobOutputs``.
 
-        Submits a synchronous tools execution and returns fresh ``Pocket`` objects.
+        Tries :meth:`~deeporigin.drug_discovery.structures.pocket.Pocket.from_result`
+        first. On failure, parses ``jobOutputs.pockets`` from ``dto``, or from
+        ``client.executions.get`` when ``dto`` is omitted (for example after
+        :meth:`~deeporigin.drug_discovery.execution.Execution.from_id`).
+
+        Args:
+            dto: Optional execution payload (``executions.create`` /
+                ``executions.get``). Passing it avoids an extra GET when the data
+                platform path fails but the sync response included ``jobOutputs``.
 
         Returns:
-            List of ``Pocket`` objects found in the protein.
+            List of ``Pocket`` objects for this execution.
 
         Raises:
+            ValueError: If :attr:`id` is unset.
             DeepOriginException: If no pockets could be loaded from the data
                 platform or ``jobOutputs``.
         """
-        self._ensure_protein_remote()
-        dto = self.client.executions.create(  # ty:ignore[unresolved-attribute]
-            data=self._make_payload(sync=True),
-            tool_key=self.tool_key,
-            tool_version=self.tool_version,
-        )
-        self.update_from_dto(dto)
+        exec_id = getattr(self, "_id", None)
+        if exec_id is None:
+            raise ValueError(
+                "Cannot get results: no execution has been started (id is None)."
+            )
 
         try:
             pockets = Pocket.from_result(
@@ -232,6 +235,8 @@ class PocketFinder(Execution, QuoteMixin, SyncExecutableMixin):
             )
         except Exception:
             try:
+                if dto is None:
+                    dto = self.client.executions.get(self.id)  # ty:ignore[unresolved-attribute]
                 jo = dto.get("jobOutputs")
                 raw = jo.get("pockets", []) if isinstance(jo, dict) else []
                 pockets = Pocket.from_json(raw, client=self.client)
@@ -252,3 +257,27 @@ class PocketFinder(Execution, QuoteMixin, SyncExecutableMixin):
             ) from None
 
         return pockets
+
+    @beartype
+    def run(self) -> list[Pocket]:
+        """Execute pocket finding (blocking).
+
+        Submits a synchronous tools execution and returns fresh ``Pocket`` objects
+        via :meth:`get_results`.
+
+        Returns:
+            List of ``Pocket`` objects found in the protein.
+
+        Raises:
+            DeepOriginException: If no pockets could be loaded from the data
+                platform or ``jobOutputs``.
+        """
+        self._ensure_protein_remote()
+        dto = self.client.executions.create(  # ty:ignore[unresolved-attribute]
+            data=self._make_payload(sync=True),
+            tool_key=self.tool_key,
+            tool_version=self.tool_version,
+        )
+        self.update_from_dto(dto)
+
+        return self.get_results(dto)

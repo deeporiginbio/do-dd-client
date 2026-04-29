@@ -16,7 +16,7 @@ from deeporigin.drug_discovery import (
     Protein,
 )
 from deeporigin.drug_discovery.structures.prepared_system import PreparedSystem
-from deeporigin.drug_discovery.system_prep import SystemPrep, for_abfe
+from deeporigin.drug_discovery.system_prep import SystemPrep
 from deeporigin.exceptions import DeepOriginException
 from deeporigin.platform import DeepOriginClient
 from deeporigin.platform.constants import TOOL_KEYS_AND_VERSIONS
@@ -215,12 +215,23 @@ def test_sysprep_lv2(
     ligand: Ligand = request.getfixturevalue(ligand_fixture)
 
     if protein_fixture == "brd_protein":
-        result = for_abfe(
+        sysprep = SystemPrep(
             protein=protein,
             ligand=ligand,
             client=client,
             add_H_atoms=True,
             protonate_protein=True,
+        )
+        inputs = sysprep.sync_inputs()
+        result = client.executions.create(
+            data={
+                "inputs": inputs,
+                "outputs": {},
+                "metadata": {},
+                "sync": True,
+            },
+            tool_key=TOOL_KEYS_AND_VERSIONS["sysprep"]["tool_key"],
+            tool_version=TOOL_KEYS_AND_VERSIONS["sysprep"]["tool_version"],
         )
         assert isinstance(result, dict)
         assert result.get("status") == "Succeeded"
