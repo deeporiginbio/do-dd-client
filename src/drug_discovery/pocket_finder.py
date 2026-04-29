@@ -9,7 +9,7 @@ Usage::
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Self
 
 from beartype import beartype
 
@@ -17,7 +17,7 @@ from deeporigin.drug_discovery.execution import Execution
 from deeporigin.drug_discovery.execution_mixins import QuoteMixin, SyncExecutableMixin
 from deeporigin.drug_discovery.structures.pocket import Pocket
 from deeporigin.drug_discovery.structures.protein import Protein
-from deeporigin.drug_discovery.sync_function_responses import SyncFunctionResponses
+from deeporigin.exceptions import DeepOriginException
 from deeporigin.platform.client import DeepOriginClient
 from deeporigin.platform.constants import TOOL_KEYS_AND_VERSIONS
 
@@ -25,9 +25,10 @@ from deeporigin.platform.constants import TOOL_KEYS_AND_VERSIONS
 class PocketFinder(Execution, QuoteMixin, SyncExecutableMixin):
     """Find binding pockets in a protein structure (sync-only).
 
-    This is a blocking operation that typically completes in under 2 minutes.
-    It does **not** create a persisted execution record on the platform, so
-    ``status``, ``from_id()``, and ``list()`` are not available.
+    Uses ``client.executions.create`` with ``sync=True`` for :meth:`run` and
+    ``sync=False`` with ``approveAmount=0`` for :meth:`quote`. The platform
+    returns an execution id (``id``) you can use with :meth:`get_results` and
+    result-explorer APIs.
 
     Attributes:
         protein: The protein to analyse.
@@ -35,7 +36,7 @@ class PocketFinder(Execution, QuoteMixin, SyncExecutableMixin):
         pocket_min_size: Minimum pocket volume in cubic Angstroms.
     """
 
-    tool_key: str = TOOL_KEYS_AND_VERSIONS["pocket_finder"]["function_key"]
+    tool_key: str = TOOL_KEYS_AND_VERSIONS["pocket_finder"]["tool_key"]
 
     @beartype
     def __init__(
@@ -44,7 +45,7 @@ class PocketFinder(Execution, QuoteMixin, SyncExecutableMixin):
         *,
         pocket_count: int = 1,
         pocket_min_size: int = 30,
-        tool_version: str = TOOL_KEYS_AND_VERSIONS["pocket_finder"]["function_version"],
+        tool_version: str = TOOL_KEYS_AND_VERSIONS["pocket_finder"]["tool_version"],
         client: DeepOriginClient | None = None,
     ) -> None:
         """Create a PocketFinder for the given protein.
@@ -100,8 +101,8 @@ class PocketFinder(Execution, QuoteMixin, SyncExecutableMixin):
         self._protein.sync(lazy=True, client=self.client)
         self._protein.ensure_remote_path(client=self.client, label="Protein")
 
-    def _pocket_finder_function_params(self) -> dict[str, Any]:
-        """Build the ``params`` object for :meth:`DeepOriginClient.functions.run`."""
+    def _tool_inputs(self) -> dict[str, Any]:
+        """Build tool ``inputs`` for pocket finder."""
         return {
             "protein": {
                 "file_path": self._protein.remote_path,
@@ -111,123 +112,143 @@ class PocketFinder(Execution, QuoteMixin, SyncExecutableMixin):
             "pocket_min_size": self._pocket_min_size,
         }
 
+    def _make_payload(
+        self,
+        *,
+        sync: bool = True,
+        approve_amount: int | None = None,
+    ) -> dict[str, Any]:
+        """Build the POST body for ``executions.create``."""
+        payload: dict[str, Any] = {
+            "inputs": self._tool_inputs(),
+            "outputs": {},
+            "metadata": {},
+            "sync": sync,
+        }
+        if approve_amount is not None:
+            payload["approveAmount"] = approve_amount
+        return payload
+
     def _get_quote(self) -> dict[str, Any]:
-        """Call the functions API with ``quote=True`` and return the raw response."""
+        """Return the tools API execution DTO for a quotation (``approveAmount=0``)."""
         self._ensure_protein_remote()
-        return self.client.functions.run(
-            key=TOOL_KEYS_AND_VERSIONS["pocket_finder"]["function_key"],
-            version=self.tool_version,
-            params=self._pocket_finder_function_params(),
-            quote=True,
+        return self.client.executions.create(  # ty:ignore[unresolved-attribute]
+            data=self._make_payload(sync=False, approve_amount=0),
+            tool_key=self.tool_key,
+            tool_version=self.tool_version,
         )
 
-    def _quote_impl(self) -> None:
-        """Request a cost estimate using the functions API quotation payload."""
-        dto = self._get_quote()
-        wrapped = SyncFunctionResponses([dto])
-        if wrapped.estimate is None:
-            raise RuntimeError(
-                "Quote failed: no estimate could be parsed from the pocket-finder response."
+    @staticmethod
+    def _parse_inputs_dict(inputs: dict[str, Any]) -> tuple[dict[str, Any], int, int]:
+        """Return ``protein`` input dict, ``pocket_count``, and ``pocket_min_size``."""
+        protein_input = inputs.get("protein") or {}
+        protein_id = protein_input.get("id")
+        if protein_id is None:
+            raise ValueError(
+                "Missing 'protein.id' in execution userInputs; "
+                "this execution may have been created with an older input schema."
             )
-        self._estimate = wrapped.estimate
+        raw_count = inputs.get("pocket_count")
+        raw_min_size = inputs.get("pocket_min_size")
+        try:
+            pocket_count = int(raw_count) if raw_count is not None else 1
+        except (TypeError, ValueError) as exc:
+            raise ValueError("Invalid pocket_count in execution inputs.") from exc
+        try:
+            pocket_min_size = int(raw_min_size) if raw_min_size is not None else 30
+        except (TypeError, ValueError) as exc:
+            raise ValueError("Invalid pocket_min_size in execution inputs.") from exc
+        if pocket_count < 1:
+            raise ValueError("pocket_count from execution inputs must be at least 1")
+        if pocket_min_size < 1:
+            raise ValueError("pocket_min_size from execution inputs must be at least 1")
+        return protein_input, pocket_count, pocket_min_size
+
+    @classmethod
+    def from_dto(
+        cls,
+        dto: dict[str, Any],
+        *,
+        client: DeepOriginClient | None = None,
+    ) -> Self:
+        """Construct a ``PocketFinder`` from a tools execution DTO.
+
+        Rehydrates ``protein``, ``pocket_count``, and ``pocket_min_size`` from
+        ``userInputs`` (falling back to ``inputs`` for older payloads). The
+        protein is loaded with ``Protein.from_id(..., download=False)`` and
+        ``remote_path_override`` from the stored input, matching
+        :meth:`_tool_inputs` / :meth:`Docking.from_dto`.
+
+        Args:
+            dto: Execution payload (same shape as ``client.executions.get``).
+            client: Optional API client. Uses the default if not provided.
+
+        Returns:
+            A ``PocketFinder`` with ``id``, pricing fields, and domain inputs set.
+
+        Raises:
+            ValueError: If ``protein.id`` is missing from stored inputs.
+        """
+        instance = super().from_dto(dto, client=client)  # ty:ignore[unresolved-attribute]
+        inputs: dict[str, Any] = dto.get("userInputs") or dto.get("inputs") or {}
+        protein_input, pocket_count, pocket_min_size = cls._parse_inputs_dict(inputs)
+
+        instance._protein = Protein.from_id(
+            str(protein_input["id"]),
+            client=client,
+            download=False,
+            remote_path_override=protein_input.get("file_path"),
+        )
+        instance._pocket_count = pocket_count
+        instance._pocket_min_size = pocket_min_size
+
+        return instance
 
     @beartype
     def run(self) -> list[Pocket]:
         """Execute pocket finding (blocking).
 
-        Always runs the tool and returns fresh results.
+        Submits a synchronous tools execution and returns fresh ``Pocket`` objects.
 
         Returns:
             List of ``Pocket`` objects found in the protein.
+
+        Raises:
+            DeepOriginException: If no pockets could be loaded from the data
+                platform or ``jobOutputs``.
         """
         self._ensure_protein_remote()
-        raw = self.client.functions.run(
-            key=TOOL_KEYS_AND_VERSIONS["pocket_finder"]["function_key"],
-            version=self.tool_version,
-            params=self._pocket_finder_function_params(),
-            quote=False,
+        dto = self.client.executions.create(  # ty:ignore[unresolved-attribute]
+            data=self._make_payload(sync=True),
+            tool_key=self.tool_key,
+            tool_version=self.tool_version,
         )
-        result = SyncFunctionResponses([raw])
+        self.update_from_dto(dto)
 
-        execution_id = result.responses[0]["id"]
-        self._id = execution_id
-
-        if self.protein.id is not None:
-            try:
-                pockets = Pocket.from_result(
-                    execution_id=execution_id,
-                    client=self.client,
-                )
-            except Exception:
-                import warnings
-
-                warnings.warn(
-                    "Could not load pocket results from the data platform; "
-                    "using function response instead. Results may be delayed.",
-                    stacklevel=2,
-                )
-                pockets = Pocket.from_function_result(
-                    result=result,
-                    client=self.client,
-                )
-        else:
-            pockets = Pocket.from_function_result(
-                result=result,
+        try:
+            pockets = Pocket.from_result(
+                execution_id=self.id,
                 client=self.client,
             )
+        except Exception:
+            try:
+                jo = dto.get("jobOutputs")
+                raw = jo.get("pockets", []) if isinstance(jo, dict) else []
+                pockets = Pocket.from_json(raw, client=self.client)
+            except Exception as exc:
+                raise DeepOriginException(
+                    title="Could not load pockets",
+                    message=(
+                        "No pockets could be parsed from the data platform or jobOutputs."
+                    ),
+                ) from exc
 
-        self._cost = result.cost
-        self.status = result.status
+        if not pockets:
+            raise DeepOriginException(
+                title="Could not load pockets",
+                message=(
+                    "No pockets could be parsed from the data platform or jobOutputs."
+                ),
+            ) from None
 
         return pockets
-
-
-def find_pockets(
-    *,
-    protein: Protein,
-    pocket_count: int = 5,
-    pocket_min_size: int = 30,
-    client: DeepOriginClient,
-    tool_version: str = TOOL_KEYS_AND_VERSIONS["pocket_finder"]["function_version"],
-    quote: bool = False,
-) -> SyncFunctionResponses:
-    """Find binding pockets via ``client.functions.run`` (low-level helper).
-
-    Prefer :class:`PocketFinder` for a workflow object with :meth:`PocketFinder.quote`.
-
-    Args:
-        protein: Protein to analyse (synced as needed).
-        pocket_count: Maximum pockets to return.
-        pocket_min_size: Minimum pocket volume (Å³).
-        client: API client.
-        tool_version: Pocket-finder function version.
-        quote: If True, request a quotation only.
-
-    Returns:
-        :class:`SyncFunctionResponses` wrapping the raw API response.
-
-    Raises:
-        ValueError: If ``pocket_count`` or ``pocket_min_size`` is invalid.
-    """
-    if pocket_count < 1:
-        raise ValueError("pocket_count must be at least 1") from None
-    if pocket_min_size < 1:
-        raise ValueError("pocket_min_size must be at least 1") from None
-
-    protein.sync(lazy=True, client=client)
-    protein.ensure_remote_path(client=client, label="Protein")
-
-    payload = {
-        "protein": {"file_path": protein.remote_path, "id": protein.id},
-        "pocket_count": pocket_count,
-        "pocket_min_size": pocket_min_size,
-    }
-
-    response = client.functions.run(
-        key=TOOL_KEYS_AND_VERSIONS["pocket_finder"]["function_key"],
-        version=tool_version,
-        params=payload,
-        quote=quote,
-    )
-
-    return SyncFunctionResponses([response])

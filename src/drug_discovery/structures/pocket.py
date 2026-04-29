@@ -56,6 +56,9 @@ class Pocket(Entity):
     box_size_y: Optional[float] = None
     box_size_z: Optional[float] = None
 
+    pocket_count: Optional[int] = None
+    pocket_min_size: Optional[int] = None
+
     props: Optional[dict[str, Any]] = field(default_factory=dict)
     _client: Optional[DeepOriginClient] = field(default=None, repr=False)
 
@@ -302,7 +305,7 @@ class Pocket(Entity):
         pocket.remote_path = remote_path
         return pocket
 
-    def _fmt(self, value: float | None, unit: str = "") -> str:
+    def _fmt(self, value: float | int | None, unit: str = "") -> str:
         """Format a numeric value for display, returning 'N/A' when None."""
         if value is None:
             return "N/A"
@@ -343,6 +346,8 @@ class Pocket(Entity):
             ("Hydrophobicity", self.hydrophobicity, ""),
             ("Polarity", self.polarity, ""),
             ("Drugability score", self.drugability_score, ""),
+            ("Pocket count", self.pocket_count, ""),
+            ("Pocket min size", self.pocket_min_size, " \u00c5\u00b3"),
         ]
         has_any = any(v is not None for _, v, _ in property_rows)
         if has_any:
@@ -459,6 +464,8 @@ class Pocket(Entity):
             "box_size_x",
             "box_size_y",
             "box_size_z",
+            "pocket_count",
+            "pocket_min_size",
         }
     )
 
@@ -471,11 +478,72 @@ class Pocket(Entity):
     }
 
     @staticmethod
+    def _path_points_to_existing_local_file(path: str) -> bool:
+        """Return True if ``path`` refers to an existing regular file on disk.
+
+        Args:
+            path: Filesystem path to check.
+
+        Returns:
+            Whether the path can be read as a local file (not a platform key).
+        """
+        try:
+            return Path(path).expanduser().is_file()
+        except (OSError, ValueError):
+            return False
+
+    @staticmethod
+    def _strip_nonempty_str(value: Any) -> str | None:
+        """Return stripped string if ``value`` is a non-empty str, else None."""
+        if isinstance(value, str):
+            stripped = value.strip()
+            if stripped:
+                return stripped
+        return None
+
+    @staticmethod
+    def _apply_file_path_to_paths(
+        *,
+        remote_path: str | None,
+        file_path: str,
+    ) -> tuple[str | None, str | None]:
+        """Set local and/or remote path from a ``file_path`` field.
+
+        Args:
+            remote_path: Existing explicit ``remote_path`` from the entry, if any.
+            file_path: Non-empty ``file_path`` string from the entry.
+
+        Returns:
+            ``(local_path, remote_path)`` after applying ``file_path`` (remote
+            is set when the path is not an existing local file).
+        """
+        local_path: str | None = None
+        out_remote = remote_path
+        is_local_file = Pocket._path_points_to_existing_local_file(file_path)
+        if out_remote is None:
+            if is_local_file:
+                local_path = file_path
+            else:
+                out_remote = file_path
+        elif is_local_file:
+            local_path = file_path
+        return local_path, out_remote
+
+    @staticmethod
     def _resolve_paths(
         entry: dict[str, Any],
         idx: int,
     ) -> tuple[str | None, str | None]:
         """Extract and validate local/remote paths from a pocket dict.
+
+        ``file_path`` is used the same way as the pocket-finder API: when it
+        does not point to an existing local file, it is stored as
+        ``remote_path`` so coordinates load lazily via :meth:`download`.
+        If it points to a real file, it becomes ``local_path``.
+
+        When ``file_path`` is present it takes precedence over ``local_path``
+        (matching ``file_path or local_path``). ``local_path`` is only read if
+        ``file_path`` is missing or blank.
 
         Args:
             entry: Single pocket dict.
@@ -487,22 +555,28 @@ class Pocket(Entity):
         Raises:
             ValueError: If neither a valid local nor remote path is present.
         """
-        raw_local = entry.get("file_path") or entry.get("local_path")
-        raw_remote = entry.get("remote_path")
+        remote_path = Pocket._strip_nonempty_str(entry.get("remote_path"))
+        file_path = Pocket._strip_nonempty_str(entry.get("file_path"))
+        explicit_local = Pocket._strip_nonempty_str(entry.get("local_path"))
 
-        has_local = isinstance(raw_local, str) and raw_local.strip()
-        has_remote = isinstance(raw_remote, str) and raw_remote.strip()
+        local_path: str | None = None
 
-        if not has_local and not has_remote:
+        if file_path is not None:
+            local_path, remote_path = Pocket._apply_file_path_to_paths(
+                remote_path=remote_path,
+                file_path=file_path,
+            )
+        elif explicit_local is not None:
+            local_path = explicit_local
+
+        if local_path is None and remote_path is None:
             raise ValueError(
                 f"Entry at index {idx} needs a valid 'file_path', "
                 f"'local_path', or 'remote_path' "
                 f"(got file_path={entry.get('file_path')!r}, "
-                f"remote_path={raw_remote!r}): {entry}"
+                f"remote_path={entry.get('remote_path')!r}): {entry}"
             )
 
-        local_path = raw_local if has_local else None
-        remote_path = raw_remote if has_remote else None
         return local_path, remote_path
 
     @classmethod
@@ -515,10 +589,12 @@ class Pocket(Entity):
         """Create a list of Pocket objects from a JSON pocket list.
 
         Each entry should contain at least one of ``file_path`` /
-        ``local_path`` (a local filesystem path) or ``remote_path`` (a UFA
-        remote path).  When only ``remote_path`` is provided the pocket is
-        created without downloading; coordinates will be fetched lazily on
-        first access via :meth:`_ensure_coordinates`.
+        ``local_path`` or ``remote_path``. A ``file_path`` that does not
+        resolve to an existing local file is treated as a platform remote path
+        (for example ``tool-runs/.../pocket_1.pdb``); coordinates load lazily
+        on first access via :meth:`_ensure_coordinates` / :meth:`download`.
+        When ``file_path`` points to a real file on disk it is used as
+        ``local_path`` and coordinates load in :meth:`__post_init__`.
 
         Known property keys (``volume``, ``total_SASA``, etc.) are mapped
         to dedicated attributes.  The ``protein_id`` key is mapped to its
@@ -566,7 +642,12 @@ class Pocket(Entity):
         pockets = []
         for idx, entry in enumerate(data):
             local_path, remote_path = cls._resolve_paths(entry, idx)
-            name = Path(local_path or remote_path).stem
+            if local_path is not None:
+                name = Path(local_path).stem
+            elif remote_path is not None:
+                name = Path(remote_path).stem
+            else:
+                raise RuntimeError("_resolve_paths returned no path")
 
             attr_kwargs: dict[str, Any] = {}
             for k in cls._PROPERTY_ATTRS:

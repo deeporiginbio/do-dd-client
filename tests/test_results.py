@@ -72,7 +72,7 @@ def test_get_prepared_systems(client):
         for field in ("id", "tool_key", "tool_version", "data", "compute_job_id"):
             assert field in record, f"Expected '{field}' key in record"
         assert (
-            record.get("tool_key") == TOOL_KEYS_AND_VERSIONS["sysprep"]["function_key"]
+            record.get("tool_key") == TOOL_KEYS_AND_VERSIONS["sysprep"]["tool_key"]
         ), "Expected all records to be system-prep results"
         data = record.get("data") or {}
         assert data.get("solvation_xml_ligand_file_path"), (
@@ -95,9 +95,7 @@ def test_get_prepared_systems_with_filters(client, registered_protein: "Protein"
     assert "data" in response, "Expected 'data' key in response"
     assert isinstance(response["data"], list), "Expected 'data' to be a list"
     for record in response["data"]:
-        assert (
-            record.get("tool_key") == TOOL_KEYS_AND_VERSIONS["sysprep"]["function_key"]
-        )
+        assert record.get("tool_key") == TOOL_KEYS_AND_VERSIONS["sysprep"]["tool_key"]
         data = record.get("data") or {}
         assert data.get("protein_id") == protein_id
         assert data.get("padding") == 1

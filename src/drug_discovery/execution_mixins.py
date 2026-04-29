@@ -14,15 +14,11 @@ These mixins are combined with ``Execution`` to build concrete types:
 
 from __future__ import annotations
 
-import builtins
 from datetime import datetime, timezone
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
 from deeporigin.platform.client import DeepOriginClient
 from deeporigin.platform.constants import PlatformStatus
-
-if TYPE_CHECKING:
-    from typing import Self
 
 
 def _parse_iso_timestamp_utc(value: str) -> datetime:
@@ -180,8 +176,11 @@ class QuoteMixin:
 class SyncExecutableMixin:
     """Adds ``run()`` for synchronous, blocking execution.
 
-    The ``run()`` call does **not** create a persisted execution record,
-    does not assign an execution ID, and cannot be recovered later.
+    Subclasses implement ``run()`` as a blocking call. For tools backed by
+    ``client.executions.create`` with ``sync=True``, the response is typically a
+    completed execution DTO that includes ``executionId`` and billing fields.
+    Other subclasses may call legacy synchronous APIs instead; behaviour is
+    defined per class.
     """
 
     def run(self):
@@ -194,9 +193,13 @@ class SyncExecutableMixin:
 
 
 class AsyncExecutableMixin:
-    """Adds ``start()``, ``cancel()``, ``sync()``, ``from_id()``, ``from_dto()``,
-    and ``list()`` for asynchronous, stateful execution backed by the platform
-    tools API.
+    """Adds ``start()``, ``cancel()``, and ``sync()`` for asynchronous,
+    stateful execution backed by the platform tools API.
+
+    Listing and rehydration use :meth:`~deeporigin.drug_discovery.execution.Execution.list`,
+    :meth:`~deeporigin.drug_discovery.execution.Execution.from_id`, and
+    :meth:`~deeporigin.drug_discovery.execution.Execution.from_dto` on the
+    composed class (subclasses override ``from_dto`` and call ``super()``).
 
     Classes that include this mixin gain ``status`` and ``progress`` attributes
     tracking the platform lifecycle and execution progress respectively, and a
@@ -349,170 +352,3 @@ class AsyncExecutableMixin:
                 price = successful[0].get("priceTotal")
                 if price is not None:
                     self._cost = float(price)
-
-    @classmethod
-    def from_dto(
-        cls,
-        dto: dict,
-        *,
-        client: DeepOriginClient | None = None,
-    ) -> Self:
-        """Construct an instance from an execution DTO returned by the platform API.
-
-        Creates a bare instance via ``object.__new__`` (bypassing
-        ``__init__``) and populates the common execution fields (including
-        :attr:`~deeporigin.drug_discovery.execution.Execution.name` from the
-        DTO ``name`` field).  If the instance defines ``_init_after_from_dto``
-        (e.g. :class:`~deeporigin.drug_discovery.notebook_watch_mixin.NotebookWatchMixin`),
-        it is called after common fields are set.  Subclasses should call
-        ``super().from_dto()`` then rehydrate domain-specific fields from
-        ``instance._execution_dto["userInputs"]``.
-
-        Args:
-            dto: Execution payload (same shape as ``client.executions.get``).
-            client: Optional API client. Uses the default if not provided.
-
-        Returns:
-            A partially-hydrated instance with common fields populated.
-        """
-        if client is None:
-            client = DeepOriginClient()
-
-        tool_info = dto["tool"]
-        dto_tool_key = tool_info["key"]
-        expected_tool_key = cls.tool_key
-        if dto_tool_key != expected_tool_key:
-            raise ValueError(
-                "Cannot rehydrate execution from DTO: "
-                f"tool key mismatch (dto={dto_tool_key!r}, class={expected_tool_key!r})."
-            )
-
-        # Bypass __init__ so subclasses can rehydrate domain fields
-        # (e.g. _protein, _ligands) from the DTO instead of constructor args.
-        # All Execution-level attributes are set explicitly below.
-        instance = object.__new__(cls)
-
-        instance.client = client
-        instance._id = dto["executionId"]
-        instance._estimate = None
-        instance._cost = None
-        instance.tool_key = expected_tool_key
-        instance.tool_version = tool_info["version"]
-
-        instance.status = dto.get("status")
-        instance.progress = dto.get("progressReport")
-        instance.app = dto.get("app")
-        instance.approve_amount = dto.get("approveAmount")
-        instance.created_at = dto.get("createdAt")
-        instance.created_by = dto.get("createdBy")
-        instance.started_at = dto.get("startedAt")
-        instance.completed_at = dto.get("completedAt")
-        instance.session = dto.get("session")
-        instance._execution_dto = dto
-        instance._name = dto.get("name")
-
-        quotation = dto.get("quotationResult") or {}
-        successful = quotation.get("successfulQuotations", [])
-        if successful:
-            price = successful[0].get("priceTotal")
-            if price is not None:
-                instance._estimate = float(price)
-            if instance.status == "Succeeded" and price is not None:
-                instance._cost = float(price)
-
-        post_init = getattr(instance, "_init_after_from_dto", None)
-        if post_init is not None:
-            post_init()
-
-        return instance
-
-    @classmethod
-    def from_id(cls, id: str, *, client: DeepOriginClient | None = None) -> Self:
-        """Construct an instance from an existing platform execution ID.
-
-        Fetches the execution DTO via ``client.executions.get`` and delegates
-        to :meth:`from_dto`.
-
-        Args:
-            id: Platform execution ID.
-            client: Optional API client. Uses the default if not provided.
-
-        Returns:
-            A partially-hydrated instance with common fields populated.
-        """
-        if client is None:
-            client = DeepOriginClient()
-
-        dto = client.executions.get(id)
-        return cls.from_dto(dto, client=client)
-
-    @classmethod
-    def list(
-        cls,
-        *,
-        client: DeepOriginClient | None = None,
-        status: builtins.list[str] | None = None,
-    ) -> builtins.list[Self]:
-        """List executions of this tool type from the platform.
-
-        Args:
-            client: Optional API client. Uses the default if not provided.
-            status: Optional list of statuses to filter by.
-
-        Returns:
-            Instances of this class, one per matching execution.
-        """
-        if client is None:
-            client = DeepOriginClient()
-
-        current_page = 0
-        page_size = 1000
-        all_dtos: builtins.list[dict] = []
-
-        while True:
-            response = client.executions.list(
-                page=current_page,
-                page_size=page_size,
-                tool_key=cls.tool_key,
-            )
-
-            if not isinstance(response, dict):
-                all_dtos.extend(response if isinstance(response, builtins.list) else [])
-                break
-
-            page_dtos = response.get("data", [])
-            all_dtos.extend(page_dtos)
-
-            count = response.get("count", 0)
-
-            if count > page_size:
-                if len(page_dtos) < page_size:
-                    break
-                if len(all_dtos) >= count:
-                    break
-                current_page += 1
-            else:
-                break
-
-        all_dtos = [
-            dto for dto in all_dtos if dto.get("tool", {}).get("key") == cls.tool_key
-        ]
-
-        instances = [cls.from_dto(dto, client=client) for dto in all_dtos]
-
-        if status is not None:
-            instances = [i for i in instances if i.status in status]
-
-        return instances
-
-
-class JupyterVizMixin:
-    """Adds notebook-friendly rendering via ``_repr_html_()``."""
-
-    def _repr_html_(self) -> str:
-        """Render this execution as HTML for Jupyter display.
-
-        Returns:
-            HTML string.
-        """
-        return f"<pre>{self!r}</pre>"

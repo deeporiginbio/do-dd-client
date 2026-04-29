@@ -1,0 +1,26 @@
+{
+    "anyFailed": false,
+    "failedQuotations": [],
+    "successfulQuotations": [
+        {
+            "itemCode": "DO_SYSTEM_PREP",
+            "orgId": "deeporigin",
+            "priceEach": 0,
+            "priceTotal": 0,
+            "pricingRecordType": "regular",
+            "pricingRecords": [
+                {
+                    "itemKey": "DO_SYSTEM_PREP",
+                    "itemName": "DO_SYSTEM_PREP",
+                    "priceEach": 0,
+                    "qty": 1,
+                    "tierQtyFrom": 0,
+                    "tierQtyTo": 0,
+                    "totalPrice": 0
+                }
+            ],
+            "qty": 1,
+            "status": "OK"
+        }
+    ]
+}

@@ -634,6 +634,7 @@ def create_tools_router(
         # find the records via result-explorer/search.
         output_key_map: dict[str, tuple[str, str]] = {
             "deeporigin.pocketfinder": ("pockets", "pocket"),
+            "deeporigin.pocket-finder": ("pockets", "pocket"),
             "deeporigin.docking": ("poses", "pose"),
             "deeporigin.system-prep": ("system", "preparedsystem"),
         }
@@ -695,6 +696,84 @@ def create_tools_router(
                 fo, protein_id=protein_id, ligand_id=ligand_id
             )
         _inject_result_explorer_records("deeporigin.docking", response)
+
+    def _inject_pocketfinder_tool_execution_results(
+        execution: dict[str, Any],
+    ) -> None:
+        """Mirror pocket-finder fixture outputs into ``results`` for tool executions."""
+        eid = execution.get("executionId")
+        tkey = (execution.get("tool") or {}).get("key")
+        tool_version = (execution.get("tool") or {}).get("version", "0.0.0")
+        if not eid or tkey != "deeporigin.pocket-finder":
+            return
+        if any(r.get("compute_job_id") == eid for r in results):
+            return
+        from tests.fixture_utils import patch_fixture_version
+
+        response = copy.deepcopy(
+            load_fixture("function-runs/deeporigin.pocketfinder/run")
+        )
+        patch_fixture_version(response)
+        response["id"] = eid
+        response["status"] = "Completed"
+        user_inputs = execution.get("userInputs", {})
+        protein = (
+            user_inputs.get("protein", {}) if isinstance(user_inputs, dict) else {}
+        )
+        protein_id = protein.get("id") if isinstance(protein, dict) else None
+        fo = response.get("functionOutputs")
+        if isinstance(fo, dict):
+            pockets = fo.get("pockets")
+            if isinstance(pockets, list):
+                for p in pockets:
+                    if isinstance(p, dict) and protein_id is not None:
+                        p["protein_id"] = protein_id
+        response["function"] = {
+            "manifestBody": {
+                "key": "deeporigin.pocket-finder",
+                "version": tool_version,
+            },
+            "version": tool_version,
+        }
+        _inject_result_explorer_records("deeporigin.pocket-finder", response)
+
+    def _inject_sysprep_tool_execution_results(execution: dict[str, Any]) -> None:
+        """Mirror system-prep fixture outputs into ``results`` for tool executions."""
+        eid = execution.get("executionId")
+        tkey = (execution.get("tool") or {}).get("key")
+        tool_version = (execution.get("tool") or {}).get("version", "0.0.0")
+        if not eid or tkey != "deeporigin.system-prep":
+            return
+        if any(r.get("compute_job_id") == eid for r in results):
+            return
+        from tests.fixture_utils import patch_fixture_version
+
+        response = copy.deepcopy(
+            load_fixture("function-runs/deeporigin.system-prep/run")
+        )
+        patch_fixture_version(response)
+        response["id"] = eid
+        response["status"] = "Completed"
+        user_inputs = execution.get("userInputs", {})
+        protein = (
+            user_inputs.get("protein", {}) if isinstance(user_inputs, dict) else {}
+        )
+        protein_id = protein.get("id") if isinstance(protein, dict) else None
+        ligand = user_inputs.get("ligand1") or {}
+        ligand_id = ligand.get("id") if isinstance(ligand, dict) else None
+        fo = response.get("functionOutputs")
+        if isinstance(fo, dict):
+            system = fo.get("system")
+            if isinstance(system, dict):
+                if protein_id is not None:
+                    system["protein_id"] = protein_id
+                if ligand_id is not None:
+                    system["ligand1_id"] = ligand_id
+        response["function"] = {
+            "manifestBody": {"key": "deeporigin.system-prep", "version": tool_version},
+            "version": tool_version,
+        }
+        _inject_result_explorer_records("deeporigin.system-prep", response)
 
     @router.post("/tools/{org_key}/functions/{function_key}")
     async def run_function(
@@ -954,6 +1033,28 @@ def create_tools_router(
             eid = execution["executionId"]
             executions[eid] = execution
             _inject_docking_tool_execution_results(execution)
+            return _normalize_execution(execution)
+        if tool_key == "deeporigin.pocket-finder" and body.get("sync") is True:
+            execution = _create_docking_blocking_run_dto(
+                org_key=org_key,
+                tool_key=tool_key,
+                tool_version=tool_version,
+                body=body,
+            )
+            eid = execution["executionId"]
+            executions[eid] = execution
+            _inject_pocketfinder_tool_execution_results(execution)
+            return _normalize_execution(execution)
+        if tool_key == "deeporigin.system-prep" and body.get("sync") is True:
+            execution = _create_docking_blocking_run_dto(
+                org_key=org_key,
+                tool_key=tool_key,
+                tool_version=tool_version,
+                body=body,
+            )
+            eid = execution["executionId"]
+            executions[eid] = execution
+            _inject_sysprep_tool_execution_results(execution)
             return _normalize_execution(execution)
         if tool_key == "deeporigin.bulk-docking" and approve_amount == 0:
             execution = _create_bulk_docking_quote(

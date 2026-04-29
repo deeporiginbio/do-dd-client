@@ -14,7 +14,7 @@ This document describes how to dock ligands to a Protein.
 
 ## Docking a single `Ligand`
 
-Use [`Docking`](../ref/docking.md) with your protein, pocket, and ligand. Here `pocket` is a `Pocket` from the [Pocket Finder](find-pockets.md) :octicons-book-24: . Synchronous [`Docking.run()`](../ref/docking.md) uses `client.functions.run`; [`Docking.start()`](../ref/docking.md) uses `client.executions.create` for a persisted job. [`Docking.run()`](../ref/docking.md) returns a `LigandSet` of poses.
+Use [`Docking`](../ref/docking.md) with your protein, pocket, and ligand. Here `pocket` is a `Pocket` from the [Pocket Finder](find-pockets.md) :octicons-book-24: . Both [`Docking.run()`](../ref/docking.md) and [`Docking.start()`](../ref/docking.md) use `client.executions.create`: `run()` sets `sync=True` (one blocking request per ligand), and `start()` sets `sync=False` for a single persisted async job. [`Docking.run()`](../ref/docking.md) returns a `LigandSet` of poses.
 
 ```{.python notest}
 from deeporigin.drug_discovery import Docking

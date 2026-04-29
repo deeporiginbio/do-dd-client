@@ -37,8 +37,8 @@ def patch_fixture_version(response: dict[str, Any]) -> dict[str, Any]:
     t = TOOL_KEYS_AND_VERSIONS
     target_version = (
         {
-            t["pocket_finder"]["function_key"]: t["pocket_finder"]["function_version"],
-            t["sysprep"]["function_key"]: t["sysprep"]["function_version"],
+            t["pocket_finder"]["tool_key"]: t["pocket_finder"]["tool_version"],
+            t["sysprep"]["tool_key"]: t["sysprep"]["tool_version"],
         }.get(key)
         if key
         else None

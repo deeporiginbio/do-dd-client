@@ -7,6 +7,27 @@ from deeporigin.exceptions import DeepOriginException
 from deeporigin.platform.client import DeepOriginClient
 
 
+def test_execution_from_id_requires_tool_key() -> None:
+    """The bare ``Execution`` class has no ``tool_key``; ``from_id`` is invalid."""
+
+    with pytest.raises(NotImplementedError, match="tool_key"):
+        Execution.from_id("any-id")
+
+
+def test_execution_from_dto_requires_tool_key() -> None:
+    """``Execution.from_dto`` rejects the bare base class."""
+
+    with pytest.raises(NotImplementedError, match="tool_key"):
+        Execution.from_dto({"tool": {"key": "x", "version": "1"}, "executionId": "e"})
+
+
+def test_execution_list_requires_tool_key() -> None:
+    """``Execution.list`` rejects the bare base class."""
+
+    with pytest.raises(NotImplementedError, match="tool_key"):
+        Execution.list()
+
+
 def test_execution_get_user_logs_no_id_noop() -> None:
     """``get_user_logs`` returns ``None`` when the execution has no platform id yet."""
 

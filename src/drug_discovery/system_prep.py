@@ -22,11 +22,11 @@ from typing import Any
 from beartype import beartype
 
 from deeporigin.drug_discovery.execution import Execution
+from deeporigin.drug_discovery.execution_helpers import price_total_from_execution_dto
 from deeporigin.drug_discovery.execution_mixins import QuoteMixin, SyncExecutableMixin
 from deeporigin.drug_discovery.structures.ligand import Ligand
 from deeporigin.drug_discovery.structures.prepared_system import PreparedSystem
 from deeporigin.drug_discovery.structures.protein import Protein
-from deeporigin.drug_discovery.sync_function_responses import SyncFunctionResponses
 from deeporigin.platform.client import DeepOriginClient
 from deeporigin.platform.constants import TOOL_KEYS_AND_VERSIONS
 from deeporigin.utils.constants import SYSPREP_NO_OUTPUT_PATHS_MSG
@@ -77,12 +77,9 @@ class SystemPrep(Execution, QuoteMixin, SyncExecutableMixin):
     """Prepare a protein-ligand system for ABFE or RBFE (sync-only).
 
     Use either a single ``ligand`` (ABFE) or ``ligand1`` and ``ligand2`` (RBFE).
-    Calls the platform system-prep function to produce binding XML,
-    solvation XML, and system PDB. After ``run()``, pass the instance to
-    ``ABFE(system=...)`` (ABFE mode) or use the paths for RBFE.
-
-    This is a blocking operation. It does **not** create a persisted
-    execution record on the platform.
+    Calls ``client.executions.create`` with ``sync=True`` for :meth:`run` to
+    produce binding XML, solvation XML, and system PDB. After ``run()``, pass the
+    instance to ``ABFE(system=...)`` (ABFE mode) or use the paths for RBFE.
 
     Attributes:
         protein: Protein structure used for preparation.
@@ -91,7 +88,7 @@ class SystemPrep(Execution, QuoteMixin, SyncExecutableMixin):
         ligand2: Second ligand (RBFE mode only).
     """
 
-    tool_key: str = TOOL_KEYS_AND_VERSIONS["sysprep"]["function_key"]
+    tool_key: str = TOOL_KEYS_AND_VERSIONS["sysprep"]["tool_key"]
 
     @beartype
     def __init__(
@@ -106,7 +103,7 @@ class SystemPrep(Execution, QuoteMixin, SyncExecutableMixin):
         add_H_atoms: bool = True,  # NOSONAR
         protonate_protein: bool = True,
         box_size: list[float] | None = None,
-        tool_version: str = TOOL_KEYS_AND_VERSIONS["sysprep"]["function_version"],
+        tool_version: str = TOOL_KEYS_AND_VERSIONS["sysprep"]["tool_version"],
         client: DeepOriginClient | None = None,
     ) -> None:
         """Create a SystemPrep for ABFE (single ligand) or RBFE (ligand pair).
@@ -126,7 +123,7 @@ class SystemPrep(Execution, QuoteMixin, SyncExecutableMixin):
             add_H_atoms: Whether to add hydrogen atoms to the ligand(s). Defaults to True.
             protonate_protein: Whether to protonate the protein. Defaults to True.
             box_size: Simulation box dimensions (X, Y, Z) in nm. Optional.
-            tool_version: Platform function version. Settable so callers can pin or
+            tool_version: Platform tool version. Settable so callers can pin or
                 upgrade independently of the SDK release.
             client: Optional API client. Uses the default if not provided.
 
@@ -215,10 +212,10 @@ class SystemPrep(Execution, QuoteMixin, SyncExecutableMixin):
             return (self.ligand1.id, self.ligand2.id)
         return (self.ligand.id, None)
 
-    def _get_quote(self) -> dict[str, Any]:
-        """Call the functions API with ``quote=True`` and return the raw response."""
+    def _sysprep_inputs(self) -> dict[str, Any]:
+        """Build tool ``inputs`` for system preparation."""
         if self._is_rbfe:
-            payload = _build_sysprep_payload(
+            return _build_sysprep_payload(
                 protein=self._protein,
                 ligand1=self._ligand1,
                 ligand2=self._ligand2,
@@ -229,87 +226,71 @@ class SystemPrep(Execution, QuoteMixin, SyncExecutableMixin):
                 box_size=self._box_size,
                 client=self.client,
             )
-        else:
-            payload = _build_sysprep_payload(
-                protein=self._protein,
-                ligand1=self._ligand,
-                ligand2=None,
-                padding=self._padding,
-                retain_waters=self._retain_waters,
-                add_H_atoms=self._add_H_atoms,
-                protonate_protein=self._protonate_protein,
-                box_size=self._box_size,
-                client=self.client,
-            )
-        return self.client.functions.run(
-            key=TOOL_KEYS_AND_VERSIONS["sysprep"]["function_key"],
-            version=self.tool_version,
-            params=payload,
-            quote=True,
+        return _build_sysprep_payload(
+            protein=self._protein,
+            ligand1=self._ligand,
+            ligand2=None,
+            padding=self._padding,
+            retain_waters=self._retain_waters,
+            add_H_atoms=self._add_H_atoms,
+            protonate_protein=self._protonate_protein,
+            box_size=self._box_size,
+            client=self.client,
         )
 
-    def _quote_impl(self) -> None:
-        """Request a cost estimate using the functions API quotation payload."""
-        dto = self._get_quote()
-        wrapped = SyncFunctionResponses([dto])
-        if wrapped.estimate is None:
-            raise RuntimeError(
-                "Quote failed: no estimate could be parsed from the system-prep response."
-            )
-        self._estimate = wrapped.estimate
+    def _make_payload(
+        self, *, sync: bool, approve_amount: int | None
+    ) -> dict[str, Any]:
+        """Build the POST body for ``executions.create``."""
+        body: dict[str, Any] = {
+            "inputs": self._sysprep_inputs(),
+            "outputs": {},
+            "metadata": {},
+            "sync": sync,
+        }
+        if approve_amount is not None:
+            body["approveAmount"] = approve_amount
+        return body
+
+    def _get_quote(self) -> dict[str, Any]:
+        """Return the tools API execution DTO for a quotation (``approveAmount=0``)."""
+        return self.client.executions.create(  # ty:ignore[union-attr]
+            data=self._make_payload(sync=False, approve_amount=0),
+            tool_key=self.tool_key,
+            tool_version=self.tool_version,
+        )
 
     def run(self) -> PreparedSystem:
         """Execute system preparation (blocking).
 
-        Calls the platform system-prep function (ABFE or RBFE path), parses the
-        response, and returns a ``PreparedSystem`` with output paths and metadata.
-        To fetch previously computed systems without re-running, use
+        Calls ``client.executions.create`` with ``sync=True`` (ABFE or RBFE path),
+        parses the response, and returns a ``PreparedSystem`` with output paths and
+        metadata. To fetch previously computed systems without re-running, use
         :meth:`get_results`.
 
         Returns:
             A PreparedSystem with the output paths and metadata.
 
         Raises:
-            ValueError: If the function run did not return output paths.
+            ValueError: If the execution did not return usable output paths.
         """
-        if self._is_rbfe:
-            payload = _build_sysprep_payload(
-                protein=self.protein,
-                ligand1=self.ligand1,
-                ligand2=self.ligand2,
-                padding=self._padding,
-                retain_waters=self._retain_waters,
-                add_H_atoms=self._add_H_atoms,
-                protonate_protein=self._protonate_protein,
-                box_size=self._box_size,
-                client=self.client,
-            )
-        else:
-            payload = _build_sysprep_payload(
-                protein=self.protein,
-                ligand1=self.ligand,
-                ligand2=None,
-                padding=self._padding,
-                retain_waters=self._retain_waters,
-                add_H_atoms=self._add_H_atoms,
-                protonate_protein=self._protonate_protein,
-                box_size=self._box_size,
-                client=self.client,
-            )
-
-        raw = self.client.functions.run(
-            key=TOOL_KEYS_AND_VERSIONS["sysprep"]["function_key"],
-            version=self.tool_version,
-            params=payload,
-            quote=False,
+        dto = self.client.executions.create(  # ty:ignore[unresolved-attribute]
+            data=self._make_payload(sync=True, approve_amount=None),
+            tool_key=self.tool_key,
+            tool_version=self.tool_version,
         )
-        result = SyncFunctionResponses([raw])
-
-        if result.cost is not None:
-            self._cost = result.cost
-
-        execution_id = result.responses[0]["id"]
+        execution_id = dto.get("executionId")
+        if not execution_id:
+            raise ValueError(
+                "System prep run failed: tools execution create did not return "
+                "an executionId."
+            )
         self._id = execution_id
+        if dto.get("status") == "Succeeded":
+            price = price_total_from_execution_dto(dto)
+            if price is not None:
+                self._cost = price
+
         client = self.client
         ligand1_id, ligand2_id = self._ligand_ids()
         ids_ok = (
@@ -334,42 +315,72 @@ class SystemPrep(Execution, QuoteMixin, SyncExecutableMixin):
 
                 warnings.warn(
                     "Could not load prepared system from the data platform; "
-                    "using function response instead. Results may be delayed.",
+                    "using execution outputs if present. Results may be delayed.",
                     stacklevel=2,
                 )
 
-        if not result.function_outputs:
-            raise ValueError(SYSPREP_NO_OUTPUT_PATHS_MSG)
+        prepared = self._prepared_system_from_execution_dto(dto)
+        if prepared is not None:
+            return prepared
 
-        outputs = result.function_outputs[0]
-        system = outputs.get("system")
-        if system is None:
-            raise ValueError(SYSPREP_NO_OUTPUT_PATHS_MSG)
-        binding_xml_path: str | None = None
-        solvation_xml_path: str | None = None
-        system_pdb_path: str | None = None
-        solute_pdb_path: str | None = None
-        if isinstance(system, dict):
-            binding_xml_path = system.get("binding_xml_file_path")
-            solvation_xml_path = system.get("solvation_xml_ligand_file_path")
-            system_pdb_path = system.get("system_pdb_file_path")
-            solute_pdb_path = system.get("solute_pdb_file_path")
+        raise ValueError(SYSPREP_NO_OUTPUT_PATHS_MSG)
 
+    def _prepared_system_from_execution_dto(
+        self, dto: dict[str, Any]
+    ) -> PreparedSystem | None:
+        """Build ``PreparedSystem`` from execution output blobs, if present."""
+        for key in ("jobOutputs", "userOutputs", "functionOutputs"):
+            block = dto.get(key)
+            if not isinstance(block, dict):
+                continue
+            system = block.get("system")
+            prepared = SystemPrep._prepared_system_from_system_dict(
+                system,
+                protein_id=self.protein.id,
+                ligand1_id=self._ligand_ids()[0],
+                ligand2_id=self._ligand_ids()[1],
+                padding=self._padding,
+                add_H_atoms=self._add_H_atoms,
+                retain_waters=self._retain_waters,
+                protonate_protein=self._protonate_protein,
+            )
+            if prepared is not None:
+                return prepared
+        return None
+
+    @staticmethod
+    def _prepared_system_from_system_dict(
+        system: object,
+        *,
+        protein_id: str | None,
+        ligand1_id: str | None,
+        ligand2_id: str | None,
+        padding: float,
+        add_H_atoms: bool,
+        retain_waters: bool,
+        protonate_protein: bool,
+    ) -> PreparedSystem | None:
+        """Return a ``PreparedSystem`` if *system* dict contains required paths."""
+        if not isinstance(system, dict):
+            return None
+        binding_xml_path = system.get("binding_xml_file_path")
+        solvation_xml_path = system.get("solvation_xml_ligand_file_path")
+        system_pdb_path = system.get("system_pdb_file_path")
+        solute_pdb_path = system.get("solute_pdb_file_path")
         if not (binding_xml_path and solvation_xml_path and system_pdb_path):
-            raise ValueError(SYSPREP_NO_OUTPUT_PATHS_MSG)
-
+            return None
         return PreparedSystem(
             binding_xml_path=binding_xml_path,
             solvation_xml_path=solvation_xml_path,
             system_pdb_path=system_pdb_path,
             solute_pdb_path=solute_pdb_path,
-            protein_id=self.protein.id,
-            ligand1_id=self._ligand_ids()[0],
-            ligand2_id=self._ligand_ids()[1],
-            padding=self._padding,
-            add_H_atoms=self._add_H_atoms,
-            retain_waters=self._retain_waters,
-            protonate_protein=self._protonate_protein,
+            protein_id=protein_id,
+            ligand1_id=ligand1_id,
+            ligand2_id=ligand2_id,
+            padding=padding,
+            add_H_atoms=add_H_atoms,
+            retain_waters=retain_waters,
+            protonate_protein=protonate_protein,
         )
 
     def get_results(self) -> list[PreparedSystem]:
@@ -380,7 +391,7 @@ class SystemPrep(Execution, QuoteMixin, SyncExecutableMixin):
         :class:`PreparedSystem` from each row that contains the required output paths.
 
         Uses the platform execution :attr:`~deeporigin.drug_discovery.execution_mixins.QuoteMixin.id`
-        (function execution / compute job id) set by :meth:`run`.
+        (compute job id) set by :meth:`run`.
 
         Returns:
             One or more :class:`PreparedSystem` instances from the results API for
@@ -418,14 +429,21 @@ def for_abfe(
     box_size: list[float] | None = None,
     client: DeepOriginClient,
     quote: bool = False,
-) -> SyncFunctionResponses:
-    """Run ABFE system preparation via ``functions.run`` (low-level helper).
+    tool_version: str = TOOL_KEYS_AND_VERSIONS["sysprep"]["tool_version"],
+) -> dict[str, Any]:
+    """Run ABFE system preparation via ``client.executions.create`` (low-level helper).
 
     Unlike :class:`SystemPrep`, this does not require platform entity IDs on
     ``protein`` / ``ligand`` before the call; inputs are synced in
     :func:`_build_sysprep_payload`.
+
+    Args:
+        tool_version: Tool manifest version for the executions URL segment.
+
+    Returns:
+        Raw execution DTO from the tools API.
     """
-    payload = _build_sysprep_payload(
+    inputs = _build_sysprep_payload(
         protein=protein,
         ligand1=ligand,
         ligand2=None,
@@ -436,13 +454,19 @@ def for_abfe(
         box_size=box_size,
         client=client,
     )
-    raw = client.functions.run(
-        key=TOOL_KEYS_AND_VERSIONS["sysprep"]["function_key"],
-        version=TOOL_KEYS_AND_VERSIONS["sysprep"]["function_version"],
-        params=payload,
-        quote=quote,
+    body: dict[str, Any] = {
+        "inputs": inputs,
+        "outputs": {},
+        "metadata": {},
+        "sync": False if quote else True,
+    }
+    if quote:
+        body["approveAmount"] = 0
+    return client.executions.create(  # ty:ignore[union-attr]
+        data=body,
+        tool_key=TOOL_KEYS_AND_VERSIONS["sysprep"]["tool_key"],
+        tool_version=tool_version,
     )
-    return SyncFunctionResponses([raw])
 
 
 @beartype
@@ -458,9 +482,17 @@ def for_rbfe(
     box_size: list[float] | None = None,
     client: DeepOriginClient,
     quote: bool = False,
-) -> SyncFunctionResponses:
-    """Run RBFE system preparation via ``functions.run`` (low-level helper)."""
-    payload = _build_sysprep_payload(
+    tool_version: str = TOOL_KEYS_AND_VERSIONS["sysprep"]["tool_version"],
+) -> dict[str, Any]:
+    """Run RBFE system preparation via ``client.executions.create`` (low-level helper).
+
+    Args:
+        tool_version: Tool manifest version for the executions URL segment.
+
+    Returns:
+        Raw execution DTO from the tools API.
+    """
+    inputs = _build_sysprep_payload(
         protein=protein,
         ligand1=ligand1,
         ligand2=ligand2,
@@ -471,10 +503,16 @@ def for_rbfe(
         box_size=box_size,
         client=client,
     )
-    raw = client.functions.run(
-        key=TOOL_KEYS_AND_VERSIONS["sysprep"]["function_key"],
-        version=TOOL_KEYS_AND_VERSIONS["sysprep"]["function_version"],
-        params=payload,
-        quote=quote,
+    body: dict[str, Any] = {
+        "inputs": inputs,
+        "outputs": {},
+        "metadata": {},
+        "sync": False if quote else True,
+    }
+    if quote:
+        body["approveAmount"] = 0
+    return client.executions.create(  # ty:ignore[union-attr]
+        data=body,
+        tool_key=TOOL_KEYS_AND_VERSIONS["sysprep"]["tool_key"],
+        tool_version=tool_version,
     )
-    return SyncFunctionResponses([raw])

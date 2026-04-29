@@ -9,6 +9,7 @@ import numpy as np
 import pandas as pd
 
 from deeporigin.drug_discovery.execution import Execution
+from deeporigin.drug_discovery.execution_helpers import price_total_from_execution_dto
 from deeporigin.drug_discovery.execution_mixins import (
     AsyncExecutableMixin,
     QuoteMixin,
@@ -22,7 +23,6 @@ from deeporigin.drug_discovery.structures.protein import Protein
 from deeporigin.exceptions import DeepOriginException
 from deeporigin.platform.client import DeepOriginClient
 from deeporigin.platform.constants import TOOL_KEYS_AND_VERSIONS
-from deeporigin.platform.executions import Executions
 from deeporigin.utils.constants import DOCKING_RESULTS_DATAFRAME_COLUMNS
 
 Number = float | int
@@ -49,18 +49,6 @@ class _SupportsLigandSetSync(Protocol):
         lazy: bool = False,
         client: DeepOriginClient | None = None,
     ) -> None: ...
-
-
-def _require_executions(client: DeepOriginClient) -> Executions:
-    """Return ``client.executions`` or raise if the executions API is unavailable."""
-    ex = client.executions
-    if ex is None:
-        raise DeepOriginException(
-            title="Executions API unavailable",
-            message="The tools executions API is not available in this installation.",
-            fix="Use a full deeporigin install with platform.executions included.",
-        )
-    return ex
 
 
 def _sync_entity(
@@ -135,16 +123,6 @@ def _docking_default_name(protein: Protein, ligands: LigandSet) -> str:
             lig_label = lig.smiles if lig.smiles else "unnamed ligand"
         return f"Docking {p} to {lig_label}"
     return f"Docking {p} to {n} ligands."
-
-
-def _price_total_from_execution_dto(dto: dict[str, Any]) -> float | None:
-    """Return ``priceTotal`` from the first successful quotation, if any."""
-    quotation = dto.get("quotationResult") or {}
-    successful = quotation.get("successfulQuotations") or []
-    if not successful:
-        return None
-    price = successful[0].get("priceTotal")
-    return float(price) if price is not None else None
 
 
 @beartype
@@ -321,7 +299,7 @@ class Docking(
         self._ensure_platform_inputs()
         payload = self._make_payload(approve_amount=0, sync=False)
 
-        return _require_executions(self.client).create(
+        return self.client.executions.create(  # ty:ignore[union-attr]
             data=payload,
             tool_key=self.tool_key,
             tool_version=self.tool_version,
@@ -353,7 +331,7 @@ class Docking(
             ) from None
 
         client = self.client
-        ex = _require_executions(client)
+        ex = client.executions  # ty:ignore[union-attr]
         ligand_list = list(self.ligands)
 
         self._ensure_platform_inputs()
@@ -386,7 +364,7 @@ class Docking(
                         f"Execution {eid!r} ended with status {final_status!r}: {reason!r}."
                     ),
                 ) from None
-            price = _price_total_from_execution_dto(create_dto)
+            price = price_total_from_execution_dto(create_dto)
             if first_id is None:
                 first_id = eid
             if price is not None:
@@ -424,7 +402,7 @@ class Docking(
         self._ensure_platform_inputs()
         payload = self._make_payload(sync=False)
 
-        execution_dto = _require_executions(self.client).create(
+        execution_dto = self.client.executions.create(  # ty:ignore[unresolved-attribute]
             data=payload,
             tool_key=self.tool_key,
             tool_version=self.tool_version,

@@ -1,14 +1,23 @@
 """Base class for the jobs-centric API.
 
 Provides ``Execution`` -- a base class with read-only ``@property`` descriptors
-for system-managed fields and lifecycle state management.  Subclasses also
+for system-managed fields and lifecycle state management, plus
+``from_id()`` / :meth:`Execution.list` delegate to :meth:`Execution.from_dto`.
+:meth:`Execution.update_from_dto` applies the same fields to an existing
+instance (for example after ``executions.create``). The base ``from_dto``
+hydrates tools execution fields from the DTO; concrete
+types override it, call ``super().from_dto()``, then restore domain-specific
+state from ``userInputs``. Subclasses also
 expose immutable input fields as read-only properties and compose with mixins
 (``QuoteMixin``, ``SyncExecutableMixin``, ``AsyncExecutableMixin``) to build
 concrete execution types like ``PocketFinder``, ``Docking``, and ``ABFE``.
+Sync ``run()`` may persist a tools execution when the implementation uses the
+executions API with ``sync=True``; see each class for details.
 """
 
 from __future__ import annotations
 
+import builtins
 import copy
 from typing import TYPE_CHECKING, Any, Self
 
@@ -16,6 +25,44 @@ from deeporigin.platform.constants import ALLOWED_STATUS_TRANSITIONS
 
 if TYPE_CHECKING:
     from deeporigin.platform.client import DeepOriginClient
+
+
+def _paginate_tool_execution_list(
+    client: DeepOriginClient,
+    *,
+    tool_key: str,
+    page_size: int = 1000,
+) -> builtins.list[dict[str, Any]]:
+    """Collect all pages from ``client.executions.list`` for one ``tool_key``."""
+    current_page = 0
+    all_dtos: builtins.list[dict[str, Any]] = []
+
+    while True:
+        response = client.executions.list(  # ty:ignore[unresolved-attribute]
+            page=current_page,
+            page_size=page_size,
+            tool_key=tool_key,
+        )
+
+        if not isinstance(response, dict):
+            all_dtos.extend(response if isinstance(response, builtins.list) else [])
+            break
+
+        page_dtos = response.get("data", [])
+        all_dtos.extend(page_dtos)
+
+        count = response.get("count", 0)
+
+        if count > page_size:
+            if len(page_dtos) < page_size:
+                break
+            if len(all_dtos) >= count:
+                break
+            current_page += 1
+        else:
+            break
+
+    return all_dtos
 
 
 class Execution:
@@ -27,6 +74,15 @@ class Execution:
     classes include that mixin). Subclasses should use the same ``@property``
     pattern for user-supplied input
     fields that must not change after construction.
+
+    Rehydration: :meth:`from_dto` on this base class performs shared tools DTO
+    hydration (``executionId``, pricing, lifecycle fields, ``_execution_dto``).
+    Concrete subclasses **must** override :meth:`from_dto`, call
+    ``super().from_dto()``, then attach domain-specific state from
+    ``userInputs`` (see :class:`~deeporigin.drug_discovery.docking.Docking` and
+    :class:`~deeporigin.drug_discovery.pocket_finder.PocketFinder`). Calling
+    :meth:`from_id` or :meth:`list` on :class:`Execution` itself raises
+    ``NotImplementedError`` (no ``tool_key`` on the bare base class).
 
     Attributes:
         estimate: Cost estimate in dollars, set by ``quote()``.
@@ -123,6 +179,190 @@ class Execution:
             new.client = client
         return new
 
+    def update_from_dto(self, dto: dict[str, Any]) -> None:
+        """Apply tools execution fields from ``dto`` onto this instance.
+
+        Updates ``id``, pricing, lifecycle fields, and ``_execution_dto`` the same
+        way as :meth:`from_dto` for a newly created instance. Use after a live
+        ``executions.create`` / ``sync()`` response to refresh state without
+        constructing a new object (domain inputs on ``self`` are unchanged).
+
+        Args:
+            dto: Execution payload (same shape as ``client.executions.get``).
+
+        Raises:
+            NotImplementedError: If ``type(self)`` has no ``tool_key`` (bare
+                :class:`Execution`).
+            ValueError: If the DTO ``tool.key`` does not match ``tool_key``.
+        """
+        cls = type(self)
+        if not cls.tool_key:
+            raise NotImplementedError(
+                f"{cls.__qualname__}.update_from_dto requires a non-empty class tool_key."
+            )
+
+        tool_info = dto["tool"]
+        dto_tool_key = tool_info["key"]
+        expected_tool_key = cls.tool_key
+        if dto_tool_key != expected_tool_key:
+            raise ValueError(
+                "Cannot apply execution DTO: "
+                f"tool key mismatch (dto={dto_tool_key!r}, class={expected_tool_key!r})."
+            )
+
+        self._id = dto["executionId"]
+        self._estimate = None
+        self._cost = None
+        self.tool_key = expected_tool_key
+        self.tool_version = tool_info["version"]
+
+        self.status = dto.get("status")
+        self.progress = dto.get("progressReport")
+        self.app = dto.get("app")
+        self.approve_amount = dto.get("approveAmount")
+        self.created_at = dto.get("createdAt")
+        self.created_by = dto.get("createdBy")
+        self.started_at = dto.get("startedAt")
+        self.completed_at = dto.get("completedAt")
+        self.session = dto.get("session")
+        self._execution_dto = dto
+        self._name = dto.get("name")
+
+        quotation = dto.get("quotationResult") or {}
+        successful = quotation.get("successfulQuotations", [])
+        if successful:
+            price = successful[0].get("priceTotal")
+            if price is not None:
+                self._estimate = float(price)
+            if self.status == "Succeeded" and price is not None:
+                self._cost = float(price)
+
+    @classmethod
+    def from_dto(
+        cls,
+        dto: dict[str, Any],
+        *,
+        client: DeepOriginClient | None = None,
+    ) -> Self:
+        """Construct an instance from an execution DTO returned by the platform API.
+
+        Creates a bare instance via ``object.__new__`` (bypassing ``__init__``)
+        and populates common tools execution fields (including :attr:`name` from
+        the DTO ``name`` field) via :meth:`update_from_dto`. If the instance
+        defines ``_init_after_from_dto``
+        (e.g. :class:`~deeporigin.drug_discovery.notebook_watch_mixin.NotebookWatchMixin`),
+        it is called after common fields are set. Subclasses should call
+        ``super().from_dto()`` then rehydrate domain-specific fields from
+        ``instance._execution_dto["userInputs"]``.
+
+        Args:
+            dto: Execution payload (same shape as ``client.executions.get``).
+            client: Optional API client. Uses the default if not provided.
+
+        Returns:
+            A partially-hydrated instance with common fields populated.
+
+        Raises:
+            NotImplementedError: If ``cls`` has no ``tool_key`` (bare
+                :class:`Execution`).
+            ValueError: If the DTO ``tool.key`` does not match ``cls.tool_key``.
+        """
+        if not cls.tool_key:
+            raise NotImplementedError(
+                f"{cls.__qualname__}.from_dto requires a non-empty class tool_key."
+            )
+        if client is None:
+            from deeporigin.platform.client import DeepOriginClient
+
+            client = DeepOriginClient()
+
+        instance = object.__new__(cls)
+        instance.client = client
+        instance.update_from_dto(dto)
+
+        post_init = getattr(instance, "_init_after_from_dto", None)
+        if post_init is not None:
+            post_init()
+
+        return instance
+
+    @classmethod
+    def from_id(cls, id: str, *, client: DeepOriginClient | None = None) -> Self:
+        """Construct an instance from an existing platform execution ID.
+
+        Fetches the execution DTO via ``client.executions.get`` and delegates to
+        :meth:`from_dto`. Concrete subclasses override :meth:`from_dto` to attach
+        domain state from ``userInputs``.
+
+        Args:
+            id: Platform execution ID.
+            client: Optional API client. Uses the default if not provided.
+
+        Returns:
+            A partially-hydrated instance with common fields populated.
+
+        Raises:
+            NotImplementedError: If ``cls`` has no ``tool_key`` (bare
+                :class:`Execution`).
+        """
+        if not cls.tool_key:
+            raise NotImplementedError(
+                f"{cls.__qualname__}.from_id requires a non-empty class tool_key."
+            )
+        if client is None:
+            from deeporigin.platform.client import DeepOriginClient
+
+            client = DeepOriginClient()
+
+        dto = client.executions.get(id)  # ty:ignore[unresolved-attribute]
+        return cls.from_dto(dto, client=client)
+
+    @classmethod
+    def list(
+        cls,
+        *,
+        client: DeepOriginClient | None = None,
+        status: builtins.list[str] | None = None,
+    ) -> builtins.list[Self]:
+        """List executions of this tool type from the platform.
+
+        Calls ``client.executions.list`` with ``tool_key=cls.tool_key``,
+        paginates when the API reports a total above ``page_size``, then
+        builds instances via :meth:`from_dto`. Optional ``status`` filters
+        hydrated instances by ``instance.status``.
+
+        Args:
+            client: Optional API client. Uses the default if not provided.
+            status: Optional list of statuses to keep (membership test).
+
+        Returns:
+            Instances of this class, one per matching execution.
+
+        Raises:
+            NotImplementedError: If ``cls`` has no ``tool_key`` (bare
+                :class:`Execution`).
+        """
+        if not cls.tool_key:
+            raise NotImplementedError(
+                f"{cls.__qualname__}.list requires a non-empty class tool_key."
+            )
+        if client is None:
+            from deeporigin.platform.client import DeepOriginClient
+
+            client = DeepOriginClient()
+
+        all_dtos = _paginate_tool_execution_list(client, tool_key=cls.tool_key)
+        all_dtos = [
+            dto for dto in all_dtos if dto.get("tool", {}).get("key") == cls.tool_key
+        ]
+
+        instances = [cls.from_dto(dto, client=client) for dto in all_dtos]
+
+        if status is not None:
+            instances = [i for i in instances if i.status in status]
+
+        return instances
+
     def get_results(self, **kwargs: Any) -> Any:
         """Fetch results for this execution from the data platform.
 
@@ -155,7 +395,7 @@ class Execution:
         *,
         limit: int | None = None,
         offset: int | None = None,
-        select: list[str] | None = None,
+        select: builtins.list[str] | None = None,
         with_total_count: bool = False,
     ) -> dict[str, Any] | None:
         """Search data-platform ``user_logs`` rows for this execution.
@@ -193,7 +433,7 @@ class Execution:
 
     def __repr__(self) -> str:
         """Return a concise summary of the execution."""
-        parts: list[str] = [type(self).__name__]
+        parts: builtins.list[str] = [type(self).__name__]
         if self._name is not None:
             parts.append(f"name={self._name!r}")
         exec_id = getattr(self, "_id", None)

@@ -55,8 +55,8 @@ TOOL_KEYS_AND_VERSIONS: dict[str, dict[str, str]] = {
         "tool_version": "3.1.11",
     },
     "pocket_finder": {
-        "function_key": "deeporigin.pocketfinder",
-        "function_version": "0.6.0",
+        "tool_key": "deeporigin.pocket-finder",
+        "tool_version": "1.2.0",
     },
     "constrained_docking": {
         "function_key": "deeporigin.constrained-docking",
@@ -76,7 +76,7 @@ TOOL_KEYS_AND_VERSIONS: dict[str, dict[str, str]] = {
         "tool_version": "0.2.39",
     },
     "sysprep": {
-        "function_key": "deeporigin.system-prep",
-        "function_version": "0.11.0",
+        "tool_key": "deeporigin.system-prep",
+        "tool_version": "0.15.0",
     },
 }

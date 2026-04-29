@@ -16,7 +16,6 @@ from deeporigin.drug_discovery import (
     Protein,
 )
 from deeporigin.drug_discovery.structures.prepared_system import PreparedSystem
-from deeporigin.drug_discovery.sync_function_responses import SyncFunctionResponses
 from deeporigin.drug_discovery.system_prep import SystemPrep, for_abfe
 from deeporigin.exceptions import DeepOriginException
 from deeporigin.platform import DeepOriginClient
@@ -76,11 +75,11 @@ def test_pocket_finder_quote_lv1(
     registered_protein: Protein,
 ) -> None:
     """PocketFinder.quote() returns an estimate without running the tool."""
-    assert check_function_exists(
+    assert check_tool_exists(
         client,
-        TOOL_KEYS_AND_VERSIONS["pocket_finder"]["function_key"],
-        TOOL_KEYS_AND_VERSIONS["pocket_finder"]["function_version"],
-    ), "Pocket finder function not registered on platform (expected key/version)."
+        TOOL_KEYS_AND_VERSIONS["pocket_finder"]["tool_key"],
+        TOOL_KEYS_AND_VERSIONS["pocket_finder"]["tool_version"],
+    ), "Pocket finder tool not registered on platform (expected key/version)."
 
     pf = PocketFinder(protein=registered_protein, client=client)
     pf.quote()
@@ -108,11 +107,11 @@ def test_pocket_finder_lv2(
     entity in the fixture). ``registered_protein`` additionally asserts
     platform-linked IDs and ``Pocket.from_result`` hydration.
     """
-    assert check_function_exists(
+    assert check_tool_exists(
         client,
-        TOOL_KEYS_AND_VERSIONS["pocket_finder"]["function_key"],
-        TOOL_KEYS_AND_VERSIONS["pocket_finder"]["function_version"],
-    ), "Pocket finder function not registered on platform (expected key/version)."
+        TOOL_KEYS_AND_VERSIONS["pocket_finder"]["tool_key"],
+        TOOL_KEYS_AND_VERSIONS["pocket_finder"]["tool_version"],
+    ), "Pocket finder tool not registered on platform (expected key/version)."
 
     protein: Protein = request.getfixturevalue(protein_fixture)
     num_pockets = 1
@@ -206,11 +205,11 @@ def test_sysprep_lv2(
     additionally checks the result-explorer row for this job (tool key, protein
     id, stored ``data`` payload).
     """
-    assert check_function_exists(
+    assert check_tool_exists(
         client,
-        TOOL_KEYS_AND_VERSIONS["sysprep"]["function_key"],
-        TOOL_KEYS_AND_VERSIONS["sysprep"]["function_version"],
-    ), "System prep function not registered on platform (expected key/version)."
+        TOOL_KEYS_AND_VERSIONS["sysprep"]["tool_key"],
+        TOOL_KEYS_AND_VERSIONS["sysprep"]["tool_version"],
+    ), "System prep tool not registered on platform (expected key/version)."
 
     protein: Protein = request.getfixturevalue(protein_fixture)
     ligand: Ligand = request.getfixturevalue(ligand_fixture)
@@ -223,8 +222,8 @@ def test_sysprep_lv2(
             add_H_atoms=True,
             protonate_protein=True,
         )
-        assert isinstance(result, SyncFunctionResponses)
-        assert result.response.get("status") == "Completed"
+        assert isinstance(result, dict)
+        assert result.get("status") == "Succeeded"
         return
 
     sysprep = SystemPrep(
@@ -254,7 +253,7 @@ def test_sysprep_lv2(
     assert len(records) >= 1, "Expected a prepared-system row for this compute job"
     record = records[0]
     assert record.get("compute_job_id") == execution_id
-    assert record.get("tool_key") == TOOL_KEYS_AND_VERSIONS["sysprep"]["function_key"]
+    assert record.get("tool_key") == TOOL_KEYS_AND_VERSIONS["sysprep"]["tool_key"]
     data = record["data"]
     assert isinstance(data, dict) and len(data) > 0
     assert data.get("protein_id") == protein.id

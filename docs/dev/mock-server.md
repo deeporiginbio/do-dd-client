@@ -83,13 +83,15 @@ The mock server emulates this with `_inject_result_explorer_records`. After a fu
 ```{.python notest}
 output_key_map = {
     "deeporigin.pocketfinder": "pockets",
+    "deeporigin.pocket-finder": "pockets",
     "deeporigin.docking": "poses",
+    "deeporigin.system-prep": "system",
 }
 ```
 
-Each entry maps a function key to the array field in `functionOutputs` that should be mirrored into the shared result-explorer store. For example, when `deeporigin.docking` runs, the `poses` array from `functionOutputs` is extracted and each pose is inserted as a result-explorer record.
+Each entry maps a function or **tool** manifest key to the field in `functionOutputs` that should be mirrored into the shared result-explorer store. Tool executions (`POST .../tools/{tool_key}/.../executions`) use helpers such as `_inject_pocketfinder_tool_execution_results` to load the same fixture shapes and call `_inject_result_explorer_records` with the tool key.
 
-**When adding a new function type**, add an entry to `output_key_map` so that downstream queries (e.g., `Pocket.from_result`, `LigandSet.from_docking_result`) can find the records.
+**When adding a new function or tool**, extend `output_key_map` (and any tool-specific injectors in `tools.py`) so downstream queries (e.g., `Pocket.from_result`, `LigandSet.from_docking_result`) can find the records.
 
 ### 4. Result-explorer queries
 

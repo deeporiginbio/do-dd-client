@@ -2,23 +2,13 @@
 
 import importlib.resources
 import json
-import os
 from typing import Any
 
 from beartype import beartype
 
-from deeporigin.drug_discovery.constants import tool_mapper, valid_tools
 from deeporigin.drug_discovery.utils.visualize import (
     render_smiles_in_dataframe,  # noqa: F401
 )
-from deeporigin.platform.client import DeepOriginClient
-from deeporigin.utils.env import _ensure_do_folder
-
-DATA_DIRS = {}
-
-for tool in tool_mapper.keys():
-    DATA_DIRS[tool] = str(_ensure_do_folder() / tool)
-    os.makedirs(DATA_DIRS[tool], exist_ok=True)
 
 
 @beartype
@@ -27,63 +17,6 @@ def _load_params(param_file: str) -> dict:
 
     with importlib.resources.open_text("deeporigin.json", f"{param_file}.json") as f:
         return json.load(f)
-
-
-@beartype
-def _start_tool_run(
-    *,
-    params: dict,
-    metadata: dict,
-    tool: valid_tools,
-    tool_version: str,
-    client: DeepOriginClient,
-    outputs: dict | None = None,
-    approve_amount: int | None = None,
-    name: str | None = None,
-) -> dict:
-    """Submit a tool execution to the platform.
-
-    Args:
-        params: Input parameters for the tool run.
-        metadata: Metadata to log with the execution.
-        tool: Tool identifier (e.g., ``'ABFE'``, ``'Docking'``).
-        tool_version: Version of the tool to use.
-        client: API client.
-        outputs: Output file specification. Defaults to empty.
-        approve_amount: Pre-approved spend amount.
-        name: Optional execution label.
-
-    Returns:
-        The execution DTO from the API.
-    """
-    if is_test_run(params):
-        print(
-            "⚠️ Warning: test_run=1 in these parameters. Results and quoted prices will not be accurate."
-        )
-
-    payload = {
-        "inputs": params,
-        "outputs": outputs or {},
-        "metadata": metadata,
-    }
-
-    if approve_amount is not None:
-        payload["approveAmount"] = approve_amount
-
-    if name is not None:
-        payload["name"] = name
-
-    proj_id = client.project_id
-    if proj_id is not None:
-        payload["projectId"] = proj_id
-
-    response = client.executions.create(
-        data=payload,
-        tool_key=tool_mapper[tool],
-        tool_version=tool_version,
-    )
-
-    return response
 
 
 @beartype

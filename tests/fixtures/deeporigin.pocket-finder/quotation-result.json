@@ -1,0 +1,26 @@
+{
+    "anyFailed": false,
+    "failedQuotations": [],
+    "successfulQuotations": [
+        {
+            "itemCode": "DO_POCKET_FINDER",
+            "orgId": "deeporigin",
+            "priceEach": 10,
+            "priceTotal": 10,
+            "pricingRecordType": "regular",
+            "pricingRecords": [
+                {
+                    "itemKey": "DO_POCKET_FINDER",
+                    "itemName": "Pocket Finder",
+                    "priceEach": 10,
+                    "qty": 1,
+                    "tierQtyFrom": 0,
+                    "tierQtyTo": 0,
+                    "totalPrice": 10
+                }
+            ],
+            "qty": 1,
+            "status": "OK"
+        }
+    ]
+}

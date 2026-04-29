@@ -79,6 +79,56 @@ def test_from_json_single_entry_lv0():
     assert pocket.id is None
 
 
+def test_from_json_platform_file_path_is_remote_lazy_lv0():
+    """API-style file_path (not on disk) becomes remote_path; no eager load."""
+    remote = "tool-runs/8c190a86-a243-464b-9646-19a5a5636b55/pocket_1.pdb"
+    data = [
+        {
+            "protein_id": "08CEVZZPNYV31",
+            "file_path": remote,
+            "volume": 342,
+            "total_SASA": 1383.8657,
+            "polar_SASA": 372.27518,
+            "apolar_SASA": 1011.5905,
+            "polar_apolar_SASA_ratio": 0.36800975,
+            "hydrophobicity": 30.518518,
+            "drugability_score": 0.94471055,
+            "polarity": 11,
+            "pocket_center": [-13.521, -7.4440002, 15.957001],
+            "box_size_x": 14,
+            "box_size_y": 19,
+            "box_size_z": 20,
+            "pocket_count": 1,
+            "pocket_min_size": 30,
+        }
+    ]
+
+    pockets = Pocket.from_json(data)
+
+    assert len(pockets) == 1
+    pocket = pockets[0]
+    assert pocket.remote_path == remote
+    assert pocket.local_path is None
+    assert pocket.coordinates is None
+    assert pocket.protein_id == "08CEVZZPNYV31"
+    assert pocket.volume == pytest.approx(342.0)
+    assert pocket.total_sasa == pytest.approx(1383.8657)
+    assert pocket.polar_sasa == pytest.approx(372.27518)
+    assert pocket.apolar_sasa == pytest.approx(1011.5905)
+    assert pocket.polar_apolar_sasa_ratio == pytest.approx(0.36800975)
+    assert pocket.hydrophobicity == pytest.approx(30.518518)
+    assert pocket.drugability_score == pytest.approx(0.94471055)
+    assert pocket.polarity == pytest.approx(11.0)
+    assert pocket.center == pytest.approx([-13.521, -7.4440002, 15.957001])
+    assert pocket.box_size_x == pytest.approx(14.0)
+    assert pocket.box_size_y == pytest.approx(19.0)
+    assert pocket.box_size_z == pytest.approx(20.0)
+    assert pocket.pocket_count == 1
+    assert pocket.pocket_min_size == 30
+    assert "pocket_count" not in (pocket.props or {})
+    assert "pocket_min_size" not in (pocket.props or {})
+
+
 def test_from_json_id_is_set_lv0():
     """When an 'id' key is present it should populate the Pocket.id attribute."""
     data = [{"id": "pocket-abc-123", "file_path": str(_BRD_PDB)}]
