@@ -137,13 +137,14 @@ class Executions:
         self,
         *,
         project_id: str | None = None,
-        tool_key: str | None = None,
+        tool_key: list[str] | str | None = None,
         status: str | None = None,
         extra_props: list[dict[str, Any]] | None = None,
         limit: int | None = None,
         offset: int | None = None,
         select: list[str] | None = None,
         with_total_count: bool = False,
+        compute_job_id: str | None = None,
     ) -> dict:
         """Search executions via the data-platform endpoint.
 
@@ -184,10 +185,16 @@ class Executions:
         props: list[dict[str, Any]] = []
         if project_id is not None:
             props.append({"column": "project_id", "op": "eq", "value": project_id})
-        if tool_key is not None:
+        if isinstance(tool_key, (list, tuple)):
+            props.append({"column": "tool_key", "op": "in", "value": tool_key})
+        elif isinstance(tool_key, str) and tool_key:
             props.append({"column": "tool_key", "op": "eq", "value": tool_key})
         if status is not None:
             props.append({"column": "status", "op": "eq", "value": status})
+        if compute_job_id is not None:
+            props.append(
+                {"column": "compute_job_id", "op": "eq", "value": compute_job_id}
+            )
         if extra_props:
             props.extend(extra_props)
 
