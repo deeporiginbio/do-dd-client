@@ -150,6 +150,47 @@ class Execution:
             )
         return self.client.results.get(compute_job_id=exec_id, **kwargs)
 
+    def get_user_logs(
+        self,
+        *,
+        limit: int | None = None,
+        offset: int | None = None,
+        select: list[str] | None = None,
+        with_total_count: bool = False,
+    ) -> dict[str, Any] | None:
+        """Search data-platform ``user_logs`` rows for this execution.
+
+        Uses :meth:`deeporigin.platform.user_logs.UserLogs.search` with
+        ``compute_job_id`` set to this execution's platform id (same identifier
+        passed to :meth:`get_results` as ``compute_job_id``).
+
+        When no execution id is assigned yet, returns ``None`` without calling
+        the API.
+
+        Args:
+            limit: Max rows to return (forwarded to ``UserLogs.search``).
+            offset: Skip offset (forwarded).
+            select: Columns to select (forwarded).
+            with_total_count: Request total count from the server (forwarded).
+
+        Returns:
+            The search response dict (typically ``data`` / ``meta``), or
+            ``None`` if this instance has no execution id yet.
+        """
+        exec_id = getattr(self, "_id", None)
+        if exec_id is None:
+            return None
+        ul = self.client.user_logs
+        if ul is None:
+            return None
+        return ul.search(
+            compute_job_id=exec_id,
+            limit=limit,
+            offset=offset,
+            select=select,
+            with_total_count=with_total_count,
+        )
+
     def __repr__(self) -> str:
         """Return a concise summary of the execution."""
         parts: list[str] = [type(self).__name__]

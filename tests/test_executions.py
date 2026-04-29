@@ -1,6 +1,55 @@
+from typing import Any, cast
+
 import pytest
 
+from deeporigin.drug_discovery.execution import Execution
+from deeporigin.exceptions import DeepOriginException
 from deeporigin.platform.client import DeepOriginClient
+
+
+def test_execution_get_user_logs_no_id_noop() -> None:
+    """``get_user_logs`` returns ``None`` when the execution has no platform id yet."""
+
+    ex: Any = Execution()
+    assert ex.get_user_logs() is None
+
+
+def test_execution_get_user_logs_lv1(client: DeepOriginClient) -> None:
+    """Load a succeeded execution and fetch user_logs scoped to its compute job id."""
+
+    search = client.executions.search(status="Succeeded", limit=200)  # ty:ignore[unresolved-attribute]
+    rows = search.get("data") or []
+    succeeded = [r for r in rows if r.get("status") == "Succeeded"]
+    if not succeeded:
+        pytest.skip("no succeeded execution visible for this account")
+
+    row = succeeded[0]
+    # Data-platform rows often use ``id`` for the row key; tools ``GET`` needs the
+    # compute job UUID (``compute_job_id`` on DP rows, ``executionId`` on tools DTOs).
+    candidate = str(
+        row.get("compute_job_id") or row.get("executionId") or row.get("id") or ""
+    )
+    if not candidate:
+        pytest.skip("succeeded execution row missing execution id")
+
+    try:
+        dto = client.executions.get(candidate)  # ty:ignore[unresolved-attribute]
+    except DeepOriginException:
+        pytest.skip(f"tools API cannot load execution id {candidate!r}")
+
+    exec_id = str(dto.get("executionId") or "")
+    if not exec_id:
+        pytest.skip("execution DTO missing executionId")
+
+    execution = cast(Any, Execution(client=client))
+    execution._id = exec_id
+    try:
+        logs = execution.get_user_logs()
+    except DeepOriginException:
+        pytest.skip("user_logs search failed on this environment (schema or access)")
+
+    assert logs is not None
+    assert isinstance(logs.get("data"), list)
 
 
 def test_list_executions_lv1(client: DeepOriginClient):
