@@ -445,58 +445,82 @@ def create_data_platform_router(
         # Build the full pool of fixture-backed results first, then filter.
         all_results: list[dict[str, Any]] = []
 
-        run_pf = load_fixture("function-runs/deeporigin.pocketfinder/run")
-        manifest_pf = run_pf["function"]["manifestBody"]
+        def _job_outputs(fixture: dict[str, Any]) -> Any:
+            """Read ``jobOutputs`` from a fixture, falling back to legacy ``functionOutputs``."""
+            return fixture.get("jobOutputs", fixture.get("functionOutputs"))
+
+        def _tool_block(fixture: dict[str, Any]) -> dict[str, Any]:
+            """Return the canonical ``{key, version}`` for a tool fixture.
+
+            Prefers the new ``tool`` block; falls back to the legacy ``function``
+            block during the transition.
+            """
+            tool = fixture.get("tool")
+            if isinstance(tool, dict):
+                return {
+                    "key": tool.get("key", ""),
+                    "version": tool.get("version", "0.0.0"),
+                }
+            func = fixture.get("function") or {}
+            manifest = func.get("manifestBody") or {}
+            return {
+                "key": manifest.get("key") or func.get("key", ""),
+                "version": (func.get("version") or manifest.get("version") or "0.0.0"),
+            }
+
+        run_pf = load_fixture("tool-runs/deeporigin.pocketfinder/run")
+        pf_tool = _tool_block(run_pf)
+        pf_outputs = _job_outputs(run_pf) or {}
         all_results.extend(
             {
-                "id": run_pf["id"],
-                "tool_key": manifest_pf["key"],
-                "tool_version": run_pf["function"]["version"],
+                "id": run_pf.get("id") or run_pf.get("executionId"),
+                "tool_key": pf_tool["key"],
+                "tool_version": pf_tool["version"],
                 "result_type": "pocket",
                 "data": pocket,
-                "compute_job_id": run_pf["id"],
+                "compute_job_id": run_pf.get("id") or run_pf.get("executionId"),
             }
-            for pocket in run_pf["functionOutputs"]["pockets"]
+            for pocket in pf_outputs.get("pockets", [])
         )
 
         try:
-            run_dk = load_fixture("function-runs/deeporigin.docking/run")
-            manifest_dk = run_dk.get("function", {}).get("manifestBody", {})
+            run_dk = load_fixture("tool-runs/deeporigin.docking/run")
+            dk_tool = _tool_block(run_dk)
+            dk_outputs = _job_outputs(run_dk) or {}
             all_results.extend(
                 {
-                    "id": run_dk["id"],
-                    "tool_key": manifest_dk.get("key", "deeporigin.docking"),
-                    "tool_version": manifest_dk.get("version", "0.0.0"),
+                    "id": run_dk.get("id") or run_dk.get("executionId"),
+                    "tool_key": dk_tool["key"] or "deeporigin.docking",
+                    "tool_version": dk_tool["version"],
                     "result_type": "pose",
                     "data": pose,
-                    "compute_job_id": run_dk["id"],
+                    "compute_job_id": run_dk.get("id") or run_dk.get("executionId"),
                 }
-                for pose in run_dk.get("functionOutputs", {}).get("poses", [])
+                for pose in dk_outputs.get("poses", [])
             )
         except FileNotFoundError:
             pass
 
         try:
-            run_sp = load_fixture("function-runs/deeporigin.system-prep/run")
-            manifest_sp = run_sp.get("function", {}).get("manifestBody", {})
-            func_sp = run_sp.get("function", {})
-            system_out = run_sp.get("functionOutputs", {}).get("system")
+            run_sp = load_fixture("tool-runs/deeporigin.system-prep/run")
+            sp_tool = _tool_block(run_sp)
+            sp_outputs = _job_outputs(run_sp) or {}
+            system_out = sp_outputs.get("system")
             if isinstance(system_out, dict):
                 all_results.append(
                     {
-                        "id": run_sp["id"],
-                        "tool_key": manifest_sp.get("key", "deeporigin.system-prep"),
-                        "tool_version": func_sp.get("version")
-                        or manifest_sp.get("version", "0.0.0"),
+                        "id": run_sp.get("id") or run_sp.get("executionId"),
+                        "tool_key": sp_tool["key"] or "deeporigin.system-prep",
+                        "tool_version": sp_tool["version"],
                         "result_type": "preparedsystem",
                         "data": system_out,
-                        "compute_job_id": run_sp["id"],
+                        "compute_job_id": run_sp.get("id") or run_sp.get("executionId"),
                     }
                 )
         except FileNotFoundError:
             pass
 
-        # Records injected by function runs (same list the tools router appends to).
+        # Records injected by tool executions (same list the tools router appends to).
         all_results.extend(results)
 
         filtered = _apply_eq_filters(all_results, filter_dict)

@@ -46,8 +46,8 @@ NON_FAILED_STATES = {"Succeeded", "Running", "Queued", "Created"}
 # Possible providers for files that work with the tools API
 PROVIDER = Literal["ufa", "s3"]
 
-# Single registry for platform tools/functions: iterate ``TOOL_KEYS_AND_VERSIONS``
-# to verify tools and functions are registered (see keys per entry below).
+# Single registry for platform tools: iterate ``TOOL_KEYS_AND_VERSIONS``
+# to verify tools are registered (see keys per entry below).
 # Optional fields are omitted when not applicable.
 TOOL_KEYS_AND_VERSIONS: dict[str, dict[str, str]] = {
     "docking": {
@@ -58,14 +58,10 @@ TOOL_KEYS_AND_VERSIONS: dict[str, dict[str, str]] = {
         "tool_key": "deeporigin.pocket-finder",
         "tool_version": "1.2.0",
     },
-    "constrained_docking": {
-        "function_key": "deeporigin.constrained-docking",
-        "function_version": "2.0.2",
-    },
     "mol_props": {
-        "function_key_prefix": "deeporigin.mol-props",
-        "protonation_function_key": "deeporigin.mol-props-protonation",
-        "function_version": "0.2.0",
+        "tool_key_prefix": "deeporigin.mol-props",
+        "protonation_tool_key": "deeporigin.mol-props-protonation",
+        "tool_version": "0.3.1",
     },
     "abfe": {
         "tool_key": "deeporigin.abfe-end-to-end",

@@ -246,43 +246,6 @@ def test_from_json_error_reports_correct_index_lv0():
         Pocket.from_json(data)
 
 
-def test_from_function_result_lv0():
-    """from_function_result stores remote_path without downloading."""
-    import json
-
-    from deeporigin.drug_discovery.sync_function_responses import SyncFunctionResponses
-
-    fixture = Path(__file__).parent / (
-        "fixtures/function-runs/deeporigin.pocketfinder/run.json"
-    )
-    from tests.fixture_utils import patch_fixture_version
-
-    response = patch_fixture_version(json.loads(fixture.read_text()))
-
-    result = SyncFunctionResponses([response])
-
-    class FakeClient:
-        """Minimal client stub (no file ops needed -- lazy download)."""
-
-    pockets = Pocket.from_function_result(
-        result=result,
-        client=FakeClient(),
-    )
-
-    assert len(pockets) == 1
-    pocket = pockets[0]
-    assert pocket.remote_path is not None
-    assert pocket.local_path is None
-    assert pocket.coordinates is None
-    assert pocket.protein_id == "brd"
-    assert pocket.volume == pytest.approx(300)
-    assert pocket.center == pytest.approx([-13.521, -4.944, 15.457], abs=1e-3)
-    assert pocket.box_size_x == pytest.approx(14)
-    assert pocket.box_size_y == pytest.approx(14)
-    assert pocket.box_size_z == pytest.approx(19)
-    assert pocket.drugability_score == pytest.approx(0.94304204)
-
-
 def test_from_residue_num_lv0():
     """Test creating a pocket from a residue number"""
 

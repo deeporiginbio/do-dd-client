@@ -13,12 +13,12 @@ The mock server is organized into routers, each handling a group of related endp
 | Router | File | Responsibilities |
 |---|---|---|
 | **data_platform** | `routers/data_platform.py` | Entity CRUD (proteins, ligands), result-explorer search |
-| **tools** | `routers/tools.py` | Function runs, executions, clusters |
+| **tools** | `routers/tools.py` | Tool executions (list/get/cancel/confirm/run), clusters |
 | **files** | `routers/files.py` | File upload/download |
 | **entities** | `routers/entities.py` | Entity management |
 | **billing** | `routers/billing.py` | Billing endpoints |
 
-All routers share in-memory stores (dicts/lists) that are created in `MockServer.__init__` and passed into the router factory functions. This lets data flow between routers — for example, a function run in the tools router can inject records that are later visible via the data-platform router's result-explorer search.
+All routers share in-memory stores (dicts/lists) that are created in `MockServer.__init__` and passed into the router factory functions. This lets data flow between routers — for example, a tool execution in the tools router can inject records that are later visible via the data-platform router's result-explorer search.
 
 **Proteins (local only):** `Protein.sync()` / `Protein.register()` are wired to a single canonical row (`MOCK_CANONICAL_PROTEIN_ID`, `tests/brd.pdb` fixture) so IDs stay stable under `--env local`. There is no separate test module for the mock server; that behavior is exercised indirectly by any local test that syncs a protein (e.g. the `registered_protein` fixture).
 
@@ -54,48 +54,56 @@ python tests/run_mock_server.py [PORT]
 
 Where `PORT` is the port number to run the server on (default: 8000).
 
-## How Function Runs Work
+## How Tool Executions Work
 
-This is the most complex part of the mock server. When client code calls a function (e.g., `protein.dock()` or `PocketFinder(protein).run()`), the following happens end-to-end:
+This is the most complex part of the mock server. When client code runs a tool (e.g., `protein.dock()`, `PocketFinder(protein).run()`, or `Molprops(...).run()`), the following happens end-to-end. All runnable work goes through `client.executions.create()` and the mock's `POST /tools/{org}/tools/{tool_key}/{tool_version}/executions` route (`run_tool` in `routers/tools.py`).
 
-### 1. Request hashing and fixture lookup
+### 1. Building the execution DTO
 
-The tools router's `_handle_function_run` handler receives the request body, normalizes it (stripping volatile fields like IDs), and hashes it. The hash is used to look up a pre-recorded fixture file:
+`run_tool` inspects the request body and the URL's `tool_key` and produces a tool execution DTO with `executionId`, `status`, `userInputs`, `jobOutputs`, `quotationResult`, `tool: {key, version}`, and `type: "ToolExecution"`. Several tool keys are special-cased:
+
+- `deeporigin.docking` (single ligand, `sync=True`), `deeporigin.pocket-finder`, `deeporigin.system-prep` complete in one POST via `_create_blocking_run_dto` and inject their fixture-backed `jobOutputs` into the result-explorer pool.
+- `deeporigin.mol-props-protonation` returns deterministic `protonation_states` from the request inputs (`_build_protonation_execution`).
+- `deeporigin.mol-props-*` (logd, logp, ames, …) hash the normalized request body and look up the recorded outputs at `tests/fixtures/tool-runs/{tool_key}/{body_hash}.json` (`_build_molprops_execution`). The fixture's per-ligand `jobOutputs` rows are re-keyed by the request's ligand IDs.
+- `deeporigin.bulk-docking` (`approveAmount=0`) loads `tests/fixtures/tool-runs/deeporigin.bulk-docking/quote.json` and scales the quotation by ligand count.
+- All other tool keys fall back to a generic `Quoted` execution DTO via `_create_execution_dto`.
+
+### 2. Request hashing for molprops fixtures
+
+For `deeporigin.mol-props-*`, `_build_molprops_execution` normalizes the request body with `normalize_tool_execution_body` (strips IDs, `clusterId`, `tag`, `app`, `session`) and hashes it to find a fixture:
 
 ```
-tests/fixtures/function-runs/{function_key}/{body_hash}.json
+tests/fixtures/tool-runs/{tool_key}/{body_hash}.json
 ```
 
-This means the mock server returns realistic, pre-recorded responses without needing to actually run the function.
+Because IDs are stripped before hashing, the same fixture handles different ligand IDs; the per-row `ligand_id` is patched in afterwards from the request's ligand inputs.
 
-### 2. ID replacement in function outputs
+### 3. ID replacement in tool outputs
 
-The fixture was recorded with whatever protein/ligand IDs existed at recording time. But in tests, entities are freshly registered and get new IDs on every run. To handle this, `_replace_ids_in_function_outputs` recursively walks the fixture's `functionOutputs` and replaces any `protein_id` / `ligand_id` values with the IDs from the current request's `userInputs`.
+Some fixtures (docking, pocket-finder, system-prep) were recorded with whatever protein/ligand IDs existed at recording time, but in tests entities get fresh IDs every run. `_replace_ids_in_outputs` recursively walks the fixture's `jobOutputs` (or the legacy `functionOutputs` field on older fixtures) and rewrites any `protein_id` / `ligand_id` / `ligand1_id` value to match the IDs from the current request's `userInputs`.
 
-This is why fixture lookup uses a *normalized* hash (IDs stripped) — different IDs hash to the same fixture, and the IDs are patched in afterward.
+### 4. Result-explorer injection
 
-### 3. Result-explorer injection
+In production, when a tool execution completes, a message-queue flow writes structured outputs (pockets, poses, system, …) into a **result-explorer** table. Client code later queries this table to retrieve results — for example, `LigandSet.from_result(protein_id=...)` calls `client.results.get_poses(protein_id=...)`, which searches the result-explorer.
 
-In production, when a function completes, a message-queue flow writes structured outputs (pockets, poses, etc.) into a **result-explorer** table. Client code later queries this table to retrieve results — for example, `LigandSet.from_result(protein_id=...)` calls `client.results.get_poses(protein_id=...)`, which searches the result-explorer.
-
-The mock server emulates this with `_inject_result_explorer_records`. After a function run returns, it checks the `output_key_map`:
+The mock server emulates this with `_inject_result_explorer_records_from_outputs`. After a tool execution returns, it checks the `output_key_map`:
 
 ```{.python notest}
 output_key_map = {
-    "deeporigin.pocketfinder": "pockets",
-    "deeporigin.pocket-finder": "pockets",
-    "deeporigin.docking": "poses",
-    "deeporigin.system-prep": "system",
+    "deeporigin.pocketfinder": ("pockets", "pocket"),
+    "deeporigin.pocket-finder": ("pockets", "pocket"),
+    "deeporigin.docking": ("poses", "pose"),
+    "deeporigin.system-prep": ("system", "preparedsystem"),
 }
 ```
 
-Each entry maps a function or **tool** manifest key to the field in `functionOutputs` that should be mirrored into the shared result-explorer store. Tool executions (`POST .../tools/{tool_key}/.../executions`) use helpers such as `_inject_pocketfinder_tool_execution_results` to load the same fixture shapes and call `_inject_result_explorer_records` with the tool key.
+Each entry maps a tool manifest key to the `jobOutputs` field that should be mirrored into the shared result-explorer store and the `result_type` to tag those records with. Tool-specific helpers (`_inject_docking_tool_execution_results`, `_inject_pocketfinder_tool_execution_results`, `_inject_sysprep_tool_execution_results`) load the same fixture shapes and call this generic injector.
 
-**When adding a new function or tool**, extend `output_key_map` (and any tool-specific injectors in `tools.py`) so downstream queries (e.g., `Pocket.from_result`, `LigandSet.from_result`) can find the records.
+**When adding a new tool**, extend `output_key_map` and any tool-specific injectors in `routers/tools.py` so downstream queries (e.g., `Pocket.from_result`, `LigandSet.from_result`) can find the records.
 
-### 4. Result-explorer queries
+### 5. Result-explorer queries
 
-When client code queries results (e.g., `client.results.get_poses(protein_id=...)`), it hits the data-platform router's `result-explorer/search` endpoint. This applies `_apply_eq_filters`, which checks filter values against both top-level record fields **and** nested `data` fields. Since the injected records store function outputs under `data`, a filter like `protein_id: {eq: "abc123"}` matches `record["data"]["protein_id"]`.
+When client code queries results (e.g., `client.results.get_poses(protein_id=...)`), it hits the data-platform router's `result-explorer/search` endpoint. This applies `_apply_eq_filters`, which checks filter values against both top-level record fields **and** nested `data` fields. Since the injected records store tool outputs under `data`, a filter like `protein_id: {eq: "abc123"}` matches `record["data"]["protein_id"]`.
 
 ### End-to-end example: docking
 
@@ -109,17 +117,18 @@ Here's the full flow for `test_docking_with_data_platform_lv2`:
    → POST /data-platform/{org}/ligands   (creates or syncs ligand)
 
 3. protein.dock(ligand=..., pocket=...)
-   → POST /tools/{org}/functions/deeporigin.docking
-   → _handle_function_run:
-       a. normalize body, hash → load fixture
-       b. replace protein_id/ligand_id in functionOutputs
-       c. _inject_result_explorer_records → "poses" array → result-explorer store
+   → POST /tools/{org}/tools/deeporigin.docking/{version}/executions
+   → run_tool:
+       a. build a Succeeded execution DTO via _create_blocking_run_dto
+       b. _inject_docking_tool_execution_results loads the docking fixture,
+          replaces protein_id/ligand_id, and pushes the "poses" rows into
+          the result-explorer store
 
 4. LigandSet.from_result(protein_id=...)
    → POST /data-platform/{org}/result-explorer/search
        filter: {protein_id: {eq: "<fresh ID>"}, tool_id: {in: [...]}}
    → _apply_eq_filters matches record["data"]["protein_id"]
-   → returns the poses injected in step 3c
+   → returns the poses injected in step 3b
 ```
 
 ## Entity Stores and Fixtures
@@ -140,7 +149,7 @@ Ligand IDs are **deterministic** — derived from a SHA-256 hash of the canonica
 
 ### Result-explorer pre-population
 
-`_load_result_explorer_fixtures` loads any `tests/fixtures/result-explorer-*.json` files into the shared results store at startup. Function runs then append to this same store at runtime.
+`_load_result_explorer_fixtures` loads any `tests/fixtures/result-explorer-*.json` files into the shared results store at startup. Tool executions then append to this same store at runtime.
 
 ## Configuring Your Client
 
@@ -163,8 +172,7 @@ The mock server implements the following endpoints:
 
 - **Files API**: List, upload, download, and delete files
 - **Tools API**: List tools and tool definitions
-- **Functions API**: List functions and run function executions
-- **Executions API**: List executions, get execution details, cancel/confirm executions
+- **Executions API**: List, get, cancel, confirm, and create tool executions
 - **Clusters API**: List available clusters
 - **Entities API**: Entity management (delete)
 - **Data Platform API**: Entity CRUD (proteins, ligands), result-explorer search
@@ -173,11 +181,11 @@ The mock server implements the following endpoints:
 
 ## Extending the Mock Server
 
-### Adding a new function type
+### Adding a new tool
 
-1. Record a fixture by running the function against `--env dev` and saving the response as `tests/fixtures/function-runs/{function_key}/{body_hash}.json`
-2. If the function produces structured outputs that need to be queryable via result-explorer, add an entry to `output_key_map` in `_inject_result_explorer_records` (`tests/mock_server/routers/tools.py`)
-3. Run the test with `--env local` to verify
+1. Record a fixture by running the tool against `--env dev` and saving the response as `tests/fixtures/tool-runs/{tool_key}/{body_hash}.json` (or `run.json` / `quote.json` for tools that don't hash by request body).
+2. If the tool produces structured outputs that need to be queryable via result-explorer, add an entry to `output_key_map` in `_inject_result_explorer_records_from_outputs` (`tests/mock_server/routers/tools.py`) and a small injector helper for that tool.
+3. Run the test with `--env local` to verify.
 
 ### Adding a new entity endpoint
 
@@ -195,7 +203,7 @@ The mock server implements the following endpoints:
 
 - Authentication is not validated (any token works)
 - File storage is in-memory and lost when the server stops
-- Function runs return pre-recorded fixtures, not computed results
+- Tool executions return pre-recorded fixtures, not computed results
 - Rate limiting and other production features are not implemented
 
 For production use, always use the real DeepOrigin Platform API.

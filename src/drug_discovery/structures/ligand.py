@@ -21,7 +21,6 @@ from rdkit import Chem, RDLogger
 from rdkit.Chem import AllChem, SaltRemover, rdMolDescriptors
 
 from deeporigin.drug_discovery.constants import LIGANDS_DIR, SUPPORTED_ATOM_SYMBOLS
-from deeporigin.drug_discovery.sync_function_responses import SyncFunctionResponses
 from deeporigin.drug_discovery.utils.visualize import jupyter_visualization
 from deeporigin.drug_discovery.validation import validate_fragments
 from deeporigin.exceptions import DeepOriginException
@@ -1631,11 +1630,12 @@ def ligands_to_dataframe(ligands: list[Ligand]):
 
 
 def _tool_user_inputs_params(dto: dict[str, Any]) -> dict[str, Any]:
-    """Return the inner docking ``inputs`` dict from an execution or run payload.
+    """Return the inner docking ``inputs`` dict from an execution payload.
 
     Args:
-        dto: Raw execution DTO, a ``functions.run`` ``responses[]`` element, or
-            any dict carrying ``userInputs`` / ``inputs``.
+        dto: Raw execution DTO from ``client.executions.create`` /
+            ``client.executions.get``, or any dict carrying ``userInputs`` /
+            ``inputs``.
 
     Returns:
         The dict that holds ``ligands`` (either ``userInputs`` itself or nested
@@ -2471,7 +2471,7 @@ class LigandSet:
         the pose SDF is then loaded lazily via :meth:`Ligand.download`.
 
         Args:
-            data: List of pose dicts (for example merged ``functionOutputs.poses``).
+            data: List of pose dicts (for example merged ``jobOutputs.poses``).
             client: Optional client; ``project_id`` falls back to the client's
                 ``project_id`` when missing on an entry.
             sanitize: Passed to :meth:`from_sdf` when a local SDF path is used.
@@ -2502,56 +2502,6 @@ class LigandSet:
             )
 
         return cls(ligands=ligands_out)
-
-    @classmethod
-    def from_docking_results(
-        cls,
-        *,
-        result: SyncFunctionResponses,
-        client: DeepOriginClient,
-    ) -> Self:
-        """Build a ``LigandSet`` from synchronous docking ``functionOutputs`` (no download).
-
-        Collects ``poses`` from each wrapped response, attaches SMILES from the
-        same response's ``userInputs`` when missing on the pose, then builds
-        ligands via :meth:`from_json`.
-
-        Args:
-            result: ``SyncFunctionResponses`` wrapping one or more docking API responses.
-            client: Client whose ``project_id`` may be copied onto ligands.
-
-        Returns:
-            A ``LigandSet`` with one ligand per pose (lazy SDF via ``remote_path``).
-
-        Raises:
-            ValueError: If a pose has no SMILES after merging user inputs.
-        """
-
-        rows: list[dict[str, Any]] = []
-        for raw in result.responses:
-            smi_map = _ligand_smiles_map_from_tool_payload(raw)
-            outs = raw.get("functionOutputs") or {}
-            poses = outs.get("poses") or []
-            if not isinstance(poses, list):
-                continue
-            for pose in poses:
-                if not isinstance(pose, dict):
-                    continue
-                row = dict(pose)
-                lid = row.get("ligand_id")
-                if (
-                    not (isinstance(row.get("smiles"), str) and row["smiles"].strip())
-                    and not (
-                        isinstance(row.get("canonical_smiles"), str)
-                        and row["canonical_smiles"].strip()
-                    )
-                    and lid is not None
-                ):
-                    sm = smi_map.get(str(lid))
-                    if sm:
-                        row["smiles"] = sm
-                rows.append(row)
-        return cls.from_json(rows, client=client)
 
     @classmethod
     def from_result(

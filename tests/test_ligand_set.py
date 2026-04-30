@@ -9,7 +9,6 @@ from rdkit import Chem
 from deeporigin.drug_discovery import BRD_DATA_DIR, DATA_DIR
 from deeporigin.drug_discovery.protonation import Protonation
 from deeporigin.drug_discovery.structures.ligand import Ligand, LigandSet
-from deeporigin.drug_discovery.sync_function_responses import SyncFunctionResponses
 from deeporigin.exceptions import DeepOriginException
 from deeporigin.platform.client import DeepOriginClient
 
@@ -890,9 +889,7 @@ def test_render_view_shows_not_protonated_badge(client: DeepOriginClient):
     )
 
 
-def test_render_view_shows_not_protonated_badge_when_partial(
-    client: DeepOriginClient,
-):
+def test_render_view_shows_not_protonated_badge_when_partial():
     """Test that _render_view shows 'NOT PROTONATED' badge when only some ligands are protonated"""
     from deeporigin.drug_discovery.structures.ligand import LigandSet
 
@@ -902,7 +899,7 @@ def test_render_view_shows_not_protonated_badge_when_partial(
     ligand_set = LigandSet(ligands=[ligand1, ligand2])
 
     # Protonate only one ligand
-    Protonation(ligand=ligand1, ph=7.4, client=client).run()
+    ligand1.protonated_at_ph = 7.4
     html = ligand_set._render_view()
 
     # Should show NOT PROTONATED badge since not all are protonated
@@ -1178,39 +1175,6 @@ def test_ligand_set_batches_invalid_size_raises(bad: int) -> None:
     ls = LigandSet(ligands=[Ligand.from_smiles("C")])
     with pytest.raises(ValueError, match="batch_size"):
         ls.batches(bad)
-
-
-def test_ligand_set_from_docking_results_lv0(
-    monkeypatch: pytest.MonkeyPatch, client: DeepOriginClient
-) -> None:
-    """from_docking_results merges userInputs SMILES and does not download pose SDFs."""
-    calls: list[object] = []
-
-    def _fake_download(*_a: object, **_k: object) -> str:
-        calls.append(None)
-        return ""
-
-    monkeypatch.setattr(client.files, "download", _fake_download)
-    result = SyncFunctionResponses(
-        [
-            {
-                "userInputs": {
-                    "ligands": [{"id": "L1", "smiles": "C"}],
-                },
-                "functionOutputs": {
-                    "poses": [
-                        {"file_path": "remote/a.sdf", "ligand_id": "L1"},
-                        {"file_path": "remote/b.sdf", "ligand_id": "L1"},
-                    ],
-                },
-            }
-        ]
-    )
-    ls = LigandSet.from_docking_results(result=result, client=client)
-    assert len(calls) == 0
-    assert len(ls) == 2
-    assert all(lg.smiles == "C" for lg in ls)
-    assert {lg.remote_path for lg in ls} == {"remote/a.sdf", "remote/b.sdf"}
 
 
 def test_ligand_set_download_sets_local_paths(

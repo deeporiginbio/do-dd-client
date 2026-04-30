@@ -56,7 +56,7 @@ ENTITIES_UNAVAILABLE_DETAIL = "DeepOriginClient was created without entities sup
 
 SYSPREP_NO_OUTPUT_PATHS_MSG = (
     "System preparation did not return output paths. "
-    "The function run may have failed or returned an unexpected format."
+    "The tool execution may have failed or returned an unexpected format."
 )
 """Used by ``SystemPrep.run`` / ``get_results`` when output paths are missing."""
 
@@ -76,22 +76,17 @@ DOCKING_RESULTS_DATAFRAME_COLUMNS: tuple[str, ...] = (
 )
 """Column order for :meth:`deeporigin.drug_discovery.docking.Docking.get_results`."""
 
-TOOL_EXECUTION_POST_TIMEOUT_SECONDS = 120.0
+TOOL_EXECUTION_POST_TIMEOUT_SECONDS = 600.0
 """HTTP timeout (seconds) for POST ``/tools/.../executions`` (quote and run).
 
-120s allows the server time to respond while the execution is created or quoted,
-beyond the client's default short timeout."""
-
-FUNCTION_RUN_POST_TIMEOUT_SECONDS = 600.0
-"""HTTP timeout (seconds) for :meth:`~deeporigin.platform.functions.Functions.run`.
-
-Synchronous function runs can take longer than tool execution POSTs; 600s aligns
-with typical server-side ``timeoutSeconds`` for function workloads."""
+600s aligns with typical server-side ``timeoutSeconds`` for tool workloads such
+as molprops and protonation, where synchronous executions can take longer than
+the client's default short timeout."""
 
 MOLPROPS_PROPERTY_KEYS: frozenset[str] = frozenset(
     ("ames", "cyp", "herg", "logd", "logp", "logs", "pains"),
 )
-"""Allowed molprops function suffix keys (``deeporigin.mol-props-<key>``)."""
+"""Allowed molprops tool suffix keys (``deeporigin.mol-props-<key>``)."""
 
 MOLPROPS_DEFAULT_PROPERTIES: frozenset[str] = MOLPROPS_PROPERTY_KEYS
 """Default full ADMET bundle for :class:`~deeporigin.drug_discovery.molprops.Molprops`."""

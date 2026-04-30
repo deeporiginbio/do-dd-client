@@ -1,11 +1,11 @@
-"""This module contains tests for functions.
+"""End-to-end tests for drug-discovery tools backed by ``client.executions.create``.
 
 These are meant to be run against a live instance.
 """
 
 import pytest
 
-from conftest import check_function_exists, check_tool_exists
+from conftest import check_tool_exists
 from deeporigin.drug_discovery import (
     Docking,
     Ligand,
@@ -23,35 +23,15 @@ from deeporigin.platform.constants import TOOL_KEYS_AND_VERSIONS
 from deeporigin.utils.constants import MOLPROPS_PROPERTY_KEYS
 
 
-def test_functions_list_lv1(client: DeepOriginClient) -> None:
-    """``Functions.list()`` returns definitions and caches the list on the client."""
-    first = client.functions.list()
-    assert isinstance(first, list), "Expected a list"
-    assert len(first) > 0, "Expected at least one function definition"
-
-    fn = first[0]
-    for key in [
-        "version",
-        "enabled",
-        "manifestBody",
-        "billingCode",
-        "resourceId",
-    ]:
-        assert key in fn, f"Expected function definition to have key {key}"
-
-    second = client.functions.list()
-    assert second is first, "Expected repeated list() to return the cached list"
-
-
 def test_molprops_lv1(client: DeepOriginClient):
     mp = TOOL_KEYS_AND_VERSIONS["mol_props"]
     missing_molprops = [
-        f"{mp['function_key_prefix']}-{p}"
+        f"{mp['tool_key_prefix']}-{p}"
         for p in sorted(MOLPROPS_PROPERTY_KEYS)
-        if not check_function_exists(client, f"{mp['function_key_prefix']}-{p}")
+        if not check_tool_exists(client, f"{mp['tool_key_prefix']}-{p}")
     ]
     assert not missing_molprops, (
-        f"Mol props functions not registered on platform: {missing_molprops}"
+        f"Mol props tools not registered on platform: {missing_molprops}"
     )
 
     ligand = Ligand.from_smiles(
@@ -275,11 +255,11 @@ def test_protonation_lv2(client: DeepOriginClient):
     """Test protonation returns Protonation with ligands populated after run."""
     from deeporigin.drug_discovery.protonation import Protonation
 
-    assert check_function_exists(
+    assert check_tool_exists(
         client,
-        TOOL_KEYS_AND_VERSIONS["mol_props"]["protonation_function_key"],
-        TOOL_KEYS_AND_VERSIONS["mol_props"]["function_version"],
-    ), "Protonation function not registered on platform (expected key/version)."
+        TOOL_KEYS_AND_VERSIONS["mol_props"]["protonation_tool_key"],
+        TOOL_KEYS_AND_VERSIONS["mol_props"]["tool_version"],
+    ), "Protonation tool not registered on platform (expected key/version)."
 
     ligand = Ligand.from_smiles("C=CCCn1cc(-c2cccc(C(=O)N(C)C)c2)c2cc[nH]c2c1=O")
 

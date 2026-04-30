@@ -57,25 +57,6 @@ def test_get_all_tools_lv1(client: DeepOriginClient):
         assert key in tool.keys(), f"Expected tool to have key {key}"
 
 
-@pytest.mark.dependency(depends=["test_tools_api_health_lv1"])
-def test_get_all_function_lv1(client: DeepOriginClient):
-    """Test the functions API list method."""
-    functions = client.functions.list()
-    assert isinstance(functions, list), "Expected a list"
-    assert len(functions) > 0, "Expected at least one function"
-
-    function = functions[0]
-
-    for key in [
-        "version",
-        "enabled",
-        "manifestBody",
-        "billingCode",
-        "resourceId",
-    ]:
-        assert key in function.keys(), f"Expected function to have key {key}"
-
-
 def test_job_status_logic_lv0(client: DeepOriginClient):
     """Test the simplified status logic for job rendering."""
     from deeporigin.platform.constants import TERMINAL_STATES
