@@ -642,6 +642,7 @@ def create_tools_router(
             for p in pockets:
                 if isinstance(p, dict) and protein_id is not None:
                     p["protein_id"] = protein_id
+        execution["jobOutputs"] = outputs
         _inject_result_explorer_records_from_outputs(
             tool_key=tkey,
             tool_version=tool_version,

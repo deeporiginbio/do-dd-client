@@ -127,7 +127,7 @@ def test_pocket_finder_get_results_requires_id() -> None:
     protein = Protein.from_file(BRD_DATA_DIR / "brd.pdb")
     pf = PocketFinder(protein, client=client)
 
-    with pytest.raises(ValueError, match="id is None"):
+    with pytest.raises(ValueError, match="no execution ID"):
         pf.get_results()
 
 

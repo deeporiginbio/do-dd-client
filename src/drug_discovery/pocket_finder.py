@@ -225,19 +225,19 @@ class PocketFinder(Execution, QuoteMixin, SyncExecutableMixin):
         exec_id = self._ensure_id()
 
         try:
-            pockets = Pocket.from_result(
+            return Pocket.from_result(
                 execution_id=exec_id,
                 client=self.client,
             )
         except Exception:
-            # we can still potentially get results from the jobOutputs
             pass
+
         try:
             if dto is None:
                 dto = self.client.executions.get(exec_id)  # ty:ignore[unresolved-attribute]
             jo = dto.get("jobOutputs")
             raw = jo.get("pockets", []) if isinstance(jo, dict) else []
-            pockets = Pocket.from_json(raw, client=self.client)
+            return Pocket.from_json(raw, client=self.client)
         except Exception:
             raise DeepOriginException(
                 title="Could not load pockets",
@@ -245,8 +245,6 @@ class PocketFinder(Execution, QuoteMixin, SyncExecutableMixin):
                     "No pockets could be parsed from the data platform or jobOutputs."
                 ),
             ) from None
-
-        return pockets
 
     @beartype
     def run(self) -> list[Pocket]:

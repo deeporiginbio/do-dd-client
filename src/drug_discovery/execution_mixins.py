@@ -44,10 +44,6 @@ class QuoteMixin:
     execution dict; :meth:`_quote_apply` validates ``quotationResult`` and sets
     estimate, id, and status.
 
-    Function-based or custom flows should override :meth:`_quote_impl` (after
-    :meth:`_quote_setup` runs) instead of :meth:`quote`, so :meth:`_quote_finalize`
-    can apply the single-quote contract consistently.
-
     ``quote()`` enforces that a quotation can only be requested once: it raises
     if ``status`` is already ``"Quoted"`` or an execution ID is already assigned.
     """

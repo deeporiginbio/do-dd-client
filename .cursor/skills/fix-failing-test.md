@@ -75,7 +75,7 @@ latest = max(fixture_dir.glob("*.json"), key=lambda f: f.stat().st_mtime)
 with open(latest) as f:
     response = json.load(f)
 
-outputs = response.get("jobOutputs") or response.get("functionOutputs") or {}
+outputs = response.get("jobOutputs") or {}
 # Download each referenced file
 for pocket_data in outputs.get("pockets", []):
     remote_path = pocket_data["file_path"]
