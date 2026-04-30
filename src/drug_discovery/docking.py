@@ -673,7 +673,7 @@ class Docking(
             [ligand for ligand in self.ligands if ligand.id in missing_ids]
         )
 
-    def get_poses(self, *, all_poses: bool = False) -> LigandSet | None:
+    def get_poses(self, *, all_poses: bool = False) -> LigandSet:
         """Download pose SDFs from the platform and return a ``LigandSet``.
 
         Args:
@@ -681,30 +681,12 @@ class Docking(
                 download only the best pose per ligand.
 
         Returns:
-            A ``LigandSet`` of docked poses, or ``None`` if no pose files yet.
+            A ``LigandSet`` of docked poses.
 
         Raises:
             ValueError: If no execution has been started.
+            DeepOriginException: If no poses could be loaded.
         """
-        filter_dict = None if all_poses else {"best_pose": {"eq": True}}
-        response = super().get_results(filter_dict=filter_dict, limit=None)
-        records = response.get("data", [])
-        remote_paths: list[str] = []
-        for record in records:
-            data = record.get("data", {})
-            if not isinstance(data, dict):
-                continue
-            fp = data.get("file_path")
-            if fp:
-                remote_paths.append(fp)
-
-        if not remote_paths:
-            return None
-
-        paths_by_remote = self.client.files.download_many(files=remote_paths, lazy=True)
-
-        result = LigandSet()
-        for rp in remote_paths:
-            result.ligands += LigandSet.from_sdf(paths_by_remote[rp]).ligands
-
-        return result
+        poses = self.get_results(all_poses=all_poses)
+        poses.download(client=self.client, lazy=True)
+        return poses
