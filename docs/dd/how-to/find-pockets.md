@@ -26,7 +26,9 @@ pf = PocketFinder(protein, pocket_count=1)
 pockets = pf.run()
 ```
 
-`pf.run()` always runs the pocket finder (blocking) and returns a list of `Pocket` objects. Note that you will be charged for each run. To fetch previously computed pockets without re-running, use `pf.get_results()`.
+`pf.run()` calls the tools executions API with a blocking (`sync`) create and returns a list of `Pocket` objects. You will be charged for each run. To fetch previously computed pockets without re-running, use `pf.get_results()` once `pf.id` is set.
+
+To reconstruct a workflow object from an existing tools execution id (for example to call `get_results()` or inspect `estimate` / `cost` without keeping the original `PocketFinder` instance in memory), use `PocketFinder.from_id("<executionId>")` or `PocketFinder.from_dto(dto)` when you already have the execution payload from `client.executions.get`.
 
 #### Estimating cost
 

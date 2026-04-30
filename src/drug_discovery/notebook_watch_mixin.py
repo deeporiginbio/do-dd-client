@@ -62,7 +62,7 @@ class NotebookWatchMixin:
     def _init_after_from_dto(self) -> None:
         """Set notebook watch attributes when the instance skipped ``__init__``.
 
-        :meth:`~deeporigin.drug_discovery.execution_mixins.AsyncExecutableMixin.from_dto`
+        :meth:`~deeporigin.drug_discovery.execution.Execution.from_dto`
         builds instances with ``object.__new__``, so this mixin is never
         initialized unless we patch up here.
         """

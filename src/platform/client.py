@@ -3,7 +3,7 @@
 This module provides a minimal synchronous HTTP client for interacting with the
 DeepOrigin Platform API. The client includes built-in authentication, singleton
 caching for connection reuse, and convenient access to platform resources like
-tools, functions, clusters, files, executions, and user logs.
+tools, clusters, files, executions, and user logs.
 
 Construct a client using the no-arg constructor or one of three factory methods:
 
@@ -56,7 +56,6 @@ if TYPE_CHECKING:
     from deeporigin.platform.entities import Entities
     from deeporigin.platform.executions import Executions
     from deeporigin.platform.files import Files
-    from deeporigin.platform.functions import Functions
     from deeporigin.platform.organizations import Organizations
     from deeporigin.platform.progress_reports import ProgressReports
     from deeporigin.platform.projects import Projects
@@ -311,7 +310,6 @@ class DeepOriginClient(metaclass=_DeepOriginMeta):
     """
 
     tools: Tools | None
-    functions: Functions | None
     clusters: Clusters | None
     datasets: Datasets | None
     files: Files  # client always has files
@@ -420,8 +418,8 @@ class DeepOriginClient(metaclass=_DeepOriginMeta):
             retry_backoff_factor: Multiplier for exponential backoff between retries.
                 Delay = min(retry_backoff_factor * (2 ** attempt), max_retry_delay).
             max_retry_delay: Maximum delay in seconds between retry attempts.
-            record: Whether to record function run responses for testing.
-            tag: Optional tag applied to all function runs.
+            record: Whether to record tool execution responses for testing.
+            tag: Optional tag applied to all tool executions.
             _app: Internal app identifier. Part of the singleton cache key.
             _session: Internal session identifier. Part of the singleton cache key.
                 A UUID v4 is generated when ``None``.
@@ -445,13 +443,6 @@ class DeepOriginClient(metaclass=_DeepOriginMeta):
             self.tools = Tools(_client)
         except ImportError:
             self.tools = None
-
-        try:
-            from deeporigin.platform.functions import Functions
-
-            self.functions = Functions(_client)
-        except ImportError:
-            self.functions = None
 
         try:
             from deeporigin.platform.clusters import Clusters
@@ -755,7 +746,7 @@ class DeepOriginClient(metaclass=_DeepOriginMeta):
             max_retries: Maximum retry attempts. Set to 0 to disable.
             retry_backoff_factor: Multiplier for exponential backoff between retries.
             max_retry_delay: Maximum delay in seconds between retry attempts.
-            record: Whether to record function run responses for testing.
+            record: Whether to record tool execution responses for testing.
             _app: Internal app identifier.
             _session: Internal session identifier.
 
@@ -830,7 +821,7 @@ class DeepOriginClient(metaclass=_DeepOriginMeta):
             max_retries: Maximum retry attempts. Set to 0 to disable.
             retry_backoff_factor: Multiplier for exponential backoff between retries.
             max_retry_delay: Maximum delay in seconds between retry attempts.
-            record: Whether to record function run responses for testing.
+            record: Whether to record tool execution responses for testing.
             _app: Internal app identifier.
             _session: Internal session identifier.
 
@@ -891,7 +882,7 @@ class DeepOriginClient(metaclass=_DeepOriginMeta):
             max_retries: Maximum retry attempts. Set to 0 to disable.
             retry_backoff_factor: Multiplier for exponential backoff between retries.
             max_retry_delay: Maximum delay in seconds between retry attempts.
-            record: Whether to record function run responses for testing.
+            record: Whether to record tool execution responses for testing.
             _app: Internal app identifier.
             _session: Internal session identifier.
 
@@ -1186,7 +1177,7 @@ class DeepOriginClient(metaclass=_DeepOriginMeta):
             path: API endpoint path (relative to base_url).
             body: JSON data to send in the request body.
             retry: If False, perform a single HTTP attempt (no client-level retries).
-                Prefer True for availability-sensitive POSTs (e.g. function runs).
+                Prefer True for availability-sensitive POSTs (e.g. tool executions).
             **kwargs: Additional arguments passed to httpx.Client.post().
 
         Returns:

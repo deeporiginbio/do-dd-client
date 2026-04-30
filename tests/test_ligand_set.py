@@ -1,13 +1,14 @@
 import os
 from pathlib import Path
+import shutil
 import tempfile
 
 import pytest
+from rdkit import Chem
 
 from deeporigin.drug_discovery import BRD_DATA_DIR, DATA_DIR
 from deeporigin.drug_discovery.protonation import Protonation
 from deeporigin.drug_discovery.structures.ligand import Ligand, LigandSet
-from deeporigin.drug_discovery.sync_function_responses import SyncFunctionResponses
 from deeporigin.exceptions import DeepOriginException
 from deeporigin.platform.client import DeepOriginClient
 
@@ -888,9 +889,7 @@ def test_render_view_shows_not_protonated_badge(client: DeepOriginClient):
     )
 
 
-def test_render_view_shows_not_protonated_badge_when_partial(
-    client: DeepOriginClient,
-):
+def test_render_view_shows_not_protonated_badge_when_partial():
     """Test that _render_view shows 'NOT PROTONATED' badge when only some ligands are protonated"""
     from deeporigin.drug_discovery.structures.ligand import LigandSet
 
@@ -900,7 +899,7 @@ def test_render_view_shows_not_protonated_badge_when_partial(
     ligand_set = LigandSet(ligands=[ligand1, ligand2])
 
     # Protonate only one ligand
-    Protonation(ligand=ligand1, ph=7.4, client=client).run()
+    ligand1.protonated_at_ph = 7.4
     html = ligand_set._render_view()
 
     # Should show NOT PROTONATED badge since not all are protonated
@@ -1178,30 +1177,62 @@ def test_ligand_set_batches_invalid_size_raises(bad: int) -> None:
         ls.batches(bad)
 
 
-def test_ligand_set_from_docking_results_lv0(
-    monkeypatch: pytest.MonkeyPatch, client: DeepOriginClient
+def test_ligand_set_download_sets_local_paths(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, client: DeepOriginClient
 ) -> None:
-    """from_docking_results collects poses from functionOutputs and loads SDFs."""
-    brd_file = str(DATA_DIR / "ligands" / "ligands-brd-all.sdf")
-    calls: list[object] = []
+    """download() uses download_many once, maps paths to ligands, reloads mol from SDF."""
+    fixture = Path(__file__).resolve().parent / "fixtures" / "brd-all-poses.sdf"
+    template = tmp_path / "one.sdf"
+    sup = Chem.SDMolSupplier(str(fixture))
+    mol0 = next(m for m in sup if m is not None)
+    w = Chem.SDWriter(str(template))
+    w.write(mol0)
+    w.close()
 
-    def _fake_download(*_a: object, **_k: object) -> str:
-        calls.append(None)
-        return brd_file
+    dm_kwargs: dict[str, object] = {}
 
-    monkeypatch.setattr(client.files, "download", _fake_download)
-    result = SyncFunctionResponses(
-        [
-            {
-                "functionOutputs": {
-                    "poses": [
-                        {"file_path": "remote/a.sdf"},
-                        {"file_path": "remote/b.sdf"},
-                    ],
-                },
-            }
-        ]
-    )
-    ls = LigandSet.from_docking_results(result=result, client=client)
-    assert len(calls) == 2
-    assert len(ls) == 8
+    def _fake_download_many(*, files: object, **kwargs: object) -> dict[str, str]:
+        dm_kwargs["files"] = files
+        dm_kwargs.update(kwargs)
+        keys = list(files.keys()) if isinstance(files, dict) else list(files)
+        out: dict[str, str] = {}
+        for k in keys:
+            dest = tmp_path / str(k).replace("/", "__")
+            shutil.copy(template, dest)
+            out[k] = str(dest)
+        return out
+
+    monkeypatch.setattr(client.files, "download_many", _fake_download_many)
+
+    a = Ligand.from_smiles("C")
+    a.remote_path = "r/a.sdf"
+    b = Ligand.from_smiles("CC")
+    b.remote_path = "r/b.sdf"
+    c = Ligand.from_smiles("CCC")
+    c.remote_path = "r/a.sdf"
+    d = Ligand.from_smiles("CCCC")
+    d.local_path = "/already/local.sdf"
+    d.remote_path = "r/ignored.sdf"
+    e = Ligand.from_smiles("N")
+
+    ls = LigandSet(ligands=[a, b, c, d, e])
+    ls.download(client=client, lazy=False, max_workers=4)
+
+    assert dm_kwargs["files"] == ["r/a.sdf", "r/b.sdf"]
+    assert dm_kwargs.get("lazy") is False
+    assert dm_kwargs.get("max_workers") == 4
+    assert a.local_path == str(tmp_path / "r__a.sdf")
+    assert b.local_path == str(tmp_path / "r__b.sdf")
+    assert c.local_path == str(tmp_path / "r__a.sdf")
+    assert d.local_path == "/already/local.sdf"
+    assert e.local_path is None
+    conf = a.mol.GetConformer()
+    zs = [conf.GetAtomPosition(i).z for i in range(a.mol.GetNumAtoms())]
+    assert max(abs(z) for z in zs) > 0.5
+
+
+def test_ligand_set_from_json_remote_pose_requires_smiles() -> None:
+    """from_json refuses remote-only poses without SMILES."""
+
+    with pytest.raises(ValueError, match="smiles"):
+        LigandSet.from_json([{"file_path": "tool-runs/x/pose.sdf"}])

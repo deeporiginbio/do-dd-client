@@ -600,7 +600,7 @@ class Files:
         skip_errors: bool = False,
         lazy: bool = True,
         max_workers: int = 20,
-    ) -> list[str]:
+    ) -> dict[str, str]:
         """Download multiple files in parallel.
 
         Args:
@@ -611,7 +611,8 @@ class Files:
             max_workers: Maximum concurrent downloads.
 
         Returns:
-            List of local paths where files were saved.
+            Mapping of each **remote** path to the local path where that file was
+            saved. Failed downloads are omitted when ``skip_errors`` is True.
 
         Raises:
             RuntimeError: If any download fails and ``skip_errors`` is False.
@@ -619,7 +620,7 @@ class Files:
         if isinstance(files, list):
             files = dict.fromkeys(files, None)
 
-        results: list[str] = []
+        results: dict[str, str] = {}
         errors: list[tuple[str, str | None, Exception]] = []
 
         with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
@@ -642,7 +643,7 @@ class Files:
                 remote_path, local_path = future_to_pair[future]
                 try:
                     result = future.result()
-                    results.append(result)
+                    results[remote_path] = result
                 except Exception as e:
                     errors.append((remote_path, local_path, e))
 

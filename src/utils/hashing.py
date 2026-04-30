@@ -77,14 +77,15 @@ def _strip_ids(obj: object) -> object:
     return obj
 
 
-def normalize_function_body(body: dict) -> dict:
-    """Normalise a function-run request body for stable hashing.
+def normalize_tool_execution_body(body: dict) -> dict:
+    """Normalise a tool-execution request body for stable hashing.
 
-    Strips environment-specific fields (``clusterId``, ``tag``, nested
-    ``id`` values) so the hash is the same across dev/local/staging.
+    Strips environment-specific fields (``clusterId``, ``tag``, ``app``,
+    ``session``, nested ``id`` values) so the hash is the same across
+    dev/local/staging.
 
     Args:
-        body: The raw request body sent to the functions API.
+        body: The raw request body sent to the tools executions API.
     """
     inputs = body.get("inputs", body.get("params", {}))
     normalized: dict = {"inputs": _strip_ids(inputs)}

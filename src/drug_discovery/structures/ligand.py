@@ -10,7 +10,7 @@ import os
 from pathlib import Path
 import random
 import tempfile
-from typing import Any, Callable, Literal, Optional, Self, cast
+from typing import Any, Callable, ClassVar, Literal, Optional, Self, cast
 import warnings
 
 from beartype import beartype
@@ -21,7 +21,6 @@ from rdkit import Chem, RDLogger
 from rdkit.Chem import AllChem, SaltRemover, rdMolDescriptors
 
 from deeporigin.drug_discovery.constants import LIGANDS_DIR, SUPPORTED_ATOM_SYMBOLS
-from deeporigin.drug_discovery.sync_function_responses import SyncFunctionResponses
 from deeporigin.drug_discovery.utils.visualize import jupyter_visualization
 from deeporigin.drug_discovery.validation import validate_fragments
 from deeporigin.exceptions import DeepOriginException
@@ -453,6 +452,72 @@ class Ligand(Entity):
         )
         ligand.remote_path = remote_path
         return ligand
+
+    def _reload_mol_from_local_sdf_if_applicable(
+        self,
+        *,
+        sanitize: bool = True,
+        remove_hydrogens: bool = False,
+    ) -> None:
+        """Replace ``mol`` and ``smiles`` from :attr:`local_path` when it is an SDF file.
+
+        Remote-only ligands (for example docking poses built with
+        :meth:`Ligand.from_smiles` plus ``remote_path``) keep a 2D molecule until the
+        pose file exists locally; this loads that file so coordinates match disk.
+        """
+
+        path_str = self.local_path
+        if path_str is None:
+            return
+        if Path(path_str).suffix.lower() != ".sdf":
+            return
+        prev_props = dict(self.properties)
+        reloaded = type(self).from_sdf(
+            path_str,
+            sanitize=sanitize,
+            remove_hydrogens=remove_hydrogens,
+        )
+        self.mol = reloaded.mol
+        self.smiles = reloaded.smiles
+        self.properties = {**reloaded.properties, **prev_props}
+        if self.name in (None, ""):
+            self.name = reloaded.name
+        self.prepared = False
+
+    @beartype
+    def download(
+        self,
+        *,
+        lazy: bool = True,
+        client: DeepOriginClient | None = None,
+        sanitize: bool = True,
+        remove_hydrogens: bool = False,
+    ) -> str:
+        """Download the structure file and reload :attr:`mol` from disk when applicable.
+
+        After :meth:`deeporigin.drug_discovery.structures.entity.Entity.download`
+        fetches the file, SDF paths trigger a full reload from :attr:`local_path` so
+        pose coordinates from the file replace any placeholder 2D structure (for
+        example SMILES-only pose rows from :meth:`LigandSet.from_json`).
+
+        Args:
+            lazy: Passed through to ``files.download``.
+            client: DeepOrigin client; if ``None``, uses ``DeepOriginClient()``.
+            sanitize: Passed to :meth:`from_sdf` when rehydrating from SDF.
+            remove_hydrogens: Passed to :meth:`from_sdf` when rehydrating from SDF.
+
+        Returns:
+            The local file path (same as :meth:`Entity.download`).
+        """
+
+        prior_local = self.local_path
+        out = super().download(lazy=lazy, client=client)
+        if prior_local is None and self.local_path is not None:
+            self._reload_mol_from_local_sdf_if_applicable(
+                sanitize=sanitize,
+                remove_hydrogens=remove_hydrogens,
+            )
+        return out
 
     @classmethod
     def _from_platform_record(
@@ -1210,7 +1275,6 @@ class Ligand(Entity):
         if "data" in result and "id" in result["data"]:
             self.id = result["data"]["id"]
 
-    @beartype
     def sync(
         self,
         *,
@@ -1563,6 +1627,46 @@ def ligands_to_dataframe(ligands: list[Ligand]):
     data["SMILES"] = [ligand.smiles for ligand in ligands]
 
     return pd.DataFrame(data)
+
+
+def _tool_user_inputs_params(dto: dict[str, Any]) -> dict[str, Any]:
+    """Return the inner docking ``inputs`` dict from an execution payload.
+
+    Args:
+        dto: Raw execution DTO from ``client.executions.create`` /
+            ``client.executions.get``, or any dict carrying ``userInputs`` /
+            ``inputs``.
+
+    Returns:
+        The dict that holds ``ligands`` (either ``userInputs`` itself or nested
+        ``userInputs.inputs``).
+    """
+
+    root = dto.get("userInputs") or dto.get("inputs") or {}
+    if not isinstance(root, dict):
+        return {}
+    inner = root.get("inputs")
+    if isinstance(inner, dict):
+        return inner
+    return root
+
+
+def _ligand_smiles_map_from_tool_payload(dto: dict[str, Any]) -> dict[str, str]:
+    """Build ligand entity id -> SMILES from user inputs embedded in ``dto``."""
+
+    params = _tool_user_inputs_params(dto)
+    ligands = params.get("ligands") or []
+    out: dict[str, str] = {}
+    if not isinstance(ligands, list):
+        return out
+    for row in ligands:
+        if not isinstance(row, dict):
+            continue
+        lid = row.get("id")
+        smi = row.get("smiles")
+        if lid is not None and isinstance(smi, str) and smi.strip():
+            out[str(lid)] = smi.strip()
+    return out
 
 
 @dataclass
@@ -2193,90 +2297,306 @@ class LigandSet:
 
         return cls(ligands=all_ligands)
 
-    @classmethod
-    def from_docking_results(
-        cls,
-        *,
-        result: SyncFunctionResponses,
-        client: DeepOriginClient,
-    ) -> Self:
-        """Build a LigandSet from function-API docking responses (embedded pose paths).
+    @staticmethod
+    def _strip_nonempty_str(value: Any) -> str | None:
+        """Return stripped string if ``value`` is a non-empty str, else None."""
 
-        Reads ``functionOutputs`` from each wrapped response, downloads pose SDF
-        files via ``client.files``, and merges ligands with :meth:`from_sdf_files`.
-        For hydrated poses from the data platform by execution id, use
-        :meth:`from_docking_result` instead.
+        if isinstance(value, str):
+            stripped = value.strip()
+            if stripped:
+                return stripped
+        return None
+
+    @staticmethod
+    def _path_points_to_existing_local_file(path: str) -> bool:
+        """Return True if ``path`` refers to an existing regular file on disk."""
+
+        try:
+            return Path(path).expanduser().is_file()
+        except (OSError, ValueError):
+            return False
+
+    @staticmethod
+    def _apply_file_path_to_paths(
+        *,
+        remote_path: str | None,
+        file_path: str,
+    ) -> tuple[str | None, str | None]:
+        """Set local and/or remote path from a ``file_path`` field (pose / API shape)."""
+
+        local_path: str | None = None
+        out_remote = remote_path
+        is_local_file = LigandSet._path_points_to_existing_local_file(file_path)
+        if out_remote is None:
+            if is_local_file:
+                local_path = file_path
+            else:
+                out_remote = file_path
+        elif is_local_file:
+            local_path = file_path
+        return local_path, out_remote
+
+    @staticmethod
+    def _resolve_pose_entry_paths(
+        entry: dict[str, Any], idx: int
+    ) -> tuple[str | None, str | None]:
+        """Extract ``(local_path, remote_path)`` from a pose dict (mirrors pocket path rules).
 
         Args:
-            result: ``SyncFunctionResponses`` wrapping one or more docking API responses.
-            client: Client used to download remote pose files.
+            entry: Single pose dict (``file_path``, ``local_path``, and/or ``remote_path``).
+            idx: Index in the pose list (for error messages).
 
         Returns:
-            A ``LigandSet`` built from the downloaded SDF files.
+            At least one of ``local_path`` or ``remote_path`` is non-``None``.
+
+        Raises:
+            ValueError: If no usable path is present.
         """
-        sdf_files: set[str] = set()
-        for outputs in result.function_outputs:
-            for pose in outputs.get("poses", []):
-                local_path = client.files.download(
-                    remote_path=pose["file_path"],
-                    lazy=True,
-                )
-                sdf_files.add(local_path)
-        return cls.from_sdf_files(list(sdf_files))
+
+        remote_path = LigandSet._strip_nonempty_str(entry.get("remote_path"))
+        file_path = LigandSet._strip_nonempty_str(entry.get("file_path"))
+        explicit_local = LigandSet._strip_nonempty_str(entry.get("local_path"))
+
+        local_path: str | None = None
+
+        if file_path is not None:
+            local_path, remote_path = LigandSet._apply_file_path_to_paths(
+                remote_path=remote_path,
+                file_path=file_path,
+            )
+        elif explicit_local is not None:
+            local_path = explicit_local
+
+        if local_path is None and remote_path is None:
+            raise ValueError(
+                f"Pose at index {idx} needs a valid 'file_path', 'local_path', or "
+                f"'remote_path' (got file_path={entry.get('file_path')!r}, "
+                f"remote_path={entry.get('remote_path')!r}): {entry}"
+            )
+
+        return local_path, remote_path
+
+    _POSE_JSON_RESERVED: ClassVar[frozenset[str]] = frozenset(
+        {
+            "file_path",
+            "local_path",
+            "remote_path",
+            "smiles",
+            "canonical_smiles",
+            "ligand_id",
+            "name",
+            "project_id",
+            "id",
+        }
+    )
 
     @classmethod
-    def from_docking_result(
+    def _ligand_from_pose_dict(
+        cls,
+        entry: dict[str, Any],
+        idx: int,
+        *,
+        client: Optional[DeepOriginClient],
+        sanitize: bool,
+        remove_hydrogens: bool,
+    ) -> Ligand:
+        """Materialize one :class:`Ligand` from a pose metadata dict."""
+
+        local_path, remote_path = cls._resolve_pose_entry_paths(entry, idx)
+        reserved = cls._POSE_JSON_RESERVED
+
+        if local_path is not None:
+            lig = Ligand.from_sdf(
+                local_path,
+                sanitize=sanitize,
+                remove_hydrogens=remove_hydrogens,
+            )
+            if remote_path is not None:
+                lig.remote_path = remote_path
+        else:
+            smiles = entry.get("smiles") or entry.get("canonical_smiles")
+            if not isinstance(smiles, str) or not smiles.strip():
+                raise ValueError(
+                    f"Pose at index {idx} has remote SDF {remote_path!r} but no "
+                    f"'smiles' or 'canonical_smiles'; add SMILES to the pose dict or "
+                    f"merge inputs from the docking execution before calling from_json."
+                )
+            lig = Ligand.from_smiles(
+                smiles=smiles.strip(),
+                name=(entry.get("name") or "") or "",
+            )
+            if remote_path is None:
+                raise ValueError(
+                    f"Pose at index {idx} resolved to no remote_path for lazy SDF load."
+                )
+            lig.remote_path = remote_path
+
+        lid = entry.get("ligand_id")
+        if lid is not None:
+            lig.id = str(lid)
+
+        proj = LigandSet._strip_nonempty_str(entry.get("project_id"))
+        if proj is None and client is not None:
+            proj = getattr(client, "project_id", None)
+        if proj is not None:
+            lig.project_id = proj
+
+        rex = entry.get("id")
+        if rex is not None:
+            lig.properties["id"] = str(rex)
+
+        for key, val in entry.items():
+            if key in reserved:
+                continue
+            lig.properties[str(key)] = val
+
+        return lig
+
+    @classmethod
+    def from_json(
+        cls,
+        data: list[dict[str, Any]],
+        *,
+        client: Optional[DeepOriginClient] = None,
+        sanitize: bool = True,
+        remove_hydrogens: bool = False,
+    ) -> Self:
+        """Build a ``LigandSet`` from pose metadata (no SDF download).
+
+        Each entry follows the docking ``poses[]`` shape: a ``file_path`` that is
+        either a platform remote key or an existing local SDF, optional
+        ``local_path`` / ``remote_path``, plus optional ``smiles`` /
+        ``canonical_smiles``. When only a **remote** path is available, a
+        non-empty SMILES field is required so an RDKit molecule can be built;
+        the pose SDF is then loaded lazily via :meth:`Ligand.download`.
+
+        Args:
+            data: List of pose dicts (for example merged ``jobOutputs.poses``).
+            client: Optional client; ``project_id`` falls back to the client's
+                ``project_id`` when missing on an entry.
+            sanitize: Passed to :meth:`from_sdf` when a local SDF path is used.
+            remove_hydrogens: Passed to :meth:`from_sdf` when a local SDF path is used.
+
+        Returns:
+            One :class:`Ligand` per pose entry, ordered as in ``data``.
+
+        Raises:
+            ValueError: If a remote-only entry lacks SMILES, or paths are invalid.
+        """
+
+        ligands_out: list[Ligand] = []
+        for idx, raw in enumerate(data):
+            if not isinstance(raw, dict):
+                raise ValueError(
+                    f"Pose at index {idx} must be a dict, got {type(raw)!r}."
+                )
+            entry = dict(raw)
+            ligands_out.append(
+                cls._ligand_from_pose_dict(
+                    entry,
+                    idx,
+                    client=client,
+                    sanitize=sanitize,
+                    remove_hydrogens=remove_hydrogens,
+                )
+            )
+
+        return cls(ligands=ligands_out)
+
+    @classmethod
+    def from_result(
         cls,
         *,
         protein_id: str | None = None,
         execution_id: str | None = None,
+        best_pose: bool | None = None,
         client: Optional[DeepOriginClient] = None,
     ) -> Self:
-        """Create a LigandSet from docking results in the data platform.
+        """Load docking poses from the data platform without downloading SDF files.
 
-        Fetches docking pose results for the given protein, downloads the
-        SDF files, and loads them into a LigandSet.
+        Fetches result-explorer rows via ``client.results.get_poses``, resolves
+        SMILES from each row's ``compute_job_id`` execution (``userInputs``) when
+        absent on the pose payload, then delegates to :meth:`from_json`.
 
         Args:
-            protein_id: Protein ID to fetch docking results for.
-            execution_id: Execution ID to fetch docking results for.
-            client: Optional DeepOriginClient instance. If not provided,
-                uses the default client.
+            protein_id: Optional protein id filter.
+            execution_id: Optional compute job / execution id filter.
+            best_pose: If True, restrict to best pose per ligand. If False,
+                include all poses. If None (default), no filter is applied.
+            client: Optional ``DeepOriginClient``; defaults to a new client.
 
         Returns:
-            A LigandSet of docked poses.
+            A ``LigandSet`` with one ligand per pose record.
 
         Raises:
-            ValueError: If no docking results are found for the protein.
+            ValueError: If no pose records match, or a pose cannot be built.
         """
+
         if client is None:
             client = DeepOriginClient()
 
-        response = client.results.get_poses(
+        get_poses_kwargs: dict[str, Any] = dict(
             protein_id=protein_id,
             compute_job_id=execution_id,
+            limit=None,
         )
+        if best_pose is not None:
+            get_poses_kwargs["best_pose"] = best_pose
+
+        response = client.results.get_poses(**get_poses_kwargs)
         records = response.get("data", [])
 
         if not records:
-            raise ValueError(f"No docking results found for protein_id={protein_id!r}")
+            raise ValueError(
+                "No docking pose results found for "
+                f"protein_id={protein_id!r} execution_id={execution_id!r}."
+            )
 
-        remote_paths: list[str] = []
-        for record in records:
-            file_path = record.get("data", {}).get("file_path")
-            if file_path:
-                remote_paths.append(file_path)
+        job_ids: set[str] = set()
+        if execution_id:
+            job_ids.add(str(execution_id))
+        for rec in records:
+            jid = rec.get("compute_job_id")
+            if jid:
+                job_ids.add(str(jid))
 
-        local_paths = client.files.download_many(
-            files=remote_paths,
-            lazy=True,
-        )
+        smiles_by_job: dict[str, dict[str, str]] = {}
+        for jid in job_ids:
+            try:
+                dto = client.executions.get(jid)  # ty:ignore[unresolved-attribute]
+            except Exception:
+                smiles_by_job[jid] = {}
+            else:
+                smiles_by_job[jid] = _ligand_smiles_map_from_tool_payload(dto)
 
-        all_ligands: list[Ligand] = []
-        for path in local_paths:
-            all_ligands.extend(cls.from_sdf(path).ligands)
+        rows: list[dict[str, Any]] = []
+        for rec in records:
+            if not isinstance(rec, dict):
+                continue
+            data = rec.get("data")
+            if not isinstance(data, dict):
+                data = {}
+            row = dict(data)
+            jid = str(rec.get("compute_job_id") or execution_id or "")
+            smi_map = smiles_by_job.get(jid, {})
+            lid = row.get("ligand_id")
+            if (
+                not (isinstance(row.get("smiles"), str) and row["smiles"].strip())
+                and not (
+                    isinstance(row.get("canonical_smiles"), str)
+                    and row["canonical_smiles"].strip()
+                )
+                and lid is not None
+            ):
+                sm = smi_map.get(str(lid))
+                if sm:
+                    row["smiles"] = sm
+            rid = rec.get("id")
+            if rid is not None:
+                row["id"] = str(rid)
+            rows.append(row)
 
-        return cls(ligands=all_ligands)
+        return cls.from_json(rows, client=client)
 
     @classmethod
     def from_dir(cls, directory: str | Path) -> Self:
@@ -2392,8 +2712,8 @@ class LigandSet:
         """Write all ligands to one SDF file, preserving properties from each ``mol``.
 
         This is a local operation. Each ligand must already be rehydrated if it has
-        ``remote_path`` but no local file (call :meth:`Ligand.download` first, or use
-        ``from_id(..., download=True)``).
+        ``remote_path`` but no local file (call :meth:`Ligand.download` or
+        :meth:`LigandSet.download` first, or use ``from_id(..., download=True)``).
 
         Args:
             output_path: Path to the output SDF file.
@@ -2432,6 +2752,82 @@ class LigandSet:
             ) from None
         finally:
             writer.close()
+
+    @beartype
+    def download(
+        self,
+        *,
+        client: Optional[DeepOriginClient] = None,
+        lazy: bool = True,
+        max_workers: int = 20,
+        skip_errors: bool = False,
+        sanitize: bool = True,
+        remove_hydrogens: bool = False,
+    ) -> None:
+        """Download platform files for ligands that have ``remote_path`` but no local file.
+
+        Selects ligands where :attr:`~Ligand.remote_path` is set and
+        :attr:`~Ligand.local_path` is ``None``,         fetches distinct remotes in parallel with
+        :meth:`deeporigin.platform.files.FilesClient.download_many`, assigns each
+        ligand's :attr:`~Ligand.local_path` from the returned remote→local mapping,
+        then reloads :attr:`~Ligand.mol` from SDF when applicable.
+
+        Ligands without ``remote_path``, with empty ``remote_path``, or that already
+        have ``local_path`` set are left unchanged.
+
+        Args:
+            client: DeepOrigin client. If ``None``, uses ``DeepOriginClient()``.
+            lazy: Passed to ``download_many``; when ``True``, existing cache files are
+                reused.
+            max_workers: Maximum concurrent downloads for ``download_many``.
+            skip_errors: When ``False`` (default), any failed download in the batch
+                raises. When ``True``, per-ligand failures during path assignment or SDF
+                reload are skipped and that ligand keeps prior state.
+            sanitize: Passed to :meth:`Ligand.from_sdf` when rehydrating SDF downloads.
+            remove_hydrogens: Passed to :meth:`Ligand.from_sdf` when rehydrating.
+
+        Raises:
+            RuntimeError: If ``skip_errors`` is ``False`` and ``download_many`` reports
+                failures.
+        """
+
+        pending = [
+            lg for lg in self.ligands if lg.remote_path and lg.local_path is None
+        ]
+        if not pending:
+            return
+        if client is None:
+            client = DeepOriginClient()
+        remotes = list(
+            dict.fromkeys(rp for rp in (lg.remote_path for lg in pending) if rp)
+        )
+        paths_by_remote = client.files.download_many(
+            files=remotes,
+            lazy=lazy,
+            max_workers=max_workers,
+            skip_errors=skip_errors,
+        )
+        for lg in pending:
+            rp = lg.remote_path
+            if not rp:
+                continue
+            local_path = paths_by_remote.get(rp)
+            if local_path is None:
+                if skip_errors:
+                    continue
+                raise RuntimeError(
+                    f"download_many returned no path for remote_path={rp!r}"
+                )
+            try:
+                lg.local_path = local_path
+                lg._reload_mol_from_local_sdf_if_applicable(
+                    sanitize=sanitize,
+                    remove_hydrogens=remove_hydrogens,
+                )
+            except Exception:
+                if skip_errors:
+                    continue
+                raise
 
     def to_smiles(self) -> list[str]:
         """Convert all ligands in the set to SMILES strings."""
@@ -2496,7 +2892,6 @@ class LigandSet:
 
         client.files.upload_many(files=files, max_workers=max_workers)
 
-    @beartype
     def sync(
         self,
         *,

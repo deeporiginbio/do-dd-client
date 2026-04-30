@@ -1,4 +1,4 @@
-"""Synchronous protonation via ``functions.run``."""
+"""Synchronous ligand protonation via ``client.executions.create``."""
 
 from __future__ import annotations
 
@@ -10,16 +10,39 @@ from rdkit import Chem
 from deeporigin.drug_discovery.execution import Execution
 from deeporigin.drug_discovery.execution_mixins import QuoteMixin, SyncExecutableMixin
 from deeporigin.drug_discovery.structures.ligand import Ligand, LigandSet
-from deeporigin.drug_discovery.sync_function_responses import SyncFunctionResponses
 from deeporigin.platform.client import DeepOriginClient
 from deeporigin.platform.constants import TOOL_KEYS_AND_VERSIONS
 from deeporigin.utils.constants import number
 
 
-class Protonation(Execution, QuoteMixin, SyncExecutableMixin):
-    """Run ligand protonation through the platform functions API (sync)."""
+def _execution_price_total(dto: dict) -> float | None:
+    """Extract ``priceTotal`` from a tool execution DTO's ``quotationResult``."""
+    quotation = dto.get("quotationResult") or {}
+    successful = quotation.get("successfulQuotations") or []
+    if not successful:
+        return None
+    price = successful[0].get("priceTotal")
+    return float(price) if price is not None else None
 
-    tool_key: str = TOOL_KEYS_AND_VERSIONS["mol_props"]["protonation_function_key"]
+
+def _execution_outputs_dict(dto: dict) -> dict[str, Any]:
+    """Return ``jobOutputs`` from a protonation execution DTO as a dict.
+
+    The protonation tool returns a single dict in ``jobOutputs`` with keys
+    ``smiles``, ``pH``, ``filter_percentage``, and ``protonation_states``.
+    """
+    jo = dto.get("jobOutputs")
+    if isinstance(jo, dict):
+        return jo
+    if isinstance(jo, list) and jo and isinstance(jo[0], dict):
+        return jo[0]
+    return {}
+
+
+class Protonation(Execution, QuoteMixin, SyncExecutableMixin):
+    """Run ligand protonation through the platform tools API (sync)."""
+
+    tool_key: str = TOOL_KEYS_AND_VERSIONS["mol_props"]["protonation_tool_key"]
     ligands: LigandSet
 
     @beartype
@@ -36,7 +59,7 @@ class Protonation(Execution, QuoteMixin, SyncExecutableMixin):
         """Create a protonation job from exactly one of ``smiles``, ``ligand``, or ``ligands``.
 
         Each form is normalized to :attr:`ligands` as a :class:`LigandSet` with exactly
-        one :class:`Ligand` before calling the functions API.
+        one :class:`Ligand` before calling the executions API.
         """
         provided = sum(x is not None for x in (smiles, ligand, ligands))
         if provided != 1:
@@ -80,8 +103,8 @@ class Protonation(Execution, QuoteMixin, SyncExecutableMixin):
     def ph(self) -> number:
         return self._ph
 
-    def _make_payload(self) -> dict[str, Any]:
-        """Build request params matching the mol-props protonation function input schema."""
+    def _make_inputs(self) -> dict[str, Any]:
+        """Build tool ``inputs`` matching the protonation tool input schema."""
         primary = self.ligands.ligands[0]
         ligand_payload: dict[str, Any] = {"smiles": self._input_smiles}
         if primary.id is not None:
@@ -92,27 +115,43 @@ class Protonation(Execution, QuoteMixin, SyncExecutableMixin):
             "filter_percentage": self._filter_percentage,
         }
 
+    def _make_payload(
+        self,
+        *,
+        sync: bool = True,
+        approve_amount: int | None = None,
+    ) -> dict[str, Any]:
+        """Build the body dict for ``client.executions.create``."""
+        body: dict[str, Any] = {
+            "inputs": self._make_inputs(),
+            "outputs": {},
+            "metadata": {},
+            "sync": sync,
+        }
+        if approve_amount is not None:
+            body["approveAmount"] = approve_amount
+        return body
+
     def _quote_impl(self) -> None:
         """Request a cost estimate without executing."""
-        response = self.client.functions.run(
-            key=TOOL_KEYS_AND_VERSIONS["mol_props"]["protonation_function_key"],
-            version=TOOL_KEYS_AND_VERSIONS["mol_props"]["function_version"],
-            params=self._make_payload(),
-            quote=True,
+        response = self.client.executions.create(
+            tool_key=self.tool_key,
+            tool_version=TOOL_KEYS_AND_VERSIONS["mol_props"]["tool_version"],
+            data=self._make_payload(sync=False, approve_amount=0),
         )
         self._apply_quote_response(response)
 
     def _apply_quote_response(self, response: dict) -> None:
-        wrapped = SyncFunctionResponses([response])
-        if wrapped.estimate is None:
+        price = _execution_price_total(response)
+        if price is None:
             raise RuntimeError(
                 "Quote failed: no estimate could be parsed from the protonation response."
             )
-        self._estimate = wrapped.estimate
+        self._estimate = price
         self._responses = [response]
 
     def run(self) -> Any:
-        """Execute protonation via the platform functions API.
+        """Execute protonation via the platform tools API.
 
         Returns:
             :class:`~deeporigin.drug_discovery.structures.ligand.LigandSet` whose
@@ -125,25 +164,23 @@ class Protonation(Execution, QuoteMixin, SyncExecutableMixin):
         """
         input_first = self.ligands.ligands[0]
 
-        payload = self._make_payload()
-        response = self.client.functions.run(
-            key=TOOL_KEYS_AND_VERSIONS["mol_props"]["protonation_function_key"],
-            version=TOOL_KEYS_AND_VERSIONS["mol_props"]["function_version"],
-            params=payload,
-            quote=False,
+        response = self.client.executions.create(
+            tool_key=self.tool_key,
+            tool_version=TOOL_KEYS_AND_VERSIONS["mol_props"]["tool_version"],
+            data=self._make_payload(sync=True),
         )
 
-        outputs = response.get("functionOutputs", {})
+        outputs = _execution_outputs_dict(response)
         if outputs.get("pH") != self._ph:
             raise ValueError(
                 f"Protonation failed. Expected pH {self._ph}, got {outputs.get('pH')}"
             )
 
         self._responses = [response]
-        wrapped = SyncFunctionResponses(self._responses)
-        if wrapped.cost is not None:
-            self._cost = wrapped.cost
-        exec_id = response.get("id")
+        cost = _execution_price_total(response)
+        if cost is not None and cost > 0:
+            self._cost = cost
+        exec_id = response.get("executionId") or response.get("id")
         if exec_id is not None:
             self._id = exec_id
 
@@ -186,7 +223,3 @@ class Protonation(Execution, QuoteMixin, SyncExecutableMixin):
     def responses(self) -> list[dict]:
         """Raw API responses (one dict after ``run`` or ``quote``)."""
         return self._responses
-
-    @property
-    def function_outputs(self) -> list[dict]:
-        return SyncFunctionResponses(self._responses).function_outputs

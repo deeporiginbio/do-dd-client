@@ -4,8 +4,6 @@ This module contains various constants used throughout the drug discovery pipeli
 including lists of metal atoms and file paths for state management.
 """
 
-from typing import Literal
-
 from deeporigin.utils.env import _ensure_do_folder
 
 METALS = ["MG", "CA", "ZN", "MN", "CU", "FE", "NA", "K", "HG", "CO", "U", "CD", "NI"]
@@ -116,17 +114,6 @@ LIGANDS_DIR = DO_HOME_DIR / "ligands"
 # make sure these directories exist
 PROTEINS_DIR.mkdir(parents=True, exist_ok=True)
 LIGANDS_DIR.mkdir(parents=True, exist_ok=True)
-
-valid_tools = Literal["ABFE", "RBFE", "Docking", "PocketFinder"]
-
-
-# this mapper used to map b/w tool short name and tool key
-tool_mapper = {
-    "ABFE": "deeporigin.abfe-end-to-end",
-    "RBFE": "deeporigin.rbfe-end-to-end",
-    "Docking": "deeporigin.bulk-docking",
-    "PocketFinder": "deeporigin.pocketfinder",
-}
 
 # Base directory for storing pocket files
 POCKETS_BASE_DIR = str(_ensure_do_folder() / "pockets")

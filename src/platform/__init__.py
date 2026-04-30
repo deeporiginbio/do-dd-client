@@ -17,7 +17,7 @@ the same cached instance, reusing connection pools.
 
 Example:
     client = DeepOriginClient()  # Uses singleton cache automatically
-    client.tag = "my-tag"  # Set tag for all function runs
+    client.tag = "my-tag"  # Set tag for all tool executions
 """
 
 from deeporigin.platform.client import DeepOriginClient

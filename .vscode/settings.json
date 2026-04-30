@@ -81,6 +81,7 @@
         "Protonating",
         "protonation",
         "Pydantic",
+        "pymdownx",
         "pytest",
         "pytestconfig",
         "rbfe",

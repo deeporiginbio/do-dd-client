@@ -1,12 +1,9 @@
 """Tests for DeepOriginClient construction and tag functionality."""
 
-from unittest.mock import patch
-
-import httpx
 import pytest
 
 from deeporigin.platform.client import DeepOriginClient
-from deeporigin.utils.constants import FUNCTION_RUN_POST_TIMEOUT_SECONDS
+from deeporigin.utils.constants import TOOL_EXECUTION_POST_TIMEOUT_SECONDS
 
 
 def test_client_tag_set_on_creation():
@@ -56,147 +53,120 @@ def test_client_tag_mutable_on_shared_instance():
     assert client.tag == "tag-b"
 
 
-def test_client_tag_used_in_function_run():
-    """Client's tag is used in function runs when tag parameter is None."""
+def _stub_post_json_capturing_body(client: DeepOriginClient) -> dict:
+    """Replace ``client.post_json`` with a stub that records the request body.
+
+    Returns the captured-body dict (mutated in place by the stub) so tests can
+    assert on the JSON sent to ``executions.create``.
+    """
+    captured: dict = {}
+
+    def mock_post_json(
+        endpoint: str,
+        *,
+        body: dict,
+        **kwargs: object,
+    ) -> dict:
+        captured.clear()
+        captured.update(body)
+        captured["__endpoint__"] = endpoint
+        captured["__timeout__"] = kwargs.get("timeout")
+        return {
+            "executionId": "exec-stub",
+            "status": "Succeeded",
+            "jobOutputs": [{"result": "success"}],
+            "tool": {
+                "key": "test.tool",
+                "version": "1.0.0",
+            },
+        }
+
+    client.post_json = mock_post_json  # type: ignore[method-assign]
+    return captured
+
+
+def test_executions_create_includes_app_and_session():
+    """``executions.create`` propagates the client's ``_app`` and ``_session``."""
+    DeepOriginClient.close_all()
+
+    client = DeepOriginClient.from_local(_session="sess-1")
+    captured = _stub_post_json_capturing_body(client)
+
+    client.clusters.get_default_cluster_id = (  # type: ignore[method-assign]
+        lambda: "test-cluster-id"
+    )
+
+    response = client.executions.create(
+        tool_key="test.tool",
+        tool_version="1.0.0",
+        data={"inputs": {"test": "param"}, "outputs": {}, "metadata": {}},
+    )
+
+    assert captured["app"] == "python-client"
+    assert captured["session"] == "sess-1"
+    assert captured["clusterId"] == "test-cluster-id"
+    assert response["status"] == "Succeeded"
+
+
+def test_executions_create_uses_long_timeout():
+    """``executions.create`` passes ``TOOL_EXECUTION_POST_TIMEOUT_SECONDS`` to httpx."""
     DeepOriginClient.close_all()
 
     client = DeepOriginClient.from_local()
-    client.tag = "test-function-tag"
+    captured = _stub_post_json_capturing_body(client)
 
-    captured_body = {}
+    client.clusters.get_default_cluster_id = (  # type: ignore[method-assign]
+        lambda: "test-cluster-id"
+    )
 
-    original_post_json = client.post_json
+    client.executions.create(
+        tool_key="test.tool",
+        tool_version="1.0.0",
+        data={"inputs": {"test": "param"}, "outputs": {}, "metadata": {}},
+    )
 
-    def mock_post_json(endpoint: str, *, body: dict, **kwargs) -> dict:
-        nonlocal captured_body
-        captured_body = body.copy()
-        return {
-            "status": "Completed",
-            "functionOutputs": {"result": "success"},
-        }
-
-    client.post_json = mock_post_json
-
-    with patch.object(
-        client.clusters, "get_default_cluster_id", return_value="test-cluster-id"
-    ):
-        response = client.functions.run(
-            key="test.function",
-            params={"test": "param"},
-        )
-
-        assert "tag" in captured_body
-        assert captured_body["tag"] == "test-function-tag"
-        assert response["status"] == "Completed"
-
-    client.post_json = original_post_json
+    assert captured["__timeout__"] == TOOL_EXECUTION_POST_TIMEOUT_SECONDS
 
 
-def test_client_tag_explicit_override():
-    """Explicitly passing tag parameter overrides client's default tag."""
-    DeepOriginClient.close_all()
-
-    client = DeepOriginClient.from_local()
-    client.tag = "default-tag"
-
-    captured_body = {}
-
-    original_post_json = client.post_json
-
-    def mock_post_json(endpoint: str, *, body: dict, **kwargs) -> dict:
-        nonlocal captured_body
-        captured_body = body.copy()
-        return {
-            "status": "Completed",
-            "functionOutputs": {"result": "success"},
-        }
-
-    client.post_json = mock_post_json
-
-    with patch.object(
-        client.clusters, "get_default_cluster_id", return_value="test-cluster-id"
-    ):
-        response = client.functions.run(
-            key="test.function",
-            params={"test": "param"},
-            tag="override-tag",
-        )
-
-        assert "tag" in captured_body
-        assert captured_body["tag"] == "override-tag"
-        assert captured_body["tag"] != "default-tag"
-        assert response["status"] == "Completed"
-
-    client.post_json = original_post_json
-
-
-def test_functions_run_sets_http_client_timeout_for_duration_of_request():
-    """``functions.run`` temporarily sets the httpx client timeout to 600s."""
-    DeepOriginClient.close_all()
-
-    client = DeepOriginClient.from_local()
-    original_timeout = client._client.timeout
-
-    timeouts_during_post: list[object] = []
-
-    original_post_json = client.post_json
-
-    def mock_post_json(endpoint: str, *, body: dict, **kwargs) -> dict:
-        timeouts_during_post.append(client._client.timeout)
-        return {
-            "status": "Completed",
-            "functionOutputs": {"result": "success"},
-        }
-
-    client.post_json = mock_post_json
-
-    with patch.object(
-        client.clusters, "get_default_cluster_id", return_value="test-cluster-id"
-    ):
-        client.functions.run(
-            key="test.function",
-            params={"test": "param"},
-        )
-
-    assert len(timeouts_during_post) == 1
-    assert timeouts_during_post[0] == httpx.Timeout(FUNCTION_RUN_POST_TIMEOUT_SECONDS)
-    assert client._client.timeout == original_timeout
-
-    client.post_json = original_post_json
-
-
-def test_functions_run_includes_client_project_id():
-    """When client.project_id is set, function run body includes projectId."""
+def test_executions_create_includes_client_project_id():
+    """When ``client.project_id`` is set, the request body includes ``projectId``."""
     DeepOriginClient.close_all()
 
     client = DeepOriginClient.from_local()
     client.project_id = "test-project-uuid"
+    captured = _stub_post_json_capturing_body(client)
 
-    captured_body = {}
+    client.clusters.get_default_cluster_id = (  # type: ignore[method-assign]
+        lambda: "test-cluster-id"
+    )
 
-    original_post_json = client.post_json
+    client.executions.create(
+        tool_key="test.tool",
+        tool_version="1.0.0",
+        data={"inputs": {"test": "param"}, "outputs": {}, "metadata": {}},
+    )
 
-    def mock_post_json(endpoint: str, *, body: dict, **kwargs) -> dict:
-        nonlocal captured_body
-        captured_body = body.copy()
-        return {
-            "status": "Completed",
-            "functionOutputs": {"result": "success"},
-        }
+    assert captured["projectId"] == "test-project-uuid"
 
-    client.post_json = mock_post_json
 
-    with patch.object(
-        client.clusters, "get_default_cluster_id", return_value="test-cluster-id"
-    ):
-        client.functions.run(
-            key="test.function",
-            params={"test": "param"},
-        )
+def test_executions_create_targets_tool_endpoint():
+    """``executions.create`` POSTs to ``/tools/{org}/tools/{key}/{version}/executions``."""
+    DeepOriginClient.close_all()
 
-        assert captured_body["projectId"] == "test-project-uuid"
+    client = DeepOriginClient.from_local()
+    captured = _stub_post_json_capturing_body(client)
 
-    client.post_json = original_post_json
+    client.clusters.get_default_cluster_id = (  # type: ignore[method-assign]
+        lambda: "test-cluster-id"
+    )
+
+    client.executions.create(
+        tool_key="test.tool",
+        tool_version="1.0.0",
+        data={"inputs": {"a": 1}, "outputs": {}, "metadata": {}},
+    )
+
+    assert captured["__endpoint__"].endswith("/tools/test.tool/1.0.0/executions")
 
 
 def test_no_arg_constructor_returns_same_instance():
@@ -211,44 +181,6 @@ def test_no_arg_constructor_returns_same_instance():
     client2 = DeepOriginClient.from_local()
     assert client2 is client
     assert client2.tag == "test-2"
-
-
-def test_client_tag_none_explicitly_passed():
-    """Explicitly passing tag=None in function run uses the client's default tag."""
-    DeepOriginClient.close_all()
-
-    client = DeepOriginClient.from_local()
-    client.tag = "default-tag"
-
-    captured_body = {}
-
-    original_post_json = client.post_json
-
-    def mock_post_json(endpoint: str, *, body: dict, **kwargs) -> dict:
-        nonlocal captured_body
-        captured_body = body.copy()
-        return {
-            "status": "Completed",
-            "functionOutputs": {"result": "success"},
-        }
-
-    client.post_json = mock_post_json
-
-    with patch.object(
-        client.clusters, "get_default_cluster_id", return_value="test-cluster-id"
-    ):
-        response = client.functions.run(
-            key="test.function",
-            params={"test": "param"},
-            tag=None,
-        )
-
-        # None means use client.tag
-        assert "tag" in captured_body
-        assert captured_body["tag"] == "default-tag"
-        assert response["status"] == "Completed"
-
-    client.post_json = original_post_json
 
 
 def test_client_app_session_same_params_same_instance():

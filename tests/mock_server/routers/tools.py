@@ -1,7 +1,9 @@
 """Tools-related routes for the mock server.
 
-Covers /tools/... endpoints: tool definitions, function runs, clusters,
-and executions (list / get / cancel / confirm / run).
+Covers ``/tools/...`` endpoints: tool definitions, clusters, and tool
+executions (list / get / cancel / confirm / run).  All runnable work goes
+through ``POST /tools/{org}/tools/{tool_key}/{tool_version}/executions``;
+there is no longer a legacy ``/functions`` route.
 """
 
 from __future__ import annotations
@@ -31,13 +33,13 @@ def _generate_resource_id() -> str:
     return "".join(random.choice(chars) for _ in range(20))
 
 
-def _replace_ids_in_function_outputs(
+def _replace_ids_in_outputs(
     obj: object, protein_id: str | None = None, ligand_id: str | None = None
 ) -> object:
-    """Recursively replace protein/ligand ID values in functionOutputs.
+    """Recursively replace protein/ligand ID values in tool ``jobOutputs``.
 
-    Handles both ``ligand_id`` and ``ligand1_id`` keys so that the
-    fixture works for both legacy and current system-prep schemas.
+    Handles both ``ligand_id`` and ``ligand1_id`` keys so that the same fixture
+    works for both the legacy and the current sysprep schemas.
 
     Args:
         obj: The object to traverse (dict, list, or scalar).
@@ -55,15 +57,13 @@ def _replace_ids_in_function_outputs(
             elif key in ("ligand_id", "ligand1_id") and ligand_id is not None:
                 result[key] = ligand_id
             else:
-                result[key] = _replace_ids_in_function_outputs(
+                result[key] = _replace_ids_in_outputs(
                     value, protein_id=protein_id, ligand_id=ligand_id
                 )
         return result
     elif isinstance(obj, list):
         return [
-            _replace_ids_in_function_outputs(
-                item, protein_id=protein_id, ligand_id=ligand_id
-            )
+            _replace_ids_in_outputs(item, protein_id=protein_id, ligand_id=ligand_id)
             for item in obj
         ]
     return obj
@@ -85,6 +85,24 @@ def _normalize_execution(execution: dict[str, Any]) -> dict[str, Any]:
     return normalized
 
 
+def _legacy_outputs_to_job_outputs(legacy: dict[str, Any]) -> Any:
+    """Pull ``jobOutputs`` from a fixture, falling back to legacy ``functionOutputs``.
+
+    Older fixtures are still recorded with the ``functionOutputs`` key from
+    when tool executions were called function runs.  This helper hides that
+    detail so the rest of the mock server only deals with ``jobOutputs``.
+    """
+    if "jobOutputs" in legacy:
+        return legacy["jobOutputs"]
+    return legacy.get("functionOutputs")
+
+
+def _legacy_quotation(legacy: dict[str, Any]) -> dict[str, Any] | None:
+    """Return ``quotationResult`` from a recorded fixture if present."""
+    quotation = legacy.get("quotationResult")
+    return quotation if isinstance(quotation, dict) else None
+
+
 def create_tools_router(
     *,
     executions: dict[str, dict[str, Any]],
@@ -104,7 +122,7 @@ def create_tools_router(
         docking_speed: Dockings per second for bulk-docking simulations.
         fixtures_dir: Directory where fixture files are stored.
         load_fixture: Callable to load fixture data by name.
-        results: Shared result-explorer record list; function runs that
+        results: Shared result-explorer record list; tool executions that
             produce outputs will inject records here so they are visible
             via the result-explorer search endpoint.
 
@@ -285,6 +303,7 @@ def create_tools_router(
             "name": None,
             "orgKey": org_key,
             "tool": {"key": tool_key, "version": tool_version},
+            "type": "ToolExecution",
         }
         proj = body.get("projectId")
         if proj is not None:
@@ -318,14 +337,18 @@ def create_tools_router(
 
         return execution
 
-    def _create_docking_blocking_run_dto(
+    def _create_blocking_run_dto(
         *,
         org_key: str,
         tool_key: str,
         tool_version: str,
         body: dict[str, Any],
     ) -> dict[str, Any]:
-        """``Docking.run()``: server blocks; local mock returns ``Succeeded`` in one POST."""
+        """Build a synchronous Succeeded execution DTO for a single ``run_tool`` POST.
+
+        Used for tools whose ``sync=True`` mock path completes the execution
+        in one POST: docking (single ligand), pocket-finder, system-prep.
+        """
         now = datetime.now(timezone.utc)
         ts = now.strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z"
         eid = str(uuid.uuid4())
@@ -348,6 +371,7 @@ def create_tools_router(
             "name": body.get("name"),
             "orgKey": org_key,
             "tool": {"key": tool_key, "version": tool_version},
+            "type": "ToolExecution",
             "startedAt": ts,
             "completedAt": ts,
         }
@@ -366,65 +390,301 @@ def create_tools_router(
             execution["cluster"] = {"id": str(uuid.uuid4())}
         return execution
 
-    def _get_protonation_response(
-        *, smiles: str, ph: float, inputs: dict[str, Any], body: dict[str, Any]
+    def _build_protonation_outputs(
+        *, smiles: str, ph: float, filter_percentage: float
     ) -> dict[str, Any]:
-        """Get protonation response for a given SMILES and pH."""
-        skeleton_path = fixtures_dir / "function-runs" / "skeleton.json"
-        with open(skeleton_path) as f:
-            response = json.load(f)
-
-        now = datetime.now(timezone.utc)
-        timestamp = now.strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z"
-
-        response["id"] = str(uuid.uuid4())
-        response["createdAt"] = timestamp
-        response["updatedAt"] = timestamp
-
-        response["userInputs"] = {"inputs": inputs}
-        if "clusterId" in body:
-            response["userInputs"]["clusterId"] = body["clusterId"]
-
+        """Return the synthetic ``jobOutputs`` for a protonation tool execution."""
         expected_smiles = "C=CCCn1cc(-c2cccc(C(=O)N(C)C)c2)c2cc[nH]c2c1=O"
         if smiles != expected_smiles:
-            protonation_data = {
+            return {
                 "smiles": smiles,
                 "pH": ph,
-                "filter_percentage": inputs.get("filter_percentage", 1),
+                "filter_percentage": filter_percentage,
                 "protonation_states": {
                     "smiles_list": [smiles],
                     "concentration_list": [99.93319834034459],
                 },
             }
-        elif ph < 8:
-            protonation_data = {
+        if ph < 8:
+            return {
                 "smiles": expected_smiles,
                 "pH": ph,
-                "filter_percentage": inputs.get("filter_percentage", 1),
+                "filter_percentage": filter_percentage,
                 "protonation_states": {
                     "smiles_list": [expected_smiles],
                     "concentration_list": [99.93319834034459],
                 },
             }
-        else:
-            protonation_data = {
-                "smiles": expected_smiles,
-                "pH": ph,
-                "filter_percentage": inputs.get("filter_percentage", 1),
-                "protonation_states": {
-                    "smiles_list": [
-                        "C=CCCn1cc(-c2cccc(C(=O)N(C)C)c2)c2cc[n-]c2c1=O",
-                        expected_smiles,
-                    ],
-                    "concentration_list": [
-                        79.69080764827427,
-                        20.309192281585123,
-                    ],
-                },
-            }
+        return {
+            "smiles": expected_smiles,
+            "pH": ph,
+            "filter_percentage": filter_percentage,
+            "protonation_states": {
+                "smiles_list": [
+                    "C=CCCn1cc(-c2cccc(C(=O)N(C)C)c2)c2cc[n-]c2c1=O",
+                    expected_smiles,
+                ],
+                "concentration_list": [
+                    79.69080764827427,
+                    20.309192281585123,
+                ],
+            },
+        }
 
-        response["functionOutputs"] = protonation_data
-        return response
+    def _build_protonation_execution(
+        *, org_key: str, tool_key: str, tool_version: str, body: dict[str, Any]
+    ) -> dict[str, Any]:
+        """Build a synchronous protonation execution DTO with realistic outputs."""
+        execution = _create_blocking_run_dto(
+            org_key=org_key,
+            tool_key=tool_key,
+            tool_version=tool_version,
+            body=body,
+        )
+
+        inputs = body.get("inputs", body.get("params", {})) or {}
+        ligand_in = inputs.get("ligand") or {}
+        smiles = (
+            ligand_in.get("smiles") if isinstance(ligand_in, dict) else None
+        ) or inputs.get("smiles", "")
+        ph = float(inputs.get("pH", 7.4))
+        filter_percentage = float(inputs.get("filter_percentage", 1))
+
+        if execution.get("quotationResult") is None:
+            try:
+                fixture = load_fixture(
+                    "tool-runs/deeporigin.mol-props-protonation/"
+                    "d9309dc3b122fc636e63c88a2dbf0b32f04cb23a5557affb9f1bb577ec6e5ffb"
+                )
+            except FileNotFoundError:
+                fixture = None
+            if isinstance(fixture, dict):
+                quotation = _legacy_quotation(fixture)
+                if quotation is not None:
+                    execution["quotationResult"] = quotation
+
+        execution["jobOutputs"] = _build_protonation_outputs(
+            smiles=smiles, ph=ph, filter_percentage=filter_percentage
+        )
+        return execution
+
+    def _build_molprops_execution(
+        *, org_key: str, tool_key: str, tool_version: str, body: dict[str, Any]
+    ) -> dict[str, Any]:
+        """Build a synchronous molprops execution DTO with fixture-backed outputs.
+
+        Looks up a recorded fixture by hash for the given tool key; if the
+        fixture is found it copies the legacy ``functionOutputs`` (a list of
+        per-ligand rows) into ``jobOutputs`` and re-keys ``ligand_id`` to
+        match the inputs that were actually sent.
+        """
+        from deeporigin.utils.hashing import (
+            hash_dict,
+            normalize_tool_execution_body,
+        )
+
+        execution = _create_blocking_run_dto(
+            org_key=org_key,
+            tool_key=tool_key,
+            tool_version=tool_version,
+            body=body,
+        )
+
+        normalized_body = normalize_tool_execution_body(body)
+        body_hash = hash_dict(normalized_body)
+
+        try:
+            fixture = load_fixture(f"tool-runs/{tool_key}/{body_hash}")
+        except FileNotFoundError as e:
+            raise FileNotFoundError(
+                f"No fixture found for tool '{tool_key}' with request hash "
+                f"'{body_hash}'. Please create a fixture at: "
+                f"tool-runs/{tool_key}/{body_hash}.json"
+            ) from e
+
+        fixture = copy.deepcopy(fixture)
+        outputs = _legacy_outputs_to_job_outputs(fixture)
+        if isinstance(outputs, list):
+            inputs = body.get("inputs", {})
+            ligands = inputs.get("ligands") or []
+            ligand_ids: list[str] = []
+            for lig in ligands:
+                if isinstance(lig, dict) and lig.get("id") is not None:
+                    ligand_ids.append(str(lig["id"]))
+            if ligand_ids and len(ligand_ids) == len(outputs):
+                for row, lid in zip(outputs, ligand_ids, strict=True):
+                    if isinstance(row, dict):
+                        row["ligand_id"] = lid
+
+        execution["jobOutputs"] = outputs
+        quotation = _legacy_quotation(fixture)
+        if quotation is not None:
+            execution["quotationResult"] = quotation
+        return execution
+
+    def _inject_result_explorer_records_from_outputs(
+        *,
+        tool_key: str,
+        tool_version: str,
+        execution_id: str,
+        job_outputs: object,
+    ) -> None:
+        """Mirror tool ``jobOutputs`` into ``results`` (the result-explorer pool)."""
+        if not isinstance(job_outputs, dict):
+            return
+
+        output_key_map: dict[str, tuple[str, str]] = {
+            "deeporigin.pocketfinder": ("pockets", "pocket"),
+            "deeporigin.pocket-finder": ("pockets", "pocket"),
+            "deeporigin.docking": ("poses", "pose"),
+            "deeporigin.system-prep": ("system", "preparedsystem"),
+        }
+
+        entry = output_key_map.get(tool_key)
+        if not entry:
+            return
+
+        output_key, result_type = entry
+        output_value = job_outputs.get(output_key)
+        if output_value is None:
+            return
+
+        items = output_value if isinstance(output_value, list) else [output_value]
+        # For docking poses: mark the first pose per ligand as best_pose=True so
+        # that the mock's top-level equality filter (best_pose == True) works.
+        best_pose_seen: set[str] = set()
+        for item in items:
+            data = dict(item)
+            extra: dict[str, Any] = {}
+            if result_type == "pose":
+                if "best_pose" not in data:
+                    ligand_key = str(data.get("ligand_id") or "")
+                    is_best = ligand_key not in best_pose_seen
+                    data["best_pose"] = is_best
+                    best_pose_seen.add(ligand_key)
+                extra["best_pose"] = data["best_pose"]
+            record = {
+                "id": "08" + str(uuid.uuid4()).replace("-", "").upper()[:11],
+                "tool_key": tool_key,
+                "tool_version": tool_version,
+                "result_type": result_type,
+                "data": data,
+                "compute_job_id": execution_id,
+                **extra,
+            }
+            results.append(record)
+
+    def _inject_docking_tool_execution_results(execution: dict[str, Any]) -> None:
+        """Mirror docking fixture poses into ``results`` when an execution completes."""
+        eid = execution.get("executionId")
+        tool = execution.get("tool") or {}
+        tkey = tool.get("key")
+        tool_version = tool.get("version", "0.0.0")
+        if not eid or tkey != "deeporigin.docking":
+            return
+        if any(r.get("compute_job_id") == eid for r in results):
+            return
+
+        fixture = copy.deepcopy(load_fixture("tool-runs/deeporigin.docking/run"))
+        outputs = _legacy_outputs_to_job_outputs(fixture)
+        if not isinstance(outputs, dict):
+            return
+
+        user_inputs = execution.get("userInputs", {})
+        protein = (
+            user_inputs.get("protein", {}) if isinstance(user_inputs, dict) else {}
+        )
+        protein_id = protein.get("id") if isinstance(protein, dict) else None
+        ligand_id = None
+        ligands_list = user_inputs.get("ligands") or []
+        if (
+            isinstance(ligands_list, list)
+            and ligands_list
+            and isinstance(ligands_list[0], dict)
+        ):
+            ligand_id = ligands_list[0].get("id")
+        outputs = _replace_ids_in_outputs(
+            outputs, protein_id=protein_id, ligand_id=ligand_id
+        )
+        execution["jobOutputs"] = outputs
+        _inject_result_explorer_records_from_outputs(
+            tool_key=tkey,
+            tool_version=tool_version,
+            execution_id=eid,
+            job_outputs=outputs,
+        )
+
+    def _inject_pocketfinder_tool_execution_results(
+        execution: dict[str, Any],
+    ) -> None:
+        """Mirror pocket-finder fixture outputs into ``results`` for tool executions."""
+        eid = execution.get("executionId")
+        tool = execution.get("tool") or {}
+        tkey = tool.get("key")
+        tool_version = tool.get("version", "0.0.0")
+        if not eid or tkey != "deeporigin.pocket-finder":
+            return
+        if any(r.get("compute_job_id") == eid for r in results):
+            return
+
+        fixture = copy.deepcopy(load_fixture("tool-runs/deeporigin.pocketfinder/run"))
+        outputs = _legacy_outputs_to_job_outputs(fixture)
+        if not isinstance(outputs, dict):
+            return
+
+        user_inputs = execution.get("userInputs", {})
+        protein = (
+            user_inputs.get("protein", {}) if isinstance(user_inputs, dict) else {}
+        )
+        protein_id = protein.get("id") if isinstance(protein, dict) else None
+        pockets = outputs.get("pockets")
+        if isinstance(pockets, list):
+            for p in pockets:
+                if isinstance(p, dict) and protein_id is not None:
+                    p["protein_id"] = protein_id
+        execution["jobOutputs"] = outputs
+        _inject_result_explorer_records_from_outputs(
+            tool_key=tkey,
+            tool_version=tool_version,
+            execution_id=eid,
+            job_outputs=outputs,
+        )
+
+    def _inject_sysprep_tool_execution_results(execution: dict[str, Any]) -> None:
+        """Mirror system-prep fixture outputs into ``results`` for tool executions."""
+        eid = execution.get("executionId")
+        tool = execution.get("tool") or {}
+        tkey = tool.get("key")
+        tool_version = tool.get("version", "0.0.0")
+        if not eid or tkey != "deeporigin.system-prep":
+            return
+        if any(r.get("compute_job_id") == eid for r in results):
+            return
+
+        fixture = copy.deepcopy(load_fixture("tool-runs/deeporigin.system-prep/run"))
+        outputs = _legacy_outputs_to_job_outputs(fixture)
+        if not isinstance(outputs, dict):
+            return
+
+        user_inputs = execution.get("userInputs", {})
+        protein = (
+            user_inputs.get("protein", {}) if isinstance(user_inputs, dict) else {}
+        )
+        protein_id = protein.get("id") if isinstance(protein, dict) else None
+        ligand = user_inputs.get("ligand1") or {}
+        ligand_id = ligand.get("id") if isinstance(ligand, dict) else None
+        system = outputs.get("system")
+        if isinstance(system, dict):
+            if protein_id is not None:
+                system["protein_id"] = protein_id
+            if ligand_id is not None:
+                system["ligand1_id"] = ligand_id
+        _inject_result_explorer_records_from_outputs(
+            tool_key=tkey,
+            tool_version=tool_version,
+            execution_id=eid,
+            job_outputs=outputs,
+        )
 
     # -- route handlers --------------------------------------------------------
 
@@ -491,224 +751,6 @@ def create_tools_router(
             "toolManifestVersion": "1.0.0",
             "enabled": True,
         }
-
-    @router.get("/tools/protected/functions/definitions")
-    def list_functions() -> list[dict[str, Any]]:
-        """List all function definitions."""
-        return [
-            {
-                "id": "test-function-id",
-                "key": "test-function",
-                "name": "Test Function",
-                "version": "1.0.0",
-                "createdAt": "2024-01-01T00:00:00Z",
-                "updatedAt": "2024-01-01T00:00:00Z",
-                "functionManifest": {},
-                "enabled": True,
-                "manifestBody": {},
-                "billingCode": "test-billing-code",
-                "resourceId": "test-resource-id",
-            }
-        ]
-
-    async def _handle_function_run(
-        function_key: str, request: Request
-    ) -> dict[str, Any] | list[dict[str, Any]]:
-        """Handle function execution logic shared between versioned and non-versioned endpoints."""
-        body = await request.json()
-
-        if function_key == "deeporigin.pocketfinder":
-            fixture_name = "quote" if body.get("approveAmount") == 0 else "run"
-            response = load_fixture(f"function-runs/{function_key}/{fixture_name}")
-        elif function_key == "deeporigin.docking":
-            response = load_fixture(f"function-runs/{function_key}/run")
-        elif function_key == "deeporigin.mol-props-protonation":
-            inputs = body.get("inputs", body.get("params", {}))
-            ligand_in = inputs.get("ligand") or {}
-            smiles = ligand_in.get("smiles") or inputs.get("smiles", "")
-            ph = inputs.get("pH", 7.4)
-            return _get_protonation_response(
-                smiles=smiles, ph=ph, inputs=inputs, body=body
-            )
-        else:
-            from deeporigin.utils.hashing import hash_dict, normalize_function_body
-
-            normalized_body = normalize_function_body(body)
-            body_hash = hash_dict(normalized_body)
-
-            try:
-                response = load_fixture(f"function-runs/{function_key}/{body_hash}")
-            except FileNotFoundError:
-                raise FileNotFoundError(
-                    f"No fixture found for function '{function_key}' with request hash '{body_hash}'. "
-                    f"Please create a fixture at: function-runs/{function_key}/{body_hash}.json"
-                ) from None
-
-        # Make a deep copy to avoid mutating the cached fixture
-        response = copy.deepcopy(response)
-
-        from tests.fixture_utils import patch_fixture_version
-
-        if isinstance(response, dict):
-            patch_fixture_version(response)
-            response["id"] = str(uuid.uuid4())
-        elif isinstance(response, list):
-            for item in response:
-                if isinstance(item, dict):
-                    patch_fixture_version(item)
-
-        # Replace protein_id and ligand_id in functionOutputs with IDs from userInputs
-        # This is needed because normalize_function_body strips IDs before hashing,
-        # so different IDs hash to the same value
-        inputs = body.get("inputs", body.get("params", {}))
-        protein = inputs.get("protein", {})
-        protein_id = protein.get("id") if isinstance(protein, dict) else None
-        ligand = inputs.get("ligand1") or inputs.get("ligand")
-        if not ligand:
-            ligands_list = inputs.get("ligands")
-            if isinstance(ligands_list, list) and ligands_list:
-                ligand = ligands_list[0]
-        if ligand is None:
-            ligand = {}
-        ligand_id = ligand.get("id") if isinstance(ligand, dict) else None
-
-        if protein_id or ligand_id:
-            if isinstance(response, dict):
-                function_outputs = response.get("functionOutputs")
-                if function_outputs is not None:
-                    response["functionOutputs"] = _replace_ids_in_function_outputs(
-                        function_outputs, protein_id=protein_id, ligand_id=ligand_id
-                    )
-            elif isinstance(response, list):
-                for item in response:
-                    if isinstance(item, dict):
-                        function_outputs = item.get("functionOutputs")
-                        if function_outputs is not None:
-                            item["functionOutputs"] = _replace_ids_in_function_outputs(
-                                function_outputs,
-                                protein_id=protein_id,
-                                ligand_id=ligand_id,
-                            )
-
-        _inject_result_explorer_records(function_key, response)
-
-        return response
-
-    def _inject_result_explorer_records(
-        function_key: str, response: dict[str, Any] | list[dict[str, Any]]
-    ) -> None:
-        """Populate the shared result-explorer store from function outputs.
-
-        When a function run produces structured outputs (e.g. pockets, poses),
-        this mirrors the production MQ flow by creating result-explorer records
-        so that subsequent result-explorer queries return the data.
-
-        Only completed runs inject records; quoted responses do not produce
-        results (matching production behaviour).
-        """
-        if not isinstance(response, dict):
-            return
-
-        if response.get("status") != "Completed":
-            return
-
-        function_outputs = response.get("functionOutputs")
-        if not isinstance(function_outputs, dict):
-            return
-
-        execution_id = response.get("id", str(uuid.uuid4()))
-
-        tool_key = function_key
-        tool_version = "0.0.0"
-        func_info = response.get("function", {})
-        manifest = func_info.get("manifestBody", {})
-        if manifest.get("version"):
-            tool_version = manifest["version"]
-
-        # Maps function keys to the field in functionOutputs that should
-        # be mirrored into the result-explorer store.  This emulates the
-        # production message-queue flow where function outputs are written
-        # to the result-explorer table asynchronously.  When adding a new
-        # function type, add an entry here so that downstream queries
-        # (e.g. LigandSet.from_docking_result, Pocket.from_result) can
-        # find the records via result-explorer/search.
-        output_key_map: dict[str, tuple[str, str]] = {
-            "deeporigin.pocketfinder": ("pockets", "pocket"),
-            "deeporigin.docking": ("poses", "pose"),
-            "deeporigin.system-prep": ("system", "preparedsystem"),
-        }
-
-        entry = output_key_map.get(function_key)
-        if not entry:
-            return
-
-        output_key, result_type = entry
-        output_value = function_outputs.get(output_key)
-        if output_value is None:
-            return
-
-        # Some functions produce a list of items (pockets, poses) while
-        # others produce a single dict (system-prep).  Normalise to a
-        # list so the injection logic is uniform.
-        items = output_value if isinstance(output_value, list) else [output_value]
-        for item in items:
-            record = {
-                "id": "08" + str(uuid.uuid4()).replace("-", "").upper()[:11],
-                "tool_key": tool_key,
-                "tool_version": tool_version,
-                "result_type": result_type,
-                "data": dict(item),
-                "compute_job_id": execution_id,
-            }
-            results.append(record)
-
-    def _inject_docking_tool_execution_results(execution: dict[str, Any]) -> None:
-        """Mirror function-run docking into ``results`` when a tool execution completes."""
-        eid = execution.get("executionId")
-        tkey = (execution.get("tool") or {}).get("key")
-        if not eid or tkey != "deeporigin.docking":
-            return
-        if any(r.get("compute_job_id") == eid for r in results):
-            return
-        from tests.fixture_utils import patch_fixture_version
-
-        response = copy.deepcopy(load_fixture("function-runs/deeporigin.docking/run"))
-        patch_fixture_version(response)
-        response["id"] = eid
-        response["status"] = "Completed"
-        user_inputs = execution.get("userInputs", {})
-        protein = (
-            user_inputs.get("protein", {}) if isinstance(user_inputs, dict) else {}
-        )
-        protein_id = protein.get("id") if isinstance(protein, dict) else None
-        ligand_id = None
-        ligands_list = user_inputs.get("ligands") or []
-        if (
-            isinstance(ligands_list, list)
-            and ligands_list
-            and isinstance(ligands_list[0], dict)
-        ):
-            ligand_id = ligands_list[0].get("id")
-        fo = response.get("functionOutputs")
-        if isinstance(fo, dict):
-            response["functionOutputs"] = _replace_ids_in_function_outputs(
-                fo, protein_id=protein_id, ligand_id=ligand_id
-            )
-        _inject_result_explorer_records("deeporigin.docking", response)
-
-    @router.post("/tools/{org_key}/functions/{function_key}")
-    async def run_function(
-        org_key: str, function_key: str, request: Request
-    ) -> dict[str, Any] | list[dict[str, Any]]:
-        """Run a function (latest version)."""
-        return await _handle_function_run(function_key, request)
-
-    @router.post("/tools/{org_key}/functions/{function_key}/{version}")
-    async def run_function_version(
-        org_key: str, function_key: str, version: str, request: Request
-    ) -> dict[str, Any] | list[dict[str, Any]]:
-        """Run a specific version of a function."""
-        return await _handle_function_run(function_key, request)
 
     @router.get("/tools/{org_key}/clusters")
     async def list_clusters(org_key: str, request: Request) -> dict[str, Any]:
@@ -945,7 +987,7 @@ def create_tools_router(
         inputs = body.get("inputs", {}) or {}
         n_lig = len(inputs.get("ligands") or [])
         if tool_key == "deeporigin.docking" and body.get("sync") is True and n_lig == 1:
-            execution = _create_docking_blocking_run_dto(
+            execution = _create_blocking_run_dto(
                 org_key=org_key,
                 tool_key=tool_key,
                 tool_version=tool_version,
@@ -954,6 +996,46 @@ def create_tools_router(
             eid = execution["executionId"]
             executions[eid] = execution
             _inject_docking_tool_execution_results(execution)
+            return _normalize_execution(execution)
+        if tool_key == "deeporigin.pocket-finder" and body.get("sync") is True:
+            execution = _create_blocking_run_dto(
+                org_key=org_key,
+                tool_key=tool_key,
+                tool_version=tool_version,
+                body=body,
+            )
+            eid = execution["executionId"]
+            executions[eid] = execution
+            _inject_pocketfinder_tool_execution_results(execution)
+            return _normalize_execution(execution)
+        if tool_key == "deeporigin.system-prep" and body.get("sync") is True:
+            execution = _create_blocking_run_dto(
+                org_key=org_key,
+                tool_key=tool_key,
+                tool_version=tool_version,
+                body=body,
+            )
+            eid = execution["executionId"]
+            executions[eid] = execution
+            _inject_sysprep_tool_execution_results(execution)
+            return _normalize_execution(execution)
+        if tool_key == "deeporigin.mol-props-protonation":
+            execution = _build_protonation_execution(
+                org_key=org_key,
+                tool_key=tool_key,
+                tool_version=tool_version,
+                body=body,
+            )
+            executions[execution["executionId"]] = execution
+            return _normalize_execution(execution)
+        if tool_key.startswith("deeporigin.mol-props-"):
+            execution = _build_molprops_execution(
+                org_key=org_key,
+                tool_key=tool_key,
+                tool_version=tool_version,
+                body=body,
+            )
+            executions[execution["executionId"]] = execution
             return _normalize_execution(execution)
         if tool_key == "deeporigin.bulk-docking" and approve_amount == 0:
             execution = _create_bulk_docking_quote(

@@ -1,11 +1,11 @@
-"""This module contains tests for functions.
+"""End-to-end tests for drug-discovery tools backed by ``client.executions.create``.
 
 These are meant to be run against a live instance.
 """
 
 import pytest
 
-from conftest import check_function_exists, check_tool_exists
+from conftest import check_tool_exists
 from deeporigin.drug_discovery import (
     Docking,
     Ligand,
@@ -16,43 +16,22 @@ from deeporigin.drug_discovery import (
     Protein,
 )
 from deeporigin.drug_discovery.structures.prepared_system import PreparedSystem
-from deeporigin.drug_discovery.sync_function_responses import SyncFunctionResponses
-from deeporigin.drug_discovery.system_prep import SystemPrep, for_abfe
+from deeporigin.drug_discovery.system_prep import SystemPrep
 from deeporigin.exceptions import DeepOriginException
 from deeporigin.platform import DeepOriginClient
 from deeporigin.platform.constants import TOOL_KEYS_AND_VERSIONS
 from deeporigin.utils.constants import MOLPROPS_PROPERTY_KEYS
 
 
-def test_functions_list_lv1(client: DeepOriginClient) -> None:
-    """``Functions.list()`` returns definitions and caches the list on the client."""
-    first = client.functions.list()
-    assert isinstance(first, list), "Expected a list"
-    assert len(first) > 0, "Expected at least one function definition"
-
-    fn = first[0]
-    for key in [
-        "version",
-        "enabled",
-        "manifestBody",
-        "billingCode",
-        "resourceId",
-    ]:
-        assert key in fn, f"Expected function definition to have key {key}"
-
-    second = client.functions.list()
-    assert second is first, "Expected repeated list() to return the cached list"
-
-
 def test_molprops_lv1(client: DeepOriginClient):
     mp = TOOL_KEYS_AND_VERSIONS["mol_props"]
     missing_molprops = [
-        f"{mp['function_key_prefix']}-{p}"
+        f"{mp['tool_key_prefix']}-{p}"
         for p in sorted(MOLPROPS_PROPERTY_KEYS)
-        if not check_function_exists(client, f"{mp['function_key_prefix']}-{p}")
+        if not check_tool_exists(client, f"{mp['tool_key_prefix']}-{p}")
     ]
     assert not missing_molprops, (
-        f"Mol props functions not registered on platform: {missing_molprops}"
+        f"Mol props tools not registered on platform: {missing_molprops}"
     )
 
     ligand = Ligand.from_smiles(
@@ -76,11 +55,11 @@ def test_pocket_finder_quote_lv1(
     registered_protein: Protein,
 ) -> None:
     """PocketFinder.quote() returns an estimate without running the tool."""
-    assert check_function_exists(
+    assert check_tool_exists(
         client,
-        TOOL_KEYS_AND_VERSIONS["pocket_finder"]["function_key"],
-        TOOL_KEYS_AND_VERSIONS["pocket_finder"]["function_version"],
-    ), "Pocket finder function not registered on platform (expected key/version)."
+        TOOL_KEYS_AND_VERSIONS["pocket_finder"]["tool_key"],
+        TOOL_KEYS_AND_VERSIONS["pocket_finder"]["tool_version"],
+    ), "Pocket finder tool not registered on platform (expected key/version)."
 
     pf = PocketFinder(protein=registered_protein, client=client)
     pf.quote()
@@ -108,11 +87,11 @@ def test_pocket_finder_lv2(
     entity in the fixture). ``registered_protein`` additionally asserts
     platform-linked IDs and ``Pocket.from_result`` hydration.
     """
-    assert check_function_exists(
+    assert check_tool_exists(
         client,
-        TOOL_KEYS_AND_VERSIONS["pocket_finder"]["function_key"],
-        TOOL_KEYS_AND_VERSIONS["pocket_finder"]["function_version"],
-    ), "Pocket finder function not registered on platform (expected key/version)."
+        TOOL_KEYS_AND_VERSIONS["pocket_finder"]["tool_key"],
+        TOOL_KEYS_AND_VERSIONS["pocket_finder"]["tool_version"],
+    ), "Pocket finder tool not registered on platform (expected key/version)."
 
     protein: Protein = request.getfixturevalue(protein_fixture)
     num_pockets = 1
@@ -206,25 +185,36 @@ def test_sysprep_lv2(
     additionally checks the result-explorer row for this job (tool key, protein
     id, stored ``data`` payload).
     """
-    assert check_function_exists(
+    assert check_tool_exists(
         client,
-        TOOL_KEYS_AND_VERSIONS["sysprep"]["function_key"],
-        TOOL_KEYS_AND_VERSIONS["sysprep"]["function_version"],
-    ), "System prep function not registered on platform (expected key/version)."
+        TOOL_KEYS_AND_VERSIONS["sysprep"]["tool_key"],
+        TOOL_KEYS_AND_VERSIONS["sysprep"]["tool_version"],
+    ), "System prep tool not registered on platform (expected key/version)."
 
     protein: Protein = request.getfixturevalue(protein_fixture)
     ligand: Ligand = request.getfixturevalue(ligand_fixture)
 
     if protein_fixture == "brd_protein":
-        result = for_abfe(
+        sysprep = SystemPrep(
             protein=protein,
             ligand=ligand,
             client=client,
             add_H_atoms=True,
             protonate_protein=True,
         )
-        assert isinstance(result, SyncFunctionResponses)
-        assert result.response.get("status") == "Completed"
+        inputs = sysprep.sync_inputs()
+        result = client.executions.create(
+            data={
+                "inputs": inputs,
+                "outputs": {},
+                "metadata": {},
+                "sync": True,
+            },
+            tool_key=TOOL_KEYS_AND_VERSIONS["sysprep"]["tool_key"],
+            tool_version=TOOL_KEYS_AND_VERSIONS["sysprep"]["tool_version"],
+        )
+        assert isinstance(result, dict)
+        assert result.get("status") == "Succeeded"
         return
 
     sysprep = SystemPrep(
@@ -254,7 +244,7 @@ def test_sysprep_lv2(
     assert len(records) >= 1, "Expected a prepared-system row for this compute job"
     record = records[0]
     assert record.get("compute_job_id") == execution_id
-    assert record.get("tool_key") == TOOL_KEYS_AND_VERSIONS["sysprep"]["function_key"]
+    assert record.get("tool_key") == TOOL_KEYS_AND_VERSIONS["sysprep"]["tool_key"]
     data = record["data"]
     assert isinstance(data, dict) and len(data) > 0
     assert data.get("protein_id") == protein.id
@@ -265,11 +255,11 @@ def test_protonation_lv2(client: DeepOriginClient):
     """Test protonation returns Protonation with ligands populated after run."""
     from deeporigin.drug_discovery.protonation import Protonation
 
-    assert check_function_exists(
+    assert check_tool_exists(
         client,
-        TOOL_KEYS_AND_VERSIONS["mol_props"]["protonation_function_key"],
-        TOOL_KEYS_AND_VERSIONS["mol_props"]["function_version"],
-    ), "Protonation function not registered on platform (expected key/version)."
+        TOOL_KEYS_AND_VERSIONS["mol_props"]["protonation_tool_key"],
+        TOOL_KEYS_AND_VERSIONS["mol_props"]["tool_version"],
+    ), "Protonation tool not registered on platform (expected key/version)."
 
     ligand = Ligand.from_smiles("C=CCCn1cc(-c2cccc(C(=O)N(C)C)c2)c2cc[nH]c2c1=O")
 

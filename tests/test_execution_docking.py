@@ -14,7 +14,6 @@ from deeporigin.drug_discovery.docking import (
 )
 from deeporigin.drug_discovery.structures.ligand import Ligand, LigandSet
 from deeporigin.platform.constants import TERMINAL_STATES, TOOL_KEYS_AND_VERSIONS
-from deeporigin.utils.constants import DOCKING_RESULTS_DATAFRAME_COLUMNS
 
 
 def test_docking_from_dto_maps_async_execution_fields_from_fixture(
@@ -203,6 +202,25 @@ def test_docking_start_rejects_single_ligand(
         docking.start()
 
 
+def test_docking_run_rejects_multiple_ligands(
+    registered_protein,
+    registered_pocket,
+    registered_ligand,
+    client,
+) -> None:
+    """run() is only for a single ligand; multi-ligand jobs must use start()."""
+    second = Ligand.from_smiles("CCO")
+    two = LigandSet(ligands=[registered_ligand, second])
+    docking = Docking(
+        protein=registered_protein,
+        pocket=registered_pocket,
+        ligands=two,
+        client=client,
+    )
+    with pytest.raises(ValueError, match="exactly one ligand"):
+        docking.run()
+
+
 def test_docking_run_lv2(
     client,
     registered_protein,
@@ -286,15 +304,22 @@ def test_docking_start_sync_get_results_lv3(
         f"Expected status Succeeded, got {docking.status!r}"
     )
 
-    df = docking.get_results()
-    assert df is not None, "get_results() should return a DataFrame after Succeeded"
-    assert list(df.columns) == list(DOCKING_RESULTS_DATAFRAME_COLUMNS)
-    assert len(df) >= 1, "Expected at least one result row"
-
-    poses = docking.get_poses()
-    assert poses is not None, "get_poses() should return poses after Succeeded"
+    poses = docking.get_results()
+    assert poses is not None, "get_results() should return a LigandSet after Succeeded"
+    assert isinstance(poses, LigandSet), "get_results() should return a LigandSet"
     assert len(poses) >= 1, "Expected at least one pose"
     for pose in poses:
+        assert isinstance(pose, Ligand), "Each pose should be a Ligand"
+        assert pose.smiles is not None, "Pose should have SMILES"
+
+    df = poses.to_dataframe()
+    assert df is not None, "to_dataframe() should return a DataFrame"
+    assert len(df) >= 1, "Expected at least one result row"
+
+    sdf_poses = docking.get_poses()
+    assert sdf_poses is not None, "get_poses() should return poses after Succeeded"
+    assert len(sdf_poses) >= 1, "Expected at least one pose"
+    for pose in sdf_poses:
         assert isinstance(pose, Ligand), "Each pose should be a Ligand"
         assert pose.mol is not None, "Pose should have a loaded RDKit mol"
         assert pose.smiles is not None, "Pose should have SMILES"

@@ -6,7 +6,6 @@ from typing import Any, Protocol, Self, cast
 
 from beartype import beartype
 import numpy as np
-import pandas as pd
 
 from deeporigin.drug_discovery.execution import Execution
 from deeporigin.drug_discovery.execution_mixins import (
@@ -22,8 +21,6 @@ from deeporigin.drug_discovery.structures.protein import Protein
 from deeporigin.exceptions import DeepOriginException
 from deeporigin.platform.client import DeepOriginClient
 from deeporigin.platform.constants import TOOL_KEYS_AND_VERSIONS
-from deeporigin.platform.executions import Executions
-from deeporigin.utils.constants import DOCKING_RESULTS_DATAFRAME_COLUMNS
 
 Number = float | int
 
@@ -49,18 +46,6 @@ class _SupportsLigandSetSync(Protocol):
         lazy: bool = False,
         client: DeepOriginClient | None = None,
     ) -> None: ...
-
-
-def _require_executions(client: DeepOriginClient) -> Executions:
-    """Return ``client.executions`` or raise if the executions API is unavailable."""
-    ex = client.executions
-    if ex is None:
-        raise DeepOriginException(
-            title="Executions API unavailable",
-            message="The tools executions API is not available in this installation.",
-            fix="Use a full deeporigin install with platform.executions included.",
-        )
-    return ex
 
 
 def _sync_entity(
@@ -137,16 +122,6 @@ def _docking_default_name(protein: Protein, ligands: LigandSet) -> str:
     return f"Docking {p} to {n} ligands."
 
 
-def _price_total_from_execution_dto(dto: dict[str, Any]) -> float | None:
-    """Return ``priceTotal`` from the first successful quotation, if any."""
-    quotation = dto.get("quotationResult") or {}
-    successful = quotation.get("successfulQuotations") or []
-    if not successful:
-        return None
-    price = successful[0].get("priceTotal")
-    return float(price) if price is not None else None
-
-
 @beartype
 class Docking(
     Execution, QuoteMixin, SyncExecutableMixin, AsyncExecutableMixin, NotebookWatchMixin
@@ -154,9 +129,9 @@ class Docking(
     """Molecular docking via the tools API (``client.executions.create``).
 
     The execution request body includes ``sync`` (``true`` = blocking, ``false`` =
-    immediate DTO). :meth:`run` sets ``"sync": true`` and sends **one ligand** per
-    request; the server blocks until the run finishes and returns the completed
-    execution. :meth:`quote` and :meth:`start` set ``"sync": false`` (non-blocking).
+    immediate DTO). :meth:`run` sets ``"sync": true`` for exactly **one** ligand; the
+    server blocks until the run finishes and returns the completed execution.
+    :meth:`quote` and :meth:`start` set ``"sync": false`` (non-blocking).
 
     :meth:`start` is for multiple ligands only: one ``create`` with all ligands. The
     call **returns immediately** with an execution DTO. For a single ligand, use
@@ -321,7 +296,7 @@ class Docking(
         self._ensure_platform_inputs()
         payload = self._make_payload(approve_amount=0, sync=False)
 
-        return _require_executions(self.client).create(
+        return self.client.executions.create(  # ty:ignore[union-attr]
             data=payload,
             tool_key=self.tool_key,
             tool_version=self.tool_version,
@@ -338,93 +313,65 @@ class Docking(
             )
         super().start(**kwargs)
 
-    def run(self) -> LigandSet:
-        """Execute docking: one blocking ``executions.create`` per ligand.
-
-        The platform holds the request until the run finishes and returns the
-        final execution in the response (no client-side poll loop).
-
-        Returns:
-            A ``LigandSet`` of docked poses.
-        """
+    def _validate_sync_run_params(self) -> None:
+        """Raise if :meth:`run` preconditions are not met (ligand count, effort)."""
+        if len(self.ligands) != 1:
+            raise ValueError(
+                "run() requires exactly one ligand; use start() for multiple ligands."
+            ) from None
         if not 1 <= self.effort <= 5:
             raise DeepOriginException(
                 f"effort must be between 1 and 5 inclusive, got {self.effort}"
             ) from None
 
-        client = self.client
-        ex = _require_executions(client)
-        ligand_list = list(self.ligands)
-
+    def _ensure_inputs_for_sync_run(self) -> None:
+        """Validate sync-run parameters and sync protein and ligands for the API."""
+        self._validate_sync_run_params()
         self._ensure_platform_inputs()
 
-        execution_ids: list[str] = []
-        first_id: str | None = None
-        cost_total: float = 0.0
-        got_cost = False
+    def run(self) -> LigandSet:
+        """Execute docking synchronously (blocking).
 
-        for ligand in ligand_list:
-            create_dto = ex.create(
-                data=self._make_payload(
-                    ligand_set=LigandSet(ligands=[ligand]), sync=True
-                ),
-                tool_key=self.tool_key,
-                tool_version=self.tool_version,
-            )
-            eid = create_dto.get("executionId")
-            if not eid:
-                raise DeepOriginException(
-                    title="Docking run failed",
-                    message="tools execution create did not return an executionId.",
-                ) from None
-            final_status = create_dto.get("status")
-            if final_status != "Succeeded":
-                reason = create_dto.get("statusReason") or final_status
-                raise DeepOriginException(
-                    title="Docking run did not succeed",
-                    message=(
-                        f"Execution {eid!r} ended with status {final_status!r}: {reason!r}."
-                    ),
-                ) from None
-            price = _price_total_from_execution_dto(create_dto)
-            if first_id is None:
-                first_id = eid
-            if price is not None:
-                cost_total += price
-                got_cost = True
-            execution_ids.append(eid)
+        Submits one synchronous tools execution and returns docked poses from the
+        data platform. Requires exactly one ligand in :attr:`ligands`; use
+        :meth:`start` for multiple ligands.
 
-        self._id = first_id
-        self._cost = cost_total if got_cost else None
+        Returns:
+            A ``LigandSet`` of docked poses.
 
-        ids_ok = self.protein.id is not None and all(
-            lig.id is not None for lig in ligand_list
+        Raises:
+            ValueError: If :attr:`ligands` does not contain exactly one ligand.
+            DeepOriginException: If ``effort`` is outside 1–5, the execution does not
+                succeed, or poses could not be loaded.
+        """
+        self._ensure_inputs_for_sync_run()
+        dto = self.client.executions.create(  # ty:ignore[unresolved-attribute]
+            data=self._make_payload(sync=True),
+            tool_key=self.tool_key,
+            tool_version=self.tool_version,
         )
-        if ids_ok and execution_ids:
-            all_poses: list[Ligand] = []
-            for execution_id in execution_ids:
-                poses_ls = LigandSet.from_docking_result(
-                    execution_id=execution_id,
-                    client=client,
-                )
-                all_poses.extend(poses_ls.ligands)
-            if all_poses:
-                return LigandSet(ligands=all_poses)
+        self.update_from_dto(dto)
 
-        raise DeepOriginException(
-            title="Could not load docking poses",
-            message=(
-                "Executions completed but no poses could be loaded from the data platform. "
-                "Ensure protein and ligand IDs are set and results are available."
-            ),
-        ) from None
+        final_status = dto.get("status")
+        if final_status != "Succeeded":
+            eid = dto.get("executionId")
+            reason = dto.get("statusReason") or final_status
+            raise DeepOriginException(
+                title="Docking run did not succeed",
+                message=(
+                    f"Execution {eid!r} ended with status {final_status!r}: {reason!r}."
+                ),
+            ) from None
+
+        # returning all poses because we are running a sync tool
+        return self.get_results(dto, all_poses=True)
 
     def _start_impl(self, **kwargs) -> None:
         """Submit docking as a persisted async execution."""
         self._ensure_platform_inputs()
         payload = self._make_payload(sync=False)
 
-        execution_dto = _require_executions(self.client).create(
+        execution_dto = self.client.executions.create(  # ty:ignore[unresolved-attribute]
             data=payload,
             tool_key=self.tool_key,
             tool_version=self.tool_version,
@@ -452,7 +399,8 @@ class Docking(
 
         Args:
             ligand_set: Ligands to include in tool ``inputs`` (default: all
-                :attr:`ligands`). :meth:`run` passes a single-ligand set per call.
+                :attr:`ligands`). :meth:`run` uses the default set (must be exactly one
+                ligand).
 
         Returns:
             A tuple of (params, metadata).
@@ -518,7 +466,7 @@ class Docking(
 
         Args:
             ligand_set: Subset of ligands for tool ``inputs`` (default: all
-                :attr:`ligands`).
+                :attr:`ligands`). Omitted by :meth:`run`, which requires a single ligand.
             approve_amount: When not ``None``, sets ``approveAmount`` on the payload.
                 Use ``0`` for quoting.
             sync: ``False`` = async (immediate execution DTO). ``True`` = blocking
@@ -640,70 +588,67 @@ class Docking(
 
         return instance
 
-    @classmethod
-    def from_id(
-        cls,
-        id: str,
+    @beartype
+    def get_results(
+        self,
+        dto: dict[str, Any] | None = None,
         *,
-        client: DeepOriginClient | None = None,
-    ) -> Self:
-        """Construct a Docking instance from an existing platform execution ID.
+        all_poses: bool = False,
+    ) -> LigandSet:
+        """Load docked poses for this execution from the data platform or ``jobOutputs``.
 
-        Fetches the execution record via the API and delegates to
-        :meth:`from_dto`.
+        Tries :meth:`~deeporigin.drug_discovery.structures.ligand.LigandSet.from_result`
+        first (fast metadata path, no SDF download). On failure, parses
+        ``jobOutputs.poses`` from ``dto``, or fetches the execution DTO via
+        ``client.executions.get`` when ``dto`` is omitted.
+
+        To convert the result to a DataFrame::
+
+            poses = docking.get_results()
+            df = poses.to_dataframe()
 
         Args:
-            id: Platform execution ID.
-            client: Optional API client. Uses the default if not provided.
+            dto: Optional execution payload (``executions.create`` /
+                ``executions.get``). Passing it avoids an extra GET when the data
+                platform path fails but the sync response included ``jobOutputs``.
+            all_poses: When ``True``, include every pose instead of only the
+                best pose per ligand.
 
         Returns:
-            A fully-hydrated Docking instance with status synced from
-            the platform.
-        """
-        return super().from_id(id, client=client)
-
-    def get_results(self, *, all_poses: bool = False, **kwargs) -> pd.DataFrame | None:
-        """Retrieve docking results as a table (no structure download).
-
-        Columns: ID, protein ID, ligand ID, pocket ID, binding energy, pose_score,
-        best_pose.
-
-        Uses :meth:`~deeporigin.drug_discovery.execution.Execution.get_results`
-        to fetch result rows for this execution. By default
-        (``all_poses=False``) the query is restricted to the best pose per
-        ligand; pass ``all_poses=True`` for every pose row.
-
-        Returns:
-            A DataFrame with one row per pose record, or ``None`` if the API
-            returns no pose rows yet.
+            A ``LigandSet`` of docked poses.
 
         Raises:
-            ValueError: If no execution has been started.
+            ValueError: If :attr:`id` is unset.
+            DeepOriginException: If no poses could be loaded from the data
+                platform or ``jobOutputs``.
         """
-        filter_dict = None if all_poses else {"best_pose": {"eq": True}}
-        response = super().get_results(filter_dict=filter_dict, limit=None)
-        records = response.get("data", [])
-        if not records:
-            return None
+        exec_id = self._ensure_id()
 
-        rows: list[dict[str, Any]] = []
-        for record in records:
-            data = record.get("data") or {}
-            if not isinstance(data, dict):
-                data = {}
-            rows.append(
-                {
-                    "ID": record.get("id"),
-                    "protein ID": data.get("protein_id"),
-                    "ligand ID": data.get("ligand_id"),
-                    "pocket ID": data.get("pocket_id"),
-                    "binding energy": data.get("binding_energy"),
-                    "pose_score": data.get("pose_score"),
-                    "best_pose": data.get("best_pose"),
-                }
+        best_pose: bool | None = None if all_poses else True
+
+        try:
+            return LigandSet.from_result(
+                execution_id=exec_id,
+                best_pose=best_pose,
+                client=self.client,
             )
+        except Exception:
+            # we can still potentially get results from the jobOutputs
+            pass
 
-        return pd.DataFrame(rows, columns=list(DOCKING_RESULTS_DATAFRAME_COLUMNS))
+        try:
+            if dto is None:
+                dto = self.client.executions.get(exec_id)  # ty:ignore[unresolved-attribute]
+            jo = dto.get("jobOutputs")
+            raw = jo.get("poses", []) if isinstance(jo, dict) else []
+            return LigandSet.from_json(raw, client=self.client)
+        except Exception as exc:
+            raise DeepOriginException(
+                title="Could not load docking poses",
+                message=(
+                    "No poses could be parsed from the data platform or jobOutputs."
+                ),
+            ) from exc
 
     def get_undocked_ligands(self) -> LigandSet | None:
         """Get a list of ligands that failed to dock.
@@ -728,7 +673,7 @@ class Docking(
             [ligand for ligand in self.ligands if ligand.id in missing_ids]
         )
 
-    def get_poses(self, *, all_poses: bool = False) -> LigandSet | None:
+    def get_poses(self, *, all_poses: bool = False) -> LigandSet:
         """Download pose SDFs from the platform and return a ``LigandSet``.
 
         Args:
@@ -736,30 +681,12 @@ class Docking(
                 download only the best pose per ligand.
 
         Returns:
-            A ``LigandSet`` of docked poses, or ``None`` if no pose files yet.
+            A ``LigandSet`` of docked poses.
 
         Raises:
             ValueError: If no execution has been started.
+            DeepOriginException: If no poses could be loaded.
         """
-        filter_dict = None if all_poses else {"best_pose": {"eq": True}}
-        response = super().get_results(filter_dict=filter_dict, limit=None)
-        records = response.get("data", [])
-        remote_paths: list[str] = []
-        for record in records:
-            data = record.get("data", {})
-            if not isinstance(data, dict):
-                continue
-            fp = data.get("file_path")
-            if fp:
-                remote_paths.append(fp)
-
-        if not remote_paths:
-            return None
-
-        local_paths = self.client.files.download_many(files=remote_paths, lazy=True)
-
-        result = LigandSet()
-        for path in local_paths:
-            result.ligands += LigandSet.from_sdf(path).ligands
-
-        return result
+        poses = self.get_results(all_poses=all_poses)
+        poses.download(client=self.client, lazy=True)
+        return poses
