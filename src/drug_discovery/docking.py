@@ -363,7 +363,8 @@ class Docking(
                 ),
             ) from None
 
-        return self.get_results(dto)
+        # returning all poses because we are running a sync tool
+        return self.get_results(dto, all_poses=True)
 
     def _start_impl(self, **kwargs) -> None:
         """Submit docking as a persisted async execution."""

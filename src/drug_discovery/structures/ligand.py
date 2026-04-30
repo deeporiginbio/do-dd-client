@@ -2386,7 +2386,7 @@ class LigandSet:
             "ligand_id",
             "name",
             "project_id",
-            "result_explorer_id",
+            "id",
         }
     )
 
@@ -2441,9 +2441,9 @@ class LigandSet:
         if proj is not None:
             lig.project_id = proj
 
-        rex = entry.get("result_explorer_id")
+        rex = entry.get("id")
         if rex is not None:
-            lig.properties["result_explorer_id"] = str(rex)
+            lig.properties["id"] = str(rex)
 
         for key, val in entry.items():
             if key in reserved:
@@ -2593,7 +2593,7 @@ class LigandSet:
                     row["smiles"] = sm
             rid = rec.get("id")
             if rid is not None:
-                row["result_explorer_id"] = str(rid)
+                row["id"] = str(rid)
             rows.append(row)
 
         return cls.from_json(rows, client=client)
