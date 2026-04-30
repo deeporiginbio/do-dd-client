@@ -41,7 +41,7 @@ Use this table to pick the right call. The client uses **two upload styles** (mu
 |--------|----------|
 | **`download(remote_path, ...)`** (default) | **One** file; default path uses a **signed URL** and **streams** to disk — preferred for **large** files. |
 | **`download(..., direct=True)`** | **One** file via **GET** through the platform API; response body is read into memory — fine for **small** files or when you want a single hop through the gateway. |
-| **`download_many(files=...)`** | **Many** remote paths (dict of remote→local or list of remotes); each worker calls `download` (default signed-URL streaming). |
+| **`download_many(files=...)`** | **Many** remote paths (dict of remote→local or list of remotes); parallel `download` calls; returns **`dict[remote, local]`** (only successes when `skip_errors`). |
 | **`download_zip(remote_path, ...)`** | You want a **directory** as a **single ZIP** download. |
 
 ### Deletes

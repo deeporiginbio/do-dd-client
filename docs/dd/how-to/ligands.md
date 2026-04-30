@@ -713,6 +713,13 @@ You can add hydrogens to ligands, which is often necessary before generating 3D 
     ligands.to_sdf()
     ```
 
+    !!! note "Remote paths without local files"
+        If some ligands have `remote_path` set but `local_path` is unset (for example
+        poses from `LigandSet.from_docking_results`), call
+        `ligands.download(client=...)` before `to_sdf()`. That fetches each pose SDF
+        and reloads the RDKit ``mol`` from disk so 3D coordinates match the file (not
+        the placeholder 2D structure built from SMILES when the pose was created).
+
 
 
 ### To mol files

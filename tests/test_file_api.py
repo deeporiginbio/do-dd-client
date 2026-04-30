@@ -112,12 +112,13 @@ def test_download_files_with_list_lv1(client: DeepOriginClient):
     assert len(files) > 0, "should be some files in entities/"
 
     # Test with a list (first file only)
-    local_paths = client.files.download_many(
+    paths_by_remote = client.files.download_many(
         files=[files[0]],
     )
 
-    assert len(local_paths) == 1, "should have downloaded one file"
-    assert os.path.exists(local_paths[0]), "should have downloaded the file"
+    assert len(paths_by_remote) == 1, "should have downloaded one file"
+    local_path = next(iter(paths_by_remote.values()))
+    assert os.path.exists(local_path), "should have downloaded the file"
 
 
 def test_download_files_with_dict_lv1(client: DeepOriginClient):
@@ -129,12 +130,13 @@ def test_download_files_with_dict_lv1(client: DeepOriginClient):
     assert len(files) > 0, "should be some files in entities/"
 
     # Test with a dict
-    local_paths = client.files.download_many(
+    paths_by_remote = client.files.download_many(
         files={files[0]: None},
     )
 
-    assert len(local_paths) == 1, "should have downloaded one file"
-    assert os.path.exists(local_paths[0]), "should have downloaded the file"
+    assert len(paths_by_remote) == 1, "should have downloaded one file"
+    local_path = next(iter(paths_by_remote.values()))
+    assert os.path.exists(local_path), "should have downloaded the file"
 
 
 def test_get_signed_url_upload_lv1(client: DeepOriginClient):

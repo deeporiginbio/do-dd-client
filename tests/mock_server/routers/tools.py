@@ -630,7 +630,7 @@ def create_tools_router(
         # production message-queue flow where function outputs are written
         # to the result-explorer table asynchronously.  When adding a new
         # function type, add an entry here so that downstream queries
-        # (e.g. LigandSet.from_docking_result, Pocket.from_result) can
+        # (e.g. LigandSet.from_result, Pocket.from_result) can
         # find the records via result-explorer/search.
         output_key_map: dict[str, tuple[str, str]] = {
             "deeporigin.pocketfinder": ("pockets", "pocket"),

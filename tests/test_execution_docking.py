@@ -203,6 +203,25 @@ def test_docking_start_rejects_single_ligand(
         docking.start()
 
 
+def test_docking_run_rejects_multiple_ligands(
+    registered_protein,
+    registered_pocket,
+    registered_ligand,
+    client,
+) -> None:
+    """run() is only for a single ligand; multi-ligand jobs must use start()."""
+    second = Ligand.from_smiles("CCO")
+    two = LigandSet(ligands=[registered_ligand, second])
+    docking = Docking(
+        protein=registered_protein,
+        pocket=registered_pocket,
+        ligands=two,
+        client=client,
+    )
+    with pytest.raises(ValueError, match="exactly one ligand"):
+        docking.run()
+
+
 def test_docking_run_lv2(
     client,
     registered_protein,

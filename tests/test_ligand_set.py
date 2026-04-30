@@ -1,8 +1,10 @@
 import os
 from pathlib import Path
+import shutil
 import tempfile
 
 import pytest
+from rdkit import Chem
 
 from deeporigin.drug_discovery import BRD_DATA_DIR, DATA_DIR
 from deeporigin.drug_discovery.protonation import Protonation
@@ -1181,27 +1183,92 @@ def test_ligand_set_batches_invalid_size_raises(bad: int) -> None:
 def test_ligand_set_from_docking_results_lv0(
     monkeypatch: pytest.MonkeyPatch, client: DeepOriginClient
 ) -> None:
-    """from_docking_results collects poses from functionOutputs and loads SDFs."""
-    brd_file = str(DATA_DIR / "ligands" / "ligands-brd-all.sdf")
+    """from_docking_results merges userInputs SMILES and does not download pose SDFs."""
     calls: list[object] = []
 
     def _fake_download(*_a: object, **_k: object) -> str:
         calls.append(None)
-        return brd_file
+        return ""
 
     monkeypatch.setattr(client.files, "download", _fake_download)
     result = SyncFunctionResponses(
         [
             {
+                "userInputs": {
+                    "ligands": [{"id": "L1", "smiles": "C"}],
+                },
                 "functionOutputs": {
                     "poses": [
-                        {"file_path": "remote/a.sdf"},
-                        {"file_path": "remote/b.sdf"},
+                        {"file_path": "remote/a.sdf", "ligand_id": "L1"},
+                        {"file_path": "remote/b.sdf", "ligand_id": "L1"},
                     ],
                 },
             }
         ]
     )
     ls = LigandSet.from_docking_results(result=result, client=client)
-    assert len(calls) == 2
-    assert len(ls) == 8
+    assert len(calls) == 0
+    assert len(ls) == 2
+    assert all(lg.smiles == "C" for lg in ls)
+    assert {lg.remote_path for lg in ls} == {"remote/a.sdf", "remote/b.sdf"}
+
+
+def test_ligand_set_download_sets_local_paths(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, client: DeepOriginClient
+) -> None:
+    """download() uses download_many once, maps paths to ligands, reloads mol from SDF."""
+    fixture = Path(__file__).resolve().parent / "fixtures" / "brd-all-poses.sdf"
+    template = tmp_path / "one.sdf"
+    sup = Chem.SDMolSupplier(str(fixture))
+    mol0 = next(m for m in sup if m is not None)
+    w = Chem.SDWriter(str(template))
+    w.write(mol0)
+    w.close()
+
+    dm_kwargs: dict[str, object] = {}
+
+    def _fake_download_many(*, files: object, **kwargs: object) -> dict[str, str]:
+        dm_kwargs["files"] = files
+        dm_kwargs.update(kwargs)
+        keys = list(files.keys()) if isinstance(files, dict) else list(files)
+        out: dict[str, str] = {}
+        for k in keys:
+            dest = tmp_path / str(k).replace("/", "__")
+            shutil.copy(template, dest)
+            out[k] = str(dest)
+        return out
+
+    monkeypatch.setattr(client.files, "download_many", _fake_download_many)
+
+    a = Ligand.from_smiles("C")
+    a.remote_path = "r/a.sdf"
+    b = Ligand.from_smiles("CC")
+    b.remote_path = "r/b.sdf"
+    c = Ligand.from_smiles("CCC")
+    c.remote_path = "r/a.sdf"
+    d = Ligand.from_smiles("CCCC")
+    d.local_path = "/already/local.sdf"
+    d.remote_path = "r/ignored.sdf"
+    e = Ligand.from_smiles("N")
+
+    ls = LigandSet(ligands=[a, b, c, d, e])
+    ls.download(client=client, lazy=False, max_workers=4)
+
+    assert dm_kwargs["files"] == ["r/a.sdf", "r/b.sdf"]
+    assert dm_kwargs.get("lazy") is False
+    assert dm_kwargs.get("max_workers") == 4
+    assert a.local_path == str(tmp_path / "r__a.sdf")
+    assert b.local_path == str(tmp_path / "r__b.sdf")
+    assert c.local_path == str(tmp_path / "r__a.sdf")
+    assert d.local_path == "/already/local.sdf"
+    assert e.local_path is None
+    conf = a.mol.GetConformer()
+    zs = [conf.GetAtomPosition(i).z for i in range(a.mol.GetNumAtoms())]
+    assert max(abs(z) for z in zs) > 0.5
+
+
+def test_ligand_set_from_json_remote_pose_requires_smiles() -> None:
+    """from_json refuses remote-only poses without SMILES."""
+
+    with pytest.raises(ValueError, match="smiles"):
+        LigandSet.from_json([{"file_path": "tool-runs/x/pose.sdf"}])
