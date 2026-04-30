@@ -550,14 +550,27 @@ def create_tools_router(
             return
 
         items = output_value if isinstance(output_value, list) else [output_value]
+        # For docking poses: mark the first pose per ligand as best_pose=True so
+        # that the mock's top-level equality filter (best_pose == True) works.
+        best_pose_seen: set[str] = set()
         for item in items:
+            data = dict(item)
+            extra: dict[str, Any] = {}
+            if result_type == "pose":
+                if "best_pose" not in data:
+                    ligand_key = str(data.get("ligand_id") or "")
+                    is_best = ligand_key not in best_pose_seen
+                    data["best_pose"] = is_best
+                    best_pose_seen.add(ligand_key)
+                extra["best_pose"] = data["best_pose"]
             record = {
                 "id": "08" + str(uuid.uuid4()).replace("-", "").upper()[:11],
                 "tool_key": tool_key,
                 "tool_version": tool_version,
                 "result_type": result_type,
-                "data": dict(item),
+                "data": data,
                 "compute_job_id": execution_id,
+                **extra,
             }
             results.append(record)
 
@@ -593,6 +606,7 @@ def create_tools_router(
         outputs = _replace_ids_in_outputs(
             outputs, protein_id=protein_id, ligand_id=ligand_id
         )
+        execution["jobOutputs"] = outputs
         _inject_result_explorer_records_from_outputs(
             tool_key=tkey,
             tool_version=tool_version,

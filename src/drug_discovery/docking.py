@@ -6,7 +6,6 @@ from typing import Any, Protocol, Self, cast
 
 from beartype import beartype
 import numpy as np
-import pandas as pd
 
 from deeporigin.drug_discovery.execution import Execution
 from deeporigin.drug_discovery.execution_mixins import (
@@ -22,7 +21,6 @@ from deeporigin.drug_discovery.structures.protein import Protein
 from deeporigin.exceptions import DeepOriginException
 from deeporigin.platform.client import DeepOriginClient
 from deeporigin.platform.constants import TOOL_KEYS_AND_VERSIONS
-from deeporigin.utils.constants import DOCKING_RESULTS_DATAFRAME_COLUMNS
 
 Number = float | int
 
@@ -331,44 +329,6 @@ class Docking(
         self._validate_sync_run_params()
         self._ensure_platform_inputs()
 
-    def _ligand_set_from_sync_create_response(self, dto: dict[str, Any]) -> LigandSet:
-        """Build a pose ``LigandSet`` from a completed synchronous ``executions.create``."""
-        eid = dto.get("executionId")
-        if not eid:
-            raise DeepOriginException(
-                title="Docking run failed",
-                message="tools execution create did not return an executionId.",
-            ) from None
-        final_status = dto.get("status")
-        if final_status != "Succeeded":
-            reason = dto.get("statusReason") or final_status
-            raise DeepOriginException(
-                title="Docking run did not succeed",
-                message=(
-                    f"Execution {eid!r} ended with status {final_status!r}: {reason!r}."
-                ),
-            ) from None
-
-        ligand_list = list(self.ligands)
-        ids_ok = self.protein.id is not None and all(
-            lig.id is not None for lig in ligand_list
-        )
-        if ids_ok:
-            poses_ls = LigandSet.from_result(
-                execution_id=eid,
-                client=self.client,
-            )
-            if poses_ls.ligands:
-                return poses_ls
-
-        raise DeepOriginException(
-            title="Could not load docking poses",
-            message=(
-                "Executions completed but no poses could be loaded from the data platform. "
-                "Ensure protein and ligand IDs are set and results are available."
-            ),
-        ) from None
-
     def run(self) -> LigandSet:
         """Execute docking synchronously (blocking).
 
@@ -391,7 +351,19 @@ class Docking(
             tool_version=self.tool_version,
         )
         self.update_from_dto(dto)
-        return self._ligand_set_from_sync_create_response(dto)
+
+        final_status = dto.get("status")
+        if final_status != "Succeeded":
+            eid = dto.get("executionId")
+            reason = dto.get("statusReason") or final_status
+            raise DeepOriginException(
+                title="Docking run did not succeed",
+                message=(
+                    f"Execution {eid!r} ended with status {final_status!r}: {reason!r}."
+                ),
+            ) from None
+
+        return self.get_results(dto)
 
     def _start_impl(self, **kwargs) -> None:
         """Submit docking as a persisted async execution."""
@@ -615,48 +587,67 @@ class Docking(
 
         return instance
 
-    def get_results(self, *, all_poses: bool = False, **kwargs) -> pd.DataFrame | None:
-        """Retrieve docking results as a table (no structure download).
+    @beartype
+    def get_results(
+        self,
+        dto: dict[str, Any] | None = None,
+        *,
+        all_poses: bool = False,
+    ) -> LigandSet:
+        """Load docked poses for this execution from the data platform or ``jobOutputs``.
 
-        Columns: ID, protein ID, ligand ID, pocket ID, binding energy, pose_score,
-        best_pose.
+        Tries :meth:`~deeporigin.drug_discovery.structures.ligand.LigandSet.from_result`
+        first (fast metadata path, no SDF download). On failure, parses
+        ``jobOutputs.poses`` from ``dto``, or fetches the execution DTO via
+        ``client.executions.get`` when ``dto`` is omitted.
 
-        Uses :meth:`~deeporigin.drug_discovery.execution.Execution.get_results`
-        to fetch result rows for this execution. By default
-        (``all_poses=False``) the query is restricted to the best pose per
-        ligand; pass ``all_poses=True`` for every pose row.
+        To convert the result to a DataFrame::
+
+            poses = docking.get_results()
+            df = poses.to_dataframe()
+
+        Args:
+            dto: Optional execution payload (``executions.create`` /
+                ``executions.get``). Passing it avoids an extra GET when the data
+                platform path fails but the sync response included ``jobOutputs``.
+            all_poses: When ``True``, include every pose instead of only the
+                best pose per ligand.
 
         Returns:
-            A DataFrame with one row per pose record, or ``None`` if the API
-            returns no pose rows yet.
+            A ``LigandSet`` of docked poses.
 
         Raises:
-            ValueError: If no execution has been started.
+            ValueError: If :attr:`id` is unset.
+            DeepOriginException: If no poses could be loaded from the data
+                platform or ``jobOutputs``.
         """
-        filter_dict = None if all_poses else {"best_pose": {"eq": True}}
-        response = super().get_results(filter_dict=filter_dict, limit=None)
-        records = response.get("data", [])
-        if not records:
-            return None
+        exec_id = self._ensure_id()
 
-        rows: list[dict[str, Any]] = []
-        for record in records:
-            data = record.get("data") or {}
-            if not isinstance(data, dict):
-                data = {}
-            rows.append(
-                {
-                    "ID": record.get("id"),
-                    "protein ID": data.get("protein_id"),
-                    "ligand ID": data.get("ligand_id"),
-                    "pocket ID": data.get("pocket_id"),
-                    "binding energy": data.get("binding_energy"),
-                    "pose_score": data.get("pose_score"),
-                    "best_pose": data.get("best_pose"),
-                }
+        best_pose: bool | None = None if all_poses else True
+
+        try:
+            return LigandSet.from_result(
+                execution_id=exec_id,
+                best_pose=best_pose,
+                client=self.client,
             )
+        except Exception:
+            # we can still potentially get results from the jobOutputs
+            pass
 
-        return pd.DataFrame(rows, columns=list(DOCKING_RESULTS_DATAFRAME_COLUMNS))
+        try:
+            if dto is None:
+                dto = self.client.executions.get(exec_id)  # ty:ignore[unresolved-attribute]
+            jo = dto.get("jobOutputs")
+            raw = jo.get("poses", []) if isinstance(jo, dict) else []
+            return LigandSet.from_json(raw, client=self.client)
+        except Exception as exc:
+            raise DeepOriginException(
+                title="Could not load docking poses",
+                message=(
+                    "No poses could be parsed from the data platform or jobOutputs."
+                ),
+            ) from exc
 
     def get_undocked_ligands(self) -> LigandSet | None:
         """Get a list of ligands that failed to dock.

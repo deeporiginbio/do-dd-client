@@ -98,16 +98,22 @@ poses.to_sdf()
 
 ### Using Functions
 
-Several ligands in a LigandSet can be docked by passing `ligands` to [`Docking`](../ref/docking.md), then [`Docking.start()`](../ref/docking.md) (async). Poll with [`sync()`](../ref/docking.md) or Jupyter helpers until the job completes, then use [`get_poses()`](../ref/docking.md) or [`get_results()`](../ref/docking.md) for outputs.
+Several ligands in a LigandSet can be docked by passing `ligands` to [`Docking`](../ref/docking.md), then [`Docking.start()`](../ref/docking.md) (async). Poll with [`sync()`](../ref/docking.md) or Jupyter helpers until the job completes, then call [`get_results()`](../ref/docking.md) to retrieve a `LigandSet` of poses.
 
 ```{.python notest}
 docking = Docking(protein=protein, pocket=pocket, ligands=ligands)
 docking.start()
 # … wait for completion (docking.sync() in a loop, or watch() in notebooks) …
-poses = docking.get_poses()
+poses = docking.get_results()
 ```
 
-`poses` contains poses for docked ligands. To filter poses to keep only top poses, use:
+`poses` is a `LigandSet` containing the docked poses. To work with a DataFrame:
+
+```{.python notest}
+df = poses.to_dataframe()
+```
+
+To filter poses to keep only top poses, use:
 
 ```{.python notest}
 top_poses = poses.filter_top_poses()
@@ -117,6 +123,13 @@ These poses can be visualized as before:
 
 ```{.python notest}
 protein.show(poses=poses)
+```
+
+If you need SDF files for the poses (e.g. for export), use [`get_poses()`](../ref/docking.md) instead, which downloads the SDF files from the platform:
+
+```{.python notest}
+poses = docking.get_poses()
+poses.to_sdf("my_poses.sdf")
 ```
 
 To estimate the cost of docking a full LigandSet without running it:

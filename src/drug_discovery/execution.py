@@ -363,6 +363,23 @@ class Execution:
 
         return instances
 
+    def _ensure_id(self) -> str:
+        """Ensure this execution has a platform ID, raising if it does not.
+
+        Returns:
+            The execution ID string.
+
+        Raises:
+            ValueError: If the execution has no ID (i.e. it has not been started yet).
+        """
+        exec_id = getattr(self, "_id", None)
+        if exec_id is None:
+            raise ValueError(
+                f"{type(self).__name__} has no execution ID. "
+                "Call start() (or quote() then start()) to set an ID."
+            )
+        return exec_id
+
     def get_results(self, **kwargs: Any) -> Any:
         """Fetch results for this execution from the data platform.
 

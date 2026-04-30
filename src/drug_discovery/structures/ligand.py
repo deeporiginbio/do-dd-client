@@ -2509,6 +2509,7 @@ class LigandSet:
         *,
         protein_id: str | None = None,
         execution_id: str | None = None,
+        best_pose: bool | None = None,
         client: Optional[DeepOriginClient] = None,
     ) -> Self:
         """Load docking poses from the data platform without downloading SDF files.
@@ -2520,6 +2521,8 @@ class LigandSet:
         Args:
             protein_id: Optional protein id filter.
             execution_id: Optional compute job / execution id filter.
+            best_pose: If True, restrict to best pose per ligand. If False,
+                include all poses. If None (default), no filter is applied.
             client: Optional ``DeepOriginClient``; defaults to a new client.
 
         Returns:
@@ -2532,11 +2535,15 @@ class LigandSet:
         if client is None:
             client = DeepOriginClient()
 
-        response = client.results.get_poses(
+        get_poses_kwargs: dict[str, Any] = dict(
             protein_id=protein_id,
             compute_job_id=execution_id,
             limit=None,
         )
+        if best_pose is not None:
+            get_poses_kwargs["best_pose"] = best_pose
+
+        response = client.results.get_poses(**get_poses_kwargs)
         records = response.get("data", [])
 
         if not records:
