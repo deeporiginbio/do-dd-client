@@ -1,4 +1,4 @@
-"""Tests for the Docking execution class."""
+"""Tests for :class:`deeporigin.drug_discovery.docking.Docking`."""
 
 import json
 from pathlib import Path
@@ -13,6 +13,7 @@ from deeporigin.drug_discovery.docking import (
     _ligand_tool_input_row,
 )
 from deeporigin.drug_discovery.structures.ligand import Ligand, LigandSet
+from deeporigin.exceptions import DeepOriginException
 from deeporigin.platform.constants import TERMINAL_STATES, TOOL_KEYS_AND_VERSIONS
 
 
@@ -63,6 +64,26 @@ def test_docking_from_dto_raises_on_tool_key_mismatch(client) -> None:
 
     with pytest.raises(ValueError, match="tool key mismatch"):
         Docking.from_dto(dto, client=client)
+
+
+def test_registered_pocket_payload_has_nonzero_box_sizes(
+    client,
+    registered_protein,
+    registered_pocket,
+    registered_ligand,
+) -> None:
+    """The shared pocket fixture must not produce zero docking box extents."""
+    docking = Docking(
+        protein=registered_protein,
+        pocket=registered_pocket,
+        ligand=registered_ligand,
+        client=client,
+    )
+    params, _ = docking._build_tool_inputs()
+    pocket_in = params["pocket"]
+    assert float(pocket_in["box_size_x"]) > 0
+    assert float(pocket_in["box_size_y"]) > 0
+    assert float(pocket_in["box_size_z"]) > 0
 
 
 def test_docking_accepts_single_ligand(
@@ -219,6 +240,23 @@ def test_docking_run_rejects_multiple_ligands(
     )
     with pytest.raises(ValueError, match="exactly one ligand"):
         docking.run()
+
+
+def test_docking_run_rejects_effort_out_of_range(
+    client,
+    registered_protein,
+    registered_ligand,
+    registered_pocket,
+) -> None:
+    """:meth:`Docking.run` raises when ``effort`` is outside 1–5."""
+    with pytest.raises(DeepOriginException):
+        Docking(
+            protein=registered_protein,
+            pocket=registered_pocket,
+            ligand=registered_ligand,
+            client=client,
+            effort=0,
+        ).run()
 
 
 def test_docking_run_lv2(

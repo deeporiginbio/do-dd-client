@@ -1,5 +1,6 @@
 """Shared fixtures and helpers for tests."""
 
+import math
 from pathlib import Path
 from typing import Optional
 
@@ -27,6 +28,29 @@ def _reset_deeporigin_client_cache() -> None:
 PROTEIN_REMOTE_PATH = "testing/brd.pdb"
 LIGAND_REMOTE_PATH = "testing/brd-2.sdf"
 POCKET_PDB_PATH = FIXTURES_DIR / "files" / "pocketfinder" / "pocket_1.pdb"
+# PDB-derived test pockets may report tiny extents; docking tests use a minimum box.
+_MIN_TEST_POCKET_BOX_EXTENT = 10.0
+_DEFAULT_TEST_POCKET_BOX_SIZE = 30.0
+
+
+def _normalize_pocket_box_sizes_for_tests(pocket: Pocket) -> None:
+    """Raise any axis below 10 Å to the default test box size.
+
+    Compares each ``box_size_*`` to the volume-derived default docking uses when an
+    axis is omitted; if either resolved value is below ``_MIN_TEST_POCKET_BOX_EXTENT``,
+    that axis is set to ``_DEFAULT_TEST_POCKET_BOX_SIZE``.
+
+    Args:
+        pocket: Pocket loaded from a test fixture (mutated in place).
+    """
+    pocket.get_center()
+    vol = pocket.volume or 0.0
+    docking_default = float(2 * math.cbrt(vol)) if vol > 0 else 0.0
+    for attr in ("box_size_x", "box_size_y", "box_size_z"):
+        val = getattr(pocket, attr)
+        effective = float(val) if val is not None else docking_default
+        if effective < _MIN_TEST_POCKET_BOX_EXTENT:
+            setattr(pocket, attr, _DEFAULT_TEST_POCKET_BOX_SIZE)
 
 
 def check_tool_exists(
@@ -100,4 +124,5 @@ def registered_pocket() -> Pocket:
     """Load pocket from PDB fixture file with a stable test ID."""
     pocket = Pocket.from_pdb_file(POCKET_PDB_PATH)
     pocket.id = "pocket-test-id"
+    _normalize_pocket_box_sizes_for_tests(pocket)
     return pocket
