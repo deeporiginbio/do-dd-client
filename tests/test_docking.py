@@ -6,7 +6,6 @@ import time
 
 import pytest
 
-from conftest import check_tool_exists
 from deeporigin.drug_discovery.docking import (
     Docking,
     _docking_default_name,
@@ -15,6 +14,7 @@ from deeporigin.drug_discovery.docking import (
 from deeporigin.drug_discovery.structures.ligand import Ligand, LigandSet
 from deeporigin.exceptions import DeepOriginException
 from deeporigin.platform.constants import TERMINAL_STATES, TOOL_KEYS_AND_VERSIONS
+from tests.conftest import check_tool_exists
 
 
 def test_docking_from_dto_maps_async_execution_fields_from_fixture(

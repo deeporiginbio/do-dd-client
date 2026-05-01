@@ -6,7 +6,6 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from conftest import check_tool_exists
 from deeporigin.drug_discovery import BRD_DATA_DIR
 from deeporigin.drug_discovery.structures.ligand import Ligand
 from deeporigin.drug_discovery.structures.prepared_system import PreparedSystem
@@ -15,6 +14,7 @@ from deeporigin.drug_discovery.system_prep import SystemPrep
 from deeporigin.platform.client import DeepOriginClient
 from deeporigin.platform.constants import TOOL_KEYS_AND_VERSIONS
 from deeporigin.utils.constants import SYSPREP_NO_OUTPUT_PATHS_MSG
+from tests.conftest import check_tool_exists
 
 
 def _minimal_sysprep_dto(*, execution_id: str = "exec-sysprep-1") -> dict:

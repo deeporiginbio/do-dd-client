@@ -2,10 +2,10 @@
 
 import pytest
 
-from conftest import check_tool_exists
 from deeporigin.drug_discovery import Pocket, PocketFinder, Protein
 from deeporigin.platform import DeepOriginClient
 from deeporigin.platform.constants import TOOL_KEYS_AND_VERSIONS
+from tests.conftest import check_tool_exists
 
 
 def test_pocket_finder_quote_lv1(

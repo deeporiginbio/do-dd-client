@@ -5,11 +5,11 @@ These are meant to be run against a live instance.
 
 import pytest
 
-from conftest import check_tool_exists
 from deeporigin.drug_discovery import Ligand, LigandSet, Molprops
 from deeporigin.platform.client import DeepOriginClient
 from deeporigin.platform.constants import TOOL_KEYS_AND_VERSIONS
 from deeporigin.utils.constants import MOLPROPS_PROPERTY_KEYS
+from tests.conftest import check_tool_exists
 
 
 def test_molprops_lv1(client: DeepOriginClient) -> None:
