@@ -30,7 +30,7 @@ For **file downloads**, the mock server serves files from `tests/fixtures/files/
 
 ```bash
 uv run ruff format . && uv run ruff check --select I . --fix
-uv run pytest tests/test_drug_discovery_tools.py -x --env dev -v
+uv run pytest tests/test_pocket_finder.py tests/test_docking.py tests/test_system_prep.py tests/test_molprops.py -x --env dev -v
 ```
 
 ### Step 2: Capture fixtures using `record=True`
@@ -87,7 +87,7 @@ for pocket_data in outputs.get("pockets", []):
 ### Step 4: Verify locally
 
 ```bash
-uv run pytest tests/test_drug_discovery_tools.py -x --env local -v
+uv run pytest tests/test_pocket_finder.py tests/test_docking.py tests/test_system_prep.py tests/test_molprops.py -x --env local -v
 ```
 
 ### Step 5: Clean up
