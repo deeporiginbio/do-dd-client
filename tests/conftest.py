@@ -119,10 +119,14 @@ def registered_ligand(client: DeepOriginClient) -> Ligand:
     return ligand
 
 
-@pytest.fixture()
-def registered_pocket() -> Pocket:
-    """Load pocket from PDB fixture file with a stable test ID."""
+def _pocket_from_test_fixture_pdb() -> Pocket:
+    """Build a normalized test pocket from the shared PDB fixture."""
     pocket = Pocket.from_pdb_file(POCKET_PDB_PATH)
-    pocket.id = "pocket-test-id"
     _normalize_pocket_box_sizes_for_tests(pocket)
     return pocket
+
+
+@pytest.fixture()
+def unregistered_pocket() -> Pocket:
+    """Pocket from disk for docking tests (no platform id; geometry-only tool input)."""
+    return _pocket_from_test_fixture_pdb()
