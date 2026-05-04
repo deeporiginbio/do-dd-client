@@ -66,16 +66,16 @@ def test_docking_from_dto_raises_on_tool_key_mismatch(client) -> None:
         Docking.from_dto(dto, client=client)
 
 
-def test_registered_pocket_payload_has_nonzero_box_sizes(
+def test_unregistered_pocket_payload_has_nonzero_box_sizes(
     client,
     registered_protein,
-    registered_pocket,
+    unregistered_pocket,
     registered_ligand,
 ) -> None:
-    """The shared pocket fixture must not produce zero docking box extents."""
+    """Disk-loaded pocket (no platform id) must not produce zero docking box extents."""
     docking = Docking(
         protein=registered_protein,
-        pocket=registered_pocket,
+        pocket=unregistered_pocket,
         ligand=registered_ligand,
         client=client,
     )
@@ -87,12 +87,12 @@ def test_registered_pocket_payload_has_nonzero_box_sizes(
 
 
 def test_docking_accepts_single_ligand(
-    registered_protein, registered_pocket, registered_ligand
+    registered_protein, unregistered_pocket, registered_ligand
 ):
     """Docking accepts a single ligand and converts it to LigandSet."""
     docking = Docking(
         protein=registered_protein,
-        pocket=registered_pocket,
+        pocket=unregistered_pocket,
         ligand=registered_ligand,
         effort=5,
     )
@@ -144,12 +144,12 @@ def test_docking_default_name_helper():
 
 
 def test_docking_accepts_explicit_name_override(
-    registered_protein, registered_pocket, registered_ligand
+    registered_protein, unregistered_pocket, registered_ligand
 ):
     """Optional ``name`` replaces the auto-generated execution label."""
     docking = Docking(
         protein=registered_protein,
-        pocket=registered_pocket,
+        pocket=unregistered_pocket,
         ligand=registered_ligand,
         name="Custom docking label",
     )
@@ -157,26 +157,26 @@ def test_docking_accepts_explicit_name_override(
 
 
 def test_docking_rejects_both_ligand_and_ligands(
-    registered_protein, registered_pocket, registered_ligand
+    registered_protein, unregistered_pocket, registered_ligand
 ):
     """Docking raises ValueError when both ligand and ligands are provided."""
     ligands = LigandSet(ligands=[registered_ligand])
     with pytest.raises(ValueError, match="Exactly one of"):
         Docking(
             protein=registered_protein,
-            pocket=registered_pocket,
+            pocket=unregistered_pocket,
             ligand=registered_ligand,
             ligands=ligands,
         )
 
 
 def test_docking_quote_cannot_be_called_twice_lv0(
-    registered_protein, registered_pocket, registered_ligand
+    registered_protein, unregistered_pocket, registered_ligand
 ):
     """quote() raises ValueError if called after a quotation already exists."""
     docking = Docking(
         protein=registered_protein,
-        pocket=registered_pocket,
+        pocket=unregistered_pocket,
         ligand=registered_ligand,
     )
     docking._id = "exec-quoted-456"
@@ -189,7 +189,7 @@ def test_docking_quote_cannot_be_called_twice_lv0(
 def test_docking_quote_lv1(
     client,
     registered_protein,
-    registered_pocket,
+    unregistered_pocket,
     registered_ligand,
 ):
     """Docking quote() raises ValueError if called after a quotation already exists."""
@@ -201,7 +201,7 @@ def test_docking_quote_lv1(
 
     docking = Docking(
         protein=registered_protein,
-        pocket=registered_pocket,
+        pocket=unregistered_pocket,
         ligand=registered_ligand,
     )
     docking.quote()
@@ -211,12 +211,12 @@ def test_docking_quote_lv1(
 
 
 def test_docking_start_rejects_single_ligand(
-    registered_protein, registered_pocket, registered_ligand
+    registered_protein, unregistered_pocket, registered_ligand
 ) -> None:
     """start() is only for multi-ligand async; single-ligand must use run()."""
     docking = Docking(
         protein=registered_protein,
-        pocket=registered_pocket,
+        pocket=unregistered_pocket,
         ligand=registered_ligand,
     )
     with pytest.raises(ValueError, match="run\\("):
@@ -225,7 +225,7 @@ def test_docking_start_rejects_single_ligand(
 
 def test_docking_run_rejects_multiple_ligands(
     registered_protein,
-    registered_pocket,
+    unregistered_pocket,
     registered_ligand,
     client,
 ) -> None:
@@ -234,7 +234,7 @@ def test_docking_run_rejects_multiple_ligands(
     two = LigandSet(ligands=[registered_ligand, second])
     docking = Docking(
         protein=registered_protein,
-        pocket=registered_pocket,
+        pocket=unregistered_pocket,
         ligands=two,
         client=client,
     )
@@ -246,13 +246,13 @@ def test_docking_run_rejects_effort_out_of_range(
     client,
     registered_protein,
     registered_ligand,
-    registered_pocket,
+    unregistered_pocket,
 ) -> None:
     """:meth:`Docking.run` raises when ``effort`` is outside 1–5."""
     with pytest.raises(DeepOriginException):
         Docking(
             protein=registered_protein,
-            pocket=registered_pocket,
+            pocket=unregistered_pocket,
             ligand=registered_ligand,
             client=client,
             effort=0,
@@ -262,7 +262,7 @@ def test_docking_run_rejects_effort_out_of_range(
 def test_docking_run_lv2(
     client,
     registered_protein,
-    registered_pocket,
+    unregistered_pocket,
     registered_ligand,
 ):
     """Run docking synchronously via run() and assert poses returned."""
@@ -274,7 +274,7 @@ def test_docking_run_lv2(
 
     docking = Docking(
         protein=registered_protein,
-        pocket=registered_pocket,
+        pocket=unregistered_pocket,
         ligand=registered_ligand,
         client=client,
     )
@@ -291,7 +291,7 @@ def test_docking_run_lv2(
 def test_docking_start_sync_get_results_lv3(
     client,
     registered_protein,
-    registered_pocket,
+    unregistered_pocket,
     registered_ligand,
 ):
     """Start docking asynchronously via start() with 2+ ligands; sync; get results."""
@@ -310,7 +310,7 @@ def test_docking_start_sync_get_results_lv3(
 
     docking = Docking(
         protein=registered_protein,
-        pocket=registered_pocket,
+        pocket=unregistered_pocket,
         ligands=two_ligands,
         client=client,
     )
