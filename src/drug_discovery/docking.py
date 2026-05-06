@@ -171,7 +171,8 @@ class Docking(
         """Create a Docking execution.
 
         Args:
-            protein: Protein structure to dock into.
+            protein: Protein structure to dock into. May omit a platform ``id``;
+                :meth:`quote`, :meth:`start`, and :meth:`run` sync it first.
             pocket: Binding pocket defining the search box.
             ligand: Single ligand. Mutually exclusive with ``ligands`` and
                 ``smiles_list``. Converted to a ``LigandSet`` during construction.
@@ -196,9 +197,6 @@ class Docking(
             raise ValueError(
                 "Exactly one of ligand, ligands, or smiles_list must be provided."
             )
-
-        if protein.id is None:
-            raise ValueError("Protein must have an ID.")
 
         if ligand is not None:
             ligands = LigandSet(ligands=[ligand])

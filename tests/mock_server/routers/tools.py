@@ -679,6 +679,7 @@ def create_tools_router(
                 system["protein_id"] = protein_id
             if ligand_id is not None:
                 system["ligand1_id"] = ligand_id
+        execution["jobOutputs"] = outputs
         _inject_result_explorer_records_from_outputs(
             tool_key=tkey,
             tool_version=tool_version,

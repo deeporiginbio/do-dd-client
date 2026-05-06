@@ -1236,3 +1236,23 @@ def test_ligand_set_from_json_remote_pose_requires_smiles() -> None:
 
     with pytest.raises(ValueError, match="smiles"):
         LigandSet.from_json([{"file_path": "tool-runs/x/pose.sdf"}])
+
+
+def test_ligand_set_from_json_accepts_ligand_smiles_on_remote_pose_lv0() -> None:
+    """Docking ``jobOutputs`` may use ``ligand_smiles`` instead of ``smiles``."""
+
+    poses = LigandSet.from_json(
+        [
+            {
+                "file_path": "tool-runs/fc3b6c09/exec/pose.sdf",
+                "ligand_id": "08DK80B7DYTXH",
+                "ligand_smiles": "CN(C)C(=O)c1cccc(-c2cn(C)c(=O)c3[nH]ccc23)c1",
+            }
+        ]
+    )
+
+    assert len(poses) == 1
+    lig = poses.ligands[0]
+    assert lig.mol is not None
+    assert lig.smiles is not None
+    assert lig.remote_path == "tool-runs/fc3b6c09/exec/pose.sdf"

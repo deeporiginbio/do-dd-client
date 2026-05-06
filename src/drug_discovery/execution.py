@@ -417,9 +417,9 @@ class Execution:
     ) -> dict[str, Any] | None:
         """Search data-platform ``user_logs`` rows for this execution.
 
-        Uses :meth:`deeporigin.platform.user_logs.UserLogs.search` with
-        ``compute_job_id`` set to this execution's platform id (same identifier
-        passed to :meth:`get_results` as ``compute_job_id``).
+        Uses :meth:`deeporigin.platform.user_logs.UserLogs.search` with the
+        execution UUID (same value as :meth:`get_results`'s ``compute_job_id``),
+        which the API applies as an ``execution_id`` filter on ``user_logs``.
 
         When no execution id is assigned yet, returns ``None`` without calling
         the API.

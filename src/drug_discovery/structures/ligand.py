@@ -2383,6 +2383,7 @@ class LigandSet:
             "remote_path",
             "smiles",
             "canonical_smiles",
+            "ligand_smiles",
             "ligand_id",
             "name",
             "project_id",
@@ -2414,12 +2415,17 @@ class LigandSet:
             if remote_path is not None:
                 lig.remote_path = remote_path
         else:
-            smiles = entry.get("smiles") or entry.get("canonical_smiles")
+            smiles = (
+                entry.get("smiles")
+                or entry.get("canonical_smiles")
+                or entry.get("ligand_smiles")
+            )
             if not isinstance(smiles, str) or not smiles.strip():
                 raise ValueError(
                     f"Pose at index {idx} has remote SDF {remote_path!r} but no "
-                    f"'smiles' or 'canonical_smiles'; add SMILES to the pose dict or "
-                    f"merge inputs from the docking execution before calling from_json."
+                    f"'smiles', 'canonical_smiles', or 'ligand_smiles'; add SMILES "
+                    f"to the pose dict or merge inputs from the docking execution "
+                    f"before calling from_json."
                 )
             lig = Ligand.from_smiles(
                 smiles=smiles.strip(),
@@ -2466,7 +2472,8 @@ class LigandSet:
         Each entry follows the docking ``poses[]`` shape: a ``file_path`` that is
         either a platform remote key or an existing local SDF, optional
         ``local_path`` / ``remote_path``, plus optional ``smiles`` /
-        ``canonical_smiles``. When only a **remote** path is available, a
+        ``canonical_smiles`` / ``ligand_smiles`` (tool output alias). When only a
+        **remote** path is available, a
         non-empty SMILES field is required so an RDKit molecule can be built;
         the pose SDF is then loaded lazily via :meth:`Ligand.download`.
 
@@ -2580,14 +2587,11 @@ class LigandSet:
             jid = str(rec.get("compute_job_id") or execution_id or "")
             smi_map = smiles_by_job.get(jid, {})
             lid = row.get("ligand_id")
-            if (
-                not (isinstance(row.get("smiles"), str) and row["smiles"].strip())
-                and not (
-                    isinstance(row.get("canonical_smiles"), str)
-                    and row["canonical_smiles"].strip()
-                )
-                and lid is not None
-            ):
+            has_pose_smiles = any(
+                isinstance(row.get(k), str) and str(row.get(k) or "").strip()
+                for k in ("smiles", "canonical_smiles", "ligand_smiles")
+            )
+            if not has_pose_smiles and lid is not None:
                 sm = smi_map.get(str(lid))
                 if sm:
                     row["smiles"] = sm

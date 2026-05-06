@@ -6,12 +6,14 @@ import time
 
 import pytest
 
+from deeporigin.drug_discovery import BRD_DATA_DIR
 from deeporigin.drug_discovery.docking import (
     Docking,
     _docking_default_name,
     _ligand_tool_input_row,
 )
 from deeporigin.drug_discovery.structures.ligand import Ligand, LigandSet
+from deeporigin.drug_discovery.structures.protein import Protein
 from deeporigin.exceptions import DeepOriginException
 from deeporigin.platform.constants import TERMINAL_STATES, TOOL_KEYS_AND_VERSIONS
 from tests.conftest import check_tool_exists
@@ -21,6 +23,9 @@ def test_docking_from_dto_maps_async_execution_fields_from_fixture(
     client,
 ) -> None:
     """from_dto maps common async execution fields from fixture DTO."""
+    if client.env != "local":
+        pytest.skip("DTO fixture mapping test is only run in local environment")
+
     fixture_path = (
         Path(__file__).parent / "fixtures/executions/docking-test-execution.json"
     )
@@ -42,6 +47,9 @@ def test_docking_from_dto_maps_async_execution_fields_from_fixture(
 
 def test_docking_from_dto_initializes_notebook_watch_state(client) -> None:
     """from_dto skips __init__; notebook watch attrs must exist for stop_watching."""
+    if client.env != "local":
+        pytest.skip("DTO fixture mapping test is only run in local environment")
+
     fixture_path = (
         Path(__file__).parent / "fixtures/executions/docking-test-execution.json"
     )
@@ -119,9 +127,6 @@ def test_ligand_tool_input_row_excludes_mol_file() -> None:
 
 def test_docking_default_name_helper():
     """_docking_default_name matches single-, multi-, and empty-ligand rules."""
-    from deeporigin.drug_discovery import BRD_DATA_DIR
-    from deeporigin.drug_discovery.structures.protein import Protein
-
     protein = Protein.from_file(BRD_DATA_DIR / "brd.pdb")
     assert _docking_default_name(protein, LigandSet()) == (
         f"Docking {protein.name} to 0 ligands."
@@ -242,11 +247,13 @@ def test_docking_run_rejects_multiple_ligands(
         docking.run()
 
 
+@pytest.mark.parametrize("effort", [-1, 0, 6])
 def test_docking_run_rejects_effort_out_of_range(
     client,
     registered_protein,
     registered_ligand,
     unregistered_pocket,
+    effort,
 ) -> None:
     """:meth:`Docking.run` raises when ``effort`` is outside 1–5."""
     with pytest.raises(DeepOriginException):
@@ -255,7 +262,7 @@ def test_docking_run_rejects_effort_out_of_range(
             pocket=unregistered_pocket,
             ligand=registered_ligand,
             client=client,
-            effort=0,
+            effort=effort,
         ).run()
 
 
@@ -276,6 +283,41 @@ def test_docking_run_lv2(
         protein=registered_protein,
         pocket=unregistered_pocket,
         ligand=registered_ligand,
+        client=client,
+    )
+    poses = docking.run()
+
+    assert isinstance(poses, LigandSet), "run() should return a LigandSet"
+    assert len(poses) >= 1, "Expected at least one pose"
+    for pose in poses:
+        assert isinstance(pose, Ligand), "Each pose should be a Ligand"
+        assert pose.mol is not None, "Pose should have a loaded RDKit mol"
+        assert pose.smiles is not None, "Pose should have SMILES"
+
+
+def test_docking_run_lv2_unregistered_inputs(client, unregistered_pocket):
+    """Run docking with a local protein, geometry-only pocket, and SMILES-only ligand.
+
+    Inputs are not pre-registered on the platform (no entity ids). :meth:`Docking.run`
+    syncs protein and ligands before submitting the tool.
+    """
+    assert check_tool_exists(
+        client,
+        TOOL_KEYS_AND_VERSIONS["docking"]["tool_key"],
+        TOOL_KEYS_AND_VERSIONS["docking"]["tool_version"],
+    ), "Docking tool not registered on platform (expected key/version)."
+
+    protein = Protein.from_file(BRD_DATA_DIR / "brd.pdb")
+    protein.remove_water()
+    assert protein.id is None
+
+    ref_ligand = Ligand.from_sdf(BRD_DATA_DIR / "brd-2.sdf")
+    assert ref_ligand.smiles is not None
+
+    docking = Docking(
+        protein=protein,
+        pocket=unregistered_pocket,
+        smiles_list=[ref_ligand.smiles],
         client=client,
     )
     poses = docking.run()
@@ -345,7 +387,9 @@ def test_docking_start_sync_get_results_lv3(
     poses = docking.get_results()
     assert poses is not None, "get_results() should return a LigandSet after Succeeded"
     assert isinstance(poses, LigandSet), "get_results() should return a LigandSet"
-    assert len(poses) >= 1, "Expected at least one pose"
+    assert len(poses) >= 1, (
+        f"Expected at least one pose, but did not. Execution ID is: {docking.id!r}"
+    )
     for pose in poses:
         assert isinstance(pose, Ligand), "Each pose should be a Ligand"
         assert pose.smiles is not None, "Pose should have SMILES"

@@ -35,12 +35,14 @@ class UserLogs:
         """Search user log rows, optionally scoped to a compute job.
 
         Calls ``POST /data-platform/{orgKey}/user_logs/search`` with
-        an optional ``compute_job_id`` ``eq`` filter (same pattern as
-        :meth:`deeporigin.platform.executions.Executions.search` for
-        executions) when provided.
+        an optional ``execution_id`` ``eq`` filter when ``compute_job_id``
+        is provided. The data-platform ``user_logs`` table stores the tools
+        execution UUID in ``execution_id`` (the same string as
+        ``executions.compute_job_id`` and ``results.compute_job_id``).
 
         Args:
-            compute_job_id: If set, restrict results to this compute job.
+            compute_job_id: If set, restrict logs to this execution UUID
+                (sent as ``execution_id`` in the search filter).
             limit: Max rows to return.
             offset: Skip offset.
             select: Columns to select; all columns by default.
@@ -54,7 +56,7 @@ class UserLogs:
         props: list[dict[str, Any]] = []
         if compute_job_id is not None:
             props.append(
-                {"column": "compute_job_id", "op": "eq", "value": compute_job_id}
+                {"column": "execution_id", "op": "eq", "value": compute_job_id}
             )
         body: dict[str, Any] = {"filter": {"props": props}}
         if limit is not None:
