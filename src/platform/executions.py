@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
@@ -9,6 +10,26 @@ if TYPE_CHECKING:
 
 from deeporigin.platform.constants import TERMINAL_STATES
 from deeporigin.utils.constants import TOOL_EXECUTION_POST_TIMEOUT_SECONDS
+
+
+def _created_after_to_iso_utc(created_after: datetime | str) -> str:
+    """Format a lower bound for ``createdAt: {$gt: ...}`` tools list filters.
+
+    Args:
+        created_after: Instant or ISO-8601 string (as accepted by the API).
+
+    Returns:
+        UTC timestamp string with millisecond precision and ``Z`` suffix,
+        matching typical execution DTO ``createdAt`` values.
+    """
+    if isinstance(created_after, str):
+        return created_after
+    dt = created_after
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    else:
+        dt = dt.astimezone(timezone.utc)
+    return dt.strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z"
 
 
 class Executions:
@@ -80,6 +101,8 @@ class Executions:
         order: str | None = None,
         tool_key: str | None = None,
         session: str | None = None,
+        project_id: str | None = None,
+        created_after: datetime | str | None = None,
     ) -> dict:
         """List tool executions with pagination and filtering.
 
@@ -93,6 +116,15 @@ class Executions:
                 where ``payload["session"] = self._c._session``). Without this,
                 the endpoint returns all executions the caller can see, not
                 just ones from the caller's own client.
+            project_id: When set, restrict to executions whose root-level
+                ``projectId`` matches (same field as in the tools execution
+                DTO; may be omitted or null on rows that are not project-scoped).
+            created_after: When set, restrict to rows with ``createdAt`` strictly
+                after this instant. Passed to the tools-service list filter as
+                ``createdAt: {"$gt": "<iso-8601>"}`` (MikroORM operator on the
+                entity ``createdAt`` column). Use a timezone-aware
+                :class:`~datetime.datetime` or an ISO string such as
+                ``2026-05-07T15:13:25.254Z``.
 
         Returns:
             Dictionary containing paginated execution data.
@@ -110,6 +142,10 @@ class Executions:
             filter_dict["tool"] = {"toolManifest": {"key": tool_key}}
         if session is not None:
             filter_dict["session"] = session
+        if project_id is not None:
+            filter_dict["projectId"] = project_id
+        if created_after is not None:
+            filter_dict["createdAt"] = {"$gt": _created_after_to_iso_utc(created_after)}
 
         if filter_dict:
             import json
@@ -149,9 +185,8 @@ class Executions:
     ) -> dict:
         """Search executions via the data-platform endpoint.
 
-        Unlike :meth:`list` (which hits the tools-service, has no project
-        scoping, and returns a DTO shape missing ``project_id`` on most
-        rows), this method hits
+        Unlike :meth:`list` (tools-service DTO with camelCase ``projectId``;
+        use ``list(project_id=...)`` to filter there), this method hits
         ``POST /data-platform/{org}/executions/search`` which:
 
         - exposes ``project_id`` as a first-class column and applies it as

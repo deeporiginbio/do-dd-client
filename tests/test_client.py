@@ -1,5 +1,8 @@
 """Tests for DeepOriginClient construction and tag functionality."""
 
+from datetime import datetime, timezone
+import json
+
 import pytest
 
 from deeporigin.platform.client import DeepOriginClient
@@ -167,6 +170,72 @@ def test_executions_create_targets_tool_endpoint():
     )
 
     assert captured["__endpoint__"].endswith("/tools/test.tool/1.0.0/executions")
+
+
+def test_executions_list_includes_project_id_filter():
+    """``executions.list(project_id=...)`` sends a tools-service filter on ``projectId``."""
+    DeepOriginClient.close_all()
+
+    client = DeepOriginClient.from_local()
+    captured: dict = {}
+
+    def mock_get_json(path: str, **kwargs: object) -> dict:
+        captured["path"] = path
+        captured["params"] = kwargs.get("params")
+        return {"data": [], "count": 0}
+
+    client.get_json = mock_get_json  # type: ignore[method-assign]
+
+    client.executions.list(project_id="proj-filter-1")
+
+    params = captured["params"]
+    assert params is not None
+    filt = json.loads(str(params["filter"]))
+    assert filt["projectId"] == "proj-filter-1"
+
+
+def test_executions_list_includes_created_after_filter():
+    """``executions.list(created_after=...)`` sends MikroORM ``$gt`` on ``createdAt``."""
+    DeepOriginClient.close_all()
+
+    client = DeepOriginClient.from_local()
+    captured: dict = {}
+
+    def mock_get_json(path: str, **kwargs: object) -> dict:
+        captured["params"] = kwargs.get("params")
+        return {"data": [], "count": 0}
+
+    client.get_json = mock_get_json  # type: ignore[method-assign]
+
+    cutoff = datetime(2026, 5, 7, 15, 13, 25, 254000, tzinfo=timezone.utc)
+    client.executions.list(created_after=cutoff)
+
+    params = captured["params"]
+    assert params is not None
+    filt = json.loads(str(params["filter"]))
+    assert filt["createdAt"] == {"$gt": "2026-05-07T15:13:25.254Z"}
+
+
+def test_executions_list_created_after_accepts_iso_string():
+    """String ``created_after`` is forwarded without rewriting."""
+    DeepOriginClient.close_all()
+
+    client = DeepOriginClient.from_local()
+    captured: dict = {}
+
+    def mock_get_json(path: str, **kwargs: object) -> dict:
+        captured["params"] = kwargs.get("params")
+        return {"data": [], "count": 0}
+
+    client.get_json = mock_get_json  # type: ignore[method-assign]
+
+    iso = "2026-01-02T00:00:00.000Z"
+    client.executions.list(created_after=iso)
+
+    params = captured["params"]
+    assert params is not None
+    filt = json.loads(str(params["filter"]))
+    assert filt["createdAt"] == {"$gt": iso}
 
 
 def test_no_arg_constructor_returns_same_instance():

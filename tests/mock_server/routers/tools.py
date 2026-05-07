@@ -788,6 +788,8 @@ def create_tools_router(
         filter_dict = None
         requested_tool_key = None
         requested_statuses = None
+        project_id_filter_set = False
+        project_id_filter_value: str | None = None
 
         if filter:
             filter_dict = json.loads(filter)
@@ -805,6 +807,16 @@ def create_tools_router(
                 status_filter = filter_dict["status"]
                 if "$in" in status_filter:
                     requested_statuses = status_filter["$in"]
+
+            if "projectId" in filter_dict:
+                project_id_filter_set = True
+                project_id_filter_value = filter_dict["projectId"]
+
+        created_after_gt: str | None = None
+        if filter_dict and "createdAt" in filter_dict:
+            ca_filter = filter_dict["createdAt"]
+            if isinstance(ca_filter, dict) and ca_filter.get("$gt") is not None:
+                created_after_gt = str(ca_filter["$gt"])
 
         all_executions = list(executions.values())
 
@@ -824,6 +836,37 @@ def create_tools_router(
                 exec
                 for exec in filtered_executions
                 if exec.get("status") in requested_statuses
+            ]
+
+        if project_id_filter_set:
+            if project_id_filter_value is None:
+                filtered_executions = [
+                    exec
+                    for exec in filtered_executions
+                    if exec.get("projectId") is None
+                ]
+            else:
+                filtered_executions = [
+                    exec
+                    for exec in filtered_executions
+                    if exec.get("projectId") == project_id_filter_value
+                ]
+
+        if created_after_gt is not None:
+
+            def _parse_created_at(value: str) -> datetime:
+                normalized = value[:-1] + "+00:00" if value.endswith("Z") else value
+                parsed = datetime.fromisoformat(normalized)
+                if parsed.tzinfo is None:
+                    parsed = parsed.replace(tzinfo=timezone.utc)
+                return parsed.astimezone(timezone.utc)
+
+            threshold = _parse_created_at(created_after_gt)
+            filtered_executions = [
+                exec
+                for exec in filtered_executions
+                if exec.get("createdAt")
+                and _parse_created_at(str(exec["createdAt"])) > threshold
             ]
 
         if filter_dict and "metadata" in filter_dict:
