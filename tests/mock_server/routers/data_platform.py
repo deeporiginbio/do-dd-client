@@ -359,11 +359,11 @@ def create_data_platform_router(
 
     _datasets: dict[str, dict[str, Any]] = datasets if datasets is not None else {}
 
-    # Pre-seed one user_logs row for SDK tests (compute_job_id filter).
+    # Pre-seed one user_logs row for SDK tests (execution_id filter).
     _user_logs_store: dict[str, dict[str, Any]] = {
         "ul-mock-1": {
             "id": "ul-mock-1",
-            "compute_job_id": "MOCK-USER-LOGS-CJ-ID",
+            "execution_id": "MOCK-USER-LOGS-CJ-ID",
             "line": "mock user log line",
         }
     }

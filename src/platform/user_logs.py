@@ -9,7 +9,7 @@ if TYPE_CHECKING:
 
 
 class UserLogs:
-    """Data-platform ``user_logs`` entity (search by compute job, etc.).
+    """Data-platform ``user_logs`` entity (search by execution, etc.).
 
     Hits ``POST /data-platform/{orgKey}/user_logs/search`` with the standard
     data-platform filter grammar (``filter.props`` with ``eq`` / ...).
@@ -25,22 +25,20 @@ class UserLogs:
 
     def search(
         self,
-        compute_job_id: str | None = None,
+        execution_id: str | None = None,
         *,
         limit: int | None = None,
         offset: int | None = None,
         select: list[str] | None = None,
         with_total_count: bool = False,
     ) -> dict:
-        """Search user log rows, optionally scoped to a compute job.
+        """Search user log rows, optionally scoped to an execution.
 
-        Calls ``POST /data-platform/{orgKey}/user_logs/search`` with
-        an optional ``compute_job_id`` ``eq`` filter (same pattern as
-        :meth:`deeporigin.platform.executions.Executions.search` for
-        executions) when provided.
+        Calls ``POST /data-platform/{orgKey}/user_logs/search`` with an optional
+        ``eq`` filter on the ``execution_id`` column (tools DTO ``executionId``).
 
         Args:
-            compute_job_id: If set, restrict results to this compute job.
+            execution_id: If set, restrict results to this execution id.
             limit: Max rows to return.
             offset: Skip offset.
             select: Columns to select; all columns by default.
@@ -52,10 +50,8 @@ class UserLogs:
             (exact keys depend on the service).
         """
         props: list[dict[str, Any]] = []
-        if compute_job_id is not None:
-            props.append(
-                {"column": "compute_job_id", "op": "eq", "value": compute_job_id}
-            )
+        if execution_id is not None:
+            props.append({"column": "execution_id", "op": "eq", "value": execution_id})
         body: dict[str, Any] = {"filter": {"props": props}}
         if limit is not None:
             body["limit"] = limit

@@ -36,7 +36,7 @@ def test_execution_get_user_logs_no_id_noop() -> None:
 
 
 def test_execution_get_user_logs_lv1(client: DeepOriginClient) -> None:
-    """Load a succeeded execution and fetch user_logs scoped to its compute job id."""
+    """Load a succeeded execution and fetch user_logs scoped to its execution id."""
 
     search = client.executions.search(status="Succeeded", limit=200)  # ty:ignore[unresolved-attribute]
     rows = search.get("data") or []
