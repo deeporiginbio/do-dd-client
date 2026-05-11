@@ -135,7 +135,7 @@ def create_tools_router(
 
     def _load_progress_reports(tool_key: str) -> list[dict[str, Any] | None]:
         """Load progress reports for a tool."""
-        if tool_key == "deeporigin.abfe-end-to-end":
+        if tool_key == "deeporigin.abfe-e2e-workflow":
             fixture_path = fixtures_dir / "abfe" / "progress-reports.json"
         else:
             fixture_path = fixtures_dir / tool_key / "progress-reports.json"

@@ -241,14 +241,19 @@ class ABFEParams:
         *,
         prepared_system: PreparedSystem,
     ) -> dict:
-        """Build the tool input parameters dict.
+        """Build the calculation-parameter portion of the tool input dict.
+
+        The returned dict carries ``prepared_system``, ``binding``, and
+        ``solvation`` only -- the ``mode`` discriminator required by the
+        ``deeporigin.abfe-e2e-workflow`` tool is added by
+        :meth:`ABFE._build_params`.
 
         Args:
             prepared_system: Prepared system with XML paths and entity IDs (same
                 shape as system-prep ``system`` output).
 
         Returns:
-            Parameters dict ready to be passed to the ABFE tool.
+            Calculation-parameter dict ready to be merged into the tool input.
         """
         md_options = {
             "T": self.temperature,
@@ -297,6 +302,12 @@ class ABFEParams:
 class ABFE(Execution, QuoteMixin, AsyncExecutableMixin, NotebookWatchMixin):
     """Absolute Binding Free Energy calculation (async-only).
 
+    Drives the ``deeporigin.abfe-e2e-workflow`` tool in ``mode="abfe"``: the
+    workflow takes an already-prepared system (binding + solvation XML files)
+    and runs the ABFE legs only. To produce the prepared system, use the
+    separate :class:`~deeporigin.drug_discovery.system_prep.SystemPrep` class
+    (``deeporigin.system-prep`` tool); this class does not run system prep.
+
     Requires a ``PreparedSystem`` from system preparation before ``start()``.
     After success, :meth:`show_trajectory` can download trajectory and structure
     files and open a Mol* viewer in Jupyter (or marimo), and
@@ -310,6 +321,7 @@ class ABFE(Execution, QuoteMixin, AsyncExecutableMixin, NotebookWatchMixin):
     """
 
     tool_key: str = TOOL_KEYS_AND_VERSIONS["abfe"]["tool_key"]
+    mode: Literal["abfe"] = "abfe"
 
     @beartype
     def __init__(
@@ -367,6 +379,13 @@ class ABFE(Execution, QuoteMixin, AsyncExecutableMixin, NotebookWatchMixin):
         instance = super().from_dto(dto, client=client)
         inputs = instance._execution_dto.get("userInputs", {})  # ty:ignore[unresolved-attribute]
         metadata = instance._execution_dto.get("metadata", {})  # ty:ignore[unresolved-attribute]
+
+        dto_mode = inputs.get("mode")
+        if dto_mode is not None and dto_mode != cls.mode:
+            raise ValueError(
+                f"Cannot rehydrate ABFE from a DTO with mode={dto_mode!r}; "
+                f"this class only supports mode={cls.mode!r}."
+            )
 
         prepared_system_input = inputs.get("prepared_system", {})
         binding = inputs.get("binding", {})
@@ -865,15 +884,33 @@ class ABFE(Execution, QuoteMixin, AsyncExecutableMixin, NotebookWatchMixin):
         display(Image(local_path))
 
     def _build_params(self) -> dict:
-        """Construct the tool input parameters dict."""
-        return self.params.to_dict(prepared_system=self.prepared_system)
+        """Construct the tool input parameters dict for the abfe-e2e-workflow tool."""
+        return {
+            "mode": self.mode,
+            **self.params.to_dict(prepared_system=self.prepared_system),
+        }
 
     def __repr__(self) -> str:
-        """Return a string representation showing protein and ligand IDs."""
+        """Return a multi-line string representation of this ABFE execution.
+
+        Shows the tool key and version, execution mode and name, plus the
+        prepared-system identifiers (protein and ligand IDs). Each field
+        appears on its own line for readability.
+        """
         ps = getattr(self, "prepared_system", None)
         if ps is None:
             return super().__repr__()
-        return f"ABFE(protein_id={ps.protein_id!r}, ligand1_id={ps.ligand1_id!r})"
+        parts = ["ABFE("]
+        parts.append(f"  tool_key={self.tool_key!r},")
+        parts.append(f"  tool_version={self.tool_version!r},")
+        parts.append(f"  mode={self.mode!r},")
+        parts.append(f"  name={self.name!r},")
+        parts.append(f"  protein_id={ps.protein_id!r},")
+        parts.append(f"  ligand1_id={ps.ligand1_id!r},")
+        if ps.ligand2_id is not None:
+            parts.append(f"  ligand2_id={ps.ligand2_id!r},")
+        parts.append(")")
+        return "\n".join(parts)
 
     def _build_metadata(self) -> dict:
         """Construct execution metadata."""

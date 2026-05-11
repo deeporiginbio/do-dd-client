@@ -50,7 +50,9 @@ def main() -> None:
     server = MockServer(port=args.port)
 
     # Set execution durations
-    server._mock_execution_durations["deeporigin.abfe-end-to-end"] = args.abfe_duration
+    server._mock_execution_durations["deeporigin.abfe-e2e-workflow"] = (
+        args.abfe_duration
+    )
 
     # Run with uvicorn directly - this blocks, which is fine for a dev script
     import uvicorn

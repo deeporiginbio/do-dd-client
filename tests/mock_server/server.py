@@ -65,7 +65,7 @@ class MockServer:
         self._results: list[dict[str, Any]] = []
         # Tool-specific mock execution durations (in seconds)
         self._mock_execution_durations: dict[str, float] = {
-            "deeporigin.abfe-end-to-end": 30.0,  # seconds
+            "deeporigin.abfe-e2e-workflow": 30.0,  # seconds
             "deeporigin.docking": 0.1,  # short poll for local Docking.run (tools API)
         }
         self.docking_speed = docking_speed

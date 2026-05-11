@@ -70,7 +70,7 @@ docking_jobs = jobs.filter(tool_key="deeporigin.bulk-docking")
 v1_jobs = jobs.filter(tool_version="1.0.0")
 
 # Filter by both tool key and version
-specific_tool = jobs.filter(tool_key="deeporigin.abfe-end-to-end", tool_version="1.0.0")
+specific_tool = jobs.filter(tool_key="deeporigin.abfe-e2e-workflow", tool_version="1.0.0")
 ```
 
 **Filter by other attributes:**
@@ -112,7 +112,7 @@ complex_filter = jobs.filter(
 # Status + tool key + tool version
 specific_jobs = jobs.filter(
     status="Succeeded",
-    tool_key="deeporigin.abfe-end-to-end",
+    tool_key="deeporigin.abfe-e2e-workflow",
     tool_version="1.0.0"
 )
 ```

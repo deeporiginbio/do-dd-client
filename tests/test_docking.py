@@ -60,7 +60,7 @@ def test_docking_from_dto_raises_on_tool_key_mismatch(client) -> None:
         Path(__file__).parent / "fixtures/executions/docking-test-execution.json"
     )
     dto = json.loads(fixture_path.read_text())
-    dto["tool"]["key"] = "deeporigin.abfe-end-to-end"
+    dto["tool"]["key"] = "deeporigin.foo-fake-tool"
 
     with pytest.raises(ValueError, match="tool key mismatch"):
         Docking.from_dto(dto, client=client)
