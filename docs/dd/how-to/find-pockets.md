@@ -17,7 +17,12 @@ protein.remove_water()
 
 ### Using Pocket Finder
 
-Use the ``PocketFinder`` class from ``deeporigin.drug_discovery.pocket_finder`` to find pockets:
+Use the ``PocketFinder`` class from ``deeporigin.drug_discovery.pocket_finder`` to find pockets. `PocketFinder` supports two execution modes:
+
+- **Synchronous**: `pf.run()` blocks until the platform returns the pockets.
+- **Asynchronous**: `pf.start()` submits a persisted execution and returns immediately. Poll with `pf.sync()` (or `await pf.watch()` / `await pf.watch_async()` in a Jupyter notebook), then call `pf.get_results()` once the job reaches a terminal state.
+
+#### Synchronous (blocking)
 
 ```{.python continuation}
 from deeporigin.drug_discovery import PocketFinder
@@ -26,13 +31,42 @@ pf = PocketFinder(protein, pocket_count=1)
 pockets = pf.run()
 ```
 
-`pf.run()` calls the tools executions API with a blocking (`sync`) create and returns a list of `Pocket` objects. You will be charged for each run. To fetch previously computed pockets without re-running, use `pf.get_results()` once `pf.id` is set.
+`pf.run()` calls the tools executions API with `sync=True` and returns a list of `Pocket` objects. You will be charged for each run. To fetch previously computed pockets without re-running, use `pf.get_results()` once `pf.id` is set.
 
 To reconstruct a workflow object from an existing tools execution id (for example to call `get_results()` or inspect `estimate` / `cost` without keeping the original `PocketFinder` instance in memory), use `PocketFinder.from_id("<executionId>")` or `PocketFinder.from_dto(dto)` when you already have the execution payload from `client.executions.get`.
 
+#### Asynchronous (start + watch + get_results)
+
+For longer runs or when you want to keep the notebook responsive, submit the execution asynchronously with `start()`:
+
+```{.python notest}
+pf = PocketFinder(protein, pocket_count=5)
+pf.start()        # sets pf.id and pf.status; returns immediately
+
+# In Jupyter: live-update a status card and continue using the cell
+task = await pf.watch()
+
+# Or block until completion
+# await pf.watch_async()
+
+# In a script, poll manually
+# while pf.status not in {"Succeeded", "Failed", "Cancelled"}:
+#     pf.sync()
+
+pockets = pf.get_results()
+```
+
+You can also rehydrate an in-flight or completed async job from its id:
+
+```{.python notest}
+pf = PocketFinder.from_id("<executionId>")
+pf.sync()
+pockets = pf.get_results()
+```
+
 #### Estimating cost
 
-To get a cost estimate without running the pocket finder, call `quote()` before `run()`:
+To get a cost estimate without running the pocket finder, call `quote()` before `run()` or `start()`:
 
 ```{.python notest}
 pf = PocketFinder(protein, pocket_count=1)

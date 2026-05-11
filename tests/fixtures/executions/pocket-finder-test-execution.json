@@ -1,0 +1,85 @@
+{
+    "app": "python-client",
+    "approveAmount": 10,
+    "billing": null,
+    "billingTransaction": {
+        "items": [
+            {
+                "actionRequest": null,
+                "authorizationId": "70a525d62f2f36f9b568f696",
+                "isApproved": true,
+                "itemCode": "DO_POCKET_FINDER",
+                "priceEach": 10,
+                "priceTotal": 10,
+                "purchaseApprovalComment": null,
+                "qty": 1
+            }
+        ],
+        "orgId": "deeporigin",
+        "status": "Approved",
+        "totalCost": 10,
+        "transactionId": "70a525d62f2f36f9b568f694"
+    },
+    "cluster": {
+        "id": "d638d3cd-833f-476b-87fe-ca6d76e66049"
+    },
+    "completedAt": "2026-04-12T11:21:09.000Z",
+    "createdAt": "2026-04-12T11:20:11.482Z",
+    "createdBy": "6b96d8f8-0f55-474c-a86c-e09651ba4b20",
+    "executionId": "83665278-8823-4eaa-960d-f9712d98efb9",
+    "executionType": "tool",
+    "metadata": {},
+    "name": "PocketFinder on brd",
+    "orgKey": "deeporigin",
+    "progressReport": {
+        "complete": 100
+    },
+    "projectId": null,
+    "quotationResult": {
+        "anyFailed": false,
+        "failedQuotations": [],
+        "successfulQuotations": [
+            {
+                "itemCode": "DO_POCKET_FINDER",
+                "orgId": "deeporigin",
+                "priceEach": 10,
+                "priceTotal": 10,
+                "pricingRecordType": "regular",
+                "pricingRecords": [
+                    {
+                        "itemKey": "DO_POCKET_FINDER",
+                        "itemName": "Pocket Finder",
+                        "priceEach": 10,
+                        "qty": 1,
+                        "tierQtyFrom": 0,
+                        "tierQtyTo": 0,
+                        "totalPrice": 10
+                    }
+                ],
+                "qty": 1,
+                "status": "OK"
+            }
+        ]
+    },
+    "resourceId": "f9p3i0n6i4h8vualf6m8x",
+    "session": "f8a98c5e-18ed-4b5e-b08a-f38a21d11254",
+    "startedAt": "2026-04-12T11:20:30.000Z",
+    "status": "Succeeded",
+    "statusReason": null,
+    "tag": null,
+    "tool": {
+        "key": "deeporigin.pocket-finder",
+        "version": "1.2.0"
+    },
+    "type": "ToolExecution",
+    "updatedAt": "2026-04-12T11:21:09.195Z",
+    "userInputs": {
+        "pocket_count": 2,
+        "pocket_min_size": 35,
+        "protein": {
+            "file_path": "testing/brd.pdb",
+            "id": "brd"
+        }
+    },
+    "userOutputs": {}
+}

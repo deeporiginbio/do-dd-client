@@ -1,10 +1,12 @@
 from typing import Any, cast
+from unittest.mock import MagicMock
 
 import pytest
 
 from deeporigin.drug_discovery.execution import Execution
 from deeporigin.exceptions import DeepOriginException
 from deeporigin.platform.client import DeepOriginClient
+from deeporigin.platform.executions import Executions
 
 
 def test_execution_from_id_requires_tool_key() -> None:
@@ -126,6 +128,114 @@ def test_search_executions_project_scope_lv1(client: DeepOriginClient):
         assert pid == target_project, (
             f"leak: got project_id={pid!r} when filter was {target_project!r}"
         )
+
+
+def _make_executions(get_side_effect: Any) -> Executions:
+    """Build an ``Executions`` wired to a mock client.
+
+    Args:
+        get_side_effect: Iterable / callable consumed by ``Executions.get`` via
+            ``MagicMock.side_effect``.
+
+    Returns:
+        ``Executions`` instance whose ``get`` returns the supplied values.
+    """
+    executions = Executions(client=MagicMock())
+    executions.get = MagicMock(side_effect=get_side_effect)  # ty:ignore[assignment]
+    return executions
+
+
+def test_wait_returns_immediately_when_all_terminal() -> None:
+    """If every execution is already terminal, ``wait`` returns on first poll."""
+    dtos = [
+        {"executionId": "a", "status": "Succeeded"},
+        {"executionId": "b", "status": "Failed"},
+    ]
+    executions = _make_executions(get_side_effect=list(dtos))
+
+    result = executions.wait(["a", "b"], poll_interval=0.01)
+
+    assert result == dtos
+    assert executions.get.call_count == 2  # ty:ignore[unresolved-attribute]
+
+
+def test_wait_polls_until_terminal(monkeypatch: pytest.MonkeyPatch) -> None:
+    """``wait`` keeps polling pending executions and skips already-terminal ones."""
+    responses = [
+        {"executionId": "a", "status": "Running"},
+        {"executionId": "b", "status": "Succeeded"},
+        {"executionId": "a", "status": "Queued"},
+        {"executionId": "a", "status": "Succeeded"},
+    ]
+    executions = _make_executions(get_side_effect=responses)
+
+    sleeps: list[float] = []
+    monkeypatch.setattr(
+        "deeporigin.platform.executions.time.sleep", lambda s: sleeps.append(s)
+    )
+
+    result = executions.wait(["a", "b"], poll_interval=0.5)
+
+    assert [r["status"] for r in result] == ["Succeeded", "Succeeded"]
+    assert [r["executionId"] for r in result] == ["a", "b"]
+    assert executions.get.call_count == 4  # ty:ignore[unresolved-attribute]
+    assert sleeps == [0.5, 0.5]
+
+
+def test_wait_accepts_single_string() -> None:
+    """``wait`` accepts a single execution ID string."""
+    executions = _make_executions(
+        get_side_effect=[{"executionId": "x", "status": "Succeeded"}]
+    )
+
+    result = executions.wait("x", poll_interval=0.01)
+
+    assert result == [{"executionId": "x", "status": "Succeeded"}]
+    executions.get.assert_called_once_with("x")  # ty:ignore[unresolved-attribute]
+
+
+def test_wait_timeout_raises(monkeypatch: pytest.MonkeyPatch) -> None:
+    """``wait`` raises ``TimeoutError`` when the deadline elapses."""
+    executions = _make_executions(
+        get_side_effect=lambda _id: {"executionId": _id, "status": "Running"}
+    )
+
+    now = {"t": 0.0}
+
+    def fake_monotonic() -> float:
+        return now["t"]
+
+    def fake_sleep(seconds: float) -> None:
+        now["t"] += seconds
+
+    monkeypatch.setattr("deeporigin.platform.executions.time.monotonic", fake_monotonic)
+    monkeypatch.setattr("deeporigin.platform.executions.time.sleep", fake_sleep)
+
+    with pytest.raises(TimeoutError, match="Timed out after"):
+        executions.wait(["a"], poll_interval=0.1, timeout=0.25)
+
+
+def test_wait_rejects_empty_list() -> None:
+    """``wait`` rejects an empty input list."""
+    executions = Executions(client=MagicMock())
+    with pytest.raises(ValueError, match="non-empty"):
+        executions.wait([], poll_interval=0.1)
+
+
+def test_wait_rejects_non_positive_poll_interval() -> None:
+    """``wait`` rejects ``poll_interval <= 0``."""
+    executions = Executions(client=MagicMock())
+    with pytest.raises(ValueError, match="poll_interval must be positive"):
+        executions.wait(["a"], poll_interval=0.0)
+    with pytest.raises(ValueError, match="poll_interval must be positive"):
+        executions.wait(["a"], poll_interval=-1.0)
+
+
+def test_wait_rejects_empty_string_id() -> None:
+    """``wait`` rejects empty execution ID strings."""
+    executions = Executions(client=MagicMock())
+    with pytest.raises(ValueError, match="empty string"):
+        executions.wait(["a", ""], poll_interval=0.1)
 
 
 def test_list_executions_by_session_lv1(client: DeepOriginClient):

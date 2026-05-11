@@ -1,10 +1,17 @@
-"""PocketFinder -- sync-only execution for detecting protein binding pockets.
+"""PocketFinder -- find binding pockets via synchronous or asynchronous execution.
 
-Usage::
+Sync usage (blocking, returns pockets directly)::
 
     pf = PocketFinder(protein)
     pf.quote()           # populates pf.estimate
     pockets = pf.run()   # blocking; calls get_results(); populates pf.cost
+
+Async usage (persisted execution, watch in notebook)::
+
+    pf = PocketFinder(protein)
+    pf.start()            # submits async; sets pf.id and pf.status
+    await pf.watch()      # live Jupyter updates (or pf.sync() in a loop)
+    pockets = pf.get_results()
 """
 
 from __future__ import annotations
@@ -14,7 +21,12 @@ from typing import Any, Self
 from beartype import beartype
 
 from deeporigin.drug_discovery.execution import Execution
-from deeporigin.drug_discovery.execution_mixins import QuoteMixin, SyncExecutableMixin
+from deeporigin.drug_discovery.execution_mixins import (
+    AsyncExecutableMixin,
+    QuoteMixin,
+    SyncExecutableMixin,
+)
+from deeporigin.drug_discovery.notebook_watch_mixin import NotebookWatchMixin
 from deeporigin.drug_discovery.structures.pocket import Pocket
 from deeporigin.drug_discovery.structures.protein import Protein
 from deeporigin.exceptions import DeepOriginException
@@ -22,13 +34,17 @@ from deeporigin.platform.client import DeepOriginClient
 from deeporigin.platform.constants import TOOL_KEYS_AND_VERSIONS
 
 
-class PocketFinder(Execution, QuoteMixin, SyncExecutableMixin):
-    """Find binding pockets in a protein structure (sync-only).
+class PocketFinder(
+    Execution, QuoteMixin, SyncExecutableMixin, AsyncExecutableMixin, NotebookWatchMixin
+):
+    """Find binding pockets in a protein structure.
 
-    Uses ``client.executions.create`` with ``sync=True`` for :meth:`run` and
-    ``sync=False`` with ``approveAmount=0`` for :meth:`quote`. The platform
-    returns an execution id (``id``) you can use with :meth:`get_results` and
-    result-explorer APIs.
+    The execution request body includes ``sync`` (``true`` = blocking, ``false`` =
+    immediate DTO). :meth:`run` sets ``"sync": true`` and blocks until the run
+    finishes. :meth:`start` and :meth:`quote` set ``"sync": false`` (non-blocking);
+    ``start`` returns immediately with an execution DTO that you can poll with
+    :meth:`sync` (or watch with :meth:`watch` / :meth:`watch_async` in Jupyter).
+    Track async jobs with :meth:`sync`, :meth:`from_id`, and :meth:`list`.
 
     Attributes:
         protein: The protein to analyse.
@@ -107,7 +123,14 @@ class PocketFinder(Execution, QuoteMixin, SyncExecutableMixin):
         sync: bool = True,
         approve_amount: int | None = None,
     ) -> dict[str, Any]:
-        """Build the POST body for ``executions.create``."""
+        """Build the POST body for ``executions.create``.
+
+        ``sync`` lives inside ``inputs`` because the pocket-finder tool
+        definition declares it as an input property; the platform's
+        estimator reads ``inputs.sync`` to choose direct serving (sync) vs.
+        Argo workflow (async). A top-level ``sync`` would be silently dropped
+        and the AJV default (``true``) used instead.
+        """
         payload: dict[str, Any] = {
             "inputs": {
                 "protein": {
@@ -116,10 +139,10 @@ class PocketFinder(Execution, QuoteMixin, SyncExecutableMixin):
                 },
                 "pocket_count": self._pocket_count,
                 "pocket_min_size": self._pocket_min_size,
+                "sync": sync,
             },
             "outputs": {},
             "metadata": {},
-            "sync": sync,
         }
         if approve_amount is not None:
             payload["approveAmount"] = approve_amount
@@ -185,7 +208,7 @@ class PocketFinder(Execution, QuoteMixin, SyncExecutableMixin):
         Raises:
             ValueError: If ``protein.id`` is missing from stored inputs.
         """
-        instance = super().from_dto(dto, client=client)  # ty:ignore[unresolved-attribute]
+        instance = super().from_dto(dto, client=client)
         inputs: dict[str, Any] = dto.get("userInputs") or dto.get("inputs") or {}
         protein_input, pocket_count, pocket_min_size = cls._parse_inputs_dict(inputs)
 
@@ -248,10 +271,11 @@ class PocketFinder(Execution, QuoteMixin, SyncExecutableMixin):
 
     @beartype
     def run(self) -> list[Pocket]:
-        """Execute pocket finding (blocking).
+        """Execute pocket finding synchronously (blocking).
 
-        Submits a synchronous tools execution and returns fresh ``Pocket`` objects
-        via :meth:`get_results`.
+        Submits one synchronous tools execution (``sync=True``) and returns the
+        detected pockets via :meth:`get_results`. The server blocks until the
+        run completes; use :meth:`start` for async, persisted execution.
 
         Returns:
             List of ``Pocket`` objects found in the protein.
@@ -269,3 +293,25 @@ class PocketFinder(Execution, QuoteMixin, SyncExecutableMixin):
         self.update_from_dto(dto)
 
         return self.get_results(dto)
+
+    def _start_impl(self, **kwargs: Any) -> None:
+        """Submit pocket finding as a persisted async execution (``sync=False``).
+
+        Sets :attr:`id`, :attr:`status`, and :attr:`_execution_dto` from the
+        platform response. Poll :meth:`sync` or use :meth:`watch` /
+        :meth:`watch_async` in Jupyter until the execution reaches a terminal
+        state, then call :meth:`get_results` to retrieve the pockets.
+        """
+        self._ensure_protein_remote()
+        execution_dto = self.client.executions.create(  # ty:ignore[unresolved-attribute]
+            data=self._make_payload(sync=False),
+            tool_key=self.tool_key,
+            tool_version=self.tool_version,
+        )
+        execution_id = execution_dto.get("executionId")
+        if execution_id is None:
+            raise ValueError("Execution response must contain 'executionId'") from None
+
+        self._execution_dto = execution_dto
+        self._id = execution_id
+        self.status = execution_dto.get("status")

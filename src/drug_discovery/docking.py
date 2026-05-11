@@ -471,17 +471,23 @@ class Docking(
                 Use ``0`` for quoting.
             sync: ``False`` = async (immediate execution DTO). ``True`` = blocking
                 response; use only with a **single** ligand in ``inputs.ligands``.
+                Nested under ``inputs`` because the docking tool definition
+                declares it as an input property; the platform's estimator
+                reads ``inputs.sync`` to pick direct serving vs. Argo workflow.
+                A top-level ``sync`` would be silently dropped (AJV would fall
+                back to the schema default of ``true``).
 
         Returns:
-            DTO for ``client.executions.create`` (``inputs``, ``outputs``, ``metadata``,
-            ``sync``, optional ``name``, optional ``approveAmount``, ``batchSize``).
+            DTO for ``client.executions.create`` (``inputs`` -- which carries
+            ``sync`` -- ``outputs``, ``metadata``, optional ``name``, optional
+            ``approveAmount``, ``batchSize``).
         """
         params, metadata = self._build_tool_inputs(ligand_set=ligand_set)
+        params["sync"] = sync
         payload: dict[str, Any] = {
             "inputs": params,
             "outputs": {},
             "metadata": metadata,
-            "sync": sync,
         }
         if self.name is not None:
             payload["name"] = self.name

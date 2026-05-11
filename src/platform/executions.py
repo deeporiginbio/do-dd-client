@@ -2,8 +2,12 @@
 
 from __future__ import annotations
 
+import builtins
 from datetime import datetime, timezone
+import time
 from typing import TYPE_CHECKING, Any
+
+from beartype import beartype
 
 if TYPE_CHECKING:
     from deeporigin.platform.client import DeepOriginClient
@@ -295,3 +299,94 @@ class Executions:
         self._c._patch(
             f"/tools/{self._c.org_key}/tools/executions/{execution_id}:confirm"
         )
+
+    @beartype
+    def wait(
+        self,
+        executions: str | builtins.list[str],
+        *,
+        poll_interval: float = 5.0,
+        timeout: float | None = None,
+    ) -> builtins.list[dict]:
+        """Block until every given execution reaches a terminal state.
+
+        Periodically polls the platform via :meth:`get` for each execution
+        whose status is not yet in
+        :data:`~deeporigin.platform.constants.TERMINAL_STATES`, sleeping
+        ``poll_interval`` seconds between polling cycles. Once all executions
+        have terminated (or ``timeout`` elapses), returns the latest DTOs in
+        the same order as the input.
+
+        Args:
+            executions: A single execution ID string, or a list of execution
+                ID strings to wait on.
+            poll_interval: Seconds to sleep between polling cycles. Must be
+                positive. Defaults to ``5.0``.
+            timeout: Maximum total seconds to wait. If ``None`` (default),
+                waits indefinitely. When set and exceeded before all
+                executions terminate, raises :class:`TimeoutError`.
+
+        Returns:
+            Latest execution DTOs (one per input), each in a terminal state.
+
+        Raises:
+            ValueError: If ``executions`` is empty, ``poll_interval`` is not
+                positive, or any execution ID is an empty string.
+            TimeoutError: If ``timeout`` is set and elapses before every
+                execution reaches a terminal state.
+        """
+        ids = [executions] if isinstance(executions, str) else list(executions)
+        if not ids:
+            raise ValueError("executions must be a non-empty list")
+        if poll_interval <= 0:
+            raise ValueError(f"poll_interval must be positive, got {poll_interval!r}")
+        for index, exec_id in enumerate(ids):
+            if not exec_id:
+                raise ValueError(f"executions[{index}] is an empty string")
+
+        latest: dict[str, dict] = {}
+        deadline = time.monotonic() + timeout if timeout is not None else None
+
+        while True:
+            pending = self._poll_pending(ids, latest)
+            if not pending:
+                return [latest[exec_id] for exec_id in ids]
+
+            sleep_for = poll_interval
+            if deadline is not None:
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    raise TimeoutError(
+                        f"Timed out after {timeout}s waiting for "
+                        f"{len(pending)} of {len(ids)} executions to "
+                        f"reach a terminal state: {pending}"
+                    )
+                sleep_for = min(poll_interval, remaining)
+            time.sleep(sleep_for)
+
+    def _poll_pending(
+        self,
+        ids: builtins.list[str],
+        latest: dict[str, dict],
+    ) -> builtins.list[str]:
+        """Refresh non-terminal executions and return those still pending.
+
+        Args:
+            ids: Execution IDs to inspect (order preserved).
+            latest: Cache of the most recent DTO per execution ID; updated
+                in place for any execution that gets re-polled.
+
+        Returns:
+            IDs whose latest status is not yet in
+            :data:`~deeporigin.platform.constants.TERMINAL_STATES`.
+        """
+        pending: builtins.list[str] = []
+        for exec_id in ids:
+            cached = latest.get(exec_id)
+            if cached is not None and cached.get("status") in TERMINAL_STATES:
+                continue
+            dto = self.get(exec_id)
+            latest[exec_id] = dto
+            if dto.get("status") not in TERMINAL_STATES:
+                pending.append(exec_id)
+        return pending
