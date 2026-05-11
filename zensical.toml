@@ -50,6 +50,7 @@ nav = [
       {"Execution" = "dd/ref/execution.md"},
       {"execution_helpers" = "dd/ref/execution-helpers.md"},
       {"docking" = "dd/ref/docking.md"},
+      {"pocket_finder" = "dd/ref/pocket_finder.md"},
       {"abfe" = "dd/ref/abfe.md"},
       {"rbfe" = "dd/ref/rbfe.md"},
     ]},
