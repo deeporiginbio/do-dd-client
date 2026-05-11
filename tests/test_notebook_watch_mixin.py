@@ -18,7 +18,7 @@ def _minimal_dto(*, status: str, execution_id: str = "exec-1") -> dict:
         "executionId": execution_id,
         "status": status,
         "tool": {
-            "key": "deeporigin.abfe-end-to-end",
+            "key": "deeporigin.abfe-e2e-workflow",
             "version": "0.2.0",
         },
         "userInputs": {},

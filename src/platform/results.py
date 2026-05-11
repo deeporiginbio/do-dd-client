@@ -363,8 +363,10 @@ class Results:
     ) -> dict:
         """Get ABFE (Absolute Binding Free Energy) end-to-end results.
 
-        Convenience wrapper around :meth:`get` with
-        ``tool_key="deeporigin.abfe-end-to-end"``.
+        Convenience wrapper around :meth:`get` that filters on
+        ``result_type="abferesult"``. Records are produced by the
+        ``deeporigin.abfe-e2e-workflow`` tool when run in ``mode="abfe"`` (or
+        ``mode="full"``).
 
         Project scope is inherited from :meth:`get`: when
         ``client.project_id`` is set, only rows for that project are returned.

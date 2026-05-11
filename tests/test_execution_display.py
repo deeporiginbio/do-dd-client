@@ -158,11 +158,11 @@ def test_card_header_shows_tool_key_and_version() -> None:
             "executionId": "e1",
             "status": "Running",
             "name": "Run",
-            "tool": {"key": "deeporigin.abfe-end-to-end", "version": "0.2.37"},
+            "tool": {"key": "deeporigin.foo-fake-tool", "version": "0.2.37"},
             "progressReport": None,
         }
     ).render_html()
-    assert "deeporigin.abfe-end-to-end" in html
+    assert "deeporigin.foo-fake-tool" in html
     assert "v0.2.37" in html
     assert "card-header" in html
 

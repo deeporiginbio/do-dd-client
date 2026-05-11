@@ -57,8 +57,8 @@
     "resourceId": "rkzoie44xi997crx7s46j",
     "status": "Quoted",
     "tool": {
-        "key": "deeporigin.abfe-end-to-end",
-        "version": "0.2.18"
+        "key": "deeporigin.abfe-e2e-workflow",
+        "version": "0.7.1"
     },
     "updatedAt": "2025-11-18T15:22:35.271Z",
     "userInputs": {},

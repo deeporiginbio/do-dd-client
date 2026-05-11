@@ -64,8 +64,8 @@ TOOL_KEYS_AND_VERSIONS: dict[str, dict[str, str]] = {
         "tool_version": "0.3.1",
     },
     "abfe": {
-        "tool_key": "deeporigin.abfe-end-to-end",
-        "tool_version": "0.2.39",
+        "tool_key": "deeporigin.abfe-e2e-workflow",
+        "tool_version": "0.7.1",
     },
     "rbfe": {
         "tool_key": "deeporigin.rbfe-end-to-end",
