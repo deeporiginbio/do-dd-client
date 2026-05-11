@@ -437,12 +437,11 @@ class DeepOriginClient(metaclass=_DeepOriginMeta):
             Any, self
         )  # ``self`` is ``Self``; wrappers expect ``DeepOriginClient``
 
-        try:
-            from deeporigin.platform.tools import Tools
+        # tools is always available, needed for tools SDK to resolve
+        # output schemas
+        from deeporigin.platform.tools import Tools
 
-            self.tools = Tools(_client)
-        except ImportError:
-            self.tools = None
+        self.tools = Tools(_client)
 
         try:
             from deeporigin.platform.clusters import Clusters
