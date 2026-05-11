@@ -265,25 +265,36 @@ class ToolExecution(Execution, QuoteMixin, AsyncExecutableMixin, NotebookWatchMi
         *,
         client: DeepOriginClient | None = None,
     ) -> Self:
-        """Rehydrate from an execution DTO (e.g. ``client.executions.get``)."""
+        """Rehydrate from an execution DTO (e.g. ``client.executions.get``).
+
+        The tool manifest (definition) is **not** fetched here — it is loaded
+        lazily the first time it is needed (e.g. before re-submission). This
+        prevents stale manifest data from a previously viewed tool from flashing
+        on screen while the new manifest resolves, and avoids an unnecessary
+        network round-trip on results and app pages.
+        """
         if client is None:
             client = DeepOriginClient()
-        if client.tools is None:
-            raise RuntimeError("DeepOriginClient has no tools API")
         tool_info = dto["tool"]
-        definition = client.tools.get(
-            tool_key=tool_info["key"],
-            tool_version=tool_info["version"],
-        )
         user_inputs = dto.get("userInputs") or {}
-        inputs = _build_inputs_from_schema(definition, user_inputs)
         instance = object.__new__(cls)
-        instance._definition = definition
-        instance._inputs = inputs
+        instance._definition = None  # lazy-loaded by _ensure_definition()
+        instance._inputs = dict(user_inputs)
         instance.tool_key = tool_info["key"]
         instance.tool_version = tool_info["version"]
         _apply_dto_common_fields(instance, dto, client)
         return instance
+
+    def _ensure_definition(self) -> dict[str, Any]:
+        """Return the tool definition, fetching it from the API if not yet loaded."""
+        if self._definition is None:
+            if self.client.tools is None:
+                raise RuntimeError("DeepOriginClient has no tools API")
+            self._definition = self.client.tools.get(
+                tool_key=self.tool_key,
+                tool_version=self.tool_version,
+            )
+        return self._definition
 
     # ------------------------------------------------------------------
     # Serialization helpers
@@ -291,7 +302,8 @@ class ToolExecution(Execution, QuoteMixin, AsyncExecutableMixin, NotebookWatchMi
 
     def _serialize_inputs(self) -> dict[str, Any]:
         """Convert ``_inputs`` back to JSON-serializable form for the tools API."""
-        schema = self._definition.get("inputs") or {}
+        definition = self._ensure_definition()
+        schema = definition.get("inputs") or {}
         properties = schema.get("properties") or {}
         out: dict[str, Any] = {}
         for name, value in self._inputs.items():

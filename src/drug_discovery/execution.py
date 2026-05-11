@@ -42,6 +42,7 @@ def _paginate_tool_execution_list(
             page=current_page,
             page_size=page_size,
             tool_key=tool_key,
+            dashboard=True,
         )
 
         if not isinstance(response, dict):

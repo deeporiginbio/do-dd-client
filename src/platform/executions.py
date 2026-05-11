@@ -103,6 +103,7 @@ class Executions:
         session: str | None = None,
         project_id: str | None = None,
         created_after: datetime | str | None = None,
+        dashboard: bool = False,
     ) -> dict:
         """List tool executions with pagination and filtering.
 
@@ -125,6 +126,11 @@ class Executions:
                 entity ``createdAt`` column). Use a timezone-aware
                 :class:`~datetime.datetime` or an ISO string such as
                 ``2026-05-07T15:13:25.254Z``.
+            dashboard: When ``True``, filter by ``toolManifest.key`` (dashboard
+                context only). When ``False`` (default), filter by ``tool.key``
+                directly. Only pass ``True`` from dashboard-page code paths;
+                results and app pages must use the direct key filter or
+                ``executions.search`` instead.
 
         Returns:
             Dictionary containing paginated execution data.
@@ -139,7 +145,10 @@ class Executions:
 
         filter_dict: dict = {}
         if tool_key is not None:
-            filter_dict["tool"] = {"toolManifest": {"key": tool_key}}
+            if dashboard:
+                filter_dict["tool"] = {"toolManifest": {"key": tool_key}}
+            else:
+                filter_dict["tool"] = {"key": tool_key}
         if session is not None:
             filter_dict["session"] = session
         if project_id is not None:
