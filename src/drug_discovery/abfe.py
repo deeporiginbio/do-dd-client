@@ -891,11 +891,26 @@ class ABFE(Execution, QuoteMixin, AsyncExecutableMixin, NotebookWatchMixin):
         }
 
     def __repr__(self) -> str:
-        """Return a string representation showing protein and ligand IDs."""
+        """Return a multi-line string representation of this ABFE execution.
+
+        Shows the tool key and version, execution mode and name, plus the
+        prepared-system identifiers (protein and ligand IDs). Each field
+        appears on its own line for readability.
+        """
         ps = getattr(self, "prepared_system", None)
         if ps is None:
             return super().__repr__()
-        return f"ABFE(protein_id={ps.protein_id!r}, ligand1_id={ps.ligand1_id!r})"
+        parts = ["ABFE("]
+        parts.append(f"  tool_key={self.tool_key!r},")
+        parts.append(f"  tool_version={self.tool_version!r},")
+        parts.append(f"  mode={self.mode!r},")
+        parts.append(f"  name={self.name!r},")
+        parts.append(f"  protein_id={ps.protein_id!r},")
+        parts.append(f"  ligand1_id={ps.ligand1_id!r},")
+        if ps.ligand2_id is not None:
+            parts.append(f"  ligand2_id={ps.ligand2_id!r},")
+        parts.append(")")
+        return "\n".join(parts)
 
     def _build_metadata(self) -> dict:
         """Construct execution metadata."""
