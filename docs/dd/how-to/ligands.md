@@ -436,47 +436,47 @@ ADMET (Absorption, Distribution, Metabolism, Excretion, and Toxicity) properties
     mp.run()
     ```
 
-    For many ligands, pass ``batch_size`` (e.g. ``10``) so each property request sends at most that many molecules per API call. Omit it (default) to send all ligands in one payload per property, as before.
+    For many ligands, pass ``batch_size`` (e.g. ``10``) so each request sends at most that many molecules per API call. Omit it (default) to send all ligands in a single combined-tool call.
 
     ``quote()`` requests a price using only the **first** ligand, then multiplies that total by the number of ligands (linear scaling). It does not use ``batch_size``.
 
     !!! note "Mutation Behavior"
         `Molprops.run()` mutates each ligand by filling dedicated ADMET attributes (see below), storing values in `ligand.properties`, and setting RDKit molecule properties.
 
-    The return value is a single flat dict (one merged row per ligand), for example:
+    The return value is a single flat dict (one row per ligand), for example:
 
     ```python
     {
-        'smiles': 'Cn1c(=O)n(Cc2ccccc2)c(=O)c2c1nc(SCCO)n2Cc1ccccc1',
-        'logS': -4.004,  # Aqueous solubility
-        'logP': 3.686,   # Partition coefficient
-        'logD': 2.528,   # Distribution coefficient
-        'hERG': {'probability': 0.264},  # hERG inhibition risk
-        'ames': {'probability': 0.213},  # Ames mutagenicity
-        'cyp': {  # Cytochrome P450 inhibition
-            'probabilities': {
-                'cyp1a2': 0.134,
-                'cyp2c9': 0.744,
-                'cyp2c19': 0.853,
-                'cyp2d6': 0.0252,
-                'cyp3a4': 0.4718,
-            },
-        },
-        'has_pains': None,  # PAINS (Pan Assay Interference Compounds)
+        'ligand_id': '0',
+        'logS': -4.004,                       # Aqueous solubility
+        'logP': 3.686,                        # Partition coefficient
+        'logD': 2.528,                        # Distribution coefficient
+        'ames_probability': 0.213,            # Ames mutagenicity probability
+        'herg_inhibition_probability': 0.264, # hERG inhibition probability
+        'cyp1a2': 0.134,                      # CYP450 inhibition probabilities
+        'cyp2c9': 0.744,
+        'cyp2c19': 0.853,
+        'cyp2d6': 0.0252,
+        'cyp3a4': 0.4718,
+        'has_pains': False,                   # PAINS (Pan Assay Interference Compounds)
         'pains_fragments': [],
     }
     ```
 
-    The same values are exposed as first-class attributes (Python `snake_case` names for the scalar lipophilicity/solubility predictions):
+    The same values are exposed as first-class attributes (Python `snake_case` names):
 
     | API key (in dict / `get_property`) | Ligand attribute |
     |-----------------------------------|------------------|
     | `logS` | `ligand.log_s` |
     | `logD` | `ligand.log_d` |
     | `logP` | `ligand.log_p` |
-    | `hERG` | `ligand.herg` |
-    | `cyp` | `ligand.cyp` |
-    | `ames` | `ligand.ames` |
+    | `ames_probability` | `ligand.ames_probability` |
+    | `herg_inhibition_probability` | `ligand.herg_inhibition_probability` |
+    | `cyp1a2` | `ligand.cyp_1a2` |
+    | `cyp2c9` | `ligand.cyp_2c9` |
+    | `cyp2c19` | `ligand.cyp_2c19` |
+    | `cyp2d6` | `ligand.cyp_2d6` |
+    | `cyp3a4` | `ligand.cyp_3a4` |
     | `has_pains` | `ligand.has_pains` |
     | `pains_fragments` | `ligand.pains_fragments` |
 

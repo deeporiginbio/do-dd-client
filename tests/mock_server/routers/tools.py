@@ -114,9 +114,7 @@ def _stable_unit_float(seed: str, suffix: str) -> float:
     return int(digest[:8], 16) / 0x1_0000_0000
 
 
-def _stable_log_value(
-    seed: str, suffix: str, *, low: float, high: float
-) -> float:
+def _stable_log_value(seed: str, suffix: str, *, low: float, high: float) -> float:
     """Deterministic float in ``[low, high)`` derived from ``(seed, suffix)``."""
     return round(low + _stable_unit_float(seed, suffix) * (high - low), 6)
 
@@ -135,9 +133,7 @@ def _synthesize_molprops_row(
     if "ames" in requested:
         row["ames_probability"] = round(_stable_unit_float(seed, "ames"), 6)
     if "herg" in requested:
-        row["herg_inhibition_probability"] = round(
-            _stable_unit_float(seed, "herg"), 6
-        )
+        row["herg_inhibition_probability"] = round(_stable_unit_float(seed, "herg"), 6)
     if "cyp" in requested:
         for iso in ("cyp1a2", "cyp2c9", "cyp2c19", "cyp2d6", "cyp3a4"):
             row[iso] = round(_stable_unit_float(seed, iso), 6)
