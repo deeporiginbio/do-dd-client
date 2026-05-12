@@ -104,6 +104,55 @@ def _legacy_quotation(legacy: dict[str, Any]) -> dict[str, Any] | None:
     return quotation if isinstance(quotation, dict) else None
 
 
+def _stable_unit_float(seed: str, suffix: str) -> float:
+    """Deterministic float in ``[0.0, 1.0)`` derived from ``(seed, suffix)``.
+
+    Used by the combined-molprops mock to synthesize stable per-ligand values
+    keyed by SMILES so the same request always returns the same numbers.
+    """
+    digest = hashlib.md5(f"{seed}|{suffix}".encode("utf-8")).hexdigest()
+    return int(digest[:8], 16) / 0x1_0000_0000
+
+
+def _stable_log_value(
+    seed: str, suffix: str, *, low: float, high: float
+) -> float:
+    """Deterministic float in ``[low, high)`` derived from ``(seed, suffix)``."""
+    return round(low + _stable_unit_float(seed, suffix) * (high - low), 6)
+
+
+def _synthesize_molprops_row(
+    *, smiles: str, ligand_id: str, requested: list[str]
+) -> dict[str, Any]:
+    """Build a synthetic combined-molprops output row for one ligand.
+
+    Includes only the output keys for properties named in ``requested`` (see
+    the combined tool's input schema for valid property keys: ``ames``,
+    ``cyp``, ``herg``, ``logd``, ``logp``, ``logs``, ``pains``).
+    """
+    row: dict[str, Any] = {"ligand_id": ligand_id}
+    seed = smiles or ligand_id
+    if "ames" in requested:
+        row["ames_probability"] = round(_stable_unit_float(seed, "ames"), 6)
+    if "herg" in requested:
+        row["herg_inhibition_probability"] = round(
+            _stable_unit_float(seed, "herg"), 6
+        )
+    if "cyp" in requested:
+        for iso in ("cyp1a2", "cyp2c9", "cyp2c19", "cyp2d6", "cyp3a4"):
+            row[iso] = round(_stable_unit_float(seed, iso), 6)
+    if "logd" in requested:
+        row["logD"] = _stable_log_value(seed, "logd", low=-2.0, high=6.0)
+    if "logp" in requested:
+        row["logP"] = _stable_log_value(seed, "logp", low=-2.0, high=6.0)
+    if "logs" in requested:
+        row["logS"] = _stable_log_value(seed, "logs", low=-6.0, high=0.0)
+    if "pains" in requested:
+        row["has_pains"] = False
+        row["pains_fragments"] = []
+    return row
+
+
 def create_tools_router(
     *,
     executions: dict[str, dict[str, Any]],
@@ -1143,6 +1192,15 @@ def create_tools_router(
             return _normalize_execution(execution)
         if tool_key == "deeporigin.mol-props-protonation":
             execution = _build_protonation_execution(
+                org_key=org_key,
+                tool_key=tool_key,
+                tool_version=tool_version,
+                body=body,
+            )
+            executions[execution["executionId"]] = execution
+            return _normalize_execution(execution)
+        if tool_key == "deeporigin.mol-props-combined":
+            execution = _build_combined_molprops_execution(
                 org_key=org_key,
                 tool_key=tool_key,
                 tool_version=tool_version,
