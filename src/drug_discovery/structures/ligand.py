@@ -36,14 +36,20 @@ RDLogger.DisableLog("rdApp.*")  # ty:ignore[unresolved-attribute]
 
 FILE_FORMATS = Literal["mol", "mol2", "pdb", "pdbqt", "xyz", "sdf"]
 
-# Keys returned by merged molprops API rows → Ligand attribute names (snake_case).
+# Keys returned by ``deeporigin.mol-props-combined`` rows → Ligand attribute
+# names (snake_case). Mirrors the ``molprops[*]`` items in the combined tool's
+# output schema.
 _MOLPROPS_RESPONSE_TO_ATTR: dict[str, str] = {
     "logS": "log_s",
     "logD": "log_d",
     "logP": "log_p",
-    "hERG": "herg",
-    "cyp": "cyp",
-    "ames": "ames",
+    "ames_probability": "ames_probability",
+    "herg_inhibition_probability": "herg_inhibition_probability",
+    "cyp1a2": "cyp_1a2",
+    "cyp2c9": "cyp_2c9",
+    "cyp2c19": "cyp_2c19",
+    "cyp2d6": "cyp_2d6",
+    "cyp3a4": "cyp_3a4",
     "has_pains": "has_pains",
     "pains_fragments": "pains_fragments",
 }
@@ -118,8 +124,10 @@ class Ligand(Entity):
     methods for property prediction, visualization, and file operations.
 
     After running :class:`~deeporigin.drug_discovery.molprops.Molprops`, predicted ADMET values
-    are available on dedicated attributes (``log_s``, ``log_d``, ``log_p``, ``herg``, ``cyp``,
-    ``ames``, ``has_pains``, ``pains_fragments``) as well as in :attr:`properties`.
+    are available on dedicated attributes (``log_s``, ``log_d``, ``log_p``,
+    ``ames_probability``, ``herg_inhibition_probability``, ``cyp_1a2``,
+    ``cyp_2c9``, ``cyp_2c19``, ``cyp_2d6``, ``cyp_3a4``, ``has_pains``,
+    ``pains_fragments``) as well as in :attr:`properties`.
 
     The RDKit molecule must be passed as the keyword-only argument ``mol`` (typically via
     :meth:`from_smiles`, :meth:`from_rdkit_mol`, or similar factory methods).
@@ -139,13 +147,18 @@ class Ligand(Entity):
     properties: dict = field(default_factory=dict)
     mol: Chem.Mol = field(kw_only=True)
     protonated_at_ph: float | None = None
-    # Molprops / ADMET (populated by Molprops.run(); API keys logS/logD/logP/hERG map here)
+    # Molprops / ADMET (populated by Molprops.run(); see _MOLPROPS_RESPONSE_TO_ATTR
+    # for the API-key → attribute mapping for the combined molprops tool).
     log_s: float | None = None
     log_d: float | None = None
     log_p: float | None = None
-    herg: dict[str, Any] | None = None
-    cyp: dict[str, Any] | None = None
-    ames: dict[str, Any] | None = None
+    ames_probability: float | None = None
+    herg_inhibition_probability: float | None = None
+    cyp_1a2: float | None = None
+    cyp_2c9: float | None = None
+    cyp_2c19: float | None = None
+    cyp_2d6: float | None = None
+    cyp_3a4: float | None = None
     has_pains: bool | None = None
     pains_fragments: list[Any] | None = None
 

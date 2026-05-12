@@ -1,8 +1,9 @@
 """Molprops -- synchronous ADMET / molprops runs on one or more ligands.
 
-Each property is its own platform tool (``deeporigin.mol-props-<key>``); a
-``Molprops`` instance orchestrates one ``client.executions.create`` per
-selected property and merges the per-property ``jobOutputs`` rows by ligand id.
+Backed by the single combined platform tool ``deeporigin.mol-props-combined``,
+which accepts a list of ``ligands`` and a ``molprops`` array selecting which
+properties to compute, and returns one row per input ligand keyed by
+``ligand_id``.
 
 Usage::
 
@@ -16,8 +17,6 @@ Usage::
 
 from __future__ import annotations
 
-from collections import defaultdict
-from copy import deepcopy
 from typing import Any
 
 from beartype import beartype
@@ -33,7 +32,7 @@ from deeporigin.utils.constants import (
     MOLPROPS_PROPERTY_KEYS,
 )
 
-# Merged molprops rows are keyed by ligand id (toolbox molprops output schemas).
+# Merged molprops rows are keyed by ligand id (combined molprops output schema).
 MOLPROPS_MERGE_KEY = "ligand_id"
 
 
@@ -69,12 +68,6 @@ def _resolve_molprops_props(
     return _validate_molprops_properties(properties)
 
 
-def _molprops_tool_key(prop: str) -> str:
-    """Return the platform tool key for a single molprops property (e.g. ``logp``)."""
-    prefix = TOOL_KEYS_AND_VERSIONS["mol_props"]["tool_key_prefix"]
-    return f"{prefix}-{prop}"
-
-
 def _execution_price_total(dto: dict) -> float | None:
     """Extract ``priceTotal`` from a tool execution DTO's ``quotationResult``."""
     quotation = dto.get("quotationResult") or {}
@@ -86,28 +79,45 @@ def _execution_price_total(dto: dict) -> float | None:
 
 
 def _execution_outputs_as_rows(dto: dict) -> list[dict]:
-    """Return ``jobOutputs`` from an execution DTO as a list of row dicts."""
+    """Return per-ligand molprops rows from a combined-tool execution DTO.
+
+    The combined tool's output schema wraps rows under a ``molprops`` key
+    (``{"molprops": [...]}``), but some response pipelines flatten the array
+    to the top of ``jobOutputs``. Both shapes are accepted.
+    """
     jo = dto.get("jobOutputs")
-    if jo is None:
-        return []
     if isinstance(jo, dict):
+        molprops = jo.get("molprops")
+        if isinstance(molprops, list):
+            return [row for row in molprops if isinstance(row, dict)]
         return [jo]
     if isinstance(jo, list):
         return [row for row in jo if isinstance(row, dict)]
     return []
 
 
-def get_single_property(
+def _molprops_payload(*, ligand_set: LigandSet, properties: set[str]) -> dict[str, Any]:
+    """Build the ``inputs`` dict for ``deeporigin.mol-props-combined``."""
+    return {
+        "ligands": ligand_set.to_dict(),
+        "molprops": sorted(properties),
+    }
+
+
+def run_molprops_combined(
     *,
-    payload: dict,
-    prop: str,
+    ligand_set: LigandSet,
+    properties: set[str],
     client: DeepOriginClient,
     quote: bool = False,
 ) -> tuple[list[dict], dict]:
-    """Run one molprops tool for ``prop`` and return ``(jobOutputs_rows, raw_dto)``."""
+    """Issue one combined-tool execution and return ``(rows, raw_dto)``.
 
+    When ``quote`` is true, the call requests a cost estimate without
+    executing (``approveAmount=0``, ``sync=False``) and ``rows`` is empty.
+    """
     body: dict[str, Any] = {
-        "inputs": payload,
+        "inputs": _molprops_payload(ligand_set=ligand_set, properties=properties),
         "outputs": {},
         "metadata": {},
         "sync": True,
@@ -116,61 +126,13 @@ def get_single_property(
         body["approveAmount"] = 0
         body["sync"] = False
 
-    raw = client.executions.create(
-        tool_key=_molprops_tool_key(prop),
+    raw = client.executions.create(  # ty:ignore[unresolved-attribute]
+        tool_key=TOOL_KEYS_AND_VERSIONS["mol_props"]["tool_key"],
         tool_version=TOOL_KEYS_AND_VERSIONS["mol_props"]["tool_version"],
         data=body,
     )
-    return _execution_outputs_as_rows(raw), raw
-
-
-def merge_dict_lists(dict_lists, key="ligand_id"):
-    """Merge N lists of dicts by a common key (default ``ligand_id``)."""
-    merged = defaultdict(dict)
-    for lst in dict_lists:
-        for d in lst:
-            k = d[key]
-            merged[k].update(d)
-    if dict_lists:
-        order = [d[key] for d in dict_lists[0]]
-        seen = set()
-        result = []
-        for k in order + [k for k in merged if k not in order]:
-            if k not in seen:
-                result.append(deepcopy(merged[k]))
-                seen.add(k)
-        return result
-    return []
-
-
-def molprops_merged_with_raw_responses(
-    ligand_set: LigandSet,
-    properties: set[str] | None = None,
-    *,
-    client: DeepOriginClient,
-) -> tuple[list[dict], list[dict]]:
-    """Run molprops for each property, merge rows per ligand, and return raw DTOs."""
-    if properties is None:
-        properties_set: set[str] = set(MOLPROPS_DEFAULT_PROPERTIES)
-    else:
-        properties_set = set(properties)
-
-    payload = {"ligands": ligand_set.to_dict()}
-    outputs_per_prop: list[list[dict]] = []
-    raw_responses: list[dict] = []
-
-    for prop in sorted(properties_set):
-        rows, raw = get_single_property(
-            payload=payload,
-            prop=prop,
-            client=client,
-            quote=False,
-        )
-        outputs_per_prop.append(rows)
-        raw_responses.append(raw)
-
-    merged = merge_dict_lists(outputs_per_prop, key=MOLPROPS_MERGE_KEY)
-    return merged, raw_responses
+    rows = [] if quote else _execution_outputs_as_rows(raw)
+    return rows, raw
 
 
 def molprops_quote_total(
@@ -179,43 +141,38 @@ def molprops_quote_total(
     *,
     client: DeepOriginClient,
 ) -> float | None:
-    """Quote molprops (one execution per property) and return the summed estimate.
+    """Quote the combined molprops tool and return the total estimate.
 
-    Returns ``None`` if any per-property quotation has no ``priceTotal``.
+    Returns ``None`` if the quotation has no ``priceTotal``.
     """
-    payload = {"ligands": ligand_set.to_dict()}
-    total = 0.0
-    for prop in sorted(properties):
-        _rows, raw = get_single_property(
-            payload=payload,
-            prop=prop,
-            client=client,
-            quote=True,
-        )
-        price = _execution_price_total(raw)
-        if price is None:
-            return None
-        total += price
-    return total
+    _rows, raw = run_molprops_combined(
+        ligand_set=ligand_set,
+        properties=properties,
+        client=client,
+        quote=True,
+    )
+    return _execution_price_total(raw)
 
 
 class Molprops(Execution, QuoteMixin, SyncExecutableMixin):
-    """Predict molprops / ADMET for ligands (composite of several platform tools).
+    """Predict molprops / ADMET for ligands via the combined platform tool.
 
-    Orchestrates one ``client.executions.create`` per selected property key (e.g.
-    ``logp``, ``logd``). ``run()`` mutates each passed-in
-    :class:`~deeporigin.drug_discovery.structures.ligand.Ligand` in place via
+    Issues one ``client.executions.create`` per batch against
+    ``deeporigin.mol-props-combined``, requesting all selected property keys
+    (e.g. ``logp``, ``logd``) in a single call. ``run()`` mutates each
+    passed-in :class:`~deeporigin.drug_discovery.structures.ligand.Ligand`
+    in place via
     :meth:`~deeporigin.drug_discovery.structures.ligand.Ligand._apply_molprops_result`.
 
     This is a blocking flow. It does **not** assign a single platform execution
-    ``id`` -- use :attr:`tool_keys` to see which tool keys are invoked.
+    ``id`` -- use :attr:`tool_key` to see which tool key is invoked.
 
     Attributes:
         ligands: Ligands to predict (same order as SMILES sent to the API).
         batch_size: Max ligands per ``run()`` API payload, or ``None`` for all at once.
     """
 
-    tool_key: str = ""
+    tool_key: str = TOOL_KEYS_AND_VERSIONS["mol_props"]["tool_key"]
 
     @beartype
     def __init__(
@@ -258,8 +215,12 @@ class Molprops(Execution, QuoteMixin, SyncExecutableMixin):
 
     @property
     def tool_keys(self) -> tuple[str, ...]:
-        """Platform tool keys invoked for this configuration (one per property)."""
-        return tuple(_molprops_tool_key(p) for p in sorted(self._properties))
+        """Platform tool key invoked for this run (single combined tool).
+
+        Kept as a tuple for backwards-compatibility with callers that iterated
+        per-property tool keys; the combined tool now occupies a single slot.
+        """
+        return (self.tool_key,)
 
     @property
     def batch_size(self) -> int | None:
@@ -270,10 +231,10 @@ class Molprops(Execution, QuoteMixin, SyncExecutableMixin):
     def quote(self) -> None:
         """Request a total cost estimate (linear in ligand count).
 
-        Quotes the platform once per selected property using only the **first** ligand,
-        then sets :attr:`~deeporigin.drug_discovery.execution.Execution.estimate` to that
-        total multiplied by the number of ligands (``N``). This assumes per-ligand linear
-        pricing.
+        Quotes the combined tool once using only the **first** ligand, then
+        sets :attr:`~deeporigin.drug_discovery.execution.Execution.estimate`
+        to that total multiplied by the number of ligands (``N``). This
+        assumes per-ligand linear pricing.
 
         Raises:
             ValueError: If this instance was already quoted.
@@ -288,7 +249,7 @@ class Molprops(Execution, QuoteMixin, SyncExecutableMixin):
         self._quoted = True
 
     def _populate_estimate_from_quote(self) -> None:
-        """Populate ``estimate`` from single-ligand quotes scaled by ligand count."""
+        """Populate ``estimate`` from a single-ligand quote scaled by ligand count."""
 
         n_ligands = len(self._ligands)
         single = molprops_quote_total(
@@ -301,18 +262,18 @@ class Molprops(Execution, QuoteMixin, SyncExecutableMixin):
 
     @beartype
     def run(self) -> Molprops:
-        """Execute molprops, mutate ligands, and set :attr:`cost` when pricing is available.
+        """Execute the combined molprops tool, mutate ligands, and set :attr:`cost`.
 
-        Total USD :attr:`cost` is the sum of per-property ``priceTotal`` values
-        from each tool execution's ``quotationResult``.
+        Issues one ``client.executions.create`` per batch (controlled by
+        :attr:`batch_size`). Total USD :attr:`cost` is the sum of
+        ``priceTotal`` values from each batch's ``quotationResult``.
 
         Ligands without a platform ``id`` are assigned ``"0"``, ``"1"``, … here so
         batched requests merge on stable ``ligand_id`` values.
 
         A ``tqdm`` bar is shown only when there is more than one API **batch**
         (i.e. ``batch_size`` splits the run). The bar advances by ligands
-        completed and reports **ligands/s**, not batches/s. There is no progress
-        bar for applying results to ligands.
+        completed and reports **ligands/s**, not batches/s.
 
         Returns:
             ``self`` for chaining.
@@ -333,13 +294,13 @@ class Molprops(Execution, QuoteMixin, SyncExecutableMixin):
             disable=not use_batch_bar,
         ) as pbar:
             for batch_ligands in batches:
-                batch_merged, batch_raw = molprops_merged_with_raw_responses(
-                    LigandSet(ligands=batch_ligands),
+                batch_rows, batch_raw = run_molprops_combined(
+                    ligand_set=LigandSet(ligands=batch_ligands),
                     properties=self._properties,
                     client=self.client,
                 )
-                merged.extend(batch_merged)
-                raw_responses.extend(batch_raw)
+                merged.extend(batch_rows)
+                raw_responses.append(batch_raw)
                 pbar.update(len(batch_ligands))
 
         total_cost = 0.0
@@ -352,6 +313,13 @@ class Molprops(Execution, QuoteMixin, SyncExecutableMixin):
         if any_priced and total_cost > 0:
             self._cost = total_cost
 
-        for row, lig in zip(merged, self._ligands, strict=True):
-            lig._apply_molprops_result(row)
+        rows_by_id: dict[str, dict] = {
+            str(row[MOLPROPS_MERGE_KEY]): row
+            for row in merged
+            if isinstance(row, dict) and MOLPROPS_MERGE_KEY in row
+        }
+        for lig in self._ligands:
+            row = rows_by_id.get(str(lig.id))
+            if row is not None:
+                lig._apply_molprops_result(row)
         return self

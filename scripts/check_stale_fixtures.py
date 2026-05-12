@@ -78,11 +78,15 @@ def _expected_version_for_tool_key(tool_key: str) -> str | None:
         return t["pocket_finder"]["tool_version"]
     if tool_key == t["sysprep"]["tool_key"]:
         return t["sysprep"]["tool_version"]
+    if tool_key == t["protonation"]["tool_key"]:
+        return t["protonation"]["tool_version"]
     mp = t["mol_props"]
-    if tool_key == mp["protonation_tool_key"]:
+    if tool_key == mp["tool_key"]:
         return mp["tool_version"]
-    prefix = mp["tool_key_prefix"]
-    if tool_key.startswith(f"{prefix}-"):
+    # Legacy per-property fixtures (deeporigin.mol-props-{prop}) predate the
+    # combined tool. They are tracked via ALLOWLIST and validated against the
+    # combined tool's version until they are regenerated.
+    if tool_key.startswith("deeporigin.mol-props-"):
         return mp["tool_version"]
     return None
 

@@ -59,9 +59,12 @@ TOOL_KEYS_AND_VERSIONS: dict[str, dict[str, str]] = {
         "tool_version": "1.4.2",
     },
     "mol_props": {
-        "tool_key_prefix": "deeporigin.mol-props",
-        "protonation_tool_key": "deeporigin.mol-props-protonation",
+        "tool_key": "deeporigin.mol-props-combined",
         "tool_version": "0.4.5",
+    },
+    "protonation": {
+        "tool_key": "deeporigin.mol-props-protonation",
+        "tool_version": "0.3.3",
     },
     "abfe": {
         "tool_key": "deeporigin.abfe-end-to-end",

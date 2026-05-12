@@ -42,7 +42,7 @@ def _execution_outputs_dict(dto: dict) -> dict[str, Any]:
 class Protonation(Execution, QuoteMixin, SyncExecutableMixin):
     """Run ligand protonation through the platform tools API (sync)."""
 
-    tool_key: str = TOOL_KEYS_AND_VERSIONS["mol_props"]["protonation_tool_key"]
+    tool_key: str = TOOL_KEYS_AND_VERSIONS["protonation"]["tool_key"]
     ligands: LigandSet
 
     @beartype
@@ -136,7 +136,7 @@ class Protonation(Execution, QuoteMixin, SyncExecutableMixin):
         """Request a cost estimate without executing."""
         response = self.client.executions.create(
             tool_key=self.tool_key,
-            tool_version=TOOL_KEYS_AND_VERSIONS["mol_props"]["tool_version"],
+            tool_version=TOOL_KEYS_AND_VERSIONS["protonation"]["tool_version"],
             data=self._make_payload(sync=False, approve_amount=0),
         )
         self._apply_quote_response(response)
@@ -166,7 +166,7 @@ class Protonation(Execution, QuoteMixin, SyncExecutableMixin):
 
         response = self.client.executions.create(
             tool_key=self.tool_key,
-            tool_version=TOOL_KEYS_AND_VERSIONS["mol_props"]["tool_version"],
+            tool_version=TOOL_KEYS_AND_VERSIONS["protonation"]["tool_version"],
             data=self._make_payload(sync=True),
         )
 
