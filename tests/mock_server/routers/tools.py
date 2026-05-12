@@ -11,6 +11,7 @@ from __future__ import annotations
 from collections.abc import Callable
 import copy
 from datetime import datetime, timezone
+import hashlib
 import json
 from pathlib import Path
 import random
@@ -520,6 +521,78 @@ def create_tools_router(
         quotation = _legacy_quotation(fixture)
         if quotation is not None:
             execution["quotationResult"] = quotation
+        return execution
+
+    def _build_combined_molprops_execution(
+        *, org_key: str, tool_key: str, tool_version: str, body: dict[str, Any]
+    ) -> dict[str, Any]:
+        """Build a synchronous ``deeporigin.mol-props-combined`` execution DTO.
+
+        Synthesizes one ``molprops`` row per input ligand containing the output
+        keys for every property requested in ``inputs.molprops``. Per-ligand
+        scalar values are derived deterministically from the SMILES so repeat
+        calls with the same payload return the same numbers (without needing
+        a recorded fixture). Returns the full execution DTO with both
+        ``jobOutputs`` (wrapped under ``molprops``, matching the combined
+        tool's output schema) and a synthetic ``quotationResult`` priced at a
+        flat per-(ligand × property) rate.
+        """
+        execution = _create_blocking_run_dto(
+            org_key=org_key,
+            tool_key=tool_key,
+            tool_version=tool_version,
+            body=body,
+        )
+
+        inputs = body.get("inputs", {}) or {}
+        ligands_in = inputs.get("ligands") or []
+        requested = [p for p in (inputs.get("molprops") or []) if isinstance(p, str)]
+
+        rows: list[dict[str, Any]] = []
+        for i, lig in enumerate(ligands_in):
+            if not isinstance(lig, dict):
+                continue
+            smiles = str(lig.get("smiles") or "")
+            lid = str(lig.get("id") if lig.get("id") is not None else i)
+            rows.append(
+                _synthesize_molprops_row(
+                    smiles=smiles, ligand_id=lid, requested=requested
+                )
+            )
+
+        execution["jobOutputs"] = {"molprops": rows}
+
+        n_billable = len(rows) * len(requested)
+        if n_billable > 0:
+            price_each = 0.02
+            price_total = round(price_each * n_billable, 6)
+            execution["quotationResult"] = {
+                "anyFailed": False,
+                "failedQuotations": [],
+                "successfulQuotations": [
+                    {
+                        "status": "OK",
+                        "itemCode": "DO_MOLPROPS",
+                        "orgId": org_key,
+                        "qty": n_billable,
+                        "priceEach": price_each,
+                        "priceTotal": price_total,
+                        "pricingRecordType": "regular",
+                        "pricingRecords": [
+                            {
+                                "itemKey": "DO_MOLPROPS",
+                                "itemName": "Molecular Properties (combined)",
+                                "priceEach": price_each,
+                                "totalPrice": price_total,
+                                "qty": n_billable,
+                                "tierQtyFrom": 0,
+                                "tierQtyTo": 0,
+                            }
+                        ],
+                    }
+                ],
+            }
+
         return execution
 
     def _inject_result_explorer_records_from_outputs(
