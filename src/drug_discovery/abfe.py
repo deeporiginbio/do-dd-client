@@ -380,12 +380,12 @@ class ABFE(Execution, QuoteMixin, AsyncExecutableMixin, NotebookWatchMixin):
         inputs = instance._execution_dto.get("userInputs", {})  # ty:ignore[unresolved-attribute]
         metadata = instance._execution_dto.get("metadata", {})  # ty:ignore[unresolved-attribute]
 
-        dto_mode = inputs.get("mode")
-        if dto_mode is not None and dto_mode != cls.mode:
-            raise ValueError(
-                f"Cannot rehydrate ABFE from a DTO with mode={dto_mode!r}; "
-                f"this class only supports mode={cls.mode!r}."
-            )
+        # dto_mode = inputs.get("mode")
+        # if dto_mode is not None and dto_mode != cls.mode:
+        #     raise ValueError(
+        #         f"Cannot rehydrate ABFE from a DTO with mode={dto_mode!r}; "
+        #         f"this class only supports mode={cls.mode!r}."
+        #     )
 
         prepared_system_input = inputs.get("prepared_system", {})
         binding = inputs.get("binding", {})
@@ -886,7 +886,7 @@ class ABFE(Execution, QuoteMixin, AsyncExecutableMixin, NotebookWatchMixin):
     def _build_params(self) -> dict:
         """Construct the tool input parameters dict for the abfe-e2e-workflow tool."""
         return {
-            "mode": self.mode,
+            # "mode": self.mode,
             **self.params.to_dict(prepared_system=self.prepared_system),
         }
 
@@ -903,7 +903,7 @@ class ABFE(Execution, QuoteMixin, AsyncExecutableMixin, NotebookWatchMixin):
         parts = ["ABFE("]
         parts.append(f"  tool_key={self.tool_key!r},")
         parts.append(f"  tool_version={self.tool_version!r},")
-        parts.append(f"  mode={self.mode!r},")
+        # parts.append(f"  mode={self.mode!r},")
         parts.append(f"  name={self.name!r},")
         parts.append(f"  protein_id={ps.protein_id!r},")
         parts.append(f"  ligand1_id={ps.ligand1_id!r},")
