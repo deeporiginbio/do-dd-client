@@ -270,7 +270,7 @@ class PocketFinder(
             ) from None
 
     @beartype
-    def run(self) -> list[Pocket]:
+    def run(self, *, approve_amount: int | None = None) -> list[Pocket]:
         """Execute pocket finding synchronously (blocking).
 
         Submits one synchronous tools execution (``sync=True``) and returns the
@@ -286,7 +286,10 @@ class PocketFinder(
         """
         self._ensure_protein_remote()
         dto = self.client.executions.create(  # ty:ignore[unresolved-attribute]
-            data=self._make_payload(sync=True),
+            data=self._make_payload(
+                sync=True,
+                approve_amount=approve_amount,
+            ),
             tool_key=self.tool_key,
             tool_version=self.tool_version,
         )
