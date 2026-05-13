@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import builtins
 import re
 from typing import TYPE_CHECKING, Any
 import uuid
@@ -82,7 +83,7 @@ class Projects:
         filter_dict: dict[str, Any] | None = None,
         limit: int | None = 100,
         offset: int | None = None,
-        select: list[str] | None = None,
+        select: builtins.list[str] | None = None,
         sort: dict[str, str] | None = None,
     ) -> dict[str, Any]:
         """Search projects with optional filters.
@@ -182,4 +183,20 @@ class Projects:
         return self._c.post_json(
             f"/data-platform/{self._c.org_key}/projects",
             body=body,
+        )
+
+    def delete(self, project_id: str) -> dict[str, Any]:
+        """Delete a project by id (data platform soft delete).
+
+        Uses ``DELETE /data-platform/{orgKey}/projects/{id}``, same routing as
+        ``entity.delete(..., "projects", project_id)`` in the UI SDK.
+
+        Args:
+            project_id: Data platform project id.
+
+        Returns:
+            Deletion response (typically ``{"deleted": <count>}``).
+        """
+        return self._c.delete_json(
+            f"/data-platform/{self._c.org_key}/projects/{project_id}",
         )
