@@ -69,7 +69,9 @@ class Execution:
     """Base class for all execution types in the jobs-centric API.
 
     System-managed fields ``estimate`` and ``cost`` are exposed as read-only
-    properties. Platform execution ``id`` is defined on
+    properties. Platform execution ``id`` and
+    :meth:`~deeporigin.drug_discovery.execution_mixins.QuoteMixin.confirm` for
+    quoted tools jobs live on
     :class:`~deeporigin.drug_discovery.execution_mixins.QuoteMixin` (typical job
     classes include that mixin). Subclasses should use the same ``@property``
     pattern for user-supplied input
