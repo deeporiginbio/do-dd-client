@@ -287,17 +287,33 @@ class Executions:
             f"/tools/{self._c.org_key}/tools/executions/{execution_id}:cancel"
         )
 
-    def confirm(self, execution_id: str) -> None:
+    def confirm(
+        self,
+        execution_id: str,
+        *,
+        timeout: float | None = None,
+        retry: bool = True,
+    ) -> None:
         """Confirm a tool execution.
 
         Args:
             execution_id: The execution ID to confirm.
+            timeout: Optional HTTP timeout in seconds for this request. When
+                ``None``, the client's default timeout applies.
+            retry: When ``True`` (default), use the client's retry policy for
+                transient failures. Set ``False`` for a single attempt.
 
         Returns:
             None.
         """
+        patch_kwargs: dict[str, Any] = {}
+        if timeout is not None:
+            patch_kwargs["timeout"] = timeout
+        if not retry:
+            patch_kwargs["retry"] = False
         self._c._patch(
-            f"/tools/{self._c.org_key}/tools/executions/{execution_id}:confirm"
+            f"/tools/{self._c.org_key}/tools/executions/{execution_id}:confirm",
+            **patch_kwargs,
         )
 
     @beartype

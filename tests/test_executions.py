@@ -7,6 +7,7 @@ from deeporigin.drug_discovery.execution import Execution
 from deeporigin.exceptions import DeepOriginException
 from deeporigin.platform.client import DeepOriginClient
 from deeporigin.platform.executions import Executions
+from deeporigin.utils.constants import TOOL_EXECUTION_POST_TIMEOUT_SECONDS
 
 
 def test_execution_from_id_requires_tool_key() -> None:
@@ -143,6 +144,32 @@ def _make_executions(get_side_effect: Any) -> Executions:
     executions = Executions(client=MagicMock())
     executions.get = MagicMock(side_effect=get_side_effect)  # ty:ignore[assignment]
     return executions
+
+
+def test_confirm_default_forwards_only_confirm_path() -> None:
+    """``confirm`` uses the client default timeout and retry policy when omitted."""
+    client = MagicMock()
+    client.org_key = "my-org"
+    Executions(client).confirm("exec-1")
+    client._patch.assert_called_once_with(
+        "/tools/my-org/tools/executions/exec-1:confirm"
+    )
+
+
+def test_confirm_can_set_long_timeout_and_disable_retries() -> None:
+    """``confirm`` forwards ``timeout`` and ``retry`` to the low-level PATCH."""
+    client = MagicMock()
+    client.org_key = "my-org"
+    Executions(client).confirm(
+        "exec-1",
+        timeout=TOOL_EXECUTION_POST_TIMEOUT_SECONDS,
+        retry=False,
+    )
+    client._patch.assert_called_once_with(
+        "/tools/my-org/tools/executions/exec-1:confirm",
+        timeout=TOOL_EXECUTION_POST_TIMEOUT_SECONDS,
+        retry=False,
+    )
 
 
 def test_wait_returns_immediately_when_all_terminal() -> None:
