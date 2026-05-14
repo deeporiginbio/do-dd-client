@@ -1215,11 +1215,18 @@ class DeepOriginClient(metaclass=_DeepOriginMeta):
         body = kwargs.get("json")
         return self._retry_request(request, "PUT", path, body=body)
 
-    def _patch(self, path: str, **kwargs: Any) -> httpx.Response:
+    def _patch(
+        self,
+        path: str,
+        *,
+        retry: bool = True,
+        **kwargs: Any,
+    ) -> httpx.Response:
         """Perform a PATCH request and raise on error.
 
         Args:
             path: API endpoint path (relative to base_url).
+            retry: If False, perform a single HTTP attempt (no client-level retries).
             **kwargs: Additional arguments passed to httpx.Client.patch().
 
         Returns:
@@ -1231,6 +1238,14 @@ class DeepOriginClient(metaclass=_DeepOriginMeta):
             return self._client.patch(path, **kwargs)
 
         body = kwargs.get("json")
+        if not retry:
+            try:
+                response = request()
+                response.raise_for_status()
+                return response
+            except httpx.HTTPStatusError as e:
+                self._handle_request_error("PATCH", path, e, body=body)
+
         return self._retry_request(request, "PATCH", path, body=body)
 
     def _head(self, path: str, **kwargs: Any) -> httpx.Response:

@@ -19,6 +19,7 @@ from typing import Any
 
 from deeporigin.platform.client import DeepOriginClient
 from deeporigin.platform.constants import PlatformStatus
+from deeporigin.utils.constants import TOOL_EXECUTION_POST_TIMEOUT_SECONDS
 
 
 def _parse_iso_timestamp_utc(value: str) -> datetime:
@@ -268,12 +269,21 @@ class AsyncExecutableMixin:
                 status is ``None``).
 
         Raises:
-            ValueError: If the current status does not permit starting.
+            ValueError: If the current status does not permit starting, or if
+                status is ``Quoted`` but the execution id (:attr:`_id`) is missing.
         """
         if self.status is None:
             self._start_impl(**kwargs)
         elif self.status == "Quoted":
-            self.client.executions.confirm(self._id)  # ty:ignore[unresolved-attribute]
+            if self._id is None:
+                raise ValueError(
+                    "Cannot start: quoted execution has no platform id (_id is None)."
+                )
+            self.client.executions.confirm(  # ty:ignore[unresolved-attribute]
+                self._id,
+                timeout=TOOL_EXECUTION_POST_TIMEOUT_SECONDS,
+                retry=False,
+            )
             self.sync()
         else:
             raise ValueError(
