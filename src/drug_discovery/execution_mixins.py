@@ -4,7 +4,8 @@ These mixins are combined with ``Execution`` to build concrete types:
 
 - ``QuoteMixin`` -- platform execution ``id`` / ``_id``, cost estimation via
   ``quote`` → ``_quote_setup``, ``_get_quote``, ``_quote_apply`` (tools API:
-  implement ``_get_quote``; shared parsing in ``_quote_apply``)
+  implement ``_get_quote``; shared parsing in ``_quote_apply``), and
+  :meth:`QuoteMixin.confirm` for ``:confirm`` after ``status == "Quoted"``
 - ``SyncExecutableMixin`` -- blocking, stateless execution via ``run()``
 - ``AsyncExecutableMixin`` -- async, stateful execution via ``start()``
 - ``JupyterVizMixin`` -- notebook rendering via ``_repr_html_()``
@@ -16,6 +17,8 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 from typing import Any
+
+from beartype import beartype
 
 from deeporigin.platform.client import DeepOriginClient
 from deeporigin.platform.constants import PlatformStatus
@@ -47,6 +50,10 @@ class QuoteMixin:
 
     ``quote()`` enforces that a quotation can only be requested once: it raises
     if ``status`` is already ``"Quoted"`` or an execution ID is already assigned.
+
+    After a tools quote, :meth:`confirm` calls the platform ``:confirm`` endpoint
+    (long HTTP timeout, no retries). Async jobs typically call this via
+    :meth:`AsyncExecutableMixin.start` when the job is already ``Quoted``.
     """
 
     _id: str | None
@@ -74,6 +81,39 @@ class QuoteMixin:
         self._quote_setup()
         self._quote_impl()
         self._quote_finalize()
+
+    @beartype
+    def confirm(self) -> None:
+        """Confirm a quoted tools execution on the platform.
+
+        Requires :attr:`id` and ``status`` equal to ``"Quoted"``. Uses
+        :meth:`~deeporigin.platform.executions.Executions.confirm` with
+        :data:`~deeporigin.utils.constants.TOOL_EXECUTION_POST_TIMEOUT_SECONDS`
+        (10 minutes) and ``retry=False``.
+
+        The reason we're using a long time out is because we could potentially
+        be confirming a served tool, which is blocking and could take up
+        to 10 minutes.
+
+        Raises:
+            ValueError: If there is no platform execution id or status is not
+                ``"Quoted"``.
+        """
+        if self._id is None:
+            raise ValueError(
+                "Cannot confirm: no platform execution id (quote first or load via "
+                "from_id)."
+            )
+        status = getattr(self, "status", None)
+        if status != "Quoted":
+            raise ValueError(
+                f"Cannot confirm: execution is in {status!r} state, not 'Quoted'."
+            )
+        self.client.executions.confirm(  # ty:ignore[unresolved-attribute]
+            self._id,
+            timeout=TOOL_EXECUTION_POST_TIMEOUT_SECONDS,
+            retry=False,
+        )
 
     def _quote_impl(self) -> None:
         """Perform the quote request and populate estimate (and optional id).
@@ -108,7 +148,7 @@ class QuoteMixin:
         if status == "Quoted":
             raise ValueError(
                 "Cannot quote: a quotation already exists for this execution. "
-                "Call start() to confirm it."
+                "Call confirm() (or start() on async jobs) to confirm it."
             )
         if id_ is not None:
             raise ValueError(
@@ -260,7 +300,7 @@ class AsyncExecutableMixin:
         - ``None``: no execution exists yet — calls ``_start_impl`` to
           create and submit a new one.
         - ``"Quoted"``: a cost-approved execution already exists — calls
-          ``confirm`` on the platform to promote it, then syncs state.
+          :meth:`QuoteMixin.confirm`, then :meth:`sync` to refresh state.
 
         All other statuses raise immediately to prevent re-submission.
 
@@ -270,20 +310,13 @@ class AsyncExecutableMixin:
 
         Raises:
             ValueError: If the current status does not permit starting, or if
-                status is ``Quoted`` but the execution id (:attr:`_id`) is missing.
+                status is ``Quoted`` but :meth:`QuoteMixin.confirm` cannot run
+                (for example missing execution id or wrong status).
         """
         if self.status is None:
             self._start_impl(**kwargs)
         elif self.status == "Quoted":
-            if self._id is None:
-                raise ValueError(
-                    "Cannot start: quoted execution has no platform id (_id is None)."
-                )
-            self.client.executions.confirm(  # ty:ignore[unresolved-attribute]
-                self._id,
-                timeout=TOOL_EXECUTION_POST_TIMEOUT_SECONDS,
-                retry=False,
-            )
+            self.confirm()
             self.sync()
         else:
             raise ValueError(
