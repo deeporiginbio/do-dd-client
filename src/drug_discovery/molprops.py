@@ -8,7 +8,7 @@ properties to compute, and returns one row per input ligand keyed by
 Usage::
 
     mp = Molprops(ligands=[ligand], props=["ames", "logp"])
-    mp.quote()  # estimate ≈ N × quote for first ligand only
+    mp.run(quote=True)  # one quote for all ligands + props (ignores ``batch_size``)
     mp.run()  # mutates ligands in place; sets ``cost`` on success
 
     # Optional: cap ligands per API request on ``run()`` (e.g. 10 at a time)
@@ -158,14 +158,19 @@ class Molprops(Execution, SyncExecutableMixin):
     """Predict molprops / ADMET for ligands via the combined platform tool.
 
     Issues one ``client.executions.create`` per batch against
-    ``deeporigin.mol-props-combined``, requesting all selected property keys
-    (e.g. ``logp``, ``logd``) in a single call. ``run()`` mutates each
+    ``deeporigin.mol-props-combined`` on a normal :meth:`run`, or a single
+    quotation request for all ligands when :meth:`run` is called with
+    ``quote=True``. Each request carries all selected property keys
+    (e.g. ``logp``, ``logd``). A normal ``run()`` mutates each
     passed-in :class:`~deeporigin.drug_discovery.structures.ligand.Ligand`
     in place via
     :meth:`~deeporigin.drug_discovery.structures.ligand.Ligand._apply_molprops_result`.
 
-    This is a blocking flow. It does **not** assign a single platform execution
-    ``id`` -- use :attr:`tool_key` to see which tool key is invoked.
+    This is a blocking flow. A normal :meth:`run` does not call
+    :meth:`~deeporigin.drug_discovery.execution.Execution.update_from_dto`; use
+    :meth:`run` with ``quote=True`` when you need the platform execution ``id``,
+    ``status``, and :attr:`~deeporigin.drug_discovery.execution.Execution.estimate`
+    from a single quotation for all ligands.
 
     Attributes:
         ligands: Ligands to predict (same order as SMILES sent to the API).
@@ -196,7 +201,6 @@ class Molprops(Execution, SyncExecutableMixin):
             raise ValueError("batch_size must be a positive integer when set.")
         self._batch_size = batch_size
         self._properties = _resolve_molprops_props(props=props, properties=properties)
-        self._quoted = False
 
     @property
     def ligands(self) -> list[Ligand]:
@@ -214,59 +218,25 @@ class Molprops(Execution, SyncExecutableMixin):
         return tuple(sorted(self._properties))
 
     @property
-    def tool_keys(self) -> tuple[str, ...]:
-        """Platform tool key invoked for this run (single combined tool).
-
-        Kept as a tuple for backwards-compatibility with callers that iterated
-        per-property tool keys; the combined tool now occupies a single slot.
-        """
-        return (self.tool_key,)
-
-    @property
     def batch_size(self) -> int | None:
         """Maximum ligands per :meth:`run` request, or ``None`` if all ligands per call."""
 
         return self._batch_size
 
-    def quote(self) -> None:
-        """Request a total cost estimate (linear in ligand count).
-
-        Quotes the combined tool once using only the **first** ligand, then
-        sets :attr:`~deeporigin.drug_discovery.execution.Execution.estimate`
-        to that total multiplied by the number of ligands (``N``). This
-        assumes per-ligand linear pricing.
-
-        Raises:
-            ValueError: If this instance was already quoted.
-        """
-        if self._quoted:
-            raise ValueError(
-                "Cannot quote: a quotation already exists for this Molprops instance."
-            )
-        if self.id is not None:
-            raise ValueError(f"Cannot quote: execution already has id {self.id!r}.")
-        self._populate_estimate_from_quote()
-        self._quoted = True
-
-    def _populate_estimate_from_quote(self) -> None:
-        """Populate ``estimate`` from a single-ligand quote scaled by ligand count."""
-
-        n_ligands = len(self._ligands)
-        single = molprops_quote_total(
-            LigandSet(ligands=[self._ligands[0]]),
-            properties=self._properties,
-            client=self.client,
-        )
-        if single is not None:
-            self._estimate = single * n_ligands
-
     @beartype
-    def run(self) -> Molprops:
+    def run(self, *, quote: bool = False) -> Molprops:
         """Execute the combined molprops tool, mutate ligands, and set :attr:`cost`.
 
-        Issues one ``client.executions.create`` per batch (controlled by
-        :attr:`batch_size`). Total USD :attr:`cost` is the sum of
-        ``priceTotal`` values from each batch's ``quotationResult``.
+        With ``quote=True``, sends **one** ``client.executions.create`` with every
+        ligand and every selected property (``batch_size`` is ignored), requests a
+        quotation only (``approveAmount=0``), and applies the response with
+        :meth:`~deeporigin.drug_discovery.execution.Execution.update_from_dto`
+        (``estimate``, ``id``, ``status``, etc.). Ligands are **not** updated with
+        molprops outputs.
+
+        Otherwise issues one ``client.executions.create`` per batch (controlled by
+        :attr:`batch_size`). Total USD :attr:`cost` is the sum of ``priceTotal``
+        values from each batch's ``quotationResult``.
 
         Ligands without a platform ``id`` are assigned ``"0"``, ``"1"``, … here so
         batched requests merge on stable ``ligand_id`` values.
@@ -275,6 +245,10 @@ class Molprops(Execution, SyncExecutableMixin):
         (i.e. ``batch_size`` splits the run). The bar advances by ligands
         completed and reports **ligands/s**, not batches/s.
 
+        Args:
+            quote: When ``True``, quote the full ligand set in a single request and
+                skip batching and result application.
+
         Returns:
             ``self`` for chaining.
         """
@@ -282,6 +256,17 @@ class Molprops(Execution, SyncExecutableMixin):
             if lig.id is None:
                 lig.id = str(idx)
         ligand_set = LigandSet(ligands=self._ligands)
+
+        if quote:
+            _unused_rows, raw = run_molprops_combined(
+                ligand_set=ligand_set,
+                properties=self._properties,
+                client=self.client,
+                quote=True,
+            )
+            self.update_from_dto(raw)
+            return self
+
         merged: list[dict] = []
         raw_responses: list[dict] = []
         batches = ligand_set.batches(self._batch_size)

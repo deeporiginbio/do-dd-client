@@ -1209,6 +1209,13 @@ def create_tools_router(
                 tool_version=tool_version,
                 body=body,
             )
+            if quote_only:
+                execution["status"] = "Quoted"
+                execution["jobOutputs"] = None
+                execution["approveAmount"] = 0
+                execution["startedAt"] = None
+                execution["completedAt"] = None
+                execution["progressReport"] = None
             executions[execution["executionId"]] = execution
             return _normalize_execution(execution)
         if tool_key.startswith("deeporigin.mol-props-"):

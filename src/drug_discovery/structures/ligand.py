@@ -1620,23 +1620,34 @@ class Ligand(Entity):
 
 
 @beartype
-def ligands_to_dataframe(ligands: list[Ligand]):
-    """convert a list of ligands to a pandas dataframe"""
+def ligands_to_dataframe(ligands: list[Ligand]) -> pd.DataFrame:
+    """Build a DataFrame from ligands, including platform ids and SMILES.
 
-    import pandas as pd
+    Each row uses :attr:`~deeporigin.drug_discovery.structures.entity.Entity.id`
+    (may be ``None`` if the ligand was never synced). Property key ``id`` is not
+    duplicated as its own column; the entity id column wins.
 
-    data = {}
+    Args:
+        ligands: Ligands to serialize as rows.
+
+    Returns:
+        DataFrame with an ``id`` column, union of property columns (except
+        ``_Name``, ``_SMILES``, ``initial_smiles``, ``id``), and ``SMILES``.
+    """
 
     # find the union of all properties in all ligands
     all_keys = set()
     for ligand in ligands:
         all_keys.update(ligand.properties.keys())
-    for key in all_keys:
-        if key == "_Name" or key == "_SMILES" or key == "initial_smiles":
-            continue
-        data[key] = [ligand.properties.get(key, None) for ligand in ligands]
 
-    # make sure there is a smiles column
+    property_columns: dict[str, list[Any]] = {}
+    for key in all_keys:
+        if key in ("_Name", "_SMILES", "initial_smiles", "id"):
+            continue
+        property_columns[key] = [ligand.properties.get(key, None) for ligand in ligands]
+
+    data: dict[str, list[Any]] = {"id": [ligand.id for ligand in ligands]}
+    data.update(property_columns)
     data["SMILES"] = [ligand.smiles for ligand in ligands]
 
     return pd.DataFrame(data)

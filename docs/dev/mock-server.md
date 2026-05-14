@@ -65,6 +65,7 @@ This is the most complex part of the mock server. When client code runs a tool (
 - `deeporigin.docking` (single ligand, `sync=True`), `deeporigin.pocket-finder`, `deeporigin.system-prep` complete in one POST via `_create_blocking_run_dto` and inject their fixture-backed `jobOutputs` into the result-explorer pool.
 - `deeporigin.mol-props-protonation` returns deterministic `protonation_states` from the request inputs (`_build_protonation_execution`).
 - `deeporigin.mol-props-*` (logd, logp, ames, …) hash the normalized request body and look up the recorded outputs at `tests/fixtures/tool-runs/{tool_key}/{body_hash}.json` (`_build_molprops_execution`). The fixture's per-ligand `jobOutputs` rows are re-keyed by the request's ligand IDs.
+- `deeporigin.mol-props-combined` (`Molprops`) synthesizes per-ligand rows and a matching `quotationResult` (`_build_combined_molprops_execution`). When the request body includes `approveAmount: 0` (quote-only), the mock clears `jobOutputs` and sets `status` to `Quoted`.
 - `deeporigin.bulk-docking` (`approveAmount=0`) loads `tests/fixtures/tool-runs/deeporigin.bulk-docking/quote.json` and scales the quotation by ligand count.
 - All other tool keys fall back to a generic `Quoted` execution DTO via `_create_execution_dto`.
 

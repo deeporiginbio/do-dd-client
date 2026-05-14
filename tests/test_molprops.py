@@ -34,6 +34,35 @@ def test_molprops_lv1(client: DeepOriginClient) -> None:
     assert ligand.get_property("logS") is not None or ligand.log_s is not None
 
 
+def test_molprops_run_quote_true_full_payload(
+    client: DeepOriginClient,
+) -> None:
+    """``run(quote=True)`` uses one request for all ligands; ``batch_size`` is ignored."""
+    mp_cfg = TOOL_KEYS_AND_VERSIONS["mol_props"]
+    assert check_tool_exists(
+        client,
+        mp_cfg["tool_key"],
+        mp_cfg["tool_version"],
+    ), (
+        f"Combined molprops tool {mp_cfg['tool_key']} "
+        f"(version {mp_cfg['tool_version']}) is not registered on the platform."
+    )
+
+    lig1 = Ligand.from_smiles("CCO")
+    lig2 = Ligand.from_smiles("CCN")
+    job = Molprops(
+        ligands=[lig1, lig2],
+        props=["logp"],
+        batch_size=1,
+        client=client,
+    )
+    assert job.run(quote=True) is job
+    assert job.estimate is not None
+    assert getattr(job, "status", None) == "Quoted"
+    assert job.cost is None
+    assert lig1.log_p is None and lig2.log_p is None
+
+
 @pytest.mark.skip(reason="TODO: fix protonation test later")
 def test_protonation_lv2(client: DeepOriginClient) -> None:
     """Test protonation returns Protonation with ligands populated after run."""

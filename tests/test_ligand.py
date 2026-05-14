@@ -772,6 +772,11 @@ def test_ligands_to_dataframe():
     df = ligands_to_dataframe(ligands_list)
 
     assert len(df) == 2
+    assert "id" in df.columns
+    assert df["id"].tolist() == [None, None]
+    ligands_list[0].id = "lig-test-1"
+    df_with_ids = ligands_to_dataframe(ligands_list)
+    assert df_with_ids["id"].tolist() == ["lig-test-1", None]
     assert "SMILES" in df.columns
     assert "logP" in df.columns
     assert df.iloc[0]["logP"] == pytest.approx(0.32)
