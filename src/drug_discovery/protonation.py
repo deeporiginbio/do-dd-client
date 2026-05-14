@@ -7,8 +7,8 @@ from typing import Any
 from beartype import beartype
 from rdkit import Chem
 
-from deeporigin.drug_discovery.execution import Execution
-from deeporigin.drug_discovery.execution_mixins import QuoteMixin, SyncExecutableMixin
+from deeporigin.drug_discovery.execution import Execution, QuoteMode
+from deeporigin.drug_discovery.execution_mixins import SyncExecutableMixin
 from deeporigin.drug_discovery.structures.ligand import Ligand, LigandSet
 from deeporigin.platform.client import DeepOriginClient
 from deeporigin.platform.constants import TOOL_KEYS_AND_VERSIONS
@@ -39,7 +39,7 @@ def _execution_outputs_dict(dto: dict) -> dict[str, Any]:
     return {}
 
 
-class Protonation(Execution, QuoteMixin, SyncExecutableMixin):
+class Protonation(Execution, SyncExecutableMixin):
     """Run ligand protonation through the platform tools API (sync)."""
 
     tool_key: str = TOOL_KEYS_AND_VERSIONS["protonation"]["tool_key"]
@@ -115,7 +115,7 @@ class Protonation(Execution, QuoteMixin, SyncExecutableMixin):
             "filter_percentage": self._filter_percentage,
         }
 
-    def _make_payload(
+    def _build_protonation_body(
         self,
         *,
         sync: bool = True,
@@ -132,12 +132,19 @@ class Protonation(Execution, QuoteMixin, SyncExecutableMixin):
             body["approveAmount"] = approve_amount
         return body
 
-    def _quote_impl(self) -> None:
+    def _resolve_quote_mode(self, mode: QuoteMode | None) -> QuoteMode:
+        """Protonation quotes use non-blocking create (``sync=False`` in payload)."""
+        if mode is not None:
+            return mode
+        return "async"
+
+    def _quote_impl(self, *, mode: QuoteMode) -> None:
         """Request a cost estimate without executing."""
+        _ = mode
         response = self.client.executions.create(
             tool_key=self.tool_key,
             tool_version=TOOL_KEYS_AND_VERSIONS["protonation"]["tool_version"],
-            data=self._make_payload(sync=False, approve_amount=0),
+            data=self._build_protonation_body(sync=False, approve_amount=0),
         )
         self._apply_quote_response(response)
 
@@ -167,7 +174,7 @@ class Protonation(Execution, QuoteMixin, SyncExecutableMixin):
         response = self.client.executions.create(
             tool_key=self.tool_key,
             tool_version=TOOL_KEYS_AND_VERSIONS["protonation"]["tool_version"],
-            data=self._make_payload(sync=True),
+            data=self._build_protonation_body(sync=True),
         )
 
         outputs = _execution_outputs_dict(response)

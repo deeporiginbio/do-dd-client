@@ -12,11 +12,11 @@ from deeporigin.platform.constants import TERMINAL_STATES, TOOL_KEYS_AND_VERSION
 from tests.conftest import check_tool_exists
 
 
-def test_pocket_finder_quote_lv1(
+def test_pocket_finder_run_quote_true_lv1(
     client: DeepOriginClient,
     registered_protein: Protein,
 ) -> None:
-    """PocketFinder.quote() returns an estimate without running the tool."""
+    """PocketFinder.run(quote=True) returns None and populates estimate."""
     assert check_tool_exists(
         client,
         TOOL_KEYS_AND_VERSIONS["pocket_finder"]["tool_key"],
@@ -24,8 +24,10 @@ def test_pocket_finder_quote_lv1(
     ), "Pocket finder tool not registered on platform (expected key/version)."
 
     pf = PocketFinder(protein=registered_protein, client=client)
-    pf.quote()
+    result = pf.run(quote=True)
+    assert result is None, "run(quote=True) should return None"
     assert pf.estimate is not None, "Estimate should be set"
+    assert pf.status == "Quoted"
     assert pf.cost is None, (
         "Cost should be None because the pocket finder is not run yet"
     )
@@ -100,7 +102,7 @@ def test_pocket_finder_start_submits_async_payload(
     # replies with ``status="Quoted"`` until ``start()`` is called again to confirm.
     assert pf.status == "Quoted"
 
-    dto = pf._execution_dto or {}
+    dto = pf._dto or {}
     assert (
         dto.get("tool", {}).get("key")
         == TOOL_KEYS_AND_VERSIONS["pocket_finder"]["tool_key"]

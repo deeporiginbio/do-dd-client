@@ -16,8 +16,8 @@ from deeporigin.platform.client import DeepOriginClient
 from deeporigin.platform.constants import TOOL_KEYS_AND_VERSIONS
 
 
-def test_abfe_quote_cannot_be_called_twice_lv0(client: DeepOriginClient):
-    """quote() raises ValueError if called after a quotation already exists."""
+def test_abfe_start_rejects_non_none_status_lv0(client: DeepOriginClient):
+    """start() raises ValueError when the execution is already in a non-None state."""
     prepared_system = PreparedSystem(
         binding_xml_path="path/binding.xml",
         solvation_xml_path="path/solvation.xml",
@@ -25,12 +25,11 @@ def test_abfe_quote_cannot_be_called_twice_lv0(client: DeepOriginClient):
     )
     abfe = ABFE(prepared_system=prepared_system)
 
-    # Simulate a completed quote by setting state directly
     abfe._id = "exec-quoted-123"
     abfe.status = "Quoted"
 
-    with pytest.raises(ValueError, match="quotation already exists"):
-        abfe.quote()
+    with pytest.raises(ValueError, match="'Quoted'"):
+        abfe.start()
 
 
 def test_abfe_from_dto_rehydrates_prepared_system_lv0(client: DeepOriginClient):

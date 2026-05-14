@@ -40,13 +40,13 @@ class NotebookWatchMixin:
 
     Must be mixed with :class:`~deeporigin.drug_discovery.execution.Execution` and
     :class:`~deeporigin.drug_discovery.execution_mixins.AsyncExecutableMixin` so
-    ``id``, ``status``, ``sync()``, ``client``, and ``_execution_dto`` are normal
+    ``id``, ``status``, ``sync()``, ``client``, and ``_dto`` are normal
     instance attributes (see
     :meth:`~deeporigin.drug_discovery.execution_mixins.AsyncExecutableMixin.__init__`).
     """
 
     # Populated by AsyncExecutableMixin; referenced here for type checkers.
-    _execution_dto: dict | None
+    _dto: dict | None
 
     _watch_task: Task | None
     _display_id: str | None
@@ -111,7 +111,7 @@ class NotebookWatchMixin:
         """
         from deeporigin.platform.execution_display import ExecutionDisplay
 
-        dto = self._execution_dto
+        dto = self._dto
         if dto is None:
             raise ValueError(
                 "No execution data available. Call sync() first or ensure the execution exists."
@@ -183,7 +183,7 @@ class NotebookWatchMixin:
         while True:
             try:
                 await asyncio.to_thread(self.sync)
-                if self._execution_dto is None:
+                if self._dto is None:
                     raise ValueError("Execution DTO missing after sync.")
                 html = self._render_execution_html(will_auto_update=True)
                 update_display(HTML(html), display_id=display_id)
@@ -236,7 +236,7 @@ class NotebookWatchMixin:
         try:
             await asyncio.to_thread(self.sync)
 
-            if self._execution_dto is None:
+            if self._dto is None:
                 raise ValueError(
                     "No execution data after sync. Cannot render execution view."
                 )

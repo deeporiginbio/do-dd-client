@@ -2,7 +2,7 @@
 
 import concurrent.futures
 import os
-from typing import Any, Protocol, Self, cast
+from typing import Any, Self
 
 from beartype import beartype
 import numpy as np
@@ -10,11 +10,9 @@ import numpy as np
 from deeporigin.drug_discovery.execution import Execution
 from deeporigin.drug_discovery.execution_mixins import (
     AsyncExecutableMixin,
-    QuoteMixin,
     SyncExecutableMixin,
 )
 from deeporigin.drug_discovery.notebook_watch_mixin import NotebookWatchMixin
-from deeporigin.drug_discovery.structures.entity import Entity
 from deeporigin.drug_discovery.structures.ligand import Ligand, LigandSet
 from deeporigin.drug_discovery.structures.pocket import Pocket
 from deeporigin.drug_discovery.structures.protein import Protein
@@ -23,64 +21,6 @@ from deeporigin.platform.client import DeepOriginClient
 from deeporigin.platform.constants import TOOL_KEYS_AND_VERSIONS
 
 Number = float | int
-
-
-class _SupportsEntitySync(Protocol):
-    """Structural type for :meth:`Entity.sync` (avoids confusion with execution ``sync()``)."""
-
-    def sync(
-        self,
-        *,
-        lazy: bool = False,
-        client: DeepOriginClient | None = None,
-        remote_path: str | None = None,
-    ) -> None: ...
-
-
-class _SupportsLigandSetSync(Protocol):
-    """Structural type for :meth:`LigandSet.sync`."""
-
-    def sync(
-        self,
-        *,
-        lazy: bool = False,
-        client: DeepOriginClient | None = None,
-    ) -> None: ...
-
-
-def _sync_entity(
-    entity: Entity,
-    *,
-    lazy: bool = False,
-    client: DeepOriginClient,
-) -> None:
-    """Call :meth:`Entity.sync` on *entity*.
-
-    ``Docking`` also inherits ``AsyncExecutableMixin.sync(self)``, so attribute
-    access to ``sync`` on nested entities can confuse static analysis; cast via
-    :class:`_SupportsEntitySync` so the checker uses the entity API signature.
-    """
-    cast(_SupportsEntitySync, entity).sync(lazy=lazy, client=client)
-
-
-def _sync_ligand_set(
-    ligands: LigandSet,
-    *,
-    lazy: bool = False,
-    client: DeepOriginClient,
-) -> None:
-    """Call :meth:`LigandSet.sync` for the same reason as :func:`_sync_entity`."""
-    cast(_SupportsLigandSetSync, ligands).sync(lazy=lazy, client=client)
-
-
-def _ensure_entity_remote_path(
-    entity: Entity,
-    *,
-    client: DeepOriginClient,
-    label: str,
-) -> None:
-    """Call :meth:`Entity.ensure_remote_path` without MRO ambiguity."""
-    Entity.ensure_remote_path(entity, client=client, label=label)
 
 
 def _ligand_tool_input_row(lig: Ligand) -> dict[str, Any]:
@@ -122,16 +62,13 @@ def _docking_default_name(protein: Protein, ligands: LigandSet) -> str:
     return f"Docking {p} to {n} ligands."
 
 
-@beartype
-class Docking(
-    Execution, QuoteMixin, SyncExecutableMixin, AsyncExecutableMixin, NotebookWatchMixin
-):
+class Docking(Execution, SyncExecutableMixin, AsyncExecutableMixin, NotebookWatchMixin):
     """Molecular docking via the tools API (``client.executions.create``).
 
     The execution request body includes ``sync`` (``true`` = blocking, ``false`` =
     immediate DTO). :meth:`run` sets ``"sync": true`` for exactly **one** ligand; the
     server blocks until the run finishes and returns the completed execution.
-    :meth:`quote` and :meth:`start` set ``"sync": false`` (non-blocking).
+    :meth:`quote` (default ``mode="async"``) and :meth:`start` set ``"sync": false`` (non-blocking).
 
     :meth:`start` is for multiple ligands only: one ``create`` with all ligands. The
     call **returns immediately** with an execution DTO. For a single ligand, use
@@ -283,35 +220,41 @@ class Docking(
         parts.append(")")
         return "\n".join(parts)
 
-    def _get_quote(self) -> dict[str, Any]:
-        """Build the docking quote payload and return the tools API execution DTO.
-
-        Submits ``approveAmount=0`` and ``batchSize`` via ``executions.create`` (same
-        as :meth:`_start_impl` for batching). Parsing and state assignment are handled
-        by :meth:`~deeporigin.drug_discovery.execution_mixins.QuoteMixin._quote_apply`.
-
-        Returns:
-            Raw execution dictionary from the platform.
-        """
+    def _make_payload(
+        self,
+        *,
+        approve_amount: int | None,
+        sync: bool,
+    ) -> dict[str, Any]:
+        """Build payload for ``executions.create`` (sync or async path)."""
         self._ensure_platform_inputs()
-        payload = self._make_payload(approve_amount=0, sync=False)
-
-        return self.client.executions.create(  # ty:ignore[union-attr]
-            data=payload,
-            tool_key=self.tool_key,
-            tool_version=self.tool_version,
+        return self._build_docking_create_payload(
+            ligand_set=None,
+            approve_amount=approve_amount,
+            sync=sync,
         )
 
-    def start(self, **kwargs: Any) -> None:  # type: ignore[override]
+    def start(
+        self,
+        *,
+        quote: bool = False,
+        approve_amount: int | None = None,
+        **kwargs: Any,
+    ) -> None:
         """Submit a persisted async execution. Requires at least two ligands.
 
         For a single ligand, use :meth:`run` instead.
+
+        Args:
+            quote: Shorthand for ``approve_amount=0``.
+            approve_amount: Spend cap forwarded to the platform.
+            **kwargs: Forwarded to ``_start_impl``.
         """
         if len(self.ligands) == 1:
             raise ValueError(
                 "Cannot start: Docking with a single ligand must use run(), not start()."
             )
-        super().start(**kwargs)
+        super().start(quote=quote, approve_amount=approve_amount, **kwargs)
 
     def _validate_sync_run_params(self) -> None:
         """Raise if :meth:`run` preconditions are not met (ligand count, effort)."""
@@ -329,15 +272,30 @@ class Docking(
         self._validate_sync_run_params()
         self._ensure_platform_inputs()
 
-    def run(self) -> LigandSet:
+    def run(
+        self,
+        *,
+        quote: bool = False,
+        approve_amount: int | None = None,
+    ) -> LigandSet | None:
         """Execute docking synchronously (blocking).
 
         Submits one synchronous tools execution and returns docked poses from the
         data platform. Requires exactly one ligand in :attr:`ligands`; use
         :meth:`start` for multiple ligands.
 
+        Pass ``quote=True`` (or ``approve_amount=0``) to request a cost estimate
+        only. In that case the platform returns a ``Quoted`` DTO, the instance
+        is updated with ``estimate`` and ``status="Quoted"``, and ``None`` is
+        returned.
+
+        Args:
+            quote: Shorthand for ``approve_amount=0``.
+            approve_amount: Spend cap forwarded to the platform as ``approveAmount``.
+
         Returns:
-            A ``LigandSet`` of docked poses.
+            A ``LigandSet`` of docked poses, or ``None`` when the platform
+            responds with ``Quoted`` status.
 
         Raises:
             ValueError: If :attr:`ligands` does not contain exactly one ligand.
@@ -345,12 +303,18 @@ class Docking(
                 succeed, or poses could not be loaded.
         """
         self._ensure_inputs_for_sync_run()
+        resolved_amount = 0 if quote else approve_amount
         dto = self.client.executions.create(  # ty:ignore[unresolved-attribute]
-            data=self._make_payload(sync=True),
+            data=self._build_docking_create_payload(
+                sync=True, approve_amount=resolved_amount
+            ),
             tool_key=self.tool_key,
             tool_version=self.tool_version,
         )
         self.update_from_dto(dto)
+
+        if self.status == "Quoted":
+            return None
 
         final_status = dto.get("status")
         if final_status != "Succeeded":
@@ -363,13 +327,14 @@ class Docking(
                 ),
             ) from None
 
-        # returning all poses because we are running a sync tool
         return self.get_results(dto, all_poses=True)
 
-    def _start_impl(self, **kwargs) -> None:
+    def _start_impl(self, *, approve_amount: int | None = None, **kwargs) -> None:
         """Submit docking as a persisted async execution."""
         self._ensure_platform_inputs()
-        payload = self._make_payload(sync=False)
+        payload = self._build_docking_create_payload(
+            sync=False, approve_amount=approve_amount
+        )
 
         execution_dto = self.client.executions.create(  # ty:ignore[unresolved-attribute]
             data=payload,
@@ -386,8 +351,8 @@ class Docking(
         :func:`_ligand_tool_input_row`); ligand structure files are not required.
         Mutates remote state so :meth:`_build_tool_inputs` can read IDs and paths.
         """
-        _sync_entity(self.protein, client=self.client, lazy=True)
-        _sync_ligand_set(self.ligands, client=self.client, lazy=True)
+        self.protein.sync(lazy=True, client=self.client)
+        self.ligands.sync(lazy=True, client=self.client)
 
     def _build_tool_inputs(
         self, *, ligand_set: LigandSet | None = None
@@ -455,14 +420,14 @@ class Docking(
 
         return params, metadata
 
-    def _make_payload(
+    def _build_docking_create_payload(
         self,
         *,
         ligand_set: LigandSet | None = None,
         approve_amount: int | None = None,
         sync: bool = False,
     ) -> dict[str, Any]:
-        """Build the body dict for :meth:`_get_quote`, :meth:`_start_impl`, and :meth:`run`.
+        """Build the body dict for ``client.executions.create`` (:meth:`_start_impl`, :meth:`run`).
 
         Args:
             ligand_set: Subset of ligands for tool ``inputs`` (default: all
@@ -520,9 +485,9 @@ class Docking(
             A fully-hydrated Docking instance with status from the DTO.
         """
         instance = super().from_dto(dto, client=client)
-        execution = instance._execution_dto
+        execution = instance._dto
         if execution is None:
-            raise RuntimeError("from_dto did not set _execution_dto")
+            raise RuntimeError("from_dto did not set _dto")
         inputs = execution.get("userInputs", {})
 
         pocket_input = inputs.get("pocket", {})

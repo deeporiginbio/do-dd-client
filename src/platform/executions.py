@@ -97,41 +97,30 @@ class Executions:
             timeout=req_timeout,
         )
 
-    def list(
+    def _list_tools_executions_page(
         self,
         *,
-        page: int | None = None,
-        page_size: int | None = None,
+        page: int | None,
+        page_size: int | None,
         order: str | None = None,
         tool_key: str | None = None,
         session: str | None = None,
         project_id: str | None = None,
         created_after: datetime | str | None = None,
-    ) -> dict:
-        """List tool executions with pagination and filtering.
+    ) -> Any:
+        """Perform one GET for the tools-service executions list URL with query params.
 
         Args:
-            page: Page number of the pagination (default 0).
-            page_size: Page size of the pagination (max 10,000).
-            order: Order of the pagination, e.g., "executionId? asc", "completedAt? desc".
-            tool_key: Tool key to filter by.
-            session: Session identifier to filter by. Returns only executions
-                tagged with this session on creation (see ``executions.create``
-                where ``payload["session"] = self._c._session``). Without this,
-                the endpoint returns all executions the caller can see, not
-                just ones from the caller's own client.
-            project_id: When set, restrict to executions whose root-level
-                ``projectId`` matches (same field as in the tools execution
-                DTO; may be omitted or null on rows that are not project-scoped).
-            created_after: When set, restrict to rows with ``createdAt`` strictly
-                after this instant. Passed to the tools-service list filter as
-                ``createdAt: {"$gt": "<iso-8601>"}`` (MikroORM operator on the
-                entity ``createdAt`` column). Use a timezone-aware
-                :class:`~datetime.datetime` or an ISO string such as
-                ``2026-05-07T15:13:25.254Z``.
+            page: Zero-based page index, or ``None`` to omit (server default).
+            page_size: Page size query param, or ``None`` to omit.
+            order: Sort order string.
+            tool_key: Filter by tool manifest key.
+            session: Filter by session tag.
+            project_id: Filter by project id.
+            created_after: Lower bound on ``createdAt``.
 
         Returns:
-            Dictionary containing paginated execution data.
+            Parsed JSON from the platform (typically ``{"data": [...], "count": n}``).
         """
         params: dict[str, int | str] = {}
         if page is not None:
@@ -159,6 +148,129 @@ class Executions:
         return self._c.get_json(
             f"/tools/{self._c.org_key}/tools/executions",
             params=params if params else None,
+        )
+
+    def _list_tools_executions_fetch_all(
+        self,
+        *,
+        chunk_size: int,
+        order: str | None = None,
+        tool_key: str | None = None,
+        session: str | None = None,
+        project_id: str | None = None,
+        created_after: datetime | str | None = None,
+    ) -> dict[str, Any]:
+        """Merge every page of tools execution list results for the given filters.
+
+        Args:
+            chunk_size: Rows per request (``pageSize`` query param).
+            order: Sort order string.
+            tool_key: Filter by tool manifest key.
+            session: Filter by session tag.
+            project_id: Filter by project id.
+            created_after: Lower bound on ``createdAt``.
+
+        Returns:
+            ``{"data": [...], "count": <server total>}`` with ``data`` concatenated
+            across pages in order.
+        """
+        current_page = 0
+        all_dtos: builtins.list[dict[str, Any]] = []
+        total_count = 0
+
+        while True:
+            response = self._list_tools_executions_page(
+                page=current_page,
+                page_size=chunk_size,
+                order=order,
+                tool_key=tool_key,
+                session=session,
+                project_id=project_id,
+                created_after=created_after,
+            )
+
+            if not isinstance(response, dict):
+                all_dtos.extend(response if isinstance(response, builtins.list) else [])
+                return {"data": all_dtos, "count": len(all_dtos)}
+
+            page_dtos = response.get("data", [])
+            all_dtos.extend(page_dtos)
+            total_count = response.get("count", 0)
+
+            if total_count > chunk_size:
+                if len(page_dtos) < chunk_size:
+                    break
+                if len(all_dtos) >= total_count:
+                    break
+                current_page += 1
+            else:
+                break
+
+        return {"data": all_dtos, "count": total_count}
+
+    def list(
+        self,
+        *,
+        page: int | None = None,
+        page_size: int | None = None,
+        order: str | None = None,
+        tool_key: str | None = None,
+        session: str | None = None,
+        project_id: str | None = None,
+        created_after: datetime | str | None = None,
+        fetch_all_pages: bool = False,
+    ) -> dict:
+        """List tool executions with pagination and filtering.
+
+        Args:
+            page: Page number of the pagination (default 0). Ignored when
+                ``fetch_all_pages`` is ``True``.
+            page_size: Page size of the pagination (max 10,000). When
+                ``fetch_all_pages`` is ``True`` and this is ``None``, uses ``1000``.
+            order: Order of the pagination, e.g., "executionId? asc", "completedAt? desc".
+            tool_key: Tool key to filter by.
+            session: Session identifier to filter by. Returns only executions
+                tagged with this session on creation (see ``executions.create``
+                where ``payload["session"] = self._c._session``). Without this,
+                the endpoint returns all executions the caller can see, not
+                just ones from the caller's own client.
+            project_id: When set, restrict to executions whose root-level
+                ``projectId`` matches (same field as in the tools execution
+                DTO; may be omitted or null on rows that are not project-scoped).
+            created_after: When set, restrict to rows with ``createdAt`` strictly
+                after this instant. Passed to the tools-service list filter as
+                ``createdAt: {"$gt": "<iso-8601>"}`` (MikroORM operator on the
+                entity ``createdAt`` column). Use a timezone-aware
+                :class:`~datetime.datetime` or an ISO string such as
+                ``2026-05-07T15:13:25.254Z``.
+            fetch_all_pages: When ``True``, follow pagination until every row
+                for the filter is collected, merge ``data`` in page order, and
+                return ``{"data": [...], "count": <total>}``. When ``False``,
+                performs a single request using ``page`` / ``page_size``.
+
+        Returns:
+            Dictionary containing paginated execution data (or all rows when
+            ``fetch_all_pages`` is ``True``).
+        """
+        if fetch_all_pages:
+            chunk_size = page_size if page_size is not None else 1000
+            return self._list_tools_executions_fetch_all(
+                chunk_size=chunk_size,
+                order=order,
+                tool_key=tool_key,
+                session=session,
+                project_id=project_id,
+                created_after=created_after,
+            )
+
+        return self._list_tools_executions_page(
+            page=page,
+            page_size=page_size,
+            order=order,
+            tool_key=tool_key,
+            session=session,
+            project_id=project_id,
+            created_after=created_after,
         )
 
     def get(self, execution_id: str) -> dict:

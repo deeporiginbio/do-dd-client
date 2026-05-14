@@ -1,14 +1,17 @@
 # `deeporigin.drug_discovery.execution_mixins`
 
 Mixins composed with :class:`deeporigin.drug_discovery.execution.Execution` to
-add quoting, synchronous runs, or async lifecycle control.
+add synchronous ``run()`` or async lifecycle control (``start``, ``cancel``).
 
-After ``quote()``, a tools execution is typically in ``"Quoted"`` status with a
-platform id. :meth:`QuoteMixin.confirm` calls the tools ``:confirm`` endpoint
-(same long timeout and no-retries policy as
-:data:`~deeporigin.utils.constants.TOOL_EXECUTION_POST_TIMEOUT_SECONDS` on
+Quoting, ``confirm()``, :attr:`~deeporigin.drug_discovery.execution.Execution.runtime`,
+:meth:`~deeporigin.drug_discovery.execution.Execution.sync`, and platform ``id`` /
+``dto`` live on :class:`deeporigin.drug_discovery.execution.Execution`. After ``quote()``,
+a tools execution is typically in ``"Quoted"`` status. :meth:`Execution.confirm`
+calls the tools ``:confirm`` endpoint (same long timeout and no-retries policy
+as :data:`~deeporigin.utils.constants.TOOL_EXECUTION_POST_TIMEOUT_SECONDS` on
 :class:`~deeporigin.platform.executions.Executions.confirm`). Async classes call
-this from :meth:`AsyncExecutableMixin.start` when resuming a quoted job.
+this from :meth:`AsyncExecutableMixin.start` when resuming a quoted job that was
+quoted with ``mode="async"``, then calls :meth:`~deeporigin.drug_discovery.execution.Execution.sync`.
 
 ::: src.drug_discovery.execution_mixins
     options:

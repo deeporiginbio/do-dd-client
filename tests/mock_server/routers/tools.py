@@ -1147,12 +1147,15 @@ def create_tools_router(
 
         inputs = body.get("inputs", {}) or {}
         n_lig = len(inputs.get("ligands") or [])
+        # Explicit approveAmount 0 means quote-only; do not return a completed run DTO.
+        quote_only = "approveAmount" in body and body.get("approveAmount") == 0
         # docking and pocket-finder declare ``sync`` inside ``inputs`` (matches
         # the toolbox tool-definitions and how the platform estimator reads it).
         if (
             tool_key == "deeporigin.docking"
             and inputs.get("sync") is True
             and n_lig == 1
+            and not quote_only
         ):
             execution = _create_blocking_run_dto(
                 org_key=org_key,
@@ -1164,7 +1167,11 @@ def create_tools_router(
             executions[eid] = execution
             _inject_docking_tool_execution_results(execution)
             return _normalize_execution(execution)
-        if tool_key == "deeporigin.pocket-finder" and inputs.get("sync") is True:
+        if (
+            tool_key == "deeporigin.pocket-finder"
+            and inputs.get("sync") is True
+            and not quote_only
+        ):
             execution = _create_blocking_run_dto(
                 org_key=org_key,
                 tool_key=tool_key,

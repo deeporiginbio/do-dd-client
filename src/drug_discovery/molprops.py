@@ -23,7 +23,7 @@ from beartype import beartype
 from tqdm import tqdm
 
 from deeporigin.drug_discovery.execution import Execution
-from deeporigin.drug_discovery.execution_mixins import QuoteMixin, SyncExecutableMixin
+from deeporigin.drug_discovery.execution_mixins import SyncExecutableMixin
 from deeporigin.drug_discovery.structures.ligand import Ligand, LigandSet
 from deeporigin.platform.client import DeepOriginClient
 from deeporigin.platform.constants import TOOL_KEYS_AND_VERSIONS
@@ -154,7 +154,7 @@ def molprops_quote_total(
     return _execution_price_total(raw)
 
 
-class Molprops(Execution, QuoteMixin, SyncExecutableMixin):
+class Molprops(Execution, SyncExecutableMixin):
     """Predict molprops / ADMET for ligands via the combined platform tool.
 
     Issues one ``client.executions.create`` per batch against

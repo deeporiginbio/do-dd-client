@@ -3,15 +3,14 @@
 Usage (ABFE)::
 
     sysprep = SystemPrep(protein=protein, ligand=ligand)
-    sysprep.quote()
-    prepared = sysprep.run()   # returns PreparedSystem via get_results()
+    sysprep.run(quote=True)   # populates sysprep.estimate; status == "Quoted"
+    prepared = sysprep.run()  # returns PreparedSystem via get_results()
     # Use prepared.binding_xml_path, prepared.solvation_xml_path, etc.
     # Or use sysprep.get_results() after run() to reload one PreparedSystem by execution id.
 
 Usage (RBFE)::
 
     sysprep = SystemPrep(protein=protein, ligand1=lig1, ligand2=lig2)
-    sysprep.quote()
     prepared = sysprep.run()
 """
 
@@ -22,7 +21,7 @@ from typing import Any
 from beartype import beartype
 
 from deeporigin.drug_discovery.execution import Execution
-from deeporigin.drug_discovery.execution_mixins import QuoteMixin, SyncExecutableMixin
+from deeporigin.drug_discovery.execution_mixins import SyncExecutableMixin
 from deeporigin.drug_discovery.structures.ligand import Ligand
 from deeporigin.drug_discovery.structures.prepared_system import PreparedSystem
 from deeporigin.drug_discovery.structures.protein import Protein
@@ -31,7 +30,7 @@ from deeporigin.platform.constants import TOOL_KEYS_AND_VERSIONS
 from deeporigin.utils.constants import SYSPREP_NO_OUTPUT_PATHS_MSG
 
 
-class SystemPrep(Execution, QuoteMixin, SyncExecutableMixin):
+class SystemPrep(Execution, SyncExecutableMixin):
     """Prepare a protein-ligand system for ABFE or RBFE (sync-only).
 
     Use either a single ``ligand`` (ABFE) or ``ligand1`` and ``ligand2`` (RBFE).
@@ -199,7 +198,7 @@ class SystemPrep(Execution, QuoteMixin, SyncExecutableMixin):
 
         return inputs
 
-    def _make_payload(
+    def _build_system_prep_body(
         self,
         *,
         sync: bool = True,
@@ -217,12 +216,16 @@ class SystemPrep(Execution, QuoteMixin, SyncExecutableMixin):
             body["approveAmount"] = approve_amount
         return body
 
-    def _get_quote(self) -> dict[str, Any]:
-        """Return the tools API execution DTO for a quotation (``approveAmount=0``)."""
-        return self.client.executions.create(  # ty:ignore[unresolved-attribute]
-            data=self._make_payload(sync=False, approve_amount=0),
-            tool_key=self.tool_key,
-            tool_version=self.tool_version,
+    def _make_payload(
+        self,
+        *,
+        approve_amount: int | None,
+        sync: bool,
+    ) -> dict[str, Any]:
+        """Build the POST body for system-prep ``executions.create``."""
+        return self._build_system_prep_body(
+            sync=sync,
+            approve_amount=approve_amount,
         )
 
     @beartype
@@ -281,24 +284,45 @@ class SystemPrep(Execution, QuoteMixin, SyncExecutableMixin):
         raise ValueError(SYSPREP_NO_OUTPUT_PATHS_MSG)
 
     @beartype
-    def run(self) -> PreparedSystem:
+    def run(
+        self,
+        *,
+        quote: bool = False,
+        approve_amount: int | None = None,
+    ) -> PreparedSystem | None:
         """Execute system preparation (blocking).
 
-        Calls ``client.executions.create`` with ``sync=True`` (ABFE or RBFE path),
-        refreshes instance state from the DTO, then returns a ``PreparedSystem``
-        via :meth:`get_results`.
+        Calls ``client.executions.create`` with ``sync=True`` (ABFE or RBFE
+        path), refreshes instance state from the DTO, then returns a
+        ``PreparedSystem`` via :meth:`get_results`.
+
+        Pass ``quote=True`` (or ``approve_amount=0``) to request a cost
+        estimate only. In that case the platform returns a ``Quoted`` DTO, the
+        instance is updated with ``estimate`` and ``status="Quoted"``, and
+        ``None`` is returned.
+
+        Args:
+            quote: Shorthand for ``approve_amount=0``.
+            approve_amount: Spend cap forwarded to the platform as ``approveAmount``.
 
         Returns:
-            A PreparedSystem with the output paths and metadata.
+            A ``PreparedSystem`` with the output paths and metadata, or ``None``
+            when the platform responds with ``Quoted`` status.
 
         Raises:
             ValueError: If the execution did not return usable output paths.
         """
+        resolved_amount = 0 if quote else approve_amount
         dto = self.client.executions.create(  # ty:ignore[unresolved-attribute]
-            data=self._make_payload(sync=True),
+            data=self._build_system_prep_body(
+                sync=True, approve_amount=resolved_amount
+            ),
             tool_key=self.tool_key,
             tool_version=self.tool_version,
         )
         self.update_from_dto(dto)
+
+        if self.status == "Quoted":
+            return None
 
         return self.get_results(dto)
