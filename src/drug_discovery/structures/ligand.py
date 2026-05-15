@@ -2438,7 +2438,11 @@ class LigandSet:
             if remote_path is not None:
                 lig.remote_path = remote_path
         else:
-            smiles = entry.get("smiles") or entry.get("canonical_smiles")
+            smiles = (
+                entry.get("smiles")
+                or entry.get("canonical_smiles")
+                or entry.get("ligand_smiles")
+            )
             if not isinstance(smiles, str) or not smiles.strip():
                 raise ValueError(
                     f"Pose at index {idx} has remote SDF {remote_path!r} but no "
