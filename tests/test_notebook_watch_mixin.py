@@ -72,7 +72,7 @@ def test_watch_async_terminal_immediately(mock_update_display, mock_display):
     abfe = ABFE(prepared_system=ps)
     abfe.client = mock_client
     abfe._id = dto["executionId"]
-    abfe._execution_dto = dto
+    abfe._dto = dto
     abfe.status = "Succeeded"
 
     with patch.object(abfe, "_render_execution_html", return_value="<html>done</html>"):
@@ -100,7 +100,7 @@ def test_watch_async_polls_until_terminal(mock_update_display, mock_display):
     abfe = ABFE(prepared_system=ps)
     abfe.client = mock_client
     abfe._id = running["executionId"]
-    abfe._execution_dto = running
+    abfe._dto = running
     abfe.status = "Running"
 
     with patch.object(abfe, "_render_execution_html", return_value="<html>x</html>"):
@@ -139,7 +139,7 @@ def test_watch_async_raises_when_dto_missing_after_sync(
     abfe = ABFE(prepared_system=ps)
     abfe.client = mock_client
     abfe._id = "exec-1"
-    abfe._execution_dto = None
+    abfe._dto = None
 
     with pytest.raises(ValueError, match="No execution data after sync"):
         asyncio.run(abfe.watch_async())

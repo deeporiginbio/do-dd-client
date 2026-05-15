@@ -3,7 +3,7 @@
 Sync usage (blocking, returns pockets directly)::
 
     pf = PocketFinder(protein)
-    pf.quote()           # populates pf.estimate
+    pf.run(quote=True)   # populates pf.estimate; pf.status == "Quoted"
     pockets = pf.run()   # blocking; calls get_results(); populates pf.cost
 
 Async usage (persisted execution, watch in notebook)::
@@ -23,7 +23,6 @@ from beartype import beartype
 from deeporigin.drug_discovery.execution import Execution
 from deeporigin.drug_discovery.execution_mixins import (
     AsyncExecutableMixin,
-    QuoteMixin,
     SyncExecutableMixin,
 )
 from deeporigin.drug_discovery.notebook_watch_mixin import NotebookWatchMixin
@@ -35,13 +34,16 @@ from deeporigin.platform.constants import TOOL_KEYS_AND_VERSIONS
 
 
 class PocketFinder(
-    Execution, QuoteMixin, SyncExecutableMixin, AsyncExecutableMixin, NotebookWatchMixin
+    Execution,
+    SyncExecutableMixin,
+    AsyncExecutableMixin,
+    NotebookWatchMixin,
 ):
     """Find binding pockets in a protein structure.
 
     The execution request body includes ``sync`` (``true`` = blocking, ``false`` =
-    immediate DTO). :meth:`run` sets ``"sync": true`` and blocks until the run
-    finishes. :meth:`start` and :meth:`quote` set ``"sync": false`` (non-blocking);
+    immediate DTO).     :meth:`run` sets ``"sync": true`` and blocks until the run
+    finishes. :meth:`start` sets ``"sync": false`` in ``inputs`` (non-blocking);
     ``start`` returns immediately with an execution DTO that you can poll with
     :meth:`sync` (or watch with :meth:`watch` / :meth:`watch_async` in Jupyter).
     Track async jobs with :meth:`sync`, :meth:`from_id`, and :meth:`list`.
@@ -120,16 +122,15 @@ class PocketFinder(
     def _make_payload(
         self,
         *,
-        sync: bool = True,
-        approve_amount: int | None = None,
+        approve_amount: int | None,
+        sync: bool,
     ) -> dict[str, Any]:
         """Build the POST body for ``executions.create``.
 
-        ``sync`` lives inside ``inputs`` because the pocket-finder tool
-        definition declares it as an input property; the platform's
-        estimator reads ``inputs.sync`` to choose direct serving (sync) vs.
-        Argo workflow (async). A top-level ``sync`` would be silently dropped
-        and the AJV default (``true``) used instead.
+        ``inputs.sync`` maps to the pocket-finder tool's declared ``sync``
+        input property so the platform estimator can choose direct serving vs.
+        Argo workflow. A top-level ``sync`` would be silently dropped (AJV
+        default ``true``).
         """
         payload: dict[str, Any] = {
             "inputs": {
@@ -147,15 +148,6 @@ class PocketFinder(
         if approve_amount is not None:
             payload["approveAmount"] = approve_amount
         return payload
-
-    def _get_quote(self) -> dict[str, Any]:
-        """Return the tools API execution DTO for a quotation (``approveAmount=0``)."""
-
-        return self.client.executions.create(  # ty:ignore[unresolved-attribute]
-            data=self._make_payload(sync=False, approve_amount=0),
-            tool_key=self.tool_key,
-            tool_version=self.tool_version,
-        )
 
     @staticmethod
     def _parse_inputs_dict(inputs: dict[str, Any]) -> tuple[dict[str, Any], int, int]:
@@ -270,44 +262,63 @@ class PocketFinder(
             ) from None
 
     @beartype
-    def run(self, *, approve_amount: int | None = None) -> list[Pocket]:
+    def run(
+        self,
+        *,
+        quote: bool = False,
+        approve_amount: int | None = None,
+    ) -> list[Pocket] | None:
         """Execute pocket finding synchronously (blocking).
 
         Submits one synchronous tools execution (``sync=True``) and returns the
         detected pockets via :meth:`get_results`. The server blocks until the
         run completes; use :meth:`start` for async, persisted execution.
 
+        Pass ``quote=True`` (or ``approve_amount=0``) to request a cost estimate
+        only. In that case the platform returns a ``Quoted`` DTO, the instance
+        is updated with ``estimate`` and ``status="Quoted"``, and ``None`` is
+        returned.
+
+        Args:
+            quote: Shorthand for ``approve_amount=0``.
+            approve_amount: Spend cap forwarded to the platform as ``approveAmount``.
+
         Returns:
-            List of ``Pocket`` objects found in the protein.
+            List of ``Pocket`` objects, or ``None`` when the platform responds
+            with ``Quoted`` status.
 
         Raises:
             DeepOriginException: If no pockets could be loaded from the data
                 platform or ``jobOutputs``.
         """
         self._ensure_protein_remote()
+        resolved_amount = 0 if quote else approve_amount
         dto = self.client.executions.create(  # ty:ignore[unresolved-attribute]
-            data=self._make_payload(
-                sync=True,
-                approve_amount=approve_amount,
-            ),
+            data=self._make_payload(approve_amount=resolved_amount, sync=True),
             tool_key=self.tool_key,
             tool_version=self.tool_version,
         )
         self.update_from_dto(dto)
 
+        if self.status == "Quoted":
+            return None
+
         return self.get_results(dto)
 
-    def _start_impl(self, **kwargs: Any) -> None:
+    def _start_impl(self, *, approve_amount: int | None = None, **kwargs: Any) -> None:
         """Submit pocket finding as a persisted async execution (``sync=False``).
 
-        Sets :attr:`id`, :attr:`status`, and :attr:`_execution_dto` from the
+        Sets :attr:`id`, :attr:`status`, and :attr:`_dto` from the
         platform response. Poll :meth:`sync` or use :meth:`watch` /
         :meth:`watch_async` in Jupyter until the execution reaches a terminal
         state, then call :meth:`get_results` to retrieve the pockets.
+
+        Args:
+            approve_amount: Spend cap forwarded to the platform.
         """
         self._ensure_protein_remote()
         execution_dto = self.client.executions.create(  # ty:ignore[unresolved-attribute]
-            data=self._make_payload(sync=False),
+            data=self._make_payload(approve_amount=approve_amount, sync=False),
             tool_key=self.tool_key,
             tool_version=self.tool_version,
         )
@@ -315,6 +326,6 @@ class PocketFinder(
         if execution_id is None:
             raise ValueError("Execution response must contain 'executionId'") from None
 
-        self._execution_dto = execution_dto
+        self._dto = execution_dto
         self._id = execution_id
         self.status = execution_dto.get("status")

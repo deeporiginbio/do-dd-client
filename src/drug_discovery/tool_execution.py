@@ -5,8 +5,8 @@ from __future__ import annotations
 import os
 from typing import Any, Self
 
-from deeporigin.drug_discovery.execution import Execution
-from deeporigin.drug_discovery.execution_mixins import AsyncExecutableMixin, QuoteMixin
+from deeporigin.drug_discovery.execution import Execution, QuoteMode
+from deeporigin.drug_discovery.execution_mixins import AsyncExecutableMixin
 from deeporigin.drug_discovery.notebook_watch_mixin import NotebookWatchMixin
 from deeporigin.drug_discovery.structures.ligand import Ligand, LigandSet
 from deeporigin.drug_discovery.structures.protein import Protein
@@ -150,6 +150,7 @@ def _apply_dto_common_fields(
     client: DeepOriginClient,
 ) -> None:
     instance.client = client
+    instance._quoted_mode = None
     instance._id = dto["executionId"]
     instance._estimate = None
     instance._cost = None
@@ -162,7 +163,7 @@ def _apply_dto_common_fields(
     instance.started_at = dto.get("startedAt")
     instance.completed_at = dto.get("completedAt")
     instance.session = dto.get("session")
-    instance._execution_dto = dto
+    instance._dto = dto
     instance._name = dto.get("name")
     instance._watch_task = None
     instance._display_id = None
@@ -179,7 +180,7 @@ def _apply_dto_common_fields(
         instance._cost = float(price)
 
 
-class ToolExecution(Execution, QuoteMixin, AsyncExecutableMixin, NotebookWatchMixin):
+class ToolExecution(Execution, AsyncExecutableMixin, NotebookWatchMixin):
     """Generic tool execution driven by a platform tool definition.
 
     Instead of a hand-written constructor per tool, this class reads
@@ -323,10 +324,23 @@ class ToolExecution(Execution, QuoteMixin, AsyncExecutableMixin, NotebookWatchMi
         return self._serialize_inputs(), meta
 
     # ------------------------------------------------------------------
-    # Execution lifecycle (QuoteMixin / AsyncExecutableMixin hooks)
+    # Execution lifecycle (Execution quote / AsyncExecutableMixin hooks)
     # ------------------------------------------------------------------
 
-    def _get_quote(self) -> dict[str, Any]:
+    def _resolve_quote_mode(self, mode: QuoteMode | None) -> QuoteMode:
+        """Generic tools default to async-style create for quotes."""
+        if mode is not None:
+            return mode
+        return "async"
+
+    def _make_payload(
+        self,
+        *,
+        approve_amount: int | None,
+        mode: QuoteMode,
+    ) -> dict[str, Any]:
+        """Build create payload; ``mode`` reserved for schema-derived sync flags."""
+        _ = mode
         self._ensure_platform_inputs()
         params, metadata = self._build_tool_inputs()
         payload: dict[str, Any] = {
@@ -336,12 +350,9 @@ class ToolExecution(Execution, QuoteMixin, AsyncExecutableMixin, NotebookWatchMi
         }
         if self.name is not None:
             payload["name"] = self.name
-        payload["approveAmount"] = 0
-        return self.client.executions.create(
-            data=payload,
-            tool_key=self.tool_key,
-            tool_version=self.tool_version,
-        )
+        if approve_amount is not None:
+            payload["approveAmount"] = approve_amount
+        return payload
 
     def _start_impl(self, *, approve_amount: int | None = None) -> None:
         self._ensure_platform_inputs()

@@ -261,7 +261,7 @@ def test_from_residue_num_lv0():
     ) and custom_pocket.get_center().shape == (3,)
 
 
-def test_from_id_lv2(
+def test_from_id_lv1(
     client: "DeepOriginClient",
     registered_protein: Protein,
 ):

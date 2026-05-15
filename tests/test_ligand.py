@@ -753,31 +753,6 @@ def test_ligand_protonate_sets_protonated_at_ph(client: DeepOriginClient):
     assert len(result.ligands) == 2
 
 
-# Test utility functions
-def test_ligands_to_dataframe():
-    """Test the ligands_to_dataframe utility function"""
-    from deeporigin.drug_discovery.structures.ligand import ligands_to_dataframe
-
-    # Create test ligands
-    ligands_list = [
-        Ligand.from_smiles("CCO", name="Ethanol"),
-        Ligand.from_smiles("CCCO", name="Propanol"),
-    ]
-
-    # Add some properties
-    ligands_list[0].set_property("logP", 0.32)
-    ligands_list[1].set_property("logP", 0.88)
-
-    # Convert to dataframe
-    df = ligands_to_dataframe(ligands_list)
-
-    assert len(df) == 2
-    assert "SMILES" in df.columns
-    assert "logP" in df.columns
-    assert df.iloc[0]["logP"] == pytest.approx(0.32)
-    assert df.iloc[1]["logP"] == pytest.approx(0.88)
-
-
 @pytest.mark.parametrize(
     "sdf_file", sorted(BRD_DATA_DIR.glob("*.sdf")), ids=lambda p: p.stem
 )

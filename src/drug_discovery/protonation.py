@@ -8,7 +8,7 @@ from beartype import beartype
 from rdkit import Chem
 
 from deeporigin.drug_discovery.execution import Execution
-from deeporigin.drug_discovery.execution_mixins import QuoteMixin, SyncExecutableMixin
+from deeporigin.drug_discovery.execution_mixins import SyncExecutableMixin
 from deeporigin.drug_discovery.structures.ligand import Ligand, LigandSet
 from deeporigin.platform.client import DeepOriginClient
 from deeporigin.platform.constants import TOOL_KEYS_AND_VERSIONS
@@ -39,7 +39,7 @@ def _execution_outputs_dict(dto: dict) -> dict[str, Any]:
     return {}
 
 
-class Protonation(Execution, QuoteMixin, SyncExecutableMixin):
+class Protonation(Execution, SyncExecutableMixin):
     """Run ligand protonation through the platform tools API (sync)."""
 
     tool_key: str = TOOL_KEYS_AND_VERSIONS["protonation"]["tool_key"]
@@ -118,40 +118,36 @@ class Protonation(Execution, QuoteMixin, SyncExecutableMixin):
     def _make_payload(
         self,
         *,
-        sync: bool = True,
-        approve_amount: int | None = None,
+        approve_amount: int | None,
+        sync: bool,
     ) -> dict[str, Any]:
         """Build the body dict for ``client.executions.create``."""
-        body: dict[str, Any] = {
+        payload: dict[str, Any] = {
             "inputs": self._make_inputs(),
             "outputs": {},
             "metadata": {},
             "sync": sync,
         }
         if approve_amount is not None:
-            body["approveAmount"] = approve_amount
-        return body
+            payload["approveAmount"] = approve_amount
+        return payload
 
-    def _quote_impl(self) -> None:
-        """Request a cost estimate without executing."""
-        response = self.client.executions.create(
-            tool_key=self.tool_key,
-            tool_version=TOOL_KEYS_AND_VERSIONS["protonation"]["tool_version"],
-            data=self._make_payload(sync=False, approve_amount=0),
-        )
-        self._apply_quote_response(response)
-
-    def _apply_quote_response(self, response: dict) -> None:
-        price = _execution_price_total(response)
-        if price is None:
-            raise RuntimeError(
-                "Quote failed: no estimate could be parsed from the protonation response."
-            )
-        self._estimate = price
-        self._responses = [response]
-
-    def run(self) -> Any:
+    def run(
+        self,
+        *,
+        quote: bool = False,
+        approve_amount: int | None = None,
+    ) -> Any:
         """Execute protonation via the platform tools API.
+
+        Pass ``quote=True`` (or ``approve_amount=0``) to request a cost estimate
+        only. In that case the platform returns a ``Quoted`` DTO, the instance
+        is updated with ``estimate`` and ``status="Quoted"``, and ``None`` is
+        returned.
+
+        Args:
+            quote: Shorthand for ``approve_amount=0``.
+            approve_amount: Spend cap forwarded to the platform as ``approveAmount``.
 
         Returns:
             :class:`~deeporigin.drug_discovery.structures.ligand.LigandSet` whose
@@ -164,10 +160,10 @@ class Protonation(Execution, QuoteMixin, SyncExecutableMixin):
         """
         input_first = self.ligands.ligands[0]
 
-        response = self.client.executions.create(
+        response = self.client.executions.create(  # ty:ignore[unresolved-attribute]
             tool_key=self.tool_key,
             tool_version=TOOL_KEYS_AND_VERSIONS["protonation"]["tool_version"],
-            data=self._make_payload(sync=True),
+            data=self._make_payload(approve_amount=approve_amount, sync=True),
         )
 
         outputs = _execution_outputs_dict(response)

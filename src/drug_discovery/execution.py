@@ -1,84 +1,55 @@
 """Base class for the jobs-centric API.
 
 Provides ``Execution`` -- a base class with read-only ``@property`` descriptors
-for system-managed fields and lifecycle state management, plus
-``from_id()`` / :meth:`Execution.list` delegate to :meth:`Execution.from_dto`.
-:meth:`Execution.update_from_dto` applies the same fields to an existing
-instance (for example after ``executions.create``). The base ``from_dto``
-hydrates tools execution fields from the DTO; concrete
-types override it, call ``super().from_dto()``, then restore domain-specific
-state from ``userInputs``. Subclasses also
-expose immutable input fields as read-only properties and compose with mixins
-(``QuoteMixin``, ``SyncExecutableMixin``, ``AsyncExecutableMixin``) to build
-concrete execution types like ``PocketFinder``, ``Docking``, and ``ABFE``.
-Sync ``run()`` may persist a tools execution when the implementation uses the
-executions API with ``sync=True``; see each class for details.
+for system-managed fields, platform ``id``, and ``confirm()`` for tools
+executions, lifecycle state management, :attr:`Execution.runtime` from DTO
+timestamps, plus ``from_id()`` / :meth:`Execution.list` delegate to
+:meth:`Execution.from_dto`. :meth:`Execution.sync` refreshes an instance from
+``executions.get`` (any execution class, including sync-only or objects built
+from a stale DTO). :meth:`Execution.update_from_dto` applies the same fields to
+an existing instance (for example after ``executions.create``). The base
+``from_dto`` hydrates tools execution fields from the DTO; concrete types
+override it, call ``super().from_dto()``, then restore domain-specific state
+from ``userInputs``. Subclasses also expose immutable input fields as read-only
+properties and compose with mixins (``SyncExecutableMixin``,
+``AsyncExecutableMixin``) to build concrete execution types like
+``PocketFinder``, ``Docking``, and ``ABFE``.
+
+Quoting is handled directly by ``run()`` and ``start()`` via ``quote=True``
+(sugar for ``approve_amount=0``) or an explicit ``approve_amount``. When the
+platform returns a ``Quoted`` DTO the instance is left in that state -- no
+automatic confirmation is performed.
 """
 
 from __future__ import annotations
 
 import builtins
 import copy
-from typing import TYPE_CHECKING, Any, Self
+from datetime import datetime, timezone
+from typing import TYPE_CHECKING, Any, Literal, Self
 
 from deeporigin.platform.constants import ALLOWED_STATUS_TRANSITIONS
+from deeporigin.utils.constants import TOOL_EXECUTION_POST_TIMEOUT_SECONDS
+from deeporigin.utils.iso8601 import parse_iso_timestamp_utc
 
 if TYPE_CHECKING:
     from deeporigin.platform.client import DeepOriginClient
 
+QuoteMode = Literal["sync", "async"]
 
-def _paginate_tool_execution_list(
-    client: DeepOriginClient,
-    *,
-    tool_key: str,
-    page_size: int = 1000,
-) -> builtins.list[dict[str, Any]]:
-    """Collect all pages from ``client.executions.list`` for one ``tool_key``."""
-    current_page = 0
-    all_dtos: builtins.list[dict[str, Any]] = []
-
-    while True:
-        response = client.executions.list(  # ty:ignore[unresolved-attribute]
-            page=current_page,
-            page_size=page_size,
-            tool_key=tool_key,
-        )
-
-        if not isinstance(response, dict):
-            all_dtos.extend(response if isinstance(response, builtins.list) else [])
-            break
-
-        page_dtos = response.get("data", [])
-        all_dtos.extend(page_dtos)
-
-        count = response.get("count", 0)
-
-        if count > page_size:
-            if len(page_dtos) < page_size:
-                break
-            if len(all_dtos) >= count:
-                break
-            current_page += 1
-        else:
-            break
-
-    return all_dtos
+__all__ = ["Execution", "QuoteMode"]
 
 
 class Execution:
     """Base class for all execution types in the jobs-centric API.
 
     System-managed fields ``estimate`` and ``cost`` are exposed as read-only
-    properties. Platform execution ``id`` and
-    :meth:`~deeporigin.drug_discovery.execution_mixins.QuoteMixin.confirm` for
-    quoted tools jobs live on
-    :class:`~deeporigin.drug_discovery.execution_mixins.QuoteMixin` (typical job
-    classes include that mixin). Subclasses should use the same ``@property``
-    pattern for user-supplied input
-    fields that must not change after construction.
+    properties. Platform execution ``id`` and ``confirm()`` live on this class
+    for tool-backed jobs. Subclasses implement :meth:`_make_payload` to build
+    create payloads; they receive ``sync: bool`` and ``approve_amount`` directly.
 
     Rehydration: :meth:`from_dto` on this base class performs shared tools DTO
-    hydration (``executionId``, pricing, lifecycle fields, ``_execution_dto``).
+    hydration (``executionId``, pricing, lifecycle fields, ``_dto``).
     Concrete subclasses **must** override :meth:`from_dto`, call
     ``super().from_dto()``, then attach domain-specific state from
     ``userInputs`` (see :class:`~deeporigin.drug_discovery.docking.Docking` and
@@ -86,21 +57,38 @@ class Execution:
     :meth:`from_id` or :meth:`list` on :class:`Execution` itself raises
     ``NotImplementedError`` (no ``tool_key`` on the bare base class).
 
+    To align with the platform after a job was updated elsewhere (for example
+    the web UI) or to poll status, call :meth:`sync` whenever :attr:`id` is set;
+    it is not limited to async subclasses.
+
     Attributes:
-        estimate: Cost estimate in dollars, set by ``quote()``.
+        estimate: Cost estimate in dollars, populated from the DTO quotation result.
         cost: Actual cost in dollars, set after execution completes.
-        name: Optional user label; writable until execution ``id`` is set, then read-only.
-        tool_key: Platform tool key identifying this execution type.
-        tool_version: Version of the tool to use.
+        id: Platform execution id when set (read-only :class:`property`; backed by ``_id``).
+        dto: Last tools execution DTO from the platform, if any (read-only ``property``;
+            backed by ``_dto``).
+        name: Optional user label; writable until execution ``id`` is set, then read-only
+            (``property``; backed by ``_name``).
+        runtime: Elapsed seconds from DTO ``startedAt`` to ``completedAt`` or now; see property.
+        tool_key: Platform tool key identifying this execution type (class attribute on
+            concrete subclasses; may be updated from the DTO in :meth:`update_from_dto`).
+        tool_version: Version string for the tool (updated from the DTO like ``tool_key``).
+        _id: Internal storage for the execution UUID; use :attr:`id` for reads. Subclasses
+            and tests may assign before the property is wired from the platform.
+        _dto: Internal storage for the raw execution dict; use :attr:`dto` for reads.
+        _name: Internal storage for the display name; use :attr:`name` and its setter.
     """
 
     tool_key: str = ""
 
     def __init__(self, *, client: DeepOriginClient | None = None) -> None:
+        """Initialize base execution state and chain mixin ``__init__`` via ``super()``."""
         super().__init__()
         self._estimate: float | None = None
         self._cost: float | None = None
         self._name: str | None = None
+        self._id: str | None = None
+        self._dto: dict[str, Any] | None = None
 
         if client is None:
             from deeporigin.platform.client import DeepOriginClient
@@ -109,9 +97,43 @@ class Execution:
         self.client: DeepOriginClient = client
 
     @property
-    def estimate(self) -> float | None:
-        """Cost estimate in dollars, set by ``quote()``. None until ``quote()`` is called.
+    def id(self) -> str | None:
+        """Platform execution ID when set (read-only)."""
+        return self._id
 
+    @property
+    def dto(self) -> dict[str, Any] | None:
+        """Last tools execution DTO from the platform, if any."""
+        return self._dto
+
+    @property
+    def runtime(self) -> float | None:
+        """Seconds from DTO ``startedAt`` to ``completedAt`` or current UTC time.
+
+        Uses :attr:`dto` (same shape as ``client.executions.get``). When
+        ``completedAt`` is present, it is the end time; otherwise the end time is
+        ``datetime.now(timezone.utc)``. Returns ``None`` if there is no DTO or
+        ``startedAt`` is missing or empty.
+        """
+        if self._dto is None:
+            return None
+        started_raw = self._dto.get("startedAt")
+        if not started_raw:
+            return None
+        started = parse_iso_timestamp_utc(started_raw)
+        completed_raw = self._dto.get("completedAt")
+        if completed_raw:
+            end = parse_iso_timestamp_utc(completed_raw)
+        else:
+            end = datetime.now(timezone.utc)
+        return (end - started).total_seconds()
+
+    @property
+    def estimate(self) -> float | None:
+        """Cost estimate in dollars, populated when the platform returns a quotation.
+
+        Set after ``run(quote=True)``, ``start(quote=True)``, or any call with
+        ``approve_amount=0``. ``None`` until a quotation result is received.
         This property cannot be set manually."""
         return self._estimate
 
@@ -137,6 +159,58 @@ class Execution:
             raise AttributeError("cannot assign to 'name': execution id is already set")
         self._name = value
 
+    def _make_payload(
+        self,
+        *,
+        approve_amount: int | None,
+        sync: bool,
+    ) -> dict[str, Any]:
+        """Build the body dict for ``client.executions.create``.
+
+        Args:
+            approve_amount: ``0`` to request a quote only; ``None`` to omit the
+                field (platform runs immediately); any positive value sets a
+                spend cap.
+            sync: ``True`` for blocking (sync) execution; ``False`` for async.
+
+        Returns:
+            Payload for ``executions.create``.
+
+        Raises:
+            NotImplementedError: Unless overridden by a concrete tool class.
+        """
+        raise NotImplementedError(
+            f"{type(self).__qualname__} must implement _make_payload()."
+        )
+
+    def confirm(self) -> None:
+        """Confirm a quoted tools execution on the platform.
+
+        Requires :attr:`id` and ``status`` equal to ``"Quoted"``. Uses
+        :meth:`~deeporigin.platform.executions.Executions.confirm` with
+        :data:`~deeporigin.utils.constants.TOOL_EXECUTION_POST_TIMEOUT_SECONDS`
+        (10 minutes) and ``retry=False``.
+
+        Raises:
+            ValueError: If there is no platform execution id or status is not
+                ``"Quoted"``.
+        """
+        if self._id is None:
+            raise ValueError(
+                "Cannot confirm: no platform execution id (quote first or load via "
+                "from_id)."
+            )
+        status = getattr(self, "status", None)
+        if status != "Quoted":
+            raise ValueError(
+                f"Cannot confirm: execution is in {status!r} state, not 'Quoted'."
+            )
+        self.client.executions.confirm(  # ty:ignore[unresolved-attribute]
+            self._id,
+            timeout=TOOL_EXECUTION_POST_TIMEOUT_SECONDS,  # ty:ignore[unknown-argument]
+            retry=False,
+        )
+
     def _set_status(self, new_status: str) -> None:
         """Validate and apply a lifecycle state transition.
 
@@ -160,7 +234,7 @@ class Execution:
 
         Useful after ``from_id()`` to re-run the same calculation.  The
         returned instance has no ``id``, ``status``, ``estimate``, or
-        ``cost`` — it is ready for ``quote()`` / ``start()``.
+        ``cost`` — it is ready for ``run()`` / ``start()``.
 
         Args:
             client: Optional API client for the new instance.
@@ -174,7 +248,7 @@ class Execution:
             new._id = None
         new._estimate = None
         new._cost = None
-        for attr in ("status", "progress", "_execution_dto"):
+        for attr in ("status", "progress", "_dto"):
             if hasattr(new, attr):
                 delattr(new, attr)
         if client is not None:
@@ -184,7 +258,7 @@ class Execution:
     def update_from_dto(self, dto: dict[str, Any]) -> None:
         """Apply tools execution fields from ``dto`` onto this instance.
 
-        Updates ``id``, pricing, lifecycle fields, and ``_execution_dto`` the same
+        Updates ``id``, pricing, lifecycle fields, and ``_dto`` the same
         way as :meth:`from_dto` for a newly created instance. Use after a live
         ``executions.create`` / ``sync()`` response to refresh state without
         constructing a new object (domain inputs on ``self`` are unchanged).
@@ -227,7 +301,7 @@ class Execution:
         self.started_at = dto.get("startedAt")
         self.completed_at = dto.get("completedAt")
         self.session = dto.get("session")
-        self._execution_dto = dto
+        self._dto = dto
         self._name = dto.get("name")
 
         quotation = dto.get("quotationResult") or {}
@@ -238,6 +312,37 @@ class Execution:
                 self._estimate = float(price)
             if self.status == "Succeeded" and price is not None:
                 self._cost = float(price)
+
+    def sync(self) -> None:
+        """Fetch the latest tools execution from the platform and refresh fields.
+
+        Calls ``client.executions.get`` for :attr:`id` and applies the response
+        with :meth:`update_from_dto`. Use when the job may have changed outside
+        this process (for example after submission from the web UI), to poll
+        lifecycle state, or to refresh an instance built from an older DTO.
+        Available on sync-only and async execution types alike.
+
+        If ``executions.get`` returns a falsy value, this instance is left
+        unchanged.
+
+        Raises:
+            ValueError: If this instance has no execution id yet.
+            NotImplementedError: If ``type(self).tool_key`` is empty (bare
+                :class:`Execution`).
+            ValueError: If the returned DTO ``tool.key`` does not match this
+                class (see :meth:`update_from_dto`).
+        """
+        exec_id = self._id
+        if exec_id is None:
+            raise ValueError("Cannot sync: no execution has been started (id is None).")
+        cls = type(self)
+        if not cls.tool_key:
+            raise NotImplementedError(
+                f"{cls.__qualname__}.sync requires a non-empty class tool_key."
+            )
+        result = self.client.executions.get(exec_id)  # ty:ignore[unresolved-attribute]
+        if result:
+            self.update_from_dto(result)
 
     @classmethod
     def from_dto(
@@ -255,7 +360,7 @@ class Execution:
         (e.g. :class:`~deeporigin.drug_discovery.notebook_watch_mixin.NotebookWatchMixin`),
         it is called after common fields are set. Subclasses should call
         ``super().from_dto()`` then rehydrate domain-specific fields from
-        ``instance._execution_dto["userInputs"]``.
+        ``instance._dto["userInputs"]``.
 
         Args:
             dto: Execution payload (same shape as ``client.executions.get``).
@@ -328,9 +433,8 @@ class Execution:
     ) -> builtins.list[Self]:
         """List executions of this tool type from the platform.
 
-        Calls ``client.executions.list`` with ``tool_key=cls.tool_key``,
-        paginates when the API reports a total above ``page_size``, then
-        builds instances via :meth:`from_dto`. Optional ``status`` filters
+        Calls ``client.executions.list(fetch_all_pages=True, tool_key=...)``,
+        then builds instances via :meth:`from_dto`. Optional ``status`` filters
         hydrated instances by ``instance.status``.
 
         Args:
@@ -353,7 +457,10 @@ class Execution:
 
             client = DeepOriginClient()
 
-        all_dtos = _paginate_tool_execution_list(client, tool_key=cls.tool_key)
+        all_dtos = client.executions.list(  # ty:ignore[unresolved-attribute]
+            fetch_all_pages=True,
+            tool_key=cls.tool_key,
+        ).get("data", [])
         all_dtos = [
             dto for dto in all_dtos if dto.get("tool", {}).get("key") == cls.tool_key
         ]
@@ -378,7 +485,7 @@ class Execution:
         if exec_id is None:
             raise ValueError(
                 f"{type(self).__name__} has no execution ID. "
-                "Call start() (or quote() then start()) to set an ID."
+                "Call run() or start() to set an ID."
             )
         return exec_id
 

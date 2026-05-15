@@ -170,29 +170,31 @@ def test_docking_rejects_both_ligand_and_ligands(
         )
 
 
-def test_docking_quote_cannot_be_called_twice_lv0(
+def test_docking_start_rejects_non_none_status_lv0(
     registered_protein, unregistered_pocket, registered_ligand
 ):
-    """quote() raises ValueError if called after a quotation already exists."""
+    """start() raises ValueError when execution is already in a non-None state."""
+    second = Ligand.from_smiles("CCO")
+    two = LigandSet(ligands=[registered_ligand, second])
     docking = Docking(
         protein=registered_protein,
         pocket=unregistered_pocket,
-        ligand=registered_ligand,
+        ligands=two,
     )
     docking._id = "exec-quoted-456"
     docking.status = "Quoted"
 
-    with pytest.raises(ValueError, match="quotation already exists"):
-        docking.quote()
+    with pytest.raises(ValueError, match="'Quoted'"):
+        docking.start()
 
 
-def test_docking_quote_lv1(
+def test_docking_run_quote_true_lv1(
     client,
     registered_protein,
     unregistered_pocket,
     registered_ligand,
 ):
-    """Docking quote() raises ValueError if called after a quotation already exists."""
+    """Docking.run(quote=True) returns None and populates estimate."""
     assert check_tool_exists(
         client,
         TOOL_KEYS_AND_VERSIONS["docking"]["tool_key"],
@@ -204,10 +206,12 @@ def test_docking_quote_lv1(
         pocket=unregistered_pocket,
         ligand=registered_ligand,
     )
-    docking.quote()
+    result = docking.run(quote=True)
 
+    assert result is None, "run(quote=True) should return None"
     assert docking.estimate is not None, "Estimate should be set"
     assert docking.cost is None, "Cost should be None"
+    assert docking.status == "Quoted"
 
 
 def test_docking_start_rejects_single_ligand(

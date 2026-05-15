@@ -428,7 +428,7 @@ ADMET (Absorption, Distribution, Metabolism, Excretion, and Toxicity) properties
     from deeporigin.drug_discovery import Molprops
 
     mp = Molprops(ligands=[ligand])
-    mp.quote()  # optional: total estimate in mp.estimate
+    mp.run(quote=True)  # optional: platform quote for all ligands → mp.estimate
     mp.run()  # mutates ligands; total USD in mp.cost when available
 
     # Or request only some models (keys match platform suffixes: ames, logp, logd, …):
@@ -436,9 +436,9 @@ ADMET (Absorption, Distribution, Metabolism, Excretion, and Toxicity) properties
     mp.run()
     ```
 
-    For many ligands, pass ``batch_size`` (e.g. ``10``) so each request sends at most that many molecules per API call. Omit it (default) to send all ligands in a single combined-tool call.
+    For many ligands, pass ``batch_size`` (e.g. ``10``) so each **run** request sends at most that many molecules per API call. Omit it (default) to send all ligands in a single combined-tool call.
 
-    ``quote()`` requests a price using only the **first** ligand, then multiplies that total by the number of ligands (linear scaling). It does not use ``batch_size``.
+    ``run(quote=True)`` requests a single platform quotation for **every** ligand and every selected property in one call (``batch_size`` is ignored). It populates ``estimate`` (and execution ``id`` / ``status`` via the tools DTO) and does **not** mutate ligands with predictions.
 
     !!! note "Mutation Behavior"
         `Molprops.run()` mutates each ligand by filling dedicated ADMET attributes (see below), storing values in `ligand.properties`, and setting RDKit molecule properties.
@@ -502,7 +502,7 @@ ADMET (Absorption, Distribution, Metabolism, Excretion, and Toxicity) properties
     Molprops(ligands=ligands).run()
     ```
 
-    The same ``batch_size`` and quoting behavior as in the single-ligand tab applies.
+    The same ``batch_size`` and ``run(quote=True)`` behavior as in the single-ligand tab applies.
 
     !!! note "Mutation Behavior"
         `Molprops.run()` mutates each ligand by filling the same dedicated ADMET attributes and `.properties` as the single-ligand case.

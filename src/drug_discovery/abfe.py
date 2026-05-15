@@ -8,7 +8,7 @@ from beartype import beartype
 import pandas as pd
 
 from deeporigin.drug_discovery.execution import Execution
-from deeporigin.drug_discovery.execution_mixins import AsyncExecutableMixin, QuoteMixin
+from deeporigin.drug_discovery.execution_mixins import AsyncExecutableMixin
 from deeporigin.drug_discovery.notebook_watch_mixin import NotebookWatchMixin
 from deeporigin.drug_discovery.structures.prepared_system import PreparedSystem
 from deeporigin.exceptions import DeepOriginException
@@ -299,7 +299,7 @@ class ABFEParams:
         }
 
 
-class ABFE(Execution, QuoteMixin, AsyncExecutableMixin, NotebookWatchMixin):
+class ABFE(Execution, AsyncExecutableMixin, NotebookWatchMixin):
     """Absolute Binding Free Energy calculation (async-only).
 
     Drives the ``deeporigin.abfe-e2e-workflow`` tool in ``mode="abfe"``: the
@@ -377,8 +377,8 @@ class ABFE(Execution, QuoteMixin, AsyncExecutableMixin, NotebookWatchMixin):
             A fully-hydrated ABFE instance with status from the DTO.
         """
         instance = super().from_dto(dto, client=client)
-        inputs = instance._execution_dto.get("userInputs", {})  # ty:ignore[unresolved-attribute]
-        metadata = instance._execution_dto.get("metadata", {})  # ty:ignore[unresolved-attribute]
+        inputs = instance._dto.get("userInputs", {})  # ty:ignore[unresolved-attribute]
+        metadata = instance._dto.get("metadata", {})  # ty:ignore[unresolved-attribute]
 
         # dto_mode = inputs.get("mode")
         # if dto_mode is not None and dto_mode != cls.mode:
@@ -475,46 +475,36 @@ class ABFE(Execution, QuoteMixin, AsyncExecutableMixin, NotebookWatchMixin):
         """Prevent modification of params after construction."""
         raise AttributeError("params can only be set in the constructor")
 
-    def _get_quote(self) -> dict[str, Any]:
-        """Build the ABFE quote payload and return the tools API execution DTO.
-
-        Uses ``approveAmount=0`` via ``executions.create``. Parsing and state
-        assignment are handled by
-        :meth:`~deeporigin.drug_discovery.execution_mixins.QuoteMixin._quote_apply`.
-
-        Returns:
-            Raw execution dictionary from the platform.
-        """
-        payload = {
+    def _make_payload(
+        self,
+        *,
+        approve_amount: int | None,
+        sync: bool,  # noqa: ARG002 -- ABFE is always async; parameter kept for API consistency
+    ) -> dict[str, Any]:
+        """Build create payload for ``executions.create``."""
+        payload: dict[str, Any] = {
             "inputs": self._build_params(),
             "outputs": self._build_outputs(),
             "metadata": self._build_metadata(),
-            "approveAmount": 0,
         }
+        if approve_amount is not None:
+            payload["approveAmount"] = approve_amount
         if self.name is not None:
             payload["name"] = self.name
-
-        return self.client.executions.create(  # ty:ignore[unresolved-attribute]
-            data=payload,
-            tool_key=self.tool_key,
-            tool_version=self.tool_version,
-        )
+        return payload
 
     @beartype
-    def _start_impl(self, **kwargs) -> None:
+    def _start_impl(self, *, approve_amount: int | None = None, **kwargs: Any) -> None:
         """Submit the ABFE execution to the platform.
 
         Args:
-            approve_amount: Pre-approved spend amount. If None, uses default.
+            approve_amount: Spend cap forwarded to the platform. ``0`` requests
+                a quote only; ``None`` runs immediately.
         """
-        payload = {
-            "inputs": self._build_params(),
-            "outputs": self._build_outputs(),
-            "metadata": self._build_metadata(),
-        }
-        if self.name is not None:
-            payload["name"] = self.name
-
+        payload = self._make_payload(
+            approve_amount=approve_amount,
+            sync=False,
+        )
         execution_dto = self.client.executions.create(  # ty:ignore[unresolved-attribute]
             data=payload,
             tool_key=self.tool_key,
@@ -526,7 +516,7 @@ class ABFE(Execution, QuoteMixin, AsyncExecutableMixin, NotebookWatchMixin):
             msg = "Execution response must contain 'executionId'"
             raise ValueError(msg)
 
-        self._execution_dto = execution_dto
+        self._dto = execution_dto
         self._id = execution_id
         self.status = execution_dto.get("status")
 

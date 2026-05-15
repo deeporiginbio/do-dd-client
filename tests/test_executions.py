@@ -1,5 +1,6 @@
+from datetime import datetime, timezone
 from typing import Any, cast
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -8,6 +9,111 @@ from deeporigin.exceptions import DeepOriginException
 from deeporigin.platform.client import DeepOriginClient
 from deeporigin.platform.executions import Executions
 from deeporigin.utils.constants import TOOL_EXECUTION_POST_TIMEOUT_SECONDS
+
+
+def test_execution_runtime_none_without_dto() -> None:
+    """``runtime`` is ``None`` when no execution DTO has been stored."""
+    ex: Any = Execution()
+    assert ex.runtime is None
+
+
+def test_execution_runtime_none_without_started_at() -> None:
+    """``runtime`` is ``None`` when the DTO has no usable ``startedAt``."""
+    ex: Any = Execution()
+    ex._dto = {"startedAt": None}
+    assert ex.runtime is None
+
+
+def test_execution_runtime_completed_uses_dto_timestamps() -> None:
+    """``runtime`` is the delta in seconds between ``startedAt`` and ``completedAt``."""
+    ex: Any = Execution()
+    ex._dto = {
+        "startedAt": "2024-06-01T10:00:00+00:00",
+        "completedAt": "2024-06-01T10:00:30+00:00",
+    }
+    assert ex.runtime == pytest.approx(30.0)
+
+
+def test_execution_runtime_incomplete_uses_now() -> None:
+    """Without ``completedAt``, ``runtime`` uses the current UTC time as end."""
+    ex: Any = Execution()
+    ex._dto = {"startedAt": "2024-06-01T10:00:00+00:00"}
+    fixed_now = datetime(2024, 6, 1, 10, 0, 45, tzinfo=timezone.utc)
+    with patch("deeporigin.drug_discovery.execution.datetime") as mock_dt:
+        mock_dt.now.return_value = fixed_now
+        assert ex.runtime == pytest.approx(45.0)
+
+
+class _TestToolExecution(Execution):
+    """Minimal concrete execution for unit tests (no platform create)."""
+
+    tool_key = "deeporigin.test-sync-tool"
+    tool_version = "1.0.0"
+
+    def _make_payload(
+        self,
+        *,
+        approve_amount: int | None,
+        sync: bool,
+    ) -> dict[str, Any]:
+        """Unused in unit tests that don't exercise payload building."""
+        raise NotImplementedError
+
+
+def test_execution_sync_requires_id() -> None:
+    """``sync`` raises when no platform execution id is set."""
+    client = MagicMock()
+    job = _TestToolExecution(client=client)
+
+    with pytest.raises(ValueError, match="id is None"):
+        job.sync()
+
+    client.executions.get.assert_not_called()
+
+
+def test_execution_sync_requires_tool_key() -> None:
+    """``sync`` on the bare base class raises (no ``tool_key``)."""
+    client = MagicMock()
+    ex: Any = Execution(client=client)
+    ex._id = "any-id"
+
+    with pytest.raises(NotImplementedError, match="tool_key"):
+        ex.sync()
+
+
+def test_execution_sync_applies_get_response() -> None:
+    """``sync`` calls ``executions.get`` and applies fields via ``update_from_dto``."""
+    client = MagicMock()
+    dto: dict[str, Any] = {
+        "executionId": "exec-99",
+        "tool": {"key": "deeporigin.test-sync-tool", "version": "1.0.0"},
+        "status": "Running",
+        "progressReport": {"pct": 50},
+        "quotationResult": {"successfulQuotations": [{"priceTotal": "2.25"}]},
+    }
+    client.executions.get.return_value = dto
+    job = _TestToolExecution(client=client)
+    job._id = "exec-99"
+
+    job.sync()
+
+    client.executions.get.assert_called_once_with("exec-99")
+    assert job.status == "Running"
+    assert job.progress == {"pct": 50}
+    assert job.estimate == 2.25
+
+
+def test_execution_sync_no_op_when_get_returns_falsy() -> None:
+    """When ``get`` returns a falsy value, ``sync`` leaves local state unchanged."""
+    client = MagicMock()
+    client.executions.get.return_value = None
+    job = _TestToolExecution(client=client)
+    job._id = "exec-1"
+    job.status = "Created"
+
+    job.sync()
+
+    assert job.status == "Created"
 
 
 def test_execution_from_id_requires_tool_key() -> None:
@@ -91,6 +197,32 @@ def test_list_executions_by_tool_key_lv1(client: DeepOriginClient):
 
     for execution in executions:
         assert execution.get("tool", {}).get("key") == "deeporigin.bulk-docking"
+
+
+def test_list_fetch_all_pages_merges_when_count_exceeds_page_size() -> None:
+    """``list(fetch_all_pages=True)`` walks pages until every row is collected."""
+    client = MagicMock()
+    client.org_key = "org-1"
+    executions = Executions(client)
+    page0 = [{"executionId": f"e{i}"} for i in range(1000)]
+    page1 = [{"executionId": f"e{i}"} for i in range(1000, 1500)]
+    client.get_json.side_effect = [
+        {"data": page0, "count": 1500},
+        {"data": page1, "count": 1500},
+    ]
+
+    result = executions.list(
+        fetch_all_pages=True,
+        tool_key="deeporigin.bulk-docking",
+        page_size=1000,
+    )
+
+    assert result["count"] == 1500
+    assert len(result["data"]) == 1500
+    assert client.get_json.call_count == 2
+    second_call_params = client.get_json.call_args_list[1][1]["params"]
+    assert second_call_params["page"] == 1
+    assert second_call_params["pageSize"] == 1000
 
 
 def test_search_executions_project_scope_lv1(client: DeepOriginClient):

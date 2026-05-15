@@ -8,29 +8,47 @@ from unittest.mock import MagicMock
 import pytest
 
 from deeporigin.drug_discovery.execution import Execution
-from deeporigin.drug_discovery.execution_mixins import AsyncExecutableMixin, QuoteMixin
+from deeporigin.drug_discovery.execution_mixins import AsyncExecutableMixin
 from deeporigin.utils.constants import TOOL_EXECUTION_POST_TIMEOUT_SECONDS
 
 
-class _ConfirmableJob(Execution, QuoteMixin):
-    """Minimal execution with :class:`QuoteMixin` for ``confirm()`` tests."""
+class _ConfirmableJob(Execution):
+    """Minimal execution with :class:`Execution` ``confirm()`` for tests."""
 
     tool_key = "deeporigin.test-tool"
     tool_version = "0.0.0"
 
+    def _make_payload(
+        self, *, approve_amount: int | None, sync: bool
+    ) -> dict[str, Any]:
+        """Unused for ``confirm()``-only tests."""
+        raise NotImplementedError
 
-class _AsyncQuotedJob(Execution, QuoteMixin, AsyncExecutableMixin):
-    """Async job used to assert ``start()`` delegates to ``confirm()``."""
+
+class _AsyncJob(Execution, AsyncExecutableMixin):
+    """Async job used to test ``start()`` behaviour."""
 
     tool_key = "deeporigin.test-tool"
     tool_version = "0.0.0"
+    _start_impl_calls: list[dict]
 
-    def _start_impl(self, **kwargs: Any) -> None:
-        """No-op for tests that only exercise the ``Quoted`` branch."""
-        raise AssertionError("_start_impl should not run in these tests")
+    def __init__(self, **kwargs: Any) -> None:
+        """Initialise and reset call tracking."""
+        super().__init__(**kwargs)
+        self._start_impl_calls = []
+
+    def _make_payload(
+        self, *, approve_amount: int | None, sync: bool
+    ) -> dict[str, Any]:
+        """Unused for ``start()`` tests."""
+        raise NotImplementedError
+
+    def _start_impl(self, *, approve_amount: int | None = None, **kwargs: Any) -> None:
+        """Record the call for assertions."""
+        self._start_impl_calls.append({"approve_amount": approve_amount, **kwargs})
 
 
-def test_quote_mixin_confirm_calls_platform_with_long_timeout_no_retry() -> None:
+def test_execution_confirm_calls_platform_with_long_timeout_no_retry() -> None:
     """``confirm`` hits ``executions.confirm`` with 600s timeout and ``retry=False``."""
     client = MagicMock()
     job = _ConfirmableJob(client=client)
@@ -46,7 +64,7 @@ def test_quote_mixin_confirm_calls_platform_with_long_timeout_no_retry() -> None
     )
 
 
-def test_quote_mixin_confirm_requires_id() -> None:
+def test_execution_confirm_requires_id() -> None:
     """``confirm`` raises when no platform execution id is set."""
     client = MagicMock()
     job = _ConfirmableJob(client=client)
@@ -58,7 +76,7 @@ def test_quote_mixin_confirm_requires_id() -> None:
     client.executions.confirm.assert_not_called()
 
 
-def test_quote_mixin_confirm_requires_quoted_status() -> None:
+def test_execution_confirm_requires_quoted_status() -> None:
     """``confirm`` raises when status is not ``Quoted``."""
     client = MagicMock()
     job = _ConfirmableJob(client=client)
@@ -71,30 +89,46 @@ def test_quote_mixin_confirm_requires_quoted_status() -> None:
     client.executions.confirm.assert_not_called()
 
 
-def test_async_start_when_quoted_calls_confirm_then_sync() -> None:
-    """``start()`` on a ``Quoted`` job uses :meth:`QuoteMixin.confirm` then ``sync``."""
+def test_async_start_calls_start_impl_with_no_approve_amount() -> None:
+    """``start()`` with no args forwards ``approve_amount=None`` to ``_start_impl``."""
     client = MagicMock()
-    job = _AsyncQuotedJob(client=client)
-    job._id = "exec-1"
-    job.status = "Quoted"
-    sync_mock = MagicMock()
-    job.sync = sync_mock
+    job = _AsyncJob(client=client)
 
     job.start()
 
-    client.executions.confirm.assert_called_once_with(
-        "exec-1",
-        timeout=TOOL_EXECUTION_POST_TIMEOUT_SECONDS,
-        retry=False,
-    )
-    sync_mock.assert_called_once()
+    assert len(job._start_impl_calls) == 1
+    assert job._start_impl_calls[0]["approve_amount"] is None
 
 
-def test_quote_setup_error_mentions_confirm() -> None:
-    """Re-quoting a ``Quoted`` job tells the user to call ``confirm()``."""
+def test_async_start_quote_true_forwards_zero_approve_amount() -> None:
+    """``start(quote=True)`` forwards ``approve_amount=0`` to ``_start_impl``."""
     client = MagicMock()
-    job = _ConfirmableJob(client=client)
-    job.status = "Quoted"
+    job = _AsyncJob(client=client)
 
-    with pytest.raises(ValueError, match=r"confirm\(\)"):
-        job.quote()
+    job.start(quote=True)
+
+    assert len(job._start_impl_calls) == 1
+    assert job._start_impl_calls[0]["approve_amount"] == 0
+
+
+def test_async_start_approve_amount_forwarded() -> None:
+    """``start(approve_amount=50)`` forwards the value to ``_start_impl``."""
+    client = MagicMock()
+    job = _AsyncJob(client=client)
+
+    job.start(approve_amount=50)
+
+    assert len(job._start_impl_calls) == 1
+    assert job._start_impl_calls[0]["approve_amount"] == 50
+
+
+def test_async_start_rejects_non_none_status() -> None:
+    """``start()`` raises when status is not ``None``."""
+    client = MagicMock()
+    job = _AsyncJob(client=client)
+    job.status = "Running"
+
+    with pytest.raises(ValueError, match="'Running'"):
+        job.start()
+
+    assert not job._start_impl_calls
