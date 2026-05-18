@@ -4,6 +4,7 @@ import os
 import tempfile
 import uuid
 
+import httpx
 import pytest
 
 from deeporigin.platform.client import DeepOriginClient
@@ -502,6 +503,151 @@ def test_list_files_metadata_size_lv1(client: DeepOriginClient):
     # Clean up
     remote_files = [obj["Key"] for obj in file_objects]
     client.files.delete_many(remote_paths=remote_files, timeout=120.0)
+
+
+def test_download_stream_signed_url_lv1(client: DeepOriginClient):
+    """test streaming download via signed URL returns correct bytes."""
+    files = client.files.list(
+        remote_path="entities/",
+        recursive=True,
+    )
+    assert len(files) > 0, "should be some files in entities/"
+
+    with client.files.download_stream(files[0]) as stream:
+        assert isinstance(stream.headers, httpx.Headers), "headers should be accessible"
+        chunks = list(stream.iter_bytes())
+
+    assert len(chunks) > 0, "should have received at least one chunk"
+    content = b"".join(chunks)
+    assert len(content) > 0, "streamed content should not be empty"
+
+
+def test_download_stream_read_lv1(client: DeepOriginClient):
+    """test streaming download file-like read() interface."""
+    files = client.files.list(
+        remote_path="entities/",
+        recursive=True,
+    )
+    assert len(files) > 0, "should be some files in entities/"
+
+    with client.files.download_stream(files[0]) as stream:
+        head = stream.read(64)
+        rest = stream.read(-1)
+
+    assert isinstance(head, bytes), "read() should return bytes"
+    assert len(head) > 0, "first read should return data"
+    assert isinstance(rest, bytes), "second read should return bytes"
+
+
+def test_download_stream_direct_lv1(client: DeepOriginClient):
+    """test streaming download via direct GET endpoint."""
+    files = client.files.list(
+        remote_path="entities/",
+        recursive=True,
+    )
+    assert len(files) > 0, "should be some files in entities/"
+
+    with client.files.download_stream(files[0], direct=True) as stream:
+        content = stream.read(-1)
+
+    assert len(content) > 0, "direct-streamed content should not be empty"
+
+
+def test_download_stream_matches_download_lv1(client: DeepOriginClient):
+    """test that streaming download yields the same bytes as disk download."""
+    files = client.files.list(
+        remote_path="entities/",
+        recursive=True,
+    )
+    assert len(files) > 0, "should be some files in entities/"
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        local_path = client.files.download(
+            files[0],
+            download_to_dir=tmpdir,
+        )
+        with open(local_path, "rb") as f:
+            disk_bytes = f.read()
+
+    with client.files.download_stream(files[0]) as stream:
+        stream_bytes = stream.read(-1)
+
+    assert stream_bytes == disk_bytes, (
+        f"streamed bytes ({len(stream_bytes)}) should match "
+        f"downloaded bytes ({len(disk_bytes)})"
+    )
+
+
+def test_download_stream_context_manager_closes_lv1(client: DeepOriginClient):
+    """test that the stream is closed after exiting the context manager."""
+    files = client.files.list(
+        remote_path="entities/",
+        recursive=True,
+    )
+    assert len(files) > 0, "should be some files in entities/"
+
+    with client.files.download_stream(files[0]) as stream:
+        stream.read(1)
+
+    assert stream.closed, "stream should be closed after context exit"
+
+    with pytest.raises(ValueError, match="closed"):
+        stream.read(1)
+
+
+def test_download_stream_iter_lv1(client: DeepOriginClient):
+    """test that the stream supports direct iteration (for chunk in stream)."""
+    files = client.files.list(
+        remote_path="entities/",
+        recursive=True,
+    )
+    assert len(files) > 0, "should be some files in entities/"
+
+    chunks = []
+    with client.files.download_stream(files[0]) as stream:
+        for chunk in stream:
+            chunks.append(chunk)
+
+    assert len(chunks) > 0, "should yield at least one chunk"
+    assert all(isinstance(c, bytes) for c in chunks), "each chunk should be bytes"
+
+
+def test_download_stream_file_like_protocol_lv1(client: DeepOriginClient):
+    """test that the stream reports correct file-like protocol flags."""
+    files = client.files.list(
+        remote_path="entities/",
+        recursive=True,
+    )
+    assert len(files) > 0, "should be some files in entities/"
+
+    with client.files.download_stream(files[0]) as stream:
+        assert stream.readable() is True
+        assert stream.writable() is False
+        assert stream.seekable() is False
+
+
+def test_download_stream_readinto_lv1(client: DeepOriginClient):
+    """test that readinto() fills a buffer and works with TextIOWrapper."""
+    import io
+
+    files = client.files.list(
+        remote_path="entities/",
+        recursive=True,
+    )
+    assert len(files) > 0, "should be some files in entities/"
+
+    with client.files.download_stream(files[0]) as stream:
+        buf = bytearray(64)
+        n = stream.readinto(buf)
+        assert n > 0, "readinto should return bytes read"
+        assert buf[:n] != bytearray(n), "buffer should contain data"
+
+    with client.files.download_stream(files[0]) as stream:
+        reader = io.BufferedReader(stream)  # type: ignore[arg-type]
+        text = io.TextIOWrapper(reader, encoding="utf-8", errors="replace")
+        line = text.readline()
+        assert isinstance(line, str), "TextIOWrapper should produce str"
+        assert len(line) > 0, "should read at least one line"
 
 
 def test_health_lv1(client: DeepOriginClient):
