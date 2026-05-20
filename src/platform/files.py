@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterator
 import concurrent.futures
 import os
 from pathlib import Path
@@ -20,6 +21,167 @@ from deeporigin.utils.env import _ensure_do_folder
 _FILES_BASE = "/files"
 
 _MISSING_URL_FIELD = "Signed URL response missing 'url' field"
+
+
+class FileStream:
+    """Streaming wrapper around an HTTP download response.
+
+    Supports three consumption patterns:
+
+    - **Chunk iteration** via :meth:`iter_bytes` or ``for chunk in stream``.
+    - **File-like reads** via :meth:`read`, compatible with consumers such as
+      ``csv.reader``, ``json.load``, or ``pandas.read_csv``.
+    - **Context manager** for deterministic cleanup of the underlying
+      connection.
+
+    Always use as a context manager or call :meth:`close` explicitly::
+
+        with client.files.download_stream("data/results.csv") as stream:
+            for chunk in stream.iter_bytes():
+                process(chunk)
+    """
+
+    def __init__(
+        self,
+        response: httpx.Response,
+        *,
+        _owning_client: httpx.Client | None = None,
+    ) -> None:
+        """Initialize the stream wrapper.
+
+        Args:
+            response: An httpx streaming response (sent with ``stream=True``).
+            _owning_client: An ephemeral ``httpx.Client`` that should be closed
+                when this stream is closed.  ``None`` when the response comes
+                from a shared / long-lived client.
+        """
+        self._response = response
+        self._owning_client = _owning_client
+        self._buffer = bytearray()
+        self._closed = False
+        self._iterator: Iterator[bytes] | None = None
+
+    @property
+    def closed(self) -> bool:
+        """Whether the stream has been closed."""
+        return self._closed
+
+    @property
+    def content_length(self) -> int | None:
+        """Total content length in bytes, or ``None`` if unknown."""
+        raw = self._response.headers.get("content-length")
+        return int(raw) if raw is not None else None
+
+    @property
+    def content_type(self) -> str | None:
+        """MIME type of the response body, or ``None`` if unset."""
+        return self._response.headers.get("content-type")
+
+    @property
+    def headers(self) -> httpx.Headers:
+        """HTTP response headers."""
+        return self._response.headers
+
+    def _ensure_iterator(self) -> Iterator[bytes]:
+        """Return the shared byte iterator, creating it on first use."""
+        if self._iterator is None:
+            self._iterator = self._response.iter_bytes()
+        return self._iterator
+
+    def iter_bytes(self, chunk_size: int | None = None) -> Iterator[bytes]:
+        """Yield successive byte chunks from the response body.
+
+        Args:
+            chunk_size: Requested chunk size in bytes.  ``None`` uses the
+                server/transport default.
+        """
+        if self._closed:
+            raise ValueError("I/O operation on closed stream")
+        if self._buffer:
+            yield bytes(self._buffer)
+            self._buffer.clear()
+        if self._iterator is not None:
+            yield from self._iterator
+        else:
+            yield from self._response.iter_bytes(chunk_size=chunk_size)
+
+    def read(self, n: int = -1) -> bytes:
+        """Read up to *n* bytes, or all remaining bytes when *n* is ``-1``.
+
+        Args:
+            n: Maximum number of bytes to return, or ``-1`` for all.
+        """
+        if self._closed:
+            raise ValueError("I/O operation on closed stream")
+
+        iterator = self._ensure_iterator()
+
+        if n == -1:
+            chunks = [bytes(self._buffer)] if self._buffer else []
+            self._buffer.clear()
+            for chunk in iterator:
+                chunks.append(chunk)
+            return b"".join(chunks)
+
+        while len(self._buffer) < n:
+            try:
+                self._buffer.extend(next(iterator))
+            except StopIteration:
+                break
+
+        result = bytes(self._buffer[:n])
+        del self._buffer[:n]
+        return result
+
+    def readinto(self, b: bytearray | memoryview) -> int:
+        """Read up to ``len(b)`` bytes into the pre-allocated buffer *b*.
+
+        This makes ``FileStream`` compatible with :class:`io.BufferedReader`
+        and :class:`io.TextIOWrapper`, which require the ``readinto`` protocol.
+
+        Args:
+            b: A writable buffer to fill with downloaded bytes.
+
+        Returns:
+            The number of bytes actually written into *b*, or 0 at EOF.
+        """
+        data = self.read(len(b))
+        if not data:
+            return 0
+        b[: len(data)] = data
+        return len(data)
+
+    def readable(self) -> bool:
+        """Return whether the stream is readable."""
+        return True
+
+    def writable(self) -> bool:
+        """Return whether the stream is writable."""
+        return False
+
+    def seekable(self) -> bool:
+        """Return whether the stream supports seeking."""
+        return False
+
+    def close(self) -> None:
+        """Close the underlying HTTP response and optional owning client."""
+        if not self._closed:
+            self._closed = True
+            self._response.close()
+            if self._owning_client is not None:
+                self._owning_client.close()
+
+    def __enter__(self) -> FileStream:
+        return self
+
+    def __exit__(self, *args: object) -> None:
+        self.close()
+
+    def __iter__(self) -> Iterator[bytes]:
+        return self.iter_bytes()
+
+    def __del__(self) -> None:
+        self.close()
 
 
 class Files:
@@ -592,6 +754,81 @@ class Files:
             raise
 
         return str(dest)
+
+    def download_stream(
+        self,
+        remote_path: str,
+        *,
+        direct: bool = False,
+    ) -> FileStream:
+        """Stream a remote file without writing to disk.
+
+        Returns a :class:`FileStream` that yields bytes on demand, letting
+        callers process data while the download is still in flight.
+
+        By default uses a signed URL (good for large files, auth embedded in
+        the URL).  Set ``direct=True`` to stream through the platform gateway
+        instead (no signed-URL round trip; uses bearer auth).
+
+        Always use as a context manager::
+
+            with client.files.download_stream("data/big.csv") as stream:
+                for chunk in stream.iter_bytes(chunk_size=1 << 16):
+                    process(chunk)
+
+        The stream also supports file-like :meth:`~FileStream.read` calls::
+
+            with client.files.download_stream("data/big.csv") as stream:
+                header = stream.read(1024)
+
+        Args:
+            remote_path: Remote file path.
+            direct: If ``True``, stream via ``GET /files/{org}/{path}``
+                instead of a signed URL.
+
+        Returns:
+            A :class:`FileStream` wrapping the in-flight HTTP response.
+
+        Raises:
+            ValueError: If the signed-URL response is missing the ``url``
+                field.
+            httpx.HTTPStatusError: If the server returns a non-2xx status.
+        """
+        if direct:
+            self._c.check_token()
+            request = self._c._client.build_request(
+                "GET",
+                f"/files/{self._c.org_key}/{remote_path}",
+            )
+            response = self._c._client.send(request, stream=True)
+            try:
+                response.raise_for_status()
+            except Exception:
+                response.close()
+                raise
+            return FileStream(response)
+
+        signed_url_response = self._c.get_json(
+            f"/files/{self._c.org_key}/signedUrl/{remote_path}",
+        )
+
+        if "url" not in signed_url_response:
+            raise ValueError(_MISSING_URL_FIELD)
+
+        signed_url = signed_url_response["url"]
+        download_client = httpx.Client()
+        response: httpx.Response | None = None
+        try:
+            request = download_client.build_request("GET", signed_url)
+            response = download_client.send(request, stream=True)
+            response.raise_for_status()
+        except Exception:
+            if response is not None:
+                response.close()
+            download_client.close()
+            raise
+
+        return FileStream(response, _owning_client=download_client)
 
     def download_many(
         self,

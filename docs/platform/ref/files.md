@@ -41,6 +41,7 @@ Use this table to pick the right call. The client uses **two upload styles** (mu
 |--------|----------|
 | **`download(remote_path, ...)`** (default) | **One** file; default path uses a **signed URL** and **streams** to disk — preferred for **large** files. |
 | **`download(..., direct=True)`** | **One** file via **GET** through the platform API; response body is read into memory — fine for **small** files or when you want a single hop through the gateway. |
+| **`download_stream(remote_path)`** | **One** file as a **streaming** handle — process data while the download is in flight, without writing to disk. Supports chunk iteration and file-like `read()`. |
 | **`download_many(files=...)`** | **Many** remote paths (dict of remote→local or list of remotes); parallel `download` calls; returns **`dict[remote, local]`** (only successes when `skip_errors`). |
 | **`download_zip(remote_path, ...)`** | You want a **directory** as a **single ZIP** download. |
 
@@ -70,6 +71,22 @@ Use this table to pick the right call. The client uses **two upload styles** (mu
       show_root_toc_entry: false
       inherited_members: true
       members_order: alphabetical
+      filters:
+        - "!^_"  # Exclude private members (names starting with "_")
+      show_signature: true
+      show_signature_annotations: true
+      show_if_no_docstring: true
+      group_by_category: true
+
+::: src.platform.files.FileStream
+    options:
+      heading_level: 2
+      docstring_style: google
+      show_root_heading: true
+      show_category_heading: true
+      show_object_full_path: false
+      show_root_toc_entry: false
+      members_order: source
       filters:
         - "!^_"  # Exclude private members (names starting with "_")
       show_signature: true
