@@ -84,6 +84,13 @@ We can see that the protein is shown together with the identified pocket in red.
 !!! tip "The Pocket Finder Function"
     For more details on how to use the Pocket Finder, look at the [How To section for the Pocket Finder](../how-to/find-pockets.md).
 
+Preview the docking search box (protein plus wireframe box from pocket center and box size) before running:
+
+```{.python notest}
+docking = Docking(protein=protein, pocket=pocket, ligand=ligand)
+docking.show_box()
+```
+
 The `pocket` object can be inspected, too:
 
 ```{.python notest}
