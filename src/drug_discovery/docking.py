@@ -16,6 +16,7 @@ from deeporigin.drug_discovery.notebook_watch_mixin import NotebookWatchMixin
 from deeporigin.drug_discovery.structures.ligand import Ligand, LigandSet
 from deeporigin.drug_discovery.structures.pocket import Pocket
 from deeporigin.drug_discovery.structures.protein import Protein
+from deeporigin.drug_discovery.utils.visualize import jupyter_visualization
 from deeporigin.exceptions import DeepOriginException
 from deeporigin.platform.client import DeepOriginClient
 from deeporigin.platform.constants import TOOL_KEYS_AND_VERSIONS
@@ -354,6 +355,35 @@ class Docking(Execution, SyncExecutableMixin, AsyncExecutableMixin, NotebookWatc
         self.protein.sync(lazy=True, client=self.client)
         self.ligands.sync(lazy=True, client=self.client)
 
+    def _resolve_docking_box_geometry(self) -> tuple[list[float], list[float]]:
+        """Resolve pocket center and box extents used for docking and visualization.
+
+        Box sizes default to ``2 * cbrt(volume)`` per axis when not set on the pocket.
+
+        Returns:
+            A tuple of (pocket_center, box_size) where each is a length-3 list of
+            floats in Angstroms.
+        """
+        default_box = float(2 * np.cbrt(self.pocket.volume or 0))
+        box_size_x = (
+            self.pocket.box_size_x
+            if self.pocket.box_size_x is not None
+            else default_box
+        )
+        box_size_y = (
+            self.pocket.box_size_y
+            if self.pocket.box_size_y is not None
+            else default_box
+        )
+        box_size_z = (
+            self.pocket.box_size_z
+            if self.pocket.box_size_z is not None
+            else default_box
+        )
+        pocket_center = self.pocket.get_center().tolist()
+        box_size = [float(box_size_x), float(box_size_y), float(box_size_z)]
+        return pocket_center, box_size
+
     def _build_tool_inputs(
         self, *, ligand_set: LigandSet | None = None
     ) -> tuple[dict, dict]:
@@ -372,23 +402,7 @@ class Docking(Execution, SyncExecutableMixin, AsyncExecutableMixin, NotebookWatc
         """
         to_dock = self.ligands if ligand_set is None else ligand_set
         ligands = list(to_dock)
-        default_box = float(2 * np.cbrt(self.pocket.volume or 0))
-        box_size_x = (
-            self.pocket.box_size_x
-            if self.pocket.box_size_x is not None
-            else default_box
-        )
-        box_size_y = (
-            self.pocket.box_size_y
-            if self.pocket.box_size_y is not None
-            else default_box
-        )
-        box_size_z = (
-            self.pocket.box_size_z
-            if self.pocket.box_size_z is not None
-            else default_box
-        )
-        pocket_center = self.pocket.get_center().tolist()
+        pocket_center, box_size = self._resolve_docking_box_geometry()
 
         protein_ref = self.protein.local_path or self.protein.remote_path
         protein_hash = ""
@@ -400,9 +414,9 @@ class Docking(Execution, SyncExecutableMixin, AsyncExecutableMixin, NotebookWatc
         }
 
         pocket_params = {
-            "box_size_x": box_size_x,
-            "box_size_y": box_size_y,
-            "box_size_z": box_size_z,
+            "box_size_x": box_size[0],
+            "box_size_y": box_size[1],
+            "box_size_z": box_size[2],
             "center": pocket_center,
         }
         if self.pocket.id is not None:
@@ -661,3 +675,42 @@ class Docking(Execution, SyncExecutableMixin, AsyncExecutableMixin, NotebookWatc
         poses = self.get_results(all_poses=all_poses)
         poses.download(client=self.client, lazy=True)
         return poses
+
+    @jupyter_visualization
+    def show_box(self) -> str:
+        """Visualize the protein with the docking search box in a Jupyter notebook.
+
+        Renders the target protein and a wireframe box from :attr:`pocket` center and
+        ``box_size_x`` / ``box_size_y`` / ``box_size_z`` (same geometry as
+        :meth:`run` and :meth:`start` submit to the docking tool). Requires the
+        ``tools`` optional dependency (``deeporigin-molstar``).
+
+        Returns:
+            HTML string for the Mol* viewer (wrapped for display by
+            :func:`~deeporigin.drug_discovery.utils.visualize.jupyter_visualization`).
+
+        Raises:
+            DeepOriginException: If the protein structure cannot be loaded locally.
+        """
+        if self.protein.structure is None:
+            self.protein.download(client=self.client)
+        if self.protein.structure is None:
+            raise DeepOriginException(
+                title="Cannot visualize docking box",
+                message=(
+                    "Protein structure is not available locally. Download the "
+                    "protein or call protein.load_structure_from_local() first."
+                ),
+            ) from None
+
+        protein_file = self.protein._dump_state()
+        pocket_center, box_size = self._resolve_docking_box_geometry()
+
+        from deeporigin_molstar import DockingViewer
+
+        return DockingViewer().render_bounding_box(
+            protein_data=protein_file,
+            protein_format="pdb",
+            box_center=pocket_center,
+            box_size=box_size,
+        )

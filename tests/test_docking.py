@@ -3,6 +3,7 @@
 import json
 from pathlib import Path
 import time
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -84,6 +85,66 @@ def test_unregistered_pocket_payload_has_nonzero_box_sizes(
     assert float(pocket_in["box_size_x"]) > 0
     assert float(pocket_in["box_size_y"]) > 0
     assert float(pocket_in["box_size_z"]) > 0
+
+
+def test_resolve_docking_box_geometry_matches_tool_inputs(
+    client,
+    registered_protein,
+    unregistered_pocket,
+    registered_ligand,
+) -> None:
+    """_resolve_docking_box_geometry matches pocket fields in _build_tool_inputs."""
+    docking = Docking(
+        protein=registered_protein,
+        pocket=unregistered_pocket,
+        ligand=registered_ligand,
+        client=client,
+    )
+    center, box_size = docking._resolve_docking_box_geometry()
+    params, _ = docking._build_tool_inputs()
+    pocket_in = params["pocket"]
+
+    assert center == pocket_in["center"]
+    assert box_size == [
+        float(pocket_in["box_size_x"]),
+        float(pocket_in["box_size_y"]),
+        float(pocket_in["box_size_z"]),
+    ]
+
+
+def test_show_box_calls_render_bounding_box(
+    registered_protein,
+    unregistered_pocket,
+    registered_ligand,
+) -> None:
+    """show_box passes protein path, center, and box size to Mol* render_bounding_box."""
+    docking = Docking(
+        protein=registered_protein,
+        pocket=unregistered_pocket,
+        ligand=registered_ligand,
+    )
+    center, box_size = docking._resolve_docking_box_geometry()
+    mock_render = MagicMock(return_value="<html>box</html>")
+    mock_viewer = MagicMock()
+    mock_viewer.render_bounding_box = mock_render
+
+    with (
+        patch("deeporigin_molstar.DockingViewer", return_value=mock_viewer),
+        patch(
+            "deeporigin.drug_discovery.utils.visualize.JupyterViewer.visualize",
+            side_effect=lambda html: html,
+        ),
+    ):
+        html = docking.show_box()
+
+    assert html == "<html>box</html>"
+    mock_render.assert_called_once()
+    call_kwargs = mock_render.call_args.kwargs
+    assert call_kwargs["protein_format"] == "pdb"
+    assert call_kwargs["box_center"] == center
+    assert call_kwargs["box_size"] == box_size
+    protein_path = call_kwargs["protein_data"]
+    assert Path(protein_path).is_file()
 
 
 def test_docking_accepts_single_ligand(
