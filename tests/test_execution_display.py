@@ -299,6 +299,32 @@ def test_render_html_workflow_footer_badge() -> None:
     assert "bg-secondary-subtle" in html
 
 
+def test_data_ingesting_badge_uses_info_variant() -> None:
+    """DataIngesting status uses the ``bg-info`` badge class."""
+    dto = {
+        "executionId": "e1",
+        "status": "DataIngesting",
+        "progressReport": None,
+    }
+    html = ExecutionDisplay.from_dto(dto).render_html()
+    assert "bg-info" in html
+    assert "DataIngesting" in html
+
+
+def test_data_ingesting_renders_indeterminate_progress_bar() -> None:
+    """DataIngesting renders an animated striped progress bar with label."""
+    dto = {
+        "executionId": "e1",
+        "status": "DataIngesting",
+        "progressReport": None,
+    }
+    html = ExecutionDisplay.from_dto(dto).render_html()
+    assert "progress-bar-striped" in html
+    assert "progress-bar-animated" in html
+    assert "Ingesting data" in html
+    assert 'aria-label="Data ingestion in progress"' in html
+
+
 def test_render_html_no_workflow_badge_when_absent() -> None:
     """No workflow badge when there are no workflow-* keys."""
     html = ExecutionDisplay.from_dto(

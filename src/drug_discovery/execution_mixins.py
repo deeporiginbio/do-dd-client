@@ -149,7 +149,7 @@ class AsyncExecutableMixin:
                 "Cannot cancel: no execution has been started (id is None)."
             )
 
-        cancellable = {"Created", "Queued", "Running"}
+        cancellable = {"Created", "Queued", "Running", "DataIngesting"}
         if self.status not in cancellable:
             raise ValueError(
                 f"Cannot cancel: job is in {self.status!r} state. "

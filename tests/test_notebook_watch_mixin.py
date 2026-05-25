@@ -145,6 +145,47 @@ def test_watch_async_raises_when_dto_missing_after_sync(
         asyncio.run(abfe.watch_async())
 
 
+@patch("deeporigin.drug_discovery.notebook_watch_mixin.display")
+@patch("deeporigin.drug_discovery.notebook_watch_mixin.update_display")
+def test_watch_async_polls_through_data_ingesting(mock_update_display, mock_display):
+    """DataIngesting is non-terminal; watch_async keeps polling through it."""
+    ps = PreparedSystem(
+        binding_xml_path="b.xml",
+        solvation_xml_path="s.xml",
+        system_pdb_path="p.pdb",
+    )
+    ingesting = _minimal_dto(status="DataIngesting")
+    succeeded = _minimal_dto(status="Succeeded")
+
+    mock_client = MagicMock()
+    mock_client.executions.get.side_effect = [ingesting, succeeded]
+
+    abfe = ABFE(prepared_system=ps)
+    abfe.client = mock_client
+    abfe._id = ingesting["executionId"]
+    abfe._dto = ingesting
+    abfe.status = "DataIngesting"
+
+    with patch.object(abfe, "_render_execution_html", return_value="<html>x</html>"):
+        asyncio.run(abfe.watch_async(interval=0.001))
+
+    assert mock_client.executions.get.call_count >= 2
+    assert mock_update_display.call_count >= 1
+
+
+def test_is_terminal_returns_false_for_data_ingesting():
+    """``_is_terminal()`` returns False for DataIngesting."""
+    ps = PreparedSystem(
+        binding_xml_path="b.xml",
+        solvation_xml_path="s.xml",
+        system_pdb_path="p.pdb",
+    )
+    abfe = ABFE(prepared_system=ps)
+    abfe.status = "DataIngesting"
+
+    assert abfe._is_terminal() is False
+
+
 def test_watch_returns_task_without_blocking_watch_async():
     """watch returns a Task; watch_async runs asynchronously."""
 

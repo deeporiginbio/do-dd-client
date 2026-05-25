@@ -7,6 +7,7 @@ PlatformStatus = Literal[
     "Created",
     "Queued",
     "Running",
+    "DataIngesting",
     "Succeeded",
     "Failed",
     "Cancelled",
@@ -19,7 +20,8 @@ ALLOWED_STATUS_TRANSITIONS: dict[str | None, set[str]] = {
     "Quoted": {"Created", "Queued", "Running"},
     "Created": {"Queued", "Running", "Failed", "Cancelled"},
     "Queued": {"Running", "Failed", "Cancelled"},
-    "Running": {"Succeeded", "Failed", "Cancelled"},
+    "Running": {"Succeeded", "Failed", "Cancelled", "DataIngesting"},
+    "DataIngesting": {"Succeeded", "Failed", "Cancelled"},
     "Succeeded": set(),
     "Failed": set(),
     "Cancelled": set(),
@@ -38,10 +40,10 @@ TERMINAL_STATES = {
 }
 
 # Non-terminal states for tool executions
-NON_TERMINAL_STATES = {"Created", "Queued", "Running"}
+NON_TERMINAL_STATES = {"Created", "Queued", "Running", "DataIngesting"}
 
 # Non-failed states for tool executions
-NON_FAILED_STATES = {"Succeeded", "Running", "Queued", "Created"}
+NON_FAILED_STATES = {"Succeeded", "Running", "Queued", "Created", "DataIngesting"}
 
 # Possible providers for files that work with the tools API
 PROVIDER = Literal["ufa", "s3"]

@@ -22,6 +22,7 @@ _STATUS_BADGE_VARIANT: dict[str, str] = {
     "Created": "info",
     "Queued": "info",
     "Cancelled": "secondary",
+    "DataIngesting": "info",
     "InsufficientFunds": "warning",
     "FailedQuotation": "warning",
     "New": "secondary",
@@ -261,7 +262,8 @@ class ExecutionDisplay:
             HTML string safe for :class:`IPython.display.HTML`.
 
         Note:
-            The progress bar is rendered only when :attr:`status` is ``"Running"``.
+            The progress bar is rendered when :attr:`status` is ``"Running"``
+            or ``"DataIngesting"``.
         """
         esc_status = html.escape(self.status, quote=True)
         esc_title = html.escape(self._card_header_title(), quote=True)
@@ -284,7 +286,14 @@ class ExecutionDisplay:
                 '<div class="small text-muted mt-2 text-break">'
                 f"<code>{esc_id}</code></div>"
             )
-        if self.status == "Running":
+        if self.status == "DataIngesting":
+            progress_block = (
+                '<div class="progress" style="height: 22px;" role="progress" '
+                'aria-label="Data ingestion in progress">'
+                '<div class="progress-bar progress-bar-striped progress-bar-animated '
+                'bg-info w-100" role="progressbar">Ingesting data\u2026</div></div>'
+            )
+        elif self.status == "Running":
             pct = float(self.complete)
             if pct > 0:
                 width = min(100.0, pct)

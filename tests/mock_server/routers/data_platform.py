@@ -331,6 +331,34 @@ def _apply_eq_filters(
     return results
 
 
+_DPS_TERMINAL_STATUSES = {"Succeeded", "Failed", "Cancelled"}
+
+
+def _dps_execution_status(ex: dict[str, Any]) -> str | None:
+    """Derive the DPS-visible status for a tools execution dict.
+
+    Mirrors platform DPS behaviour: when the execution metadata contains the
+    ``__data_ingestion_started`` flag and the tools-service status is terminal,
+    the DPS surfaces ``DataIngesting`` instead. Tests can set
+    ``ex["metadata"]["__data_ingestion_started"] = True`` to trigger this.
+
+    Args:
+        ex: Tools-service execution dict from the mock store.
+
+    Returns:
+        Status string as it would appear in DPS search results.
+    """
+    tools_status = ex.get("status")
+    meta = ex.get("metadata") or {}
+    if (
+        isinstance(meta, dict)
+        and meta.get("__data_ingestion_started") is True
+        and tools_status in _DPS_TERMINAL_STATUSES
+    ):
+        return "DataIngesting"
+    return tools_status
+
+
 def create_data_platform_router(
     *,
     ligands: dict[str, dict[str, Any]],
@@ -697,11 +725,12 @@ def create_data_platform_router(
             for _ex_key, ex in executions.items():
                 eid = ex.get("executionId") or _ex_key
                 tool = ex.get("tool") or {}
+                status = _dps_execution_status(ex)
                 dp_rows[str(eid)] = {
                     "id": str(eid),
                     "tool_key": tool.get("key"),
                     "tool_version": tool.get("version"),
-                    "status": ex.get("status"),
+                    "status": status,
                     "started_at": ex.get("startedAt"),
                     "completed_at": ex.get("completedAt"),
                     "compute_job_id": ex.get("executionId"),

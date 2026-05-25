@@ -132,3 +132,20 @@ def test_async_start_rejects_non_none_status() -> None:
         job.start()
 
     assert not job._start_impl_calls
+
+
+def test_cancel_allows_data_ingesting_status() -> None:
+    """``cancel()`` does not reject ``DataIngesting`` status."""
+    client = MagicMock()
+    client.executions.get.return_value = {
+        "executionId": "exec-di",
+        "tool": {"key": "deeporigin.test-tool", "version": "0.0.0"},
+        "status": "Cancelled",
+    }
+    job = _AsyncJob(client=client)
+    job._id = "exec-di"
+    job.status = "DataIngesting"
+
+    job.cancel()
+
+    client.executions.cancel.assert_called_once_with("exec-di")

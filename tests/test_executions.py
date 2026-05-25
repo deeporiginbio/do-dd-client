@@ -397,6 +397,41 @@ def test_wait_rejects_empty_string_id() -> None:
         executions.wait(["a", ""], poll_interval=0.1)
 
 
+def test_wait_polls_through_data_ingesting(monkeypatch: pytest.MonkeyPatch) -> None:
+    """``wait`` treats ``DataIngesting`` as non-terminal and keeps polling."""
+    responses = [
+        {"executionId": "a", "status": "DataIngesting"},
+        {"executionId": "a", "status": "DataIngesting"},
+        {"executionId": "a", "status": "Succeeded"},
+    ]
+    executions = _make_executions(get_side_effect=responses)
+
+    sleeps: list[float] = []
+    monkeypatch.setattr(
+        "deeporigin.platform.executions.time.sleep", lambda s: sleeps.append(s)
+    )
+
+    result = executions.wait(["a"], poll_interval=0.5)
+
+    assert result == [{"executionId": "a", "status": "Succeeded"}]
+    assert executions.get.call_count == 3  # ty:ignore[unresolved-attribute]
+    assert len(sleeps) == 2
+
+
+def test_cancel_skips_when_data_ingesting() -> None:
+    """``cancel`` does not return early for ``DataIngesting`` (non-terminal)."""
+    client = MagicMock()
+    client.org_key = "org-1"
+    executions = Executions(client)
+    executions.get = MagicMock(  # ty:ignore[assignment]
+        return_value={"executionId": "e1", "status": "DataIngesting"}
+    )
+
+    executions.cancel("e1")
+
+    client._patch.assert_called_once_with("/tools/org-1/tools/executions/e1:cancel")
+
+
 def test_list_executions_by_session_lv1(client: DeepOriginClient):
     """Test listing executions by session — server-side filter must drop
     executions whose non-null session does not match.

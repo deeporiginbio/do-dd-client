@@ -321,7 +321,10 @@ class Executions:
             tool_key: Equality filter on ``tool_key`` (e.g.
                 ``"deeporigin.bulk-docking"``).
             status: Equality filter on ``status`` (e.g. ``"Completed"``,
-                ``"Failed"``, ``"Running"``).
+                ``"Failed"``, ``"Running"``, ``"DataIngesting"``).
+                ``DataIngesting`` is a transient DPS-only status indicating
+                the tool execution finished but result data is still being
+                ingested into the data platform.
             extra_props: Additional filter props appended to the
                 built-in ones. Each prop is a dict with
                 ``{"column": str, "op": str, "value": Any}``.
