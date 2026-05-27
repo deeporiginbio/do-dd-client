@@ -201,14 +201,14 @@ def test_batch_create_entity_lv1(client: DeepOriginClient):
                 "variant_name_tag": f"test-batch-create-{uuid.uuid4()}",
             }
         ],
+        returning=["id"],
     )
 
     assert isinstance(response, dict), "Expected a dictionary response"
-    if "data" in response:
-        assert isinstance(response["data"], list), "Expected 'data' to be a list"
-        assert len(response["data"]) == 1, "Expected exactly one created row"
-        return
-
+    assert "data" in response, "Expected 'data' key in response"
+    assert isinstance(response["data"], list), "Expected 'data' to be a list"
+    assert len(response["data"]) == 1, "Expected exactly one created row"
+    assert "id" in response["data"][0], "Expected 'id' in created row"
     inserted = response.get("inserted")
     if inserted is None and isinstance(response.get("meta"), dict):
         inserted = response["meta"].get("inserted")

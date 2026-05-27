@@ -9,6 +9,9 @@ from deeporigin.utils.constants import DEFAULT_SEARCH_PAGE_SIZE
 if TYPE_CHECKING:
     from deeporigin.platform.client import DeepOriginClient
 
+# Minimal returning for proteins batch create (triggers require INSERT path, not COPY).
+PROTEIN_BATCH_CREATE_RETURNING_FIELDS = ["id"]
+
 LIGAND_RETURNING_FIELDS = [
     "id",
     "version",
@@ -173,13 +176,22 @@ class Entities:
             entity: Entity (table) name to batch-create.
             rows: List of row dicts to persist.
             returning: Optional list of fields to include in the response.
+                For ``ligands`` and ``proteins``, defaults to an INSERT-safe
+                returning list when omitted (avoids the platform COPY ingest path).
 
         Returns:
             Dictionary containing the batch creation response.
         """
+        effective_returning = returning
+        if effective_returning is None:
+            if entity == "ligands":
+                effective_returning = LIGAND_RETURNING_FIELDS
+            elif entity == "proteins":
+                effective_returning = PROTEIN_BATCH_CREATE_RETURNING_FIELDS
+
         body: dict[str, Any] = {"rows": rows}
-        if returning is not None:
-            body["returning"] = returning
+        if effective_returning is not None:
+            body["returning"] = effective_returning
 
         return self._c.post_json(
             f"/data-platform/{self._c.org_key}/{entity}/batch/create",
