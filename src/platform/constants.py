@@ -76,6 +76,6 @@ TOOL_KEYS_AND_VERSIONS: dict[str, dict[str, str]] = {
     },
     "sysprep": {
         "tool_key": "deeporigin.system-prep",
-        "tool_version": "0.16.2",
+        "tool_version": "0.16.3",
     },
 }
