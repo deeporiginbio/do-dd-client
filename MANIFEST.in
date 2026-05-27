@@ -2,7 +2,6 @@ include README.md
 include src/VERSION
 include src/config/default.yml
 include src/js/*.js
-include src/json/*.json
 include src/data/**/*
 include src/templates/*.html
 include src/files/file_service/gen_file_openapi.yaml 
