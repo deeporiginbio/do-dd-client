@@ -2,37 +2,65 @@
 
 This document describes how to run a [ABFE :octicons-link-external-16:](https://en.wikipedia.org/wiki/Free-energy_perturbation) simulation using Deep Origin tools.
 
-!!! warning "Deprecated: `Complex`"
-    This tutorial uses the deprecated [`Complex`](../ref/complex.md) type. For new code, use [`ABFE`](../ref/abfe.md), `SystemPrep`, and related APIs instead of orchestrating ABFE through `Complex`.
-
 ## Prerequisites
 
-We assume that we have an initialized and configured `Complex` object:
+We assume that you have prepared a protein, docked a ligand to it, and obtained a pose that you want to proceed with. 
+
+In this tutorial we will use a protein and ligand from the example dataset. 
 
 ```{.python notest}
-from deeporigin.drug_discovery import Complex, BRD_DATA_DIR
+from deeporigin.drug_discovery import (
+    ABFE,
+    SystemPrep,
+    PreparedSystem,
+    ABFEParams,
+    BRD_DATA_DIR,
+    Protein,
+    Ligand,
+)
 
-sim = Complex.from_dir(BRD_DATA_DIR)
+protein = Protein.from_file(BRD_DATA_DIR / "brd.pdb")
+protein.sync()
+
+ligand = Ligand.from_sdf(BRD_DATA_DIR / "brd-2.sdf")
+ligand.sync()
 ```
-
-Here, ABFE requires that the `Complex` object have an already prepared protein (PDB), and the associated ligands (SDF) are in a docked pose.  
-
-!!! WARNING
-    The `Complex.from_dir()` function only accepts 1 PDB file per directory. This function will throw an error if it finds more than 1 PDB file per directory. 
 
 For more details on how to get started, see [:material-page-previous: Getting Started ](./getting-started.md).
 
 
 ## System Preparation
 
-First, make sure you have prepared your system and verified that everything is as expected. To prepare a system for a single ligand, use:
+Before ABFE, you must turn your protein and docked ligand into a simulation-ready
+systems. This step is called *system preparation*. 
+
+For a single ligand (i.e., ABFE), system prep builds two solvated models:
+
+1. **Binding system** — protein and ligand assembled in an explicit water box with
+   ions. This is the complex used for the binding leg of ABFE.
+2. **Ligand solvation system** — the same ligand alone in solvent, used for the
+   solvation leg.
+
+Along the way, Deep Origin System Prep typically:
+
+- Cleans and standardizes the protein structure, optionally protonates it at
+  physiological pH, and assigns a protein force field (default Amber ff14SB).
+- Parameterizes the ligand (hydrogens, charges, GAFF2 or OpenFF), then merges it
+  with the protein into a complex.
+- Solvates each system (water box padding, salt, optional retention of crystal
+  waters).
 
 
 ```{.python notest}
-ligand = sim.ligands[0]
-prepared_system = sim.prepare(ligand=ligand)
-prepared_system.show()
+sysprep = SystemPrep(
+    protein=protein,
+    ligand=ligand,
+)
+
+system = sysprep.run()
+system.show()
 ```
+
 
 You will see something like:
 
@@ -49,10 +77,9 @@ You will see something like:
 Before starting a ABFE run, you can estimate costs using:
 
 ```{.python notest}
-# assuming we want to perform a single ABFE run on a single ligand
-ligand = sim.ligands[0]
-jobs = sim.abfe.run(ligand=ligand, quote=True)
-job = jobs[0]
+abfe = ABFE(prepared_system=system)
+abfe.start(quote=True)
+abfe.estimate
 ```
 
 You will get back a widget representing this job such as this:

@@ -16,6 +16,35 @@ from deeporigin.platform.client import DeepOriginClient
 from deeporigin.platform.constants import TOOL_KEYS_AND_VERSIONS
 
 
+def test_abfe_start_quote_populates_estimate_lv0(client: DeepOriginClient):
+    """start(quote=True) should set estimate from quotationResult.priceTotal."""
+    prepared_system = PreparedSystem(
+        binding_xml_path="path/binding.xml",
+        solvation_xml_path="path/solvation.xml",
+        system_pdb_path="path/system.pdb",
+    )
+    abfe = ABFE(prepared_system=prepared_system, name="Test ABFE", client=client)
+    quoted_dto = {
+        "executionId": "exec-quoted",
+        "status": "Quoted",
+        "approveAmount": 0,
+        "tool": {
+            "key": TOOL_KEYS_AND_VERSIONS["abfe"]["tool_key"],
+            "version": TOOL_KEYS_AND_VERSIONS["abfe"]["tool_version"],
+        },
+        "quotationResult": {
+            "successfulQuotations": [{"priceTotal": 119.2128}],
+        },
+    }
+    with patch.object(client.executions, "create", return_value=quoted_dto):
+        abfe.start(quote=True)
+
+    assert abfe.id == "exec-quoted"
+    assert abfe.status == "Quoted"
+    assert abfe.estimate == pytest.approx(119.2128)
+    assert abfe.cost is None
+
+
 def test_abfe_start_rejects_non_none_status_lv0(client: DeepOriginClient):
     """start() raises ValueError when the execution is already in a non-None state."""
     prepared_system = PreparedSystem(
@@ -85,6 +114,7 @@ def test_abfe_from_dto_rehydrates_prepared_system_lv0(client: DeepOriginClient):
 
     assert abfe.id == "exec-123"
     assert abfe.status == "Succeeded"
+    assert abfe.estimate == pytest.approx(42.0)
 
     ps = abfe.prepared_system
     assert isinstance(ps, PreparedSystem)

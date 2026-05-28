@@ -16,11 +16,7 @@ nav = [
     {"Configure" = "configure.md"},
   ]},
   {"Drug Discovery" = [
-    {"Tutorial (Legacy)" = [
-      {"Getting started" = "dd/tutorial/getting-started-legacy.md"},
-      {"Docking" = "dd/tutorial/docking-legacy.md"},
-    ]},
-    {"Tutorial (Future)" = [
+    {"Tutorial" = [
       {"Getting started" = "dd/tutorial/getting-started.md"},
       {"Docking" = "dd/tutorial/docking.md"},
       {"ABFE" = "dd/tutorial/abfe.md"},

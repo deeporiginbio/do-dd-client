@@ -1,8 +1,5 @@
 # RBFE
 
-!!! danger "RBFE API is in development"
-    RBFE functionality is still under development.
-
 !!! warning "Removed: `Complex.rbfe` / `deeporigin.drug_discovery.rbfe`"
     The [`RBFE`](../ref/rbfe.md) module and `Complex.rbfe` are no longer in the SDK. This tutorial is **historical** (legacy `Complex` orchestration). Prefer `SystemPrep` and platform RBFE tools for new work.
 

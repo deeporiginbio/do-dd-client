@@ -260,9 +260,6 @@ ligand = protein.extract_ligand()
 
 ### Loop modelling 
 
-!!! warning "Coming soon"
-    Loop modelling functionality is under active development and will be available soon.
-
 Missing information and gaps in the structure can be filled in using the Loop Modelling tool. 
 
 For example, this protein from the PDB has missing elements, as can be seen from the dashed lines below:
