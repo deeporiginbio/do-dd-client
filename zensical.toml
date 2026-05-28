@@ -22,7 +22,6 @@ nav = [
       {"ABFE" = "dd/tutorial/abfe.md"},
     ]},
     {"How To" = [
-      {"Work with a Complex" = "dd/how-to/complex.md"},
       {"Work with Proteins" = "dd/how-to/proteins.md"},
       {"Work with Ligands" = "dd/how-to/ligands.md"},
       {"Visualize proteins and ligands" = "dd/how-to/visualize.md"},
