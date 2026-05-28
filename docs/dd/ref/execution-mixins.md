@@ -9,9 +9,12 @@ Quoting, ``confirm()``, :attr:`~deeporigin.drug_discovery.execution.Execution.ru
 a tools execution is typically in ``"Quoted"`` status. :meth:`Execution.confirm`
 calls the tools ``:confirm`` endpoint (same long timeout and no-retries policy
 as :data:`~deeporigin.utils.constants.TOOL_EXECUTION_POST_TIMEOUT_SECONDS` on
-:class:`~deeporigin.platform.executions.Executions.confirm`). Async classes call
-this from :meth:`AsyncExecutableMixin.start` when resuming a quoted job that was
-quoted with ``mode="async"``, then calls :meth:`~deeporigin.drug_discovery.execution.Execution.sync`.
+:class:`~deeporigin.platform.executions.Executions.confirm`), then applies the
+returned DTO with :meth:`~deeporigin.drug_discovery.execution.Execution.update_from_dto`.
+Async classes call this from :meth:`AsyncExecutableMixin.start` when resuming a
+quoted job that was quoted with ``mode="async"``; poll with
+:meth:`~deeporigin.drug_discovery.execution.Execution.sync` until terminal if the
+confirm response is not yet ``Succeeded``.
 
 ::: src.drug_discovery.execution_mixins
     options:

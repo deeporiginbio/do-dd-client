@@ -282,16 +282,19 @@ def test_confirm_default_forwards_only_confirm_path() -> None:
     """``confirm`` uses the client default timeout and retry policy when omitted."""
     client = MagicMock()
     client.org_key = "my-org"
-    Executions(client).confirm("exec-1")
+    client._patch.return_value.json.return_value = {"executionId": "exec-1"}
+    result = Executions(client).confirm("exec-1")
     client._patch.assert_called_once_with(
         "/tools/my-org/tools/executions/exec-1:confirm"
     )
+    assert result == {"executionId": "exec-1"}
 
 
 def test_confirm_can_set_long_timeout_and_disable_retries() -> None:
     """``confirm`` forwards ``timeout`` and ``retry`` to the low-level PATCH."""
     client = MagicMock()
     client.org_key = "my-org"
+    client._patch.return_value.json.return_value = {"executionId": "exec-1"}
     Executions(client).confirm(
         "exec-1",
         timeout=TOOL_EXECUTION_POST_TIMEOUT_SECONDS,
@@ -302,6 +305,23 @@ def test_confirm_can_set_long_timeout_and_disable_retries() -> None:
         timeout=TOOL_EXECUTION_POST_TIMEOUT_SECONDS,
         retry=False,
     )
+
+
+def test_execution_update_from_dto_sets_cost_when_succeeded() -> None:
+    """``update_from_dto`` copies ``priceTotal`` into ``cost`` for Succeeded runs."""
+    client = MagicMock()
+    dto: dict[str, Any] = {
+        "executionId": "exec-done",
+        "tool": {"key": "deeporigin.test-sync-tool", "version": "1.0.0"},
+        "status": "Succeeded",
+        "quotationResult": {"successfulQuotations": [{"priceTotal": 10}]},
+    }
+    job = _TestToolExecution(client=client)
+    job.update_from_dto(dto)
+
+    assert job.status == "Succeeded"
+    assert job.estimate == 10.0
+    assert job.cost == 10.0
 
 
 def test_wait_returns_immediately_when_all_terminal() -> None:

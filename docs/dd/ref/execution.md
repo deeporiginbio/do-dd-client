@@ -15,7 +15,9 @@ path you will use after :meth:`Execution.confirm`:
 - ``quote(mode="sync")`` — same shape as a blocking :meth:`~deeporigin.drug_discovery.execution_mixins.SyncExecutableMixin.run`.
 
 ``confirm()`` only sends ``executionId`` to the platform; it cannot change inputs
-or switch sync/async. The SDK stores ``_quoted_mode`` so ``start()`` rejects a
+or switch sync/async. The SDK applies the confirm response with
+:meth:`Execution.update_from_dto` (``status``, :attr:`~deeporigin.drug_discovery.execution.Execution.cost`,
+:attr:`~deeporigin.drug_discovery.execution.Execution.dto`). The SDK stores ``_quoted_mode`` so ``start()`` rejects a
 sync-mode quote and ``run()`` can reject an async-mode quote (see each tool).
 
 ::: src.drug_discovery.execution
