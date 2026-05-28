@@ -152,7 +152,7 @@ abfe.params
 
 ### Modifying parameters
 
-`ABFEParams` is an frozen dataclass. Use `dataclasses.replace()` to build a modified copy and pass it to the constructor:
+`ABFEParams` is a frozen dataclass. Use `dataclasses.replace()` to build a modified copy and pass it to the constructor:
 
 ```python
 from deeporigin.drug_discovery import ABFEParams
@@ -162,7 +162,7 @@ params = replace(ABFEParams(), repeats=3, temperature=300)
 params
 ```
 
-Parameters modified from the defaults are indicated with an asterix:
+Parameters modified from the defaults are indicated with an asterisk:
 
 ```{.python notest}
 ABFEParams(
