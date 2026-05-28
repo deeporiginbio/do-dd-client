@@ -123,7 +123,7 @@ ABFE simulation parameters are controlled via the `ABFEParams` dataclass. Defaul
 
 To inspect the current parameters on an `ABFE` object, access the `params` property:
 
-```{.python continuation}
+```{.python notest}
 abfe.params
 ```
 
@@ -155,6 +155,7 @@ abfe.params
 `ABFEParams` is an frozen dataclass. Use `dataclasses.replace()` to build a modified copy and pass it to the constructor:
 
 ```python
+from deeporigin.drug_discovery import ABFEParams
 from dataclasses import replace
 
 params = replace(ABFEParams(), repeats=3, temperature=300)
