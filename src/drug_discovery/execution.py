@@ -189,7 +189,11 @@ class Execution:
         Requires :attr:`id` and ``status`` equal to ``"Quoted"``. Uses
         :meth:`~deeporigin.platform.executions.Executions.confirm` with
         :data:`~deeporigin.utils.constants.TOOL_EXECUTION_POST_TIMEOUT_SECONDS`
-        (10 minutes) and ``retry=False``.
+        (10 minutes) and ``retry=False``, then applies the returned DTO via
+        :meth:`update_from_dto` so ``status``, :attr:`cost`, and :attr:`dto`
+        reflect the platform response. For direct (blocking) tools the response
+        is typically terminal (``Succeeded``); for async tools it may be
+        ``Created`` or ``Running`` — call :meth:`sync` until the job finishes.
 
         Raises:
             ValueError: If there is no platform execution id or status is not
@@ -205,11 +209,15 @@ class Execution:
             raise ValueError(
                 f"Cannot confirm: execution is in {status!r} state, not 'Quoted'."
             )
-        self.client.executions.confirm(  # ty:ignore[unresolved-attribute]
+        dto = self.client.executions.confirm(  # ty:ignore[unresolved-attribute]
             self._id,
             timeout=TOOL_EXECUTION_POST_TIMEOUT_SECONDS,  # ty:ignore[unknown-argument]
             retry=False,
         )
+        if dto:
+            self.update_from_dto(dto)
+        else:
+            self.sync()
 
     def _set_status(self, new_status: str) -> None:
         """Validate and apply a lifecycle state transition.

@@ -51,6 +51,11 @@ class _AsyncJob(Execution, AsyncExecutableMixin):
 def test_execution_confirm_calls_platform_with_long_timeout_no_retry() -> None:
     """``confirm`` hits ``executions.confirm`` with 600s timeout and ``retry=False``."""
     client = MagicMock()
+    client.executions.confirm.return_value = {
+        "executionId": "exec-quoted-1",
+        "tool": {"key": "deeporigin.test-tool", "version": "0.0.0"},
+        "status": "Running",
+    }
     job = _ConfirmableJob(client=client)
     job._id = "exec-quoted-1"
     job.status = "Quoted"
@@ -62,6 +67,28 @@ def test_execution_confirm_calls_platform_with_long_timeout_no_retry() -> None:
         timeout=TOOL_EXECUTION_POST_TIMEOUT_SECONDS,
         retry=False,
     )
+
+
+def test_execution_confirm_applies_response_dto() -> None:
+    """``confirm`` refreshes status, cost, and ``dto`` from the platform response."""
+    client = MagicMock()
+    client.executions.confirm.return_value = {
+        "executionId": "exec-quoted-1",
+        "tool": {"key": "deeporigin.test-tool", "version": "0.0.0"},
+        "status": "Succeeded",
+        "quotationResult": {"successfulQuotations": [{"priceTotal": 10}]},
+    }
+    job = _ConfirmableJob(client=client)
+    job._id = "exec-quoted-1"
+    job.status = "Quoted"
+    job._estimate = 10.0
+
+    job.confirm()
+
+    assert job.status == "Succeeded"
+    assert job.cost == 10.0
+    assert job.dto is not None
+    assert job.dto["status"] == "Succeeded"
 
 
 def test_execution_confirm_requires_id() -> None:

@@ -1,7 +1,3 @@
-!!! warning "Unreleased code"
-    This page describes APIs and workflows for which we haven't released a package yet. This functionality is coming soon!
-
-
 # Docking
 
 This document describes how to [dock :octicons-link-external-16:](https://en.wikipedia.org/wiki/Docking_(molecular)) ligands to a protein  using Deep Origin tools.
@@ -32,6 +28,20 @@ Load a protein from a PDB file and remove water molecules:
 protein = Protein.from_file(BRD_DATA_DIR / "brd.pdb")
 protein.remove_water()
 ```
+
+We can view the protein to see that waters have been removed:
+
+```{.python notest}
+protein.show()
+```
+
+<iframe 
+    src="../../images/brd-no-water.html" 
+    width="100%" 
+    height="630" 
+    style="border:none;"
+    title="Protein visualization"
+></iframe>
 
 Sync the protein to the platform so it can be used for docking:
 
@@ -72,7 +82,7 @@ protein.show(pockets=pockets)
 You should see something along the lines of:
 
 <iframe 
-    src="../../images/pockets.html" 
+    src="../../images/brd-pocket.html" 
     width="100%" 
     height="650" 
     style="border:none;"
@@ -82,7 +92,7 @@ You should see something along the lines of:
 We can see that the protein is shown together with the identified pocket in red. 
 
 !!! tip "The Pocket Finder Function"
-    For more details on how to use the Pocket Finder, look at the [How To section for the Pocket Finder](../how-to/find-pockets.md).
+    For more details on how to use the Pocket Finder, look at [this](../how-to/find-pockets.md).
 
 Preview the docking search box (protein plus wireframe box from pocket center and box size) before running:
 
@@ -90,6 +100,16 @@ Preview the docking search box (protein plus wireframe box from pocket center an
 docking = Docking(protein=protein, pocket=pocket, ligand=ligand)
 docking.show_box()
 ```
+
+You should see something like this:
+
+<iframe 
+    src="../../images/brd-docking-box.html" 
+    width="100%" 
+    height="650" 
+    style="border:none;"
+    title="Protein visualization"
+></iframe>
 
 The `pocket` object can be inspected, too:
 
@@ -128,7 +148,7 @@ Create a `Docking` object with the protein, pocket, and ligand, then get a cost 
 
 ```{.python notest}
 docking = Docking(protein=protein, pocket=pocket, ligand=ligand)
-docking.quote()
+docking.start(quote=True)
 docking.estimate
 ```
 
@@ -144,7 +164,7 @@ The `estimate` property shows the predicted cost in dollars for the docking run.
 
 ## Start the docking run
 
-To run docking synchronously (blocking), use:
+To dock this one ligand to the protein, use:
 
 ```{.python notest}
 poses = docking.run()
@@ -177,11 +197,12 @@ poses[0].properties
 To visualize the docked poses on the protein, use:
 
 ```{.python notest}
+poses.download()
 protein.show(poses=poses)
 ```
 
 <iframe 
-    src="../../images/docked-poses.html" 
+    src="../../images/brd-docked-poses.html" 
     width="100%" 
     height="650" 
     style="border:none;"
@@ -201,6 +222,7 @@ poses = docking.get_poses()
 Poses can be converted into a dataframe for further analysis or export:
 
 ```{.python notest}
+
 df = poses.to_dataframe()
 ```
 
@@ -210,6 +232,7 @@ You typically want to filter these poses to only retain the top pose for each li
 
 
 ```{.python notest}
+
 poses = poses.filter_top_poses()
 ```
 

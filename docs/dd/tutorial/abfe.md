@@ -2,37 +2,65 @@
 
 This document describes how to run a [ABFE :octicons-link-external-16:](https://en.wikipedia.org/wiki/Free-energy_perturbation) simulation using Deep Origin tools.
 
-!!! warning "Deprecated: `Complex`"
-    This tutorial uses the deprecated [`Complex`](../ref/complex.md) type. For new code, use [`ABFE`](../ref/abfe.md), `SystemPrep`, and related APIs instead of orchestrating ABFE through `Complex`.
-
 ## Prerequisites
 
-We assume that we have an initialized and configured `Complex` object:
+We assume that you have prepared a protein, docked a ligand to it, and obtained a pose that you want to proceed with. 
+
+In this tutorial we will use a protein and ligand from the example dataset. 
 
 ```{.python notest}
-from deeporigin.drug_discovery import Complex, BRD_DATA_DIR
+from deeporigin.drug_discovery import (
+    ABFE,
+    SystemPrep,
+    PreparedSystem,
+    ABFEParams,
+    BRD_DATA_DIR,
+    Protein,
+    Ligand,
+)
 
-sim = Complex.from_dir(BRD_DATA_DIR)
+protein = Protein.from_file(BRD_DATA_DIR / "brd.pdb")
+protein.sync()
+
+ligand = Ligand.from_sdf(BRD_DATA_DIR / "brd-2.sdf")
+ligand.sync()
 ```
-
-Here, ABFE requires that the `Complex` object have an already prepared protein (PDB), and the associated ligands (SDF) are in a docked pose.  
-
-!!! WARNING
-    The `Complex.from_dir()` function only accepts 1 PDB file per directory. This function will throw an error if it finds more than 1 PDB file per directory. 
 
 For more details on how to get started, see [:material-page-previous: Getting Started ](./getting-started.md).
 
 
 ## System Preparation
 
-First, make sure you have prepared your system and verified that everything is as expected. To prepare a system for a single ligand, use:
+Before ABFE, you must turn your protein and docked ligand into a simulation-ready
+systems. This step is called *system preparation*. 
+
+For a single ligand (i.e., ABFE), system prep builds two solvated models:
+
+1. **Binding system** — protein and ligand assembled in an explicit water box with
+   ions. This is the complex used for the binding leg of ABFE.
+2. **Ligand solvation system** — the same ligand alone in solvent, used for the
+   solvation leg.
+
+Along the way, Deep Origin System Prep typically:
+
+- Cleans and standardizes the protein structure, optionally protonates it at
+  physiological pH, and assigns a protein force field (default Amber ff14SB).
+- Parameterizes the ligand (hydrogens, charges, GAFF2 or OpenFF), then merges it
+  with the protein into a complex.
+- Solvates each system (water box padding, salt, optional retention of crystal
+  waters).
 
 
 ```{.python notest}
-ligand = sim.ligands[0]
-prepared_system = sim.prepare(ligand=ligand)
-prepared_system.show()
+sysprep = SystemPrep(
+    protein=protein,
+    ligand=ligand,
+)
+
+system = sysprep.run()
+system.show()
 ```
+
 
 You will see something like:
 
@@ -49,104 +77,41 @@ You will see something like:
 Before starting a ABFE run, you can estimate costs using:
 
 ```{.python notest}
-# assuming we want to perform a single ABFE run on a single ligand
-ligand = sim.ligands[0]
-jobs = sim.abfe.run(ligand=ligand, quote=True)
-job = jobs[0]
+abfe = ABFE(prepared_system=system)
+abfe.start(quote=True)
+abfe.estimate
 ```
 
-You will get back a widget representing this job such as this:
-
-<iframe 
-    src="../../images/abfe-quote.html" 
-    width="100%" 
-    height="340" 
-    style="border:none;"
-    title="Quoted ABFE Job"
-></iframe>
-
-!!! warning "Example widget"
-    Prices shown here are for demonstrative purposes only. Actual prices can vary. 
+You will get back an estimate (in USD) of how much this run will cost. 
 
 
-Note that this Job is ready to run, but will not actually run unless you approve the amount and confirm. 
 
 ## Starting an ABFE run
 
 ### Confirming a quoted Job
 
-If you have already generated a quoted Job (using `quote` as shown above), you can start the ABFE run using:
+To confirm the quoted price and start the execution, do:
 
 ```{.python notest}
-job.confirm()
+abfe.confirm()
 ```
 
-This will start the ABFE run and the job widget will now display:
+This will start the ABFE run. Use the following to monitor the status of the job:
 
-
-<iframe 
-    src="../../images/abfe-running.html" 
-    width="100%" 
-    height="340" 
-    style="border:none;"
-    title="Quoted ABFE Job"
-></iframe>
-
-
-
-### Multiple ligands
-
-To run an end-to-end ABFE workflow on multiple ligands, we use:
-
-```{.python notest}
-jobs = sim.abfe.run(ligands=[sim.ligands[0],sim.ligands[1]]) 
-```
-
-Omitting the ligand will run ABFE on all ligands in the `Complex` object.
-
-
-```{.python notest}
-jobs = sim.abfe.run() 
-```
-
-Each ligand will be run in parallel on a separate instance, and each `Job` can be monitored and controlled independently. 
-
-
-### Watch Jobs
-
-To monitor the status of this job, use:
-
-```{.python notest} 
-job.watch() 
-```
-
-This makes the widget auto-update, and monitor the status of the job till it reaches a terminal state (`Cancelled`, `Succeeded`, or `Failed`). 
-
-If you are using the jobs-centric [`ABFE`](../../ref/abfe.md) class with a prepared system, after `abfe.start()` you can monitor in Jupyter in two ways:
-
-- **Non-blocking cell** (same idea as `job.watch()`): the cell returns immediately while the widget keeps updating; you can run other cells in the meantime.
 
 ```{.python notest}
 task = await abfe.watch()
 ```
 
-- **Blocking cell**: the cell does not finish until the execution reaches a terminal state.
+You will see a widget similar to this (progress simulated for demonstration):
 
-```{.python notest}
-await abfe.watch_async()
-```
-
-In a plain Python script (no running event loop), use:
-
-```{.python notest}
-import asyncio
-
-asyncio.run(abfe.watch_async())
-```
-
-
-!!! tip "Monitoring Jobs"
-    For more details about how to monitor jobs, look at this [How To section](../how-to/job.md).
+<iframe 
+    src="../../images/abfe-running.html" 
+    width="100%" 
+    height="240" 
+    style="border:none;"
+    title="Quoted ABFE Job"
+></iframe>
 
 
 
@@ -159,10 +124,7 @@ ABFE simulation parameters are controlled via the `ABFEParams` dataclass. Defaul
 To inspect the current parameters on an `ABFE` object, access the `params` property:
 
 ```{.python notest}
-from deeporigin.drug_discovery import Complex, BRD_DATA_DIR
-
-sim = Complex.from_dir(BRD_DATA_DIR)
-sim.abfe.params
+abfe.params
 ```
 
 ??? success "Expected output"
@@ -190,20 +152,37 @@ sim.abfe.params
 
 ### Modifying parameters
 
-`ABFEParams` is an immutable (frozen) dataclass. To change parameters, use `dataclasses.replace()` to create a modified copy and assign it back to the `ABFE` object:
+`ABFEParams` is a frozen dataclass. Use `dataclasses.replace()` to build a modified copy and pass it to the constructor:
 
-```{.python notest}
+```python
+from deeporigin.drug_discovery import ABFEParams
 from dataclasses import replace
-from deeporigin.drug_discovery import Complex, BRD_DATA_DIR
 
-sim = Complex.from_dir(BRD_DATA_DIR)
-
-params = sim.abfe.params
-params = replace(params, repeats=3, test_run=1)
-sim.abfe.params = params
+params = replace(ABFEParams(), repeats=3, temperature=300)
+params
 ```
 
-Multiple fields can be changed in a single `replace()` call. The original `params` object is never modified — `replace()` always returns a new instance.
+Parameters modified from the defaults are indicated with an asterisk:
+
+```{.python notest}
+ABFEParams(
+  annihilate: True
+  dt: 0.004
+  temperature: 300 *
+  cutoff: 0.9
+  repeats: 3 *
+  replex_period_ps: 2.5
+  binding_n_windows: 48
+  binding_npt_reduce_restraints_ns: 2.0
+  binding_nvt_heating_ns: 1.0
+  binding_steps: 1250000
+  solvation_n_windows: 32
+  solvation_npt_reduce_restraints_ns: 0.2
+  solvation_nvt_heating_ns: 0.1
+  solvation_steps: 500000
+)
+```
+
 
 !!! danger "Changing parameters may lead to simulation failures"
     Some parameters, such as `dt`, are constrained to specific ranges. You will not be allowed to start a simulation run if these parameters fall outside valid ranges.
@@ -215,10 +194,10 @@ Multiple fields can be changed in a single `replace()` call. The original `param
 
 ### Viewing results
 
-After initiating a run, we can view results using:
+After a run completes successfully, fetch results with:
 
 ```{.python notest}
-df = sim.abfe.show_results()
+df = abfe.get_results()
 df
 ```  
 
@@ -240,10 +219,8 @@ To view MD trajectories from this run, refer to this [How-to section](../how-to/
 
 An [FEP overlap matrix](https://pmc.ncbi.nlm.nih.gov/articles/PMC8388617/) is a diagnostic used in free energy perturbation calculations to evaluate how well neighboring λ states sample overlapping regions of configuration space. Each matrix element measures the statistical overlap between configurations from different states based on their energy distributions. The goal is to ensure every state has overlap with its neighbors in both directions – so that  off-diagonal elements are sufficiently larger than zero.
 
-If you are using the jobs-centric [`ABFE`](../ref/abfe.md) class, the plot path
-is read from the data-platform result for this execution (default `repeat=1`,
-same indexing as `abfe.show_trajectory`).
-In Jupyter:
+The plot path is read from the data-platform result for this execution (default
+`repeat=1`, same indexing as `abfe.show_trajectory`). In Jupyter:
 
 ```{.python notest}
 abfe.show_overlap_matrix(run="binding")
@@ -259,21 +236,11 @@ To view the overlap matrix for the solvation leg:
 abfe.show_overlap_matrix(run="solvation")
 ```
 
-On the deprecated [`Complex`](../ref/complex.md) path, the same plot was selected
-per ligand:
-
-```{.python notest}
-sim.abfe.show_overlap_matrix(ligand=ligand, run="binding")
-sim.abfe.show_overlap_matrix(ligand=ligand, run="solvation")
-```
-
 ### Viewing convergence time plots
 
 The time-convergence diagnostic (``convergence_plot`` in the result payload) can
-be shown the same way as the overlap matrix.
-
-With the jobs-centric [`ABFE`](../ref/abfe.md) class (default `repeat=1`, same
-as `abfe.show_overlap_matrix` and `abfe.show_trajectory`):
+be shown the same way as the overlap matrix (default `repeat=1`, same as
+`abfe.show_overlap_matrix` and `abfe.show_trajectory`):
 
 ```{.python notest}
 abfe.show_convergence_time(run="binding")
@@ -287,10 +254,4 @@ For the solvation leg:
 
 ```{.python notest}
 abfe.show_convergence_time(run="solvation")
-```
-
-On the deprecated [`Complex`](../ref/complex.md) path:
-
-```{.python notest}
-sim.abfe.show_convergence_time(ligand=ligand, run="binding")
 ```

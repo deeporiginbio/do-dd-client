@@ -1,8 +1,5 @@
 This document describes how to find pockets in a [`Protein`](../ref/protein.md) using the Deep Origin Pocket Finder.
 
-!!! warning "Not yet released"
-    This document describes the `PocketFinder` class that hasn't been released yet.  
-
 # Pockets
 
 ## Creating Pockets

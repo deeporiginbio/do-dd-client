@@ -251,7 +251,7 @@ class Docking(Execution, SyncExecutableMixin, AsyncExecutableMixin, NotebookWatc
             approve_amount: Spend cap forwarded to the platform.
             **kwargs: Forwarded to ``_start_impl``.
         """
-        if len(self.ligands) == 1:
+        if len(self.ligands) == 1 and not quote:
             raise ValueError(
                 "Cannot start: Docking with a single ligand must use run(), not start()."
             )

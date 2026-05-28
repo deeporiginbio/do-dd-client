@@ -16,17 +16,12 @@ nav = [
     {"Configure" = "configure.md"},
   ]},
   {"Drug Discovery" = [
-    {"Tutorial (Legacy)" = [
-      {"Getting started" = "dd/tutorial/getting-started-legacy.md"},
-      {"Docking" = "dd/tutorial/docking-legacy.md"},
-    ]},
-    {"Tutorial (Future)" = [
+    {"Tutorial" = [
       {"Getting started" = "dd/tutorial/getting-started.md"},
       {"Docking" = "dd/tutorial/docking.md"},
       {"ABFE" = "dd/tutorial/abfe.md"},
     ]},
     {"How To" = [
-      {"Work with a Complex" = "dd/how-to/complex.md"},
       {"Work with Proteins" = "dd/how-to/proteins.md"},
       {"Work with Ligands" = "dd/how-to/ligands.md"},
       {"Visualize proteins and ligands" = "dd/how-to/visualize.md"},

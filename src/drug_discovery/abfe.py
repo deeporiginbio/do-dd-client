@@ -511,14 +511,11 @@ class ABFE(Execution, AsyncExecutableMixin, NotebookWatchMixin):
             tool_version=self.tool_version,
         )
 
-        execution_id = execution_dto.get("executionId")
-        if execution_id is None:
+        if execution_dto.get("executionId") is None:
             msg = "Execution response must contain 'executionId'"
             raise ValueError(msg)
 
-        self._dto = execution_dto
-        self._id = execution_id
-        self.status = execution_dto.get("status")
+        self.update_from_dto(execution_dto)
 
     def get_results(self, **_kwargs: Any) -> pd.DataFrame | None:
         """Retrieve ABFE results as a DataFrame.

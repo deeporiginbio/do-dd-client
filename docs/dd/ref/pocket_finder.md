@@ -1,8 +1,5 @@
 # `deeporigin.drug_discovery.pocket_finder`
 
-!!! warning "Not yet released"
-    This class isn't yet available on the latest release of the deeporigin client.
-
 ::: src.drug_discovery.pocket_finder
     options:
       docstring_style: google

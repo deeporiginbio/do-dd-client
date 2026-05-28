@@ -48,6 +48,7 @@ protein = Protein.from_id("08AD337N5YV4Y")
 ```
 
 The method automatically:
+
 - Downloads the structure file from the Deep Origin Data Platform
 - Sets the protein's ID, name, and PDB ID (if available) from the platform metadata
 - Creates a Protein instance from the downloaded file
@@ -259,9 +260,6 @@ ligand = protein.extract_ligand()
 
 
 ### Loop modelling 
-
-!!! warning "Coming soon"
-    Loop modelling functionality is under active development and will be available soon.
 
 Missing information and gaps in the structure can be filled in using the Loop Modelling tool. 
 

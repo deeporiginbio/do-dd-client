@@ -405,7 +405,7 @@ class Executions:
         *,
         timeout: float | None = None,
         retry: bool = True,
-    ) -> None:
+    ) -> dict[str, Any]:
         """Confirm a tool execution.
 
         Args:
@@ -416,17 +416,18 @@ class Executions:
                 transient failures. Set ``False`` for a single attempt.
 
         Returns:
-            None.
+            Updated execution DTO from the platform (same shape as :meth:`get`).
         """
         patch_kwargs: dict[str, Any] = {}
         if timeout is not None:
             patch_kwargs["timeout"] = timeout
         if not retry:
             patch_kwargs["retry"] = False
-        self._c._patch(
+        response = self._c._patch(
             f"/tools/{self._c.org_key}/tools/executions/{execution_id}:confirm",
             **patch_kwargs,
         )
+        return response.json()
 
     @beartype
     def wait(

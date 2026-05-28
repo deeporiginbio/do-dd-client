@@ -143,10 +143,6 @@ docking.estimate  # total estimated cost across all ligands
 
 ## Constrained Docking
 
-
-!!! danger "Under development"
-    Constrained Docking is under active development and is not generally available. 
-
 We can use constrained docking to dock a Ligand to a Protein while constraining certain atoms to certain locations.
 
 Typically, these constraints are computed from a reference docked pose for another (similar) ligand, using a Maximum Common Substructure (MCS) shared across ligands. 

@@ -1,10 +1,6 @@
 # Getting started with the Drug Discovery toolbox
 
-!!! warning "Unreleased code"
-    This page describes APIs and workflows for which we haven't released a package yet. This functionality is coming soon!
-
-
-This document describes how to use the Drug Discovery toolbox to perform docking and run ABFE and RBFE runs on Deep Origin.
+This document describes how to use the Deep Origin Drug Discovery toolbox.
 
 
 ## Prerequisites 
@@ -23,7 +19,7 @@ Work in Deep Origin is organized in Projects. You can create a new project using
 
 ```{.python notest}
 from deeporigin import projects 
-project.create("my-test-project")
+projects.create("my-test-project")
 ```
 
 ## Input data
@@ -87,7 +83,7 @@ ligands
 
 and you should see something similar to:
     
-<div style='width: 500px; padding: 15px; border: 1px solid #ddd; border-radius: 6px; background-color: #f9f9f9;'><h3 style='margin-top: 0; color: #333;'>LigandSet with 8 ligands</h3><p style='margin: 8px 0;'><strong>8</strong> unique SMILES</p><p style='margin: 8px 0;'>Properties: initial_smiles, r_exp_dg</p><div style='margin-top: 12px; padding-top: 12px; border-top: 1px solid #ddd;'><p style='margin: 4px 0; font-size: 0.9em; color: #666;'><em>Use <code>.to_dataframe()</code> to convert to a dataframe, <code>.show_df()</code> to view dataframewith structures, or <code>.show()</code> for 3D visualization</em></p></div></div>
+<div style='width: 500px; padding: 15px; border: 1px solid #ddd; border-radius: 6px; background-color: #f9f9f9;'><h3 style='margin-top: 0; color: #333;'>LigandSet with 8 ligands</h3><p style='margin: 8px 0;'><strong>8</strong> unique SMILES <span class='badge text-bg-secondary' style='font-variant: small-caps;'>NOT PROTONATED</span> <span class='badge text-bg-info' style='font-variant: small-caps;'>3D</span></p><p style='margin: 8px 0;'>Properties: initial_smiles, r_exp_dg</p><div style='margin-top: 12px; padding-top: 12px; border-top: 1px solid #ddd;'><p style='margin: 4px 0; font-size: 0.9em; color: #666;'><em>Use <code>.to_dataframe()</code> to convert to a dataframe, <code>.show_df()</code> to view dataframe with structures, or <code>.show()</code> for 3D visualization, <code>.prepare()</code> to prepare ligands for docking</em></p></div></div>
 
 
 !!! tip "Jupyter notebooks"
@@ -127,6 +123,7 @@ And we can verify that our project contains these ligands:
 ```{.python notest}
 projects.ligands()
 ```
+
 
 That's it! We are now ready to perform [:material-page-next: docking](./docking.md), [:material-page-next: ABFE](./abfe.md), and [:material-page-next: RBFE](./rbfe.md).
 

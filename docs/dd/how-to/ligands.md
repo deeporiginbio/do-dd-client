@@ -307,7 +307,7 @@ ligands.show()
 A visualization similar to this will be shown. Use the arrows to switch between Ligands in the `LigandSet`. 
 
 <iframe 
-    src="../../images/brd-3d.html" 
+    src="../../images/brd-ligands.html" 
     width="100%" 
     height="610" 
     style="border:none;"
