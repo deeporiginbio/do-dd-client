@@ -18,13 +18,14 @@
 
 ## ADMET (molprops) attributes
 
-After you run [`Molprops`](../how-to/ligands.md#predicting-admet-properties) on the ligand, scalar and structured predictions from the Deep Origin molprops tools are stored on the ligand as well as in `properties` and RDKit properties:
+After you run [`Molprops`](../how-to/ligands.md#predicting-admet-properties) on the ligand, or load the ligand with `Ligand.from_id` / `LigandSet.from_ids` when values already exist on the platform record, scalar predictions are stored on dedicated attributes as well as in `properties` (tool row keys such as `logS`, `cyp2d6`):
 
-- `log_s`, `log_d`, `log_p` — map to API keys `logS`, `logD`, `logP`
-- `herg`, `cyp`, `ames` — nested structures keyed as `hERG`, `cyp`, `ames` in the API response
-- `has_pains`, `pains_fragments` — PAINS screening results
+- `log_s`, `log_d`, `log_p` — map to tool keys `logS`, `logD`, `logP` (platform columns `logs_predicted`, `logd_predicted`, `log_p`)
+- `ames_probability`, `herg_inhibition_probability` — from `ames_probability`, `herg_probability` on the platform record
+- `cyp_1a2`, `cyp_2c9`, `cyp_2c19`, `cyp_2d6`, `cyp_3a4` — from `cyp1a2`, …, `cyp3a4`
+- `has_pains`, `pains_fragments` — PAINS screening (`pains_flag` on the platform record maps to `has_pains`)
 
-Until molprops has been run successfully (via `Molprops`), these fields remain `None`.
+Until molprops has been run or the platform record has pinned values, these fields remain `None`. `pains_fragments` is only available from a fresh `Molprops` run, not from `from_id`.
 
 ## Preparation
 
