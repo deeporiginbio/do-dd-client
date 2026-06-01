@@ -50,14 +50,14 @@ jobs:
           case "${{ inputs.env }}" in dev|staging|prod) ;; *) echo "Invalid env: ${{ inputs.env }}"; exit 1 ;; esac
           case "${{ inputs.test_level }}" in lv1|lv2) ;; *) echo "Invalid test_level: ${{ inputs.test_level }}"; exit 1 ;; esac
 
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           repository: deeporiginbio/do-dd-client
           ref: ${{ github.event_name == 'release' && 'main' || github.ref }}
           token: ${{ github.event_name == 'release' && secrets.CI_BOT_GH_PAT || secrets.GITHUB_TOKEN }}
 
       - name: Install uv
-        uses: astral-sh/setup-uv@v6
+        uses: astral-sh/setup-uv@v8.1.0
         with:
           version: "0.5.27"
 
@@ -112,7 +112,7 @@ jobs:
             --html=sdk-report.html --self-contained-html
 
       - name: Upload SDK test artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         if: always()
         with:
           name: sdk-test-results-${{ matrix.env }}-${{ github.run_id }}-${{ github.run_attempt }}
