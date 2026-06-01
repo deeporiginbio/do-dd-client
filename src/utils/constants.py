@@ -90,3 +90,10 @@ MOLPROPS_PROPERTY_KEYS: frozenset[str] = frozenset(
 
 MOLPROPS_DEFAULT_PROPERTIES: frozenset[str] = MOLPROPS_PROPERTY_KEYS
 """Default full ADMET bundle for :class:`~deeporigin.drug_discovery.molprops.Molprops`."""
+
+JOB_WATCH_BLOCK_ENV = "JOB_WATCH_BLOCK"
+"""Env var for blocking :meth:`~deeporigin.drug_discovery.notebook_watch_mixin.NotebookWatchMixin.watch`.
+
+When set to a truthy value (``1``, ``true``, ``yes``, ``on``), ``watch()`` blocks the
+notebook cell until the execution reaches a terminal state. Used by doc notebook CI
+(``scripts/build_docs.sh``) and ``nbconvert --execute``."""

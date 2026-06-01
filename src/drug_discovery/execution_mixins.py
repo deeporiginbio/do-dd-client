@@ -6,7 +6,8 @@ These mixins are combined with ``Execution`` to build concrete types:
 - ``AsyncExecutableMixin`` -- async, stateful execution via ``start()`` and
   ``cancel()`` (platform refresh uses
   :meth:`~deeporigin.drug_discovery.execution.Execution.sync` on the base class)
-- ``NotebookWatchMixin`` -- live Jupyter HTML polling via ``watch()`` (see
+- ``NotebookWatchMixin`` -- live Jupyter HTML polling via ``watch()``; optional
+  blocking via ``blocking=True`` or ``JOB_WATCH_BLOCK`` (see
   ``deeporigin.drug_discovery.notebook_watch_mixin``)
 
 Both ``run()`` and ``start()`` accept ``quote=True`` (sugar for

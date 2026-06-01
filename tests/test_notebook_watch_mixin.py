@@ -167,7 +167,7 @@ def test_watch_returns_task_without_blocking_watch_loop():
             "_watch_until_terminal",
             fake_watch,
         ):
-            task = await abfe.watch()
+            task = await abfe.watch(blocking=False)
 
         assert isinstance(task, asyncio.Task)
         await asyncio.wait_for(done.wait(), timeout=1.0)

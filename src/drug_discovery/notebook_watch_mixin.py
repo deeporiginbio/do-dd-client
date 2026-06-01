@@ -1,7 +1,9 @@
 """Mixin for live Jupyter HTML updates while polling platform execution state.
 
-- :meth:`NotebookWatchMixin.watch` — ``await`` returns immediately with a
+- :meth:`NotebookWatchMixin.watch` — by default ``await`` returns immediately with a
   background :class:`asyncio.Task` that updates the notebook display.
+- Pass ``blocking=True`` or set env :data:`~deeporigin.utils.constants.JOB_WATCH_BLOCK_ENV`
+  to block the cell until the execution is terminal (e.g. ``nbconvert --execute``).
 
 Does not use ``nest_asyncio``.
 """
@@ -17,6 +19,8 @@ from beartype import beartype
 from IPython.display import HTML, display, update_display
 
 from deeporigin.platform.constants import TERMINAL_STATES
+from deeporigin.utils.constants import JOB_WATCH_BLOCK_ENV
+from deeporigin.utils.env import get_bool_env
 
 _MAX_CONSECUTIVE_ERRORS = 10
 
@@ -256,22 +260,51 @@ class NotebookWatchMixin:
             self._watch_task = None
 
     @beartype
-    async def watch(self, *, interval: float = 5.0) -> Task:
-        """Start live notebook updates and return the background task.
+    def _watch_should_block(self, *, blocking: bool) -> bool:
+        """Return whether :meth:`watch` should await the poll loop before returning.
 
-        In Jupyter, **awaiting** this coroutine finishes in one event-loop turn,
-        so the cell returns while the display keeps updating in the background
-        (similar to legacy ``Job.watch()``). Use this when you need to run other
-        cells while the job runs::
+        Args:
+            blocking: Explicit request from the ``blocking`` keyword argument.
+
+        Returns:
+            True if the watch loop should run inline (blocking the caller).
+        """
+        return blocking or get_bool_env(JOB_WATCH_BLOCK_ENV, default=False)
+
+    @beartype
+    async def watch(
+        self,
+        *,
+        interval: float = 5.0,
+        blocking: bool = False,
+    ) -> Task | None:
+        """Start live notebook updates; optionally block until the job finishes.
+
+        By default, **awaiting** this coroutine finishes in one event-loop turn,
+        so the cell returns while the display keeps updating in the background.
+        Use this when you need to run other cells while the job runs::
 
             task = await abfe.watch()
 
+        Set ``blocking=True`` or export ``JOB_WATCH_BLOCK=1`` (truthy values:
+        ``1``, ``true``, ``yes``, ``on``) to run the poll loop inline so the cell
+        does not return until a terminal state — useful for ``nbconvert --execute``
+        and doc CI (see :data:`~deeporigin.utils.constants.JOB_WATCH_BLOCK_ENV`)::
+
+            await abfe.watch(blocking=True)
+            # or: export JOB_WATCH_BLOCK=1
+
         Args:
             interval: Seconds between polls.
+            blocking: When True, await the watch loop instead of returning a
+                background task. Also blocks when ``JOB_WATCH_BLOCK`` is truthy.
 
         Returns:
-            The task running the watch loop. Cancel it with
-            :meth:`stop_watching` or ``task.cancel()``.
+            The background task when not blocking; ``None`` when blocking.
+            Cancel a background watch with :meth:`stop_watching` or ``task.cancel()``.
         """
         self.stop_watching()
+        if self._watch_should_block(blocking=blocking):
+            await self._watch_until_terminal(interval=interval)
+            return None
         return asyncio.create_task(self._watch_until_terminal(interval=interval))

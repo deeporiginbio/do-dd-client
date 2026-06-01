@@ -1,6 +1,6 @@
 # Job widget (Shadow DOM)
 
-> **Deprecated:** The legacy `deeporigin.platform.job` module was removed; job widgets are implemented in `src/platform/tool_jobs.py` (classes `Job` / `JobList`).
+> **Deprecated:** The legacy `deeporigin.platform.job` module was removed. Live notebook polling and `JOB_WATCH_BLOCK` are implemented on [`NotebookWatchMixin`](../notebook_watch_mixin.md) (`watch()`, `show()`).
 
 The job status widget is rendered via a single Shadow DOM-based template (`src/templates/job_widget.html`). This isolates CSS/JS so it works consistently across JupyterLab, classic Notebook, VS Code notebooks, marimo, and web front-ends.
 
