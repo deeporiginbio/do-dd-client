@@ -541,6 +541,47 @@ def test_ligand_property_management():
     assert ligand.get_property("non_existent") is None
 
 
+def test_ligand_from_platform_record_hydrates_molprops():
+    """Pinned platform molprops columns map to tool row keys and ADMET attrs."""
+    from deeporigin.drug_discovery.structures.ligand import (
+        _molprops_row_from_platform_record,
+    )
+
+    data = {
+        "id": "0940WE9SZH0VC",
+        "smiles": "COCCn1cc(-c2cccc(C(=O)N(C)C)c2)c2cc[nH]c2c1=O",
+        "log_p": 1.377760887145996,
+        "logs_predicted": -3.0474026203155518,
+        "logd_predicted": 0.9802079200744629,
+        "pains_flag": True,
+        "ames_probability": 0.0012685793917626143,
+        "herg_probability": 0.17195460200309753,
+        "cyp2d6": 0.012631930410861969,
+        "cyp3a4": 0.1912640929222107,
+    }
+    row = _molprops_row_from_platform_record(data)
+    assert row["logP"] == pytest.approx(1.377760887145996)
+    assert row["logS"] == pytest.approx(-3.0474026203155518)
+    assert row["logD"] == pytest.approx(0.9802079200744629)
+    assert row["has_pains"] is True
+    assert row["herg_inhibition_probability"] == pytest.approx(0.17195460200309753)
+
+    ligand = Ligand.from_smiles(data["smiles"])
+    ligand._apply_molprops_result(row)
+
+    assert ligand.log_p == pytest.approx(1.377760887145996)
+    assert ligand.log_s == pytest.approx(-3.0474026203155518)
+    assert ligand.log_d == pytest.approx(0.9802079200744629)
+    assert ligand.has_pains is True
+    assert ligand.ames_probability == pytest.approx(0.0012685793917626143)
+    assert ligand.herg_inhibition_probability == pytest.approx(0.17195460200309753)
+    assert ligand.cyp_2d6 == pytest.approx(0.012631930410861969)
+    assert ligand.cyp_3a4 == pytest.approx(0.1912640929222107)
+    assert ligand.properties["cyp2d6"] == pytest.approx(0.012631930410861969)
+    assert ligand.properties["logS"] == pytest.approx(-3.0474026203155518)
+    assert ligand.properties["logP"] == pytest.approx(1.377760887145996)
+
+
 def test_to_sdf_requires_rehydration_when_remote_path_only():
     """to_sdf/to_file must not perform I/O; fail if remote_path set but no local file."""
     ligand = Ligand.from_smiles("CCO", name="Ethanol")

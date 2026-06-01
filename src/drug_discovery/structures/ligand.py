@@ -54,6 +54,43 @@ _MOLPROPS_RESPONSE_TO_ATTR: dict[str, str] = {
     "pains_fragments": "pains_fragments",
 }
 
+# Molprops API row keys that must not be copied into ``properties`` (entity fields
+# or merge keys; see :func:`ligands_to_dataframe` column layout).
+_MOLPROPS_ROW_SKIP_PROPERTY_KEYS: frozenset[str] = frozenset(
+    {
+        "id",
+        "ligand_id",
+        "smiles",
+        "SMILES",
+    }
+)
+
+# Platform ligand pinned columns → molprops combined-tool row keys.
+# Mirrors ``pinned-columns.registry.ts`` on the data platform.
+_PLATFORM_PINNED_TO_MOLPROPS_ROW: dict[str, str] = {
+    "log_p": "logP",
+    "pains_flag": "has_pains",
+    "logd_predicted": "logD",
+    "logs_predicted": "logS",
+    "ames_probability": "ames_probability",
+    "herg_probability": "herg_inhibition_probability",
+    "cyp1a2": "cyp1a2",
+    "cyp2c9": "cyp2c9",
+    "cyp2c19": "cyp2c19",
+    "cyp2d6": "cyp2d6",
+    "cyp3a4": "cyp3a4",
+}
+
+
+def _molprops_row_from_platform_record(data: dict[str, Any]) -> dict[str, Any]:
+    """Translate pinned molprops columns on a platform ligand record to tool row keys."""
+
+    row: dict[str, Any] = {}
+    for platform_key, tool_key in _PLATFORM_PINNED_TO_MOLPROPS_ROW.items():
+        if platform_key in data and data[platform_key] is not None:
+            row[tool_key] = data[platform_key]
+    return row
+
 
 def _sdf_marker_present_in_prefix(path: Path, *, max_bytes: int = 16384) -> bool:
     """Return True if the start of the file looks like MOL/SDF text."""
@@ -543,6 +580,10 @@ class Ligand(Entity):
     ) -> Self:
         """Create a Ligand instance from a platform ligand record.
 
+        When the record includes pinned molprops columns (``log_p``, ``cyp2d6``,
+        ``logs_predicted``, etc.), they are applied to ADMET attributes and
+        :attr:`properties` via :meth:`_apply_molprops_result`.
+
         Args:
             data: Ligand record returned by the platform entities API.
             client: DeepOrigin client used to download associated files.
@@ -578,6 +619,9 @@ class Ligand(Entity):
                 ligand.name = data["name"]
             if data.get("project_id") is not None:
                 ligand.project_id = str(data["project_id"])
+            molprops_row = _molprops_row_from_platform_record(data)
+            if molprops_row:
+                ligand._apply_molprops_result(molprops_row)
             return ligand
 
         if mol_file:
@@ -599,6 +643,10 @@ class Ligand(Entity):
 
         if data.get("project_id") is not None:
             ligand.project_id = str(data["project_id"])
+
+        molprops_row = _molprops_row_from_platform_record(data)
+        if molprops_row:
+            ligand._apply_molprops_result(molprops_row)
 
         return ligand
 
@@ -1516,6 +1564,8 @@ class Ligand(Entity):
             if api_key in props:
                 setattr(self, attr_name, props[api_key])
         for key, value in props.items():
+            if key in _MOLPROPS_ROW_SKIP_PROPERTY_KEYS:
+                continue
             self.set_property(key, value)
 
     def update_coordinates(self, coordinates: np.ndarray):
@@ -1631,26 +1681,34 @@ def ligands_to_dataframe(ligands: list[Ligand]) -> pd.DataFrame:
         ligands: Ligands to serialize as rows.
 
     Returns:
-        DataFrame with an ``id`` column, union of property columns (except
-        ``_Name``, ``_SMILES``, ``initial_smiles``, ``id``), and ``SMILES``.
+        DataFrame with columns ``id``, ``SMILES``, known molprops output keys
+        (in schema order when present), then any other property keys sorted.
     """
 
-    # find the union of all properties in all ligands
-    all_keys = set()
+    skip_property_keys = {
+        "_Name",
+        "_SMILES",
+        "initial_smiles",
+    } | _MOLPROPS_ROW_SKIP_PROPERTY_KEYS
+
+    all_keys: set[str] = set()
     for ligand in ligands:
         all_keys.update(ligand.properties.keys())
 
+    property_keys = sorted(k for k in all_keys if k not in skip_property_keys)
+    molprops_keys = [k for k in _MOLPROPS_RESPONSE_TO_ATTR if k in property_keys]
+    other_keys = sorted(set(property_keys) - set(molprops_keys))
+
     property_columns: dict[str, list[Any]] = {}
-    for key in all_keys:
-        if key in ("_Name", "_SMILES", "initial_smiles", "id"):
-            continue
+    for key in molprops_keys + other_keys:
         property_columns[key] = [ligand.properties.get(key, None) for ligand in ligands]
 
     data: dict[str, list[Any]] = {"id": [ligand.id for ligand in ligands]}
-    data.update(property_columns)
     data["SMILES"] = [ligand.smiles for ligand in ligands]
+    data.update(property_columns)
 
-    return pd.DataFrame(data)
+    column_order = ["id", "SMILES", *molprops_keys, *other_keys]
+    return pd.DataFrame(data)[column_order]
 
 
 def _tool_user_inputs_params(dto: dict[str, Any]) -> dict[str, Any]:

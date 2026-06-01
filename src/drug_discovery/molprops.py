@@ -166,11 +166,10 @@ class Molprops(Execution, SyncExecutableMixin):
     in place via
     :meth:`~deeporigin.drug_discovery.structures.ligand.Ligand._apply_molprops_result`.
 
-    This is a blocking flow. A normal :meth:`run` does not call
-    :meth:`~deeporigin.drug_discovery.execution.Execution.update_from_dto`; use
-    :meth:`run` with ``quote=True`` when you need the platform execution ``id``,
-    ``status``, and :attr:`~deeporigin.drug_discovery.execution.Execution.estimate`
-    from a single quotation for all ligands.
+    This is a blocking flow. :meth:`run` refreshes ``id``, ``status``, and related
+    execution fields from the platform response via
+    :meth:`~deeporigin.drug_discovery.execution.Execution.update_from_dto`
+    (the last batch when :attr:`batch_size` splits the run).
 
     Attributes:
         ligands: Ligands to predict (same order as SMILES sent to the API).
@@ -287,6 +286,9 @@ class Molprops(Execution, SyncExecutableMixin):
                 merged.extend(batch_rows)
                 raw_responses.append(batch_raw)
                 pbar.update(len(batch_ligands))
+
+        if raw_responses:
+            self.update_from_dto(raw_responses[-1])
 
         total_cost = 0.0
         any_priced = False
