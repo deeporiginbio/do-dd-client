@@ -125,6 +125,6 @@ projects.ligands()
 ```
 
 
-That's it! We are now ready to perform [:material-page-next: docking](./docking.md), [:material-page-next: ABFE](./abfe.md), and [:material-page-next: RBFE](./rbfe.md).
+That's it! We are now ready to perform [:material-page-next: docking](./docking.md) and [:material-page-next: ABFE](./abfe.md).
 
 

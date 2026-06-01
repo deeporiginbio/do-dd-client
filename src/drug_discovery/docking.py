@@ -74,8 +74,8 @@ class Docking(Execution, SyncExecutableMixin, AsyncExecutableMixin, NotebookWatc
     :meth:`start` is for multiple ligands only: one ``create`` with all ligands. The
     call **returns immediately** with an execution DTO. For a single ligand, use
     :meth:`run` instead of :meth:`start`. Track async jobs with ``.sync()``,
-    ``from_id()``, and ``list()``. In Jupyter, use
-    ``await docking.watch()`` or ``await docking.watch_async()`` (see
+    ``.wait()``, ``from_id()``, and ``list()``. In Jupyter, use
+    ``await docking.watch()`` (see
     :class:`~deeporigin.drug_discovery.notebook_watch_mixin.NotebookWatchMixin`).
 
     Attributes:

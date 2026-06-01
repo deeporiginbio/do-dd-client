@@ -1,23 +1,21 @@
-# Visualizing ABFE Trajectories
+# ABFE
 
-This guide explains how to visualize molecular dynamics trajectories from Absolute Binding Free Energy (ABFE) simulations in Deep Origin.
+Run and analyze Absolute Binding Free Energy (ABFE) workflows in Deep Origin.
 
 !!! warning "Deprecated: `Complex` in examples"
     Older examples referenced a legacy [`Complex`](../ref/complex.md). Prefer the [`ABFE`](../ref/abfe.md) class directly for new code.
 
-## Overview
+## Visualizing trajectories
 
 ABFE simulations generate molecular dynamics trajectories that show how ligands interact with proteins over time. Visualizing these trajectories can provide valuable insights into binding mechanisms, protein-ligand interactions, and conformational changes.
 
 Use :meth:`ABFE.show_trajectory <deeporigin.drug_discovery.abfe.ABFE.show_trajectory>` on a completed execution. Each ABFE job is tied to one prepared system (one primary ligand leg), so you do not pass a separate ligand object: the execution already identifies the run.
 
-## Prerequisites
+### Prerequisites
 
 - A completed ABFE simulation run (`status` is `Succeeded`)
 - `PreparedSystem` used for the run should include either `system_pdb_path` or `binding_xml_path` (the latter is used to resolve `system.pdb` next to the binding XML on the file store)
 - The Deep Origin Python package properly installed and configured
-
-## Visualizing trajectories
 
 ### `show_trajectory`
 
@@ -46,7 +44,7 @@ The method loads the data-platform result row for this job (the same shape as ``
 5. Download PDB and XTC (lazy skip if already cached under `~/.deeporigin/`).
 6. Render with `deeporigin_molstar.ProteinViewer.render_trajectory` and display in the notebook.
 
-## Examples
+### Examples
 
 Assume `abfe` is an :class:`~deeporigin.drug_discovery.abfe.ABFE` instance that has finished successfully.
 
@@ -76,7 +74,7 @@ If `window` is not present in the results `trajectories` map, the error lists th
     title="Protein visualization"
 ></iframe>
 
-## Troubleshooting
+### Troubleshooting
 
 - Ensure the ABFE run completed successfully (`Succeeded`).
 - Ensure `PreparedSystem.system_pdb_path` or `binding_xml_path` is set so the viewer can load the topology.

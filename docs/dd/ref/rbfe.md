@@ -1,5 +1,8 @@
-# `deeporigin.drug_discovery.rbfe` (removed)
+# RBFE workflows
 
-> **Removed:** The `RBFE` helper that was attached to [`Complex`](complex.md) as `Complex.rbfe` is no longer part of the SDK. RBFE-oriented system preparation may still be accessed via `SystemPrep` in RBFE mode (two ligands) and the `deeporigin.rbfe-end-to-end` tool key; this page no longer documents a `deeporigin.drug_discovery.rbfe` module.
+Relative binding free energy (RBFE) in the drug discovery SDK is supported through:
 
-The tutorial [RBFE](../tutorial/rbfe.md) described the legacy `Complex` workflow; it is retained only as historical context.
+- `SystemPrep` in RBFE mode — pass `ligand1` and `ligand2` instead of a single `ligand`. See the [RBFE tutorial](../tutorial/rbfe.md).
+- Platform tool `deeporigin.rbfe-end-to-end` for end-to-end pairwise RBFE runs. Start executions via the [Platform executions API](../../platform/ref/executions.md) using prepared system outputs from `SystemPrep.run()`.
+
+There is no `deeporigin.drug_discovery.rbfe` module in the SDK.

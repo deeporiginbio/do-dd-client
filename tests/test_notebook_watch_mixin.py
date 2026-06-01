@@ -1,4 +1,4 @@
-"""Tests for NotebookWatchMixin / ABFE watch_async."""
+"""Tests for NotebookWatchMixin / ABFE watch."""
 
 import asyncio
 from unittest.mock import MagicMock, patch
@@ -43,8 +43,8 @@ def test_show_without_id_renders_pending_card(mock_display):
     assert "No platform execution ID yet" in html_obj.data
 
 
-def test_watch_async_raises_without_id():
-    """watch_async requires a platform execution id."""
+def test_watch_loop_raises_without_id():
+    """The watch loop requires a platform execution id."""
     ps = PreparedSystem(
         binding_xml_path="b.xml",
         solvation_xml_path="s.xml",
@@ -53,12 +53,12 @@ def test_watch_async_raises_without_id():
     abfe = ABFE(prepared_system=ps)
 
     with pytest.raises(ValueError, match="id is None"):
-        asyncio.run(abfe.watch_async())
+        asyncio.run(abfe._watch_until_terminal())
 
 
 @patch("deeporigin.drug_discovery.notebook_watch_mixin.display")
 @patch("deeporigin.drug_discovery.notebook_watch_mixin.update_display")
-def test_watch_async_terminal_immediately(mock_update_display, mock_display):
+def test_watch_loop_terminal_immediately(mock_update_display, mock_display):
     """Already-terminal job shows static message and skips the poll loop."""
     ps = PreparedSystem(
         binding_xml_path="b.xml",
@@ -76,7 +76,7 @@ def test_watch_async_terminal_immediately(mock_update_display, mock_display):
     abfe.status = "Succeeded"
 
     with patch.object(abfe, "_render_execution_html", return_value="<html>done</html>"):
-        asyncio.run(abfe.watch_async(interval=0.01))
+        asyncio.run(abfe._watch_until_terminal(interval=0.01))
 
     mock_display.assert_called()
     mock_update_display.assert_not_called()
@@ -84,8 +84,8 @@ def test_watch_async_terminal_immediately(mock_update_display, mock_display):
 
 @patch("deeporigin.drug_discovery.notebook_watch_mixin.display")
 @patch("deeporigin.drug_discovery.notebook_watch_mixin.update_display")
-def test_watch_async_polls_until_terminal(mock_update_display, mock_display):
-    """watch_async updates the display until status becomes terminal."""
+def test_watch_loop_polls_until_terminal(mock_update_display, mock_display):
+    """The watch loop updates the display until status becomes terminal."""
     ps = PreparedSystem(
         binding_xml_path="b.xml",
         solvation_xml_path="s.xml",
@@ -104,7 +104,7 @@ def test_watch_async_polls_until_terminal(mock_update_display, mock_display):
     abfe.status = "Running"
 
     with patch.object(abfe, "_render_execution_html", return_value="<html>x</html>"):
-        asyncio.run(abfe.watch_async(interval=0.001))
+        asyncio.run(abfe._watch_until_terminal(interval=0.001))
 
     assert mock_client.executions.get.call_count >= 2
     assert mock_update_display.call_count >= 1
@@ -123,11 +123,11 @@ def test_stop_watching_does_not_raise_when_idle():
 
 @patch("deeporigin.drug_discovery.notebook_watch_mixin.display")
 @patch("deeporigin.drug_discovery.notebook_watch_mixin.update_display")
-def test_watch_async_raises_when_dto_missing_after_sync(
+def test_watch_loop_raises_when_dto_missing_after_sync(
     mock_update_display,
     mock_display,
 ):
-    """If sync leaves no DTO, watch_async raises."""
+    """If sync leaves no DTO, the watch loop raises."""
     ps = PreparedSystem(
         binding_xml_path="b.xml",
         solvation_xml_path="s.xml",
@@ -142,11 +142,11 @@ def test_watch_async_raises_when_dto_missing_after_sync(
     abfe._dto = None
 
     with pytest.raises(ValueError, match="No execution data after sync"):
-        asyncio.run(abfe.watch_async())
+        asyncio.run(abfe._watch_until_terminal())
 
 
-def test_watch_returns_task_without_blocking_watch_async():
-    """watch returns a Task; watch_async runs asynchronously."""
+def test_watch_returns_task_without_blocking_watch_loop():
+    """watch returns a Task; the watch loop runs asynchronously."""
 
     async def _run() -> None:
         ps = PreparedSystem(
@@ -164,7 +164,7 @@ def test_watch_returns_task_without_blocking_watch_async():
 
         with patch.object(
             type(abfe),
-            "watch_async",
+            "_watch_until_terminal",
             fake_watch,
         ):
             task = await abfe.watch()

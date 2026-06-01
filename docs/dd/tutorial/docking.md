@@ -65,7 +65,7 @@ ligand.sync()
 
 ## Find pockets in Protein
 
-Run Pocket Finder on the synced protein to detect binding sites. Create a `PocketFinder` with that protein (use `pocket_count` to request more than one pocket), then call `run()` to execute the tool and get a list of `Pocket` objects:
+Run Pocket Finder on the synced protein to detect binding sites. Create a `PocketFinder` with that protein, then call `run()` to execute the tool and get a list of `Pocket` objects:
 
 ```{.python notest}
 pf = PocketFinder(protein, pocket_count=1)
@@ -92,7 +92,7 @@ You should see something along the lines of:
 We can see that the protein is shown together with the identified pocket in red. 
 
 !!! tip "The Pocket Finder Function"
-    For more details on how to use the Pocket Finder, look at [this](../how-to/find-pockets.md).
+    For more details on how to use the Pocket Finder, look at [PocketFinder](../tools/pocketfinder.md).
 
 Preview the docking search box (protein plus wireframe box from pocket center and box size) before running:
 

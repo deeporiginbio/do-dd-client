@@ -1,10 +1,7 @@
 """Mixin for live Jupyter HTML updates while polling platform execution state.
 
-- :meth:`NotebookWatchMixin.watch_async` — ``await`` until the job reaches a
-  terminal state (blocks the notebook cell).
 - :meth:`NotebookWatchMixin.watch` — ``await`` returns immediately with a
-  background :class:`asyncio.Task` (non-blocking cell; closest to legacy
-  ``Job.watch()``).
+  background :class:`asyncio.Task` that updates the notebook display.
 
 Does not use ``nest_asyncio``.
 """
@@ -142,10 +139,10 @@ class NotebookWatchMixin:
 
     @beartype
     def stop_watching(self) -> None:
-        """Cancel an in-flight :meth:`watch_async` loop if one is running.
+        """Cancel an in-flight watch loop if one is running.
 
         Safe to call when no watch is active. Does not cancel the caller's
-        current task when invoked from inside :meth:`watch_async`.
+        current task when invoked from inside the watch loop.
         """
         t = self._watch_task
         if t is None:
@@ -211,12 +208,8 @@ class NotebookWatchMixin:
                     break
             await asyncio.sleep(interval)
 
-    @beartype
-    async def watch_async(self, *, interval: float = 5.0) -> None:
+    async def _watch_until_terminal(self, *, interval: float = 5.0) -> None:
         """Poll the platform and update a Jupyter display until a terminal state.
-
-        In notebooks use top-level ``await abfe.watch_async()``. In scripts use
-        ``asyncio.run(abfe.watch_async())``.
 
         Args:
             interval: Seconds between polls after a successful update.
@@ -264,7 +257,7 @@ class NotebookWatchMixin:
 
     @beartype
     async def watch(self, *, interval: float = 5.0) -> Task:
-        """Schedule :meth:`watch_async` and return the :class:`asyncio.Task` immediately.
+        """Start live notebook updates and return the background task.
 
         In Jupyter, **awaiting** this coroutine finishes in one event-loop turn,
         so the cell returns while the display keeps updating in the background
@@ -273,16 +266,12 @@ class NotebookWatchMixin:
 
             task = await abfe.watch()
 
-        To block until the job finishes, use :meth:`watch_async` instead::
-
-            await abfe.watch_async()
-
         Args:
-            interval: Seconds between polls; passed to :meth:`watch_async`.
+            interval: Seconds between polls.
 
         Returns:
-            The task running :meth:`watch_async`. Cancel it with
+            The task running the watch loop. Cancel it with
             :meth:`stop_watching` or ``task.cancel()``.
         """
         self.stop_watching()
-        return asyncio.create_task(self.watch_async(interval=interval))
+        return asyncio.create_task(self._watch_until_terminal(interval=interval))
