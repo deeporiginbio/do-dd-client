@@ -100,7 +100,7 @@ def test_execution_sync_applies_get_response() -> None:
     client.executions.get.assert_called_once_with("exec-99")
     assert job.status == "Running"
     assert job.progress == {"pct": 50}
-    assert job.estimate == 2.25
+    assert job.estimate == pytest.approx(2.25)
 
 
 def test_execution_sync_no_op_when_get_returns_falsy() -> None:
@@ -114,6 +114,42 @@ def test_execution_sync_no_op_when_get_returns_falsy() -> None:
     job.sync()
 
     assert job.status == "Created"
+
+
+def test_execution_wait_requires_id() -> None:
+    """``wait`` raises when no platform execution id is set."""
+    client = MagicMock()
+    job: Any = _TestToolExecution(client=client)
+
+    with pytest.raises(ValueError, match="execution ID"):
+        job.wait()
+
+    client.executions.wait.assert_not_called()
+
+
+def test_execution_wait_calls_platform_and_applies_response() -> None:
+    """``wait`` delegates to ``client.executions.wait`` and refreshes local state."""
+    client = MagicMock()
+    dto: dict[str, Any] = {
+        "executionId": "exec-99",
+        "tool": {"key": "deeporigin.test-sync-tool", "version": "1.0.0"},
+        "status": "Succeeded",
+        "quotationResult": {"successfulQuotations": [{"priceTotal": "2.25"}]},
+    }
+    client.executions.wait.return_value = [dto]
+    job: Any = _TestToolExecution(client=client)
+    job._id = "exec-99"
+
+    result = job.wait(poll_interval=1.5, timeout=30)
+
+    client.executions.wait.assert_called_once_with(
+        "exec-99",
+        poll_interval=1.5,
+        timeout=30,
+    )
+    assert result == dto
+    assert job.status == "Succeeded"
+    assert job.cost == pytest.approx(2.25)
 
 
 def test_execution_from_id_requires_tool_key() -> None:
@@ -320,8 +356,8 @@ def test_execution_update_from_dto_sets_cost_when_succeeded() -> None:
     job.update_from_dto(dto)
 
     assert job.status == "Succeeded"
-    assert job.estimate == 10.0
-    assert job.cost == 10.0
+    assert job.estimate == pytest.approx(10.0)
+    assert job.cost == pytest.approx(10.0)
 
 
 def test_wait_returns_immediately_when_all_terminal() -> None:

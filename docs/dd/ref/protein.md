@@ -1,7 +1,7 @@
 # `deeporigin.drug_discovery.Protein`
 
 !!! warning "Pocket finding (`find_pockets` removed)"
-    `Protein.find_pockets()` was deprecated and has been **removed**. Use the [`PocketFinder`](../how-to/find-pockets.md) class instead (see [Find pockets](../how-to/find-pockets.md)).
+    `Protein.find_pockets()` was deprecated and has been **removed**. Use the [`PocketFinder`](../tools/pocketfinder.md) class instead (see [PocketFinder](../tools/pocketfinder.md)).
 
 ::: src.drug_discovery.structures.Protein
     options:

@@ -212,7 +212,7 @@ This shows a table similar to:
 
 ### Viewing trajectories
 
-To view MD trajectories from this run, refer to this [How-to section](../how-to/visualize-abfe-trajectories.md)
+To view MD trajectories from this run, refer to [ABFE](../tools/abfe.md).
 
 
 ### Viewing overlap matrix

@@ -6,7 +6,7 @@ This document describes how to [dock :octicons-link-external-16:](https://en.wik
     This tutorial uses deprecated APIs. New APIs to use Docking will be released soon. 
 
 !!! tip "Looking to dock a few ligands?"
-    This document describes how to dock more than a handful of ligands (>10) using a batch job. To dock a single (or a few ligands), you might prefer to use the `.dock()` function of the `Protein` class, as [described here](../how-to/docking.md). 
+    This document describes how to dock more than a handful of ligands (>10) using a batch job. To dock a single (or a few ligands), you might prefer to use the `.dock()` function of the `Protein` class, as [described here](../tools/docking.md).
 
 ## Prerequisites
 
@@ -48,7 +48,7 @@ You should see something along the lines of:
 We can see that the protein is shown together with the identified pocket in red. 
 
 !!! tip "The Pocket Finder Function"
-    For more details on how to use the Pocket Finder, look at the [How To section for the Pocket Finder](../how-to/find-pockets.md).
+    For more details on how to use the Pocket Finder, look at [PocketFinder](../tools/pocketfinder.md).
 
 The `pocket` object can be inspected, too:
 

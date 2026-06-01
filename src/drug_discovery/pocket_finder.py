@@ -45,8 +45,9 @@ class PocketFinder(
     immediate DTO).     :meth:`run` sets ``"sync": true`` and blocks until the run
     finishes. :meth:`start` sets ``"sync": false`` in ``inputs`` (non-blocking);
     ``start`` returns immediately with an execution DTO that you can poll with
-    :meth:`sync` (or watch with :meth:`watch` / :meth:`watch_async` in Jupyter).
-    Track async jobs with :meth:`sync`, :meth:`from_id`, and :meth:`list`.
+    :meth:`sync`, wait on with :meth:`wait`, or watch in Jupyter with
+    :meth:`watch`. Track async jobs with :meth:`sync`, :meth:`from_id`, and
+    :meth:`list`.
 
     Attributes:
         protein: The protein to analyse.
@@ -309,9 +310,9 @@ class PocketFinder(
         """Submit pocket finding as a persisted async execution (``sync=False``).
 
         Sets :attr:`id`, :attr:`status`, and :attr:`_dto` from the
-        platform response. Poll :meth:`sync` or use :meth:`watch` /
-        :meth:`watch_async` in Jupyter until the execution reaches a terminal
-        state, then call :meth:`get_results` to retrieve the pockets.
+        platform response. Poll :meth:`sync`, block with :meth:`wait`, or use
+        :meth:`watch` in Jupyter until the execution reaches a terminal state,
+        then call :meth:`get_results` to retrieve the pockets.
 
         Args:
             approve_amount: Spend cap forwarded to the platform.

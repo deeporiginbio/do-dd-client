@@ -1,7 +1,7 @@
 """Base class for the jobs-centric API.
 
 Provides ``Execution`` -- a base class with read-only ``@property`` descriptors
-for system-managed fields, platform ``id``, and ``confirm()`` for tools
+for system-managed fields, platform ``id``, ``wait()``, and ``confirm()`` for tools
 executions, lifecycle state management, :attr:`Execution.runtime` from DTO
 timestamps, plus ``from_id()`` / :meth:`Execution.list` delegate to
 :meth:`Execution.from_dto`. :meth:`Execution.sync` refreshes an instance from
@@ -211,7 +211,7 @@ class Execution:
             )
         dto = self.client.executions.confirm(  # ty:ignore[unresolved-attribute]
             self._id,
-            timeout=TOOL_EXECUTION_POST_TIMEOUT_SECONDS,  # ty:ignore[unknown-argument]
+            timeout=TOOL_EXECUTION_POST_TIMEOUT_SECONDS,
             retry=False,
         )
         if dto:
@@ -351,6 +351,37 @@ class Execution:
         result = self.client.executions.get(exec_id)  # ty:ignore[unresolved-attribute]
         if result:
             self.update_from_dto(result)
+
+    def wait(
+        self,
+        *,
+        poll_interval: float = 5.0,
+        timeout: float | None = None,
+    ) -> dict[str, Any] | None:
+        """Block until this execution reaches a terminal state.
+
+        Args:
+            poll_interval: Seconds to sleep between polling cycles.
+            timeout: Maximum total seconds to wait. If ``None``, waits indefinitely.
+
+        Returns:
+            The latest execution DTO, or ``None`` if the platform returned no DTO.
+
+        Raises:
+            ValueError: If this instance has no execution id yet.
+            TimeoutError: If ``timeout`` elapses before the execution terminates.
+        """
+        exec_id = self._ensure_id()
+        executions_client: Any = self.client.executions
+        results = executions_client.wait(
+            exec_id,
+            poll_interval=poll_interval,
+            timeout=timeout,
+        )
+        dto = results[0] if results else None
+        if dto is not None:
+            self.update_from_dto(dto)
+        return dto
 
     @classmethod
     def from_dto(

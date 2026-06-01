@@ -190,7 +190,7 @@ print(num_atoms)
 
 ### Finding pockets
 
-You can find potential binding pockets in the protein structure. See the [Finding Pockets guide](find-pockets.md) for detailed information.
+You can find potential binding pockets in the protein structure. See [PocketFinder](../tools/pocketfinder.md) for detailed information.
 
 ```{.python notest}
 from deeporigin.drug_discovery import PocketFinder, Protein
