@@ -19,6 +19,8 @@ __all__ = [
     "ConstrainedDocking",
     "ABFE",
     "ABFEParams",
+    "RBFE",
+    "RBFEParams",
     "Execution",
     "PlatformStatus",
     "SystemPrep",
@@ -67,6 +69,14 @@ def __getattr__(name):
         from deeporigin.drug_discovery.abfe import ABFE
 
         return ABFE
+    elif name == "RBFE":
+        from deeporigin.drug_discovery.rbfe import RBFE
+
+        return RBFE
+    elif name == "RBFEParams":
+        from deeporigin.drug_discovery.rbfe import RBFEParams
+
+        return RBFEParams
     elif name == "ABFEParams":
         from deeporigin.drug_discovery.abfe import ABFEParams
 

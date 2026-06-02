@@ -48,9 +48,24 @@ prepared.show()
 ```
 
 The returned `PreparedSystem` includes paths to binding and solvation XML files
-and a system PDB. Use these artifacts with the platform RBFE end-to-end tool
-(`deeporigin.rbfe-end-to-end`); see
-[:material-page-previous: Platform executions](../../platform/ref/executions.md).
+and a system PDB. Submit batch RBFE with the `RBFE` class and platform tool
+`deeporigin.rbfe`:
+
+```{.python notest}
+from deeporigin.drug_discovery import RBFE, RBFEParams
+
+# End-to-end: prep + FEP for one pair (add more pairs to the list for networks)
+rbfe = RBFE.from_pairs(
+    protein=protein,
+    pairs=[(ligand1, ligand2)],
+    params=RBFEParams(test_run=1),
+)
+rbfe.start()
+```
+
+For prep only, use `RBFE(mode="sysprep", ...)`. For FEP on existing prepared
+systems, use `RBFE.from_prepared_systems(prepared_systems=[prepared, ...])`.
+See [:material-page-previous: Platform executions](../../platform/ref/executions.md).
 
 ## Constructing a network
 
