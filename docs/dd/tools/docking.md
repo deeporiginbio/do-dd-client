@@ -176,6 +176,9 @@ protein.show(poses=reference_pose + poses)
 For advanced use, pass precomputed constraints (1-based atom indices in the ligand structure file):
 
 ```{.python notest}
+ligand = Ligand.from_sdf("query.sdf")
+ligand.sync()
+
 cd = ConstrainedDocking(
     protein=protein,
     pocket=pocket,

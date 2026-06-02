@@ -106,8 +106,9 @@ class ConstrainedDocking(Execution, SyncExecutableMixin, NotebookWatchMixin):
     explicit ``constraints`` or a docked ``reference`` ligand; MCS alignment
     derives constraints from the reference pose when ``reference`` is used.
 
-    Execution is synchronous only: call :meth:`run` or :meth:`quote`. There is
-    no async :meth:`start` path for this tool.
+    Execution is synchronous only: call :meth:`run`, or :meth:`run` with
+    ``quote=True`` for a cost estimate. There is no async :meth:`start` path for
+    this tool.
 
     Attributes:
         protein: Target protein structure.
