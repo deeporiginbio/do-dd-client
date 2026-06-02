@@ -414,7 +414,9 @@ def create_data_platform_router(
         _ligand_key_index[key] = record["id"]
         return record
 
-    def _find_ligand_by_identity(smiles: str, extra: dict[str, Any]) -> dict[str, Any] | None:
+    def _find_ligand_by_identity(
+        smiles: str, extra: dict[str, Any]
+    ) -> dict[str, Any] | None:
         """Return an existing ligand row for the identity key, if any."""
         canonical = _canonicalize_smiles(smiles)
         tag = extra.get("variant_name_tag", "")
