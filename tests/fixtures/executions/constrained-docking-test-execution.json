@@ -1,0 +1,57 @@
+{
+    "app": "python-client",
+    "approveAmount": null,
+    "billing": null,
+    "completedAt": "2026-03-26T08:34:03.000Z",
+    "createdAt": "2026-03-25T18:08:28.059Z",
+    "createdBy": "6b96d8f8-0f55-474c-a86c-e09651ba4b20",
+    "executionId": "a1b2c3d4-constrained-docking-test-id",
+    "executionType": "tool",
+    "metadata": {},
+    "name": "Constrained docking brd to brd-ligand",
+    "orgKey": "deeporigin",
+    "projectId": null,
+    "session": "f8a98c5e-18ed-4b5e-b08a-f38a21d11254",
+    "startedAt": "2026-03-26T08:32:28.000Z",
+    "status": "Succeeded",
+    "statusReason": null,
+    "tag": null,
+    "tool": {
+        "key": "deeporigin.constrained-docking",
+        "version": "3.2.3"
+    },
+    "type": "ToolExecution",
+    "updatedAt": "2026-03-26T12:07:52.195Z",
+    "userInputs": {
+        "constraints": [
+            {
+                "coordinates": [-15.0, -0.23, 10.56],
+                "energy": 5.0,
+                "index": 1
+            }
+        ],
+        "effort": 1,
+        "ligands": [
+            {
+                "file_path": "testing/brd-2.sdf",
+                "id": "brd-2",
+                "smiles": "Cc1cccc(-c2nn(C)c3cccc(C(=O)N4CCN(c5ccc(C)cc5)CC4)c23)c1"
+            }
+        ],
+        "pocket": {
+            "box_size_x": 14.409664294429042,
+            "box_size_y": 14.409664294429042,
+            "box_size_z": 14.409664294429042,
+            "center": [
+                -13.400676727294922,
+                -5.5482563972473145,
+                14.189638137817383
+            ]
+        },
+        "protein": {
+            "file_path": "testing/brd.pdb",
+            "id": "brd"
+        }
+    },
+    "userOutputs": {}
+}

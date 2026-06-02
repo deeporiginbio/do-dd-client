@@ -286,7 +286,10 @@ def create_tools_router(
             execution["status"] = "Succeeded"
             execution["completedAt"] = now.strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z"
             execution["updatedAt"] = now.strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z"
-            if tool_key == "deeporigin.docking":
+            if tool_key in (
+                "deeporigin.docking",
+                "deeporigin.constrained-docking",
+            ):
                 _inject_docking_tool_execution_results(execution)
             progress_reports = _load_progress_reports(tool_key)
             if progress_reports:
@@ -655,6 +658,7 @@ def create_tools_router(
             "deeporigin.pocketfinder": ("pockets", "pocket"),
             "deeporigin.pocket-finder": ("pockets", "pocket"),
             "deeporigin.docking": ("poses", "pose"),
+            "deeporigin.constrained-docking": ("poses", "pose"),
             "deeporigin.system-prep": ("system", "preparedsystem"),
         }
 
@@ -698,7 +702,10 @@ def create_tools_router(
         tool = execution.get("tool") or {}
         tkey = tool.get("key")
         tool_version = tool.get("version", "0.0.0")
-        if not eid or tkey != "deeporigin.docking":
+        if not eid or tkey not in (
+            "deeporigin.docking",
+            "deeporigin.constrained-docking",
+        ):
             return
         if any(r.get("compute_job_id") == eid for r in results):
             return
@@ -1154,6 +1161,21 @@ def create_tools_router(
         if (
             tool_key == "deeporigin.docking"
             and inputs.get("sync") is True
+            and n_lig == 1
+            and not quote_only
+        ):
+            execution = _create_blocking_run_dto(
+                org_key=org_key,
+                tool_key=tool_key,
+                tool_version=tool_version,
+                body=body,
+            )
+            eid = execution["executionId"]
+            executions[eid] = execution
+            _inject_docking_tool_execution_results(execution)
+            return _normalize_execution(execution)
+        if (
+            tool_key == "deeporigin.constrained-docking"
             and n_lig == 1
             and not quote_only
         ):

@@ -74,6 +74,8 @@ def _expected_version_for_tool_key(tool_key: str) -> str | None:
     t = TOOL_KEYS_AND_VERSIONS
     if tool_key == t["docking"]["tool_key"]:
         return t["docking"]["tool_version"]
+    if tool_key == t["constrained_docking"]["tool_key"]:
+        return t["constrained_docking"]["tool_version"]
     if tool_key in (t["pocket_finder"]["tool_key"], "deeporigin.pocketfinder"):
         return t["pocket_finder"]["tool_version"]
     if tool_key == t["sysprep"]["tool_key"]:

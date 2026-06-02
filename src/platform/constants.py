@@ -54,6 +54,10 @@ TOOL_KEYS_AND_VERSIONS: dict[str, dict[str, str]] = {
         "tool_key": "deeporigin.docking",
         "tool_version": "3.2.3",
     },
+    "constrained_docking": {
+        "tool_key": "deeporigin.constrained-docking",
+        "tool_version": "3.2.3",
+    },
     "pocket_finder": {
         "tool_key": "deeporigin.pocket-finder",
         "tool_version": "1.4.3",
