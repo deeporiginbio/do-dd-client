@@ -12,6 +12,37 @@ if TYPE_CHECKING:
 # Minimal returning for proteins batch create (triggers require INSERT path, not COPY).
 PROTEIN_BATCH_CREATE_RETURNING_FIELDS = ["id"]
 
+PROTEIN_RETURNING_FIELDS = [
+    "id",
+    "version",
+    "valid_from",
+    "valid_to",
+    "modified_by",
+    "deleted",
+    "project_id",
+    "subtable_name",
+    "uniprot_accession",
+    "file_path",
+    "gene_symbol",
+    "pdb_id",
+    "refseq_protein_id",
+    "ensembl_protein_id",
+    "alpha_fold_id",
+    "fasta_sequence",
+    "protein_name",
+    "kegg_gene_id",
+    "chembl_target_id",
+    "binding_db_target_id",
+    "drugbank_target_id",
+    "pfam_id",
+    "interpro_id",
+    "ec_number",
+    "ncbi_taxonomy_id",
+    "protein_family",
+    "ligandability_score",
+    "protein_length",
+]
+
 LIGAND_RETURNING_FIELDS = [
     "id",
     "version",
@@ -469,6 +500,162 @@ class Entities:
             body=body,
         )
 
+    def update_ligand(
+        self,
+        id: str,
+        *,
+        smiles: str | None = None,
+        mol_file: str | None = None,
+        name: str | None = None,
+        formal_charge: int | None = None,
+        hbond_donor_count: int | None = None,
+        hbond_acceptor_count: int | None = None,
+        rotatable_bond_count: int | None = None,
+        tpsa: float | None = None,
+        molecular_weight: float | None = None,
+        variant_name_tag: str | None = None,
+        project_id: str | None = None,
+    ) -> dict:
+        """Update an existing ligand by ID.
+
+        Calls ``PATCH /data-platform/{orgKey}/ligands/{id}``.
+
+        Args:
+            id: Ligand entity ID.
+            smiles: Updated SMILES string.
+            mol_file: Updated remote path to the structure file (e.g. SDF).
+            name: Updated ligand name.
+            formal_charge: Updated formal charge.
+            hbond_donor_count: Updated H-bond donor count.
+            hbond_acceptor_count: Updated H-bond acceptor count.
+            rotatable_bond_count: Updated rotatable bond count.
+            tpsa: Updated topological polar surface area.
+            molecular_weight: Updated molecular weight.
+            variant_name_tag: Updated variant name tag.
+            project_id: Updated project ID.
+
+        Returns:
+            Dictionary containing the updated ligand record under ``data``.
+        """
+        set_dict: dict[str, Any] = {}
+        if smiles is not None:
+            set_dict["smiles"] = smiles
+        if mol_file is not None:
+            set_dict["mol_file"] = mol_file
+        if name is not None:
+            set_dict["name"] = name
+        if formal_charge is not None:
+            set_dict["formal_charge"] = formal_charge
+        if hbond_donor_count is not None:
+            set_dict["hbond_donor_count"] = hbond_donor_count
+        if hbond_acceptor_count is not None:
+            set_dict["hbond_acceptor_count"] = hbond_acceptor_count
+        if rotatable_bond_count is not None:
+            set_dict["rotatable_bond_count"] = rotatable_bond_count
+        if tpsa is not None:
+            set_dict["tpsa"] = tpsa
+        if molecular_weight is not None:
+            set_dict["molecular_weight"] = molecular_weight
+        if variant_name_tag is not None:
+            set_dict["variant_name_tag"] = variant_name_tag
+        if project_id is not None:
+            set_dict["project_id"] = project_id
+
+        body: dict[str, Any] = {
+            "set": set_dict,
+            "returning": LIGAND_RETURNING_FIELDS,
+        }
+        return self._c._patch(
+            f"/data-platform/{self._c.org_key}/ligands/{id}",
+            json=body,
+        ).json()
+
+    def upsert_ligand(
+        self,
+        *,
+        smiles: str,
+        id: str | None = None,
+        project_id: str | None = None,
+        name: str | None = None,
+        mol_file: str | None = None,
+        formal_charge: int = 0,
+        hbond_donor_count: int | None = None,
+        hbond_acceptor_count: int | None = None,
+        rotatable_bond_count: int | None = None,
+        tpsa: float | None = None,
+        molecular_weight: float | None = None,
+        variant_name_tag: str = "",
+    ) -> dict:
+        """Create or update a ligand entity.
+
+        When ``id`` is provided, patches that row. Otherwise creates a new
+        ligand; if the platform reports ``meta.disposition == "already_exists"``
+        (duplicate canonical SMILES in project scope), returns the existing row
+        and patches ``mol_file`` when a new path is supplied.
+
+        Args:
+            smiles: SMILES string (required).
+            id: Existing ligand ID to update in place.
+            project_id: Project ID for create / scope.
+            name: Ligand name (create path).
+            mol_file: Remote structure file path (SDF/MOL2).
+            formal_charge: Formal charge for create. Defaults to 0.
+            hbond_donor_count: H-bond donor count.
+            hbond_acceptor_count: H-bond acceptor count.
+            rotatable_bond_count: Rotatable bond count.
+            tpsa: Topological polar surface area.
+            molecular_weight: Molecular weight.
+            variant_name_tag: Variant tag for uniqueness. Defaults to ``""``.
+
+        Returns:
+            Platform response with ``data`` containing the ligand row.
+        """
+        if id is not None and str(id).strip():
+            return self.update_ligand(
+                id,
+                smiles=smiles,
+                mol_file=mol_file,
+                name=name,
+                formal_charge=formal_charge,
+                hbond_donor_count=hbond_donor_count,
+                hbond_acceptor_count=hbond_acceptor_count,
+                rotatable_bond_count=rotatable_bond_count,
+                tpsa=tpsa,
+                molecular_weight=molecular_weight,
+                variant_name_tag=variant_name_tag,
+                project_id=project_id,
+            )
+
+        result = self.create_ligand(
+            smiles=smiles,
+            project_id=project_id,
+            name=name,
+            mol_file=mol_file,
+            formal_charge=formal_charge,
+            hbond_donor_count=hbond_donor_count,
+            hbond_acceptor_count=hbond_acceptor_count,
+            rotatable_bond_count=rotatable_bond_count,
+            tpsa=tpsa,
+            molecular_weight=molecular_weight,
+            variant_name_tag=variant_name_tag,
+        )
+        meta = result.get("meta") if isinstance(result.get("meta"), dict) else {}
+        if meta.get("disposition") != "already_exists":
+            return result
+
+        data = result.get("data")
+        if not isinstance(data, dict) or not data.get("id"):
+            return result
+
+        if mol_file is None or data.get("mol_file") == mol_file:
+            return result
+
+        return self.update_ligand(
+            str(data["id"]),
+            mol_file=mol_file,
+            smiles=smiles,
+        )
+
     # ---- Proteins ----
 
     def get_protein(self, id: str) -> dict:
@@ -612,39 +799,116 @@ class Entities:
 
         body: dict[str, Any] = {
             "set": set_dict,
-            "returning": [
-                "id",
-                "version",
-                "valid_from",
-                "valid_to",
-                "modified_by",
-                "deleted",
-                "project_id",
-                "subtable_name",
-                "uniprot_accession",
-                "file_path",
-                "gene_symbol",
-                "pdb_id",
-                "refseq_protein_id",
-                "ensembl_protein_id",
-                "alpha_fold_id",
-                "fasta_sequence",
-                "protein_name",
-                "kegg_gene_id",
-                "chembl_target_id",
-                "binding_db_target_id",
-                "drugbank_target_id",
-                "pfam_id",
-                "interpro_id",
-                "ec_number",
-                "ncbi_taxonomy_id",
-                "protein_family",
-                "ligandability_score",
-                "protein_length",
-            ],
+            "returning": PROTEIN_RETURNING_FIELDS,
         }
 
         return self._c.post_json(
             f"/data-platform/{self._c.org_key}/proteins",
             body=body,
+        )
+
+    def update_protein(
+        self,
+        id: str,
+        *,
+        file_path: str | None = None,
+        gene_symbol: str | None = None,
+        pdb_id: str | None = None,
+        fasta_sequence: str | None = None,
+        protein_name: str | None = None,
+        protein_length: int | None = None,
+        project_id: str | None = None,
+    ) -> dict:
+        """Update an existing protein by ID.
+
+        Calls ``PATCH /data-platform/{orgKey}/proteins/{id}``.
+
+        Args:
+            id: Protein entity ID.
+            file_path: Updated remote path to the structure file.
+            gene_symbol: Updated gene symbol.
+            pdb_id: Updated PDB ID.
+            fasta_sequence: Updated FASTA sequence.
+            protein_name: Updated protein name.
+            protein_length: Updated protein length.
+            project_id: Updated project ID.
+
+        Returns:
+            Dictionary containing the updated protein record under ``data``.
+        """
+        set_dict: dict[str, Any] = {}
+        if file_path is not None:
+            set_dict["file_path"] = file_path
+        if gene_symbol is not None:
+            set_dict["gene_symbol"] = gene_symbol
+        if pdb_id is not None:
+            set_dict["pdb_id"] = pdb_id
+        if fasta_sequence is not None:
+            set_dict["fasta_sequence"] = fasta_sequence
+        if protein_name is not None:
+            set_dict["protein_name"] = protein_name
+        if protein_length is not None:
+            set_dict["protein_length"] = protein_length
+        if project_id is not None:
+            set_dict["project_id"] = project_id
+
+        body: dict[str, Any] = {
+            "set": set_dict,
+            "returning": PROTEIN_RETURNING_FIELDS,
+        }
+        return self._c._patch(
+            f"/data-platform/{self._c.org_key}/proteins/{id}",
+            json=body,
+        ).json()
+
+    def upsert_protein(
+        self,
+        *,
+        file_path: str,
+        id: str | None = None,
+        gene_symbol: str | None = None,
+        pdb_id: str | None = None,
+        fasta_sequence: str | None = None,
+        protein_name: str | None = None,
+        protein_length: int | None = None,
+        project_id: str | None = None,
+    ) -> dict:
+        """Create or update a protein entity.
+
+        When ``id`` is provided, patches that row. Otherwise creates a new
+        protein (platform may dedupe by sequence/structure identity).
+
+        Args:
+            file_path: Remote path to the protein structure file (required).
+            id: Existing protein ID to update in place.
+            gene_symbol: Gene symbol (create path).
+            pdb_id: PDB ID.
+            fasta_sequence: FASTA sequence.
+            protein_name: Protein name.
+            protein_length: Protein length.
+            project_id: Project ID.
+
+        Returns:
+            Platform response with ``data`` containing the protein row.
+        """
+        if id is not None and str(id).strip():
+            return self.update_protein(
+                id,
+                file_path=file_path,
+                gene_symbol=gene_symbol,
+                pdb_id=pdb_id,
+                fasta_sequence=fasta_sequence,
+                protein_name=protein_name,
+                protein_length=protein_length,
+                project_id=project_id,
+            )
+
+        return self.create_protein(
+            file_path=file_path,
+            gene_symbol=gene_symbol,
+            pdb_id=pdb_id,
+            fasta_sequence=fasta_sequence,
+            protein_name=protein_name,
+            protein_length=protein_length,
+            project_id=project_id,
         )

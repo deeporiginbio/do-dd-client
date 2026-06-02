@@ -414,6 +414,16 @@ def create_data_platform_router(
         _ligand_key_index[key] = record["id"]
         return record
 
+    def _find_ligand_by_identity(smiles: str, extra: dict[str, Any]) -> dict[str, Any] | None:
+        """Return an existing ligand row for the identity key, if any."""
+        canonical = _canonicalize_smiles(smiles)
+        tag = extra.get("variant_name_tag", "")
+        key = (canonical, tag)
+        lid = _ligand_key_index.get(key)
+        if lid is None:
+            return None
+        return ligands.get(lid)
+
     @router.get("/data-platform/health")
     def data_platform_health() -> dict[str, str]:
         """Data platform health check endpoint."""
@@ -752,12 +762,24 @@ def create_data_platform_router(
 
     @router.post("/data-platform/{org_key}/ligands")
     async def create_ligand(org_key: str, request: Request) -> dict[str, Any]:
-        """Create a new ligand (returns 409 on duplicate key)."""
+        """Create a new ligand (409 on duplicate for batch; 200 already_exists for single create)."""
         body = await request.json()
         set_data = body.get("set", {})
         returning = body.get("returning", [])
 
         smiles = set_data.get("smiles", "")
+        existing = _find_ligand_by_identity(smiles, set_data)
+        if existing is not None:
+            response_data = existing.copy()
+            if returning:
+                response_data = {
+                    k: v for k, v in response_data.items() if k in returning
+                }
+            return {
+                "data": response_data,
+                "meta": {"disposition": "already_exists"},
+            }
+
         record = _insert_ligand(smiles, set_data)
 
         response_data = record.copy()
@@ -819,6 +841,56 @@ def create_data_platform_router(
             "data": response_data,
             "meta": {"inserted": 1},
         }
+
+    @router.patch("/data-platform/{org_key}/ligands/{ligand_id}")
+    async def patch_ligand(
+        org_key: str, ligand_id: str, request: Request
+    ) -> dict[str, Any]:
+        """Patch a ligand by ID."""
+        from fastapi import HTTPException
+
+        if ligand_id not in ligands:
+            raise HTTPException(status_code=404, detail=f"Ligand {ligand_id} not found")
+
+        body = await request.json()
+        set_data = body.get("set", {})
+        returning = body.get("returning", [])
+
+        record = ligands[ligand_id]
+        record.update(set_data)
+        ligands[ligand_id] = record
+
+        response_data = record.copy()
+        if returning:
+            response_data = {k: v for k, v in response_data.items() if k in returning}
+
+        return {"data": response_data}
+
+    @router.patch("/data-platform/{org_key}/proteins/{protein_id}")
+    async def patch_protein(
+        org_key: str, protein_id: str, request: Request
+    ) -> dict[str, Any]:
+        """Patch a protein by ID."""
+        from fastapi import HTTPException
+
+        if protein_id not in proteins:
+            raise HTTPException(
+                status_code=404, detail=f"Protein {protein_id} not found"
+            )
+
+        body = await request.json()
+        set_data = body.get("set", {})
+        returning = body.get("returning", [])
+
+        record = proteins[protein_id]
+        record.update(set_data)
+        proteins[protein_id] = record
+
+        response_data = record.copy()
+        if returning:
+            response_data = {k: v for k, v in response_data.items() if k in returning}
+
+        return {"data": response_data}
 
     @router.delete("/data-platform/{org_key}/{entity}/{entity_id}")
     def delete_entity(org_key: str, entity: str, entity_id: str) -> dict[str, Any]:
