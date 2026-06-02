@@ -9,19 +9,24 @@ import pytest
 from deeporigin.platform import DeepOriginClient
 
 
-def _unique_smiles() -> str:
-    """Return a unique aliphatic SMILES string for create tests."""
-    suffix = uuid.uuid4().hex[:8]
-    return f"CC(C)(C)OC(=O)N{suffix}"
+def _test_smiles() -> str:
+    """Return a valid SMILES used across upsert tests."""
+    return "CC(C)(C)OC(=O)N"
+
+
+def _unique_variant_tag() -> str:
+    """Return a unique variant tag so duplicate canonical SMILES do not collide."""
+    return f"entities-upsert-{uuid.uuid4().hex}"
 
 
 def test_upsert_ligand_create_lv1(client: DeepOriginClient) -> None:
     """upsert_ligand without id creates a new ligand row."""
-    smiles = _unique_smiles()
+    smiles = _test_smiles()
     result = client.entities.upsert_ligand(
         smiles=smiles,
         mol_file="testing/util-tool/new.sdf",
         name=f"upsert-create-{uuid.uuid4().hex[:8]}",
+        variant_name_tag=_unique_variant_tag(),
     )
 
     assert isinstance(result, dict)
@@ -34,12 +39,14 @@ def test_upsert_ligand_already_exists_updates_mol_file_lv1(
     client: DeepOriginClient,
 ) -> None:
     """Duplicate create returns already_exists; upsert patches mol_file when it differs."""
-    smiles = _unique_smiles()
+    smiles = _test_smiles()
     name = f"upsert-dup-{uuid.uuid4().hex[:8]}"
+    variant_tag = _unique_variant_tag()
     first = client.entities.upsert_ligand(
         smiles=smiles,
         mol_file="testing/util-tool/first.sdf",
         name=name,
+        variant_name_tag=variant_tag,
     )
     ligand_id = first["data"]["id"]
 
@@ -47,6 +54,7 @@ def test_upsert_ligand_already_exists_updates_mol_file_lv1(
         smiles=smiles,
         mol_file="testing/util-tool/second.sdf",
         name=name,
+        variant_name_tag=variant_tag,
     )
 
     assert second.get("meta", {}).get("disposition") == "already_exists" or (
@@ -58,11 +66,12 @@ def test_upsert_ligand_already_exists_updates_mol_file_lv1(
 
 def test_upsert_ligand_with_id_patches_lv1(client: DeepOriginClient) -> None:
     """upsert_ligand with id performs PATCH only."""
-    smiles = _unique_smiles()
+    smiles = _test_smiles()
     created = client.entities.create_ligand(
         smiles=smiles,
         name=f"upsert-patch-{uuid.uuid4().hex[:8]}",
         mol_file="testing/util-tool/before.sdf",
+        variant_name_tag=_unique_variant_tag(),
     )
     ligand_id = created["data"]["id"]
 
@@ -78,10 +87,11 @@ def test_upsert_ligand_with_id_patches_lv1(client: DeepOriginClient) -> None:
 
 def test_update_ligand_lv1(client: DeepOriginClient) -> None:
     """update_ligand patches mol_file via PATCH."""
-    smiles = _unique_smiles()
+    smiles = _test_smiles()
     created = client.entities.create_ligand(
         smiles=smiles,
         name=f"update-lig-{uuid.uuid4().hex[:8]}",
+        variant_name_tag=_unique_variant_tag(),
     )
     ligand_id = created["data"]["id"]
 

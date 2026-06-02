@@ -68,6 +68,18 @@ LIGAND_RETURNING_FIELDS = [
 ]
 
 
+def _normalize_entity_patch_response(response: dict[str, Any]) -> dict[str, Any]:
+    """Coerce PATCH ``data`` from a one-row list to a single row dict.
+
+    The data-platform PATCH endpoint returns ``data`` as an array; POST create
+    returns a single object. Callers of ``update_*`` expect the create shape.
+    """
+    data = response.get("data")
+    if isinstance(data, list) and len(data) == 1:
+        return {**response, "data": data[0]}
+    return response
+
+
 class Entities:
     """Data Platform entity API wrapper.
 
@@ -565,10 +577,12 @@ class Entities:
             "set": set_dict,
             "returning": LIGAND_RETURNING_FIELDS,
         }
-        return self._c._patch(
-            f"/data-platform/{self._c.org_key}/ligands/{id}",
-            json=body,
-        ).json()
+        return _normalize_entity_patch_response(
+            self._c._patch(
+                f"/data-platform/{self._c.org_key}/ligands/{id}",
+                json=body,
+            ).json()
+        )
 
     def upsert_ligand(
         self,
@@ -856,10 +870,12 @@ class Entities:
             "set": set_dict,
             "returning": PROTEIN_RETURNING_FIELDS,
         }
-        return self._c._patch(
-            f"/data-platform/{self._c.org_key}/proteins/{id}",
-            json=body,
-        ).json()
+        return _normalize_entity_patch_response(
+            self._c._patch(
+                f"/data-platform/{self._c.org_key}/proteins/{id}",
+                json=body,
+            ).json()
+        )
 
     def upsert_protein(
         self,
