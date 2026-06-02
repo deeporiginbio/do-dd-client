@@ -1,12 +1,17 @@
 """A unified class to perform molecular docking on DeepOrigin."""
 
 import concurrent.futures
-import os
 from typing import Any, Self
 
 from beartype import beartype
 import numpy as np
 
+from deeporigin.drug_discovery.docking_common import (
+    build_docking_metadata,
+    build_pocket_tool_params,
+    load_docking_poses_from_execution,
+    resolve_docking_box_geometry,
+)
 from deeporigin.drug_discovery.execution import Execution
 from deeporigin.drug_discovery.execution_mixins import (
     AsyncExecutableMixin,
@@ -27,14 +32,6 @@ Number = float | int
 def _ligand_tool_input_row(lig: Ligand) -> dict[str, Any]:
     """Build one ligand entry for tool ``userInputs`` (id and smiles only)."""
     return {"id": lig.id, "smiles": lig.smiles}
-
-
-def _docking_pocket_axis_size(pocket: Pocket, axis: str) -> float:
-    """Return box size for *axis* on *pocket*, defaulting to 20.0 Å."""
-    val = getattr(pocket, f"box_size_{axis}", None)
-    if val is not None:
-        return float(val)
-    return 20.0
 
 
 def _docking_default_name(protein: Protein, ligands: LigandSet) -> str:
@@ -356,33 +353,8 @@ class Docking(Execution, SyncExecutableMixin, AsyncExecutableMixin, NotebookWatc
         self.ligands.sync(lazy=True, client=self.client)
 
     def _resolve_docking_box_geometry(self) -> tuple[list[float], list[float]]:
-        """Resolve pocket center and box extents used for docking and visualization.
-
-        Box sizes default to ``2 * cbrt(volume)`` per axis when not set on the pocket.
-
-        Returns:
-            A tuple of (pocket_center, box_size) where each is a length-3 list of
-            floats in Angstroms.
-        """
-        default_box = float(2 * np.cbrt(self.pocket.volume or 0))
-        box_size_x = (
-            self.pocket.box_size_x
-            if self.pocket.box_size_x is not None
-            else default_box
-        )
-        box_size_y = (
-            self.pocket.box_size_y
-            if self.pocket.box_size_y is not None
-            else default_box
-        )
-        box_size_z = (
-            self.pocket.box_size_z
-            if self.pocket.box_size_z is not None
-            else default_box
-        )
-        pocket_center = self.pocket.get_center().tolist()
-        box_size = [float(box_size_x), float(box_size_y), float(box_size_z)]
-        return pocket_center, box_size
+        """Resolve pocket center and box extents used for docking and visualization."""
+        return resolve_docking_box_geometry(self.pocket)
 
     def _build_tool_inputs(
         self, *, ligand_set: LigandSet | None = None
@@ -403,24 +375,8 @@ class Docking(Execution, SyncExecutableMixin, AsyncExecutableMixin, NotebookWatc
         to_dock = self.ligands if ligand_set is None else ligand_set
         ligands = list(to_dock)
         pocket_center, box_size = self._resolve_docking_box_geometry()
-
-        protein_ref = self.protein.local_path or self.protein.remote_path
-        protein_hash = ""
-        if self.protein.structure is not None:
-            protein_hash = self.protein.to_hash()
-        metadata = {
-            "protein_file": os.path.basename(str(protein_ref)) if protein_ref else "",
-            "protein_hash": protein_hash,
-        }
-
-        pocket_params = {
-            "box_size_x": box_size[0],
-            "box_size_y": box_size[1],
-            "box_size_z": box_size[2],
-            "center": pocket_center,
-        }
-        if self.pocket.id is not None:
-            pocket_params["id"] = self.pocket.id
+        metadata = build_docking_metadata(self.protein)
+        pocket_params = build_pocket_tool_params(self.pocket, pocket_center, box_size)
 
         params = {
             "effort": self.effort,
@@ -607,33 +563,12 @@ class Docking(Execution, SyncExecutableMixin, AsyncExecutableMixin, NotebookWatc
             DeepOriginException: If no poses could be loaded from the data
                 platform or ``jobOutputs``.
         """
-        exec_id = self._ensure_id()
-
-        best_pose: bool | None = None if all_poses else True
-
-        try:
-            return LigandSet.from_result(
-                execution_id=exec_id,
-                best_pose=best_pose,
-                client=self.client,
-            )
-        except Exception:
-            # we can still potentially get results from the jobOutputs
-            pass
-
-        try:
-            if dto is None:
-                dto = self.client.executions.get(exec_id)  # ty:ignore[unresolved-attribute]
-            jo = dto.get("jobOutputs")
-            raw = jo.get("poses", []) if isinstance(jo, dict) else []
-            return LigandSet.from_json(raw, client=self.client)
-        except Exception as exc:
-            raise DeepOriginException(
-                title="Could not load docking poses",
-                message=(
-                    "No poses could be parsed from the data platform or jobOutputs."
-                ),
-            ) from exc
+        return load_docking_poses_from_execution(
+            self._ensure_id(),
+            client=self.client,
+            dto=dto,
+            all_poses=all_poses,
+        )
 
     def get_undocked_ligands(self) -> LigandSet | None:
         """Get a list of ligands that failed to dock.

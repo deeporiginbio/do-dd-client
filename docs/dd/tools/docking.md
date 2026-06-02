@@ -140,25 +140,54 @@ docking.estimate  # total estimated cost across all ligands
 
 ## Constrained docking
 
-We can use constrained docking to dock a Ligand to a Protein while constraining certain atoms to certain locations.
+Use [`ConstrainedDocking`](../ref/constrained_docking.md) to dock a ligand while pulling selected atoms toward target coordinates with harmonic constraints.
 
-Typically, these constraints are computed from a reference docked pose for another (similar) ligand, using a Maximum Common Substructure (MCS) shared across ligands.
+Typically, constraints are derived from a reference docked pose for a similar ligand using a Maximum Common Substructure (MCS). You can pass a docked reference ligand directly, or supply explicit constraint dictionaries.
 
-Assuming we have docked a ligand to a protein and picked a pose to be the "reference". When constrained docking is available, it will be configured through [`Docking`](../ref/docking.md) (reference-pose parameters are not exposed yet). A standard run looks like:
+### MCS workflow (reference pose)
+
+Dock a reference ligand, then constrained-dock a query ligand aligned to that pose:
 
 ```{.python notest}
-docking = Docking(protein=protein, pocket=pocket, ligand=ligand)
-poses = docking.run()
+from deeporigin.drug_discovery import ConstrainedDocking, Docking
 
-# view poses
-protein.show(poses=poses)
+ref_poses = Docking(protein=protein, pocket=pocket, ligand=reference_ligand).run()
+reference_pose = ref_poses.ligands[0]
+
+cd = ConstrainedDocking(
+    protein=protein,
+    pocket=pocket,
+    ligand=query_ligand,
+    reference=reference_pose,
+)
+poses = cd.run()
 ```
 
-To view new poses together with the reference pose, combine the `LigandSet` values (for example):
+The query ligand must have a structure file on the platform (load from SDF/MOL2 and call `query_ligand.sync()`). The reference pose must have 3D coordinates (for example from `Docking.run()`).
+
+To view new poses together with the reference pose:
 
 ```{.python notest}
 protein.show(poses=reference_pose + poses)
 ```
+
+### Explicit constraints
+
+For advanced use, pass precomputed constraints (1-based atom indices in the ligand structure file):
+
+```{.python notest}
+cd = ConstrainedDocking(
+    protein=protein,
+    pocket=pocket,
+    ligand=ligand,
+    constraints=[
+        {"index": 1, "coordinates": [-15.0, -0.23, 10.56], "energy": 5.0},
+    ],
+)
+poses = cd.run()
+```
+
+You can also build constraints locally with [`LigandSet.compute_constraints()`](../how-to/ligands.md#constraints) and pass the first list entry for a single ligand.
 
 ## Filtering docking outputs
 

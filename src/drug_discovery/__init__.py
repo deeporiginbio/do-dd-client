@@ -16,6 +16,7 @@ __all__ = [
     "PreparedSystem",
     "PocketFinder",
     "Docking",
+    "ConstrainedDocking",
     "ABFE",
     "ABFEParams",
     "Execution",
@@ -58,6 +59,10 @@ def __getattr__(name):
         from deeporigin.drug_discovery.docking import Docking
 
         return Docking
+    elif name == "ConstrainedDocking":
+        from deeporigin.drug_discovery.constrained_docking import ConstrainedDocking
+
+        return ConstrainedDocking
     elif name == "ABFE":
         from deeporigin.drug_discovery.abfe import ABFE
 
