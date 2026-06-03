@@ -3,7 +3,7 @@
 Relative binding free energy (RBFE) in the drug discovery SDK is supported through:
 
 - **`RBFE`** — batch workflow on platform tool `deeporigin.rbfe` (`mode`: `full`, `sysprep`, or `rbfe`). Up to 20 ligand pairs per execution. See the [RBFE tutorial](../tutorial/rbfe.md).
-- **`SystemPrep`** in RBFE mode — single-pair sync prep via `deeporigin.system-prep` (pass `ligand1` and `ligand2`). Useful for one-off prep or when you want fine-grained control before submitting `RBFE(mode="rbfe", ...)`.
+- **`SystemPrep`** in RBFE mode — single-pair sync prep via `deeporigin.system-prep` (pass `ligand1` and `ligand2`). Useful for one-off prep or when you want fine-grained control before submitting `RBFE(prepared_systems=[...])`.
 
 ## Modes
 

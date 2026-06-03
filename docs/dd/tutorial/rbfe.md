@@ -55,7 +55,7 @@ and a system PDB. Submit batch RBFE with the `RBFE` class and platform tool
 from deeporigin.drug_discovery import RBFE, RBFEParams
 
 # End-to-end: prep + FEP for one pair (add more pairs to the list for networks)
-rbfe = RBFE.from_pairs(
+rbfe = RBFE(
     protein=protein,
     pairs=[(ligand1, ligand2)],
     params=RBFEParams(test_run=1),
@@ -63,8 +63,8 @@ rbfe = RBFE.from_pairs(
 rbfe.start()
 ```
 
-For prep only, use `RBFE(mode="sysprep", ...)`. For FEP on existing prepared
-systems, use `RBFE.from_prepared_systems(prepared_systems=[prepared, ...])`.
+For prep only, pass `prep_only=True`. For FEP on existing prepared systems,
+pass `prepared_systems=[prepared, ...]` (mode is inferred as `rbfe`).
 See [:material-page-previous: Platform executions](../../platform/ref/executions.md).
 
 ## Constructing a network

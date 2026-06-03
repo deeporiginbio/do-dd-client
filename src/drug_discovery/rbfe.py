@@ -2,8 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-from typing import Any, Literal, Self
+from typing import Any, Literal
 
 from beartype import beartype
 
@@ -92,11 +91,11 @@ def _simulation_blocks(*, params: RBFEParams) -> dict[str, dict[str, Any]]:
 class RBFE(Execution, AsyncExecutableMixin, NotebookWatchMixin):
     """Batch RBFE workflow (``deeporigin.rbfe``).
 
-    Supports three platform modes:
+    Platform ``mode`` is inferred from constructor inputs (see :meth:`_post_init`):
 
-    - ``full``: shared protein + ligand pairs → system prep → RBFE FEP per pair
-    - ``sysprep``: shared protein + ligand pairs → RBFE system prep only
-    - ``rbfe``: prepared systems → RBFE FEP only
+    - ``full``: ``protein`` + ``pairs`` (default)
+    - ``sysprep``: ``protein`` + ``pairs`` + ``prep_only=True``
+    - ``rbfe``: ``prepared_systems``
 
     Attributes:
         mode: Workflow mode forwarded to the platform tool.
@@ -105,14 +104,13 @@ class RBFE(Execution, AsyncExecutableMixin, NotebookWatchMixin):
 
     tool_key: str = TOOL_KEYS_AND_VERSIONS["rbfe"]["tool_key"]
 
-    @beartype
     def __init__(
         self,
         *,
-        mode: Literal["full", "sysprep", "rbfe"],
         protein: Protein | None = None,
         pairs: list[tuple[Ligand, Ligand]] | None = None,
         prepared_systems: list[PreparedSystem] | None = None,
+        prep_only: bool = False,
         params: RBFEParams | None = None,
         add_h_atoms: bool = False,
         protonate_protein: bool = False,
@@ -124,11 +122,17 @@ class RBFE(Execution, AsyncExecutableMixin, NotebookWatchMixin):
     ) -> None:
         """Create an RBFE batch workflow execution.
 
+        Platform ``mode`` is inferred in :meth:`_post_init`:
+
+        - ``prepared_systems`` → ``rbfe`` (FEP on existing systems)
+        - ``protein`` + ``pairs`` + ``prep_only=False`` → ``full`` (prep + FEP)
+        - ``protein`` + ``pairs`` + ``prep_only=True`` → ``sysprep`` (prep only)
+
         Args:
-            mode: ``full``, ``sysprep``, or ``rbfe``.
             protein: Shared protein for prep modes.
             pairs: Ligand pairs for ``full`` / ``sysprep``.
-            prepared_systems: Prepared systems for ``rbfe`` (and optional reuse).
+            prepared_systems: Prepared systems for ``rbfe``.
+            prep_only: When True with ``protein`` and ``pairs``, run system prep only.
             params: FEP simulation parameters for ``full`` / ``rbfe``.
             add_h_atoms: Add hydrogens to ligands during prep.
             protonate_protein: Protonate protein during prep.
@@ -139,62 +143,42 @@ class RBFE(Execution, AsyncExecutableMixin, NotebookWatchMixin):
             name: Optional execution label.
 
         Raises:
-            ValueError: When required arguments for *mode* are missing.
+            ValueError: When inputs are missing or mutually exclusive.
         """
         super().__init__(client=client)
-        self.mode = mode
         self.tool_version = tool_version
         self.protein = protein
         self.pairs = pairs or []
         self.prepared_systems = prepared_systems or []
+        self.prep_only = prep_only
         self._params = params if params is not None else RBFEParams()
         self.add_h_atoms = add_h_atoms
         self.protonate_protein = protonate_protein
         self.retain_waters = retain_waters
         self.padding = padding
         self.name = name
+        self._post_init()
+
+    def _post_init(self) -> None:
+        """Infer platform ``mode`` from constructor inputs and validate."""
+        has_prep = bool(self.prepared_systems)
+        has_pairs = bool(self.pairs)
+        has_protein = self.protein is not None
+
+        if has_prep and (has_pairs or has_protein):
+            raise ValueError(
+                "Provide either prepared_systems or protein+pairs, not both."
+            )
+        if has_prep:
+            self.mode: Literal["full", "sysprep", "rbfe"] = "rbfe"
+        elif has_protein and has_pairs:
+            self.mode = "sysprep" if self.prep_only else "full"
+        else:
+            raise ValueError(
+                "Provide prepared_systems for FEP-only RBFE, or protein and pairs "
+                "for prep (set prep_only=True) or prep+FEP."
+            )
         self._validate_mode_inputs()
-
-    @classmethod
-    def from_pairs(
-        cls,
-        *,
-        protein: Protein,
-        pairs: list[tuple[Ligand, Ligand]],
-        mode: Literal["full", "sysprep"] = "full",
-        params: RBFEParams | None = None,
-        client: DeepOriginClient | None = None,
-        name: str | None = None,
-        **prep_kwargs: Any,
-    ) -> Self:
-        """Convenience constructor for prep-bearing modes."""
-        return cls(
-            mode=mode,
-            protein=protein,
-            pairs=pairs,
-            params=params,
-            client=client,
-            name=name,
-            **prep_kwargs,
-        )
-
-    @classmethod
-    def from_prepared_systems(
-        cls,
-        *,
-        prepared_systems: list[PreparedSystem],
-        params: RBFEParams | None = None,
-        client: DeepOriginClient | None = None,
-        name: str | None = None,
-    ) -> Self:
-        """Convenience constructor for ``mode=rbfe``."""
-        return cls(
-            mode="rbfe",
-            prepared_systems=prepared_systems,
-            params=params,
-            client=client,
-            name=name,
-        )
 
     @property
     def params(self) -> RBFEParams:

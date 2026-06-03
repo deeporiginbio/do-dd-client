@@ -19,9 +19,9 @@ def test_rbfe_sysprep_build_params() -> None:
     ligand1 = Ligand.from_smiles("CCO", id="lig-1", remote_path="testing/lig1.sdf")
     ligand2 = Ligand.from_smiles("CCN", id="lig-2", remote_path="testing/lig2.sdf")
     rbfe = RBFE(
-        mode="sysprep",
         protein=protein,
         pairs=[(ligand1, ligand2)],
+        prep_only=True,
         retain_waters=False,
         padding=1.5,
     )
@@ -38,7 +38,7 @@ def test_rbfe_sysprep_build_params() -> None:
 def test_rbfe_rbfe_mode_requires_prepared_systems() -> None:
     """Rbfe-only mode rejects empty prepared_systems."""
     with pytest.raises(ValueError, match="prepared_systems"):
-        RBFE(mode="rbfe", prepared_systems=[])
+        RBFE(prepared_systems=[])
 
 
 def test_rbfe_rbfe_mode_build_params() -> None:
@@ -52,7 +52,6 @@ def test_rbfe_rbfe_mode_build_params() -> None:
         ligand2_id="lig-2",
     )
     rbfe = RBFE(
-        mode="rbfe",
         prepared_systems=[ps],
         params=RBFEParams(test_run=1),
     )
@@ -64,12 +63,12 @@ def test_rbfe_rbfe_mode_build_params() -> None:
     assert params["solvation"]["test_run"] == 1
 
 
-def test_rbfe_from_pairs_classmethod() -> None:
-    """from_pairs sets full mode by default."""
+def test_rbfe_infers_full_mode_from_protein_and_pairs() -> None:
+    """protein + pairs without prep_only selects full mode."""
     protein = Protein(name="p", id="prot-1", remote_path="testing/brd.pdb")
     ligand1 = Ligand.from_smiles("CCO", id="lig-1", remote_path="testing/lig1.sdf")
     ligand2 = Ligand.from_smiles("CCN", id="lig-2", remote_path="testing/lig2.sdf")
-    rbfe = RBFE.from_pairs(protein=protein, pairs=[(ligand1, ligand2)])
+    rbfe = RBFE(protein=protein, pairs=[(ligand1, ligand2)])
     assert rbfe.mode == "full"
     assert "binding" in rbfe._build_params()
 
@@ -82,9 +81,9 @@ def test_rbfe_start_calls_executions_create(monkeypatch: pytest.MonkeyPatch) -> 
     client = MagicMock(spec=DeepOriginClient)
     client.executions = MagicMock()
     rbfe = RBFE(
-        mode="sysprep",
         protein=protein,
         pairs=[(ligand1, ligand2)],
+        prep_only=True,
         client=client,
     )
     rbfe.client.executions.create.return_value = {
