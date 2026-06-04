@@ -83,6 +83,9 @@ TOOL_EXECUTION_POST_TIMEOUT_SECONDS = 600.0
 as molprops and protonation, where synchronous executions can take longer than
 the client's default short timeout."""
 
+TOOL_KEY_PREFIX = "deeporigin."
+"""Platform tool-key prefix omitted in compact display (e.g. user log tables)."""
+
 MOLPROPS_PROPERTY_KEYS: frozenset[str] = frozenset(
     ("ames", "cyp", "herg", "logd", "logp", "logs", "pains"),
 )

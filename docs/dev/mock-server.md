@@ -52,7 +52,33 @@ To run the mock server standalone for local development:
 python tests/run_mock_server.py [PORT]
 ```
 
-Where `PORT` is the port number to run the server on (default: 8000).
+Where `PORT` is the port number to run the server on (default: 4931 via `make mock-server`).
+
+Optional flags:
+
+```bash
+uv run python -m tests.run_mock_server --port 4931 --abfe-duration 30 --rbfe-duration 5
+```
+
+## RBFE notebook (local)
+
+The [RBFE single-pair notebook](../notebooks/dirty/rbfe-1-single-pair.ipynb) runs against the mock when `DO_ENV=local` and the server is up:
+
+```bash
+make mock-server   # port 4931
+```
+
+Set `DO_ENV=local` in `.env`, then open the notebook. Fixtures are under:
+
+| Path | Purpose |
+|------|---------|
+| `tests/fixtures/executions/a5484958-059f-4b1b-ba2c-664adf23e8e8.json` | Preloaded succeeded RBFE execution (`RBFE.from_id`) |
+| `tests/fixtures/result-explorer-rbfe-a5484958.json` | Result-explorer rows for that job |
+| `tests/fixtures/deeporigin.rbfe/quotation-result.json` | Quote response for `deeporigin.rbfe` |
+| `tests/fixtures/tool-runs/deeporigin.rbfe/result-template.json` | Injected ΔΔG row after confirm/watch |
+| `tests/fixtures/tool-runs/deeporigin.system-prep/run-rbfe.json` | RBFE-mode system-prep (`ligand1` + `ligand2`) |
+
+Integration coverage: `tests/test_rbfe_local.py` (`uv run pytest tests/test_rbfe_local.py --env local`).
 
 ## How Tool Executions Work
 

@@ -2,9 +2,11 @@ from datetime import datetime, timezone
 from typing import Any, cast
 from unittest.mock import MagicMock, patch
 
+import pandas as pd
 import pytest
 
 from deeporigin.drug_discovery.execution import Execution
+from deeporigin.drug_discovery.execution_helpers import USER_LOG_COLUMNS
 from deeporigin.exceptions import DeepOriginException
 from deeporigin.platform.client import DeepOriginClient
 from deeporigin.platform.executions import Executions
@@ -180,6 +182,41 @@ def test_execution_get_user_logs_no_id_noop() -> None:
     assert ex.get_user_logs() is None
 
 
+def test_execution_get_user_logs_returns_dataframe() -> None:
+    """``get_user_logs`` maps ``UserLogs.search`` rows into a DataFrame."""
+
+    ex: Any = _TestToolExecution()
+    ex._id = "exec-123"
+    mock_user_logs = MagicMock()
+    mock_user_logs.search.return_value = {
+        "data": [
+            {
+                "log_level": "info",
+                "tool_key": "deeporigin.rbfe",
+                "date": "2026-06-04T16:18:53.034Z",
+                "message": "CPU cpuset check passed.",
+            }
+        ]
+    }
+    ex.client = MagicMock(user_logs=mock_user_logs)
+
+    logs = ex.get_user_logs()
+
+    mock_user_logs.search.assert_called_once_with(
+        execution_id="exec-123",
+        limit=None,
+        offset=None,
+        select=None,
+        with_total_count=False,
+    )
+    assert logs is not None
+    assert isinstance(logs, pd.DataFrame)
+    assert list(logs.columns) == USER_LOG_COLUMNS
+    assert logs.iloc[0]["log_level"] == "info"
+    assert logs.iloc[0]["tool_key"] == "rbfe"
+    assert logs.iloc[0]["message"] == "CPU cpuset check passed."
+
+
 def test_execution_get_user_logs_lv1(client: DeepOriginClient) -> None:
     """Load a succeeded execution and fetch user_logs scoped to its execution id."""
 
@@ -215,7 +252,8 @@ def test_execution_get_user_logs_lv1(client: DeepOriginClient) -> None:
         pytest.skip("user_logs search failed on this environment (schema or access)")
 
     assert logs is not None
-    assert isinstance(logs.get("data"), list)
+    assert isinstance(logs, pd.DataFrame)
+    assert list(logs.columns) == USER_LOG_COLUMNS
 
 
 def test_list_executions_lv1(client: DeepOriginClient):

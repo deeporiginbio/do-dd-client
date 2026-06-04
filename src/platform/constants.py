@@ -76,10 +76,10 @@ TOOL_KEYS_AND_VERSIONS: dict[str, dict[str, str]] = {
     },
     "rbfe": {
         "tool_key": "deeporigin.rbfe",
-        "tool_version": "0.3.2",
+        "tool_version": "latest",
     },
     "sysprep": {
         "tool_key": "deeporigin.system-prep",
-        "tool_version": "0.16.3",
+        "tool_version": "latest",
     },
 }

@@ -40,7 +40,8 @@ mock-server:
 	@echo "Starting mock server..."
 	uv run python -m tests.run_mock_server \
 	    $(if $(PORT),--port $(PORT),) \
-	    $(if $(ABFE_DURATION),--abfe-duration $(ABFE_DURATION),)
+	    $(if $(ABFE_DURATION),--abfe-duration $(ABFE_DURATION),) \
+	    $(if $(RBFE_DURATION),--rbfe-duration $(RBFE_DURATION),)
 
 
 # Build image from current directory and start an interactive shell

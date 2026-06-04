@@ -291,6 +291,8 @@ def create_tools_router(
                 "deeporigin.constrained-docking",
             ):
                 _inject_docking_tool_execution_results(execution)
+            elif tool_key == "deeporigin.rbfe":
+                _inject_rbfe_tool_execution_results(execution)
             progress_reports = _load_progress_reports(tool_key)
             if progress_reports:
                 final_report = progress_reports[-1]
@@ -786,30 +788,71 @@ def create_tools_router(
         if any(r.get("compute_job_id") == eid for r in results):
             return
 
-        fixture = copy.deepcopy(load_fixture("tool-runs/deeporigin.system-prep/run"))
+        user_inputs = execution.get("userInputs", {})
+        if not isinstance(user_inputs, dict):
+            user_inputs = {}
+        fixture_name = "tool-runs/deeporigin.system-prep/run"
+        if user_inputs.get("ligand2") is not None:
+            fixture_name = "tool-runs/deeporigin.system-prep/run-rbfe"
+        fixture = copy.deepcopy(load_fixture(fixture_name))
         outputs = _legacy_outputs_to_job_outputs(fixture)
         if not isinstance(outputs, dict):
             return
 
-        user_inputs = execution.get("userInputs", {})
-        protein = (
-            user_inputs.get("protein", {}) if isinstance(user_inputs, dict) else {}
-        )
+        protein = user_inputs.get("protein", {})
         protein_id = protein.get("id") if isinstance(protein, dict) else None
-        ligand = user_inputs.get("ligand1") or {}
-        ligand_id = ligand.get("id") if isinstance(ligand, dict) else None
+        ligand1 = user_inputs.get("ligand1") or {}
+        ligand1_id = ligand1.get("id") if isinstance(ligand1, dict) else None
+        ligand2 = user_inputs.get("ligand2") or {}
+        ligand2_id = ligand2.get("id") if isinstance(ligand2, dict) else None
         system = outputs.get("system")
         if isinstance(system, dict):
             if protein_id is not None:
                 system["protein_id"] = protein_id
-            if ligand_id is not None:
-                system["ligand1_id"] = ligand_id
+            if ligand1_id is not None:
+                system["ligand1_id"] = ligand1_id
+            if ligand2_id is not None:
+                system["ligand2_id"] = ligand2_id
+        execution["jobOutputs"] = outputs
         _inject_result_explorer_records_from_outputs(
             tool_key=tkey,
             tool_version=tool_version,
             execution_id=eid,
             job_outputs=outputs,
         )
+
+    def _inject_rbfe_tool_execution_results(execution: dict[str, Any]) -> None:
+        """Append RBFE result-explorer rows captured from a successful dev run."""
+        eid = execution.get("executionId")
+        tool = execution.get("tool") or {}
+        tkey = tool.get("key")
+        tool_version = tool.get("version", "0.0.0")
+        if not eid or tkey != "deeporigin.rbfe":
+            return
+        if any(r.get("compute_job_id") == eid for r in results):
+            return
+
+        template = copy.deepcopy(
+            load_fixture("tool-runs/deeporigin.rbfe/result-template")
+        )
+        template["compute_job_id"] = eid
+        template["tool_key"] = tkey
+        template["tool_version"] = tool_version
+        template["id"] = "08" + str(uuid.uuid4()).replace("-", "").upper()[:11]
+
+        user_inputs = execution.get("userInputs", {})
+        if not isinstance(user_inputs, dict):
+            user_inputs = {}
+        data = template.get("data")
+        if isinstance(data, dict):
+            ps_list = user_inputs.get("prepared_systems") or []
+            if isinstance(ps_list, list) and ps_list and isinstance(ps_list[0], dict):
+                ps0 = ps_list[0]
+                for key in ("ligand1_id", "ligand2_id", "protein_id"):
+                    if ps0.get(key) is not None:
+                        data[key] = ps0[key]
+        results.append(template)
+        executions[eid] = execution
 
     # -- route handlers --------------------------------------------------------
 

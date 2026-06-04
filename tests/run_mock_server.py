@@ -43,6 +43,12 @@ def main() -> None:
         default=30.0,
         help="Duration for ABFE executions in seconds (default: 30)",
     )
+    parser.add_argument(
+        "--rbfe-duration",
+        type=float,
+        default=5.0,
+        help="Duration for RBFE executions in seconds (default: 5)",
+    )
 
     args = parser.parse_args()
 
@@ -53,12 +59,14 @@ def main() -> None:
     server._mock_execution_durations["deeporigin.abfe-e2e-workflow"] = (
         args.abfe_duration
     )
+    server._mock_execution_durations["deeporigin.rbfe"] = args.rbfe_duration
 
     # Run with uvicorn directly - this blocks, which is fine for a dev script
     import uvicorn
 
     print(f"Starting mock server on http://127.0.0.1:{args.port}")
     print(f"ABFE execution duration: {args.abfe_duration} seconds")
+    print(f"RBFE execution duration: {args.rbfe_duration} seconds")
     print("Press Ctrl+C to stop...")
     print()
     uvicorn.run(server.app, host="127.0.0.1", port=args.port, log_level="info")

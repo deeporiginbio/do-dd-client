@@ -28,6 +28,9 @@ import copy
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Any, Literal, Self
 
+import pandas as pd
+
+from deeporigin.drug_discovery.execution_helpers import user_logs_dataframe
 from deeporigin.platform.constants import ALLOWED_STATUS_TRANSITIONS
 from deeporigin.utils.constants import TOOL_EXECUTION_POST_TIMEOUT_SECONDS
 from deeporigin.utils.iso8601 import parse_iso_timestamp_utc
@@ -562,7 +565,7 @@ class Execution:
         offset: int | None = None,
         select: builtins.list[str] | None = None,
         with_total_count: bool = False,
-    ) -> dict[str, Any] | None:
+    ) -> pd.DataFrame | None:
         """Search data-platform ``user_logs`` rows for this execution.
 
         Uses :meth:`deeporigin.platform.user_logs.UserLogs.search` with this
@@ -580,8 +583,11 @@ class Execution:
             with_total_count: Request total count from the server (forwarded).
 
         Returns:
-            The search response dict (typically ``data`` / ``meta``), or
-            ``None`` if this instance has no execution id yet.
+            A DataFrame with columns ``log_level``, ``tool_key``, ``timestamp``,
+            and ``message``. ``tool_key`` omits the ``deeporigin.`` prefix;
+            ``timestamp`` is a compact humanized relative time. Returns ``None``
+            if this instance has no execution id yet or the client has no
+            ``user_logs`` API.
         """
         exec_id = getattr(self, "_id", None)
         if exec_id is None:
@@ -589,13 +595,14 @@ class Execution:
         ul = self.client.user_logs
         if ul is None:
             return None
-        return ul.search(
+        response = ul.search(
             execution_id=exec_id,
             limit=limit,
             offset=offset,
             select=select,
             with_total_count=with_total_count,
         )
+        return user_logs_dataframe(response)
 
     def __repr__(self) -> str:
         """Return a concise summary of the execution."""
