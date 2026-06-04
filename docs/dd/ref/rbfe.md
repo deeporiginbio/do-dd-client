@@ -15,6 +15,6 @@ Relative binding free energy (RBFE) in the drug discovery SDK is supported throu
 
 Start executions via `RBFE.start()` or the [Platform executions API](../../platform/ref/executions.md).
 
-Rehydrate a submitted run with `RBFE.from_id(execution_id)` or `RBFE.from_dto(dto)` to refresh status, watch progress in notebooks, or inspect stored inputs.
+Rehydrate a submitted run with `RBFE.from_id(execution_id)`, `RBFE.from_last_run()`, or `RBFE.from_dto(dto)` to refresh status, watch progress in notebooks, or inspect stored inputs.
 
 After an RBFE leg completes, `RBFE.get_results()` returns a summary DataFrame with `execution_id` (per-pair `compute_job_id`), `ligand1_id`, `ligand2_id`, and `ddG` (free-energy difference from `total` with `unit`, e.g. `-3875.483 kcal/mol`).

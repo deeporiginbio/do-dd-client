@@ -3,8 +3,9 @@
 Provides ``Execution`` -- a base class with read-only ``@property`` descriptors
 for system-managed fields, platform ``id``, ``wait()``, and ``confirm()`` for tools
 executions, lifecycle state management, :attr:`Execution.runtime` from DTO
-timestamps, plus ``from_id()`` / :meth:`Execution.list` delegate to
-:meth:`Execution.from_dto`. :meth:`Execution.sync` refreshes an instance from
+timestamps, plus ``from_id()``, :meth:`Execution.from_last_run`, and
+:meth:`Execution.list` delegate to :meth:`Execution.from_dto`.
+:meth:`Execution.sync` refreshes an instance from
 ``executions.get`` (any execution class, including sync-only or objects built
 from a stale DTO). :meth:`Execution.update_from_dto` applies the same fields to
 an existing instance (for example after ``executions.create``). The base
@@ -32,7 +33,10 @@ import pandas as pd
 
 from deeporigin.drug_discovery.execution_helpers import user_logs_dataframe
 from deeporigin.platform.constants import ALLOWED_STATUS_TRANSITIONS
-from deeporigin.utils.constants import TOOL_EXECUTION_POST_TIMEOUT_SECONDS
+from deeporigin.utils.constants import (
+    EXECUTION_LIST_ORDER_CREATED_DESC,
+    TOOL_EXECUTION_POST_TIMEOUT_SECONDS,
+)
 from deeporigin.utils.iso8601 import parse_iso_timestamp_utc
 
 if TYPE_CHECKING:
@@ -465,6 +469,50 @@ class Execution:
 
         dto = client.executions.get(id)  # ty:ignore[unresolved-attribute]
         return cls.from_dto(dto, client=client)
+
+    @classmethod
+    def from_last_run(cls, *, client: DeepOriginClient | None = None) -> Self:
+        """Construct an instance from the most recently created execution of this tool.
+
+        Calls ``client.executions.list`` with ``tool_key``, ``order`` set to
+        :data:`~deeporigin.utils.constants.EXECUTION_LIST_ORDER_CREATED_DESC`,
+        and ``page_size=1``, then delegates to :meth:`from_dto`. Concrete
+        subclasses inherit this method; domain state is restored via their
+        ``from_dto`` overrides.
+
+        Args:
+            client: Optional API client. Uses the default if not provided.
+
+        Returns:
+            A partially-hydrated instance for the newest execution by
+            ``createdAt``.
+
+        Raises:
+            NotImplementedError: If ``cls`` has no ``tool_key`` (bare
+                :class:`Execution`).
+            ValueError: If no executions exist for this tool type.
+        """
+        if not cls.tool_key:
+            raise NotImplementedError(
+                f"{cls.__qualname__}.from_last_run requires a non-empty class tool_key."
+            )
+        if client is None:
+            from deeporigin.platform.client import DeepOriginClient
+
+            client = DeepOriginClient()
+
+        response = client.executions.list(  # ty:ignore[unresolved-attribute]
+            tool_key=cls.tool_key,
+            order=EXECUTION_LIST_ORDER_CREATED_DESC,
+            page=0,
+            page_size=1,
+        )
+        dtos = response.get("data") or []
+        if not dtos:
+            raise ValueError(
+                f"No executions found for {cls.__qualname__} (tool_key={cls.tool_key!r})."
+            )
+        return cls.from_dto(dtos[0], client=client)
 
     @classmethod
     def list(

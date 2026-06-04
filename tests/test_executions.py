@@ -175,6 +175,45 @@ def test_execution_list_requires_tool_key() -> None:
         Execution.list()
 
 
+def test_execution_from_last_run_requires_tool_key() -> None:
+    """``Execution.from_last_run`` rejects the bare base class."""
+
+    with pytest.raises(NotImplementedError, match="tool_key"):
+        Execution.from_last_run()
+
+
+def test_execution_from_last_run_raises_when_empty() -> None:
+    """``from_last_run`` raises when the platform returns no executions."""
+    client = MagicMock()
+    client.executions.list.return_value = {"data": []}
+
+    with pytest.raises(ValueError, match="No executions found"):
+        _TestToolExecution.from_last_run(client=client)
+
+
+def test_execution_from_last_run_hydrates_latest() -> None:
+    """``from_last_run`` lists by createdAt desc and hydrates the first DTO."""
+    client = MagicMock()
+    dto: dict[str, Any] = {
+        "executionId": "exec-latest",
+        "tool": {"key": "deeporigin.test-sync-tool", "version": "1.0.0"},
+        "status": "Succeeded",
+        "createdAt": "2026-06-04T12:00:00.000Z",
+    }
+    client.executions.list.return_value = {"data": [dto]}
+
+    instance = _TestToolExecution.from_last_run(client=client)
+
+    client.executions.list.assert_called_once_with(
+        tool_key="deeporigin.test-sync-tool",
+        order="createdAt desc",
+        page=0,
+        page_size=1,
+    )
+    assert instance.id == "exec-latest"
+    assert instance.status == "Succeeded"
+
+
 def test_execution_get_user_logs_no_id_noop() -> None:
     """``get_user_logs`` returns ``None`` when the execution has no platform id yet."""
 

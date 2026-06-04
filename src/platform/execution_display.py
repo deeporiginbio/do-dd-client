@@ -93,6 +93,80 @@ def _parse_complete_from_progress_report(progress_report: object) -> float:
     return max(0.0, min(100.0, v))
 
 
+def _progress_report_data(progress_report: object) -> dict | None:
+    """Parse ``progressReport`` into a dict, or ``None`` if missing or invalid."""
+    if progress_report is None:
+        return None
+    if isinstance(progress_report, dict):
+        return progress_report
+    if isinstance(progress_report, str):
+        try:
+            parsed = json.loads(progress_report)
+        except (json.JSONDecodeError, TypeError):
+            return None
+        return parsed if isinstance(parsed, dict) else None
+    return None
+
+
+def _clamp_complete(raw: object) -> float:
+    """Coerce a raw ``complete`` value to ``[0, 100]``."""
+    try:
+        v = float(raw)  # type: ignore[arg-type]
+    except (TypeError, ValueError):
+        return 0.0
+    return max(0.0, min(100.0, v))
+
+
+def _workflow_subjob_completes_from_progress_report(
+    progress_report: object,
+) -> tuple[float, ...]:
+    """Return sorted ``complete`` values for each top-level ``workflow`` key.
+
+    Args:
+        progress_report: Raw DTO field (``None``, ``str`` JSON, or ``dict``).
+
+    Returns:
+        Tuple of completion percentages in ``[0, 100]``, one per workflow key
+        (sorted by key). Empty when there are no workflow keys.
+    """
+    data = _progress_report_data(progress_report)
+    if not data:
+        return ()
+    completes: list[float] = []
+    workflow_keys = sorted(
+        k for k in data if isinstance(k, str) and "workflow" in k.lower()
+    )
+    for key in workflow_keys:
+        sub = data[key]
+        if isinstance(sub, dict):
+            completes.append(_clamp_complete(sub.get("complete", 0)))
+        else:
+            completes.append(0.0)
+    return tuple(completes)
+
+
+def _render_single_progress_bar_html(*, complete: float) -> str:
+    """Render one Bootstrap progress bar for a 0–100 completion value."""
+    pct = float(complete)
+    if pct > 0:
+        width = min(100.0, pct)
+        width_s = html.escape(f"{width:.1f}".rstrip("0").rstrip("."), quote=True)
+        return (
+            f'<div class="progress" style="height: 22px;" role="progress" '
+            f'aria-label="Execution progress">'
+            f'<div class="progress-bar" role="progressbar" '
+            f'style="width: {width_s}%;" '
+            f'aria-valuenow="{width_s}" aria-valuemin="0" aria-valuemax="100">'
+            f"{width_s}%</div></div>"
+        )
+    return (
+        '<div class="progress" style="height: 22px;" role="progress" '
+        'aria-label="Execution progress (indeterminate)">'
+        '<div class="progress-bar progress-bar-striped progress-bar-animated w-100" '
+        'role="progressbar"></div></div>'
+    )
+
+
 def _count_workflow_children_from_progress_report(progress_report: object) -> int:
     """Count top-level keys in ``progressReport`` whose names contain ``workflow``.
 
@@ -138,6 +212,8 @@ class ExecutionDisplay:
         tool_version: Tool version string from the execution DTO, if known.
         workflow_child_count: Number of ``progressReport`` top-level keys whose names
             contain ``workflow`` (child executions in a workflow batch); ``0`` if none.
+        workflow_subjob_completes: Per-workflow ``complete`` values when batch keys exist;
+            used to render one progress bar per child. Empty when not a workflow batch.
     """
 
     complete: float | int
@@ -147,6 +223,7 @@ class ExecutionDisplay:
     tool_key: str | None = None
     tool_version: str | None = None
     workflow_child_count: int = 0
+    workflow_subjob_completes: tuple[float, ...] = ()
 
     @classmethod
     def from_pending(
@@ -207,6 +284,9 @@ class ExecutionDisplay:
         workflow_child_count = _count_workflow_children_from_progress_report(
             raw_progress
         )
+        workflow_subjob_completes = _workflow_subjob_completes_from_progress_report(
+            raw_progress
+        )
         tool_key: str | None = None
         tool_version: str | None = None
         raw_tool = dto.get("tool")
@@ -225,6 +305,7 @@ class ExecutionDisplay:
             tool_key=tool_key,
             tool_version=tool_version,
             workflow_child_count=workflow_child_count,
+            workflow_subjob_completes=workflow_subjob_completes,
         )
 
     def _card_header_title(self) -> str:
@@ -285,26 +366,21 @@ class ExecutionDisplay:
                 f"<code>{esc_id}</code></div>"
             )
         if self.status == "Running":
-            pct = float(self.complete)
-            if pct > 0:
-                width = min(100.0, pct)
-                width_s = html.escape(
-                    f"{width:.1f}".rstrip("0").rstrip("."), quote=True
-                )
-                progress_block = (
-                    f'<div class="progress" style="height: 22px;" role="progress" '
-                    f'aria-label="Execution progress">'
-                    f'<div class="progress-bar" role="progressbar" '
-                    f'style="width: {width_s}%;" '
-                    f'aria-valuenow="{width_s}" aria-valuemin="0" aria-valuemax="100">'
-                    f"{width_s}%</div></div>"
-                )
+            if self.workflow_subjob_completes:
+                bar_htmls = [
+                    _render_single_progress_bar_html(complete=c)
+                    for c in self.workflow_subjob_completes
+                ]
+                progress_parts: list[str] = []
+                for i, bar in enumerate(bar_htmls):
+                    if i < len(bar_htmls) - 1:
+                        progress_parts.append(f'<div class="mb-2">{bar}</div>')
+                    else:
+                        progress_parts.append(bar)
+                progress_block = "".join(progress_parts)
             else:
-                progress_block = (
-                    '<div class="progress" style="height: 22px;" role="progress" '
-                    'aria-label="Execution progress (indeterminate)">'
-                    '<div class="progress-bar progress-bar-striped progress-bar-animated w-100" '
-                    'role="progressbar"></div></div>'
+                progress_block = _render_single_progress_bar_html(
+                    complete=float(self.complete)
                 )
         else:
             progress_block = ""

@@ -283,3 +283,22 @@ def test_rbfe_get_results_returns_dataframe(monkeypatch: pytest.MonkeyPatch) -> 
     assert isinstance(out, pd.DataFrame)
     assert out.iloc[0]["ddG"] == "-1.0 kcal/mol"
     rbfe.sync.assert_called_once()
+
+
+def test_rbfe_repr_shows_id_and_status_when_set() -> None:
+    """__repr__ includes platform execution id and status when available."""
+    protein = Protein(name="p", id="prot-1", remote_path="testing/brd.pdb")
+    ligand1 = Ligand.from_smiles("CCO", id="lig-1", remote_path="testing/lig1.sdf")
+    ligand2 = Ligand.from_smiles("CCN", id="lig-2", remote_path="testing/lig2.sdf")
+    rbfe = RBFE(protein=protein, pairs=[(ligand1, ligand2)], prep_only=True)
+    assert "id=" not in repr(rbfe)
+    assert "status=" not in repr(rbfe)
+
+    rbfe._id = "exec-abc"
+    text = repr(rbfe)
+    assert "  id='exec-abc'," in text
+    assert "status=" not in text
+
+    rbfe.status = "Running"
+    text = repr(rbfe)
+    assert "  status='Running'," in text

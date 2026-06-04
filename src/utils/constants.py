@@ -83,6 +83,9 @@ TOOL_EXECUTION_POST_TIMEOUT_SECONDS = 600.0
 as molprops and protonation, where synchronous executions can take longer than
 the client's default short timeout."""
 
+EXECUTION_LIST_ORDER_CREATED_DESC = "createdAt desc"
+"""Tools-service ``order`` query value for most-recently-created executions first."""
+
 TOOL_KEY_PREFIX = "deeporigin."
 """Platform tool-key prefix omitted in compact display (e.g. user log tables)."""
 

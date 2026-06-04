@@ -506,12 +506,18 @@ class RBFE(Execution, AsyncExecutableMixin, NotebookWatchMixin):
 
     def __repr__(self) -> str:
         """Return a concise multi-line representation."""
-        parts = [
-            "RBFE(",
-            f"  steps={self.steps!r},",
-            f"  tool_key={self.tool_key!r},",
-            f"  pairs={len(self.pairs)},",
-            f"  prepared_systems={len(self.prepared_systems)},",
-            ")",
-        ]
+        parts = ["RBFE("]
+        if self.id is not None:
+            parts.append(f"  id={self.id!r},")
+        if self.status is not None:
+            parts.append(f"  status={self.status!r},")
+        parts.extend(
+            [
+                f"  steps={self.steps!r},",
+                f"  tool_key={self.tool_key!r},",
+                f"  pairs={len(self.pairs)},",
+                f"  prepared_systems={len(self.prepared_systems)},",
+                ")",
+            ]
+        )
         return "\n".join(parts)
