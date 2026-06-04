@@ -22,6 +22,15 @@ _FILES_BASE = "/files"
 
 _MISSING_URL_FIELD = "Signed URL response missing 'url' field"
 
+# Signed-URL PUTs upload full file bodies; default httpx read timeout (5s) is too
+# short under concurrent upload_tree workers waiting on S3.
+_SIGNED_URL_UPLOAD_TIMEOUT = httpx.Timeout(
+    connect=10.0,
+    read=120.0,
+    write=300.0,
+    pool=10.0,
+)
+
 
 class FileStream:
     """Streaming wrapper around an HTTP download response.
@@ -325,7 +334,7 @@ class Files:
         last_exc: Exception | None = None
         for attempt in range(max_retries + 1):
             try:
-                with httpx.Client() as upload_client:
+                with httpx.Client(timeout=_SIGNED_URL_UPLOAD_TIMEOUT) as upload_client:
                     resp = upload_client.put(
                         signed_url,
                         content=file_content,
