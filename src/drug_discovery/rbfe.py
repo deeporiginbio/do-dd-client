@@ -413,11 +413,15 @@ class RBFE(Execution, AsyncExecutableMixin, NotebookWatchMixin):
 
     def _ensure_synced_inputs(self) -> None:
         """Sync protein and ligands before submission."""
+        client = self.client
         if self.protein is not None:
-            self.protein.sync(lazy=True, client=self.client)
+            self.protein.sync(lazy=True, client=client)
+            self.protein.ensure_remote_path(client=client, label="Protein")
         for ligand1, ligand2 in self.pairs:
-            ligand1.sync(lazy=True, client=self.client)
-            ligand2.sync(lazy=True, client=self.client)
+            ligand1.sync(lazy=True, client=client)
+            ligand1.ensure_remote_path(client=client, label="Ligand")
+            ligand2.sync(lazy=True, client=client)
+            ligand2.ensure_remote_path(client=client, label="Ligand")
 
     def _build_params(self) -> dict[str, Any]:
         """Construct workflow input parameters for ``deeporigin.rbfe``."""

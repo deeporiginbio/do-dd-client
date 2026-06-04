@@ -76,6 +76,49 @@ def test_rbfe_infers_combined_steps_from_protein_and_pairs() -> None:
     assert "binding" in rbfe._build_params()
 
 
+def test_rbfe_ensure_synced_inputs_ensures_remote_paths(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """start() ensures remote_path after lazy sync (metadata-only rehydration)."""
+    protein = Protein(name="p", id="prot-1", remote_path=None)
+    ligand1 = Ligand.from_smiles("CCO", id="lig-1", remote_path=None)
+    ligand2 = Ligand.from_smiles("CCN", id="lig-2", remote_path=None)
+    client = MagicMock(spec=DeepOriginClient)
+    executions = MagicMock()
+    client.executions = executions
+    rbfe = RBFE(
+        protein=protein,
+        pairs=[(ligand1, ligand2)],
+        prep_only=True,
+        client=client,
+    )
+    executions.create.return_value = {
+        "executionId": "exec-123",
+        "status": "Created",
+        "tool": {"key": "deeporigin.rbfe", "version": "0.1.0"},
+    }
+    protein.ensure_remote_path = MagicMock(
+        side_effect=lambda **_: setattr(protein, "remote_path", "testing/brd.pdb")
+    )
+    ligand1.ensure_remote_path = MagicMock(
+        side_effect=lambda **_: setattr(ligand1, "remote_path", "testing/lig1.sdf")
+    )
+    ligand2.ensure_remote_path = MagicMock(
+        side_effect=lambda **_: setattr(ligand2, "remote_path", "testing/lig2.sdf")
+    )
+    monkeypatch.setattr(protein, "sync", MagicMock())
+    monkeypatch.setattr(ligand1, "sync", MagicMock())
+    monkeypatch.setattr(ligand2, "sync", MagicMock())
+
+    rbfe.start()
+
+    protein.ensure_remote_path.assert_called_once()
+    ligand1.ensure_remote_path.assert_called_once()
+    ligand2.ensure_remote_path.assert_called_once()
+    call_kwargs = executions.create.call_args.kwargs
+    assert call_kwargs["data"]["inputs"]["protein"]["file_path"] == "testing/brd.pdb"
+
+
 def test_rbfe_start_calls_executions_create(monkeypatch: pytest.MonkeyPatch) -> None:
     """start() submits deeporigin.rbfe with built params."""
     protein = Protein(name="p", id="prot-1", remote_path="testing/brd.pdb")
