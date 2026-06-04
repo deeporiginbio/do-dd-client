@@ -64,7 +64,7 @@ rbfe.start()
 ```
 
 For prep only, pass `prep_only=True`. For FEP on existing prepared systems,
-pass `prepared_systems=[prepared, ...]` (mode is inferred as `rbfe`).
+pass `prepared_systems=[prepared, ...]` (`steps` is inferred as `["rbfe"]`).
 See [:material-page-previous: Platform executions](../../platform/ref/executions.md).
 
 ## Constructing a network

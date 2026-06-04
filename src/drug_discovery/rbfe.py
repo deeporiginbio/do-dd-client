@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
-from typing import Any, Literal
+from typing import Any, Literal, Self
 
 from beartype import beartype
+import pandas as pd
 
 from deeporigin.drug_discovery.abfe import ABFEParams
 from deeporigin.drug_discovery.execution import Execution
@@ -18,10 +19,11 @@ from deeporigin.platform.client import DeepOriginClient
 from deeporigin.platform.constants import TOOL_KEYS_AND_VERSIONS
 
 RBFEParams = ABFEParams
+RBFEWorkflowStep = Literal["system-prep", "rbfe"]
 
 
 @beartype
-def _ligand_tool_ref(*, ligand: Ligand) -> dict[str, str]:
+def _ligand_tool_ref(ligand: Ligand) -> dict[str, str]:
     """Serialize a ligand for the RBFE workflow ``pairs[]`` input."""
     if ligand.remote_path is None:
         msg = "Ligand must be synced before submitting RBFE (remote_path is missing)."
@@ -37,7 +39,7 @@ def _ligand_tool_ref(*, ligand: Ligand) -> dict[str, str]:
 
 
 @beartype
-def _prepared_system_tool_ref(*, prepared_system: PreparedSystem) -> dict[str, str]:
+def _prepared_system_tool_ref(prepared_system: PreparedSystem) -> dict[str, str]:
     """Serialize a :class:`PreparedSystem` for ``prepared_systems[]``."""
     out: dict[str, str] = {
         "binding_xml_file_path": prepared_system.binding_xml_path,
@@ -53,7 +55,7 @@ def _prepared_system_tool_ref(*, prepared_system: PreparedSystem) -> dict[str, s
 
 
 @beartype
-def _simulation_blocks(*, params: RBFEParams) -> dict[str, dict[str, Any]]:
+def _simulation_blocks(params: RBFEParams) -> dict[str, dict[str, Any]]:
     """Return shared ``binding`` and ``solvation`` blocks from *params*."""
     md_options = {
         "T": params.temperature,
@@ -88,17 +90,117 @@ def _simulation_blocks(*, params: RBFEParams) -> dict[str, dict[str, Any]]:
     }
 
 
+@beartype
+def _fep_params_from_inputs(inputs: dict[str, Any]) -> RBFEParams:
+    """Build :class:`RBFEParams` from stored ``binding`` / ``solvation`` blocks."""
+    binding = inputs.get("binding", {})
+    solvation = inputs.get("solvation", {})
+    md_options = binding.get("emeq_md_options", {})
+
+    _BINDING_KEY_MAP = {
+        "annihilate": "annihilate",
+        "n_windows": "binding_n_windows",
+        "npt_reduce_restraints_ns": "binding_npt_reduce_restraints_ns",
+        "nvt_heating_ns": "binding_nvt_heating_ns",
+        "steps": "binding_steps",
+        "repeats": "repeats",
+        "replex_period_ps": "replex_period_ps",
+        "test_run": "test_run",
+    }
+    _SOLVATION_KEY_MAP = {
+        "n_windows": "solvation_n_windows",
+        "npt_reduce_restraints_ns": "solvation_npt_reduce_restraints_ns",
+        "nvt_heating_ns": "solvation_nvt_heating_ns",
+        "steps": "solvation_steps",
+    }
+    _MD_OPTIONS_KEY_MAP = {
+        "dt": "dt",
+        "T": "temperature",
+        "cutoff": "cutoff",
+    }
+
+    kwargs: dict[str, Any] = {}
+    for dto_key, param_field in _BINDING_KEY_MAP.items():
+        if dto_key in binding:
+            kwargs[param_field] = binding[dto_key]
+    for dto_key, param_field in _SOLVATION_KEY_MAP.items():
+        if dto_key in solvation:
+            kwargs[param_field] = solvation[dto_key]
+    for dto_key, param_field in _MD_OPTIONS_KEY_MAP.items():
+        if dto_key in md_options:
+            kwargs[param_field] = md_options[dto_key]
+
+    return RBFEParams(**kwargs)
+
+
+@beartype
+def _ligand_from_pair_input(ref: dict[str, Any], *, client: DeepOriginClient) -> Ligand:
+    """Rehydrate a ligand from an RBFE ``pairs[]`` ligand reference."""
+    lig_id = ref.get("id")
+    file_path = ref.get("file_path")
+    if lig_id is not None:
+        assert client.entities is not None
+        data = client.entities.get_ligand(id=str(lig_id))
+        return Ligand._from_platform_record(
+            data=data,
+            client=client,
+            download=False,
+            mol_file_override=str(file_path) if file_path else None,
+        )
+    if not file_path:
+        msg = "Ligand pair input must include 'id' or 'file_path'."
+        raise ValueError(msg)
+    return Ligand.from_smiles("C", id=None, remote_path=str(file_path))
+
+
+@beartype
+def _format_ddg(*, total: Any, unit: str | None) -> str | None:
+    """Format RBFE ΔΔG from a result ``data`` payload."""
+    if total is None:
+        return None
+    unit_str = (unit or "").strip()
+    if unit_str:
+        return f"{total} {unit_str}"
+    return str(total)
+
+
+@beartype
+def _rbfe_results_dataframe(response: dict[str, Any]) -> pd.DataFrame | None:
+    """Build a summary table from a data-platform RBFE results response."""
+    records = response.get("data") or []
+    rows: list[dict[str, Any]] = []
+    for record in records:
+        if not isinstance(record, dict):
+            continue
+        payload = record.get("data")
+        if not isinstance(payload, dict):
+            continue
+        rows.append(
+            {
+                "execution_id": record.get("compute_job_id"),
+                "ligand1_id": payload.get("ligand1_id"),
+                "ligand2_id": payload.get("ligand2_id"),
+                "ddG": _format_ddg(
+                    total=payload.get("total"), unit=payload.get("unit")
+                ),
+            }
+        )
+    if not rows:
+        return None
+    return pd.DataFrame(rows)
+
+
 class RBFE(Execution, AsyncExecutableMixin, NotebookWatchMixin):
     """Batch RBFE workflow (``deeporigin.rbfe``).
 
-    Platform ``mode`` is inferred from constructor inputs (see :meth:`_post_init`):
+    Platform ``steps`` are inferred from constructor inputs (see :meth:`_post_init`):
 
-    - ``full``: ``protein`` + ``pairs`` (default)
-    - ``sysprep``: ``protein`` + ``pairs`` + ``prep_only=True``
-    - ``rbfe``: ``prepared_systems``
+    - ``["system-prep", "rbfe"]``: ``protein`` + ``pairs`` (default)
+    - ``["system-prep"]``: ``protein`` + ``pairs`` + ``prep_only=True``
+    - ``["rbfe"]``: ``prepared_systems``
 
     Attributes:
-        mode: Workflow mode forwarded to the platform tool.
+        steps: Ordered workflow steps forwarded to the platform tool.
         name: Optional execution label.
     """
 
@@ -122,18 +224,18 @@ class RBFE(Execution, AsyncExecutableMixin, NotebookWatchMixin):
     ) -> None:
         """Create an RBFE batch workflow execution.
 
-        Platform ``mode`` is inferred in :meth:`_post_init`:
+        Platform ``steps`` are inferred in :meth:`_post_init`:
 
-        - ``prepared_systems`` → ``rbfe`` (FEP on existing systems)
-        - ``protein`` + ``pairs`` + ``prep_only=False`` → ``full`` (prep + FEP)
-        - ``protein`` + ``pairs`` + ``prep_only=True`` → ``sysprep`` (prep only)
+        - ``prepared_systems`` -> ``["rbfe"]`` (FEP on existing systems)
+        - ``protein`` + ``pairs`` + ``prep_only=False`` -> ``["system-prep", "rbfe"]``
+        - ``protein`` + ``pairs`` + ``prep_only=True`` -> ``["system-prep"]``
 
         Args:
             protein: Shared protein for prep modes.
-            pairs: Ligand pairs for ``full`` / ``sysprep``.
-            prepared_systems: Prepared systems for ``rbfe``.
+            pairs: Ligand pairs for system-prep steps.
+            prepared_systems: Prepared systems for RBFE-only steps.
             prep_only: When True with ``protein`` and ``pairs``, run system prep only.
-            params: FEP simulation parameters for ``full`` / ``rbfe``.
+            params: FEP simulation parameters for plans that include ``rbfe``.
             add_h_atoms: Add hydrogens to ligands during prep.
             protonate_protein: Protonate protein during prep.
             retain_waters: Retain crystal waters during prep.
@@ -160,7 +262,7 @@ class RBFE(Execution, AsyncExecutableMixin, NotebookWatchMixin):
         self._post_init()
 
     def _post_init(self) -> None:
-        """Infer platform ``mode`` from constructor inputs and validate."""
+        """Infer platform ``steps`` from constructor inputs and validate."""
         has_prep = bool(self.prepared_systems)
         has_pairs = bool(self.pairs)
         has_protein = self.protein is not None
@@ -170,15 +272,15 @@ class RBFE(Execution, AsyncExecutableMixin, NotebookWatchMixin):
                 "Provide either prepared_systems or protein+pairs, not both."
             )
         if has_prep:
-            self.mode: Literal["full", "sysprep", "rbfe"] = "rbfe"
+            self.steps: list[RBFEWorkflowStep] = ["rbfe"]
         elif has_protein and has_pairs:
-            self.mode = "sysprep" if self.prep_only else "full"
+            self.steps = ["system-prep"] if self.prep_only else ["system-prep", "rbfe"]
         else:
             raise ValueError(
                 "Provide prepared_systems for FEP-only RBFE, or protein and pairs "
                 "for prep (set prep_only=True) or prep+FEP."
             )
-        self._validate_mode_inputs()
+        self._validate_step_inputs()
 
     @property
     def params(self) -> RBFEParams:
@@ -190,16 +292,124 @@ class RBFE(Execution, AsyncExecutableMixin, NotebookWatchMixin):
         """Prevent modification of params after construction."""
         raise AttributeError("params can only be set in the constructor")
 
-    def _validate_mode_inputs(self) -> None:
-        """Validate constructor arguments for the selected *mode*."""
-        if self.mode in {"full", "sysprep"}:
+    @classmethod
+    def from_dto(
+        cls,
+        dto: dict[str, Any],
+        *,
+        client: DeepOriginClient | None = None,
+    ) -> Self:
+        """Construct an RBFE instance from an execution DTO.
+
+        Rehydrates ``steps``, prep inputs, ``prepared_systems``, and ``_params`` from
+        stored ``userInputs`` (falling back to ``inputs`` for older payloads).
+
+        Args:
+            dto: Execution payload (same shape as ``client.executions.get``).
+            client: Optional API client. Uses the default if not provided.
+
+        Returns:
+            A fully-hydrated RBFE instance with status from the DTO.
+        """
+        instance = super().from_dto(dto, client=client)
+        inputs: dict[str, Any] = (
+            instance._dto.get("userInputs")  # ty:ignore[unresolved-attribute]
+            or instance._dto.get("inputs")  # ty:ignore[unresolved-attribute]
+            or {}
+        )
+
+        raw_steps = inputs.get("steps")
+        if not raw_steps:
+            msg = "Missing 'steps' in execution userInputs."
+            raise ValueError(msg)
+        instance.steps = list(raw_steps)
+
+        instance.protein = None
+        instance.pairs = []
+        instance.prepared_systems = []
+        instance.prep_only = instance.steps == ["system-prep"]
+        instance.add_h_atoms = bool(inputs.get("add_H_atoms", False))
+        instance.protonate_protein = bool(inputs.get("protonate_protein", False))
+        instance.retain_waters = bool(inputs.get("retain_waters", True))
+        instance.padding = float(inputs.get("padding", 1.0))
+        instance._params = (
+            _fep_params_from_inputs(inputs)
+            if "rbfe" in instance.steps
+            else RBFEParams()
+        )
+
+        if "system-prep" in instance.steps:
+            protein_input = inputs.get("protein", {})
+            protein_id = protein_input.get("id")
+            if protein_id is not None:
+                instance.protein = Protein.from_id(
+                    str(protein_id),
+                    client=instance.client,
+                    download=False,
+                    remote_path_override=protein_input.get("file_path"),
+                )
+            elif protein_input.get("file_path"):
+                instance.protein = Protein(
+                    name="rehydrated",
+                    id=None,
+                    remote_path=str(protein_input["file_path"]),
+                )
+
+            instance.pairs = [
+                (
+                    _ligand_from_pair_input(pair["ligand1"], client=instance.client),
+                    _ligand_from_pair_input(pair["ligand2"], client=instance.client),
+                )
+                for pair in inputs.get("pairs", [])
+                if "ligand1" in pair and "ligand2" in pair
+            ]
+
+        if instance.steps == ["rbfe"] or (
+            "rbfe" in instance.steps and inputs.get("prepared_systems")
+        ):
+            instance.prepared_systems = [
+                PreparedSystem(
+                    binding_xml_path=ps.get("binding_xml_file_path", ""),
+                    solvation_xml_path=ps.get("solvation_xml_ligand_file_path", ""),
+                    system_pdb_path="",
+                    protein_id=ps.get("protein_id"),
+                    ligand1_id=ps.get("ligand1_id"),
+                    ligand2_id=ps.get("ligand2_id"),
+                )
+                for ps in inputs.get("prepared_systems", [])
+            ]
+
+        return instance
+
+    @classmethod
+    def from_id(
+        cls,
+        id: str,
+        *,
+        client: DeepOriginClient | None = None,
+    ) -> Self:
+        """Construct an RBFE instance from an existing platform execution ID.
+
+        Fetches the execution record via the API and delegates to :meth:`from_dto`.
+
+        Args:
+            id: Platform execution ID.
+            client: Optional API client. Uses the default if not provided.
+
+        Returns:
+            A fully-hydrated RBFE instance with status synced from the platform.
+        """
+        return super().from_id(id, client=client)
+
+    def _validate_step_inputs(self) -> None:
+        """Validate constructor arguments for the selected workflow steps."""
+        if "system-prep" in self.steps:
             if self.protein is None:
-                raise ValueError(f"protein is required for mode={self.mode!r}.")
+                raise ValueError(f"protein is required for steps={self.steps!r}.")
             if not self.pairs:
-                raise ValueError(f"pairs is required for mode={self.mode!r}.")
-        if self.mode == "rbfe":
-            if not self.prepared_systems:
-                raise ValueError("prepared_systems is required for mode='rbfe'.")
+                raise ValueError(f"pairs is required for steps={self.steps!r}.")
+        if self.steps == ["rbfe"] and not self.prepared_systems:
+            raise ValueError("prepared_systems is required for steps=['rbfe'].")
 
     def _ensure_synced_inputs(self) -> None:
         """Sync protein and ligands before submission."""
@@ -211,8 +421,8 @@ class RBFE(Execution, AsyncExecutableMixin, NotebookWatchMixin):
 
     def _build_params(self) -> dict[str, Any]:
         """Construct workflow input parameters for ``deeporigin.rbfe``."""
-        out: dict[str, Any] = {"mode": self.mode}
-        if self.mode in {"full", "sysprep"}:
+        out: dict[str, Any] = {"steps": self.steps}
+        if "system-prep" in self.steps:
             assert self.protein is not None
             out["protein"] = {
                 "id": self.protein.id,
@@ -220,8 +430,8 @@ class RBFE(Execution, AsyncExecutableMixin, NotebookWatchMixin):
             }
             out["pairs"] = [
                 {
-                    "ligand1": _ligand_tool_ref(ligand=ligand1),
-                    "ligand2": _ligand_tool_ref(ligand=ligand2),
+                    "ligand1": _ligand_tool_ref(ligand1),
+                    "ligand2": _ligand_tool_ref(ligand2),
                 }
                 for ligand1, ligand2 in self.pairs
             ]
@@ -233,13 +443,12 @@ class RBFE(Execution, AsyncExecutableMixin, NotebookWatchMixin):
                     "padding": self.padding,
                 }
             )
-        if self.mode == "rbfe":
+        if self.steps == ["rbfe"]:
             out["prepared_systems"] = [
-                _prepared_system_tool_ref(prepared_system=ps)
-                for ps in self.prepared_systems
+                _prepared_system_tool_ref(ps) for ps in self.prepared_systems
             ]
-        if self.mode in {"full", "rbfe"}:
-            out.update(_simulation_blocks(params=self._params))
+        if "rbfe" in self.steps:
+            out.update(_simulation_blocks(self._params))
         return out
 
     def _make_payload(
@@ -274,11 +483,32 @@ class RBFE(Execution, AsyncExecutableMixin, NotebookWatchMixin):
             raise ValueError(msg)
         self.update_from_dto(execution_dto)
 
+    def get_results(self, **_kwargs: Any) -> pd.DataFrame | None:
+        """Retrieve RBFE ΔΔG results as a summary DataFrame.
+
+        Uses :meth:`~deeporigin.drug_discovery.execution.Execution.get_results`
+        (results for this tools execution id), then builds one row per result
+        record with ``execution_id`` (the platform ``compute_job_id``),
+        ligand ids, and ``ddG`` (``total`` plus ``unit`` from the stored payload).
+        Keyword arguments are accepted for signature compatibility with the base
+        class but are not forwarded.
+
+        Returns:
+            A DataFrame with columns ``execution_id``, ``ligand1_id``,
+            ``ligand2_id``, and ``ddG``, or ``None`` if no result rows exist yet.
+
+        Raises:
+            ValueError: If no execution has been started.
+        """
+        self.sync()
+        response = super().get_results()
+        return _rbfe_results_dataframe(response)
+
     def __repr__(self) -> str:
         """Return a concise multi-line representation."""
         parts = [
             "RBFE(",
-            f"  mode={self.mode!r},",
+            f"  steps={self.steps!r},",
             f"  tool_key={self.tool_key!r},",
             f"  pairs={len(self.pairs)},",
             f"  prepared_systems={len(self.prepared_systems)},",
