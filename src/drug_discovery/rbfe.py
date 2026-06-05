@@ -514,6 +514,67 @@ class RBFE(Execution, AsyncExecutableMixin, NotebookWatchMixin):
         response = super().get_results()
         return _rbfe_results_dataframe(response, tool_key=self.tool_key)
 
+    @beartype
+    def get_prepared_system(
+        self,
+        *,
+        ligand1_id: str | None = None,
+        ligand2_id: str | None = None,
+    ) -> PreparedSystem:
+        """Load a :class:`PreparedSystem` from system-prep results for this execution.
+
+        Fetches prepared-system rows scoped to this RBFE execution via
+        :meth:`~deeporigin.drug_discovery.structures.prepared_system.PreparedSystem.from_result`.
+        When multiple rows match, returns the first. Call :meth:`PreparedSystem.show`
+        on the returned object to visualize it in a notebook.
+
+        Args:
+            ligand1_id: Optional first ligand ID to filter by.
+            ligand2_id: Optional second ligand ID to filter by.
+
+        Returns:
+            A :class:`PreparedSystem` with paths and metadata from the result row.
+
+        Raises:
+            ValueError: If no execution has been started.
+            DeepOriginException: If no matching system-prep results exist yet.
+        """
+        if self.id is None:
+            raise ValueError(
+                "Cannot get prepared system: no execution has been started (id is None)."
+            )
+
+        self.sync()
+
+        try:
+            systems = PreparedSystem.from_result(
+                compute_job_id=self.id,
+                ligand1_id=ligand1_id,
+                ligand2_id=ligand2_id,
+                client=self.client,
+            )
+        except ValueError as exc:
+            raise DeepOriginException(
+                title="No system-prep results found",
+                message=(
+                    "No system-prep results found for this RBFE execution. "
+                    "Wait for the system-prep step to complete, or pass "
+                    "ligand1_id/ligand2_id to disambiguate."
+                ),
+            ) from exc
+
+        if not systems:
+            raise DeepOriginException(
+                title="No system-prep results found",
+                message=(
+                    "No system-prep results found for this RBFE execution. "
+                    "Wait for the system-prep step to complete, or pass "
+                    "ligand1_id/ligand2_id to disambiguate."
+                ),
+            )
+
+        return systems[0]
+
     def __repr__(self) -> str:
         """Return a concise multi-line representation."""
         parts = ["RBFE("]

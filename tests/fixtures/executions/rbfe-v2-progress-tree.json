@@ -18,7 +18,9 @@
         "status": "Succeeded",
         "message": null,
         "progress": "1/1",
-        "displayName": "prepare-inputs"
+        "displayName": "prepare-inputs",
+        "startedAt": "2026-06-05T13:08:41Z",
+        "finishedAt": "2026-06-05T13:08:55Z"
       },
       {
         "id": "workflow-5e04fdhn95dym8nfm6urr-986280854",
@@ -39,7 +41,9 @@
                 "status": "Succeeded",
                 "message": null,
                 "progress": "1/1",
-                "displayName": "system-prep-task"
+                "displayName": "system-prep-task",
+                "startedAt": "2026-06-05T13:09:01Z",
+                "finishedAt": "2026-06-05T13:11:35Z"
               },
               {
                 "id": "workflow-5e04fdhn95dym8nfm6urr-4074566276",
@@ -47,6 +51,8 @@
                 "message": "main: Error (exit code 1)",
                 "progress": "0/1",
                 "displayName": "rbfe-e2e-task",
+                "startedAt": "2026-06-05T13:11:55Z",
+                "finishedAt": "2026-06-05T13:51:09Z",
                 "toolProgress": {
                   "complete": 100
                 }

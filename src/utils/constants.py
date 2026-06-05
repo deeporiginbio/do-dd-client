@@ -106,3 +106,6 @@ JOB_WATCH_BLOCK_ENV = "JOB_WATCH_BLOCK"
 When set to a truthy value (``1``, ``true``, ``yes``, ``on``), ``watch()`` blocks the
 notebook cell until the execution reaches a terminal state. Used by doc notebook CI
 (``scripts/build_docs.sh``) and ``nbconvert --execute``."""
+
+PROGRESS_TREE_DISPLAY_ACRONYMS: frozenset[str] = frozenset({"abfe", "rbfe"})
+"""Workflow step tokens uppercased in progress-tree node labels (e.g. RBFE, ABFE)."""

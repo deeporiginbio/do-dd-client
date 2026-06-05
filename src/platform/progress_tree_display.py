@@ -2,10 +2,17 @@
 
 from __future__ import annotations
 
+from datetime import datetime, timezone
 import html
+import re
 from typing import Any
 
 from beartype import beartype
+
+from deeporigin.utils.constants import PROGRESS_TREE_DISPLAY_ACRONYMS
+from deeporigin.utils.iso8601 import parse_iso_timestamp_utc
+
+_DISPLAY_INDEX_RE = re.compile(r"index:(\d+)")
 
 # Bootstrap-aligned status colors for tree nodes.
 _STATUS_COLORS: dict[str, str] = {
@@ -61,6 +68,12 @@ _TREE_STYLES = """
   color: #fff;
   white-space: nowrap;
 }
+.do-progress-runtime {
+  flex-shrink: 0;
+  font-size: 0.7rem;
+  color: #6c757d;
+  white-space: nowrap;
+}
 .do-progress-ring-spacer {
   display: inline-block;
   width: 18px;
@@ -93,6 +106,20 @@ def is_v2_progress_tree(report: object) -> bool:
 
 
 @beartype
+def _is_leaf_node(node: dict[str, Any]) -> bool:
+    """Return True when a progress node has no child steps.
+
+    Args:
+        node: One ``ExecutionProgressNode`` dict.
+
+    Returns:
+        True if status badges and error details should be shown.
+    """
+    children = node.get("children")
+    return not isinstance(children, list) or len(children) == 0
+
+
+@beartype
 def _status_color(status: str) -> str:
     """Map a platform node status string to a CSS color.
 
@@ -103,6 +130,61 @@ def _status_color(status: str) -> str:
         Hex color string.
     """
     return _STATUS_COLORS.get(status, _DEFAULT_STATUS_COLOR)
+
+
+@beartype
+def _strip_display_name_args(raw: str) -> str:
+    """Trim workflow argument suffixes from a raw ``displayName``.
+
+    Strips everything from the first ``(`` onward. When an ``index:N`` token is
+    present inside the parentheses, appends ``-N`` to the kebab-case prefix
+    (e.g. ``pair-pipeline(1:index:1,...)`` → ``pair-pipeline-1``).
+
+    Args:
+        raw: Raw ``displayName`` from the progress tree.
+
+    Returns:
+        Kebab-case base name, optionally with an index suffix.
+    """
+    paren = raw.find("(")
+    if paren == -1:
+        return raw.strip()
+    prefix = raw[:paren].rstrip()
+    inner = raw[paren + 1 :]
+    match = _DISPLAY_INDEX_RE.search(inner)
+    if match:
+        return f"{prefix}-{match.group(1)}"
+    return prefix
+
+
+@beartype
+def format_display_name(raw: str) -> str:
+    """Format a workflow ``displayName`` for human-readable tree labels.
+
+    Applies :func:`_strip_display_name_args`, replaces hyphens with spaces,
+    capitalizes the first word, and uppercases known acronyms (RBFE, ABFE).
+
+    Args:
+        raw: Raw ``displayName`` from the progress tree.
+
+    Returns:
+        Friendly label text for inline display.
+    """
+    base = _strip_display_name_args(raw)
+    tokens = [token for token in base.replace("-", " ").split() if token]
+    if not tokens:
+        return raw.strip()
+
+    formatted: list[str] = []
+    for index, token in enumerate(tokens):
+        lower = token.lower()
+        if lower in PROGRESS_TREE_DISPLAY_ACRONYMS:
+            formatted.append(lower.upper())
+        elif index == 0:
+            formatted.append(lower.capitalize())
+        else:
+            formatted.append(lower)
+    return " ".join(formatted)
 
 
 @beartype
@@ -154,6 +236,98 @@ def _extract_complete(node: dict[str, Any]) -> float | None:
     if "complete" not in tool_progress:
         return None
     return _clamp_complete(tool_progress["complete"])
+
+
+@beartype
+def _node_end_timestamp(node: dict[str, Any]) -> datetime | None:
+    """Parse a progress node's end timestamp, if present.
+
+    Args:
+        node: One ``ExecutionProgressNode`` dict.
+
+    Returns:
+        UTC end time from ``finishedAt`` or ``completedAt``, or ``None``.
+    """
+    for key in ("finishedAt", "completedAt"):
+        raw = node.get(key)
+        if isinstance(raw, str) and raw.strip():
+            return parse_iso_timestamp_utc(raw.strip())
+    return None
+
+
+@beartype
+def _node_runtime_seconds(node: dict[str, Any]) -> float | None:
+    """Compute elapsed seconds for a progress node from its timestamps.
+
+    Uses ``startedAt`` as the start. When ``finishedAt`` / ``completedAt`` is
+    missing, uses the current UTC time (for in-flight leaf steps).
+
+    Args:
+        node: One ``ExecutionProgressNode`` dict.
+
+    Returns:
+        Elapsed seconds, or ``None`` when ``startedAt`` is missing or invalid.
+    """
+    started_raw = node.get("startedAt")
+    if not isinstance(started_raw, str) or not started_raw.strip():
+        return None
+    try:
+        started = parse_iso_timestamp_utc(started_raw.strip())
+        end = _node_end_timestamp(node)
+        if end is None:
+            end = datetime.now(timezone.utc)
+        seconds = (end - started).total_seconds()
+    except ValueError:
+        return None
+    if seconds < 0:
+        return None
+    return seconds
+
+
+@beartype
+def format_runtime(seconds: float | int) -> str:
+    """Format elapsed seconds as a compact, human-readable duration.
+
+    Args:
+        seconds: Elapsed time in seconds.
+
+    Returns:
+        Short label such as ``45s``, ``2m 34s``, or ``1h 5m``.
+    """
+    total = int(round(seconds))
+    if total < 1:
+        return "<1s"
+    if total < 60:
+        return f"{total}s"
+    minutes, secs = divmod(total, 60)
+    if minutes < 60:
+        if secs:
+            return f"{minutes}m {secs}s"
+        return f"{minutes}m"
+    hours, minutes = divmod(minutes, 60)
+    if hours < 24:
+        if minutes:
+            return f"{hours}h {minutes}m"
+        return f"{hours}h"
+    days, hours = divmod(hours, 24)
+    if hours:
+        return f"{days}d {hours}h"
+    return f"{days}d"
+
+
+@beartype
+def _render_runtime(seconds: float) -> str:
+    """Render a gray runtime label for a leaf node.
+
+    Args:
+        seconds: Elapsed time in seconds.
+
+    Returns:
+        HTML span for the runtime label.
+    """
+    label = format_runtime(seconds)
+    esc_label = html.escape(label, quote=True)
+    return f'<span class="do-progress-runtime">{esc_label}</span>'
 
 
 @beartype
@@ -262,10 +436,12 @@ def _render_node(node: dict[str, Any], *, depth: int) -> str:
     """
     display_name = str(node.get("displayName") or node.get("id") or "step")
     status = str(node.get("status") or "")
+    is_leaf = _is_leaf_node(node)
     color = _status_color(status)
     esc_color = html.escape(color, quote=True)
     esc_full_name = html.escape(display_name, quote=True)
-    esc_label = html.escape(_truncate_label(display_name), quote=True)
+    friendly_name = format_display_name(display_name)
+    esc_label = html.escape(_truncate_label(friendly_name), quote=True)
     esc_status = html.escape(status, quote=True)
 
     complete = _extract_complete(node)
@@ -283,12 +459,19 @@ def _render_node(node: dict[str, Any], *, depth: int) -> str:
         ring_html,
         f'<span class="do-progress-node-label fw-medium" title="{esc_full_name}">'
         f"{esc_label}</span>",
-        f'<span class="do-progress-node-badge" style="background:{esc_color}">'
-        f"{esc_status}</span>",
     ]
 
+    if is_leaf:
+        runtime_secs = _node_runtime_seconds(node)
+        if runtime_secs is not None:
+            parts.append(_render_runtime(runtime_secs))
+        parts.append(
+            f'<span class="do-progress-node-badge" style="background:{esc_color}">'
+            f"{esc_status}</span>"
+        )
+
     message = node.get("message")
-    if status == "Failed" and isinstance(message, str) and message.strip():
+    if is_leaf and status == "Failed" and isinstance(message, str) and message.strip():
         parts.append(_render_failed_details(message.strip()))
 
     parts.append("</div>")

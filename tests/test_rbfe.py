@@ -12,6 +12,7 @@ from deeporigin.drug_discovery.rbfe import RBFE, RBFEParams, _rbfe_results_dataf
 from deeporigin.drug_discovery.structures.ligand import Ligand
 from deeporigin.drug_discovery.structures.prepared_system import PreparedSystem
 from deeporigin.drug_discovery.structures.protein import Protein
+from deeporigin.exceptions import DeepOriginException
 from deeporigin.platform.client import DeepOriginClient
 from deeporigin.platform.constants import TOOL_KEYS_AND_VERSIONS
 
@@ -410,6 +411,102 @@ def test_rbfe_get_results_returns_dataframe(monkeypatch: pytest.MonkeyPatch) -> 
     assert isinstance(out, pd.DataFrame)
     assert out.iloc[0]["ddG"] == "-1.0 kcal/mol"
     rbfe.sync.assert_called_once()
+
+
+def _sample_prepared_system(
+    *, ligand1_id: str = "l1", ligand2_id: str = "l2"
+) -> PreparedSystem:
+    """Return a minimal PreparedSystem for RBFE get_prepared_system tests."""
+    return PreparedSystem(
+        binding_xml_path="b.xml",
+        solvation_xml_path="s.xml",
+        system_pdb_path="p.pdb",
+        ligand1_id=ligand1_id,
+        ligand2_id=ligand2_id,
+    )
+
+
+def test_rbfe_get_prepared_system_returns_first(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """get_prepared_system syncs and returns the first matching PreparedSystem."""
+    rbfe = RBFE(
+        prepared_systems=[_sample_prepared_system()],
+        client=MagicMock(spec=DeepOriginClient),
+    )
+    rbfe._id = "exec-top"
+    first = _sample_prepared_system(ligand1_id="first-l1", ligand2_id="first-l2")
+    second = _sample_prepared_system(ligand1_id="second-l1", ligand2_id="second-l2")
+    from_result = MagicMock(return_value=[first, second])
+    monkeypatch.setattr(PreparedSystem, "from_result", from_result)
+    monkeypatch.setattr(rbfe, "sync", MagicMock())
+
+    out = rbfe.get_prepared_system()
+
+    assert out is first
+    rbfe.sync.assert_called_once()
+    from_result.assert_called_once_with(
+        compute_job_id="exec-top",
+        ligand1_id=None,
+        ligand2_id=None,
+        client=rbfe.client,
+    )
+
+
+def test_rbfe_get_prepared_system_passes_ligand_filters(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """get_prepared_system forwards ligand1_id and ligand2_id to from_result."""
+    rbfe = RBFE(
+        prepared_systems=[_sample_prepared_system()],
+        client=MagicMock(spec=DeepOriginClient),
+    )
+    rbfe._id = "exec-top"
+    system = _sample_prepared_system()
+    from_result = MagicMock(return_value=[system])
+    monkeypatch.setattr(PreparedSystem, "from_result", from_result)
+    monkeypatch.setattr(rbfe, "sync", MagicMock())
+
+    out = rbfe.get_prepared_system(ligand1_id="lig-a", ligand2_id="lig-b")
+
+    assert out is system
+    from_result.assert_called_once_with(
+        compute_job_id="exec-top",
+        ligand1_id="lig-a",
+        ligand2_id="lig-b",
+        client=rbfe.client,
+    )
+
+
+def test_rbfe_get_prepared_system_raises_without_id() -> None:
+    """get_prepared_system requires a platform execution id."""
+    rbfe = RBFE(prepared_systems=[_sample_prepared_system()])
+    with pytest.raises(ValueError, match="no execution has been started"):
+        rbfe.get_prepared_system()
+
+
+def test_rbfe_get_prepared_system_raises_when_empty(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """get_prepared_system raises DeepOriginException when no rows match."""
+    rbfe = RBFE(
+        prepared_systems=[_sample_prepared_system()],
+        client=MagicMock(spec=DeepOriginClient),
+    )
+    rbfe._id = "exec-top"
+    monkeypatch.setattr(rbfe, "sync", MagicMock())
+
+    monkeypatch.setattr(PreparedSystem, "from_result", MagicMock(return_value=[]))
+    with pytest.raises(DeepOriginException, match="No system-prep results found"):
+        rbfe.get_prepared_system()
+
+    monkeypatch.setattr(
+        PreparedSystem,
+        "from_result",
+        MagicMock(side_effect=ValueError("no rows")),
+    )
+    with pytest.raises(DeepOriginException, match="No system-prep results found"):
+        rbfe.get_prepared_system()
 
 
 def test_rbfe_repr_shows_id_and_status_when_set() -> None:
