@@ -31,6 +31,14 @@ _SIGNED_URL_UPLOAD_TIMEOUT = httpx.Timeout(
     pool=10.0,
 )
 
+# Platform GET for presigned URLs can queue under many concurrent upload_tree workers.
+_SIGNED_URL_API_TIMEOUT = httpx.Timeout(
+    connect=10.0,
+    read=30.0,
+    write=10.0,
+    pool=10.0,
+)
+
 
 class FileStream:
     """Streaming wrapper around an HTTP download response.
@@ -294,6 +302,7 @@ class Files:
         response = self._c.get_json(
             f"/files/{self._c.org_key}/signedUrl/{remote_path}",
             params=params,
+            timeout=_SIGNED_URL_API_TIMEOUT,
         )
 
         if "url" not in response:
@@ -311,8 +320,9 @@ class Files:
     ) -> str:
         """Upload a single file to a signed URL with retries.
 
-        Gets an upload signed URL for ``remote_path``, reads the file at
-        ``local_path``, and PUTs its contents directly to the signed URL.
+        On each attempt, requests a fresh upload signed URL for ``remote_path``,
+        streams the file at ``local_path`` via HTTP PUT to that URL, and retries
+        on transient failures.
 
         Args:
             local_path: Local file to upload.
@@ -327,20 +337,26 @@ class Files:
         Raises:
             httpx.HTTPStatusError: If the PUT fails after all retries.
         """
-        signed_url = self.signed_url(remote_path, upload=True)
-
-        file_content = local_path.read_bytes()
-
         last_exc: Exception | None = None
         for attempt in range(max_retries + 1):
             try:
-                with httpx.Client(timeout=_SIGNED_URL_UPLOAD_TIMEOUT) as upload_client:
-                    resp = upload_client.put(
-                        signed_url,
-                        content=file_content,
-                        headers={"Content-Type": "application/octet-stream"},
-                    )
-                    resp.raise_for_status()
+                signed_url = self.signed_url(remote_path, upload=True)
+                headers = {"Content-Type": "application/octet-stream"}
+                try:
+                    headers["Content-Length"] = str(local_path.stat().st_size)
+                except OSError:
+                    pass
+
+                with open(local_path, "rb") as body:
+                    with httpx.Client(
+                        timeout=_SIGNED_URL_UPLOAD_TIMEOUT
+                    ) as upload_client:
+                        resp = upload_client.put(
+                            signed_url,
+                            content=body,
+                            headers=headers,
+                        )
+                        resp.raise_for_status()
                 return remote_path
             except (
                 httpx.HTTPStatusError,
@@ -352,6 +368,25 @@ class Files:
                     time.sleep(retry_backoff_factor * (2**attempt))
 
         raise last_exc  # type: ignore[misc]
+
+    @staticmethod
+    def _local_file_size(local_path: Path) -> int:
+        """Return ``st_size`` for a local file, or ``0`` when stat fails."""
+        try:
+            return local_path.stat().st_size
+        except OSError:
+            return 0
+
+    @staticmethod
+    def _sort_upload_pairs_by_size_desc(
+        upload_pairs: list[tuple[Path, str]],
+    ) -> list[tuple[Path, str]]:
+        """Return upload pairs sorted by local file size, largest first."""
+        return sorted(
+            upload_pairs,
+            key=lambda pair: Files._local_file_size(pair[0]),
+            reverse=True,
+        )
 
     @staticmethod
     def _resolve_upload_pairs(
@@ -429,6 +464,7 @@ class Files:
             remote_dir += "/"
 
         upload_pairs = self._resolve_upload_pairs(local_path)
+        upload_pairs = self._sort_upload_pairs_by_size_desc(upload_pairs)
 
         results: list[str] = []
         errors: list[tuple[str, Exception]] = []

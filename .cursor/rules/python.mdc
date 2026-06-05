@@ -48,6 +48,7 @@ When modifying an existing function, make the following changes together:
 
 # Common mistakes
 
+- Editing `src/VERSION` or `platform-sdk/src/VERSION` — never change these files; release CI sets the version from the git tag (see `.github/workflows/pypi.yml` and `.github/workflows/pypi_sdk.yml`)
 - Using uppercase List instead of lowercase list to annotate the type of a list
 - Using uppercase Dict instead of lowercase dist to annotate the type of a dict
 - Not using `uv run` to run some code within the correct venv

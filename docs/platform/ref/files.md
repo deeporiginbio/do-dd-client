@@ -32,7 +32,7 @@ Use this table to pick the right call. The client uses **two upload styles** (mu
 |--------|----------|
 | **`upload(local, remote)`** | **One** file; body goes through the platform as **multipart** (`PUT /files/...`). Simple and authenticated like any other API call. |
 | **`upload_many(files={local: remote, ...})`** | **Many** files with **explicit** local→remote paths; each file uploaded in parallel via the same **multipart** path as `upload`. |
-| **`upload_tree(local_path, remote_dir)`** | A **directory** (recursive) or a **list** of local files; files go to `remote_dir` preserving relative paths. Uses **signed URLs** and parallel PUTs — better for large trees and heavy parallelism (bytes skip the app server). |
+| **`upload_tree(local_path, remote_dir)`** | A **directory** (recursive) or a **list** of local files; files go to `remote_dir` preserving relative paths. Uses **signed URLs** and parallel PUTs — better for large trees and heavy parallelism (bytes skip the app server). Each file is **streamed** from disk (not fully buffered in memory); failed PUTs request a **fresh presigned URL** on retry; parallel workers schedule **largest files first** to reduce idle time at the end of a batch. |
 | **`upload_from_url(remote_path, source_url=...)`** | The **server** should fetch a public URL and store the object; bytes never pass through your machine. |
 
 ### Downloads
