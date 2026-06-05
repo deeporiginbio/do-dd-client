@@ -31,6 +31,39 @@ _SIGNED_URL_UPLOAD_TIMEOUT = httpx.Timeout(
     pool=10.0,
 )
 
+# Platform GET for presigned URLs can queue under many concurrent upload_tree workers.
+_SIGNED_URL_API_TIMEOUT = httpx.Timeout(
+    connect=10.0,
+    read=30.0,
+    write=10.0,
+    pool=10.0,
+)
+
+# Match httpx IteratorByteStream.CHUNK_SIZE for signed-URL PUT bodies.
+_SIGNED_URL_UPLOAD_CHUNK_SIZE = 65_536
+
+
+def _iter_local_file_chunks(
+    local_path: Path,
+    *,
+    chunk_size: int = _SIGNED_URL_UPLOAD_CHUNK_SIZE,
+) -> Iterator[bytes]:
+    """Yield fixed-size byte chunks from a local file for signed-URL PUTs.
+
+    Args:
+        local_path: Local file to read.
+        chunk_size: Maximum bytes per yielded chunk.
+
+    Yields:
+        Successive byte chunks until EOF.
+    """
+    with open(local_path, "rb") as file_obj:
+        while True:
+            chunk = file_obj.read(chunk_size)
+            if not chunk:
+                break
+            yield chunk
+
 
 class FileStream:
     """Streaming wrapper around an HTTP download response.
@@ -294,6 +327,7 @@ class Files:
         response = self._c.get_json(
             f"/files/{self._c.org_key}/signedUrl/{remote_path}",
             params=params,
+            timeout=_SIGNED_URL_API_TIMEOUT,
         )
 
         if "url" not in response:
@@ -306,17 +340,21 @@ class Files:
         local_path: Path,
         remote_path: str,
         *,
+        file_size: int | None = None,
         max_retries: int = 3,
         retry_backoff_factor: float = 1.0,
     ) -> str:
         """Upload a single file to a signed URL with retries.
 
-        Gets an upload signed URL for ``remote_path``, reads the file at
-        ``local_path``, and PUTs its contents directly to the signed URL.
+        On each attempt, requests a fresh upload signed URL for ``remote_path``,
+        streams the file at ``local_path`` in fixed-size chunks via HTTP PUT to
+        that URL, and retries on transient failures.
 
         Args:
             local_path: Local file to upload.
             remote_path: Remote path to request the signed URL for.
+            file_size: Optional precomputed ``st_size`` to avoid a duplicate stat
+                when ``upload_tree`` has already measured the file for sorting.
             max_retries: Maximum retry attempts on transient failures.
             retry_backoff_factor: Multiplier for exponential back-off between
                 retries.  Delay = retry_backoff_factor * 2^attempt.
@@ -327,18 +365,21 @@ class Files:
         Raises:
             httpx.HTTPStatusError: If the PUT fails after all retries.
         """
-        signed_url = self.signed_url(remote_path, upload=True)
-
-        file_content = local_path.read_bytes()
-
         last_exc: Exception | None = None
         for attempt in range(max_retries + 1):
             try:
+                signed_url = self.signed_url(remote_path, upload=True)
+                headers = {"Content-Type": "application/octet-stream"}
+                if file_size is None:
+                    file_size = self._local_file_size(local_path)
+                if file_size > 0:
+                    headers["Content-Length"] = str(file_size)
+
                 with httpx.Client(timeout=_SIGNED_URL_UPLOAD_TIMEOUT) as upload_client:
                     resp = upload_client.put(
                         signed_url,
-                        content=file_content,
-                        headers={"Content-Type": "application/octet-stream"},
+                        content=_iter_local_file_chunks(local_path),
+                        headers=headers,
                     )
                     resp.raise_for_status()
                 return remote_path
@@ -352,6 +393,26 @@ class Files:
                     time.sleep(retry_backoff_factor * (2**attempt))
 
         raise last_exc  # type: ignore[misc]
+
+    @staticmethod
+    def _local_file_size(local_path: Path) -> int:
+        """Return ``st_size`` for a local file, or ``0`` when stat fails."""
+        try:
+            return local_path.stat().st_size
+        except OSError:
+            return 0
+
+    @staticmethod
+    def _sort_upload_pairs_by_size_desc(
+        upload_pairs: list[tuple[Path, str]],
+    ) -> list[tuple[Path, str, int]]:
+        """Return upload pairs with cached sizes, largest first."""
+        sized_pairs = [
+            (path, suffix, Files._local_file_size(path))
+            for path, suffix in upload_pairs
+        ]
+        sized_pairs.sort(key=lambda pair: pair[2], reverse=True)
+        return sized_pairs
 
     @staticmethod
     def _resolve_upload_pairs(
@@ -429,6 +490,7 @@ class Files:
             remote_dir += "/"
 
         upload_pairs = self._resolve_upload_pairs(local_path)
+        upload_pairs = self._sort_upload_pairs_by_size_desc(upload_pairs)
 
         results: list[str] = []
         errors: list[tuple[str, Exception]] = []
@@ -439,10 +501,11 @@ class Files:
                     self._put_to_signed_url,
                     fp,
                     f"{remote_dir}{suffix}",
+                    file_size=file_size,
                     max_retries=max_retries,
                     retry_backoff_factor=retry_backoff_factor,
                 ): fp
-                for fp, suffix in upload_pairs
+                for fp, suffix, file_size in upload_pairs
             }
 
             for future in tqdm(
