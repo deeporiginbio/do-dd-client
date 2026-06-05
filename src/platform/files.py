@@ -39,6 +39,31 @@ _SIGNED_URL_API_TIMEOUT = httpx.Timeout(
     pool=10.0,
 )
 
+# Match httpx IteratorByteStream.CHUNK_SIZE for signed-URL PUT bodies.
+_SIGNED_URL_UPLOAD_CHUNK_SIZE = 65_536
+
+
+def _iter_local_file_chunks(
+    local_path: Path,
+    *,
+    chunk_size: int = _SIGNED_URL_UPLOAD_CHUNK_SIZE,
+) -> Iterator[bytes]:
+    """Yield fixed-size byte chunks from a local file for signed-URL PUTs.
+
+    Args:
+        local_path: Local file to read.
+        chunk_size: Maximum bytes per yielded chunk.
+
+    Yields:
+        Successive byte chunks until EOF.
+    """
+    with open(local_path, "rb") as file_obj:
+        while True:
+            chunk = file_obj.read(chunk_size)
+            if not chunk:
+                break
+            yield chunk
+
 
 class FileStream:
     """Streaming wrapper around an HTTP download response.
@@ -315,18 +340,21 @@ class Files:
         local_path: Path,
         remote_path: str,
         *,
+        file_size: int | None = None,
         max_retries: int = 3,
         retry_backoff_factor: float = 1.0,
     ) -> str:
         """Upload a single file to a signed URL with retries.
 
         On each attempt, requests a fresh upload signed URL for ``remote_path``,
-        streams the file at ``local_path`` via HTTP PUT to that URL, and retries
-        on transient failures.
+        streams the file at ``local_path`` in fixed-size chunks via HTTP PUT to
+        that URL, and retries on transient failures.
 
         Args:
             local_path: Local file to upload.
             remote_path: Remote path to request the signed URL for.
+            file_size: Optional precomputed ``st_size`` to avoid a duplicate stat
+                when ``upload_tree`` has already measured the file for sorting.
             max_retries: Maximum retry attempts on transient failures.
             retry_backoff_factor: Multiplier for exponential back-off between
                 retries.  Delay = retry_backoff_factor * 2^attempt.
@@ -342,21 +370,18 @@ class Files:
             try:
                 signed_url = self.signed_url(remote_path, upload=True)
                 headers = {"Content-Type": "application/octet-stream"}
-                try:
-                    headers["Content-Length"] = str(local_path.stat().st_size)
-                except OSError:
-                    pass
+                if file_size is None:
+                    file_size = self._local_file_size(local_path)
+                if file_size > 0:
+                    headers["Content-Length"] = str(file_size)
 
-                with open(local_path, "rb") as body:
-                    with httpx.Client(
-                        timeout=_SIGNED_URL_UPLOAD_TIMEOUT
-                    ) as upload_client:
-                        resp = upload_client.put(
-                            signed_url,
-                            content=body,
-                            headers=headers,
-                        )
-                        resp.raise_for_status()
+                with httpx.Client(timeout=_SIGNED_URL_UPLOAD_TIMEOUT) as upload_client:
+                    resp = upload_client.put(
+                        signed_url,
+                        content=_iter_local_file_chunks(local_path),
+                        headers=headers,
+                    )
+                    resp.raise_for_status()
                 return remote_path
             except (
                 httpx.HTTPStatusError,
@@ -380,13 +405,14 @@ class Files:
     @staticmethod
     def _sort_upload_pairs_by_size_desc(
         upload_pairs: list[tuple[Path, str]],
-    ) -> list[tuple[Path, str]]:
-        """Return upload pairs sorted by local file size, largest first."""
-        return sorted(
-            upload_pairs,
-            key=lambda pair: Files._local_file_size(pair[0]),
-            reverse=True,
-        )
+    ) -> list[tuple[Path, str, int]]:
+        """Return upload pairs with cached sizes, largest first."""
+        sized_pairs = [
+            (path, suffix, Files._local_file_size(path))
+            for path, suffix in upload_pairs
+        ]
+        sized_pairs.sort(key=lambda pair: pair[2], reverse=True)
+        return sized_pairs
 
     @staticmethod
     def _resolve_upload_pairs(
@@ -475,10 +501,11 @@ class Files:
                     self._put_to_signed_url,
                     fp,
                     f"{remote_dir}{suffix}",
+                    file_size=file_size,
                     max_retries=max_retries,
                     retry_backoff_factor=retry_backoff_factor,
                 ): fp
-                for fp, suffix in upload_pairs
+                for fp, suffix, file_size in upload_pairs
             }
 
             for future in tqdm(
