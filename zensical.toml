@@ -55,7 +55,6 @@ nav = [
     ]},
     {"Execution" = "dd/ref/execution.md"},
     {"execution_mixins" = "dd/ref/execution-mixins.md"},
-    {"execution_helpers" = "dd/ref/execution-helpers.md"},
     {"docking" = "dd/ref/docking.md"},
     {"constrained_docking" = "dd/ref/constrained_docking.md"},
     {"pocket_finder" = "dd/ref/pocket_finder.md"},

@@ -386,3 +386,63 @@ def test_render_html_workflow_bar_order_follows_sorted_keys() -> None:
     second_pos = html.find("80%")
     assert first_pos != -1 and second_pos != -1
     assert first_pos < second_pos
+
+
+def test_render_html_v2_progress_tree() -> None:
+    """v2 ``progressReport`` trees render the HTML progress tree, not bootstrap bars."""
+    import json
+    from pathlib import Path
+
+    fixture = (
+        Path(__file__).resolve().parent
+        / "fixtures"
+        / "executions"
+        / "rbfe-v2-progress-tree.json"
+    )
+    dto = json.loads(fixture.read_text(encoding="utf-8"))
+    html = ExecutionDisplay.from_dto(dto).render_html()
+
+    assert "do-progress-tree" in html
+    assert "prepare-inputs" in html
+    assert "progress-bar" not in html
+
+
+def test_render_html_v2_tree_visible_when_failed() -> None:
+    """Failed executions still show the v2 progress tree."""
+    dto = {
+        "executionId": "e-failed",
+        "status": "Failed",
+        "progressReport": {
+            "id": "wf-1",
+            "displayName": "workflow-root",
+            "status": "Failed",
+            "message": "top-level failure",
+            "children": [
+                {
+                    "id": "step-1",
+                    "displayName": "child-step",
+                    "status": "Succeeded",
+                    "children": [],
+                }
+            ],
+        },
+    }
+    html = ExecutionDisplay.from_dto(dto).render_html()
+
+    assert "do-progress-tree" in html
+    assert "workflow-root" in html
+    assert "progress-bar" not in html
+
+
+def test_render_html_legacy_running_still_uses_bootstrap_bar() -> None:
+    """Legacy ``complete`` progress reports keep the Bootstrap progress bar."""
+    dto = {
+        "executionId": "e1",
+        "status": "Running",
+        "progressReport": {"complete": 55},
+    }
+    html = ExecutionDisplay.from_dto(dto).render_html()
+
+    assert "progress-bar" in html
+    assert "do-progress-tree" not in html
+    assert "55%" in html

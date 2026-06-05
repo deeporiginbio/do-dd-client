@@ -15,16 +15,6 @@ from deeporigin.platform.constants import TOOL_KEYS_AND_VERSIONS
 from deeporigin.utils.constants import number
 
 
-def _execution_price_total(dto: dict) -> float | None:
-    """Extract ``priceTotal`` from a tool execution DTO's ``quotationResult``."""
-    quotation = dto.get("quotationResult") or {}
-    successful = quotation.get("successfulQuotations") or []
-    if not successful:
-        return None
-    price = successful[0].get("priceTotal")
-    return float(price) if price is not None else None
-
-
 def _execution_outputs_dict(dto: dict) -> dict[str, Any]:
     """Return ``jobOutputs`` from a protonation execution DTO as a dict.
 
@@ -173,7 +163,7 @@ class Protonation(Execution, SyncExecutableMixin):
             )
 
         self._responses = [response]
-        cost = _execution_price_total(response)
+        cost = Execution._quotation_total(response)
         if cost is not None and cost > 0:
             self._cost = cost
         exec_id = response.get("executionId") or response.get("id")

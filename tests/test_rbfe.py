@@ -150,6 +150,46 @@ def test_rbfe_start_calls_executions_create(monkeypatch: pytest.MonkeyPatch) -> 
     assert call_kwargs["data"]["inputs"]["steps"] == ["system-prep"]
 
 
+def test_rbfe_start_quote_sums_workflow_quotations(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """start(quote=True) sums all successful quotation rows for prep+FEP workflows."""
+    protein = Protein(name="p", id="prot-1", remote_path="testing/brd.pdb")
+    ligand1 = Ligand.from_smiles("CCO", id="lig-1", remote_path="testing/lig1.sdf")
+    ligand2 = Ligand.from_smiles("CCN", id="lig-2", remote_path="testing/lig2.sdf")
+    client = MagicMock(spec=DeepOriginClient)
+    executions = MagicMock()
+    client.executions = executions
+    rbfe = RBFE(
+        protein=protein,
+        pairs=[(ligand1, ligand2)],
+        client=client,
+    )
+    executions.create.return_value = {
+        "executionId": "exec-quoted",
+        "status": "Quoted",
+        "approveAmount": 0,
+        "tool": {
+            "key": TOOL_KEYS_AND_VERSIONS["rbfe"]["tool_key"],
+            "version": TOOL_KEYS_AND_VERSIONS["rbfe"]["tool_version"],
+        },
+        "quotationResult": {
+            "successfulQuotations": [
+                {"itemCode": "DO_SYSTEM_PREP", "priceTotal": 0},
+                {"itemCode": "DO_RBFE", "priceTotal": 1.02792},
+            ],
+        },
+    }
+    monkeypatch.setattr(protein, "sync", MagicMock())
+    monkeypatch.setattr(ligand1, "sync", MagicMock())
+    monkeypatch.setattr(ligand2, "sync", MagicMock())
+
+    rbfe.start(quote=True)
+
+    assert rbfe.status == "Quoted"
+    assert rbfe.estimate == pytest.approx(1.02792)
+
+
 def test_rbfe_from_dto_rehydrates_rbfe_only_steps() -> None:
     """from_dto restores steps, prepared_systems, and FEP params."""
     fake_dto = {
@@ -255,15 +295,18 @@ def test_rbfe_from_dto_rehydrates_system_prep_steps() -> None:
 
 
 def test_rbfe_results_dataframe_columns() -> None:
-    """Summary table exposes execution_id, ligand ids, and formatted ddG."""
+    """Summary table exposes protein_id, ligand ids, and formatted ddG."""
+    rbfe_tool_key = TOOL_KEYS_AND_VERSIONS["rbfe"]["tool_key"]
     response = {
         "data": [
             {
                 "id": "0AE2XHX028S2Y",
+                "tool_key": rbfe_tool_key,
                 "compute_job_id": "a5484958-059f-4b1b-ba2c-664adf23e8e8",
                 "data": {
                     "total": -3875.483,
                     "unit": "kcal/mol",
+                    "protein_id": "08BSPN9SNYVEA",
                     "ligand1_id": "08DK80B7DYTXH",
                     "ligand2_id": "08DKACBCXYTXX",
                     "binding_analysis": [{"repeat": 1}],
@@ -271,23 +314,62 @@ def test_rbfe_results_dataframe_columns() -> None:
             },
             {
                 "id": "OTHER",
+                "tool_key": rbfe_tool_key,
                 "compute_job_id": "job-2",
                 "data": {
                     "total": 1.5,
                     "unit": "kJ/mol",
+                    "protein_id": "prot-b",
                     "ligand1_id": "lig-a",
                     "ligand2_id": "lig-b",
                 },
             },
         ]
     }
-    df = _rbfe_results_dataframe(response)
+    df = _rbfe_results_dataframe(response, tool_key=rbfe_tool_key)
     assert df is not None
-    assert list(df.columns) == ["execution_id", "ligand1_id", "ligand2_id", "ddG"]
+    assert list(df.columns) == ["protein_id", "ligand1_id", "ligand2_id", "ddG"]
     assert len(df) == 2
-    assert df.iloc[0]["execution_id"] == "a5484958-059f-4b1b-ba2c-664adf23e8e8"
+    assert df.iloc[0]["protein_id"] == "08BSPN9SNYVEA"
     assert df.iloc[0]["ddG"] == "-3875.483 kcal/mol"
     assert df.iloc[1]["ddG"] == "1.5 kJ/mol"
+
+
+def test_rbfe_results_dataframe_filters_non_rbfe_tool_key() -> None:
+    """System-prep and other tool results are excluded from the summary table."""
+    rbfe_tool_key = TOOL_KEYS_AND_VERSIONS["rbfe"]["tool_key"]
+    sysprep_tool_key = TOOL_KEYS_AND_VERSIONS["sysprep"]["tool_key"]
+    response = {
+        "data": [
+            {
+                "id": "0AF2ZRB828ZWF",
+                "tool_key": sysprep_tool_key,
+                "compute_job_id": "871dd154-3f25-432f-a618-9ecc96f82e58",
+                "data": {
+                    "protein_id": "08BSPN9SNYVEA",
+                    "ligand1_id": "08DKACBCXYTXX",
+                    "ligand2_id": "08CEYMV4DYV39",
+                },
+            },
+            {
+                "id": "0AE2XHX028S2Y",
+                "tool_key": rbfe_tool_key,
+                "compute_job_id": "a5484958-059f-4b1b-ba2c-664adf23e8e8",
+                "data": {
+                    "total": -3875.483,
+                    "unit": "kcal/mol",
+                    "protein_id": "08BSPN9SNYVEA",
+                    "ligand1_id": "08DK80B7DYTXH",
+                    "ligand2_id": "08DKACBCXYTXX",
+                },
+            },
+        ]
+    }
+    df = _rbfe_results_dataframe(response, tool_key=rbfe_tool_key)
+    assert df is not None
+    assert len(df) == 1
+    assert df.iloc[0]["protein_id"] == "08BSPN9SNYVEA"
+    assert df.iloc[0]["ddG"] == "-3875.483 kcal/mol"
 
 
 def test_rbfe_get_results_returns_dataframe(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -306,10 +388,12 @@ def test_rbfe_get_results_returns_dataframe(monkeypatch: pytest.MonkeyPatch) -> 
     platform_response = {
         "data": [
             {
+                "tool_key": TOOL_KEYS_AND_VERSIONS["rbfe"]["tool_key"],
                 "compute_job_id": "sub-job",
                 "data": {
                     "total": -1.0,
                     "unit": "kcal/mol",
+                    "protein_id": "prot-1",
                     "ligand1_id": "l1",
                     "ligand2_id": "l2",
                 },

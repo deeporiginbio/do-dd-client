@@ -27,15 +27,17 @@ from __future__ import annotations
 import builtins
 import copy
 from datetime import datetime, timezone
-from typing import TYPE_CHECKING, Any, Literal, Self
+from typing import TYPE_CHECKING, Any, ClassVar, Literal, Self
 
+from beartype import beartype
+import humanize
 import pandas as pd
 
-from deeporigin.drug_discovery.execution_helpers import user_logs_dataframe
 from deeporigin.platform.constants import ALLOWED_STATUS_TRANSITIONS
 from deeporigin.utils.constants import (
     EXECUTION_LIST_ORDER_CREATED_DESC,
     TOOL_EXECUTION_POST_TIMEOUT_SECONDS,
+    TOOL_KEY_PREFIX,
 )
 from deeporigin.utils.iso8601 import parse_iso_timestamp_utc
 
@@ -87,6 +89,13 @@ class Execution:
     """
 
     tool_key: str = ""
+
+    USER_LOG_COLUMNS: ClassVar[list[str]] = [
+        "log_level",
+        "tool_key",
+        "timestamp",
+        "message",
+    ]
 
     def __init__(self, *, client: DeepOriginClient | None = None) -> None:
         """Initialize base execution state and chain mixin ``__init__`` via ``super()``."""
@@ -270,6 +279,90 @@ class Execution:
             new.client = client
         return new
 
+    @staticmethod
+    def _quotation_total(dto: dict[str, Any]) -> float | None:
+        """Return the summed ``priceTotal`` across all successful quotations in a DTO.
+
+        Workflow tools (for example RBFE with system-prep + FEP) return one
+        quotation row per billable item. Single-tool executions typically have
+        one row.
+
+        Args:
+            dto: Raw execution dictionary from ``executions.create`` or ``get``.
+
+        Returns:
+            The total price, or ``None`` if no successful quotation row has a price.
+        """
+        quotation = dto.get("quotationResult") or {}
+        successful = quotation.get("successfulQuotations") or []
+        total = 0.0
+        found = False
+        for row in successful:
+            if not isinstance(row, dict):
+                continue
+            price = row.get("priceTotal")
+            if price is None:
+                continue
+            total += float(price)
+            found = True
+        return total if found else None
+
+    @staticmethod
+    def _strip_tool_key_prefix(tool_key: str | None) -> str | None:
+        """Return ``tool_key`` without the platform ``deeporigin.`` prefix."""
+        if tool_key is None:
+            return None
+        return tool_key.removeprefix(TOOL_KEY_PREFIX)
+
+    @staticmethod
+    def _format_user_log_timestamp(
+        raw: str | None,
+        *,
+        when: datetime | None = None,
+    ) -> str | None:
+        """Format an ISO log timestamp as a compact, human-readable relative time."""
+        if raw is None:
+            return None
+        try:
+            dt = parse_iso_timestamp_utc(raw)
+        except (ValueError, TypeError):
+            return raw
+        ref = when or datetime.now(timezone.utc)
+        return humanize.naturaltime(dt, when=ref)
+
+    @staticmethod
+    @beartype
+    def _user_logs_dataframe(response: dict[str, Any]) -> pd.DataFrame:
+        """Build a tabular view from a data-platform ``user_logs`` search response.
+
+        Args:
+            response: Raw response from
+                :meth:`~deeporigin.platform.user_logs.UserLogs.search`.
+
+        Returns:
+            A DataFrame with columns from :attr:`USER_LOG_COLUMNS`.
+        """
+        records = response.get("data") or []
+        rows: list[dict[str, Any]] = []
+        for record in records:
+            if not isinstance(record, dict):
+                continue
+            rows.append(
+                {
+                    "log_level": record.get("log_level"),
+                    "tool_key": Execution._strip_tool_key_prefix(
+                        record.get("tool_key")
+                    ),
+                    "timestamp": Execution._format_user_log_timestamp(
+                        record.get("date") or record.get("created_at")
+                    ),
+                    "message": record.get("message"),
+                }
+            )
+        if not rows:
+            return pd.DataFrame(columns=Execution.USER_LOG_COLUMNS)
+        return pd.DataFrame(rows)[Execution.USER_LOG_COLUMNS]
+
     def update_from_dto(self, dto: dict[str, Any]) -> None:
         """Apply tools execution fields from ``dto`` onto this instance.
 
@@ -294,7 +387,7 @@ class Execution:
 
         tool_info = dto["tool"]
         dto_tool_key = tool_info["key"]
-        expected_tool_key = cls.tool_key
+        expected_tool_key = getattr(self, "tool_key", None) or cls.tool_key
         if dto_tool_key != expected_tool_key:
             raise ValueError(
                 "Cannot apply execution DTO: "
@@ -319,14 +412,11 @@ class Execution:
         self._dto = dto
         self._name = dto.get("name")
 
-        quotation = dto.get("quotationResult") or {}
-        successful = quotation.get("successfulQuotations", [])
-        if successful:
-            price = successful[0].get("priceTotal")
-            if price is not None:
-                self._estimate = float(price)
-            if self.status == "Succeeded" and price is not None:
-                self._cost = float(price)
+        price = self._quotation_total(dto)
+        if price is not None:
+            self._estimate = price
+            if self.status == "Succeeded":
+                self._cost = price
 
     def sync(self) -> None:
         """Fetch the latest tools execution from the platform and refresh fields.
@@ -650,7 +740,7 @@ class Execution:
             select=select,
             with_total_count=with_total_count,
         )
-        return user_logs_dataframe(response)
+        return self._user_logs_dataframe(response)
 
     def __repr__(self) -> str:
         """Return a concise summary of the execution."""

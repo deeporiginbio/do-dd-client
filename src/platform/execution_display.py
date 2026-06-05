@@ -11,6 +11,10 @@ import uuid
 
 from beartype import beartype
 
+from deeporigin.platform.progress_tree_display import (
+    is_v2_progress_tree,
+    render_progress_tree_html,
+)
 from deeporigin.utils.constants import BOOTSTRAP_5_CSS_CDN_URL
 
 # Bootstrap 5 ``bg-*`` suffix for status badges (footer).
@@ -214,6 +218,7 @@ class ExecutionDisplay:
             contain ``workflow`` (child executions in a workflow batch); ``0`` if none.
         workflow_subjob_completes: Per-workflow ``complete`` values when batch keys exist;
             used to render one progress bar per child. Empty when not a workflow batch.
+        progress_report: Raw ``progressReport`` from the execution DTO, when present.
     """
 
     complete: float | int
@@ -224,6 +229,7 @@ class ExecutionDisplay:
     tool_version: str | None = None
     workflow_child_count: int = 0
     workflow_subjob_completes: tuple[float, ...] = ()
+    progress_report: dict | str | None = None
 
     @classmethod
     def from_pending(
@@ -306,6 +312,9 @@ class ExecutionDisplay:
             tool_version=tool_version,
             workflow_child_count=workflow_child_count,
             workflow_subjob_completes=workflow_subjob_completes,
+            progress_report=raw_progress
+            if isinstance(raw_progress, (dict, str))
+            else None,
         )
 
     def _card_header_title(self) -> str:
@@ -332,6 +341,31 @@ class ExecutionDisplay:
         inner = ' <span class="text-muted" aria-hidden="true">·</span> '.join(chunks)
         return f'<div class="small mt-1">{inner}</div>'
 
+    def _render_progress_block(self) -> str:
+        """Render the card-body progress section (v2 tree or legacy bar).
+
+        Returns:
+            HTML fragment for progress display, or empty string when none applies.
+        """
+        progress_data = _progress_report_data(self.progress_report)
+        if progress_data is not None and is_v2_progress_tree(progress_data):
+            return render_progress_tree_html(progress_data)
+        if self.status != "Running":
+            return ""
+        if self.workflow_subjob_completes:
+            bar_htmls = [
+                _render_single_progress_bar_html(complete=c)
+                for c in self.workflow_subjob_completes
+            ]
+            progress_parts: list[str] = []
+            for i, bar in enumerate(bar_htmls):
+                if i < len(bar_htmls) - 1:
+                    progress_parts.append(f'<div class="mb-2">{bar}</div>')
+                else:
+                    progress_parts.append(bar)
+            return "".join(progress_parts)
+        return _render_single_progress_bar_html(complete=float(self.complete))
+
     def render_html(self, *, will_auto_update: bool = False) -> str:
         """Render a self-contained Bootstrap 5 card HTML fragment.
 
@@ -342,7 +376,9 @@ class ExecutionDisplay:
             HTML string safe for :class:`IPython.display.HTML`.
 
         Note:
-            The progress bar is rendered only when :attr:`status` is ``"Running"``.
+            When ``progress_report`` is a v2 tree, the tree is shown for all
+            statuses. Otherwise the Bootstrap progress bar is shown only when
+            :attr:`status` is ``"Running"``.
         """
         esc_status = html.escape(self.status, quote=True)
         esc_title = html.escape(self._card_header_title(), quote=True)
@@ -365,25 +401,7 @@ class ExecutionDisplay:
                 '<div class="small text-muted mt-2 text-break">'
                 f"<code>{esc_id}</code></div>"
             )
-        if self.status == "Running":
-            if self.workflow_subjob_completes:
-                bar_htmls = [
-                    _render_single_progress_bar_html(complete=c)
-                    for c in self.workflow_subjob_completes
-                ]
-                progress_parts: list[str] = []
-                for i, bar in enumerate(bar_htmls):
-                    if i < len(bar_htmls) - 1:
-                        progress_parts.append(f'<div class="mb-2">{bar}</div>')
-                    else:
-                        progress_parts.append(bar)
-                progress_block = "".join(progress_parts)
-            else:
-                progress_block = _render_single_progress_bar_html(
-                    complete=float(self.complete)
-                )
-        else:
-            progress_block = ""
+        progress_block = self._render_progress_block()
 
         live_inline = ""
         if will_auto_update:

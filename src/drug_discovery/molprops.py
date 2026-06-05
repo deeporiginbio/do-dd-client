@@ -68,16 +68,6 @@ def _resolve_molprops_props(
     return _validate_molprops_properties(properties)
 
 
-def _execution_price_total(dto: dict) -> float | None:
-    """Extract ``priceTotal`` from a tool execution DTO's ``quotationResult``."""
-    quotation = dto.get("quotationResult") or {}
-    successful = quotation.get("successfulQuotations") or []
-    if not successful:
-        return None
-    price = successful[0].get("priceTotal")
-    return float(price) if price is not None else None
-
-
 def _execution_outputs_as_rows(dto: dict) -> list[dict]:
     """Return per-ligand molprops rows from a combined-tool execution DTO.
 
@@ -151,7 +141,7 @@ def molprops_quote_total(
         client=client,
         quote=True,
     )
-    return _execution_price_total(raw)
+    return Execution._quotation_total(raw)
 
 
 class Molprops(Execution, SyncExecutableMixin):
@@ -293,7 +283,7 @@ class Molprops(Execution, SyncExecutableMixin):
         total_cost = 0.0
         any_priced = False
         for raw in raw_responses:
-            price = _execution_price_total(raw)
+            price = Execution._quotation_total(raw)
             if price is not None:
                 any_priced = True
                 total_cost += price

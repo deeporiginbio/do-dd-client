@@ -151,33 +151,10 @@ def _apply_dto_common_fields(
 ) -> None:
     instance.client = client
     instance._quoted_mode = None
-    instance._id = dto["executionId"]
-    instance._estimate = None
-    instance._cost = None
-    instance.status = dto.get("status")
-    instance.progress = dto.get("progressReport")
-    instance.app = dto.get("app")
-    instance.approve_amount = dto.get("approveAmount")
-    instance.created_at = dto.get("createdAt")
-    instance.created_by = dto.get("createdBy")
-    instance.started_at = dto.get("startedAt")
-    instance.completed_at = dto.get("completedAt")
-    instance.session = dto.get("session")
-    instance._dto = dto
-    instance._name = dto.get("name")
+    Execution.update_from_dto(instance, dto)
     instance._watch_task = None
     instance._display_id = None
     instance._last_html = None
-    quotation = dto.get("quotationResult") or {}
-    successful = quotation.get("successfulQuotations", [])
-    if not successful:
-        return
-    price = successful[0].get("priceTotal")
-    if price is None:
-        return
-    instance._estimate = float(price)
-    if instance.status == "Succeeded":
-        instance._cost = float(price)
 
 
 class ToolExecution(Execution, AsyncExecutableMixin, NotebookWatchMixin):

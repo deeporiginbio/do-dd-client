@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import pytest
-
 from deeporigin.drug_discovery import (
     BRD_DATA_DIR,
     RBFE,
@@ -24,7 +22,7 @@ def test_rbfe_from_id_get_results_local(client: DeepOriginClient) -> None:
     df = rbfe.get_results()
     assert df is not None
     assert len(df) == 1
-    assert df.iloc[0]["execution_id"] == MOCK_RBFE_EXECUTION_ID
+    assert df.iloc[0]["protein_id"] == "08BSPN9SNYVEA"
     assert df.iloc[0]["ddG"] == "-3875.483 kcal/mol"
 
 

@@ -153,7 +153,6 @@ def _ligand_from_pair_input(ref: dict[str, Any], *, client: DeepOriginClient) ->
     return Ligand.from_smiles("C", id=None, remote_path=str(file_path))
 
 
-@beartype
 def _format_ddg(*, total: Any, unit: str | None) -> str | None:
     """Format RBFE ΔΔG from a result ``data`` payload."""
     if total is None:
@@ -165,23 +164,30 @@ def _format_ddg(*, total: Any, unit: str | None) -> str | None:
 
 
 @beartype
-def _rbfe_results_dataframe(response: dict[str, Any]) -> pd.DataFrame | None:
+def _rbfe_results_dataframe(
+    response: dict[str, Any],
+    *,
+    tool_key: str,
+) -> pd.DataFrame | None:
     """Build a summary table from a data-platform RBFE results response."""
     records = response.get("data") or []
     rows: list[dict[str, Any]] = []
     for record in records:
         if not isinstance(record, dict):
             continue
+        if record.get("tool_key") != tool_key:
+            continue
         payload = record.get("data")
         if not isinstance(payload, dict):
             continue
         rows.append(
             {
-                "execution_id": record.get("compute_job_id"),
+                "protein_id": payload.get("protein_id"),
                 "ligand1_id": payload.get("ligand1_id"),
                 "ligand2_id": payload.get("ligand2_id"),
                 "ddG": _format_ddg(
-                    total=payload.get("total"), unit=payload.get("unit")
+                    total=payload.get("total"),
+                    unit=payload.get("unit"),
                 ),
             }
         )
@@ -492,13 +498,13 @@ class RBFE(Execution, AsyncExecutableMixin, NotebookWatchMixin):
 
         Uses :meth:`~deeporigin.drug_discovery.execution.Execution.get_results`
         (results for this tools execution id), then builds one row per result
-        record with ``execution_id`` (the platform ``compute_job_id``),
-        ligand ids, and ``ddG`` (``total`` plus ``unit`` from the stored payload).
+        record with ``protein_id``, ligand ids, and ``ddG`` (``total`` plus
+        ``unit`` from the stored payload).
         Keyword arguments are accepted for signature compatibility with the base
         class but are not forwarded.
 
         Returns:
-            A DataFrame with columns ``execution_id``, ``ligand1_id``,
+            A DataFrame with columns ``protein_id``, ``ligand1_id``,
             ``ligand2_id``, and ``ddG``, or ``None`` if no result rows exist yet.
 
         Raises:
@@ -506,7 +512,7 @@ class RBFE(Execution, AsyncExecutableMixin, NotebookWatchMixin):
         """
         self.sync()
         response = super().get_results()
-        return _rbfe_results_dataframe(response)
+        return _rbfe_results_dataframe(response, tool_key=self.tool_key)
 
     def __repr__(self) -> str:
         """Return a concise multi-line representation."""

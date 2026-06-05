@@ -13,7 +13,10 @@ if TYPE_CHECKING:
     from deeporigin.platform.client import DeepOriginClient
 
 from deeporigin.platform.constants import TERMINAL_STATES
-from deeporigin.utils.constants import TOOL_EXECUTION_POST_TIMEOUT_SECONDS
+from deeporigin.utils.constants import (
+    TOOL_EXECUTION_GET_ACCEPT_HEADER,
+    TOOL_EXECUTION_POST_TIMEOUT_SECONDS,
+)
 
 
 def _created_after_to_iso_utc(created_after: datetime | str) -> str:
@@ -276,6 +279,12 @@ class Executions:
     def get(self, execution_id: str) -> dict:
         """Get a tool execution by execution ID.
 
+        Requests the tools-service v2.0 execution DTO (``Accept:
+        application/json;v=2.0``), which includes the enhanced
+        ``progressReport`` tree. Top-level fields such as ``executionId``,
+        ``status``, ``userInputs``, and ``jobOutputs`` match the v1 shape
+        used elsewhere in this library.
+
         Args:
             execution_id: The execution ID to fetch.
 
@@ -283,7 +292,8 @@ class Executions:
             Dictionary containing the tool execution data.
         """
         return self._c.get_json(
-            f"/tools/{self._c.org_key}/tools/executions/{execution_id}"
+            f"/tools/{self._c.org_key}/tools/executions/{execution_id}",
+            headers={"Accept": TOOL_EXECUTION_GET_ACCEPT_HEADER},
         )
 
     def search(

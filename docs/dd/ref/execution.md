@@ -17,7 +17,11 @@ path you will use after :meth:`Execution.confirm`:
 ``confirm()`` only sends ``executionId`` to the platform; it cannot change inputs
 or switch sync/async. The SDK applies the confirm response with
 :meth:`Execution.update_from_dto` (``status``, :attr:`~deeporigin.drug_discovery.execution.Execution.cost`,
-:attr:`~deeporigin.drug_discovery.execution.Execution.dto`). The SDK stores ``_quoted_mode`` so ``start()`` rejects a
+:attr:`~deeporigin.drug_discovery.execution.Execution.dto`, :attr:`~deeporigin.drug_discovery.execution.Execution.estimate`).
+Pricing is derived from ``quotationResult.successfulQuotations`` via
+:meth:`Execution._quotation_total` (summed across all billable items).
+User log rows from :meth:`Execution.get_user_logs` are formatted via
+:meth:`Execution._user_logs_dataframe`. The SDK stores ``_quoted_mode`` so ``start()`` rejects a
 sync-mode quote and ``run()`` can reject an async-mode quote (see each tool).
 
 ::: src.drug_discovery.execution
