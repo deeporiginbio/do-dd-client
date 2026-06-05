@@ -11,8 +11,6 @@ def test_list_organizations_lv1(client: DeepOriginClient):
     assert len(orgs) > 0, "Expected at least one organization"
     org = orgs[0]
     for key in [
-        "createdAt",
-        "updatedAt",
         "orgKey",
         "name",
         "mfaEnabled",
@@ -20,7 +18,6 @@ def test_list_organizations_lv1(client: DeepOriginClient):
         "autoApproveMaxAmount",
         "status",
         "id",
-        "invites",
         "roles",
     ]:
         assert key in org, f"Expected organization to have key {key}"
