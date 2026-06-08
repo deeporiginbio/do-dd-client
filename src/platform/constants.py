@@ -70,6 +70,10 @@ TOOL_KEYS_AND_VERSIONS: dict[str, dict[str, str]] = {
         "tool_key": "deeporigin.mol-props-protonation",
         "tool_version": "0.3.3",
     },
+    "konnektor": {
+        "tool_key": "deeporigin.konnektor",
+        "tool_version": "latest",
+    },
     "abfe": {
         "tool_key": "deeporigin.abfe-end-to-end",
         "tool_version": "0.3.3",

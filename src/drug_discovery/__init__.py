@@ -6,6 +6,7 @@ molecule manipulation, protein-ligand interactions, and computational chemistry
 calculations.
 """
 
+from importlib import import_module
 from importlib.resources import files
 
 __all__ = [
@@ -26,82 +27,48 @@ __all__ = [
     "SystemPrep",
     "Molprops",
     "Protonation",
+    "Konnektor",
 ]
 
 DATA_DIR = files("deeporigin.data")
 BRD_DATA_DIR = DATA_DIR / "brd"
 
+_LAZY_IMPORTS = {
+    "Protein": ("deeporigin.drug_discovery.structures.protein", "Protein"),
+    "Ligand": ("deeporigin.drug_discovery.structures.ligand", "Ligand"),
+    "LigandSet": ("deeporigin.drug_discovery.structures.ligand", "LigandSet"),
+    "Pocket": ("deeporigin.drug_discovery.structures.pocket", "Pocket"),
+    "PreparedSystem": (
+        "deeporigin.drug_discovery.structures.prepared_system",
+        "PreparedSystem",
+    ),
+    "PocketFinder": ("deeporigin.drug_discovery.pocket_finder", "PocketFinder"),
+    "Docking": ("deeporigin.drug_discovery.docking", "Docking"),
+    "ConstrainedDocking": (
+        "deeporigin.drug_discovery.constrained_docking",
+        "ConstrainedDocking",
+    ),
+    "ABFE": ("deeporigin.drug_discovery.abfe", "ABFE"),
+    "ABFEParams": ("deeporigin.drug_discovery.abfe", "ABFEParams"),
+    "RBFE": ("deeporigin.drug_discovery.rbfe", "RBFE"),
+    "RBFEParams": ("deeporigin.drug_discovery.rbfe", "RBFEParams"),
+    "SystemPrep": ("deeporigin.drug_discovery.system_prep", "SystemPrep"),
+    "Molprops": ("deeporigin.drug_discovery.molprops", "Molprops"),
+    "Protonation": ("deeporigin.drug_discovery.protonation", "Protonation"),
+    "Konnektor": ("deeporigin.drug_discovery.konnektor", "Konnektor"),
+    "Execution": ("deeporigin.drug_discovery.execution", "Execution"),
+    "PlatformStatus": ("deeporigin.platform.constants", "PlatformStatus"),
+}
+
 
 def __getattr__(name):
-    if name == "Protein":
-        from .structures.protein import Protein
-
-        return Protein
-    elif name == "Ligand":
-        from .structures.ligand import Ligand
-
-        return Ligand
-    elif name == "LigandSet":
-        from .structures.ligand import LigandSet
-
-        return LigandSet
-    elif name == "Pocket":
-        from .structures.pocket import Pocket
-
-        return Pocket
-    elif name == "PreparedSystem":
-        from .structures.prepared_system import PreparedSystem
-
-        return PreparedSystem
-    elif name == "PocketFinder":
-        from deeporigin.drug_discovery.pocket_finder import PocketFinder
-
-        return PocketFinder
-    elif name == "Docking":
-        from deeporigin.drug_discovery.docking import Docking
-
-        return Docking
-    elif name == "ConstrainedDocking":
-        from deeporigin.drug_discovery.constrained_docking import ConstrainedDocking
-
-        return ConstrainedDocking
-    elif name == "ABFE":
-        from deeporigin.drug_discovery.abfe import ABFE
-
-        return ABFE
-    elif name == "RBFE":
-        from deeporigin.drug_discovery.rbfe import RBFE
-
-        return RBFE
-    elif name == "RBFEParams":
-        from deeporigin.drug_discovery.rbfe import RBFEParams
-
-        return RBFEParams
-    elif name == "ABFEParams":
-        from deeporigin.drug_discovery.abfe import ABFEParams
-
-        return ABFEParams
-    elif name == "SystemPrep":
-        from deeporigin.drug_discovery.system_prep import SystemPrep
-
-        return SystemPrep
-    elif name == "Molprops":
-        from deeporigin.drug_discovery.molprops import Molprops
-
-        return Molprops
-    elif name == "Protonation":
-        from deeporigin.drug_discovery.protonation import Protonation
-
-        return Protonation
-    elif name == "Execution":
-        from deeporigin.drug_discovery.execution import Execution
-
-        return Execution
-    elif name == "PlatformStatus":
-        from deeporigin.platform.constants import PlatformStatus
-
-        return PlatformStatus
-    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+    """Lazily import public drug-discovery symbols."""
+    try:
+        module_name, attr_name = _LAZY_IMPORTS[name]
+    except KeyError:
+        raise AttributeError(f"module {__name__!r} has no attribute {name!r}") from None
+    module = import_module(module_name)
+    return getattr(module, attr_name)
 
 
 def __dir__():

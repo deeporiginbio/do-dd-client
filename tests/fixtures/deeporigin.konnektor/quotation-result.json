@@ -1,0 +1,24 @@
+{
+  "anyFailed": false,
+  "failedQuotations": [],
+  "successfulQuotations": [
+    {
+      "qty": 1,
+      "orgId": "deeporigin",
+      "status": "OK",
+      "itemCode": "DO_KONNEKTOR",
+      "priceEach": 1.23,
+      "priceTotal": 1.23,
+      "pricingRecords": [
+        {
+          "qty": 1,
+          "itemKey": "DO_KONNEKTOR",
+          "itemName": "Konnektor ligand network",
+          "priceEach": 1.23,
+          "totalPrice": 1.23
+        }
+      ],
+      "pricingRecordType": "regular"
+    }
+  ]
+}

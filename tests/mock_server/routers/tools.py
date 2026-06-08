@@ -119,6 +119,38 @@ def _stable_log_value(seed: str, suffix: str, *, low: float, high: float) -> flo
     return round(low + _stable_unit_float(seed, suffix) * (high - low), 6)
 
 
+def _konnektor_ligand_display_name(ligand: dict[str, Any], index: int) -> str:
+    """Stable component name aligned with rbfe-tools ``ligand_resolve``."""
+    ligand_id = str(ligand.get("id") or "").strip()
+    if ligand_id:
+        return ligand_id
+    file_path = str(ligand.get("file_path") or "").strip()
+    if file_path:
+        stem = Path(file_path).stem.strip()
+        if stem:
+            return stem
+    return f"ligand_{index + 1}"
+
+
+def _konnektor_edges(
+    names: list[str],
+    *,
+    network_type: str,
+) -> list[dict[str, str]]:
+    """Build mock Konnektor edges for ``names`` (order matches input ligands)."""
+    if len(names) < 2:
+        return []
+    if network_type == "star":
+        hub = names[0]
+        return [{"source": hub, "target": target} for target in names[1:]]
+    if network_type == "cyclic":
+        return [
+            {"source": names[i], "target": names[(i + 1) % len(names)]}
+            for i in range(len(names))
+        ]
+    return [{"source": names[i], "target": names[i + 1]} for i in range(len(names) - 1)]
+
+
 def _synthesize_molprops_row(
     *, smiles: str, ligand_id: str, requested: list[str]
 ) -> dict[str, Any]:
@@ -1258,6 +1290,39 @@ def create_tools_router(
             executions[eid] = execution
             _inject_sysprep_tool_execution_results(execution)
             return _normalize_execution(execution)
+        if tool_key == "deeporigin.konnektor":
+            if quote_only:
+                execution = _create_execution_dto(
+                    tool_key=tool_key,
+                    tool_version=tool_version,
+                    org_key=org_key,
+                    body=body,
+                )
+                executions[execution["executionId"]] = execution
+                return _normalize_execution(execution)
+            if body.get("sync") is True:
+                execution = _create_blocking_run_dto(
+                    org_key=org_key,
+                    tool_key=tool_key,
+                    tool_version=tool_version,
+                    body=body,
+                )
+                inputs = body.get("inputs", {}) or {}
+                ligand_inputs = inputs.get("ligands") or []
+                network_type = str(inputs.get("network_type") or "mst")
+                names = [
+                    _konnektor_ligand_display_name(row, idx)
+                    for idx, row in enumerate(ligand_inputs)
+                    if isinstance(row, dict)
+                ]
+                edges = _konnektor_edges(names, network_type=network_type)
+                execution["jobOutputs"] = {
+                    "edges": edges,
+                    "is_connected": len(names) <= 1 or len(edges) >= len(names) - 1,
+                    "network": {},
+                }
+                executions[execution["executionId"]] = execution
+                return _normalize_execution(execution)
         if tool_key == "deeporigin.mol-props-protonation":
             execution = _build_protonation_execution(
                 org_key=org_key,
