@@ -17,31 +17,36 @@ from deeporigin.platform.client import DeepOriginClient
 from deeporigin.platform.constants import TOOL_KEYS_AND_VERSIONS
 
 
-def test_rbfe_sysprep_build_params() -> None:
-    """System-prep-only steps build pairs[] and prep flags."""
+def test_rbfe_ligands_build_params() -> None:
+    """Konnektor steps build ligands[], network_type, and prep flags."""
     protein = Protein(name="p", id="prot-1", remote_path="testing/brd.pdb")
     ligand1 = Ligand.from_smiles("CCO", id="lig-1", remote_path="testing/lig1.sdf")
     ligand2 = Ligand.from_smiles("CCN", id="lig-2", remote_path="testing/lig2.sdf")
+    ligand3 = Ligand.from_smiles("CCC", id="lig-3", remote_path="testing/lig3.sdf")
     rbfe = RBFE(
         protein=protein,
-        pairs=[(ligand1, ligand2)],
-        prep_only=True,
+        ligands=[ligand1, ligand2, ligand3],
+        network_type="star",
         retain_waters=False,
         padding=1.5,
     )
     params = rbfe._build_params()
-    assert params["steps"] == ["system-prep"]
+    assert params["steps"] == ["konnektor", "system-prep", "rbfe"]
     assert params["protein"]["file_path"] == "testing/brd.pdb"
-    assert len(params["pairs"]) == 1
-    assert params["pairs"][0]["ligand1"]["id"] == "lig-1"
-    assert params["pairs"][0]["ligand2"]["id"] == "lig-2"
+    assert len(params["ligands"]) == 3
+    assert params["ligands"][0]["id"] == "lig-1"
+    assert params["ligands"][0]["file_path"] == "testing/lig1.sdf"
+    assert params["network_type"] == "star"
+    assert "pairs" not in params
     assert params["padding"] == pytest.approx(1.5)
-    assert "binding" not in params
+    assert "binding" in params
 
 
 def test_rbfe_rbfe_steps_require_prepared_systems() -> None:
-    """RBFE-only steps reject empty prepared_systems."""
-    with pytest.raises(ValueError, match="prepared_systems"):
+    """RBFE-only steps reject when no input mode is provided."""
+    with pytest.raises(
+        ValueError, match="Exactly one of ligands, pairs, or prepared_systems"
+    ):
         RBFE(prepared_systems=[])
 
 
@@ -90,7 +95,6 @@ def test_rbfe_ensure_synced_inputs_ensures_remote_paths(
     rbfe = RBFE(
         protein=protein,
         pairs=[(ligand1, ligand2)],
-        prep_only=True,
         client=client,
     )
     executions.create.return_value = {
@@ -131,7 +135,6 @@ def test_rbfe_start_calls_executions_create(monkeypatch: pytest.MonkeyPatch) -> 
     rbfe = RBFE(
         protein=protein,
         pairs=[(ligand1, ligand2)],
-        prep_only=True,
         client=client,
     )
     executions.create.return_value = {
@@ -148,7 +151,7 @@ def test_rbfe_start_calls_executions_create(monkeypatch: pytest.MonkeyPatch) -> 
     executions.create.assert_called_once()
     call_kwargs = executions.create.call_args.kwargs
     assert call_kwargs["tool_key"] == "deeporigin.rbfe"
-    assert call_kwargs["data"]["inputs"]["steps"] == ["system-prep"]
+    assert call_kwargs["data"]["inputs"]["steps"] == ["system-prep", "rbfe"]
 
 
 def test_rbfe_start_quote_sums_workflow_quotations(
@@ -247,8 +250,8 @@ def test_rbfe_from_dto_rehydrates_rbfe_only_steps() -> None:
     assert "steps=" in repr(rbfe)
 
 
-def test_rbfe_from_dto_rehydrates_system_prep_steps() -> None:
-    """from_dto restores protein, pairs, and prep flags for system-prep-only runs."""
+def test_rbfe_from_dto_rejects_legacy_system_prep_only_steps() -> None:
+    """from_dto rejects legacy steps=['system-prep'] executions."""
     fake_dto = {
         "executionId": "exec-prep-1",
         "status": "Succeeded",
@@ -271,28 +274,9 @@ def test_rbfe_from_dto_rehydrates_system_prep_steps() -> None:
         },
     }
     client = MagicMock(spec=DeepOriginClient)
-    client.entities = MagicMock()
-    client.entities.get_ligand.side_effect = [
-        {"id": "lig-1", "smiles": "CCO", "mol_file": "testing/l1.sdf"},
-        {"id": "lig-2", "smiles": "CCN", "mol_file": "testing/l2.sdf"},
-    ]
-    client.entities.get_protein.return_value = {
-        "id": "prot-1",
-        "file_path": "testing/brd.pdb",
-        "name": "BRD",
-    }
 
-    rbfe = RBFE.from_dto(fake_dto, client=client)
-
-    assert rbfe.steps == ["system-prep"]
-    assert rbfe.prep_only is True
-    assert rbfe.protein is not None
-    assert rbfe.protein.id == "prot-1"
-    assert len(rbfe.pairs) == 1
-    assert rbfe.pairs[0][0].id == "lig-1"
-    assert rbfe.add_h_atoms is True
-    assert rbfe.retain_waters is False
-    assert rbfe.padding == pytest.approx(1.25)
+    with pytest.raises(ValueError, match="Legacy steps=\\['system-prep'\\]"):
+        RBFE.from_dto(fake_dto, client=client)
 
 
 def test_rbfe_results_dataframe_columns() -> None:
@@ -514,7 +498,7 @@ def test_rbfe_repr_shows_id_and_status_when_set() -> None:
     protein = Protein(name="p", id="prot-1", remote_path="testing/brd.pdb")
     ligand1 = Ligand.from_smiles("CCO", id="lig-1", remote_path="testing/lig1.sdf")
     ligand2 = Ligand.from_smiles("CCN", id="lig-2", remote_path="testing/lig2.sdf")
-    rbfe = RBFE(protein=protein, pairs=[(ligand1, ligand2)], prep_only=True)
+    rbfe = RBFE(protein=protein, pairs=[(ligand1, ligand2)])
     assert "id=" not in repr(rbfe)
     assert "status=" not in repr(rbfe)
 

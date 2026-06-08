@@ -1052,6 +1052,15 @@ def create_tools_router(
                     if exec.get("projectId") == project_id_filter_value
                 ]
 
+        if filter_dict and "session" in filter_dict:
+            session_filter_value = filter_dict["session"]
+            filtered_executions = [
+                exec
+                for exec in filtered_executions
+                if exec.get("session") is None
+                or exec.get("session") == session_filter_value
+            ]
+
         if created_after_gt is not None:
 
             def _parse_created_at(value: str) -> datetime:

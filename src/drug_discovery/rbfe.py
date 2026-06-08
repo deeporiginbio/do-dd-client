@@ -11,7 +11,7 @@ from deeporigin.drug_discovery.abfe import ABFEParams
 from deeporigin.drug_discovery.execution import Execution
 from deeporigin.drug_discovery.execution_mixins import AsyncExecutableMixin
 from deeporigin.drug_discovery.notebook_watch_mixin import NotebookWatchMixin
-from deeporigin.drug_discovery.structures.ligand import Ligand
+from deeporigin.drug_discovery.structures.ligand import Ligand, LigandSet
 from deeporigin.drug_discovery.structures.prepared_system import PreparedSystem
 from deeporigin.drug_discovery.structures.protein import Protein
 from deeporigin.exceptions import DeepOriginException
@@ -19,7 +19,8 @@ from deeporigin.platform.client import DeepOriginClient
 from deeporigin.platform.constants import TOOL_KEYS_AND_VERSIONS
 
 RBFEParams = ABFEParams
-RBFEWorkflowStep = Literal["system-prep", "rbfe"]
+RBFEWorkflowStep = Literal["konnektor", "system-prep", "rbfe"]
+KonnektorNetworkType = Literal["star", "mst", "cyclic"]
 
 
 @beartype
@@ -36,6 +37,27 @@ def _ligand_tool_ref(ligand: Ligand) -> dict[str, str]:
     if ligand.id is not None:
         ref["id"] = ligand.id
     return ref
+
+
+@beartype
+def _ligand_konnektor_tool_ref(ligand: Ligand) -> dict[str, str]:
+    """Serialize a ligand for the RBFE Konnektor ``ligands[]`` input."""
+    ligand_id = ligand.id
+    if ligand_id is None or not str(ligand_id).strip():
+        msg = "Ligand must be registered before submitting RBFE (id is missing)."
+        raise DeepOriginException(
+            title="Ligand not registered",
+            message=msg,
+            fix="Call ligand.sync(client=...) before RBFE.start().",
+        )
+    if ligand.remote_path is None:
+        msg = "Ligand must be synced before submitting RBFE (remote_path is missing)."
+        raise DeepOriginException(
+            title="Ligand not synced",
+            message=msg,
+            fix="Call ligand.sync(client=...) before RBFE.start().",
+        )
+    return {"id": str(ligand_id), "file_path": ligand.remote_path}
 
 
 @beartype
@@ -201,8 +223,8 @@ class RBFE(Execution, AsyncExecutableMixin, NotebookWatchMixin):
 
     Platform ``steps`` are inferred from constructor inputs (see :meth:`_post_init`):
 
-    - ``["system-prep", "rbfe"]``: ``protein`` + ``pairs`` (default)
-    - ``["system-prep"]``: ``protein`` + ``pairs`` + ``prep_only=True``
+    - ``["konnektor", "system-prep", "rbfe"]``: ``protein`` + ``ligands``
+    - ``["system-prep", "rbfe"]``: ``protein`` + ``pairs``
     - ``["rbfe"]``: ``prepared_systems``
 
     Attributes:
@@ -216,9 +238,10 @@ class RBFE(Execution, AsyncExecutableMixin, NotebookWatchMixin):
         self,
         *,
         protein: Protein | None = None,
+        ligands: LigandSet | list[Ligand] | None = None,
         pairs: list[tuple[Ligand, Ligand]] | None = None,
         prepared_systems: list[PreparedSystem] | None = None,
-        prep_only: bool = False,
+        network_type: KonnektorNetworkType = "mst",
         params: RBFEParams | None = None,
         add_h_atoms: bool = False,
         protonate_protein: bool = False,
@@ -233,14 +256,19 @@ class RBFE(Execution, AsyncExecutableMixin, NotebookWatchMixin):
         Platform ``steps`` are inferred in :meth:`_post_init`:
 
         - ``prepared_systems`` -> ``["rbfe"]`` (FEP on existing systems)
-        - ``protein`` + ``pairs`` + ``prep_only=False`` -> ``["system-prep", "rbfe"]``
-        - ``protein`` + ``pairs`` + ``prep_only=True`` -> ``["system-prep"]``
+        - ``protein`` + ``pairs`` -> ``["system-prep", "rbfe"]``
+        - ``protein`` + ``ligands`` -> ``["konnektor", "system-prep", "rbfe"]``
+
+        Exactly one of ``ligands``, ``pairs``, or ``prepared_systems`` must be
+        provided.
 
         Args:
-            protein: Shared protein for prep modes.
-            pairs: Ligand pairs for system-prep steps.
+            protein: Shared protein for prep modes (required with ``ligands`` or
+                ``pairs``).
+            ligands: Ligand set for Konnektor network planning (min 2).
+            pairs: Explicit ligand pairs for system-prep steps.
             prepared_systems: Prepared systems for RBFE-only steps.
-            prep_only: When True with ``protein`` and ``pairs``, run system prep only.
+            network_type: Konnektor topology when ``ligands`` is provided.
             params: FEP simulation parameters for plans that include ``rbfe``.
             add_h_atoms: Add hydrogens to ligands during prep.
             protonate_protein: Protonate protein during prep.
@@ -256,9 +284,15 @@ class RBFE(Execution, AsyncExecutableMixin, NotebookWatchMixin):
         super().__init__(client=client)
         self.tool_version = tool_version
         self.protein = protein
+        if ligands is None:
+            self.ligands = LigandSet()
+        elif isinstance(ligands, LigandSet):
+            self.ligands = ligands
+        else:
+            self.ligands = LigandSet(ligands=list(ligands))
         self.pairs = pairs or []
         self.prepared_systems = prepared_systems or []
-        self.prep_only = prep_only
+        self.network_type = network_type
         self._params = params if params is not None else RBFEParams()
         self.add_h_atoms = add_h_atoms
         self.protonate_protein = protonate_protein
@@ -269,23 +303,21 @@ class RBFE(Execution, AsyncExecutableMixin, NotebookWatchMixin):
 
     def _post_init(self) -> None:
         """Infer platform ``steps`` from constructor inputs and validate."""
-        has_prep = bool(self.prepared_systems)
+        has_ligands = bool(self.ligands)
         has_pairs = bool(self.pairs)
-        has_protein = self.protein is not None
+        has_prep = bool(self.prepared_systems)
+        mode_count = sum([has_ligands, has_pairs, has_prep])
 
-        if has_prep and (has_pairs or has_protein):
+        if mode_count != 1:
             raise ValueError(
-                "Provide either prepared_systems or protein+pairs, not both."
+                "Exactly one of ligands, pairs, or prepared_systems must be provided."
             )
         if has_prep:
             self.steps: list[RBFEWorkflowStep] = ["rbfe"]
-        elif has_protein and has_pairs:
-            self.steps = ["system-prep"] if self.prep_only else ["system-prep", "rbfe"]
+        elif has_ligands:
+            self.steps = ["konnektor", "system-prep", "rbfe"]
         else:
-            raise ValueError(
-                "Provide prepared_systems for FEP-only RBFE, or protein and pairs "
-                "for prep (set prep_only=True) or prep+FEP."
-            )
+            self.steps = ["system-prep", "rbfe"]
         self._validate_step_inputs()
 
     @property
@@ -330,10 +362,18 @@ class RBFE(Execution, AsyncExecutableMixin, NotebookWatchMixin):
             raise ValueError(msg)
         instance.steps = list(raw_steps)
 
+        if instance.steps == ["system-prep"]:
+            msg = (
+                "Legacy steps=['system-prep'] executions are no longer supported "
+                "by RBFE.from_dto()."
+            )
+            raise ValueError(msg)
+
         instance.protein = None
+        instance.ligands = LigandSet()
         instance.pairs = []
         instance.prepared_systems = []
-        instance.prep_only = instance.steps == ["system-prep"]
+        instance.network_type = str(inputs.get("network_type", "mst"))
         instance.add_h_atoms = bool(inputs.get("add_H_atoms", False))
         instance.protonate_protein = bool(inputs.get("protonate_protein", False))
         instance.retain_waters = bool(inputs.get("retain_waters", True))
@@ -343,6 +383,15 @@ class RBFE(Execution, AsyncExecutableMixin, NotebookWatchMixin):
             if "rbfe" in instance.steps
             else RBFEParams()
         )
+
+        if "konnektor" in instance.steps:
+            instance.ligands = LigandSet(
+                ligands=[
+                    _ligand_from_pair_input(ref, client=instance.client)
+                    for ref in inputs.get("ligands", [])
+                    if isinstance(ref, dict)
+                ]
+            )
 
         if "system-prep" in instance.steps:
             protein_input = inputs.get("protein", {})
@@ -361,14 +410,19 @@ class RBFE(Execution, AsyncExecutableMixin, NotebookWatchMixin):
                     remote_path=str(protein_input["file_path"]),
                 )
 
-            instance.pairs = [
-                (
-                    _ligand_from_pair_input(pair["ligand1"], client=instance.client),
-                    _ligand_from_pair_input(pair["ligand2"], client=instance.client),
-                )
-                for pair in inputs.get("pairs", [])
-                if "ligand1" in pair and "ligand2" in pair
-            ]
+            if "konnektor" not in instance.steps:
+                instance.pairs = [
+                    (
+                        _ligand_from_pair_input(
+                            pair["ligand1"], client=instance.client
+                        ),
+                        _ligand_from_pair_input(
+                            pair["ligand2"], client=instance.client
+                        ),
+                    )
+                    for pair in inputs.get("pairs", [])
+                    if "ligand1" in pair and "ligand2" in pair
+                ]
 
         if instance.steps == ["rbfe"] or (
             "rbfe" in instance.steps and inputs.get("prepared_systems")
@@ -409,7 +463,14 @@ class RBFE(Execution, AsyncExecutableMixin, NotebookWatchMixin):
 
     def _validate_step_inputs(self) -> None:
         """Validate constructor arguments for the selected workflow steps."""
-        if "system-prep" in self.steps:
+        if "konnektor" in self.steps:
+            if self.protein is None:
+                raise ValueError(f"protein is required for steps={self.steps!r}.")
+            if len(self.ligands) < 2:
+                raise ValueError(
+                    f"ligands requires at least two ligands for steps={self.steps!r}."
+                )
+        elif "system-prep" in self.steps:
             if self.protein is None:
                 raise ValueError(f"protein is required for steps={self.steps!r}.")
             if not self.pairs:
@@ -423,6 +484,10 @@ class RBFE(Execution, AsyncExecutableMixin, NotebookWatchMixin):
         if self.protein is not None:
             self.protein.sync(lazy=True, client=client)
             self.protein.ensure_remote_path(client=client, label="Protein")
+        if "konnektor" in self.steps:
+            for ligand in self.ligands:
+                ligand.sync(lazy=True, client=client)
+                ligand.ensure_remote_path(client=client, label="Ligand")
         for ligand1, ligand2 in self.pairs:
             ligand1.sync(lazy=True, client=client)
             ligand1.ensure_remote_path(client=client, label="Ligand")
@@ -432,19 +497,25 @@ class RBFE(Execution, AsyncExecutableMixin, NotebookWatchMixin):
     def _build_params(self) -> dict[str, Any]:
         """Construct workflow input parameters for ``deeporigin.rbfe``."""
         out: dict[str, Any] = {"steps": self.steps}
+        if "konnektor" in self.steps:
+            out["ligands"] = [
+                _ligand_konnektor_tool_ref(ligand) for ligand in self.ligands
+            ]
+            out["network_type"] = self.network_type
         if "system-prep" in self.steps:
             assert self.protein is not None
             out["protein"] = {
                 "id": self.protein.id,
                 "file_path": self.protein.remote_path,
             }
-            out["pairs"] = [
-                {
-                    "ligand1": _ligand_tool_ref(ligand1),
-                    "ligand2": _ligand_tool_ref(ligand2),
-                }
-                for ligand1, ligand2 in self.pairs
-            ]
+            if "konnektor" not in self.steps:
+                out["pairs"] = [
+                    {
+                        "ligand1": _ligand_tool_ref(ligand1),
+                        "ligand2": _ligand_tool_ref(ligand2),
+                    }
+                    for ligand1, ligand2 in self.pairs
+                ]
             out.update(
                 {
                     "add_H_atoms": self.add_h_atoms,
@@ -586,6 +657,7 @@ class RBFE(Execution, AsyncExecutableMixin, NotebookWatchMixin):
             [
                 f"  steps={self.steps!r},",
                 f"  tool_key={self.tool_key!r},",
+                f"  ligands={len(self.ligands)},",
                 f"  pairs={len(self.pairs)},",
                 f"  prepared_systems={len(self.prepared_systems)},",
                 ")",

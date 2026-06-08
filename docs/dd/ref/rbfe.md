@@ -25,7 +25,7 @@ After an RBFE leg completes, `RBFE.get_results()` returns a summary DataFrame wi
 
 Visualize the returned object in a notebook:
 
-```python
+```{.python notest}
 ps = rbfe.get_prepared_system(ligand1_id=ligand1.id, ligand2_id=ligand2.id)
 ps.show()
 ps.show(solute=True)  # solute-only PDB when available
