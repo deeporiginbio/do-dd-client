@@ -63,25 +63,35 @@ rbfe = RBFE(
 rbfe.start()
 ```
 
-For prep only, pass `prep_only=True`. For FEP on existing prepared systems,
-pass `prepared_systems=[prepared, ...]` (`steps` is inferred as `["rbfe"]`).
+For FEP on existing prepared systems, pass `prepared_systems=[prepared, ...]`
+(`steps` is inferred as `["rbfe"]`). For single-pair prep without FEP, use
+`SystemPrep` instead of `RBFE`.
 See [:material-page-previous: Platform executions](../../platform/ref/executions.md).
 
 ## Constructing a network
 
-!!! tip "Constructing a network"
-    View the documentation for `LigandSet` to learn how to
-    [construct a network](../how-to/ligands.md#constructing-a-network-using-konnektor).
-
-For a congeneric series, map edges between ligands before scheduling pairwise
-RBFE calculations:
+For a congeneric series, submit the full ligand set and let the workflow run
+Konnektor to plan pairwise edges, then system-prep and RBFE for each edge:
 
 ```{.python notest}
 from deeporigin.drug_discovery import LigandSet
 
-ligands = LigandSet.from_dir(BRD_DATA_DIR)
-ligands.map_network().show_network()
+ligand_set = LigandSet.from_dir(BRD_DATA_DIR)
+for ligand in ligand_set:
+    ligand.sync()
+
+rbfe = RBFE(
+    protein=protein,
+    ligands=ligand_set,
+    network_type="mst",
+    params=RBFEParams(test_run=1),
+)
+rbfe.start()
 ```
 
-This stores the network on the ligand set and renders an interactive graph in
-Jupyter.
+See the [RBFE many-ligands workflow notebook](../../notebooks/dirty/rbfe-5-many-ligands-workflow.ipynb)
+for an end-to-end example on dev.
+
+To preview a network interactively in Jupyter before submitting, use
+`LigandSet.map_network().show_network()` — see
+[constructing a network](../how-to/ligands.md#constructing-a-network-using-konnektor).

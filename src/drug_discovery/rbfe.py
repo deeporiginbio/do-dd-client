@@ -155,7 +155,6 @@ def _fep_params_from_inputs(inputs: dict[str, Any]) -> RBFEParams:
     return RBFEParams(**kwargs)
 
 
-@beartype
 def _ligand_from_pair_input(ref: dict[str, Any], *, client: DeepOriginClient) -> Ligand:
     """Rehydrate a ligand from an RBFE ``pairs[]`` ligand reference."""
     lig_id = ref.get("id")
@@ -185,7 +184,6 @@ def _format_ddg(*, total: Any, unit: str | None) -> str | None:
     return str(total)
 
 
-@beartype
 def _rbfe_results_dataframe(
     response: dict[str, Any],
     *,
@@ -373,7 +371,10 @@ class RBFE(Execution, AsyncExecutableMixin, NotebookWatchMixin):
         instance.ligands = LigandSet()
         instance.pairs = []
         instance.prepared_systems = []
-        instance.network_type = str(inputs.get("network_type", "mst"))
+        raw_network_type = inputs.get("network_type", "mst")
+        if raw_network_type not in ("star", "mst", "cyclic"):
+            raw_network_type = "mst"
+        instance.network_type = raw_network_type
         instance.add_h_atoms = bool(inputs.get("add_H_atoms", False))
         instance.protonate_protein = bool(inputs.get("protonate_protein", False))
         instance.retain_waters = bool(inputs.get("retain_waters", True))

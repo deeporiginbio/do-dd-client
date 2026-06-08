@@ -6,7 +6,6 @@ alwaysApply: true
 
 # Code Style
 
-- Use beartype for runtime type validation 
 - Use type hints for all function arguments and return types
 - Use f-strings for string formatting
 - Prefer string literals over Enums

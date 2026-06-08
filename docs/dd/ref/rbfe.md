@@ -2,16 +2,21 @@
 
 Relative binding free energy (RBFE) in the drug discovery SDK is supported through:
 
-- **`RBFE`** — batch workflow on platform tool `deeporigin.rbfe` (`steps`: `["system-prep"]`, `["system-prep", "rbfe"]`, or `["rbfe"]`). Up to 20 ligand pairs per execution. See the [RBFE tutorial](../tutorial/rbfe.md).
+- **`RBFE`** — batch workflow on platform tool `deeporigin.rbfe` (`steps`: `["konnektor", "system-prep", "rbfe"]`, `["system-prep", "rbfe"]`, or `["rbfe"]`). Up to 20 ligand pairs per execution. See the [RBFE tutorial](../tutorial/rbfe.md).
 - **`SystemPrep`** in RBFE mode — single-pair sync prep via `deeporigin.system-prep` (pass `ligand1` and `ligand2`). Useful for one-off prep or when you want fine-grained control before submitting `RBFE(prepared_systems=[...])`.
 
 ## Steps
 
+Exactly one of `ligands`, `pairs`, or `prepared_systems` must be provided.
+
 | Steps | Input | Output |
 |------|-------|--------|
+| `["konnektor", "system-prep", "rbfe"]` | Shared `protein` + `ligands[]` + `network_type` + FEP params | Konnektor edges, then `system` and `result` records |
 | `["system-prep", "rbfe"]` | Shared `protein` + `pairs[]` + FEP params | `system` then `result` records |
-| `["system-prep"]` | Shared `protein` + `pairs[]` | `system` records |
 | `["rbfe"]` | `prepared_systems[]` + FEP params | `result` records |
+
+For Konnektor mode, each ligand must be synced and registered (platform `id` and
+`file_path` required). Use `SystemPrep` for single-pair prep without FEP.
 
 Start executions via `RBFE.start()` or the [Platform executions API](../../platform/ref/executions.md).
 
