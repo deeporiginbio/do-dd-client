@@ -76,7 +76,7 @@ def _stub_post_json_capturing_body(client: DeepOriginClient) -> dict:
         captured["__timeout__"] = kwargs.get("timeout")
         return {
             "executionId": "exec-stub",
-            "status": "Succeeded",
+            "status": "Completed",
             "jobOutputs": [{"result": "success"}],
             "tool": {
                 "key": "test.tool",
@@ -108,7 +108,7 @@ def test_executions_create_includes_app_and_session():
     assert captured["app"] == "python-client"
     assert captured["session"] == "sess-1"
     assert captured["clusterId"] == "test-cluster-id"
-    assert response["status"] == "Succeeded"
+    assert response["status"] == "Completed"
 
 
 def test_executions_create_uses_long_timeout():

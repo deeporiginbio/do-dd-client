@@ -85,7 +85,7 @@ def test_execution_confirm_applies_response_dto() -> None:
 
     job.confirm()
 
-    assert job.status == "Succeeded"
+    assert job.status == "Completed"
     assert job.cost == 10.0
     assert job.dto is not None
     assert job.dto["status"] == "Succeeded"

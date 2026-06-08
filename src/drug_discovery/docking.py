@@ -24,7 +24,7 @@ from deeporigin.drug_discovery.structures.protein import Protein
 from deeporigin.drug_discovery.utils.visualize import jupyter_visualization
 from deeporigin.exceptions import DeepOriginException
 from deeporigin.platform.client import DeepOriginClient
-from deeporigin.platform.constants import TOOL_KEYS_AND_VERSIONS
+from deeporigin.platform.constants import TOOL_KEYS_AND_VERSIONS, is_success_status
 
 Number = float | int
 
@@ -315,7 +315,7 @@ class Docking(Execution, SyncExecutableMixin, AsyncExecutableMixin, NotebookWatc
             return None
 
         final_status = dto.get("status")
-        if final_status != "Succeeded":
+        if not is_success_status(final_status):
             eid = dto.get("executionId")
             reason = dto.get("statusReason") or final_status
             raise DeepOriginException(

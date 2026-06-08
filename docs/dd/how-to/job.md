@@ -32,7 +32,7 @@ A dataframe with the following columns will be returned:
 | execution_id | (internal) execution ID. | 
 | completed_at | Time stamp of when the Job was completed |
 | started_at | Time stamp of when the Job was started |
-| status | One of `Succeeded` `Cancelled` `Failed` `Running` `Queued` `Created` `FailedQuotation` `Quoted` or `InsufficientFunds`|
+| status | One of `Completed` `Cancelled` `Failed` `Running` `Queued` `Created` `FailedQuotation` `Quoted` or `InsufficientFunds`|
 | tool_key | Key of tool corresponding to this Job |
 | tool_version | Version of tool |
 | user_name | Name (or ID) of user that started this job |
@@ -56,7 +56,7 @@ Multiple statuses can be retrieved using a single function call:
 ```{.python notest}
 from deeporigin.platform.tool_jobs import JobList
 
-df = JobList.list().filter(status=["Running", "Succeeded"], require_metadata=True).to_dataframe()
+df = JobList.list().filter(status=["Running", "Completed"], require_metadata=True).to_dataframe()
 ```
 
 
@@ -181,7 +181,7 @@ When viewing a job, the status is displayed as a badge in the footer of the job 
 
 - **Status Colors**: Each status has a distinct color:
   - `Running`: Blue (primary)
-  - `Succeeded`: Green (success)  
+  - `Completed`: Green (success)  
   - `Failed`/`FailedQuotation`/`InsufficientFunds`: Red (danger)
   - `Cancelled`: Dark gray
   - `Created`: Gray (secondary)
@@ -189,7 +189,7 @@ When viewing a job, the status is displayed as a badge in the footer of the job 
   - `Quoted`: Yellow (warning)
   - Other statuses: Light gray
 
-- **Auto-update Behavior**: The widget automatically stops updating when the job reaches a terminal state (`Succeeded`, `Failed`, `Cancelled`, `FailedQuotation`, `Quoted`, or `InsufficientFunds`)
+- **Auto-update Behavior**: The widget automatically stops updating when the job reaches a terminal state (`Completed`, `Failed`, `Cancelled`, `FailedQuotation`, `Quoted`, or `InsufficientFunds`)
 
 - **Quoted Status**: When a job has a "Quoted" status, the status tab displays a special message showing the estimated cost and instructions to approve the job. The message includes:
   - A "Job Quoted" heading

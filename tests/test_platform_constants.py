@@ -1,0 +1,51 @@
+"""Tests for platform execution status constants and helpers."""
+
+from deeporigin.platform.constants import (
+    ALLOWED_STATUS_TRANSITIONS,
+    CANONICAL_SUCCESS_STATUS,
+    LEGACY_SUCCEEDED_STATUS,
+    TERMINAL_STATES,
+    display_platform_status,
+    is_success_status,
+    normalize_platform_status,
+)
+
+
+def test_normalize_platform_status_maps_succeeded_to_completed() -> None:
+    """Legacy Succeeded is normalized to Completed."""
+    assert normalize_platform_status("Succeeded") == "Completed"
+    assert normalize_platform_status("Completed") == "Completed"
+    assert normalize_platform_status("Running") == "Running"
+    assert normalize_platform_status(None) is None
+
+
+def test_is_success_status_accepts_completed_and_succeeded() -> None:
+    """Terminal-success checks accept both canonical and legacy values."""
+    assert is_success_status("Completed") is True
+    assert is_success_status("Succeeded") is True
+    assert is_success_status("Running") is False
+    assert is_success_status(None) is False
+
+
+def test_display_platform_status_shows_completed_for_legacy_succeeded() -> None:
+    """User-facing labels always use Completed for success."""
+    assert display_platform_status("Succeeded") == "Completed"
+    assert display_platform_status("Completed") == "Completed"
+    assert display_platform_status("Running") == "Running"
+    assert display_platform_status(None) == "New"
+    assert display_platform_status("") == "New"
+
+
+def test_terminal_states_include_completed_and_legacy_succeeded() -> None:
+    """Terminal set includes canonical Completed and legacy Succeeded."""
+    assert "Completed" in TERMINAL_STATES
+    assert "Succeeded" in TERMINAL_STATES
+    assert "Failed" in TERMINAL_STATES
+
+
+def test_running_transitions_to_completed() -> None:
+    """Running may transition to Completed (not legacy Succeeded)."""
+    assert CANONICAL_SUCCESS_STATUS in ALLOWED_STATUS_TRANSITIONS["Running"]
+    assert LEGACY_SUCCEEDED_STATUS not in ALLOWED_STATUS_TRANSITIONS["Running"]
+    assert ALLOWED_STATUS_TRANSITIONS["Completed"] == set()
+    assert ALLOWED_STATUS_TRANSITIONS["Succeeded"] == set()

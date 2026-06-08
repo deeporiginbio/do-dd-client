@@ -43,7 +43,7 @@ jobs.stop_watching()
 The `watch()` method will:
 - Display an initial status view
 - Periodically sync all jobs and update the display
-- Automatically stop when all jobs are in terminal states (Succeeded, Failed, Cancelled, etc.)
+- Automatically stop when all jobs are in terminal states (Completed, Failed, Cancelled, etc.)
 - Handle errors gracefully and continue monitoring
 
 ### Filtering Jobs
@@ -54,7 +54,7 @@ The `filter()` method allows you to filter jobs by status, attributes, or custom
 
 ```{.python notest}
 # Get only succeeded jobs
-succeeded_jobs = jobs.filter(status="Succeeded")
+completed_jobs = jobs.filter(status="Completed")
 
 # Get only running jobs
 running_jobs = jobs.filter(status="Running")
@@ -111,7 +111,7 @@ complex_filter = jobs.filter(
 
 # Status + tool key + tool version
 specific_jobs = jobs.filter(
-    status="Succeeded",
+    status="Completed",
     tool_key="deeporigin.abfe-e2e-workflow",
     tool_version="1.0.0"
 )

@@ -34,6 +34,6 @@ def test_molprops_run_syncs_status_from_execution_dto() -> None:
     ):
         job.run()
 
-    assert job.status == "Succeeded"
+    assert job.status == "Completed"
     assert job.id == "exec-run-1"
     assert job.cost == 0.14

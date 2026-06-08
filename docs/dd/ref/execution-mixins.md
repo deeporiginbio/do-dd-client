@@ -14,7 +14,7 @@ returned DTO with :meth:`~deeporigin.drug_discovery.execution.Execution.update_f
 Async classes call this from :meth:`AsyncExecutableMixin.start` when resuming a
 quoted job that was quoted with ``mode="async"``; poll with
 :meth:`~deeporigin.drug_discovery.execution.Execution.sync` until terminal if the
-confirm response is not yet ``Succeeded``.
+confirm response is not yet ``Completed``.
 
 ::: src.drug_discovery.execution_mixins
     options:

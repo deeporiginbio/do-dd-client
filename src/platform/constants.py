@@ -2,11 +2,15 @@
 
 from typing import Literal
 
+LEGACY_SUCCEEDED_STATUS = "Succeeded"
+CANONICAL_SUCCESS_STATUS = "Completed"
+
 PlatformStatus = Literal[
     "Quoted",
     "Created",
     "Queued",
     "Running",
+    "Completed",
     "Succeeded",
     "Failed",
     "Cancelled",
@@ -19,7 +23,8 @@ ALLOWED_STATUS_TRANSITIONS: dict[str | None, set[str]] = {
     "Quoted": {"Created", "Queued", "Running"},
     "Created": {"Queued", "Running", "Failed", "Cancelled"},
     "Queued": {"Running", "Failed", "Cancelled"},
-    "Running": {"Succeeded", "Failed", "Cancelled"},
+    "Running": {"Completed", "Failed", "Cancelled"},
+    "Completed": set(),
     "Succeeded": set(),
     "Failed": set(),
     "Cancelled": set(),
@@ -29,6 +34,7 @@ ALLOWED_STATUS_TRANSITIONS: dict[str | None, set[str]] = {
 
 # Terminal states for tool executions
 TERMINAL_STATES = {
+    "Completed",
     "Succeeded",
     "Failed",
     "Cancelled",
@@ -41,7 +47,49 @@ TERMINAL_STATES = {
 NON_TERMINAL_STATES = {"Created", "Queued", "Running"}
 
 # Non-failed states for tool executions
-NON_FAILED_STATES = {"Succeeded", "Running", "Queued", "Created"}
+NON_FAILED_STATES = {"Completed", "Running", "Queued", "Created"}
+
+
+def normalize_platform_status(status: str | None) -> str | None:
+    """Map legacy ``Succeeded`` to canonical ``Completed``.
+
+    Args:
+        status: Raw platform execution status from an API DTO.
+
+    Returns:
+        Normalized status, or ``None`` when ``status`` is ``None``.
+    """
+    if status == LEGACY_SUCCEEDED_STATUS:
+        return CANONICAL_SUCCESS_STATUS
+    return status
+
+
+def is_success_status(status: str | None) -> bool:
+    """Return whether ``status`` is a terminal-success execution state.
+
+    Args:
+        status: Platform execution status (raw or normalized).
+
+    Returns:
+        ``True`` for ``Completed`` or legacy ``Succeeded``.
+    """
+    return status in {CANONICAL_SUCCESS_STATUS, LEGACY_SUCCEEDED_STATUS}
+
+
+def display_platform_status(status: str | None) -> str:
+    """Return the user-facing label for a platform execution status.
+
+    Args:
+        status: Platform execution status (raw or normalized).
+
+    Returns:
+        Display label; legacy ``Succeeded`` is shown as ``Completed``.
+    """
+    if status is None or not str(status).strip():
+        return "New"
+    normalized = normalize_platform_status(str(status).strip())
+    return normalized if normalized is not None else "New"
+
 
 # Possible providers for files that work with the tools API
 PROVIDER = Literal["ufa", "s3"]

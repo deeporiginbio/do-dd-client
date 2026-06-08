@@ -148,7 +148,7 @@ def test_execution_wait_calls_platform_and_applies_response() -> None:
         timeout=30,
     )
     assert result == dto
-    assert job.status == "Succeeded"
+    assert job.status == "Completed"
     assert job.cost == pytest.approx(2.25)
 
 
@@ -183,9 +183,9 @@ def test_execution_get_user_logs_no_id_noop() -> None:
 def test_execution_get_user_logs_lv1(client: DeepOriginClient) -> None:
     """Load a succeeded execution and fetch user_logs scoped to its execution id."""
 
-    search = client.executions.search(status="Succeeded", limit=200)  # ty:ignore[unresolved-attribute]
+    search = client.executions.search(status="Completed", limit=200)  # ty:ignore[unresolved-attribute]
     rows = search.get("data") or []
-    succeeded = [r for r in rows if r.get("status") == "Succeeded"]
+    succeeded = [r for r in rows if r.get("status") in ("Completed", "Succeeded")]
     if not succeeded:
         pytest.skip("no succeeded execution visible for this account")
 
@@ -344,7 +344,7 @@ def test_confirm_can_set_long_timeout_and_disable_retries() -> None:
 
 
 def test_execution_update_from_dto_sets_cost_when_succeeded() -> None:
-    """``update_from_dto`` copies ``priceTotal`` into ``cost`` for Succeeded runs."""
+    """``update_from_dto`` copies ``priceTotal`` into ``cost`` for completed runs."""
     client = MagicMock()
     dto: dict[str, Any] = {
         "executionId": "exec-done",
@@ -355,15 +355,29 @@ def test_execution_update_from_dto_sets_cost_when_succeeded() -> None:
     job = _TestToolExecution(client=client)
     job.update_from_dto(dto)
 
-    assert job.status == "Succeeded"
+    assert job.status == "Completed"
     assert job.estimate == pytest.approx(10.0)
     assert job.cost == pytest.approx(10.0)
+
+
+def test_execution_update_from_dto_normalizes_legacy_succeeded() -> None:
+    """Legacy API ``Succeeded`` is stored as canonical ``Completed``."""
+    client = MagicMock()
+    dto: dict[str, Any] = {
+        "executionId": "exec-legacy",
+        "tool": {"key": "deeporigin.test-sync-tool", "version": "1.0.0"},
+        "status": "Succeeded",
+    }
+    job = _TestToolExecution(client=client)
+    job.update_from_dto(dto)
+
+    assert job.status == "Completed"
 
 
 def test_wait_returns_immediately_when_all_terminal() -> None:
     """If every execution is already terminal, ``wait`` returns on first poll."""
     dtos = [
-        {"executionId": "a", "status": "Succeeded"},
+        {"executionId": "a", "status": "Completed"},
         {"executionId": "b", "status": "Failed"},
     ]
     executions = _make_executions(get_side_effect=list(dtos))
@@ -378,9 +392,9 @@ def test_wait_polls_until_terminal(monkeypatch: pytest.MonkeyPatch) -> None:
     """``wait`` keeps polling pending executions and skips already-terminal ones."""
     responses = [
         {"executionId": "a", "status": "Running"},
-        {"executionId": "b", "status": "Succeeded"},
+        {"executionId": "b", "status": "Completed"},
         {"executionId": "a", "status": "Queued"},
-        {"executionId": "a", "status": "Succeeded"},
+        {"executionId": "a", "status": "Completed"},
     ]
     executions = _make_executions(get_side_effect=responses)
 
@@ -391,7 +405,7 @@ def test_wait_polls_until_terminal(monkeypatch: pytest.MonkeyPatch) -> None:
 
     result = executions.wait(["a", "b"], poll_interval=0.5)
 
-    assert [r["status"] for r in result] == ["Succeeded", "Succeeded"]
+    assert [r["status"] for r in result] == ["Completed", "Completed"]
     assert [r["executionId"] for r in result] == ["a", "b"]
     assert executions.get.call_count == 4  # ty:ignore[unresolved-attribute]
     assert sleeps == [0.5, 0.5]
@@ -400,12 +414,12 @@ def test_wait_polls_until_terminal(monkeypatch: pytest.MonkeyPatch) -> None:
 def test_wait_accepts_single_string() -> None:
     """``wait`` accepts a single execution ID string."""
     executions = _make_executions(
-        get_side_effect=[{"executionId": "x", "status": "Succeeded"}]
+        get_side_effect=[{"executionId": "x", "status": "Completed"}]
     )
 
     result = executions.wait("x", poll_interval=0.01)
 
-    assert result == [{"executionId": "x", "status": "Succeeded"}]
+    assert result == [{"executionId": "x", "status": "Completed"}]
     executions.get.assert_called_once_with("x")  # ty:ignore[unresolved-attribute]
 
 

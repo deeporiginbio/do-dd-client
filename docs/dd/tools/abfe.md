@@ -13,7 +13,7 @@ Use :meth:`ABFE.show_trajectory <deeporigin.drug_discovery.abfe.ABFE.show_trajec
 
 ### Prerequisites
 
-- A completed ABFE simulation run (`status` is `Succeeded`)
+- A completed ABFE simulation run (`status` is `Completed`)
 - `PreparedSystem` used for the run should include either `system_pdb_path` or `binding_xml_path` (the latter is used to resolve `system.pdb` next to the binding XML on the file store)
 - The Deep Origin Python package properly installed and configured
 
@@ -37,7 +37,7 @@ The method loads the data-platform result row for this job (the same shape as ``
 
 ### Behind the scenes
 
-1. Sync execution status and require `Succeeded`.
+1. Sync execution status and require `Completed`.
 2. Fetch results with `compute_job_id` set to the execution id.
 3. Resolve the XTC path from the result `data` (per step/window/repeat as above).
 4. Resolve the system PDB from `PreparedSystem` (`system_pdb_path`, or `dirname(binding_xml_path)/system.pdb`).
@@ -76,7 +76,7 @@ If `window` is not present in the results `trajectories` map, the error lists th
 
 ### Troubleshooting
 
-- Ensure the ABFE run completed successfully (`Succeeded`).
+- Ensure the ABFE run completed successfully (`Completed`).
 - Ensure `PreparedSystem.system_pdb_path` or `binding_xml_path` is set so the viewer can load the topology.
 - For binding/solvation, use a `window` that exists in the results `trajectories` keys (`window_1`, …).
 - Ensure you have disk space and network access for downloads into the local Deep Origin cache.
