@@ -339,6 +339,7 @@ def create_data_platform_router(
     results: list[dict[str, Any]],
     executions: dict[str, dict[str, Any]] | None = None,
     datasets: dict[str, dict[str, Any]] | None = None,
+    user_logs: dict[str, dict[str, Any]] | None = None,
     load_fixture: Callable[[str], dict[str, Any]],
 ) -> APIRouter:
     """Create a router for data-platform endpoints.
@@ -350,6 +351,7 @@ def create_data_platform_router(
         results: In-memory list of result-explorer records.
         executions: In-memory storage for executions (keyed by executionId).
         datasets: In-memory storage for datasets (keyed by dataset ID).
+        user_logs: In-memory storage for user_logs rows (keyed by row id).
         load_fixture: Callable to load fixture data by name.
 
     Returns:
@@ -359,14 +361,7 @@ def create_data_platform_router(
 
     _datasets: dict[str, dict[str, Any]] = datasets if datasets is not None else {}
 
-    # Pre-seed one user_logs row for SDK tests (execution_id filter).
-    _user_logs_store: dict[str, dict[str, Any]] = {
-        "ul-mock-1": {
-            "id": "ul-mock-1",
-            "execution_id": "MOCK-USER-LOGS-CJ-ID",
-            "line": "mock user log line",
-        }
-    }
+    _user_logs_store = user_logs if user_logs is not None else {}
 
     _entity_stores: dict[str, dict[str, dict[str, Any]]] = {
         "ligands": ligands,

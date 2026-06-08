@@ -46,8 +46,8 @@ def main() -> None:
     parser.add_argument(
         "--rbfe-duration",
         type=float,
-        default=5.0,
-        help="Duration for RBFE executions in seconds (default: 5)",
+        default=30.0,
+        help="Duration for RBFE executions in seconds (default: 30)",
     )
 
     args = parser.parse_args()

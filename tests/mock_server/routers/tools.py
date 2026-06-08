@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 import copy
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 import hashlib
 import json
 from pathlib import Path
@@ -22,6 +22,327 @@ import uuid
 from fastapi import APIRouter, HTTPException, Request
 
 from ..constants import MOCK_BULK_DOCKING_EXECUTION_ID
+
+RBFE_TEMPLATE_EXECUTION_ID = "a5484958-059f-4b1b-ba2c-664adf23e8e8"
+RBFE_NOHUP_FIXTURE_PATH = (
+    Path("files")
+    / "tool-runs"
+    / RBFE_TEMPLATE_EXECUTION_ID
+    / "workflow-mock"
+    / "binding_nohup.out"
+)
+
+# Top-level workflow stage windows (fraction of mock execution duration).
+_RBFE_STAGE_PREPARE = (0.00, 0.12)
+_RBFE_STAGE_KONNEKTOR = (0.12, 0.20)
+_RBFE_STAGE_BUILD_PAIRS = (0.20, 0.28)
+_RBFE_STAGE_PAIR_PIPELINE = (0.28, 1.00)
+
+
+def _rbfe_ts(start_dt: datetime, duration_s: float, fraction: float) -> str:
+    """Return an ISO-8601 UTC timestamp at *fraction* of the mock run."""
+    when = start_dt + timedelta(seconds=duration_s * fraction)
+    return when.strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z"
+
+
+def _rbfe_pair_count(user_inputs: dict[str, Any], steps: list[str]) -> int:
+    """Return the number of pair-pipeline branches for this RBFE request."""
+    if "konnektor" in steps:
+        ligands = user_inputs.get("ligands") or []
+        return max(1, len(ligands) - 1) if len(ligands) > 1 else 1
+    if "system-prep" in steps:
+        pairs = user_inputs.get("pairs") or []
+        return max(1, len(pairs))
+    prepared = user_inputs.get("prepared_systems") or []
+    return max(1, len(prepared))
+
+
+def _rbfe_pair_sub_windows(
+    *, run_system_prep: bool, run_rbfe: bool
+) -> tuple[tuple[float, float], tuple[float, float], tuple[float, float]]:
+    """Return (system_prep, resolve, rbfe_e2e) windows within the pair-pipeline span."""
+    if run_system_prep:
+        return (0.28, 0.45), (0.45, 0.55), (0.55, 1.00)
+    # Skipped system-prep: resolve starts immediately after pair-pipeline begins.
+    return (0.28, 0.28), (0.28, 0.40), (0.40, 1.00)
+
+
+def _rbfe_stage_status(
+    fraction: float,
+    start: float,
+    end: float,
+    *,
+    skipped: bool = False,
+) -> str | None:
+    """Map elapsed fraction to a node status, or ``None`` before the pop-up time."""
+    if fraction < start:
+        return None
+    if skipped:
+        return "Skipped"
+    if fraction >= end:
+        return "Succeeded"
+    return "Running"
+
+
+def _rbfe_leaf_node(
+    *,
+    node_id: str,
+    display_name: str,
+    fraction: float,
+    start: float,
+    end: float,
+    start_dt: datetime,
+    duration_s: float,
+    skipped: bool = False,
+    tool_complete: int | None = None,
+) -> dict[str, Any]:
+    """Build one v2 progress-tree leaf node."""
+    status = _rbfe_stage_status(fraction, start, end, skipped=skipped)
+    if status is None:
+        raise ValueError("leaf node requested before pop-up time")
+
+    node: dict[str, Any] = {
+        "id": node_id,
+        "displayName": display_name,
+        "status": status,
+        "message": None,
+        "progress": "1/1" if status == "Succeeded" else "0/1",
+        "startedAt": _rbfe_ts(start_dt, duration_s, start),
+    }
+    if status in ("Succeeded", "Skipped"):
+        node["finishedAt"] = _rbfe_ts(
+            start_dt, duration_s, end if not skipped else start
+        )
+    else:
+        node["finishedAt"] = None
+
+    if tool_complete is not None:
+        node["toolProgress"] = {"complete": tool_complete}
+
+    if skipped and status == "Skipped":
+        node["message"] = "when 'false == true' evaluated false"
+
+    return node
+
+
+def build_rbfe_progress_tree(
+    *,
+    execution_id: str,
+    user_inputs: dict[str, Any],
+    start_dt: datetime,
+    duration_s: float,
+    fraction: float,
+) -> dict[str, Any]:
+    """Build a synthetic v2 RBFE workflow progress tree for the mock server.
+
+    Stages mirror ``platform-toolbox/tools/rbfe/workflow/workflow.yaml``. Children
+    pop up as ``fraction`` advances. The RBFE simulation leaf exposes ramping
+    ``toolProgress.complete`` (0–100), not the legacy top-level ``complete`` key.
+
+    Args:
+        execution_id: Tools execution UUID.
+        user_inputs: RBFE ``userInputs`` from the execution DTO.
+        start_dt: Mock run start time (confirm time).
+        duration_s: Mock RBFE duration in seconds.
+        fraction: Elapsed fraction in ``[0, 1]``.
+
+    Returns:
+        Root ``ExecutionProgressNode`` dict suitable for ``progressReport``.
+    """
+    frac = max(0.0, min(1.0, fraction))
+    steps_raw = user_inputs.get("steps") or ["rbfe"]
+    steps = list(steps_raw) if isinstance(steps_raw, list) else ["rbfe"]
+    run_konnektor = "konnektor" in steps
+    run_system_prep = "system-prep" in steps
+    run_rbfe = "rbfe" in steps
+    n_pairs = _rbfe_pair_count(user_inputs, steps)
+
+    wf_suffix = execution_id.replace("-", "")[:12]
+    root_id = f"workflow-{wf_suffix}"
+    seq = 0
+
+    def _next_id() -> str:
+        nonlocal seq
+        seq += 1
+        return f"{root_id}-{seq}"
+
+    children: list[dict[str, Any]] = []
+
+    prep_start, prep_end = _RBFE_STAGE_PREPARE
+    if frac >= prep_start:
+        children.append(
+            _rbfe_leaf_node(
+                node_id=_next_id(),
+                display_name="prepare-inputs",
+                fraction=frac,
+                start=prep_start,
+                end=prep_end,
+                start_dt=start_dt,
+                duration_s=duration_s,
+            )
+        )
+
+    konn_start, konn_end = _RBFE_STAGE_KONNEKTOR
+    if frac >= konn_start:
+        children.append(
+            _rbfe_leaf_node(
+                node_id=_next_id(),
+                display_name="run-konnektor",
+                fraction=frac,
+                start=konn_start,
+                end=konn_end,
+                start_dt=start_dt,
+                duration_s=duration_s,
+                skipped=not run_konnektor,
+            )
+        )
+
+    build_start, build_end = _RBFE_STAGE_BUILD_PAIRS
+    if frac >= build_start:
+        children.append(
+            _rbfe_leaf_node(
+                node_id=_next_id(),
+                display_name="build-pair-list",
+                fraction=frac,
+                start=build_start,
+                end=build_end,
+                start_dt=start_dt,
+                duration_s=duration_s,
+            )
+        )
+
+    pair_start, pair_end = _RBFE_STAGE_PAIR_PIPELINE
+    sp_win, resolve_win, rbfe_win = _rbfe_pair_sub_windows(
+        run_system_prep=run_system_prep,
+        run_rbfe=run_rbfe,
+    )
+
+    prepared_list = user_inputs.get("prepared_systems") or []
+    if frac >= pair_start:
+        for pair_idx in range(n_pairs):
+            ps_json: dict[str, Any] = {}
+            if isinstance(prepared_list, list) and pair_idx < len(prepared_list):
+                item = prepared_list[pair_idx]
+                if isinstance(item, dict):
+                    ps_json = item
+            pair_display = (
+                f"pair-pipeline(0:index:{pair_idx},ligand1:{{}},ligand2:{{}},"
+                f"prepared_system:{json.dumps(ps_json, separators=(',', ':'))})"
+            )
+            pair_children: list[dict[str, Any]] = []
+
+            sp_start, sp_end = sp_win
+            if run_system_prep or frac >= sp_start:
+                sp_status = _rbfe_stage_status(
+                    frac, sp_start, sp_end, skipped=not run_system_prep
+                )
+                if sp_status is not None:
+                    pair_children.append(
+                        _rbfe_leaf_node(
+                            node_id=_next_id(),
+                            display_name="system-prep-task",
+                            fraction=frac,
+                            start=sp_start,
+                            end=sp_end,
+                            start_dt=start_dt,
+                            duration_s=duration_s,
+                            skipped=not run_system_prep,
+                        )
+                    )
+
+            res_start, res_end = resolve_win
+            if run_rbfe:
+                res_status = _rbfe_stage_status(frac, res_start, res_end)
+                if res_status is not None:
+                    pair_children.append(
+                        _rbfe_leaf_node(
+                            node_id=_next_id(),
+                            display_name="resolve-prepared-system",
+                            fraction=frac,
+                            start=res_start,
+                            end=res_end,
+                            start_dt=start_dt,
+                            duration_s=duration_s,
+                        )
+                    )
+
+            rbfe_start, rbfe_end = rbfe_win
+            if run_rbfe:
+                rbfe_status = _rbfe_stage_status(frac, rbfe_start, rbfe_end)
+                if rbfe_status is not None:
+                    if rbfe_status == "Succeeded":
+                        complete_val = 100
+                    elif rbfe_status == "Running":
+                        span = rbfe_end - rbfe_start
+                        complete_val = (
+                            int(min(99.0, ((frac - rbfe_start) / span) * 100.0))
+                            if span > 0
+                            else 0
+                        )
+                    else:
+                        complete_val = 0
+                    pair_children.append(
+                        _rbfe_leaf_node(
+                            node_id=_next_id(),
+                            display_name="rbfe-e2e-task",
+                            fraction=frac,
+                            start=rbfe_start,
+                            end=rbfe_end,
+                            start_dt=start_dt,
+                            duration_s=duration_s,
+                            tool_complete=complete_val,
+                        )
+                    )
+
+            pair_status = "Succeeded" if frac >= pair_end else "Running"
+            if frac < pair_start:
+                pair_status = "Pending"
+            pair_node: dict[str, Any] = {
+                "id": _next_id(),
+                "displayName": pair_display,
+                "status": pair_status,
+                "message": None,
+                "progress": "1/1" if pair_status == "Succeeded" else "0/1",
+                "startedAt": _rbfe_ts(start_dt, duration_s, pair_start),
+                "finishedAt": _rbfe_ts(start_dt, duration_s, pair_end)
+                if pair_status == "Succeeded"
+                else None,
+                "children": pair_children,
+            }
+            children.append(pair_node)
+
+    root_status = "Succeeded" if frac >= 1.0 else "Running"
+    completed_top = sum(
+        1
+        for stage_end in (prep_end, konn_end, build_end, pair_end)
+        if frac >= stage_end
+    )
+    return {
+        "id": root_id,
+        "displayName": root_id,
+        "status": root_status,
+        "message": None,
+        "progress": f"{completed_top}/3",
+        "startedAt": _rbfe_ts(start_dt, duration_s, 0.0),
+        "finishedAt": _rbfe_ts(start_dt, duration_s, 1.0) if frac >= 1.0 else None,
+        "children": children,
+    }
+
+
+def _find_progress_nodes(
+    node: dict[str, Any], *, display_prefix: str
+) -> list[dict[str, Any]]:
+    """Collect nodes whose ``displayName`` equals or starts with *display_prefix*."""
+    found: list[dict[str, Any]] = []
+    name = node.get("displayName")
+    if isinstance(name, str) and (
+        name == display_prefix or name.startswith(f"{display_prefix}(")
+    ):
+        found.append(node)
+    for child in node.get("children") or []:
+        if isinstance(child, dict):
+            found.extend(_find_progress_nodes(child, display_prefix=display_prefix))
+    return found
 
 
 def _generate_resource_id() -> str:
@@ -190,6 +511,8 @@ def create_tools_router(
     fixtures_dir: Path,
     load_fixture: Callable[[str], dict[str, Any]],
     results: list[dict[str, Any]],
+    user_logs: dict[str, dict[str, Any]],
+    file_storage: dict[str, bytes],
 ) -> APIRouter:
     """Create a router for tools-related endpoints.
 
@@ -203,6 +526,8 @@ def create_tools_router(
         results: Shared result-explorer record list; tool executions that
             produce outputs will inject records here so they are visible
             via the result-explorer search endpoint.
+        user_logs: Shared user_logs store keyed by row id.
+        file_storage: In-memory file bytes keyed by remote path.
 
     Returns:
         APIRouter instance with tools-related routes.
@@ -284,13 +609,84 @@ def create_tools_router(
         execution["updatedAt"] = now.strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z"
         return execution["progressReport"]
 
-    def _get_progress_report(execution: dict[str, Any], tool_key: str) -> str | None:
+    def _get_rbfe_progress_report(
+        execution: dict[str, Any], execution_id: str
+    ) -> dict[str, Any] | None:
+        """Simulate RBFE v2 workflow progress tree until the mock run completes."""
+        status = execution.get("status")
+        user_inputs = execution.get("userInputs") or {}
+        if not isinstance(user_inputs, dict):
+            user_inputs = {}
+
+        duration = mock_execution_durations.get("deeporigin.rbfe", 5.0)
+        start_time = execution_start_times.get(execution_id)
+
+        if status == "Succeeded":
+            cached = execution.get("progressReport")
+            if isinstance(cached, dict) and cached.get("displayName"):
+                return cached
+            if start_time is None:
+                start_time = datetime.now(timezone.utc)
+            report = build_rbfe_progress_tree(
+                execution_id=str(execution_id),
+                user_inputs=user_inputs,
+                start_dt=start_time,
+                duration_s=duration,
+                fraction=1.0,
+            )
+            execution["progressReport"] = report
+            return report
+
+        if status in ("Failed", "Cancelled"):
+            return None
+
+        if status != "Running" or start_time is None:
+            return None
+
+        now = datetime.now(timezone.utc)
+        elapsed_seconds = (now - start_time).total_seconds()
+        fraction = min(1.0, elapsed_seconds / duration) if duration > 0 else 1.0
+
+        if elapsed_seconds >= duration:
+            execution["status"] = "Succeeded"
+            ts = now.strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z"
+            execution["completedAt"] = ts
+            execution["updatedAt"] = ts
+            _inject_rbfe_tool_execution_results(execution)
+            report = build_rbfe_progress_tree(
+                execution_id=str(execution_id),
+                user_inputs=user_inputs,
+                start_dt=start_time,
+                duration_s=duration,
+                fraction=1.0,
+            )
+            execution["progressReport"] = report
+            return report
+
+        report = build_rbfe_progress_tree(
+            execution_id=str(execution_id),
+            user_inputs=user_inputs,
+            start_dt=start_time,
+            duration_s=duration,
+            fraction=fraction,
+        )
+        execution["progressReport"] = report
+        execution["updatedAt"] = now.strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z"
+        return report
+
+    def _get_progress_report(
+        execution: dict[str, Any], tool_key: str
+    ) -> dict[str, Any] | str | None:
         """Get progress report for an execution based on elapsed time."""
         status = execution.get("status")
         execution_id = execution.get("executionId")
 
         if tool_key == "deeporigin.bulk-docking":
-            return _get_bulk_docking_progress_report(execution, execution_id)
+            bulk = _get_bulk_docking_progress_report(execution, execution_id)
+            return bulk
+
+        if tool_key == "deeporigin.rbfe":
+            return _get_rbfe_progress_report(execution, execution_id)
 
         if status == "Succeeded":
             progress_reports = _load_progress_reports(tool_key)
@@ -323,8 +719,6 @@ def create_tools_router(
                 "deeporigin.constrained-docking",
             ):
                 _inject_docking_tool_execution_results(execution)
-            elif tool_key == "deeporigin.rbfe":
-                _inject_rbfe_tool_execution_results(execution)
             progress_reports = _load_progress_reports(tool_key)
             if progress_reports:
                 final_report = progress_reports[-1]
@@ -853,6 +1247,32 @@ def create_tools_router(
             job_outputs=outputs,
         )
 
+    def _inject_rbfe_user_logs(execution_id: str) -> None:
+        """Append captured RBFE user_logs rows scoped to *execution_id*."""
+        fixture_path = fixtures_dir / "user_logs-rbfe-a5484958.json"
+        if not fixture_path.is_file():
+            return
+        with open(fixture_path) as f:
+            rows = json.load(f)
+        if not isinstance(rows, list):
+            return
+        for row in rows:
+            if not isinstance(row, dict):
+                continue
+            new_row = copy.deepcopy(row)
+            row_id = "0AE" + str(uuid.uuid4()).replace("-", "").upper()[:11]
+            new_row["id"] = row_id
+            new_row["execution_id"] = execution_id
+            user_logs[row_id] = new_row
+
+    def _inject_rbfe_binding_nohup(execution_id: str) -> None:
+        """Serve ``binding_nohup.out`` for dynamic RBFE execution ids."""
+        template_path = fixtures_dir / RBFE_NOHUP_FIXTURE_PATH
+        if not template_path.is_file():
+            return
+        remote_path = f"tool-runs/{execution_id}/workflow-mock/binding_nohup.out"
+        file_storage[remote_path] = template_path.read_bytes()
+
     def _inject_rbfe_tool_execution_results(execution: dict[str, Any]) -> None:
         """Append RBFE result-explorer rows captured from a successful dev run."""
         eid = execution.get("executionId")
@@ -885,6 +1305,8 @@ def create_tools_router(
                         data[key] = ps0[key]
         results.append(template)
         executions[eid] = execution
+        _inject_rbfe_user_logs(str(eid))
+        _inject_rbfe_binding_nohup(str(eid))
 
     # -- route handlers --------------------------------------------------------
 
