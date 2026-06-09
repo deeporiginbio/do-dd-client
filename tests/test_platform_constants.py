@@ -73,7 +73,7 @@ def test_watch_stops_when_status_is_completed(
     running = {
         "executionId": "exec-1",
         "status": "Running",
-        "tool": {"key": "deeporigin.abfe", "version": "latest"},
+        "tool": {"key": "deeporigin.abfe-end-to-end", "version": "latest"},
         "userInputs": {},
         "userOutputs": {},
         "quotationResult": {},

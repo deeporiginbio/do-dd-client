@@ -1,6 +1,6 @@
 # `deeporigin.drug_discovery.abfe`
 
-`ABFE` drives platform tool `deeporigin.abfe`. Constructor inputs infer workflow
+`ABFE` drives platform tool `deeporigin.abfe-end-to-end`. Constructor inputs infer workflow
 `steps` the same way as [`RBFE`](rbfe.md): `protein` + `ligand` runs
 `["system-prep", "abfe"]`; `prepared_system` runs `["abfe"]` only. FEP
 simulation settings are shared with RBFE via [`ABFEParams`](fep_common.md)

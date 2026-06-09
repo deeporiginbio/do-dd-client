@@ -143,7 +143,7 @@ def test_abfe_ensure_synced_inputs_ensures_remote_paths(
     executions.create.return_value = {
         "executionId": "exec-123",
         "status": "Created",
-        "tool": {"key": "deeporigin.abfe", "version": "0.1.0"},
+        "tool": {"key": "deeporigin.abfe-end-to-end", "version": "0.1.0"},
     }
     protein.ensure_remote_path = MagicMock(
         side_effect=lambda **_: setattr(protein, "remote_path", "testing/brd.pdb")
@@ -167,7 +167,7 @@ def test_abfe_from_dto_requires_steps() -> None:
     fake_dto = {
         "executionId": "exec-legacy",
         "status": "Succeeded",
-        "tool": {"key": "deeporigin.abfe", "version": "0.1.0"},
+        "tool": {"key": "deeporigin.abfe-end-to-end", "version": "0.1.0"},
         "userInputs": {
             "prepared_system": {
                 "binding_xml_file_path": "remote/b.xml",
@@ -184,7 +184,7 @@ def test_abfe_from_dto_rejects_system_prep_only_steps() -> None:
     fake_dto = {
         "executionId": "exec-prep",
         "status": "Succeeded",
-        "tool": {"key": "deeporigin.abfe", "version": "0.1.0"},
+        "tool": {"key": "deeporigin.abfe-end-to-end", "version": "0.1.0"},
         "userInputs": {
             "steps": ["system-prep"],
             "protein": {"id": "prot-1", "file_path": "testing/brd.pdb"},
@@ -513,7 +513,7 @@ def test_abfe_results_dataframe_filters_non_abfe_tool_key() -> None:
 
 
 def test_abfe_get_results_returns_abfe_row(monkeypatch: pytest.MonkeyPatch) -> None:
-    """get_results syncs and returns only deeporigin.abfe rows."""
+    """get_results syncs and returns only deeporigin.abfe-end-to-end rows."""
     abfe_tool_key = TOOL_KEYS_AND_VERSIONS["abfe"]["tool_key"]
     sysprep_tool_key = TOOL_KEYS_AND_VERSIONS["sysprep"]["tool_key"]
     prepared_system = PreparedSystem(

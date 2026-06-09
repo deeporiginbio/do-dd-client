@@ -273,7 +273,7 @@ def _ligand_from_tool_input(ref: dict[str, Any], *, client: DeepOriginClient) ->
 
 
 class ABFE(Execution, AsyncExecutableMixin, NotebookWatchMixin):
-    """ABFE workflow (``deeporigin.abfe``).
+    """ABFE workflow (``deeporigin.abfe-end-to-end``).
 
     Platform ``steps`` are inferred from constructor inputs (see :meth:`_post_init`):
 
@@ -520,7 +520,7 @@ class ABFE(Execution, AsyncExecutableMixin, NotebookWatchMixin):
             self.ligand1.ensure_remote_path(client=client, label="Ligand")
 
     def _build_params(self) -> dict[str, Any]:
-        """Construct workflow input parameters for ``deeporigin.abfe``."""
+        """Construct workflow input parameters for ``deeporigin.abfe-end-to-end``."""
         out: dict[str, Any] = {"steps": self.steps}
         if "system-prep" in self.steps:
             assert self.protein is not None
@@ -589,7 +589,7 @@ class ABFE(Execution, AsyncExecutableMixin, NotebookWatchMixin):
 
         Uses :meth:`~deeporigin.drug_discovery.execution.Execution.get_results`
         (results for this execution by id), then builds a one-row table from the
-        first ``deeporigin.abfe`` record's ``data`` payload. System-prep rows
+        first ``deeporigin.abfe-end-to-end`` record's ``data`` payload. System-prep rows
         from combined runs are excluded. Keyword arguments are accepted for
         signature compatibility with the base class but are not forwarded.
 

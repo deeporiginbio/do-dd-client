@@ -123,7 +123,7 @@ TOOL_KEYS_AND_VERSIONS: dict[str, dict[str, str]] = {
         "tool_version": "latest",
     },
     "abfe": {
-        "tool_key": "deeporigin.abfe",
+        "tool_key": "deeporigin.abfe-end-to-end",
         "tool_version": "latest",
     },
     "rbfe": {

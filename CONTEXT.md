@@ -6,12 +6,15 @@ system preparation, and free-energy calculations.
 ## Language
 
 **ABFE Workflow**:
-Platform tool `deeporigin.abfe` that runs ordered `steps` of `system-prep` and/or `abfe`.
-_Avoid_: `abfe-end-to-end`, `abfe-e2e-workflow`, `mode` discriminator (legacy v3)
+Platform tool `deeporigin.abfe-end-to-end` that runs ordered `steps` of
+`system-prep` and/or `abfe`. The CLI uses the same public key as platform-ui and
+platform infra; v5 workflow versions (e.g. `1.0.x`) replace the legacy v3 job
+implementation under that key.
+_Avoid_: `deeporigin.abfe-e2e-workflow`, `mode` discriminator (superseded legacy)
 
 **Combined workflow**:
 A single `ABFE(protein, ligand)` execution with `steps=["system-prep", "abfe"]`.
-_Avoid_: "end-to-end workflow" when referring only to the platform tool key
+_Avoid_: conflating the workflow *steps* with the platform tool key
 
 **FEP parameters**:
 Shared simulation settings (`ABFEParams`) for binding and solvation legs, used by both ABFE and RBFE.
