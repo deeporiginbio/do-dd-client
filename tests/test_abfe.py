@@ -4,14 +4,17 @@ from __future__ import annotations
 
 from unittest.mock import MagicMock, patch
 
+import pandas as pd
 import pytest
 
 from deeporigin.drug_discovery.abfe import (
     ABFE,
     _abfe_default_name_from_entities,
+    _abfe_results_dataframe,
     _ligand_display_label_from_entity,
     _protein_display_name_from_entity,
 )
+from deeporigin.drug_discovery.execution import Execution
 from deeporigin.drug_discovery.fep_common import ABFEParams
 from deeporigin.drug_discovery.structures.ligand import Ligand
 from deeporigin.drug_discovery.structures.prepared_system import PreparedSystem
@@ -466,3 +469,86 @@ def test_abfe_accepts_explicit_name_override_lv0():
     )
     abfe = ABFE(prepared_system=prepared_system, name="Custom ABFE label")
     assert abfe.name == "Custom ABFE label"
+
+
+def test_abfe_results_dataframe_filters_non_abfe_tool_key() -> None:
+    """System-prep rows are excluded from the ABFE summary table."""
+    abfe_tool_key = TOOL_KEYS_AND_VERSIONS["abfe"]["tool_key"]
+    sysprep_tool_key = TOOL_KEYS_AND_VERSIONS["sysprep"]["tool_key"]
+    response = {
+        "data": [
+            {
+                "id": "0AHB8MB528R9W",
+                "tool_key": sysprep_tool_key,
+                "compute_job_id": "632897da-a88b-4868-8b34-0cfc01138c56",
+                "data": {
+                    "protein_id": "08BSPN9SNYVEA",
+                    "ligand1_id": "08CEYMV4DYV39",
+                    "system_pdb_file_path": "tool-runs/.../system.pdb",
+                },
+            },
+            {
+                "id": "0AHBHNP1A8RBN",
+                "tool_key": abfe_tool_key,
+                "compute_job_id": "632897da-a88b-4868-8b34-0cfc01138c56",
+                "data": {
+                    "total": -2379.462,
+                    "unit": "kcal/mol",
+                    "protein_id": "08BSPN9SNYVEA",
+                    "ligand1_id": "08CEYMV4DYV39",
+                    "binding": -667.732,
+                    "solvation": -3058.659,
+                    "binding_analysis": [{"repeat": 1}],
+                },
+            },
+        ]
+    }
+    df = _abfe_results_dataframe(response, tool_key=abfe_tool_key)
+    assert df is not None
+    assert len(df) == 1
+    assert df.iloc[0]["protein_id"] == "08BSPN9SNYVEA"
+    assert df.iloc[0]["total"] == pytest.approx(-2379.462)
+    assert df.iloc[0]["unit"] == "kcal/mol"
+    assert "binding_analysis" not in df.columns
+
+
+def test_abfe_get_results_returns_abfe_row(monkeypatch: pytest.MonkeyPatch) -> None:
+    """get_results syncs and returns only deeporigin.abfe rows."""
+    abfe_tool_key = TOOL_KEYS_AND_VERSIONS["abfe"]["tool_key"]
+    sysprep_tool_key = TOOL_KEYS_AND_VERSIONS["sysprep"]["tool_key"]
+    prepared_system = PreparedSystem(
+        binding_xml_path="path/binding.xml",
+        solvation_xml_path="path/solvation.xml",
+        system_pdb_path="path/system.pdb",
+    )
+    abfe = ABFE(prepared_system=prepared_system)
+    abfe._id = "exec-123"
+    abfe.status = "Completed"
+    platform_response = {
+        "data": [
+            {
+                "tool_key": sysprep_tool_key,
+                "data": {"protein_id": "prep-only"},
+            },
+            {
+                "tool_key": abfe_tool_key,
+                "data": {
+                    "total": -1.0,
+                    "unit": "kcal/mol",
+                    "protein_id": "prot-1",
+                    "ligand1_id": "lig-1",
+                },
+            },
+        ]
+    }
+    monkeypatch.setattr(abfe, "sync", MagicMock())
+    monkeypatch.setattr(
+        Execution,
+        "get_results",
+        lambda self, **kwargs: platform_response,
+    )
+    df = abfe.get_results()
+    assert isinstance(df, pd.DataFrame)
+    assert df.iloc[0]["protein_id"] == "prot-1"
+    assert df.iloc[0]["total"] == pytest.approx(-1.0)
+    abfe.sync.assert_called_once()

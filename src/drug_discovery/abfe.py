@@ -198,6 +198,61 @@ def _abfe_sorted_window_numbers(*, trajectories: dict[str, Any]) -> list[int]:
     return sorted(out)
 
 
+@beartype
+def _abfe_filtered_records(
+    response: dict[str, Any],
+    *,
+    tool_key: str,
+) -> list[dict[str, Any]]:
+    """Return result records whose ``tool_key`` matches the ABFE tool."""
+    records = response.get("data") or []
+    return [
+        record
+        for record in records
+        if isinstance(record, dict) and record.get("tool_key") == tool_key
+    ]
+
+
+@beartype
+def _abfe_first_result_data(
+    response: dict[str, Any],
+    *,
+    tool_key: str,
+) -> dict[str, Any] | None:
+    """Return the ``data`` payload from the first ABFE result record."""
+    for record in _abfe_filtered_records(response, tool_key=tool_key):
+        data = record.get("data")
+        if isinstance(data, dict) and data:
+            return data
+    return None
+
+
+@beartype
+def _abfe_results_dataframe(
+    response: dict[str, Any],
+    *,
+    tool_key: str,
+) -> pd.DataFrame | None:
+    """Build a one-row summary table from ABFE result records.
+
+    Combined workflow executions also store system-prep rows; those are excluded.
+    """
+    data = _abfe_first_result_data(response, tool_key=tool_key)
+    if data is None:
+        return None
+    df = pd.json_normalize([data])
+    drop_roots = frozenset({"binding_analysis", "solvation_analysis"})
+    to_drop = [
+        c for c in df.columns if c in drop_roots or c.split(".", 1)[0] in drop_roots
+    ]
+    if to_drop:
+        df = df.drop(columns=to_drop)
+    priority = ["protein_id", "ligand1_id", "total", "unit"]
+    head = [c for c in priority if c in df.columns]
+    tail = [c for c in df.columns if c not in head]
+    return df[head + tail]
+
+
 def _ligand_from_tool_input(ref: dict[str, Any], *, client: DeepOriginClient) -> Ligand:
     """Rehydrate a ligand from an ABFE ``ligand1`` reference."""
     lig_id = ref.get("id")
@@ -534,7 +589,8 @@ class ABFE(Execution, AsyncExecutableMixin, NotebookWatchMixin):
 
         Uses :meth:`~deeporigin.drug_discovery.execution.Execution.get_results`
         (results for this execution by id), then builds a one-row table from the
-        first record's ``data`` payload. Keyword arguments are accepted for
+        first ``deeporigin.abfe`` record's ``data`` payload. System-prep rows
+        from combined runs are excluded. Keyword arguments are accepted for
         signature compatibility with the base class but are not forwarded.
 
         Returns:
@@ -548,23 +604,7 @@ class ABFE(Execution, AsyncExecutableMixin, NotebookWatchMixin):
             return None
 
         response = super().get_results()
-        records = response.get("data") or []
-        if not records:
-            return None
-        row = records[0].get("data")
-        if not isinstance(row, dict) or not row:
-            return None
-        df = pd.json_normalize([row])
-        drop_roots = frozenset({"binding_analysis", "solvation_analysis"})
-        to_drop = [
-            c for c in df.columns if c in drop_roots or c.split(".", 1)[0] in drop_roots
-        ]
-        if to_drop:
-            df = df.drop(columns=to_drop)
-        priority = ["protein_id", "ligand1_id", "total", "unit"]
-        head = [c for c in priority if c in df.columns]
-        tail = [c for c in df.columns if c not in head]
-        return df[head + tail]
+        return _abfe_results_dataframe(response, tool_key=self.tool_key)
 
     @beartype
     def get_prepared_system(
@@ -688,19 +728,14 @@ class ABFE(Execution, AsyncExecutableMixin, NotebookWatchMixin):
             ) from None
 
         response = self.client.results.get(compute_job_id=self.id)
-        records = response.get("data") or []
-        if not records:
+        data = _abfe_first_result_data(response, tool_key=self.tool_key)
+        if data is None:
             raise DeepOriginException(
-                title="No results for this execution",
-                message="The data platform returned no result rows for this job.",
-            ) from None
-
-        row = records[0]
-        data = row.get("data")
-        if not isinstance(data, dict) or not data:
-            raise DeepOriginException(
-                title="No result payload",
-                message="The first result record has no data field.",
+                title="No ABFE results for this execution",
+                message=(
+                    "The data platform returned no ABFE result rows for this job. "
+                    "System-prep-only rows are ignored."
+                ),
             ) from None
 
         prepared = self._resolved_prepared_system()
@@ -811,22 +846,14 @@ class ABFE(Execution, AsyncExecutableMixin, NotebookWatchMixin):
             ) from None
 
         response = self.client.results.get(compute_job_id=self.id)
-        records = response.get("data") or []
-        if not records:
+        data = _abfe_first_result_data(response, tool_key=self.tool_key)
+        if data is None:
             raise DeepOriginException(
                 title="No overlap matrix found for this run",
                 message=(
-                    "Unable to show overlap matrix because there are no result "
+                    "Unable to show overlap matrix because there are no ABFE result "
                     "records for this execution."
                 ),
-            ) from None
-
-        row = records[0]
-        data = row.get("data")
-        if not isinstance(data, dict) or not data:
-            raise DeepOriginException(
-                title="No overlap matrix found for this run",
-                message="ABFE result data is missing or not in the expected shape.",
             ) from None
 
         analysis_key = "binding_analysis" if run == "binding" else "solvation_analysis"
@@ -898,22 +925,14 @@ class ABFE(Execution, AsyncExecutableMixin, NotebookWatchMixin):
             ) from None
 
         response = self.client.results.get(compute_job_id=self.id)
-        records = response.get("data") or []
-        if not records:
+        data = _abfe_first_result_data(response, tool_key=self.tool_key)
+        if data is None:
             raise DeepOriginException(
                 title="No convergence plot found for this run",
                 message=(
-                    "Unable to show convergence plot because there are no result "
+                    "Unable to show convergence plot because there are no ABFE result "
                     "records for this execution."
                 ),
-            ) from None
-
-        row = records[0]
-        data = row.get("data")
-        if not isinstance(data, dict) or not data:
-            raise DeepOriginException(
-                title="No convergence plot found for this run",
-                message="ABFE result data is missing or not in the expected shape.",
             ) from None
 
         analysis_key = "binding_analysis" if run == "binding" else "solvation_analysis"
