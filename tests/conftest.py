@@ -27,6 +27,7 @@ def _reset_deeporigin_client_cache() -> None:
 
 PROTEIN_REMOTE_PATH = "testing/brd.pdb"
 LIGAND_REMOTE_PATH = "testing/brd-2.sdf"
+LIGAND_3_REMOTE_PATH = "testing/brd-3.sdf"
 POCKET_PDB_PATH = FIXTURES_DIR / "files" / "pocketfinder" / "pocket_1.pdb"
 # PDB-derived test pockets may report tiny extents; docking tests use a minimum box.
 _MIN_TEST_POCKET_BOX_EXTENT = 10.0
@@ -103,6 +104,14 @@ def brd_ligand(client: DeepOriginClient) -> Ligand:
 
 
 @pytest.fixture()
+def brd_ligand_brd3(client: DeepOriginClient) -> Ligand:
+    """Load BRD-3 ligand from SDF and upload to a stable remote path."""
+    ligand = Ligand.from_sdf(BRD_DATA_DIR / "brd-3.sdf")
+    ligand.upload(client=client, remote_path=LIGAND_3_REMOTE_PATH)
+    return ligand
+
+
+@pytest.fixture()
 def registered_protein(client: DeepOriginClient) -> Protein:
     """Load BRD protein, remove water, sync with the data platform."""
     protein = Protein.from_file(BRD_DATA_DIR / "brd.pdb")
@@ -116,6 +125,14 @@ def registered_ligand(client: DeepOriginClient) -> Ligand:
     """Load BRD ligand from SDF and sync with the data platform."""
     ligand = Ligand.from_sdf(BRD_DATA_DIR / "brd-2.sdf")
     ligand.sync(client=client, remote_path=LIGAND_REMOTE_PATH)
+    return ligand
+
+
+@pytest.fixture()
+def registered_ligand_brd3(client: DeepOriginClient) -> Ligand:
+    """Load BRD-3 ligand from SDF and sync with the data platform."""
+    ligand = Ligand.from_sdf(BRD_DATA_DIR / "brd-3.sdf")
+    ligand.sync(client=client, remote_path=LIGAND_3_REMOTE_PATH)
     return ligand
 
 

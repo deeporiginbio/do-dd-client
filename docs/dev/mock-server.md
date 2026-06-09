@@ -52,7 +52,57 @@ To run the mock server standalone for local development:
 python tests/run_mock_server.py [PORT]
 ```
 
-Where `PORT` is the port number to run the server on (default: 8000).
+Where `PORT` is the port number to run the server on (default: 4931 via `make mock-server`).
+
+Optional flags:
+
+```bash
+uv run python -m tests.run_mock_server --port 4931 --abfe-duration 30 --rbfe-duration 30
+```
+
+### RBFE progress tree (local)
+
+While an RBFE execution is **Running**, the mock synthesizes a **v2 progress tree**
+(matching dev's ``progressReport`` shape) instead of the legacy ``{"complete": N}``
+bar. Stages follow ``platform-toolbox/tools/rbfe/workflow/workflow.yaml``:
+
+1. ``prepare-inputs`` → ``run-konnektor`` (Skipped when absent from ``steps``) →
+   ``build-pair-list`` → ``pair-pipeline`` per pair
+2. Inside each pair: ``system-prep-task`` (Skipped for ``steps=["rbfe"]``) →
+   ``resolve-prepared-system`` → ``rbfe-e2e-task``
+
+Children **pop up** as the mock run advances. The simulation leaf ramps
+``toolProgress.complete`` from 0 to 100 (not the legacy top-level ``complete`` key).
+Pace the run with ``--rbfe-duration`` on ``run_mock_server`` (default **30s** for
+standalone ``make mock-server``; pytest ``--env local`` keeps **5s** for speed).
+
+Implementation: ``build_rbfe_progress_tree()`` and ``_get_rbfe_progress_report()`` in
+[`tests/mock_server/routers/tools.py`](../../tests/mock_server/routers/tools.py).
+
+## RBFE notebook (local)
+
+The working RBFE notebook is
+[`docs/notebooks/clean/rbfe-1-single-pair.ipynb`](../notebooks/clean/rbfe-1-single-pair.ipynb).
+It runs against the mock when
+``DO_ENV=local`` and the server is up:
+
+```bash
+make mock-server   # port 4931
+```
+
+Set `DO_ENV=local` in `.env` (and `JOB_WATCH_BLOCK=1` for `nbconvert --execute`), then open the notebook. Fixtures are under:
+
+| Path | Purpose |
+|------|---------|
+| `tests/fixtures/executions/a5484958-059f-4b1b-ba2c-664adf23e8e8.json` | Preloaded succeeded RBFE execution (`RBFE.from_id`) |
+| `tests/fixtures/result-explorer-rbfe-a5484958.json` | Result-explorer rows for that job |
+| `tests/fixtures/user_logs-rbfe-a5484958.json` | User log rows injected after RBFE success |
+| `tests/fixtures/files/tool-runs/a5484958-.../workflow-mock/binding_nohup.out` | Workflow log served at `tool-runs/{executionId}/workflow-mock/` |
+| `tests/fixtures/deeporigin.rbfe/quotation-result.json` | Quote response for `deeporigin.rbfe` |
+| `tests/fixtures/tool-runs/deeporigin.rbfe/result-template.json` | Injected ΔΔG row after confirm/watch |
+| `tests/fixtures/tool-runs/deeporigin.system-prep/run-rbfe.json` | RBFE-mode system-prep (`ligand1` + `ligand2`) |
+
+Integration coverage: `tests/test_rbfe_local.py` (`uv run pytest tests/test_rbfe_local.py --env local`).
 
 ## How Tool Executions Work
 

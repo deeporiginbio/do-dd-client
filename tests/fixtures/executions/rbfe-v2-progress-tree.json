@@ -1,0 +1,66 @@
+{
+  "executionId": "871dd154-3f25-432f-a618-9ecc96f82e58",
+  "status": "Failed",
+  "name": null,
+  "tool": {
+    "key": "deeporigin.rbfe",
+    "version": "0.3.8"
+  },
+  "progressReport": {
+    "id": "workflow-5e04fdhn95dym8nfm6urr",
+    "status": "Failed",
+    "message": "pair-pipeline failed",
+    "progress": "5/7",
+    "displayName": "workflow-5e04fdhn95dym8nfm6urr",
+    "children": [
+      {
+        "id": "workflow-5e04fdhn95dym8nfm6urr-3417509866",
+        "status": "Succeeded",
+        "message": null,
+        "progress": "1/1",
+        "displayName": "prepare-inputs",
+        "startedAt": "2026-06-05T13:08:41Z",
+        "finishedAt": "2026-06-05T13:08:55Z"
+      },
+      {
+        "id": "workflow-5e04fdhn95dym8nfm6urr-986280854",
+        "status": "Failed",
+        "message": "rbfe-e2e-task failed with main: Error (exit code 1)",
+        "progress": "4/6",
+        "displayName": "pair-pipeline",
+        "children": [
+          {
+            "id": "workflow-5e04fdhn95dym8nfm6urr-3816502094",
+            "status": "Failed",
+            "message": "rbfe-e2e-task failed with main: Error (exit code 1)",
+            "progress": "2/3",
+            "displayName": "pair-pipeline(1:index:1,ligand1:{\"id\":\"08DKACBCXYTXX\"},ligand2:{\"id\":\"08CEYMV4DYV39\"},prepared_system:{})",
+            "children": [
+              {
+                "id": "workflow-5e04fdhn95dym8nfm6urr-3874322643",
+                "status": "Succeeded",
+                "message": null,
+                "progress": "1/1",
+                "displayName": "system-prep-task",
+                "startedAt": "2026-06-05T13:09:01Z",
+                "finishedAt": "2026-06-05T13:11:35Z"
+              },
+              {
+                "id": "workflow-5e04fdhn95dym8nfm6urr-4074566276",
+                "status": "Failed",
+                "message": "main: Error (exit code 1)",
+                "progress": "0/1",
+                "displayName": "rbfe-e2e-task",
+                "startedAt": "2026-06-05T13:11:55Z",
+                "finishedAt": "2026-06-05T13:51:09Z",
+                "toolProgress": {
+                  "complete": 100
+                }
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  }
+}

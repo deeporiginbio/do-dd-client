@@ -1759,12 +1759,10 @@ class LigandSet:
 
     Attributes:
         ligands (list[Ligand]): A list of Ligand instances contained in the set.
-        network (dict): A dictionary containing the network of ligands estimated using Konnektor.
 
     """
 
     ligands: list[Ligand] = field(default_factory=list)
-    network: dict = field(default_factory=dict)
 
     def __len__(self):
         return len(self.ligands)
@@ -2036,12 +2034,6 @@ class LigandSet:
                     props_display += f" and {len(sorted_props) - 10} more..."
                 html_parts.append(
                     f"<p style='margin: 8px 0;'>Properties: {props_display}</p>"
-                )
-
-            # Show network status if available
-            if self.network:
-                html_parts.append(
-                    "<p style='margin: 8px 0;'><em>Network mapping available</em></p>"
                 )
 
             # Add action hints
@@ -3185,47 +3177,6 @@ class LigandSet:
             ligands = list(executor.map(_build, ids))
 
         return cls(ligands=ligands)
-
-    def map_network(
-        self,
-        *,
-        use_cache: bool = True,
-        operation: Literal["mapping", "network", "full"] = "network",
-        network_type: Literal["star", "mst", "cyclic"] = "mst",
-    ):
-        """
-        Map a network of ligands from an SDF file using the DeepOrigin API.
-        """
-        from deeporigin.drug_discovery.rbfe_network import map_network
-
-        self.network = map_network(
-            sdf_file=self.to_sdf(),
-            use_cache=use_cache,
-            operation=operation,
-            network_type=network_type,
-        )
-
-        return self
-
-    def show_network(self):
-        """
-        Show the network of ligands in the set.
-        """
-
-        if "network_html" not in self.network.keys():
-            raise DeepOriginException(
-                "Network not mapped yet. Please map the network first using `map_network()`."
-            ) from None
-
-        from IPython.display import IFrame, display
-
-        file_name = "network.html"
-        try:
-            with open(file_name, "w") as file:
-                file.write(self.network["network_html"])
-            display(IFrame(file_name, width=1000, height=1000))
-        except Exception as e:
-            raise DeepOriginException(f"Failed to display network: {e}") from None
 
     def to_rdkit_mols(self) -> list[Chem.Mol]:
         """

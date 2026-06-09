@@ -1,13 +1,6 @@
-# `deeporigin.drug_discovery.execution_helpers`
+# `deeporigin.drug_discovery.konnektor`
 
-Helpers shared by tool execution classes (for example `Docking`, `PocketFinder`,
-`SystemPrep`):
-
-- `price_total_from_execution_dto(dto)` — reads `priceTotal` from the first
-  successful row in `dto["quotationResult"]["successfulQuotations"]`, or
-  returns `None`.
-
-::: src.drug_discovery.execution_helpers
+::: src.drug_discovery.konnektor
     options:
       docstring_style: google
       show_root_heading: false

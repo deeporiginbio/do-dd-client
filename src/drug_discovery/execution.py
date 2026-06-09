@@ -3,8 +3,9 @@
 Provides ``Execution`` -- a base class with read-only ``@property`` descriptors
 for system-managed fields, platform ``id``, ``wait()``, and ``confirm()`` for tools
 executions, lifecycle state management, :attr:`Execution.runtime` from DTO
-timestamps, plus ``from_id()`` / :meth:`Execution.list` delegate to
-:meth:`Execution.from_dto`. :meth:`Execution.sync` refreshes an instance from
+timestamps, plus ``from_id()``, :meth:`Execution.from_last_run`, and
+:meth:`Execution.list` delegate to :meth:`Execution.from_dto`.
+:meth:`Execution.sync` refreshes an instance from
 ``executions.get`` (any execution class, including sync-only or objects built
 from a stale DTO). :meth:`Execution.update_from_dto` applies the same fields to
 an existing instance (for example after ``executions.create``). The base
@@ -26,17 +27,25 @@ from __future__ import annotations
 import builtins
 import copy
 from datetime import datetime, timezone
-from typing import TYPE_CHECKING, Any, Literal, Self
+from typing import TYPE_CHECKING, Any, ClassVar, Literal, Self
+
+from beartype import beartype
 
 from deeporigin.platform.constants import (
     ALLOWED_STATUS_TRANSITIONS,
     is_success_status,
     normalize_platform_status,
 )
-from deeporigin.utils.constants import TOOL_EXECUTION_POST_TIMEOUT_SECONDS
+from deeporigin.utils.constants import (
+    EXECUTION_LIST_ORDER_CREATED_DESC,
+    TOOL_EXECUTION_POST_TIMEOUT_SECONDS,
+    TOOL_KEY_PREFIX,
+)
 from deeporigin.utils.iso8601 import parse_iso_timestamp_utc
 
 if TYPE_CHECKING:
+    import pandas as pd
+
     from deeporigin.platform.client import DeepOriginClient
 
 QuoteMode = Literal["sync", "async"]
@@ -84,6 +93,13 @@ class Execution:
     """
 
     tool_key: str = ""
+
+    USER_LOG_COLUMNS: ClassVar[list[str]] = [
+        "log_level",
+        "tool_key",
+        "timestamp",
+        "message",
+    ]
 
     def __init__(self, *, client: DeepOriginClient | None = None) -> None:
         """Initialize base execution state and chain mixin ``__init__`` via ``super()``."""
@@ -267,6 +283,95 @@ class Execution:
             new.client = client
         return new
 
+    @staticmethod
+    def _quotation_total(dto: dict[str, Any]) -> float | None:
+        """Return the summed ``priceTotal`` across all successful quotations in a DTO.
+
+        Workflow tools (for example RBFE with system-prep + FEP) return one
+        quotation row per billable item. Single-tool executions typically have
+        one row.
+
+        Args:
+            dto: Raw execution dictionary from ``executions.create`` or ``get``.
+
+        Returns:
+            The total price, or ``None`` if no successful quotation row has a price.
+        """
+        quotation = dto.get("quotationResult") or {}
+        successful = quotation.get("successfulQuotations") or []
+        total = 0.0
+        found = False
+        for row in successful:
+            if not isinstance(row, dict):
+                continue
+            price = row.get("priceTotal")
+            if price is None:
+                continue
+            total += float(price)
+            found = True
+        return total if found else None
+
+    @staticmethod
+    def _strip_tool_key_prefix(tool_key: str | None) -> str | None:
+        """Return ``tool_key`` without the platform ``deeporigin.`` prefix."""
+        if tool_key is None:
+            return None
+        return tool_key.removeprefix(TOOL_KEY_PREFIX)
+
+    @staticmethod
+    def _format_user_log_timestamp(
+        raw: str | None,
+        *,
+        when: datetime | None = None,
+    ) -> str | None:
+        """Format an ISO log timestamp as a compact, human-readable relative time."""
+        if raw is None:
+            return None
+        try:
+            dt = parse_iso_timestamp_utc(raw)
+        except (ValueError, TypeError):
+            return raw
+        ref = when or datetime.now(timezone.utc)
+        try:
+            import humanize
+        except ImportError:
+            return raw
+        return humanize.naturaltime(dt, when=ref)
+
+    @staticmethod
+    def _user_logs_dataframe(response: dict[str, Any]) -> pd.DataFrame:
+        """Build a tabular view from a data-platform ``user_logs`` search response.
+
+        Args:
+            response: Raw response from
+                :meth:`~deeporigin.platform.user_logs.UserLogs.search`.
+
+        Returns:
+            A DataFrame with columns from :attr:`USER_LOG_COLUMNS`.
+        """
+        import pandas as pd
+
+        records = response.get("data") or []
+        rows: list[dict[str, Any]] = []
+        for record in records:
+            if not isinstance(record, dict):
+                continue
+            rows.append(
+                {
+                    "log_level": record.get("log_level"),
+                    "tool_key": Execution._strip_tool_key_prefix(
+                        record.get("tool_key")
+                    ),
+                    "timestamp": Execution._format_user_log_timestamp(
+                        record.get("date") or record.get("created_at")
+                    ),
+                    "message": record.get("message"),
+                }
+            )
+        if not rows:
+            return pd.DataFrame(columns=Execution.USER_LOG_COLUMNS)
+        return pd.DataFrame(rows)[Execution.USER_LOG_COLUMNS]
+
     def update_from_dto(self, dto: dict[str, Any]) -> None:
         """Apply tools execution fields from ``dto`` onto this instance.
 
@@ -291,7 +396,7 @@ class Execution:
 
         tool_info = dto["tool"]
         dto_tool_key = tool_info["key"]
-        expected_tool_key = cls.tool_key
+        expected_tool_key = getattr(self, "tool_key", None) or cls.tool_key
         if dto_tool_key != expected_tool_key:
             raise ValueError(
                 "Cannot apply execution DTO: "
@@ -316,14 +421,11 @@ class Execution:
         self._dto = dto
         self._name = dto.get("name")
 
-        quotation = dto.get("quotationResult") or {}
-        successful = quotation.get("successfulQuotations", [])
-        if successful:
-            price = successful[0].get("priceTotal")
-            if price is not None:
-                self._estimate = float(price)
-            if is_success_status(self.status) and price is not None:
-                self._cost = float(price)
+        price = self._quotation_total(dto)
+        if price is not None:
+            self._estimate = price
+            if is_success_status(self.status):
+                self._cost = price
 
     def sync(self) -> None:
         """Fetch the latest tools execution from the platform and refresh fields.
@@ -468,6 +570,50 @@ class Execution:
         return cls.from_dto(dto, client=client)
 
     @classmethod
+    def from_last_run(cls, *, client: DeepOriginClient | None = None) -> Self:
+        """Construct an instance from the most recently created execution of this tool.
+
+        Calls ``client.executions.list`` with ``tool_key``, ``order`` set to
+        :data:`~deeporigin.utils.constants.EXECUTION_LIST_ORDER_CREATED_DESC`,
+        and ``page_size=1``, then delegates to :meth:`from_dto`. Concrete
+        subclasses inherit this method; domain state is restored via their
+        ``from_dto`` overrides.
+
+        Args:
+            client: Optional API client. Uses the default if not provided.
+
+        Returns:
+            A partially-hydrated instance for the newest execution by
+            ``createdAt``.
+
+        Raises:
+            NotImplementedError: If ``cls`` has no ``tool_key`` (bare
+                :class:`Execution`).
+            ValueError: If no executions exist for this tool type.
+        """
+        if not cls.tool_key:
+            raise NotImplementedError(
+                f"{cls.__qualname__}.from_last_run requires a non-empty class tool_key."
+            )
+        if client is None:
+            from deeporigin.platform.client import DeepOriginClient
+
+            client = DeepOriginClient()
+
+        response = client.executions.list(  # ty:ignore[unresolved-attribute]
+            tool_key=cls.tool_key,
+            order=EXECUTION_LIST_ORDER_CREATED_DESC,
+            page=0,
+            page_size=1,
+        )
+        dtos = response.get("data") or []
+        if not dtos:
+            raise ValueError(
+                f"No executions found for {cls.__qualname__} (tool_key={cls.tool_key!r})."
+            )
+        return cls.from_dto(dtos[0], client=client)
+
+    @classmethod
     def list(
         cls,
         *,
@@ -566,7 +712,7 @@ class Execution:
         offset: int | None = None,
         select: builtins.list[str] | None = None,
         with_total_count: bool = False,
-    ) -> dict[str, Any] | None:
+    ) -> pd.DataFrame | None:
         """Search data-platform ``user_logs`` rows for this execution.
 
         Uses :meth:`deeporigin.platform.user_logs.UserLogs.search` with this
@@ -584,8 +730,11 @@ class Execution:
             with_total_count: Request total count from the server (forwarded).
 
         Returns:
-            The search response dict (typically ``data`` / ``meta``), or
-            ``None`` if this instance has no execution id yet.
+            A DataFrame with columns ``log_level``, ``tool_key``, ``timestamp``,
+            and ``message``. ``tool_key`` omits the ``deeporigin.`` prefix;
+            ``timestamp`` is a compact humanized relative time. Returns ``None``
+            if this instance has no execution id yet or the client has no
+            ``user_logs`` API.
         """
         exec_id = getattr(self, "_id", None)
         if exec_id is None:
@@ -593,13 +742,14 @@ class Execution:
         ul = self.client.user_logs
         if ul is None:
             return None
-        return ul.search(
+        response = ul.search(
             execution_id=exec_id,
             limit=limit,
             offset=offset,
             select=select,
             with_total_count=with_total_count,
         )
+        return self._user_logs_dataframe(response)
 
     def __repr__(self) -> str:
         """Return a concise summary of the execution."""

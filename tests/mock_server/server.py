@@ -62,10 +62,18 @@ class MockServer:
         self._ligands: dict[str, dict[str, Any]] = {}
         self._proteins: dict[str, dict[str, Any]] = {}
         self._projects: dict[str, dict[str, Any]] = {}
+        self._user_logs: dict[str, dict[str, Any]] = {
+            "ul-mock-1": {
+                "id": "ul-mock-1",
+                "execution_id": "MOCK-USER-LOGS-CJ-ID",
+                "line": "mock user log line",
+            }
+        }
         self._results: list[dict[str, Any]] = []
         # Tool-specific mock execution durations (in seconds)
         self._mock_execution_durations: dict[str, float] = {
             "deeporigin.abfe-e2e-workflow": 30.0,  # seconds
+            "deeporigin.rbfe": 5.0,
             "deeporigin.docking": 0.1,  # short poll for local Docking.run (tools API)
         }
         self.docking_speed = docking_speed
@@ -342,6 +350,7 @@ class MockServer:
             projects=self._projects,
             results=self._results,
             executions=self._executions,
+            user_logs=self._user_logs,
             load_fixture=self._load_fixture,
         )
         self.app.include_router(dp_router)
@@ -355,6 +364,8 @@ class MockServer:
             fixtures_dir=self._fixtures_dir,
             load_fixture=self._load_fixture,
             results=self._results,
+            user_logs=self._user_logs,
+            file_storage=self._file_storage,
         )
         self.app.include_router(tools_router)
 

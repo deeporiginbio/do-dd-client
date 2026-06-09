@@ -2,13 +2,17 @@ from datetime import datetime, timezone
 from typing import Any, cast
 from unittest.mock import MagicMock, patch
 
+import pandas as pd
 import pytest
 
 from deeporigin.drug_discovery.execution import Execution
 from deeporigin.exceptions import DeepOriginException
 from deeporigin.platform.client import DeepOriginClient
 from deeporigin.platform.executions import Executions
-from deeporigin.utils.constants import TOOL_EXECUTION_POST_TIMEOUT_SECONDS
+from deeporigin.utils.constants import (
+    TOOL_EXECUTION_GET_ACCEPT_HEADER,
+    TOOL_EXECUTION_POST_TIMEOUT_SECONDS,
+)
 
 
 def test_execution_runtime_none_without_dto() -> None:
@@ -173,11 +177,85 @@ def test_execution_list_requires_tool_key() -> None:
         Execution.list()
 
 
+def test_execution_from_last_run_requires_tool_key() -> None:
+    """``Execution.from_last_run`` rejects the bare base class."""
+
+    with pytest.raises(NotImplementedError, match="tool_key"):
+        Execution.from_last_run()
+
+
+def test_execution_from_last_run_raises_when_empty() -> None:
+    """``from_last_run`` raises when the platform returns no executions."""
+    client = MagicMock()
+    client.executions.list.return_value = {"data": []}
+
+    with pytest.raises(ValueError, match="No executions found"):
+        _TestToolExecution.from_last_run(client=client)
+
+
+def test_execution_from_last_run_hydrates_latest() -> None:
+    """``from_last_run`` lists by createdAt desc and hydrates the first DTO."""
+    client = MagicMock()
+    dto: dict[str, Any] = {
+        "executionId": "exec-latest",
+        "tool": {"key": "deeporigin.test-sync-tool", "version": "1.0.0"},
+        "status": "Succeeded",
+        "createdAt": "2026-06-04T12:00:00.000Z",
+    }
+    client.executions.list.return_value = {"data": [dto]}
+
+    instance = _TestToolExecution.from_last_run(client=client)
+
+    client.executions.list.assert_called_once_with(
+        tool_key="deeporigin.test-sync-tool",
+        order="createdAt desc",
+        page=0,
+        page_size=1,
+    )
+    assert instance.id == "exec-latest"
+    assert instance.status == "Completed"
+
+
 def test_execution_get_user_logs_no_id_noop() -> None:
     """``get_user_logs`` returns ``None`` when the execution has no platform id yet."""
 
     ex: Any = Execution()
     assert ex.get_user_logs() is None
+
+
+def test_execution_get_user_logs_returns_dataframe() -> None:
+    """``get_user_logs`` maps ``UserLogs.search`` rows into a DataFrame."""
+
+    ex: Any = _TestToolExecution()
+    ex._id = "exec-123"
+    mock_user_logs = MagicMock()
+    mock_user_logs.search.return_value = {
+        "data": [
+            {
+                "log_level": "info",
+                "tool_key": "deeporigin.rbfe",
+                "date": "2026-06-04T16:18:53.034Z",
+                "message": "CPU cpuset check passed.",
+            }
+        ]
+    }
+    ex.client = MagicMock(user_logs=mock_user_logs)
+
+    logs = ex.get_user_logs()
+
+    mock_user_logs.search.assert_called_once_with(
+        execution_id="exec-123",
+        limit=None,
+        offset=None,
+        select=None,
+        with_total_count=False,
+    )
+    assert logs is not None
+    assert isinstance(logs, pd.DataFrame)
+    assert list(logs.columns) == Execution.USER_LOG_COLUMNS
+    assert logs.iloc[0]["log_level"] == "info"
+    assert logs.iloc[0]["tool_key"] == "rbfe"
+    assert logs.iloc[0]["message"] == "CPU cpuset check passed."
 
 
 def test_execution_get_user_logs_lv1(client: DeepOriginClient) -> None:
@@ -215,7 +293,8 @@ def test_execution_get_user_logs_lv1(client: DeepOriginClient) -> None:
         pytest.skip("user_logs search failed on this environment (schema or access)")
 
     assert logs is not None
-    assert isinstance(logs.get("data"), list)
+    assert isinstance(logs, pd.DataFrame)
+    assert list(logs.columns) == Execution.USER_LOG_COLUMNS
 
 
 def test_list_executions_lv1(client: DeepOriginClient):
@@ -343,6 +422,26 @@ def test_confirm_can_set_long_timeout_and_disable_retries() -> None:
     )
 
 
+def test_get_requests_v2_accept_header() -> None:
+    """``get`` requests the tools-service v2.0 execution DTO."""
+    client = MagicMock()
+    client.org_key = "my-org"
+    dto: dict[str, Any] = {
+        "executionId": "exec-42",
+        "status": "Running",
+        "progressReport": {"id": "workflow-abc", "children": []},
+    }
+    client.get_json.return_value = dto
+
+    result = Executions(client).get("exec-42")
+
+    client.get_json.assert_called_once_with(
+        "/tools/my-org/tools/executions/exec-42",
+        headers={"Accept": TOOL_EXECUTION_GET_ACCEPT_HEADER},
+    )
+    assert result == dto
+
+
 def test_execution_update_from_dto_sets_cost_when_succeeded() -> None:
     """``update_from_dto`` copies ``priceTotal`` into ``cost`` for completed runs."""
     client = MagicMock()
@@ -372,6 +471,112 @@ def test_execution_update_from_dto_normalizes_legacy_succeeded() -> None:
     job.update_from_dto(dto)
 
     assert job.status == "Completed"
+
+
+def test_execution_update_from_dto_sums_workflow_quotations() -> None:
+    """``update_from_dto`` sums all successful quotation rows for workflow tools."""
+    client = MagicMock()
+    dto: dict[str, Any] = {
+        "executionId": "exec-quoted",
+        "tool": {"key": "deeporigin.test-sync-tool", "version": "1.0.0"},
+        "status": "Quoted",
+        "quotationResult": {
+            "successfulQuotations": [
+                {"itemCode": "DO_SYSTEM_PREP", "priceTotal": 0},
+                {"itemCode": "DO_RBFE", "priceTotal": 1.02792},
+            ],
+        },
+    }
+    job = _TestToolExecution(client=client)
+    job.update_from_dto(dto)
+
+    assert job.status == "Quoted"
+    assert job.estimate == pytest.approx(1.02792)
+    assert job.cost is None
+
+
+def test_execution_quotation_total_missing() -> None:
+    """``_quotation_total`` returns None when there is no successful quotation."""
+    assert Execution._quotation_total({}) is None
+    assert Execution._quotation_total({"quotationResult": {}}) is None
+
+
+def test_execution_quotation_total_present() -> None:
+    """``_quotation_total`` parses priceTotal from a single successful quotation row."""
+    dto = {
+        "quotationResult": {
+            "successfulQuotations": [{"priceTotal": 1.5}],
+        }
+    }
+    assert Execution._quotation_total(dto) == 1.5
+
+
+def test_execution_quotation_total_sums_workflow_items() -> None:
+    """``_quotation_total`` sums priceTotal across all successful quotation rows."""
+    dto = {
+        "quotationResult": {
+            "successfulQuotations": [
+                {"itemCode": "DO_SYSTEM_PREP", "priceTotal": 0},
+                {"itemCode": "DO_RBFE", "priceTotal": 1.02792},
+            ],
+        }
+    }
+    assert Execution._quotation_total(dto) == pytest.approx(1.02792)
+
+
+def test_execution_strip_tool_key_prefix() -> None:
+    """``_strip_tool_key_prefix`` strips the platform prefix from tool keys."""
+    assert Execution._strip_tool_key_prefix("deeporigin.rbfe") == "rbfe"
+    assert Execution._strip_tool_key_prefix("rbfe") == "rbfe"
+    assert Execution._strip_tool_key_prefix(None) is None
+
+
+def test_execution_format_user_log_timestamp_humanizes() -> None:
+    """``_format_user_log_timestamp`` formats ISO timestamps as relative times."""
+    when = datetime(2026, 6, 4, 16, 35, 0, tzinfo=timezone.utc)
+    assert (
+        Execution._format_user_log_timestamp("2026-06-04T16:18:53.034Z", when=when)
+        == "16 minutes ago"
+    )
+
+
+def test_execution_user_logs_dataframe_maps_rows() -> None:
+    """``_user_logs_dataframe`` maps user_logs search rows to the expected columns."""
+    when = datetime(2026, 6, 4, 16, 35, 0, tzinfo=timezone.utc)
+    response = {
+        "data": [
+            {
+                "log_level": "info",
+                "tool_key": "deeporigin.rbfe",
+                "date": "2026-06-04T16:18:53.034Z",
+                "message": "CPU cpuset check passed.",
+            },
+            {
+                "log_level": "info",
+                "tool_key": "deeporigin.rbfe",
+                "created_at": "2026-06-04T16:34:58.708Z",
+                "message": "Finalize: reporting results.",
+            },
+        ]
+    }
+    with patch("deeporigin.drug_discovery.execution.datetime") as mock_datetime:
+        mock_datetime.now.return_value = when
+        df = Execution._user_logs_dataframe(response)
+
+    assert list(df.columns) == Execution.USER_LOG_COLUMNS
+    assert len(df) == 2
+    assert df.iloc[0]["tool_key"] == "rbfe"
+    assert df.iloc[1]["tool_key"] == "rbfe"
+    assert df.iloc[0]["timestamp"] == "16 minutes ago"
+    assert df.iloc[1]["timestamp"] == "a second ago"
+
+
+def test_execution_user_logs_dataframe_empty() -> None:
+    """``_user_logs_dataframe`` returns an empty frame when there are no rows."""
+    df = Execution._user_logs_dataframe({"data": []})
+    assert isinstance(df, pd.DataFrame)
+    assert list(df.columns) == Execution.USER_LOG_COLUMNS
+    assert df.empty
 
 
 def test_wait_returns_immediately_when_all_terminal() -> None:

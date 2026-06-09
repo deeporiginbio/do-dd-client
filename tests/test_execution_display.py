@@ -8,6 +8,7 @@ from deeporigin.platform.execution_display import (
     ExecutionDisplay,
     _count_workflow_children_from_progress_report,
     _parse_complete_from_progress_report,
+    _workflow_subjob_completes_from_progress_report,
 )
 
 
@@ -322,3 +323,139 @@ def test_render_html_no_workflow_badge_when_absent() -> None:
         }
     ).render_html()
     assert "WORKFLOW (" not in html
+
+
+def test_workflow_subjob_completes_sorted_and_ignores_non_workflow_keys() -> None:
+    """Per-workflow completes are sorted by key; non-workflow keys are omitted."""
+    pr = {
+        "workflow-b": {"complete": 25},
+        "other": {"complete": 99},
+        "workflow-a": {"complete": 50},
+    }
+    assert _workflow_subjob_completes_from_progress_report(pr) == (50.0, 25.0)
+
+
+def test_render_html_one_progress_bar_per_workflow_subjob_at_zero() -> None:
+    """Two workflow children at 0% render two indeterminate progress bars."""
+    dto = {
+        "executionId": "e1",
+        "status": "Running",
+        "progressReport": {
+            "workflow-xdkse3iq171637hcwuo8x-643413961": {"complete": 0},
+            "workflow-xdkse3iq171637hcwuo8x-2789035895": {"complete": 0},
+        },
+    }
+    html = ExecutionDisplay.from_dto(dto).render_html()
+    assert html.count('role="progressbar"') == 2
+    assert html.count("progress-bar-striped") == 2
+    assert html.count("progress-bar-animated") == 2
+
+
+def test_render_html_one_progress_bar_per_workflow_subjob_mixed_complete() -> None:
+    """Each workflow child gets its own bar with independent completion."""
+    dto = {
+        "executionId": "e1",
+        "status": "Running",
+        "progressReport": {
+            "workflow-a": {"complete": 0},
+            "workflow-b": {"complete": 50},
+        },
+    }
+    html = ExecutionDisplay.from_dto(dto).render_html()
+    assert html.count('role="progressbar"') == 2
+    assert "50%" in html
+    assert html.count("progress-bar-striped") == 1
+
+
+def test_render_html_workflow_multi_bar_ignores_non_workflow_keys() -> None:
+    """Multi-bar mode shows only workflow-* keys, not other top-level entries."""
+    dto = {
+        "executionId": "e1",
+        "status": "Running",
+        "progressReport": {
+            "workflow-ppu1d9qkoqdkufjnck1e9-1597457250": {"complete": 0},
+            "workflow-ppu1d9qkoqdkufjnck1e9-2853961406": {"complete": 0},
+            "other": {"complete": 50},
+        },
+    }
+    html = ExecutionDisplay.from_dto(dto).render_html()
+    assert html.count('role="progressbar"') == 2
+
+
+def test_render_html_workflow_bar_order_follows_sorted_keys() -> None:
+    """Progress bars appear in alphabetical order of workflow keys."""
+    dto = {
+        "executionId": "e1",
+        "status": "Running",
+        "progressReport": {
+            "workflow-z-last": {"complete": 80},
+            "workflow-a-first": {"complete": 20},
+        },
+    }
+    display = ExecutionDisplay.from_dto(dto)
+    assert display.workflow_subjob_completes == (20.0, 80.0)
+    html = display.render_html()
+    first_pos = html.find("20%")
+    second_pos = html.find("80%")
+    assert first_pos != -1 and second_pos != -1
+    assert first_pos < second_pos
+
+
+def test_render_html_v2_progress_tree() -> None:
+    """v2 ``progressReport`` trees render the HTML progress tree, not bootstrap bars."""
+    import json
+    from pathlib import Path
+
+    fixture = (
+        Path(__file__).resolve().parent
+        / "fixtures"
+        / "executions"
+        / "rbfe-v2-progress-tree.json"
+    )
+    dto = json.loads(fixture.read_text(encoding="utf-8"))
+    html = ExecutionDisplay.from_dto(dto).render_html()
+
+    assert "do-progress-tree" in html
+    assert "prepare-inputs" in html
+    assert "progress-bar" not in html
+
+
+def test_render_html_v2_tree_visible_when_failed() -> None:
+    """Failed executions still show the v2 progress tree."""
+    dto = {
+        "executionId": "e-failed",
+        "status": "Failed",
+        "progressReport": {
+            "id": "wf-1",
+            "displayName": "workflow-root",
+            "status": "Failed",
+            "message": "top-level failure",
+            "children": [
+                {
+                    "id": "step-1",
+                    "displayName": "child-step",
+                    "status": "Succeeded",
+                    "children": [],
+                }
+            ],
+        },
+    }
+    html = ExecutionDisplay.from_dto(dto).render_html()
+
+    assert "do-progress-tree" in html
+    assert "workflow-root" in html
+    assert "progress-bar" not in html
+
+
+def test_render_html_legacy_running_still_uses_bootstrap_bar() -> None:
+    """Legacy ``complete`` progress reports keep the Bootstrap progress bar."""
+    dto = {
+        "executionId": "e1",
+        "status": "Running",
+        "progressReport": {"complete": 55},
+    }
+    html = ExecutionDisplay.from_dto(dto).render_html()
+
+    assert "progress-bar" in html
+    assert "do-progress-tree" not in html
+    assert "55%" in html

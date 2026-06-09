@@ -1,0 +1,313 @@
+{
+  "data": [
+    {
+      "id": "0AE2XHX028S2Y",
+      "tool_key": "deeporigin.rbfe",
+      "tool_version": "0.3.2",
+      "data": {
+        "std": 0,
+        "unit": "kcal/mol",
+        "total": -3875.483,
+        "binding": 388.924,
+        "solvation": 4264.407,
+        "ligand1_id": "08DK80B7DYTXH",
+        "ligand2_id": "08DKACBCXYTXX",
+        "protein_id": "08BSPN9SNYVEA",
+        "analytical_corr": 0,
+        "binding_analysis": [
+          {
+            "repeat": 1,
+            "trajectories": {
+              "window_1": "tool-runs/a5484958-059f-4b1b-ba2c-664adf23e8e8/protein/ligand1-ligand2/binding/binding/window_1/Prod_1/solute_trajectory_20ps.xtc",
+              "window_2": "tool-runs/a5484958-059f-4b1b-ba2c-664adf23e8e8/protein/ligand1-ligand2/binding/binding/window_2/Prod_1/solute_trajectory_20ps.xtc",
+              "window_3": "tool-runs/a5484958-059f-4b1b-ba2c-664adf23e8e8/protein/ligand1-ligand2/binding/binding/window_3/Prod_1/solute_trajectory_20ps.xtc",
+              "window_4": "tool-runs/a5484958-059f-4b1b-ba2c-664adf23e8e8/protein/ligand1-ligand2/binding/binding/window_4/Prod_1/solute_trajectory_20ps.xtc",
+              "window_5": "tool-runs/a5484958-059f-4b1b-ba2c-664adf23e8e8/protein/ligand1-ligand2/binding/binding/window_5/Prod_1/solute_trajectory_20ps.xtc",
+              "window_6": "tool-runs/a5484958-059f-4b1b-ba2c-664adf23e8e8/protein/ligand1-ligand2/binding/binding/window_6/Prod_1/solute_trajectory_20ps.xtc",
+              "window_7": "tool-runs/a5484958-059f-4b1b-ba2c-664adf23e8e8/protein/ligand1-ligand2/binding/binding/window_7/Prod_1/solute_trajectory_20ps.xtc"
+            },
+            "convergence_plot": "tool-runs/a5484958-059f-4b1b-ba2c-664adf23e8e8/protein/ligand1-ligand2/binding/binding/analysis/Prod_1/time_convergence.png",
+            "overlap_matrix_path": "tool-runs/a5484958-059f-4b1b-ba2c-664adf23e8e8/protein/ligand1-ligand2/binding/binding/analysis/Prod_1/overlap_matrix.csv",
+            "overlap_matrix_plot": "tool-runs/a5484958-059f-4b1b-ba2c-664adf23e8e8/protein/ligand1-ligand2/binding/binding/analysis/Prod_1/overlap_matrix.png",
+            "lambda_transition_matrix_plot": "tool-runs/a5484958-059f-4b1b-ba2c-664adf23e8e8/protein/ligand1-ligand2/binding/binding/analysis/Prod_1/lambda_transition_matrix.png"
+          }
+        ],
+        "solvation_analysis": [
+          {
+            "repeat": 1,
+            "trajectories": {
+              "window_1": "tool-runs/a5484958-059f-4b1b-ba2c-664adf23e8e8/protein/ligand1-ligand2/solvation/solvation/window_1/Prod_1/solute_trajectory_20ps.xtc",
+              "window_2": "tool-runs/a5484958-059f-4b1b-ba2c-664adf23e8e8/protein/ligand1-ligand2/solvation/solvation/window_2/Prod_1/solute_trajectory_20ps.xtc",
+              "window_3": "tool-runs/a5484958-059f-4b1b-ba2c-664adf23e8e8/protein/ligand1-ligand2/solvation/solvation/window_3/Prod_1/solute_trajectory_20ps.xtc",
+              "window_4": "tool-runs/a5484958-059f-4b1b-ba2c-664adf23e8e8/protein/ligand1-ligand2/solvation/solvation/window_4/Prod_1/solute_trajectory_20ps.xtc",
+              "window_5": "tool-runs/a5484958-059f-4b1b-ba2c-664adf23e8e8/protein/ligand1-ligand2/solvation/solvation/window_5/Prod_1/solute_trajectory_20ps.xtc",
+              "window_6": "tool-runs/a5484958-059f-4b1b-ba2c-664adf23e8e8/protein/ligand1-ligand2/solvation/solvation/window_6/Prod_1/solute_trajectory_20ps.xtc",
+              "window_7": "tool-runs/a5484958-059f-4b1b-ba2c-664adf23e8e8/protein/ligand1-ligand2/solvation/solvation/window_7/Prod_1/solute_trajectory_20ps.xtc"
+            },
+            "convergence_plot": "tool-runs/a5484958-059f-4b1b-ba2c-664adf23e8e8/protein/ligand1-ligand2/solvation/solvation/analysis/Prod_1/time_convergence.png",
+            "overlap_matrix_path": "tool-runs/a5484958-059f-4b1b-ba2c-664adf23e8e8/protein/ligand1-ligand2/solvation/solvation/analysis/Prod_1/overlap_matrix.csv",
+            "overlap_matrix_plot": "tool-runs/a5484958-059f-4b1b-ba2c-664adf23e8e8/protein/ligand1-ligand2/solvation/solvation/analysis/Prod_1/overlap_matrix.png",
+            "lambda_transition_matrix_plot": "tool-runs/a5484958-059f-4b1b-ba2c-664adf23e8e8/protein/ligand1-ligand2/solvation/solvation/analysis/Prod_1/lambda_transition_matrix.png"
+          }
+        ]
+      },
+      "compute_job_id": "a5484958-059f-4b1b-ba2c-664adf23e8e8"
+    }
+  ],
+  "meta": {
+    "count": 1,
+    "limit": 100,
+    "executionTimeMs": "171.41",
+    "hasMore": false,
+    "output_schemas": [
+      {
+        "tool_key": "deeporigin.rbfe",
+        "tool_version": "0.3.2",
+        "result_table_name": "results__rbferesults",
+        "fields": {
+          "std": {
+            "description": "Standard deviation in kcal/mol",
+            "x-data-type": "RBFEResult.std",
+            "x-indexable": true,
+            "X-Indexable": true,
+            "X-Data-Type": "RBFEResult.std",
+            "type": "number"
+          },
+          "unit": {
+            "description": "Unit of energy values",
+            "x-data-type": "RBFEResult.unit",
+            "X-Data-Type": "RBFEResult.unit",
+            "type": "string"
+          },
+          "total": {
+            "description": "Total ddG in kcal/mol",
+            "x-data-type": "RBFEResult.total",
+            "x-indexable": true,
+            "X-Indexable": true,
+            "X-Data-Type": "RBFEResult.total",
+            "type": "number"
+          },
+          "binding": {
+            "description": "Binding free energy in kcal/mol",
+            "x-data-type": "RBFEResult.binding_ddG",
+            "x-indexable": true,
+            "X-Indexable": true,
+            "X-Data-Type": "RBFEResult.binding_ddG",
+            "type": "number"
+          },
+          "solvation": {
+            "description": "Solvation free energy in kcal/mol",
+            "x-data-type": "RBFEResult.solvation_ddG",
+            "x-indexable": true,
+            "X-Indexable": true,
+            "X-Data-Type": "RBFEResult.solvation_ddG",
+            "type": "number"
+          },
+          "ligand1_id": {
+            "x-key": true,
+            "description": "ID of the first ligand used in the calculation",
+            "x-data-type": "Ligand.id",
+            "X-Data-Type": "Ligand.id",
+            "X-Key": true,
+            "type": "string"
+          },
+          "ligand2_id": {
+            "x-key": true,
+            "description": "ID of the second ligand used in the calculation",
+            "x-data-type": "Ligand.id",
+            "X-Data-Type": "Ligand.id",
+            "X-Key": true,
+            "type": "string"
+          },
+          "protein_id": {
+            "x-key": true,
+            "description": "ID of the protein used in the calculation",
+            "x-data-type": "Protein.id",
+            "X-Data-Type": "Protein.id",
+            "X-Key": true,
+            "type": "string"
+          },
+          "analytical_corr": {
+            "description": "Analytical correction in kcal/mol",
+            "x-data-type": "RBFEResult.analytical_corr",
+            "x-indexable": true,
+            "X-Indexable": true,
+            "X-Data-Type": "RBFEResult.analytical_corr",
+            "type": "number"
+          },
+          "binding_analysis": {
+            "items": {
+              "type": "object",
+              "properties": {
+                "repeat": {
+                  "type": "integer",
+                  "x-key": true,
+                  "description": "Production repeat index",
+                  "x-data-type": "RBFEResult.Binding.repeat"
+                },
+                "trajectories": {
+                  "type": "object",
+                  "description": "Solute trajectory files keyed by window name",
+                  "x-data-type": "RBFEResult.Binding.trajectories",
+                  "additionalProperties": true
+                },
+                "convergence_plot": {
+                  "type": "string",
+                  "format": "file",
+                  "description": "Time convergence plot (PNG)",
+                  "x-data-type": "RBFEResult.Binding.convergence_plot"
+                },
+                "overlap_matrix_path": {
+                  "type": "string",
+                  "format": "file",
+                  "description": "Overlap matrix raw data (CSV)",
+                  "x-data-type": "RBFEResult.Binding.overlap_matrix_path"
+                },
+                "overlap_matrix_plot": {
+                  "type": "string",
+                  "format": "file",
+                  "description": "Overlap matrix heatmap (PNG)",
+                  "x-data-type": "RBFEResult.Binding.overlap_matrix_plot"
+                },
+                "lambda_transition_matrix_plot": {
+                  "type": "string",
+                  "format": "file",
+                  "description": "Lambda transition matrix plot (PNG)",
+                  "x-data-type": "RBFEResult.Binding.lambda_transition_matrix_plot"
+                }
+              },
+              "description": "Analysis outputs for a single binding production repeat",
+              "additionalProperties": false
+            },
+            "description": "Per-repeat analysis outputs for the binding phase",
+            "x-data-type": "RBFEResult.Binding",
+            "X-Data-Type": "RBFEResult.Binding",
+            "type": "object[]"
+          },
+          "solvation_analysis": {
+            "items": {
+              "type": "object",
+              "properties": {
+                "repeat": {
+                  "type": "integer",
+                  "x-key": true,
+                  "description": "Production repeat index",
+                  "x-data-type": "RBFEResult.Solvation.repeat"
+                },
+                "trajectories": {
+                  "type": "object",
+                  "description": "Solute trajectory files keyed by window name",
+                  "x-data-type": "RBFEResult.Solvation.trajectories",
+                  "additionalProperties": true
+                },
+                "convergence_plot": {
+                  "type": "string",
+                  "format": "file",
+                  "description": "Time convergence plot (PNG)",
+                  "x-data-type": "RBFEResult.Solvation.convergence_plot"
+                },
+                "overlap_matrix_path": {
+                  "type": "string",
+                  "format": "file",
+                  "description": "Overlap matrix raw data (CSV)",
+                  "x-data-type": "RBFEResult.Solvation.overlap_matrix_path"
+                },
+                "overlap_matrix_plot": {
+                  "type": "string",
+                  "format": "file",
+                  "description": "Overlap matrix heatmap (PNG)",
+                  "x-data-type": "RBFEResult.Solvation.overlap_matrix_plot"
+                },
+                "lambda_transition_matrix_plot": {
+                  "type": "string",
+                  "format": "file",
+                  "description": "Lambda transition matrix plot (PNG)",
+                  "x-data-type": "RBFEResult.Solvation.lambda_transition_matrix_plot"
+                }
+              },
+              "description": "Analysis outputs for a single solvation production repeat",
+              "additionalProperties": false
+            },
+            "description": "Per-repeat analysis outputs for the solvation phase",
+            "x-data-type": "RBFEResult.Solvation",
+            "X-Data-Type": "RBFEResult.Solvation",
+            "type": "object[]"
+          },
+          "padding": {
+            "description": "Padding distance in nm used around the system",
+            "x-data-type": "PreparedSystem.padding",
+            "x-display-name": "Padding",
+            "X-Data-Type": "PreparedSystem.padding",
+            "type": "number"
+          },
+          "box_size": {
+            "items": {
+              "type": "number"
+            },
+            "maxItems": 3,
+            "minItems": 3,
+            "description": "Simulation box dimensions (X, Y, Z) in nm",
+            "x-data-type": "PreparedSystem.box_size",
+            "x-display-name": "Box Size",
+            "X-Data-Type": "PreparedSystem.box_size",
+            "type": "number[]"
+          },
+          "pose1_id": {
+            "x-data-type": "Pose.id",
+            "X-Data-Type": "Pose.id",
+            "type": "string"
+          },
+          "add_H_atoms": {
+            "description": "Whether hydrogen atoms were added to the ligand",
+            "x-data-type": "PreparedSystem.add_H_atoms",
+            "x-display-name": "Add Hydrogen Atoms",
+            "X-Data-Type": "PreparedSystem.add_H_atoms",
+            "type": "boolean"
+          },
+          "retain_waters": {
+            "description": "Whether water molecules were retained in the system",
+            "x-data-type": "PreparedSystem.retain_waters",
+            "x-display-name": "Retain Waters",
+            "X-Data-Type": "PreparedSystem.retain_waters",
+            "type": "boolean"
+          },
+          "ligand1_pose_id": {
+            "x-data-type": "Pose.id",
+            "X-Data-Type": "Pose.id",
+            "type": "string"
+          },
+          "protonate_protein": {
+            "description": "Whether the protein was protonated",
+            "x-data-type": "PreparedSystem.protonate_protein",
+            "x-display-name": "Protonate Protein",
+            "X-Data-Type": "PreparedSystem.protonate_protein",
+            "type": "boolean"
+          },
+          "solute_pdb_file_path": {
+            "format": "file",
+            "x-data-type": "PreparedSystem.solute_pdb_file_path",
+            "X-Data-Type": "PreparedSystem.solute_pdb_file_path",
+            "type": "string"
+          },
+          "system_pdb_file_path": {
+            "format": "file",
+            "x-data-type": "PreparedSystem.system_pdb_file_path",
+            "X-Data-Type": "PreparedSystem.system_pdb_file_path",
+            "type": "string"
+          },
+          "binding_xml_file_path": {
+            "format": "file",
+            "x-data-type": "PreparedSystem.binding_xml_file_path",
+            "X-Data-Type": "PreparedSystem.binding_xml_file_path",
+            "type": "string"
+          },
+          "solvation_xml_ligand_file_path": {
+            "x-data-type": "PreparedSystem.solvation_xml_ligand_file_path",
+            "X-Data-Type": "PreparedSystem.solvation_xml_ligand_file_path",
+            "type": "string"
+          }
+        }
+      }
+    ]
+  }
+}

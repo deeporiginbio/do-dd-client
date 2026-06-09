@@ -83,6 +83,15 @@ TOOL_EXECUTION_POST_TIMEOUT_SECONDS = 600.0
 as molprops and protonation, where synchronous executions can take longer than
 the client's default short timeout."""
 
+EXECUTION_LIST_ORDER_CREATED_DESC = "createdAt desc"
+"""Tools-service ``order`` query value for most-recently-created executions first."""
+
+TOOL_EXECUTION_GET_ACCEPT_HEADER = "application/json;v=2.0"
+"""Accept header for tools-service ``GET .../executions/{id}`` (v2 execution DTO)."""
+
+TOOL_KEY_PREFIX = "deeporigin."
+"""Platform tool-key prefix omitted in compact display (e.g. user log tables)."""
+
 MOLPROPS_PROPERTY_KEYS: frozenset[str] = frozenset(
     ("ames", "cyp", "herg", "logd", "logp", "logs", "pains"),
 )
@@ -97,3 +106,6 @@ JOB_WATCH_BLOCK_ENV = "JOB_WATCH_BLOCK"
 When set to a truthy value (``1``, ``true``, ``yes``, ``on``), ``watch()`` blocks the
 notebook cell until the execution reaches a terminal state. Used by doc notebook CI
 (``scripts/build_docs.sh``) and ``nbconvert --execute``."""
+
+PROGRESS_TREE_DISPLAY_ACRONYMS: frozenset[str] = frozenset({"abfe", "rbfe"})
+"""Workflow step tokens uppercased in progress-tree node labels (e.g. RBFE, ABFE)."""

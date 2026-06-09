@@ -1,0 +1,182 @@
+{
+  "executionId": "a5484958-059f-4b1b-ba2c-664adf23e8e8",
+  "createdAt": "2026-06-03T23:28:56.988Z",
+  "updatedAt": "2026-06-03T23:50:11.181Z",
+  "resourceId": "86uj28vuah4y9uihqzimu",
+  "completedAt": "2026-06-03T23:50:09.000Z",
+  "startedAt": "2026-06-03T23:29:20.000Z",
+  "userInputs": {
+    "steps": [
+      "rbfe"
+    ],
+    "binding": {
+      "steps": 1250000,
+      "repeats": 1,
+      "test_run": 1,
+      "n_windows": 48,
+      "annihilate": true,
+      "nvt_heating_ns": 1,
+      "emeq_md_options": {
+        "T": 298.15,
+        "dt": 0.004,
+        "cutoff": 0.9
+      },
+      "prod_md_options": {
+        "T": 298.15,
+        "dt": 0.004,
+        "cutoff": 0.9
+      },
+      "replex_period_ps": 2.5,
+      "npt_reduce_restraints_ns": 2
+    },
+    "solvation": {
+      "steps": 500000,
+      "repeats": 1,
+      "test_run": 1,
+      "n_windows": 32,
+      "annihilate": true,
+      "nvt_heating_ns": 0.1,
+      "emeq_md_options": {
+        "T": 298.15,
+        "dt": 0.004,
+        "cutoff": 0.9
+      },
+      "prod_md_options": {
+        "T": 298.15,
+        "dt": 0.004,
+        "cutoff": 0.9
+      },
+      "replex_period_ps": 2.5,
+      "npt_reduce_restraints_ns": 0.2
+    },
+    "prepared_systems": [
+      {
+        "ligand1_id": "08DK80B7DYTXH",
+        "ligand2_id": "08DKACBCXYTXX",
+        "protein_id": "08BSPN9SNYVEA",
+        "binding_xml_file_path": "tool-runs/d037ce61-c52e-49bc-9507-1f300993d9fe/bsm_system.xml",
+        "solvation_xml_ligand_file_path": "tool-runs/d037ce61-c52e-49bc-9507-1f300993d9fe/solvation_ligand.xml"
+      }
+    ]
+  },
+  "userOutputs": {},
+  "jobOutputs": null,
+  "status": "Succeeded",
+  "statusReason": null,
+  "metadata": {
+    "method": "workflow",
+    "reconciledAt": "2026-06-03T23:50:11.181Z",
+    "workflowRepository": {
+      "key": "deeporigin.rbfe",
+      "version": "0.3.2",
+      "bucketName": "do-workflow-storage-dev",
+      "correlationId": "3e529592-b7bd-4fb4-8bcb-4923ab4e5ddb",
+      "storageVersionId": "FsM7pIOPX3xgefJR2Cc3drzYtqYR0zlQ"
+    }
+  },
+  "name": null,
+  "approveAmount": 0,
+  "quotationResult": {
+    "anyFailed": false,
+    "failedQuotations": [],
+    "successfulQuotations": [
+      {
+        "qty": 0,
+        "orgId": "deeporigin",
+        "status": "OK",
+        "itemCode": "DO_RBFE",
+        "qty_vars": {
+          "rbfe_atoms": 24872,
+          "rbfe_repeats": 1,
+          "rbfe_windows": 48,
+          "rbfe_production_steps": 1250000,
+          "rbfe_equilibration_steps": 750000
+        },
+        "priceEach": 1,
+        "priceTotal": 0.99488,
+        "pricingRecords": [
+          {
+            "qty": 0.99488,
+            "itemKey": "DO_RBFE",
+            "itemName": "Relative Binding Free Energy (RBFE)",
+            "priceEach": 1,
+            "tierQtyTo": 0,
+            "totalPrice": 0.99488,
+            "tierQtyFrom": 0
+          }
+        ],
+        "pricingRecordType": "regular"
+      }
+    ]
+  },
+  "billingTransaction": {
+    "items": [
+      {
+        "qty": 0,
+        "itemCode": "DO_RBFE",
+        "priceEach": 1,
+        "isApproved": true,
+        "priceTotal": 0.99488,
+        "actionRequest": null,
+        "authorizationId": "6a20b8bc6e270ce63927fa2c",
+        "purchaseApprovalComment": null
+      }
+    ],
+    "orgId": "deeporigin",
+    "status": "Approved",
+    "totalCost": 0.99488,
+    "transactionId": "6a20b8bb6e270ce63927fa2a"
+  },
+  "cluster": {
+    "id": "d638d3cd-833f-476b-87fe-ca6d76e66049"
+  },
+  "orgKey": "deeporigin",
+  "createdBy": "6b96d8f8-0f55-474c-a86c-e09651ba4b20",
+  "tag": null,
+  "projectId": null,
+  "billing": null,
+  "app": "python-client",
+  "session": "707078d4-162d-42a7-95fd-08b3972da312",
+  "executionType": "tool",
+  "estimatorOutput": {
+    "counts": {
+      "DO_RBFE": {
+        "vars": {
+          "rbfe_atoms": 24872,
+          "rbfe_repeats": 1,
+          "rbfe_windows": 48,
+          "rbfe_production_steps": 1250000,
+          "rbfe_equilibration_steps": 750000
+        },
+        "description": {
+          "message": "One RBFE simulation run"
+        }
+      }
+    },
+    "method": "workflow",
+    "resources": {}
+  },
+  "progressReport": {
+    "workflow-86uj28vuah4y9uihqzimu-117160792": {
+      "counts": {
+        "DO_RBFE": {
+          "vars": {
+            "rbfe_atoms": 24872,
+            "rbfe_repeats": 1,
+            "rbfe_windows": 48,
+            "rbfe_production_steps": 1250000,
+            "rbfe_equilibration_steps": 750000
+          },
+          "description": {
+            "message": "One RBFE simulation run"
+          }
+        }
+      },
+      "complete": 100
+    }
+  },
+  "tool": {
+    "key": "deeporigin.rbfe",
+    "version": "0.3.2"
+  }
+}

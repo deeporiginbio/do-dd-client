@@ -52,7 +52,12 @@ the platform. This is useful when you want to inspect a previous run, reconnect
 to an in-progress execution, or fetch results in a later session.
 
 ```{.python notest}
+# By execution id:
 tool = SomeTool.from_id("<executionId>")
+
+# Or resume the most recently created run of this tool type:
+tool = SomeTool.from_last_run()
+
 tool.sync()
 result = tool.get_results()
 ```
@@ -72,6 +77,8 @@ The commonly available methods are:
 - `cancel()` cancels an asynchronous execution, when supported.
 - `get_results()` retrieves outputs after completion.
 - `from_id()` reconstructs a tool object from an execution ID.
+- `from_last_run()` reconstructs a tool object from the most recently created
+  execution of that tool type.
 
 Not every method is available on every tool. The tool-specific pages document
 the supported execution modes, inputs, outputs, and examples.

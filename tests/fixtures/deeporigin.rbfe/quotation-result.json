@@ -1,0 +1,33 @@
+{
+  "anyFailed": false,
+  "failedQuotations": [],
+  "successfulQuotations": [
+    {
+      "qty": 0,
+      "orgId": "deeporigin",
+      "status": "OK",
+      "itemCode": "DO_RBFE",
+      "qty_vars": {
+        "rbfe_atoms": 24872,
+        "rbfe_repeats": 1,
+        "rbfe_windows": 48,
+        "rbfe_production_steps": 1250000,
+        "rbfe_equilibration_steps": 750000
+      },
+      "priceEach": 1,
+      "priceTotal": 0.99488,
+      "pricingRecords": [
+        {
+          "qty": 0.99488,
+          "itemKey": "DO_RBFE",
+          "itemName": "Relative Binding Free Energy (RBFE)",
+          "priceEach": 1,
+          "tierQtyTo": 0,
+          "totalPrice": 0.99488,
+          "tierQtyFrom": 0
+        }
+      ],
+      "pricingRecordType": "regular"
+    }
+  ]
+}

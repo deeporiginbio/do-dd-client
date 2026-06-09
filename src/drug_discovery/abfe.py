@@ -1,6 +1,7 @@
 """ABFE -- class to run and control absolute binding free energy calculations."""
 
-from dataclasses import dataclass
+from __future__ import annotations
+
 from pathlib import Path
 from typing import Any, Literal, Self
 
@@ -9,11 +10,22 @@ import pandas as pd
 
 from deeporigin.drug_discovery.execution import Execution
 from deeporigin.drug_discovery.execution_mixins import AsyncExecutableMixin
+from deeporigin.drug_discovery.fep_common import (
+    ABFEParams,
+    _fep_params_from_inputs,
+    _ligand_tool_ref,
+    _prepared_system_tool_ref,
+    _simulation_blocks,
+)
 from deeporigin.drug_discovery.notebook_watch_mixin import NotebookWatchMixin
+from deeporigin.drug_discovery.structures.ligand import Ligand
 from deeporigin.drug_discovery.structures.prepared_system import PreparedSystem
+from deeporigin.drug_discovery.structures.protein import Protein
 from deeporigin.exceptions import DeepOriginException
 from deeporigin.platform.client import DeepOriginClient
 from deeporigin.platform.constants import TOOL_KEYS_AND_VERSIONS, is_success_status
+
+ABFEWorkflowStep = Literal["system-prep", "abfe"]
 
 
 @beartype
@@ -57,30 +69,34 @@ def _ligand_display_label_from_entity(*, entity: dict, fallback_id: str) -> str:
 
 
 @beartype
-def _abfe_default_name(
+def _abfe_default_name_from_entities(
     *,
-    prepared_system: PreparedSystem,
+    protein: Protein,
+    ligand: Ligand,
     client: DeepOriginClient,
 ) -> str:
-    """Build a short human-readable label for an ABFE execution.
-
-    Loads protein and ligand records via ``client.entities`` when IDs are set,
-    then formats ``ABFE: <protein> with <ligand>``. The ligand segment uses
-    SMILES when the entity has no name. On fetch failure, falls back to the
-    corresponding ID string.
+    """Build a short human-readable label for a combined ABFE execution.
 
     Args:
-        prepared_system: Prepared system carrying protein and ligand entity IDs.
+        protein: Protein used for system preparation.
+        ligand: Ligand used for system preparation.
         client: API client used to resolve entities.
 
     Returns:
-        A string such as ``ABFE: BRD4 with CCO`` or ``ABFE: BRD4 with lig-456``
-        when metadata is missing.
+        A string such as ``ABFE: BRD4 with CCO``.
     """
-    pid = prepared_system.protein_id
-    lid = prepared_system.ligand1_id
-    protein_id_str = pid.strip() if pid is not None and pid.strip() else ""
-    ligand_id_str = lid.strip() if lid is not None and lid.strip() else ""
+    protein_id = protein.id
+    ligand_id = ligand.id
+    protein_id_str = (
+        str(protein_id).strip()
+        if protein_id is not None and str(protein_id).strip()
+        else ""
+    )
+    ligand_id_str = (
+        str(ligand_id).strip()
+        if ligand_id is not None and str(ligand_id).strip()
+        else ""
+    )
 
     if protein_id_str:
         try:
@@ -91,7 +107,7 @@ def _abfe_default_name(
         except Exception:
             protein_label = protein_id_str
     else:
-        protein_label = "unknown protein"
+        protein_label = protein.name or "unknown protein"
 
     if ligand_id_str:
         try:
@@ -182,192 +198,201 @@ def _abfe_sorted_window_numbers(*, trajectories: dict[str, Any]) -> list[int]:
     return sorted(out)
 
 
-@dataclass(frozen=True)
-class ABFEParams:
-    """ABFE calculation parameters.
+@beartype
+def _abfe_filtered_records(
+    response: dict[str, Any],
+    *,
+    tool_key: str,
+) -> list[dict[str, Any]]:
+    """Return result records whose ``tool_key`` matches the ABFE tool."""
+    records = response.get("data") or []
+    return [
+        record
+        for record in records
+        if isinstance(record, dict) and record.get("tool_key") == tool_key
+    ]
 
-    Attributes:
-        annihilate: Whether to annihilate the ligand.
-        dt: Time step in ps. Used for both emeq_md_options and prod_md_options.
-        temperature: Temperature in K. Used for both emeq_md_options and prod_md_options.
-        cutoff: Cutoff distance in nm. Used for both emeq_md_options and prod_md_options.
-        repeats: Number of repeats.
-        replex_period_ps: Replica exchange period in ps.
-        test_run: Test run flag.
-        binding_n_windows: Number of windows for binding calculation.
-        binding_npt_reduce_restraints_ns: NPT reduce restraints time in ns for binding.
-        binding_nvt_heating_ns: NVT heating time in ns for binding.
-        binding_steps: Number of steps for binding calculation.
-        solvation_n_windows: Number of windows for solvation calculation.
-        solvation_npt_reduce_restraints_ns: NPT reduce restraints time in ns for solvation.
-        solvation_nvt_heating_ns: NVT heating time in ns for solvation.
-        solvation_steps: Number of steps for solvation calculation.
+
+@beartype
+def _abfe_first_result_data(
+    response: dict[str, Any],
+    *,
+    tool_key: str,
+) -> dict[str, Any] | None:
+    """Return the ``data`` payload from the first ABFE result record."""
+    for record in _abfe_filtered_records(response, tool_key=tool_key):
+        data = record.get("data")
+        if isinstance(data, dict) and data:
+            return data
+    return None
+
+
+@beartype
+def _abfe_results_dataframe(
+    response: dict[str, Any],
+    *,
+    tool_key: str,
+) -> pd.DataFrame | None:
+    """Build a one-row summary table from ABFE result records.
+
+    Combined workflow executions also store system-prep rows; those are excluded.
     """
+    data = _abfe_first_result_data(response, tool_key=tool_key)
+    if data is None:
+        return None
+    df = pd.json_normalize([data])
+    drop_roots = frozenset({"binding_analysis", "solvation_analysis"})
+    to_drop = [
+        c for c in df.columns if c in drop_roots or c.split(".", 1)[0] in drop_roots
+    ]
+    if to_drop:
+        df = df.drop(columns=to_drop)
+    priority = ["protein_id", "ligand1_id", "total", "unit"]
+    head = [c for c in priority if c in df.columns]
+    tail = [c for c in df.columns if c not in head]
+    return df[head + tail]
 
-    # Common parameters (same for binding and solvation)
-    annihilate: bool = True
-    dt: float = 0.004
-    temperature: float = 298.15
-    cutoff: float = 0.9
-    repeats: int = 1
-    replex_period_ps: float = 2.5
-    test_run: int = 0
-    # Binding-specific parameters
-    binding_n_windows: int = 48
-    binding_npt_reduce_restraints_ns: float = 2.0
-    binding_nvt_heating_ns: float = 1.0
-    binding_steps: int = 1250000
-    # Solvation-specific parameters
-    solvation_n_windows: int = 32
-    solvation_npt_reduce_restraints_ns: float = 0.2
-    solvation_nvt_heating_ns: float = 0.1
-    solvation_steps: int = 500000
 
-    def __repr__(self) -> str:
-        """Return a string representation with each attribute on its own line.
-
-        Fields modified from their default values are marked with an asterisk (*).
-        """
-        lines = []
-        for f in self.__dataclass_fields__.values():
-            value = getattr(self, f.name)
-            changed = f.default is not f.default_factory and value != f.default
-            marker = " *" if changed else ""
-            lines.append(f"  {f.name}: {value}{marker}")
-        return "ABFEParams(\n" + "\n".join(lines) + "\n)"
-
-    def to_dict(
-        self,
-        *,
-        prepared_system: PreparedSystem,
-    ) -> dict:
-        """Build the calculation-parameter portion of the tool input dict.
-
-        The returned dict carries ``prepared_system``, ``binding``, and
-        ``solvation`` only -- the ``mode`` discriminator required by the
-        ``deeporigin.abfe-e2e-workflow`` tool is added by
-        :meth:`ABFE._build_params`.
-
-        Args:
-            prepared_system: Prepared system with XML paths and entity IDs (same
-                shape as system-prep ``system`` output).
-
-        Returns:
-            Calculation-parameter dict ready to be merged into the tool input.
-        """
-        md_options = {
-            "T": self.temperature,
-            "cutoff": self.cutoff,
-            "dt": self.dt,
-        }
-        ps_out: dict = {
-            "binding_xml_file_path": prepared_system.binding_xml_path,
-            "solvation_xml_ligand_file_path": prepared_system.solvation_xml_path,
-        }
-        if prepared_system.protein_id is not None:
-            ps_out["protein_id"] = prepared_system.protein_id
-        if prepared_system.ligand1_id is not None:
-            ps_out["ligand1_id"] = prepared_system.ligand1_id
-        if prepared_system.ligand2_id is not None:
-            ps_out["ligand2_id"] = prepared_system.ligand2_id
-        return {
-            "prepared_system": ps_out,
-            "binding": {
-                "annihilate": self.annihilate,
-                "emeq_md_options": md_options,
-                "n_windows": self.binding_n_windows,
-                "npt_reduce_restraints_ns": self.binding_npt_reduce_restraints_ns,
-                "nvt_heating_ns": self.binding_nvt_heating_ns,
-                "prod_md_options": md_options,
-                "repeats": self.repeats,
-                "replex_period_ps": self.replex_period_ps,
-                "steps": self.binding_steps,
-                "test_run": self.test_run,
-            },
-            "solvation": {
-                "annihilate": self.annihilate,
-                "emeq_md_options": md_options,
-                "n_windows": self.solvation_n_windows,
-                "npt_reduce_restraints_ns": self.solvation_npt_reduce_restraints_ns,
-                "nvt_heating_ns": self.solvation_nvt_heating_ns,
-                "prod_md_options": md_options,
-                "repeats": self.repeats,
-                "replex_period_ps": self.replex_period_ps,
-                "steps": self.solvation_steps,
-                "test_run": self.test_run,
-            },
-        }
+def _ligand_from_tool_input(ref: dict[str, Any], *, client: DeepOriginClient) -> Ligand:
+    """Rehydrate a ligand from an ABFE ``ligand1`` reference."""
+    lig_id = ref.get("id")
+    file_path = ref.get("file_path")
+    if lig_id is not None:
+        assert client.entities is not None
+        data = client.entities.get_ligand(id=str(lig_id))
+        return Ligand._from_platform_record(
+            data=data,
+            client=client,
+            download=False,
+            mol_file_override=str(file_path) if file_path else None,
+        )
+    if not file_path:
+        msg = "Ligand input must include 'id' or 'file_path'."
+        raise ValueError(msg)
+    return Ligand.from_smiles("C", id=None, remote_path=str(file_path))
 
 
 class ABFE(Execution, AsyncExecutableMixin, NotebookWatchMixin):
-    """Absolute Binding Free Energy calculation (async-only).
+    """ABFE workflow (``deeporigin.abfe-end-to-end``).
 
-    Drives the ``deeporigin.abfe-e2e-workflow`` tool in ``mode="abfe"``: the
-    workflow takes an already-prepared system (binding + solvation XML files)
-    and runs the ABFE legs only. To produce the prepared system, use the
-    separate :class:`~deeporigin.drug_discovery.system_prep.SystemPrep` class
-    (``deeporigin.system-prep`` tool); this class does not run system prep.
+    Platform ``steps`` are inferred from constructor inputs (see :meth:`_post_init`):
 
-    Requires a ``PreparedSystem`` from system preparation before ``start()``.
-    After success, :meth:`show_trajectory` can download trajectory and structure
-    files and open a Mol* viewer in Jupyter (or marimo), and
-    :meth:`show_overlap_matrix` / :meth:`show_convergence_time` can display
-    binding or solvation diagnostic PNGs from the ABFE result row for this
-    execution.
+    - ``["system-prep", "abfe"]``: ``protein`` + ``ligand`` / ``ligand1``
+    - ``["abfe"]``: ``prepared_system``
 
     Attributes:
-        prepared_system: Prepared system containing binding and solvation XML paths.
-        name: Execution label, set from platform entities when IDs are present unless overridden.
+        steps: Ordered workflow steps forwarded to the platform tool.
+        name: Optional execution label (auto-generated for combined mode).
     """
 
     tool_key: str = TOOL_KEYS_AND_VERSIONS["abfe"]["tool_key"]
-    mode: Literal["abfe"] = "abfe"
 
     @beartype
     def __init__(
         self,
         *,
-        prepared_system: PreparedSystem,
+        protein: Protein | None = None,
+        ligand: Ligand | None = None,
+        ligand1: Ligand | None = None,
+        prepared_system: PreparedSystem | None = None,
         params: ABFEParams | None = None,
+        add_h_atoms: bool = False,
+        protonate_protein: bool = False,
+        retain_waters: bool = True,
+        padding: float = 1.0,
         tool_version: str = TOOL_KEYS_AND_VERSIONS["abfe"]["tool_version"],
         client: DeepOriginClient | None = None,
         name: str | None = None,
     ) -> None:
-        """Create an ABFE execution from a prepared system.
+        """Create an ABFE workflow execution.
+
+        Platform ``steps`` are inferred in :meth:`_post_init`:
+
+        - ``prepared_system`` -> ``["abfe"]`` (FEP on existing system)
+        - ``protein`` + ``ligand`` / ``ligand1`` -> ``["system-prep", "abfe"]``
+
+        Exactly one of ``prepared_system`` or (``protein`` + ligand) must be
+        provided. ``ligand`` and ``ligand1`` are mutually exclusive aliases.
 
         Args:
-            prepared_system: Prepared system with binding and solvation XML paths.
-            params: ABFE calculation parameters. If None, uses default values.
-            tool_version: Platform tool version to run. Settable so callers
-                can pin or upgrade independently of the SDK release.
+            protein: Protein for combined system-prep + ABFE mode.
+            ligand: Ligand for combined mode (alias for ``ligand1``).
+            ligand1: Ligand for combined mode.
+            prepared_system: Prepared system for ABFE-only steps.
+            params: FEP simulation parameters.
+            add_h_atoms: Add hydrogens to ligand during prep.
+            protonate_protein: Protonate protein during prep.
+            retain_waters: Retain crystal waters during prep.
+            padding: Solvation box padding (nm) during prep.
+            tool_version: Platform tool version pin.
             client: Optional API client.
-            name: Optional execution label. When omitted, derived by fetching
-                protein and ligand entities when ``prepared_system`` IDs are set.
+            name: Optional execution label. Auto-generated for combined mode.
+
+        Raises:
+            ValueError: When inputs are missing or mutually exclusive.
         """
         super().__init__(client=client)
         self.tool_version = tool_version
-
+        self.protein = protein
+        if ligand is not None and ligand1 is not None:
+            raise ValueError("Provide only one of ligand or ligand1, not both.")
+        self.ligand1 = ligand if ligand is not None else ligand1
         self.prepared_system = prepared_system
-        self.name = (
-            name
-            if name is not None
-            else _abfe_default_name(prepared_system=prepared_system, client=self.client)
-        )
-
-        # Store parameters in a frozen dataclass
         self._params = params if params is not None else ABFEParams()
+        self.add_h_atoms = add_h_atoms
+        self.protonate_protein = protonate_protein
+        self.retain_waters = retain_waters
+        self.padding = padding
+        self.name = name
+        self._post_init()
+
+    def _post_init(self) -> None:
+        """Infer platform ``steps`` from constructor inputs and validate."""
+        has_prep = self.prepared_system is not None
+        has_combined = self.protein is not None and self.ligand1 is not None
+        mode_count = sum([has_prep, has_combined])
+
+        if mode_count != 1:
+            raise ValueError(
+                "Exactly one of prepared_system or (protein and ligand/ligand1) "
+                "must be provided."
+            )
+        if has_prep:
+            self.steps: list[ABFEWorkflowStep] = ["abfe"]
+        else:
+            self.steps = ["system-prep", "abfe"]
+        self._validate_step_inputs()
+
+        if has_combined and self.name is None:
+            assert self.protein is not None
+            assert self.ligand1 is not None
+            self.name = _abfe_default_name_from_entities(
+                protein=self.protein,
+                ligand=self.ligand1,
+                client=self.client,
+            )
+
+    @property
+    def params(self) -> ABFEParams:
+        """FEP calculation parameters (read-only)."""
+        return self._params
+
+    @params.setter
+    def params(self, value: ABFEParams) -> None:
+        """Prevent modification of params after construction."""
+        raise AttributeError("params can only be set in the constructor")
 
     @classmethod
     def from_dto(
         cls,
-        dto: dict,
+        dto: dict[str, Any],
         *,
         client: DeepOriginClient | None = None,
     ) -> Self:
         """Construct an ABFE instance from an execution DTO.
 
-        Rehydrates ``prepared_system`` and ``_params`` from the stored
-        ``userInputs`` and ``metadata``.
+        Rehydrates ``steps``, prep inputs, ``prepared_system``, and ``_params`` from
+        stored ``userInputs`` (falling back to ``inputs`` for older payloads).
 
         Args:
             dto: Execution payload (same shape as ``client.executions.get``).
@@ -375,72 +400,80 @@ class ABFE(Execution, AsyncExecutableMixin, NotebookWatchMixin):
 
         Returns:
             A fully-hydrated ABFE instance with status from the DTO.
+
+        Raises:
+            ValueError: When ``steps`` is missing or unsupported.
         """
         instance = super().from_dto(dto, client=client)
-        inputs = instance._dto.get("userInputs", {})  # ty:ignore[unresolved-attribute]
-        metadata = instance._dto.get("metadata", {})  # ty:ignore[unresolved-attribute]
-
-        # dto_mode = inputs.get("mode")
-        # if dto_mode is not None and dto_mode != cls.mode:
-        #     raise ValueError(
-        #         f"Cannot rehydrate ABFE from a DTO with mode={dto_mode!r}; "
-        #         f"this class only supports mode={cls.mode!r}."
-        #     )
-
-        prepared_system_input = inputs.get("prepared_system", {})
-        binding = inputs.get("binding", {})
-        solvation = inputs.get("solvation", {})
-        md_options = binding.get("emeq_md_options", {})
-
-        instance.prepared_system = PreparedSystem(
-            binding_xml_path=prepared_system_input.get("binding_xml_file_path", ""),
-            solvation_xml_path=prepared_system_input.get(
-                "solvation_xml_ligand_file_path", ""
-            ),
-            system_pdb_path="",
-            solute_pdb_path=prepared_system_input.get("solute_pdb_file_path"),
-            protein_id=prepared_system_input.get("protein_id")
-            or metadata.get("protein_id"),
-            ligand1_id=prepared_system_input.get("ligand1_id")
-            or metadata.get("ligand1_id")
-            or metadata.get("ligand_id"),
-            ligand2_id=prepared_system_input.get("ligand2_id"),
+        inputs: dict[str, Any] = (
+            instance._dto.get("userInputs")  # ty:ignore[unresolved-attribute]
+            or instance._dto.get("inputs")  # ty:ignore[unresolved-attribute]
+            or {}
         )
 
-        _BINDING_KEY_MAP = {
-            "annihilate": "annihilate",
-            "n_windows": "binding_n_windows",
-            "npt_reduce_restraints_ns": "binding_npt_reduce_restraints_ns",
-            "nvt_heating_ns": "binding_nvt_heating_ns",
-            "steps": "binding_steps",
-            "repeats": "repeats",
-            "replex_period_ps": "replex_period_ps",
-            "test_run": "test_run",
-        }
-        _SOLVATION_KEY_MAP = {
-            "n_windows": "solvation_n_windows",
-            "npt_reduce_restraints_ns": "solvation_npt_reduce_restraints_ns",
-            "nvt_heating_ns": "solvation_nvt_heating_ns",
-            "steps": "solvation_steps",
-        }
-        _MD_OPTIONS_KEY_MAP = {
-            "dt": "dt",
-            "T": "temperature",
-            "cutoff": "cutoff",
-        }
+        raw_steps = inputs.get("steps")
+        if not raw_steps:
+            msg = "Missing 'steps' in execution userInputs."
+            raise ValueError(msg)
+        instance.steps = list(raw_steps)
 
-        kwargs: dict = {}
-        for dto_key, param_field in _BINDING_KEY_MAP.items():
-            if dto_key in binding:
-                kwargs[param_field] = binding[dto_key]
-        for dto_key, param_field in _SOLVATION_KEY_MAP.items():
-            if dto_key in solvation:
-                kwargs[param_field] = solvation[dto_key]
-        for dto_key, param_field in _MD_OPTIONS_KEY_MAP.items():
-            if dto_key in md_options:
-                kwargs[param_field] = md_options[dto_key]
+        if instance.steps == ["system-prep"]:
+            msg = (
+                "Legacy steps=['system-prep'] executions are no longer supported "
+                "by ABFE.from_dto()."
+            )
+            raise ValueError(msg)
 
-        instance._params = ABFEParams(**kwargs)
+        instance.protein = None
+        instance.ligand1 = None
+        instance.prepared_system = None
+        instance.add_h_atoms = bool(inputs.get("add_H_atoms", False))
+        instance.protonate_protein = bool(inputs.get("protonate_protein", False))
+        instance.retain_waters = bool(inputs.get("retain_waters", True))
+        instance.padding = float(inputs.get("padding", 1.0))
+        instance._params = (
+            _fep_params_from_inputs(inputs)
+            if "abfe" in instance.steps
+            else ABFEParams()
+        )
+
+        if "system-prep" in instance.steps:
+            protein_input = inputs.get("protein", {})
+            protein_id = protein_input.get("id")
+            if protein_id is not None:
+                instance.protein = Protein.from_id(
+                    str(protein_id),
+                    client=instance.client,
+                    download=False,
+                    remote_path_override=protein_input.get("file_path"),
+                )
+            elif protein_input.get("file_path"):
+                instance.protein = Protein(
+                    name="rehydrated",
+                    id=None,
+                    remote_path=str(protein_input["file_path"]),
+                )
+
+            ligand_input = inputs.get("ligand1", {})
+            if ligand_input:
+                instance.ligand1 = _ligand_from_tool_input(
+                    ligand_input,
+                    client=instance.client,
+                )
+
+        if instance.steps == ["abfe"]:
+            prepared_system_input = inputs.get("prepared_system", {})
+            instance.prepared_system = PreparedSystem(
+                binding_xml_path=prepared_system_input.get("binding_xml_file_path", ""),
+                solvation_xml_path=prepared_system_input.get(
+                    "solvation_xml_ligand_file_path", ""
+                ),
+                system_pdb_path="",
+                solute_pdb_path=prepared_system_input.get("solute_pdb_file_path"),
+                protein_id=prepared_system_input.get("protein_id"),
+                ligand1_id=prepared_system_input.get("ligand1_id"),
+                ligand2_id=prepared_system_input.get("ligand2_id"),
+            )
 
         return instance
 
@@ -453,8 +486,7 @@ class ABFE(Execution, AsyncExecutableMixin, NotebookWatchMixin):
     ) -> Self:
         """Construct an ABFE instance from an existing platform execution ID.
 
-        Fetches the execution record via the API and delegates to
-        :meth:`from_dto`.
+        Fetches the execution record via the API and delegates to :meth:`from_dto`.
 
         Args:
             id: Platform execution ID.
@@ -465,27 +497,64 @@ class ABFE(Execution, AsyncExecutableMixin, NotebookWatchMixin):
         """
         return super().from_id(id, client=client)
 
-    @property
-    def params(self) -> ABFEParams:
-        """ABFE calculation parameters (read-only)."""
-        return self._params
+    def _validate_step_inputs(self) -> None:
+        """Validate constructor arguments for the selected workflow steps."""
+        if "system-prep" in self.steps:
+            if self.protein is None:
+                raise ValueError(f"protein is required for steps={self.steps!r}.")
+            if self.ligand1 is None:
+                raise ValueError(
+                    f"ligand/ligand1 is required for steps={self.steps!r}."
+                )
+        if self.steps == ["abfe"] and self.prepared_system is None:
+            raise ValueError("prepared_system is required for steps=['abfe'].")
 
-    @params.setter
-    def params(self, value: ABFEParams) -> None:
-        """Prevent modification of params after construction."""
-        raise AttributeError("params can only be set in the constructor")
+    def _ensure_synced_inputs(self) -> None:
+        """Sync protein and ligand before submission."""
+        client = self.client
+        if self.protein is not None:
+            self.protein.sync(lazy=True, client=client)
+            self.protein.ensure_remote_path(client=client, label="Protein")
+        if self.ligand1 is not None and "system-prep" in self.steps:
+            self.ligand1.sync(lazy=True, client=client)
+            self.ligand1.ensure_remote_path(client=client, label="Ligand")
+
+    def _build_params(self) -> dict[str, Any]:
+        """Construct workflow input parameters for ``deeporigin.abfe-end-to-end``."""
+        out: dict[str, Any] = {"steps": self.steps}
+        if "system-prep" in self.steps:
+            assert self.protein is not None
+            assert self.ligand1 is not None
+            out["protein"] = {
+                "id": self.protein.id,
+                "file_path": self.protein.remote_path,
+            }
+            out["ligand1"] = _ligand_tool_ref(self.ligand1)
+            out.update(
+                {
+                    "add_H_atoms": self.add_h_atoms,
+                    "protonate_protein": self.protonate_protein,
+                    "retain_waters": self.retain_waters,
+                    "padding": self.padding,
+                }
+            )
+        if self.steps == ["abfe"]:
+            assert self.prepared_system is not None
+            out["prepared_system"] = _prepared_system_tool_ref(self.prepared_system)
+        if "abfe" in self.steps:
+            out.update(_simulation_blocks(self._params))
+        return out
 
     def _make_payload(
         self,
         *,
         approve_amount: int | None,
-        sync: bool,  # noqa: ARG002 -- ABFE is always async; parameter kept for API consistency
+        sync: bool,  # noqa: ARG002
     ) -> dict[str, Any]:
         """Build create payload for ``executions.create``."""
         payload: dict[str, Any] = {
             "inputs": self._build_params(),
-            "outputs": self._build_outputs(),
-            "metadata": self._build_metadata(),
+            "outputs": {},
         }
         if approve_amount is not None:
             payload["approveAmount"] = approve_amount
@@ -495,16 +564,14 @@ class ABFE(Execution, AsyncExecutableMixin, NotebookWatchMixin):
 
     @beartype
     def _start_impl(self, *, approve_amount: int | None = None, **kwargs: Any) -> None:
-        """Submit the ABFE execution to the platform.
+        """Submit the ABFE workflow execution to the platform.
 
         Args:
             approve_amount: Spend cap forwarded to the platform. ``0`` requests
                 a quote only; ``None`` runs immediately.
         """
-        payload = self._make_payload(
-            approve_amount=approve_amount,
-            sync=False,
-        )
+        self._ensure_synced_inputs()
+        payload = self._make_payload(approve_amount=approve_amount, sync=False)
         execution_dto = self.client.executions.create(  # ty:ignore[unresolved-attribute]
             data=payload,
             tool_key=self.tool_key,
@@ -522,7 +589,8 @@ class ABFE(Execution, AsyncExecutableMixin, NotebookWatchMixin):
 
         Uses :meth:`~deeporigin.drug_discovery.execution.Execution.get_results`
         (results for this execution by id), then builds a one-row table from the
-        first record's ``data`` payload. Keyword arguments are accepted for
+        first ``deeporigin.abfe-end-to-end`` record's ``data`` payload. System-prep rows
+        from combined runs are excluded. Keyword arguments are accepted for
         signature compatibility with the base class but are not forwarded.
 
         Returns:
@@ -536,23 +604,70 @@ class ABFE(Execution, AsyncExecutableMixin, NotebookWatchMixin):
             return None
 
         response = super().get_results()
-        records = response.get("data") or []
-        if not records:
-            return None
-        row = records[0].get("data")
-        if not isinstance(row, dict) or not row:
-            return None
-        df = pd.json_normalize([row])
-        drop_roots = frozenset({"binding_analysis", "solvation_analysis"})
-        to_drop = [
-            c for c in df.columns if c in drop_roots or c.split(".", 1)[0] in drop_roots
-        ]
-        if to_drop:
-            df = df.drop(columns=to_drop)
-        priority = ["protein_id", "ligand1_id", "total", "unit"]
-        head = [c for c in priority if c in df.columns]
-        tail = [c for c in df.columns if c not in head]
-        return df[head + tail]
+        return _abfe_results_dataframe(response, tool_key=self.tool_key)
+
+    @beartype
+    def get_prepared_system(
+        self,
+        *,
+        ligand1_id: str | None = None,
+    ) -> PreparedSystem:
+        """Load a :class:`PreparedSystem` from system-prep results for this execution.
+
+        Fetches prepared-system rows scoped to this ABFE execution via
+        :meth:`~deeporigin.drug_discovery.structures.prepared_system.PreparedSystem.from_result`.
+        When multiple rows match, returns the first.
+
+        Args:
+            ligand1_id: Optional ligand ID to filter by.
+
+        Returns:
+            A :class:`PreparedSystem` with paths and metadata from the result row.
+
+        Raises:
+            ValueError: If no execution has been started.
+            DeepOriginException: If no matching system-prep results exist yet.
+        """
+        if self.id is None:
+            raise ValueError(
+                "Cannot get prepared system: no execution has been started (id is None)."
+            )
+
+        self.sync()
+
+        try:
+            systems = PreparedSystem.from_result(
+                compute_job_id=self.id,
+                ligand1_id=ligand1_id,
+                client=self.client,
+            )
+        except ValueError as exc:
+            raise DeepOriginException(
+                title="No system-prep results found",
+                message=(
+                    "No system-prep results found for this ABFE execution. "
+                    "Wait for the system-prep step to complete, or pass "
+                    "ligand1_id to disambiguate."
+                ),
+            ) from exc
+
+        if not systems:
+            raise DeepOriginException(
+                title="No system-prep results found",
+                message=(
+                    "No system-prep results found for this ABFE execution. "
+                    "Wait for the system-prep step to complete, or pass "
+                    "ligand1_id to disambiguate."
+                ),
+            )
+
+        return systems[0]
+
+    def _resolved_prepared_system(self) -> PreparedSystem:
+        """Return ``prepared_system`` or load it from execution results."""
+        if self.prepared_system is not None:
+            return self.prepared_system
+        return self.get_prepared_system()
 
     @beartype
     def show_trajectory(
@@ -613,22 +728,17 @@ class ABFE(Execution, AsyncExecutableMixin, NotebookWatchMixin):
             ) from None
 
         response = self.client.results.get(compute_job_id=self.id)
-        records = response.get("data") or []
-        if not records:
+        data = _abfe_first_result_data(response, tool_key=self.tool_key)
+        if data is None:
             raise DeepOriginException(
-                title="No results for this execution",
-                message="The data platform returned no result rows for this job.",
+                title="No ABFE results for this execution",
+                message=(
+                    "The data platform returned no ABFE result rows for this job. "
+                    "System-prep-only rows are ignored."
+                ),
             ) from None
 
-        row = records[0]
-        data = row.get("data")
-        if not isinstance(data, dict) or not data:
-            raise DeepOriginException(
-                title="No result payload",
-                message="The first result record has no data field.",
-            ) from None
-
-        prepared = self.prepared_system
+        prepared = self._resolved_prepared_system()
         if prepared.system_pdb_path:
             remote_pdb = prepared.system_pdb_path
         elif prepared.binding_xml_path:
@@ -685,9 +795,6 @@ class ABFE(Execution, AsyncExecutableMixin, NotebookWatchMixin):
         local_pdb = self.client.files.download(remote_pdb, lazy=True)
         local_xtc = self.client.files.download(remote_xtc, lazy=True)
 
-        print(local_pdb)
-        print(local_xtc)
-
         from deeporigin_molstar import JupyterViewer, ProteinViewer
 
         protein_viewer = ProteinViewer(data=local_pdb, format="pdb")
@@ -739,22 +846,14 @@ class ABFE(Execution, AsyncExecutableMixin, NotebookWatchMixin):
             ) from None
 
         response = self.client.results.get(compute_job_id=self.id)
-        records = response.get("data") or []
-        if not records:
+        data = _abfe_first_result_data(response, tool_key=self.tool_key)
+        if data is None:
             raise DeepOriginException(
                 title="No overlap matrix found for this run",
                 message=(
-                    "Unable to show overlap matrix because there are no result "
+                    "Unable to show overlap matrix because there are no ABFE result "
                     "records for this execution."
                 ),
-            ) from None
-
-        row = records[0]
-        data = row.get("data")
-        if not isinstance(data, dict) or not data:
-            raise DeepOriginException(
-                title="No overlap matrix found for this run",
-                message="ABFE result data is missing or not in the expected shape.",
             ) from None
 
         analysis_key = "binding_analysis" if run == "binding" else "solvation_analysis"
@@ -826,22 +925,14 @@ class ABFE(Execution, AsyncExecutableMixin, NotebookWatchMixin):
             ) from None
 
         response = self.client.results.get(compute_job_id=self.id)
-        records = response.get("data") or []
-        if not records:
+        data = _abfe_first_result_data(response, tool_key=self.tool_key)
+        if data is None:
             raise DeepOriginException(
                 title="No convergence plot found for this run",
                 message=(
-                    "Unable to show convergence plot because there are no result "
+                    "Unable to show convergence plot because there are no ABFE result "
                     "records for this execution."
                 ),
-            ) from None
-
-        row = records[0]
-        data = row.get("data")
-        if not isinstance(data, dict) or not data:
-            raise DeepOriginException(
-                title="No convergence plot found for this run",
-                message="ABFE result data is missing or not in the expected shape.",
             ) from None
 
         analysis_key = "binding_analysis" if run == "binding" else "solvation_analysis"
@@ -870,44 +961,24 @@ class ABFE(Execution, AsyncExecutableMixin, NotebookWatchMixin):
 
         display(Image(local_path))
 
-    def _build_params(self) -> dict:
-        """Construct the tool input parameters dict for the abfe-e2e-workflow tool."""
-        return {
-            # "mode": self.mode,
-            **self.params.to_dict(prepared_system=self.prepared_system),
-        }
-
     def __repr__(self) -> str:
-        """Return a multi-line string representation of this ABFE execution.
-
-        Shows the tool key and version, execution mode and name, plus the
-        prepared-system identifiers (protein and ligand IDs). Each field
-        appears on its own line for readability.
-        """
-        ps = getattr(self, "prepared_system", None)
-        if ps is None:
-            return super().__repr__()
+        """Return a concise multi-line representation."""
         parts = ["ABFE("]
-        parts.append(f"  tool_key={self.tool_key!r},")
-        parts.append(f"  tool_version={self.tool_version!r},")
-        # parts.append(f"  mode={self.mode!r},")
-        parts.append(f"  name={self.name!r},")
-        parts.append(f"  protein_id={ps.protein_id!r},")
-        parts.append(f"  ligand1_id={ps.ligand1_id!r},")
-        if ps.ligand2_id is not None:
-            parts.append(f"  ligand2_id={ps.ligand2_id!r},")
-        parts.append(")")
+        if self.id is not None:
+            parts.append(f"  id={self.id!r},")
+        if self.status is not None:
+            parts.append(f"  status={self.status!r},")
+        ps = getattr(self, "prepared_system", None)
+        parts.extend(
+            [
+                f"  steps={self.steps!r},",
+                f"  tool_key={self.tool_key!r},",
+                f"  has_prepared_system={ps is not None},",
+                f"  has_protein={getattr(self, 'protein', None) is not None},",
+                ")",
+            ]
+        )
         return "\n".join(parts)
 
-    def _build_metadata(self) -> dict:
-        """Construct execution metadata."""
-        metadata = {}
-        if self.prepared_system.protein_id:
-            metadata["protein_id"] = self.prepared_system.protein_id
-        if self.prepared_system.ligand1_id:
-            metadata["ligand1_id"] = self.prepared_system.ligand1_id
-        return metadata
 
-    def _build_outputs(self) -> dict:
-        """Construct the output file specification for the ABFE tool."""
-        return {}
+__all__ = ["ABFE", "ABFEParams", "ABFEWorkflowStep"]
