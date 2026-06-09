@@ -27,3 +27,7 @@ _Avoid_: "system" alone when meaning the prepared molecular system artifact
 **Workflow step**:
 A named stage in a combined workflow execution (`system-prep`, `abfe`, `rbfe`, `konnektor`).
 _Avoid_: `mode` for v5 workflow tools
+
+**KonnektorResult**:
+CLI return type from `Konnektor.run()` — resolved ligand pairs, connectivity flag, and inline viz HTML.
+_Avoid_: conflating with platform ingest entity `LigandNetwork` or legacy `LigandSet.network` dict

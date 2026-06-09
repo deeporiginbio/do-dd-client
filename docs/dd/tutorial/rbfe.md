@@ -93,5 +93,5 @@ See the [RBFE many-ligands workflow notebook](../../notebooks/clean/rbfe-5-many-
 for an end-to-end example on dev.
 
 To preview a network interactively in Jupyter before submitting, use
-`LigandSet.map_network().show_network()` — see
+`Konnektor(ligands=...).run()` and call `.show_network()` on the result — see
 [constructing a network](../how-to/ligands.md#constructing-a-network-using-konnektor).

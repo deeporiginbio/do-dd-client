@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import pytest
 
-from deeporigin.drug_discovery import Konnektor, Ligand, LigandSet
+from deeporigin.drug_discovery import Konnektor, KonnektorResult, Ligand, LigandSet
+from deeporigin.drug_discovery.konnektor import _konnektor_result_from_dto
+from deeporigin.exceptions import DeepOriginException
 from deeporigin.platform.client import DeepOriginClient
 
 
@@ -76,12 +78,78 @@ def test_konnektor_make_payload_uses_file_path_without_id(
     }
 
 
-def test_konnektor_run_returns_ligand_pairs(
+def _konnektor_v05_dto(
+    *,
+    edges: list[dict[str, str]],
+    is_connected: bool = True,
+    network_html: str = "<html><body>network</body></html>",
+) -> dict[str, object]:
+    """Build a v0.5 Konnektor execution DTO for unit tests."""
+    return {
+        "jobOutputs": {
+            "ligand_network": {
+                "edges": edges,
+                "is_connected": is_connected,
+                "network": {},
+                "network_html_file": "tool-runs/test/network.html",
+            },
+            "network_html": network_html,
+        }
+    }
+
+
+def test_konnektor_result_from_dto_resolves_pairs(
+    registered_ligand: Ligand,
+    registered_ligand_brd3: Ligand,
+) -> None:
+    """``_konnektor_result_from_dto`` resolves edges under ``ligand_network``."""
+    ligands = LigandSet(ligands=[registered_ligand, registered_ligand_brd3])
+    dto = _konnektor_v05_dto(
+        edges=[
+            {
+                "source": registered_ligand.id,
+                "target": registered_ligand_brd3.id,
+            }
+        ],
+    )
+
+    result = _konnektor_result_from_dto(dto, ligands=ligands)
+
+    assert isinstance(result, KonnektorResult)
+    assert result.pairs == [(registered_ligand, registered_ligand_brd3)]
+    assert result.is_connected is True
+    assert result.network_html == "<html><body>network</body></html>"
+
+
+def test_konnektor_result_from_dto_rejects_flat_edges(
+    registered_ligand: Ligand,
+    registered_ligand_brd3: Ligand,
+) -> None:
+    """Flat ``jobOutputs.edges`` (v0.4) is rejected."""
+    ligands = LigandSet(ligands=[registered_ligand, registered_ligand_brd3])
+    dto = {
+        "jobOutputs": {
+            "edges": [
+                {
+                    "source": registered_ligand.id,
+                    "target": registered_ligand_brd3.id,
+                }
+            ],
+            "is_connected": True,
+            "network": {},
+        }
+    }
+
+    with pytest.raises(DeepOriginException, match="ligand_network"):
+        _konnektor_result_from_dto(dto, ligands=ligands)
+
+
+def test_konnektor_run_returns_konnektor_result(
     client: DeepOriginClient,
     registered_ligand: Ligand,
     registered_ligand_brd3: Ligand,
 ) -> None:
-    """``run`` returns ligand pairs suitable for RBFE."""
+    """``run`` returns a :class:`KonnektorResult` suitable for RBFE."""
     if client.env != "local":
         pytest.skip("Konnektor run integration requires the local mock server.")
 
@@ -89,9 +157,12 @@ def test_konnektor_run_returns_ligand_pairs(
         ligands=[registered_ligand, registered_ligand_brd3],
         client=client,
     )
-    pairs = job.run()
+    result = job.run()
 
-    assert pairs == [(registered_ligand, registered_ligand_brd3)]
+    assert isinstance(result, KonnektorResult)
+    assert result.pairs == [(registered_ligand, registered_ligand_brd3)]
+    assert result.is_connected is True
+    assert result.network_html
     assert job.status == "Completed"
     assert job.id is not None
 
@@ -108,12 +179,13 @@ def test_konnektor_run_resolves_file_stem_when_id_missing(
     brd_ligand.id = None
     brd_ligand_brd3.id = None
 
-    pairs = Konnektor(
+    result = Konnektor(
         ligands=[brd_ligand, brd_ligand_brd3],
         client=client,
     ).run()
 
-    assert pairs == [(brd_ligand, brd_ligand_brd3)]
+    assert result is not None
+    assert result.pairs == [(brd_ligand, brd_ligand_brd3)]
 
 
 def test_konnektor_run_quote_returns_none(

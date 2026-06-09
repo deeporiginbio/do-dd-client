@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Literal
 
@@ -15,6 +16,36 @@ from deeporigin.platform.client import DeepOriginClient
 from deeporigin.platform.constants import TOOL_KEYS_AND_VERSIONS, is_success_status
 
 KonnektorNetworkType = Literal["star", "mst", "cyclic"]
+
+
+@dataclass(frozen=True)
+class KonnektorResult:
+    """Result of a successful Konnektor synchronous run.
+
+    Attributes:
+        pairs: Resolved ligand pairs from the planned network edges.
+        is_connected: Whether the generated network is fully connected.
+        network_html: Inline interactive network visualization HTML.
+    """
+
+    pairs: list[tuple[Ligand, Ligand]]
+    is_connected: bool
+    network_html: str
+
+    def show_network(self) -> None:
+        """Display the network visualization in IPython."""
+        from IPython.display import IFrame, display
+
+        file_name = "network.html"
+        try:
+            with open(file_name, "w", encoding="utf-8") as file:
+                file.write(self.network_html)
+            display(IFrame(file_name, width=1000, height=1000))
+        except Exception as exc:
+            raise DeepOriginException(
+                title="Failed to display Konnektor network",
+                message=str(exc),
+            ) from exc
 
 
 def _execution_outputs_dict(dto: dict[str, Any]) -> dict[str, Any]:
@@ -67,20 +98,12 @@ def _resolve_ligand_endpoint(
     return ligand
 
 
-def _konnektor_pairs_from_dto(
-    dto: dict[str, Any],
+def _konnektor_pairs_from_edges(
+    edges: list[Any],
     *,
     ligands: LigandSet,
 ) -> list[tuple[Ligand, Ligand]]:
-    """Extract Konnektor ``edges`` from an execution DTO as ligand pairs."""
-    outputs = _execution_outputs_dict(dto)
-    edges = outputs.get("edges")
-    if not isinstance(edges, list):
-        raise DeepOriginException(
-            title="Konnektor response missing edges",
-            message="Expected jobOutputs.edges to be a list.",
-        ) from None
-
+    """Resolve Konnektor edge dicts to ligand pairs."""
     lookup = _ligand_lookup(ligands)
     out: list[tuple[Ligand, Ligand]] = []
     for idx, edge in enumerate(edges):
@@ -115,6 +138,49 @@ def _konnektor_pairs_from_dto(
     return out
 
 
+def _konnektor_result_from_dto(
+    dto: dict[str, Any],
+    *,
+    ligands: LigandSet,
+) -> KonnektorResult:
+    """Extract a :class:`KonnektorResult` from a v0.5+ execution DTO."""
+    outputs = _execution_outputs_dict(dto)
+    ligand_network = outputs.get("ligand_network")
+    if not isinstance(ligand_network, dict):
+        raise DeepOriginException(
+            title="Konnektor response missing ligand_network",
+            message="Expected jobOutputs.ligand_network to be a dict.",
+        ) from None
+
+    edges = ligand_network.get("edges")
+    if not isinstance(edges, list):
+        raise DeepOriginException(
+            title="Konnektor response missing edges",
+            message="Expected jobOutputs.ligand_network.edges to be a list.",
+        ) from None
+
+    is_connected = ligand_network.get("is_connected")
+    if not isinstance(is_connected, bool):
+        raise DeepOriginException(
+            title="Konnektor response missing is_connected",
+            message="Expected jobOutputs.ligand_network.is_connected to be a bool.",
+        ) from None
+
+    network_html = outputs.get("network_html")
+    if not isinstance(network_html, str) or not network_html:
+        raise DeepOriginException(
+            title="Konnektor response missing network_html",
+            message="Expected jobOutputs.network_html to be a non-empty string.",
+        ) from None
+
+    pairs = _konnektor_pairs_from_edges(edges, ligands=ligands)
+    return KonnektorResult(
+        pairs=pairs,
+        is_connected=is_connected,
+        network_html=network_html,
+    )
+
+
 def _ligand_tool_input_row(ligand: Ligand) -> dict[str, str]:
     """Build one ligand entry for the Konnektor ``ligands`` input array."""
     row: dict[str, str] = {}
@@ -133,12 +199,12 @@ def _ligand_tool_input_row(ligand: Ligand) -> dict[str, str]:
 
 
 class Konnektor(Execution, SyncExecutableMixin):
-    """Generate a ligand network with Konnektor and return its edges.
+    """Generate a ligand network with Konnektor and return a :class:`KonnektorResult`.
 
     Konnektor accepts at least two ligands. Each ligand is synced before execution
     so the platform can receive either a ligand entity ID or a remote SDF path.
-    The synchronous :meth:`run` method returns ``jobOutputs.edges`` as a list of
-    ``(ligand1, ligand2)`` tuples suitable for :class:`~deeporigin.drug_discovery.rbfe.RBFE`.
+    The synchronous :meth:`run` method returns resolved ligand pairs, connectivity,
+    and inline visualization HTML suitable for :class:`~deeporigin.drug_discovery.rbfe.RBFE`.
 
     Attributes:
         ligands: Ligands to connect.
@@ -231,8 +297,8 @@ class Konnektor(Execution, SyncExecutableMixin):
         *,
         quote: bool = False,
         approve_amount: int | None = None,
-    ) -> list[tuple[Ligand, Ligand]] | None:
-        """Run Konnektor synchronously and return the generated ligand pairs.
+    ) -> KonnektorResult | None:
+        """Run Konnektor synchronously and return the network result.
 
         Args:
             quote: Shorthand for ``approve_amount=0``. Returns ``None`` when the
@@ -240,11 +306,11 @@ class Konnektor(Execution, SyncExecutableMixin):
             approve_amount: Spend cap forwarded to the platform as ``approveAmount``.
 
         Returns:
-            A list of ``(ligand1, ligand2)`` tuples, or ``None`` for quote-only responses.
+            A :class:`KonnektorResult`, or ``None`` for quote-only responses.
 
         Raises:
             DeepOriginException: If the execution does not succeed or the response
-                does not contain a valid ``edges`` list.
+                does not contain a valid v0.5 ``ligand_network`` output.
         """
         self._ensure_platform_inputs()
         resolved_amount = 0 if quote else approve_amount
@@ -269,4 +335,4 @@ class Konnektor(Execution, SyncExecutableMixin):
                 ),
             ) from None
 
-        return _konnektor_pairs_from_dto(response, ligands=self.ligands)
+        return _konnektor_result_from_dto(response, ligands=self.ligands)

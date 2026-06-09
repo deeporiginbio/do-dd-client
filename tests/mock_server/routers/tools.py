@@ -1747,10 +1747,16 @@ def create_tools_router(
                     if isinstance(row, dict)
                 ]
                 edges = _konnektor_edges(names, network_type=network_type)
+                eid = execution["executionId"]
+                is_connected = len(names) <= 1 or len(edges) >= len(names) - 1
                 execution["jobOutputs"] = {
-                    "edges": edges,
-                    "is_connected": len(names) <= 1 or len(edges) >= len(names) - 1,
-                    "network": {},
+                    "ligand_network": {
+                        "edges": edges,
+                        "is_connected": is_connected,
+                        "network": {},
+                        "network_html_file": f"tool-runs/{eid}/network.html",
+                    },
+                    "network_html": "<html><body>Konnektor network</body></html>",
                 }
                 executions[execution["executionId"]] = execution
                 return _normalize_execution(execution)

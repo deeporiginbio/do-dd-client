@@ -28,6 +28,7 @@ __all__ = [
     "Molprops",
     "Protonation",
     "Konnektor",
+    "KonnektorResult",
 ]
 
 DATA_DIR = files("deeporigin.data")
@@ -56,6 +57,7 @@ _LAZY_IMPORTS = {
     "Molprops": ("deeporigin.drug_discovery.molprops", "Molprops"),
     "Protonation": ("deeporigin.drug_discovery.protonation", "Protonation"),
     "Konnektor": ("deeporigin.drug_discovery.konnektor", "Konnektor"),
+    "KonnektorResult": ("deeporigin.drug_discovery.konnektor", "KonnektorResult"),
     "Execution": ("deeporigin.drug_discovery.execution", "Execution"),
     "PlatformStatus": ("deeporigin.platform.constants", "PlatformStatus"),
 }
