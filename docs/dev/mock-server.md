@@ -81,9 +81,9 @@ Implementation: ``build_rbfe_progress_tree()`` and ``_get_rbfe_progress_report()
 
 ## RBFE notebook (local)
 
-The working RBFE notebook is the gitignored copy at
-[`docs/notebooks/dirty/rbfe-1-single-pair.ipynb`](../notebooks/dirty/rbfe-1-single-pair.ipynb)
-(committed clean version under ``notebooks/clean/``). It runs against the mock when
+The working RBFE notebook is
+[`docs/notebooks/clean/rbfe-1-single-pair.ipynb`](../notebooks/clean/rbfe-1-single-pair.ipynb).
+It runs against the mock when
 ``DO_ENV=local`` and the server is up:
 
 ```bash

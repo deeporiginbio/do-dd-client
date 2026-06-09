@@ -8,13 +8,33 @@ import pandas as pd
 import pytest
 
 from deeporigin.drug_discovery.execution import Execution
-from deeporigin.drug_discovery.rbfe import RBFE, RBFEParams, _rbfe_results_dataframe
+from deeporigin.drug_discovery.rbfe import (
+    RBFE,
+    RBFEParams,
+    _ligand_from_pair_input,
+    _rbfe_results_dataframe,
+)
 from deeporigin.drug_discovery.structures.ligand import Ligand
 from deeporigin.drug_discovery.structures.prepared_system import PreparedSystem
 from deeporigin.drug_discovery.structures.protein import Protein
 from deeporigin.exceptions import DeepOriginException
 from deeporigin.platform.client import DeepOriginClient
 from deeporigin.platform.constants import TOOL_KEYS_AND_VERSIONS
+
+
+def test_ligand_from_pair_input_uses_remote_file_without_id(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """File-only pair refs rehydrate via Ligand.from_remote_file."""
+    client = MagicMock(spec=DeepOriginClient)
+    expected = Ligand.from_smiles("CCO", remote_path="testing/lig1.sdf")
+    from_remote = MagicMock(return_value=expected)
+    monkeypatch.setattr(Ligand, "from_remote_file", from_remote)
+
+    ligand = _ligand_from_pair_input({"file_path": "testing/lig1.sdf"}, client=client)
+
+    from_remote.assert_called_once_with("testing/lig1.sdf", client=client, lazy=True)
+    assert ligand is expected
 
 
 def test_rbfe_ligands_build_params() -> None:
@@ -245,9 +265,93 @@ def test_rbfe_from_dto_rehydrates_rbfe_only_steps() -> None:
     assert rbfe.steps == ["rbfe"]
     assert len(rbfe.prepared_systems) == 1
     assert rbfe.prepared_systems[0].ligand2_id == "lig-2"
+    assert rbfe.prepared_systems[0].system_pdb_path == ""
     assert rbfe.params.binding_steps == 1000
     assert rbfe.params.temperature == pytest.approx(310.0)
     assert "steps=" in repr(rbfe)
+
+
+def test_rbfe_from_dto_populates_prepared_system_paths() -> None:
+    """from_dto restores system and solute PDB paths from prepared_systems[]."""
+    fake_dto = {
+        "executionId": "exec-rbfe-2",
+        "status": "Running",
+        "tool": {
+            "key": TOOL_KEYS_AND_VERSIONS["rbfe"]["tool_key"],
+            "version": "0.1.0",
+        },
+        "userInputs": {
+            "steps": ["rbfe"],
+            "prepared_systems": [
+                {
+                    "binding_xml_file_path": "remote/b.xml",
+                    "solvation_xml_ligand_file_path": "remote/s.xml",
+                    "system_pdb_file_path": "remote/system.pdb",
+                    "solute_pdb_file_path": "remote/solute.pdb",
+                    "protein_id": "prot-1",
+                    "ligand1_id": "lig-1",
+                    "ligand2_id": "lig-2",
+                },
+                "ignored-non-dict",
+            ],
+            "binding": {"steps": 100, "test_run": 0},
+            "solvation": {"steps": 50, "test_run": 0},
+        },
+    }
+    rbfe = RBFE.from_dto(fake_dto, client=MagicMock(spec=DeepOriginClient))
+    assert len(rbfe.prepared_systems) == 1
+    ps = rbfe.prepared_systems[0]
+    assert ps.system_pdb_path == "remote/system.pdb"
+    assert ps.solute_pdb_path == "remote/solute.pdb"
+
+
+def test_rbfe_ensure_synced_inputs_skips_sync_when_complete(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """start() skips sync when id and remote_path are already set."""
+    protein = Protein(name="p", id="prot-1", remote_path="testing/brd.pdb")
+    ligand1 = Ligand.from_smiles("CCO", id="lig-1", remote_path="testing/lig1.sdf")
+    ligand2 = Ligand.from_smiles("CCN", id="lig-2", remote_path="testing/lig2.sdf")
+    client = MagicMock(spec=DeepOriginClient)
+    executions = MagicMock()
+    client.executions = executions
+    rbfe = RBFE(
+        protein=protein,
+        pairs=[(ligand1, ligand2)],
+        client=client,
+    )
+    executions.create.return_value = {
+        "executionId": "exec-123",
+        "status": "Created",
+        "tool": {"key": "deeporigin.rbfe", "version": "0.1.0"},
+    }
+    protein_sync = MagicMock()
+    ligand1_sync = MagicMock()
+    ligand2_sync = MagicMock()
+    monkeypatch.setattr(protein, "sync", protein_sync)
+    monkeypatch.setattr(ligand1, "sync", ligand1_sync)
+    monkeypatch.setattr(ligand2, "sync", ligand2_sync)
+    monkeypatch.setattr(
+        protein,
+        "ensure_remote_path",
+        MagicMock(side_effect=lambda **_: None),
+    )
+    monkeypatch.setattr(
+        ligand1,
+        "ensure_remote_path",
+        MagicMock(side_effect=lambda **_: None),
+    )
+    monkeypatch.setattr(
+        ligand2,
+        "ensure_remote_path",
+        MagicMock(side_effect=lambda **_: None),
+    )
+
+    rbfe.start()
+
+    protein_sync.assert_not_called()
+    ligand1_sync.assert_not_called()
+    ligand2_sync.assert_not_called()
 
 
 def test_rbfe_from_dto_rejects_legacy_system_prep_only_steps() -> None:

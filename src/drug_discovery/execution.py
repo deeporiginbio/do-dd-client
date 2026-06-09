@@ -30,8 +30,6 @@ from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Any, ClassVar, Literal, Self
 
 from beartype import beartype
-import humanize
-import pandas as pd
 
 from deeporigin.platform.constants import (
     ALLOWED_STATUS_TRANSITIONS,
@@ -46,6 +44,8 @@ from deeporigin.utils.constants import (
 from deeporigin.utils.iso8601 import parse_iso_timestamp_utc
 
 if TYPE_CHECKING:
+    import pandas as pd
+
     from deeporigin.platform.client import DeepOriginClient
 
 QuoteMode = Literal["sync", "async"]
@@ -332,10 +332,13 @@ class Execution:
         except (ValueError, TypeError):
             return raw
         ref = when or datetime.now(timezone.utc)
+        try:
+            import humanize
+        except ImportError:
+            return raw
         return humanize.naturaltime(dt, when=ref)
 
     @staticmethod
-    @beartype
     def _user_logs_dataframe(response: dict[str, Any]) -> pd.DataFrame:
         """Build a tabular view from a data-platform ``user_logs`` search response.
 
@@ -346,6 +349,8 @@ class Execution:
         Returns:
             A DataFrame with columns from :attr:`USER_LOG_COLUMNS`.
         """
+        import pandas as pd
+
         records = response.get("data") or []
         rows: list[dict[str, Any]] = []
         for record in records:

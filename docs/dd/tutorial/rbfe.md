@@ -89,7 +89,7 @@ rbfe = RBFE(
 rbfe.start()
 ```
 
-See the [RBFE many-ligands workflow notebook](../../notebooks/dirty/rbfe-5-many-ligands-workflow.ipynb)
+See the [RBFE many-ligands workflow notebook](../../notebooks/clean/rbfe-5-many-ligands-workflow.ipynb)
 for an end-to-end example on dev.
 
 To preview a network interactively in Jupyter before submitting, use

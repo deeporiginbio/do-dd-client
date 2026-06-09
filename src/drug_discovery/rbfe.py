@@ -66,7 +66,7 @@ def _ligand_from_pair_input(ref: dict[str, Any], *, client: DeepOriginClient) ->
     if not file_path:
         msg = "Ligand pair input must include 'id' or 'file_path'."
         raise ValueError(msg)
-    return Ligand.from_smiles("C", id=None, remote_path=str(file_path))
+    return Ligand.from_remote_file(str(file_path), client=client, lazy=True)
 
 
 def _format_ddg(*, total: Any, unit: str | None) -> str | None:
@@ -327,12 +327,14 @@ class RBFE(Execution, AsyncExecutableMixin, NotebookWatchMixin):
                 PreparedSystem(
                     binding_xml_path=ps.get("binding_xml_file_path", ""),
                     solvation_xml_path=ps.get("solvation_xml_ligand_file_path", ""),
-                    system_pdb_path="",
+                    system_pdb_path=ps.get("system_pdb_file_path", ""),
+                    solute_pdb_path=ps.get("solute_pdb_file_path"),
                     protein_id=ps.get("protein_id"),
                     ligand1_id=ps.get("ligand1_id"),
                     ligand2_id=ps.get("ligand2_id"),
                 )
                 for ps in inputs.get("prepared_systems", [])
+                if isinstance(ps, dict)
             ]
 
         return instance
@@ -378,17 +380,25 @@ class RBFE(Execution, AsyncExecutableMixin, NotebookWatchMixin):
         """Sync protein and ligands before submission."""
         client = self.client
         if self.protein is not None:
-            self.protein.sync(lazy=True, client=client)
-            self.protein.ensure_remote_path(client=client, label="Protein")
+            self._sync_entity_if_needed(self.protein, client=client, label="Protein")
         if "konnektor" in self.steps:
             for ligand in self.ligands:
-                ligand.sync(lazy=True, client=client)
-                ligand.ensure_remote_path(client=client, label="Ligand")
+                self._sync_entity_if_needed(ligand, client=client, label="Ligand")
         for ligand1, ligand2 in self.pairs:
-            ligand1.sync(lazy=True, client=client)
-            ligand1.ensure_remote_path(client=client, label="Ligand")
-            ligand2.sync(lazy=True, client=client)
-            ligand2.ensure_remote_path(client=client, label="Ligand")
+            self._sync_entity_if_needed(ligand1, client=client, label="Ligand")
+            self._sync_entity_if_needed(ligand2, client=client, label="Ligand")
+
+    @staticmethod
+    def _sync_entity_if_needed(
+        entity: Protein | Ligand,
+        *,
+        client: DeepOriginClient,
+        label: str,
+    ) -> None:
+        """Sync an entity only when platform metadata is incomplete."""
+        if entity.remote_path is None or entity.id is None:
+            entity.sync(lazy=True, client=client)
+        entity.ensure_remote_path(client=client, label=label)
 
     def _build_params(self) -> dict[str, Any]:
         """Construct workflow input parameters for ``deeporigin.rbfe``."""
