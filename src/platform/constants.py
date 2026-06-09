@@ -8,19 +8,24 @@ PlatformStatus = Literal[
     "Queued",
     "Running",
     "Succeeded",
+    "Completed",
     "Failed",
     "Cancelled",
     "InsufficientFunds",
     "FailedQuotation",
 ]
 
+# Successful terminal states. ``Completed`` replaces ``Succeeded`` on newer APIs.
+SUCCESS_STATES: frozenset[str] = frozenset({"Succeeded", "Completed"})
+
 ALLOWED_STATUS_TRANSITIONS: dict[str | None, set[str]] = {
     None: {"Quoted", "Created"},
     "Quoted": {"Created", "Queued", "Running"},
     "Created": {"Queued", "Running", "Failed", "Cancelled"},
     "Queued": {"Running", "Failed", "Cancelled"},
-    "Running": {"Succeeded", "Failed", "Cancelled"},
+    "Running": {"Succeeded", "Completed", "Failed", "Cancelled"},
     "Succeeded": set(),
+    "Completed": set(),
     "Failed": set(),
     "Cancelled": set(),
     "InsufficientFunds": set(),
@@ -30,6 +35,7 @@ ALLOWED_STATUS_TRANSITIONS: dict[str | None, set[str]] = {
 # Terminal states for tool executions
 TERMINAL_STATES = {
     "Succeeded",
+    "Completed",
     "Failed",
     "Cancelled",
     "Quoted",
@@ -41,7 +47,7 @@ TERMINAL_STATES = {
 NON_TERMINAL_STATES = {"Created", "Queued", "Running"}
 
 # Non-failed states for tool executions
-NON_FAILED_STATES = {"Succeeded", "Running", "Queued", "Created"}
+NON_FAILED_STATES = {"Succeeded", "Completed", "Running", "Queued", "Created"}
 
 # Possible providers for files that work with the tools API
 PROVIDER = Literal["ufa", "s3"]

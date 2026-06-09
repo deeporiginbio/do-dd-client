@@ -33,7 +33,7 @@ from beartype import beartype
 import humanize
 import pandas as pd
 
-from deeporigin.platform.constants import ALLOWED_STATUS_TRANSITIONS
+from deeporigin.platform.constants import ALLOWED_STATUS_TRANSITIONS, SUCCESS_STATES
 from deeporigin.utils.constants import (
     EXECUTION_LIST_ORDER_CREATED_DESC,
     TOOL_EXECUTION_POST_TIMEOUT_SECONDS,
@@ -415,7 +415,7 @@ class Execution:
         price = self._quotation_total(dto)
         if price is not None:
             self._estimate = price
-            if self.status == "Succeeded":
+            if self.status in SUCCESS_STATES:
                 self._cost = price
 
     def sync(self) -> None:

@@ -21,6 +21,7 @@ _STATUS_COLORS: dict[str, str] = {
     "Created": "#0d6efd",
     "Finishing": "#0d6efd",
     "Succeeded": "#198754",
+    "Completed": "#198754",
     "Failed": "#dc3545",
     "Cancelled": "#6c757d",
     "Suspended": "#6c757d",

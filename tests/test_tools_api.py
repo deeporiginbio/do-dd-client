@@ -119,6 +119,7 @@ def test_job_status_logic_lv0(client: DeepOriginClient):
         "Failed",
         "FailedQuotation",
         "Succeeded",
+        "Completed",
         "Cancelled",
         "Quoted",
         "InsufficientFunds",

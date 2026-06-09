@@ -20,6 +20,7 @@ from deeporigin.utils.constants import BOOTSTRAP_5_CSS_CDN_URL
 # Bootstrap 5 ``bg-*`` suffix for status badges (footer).
 _STATUS_BADGE_VARIANT: dict[str, str] = {
     "Succeeded": "success",
+    "Completed": "success",
     "Failed": "danger",
     "Quoted": "secondary",
     "Running": "primary",
