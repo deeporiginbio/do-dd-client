@@ -7,9 +7,15 @@ from typing import Any, Literal, Self
 from beartype import beartype
 import pandas as pd
 
-from deeporigin.drug_discovery.abfe import ABFEParams
 from deeporigin.drug_discovery.execution import Execution
 from deeporigin.drug_discovery.execution_mixins import AsyncExecutableMixin
+from deeporigin.drug_discovery.fep_common import (
+    ABFEParams,
+    _fep_params_from_inputs,
+    _ligand_tool_ref,
+    _prepared_system_tool_ref,
+    _simulation_blocks,
+)
 from deeporigin.drug_discovery.notebook_watch_mixin import NotebookWatchMixin
 from deeporigin.drug_discovery.structures.ligand import Ligand, LigandSet
 from deeporigin.drug_discovery.structures.prepared_system import PreparedSystem
@@ -21,22 +27,6 @@ from deeporigin.platform.constants import TOOL_KEYS_AND_VERSIONS
 RBFEParams = ABFEParams
 RBFEWorkflowStep = Literal["konnektor", "system-prep", "rbfe"]
 KonnektorNetworkType = Literal["star", "mst", "cyclic"]
-
-
-@beartype
-def _ligand_tool_ref(ligand: Ligand) -> dict[str, str]:
-    """Serialize a ligand for the RBFE workflow ``pairs[]`` input."""
-    if ligand.remote_path is None:
-        msg = "Ligand must be synced before submitting RBFE (remote_path is missing)."
-        raise DeepOriginException(
-            title="Ligand not synced",
-            message=msg,
-            fix="Call ligand.sync(client=...) before RBFE.start().",
-        )
-    ref: dict[str, str] = {"file_path": ligand.remote_path}
-    if ligand.id is not None:
-        ref["id"] = ligand.id
-    return ref
 
 
 @beartype
@@ -58,101 +48,6 @@ def _ligand_konnektor_tool_ref(ligand: Ligand) -> dict[str, str]:
             fix="Call ligand.sync(client=...) before RBFE.start().",
         )
     return {"id": str(ligand_id), "file_path": ligand.remote_path}
-
-
-@beartype
-def _prepared_system_tool_ref(prepared_system: PreparedSystem) -> dict[str, str]:
-    """Serialize a :class:`PreparedSystem` for ``prepared_systems[]``."""
-    out: dict[str, str] = {
-        "binding_xml_file_path": prepared_system.binding_xml_path,
-        "solvation_xml_ligand_file_path": prepared_system.solvation_xml_path,
-    }
-    if prepared_system.protein_id is not None:
-        out["protein_id"] = prepared_system.protein_id
-    if prepared_system.ligand1_id is not None:
-        out["ligand1_id"] = prepared_system.ligand1_id
-    if prepared_system.ligand2_id is not None:
-        out["ligand2_id"] = prepared_system.ligand2_id
-    return out
-
-
-@beartype
-def _simulation_blocks(params: RBFEParams) -> dict[str, dict[str, Any]]:
-    """Return shared ``binding`` and ``solvation`` blocks from *params*."""
-    md_options = {
-        "T": params.temperature,
-        "cutoff": params.cutoff,
-        "dt": params.dt,
-    }
-    return {
-        "binding": {
-            "annihilate": params.annihilate,
-            "emeq_md_options": md_options,
-            "n_windows": params.binding_n_windows,
-            "npt_reduce_restraints_ns": params.binding_npt_reduce_restraints_ns,
-            "nvt_heating_ns": params.binding_nvt_heating_ns,
-            "prod_md_options": md_options,
-            "repeats": params.repeats,
-            "replex_period_ps": params.replex_period_ps,
-            "steps": params.binding_steps,
-            "test_run": params.test_run,
-        },
-        "solvation": {
-            "annihilate": params.annihilate,
-            "emeq_md_options": md_options,
-            "n_windows": params.solvation_n_windows,
-            "npt_reduce_restraints_ns": params.solvation_npt_reduce_restraints_ns,
-            "nvt_heating_ns": params.solvation_nvt_heating_ns,
-            "prod_md_options": md_options,
-            "repeats": params.repeats,
-            "replex_period_ps": params.replex_period_ps,
-            "steps": params.solvation_steps,
-            "test_run": params.test_run,
-        },
-    }
-
-
-@beartype
-def _fep_params_from_inputs(inputs: dict[str, Any]) -> RBFEParams:
-    """Build :class:`RBFEParams` from stored ``binding`` / ``solvation`` blocks."""
-    binding = inputs.get("binding", {})
-    solvation = inputs.get("solvation", {})
-    md_options = binding.get("emeq_md_options", {})
-
-    _BINDING_KEY_MAP = {
-        "annihilate": "annihilate",
-        "n_windows": "binding_n_windows",
-        "npt_reduce_restraints_ns": "binding_npt_reduce_restraints_ns",
-        "nvt_heating_ns": "binding_nvt_heating_ns",
-        "steps": "binding_steps",
-        "repeats": "repeats",
-        "replex_period_ps": "replex_period_ps",
-        "test_run": "test_run",
-    }
-    _SOLVATION_KEY_MAP = {
-        "n_windows": "solvation_n_windows",
-        "npt_reduce_restraints_ns": "solvation_npt_reduce_restraints_ns",
-        "nvt_heating_ns": "solvation_nvt_heating_ns",
-        "steps": "solvation_steps",
-    }
-    _MD_OPTIONS_KEY_MAP = {
-        "dt": "dt",
-        "T": "temperature",
-        "cutoff": "cutoff",
-    }
-
-    kwargs: dict[str, Any] = {}
-    for dto_key, param_field in _BINDING_KEY_MAP.items():
-        if dto_key in binding:
-            kwargs[param_field] = binding[dto_key]
-    for dto_key, param_field in _SOLVATION_KEY_MAP.items():
-        if dto_key in solvation:
-            kwargs[param_field] = solvation[dto_key]
-    for dto_key, param_field in _MD_OPTIONS_KEY_MAP.items():
-        if dto_key in md_options:
-            kwargs[param_field] = md_options[dto_key]
-
-    return RBFEParams(**kwargs)
 
 
 def _ligand_from_pair_input(ref: dict[str, Any], *, client: DeepOriginClient) -> Ligand:

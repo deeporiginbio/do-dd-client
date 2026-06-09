@@ -49,7 +49,7 @@ _LAZY_IMPORTS = {
         "ConstrainedDocking",
     ),
     "ABFE": ("deeporigin.drug_discovery.abfe", "ABFE"),
-    "ABFEParams": ("deeporigin.drug_discovery.abfe", "ABFEParams"),
+    "ABFEParams": ("deeporigin.drug_discovery.fep_common", "ABFEParams"),
     "RBFE": ("deeporigin.drug_discovery.rbfe", "RBFE"),
     "RBFEParams": ("deeporigin.drug_discovery.rbfe", "RBFEParams"),
     "SystemPrep": ("deeporigin.drug_discovery.system_prep", "SystemPrep"),

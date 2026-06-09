@@ -1,18 +1,22 @@
 # ABFE
 
-This document describes how to run a [ABFE :octicons-link-external-16:](https://en.wikipedia.org/wiki/Free-energy_perturbation) simulation using Deep Origin tools.
+This document describes how to run an [ABFE :octicons-link-external-16:](https://en.wikipedia.org/wiki/Free-energy_perturbation) simulation using Deep Origin tools.
+
+The `ABFE` class drives platform tool `deeporigin.abfe` with ordered workflow
+`steps`:
+
+- `["system-prep", "abfe"]` — protein + ligand through system prep, then FEP (default)
+- `["abfe"]` — FEP only on an existing `PreparedSystem`
 
 ## Prerequisites
 
-We assume that you have prepared a protein, docked a ligand to it, and obtained a pose that you want to proceed with. 
+We assume that you have prepared a protein, docked a ligand to it, and obtained a pose that you want to proceed with.
 
-In this tutorial we will use a protein and ligand from the example dataset. 
+In this tutorial we will use a protein and ligand from the example dataset.
 
 ```{.python notest}
 from deeporigin.drug_discovery import (
     ABFE,
-    SystemPrep,
-    PreparedSystem,
     ABFEParams,
     BRD_DATA_DIR,
     Protein,
@@ -28,39 +32,45 @@ ligand.sync()
 
 For more details on how to get started, see [:material-page-previous: Getting Started ](./getting-started.md).
 
+## Combined workflow (recommended)
 
-## System Preparation
-
-Before ABFE, you must turn your protein and docked ligand into a simulation-ready
-systems. This step is called *system preparation*. 
-
-For a single ligand (i.e., ABFE), system prep builds two solvated models:
-
-1. **Binding system** — protein and ligand assembled in an explicit water box with
-   ions. This is the complex used for the binding leg of ABFE.
-2. **Ligand solvation system** — the same ligand alone in solvent, used for the
-   solvation leg.
-
-Along the way, Deep Origin System Prep typically:
-
-- Cleans and standardizes the protein structure, optionally protonates it at
-  physiological pH, and assigns a protein force field (default Amber ff14SB).
-- Parameterizes the ligand (hydrogens, charges, GAFF2 or OpenFF), then merges it
-  with the protein into a complex.
-- Solvates each system (water box padding, salt, optional retention of crystal
-  waters).
-
+Pass `protein` and `ligand` to run system preparation and ABFE in one execution:
 
 ```{.python notest}
-sysprep = SystemPrep(
-    protein=protein,
-    ligand=ligand,
-)
-
-system = sysprep.run()
-system.show()
+abfe = ABFE(protein=protein, ligand=ligand)
+abfe.start(quote=True)
+abfe.estimate
 ```
 
+After quoting, confirm and watch progress as shown below. When the system-prep
+step completes, you can load the prepared system from the same execution:
+
+```{.python notest}
+prepared = abfe.get_prepared_system()
+prepared.show()
+```
+
+## Two-step alternative (SystemPrep)
+
+You can still prepare the system separately with `SystemPrep`, then submit FEP-only
+`steps=["abfe"]`:
+
+```{.python notest}
+from deeporigin.drug_discovery import SystemPrep, PreparedSystem
+
+sysprep = SystemPrep(protein=protein, ligand=ligand)
+system = sysprep.run()
+system.show()
+
+abfe = ABFE(prepared_system=system)
+abfe.start(quote=True)
+abfe.estimate
+```
+
+System prep builds two solvated models:
+
+1. **Binding system** — protein and ligand in explicit solvent (binding leg).
+2. **Ligand solvation system** — ligand alone in solvent (solvation leg).
 
 You will see something like:
 
@@ -74,10 +84,11 @@ You will see something like:
 
 ## Estimating costs
 
-Before starting a ABFE run, you can estimate costs using:
+Before starting an ABFE run, you can estimate costs using `start(quote=True)` on
+either workflow entry point (combined or two-step):
 
 ```{.python notest}
-abfe = ABFE(prepared_system=system)
+abfe = ABFE(protein=protein, ligand=ligand)
 abfe.start(quote=True)
 abfe.estimate
 ```
