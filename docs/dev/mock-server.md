@@ -170,7 +170,7 @@ Here's the full flow for `test_docking_with_data_platform_lv2`:
 3. protein.dock(ligand=..., pocket=...)
    → POST /tools/{org}/tools/deeporigin.docking/{version}/executions
    → run_tool:
-       a. build a Succeeded execution DTO via _create_blocking_run_dto
+       a. build a Completed execution DTO via _create_blocking_run_dto
        b. _inject_docking_tool_execution_results loads the docking fixture,
           replaces protein_id/ligand_id, and pushes the "poses" rows into
           the result-explorer store

@@ -103,7 +103,7 @@ You can also list previous PocketFinder executions:
 
 ```{.python notest}
 executions = PocketFinder.list()
-succeeded = PocketFinder.list(status=["Succeeded"])
+completed = PocketFinder.list(status=["Completed"])
 ```
 
 ### Using PDB files

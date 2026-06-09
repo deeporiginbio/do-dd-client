@@ -11,6 +11,10 @@ import uuid
 
 from beartype import beartype
 
+from deeporigin.platform.constants import (
+    display_platform_status,
+    normalize_platform_status,
+)
 from deeporigin.platform.progress_tree_display import (
     is_v2_progress_tree,
     render_progress_tree_html,
@@ -19,8 +23,8 @@ from deeporigin.utils.constants import BOOTSTRAP_5_CSS_CDN_URL
 
 # Bootstrap 5 ``bg-*`` suffix for status badges (footer).
 _STATUS_BADGE_VARIANT: dict[str, str] = {
-    "Succeeded": "success",
     "Completed": "success",
+    "Succeeded": "success",
     "Failed": "danger",
     "Quoted": "secondary",
     "Running": "primary",
@@ -279,7 +283,7 @@ class ExecutionDisplay:
         execution_id = dto.get("executionId")
         if execution_id is None:
             raise ValueError("DTO must contain 'executionId' field")
-        status = dto.get("status") or ""
+        status = normalize_platform_status(dto.get("status")) or ""
         raw_name = dto.get("name")
         name: str | None
         if raw_name is None:
@@ -381,7 +385,7 @@ class ExecutionDisplay:
             statuses. Otherwise the Bootstrap progress bar is shown only when
             :attr:`status` is ``"Running"``.
         """
-        esc_status = html.escape(self.status, quote=True)
+        esc_status = html.escape(display_platform_status(self.status), quote=True)
         esc_title = html.escape(self._card_header_title(), quote=True)
         tool_meta = self._tool_metadata_html()
         badge_bg = html.escape(_status_badge_bg_class(self.status), quote=True)

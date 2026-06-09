@@ -80,7 +80,7 @@ def test_render_html_progress_bar_by_complete(
 @pytest.mark.parametrize(
     ("status", "expected_bg_class", "expect_progress_bar"),
     [
-        ("Succeeded", "bg-success", False),
+        ("Completed", "bg-success", False),
         ("Failed", "bg-danger", False),
         ("Quoted", "bg-secondary", False),
         ("Running", "bg-primary", True),
@@ -100,11 +100,24 @@ def test_render_html_status_badge_colors(
     html = ExecutionDisplay.from_dto(dto).render_html()
     assert expected_bg_class in html
     assert "badge" in html
-    assert status in html
+    display_status = "Completed" if status == "Succeeded" else status
+    assert display_status in html
     if expect_progress_bar:
         assert 'role="progressbar"' in html
     else:
         assert 'role="progressbar"' not in html
+
+
+def test_render_html_displays_completed_for_legacy_succeeded_dto() -> None:
+    """Legacy Succeeded DTOs render the Completed user-facing badge."""
+    dto = {
+        "executionId": "e1",
+        "status": "Succeeded",
+        "progressReport": None,
+    }
+    html = ExecutionDisplay.from_dto(dto).render_html()
+    assert "Completed" in html
+    assert "Succeeded" not in html
 
 
 def test_render_html_escapes_injection() -> None:

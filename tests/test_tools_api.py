@@ -91,15 +91,15 @@ def test_job_status_logic_lv0(client: DeepOriginClient):
     assert should_auto_update(statuses) is True
 
     # Test case 4: Mixed statuses
-    statuses = ["Running", "Succeeded", "Failed"]
+    statuses = ["Running", "Completed", "Failed"]
     unique_statuses = get_unique_statuses(statuses)
-    assert set(unique_statuses) == {"Running", "Succeeded", "Failed"}
+    assert set(unique_statuses) == {"Running", "Completed", "Failed"}
     assert should_auto_update(statuses) is True
 
     # Test case 5: All terminal states (should stop auto-update)
-    statuses = ["Succeeded", "Failed", "Cancelled"]
+    statuses = ["Completed", "Failed", "Cancelled"]
     unique_statuses = get_unique_statuses(statuses)
-    assert set(unique_statuses) == {"Succeeded", "Failed", "Cancelled"}
+    assert set(unique_statuses) == {"Completed", "Failed", "Cancelled"}
     assert should_auto_update(statuses) is False
 
     # Test case 6: FailedQuotation status
@@ -109,17 +109,17 @@ def test_job_status_logic_lv0(client: DeepOriginClient):
     assert should_auto_update(statuses) is False
 
     # Test case 7: Mixed terminal and non-terminal states
-    statuses = ["Running", "Succeeded", "Failed"]
+    statuses = ["Running", "Completed", "Failed"]
     unique_statuses = get_unique_statuses(statuses)
-    assert set(unique_statuses) == {"Running", "Succeeded", "Failed"}
+    assert set(unique_statuses) == {"Running", "Completed", "Failed"}
     assert should_auto_update(statuses) is True
 
     # Test case 8: Verify TERMINAL_STATES constant includes all expected states
     expected_terminal_states = {
         "Failed",
         "FailedQuotation",
-        "Succeeded",
         "Completed",
+        "Succeeded",
         "Cancelled",
         "Quoted",
         "InsufficientFunds",

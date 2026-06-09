@@ -142,7 +142,7 @@ def test_sysprep_lv2(
             tool_version=TOOL_KEYS_AND_VERSIONS["sysprep"]["tool_version"],
         )
         assert isinstance(result, dict)
-        assert result.get("status") == "Succeeded"
+        assert result.get("status") == "Completed"
         return
 
     sysprep = SystemPrep(

@@ -12,7 +12,7 @@ from deeporigin.drug_discovery.execution_mixins import SyncExecutableMixin
 from deeporigin.drug_discovery.structures.ligand import Ligand, LigandSet
 from deeporigin.exceptions import DeepOriginException
 from deeporigin.platform.client import DeepOriginClient
-from deeporigin.platform.constants import TOOL_KEYS_AND_VERSIONS
+from deeporigin.platform.constants import TOOL_KEYS_AND_VERSIONS, is_success_status
 
 KonnektorNetworkType = Literal["star", "mst", "cyclic"]
 
@@ -259,7 +259,7 @@ class Konnektor(Execution, SyncExecutableMixin):
             return None
 
         final_status = response.get("status")
-        if final_status != "Succeeded":
+        if not is_success_status(final_status):
             eid = response.get("executionId")
             reason = response.get("statusReason") or final_status
             raise DeepOriginException(

@@ -244,7 +244,7 @@ def test_abfe_from_dto_rehydrates_prepared_system_lv0(client: DeepOriginClient):
     abfe = ABFE.from_dto(fake_dto, client=mock_client)
 
     assert abfe.id == "exec-123"
-    assert abfe.status == "Succeeded"
+    assert abfe.status == "Completed"
     assert abfe.estimate == pytest.approx(42.0)
     assert abfe.steps == ["abfe"]
 
@@ -294,7 +294,7 @@ def test_abfe_duplicate_lv0(client: DeepOriginClient):
     params = ABFEParams(dt=0.002, binding_n_windows=24)
     original = ABFE(prepared_system=ps, params=params, tool_version="0.2.0")
     original._id = "exec-old"
-    original.status = "Succeeded"
+    original.status = "Completed"
     original._estimate = 10.0
     original._cost = 9.5
 

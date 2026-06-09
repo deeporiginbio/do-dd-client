@@ -92,7 +92,7 @@ def test_konnektor_run_returns_ligand_pairs(
     pairs = job.run()
 
     assert pairs == [(registered_ligand, registered_ligand_brd3)]
-    assert job.status == "Succeeded"
+    assert job.status == "Completed"
     assert job.id is not None
 
 

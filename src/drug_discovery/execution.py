@@ -33,7 +33,11 @@ from beartype import beartype
 import humanize
 import pandas as pd
 
-from deeporigin.platform.constants import ALLOWED_STATUS_TRANSITIONS, SUCCESS_STATES
+from deeporigin.platform.constants import (
+    ALLOWED_STATUS_TRANSITIONS,
+    is_success_status,
+    normalize_platform_status,
+)
 from deeporigin.utils.constants import (
     EXECUTION_LIST_ORDER_CREATED_DESC,
     TOOL_EXECUTION_POST_TIMEOUT_SECONDS,
@@ -208,7 +212,7 @@ class Execution:
         (10 minutes) and ``retry=False``, then applies the returned DTO via
         :meth:`update_from_dto` so ``status``, :attr:`cost`, and :attr:`dto`
         reflect the platform response. For direct (blocking) tools the response
-        is typically terminal (``Succeeded``); for async tools it may be
+        is typically terminal (``Completed``); for async tools it may be
         ``Created`` or ``Running`` — call :meth:`sync` until the job finishes.
 
         Raises:
@@ -400,7 +404,7 @@ class Execution:
         self.tool_key = expected_tool_key
         self.tool_version = tool_info["version"]
 
-        self.status = dto.get("status")
+        self.status = normalize_platform_status(dto.get("status"))
         self.progress = dto.get("progressReport")
         self.app = dto.get("app")
         self.approve_amount = dto.get("approveAmount")
@@ -415,7 +419,7 @@ class Execution:
         price = self._quotation_total(dto)
         if price is not None:
             self._estimate = price
-            if self.status in SUCCESS_STATES:
+            if is_success_status(self.status):
                 self._cost = price
 
     def sync(self) -> None:

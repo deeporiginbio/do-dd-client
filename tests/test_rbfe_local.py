@@ -144,7 +144,7 @@ def test_rbfe_sysprep_and_fep_local(client: DeepOriginClient) -> None:
         assert is_v2_progress_tree(report)
 
     rbfe.wait(timeout=30.0, poll_interval=0.5)
-    assert rbfe.status == "Succeeded"
+    assert rbfe.status == "Completed"
 
     df = rbfe.get_results()
     assert df is not None
