@@ -46,7 +46,7 @@ export JOB_WATCH_BLOCK=0
 
 When `JOB_WATCH_BLOCK` is set, `watch()` will:
 - Start the monitoring task as usual
-- Block execution until the job reaches a terminal state (Succeeded, Failed, etc.)
+- Block execution until the job reaches a terminal state (Completed, Failed, etc.)
 - Return only after the job has completed
 
 This ensures that automated notebook execution waits for jobs to complete before proceeding to the next cell.

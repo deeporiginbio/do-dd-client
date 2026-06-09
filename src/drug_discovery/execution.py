@@ -28,7 +28,11 @@ import copy
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Any, Literal, Self
 
-from deeporigin.platform.constants import ALLOWED_STATUS_TRANSITIONS
+from deeporigin.platform.constants import (
+    ALLOWED_STATUS_TRANSITIONS,
+    is_success_status,
+    normalize_platform_status,
+)
 from deeporigin.utils.constants import TOOL_EXECUTION_POST_TIMEOUT_SECONDS
 from deeporigin.utils.iso8601 import parse_iso_timestamp_utc
 
@@ -192,7 +196,7 @@ class Execution:
         (10 minutes) and ``retry=False``, then applies the returned DTO via
         :meth:`update_from_dto` so ``status``, :attr:`cost`, and :attr:`dto`
         reflect the platform response. For direct (blocking) tools the response
-        is typically terminal (``Succeeded``); for async tools it may be
+        is typically terminal (``Completed``); for async tools it may be
         ``Created`` or ``Running`` — call :meth:`sync` until the job finishes.
 
         Raises:
@@ -300,7 +304,7 @@ class Execution:
         self.tool_key = expected_tool_key
         self.tool_version = tool_info["version"]
 
-        self.status = dto.get("status")
+        self.status = normalize_platform_status(dto.get("status"))
         self.progress = dto.get("progressReport")
         self.app = dto.get("app")
         self.approve_amount = dto.get("approveAmount")
@@ -318,7 +322,7 @@ class Execution:
             price = successful[0].get("priceTotal")
             if price is not None:
                 self._estimate = float(price)
-            if self.status == "Succeeded" and price is not None:
+            if is_success_status(self.status) and price is not None:
                 self._cost = float(price)
 
     def sync(self) -> None:

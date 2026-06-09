@@ -208,7 +208,7 @@ def create_tools_router(
         """Update bulk-docking execution progress and return ``progressReport`` JSON."""
         status = execution.get("status")
 
-        if status == "Succeeded":
+        if status == "Completed":
             existing = execution.get("progressReport")
             if isinstance(existing, dict) and "complete" in existing:
                 return existing
@@ -241,7 +241,7 @@ def create_tools_router(
             complete = int(min(100.0, (elapsed_seconds / duration_seconds) * 100.0))
 
         if complete >= 100:
-            execution["status"] = "Succeeded"
+            execution["status"] = "Completed"
             ts = now.strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z"
             execution["completedAt"] = ts
             execution["updatedAt"] = ts
@@ -260,7 +260,7 @@ def create_tools_router(
         if tool_key == "deeporigin.bulk-docking":
             return _get_bulk_docking_progress_report(execution, execution_id)
 
-        if status == "Succeeded":
+        if status == "Completed":
             progress_reports = _load_progress_reports(tool_key)
             if progress_reports:
                 final_report = progress_reports[-1]
@@ -283,7 +283,7 @@ def create_tools_router(
         duration = mock_execution_durations.get(tool_key, 300.0)
 
         if elapsed_seconds >= duration:
-            execution["status"] = "Succeeded"
+            execution["status"] = "Completed"
             execution["completedAt"] = now.strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z"
             execution["updatedAt"] = now.strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z"
             if tool_key in (
@@ -393,7 +393,7 @@ def create_tools_router(
         tool_version: str,
         body: dict[str, Any],
     ) -> dict[str, Any]:
-        """Build a synchronous Succeeded execution DTO for a single ``run_tool`` POST.
+        """Build a synchronous Completed execution DTO for a single ``run_tool`` POST.
 
         Used for tools whose ``sync=True`` mock path completes the execution
         in one POST: docking (single ligand), pocket-finder, system-prep.
@@ -407,7 +407,7 @@ def create_tools_router(
             "createdAt": ts,
             "updatedAt": ts,
             "resourceId": _generate_resource_id(),
-            "status": "Succeeded",
+            "status": "Completed",
             "userInputs": body.get("inputs", {}),
             "userOutputs": body.get("outputs", {}),
             "metadata": body.get("metadata", {}),

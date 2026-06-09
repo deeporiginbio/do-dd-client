@@ -238,11 +238,11 @@
                     {% if is_multiple %}
                         {# Multiple jobs - show status badges for each unique status #}
                         {% for status_item in unique_statuses %}
-                            <span class="badge {% if status_item == 'Running' %}bg-primary{% elif status_item == 'Failed' %}bg-danger{% elif status_item == 'FailedQuotation' %}bg-danger{% elif status_item == 'Cancelled' %}bg-dark{% elif status_item == 'Succeeded' %}bg-success{% elif status_item == 'Created' %}bg-secondary{% elif status_item == 'Queued' %}bg-info{% elif status_item == 'Quoted' %}bg-warning{% elif status_item == 'InsufficientFunds' %}bg-danger{% else %}bg-light text-dark{% endif %}">{{ status_item|e }}</span>
+                            <span class="badge {% if status_item == 'Running' %}bg-primary{% elif status_item == 'Failed' %}bg-danger{% elif status_item == 'FailedQuotation' %}bg-danger{% elif status_item == 'Cancelled' %}bg-dark{% elif status_item == 'Completed' or status_item == 'Succeeded' %}bg-success{% elif status_item == 'Created' %}bg-secondary{% elif status_item == 'Queued' %}bg-info{% elif status_item == 'Quoted' %}bg-warning{% elif status_item == 'InsufficientFunds' %}bg-danger{% else %}bg-light text-dark{% endif %}">{{ 'Completed' if status_item == 'Succeeded' else status_item|e }}</span>
                         {% endfor %}
                     {% else %}
                         {# Single job - backward compatibility #}
-                        <span class="badge {% if status == 'Running' %}bg-primary{% elif status == 'Failed' %}bg-danger{% elif status == 'FailedQuotation' %}bg-danger{% elif status == 'Cancelled' %}bg-dark{% elif status == 'Succeeded' %}bg-success{% elif status == 'Created' %}bg-secondary{% elif status == 'Queued' %}bg-info{% elif status == 'Quoted' %}bg-warning{% elif status == 'InsufficientFunds' %}bg-danger{% else %}bg-light text-dark{% endif %}">{{ status|e }}</span>
+                        <span class="badge {% if status == 'Running' %}bg-primary{% elif status == 'Failed' %}bg-danger{% elif status == 'FailedQuotation' %}bg-danger{% elif status == 'Cancelled' %}bg-dark{% elif status == 'Completed' or status == 'Succeeded' %}bg-success{% elif status == 'Created' %}bg-secondary{% elif status == 'Queued' %}bg-info{% elif status == 'Quoted' %}bg-warning{% elif status == 'InsufficientFunds' %}bg-danger{% else %}bg-light text-dark{% endif %}">{{ 'Completed' if status == 'Succeeded' else status|e }}</span>
                     {% endif %}
                 </div>
                 <span id="last-updated" class="text-muted" style="font-size: 0.9rem;">

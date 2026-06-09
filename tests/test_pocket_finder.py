@@ -8,7 +8,11 @@ import pytest
 
 from deeporigin.drug_discovery import Pocket, PocketFinder, Protein
 from deeporigin.platform import DeepOriginClient
-from deeporigin.platform.constants import TERMINAL_STATES, TOOL_KEYS_AND_VERSIONS
+from deeporigin.platform.constants import (
+    TERMINAL_STATES,
+    TOOL_KEYS_AND_VERSIONS,
+    is_success_status,
+)
 from tests.conftest import check_tool_exists
 
 
@@ -149,7 +153,7 @@ def test_pocket_finder_start_sync_get_results_lv3(
     pf.sync()
     if pf.status == "Quoted":
         pf.start()
-    elif pf.status in TERMINAL_STATES and pf.status != "Succeeded":
+    elif pf.status in TERMINAL_STATES and not is_success_status(pf.status):
         pytest.fail(f"PocketFinder reached terminal state {pf.status!r} before running")
 
     timeout_seconds = 600
@@ -167,10 +171,10 @@ def test_pocket_finder_start_sync_get_results_lv3(
             f"last status={pf.status!r}"
         )
 
-    assert pf.status == "Succeeded", f"Expected status Succeeded, got {pf.status!r}"
+    assert is_success_status(pf.status), f"Expected status Completed, got {pf.status!r}"
 
     pockets = pf.get_results()
-    assert pockets is not None, "get_results() should return pockets after Succeeded"
+    assert pockets is not None, "get_results() should return pockets after Completed"
     assert len(pockets) >= 1, "Expected at least one pocket"
     for pocket in pockets:
         assert isinstance(pocket, Pocket), "Each result should be a Pocket"

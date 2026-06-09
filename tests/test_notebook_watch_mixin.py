@@ -65,7 +65,7 @@ def test_watch_loop_terminal_immediately(mock_update_display, mock_display):
         solvation_xml_path="s.xml",
         system_pdb_path="p.pdb",
     )
-    dto = _minimal_dto(status="Succeeded")
+    dto = _minimal_dto(status="Completed")
     mock_client = MagicMock()
     mock_client.executions.get.return_value = dto
 
@@ -73,7 +73,7 @@ def test_watch_loop_terminal_immediately(mock_update_display, mock_display):
     abfe.client = mock_client
     abfe._id = dto["executionId"]
     abfe._dto = dto
-    abfe.status = "Succeeded"
+    abfe.status = "Completed"
 
     with patch.object(abfe, "_render_execution_html", return_value="<html>done</html>"):
         asyncio.run(abfe._watch_until_terminal(interval=0.01))
@@ -92,7 +92,7 @@ def test_watch_loop_polls_until_terminal(mock_update_display, mock_display):
         system_pdb_path="p.pdb",
     )
     running = _minimal_dto(status="Running")
-    succeeded = _minimal_dto(status="Succeeded")
+    succeeded = _minimal_dto(status="Completed")
 
     mock_client = MagicMock()
     mock_client.executions.get.side_effect = [running, succeeded]

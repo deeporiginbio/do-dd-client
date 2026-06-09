@@ -11,6 +11,7 @@ from deeporigin.drug_discovery.notebook_watch_mixin import NotebookWatchMixin
 from deeporigin.drug_discovery.structures.ligand import Ligand, LigandSet
 from deeporigin.drug_discovery.structures.protein import Protein
 from deeporigin.platform.client import DeepOriginClient
+from deeporigin.platform.constants import is_success_status, normalize_platform_status
 
 _KNOWN_MODELS: dict[str, str] = {
     "Protein": "protein",
@@ -154,7 +155,7 @@ def _apply_dto_common_fields(
     instance._id = dto["executionId"]
     instance._estimate = None
     instance._cost = None
-    instance.status = dto.get("status")
+    instance.status = normalize_platform_status(dto.get("status"))
     instance.progress = dto.get("progressReport")
     instance.app = dto.get("app")
     instance.approve_amount = dto.get("approveAmount")
@@ -176,7 +177,7 @@ def _apply_dto_common_fields(
     if price is None:
         return
     instance._estimate = float(price)
-    if instance.status == "Succeeded":
+    if is_success_status(instance.status):
         instance._cost = float(price)
 
 

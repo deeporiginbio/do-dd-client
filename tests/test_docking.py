@@ -14,7 +14,11 @@ from deeporigin.drug_discovery.docking import (
 )
 from deeporigin.drug_discovery.structures.ligand import Ligand, LigandSet
 from deeporigin.exceptions import DeepOriginException
-from deeporigin.platform.constants import TERMINAL_STATES, TOOL_KEYS_AND_VERSIONS
+from deeporigin.platform.constants import (
+    TERMINAL_STATES,
+    TOOL_KEYS_AND_VERSIONS,
+    is_success_status,
+)
 from tests.conftest import check_tool_exists
 
 
@@ -385,7 +389,7 @@ def test_docking_start_sync_get_results_lv3(
     docking.sync()
     if docking.status == "Quoted":
         docking.start()
-    elif docking.status in TERMINAL_STATES and docking.status != "Succeeded":
+    elif docking.status in TERMINAL_STATES and not is_success_status(docking.status):
         pytest.fail(f"Docking reached terminal state {docking.status!r} before running")
 
     timeout_seconds = 600
@@ -403,12 +407,12 @@ def test_docking_start_sync_get_results_lv3(
             f"last status={docking.status!r}"
         )
 
-    assert docking.status == "Succeeded", (
-        f"Expected status Succeeded, got {docking.status!r}"
+    assert is_success_status(docking.status), (
+        f"Expected status Completed, got {docking.status!r}"
     )
 
     poses = docking.get_results()
-    assert poses is not None, "get_results() should return a LigandSet after Succeeded"
+    assert poses is not None, "get_results() should return a LigandSet after Completed"
     assert isinstance(poses, LigandSet), "get_results() should return a LigandSet"
     assert len(poses) >= 1, "Expected at least one pose"
     for pose in poses:
@@ -420,7 +424,7 @@ def test_docking_start_sync_get_results_lv3(
     assert len(df) >= 1, "Expected at least one result row"
 
     sdf_poses = docking.get_poses()
-    assert sdf_poses is not None, "get_poses() should return poses after Succeeded"
+    assert sdf_poses is not None, "get_poses() should return poses after Completed"
     assert len(sdf_poses) >= 1, "Expected at least one pose"
     for pose in sdf_poses:
         assert isinstance(pose, Ligand), "Each pose should be a Ligand"

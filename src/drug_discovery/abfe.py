@@ -13,7 +13,7 @@ from deeporigin.drug_discovery.notebook_watch_mixin import NotebookWatchMixin
 from deeporigin.drug_discovery.structures.prepared_system import PreparedSystem
 from deeporigin.exceptions import DeepOriginException
 from deeporigin.platform.client import DeepOriginClient
-from deeporigin.platform.constants import TOOL_KEYS_AND_VERSIONS
+from deeporigin.platform.constants import TOOL_KEYS_AND_VERSIONS, is_success_status
 
 
 @beartype
@@ -532,7 +532,7 @@ class ABFE(Execution, AsyncExecutableMixin, NotebookWatchMixin):
             ValueError: If no execution has been started.
         """
         self.sync()
-        if self.status != "Succeeded":
+        if not is_success_status(self.status):
             return None
 
         response = super().get_results()
@@ -602,14 +602,14 @@ class ABFE(Execution, AsyncExecutableMixin, NotebookWatchMixin):
             ) from None
 
         self.sync()
-        if self.status != "Succeeded":
+        if not is_success_status(self.status):
             raise DeepOriginException(
                 title="Job not complete",
                 message=(
                     "Trajectory is only available after a successful run. "
                     f"Current status is {self.status!r}."
                 ),
-                fix="Wait until the execution status is Succeeded, then try again.",
+                fix="Wait until the execution status is Completed, then try again.",
             ) from None
 
         response = self.client.results.get(compute_job_id=self.id)
@@ -729,7 +729,7 @@ class ABFE(Execution, AsyncExecutableMixin, NotebookWatchMixin):
             )
 
         self.sync()
-        if self.status != "Succeeded":
+        if not is_success_status(self.status):
             raise DeepOriginException(
                 title="ABFE run is not complete",
                 message=(
@@ -816,7 +816,7 @@ class ABFE(Execution, AsyncExecutableMixin, NotebookWatchMixin):
             )
 
         self.sync()
-        if self.status != "Succeeded":
+        if not is_success_status(self.status):
             raise DeepOriginException(
                 title="ABFE run is not complete",
                 message=(
