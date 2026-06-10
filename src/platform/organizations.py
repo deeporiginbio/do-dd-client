@@ -43,8 +43,9 @@ class Organizations:
 
 
         Returns:
-            List of user dictionaries, each containing fields like id, email,
-            firstName, lastName, authId, avatar, createdAt, updatedAt, etc.
+            List of user dictionaries, each containing fields like id, authId,
+            email, firstName, lastName, company, title, mfaEnabled, roles,
+            createdAt, updatedAt, etc.
         """
 
         response = self._c.get_json(f"/entities/{self._c.org_key}/organizations/users")

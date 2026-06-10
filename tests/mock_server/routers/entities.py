@@ -44,21 +44,16 @@ def _make_user(*, email: str) -> dict[str, Any]:
     """
     return {
         "id": str(uuid.uuid4()),
+        "authId": f"google-apps|{email}",
         "createdAt": "2024-07-31T07:05:17.367Z",
         "updatedAt": "2024-07-31T07:05:20.452Z",
         "firstName": email,
         "lastName": email,
         "email": email,
-        "authId": f"google-apps|{email}",
-        "avatar": "",
-        "title": "",
-        "industries": "",
-        "expertise": "",
         "company": None,
-        "referralCode": None,
-        "emailNotificationsDisabled": None,
-        "notificationsDisabled": None,
-        "appNotificationsDisabled": None,
+        "title": "",
+        "mfaEnabled": False,
+        "roles": ["Member"],
     }
 
 

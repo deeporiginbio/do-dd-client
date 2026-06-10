@@ -33,20 +33,15 @@ def test_list_organization_users_lv1(client: DeepOriginClient):
     user = users[0]
     for key in [
         "id",
+        "authId",
         "createdAt",
         "updatedAt",
         "firstName",
         "lastName",
         "email",
-        "authId",
-        "avatar",
-        "title",
-        "industries",
-        "expertise",
         "company",
-        "referralCode",
-        "emailNotificationsDisabled",
-        "notificationsDisabled",
-        "appNotificationsDisabled",
+        "title",
+        "mfaEnabled",
+        "roles",
     ]:
         assert key in user, f"Expected user to have key {key}"
