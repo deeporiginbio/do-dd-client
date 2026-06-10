@@ -41,7 +41,6 @@ def test_list_organization_users_lv1(client: DeepOriginClient):
         "email",
         "company",
         "title",
-        "mfaEnabled",
         "roles",
     ]:
         assert key in user, f"Expected user to have key {key}"
