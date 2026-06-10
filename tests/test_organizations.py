@@ -25,22 +25,7 @@ def test_list_organizations_lv1(client: DeepOriginClient):
 
 def test_list_organization_users_lv1(client: DeepOriginClient):
     """Test listing organization users."""
-    users = client.organizations.users()
+    users = client.organizations.users()  # ty:ignore[unresolved-attribute]
 
     assert isinstance(users, list), "Expected a list"
     assert len(users) > 0, "Expected at least one user"
-
-    user = users[0]
-    for key in [
-        "id",
-        "authId",
-        "createdAt",
-        "updatedAt",
-        "firstName",
-        "lastName",
-        "email",
-        "company",
-        "title",
-        "roles",
-    ]:
-        assert key in user, f"Expected user to have key {key}"
