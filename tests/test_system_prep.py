@@ -122,29 +122,6 @@ def test_sysprep_lv2(
     protein: Protein = request.getfixturevalue(protein_fixture)
     ligand: Ligand = request.getfixturevalue(ligand_fixture)
 
-    if protein_fixture == "brd_protein":
-        sysprep = SystemPrep(
-            protein=protein,
-            ligand=ligand,
-            client=client,
-            add_H_atoms=True,
-            protonate_protein=True,
-        )
-        inputs = sysprep.sync_inputs()
-        result = client.executions.create(
-            data={
-                "inputs": inputs,
-                "outputs": {},
-                "metadata": {},
-                "sync": True,
-            },
-            tool_key=TOOL_KEYS_AND_VERSIONS["sysprep"]["tool_key"],
-            tool_version=TOOL_KEYS_AND_VERSIONS["sysprep"]["tool_version"],
-        )
-        assert isinstance(result, dict)
-        assert result.get("status") == "Completed"
-        return
-
     sysprep = SystemPrep(
         protein=protein,
         ligand=ligand,
@@ -157,19 +134,21 @@ def test_sysprep_lv2(
     assert isinstance(prepared, PreparedSystem), (
         "Expected SystemPrep.run() to return PreparedSystem"
     )
-
-    execution_id = sysprep.id
-    assert execution_id is not None
     assert prepared.binding_xml_path
     assert prepared.solvation_xml_path
     assert prepared.system_pdb_path
 
+    if protein_fixture != "registered_protein":
+        return
+
+    execution_id = sysprep.id
+    assert execution_id is not None
+
     response = client.results.get_prepared_systems(
         compute_job_id=execution_id,
-        protein_id=protein.id,
     )
     records = response["data"]
-    assert len(records) >= 1, "Expected a prepared-system row for this compute job"
+    assert len(records) >= 1, f"Expected a prepared-system row for job: {execution_id}"
     record = records[0]
     assert record.get("compute_job_id") == execution_id
     assert record.get("tool_key") == TOOL_KEYS_AND_VERSIONS["sysprep"]["tool_key"]

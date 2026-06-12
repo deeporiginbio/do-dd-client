@@ -100,15 +100,15 @@ PROVIDER = Literal["ufa", "s3"]
 TOOL_KEYS_AND_VERSIONS: dict[str, dict[str, str]] = {
     "docking": {
         "tool_key": "deeporigin.docking",
-        "tool_version": "3.2.3",
+        "tool_version": "3",
     },
     "constrained_docking": {
         "tool_key": "deeporigin.constrained-docking",
-        "tool_version": "3.2.3",
+        "tool_version": "3",
     },
     "pocket_finder": {
         "tool_key": "deeporigin.pocket-finder",
-        "tool_version": "1.4.3",
+        "tool_version": "1",
     },
     "mol_props": {
         "tool_key": "deeporigin.mol-props-combined",
@@ -132,6 +132,6 @@ TOOL_KEYS_AND_VERSIONS: dict[str, dict[str, str]] = {
     },
     "sysprep": {
         "tool_key": "deeporigin.system-prep",
-        "tool_version": "latest",
+        "tool_version": "1",
     },
 }

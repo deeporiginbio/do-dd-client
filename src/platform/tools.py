@@ -5,6 +5,8 @@ from __future__ import annotations
 import builtins
 from typing import TYPE_CHECKING
 
+from deeporigin.exceptions import DeepOriginException
+
 if TYPE_CHECKING:
     from deeporigin.platform.client import DeepOriginClient
 
@@ -64,3 +66,22 @@ class Tools:
         return self._c.get_json(
             f"/tools/protected/tools/{tool_key}/{tool_version}/definitions"
         )
+
+    def exists(self, *, tool_key: str, tool_version: str) -> bool:
+        """Return whether a tool version pin resolves to an enabled definition.
+
+        The platform resolves *tool_version* at request time: exact semver
+        (``"3.2.3"``), major-only (``"1"`` → latest ``1.x.x``), or ``"latest"``.
+
+        Args:
+            tool_key: Tool identifier.
+            tool_version: Version pin accepted by the platform tools API.
+
+        Returns:
+            ``True`` when the pin resolves and the definition is enabled.
+        """
+        try:
+            definition = self.get(tool_key=tool_key, tool_version=tool_version)
+        except DeepOriginException:
+            return False
+        return definition.get("enabled") is not False

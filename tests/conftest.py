@@ -64,7 +64,8 @@ def check_tool_exists(
     Args:
         client: DeepOrigin client instance.
         key: Tool key to look for.
-        version: Optional version to match. If None, matches any version.
+        version: Optional version pin (exact semver, major-only, or ``latest``).
+            If None, any registered enabled version satisfies the check.
 
     Returns:
         True if the tool exists (or env is local), False otherwise.
@@ -72,12 +73,17 @@ def check_tool_exists(
     if client.env == "local":
         return True
 
-    tools = client.tools.list()
-    for tool in tools:
-        if tool.get("key") == key:
-            if version is None or tool.get("version") == version:
-                return True
-    return False
+    if version is not None:
+        return client.tools.exists(tool_key=key, tool_version=version)
+
+    response = client.tools.get_by_key(tool_key=key)
+    if isinstance(response, dict) and "data" in response:
+        definitions = response["data"]
+    elif isinstance(response, list):
+        definitions = response
+    else:
+        definitions = []
+    return any(d.get("enabled") is not False for d in definitions)
 
 
 @pytest.fixture()

@@ -63,8 +63,11 @@ client = DeepOriginClient()
 protein = Protein.from_id("08AD337N5YV4Y", client=client)
 ```
 
-!!! warning "Requires file_path"
-    The protein data in the platform must contain a `file_path` field. If the protein data does not have a file_path, a `ValueError` will be raised.
+!!! note "Records without file_path"
+    If the platform record has no `file_path`, `from_id` returns metadata only:
+    `structure` is `None` and `remote_path` is unset unless you pass
+    `remote_path_override`. Call `download()` only after a structure file path
+    is available on the record or via override.
 
 !!! note "Automatic metadata"
     The method automatically populates the protein's `name` field from the platform data, preferring `protein_name`, then `pdb_id`, then `gene_symbol` (in that order).

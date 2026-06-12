@@ -34,6 +34,47 @@ def test_to_pdb_requires_rehydration_when_remote_path_only():
         protein.to_file()
 
 
+def test_from_id_without_file_path_lv0(client: DeepOriginClient) -> None:
+    """from_id returns metadata-only when the platform record has no file_path."""
+    from unittest.mock import patch
+
+    record = {
+        "id": "metadata-only",
+        "protein_name": "orphan",
+        "file_path": None,
+        "pdb_id": None,
+        "project_id": None,
+    }
+    with patch.object(client.entities, "get_protein", return_value=record):
+        protein = Protein.from_id("metadata-only", client=client)
+
+    assert protein.id == "metadata-only"
+    assert protein.name == "orphan"
+    assert protein.structure is None
+    assert protein.remote_path is None
+
+
+def test_from_id_download_false_rehydrates_lv1(
+    client: DeepOriginClient,
+    registered_protein: Protein,
+) -> None:
+    """Rehydration tests must use a record with file_path; download() loads structure."""
+    assert registered_protein.id is not None
+    assert registered_protein.remote_path is not None
+
+    protein = Protein.from_id(
+        str(registered_protein.id),
+        client=client,
+        download=False,
+    )
+    assert protein.remote_path == registered_protein.remote_path
+    assert protein.structure is None
+
+    protein.download(client=client)
+    assert protein.structure is not None
+    assert protein.local_path is not None
+
+
 def test_from_file_lv0():
     protein = Protein.from_file(BRD_DATA_DIR / "brd.pdb")
 

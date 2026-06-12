@@ -31,3 +31,10 @@ _Avoid_: `mode` for v5 workflow tools
 **KonnektorResult**:
 CLI return type from `Konnektor.run()` — resolved ligand pairs, connectivity flag, and inline viz HTML.
 _Avoid_: conflating with platform ingest entity `LigandNetwork` or legacy `LigandSet.network` dict
+
+**Tool version pin**:
+Version specifier passed to `executions.create`, `Tools.get`, or `Tools.exists`. The
+platform resolves pins at request time: exact semver (`"3.2.3"`), major-only
+(`"1"` → latest `1.x.x`), or `"latest"` (highest enabled version). Stored in
+`TOOL_KEYS_AND_VERSIONS`.
+_Avoid_: treating pins as exact semver strings when comparing against `tools.list()` rows
