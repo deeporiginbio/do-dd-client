@@ -86,7 +86,7 @@ jobs:
       fail-fast: true
       matrix:
         os: [ubuntu-latest, windows-latest]
-        python-version: ["3.11", "3.12", "3.13"]
+        python-version: ["3.12", "3.13"]
 
     needs: [code-formatting-syntax-and-docstrings]
     steps:
@@ -110,11 +110,11 @@ jobs:
         run: uv run coverage run --append -m pytest -x docs --env local --markdown-docs --markdown-docs-syntax=superfences
 
       - name: Generate coverage XML
-        if: matrix.os == 'ubuntu-latest' && matrix.python-version == '3.11'
+        if: matrix.os == 'ubuntu-latest' && matrix.python-version == '3.12'
         run: uv run coverage xml
 
       - name: Upload coverage artifact
-        if: matrix.os == 'ubuntu-latest' && matrix.python-version == '3.11'
+        if: matrix.os == 'ubuntu-latest' && matrix.python-version == '3.12'
         uses: actions/upload-artifact@v6
         with:
           name: coverage-report
