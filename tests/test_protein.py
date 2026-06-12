@@ -54,19 +54,20 @@ def test_from_id_without_file_path_lv0(client: DeepOriginClient) -> None:
     assert protein.remote_path is None
 
 
-def test_from_id_download_false_rehydrates_lv1(client: DeepOriginClient) -> None:
+def test_from_id_download_false_rehydrates_lv1(
+    client: DeepOriginClient,
+    registered_protein: Protein,
+) -> None:
     """Rehydration tests must use a record with file_path; download() loads structure."""
-    from tests.mock_server.routers.data_platform import (
-        MOCK_CANONICAL_PROTEIN_FILE_PATH,
-        MOCK_CANONICAL_PROTEIN_ID,
-    )
+    assert registered_protein.id is not None
+    assert registered_protein.remote_path is not None
 
     protein = Protein.from_id(
-        MOCK_CANONICAL_PROTEIN_ID,
+        str(registered_protein.id),
         client=client,
         download=False,
     )
-    assert protein.remote_path == MOCK_CANONICAL_PROTEIN_FILE_PATH
+    assert protein.remote_path == registered_protein.remote_path
     assert protein.structure is None
 
     protein.download(client=client)
