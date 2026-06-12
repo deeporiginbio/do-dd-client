@@ -81,11 +81,13 @@ class Protein(Entity):
         Args:
             id: The Deep Origin Data Platform ID of the protein.
             client: Optional DeepOriginClient instance. If not provided, uses the default client.
-            download: If True (default), download the structure file and load coordinates.
-                If False, fetch metadata only and set :attr:`remote_path` to the platform
-                file path (``remote_path_override`` or the record's ``file_path``) without
-                downloading; :attr:`structure` stays ``None`` until :meth:`download` or
-                :meth:`load_structure_from_local`.
+            download: If True (default), download the structure file and load coordinates
+                when the record has a ``file_path``. If False, fetch metadata only and set
+                :attr:`remote_path` to the platform file path (``remote_path_override`` or
+                the record's ``file_path``) without downloading; :attr:`structure` stays
+                ``None`` until :meth:`download` or :meth:`load_structure_from_local`.
+                When the record has no ``file_path``, returns metadata only regardless of
+                ``download``.
             remote_path_override: When ``download`` is False, use this as ``remote_path``
                 instead of the API record's ``file_path`` (e.g. the path stored on the
                 execution ``userInputs``).
@@ -94,7 +96,6 @@ class Protein(Entity):
             Protein: A new Protein instance.
 
         Raises:
-            ValueError: If the protein data does not contain a file_path.
             RuntimeError: If the file cannot be downloaded or loaded.
         """
         if client is None:
@@ -103,26 +104,26 @@ class Protein(Entity):
         data = client.entities.get_protein(id=id)
 
         file_path = data.get("file_path")
-        if not file_path:
-            raise ValueError(
-                f"Protein {id} does not have a file_path. Cannot create Protein instance without structure file."
-            )
-
-        if not download:
-            remote_path = (
-                remote_path_override if remote_path_override is not None else file_path
-            )
+        if not file_path or not download:
+            remote_path: str | None = None
+            if file_path:
+                remote_path = (
+                    remote_path_override
+                    if remote_path_override is not None
+                    else file_path
+                )
+            elif remote_path_override is not None:
+                remote_path = remote_path_override
             name = (
                 data.get("protein_name")
                 or data.get("pdb_id")
                 or data.get("gene_symbol")
                 or id
             )
-            pdb_id = data.get("pdb_id")
-            protein = cls(
+            return cls(
                 name=name,
                 structure=None,
-                pdb_id=pdb_id,
+                pdb_id=data.get("pdb_id"),
                 info=None,
                 atom_types=None,
                 block_type="pdb",
@@ -133,7 +134,6 @@ class Protein(Entity):
                 if data.get("project_id") is not None
                 else None,
             )
-            return protein
 
         # Download the file
         local_file_path = client.files.download(remote_path=file_path, lazy=True)
