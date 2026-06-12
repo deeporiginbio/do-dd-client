@@ -48,7 +48,6 @@ class SystemPrep(Execution, SyncExecutableMixin):
 
     tool_key: str = TOOL_KEYS_AND_VERSIONS["sysprep"]["tool_key"]
 
-    @beartype
     def __init__(
         self,
         *,
@@ -283,7 +282,6 @@ class SystemPrep(Execution, SyncExecutableMixin):
 
         raise ValueError(SYSPREP_NO_OUTPUT_PATHS_MSG)
 
-    @beartype
     def run(
         self,
         *,

@@ -48,6 +48,7 @@
         "fasta",
         "finalizer",
         "FMCS",
+        "getfixturevalue",
         "hbond",
         "herg",
         "HETATM",
