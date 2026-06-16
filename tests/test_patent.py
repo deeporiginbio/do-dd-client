@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from pathlib import Path
 import time
 from unittest.mock import patch
 
@@ -29,7 +30,7 @@ def test_patent_build_params_uploads_pdf(client: DeepOriginClient) -> None:
 
     upload_mock.assert_called_once()
     assert params["input_file"]["$provider"] == "ufa"
-    assert params["input_file"]["key"].startswith("testing/patent/")
+    assert params["input_file"]["key"].startswith("patent/")
     assert patent.remote_pdf_path == params["input_file"]["key"]
 
 
@@ -70,18 +71,15 @@ def test_patent_start_rejects_non_none_status(client: DeepOriginClient) -> None:
         patent.start()
 
 
-def test_patent_validates_pdf_path() -> None:
+def test_patent_validates_pdf_path(tmp_path: Path) -> None:
     """Constructor rejects missing files and non-PDF extensions."""
     with pytest.raises(ValueError, match="not found"):
         Patent(pdf="/no/such/file.pdf")
 
-    txt = FIXTURES_DIR / "patent" / "not-a-pdf.txt"
+    txt = tmp_path / "not-a-pdf.txt"
     txt.write_text("hello", encoding="utf-8")
-    try:
-        with pytest.raises(ValueError, match="Expected a .pdf"):
-            Patent(pdf=txt)
-    finally:
-        txt.unlink(missing_ok=True)
+    with pytest.raises(ValueError, match="Expected a .pdf"):
+        Patent(pdf=txt)
 
 
 def test_patent_from_dto_round_trip(client: DeepOriginClient) -> None:
@@ -94,7 +92,7 @@ def test_patent_from_dto_round_trip(client: DeepOriginClient) -> None:
     assert patent.id == dto["executionId"]
     assert patent.status == dto["status"]
     assert patent.pdf is None
-    assert patent.remote_pdf_path == "testing/patent/one-page.pdf"
+    assert patent.remote_pdf_path == "patent/one-page.pdf"
     assert patent.name == dto["name"]
 
 
@@ -105,7 +103,7 @@ def test_patent_from_dto_raises_on_tool_key_mismatch(client: DeepOriginClient) -
         "status": "Completed",
         "tool": {"key": "deeporigin.docking", "version": "3"},
         "userInputs": {
-            "input_file": {"$provider": "ufa", "key": "testing/patent/x.pdf"},
+            "input_file": {"$provider": "ufa", "key": "patent/x.pdf"},
         },
     }
     with pytest.raises(ValueError, match="tool key mismatch"):

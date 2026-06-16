@@ -8,7 +8,7 @@
     "startedAt": "2025-11-06T19:12:39.117Z",
     "userInputs": {
         "input_file": {
-            "key": "testing/patent/one-page.pdf",
+            "key": "patent/one-page.pdf",
             "$provider": "ufa"
         }
     },

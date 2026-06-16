@@ -17,6 +17,7 @@ from deeporigin.platform.constants import TOOL_KEYS_AND_VERSIONS, is_success_sta
 from deeporigin.utils.constants import UFA_PROVIDER
 
 _PATENT_OUTPUT_KEY = "do_patent_molecules"
+_PATENT_UPLOAD_PREFIX = "patent/"
 
 
 @beartype
@@ -217,7 +218,7 @@ class Patent(Execution, AsyncExecutableMixin, NotebookWatchMixin):
             msg = "Cannot upload PDF: no local path is set on this Patent instance."
             raise ValueError(msg)
 
-        remote_path = f"testing/patent/{uuid.uuid4().hex}/{self._pdf_path.name}"
+        remote_path = f"{_PATENT_UPLOAD_PREFIX}{uuid.uuid4().hex}/{self._pdf_path.name}"
         assert self.client.files is not None
         self.client.files.upload(self._pdf_path, remote_path)
         self._remote_pdf_path = remote_path
