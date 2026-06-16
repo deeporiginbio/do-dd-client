@@ -191,25 +191,6 @@ def create_files_router(
         """Upload a file."""
         content = await request.body()
         file_storage[remote_path] = content
-
-        fixture_path = _get_fixture_path(remote_path, fixtures_dir)
-
-        files_dir = fixtures_dir / "files"
-        files_dir_resolved = files_dir.resolve()
-        try:
-            fixture_resolved = fixture_path.resolve()
-            if not str(fixture_resolved).startswith(str(files_dir_resolved)):
-                return {"eTag": "mock-etag", "key": remote_path}
-        except (OSError, ValueError):
-            return {"eTag": "mock-etag", "key": remote_path}
-
-        fixture_path.parent.mkdir(parents=True, exist_ok=True)
-
-        if fixture_path.exists():
-            return {"eTag": "mock-etag", "key": remote_path}
-
-        fixture_path.write_bytes(content)
-
         return {"eTag": "mock-etag", "key": remote_path}
 
     @router.post("/files/{org_key}/{remote_path:path}")
