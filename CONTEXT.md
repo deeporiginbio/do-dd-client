@@ -38,3 +38,8 @@ platform resolves pins at request time: exact semver (`"3.2.3"`), major-only
 (`"1"` → latest `1.x.x`), or `"latest"` (highest enabled version). Stored in
 `TOOL_KEYS_AND_VERSIONS`.
 _Avoid_: treating pins as exact semver strings when comparing against `tools.list()` rows
+
+**Patent workflow**:
+Platform tool `deeporigin.draco` that extracts chemical structures from a PDF.
+CLI class `Patent`. Billing item `DO_PATENT` (per page).
+_Avoid_: `Draco` as the public API name; `DoPatentMolecule` as a CLI type
