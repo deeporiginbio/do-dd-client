@@ -279,17 +279,20 @@ def test_update_ligand_lv1(client: DeepOriginClient):
     lig_id = create["data"]["id"]
     version_before = create["data"]["version"]
 
-    response = client.entities.update_ligand(
-        lig_id,
-        mol_file="testing/updated-ligand.sdf",
-        name="renamed-ligand",
-    )
+    try:
+        response = client.entities.update_ligand(
+            lig_id,
+            mol_file="testing/brd-2.sdf",
+            name="renamed-ligand",
+        )
 
-    assert "data" in response
-    row = response["data"][0]
-    assert row["mol_file"] == "testing/updated-ligand.sdf"
-    assert row["name"] == "renamed-ligand"
-    assert row["version"] == version_before + 1
+        assert "data" in response
+        row = response["data"][0]
+        assert row["mol_file"] == "testing/brd-2.sdf"
+        assert row["name"] == "renamed-ligand"
+        assert row["version"] == version_before + 1
+    finally:
+        client.entities.delete(entity="ligands", entity_id=lig_id)
 
 
 def test_update_protein_lv1(client: DeepOriginClient):
@@ -313,27 +316,31 @@ def test_update_protein_lv1(client: DeepOriginClient):
 def test_batch_update_ligands_lv1(client: DeepOriginClient):
     """Test batch updating multiple ligands."""
     ids: list[str] = []
-    for i in range(2):
-        tag = f"batch-upd-{uuid.uuid4().hex[:12]}-{i}"
-        create = client.entities.create_ligand(
-            smiles=f"C{'C' * i}O",
-            variant_name_tag=tag,
+    try:
+        for i in range(2):
+            tag = f"batch-upd-{uuid.uuid4().hex[:12]}-{i}"
+            create = client.entities.create_ligand(  # ty:ignore[unresolved-attribute]
+                smiles=f"C{'C' * i}O",
+                variant_name_tag=tag,
+            )
+            ids.append(create["data"]["id"])
+
+        response = client.entities.batch_update(  # ty:ignore[unresolved-attribute]
+            "ligands",
+            updates=[
+                {"id": ids[0], "set": {"name": "batch-a"}},
+                {"id": ids[1], "set": {"name": "batch-b"}},
+            ],
+            returning=["id", "name", "version"],
         )
-        ids.append(create["data"]["id"])
 
-    response = client.entities.batch_update(
-        "ligands",
-        updates=[
-            {"id": ids[0], "set": {"name": "batch-a"}},
-            {"id": ids[1], "set": {"name": "batch-b"}},
-        ],
-        returning=["id", "name", "version"],
-    )
-
-    assert len(response["data"]) == 2
-    names = {row["name"] for row in response["data"]}
-    assert names == {"batch-a", "batch-b"}
-    assert response["meta"]["affected"] == 2
+        assert len(response["data"]) == 2
+        names = {row["name"] for row in response["data"]}
+        assert names == {"batch-a", "batch-b"}
+        assert response["meta"]["affected"] == 2
+    finally:
+        for lig_id in ids:
+            client.entities.delete(entity="ligands", entity_id=lig_id)
 
 
 def test_update_empty_set_dict_raises(client: DeepOriginClient):
@@ -345,4 +352,4 @@ def test_update_empty_set_dict_raises(client: DeepOriginClient):
 def test_update_ligand_not_found_lv1(client: DeepOriginClient):
     """Test that updating a missing ligand returns 404."""
     with pytest.raises(DeepOriginException, match="404"):
-        client.entities.update_ligand("08NOTFOUND00000", name="missing")
+        client.entities.update_ligand("08NOTFOUND00000", name="missing")  # ty:ignore[unresolved-attribute]

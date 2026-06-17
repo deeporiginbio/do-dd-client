@@ -3114,7 +3114,10 @@ class LigandSet:
         unique_smiles_list = list({lig.canonical_smiles for lig in ligands_to_sync})
         response = client.entities.search_ligands(
             smiles_list=unique_smiles_list,
-            limit=len(unique_smiles_list),
+            # Do not cap at len(unique_smiles_list): the platform may return
+            # multiple rows per canonical SMILES, and a tight limit can exclude
+            # less-common matches (e.g. CCCO) when duplicates (e.g. CCO) fill the page.
+            limit=None,
             filter_dict=scope_filter if scope_filter else None,
         )
         existing_by_smiles = self._index_by_canonical_smiles(response.get("data", []))

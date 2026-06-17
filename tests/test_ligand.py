@@ -832,17 +832,22 @@ def test_ligand_upload_lv1(client: DeepOriginClient):
 def test_ligand_update_lv1(client: DeepOriginClient):
     """Test domain Ligand.update patches mol_file on an existing record."""
     tag = f"dom-upd-{uuid.uuid4().hex[:12]}"
-    ligand = Ligand.from_smiles("CCO", name=f"lig-update-{tag}")
+    # Use a long-chain alcohol unlikely to exist in the mock store from other tests.
+    smiles = f"{'C' * 12}O"
+    ligand = Ligand.from_smiles(smiles, name=f"lig-update-{tag}")
     ligand.register(client=client)
     assert ligand.id is not None
 
     new_path = f"testing/updated-{uuid.uuid4().hex[:8]}.sdf"
-    ligand.update(client=client, remote_path=new_path)
-    assert ligand.remote_path == new_path
+    try:
+        ligand.update(client=client, remote_path=new_path)
+        assert ligand.remote_path == new_path
 
-    fetched = client.entities.get_ligand(id=ligand.id)
-    assert fetched["mol_file"] == new_path
-    assert fetched["version"] >= 2
+        fetched = client.entities.get_ligand(id=ligand.id)
+        assert fetched["mol_file"] == new_path
+        assert fetched["version"] >= 2
+    finally:
+        client.entities.delete(entity="ligands", entity_id=ligand.id)
 
 
 def test_ligand_update_requires_id():
