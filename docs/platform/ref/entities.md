@@ -31,6 +31,29 @@ ligand = client.entities.create_ligand(
 # Delete an entity
 result = client.entities.delete(entity="proteins", entity_id="08BSPN61NYVE3")
 
+# Update an existing ligand (immutable version bump; ID is stable)
+updated = client.entities.update_ligand(
+    "08LIGAND12345",
+    mol_file="entities/ligands/updated.sdf",
+    name="Renamed compound",
+)
+
+# Update an existing protein
+updated = client.entities.update_protein(
+    "08PROTEIN12345",
+    file_path="entities/proteins/updated.pdb",
+)
+
+# Batch update ligands
+client.entities.batch_update(
+    "ligands",
+    updates=[
+        {"id": "08LIGAND1", "set": {"name": "A"}},
+        {"id": "08LIGAND2", "set": {"name": "B"}},
+    ],
+    returning=["id", "name", "version"],
+)
+
 # List public models
 models = client.entities.list_models()
 ```

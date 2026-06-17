@@ -1483,6 +1483,65 @@ class Protein(Entity):
 
         self.register(client=client)
 
+    @beartype
+    def update(
+        self,
+        *,
+        client: Optional[DeepOriginClient] = None,
+        remote_path: Optional[str] = None,
+    ) -> None:
+        """Update the protein's ``file_path`` on an existing platform record.
+
+        Uploads the local structure file when present, then PATCHes
+        ``file_path`` on the record identified by ``self.id``. Use
+        :meth:`sync` to link or create by identity; use ``update`` when you
+        already have a platform ID.
+
+        Args:
+            client: DeepOriginClient instance. If None, uses DeepOriginClient().
+            remote_path: Explicit remote path to set as ``file_path``. When
+                omitted, uploads ``local_path`` and uses the resulting path.
+
+        Returns:
+            None. Refreshes ``self.remote_path`` from the platform response.
+
+        Raises:
+            ValueError: If ``self.id`` is unset or no file path can be resolved.
+        """
+        if self.id is None:
+            raise ValueError(
+                "Cannot update a protein without a platform id; "
+                "call sync() or register() first."
+            )
+
+        if client is None:
+            client = DeepOriginClient()
+
+        if remote_path is not None:
+            path = remote_path
+            self.remote_path = remote_path
+        elif self.local_path is not None:
+            self.upload(client=client, remote_path=remote_path)
+            path = self.remote_path
+        else:
+            raise ValueError(
+                "Nothing to update: provide remote_path or set local_path "
+                "before calling update()."
+            )
+
+        if path is None:
+            raise ValueError("remote_path is required after upload.")
+
+        result = client.entities.update_protein(self.id, file_path=path)
+
+        row = result.get("data")
+        if isinstance(row, list):
+            row = row[0] if row else None
+        if isinstance(row, dict):
+            file_path = row.get("file_path")
+            if file_path:
+                self.remote_path = file_path
+
     def update_coordinates(self, coords: np.ndarray):
         """update coordinates of the protein structure"""
 

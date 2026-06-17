@@ -1,6 +1,7 @@
 import os
 from pathlib import Path
 import tempfile
+import uuid
 
 import numpy as np
 import pytest
@@ -826,3 +827,26 @@ def test_ligand_upload_lv1(client: DeepOriginClient):
     # check that we can upload twice
     ligand.upload()
     ligand.upload()
+
+
+def test_ligand_update_lv1(client: DeepOriginClient):
+    """Test domain Ligand.update patches mol_file on an existing record."""
+    tag = f"dom-upd-{uuid.uuid4().hex[:12]}"
+    ligand = Ligand.from_smiles("CCO", name=f"lig-update-{tag}")
+    ligand.register(client=client)
+    assert ligand.id is not None
+
+    new_path = f"testing/updated-{uuid.uuid4().hex[:8]}.sdf"
+    ligand.update(client=client, remote_path=new_path)
+    assert ligand.remote_path == new_path
+
+    fetched = client.entities.get_ligand(id=ligand.id)
+    assert fetched["mol_file"] == new_path
+    assert fetched["version"] >= 2
+
+
+def test_ligand_update_requires_id():
+    """Test that Ligand.update raises when id is unset."""
+    ligand = Ligand.from_smiles("CCO")
+    with pytest.raises(ValueError, match="platform id"):
+        ligand.update()
