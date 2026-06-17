@@ -1,0 +1,26 @@
+{
+    "anyFailed": false,
+    "failedQuotations": [],
+    "successfulQuotations": [
+        {
+            "qty": 1,
+            "orgId": "deeporigin",
+            "status": "OK",
+            "itemCode": "DO_PATENT",
+            "priceEach": 0.1,
+            "priceTotal": 0.1,
+            "pricingRecords": [
+                {
+                    "qty": 1,
+                    "itemKey": "DO_PATENT",
+                    "itemName": "PDF analysis",
+                    "priceEach": 0.1,
+                    "tierQtyTo": 0,
+                    "totalPrice": 0.1,
+                    "tierQtyFrom": 0
+                }
+            ],
+            "pricingRecordType": "regular"
+        }
+    ]
+}

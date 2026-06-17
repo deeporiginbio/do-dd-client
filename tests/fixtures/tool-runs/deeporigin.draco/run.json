@@ -1,0 +1,30 @@
+{
+    "do_patent_molecules": [
+        {
+            "record_id": "rec-001",
+            "source": "one-page.pdf",
+            "page": 1,
+            "smiles": "CCO",
+            "confidence": 0.95,
+            "confidence_details": "(C: 0.99)(O: 0.95)",
+            "type": "S",
+            "extracted_image_path": "tool-runs/rec-001/extracted.png",
+            "predicted_structure_image_path": "tool-runs/rec-001/predicted.png",
+            "iupac_name": "ethanol",
+            "created_at": "2025-11-06T19:20:00.000Z"
+        },
+        {
+            "record_id": "rec-002",
+            "source": "one-page.pdf",
+            "page": 1,
+            "smiles": "c1ccccc1",
+            "confidence": 0.88,
+            "confidence_details": null,
+            "type": "S",
+            "extracted_image_path": null,
+            "predicted_structure_image_path": null,
+            "iupac_name": "benzene",
+            "created_at": "2025-11-06T19:20:01.000Z"
+        }
+    ]
+}

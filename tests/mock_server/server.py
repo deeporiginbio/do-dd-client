@@ -75,6 +75,7 @@ class MockServer:
             "deeporigin.abfe-e2e-workflow": 30.0,  # seconds
             "deeporigin.rbfe": 5.0,
             "deeporigin.docking": 0.1,  # short poll for local Docking.run (tools API)
+            "deeporigin.draco": 3.0,
         }
         self.docking_speed = docking_speed
         self._load_execution_fixtures()

@@ -719,6 +719,8 @@ def create_tools_router(
                 "deeporigin.constrained-docking",
             ):
                 _inject_docking_tool_execution_results(execution)
+            if tool_key == "deeporigin.draco":
+                _inject_patent_tool_execution_results(execution)
             progress_reports = _load_progress_reports(tool_key)
             if progress_reports:
                 final_report = progress_reports[-1]
@@ -1088,6 +1090,7 @@ def create_tools_router(
             "deeporigin.docking": ("poses", "pose"),
             "deeporigin.constrained-docking": ("poses", "pose"),
             "deeporigin.system-prep": ("system", "preparedsystem"),
+            "deeporigin.draco": ("do_patent_molecules", "dopatentmolecule"),
         }
 
         entry = output_key_map.get(tool_key)
@@ -1195,6 +1198,30 @@ def create_tools_router(
             for p in pockets:
                 if isinstance(p, dict) and protein_id is not None:
                     p["protein_id"] = protein_id
+        execution["jobOutputs"] = outputs
+        _inject_result_explorer_records_from_outputs(
+            tool_key=tkey,
+            tool_version=tool_version,
+            execution_id=eid,
+            job_outputs=outputs,
+        )
+
+    def _inject_patent_tool_execution_results(execution: dict[str, Any]) -> None:
+        """Mirror patent fixture outputs into ``results`` for tool executions."""
+        eid = execution.get("executionId")
+        tool = execution.get("tool") or {}
+        tkey = tool.get("key")
+        tool_version = tool.get("version", "0.0.0")
+        if not eid or tkey != "deeporigin.draco":
+            return
+        if any(r.get("compute_job_id") == eid for r in results):
+            return
+
+        fixture = copy.deepcopy(load_fixture("tool-runs/deeporigin.draco/run"))
+        outputs = _legacy_outputs_to_job_outputs(fixture)
+        if not isinstance(outputs, dict):
+            return
+
         execution["jobOutputs"] = outputs
         _inject_result_explorer_records_from_outputs(
             tool_key=tkey,
