@@ -32,6 +32,14 @@ _Avoid_: `mode` for v5 workflow tools
 CLI return type from `Konnektor.run()` — resolved ligand pairs, connectivity flag, and inline viz HTML.
 _Avoid_: conflating with platform ingest entity `LigandNetwork` or legacy `LigandSet.network` dict
 
+**Entity update**:
+PATCH an existing ligand or protein record by ID; the platform creates a new immutable version row (stable ID, bumped `version`).
+_Avoid_: calling it "edit in place" or conflating with `sync()`
+
+**Entity sync**:
+Link-or-create by identity (canonical SMILES for ligands, file path for proteins). Does not modify an existing record's `mol_file` or `file_path`.
+_Avoid_: using `sync()` when the intent is to change structure files on a known platform ID — use `update()` instead
+
 **Tool version pin**:
 Version specifier passed to `executions.create`, `Tools.get`, or `Tools.exists`. The
 platform resolves pins at request time: exact semver (`"3.2.3"`), major-only

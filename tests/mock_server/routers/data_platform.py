@@ -409,6 +409,87 @@ def create_data_platform_router(
         _ligand_key_index[key] = record["id"]
         return record
 
+    def _patch_entity_record(
+        entity: str,
+        entity_id: str,
+        set_data: dict[str, Any],
+        returning: list[str],
+    ) -> dict[str, Any]:
+        """Apply an immutable-style PATCH to an in-memory entity record.
+
+        Args:
+            entity: Entity table name (e.g. ``ligands``, ``proteins``).
+            entity_id: ID of the row to update.
+            set_data: Fields to merge into the record.
+            returning: Optional field allow-list for the response row.
+
+        Returns:
+            Updated record (filtered by ``returning`` when provided).
+
+        Raises:
+            HTTPException: 404 when the entity or record is unknown.
+        """
+        from fastapi import HTTPException
+
+        store = _entity_stores.get(entity)
+        if store is None:
+            raise HTTPException(status_code=404, detail=f"Unknown entity '{entity}'")
+
+        if entity_id not in store:
+            raise HTTPException(
+                status_code=404,
+                detail=f"{entity} record '{entity_id}' not found",
+            )
+
+        now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z"
+        prev = store[entity_id]
+        record = copy.deepcopy(prev)
+        patch_data = dict(set_data)
+
+        if entity == "ligands" and (
+            "smiles" in patch_data or "variant_name_tag" in patch_data
+        ):
+            old_key = (
+                prev.get("canonical_smiles"),
+                prev.get("variant_name_tag", ""),
+            )
+            new_smiles = patch_data.get("smiles", prev.get("smiles"))
+            new_tag = patch_data.get(
+                "variant_name_tag", prev.get("variant_name_tag", "")
+            )
+            if "smiles" in patch_data and new_smiles is not None:
+                patch_data["canonical_smiles"] = _canonicalize_smiles(new_smiles)
+            new_canonical = patch_data.get(
+                "canonical_smiles", prev.get("canonical_smiles")
+            )
+            new_key = (new_canonical, new_tag)
+            if new_key != old_key:
+                if _ligand_key_index.get(old_key) == entity_id:
+                    del _ligand_key_index[old_key]
+                conflict_id = _ligand_key_index.get(new_key)
+                if conflict_id is not None and conflict_id != entity_id:
+                    raise HTTPException(
+                        status_code=409,
+                        detail=(
+                            f"Key (project_scope_key, canonical_smiles, variant_name_tag)"
+                            f"=(__unscoped__, {new_canonical}, {new_tag}) already exists."
+                        ),
+                    )
+                _ligand_key_index[new_key] = entity_id
+
+        record.update(patch_data)
+        record["version"] = prev.get("version", 1) + 1
+        record["valid_from"] = now
+        record["valid_to"] = None
+        record["modified_by"] = "mock-server"
+        store[entity_id] = record
+
+        response_data = record.copy()
+        if returning:
+            response_data = {k: v for k, v in response_data.items() if k in returning}
+
+        return response_data
+
     @router.get("/data-platform/health")
     def data_platform_health() -> dict[str, str]:
         """Data platform health check endpoint."""
@@ -814,6 +895,51 @@ def create_data_platform_router(
             "data": response_data,
             "meta": {"inserted": 1},
         }
+
+    @router.patch("/data-platform/{org_key}/{entity}/{entity_id}")
+    async def update_entity(
+        org_key: str, entity: str, entity_id: str, request: Request
+    ) -> dict[str, Any]:
+        """Update a single entity record (immutable version bump)."""
+        from fastapi import HTTPException
+
+        body = await request.json()
+        set_data = body.get("set", {})
+        returning = body.get("returning", [])
+        if not set_data:
+            raise HTTPException(
+                status_code=400, detail="set must contain at least one field"
+            )
+
+        row = _patch_entity_record(entity, entity_id, set_data, returning)
+        return {"data": [row], "meta": {"affected": 1}}
+
+    @router.patch("/data-platform/{org_key}/{entity}/batch/update")
+    async def batch_update_entity(
+        org_key: str, entity: str, request: Request
+    ) -> dict[str, Any]:
+        """Batch-update entity records (immutable version bump per row)."""
+        from fastapi import HTTPException
+
+        body = await request.json()
+        updates = body.get("updates", [])
+        returning = body.get("returning", [])
+        if not updates:
+            raise HTTPException(
+                status_code=400, detail="'updates' must be a non-empty array"
+            )
+
+        rows: list[dict[str, Any]] = []
+        for entry in updates:
+            entry_set = entry.get("set", {})
+            if not entry_set:
+                raise HTTPException(
+                    status_code=400,
+                    detail="each update must include a non-empty 'set' object",
+                )
+            rows.append(_patch_entity_record(entity, entry["id"], entry_set, returning))
+
+        return {"data": rows, "meta": {"affected": len(rows)}}
 
     @router.delete("/data-platform/{org_key}/{entity}/{entity_id}")
     def delete_entity(org_key: str, entity: str, entity_id: str) -> dict[str, Any]:

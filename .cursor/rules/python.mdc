@@ -44,6 +44,14 @@ When modifying an existing function, make the following changes together:
 - Run tests by using `uv run pytest --env local -x`. Fix failing tests. 
 - To test a specific function, use `uv run pytest -k --env local` 
 
+# Delivering new SDK features
+
+When shipping a new user-facing SDK capability in the cli repo, include all of the following:
+
+1. Implementation following code style
+2. Tests in `tests/` that verify the behavior (mock server routes when needed)
+3. Documentation in `docs/` (API reference and/or how-to as appropriate)
+4. **Demo notebook** — never create or edit notebooks in `docs/notebooks/clean/` directly. Write `docs/notebooks/dirty/{feature}.ipynb` (gitignored; agents can still create it). After it runs against a live org (`deeporigin login`, `DeepOriginClient.from_disk()`), promote with `./scripts/notebooks.sh` (dirty → clean, strip outputs). The committed artifact is `docs/notebooks/clean/{feature}.ipynb`.
 
 # Common mistakes
 
@@ -51,3 +59,4 @@ When modifying an existing function, make the following changes together:
 - Using uppercase List instead of lowercase list to annotate the type of a list
 - Using uppercase Dict instead of lowercase dist to annotate the type of a dict
 - Not using `uv run` to run some code within the correct venv
+- Creating or editing notebooks under `docs/notebooks/clean/` — use `docs/notebooks/dirty/` and `./scripts/notebooks.sh` instead

@@ -36,6 +36,37 @@ LIGAND_RETURNING_FIELDS = [
     "structure_key",
 ]
 
+PROTEIN_RETURNING_FIELDS = [
+    "id",
+    "version",
+    "valid_from",
+    "valid_to",
+    "modified_by",
+    "deleted",
+    "project_id",
+    "subtable_name",
+    "uniprot_accession",
+    "file_path",
+    "gene_symbol",
+    "pdb_id",
+    "refseq_protein_id",
+    "ensembl_protein_id",
+    "alpha_fold_id",
+    "fasta_sequence",
+    "protein_name",
+    "kegg_gene_id",
+    "chembl_target_id",
+    "binding_db_target_id",
+    "drugbank_target_id",
+    "pfam_id",
+    "interpro_id",
+    "ec_number",
+    "ncbi_taxonomy_id",
+    "protein_family",
+    "ligandability_score",
+    "protein_length",
+]
+
 
 class Entities:
     """Data Platform entity API wrapper.
@@ -197,6 +228,89 @@ class Entities:
             f"/data-platform/{self._c.org_key}/{entity}/batch/create",
             body=body,
         )
+
+    def update(
+        self,
+        entity: str,
+        entity_id: str,
+        *,
+        set_dict: dict[str, Any],
+        returning: list[str] | None = None,
+    ) -> dict:
+        """Update an entity row by ID.
+
+        Calls ``PATCH /data-platform/{orgKey}/{entity}/{id}``. Updates on
+        immutable-versioned entities (ligands, proteins) create a new version
+        row; the ID is stable.
+
+        Args:
+            entity: Entity (table) name to update.
+            entity_id: Friendly or hex ID of the row to update.
+            set_dict: Fields to set (snake_case keys).
+            returning: Optional list of fields to include in the response.
+
+        Returns:
+            Parsed JSON body from the PATCH response. When ``returning`` is
+            set, the payload includes updated row data under ``data``; the
+            platform may also include ``meta`` (e.g. ``affected``).
+
+        Raises:
+            ValueError: If ``set_dict`` is empty.
+        """
+        if not set_dict:
+            raise ValueError("set_dict must contain at least one field to update")
+
+        body: dict[str, Any] = {"set": set_dict}
+        if returning is not None:
+            body["returning"] = returning
+
+        return self._c._patch(
+            f"/data-platform/{self._c.org_key}/{entity}/{entity_id}",
+            json=body,
+        ).json()
+
+    def batch_update(
+        self,
+        entity: str,
+        *,
+        updates: list[dict[str, Any]],
+        returning: list[str] | None = None,
+    ) -> dict:
+        """Batch update entity rows.
+
+        Calls ``PATCH /data-platform/{orgKey}/{entity}/batch/update``. Each
+        entry in ``updates`` must have ``id`` and ``set`` keys.
+
+        Args:
+            entity: Entity (table) name to update.
+            updates: List of ``{"id": ..., "set": {...}}`` dicts.
+            returning: Optional list of fields to include per updated row.
+
+        Returns:
+            Parsed JSON body from the batch PATCH response. Typically
+            includes ``data`` (updated rows) and ``meta.affected`` when
+            ``returning`` is set; shape matches the platform endpoint.
+
+        Raises:
+            ValueError: If ``updates`` is empty or any entry lacks ``id``/``set``.
+        """
+        if not updates:
+            raise ValueError("updates must be a non-empty list")
+
+        for i, entry in enumerate(updates):
+            if "id" not in entry:
+                raise ValueError(f"updates[{i}] must include 'id'")
+            if not entry.get("set"):
+                raise ValueError(f"updates[{i}]['set'] must contain at least one field")
+
+        body: dict[str, Any] = {"updates": updates}
+        if returning is not None:
+            body["returning"] = returning
+
+        return self._c._patch(
+            f"/data-platform/{self._c.org_key}/{entity}/batch/update",
+            json=body,
+        ).json()
 
     # ---- Ligands ----
 
@@ -469,6 +583,82 @@ class Entities:
             body=body,
         )
 
+    def update_ligand(
+        self,
+        id: str,
+        *,
+        smiles: str | None = None,
+        project_id: str | None = None,
+        name: str | None = None,
+        mol_file: str | None = None,
+        formal_charge: int | None = None,
+        hbond_donor_count: int | None = None,
+        hbond_acceptor_count: int | None = None,
+        rotatable_bond_count: int | None = None,
+        tpsa: float | None = None,
+        molecular_weight: float | None = None,
+        variant_name_tag: str | None = None,
+        tags: list[str] | None = None,
+    ) -> dict:
+        """Update an existing ligand by ID.
+
+        Creates a new immutable version row on the platform. Only non-``None``
+        keyword arguments are sent in the ``set`` payload.
+
+        Args:
+            id: Ligand ID to update.
+            smiles: Updated SMILES string.
+            project_id: Project ID for the ligand.
+            name: Name of the ligand.
+            mol_file: Path to the molecule file in remote storage.
+            formal_charge: Formal charge.
+            hbond_donor_count: Number of hydrogen bond donors.
+            hbond_acceptor_count: Number of hydrogen bond acceptors.
+            rotatable_bond_count: Number of rotatable bonds.
+            tpsa: Topological polar surface area.
+            molecular_weight: Molecular weight.
+            variant_name_tag: Variant name tag.
+            tags: Tags for the ligand.
+
+        Returns:
+            Dictionary containing the updated ligand data.
+
+        Raises:
+            ValueError: If no fields are provided to update.
+        """
+        set_dict: dict[str, Any] = {}
+        if smiles is not None:
+            set_dict["smiles"] = smiles
+        if project_id is not None:
+            set_dict["project_id"] = project_id
+        if name is not None:
+            set_dict["name"] = name
+        if mol_file is not None:
+            set_dict["mol_file"] = mol_file
+        if formal_charge is not None:
+            set_dict["formal_charge"] = formal_charge
+        if hbond_donor_count is not None:
+            set_dict["hbond_donor_count"] = hbond_donor_count
+        if hbond_acceptor_count is not None:
+            set_dict["hbond_acceptor_count"] = hbond_acceptor_count
+        if rotatable_bond_count is not None:
+            set_dict["rotatable_bond_count"] = rotatable_bond_count
+        if tpsa is not None:
+            set_dict["tpsa"] = tpsa
+        if molecular_weight is not None:
+            set_dict["molecular_weight"] = molecular_weight
+        if variant_name_tag is not None:
+            set_dict["variant_name_tag"] = variant_name_tag
+        if tags is not None:
+            set_dict["tags"] = tags
+
+        return self.update(
+            "ligands",
+            id,
+            set_dict=set_dict,
+            returning=LIGAND_RETURNING_FIELDS,
+        )
+
     # ---- Proteins ----
 
     def get_protein(self, id: str) -> dict:
@@ -612,39 +802,70 @@ class Entities:
 
         body: dict[str, Any] = {
             "set": set_dict,
-            "returning": [
-                "id",
-                "version",
-                "valid_from",
-                "valid_to",
-                "modified_by",
-                "deleted",
-                "project_id",
-                "subtable_name",
-                "uniprot_accession",
-                "file_path",
-                "gene_symbol",
-                "pdb_id",
-                "refseq_protein_id",
-                "ensembl_protein_id",
-                "alpha_fold_id",
-                "fasta_sequence",
-                "protein_name",
-                "kegg_gene_id",
-                "chembl_target_id",
-                "binding_db_target_id",
-                "drugbank_target_id",
-                "pfam_id",
-                "interpro_id",
-                "ec_number",
-                "ncbi_taxonomy_id",
-                "protein_family",
-                "ligandability_score",
-                "protein_length",
-            ],
+            "returning": PROTEIN_RETURNING_FIELDS,
         }
 
         return self._c.post_json(
             f"/data-platform/{self._c.org_key}/proteins",
             body=body,
+        )
+
+    def update_protein(
+        self,
+        id: str,
+        *,
+        file_path: str | None = None,
+        gene_symbol: str | None = None,
+        pdb_id: str | None = None,
+        fasta_sequence: str | None = None,
+        protein_name: str | None = None,
+        protein_length: int | None = None,
+        project_id: str | None = None,
+        tags: list[str] | None = None,
+    ) -> dict:
+        """Update an existing protein by ID.
+
+        Creates a new immutable version row on the platform. Only non-``None``
+        keyword arguments are sent in the ``set`` payload.
+
+        Args:
+            id: Protein ID to update.
+            file_path: Path to the protein structure file in remote storage.
+            gene_symbol: Gene symbol.
+            pdb_id: PDB ID.
+            fasta_sequence: FASTA sequence.
+            protein_name: Protein name.
+            protein_length: Protein length.
+            project_id: Project ID for the protein.
+            tags: Tags for the protein.
+
+        Returns:
+            Dictionary containing the updated protein data.
+
+        Raises:
+            ValueError: If no fields are provided to update.
+        """
+        set_dict: dict[str, Any] = {}
+        if file_path is not None:
+            set_dict["file_path"] = file_path
+        if project_id is not None:
+            set_dict["project_id"] = project_id
+        if gene_symbol is not None:
+            set_dict["gene_symbol"] = gene_symbol
+        if pdb_id is not None:
+            set_dict["pdb_id"] = pdb_id
+        if fasta_sequence is not None:
+            set_dict["fasta_sequence"] = fasta_sequence
+        if protein_name is not None:
+            set_dict["protein_name"] = protein_name
+        if protein_length is not None:
+            set_dict["protein_length"] = protein_length
+        if tags is not None:
+            set_dict["tags"] = tags
+
+        return self.update(
+            "proteins",
+            id,
+            set_dict=set_dict,
+            returning=PROTEIN_RETURNING_FIELDS,
         )

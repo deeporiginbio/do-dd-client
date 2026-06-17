@@ -266,3 +266,98 @@ def test_get_protein_lv1(client: DeepOriginClient):
     assert response["id"] == protein_id, "Expected id to match"
     assert response["file_path"] == _BRD_PDB_REMOTE, "Expected file_path to match"
     assert response["subtable_name"] == "proteins", "Expected subtable_name to match"
+
+
+def test_update_ligand_lv1(client: DeepOriginClient):
+    """Test updating a ligand mol_file and name bumps version."""
+    tag = f"upd-{uuid.uuid4().hex[:12]}"
+    create = client.entities.create_ligand(
+        smiles="CC(C)O",
+        name=f"update-ligand-{tag}",
+        variant_name_tag=tag,
+    )
+    lig_id = create["data"]["id"]
+    version_before = create["data"]["version"]
+
+    try:
+        response = client.entities.update_ligand(
+            lig_id,
+            mol_file="testing/brd-2.sdf",
+            name="renamed-ligand",
+        )
+
+        assert "data" in response
+        row = response["data"][0]
+        assert row["mol_file"] == "testing/brd-2.sdf"
+        assert row["name"] == "renamed-ligand"
+        assert row["version"] == version_before + 1
+    finally:
+        client.entities.delete(entity="ligands", entity_id=lig_id)
+
+
+def test_update_protein_lv1(client: DeepOriginClient):
+    """Test updating a protein file_path bumps version."""
+    client.files.upload(_BRD_PDB_LOCAL, _BRD_PDB_REMOTE)
+    create = client.entities.create_protein(file_path=_BRD_PDB_REMOTE)
+    protein_id = create["data"]["id"]
+    version_before = create["data"]["version"]
+    new_path = f"testing/updated-{uuid.uuid4().hex[:8]}.pdb"
+
+    try:
+        response = client.entities.update_protein(protein_id, file_path=new_path)
+
+        row = response["data"][0]
+        assert row["file_path"] == new_path
+        assert row["version"] == version_before + 1
+    finally:
+        client.entities.update_protein(protein_id, file_path=_BRD_PDB_REMOTE)
+
+
+def test_batch_update_ligands_lv1(client: DeepOriginClient):
+    """Test batch updating multiple ligands."""
+    ids: list[str] = []
+    try:
+        for i in range(2):
+            tag = f"batch-upd-{uuid.uuid4().hex[:12]}-{i}"
+            create = client.entities.create_ligand(  # ty:ignore[unresolved-attribute]
+                smiles=f"C{'C' * i}O",
+                variant_name_tag=tag,
+            )
+            ids.append(create["data"]["id"])
+
+        response = client.entities.batch_update(  # ty:ignore[unresolved-attribute]
+            "ligands",
+            updates=[
+                {"id": ids[0], "set": {"name": "batch-a"}},
+                {"id": ids[1], "set": {"name": "batch-b"}},
+            ],
+            returning=["id", "name", "version"],
+        )
+
+        assert len(response["data"]) == 2
+        names = {row["name"] for row in response["data"]}
+        assert names == {"batch-a", "batch-b"}
+        assert response["meta"]["affected"] == 2
+    finally:
+        for lig_id in ids:
+            client.entities.delete(entity="ligands", entity_id=lig_id)
+
+
+def test_update_empty_set_dict_raises(client: DeepOriginClient):
+    """Test that update with empty set_dict raises ValueError."""
+    with pytest.raises(ValueError, match="at least one field"):
+        client.entities.update("ligands", "08FAKEID00000", set_dict={})
+
+
+def test_update_ligand_not_found_lv1(client: DeepOriginClient):
+    """Test that updating a deleted ligand raises DeepOriginException."""
+    tag = f"del-{uuid.uuid4().hex[:12]}"
+    create = client.entities.create_ligand(
+        smiles="CC(C)O",
+        variant_name_tag=tag,
+    )
+    lig_id = create["data"]["id"]
+    client.entities.delete(entity="ligands", entity_id=lig_id)
+
+    with pytest.raises(DeepOriginException):
+        client.entities.update_ligand(lig_id, name="missing")  # ty:ignore[unresolved-attribute]

@@ -1,6 +1,7 @@
 import os
 from pathlib import Path
 import tempfile
+import uuid
 
 import numpy as np
 import pytest
@@ -466,6 +467,33 @@ def test_protein_sync_lv1():
     protein.remove_water()
     protein.sync()
     assert protein.id is not None
+
+
+def test_protein_update_lv1(client: DeepOriginClient):
+    """Test domain Protein.update patches file_path on an existing record."""
+    protein = Protein.from_file(BRD_DATA_DIR / "brd.pdb")
+    protein.sync(client=client)
+    assert protein.id is not None
+    fetched = client.entities.get_protein(id=protein.id)
+    original_path = fetched["file_path"]
+
+    new_path = f"testing/updated-protein-{uuid.uuid4().hex[:8]}.pdb"
+    try:
+        protein.update(client=client, remote_path=new_path)
+        assert protein.remote_path == new_path
+
+        fetched = client.entities.get_protein(id=protein.id)
+        assert fetched["file_path"] == new_path
+        assert fetched["version"] >= 2
+    finally:
+        client.entities.update_protein(protein.id, file_path=original_path)
+
+
+def test_protein_update_requires_id():
+    """Test that Protein.update raises when id is unset."""
+    protein = Protein.from_file(BRD_DATA_DIR / "brd.pdb")
+    with pytest.raises(ValueError, match="platform id"):
+        protein.update()
 
 
 def test_protein_download_raises_when_structure_loaded_without_paths() -> None:

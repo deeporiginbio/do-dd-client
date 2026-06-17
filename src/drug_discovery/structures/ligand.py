@@ -1401,6 +1401,66 @@ class Ligand(Entity):
 
         self.register(client=client, remote_path=remote_path)
 
+    @beartype
+    def update(
+        self,
+        *,
+        client: Optional[DeepOriginClient] = None,
+        remote_path: Optional[str] = None,
+    ) -> None:
+        """Update the ligand's ``mol_file`` on an existing platform record.
+
+        Uploads the local structure file when present, then PATCHes
+        ``mol_file`` on the record identified by ``self.id``. Use
+        :meth:`sync` to link or create by identity; use ``update`` when you
+        already have a platform ID.
+
+        Args:
+            client: DeepOriginClient instance. If None, uses DeepOriginClient().
+            remote_path: Explicit remote path to set as ``mol_file``. When
+                omitted, uploads ``local_path`` and uses the resulting path.
+
+        Returns:
+            None. Refreshes ``self.remote_path`` from the platform response.
+
+        Raises:
+            ValueError: If ``self.id`` is unset or no file path can be resolved.
+        """
+        if self.id is None:
+            raise ValueError(
+                "Cannot update a ligand without a platform id; "
+                "call sync() or register() first."
+            )
+
+        if client is None:
+            client = DeepOriginClient()
+
+        if remote_path is not None:
+            path = remote_path
+            if self.local_path is not None:
+                self.upload(client=client, remote_path=remote_path)
+        elif self.local_path is not None:
+            self.upload(client=client, remote_path=None)
+            path = self.remote_path
+        else:
+            raise ValueError(
+                "Nothing to update: provide remote_path or set local_path "
+                "before calling update()."
+            )
+
+        if path is None:
+            raise ValueError("remote_path is required after upload.")
+
+        result = client.entities.update_ligand(self.id, mol_file=path)  # ty: ignore[unresolved-attribute]
+
+        row = result.get("data")
+        if isinstance(row, list):
+            row = row[0] if row else None
+        if isinstance(row, dict):
+            mol_file = row.get("mol_file")
+            if mol_file:
+                self.remote_path = mol_file
+
     def _to_row(self, *, client: DeepOriginClient | None = None) -> dict[str, Any]:
         """Build a batch-create row dict from this ligand.
 
@@ -3055,7 +3115,10 @@ class LigandSet:
         unique_smiles_list = list({lig.canonical_smiles for lig in ligands_to_sync})
         response = client.entities.search_ligands(
             smiles_list=unique_smiles_list,
-            limit=len(unique_smiles_list),
+            # Do not cap at len(unique_smiles_list): the platform may return
+            # multiple rows per canonical SMILES, and a tight limit can exclude
+            # less-common matches (e.g. CCCO) when duplicates (e.g. CCO) fill the page.
+            limit=None,
             filter_dict=scope_filter if scope_filter else None,
         )
         existing_by_smiles = self._index_by_canonical_smiles(response.get("data", []))
