@@ -1279,17 +1279,21 @@ class Ligand(Entity):
         *,
         client: Optional[DeepOriginClient] = None,
         remote_path: Optional[str] = None,
+        variant_name_tag: str = "",
     ) -> None:
         """Register the ligand as a new record in the data platform.
 
         Uploads the ligand file to remote storage (if available) and creates
-        a new ligand record, regardless of whether one already exists for this
-        canonical SMILES.
+        a new ligand record. Platform identity is
+        ``(canonical_smiles, variant_name_tag)``; pass a unique
+        ``variant_name_tag`` when you need a distinct row for the same SMILES.
 
         Args:
             client: DeepOriginClient instance. If None, uses DeepOriginClient().
             remote_path: Custom remote path to upload to. Overrides the
                 default hash-based path.
+            variant_name_tag: Optional variant tag included in the platform
+                uniqueness key. Defaults to empty string.
 
         Returns:
             None. As a side effect, uploads the ligand and sets ``self.id``
@@ -1316,6 +1320,9 @@ class Ligand(Entity):
 
         if self.name is not None:
             kwargs["name"] = self.name
+
+        if variant_name_tag:
+            kwargs["variant_name_tag"] = variant_name_tag
 
         try:
             kwargs["formal_charge"] = self.formal_charge
