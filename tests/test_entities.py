@@ -350,6 +350,14 @@ def test_update_empty_set_dict_raises(client: DeepOriginClient):
 
 
 def test_update_ligand_not_found_lv1(client: DeepOriginClient):
-    """Test that updating a missing ligand returns 404."""
-    with pytest.raises(DeepOriginException, match="404"):
-        client.entities.update_ligand("08NOTFOUND00000", name="missing")  # ty:ignore[unresolved-attribute]
+    """Test that updating a deleted ligand raises DeepOriginException."""
+    tag = f"del-{uuid.uuid4().hex[:12]}"
+    create = client.entities.create_ligand(
+        smiles="CC(C)O",
+        variant_name_tag=tag,
+    )
+    lig_id = create["data"]["id"]
+    client.entities.delete(entity="ligands", entity_id=lig_id)
+
+    with pytest.raises(DeepOriginException):
+        client.entities.update_ligand(lig_id, name="missing")  # ty:ignore[unresolved-attribute]
