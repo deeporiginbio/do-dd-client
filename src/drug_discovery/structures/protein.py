@@ -1519,9 +1519,10 @@ class Protein(Entity):
 
         if remote_path is not None:
             path = remote_path
-            self.remote_path = remote_path
+            if self.local_path is not None:
+                self.upload(client=client, remote_path=remote_path)
         elif self.local_path is not None:
-            self.upload(client=client, remote_path=remote_path)
+            self.upload(client=client, remote_path=None)
             path = self.remote_path
         else:
             raise ValueError(
@@ -1532,7 +1533,7 @@ class Protein(Entity):
         if path is None:
             raise ValueError("remote_path is required after upload.")
 
-        result = client.entities.update_protein(self.id, file_path=path)
+        result = client.entities.update_protein(self.id, file_path=path)  # ty:ignore[unresolved-attribute]
 
         row = result.get("data")
         if isinstance(row, list):

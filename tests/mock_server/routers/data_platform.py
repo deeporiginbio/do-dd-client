@@ -444,7 +444,40 @@ def create_data_platform_router(
         now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z"
         prev = store[entity_id]
         record = copy.deepcopy(prev)
-        record.update(set_data)
+        patch_data = dict(set_data)
+
+        if entity == "ligands" and (
+            "smiles" in patch_data or "variant_name_tag" in patch_data
+        ):
+            old_key = (
+                prev.get("canonical_smiles"),
+                prev.get("variant_name_tag", ""),
+            )
+            new_smiles = patch_data.get("smiles", prev.get("smiles"))
+            new_tag = patch_data.get(
+                "variant_name_tag", prev.get("variant_name_tag", "")
+            )
+            if "smiles" in patch_data and new_smiles is not None:
+                patch_data["canonical_smiles"] = _canonicalize_smiles(new_smiles)
+            new_canonical = patch_data.get(
+                "canonical_smiles", prev.get("canonical_smiles")
+            )
+            new_key = (new_canonical, new_tag)
+            if new_key != old_key:
+                if _ligand_key_index.get(old_key) == entity_id:
+                    del _ligand_key_index[old_key]
+                conflict_id = _ligand_key_index.get(new_key)
+                if conflict_id is not None and conflict_id != entity_id:
+                    raise HTTPException(
+                        status_code=409,
+                        detail=(
+                            f"Key (project_scope_key, canonical_smiles, variant_name_tag)"
+                            f"=(__unscoped__, {new_canonical}, {new_tag}) already exists."
+                        ),
+                    )
+                _ligand_key_index[new_key] = entity_id
+
+        record.update(patch_data)
         record["version"] = prev.get("version", 1) + 1
         record["valid_from"] = now
         record["valid_to"] = None

@@ -1437,9 +1437,10 @@ class Ligand(Entity):
 
         if remote_path is not None:
             path = remote_path
-            self.remote_path = remote_path
+            if self.local_path is not None:
+                self.upload(client=client, remote_path=remote_path)
         elif self.local_path is not None:
-            self.upload(client=client, remote_path=remote_path)
+            self.upload(client=client, remote_path=None)
             path = self.remote_path
         else:
             raise ValueError(

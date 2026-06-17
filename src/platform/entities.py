@@ -250,8 +250,9 @@ class Entities:
             returning: Optional list of fields to include in the response.
 
         Returns:
-            Dictionary containing updated row data when ``returning`` is set,
-            otherwise ``{"affected": N}``.
+            Parsed JSON body from the PATCH response. When ``returning`` is
+            set, the payload includes updated row data under ``data``; the
+            platform may also include ``meta`` (e.g. ``affected``).
 
         Raises:
             ValueError: If ``set_dict`` is empty.
@@ -286,8 +287,9 @@ class Entities:
             returning: Optional list of fields to include per updated row.
 
         Returns:
-            Dictionary with ``data`` (updated rows) and ``meta.affected`` when
-            ``returning`` is set, otherwise ``{"affected": N}``.
+            Parsed JSON body from the batch PATCH response. Typically
+            includes ``data`` (updated rows) and ``meta.affected`` when
+            ``returning`` is set; shape matches the platform endpoint.
 
         Raises:
             ValueError: If ``updates`` is empty or any entry lacks ``id``/``set``.

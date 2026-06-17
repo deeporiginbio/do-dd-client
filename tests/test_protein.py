@@ -474,7 +474,8 @@ def test_protein_update_lv1(client: DeepOriginClient):
     protein = Protein.from_file(BRD_DATA_DIR / "brd.pdb")
     protein.sync(client=client)
     assert protein.id is not None
-    original_path = protein.remote_path or "testing/brd.pdb"
+    fetched = client.entities.get_protein(id=protein.id)
+    original_path = fetched["file_path"]
 
     new_path = f"testing/updated-protein-{uuid.uuid4().hex[:8]}.pdb"
     try:
