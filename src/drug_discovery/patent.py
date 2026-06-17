@@ -12,12 +12,14 @@ import pandas as pd
 from deeporigin.drug_discovery.execution import Execution
 from deeporigin.drug_discovery.execution_mixins import AsyncExecutableMixin
 from deeporigin.drug_discovery.notebook_watch_mixin import NotebookWatchMixin
+from deeporigin.exceptions import DeepOriginException
 from deeporigin.platform.client import DeepOriginClient
 from deeporigin.platform.constants import TOOL_KEYS_AND_VERSIONS, is_success_status
 from deeporigin.utils.constants import UFA_PROVIDER
 
 _PATENT_OUTPUT_KEY = "do_patent_molecules"
 _PATENT_UPLOAD_PREFIX = "patent/"
+_LIGANDS_WITH_RESULTS_PAGE_SIZE = 1000
 
 
 @beartype
@@ -57,7 +59,7 @@ def _fetch_patent_ligands_with_results(
     execution_id: str,
 ) -> dict[str, Any]:
     """Query do-patent molecules via the ligands-with-results search API."""
-    body: dict[str, Any] = {
+    base_body: dict[str, Any] = {
         "experiments": [
             {
                 "tool_key": tool_key,
@@ -67,14 +69,39 @@ def _fetch_patent_ligands_with_results(
             }
         ],
         "only_with_results": True,
-        "limit": 10_000,
+        "results_layout": "rows",
+        "limit": _LIGANDS_WITH_RESULTS_PAGE_SIZE,
         "select": ["id", "smiles", "canonical_smiles", "results"],
-        "filter": {"deleted": False},
+        "sort": {"id": "asc"},
     }
-    return client.post_json(
-        f"/data-platform/{org_key}/ligands_with_results/search",
-        body=body,
-    )
+
+    all_data: list[dict[str, Any]] = []
+    meta: dict[str, Any] = {}
+    cursor: str | None = None
+
+    while True:
+        body = dict(base_body)
+        if cursor is not None:
+            body["cursor"] = cursor
+
+        response = client.post_json(
+            f"/data-platform/{org_key}/ligands_with_results/search",
+            body=body,
+        )
+        page_data = response.get("data")
+        if isinstance(page_data, list):
+            all_data.extend(page_data)
+
+        page_meta = response.get("meta")
+        if isinstance(page_meta, dict):
+            meta = page_meta
+
+        next_cursor = meta.get("nextCursor")
+        if not isinstance(next_cursor, str) or not next_cursor:
+            break
+        cursor = next_cursor
+
+    return {"data": all_data, "meta": meta}
 
 
 _PATENT_RESULT_COLUMNS = (
@@ -336,16 +363,21 @@ class Patent(Execution, AsyncExecutableMixin, NotebookWatchMixin):
             tool_info = self.dto.get("tool") or {}
             tool_version = str(tool_info.get("version") or tool_version)
 
-        ligands_response = _fetch_patent_ligands_with_results(
-            client=self.client,
-            org_key=self.client.org_key,
-            tool_key=self.tool_key,
-            tool_version=tool_version,
-            execution_id=exec_id,
-        )
-        df = _patent_ligands_with_results_dataframe(ligands_response)
-        if df is not None:
-            return df
+        try:
+            ligands_response = _fetch_patent_ligands_with_results(
+                client=self.client,
+                org_key=self.client.org_key,
+                tool_key=self.tool_key,
+                tool_version=tool_version,
+                execution_id=exec_id,
+            )
+        except DeepOriginException:
+            ligands_response = None
+
+        if isinstance(ligands_response, dict):
+            df = _patent_ligands_with_results_dataframe(ligands_response)
+            if df is not None:
+                return df
 
         response = super().get_results()
         if isinstance(response, dict):
