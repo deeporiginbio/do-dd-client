@@ -50,31 +50,13 @@ def _patent_ligands_with_results_dataframe(
 
 
 @beartype
-def _fetch_patent_ligands_with_results(
+def _paginate_ligands_with_results_search(
     *,
     client: DeepOriginClient,
     org_key: str,
-    tool_key: str,
-    tool_version: str,
-    execution_id: str,
+    base_body: dict[str, Any],
 ) -> dict[str, Any]:
-    """Query do-patent molecules via the ligands-with-results search API."""
-    base_body: dict[str, Any] = {
-        "experiments": [
-            {
-                "tool_key": tool_key,
-                "tool_version": tool_version,
-                "output_key": _PATENT_OUTPUT_KEY,
-                "execution_ids": [execution_id],
-            }
-        ],
-        "only_with_results": True,
-        "results_layout": "rows",
-        "limit": _LIGANDS_WITH_RESULTS_PAGE_SIZE,
-        "select": ["id", "smiles", "canonical_smiles", "results"],
-        "sort": {"id": "asc"},
-    }
-
+    """Run a cursor-paginated ligands-with-results search."""
     all_data: list[dict[str, Any]] = []
     meta: dict[str, Any] = {}
     cursor: str | None = None
@@ -84,10 +66,16 @@ def _fetch_patent_ligands_with_results(
         if cursor is not None:
             body["cursor"] = cursor
 
-        response = client.post_json(
-            f"/data-platform/{org_key}/ligands_with_results/search",
-            body=body,
-        )
+        try:
+            response = client.post_json(
+                f"/data-platform/{org_key}/ligands_with_results/search",
+                body=body,
+            )
+        except DeepOriginException:
+            if all_data:
+                break
+            raise
+
         page_data = response.get("data")
         if isinstance(page_data, list):
             all_data.extend(page_data)
@@ -96,12 +84,76 @@ def _fetch_patent_ligands_with_results(
         if isinstance(page_meta, dict):
             meta = page_meta
 
-        next_cursor = meta.get("nextCursor")
+        next_cursor = (
+            page_meta.get("nextCursor") if isinstance(page_meta, dict) else None
+        )
         if not isinstance(next_cursor, str) or not next_cursor:
             break
         cursor = next_cursor
 
     return {"data": all_data, "meta": meta}
+
+
+@beartype
+def _fetch_patent_ligands_with_results(
+    *,
+    client: DeepOriginClient,
+    org_key: str,
+    tool_key: str,
+    tool_version: str,
+    execution_id: str,
+) -> dict[str, Any]:
+    """Query do-patent molecules via the ligands-with-results search API."""
+    experiments = [
+        {
+            "tool_key": tool_key,
+            "tool_version": tool_version,
+            "output_key": _PATENT_OUTPUT_KEY,
+            "execution_ids": [execution_id],
+        }
+    ]
+    search_bodies: list[dict[str, Any]] = [
+        {
+            "experiments": experiments,
+            "only_with_results": True,
+            "limit": _LIGANDS_WITH_RESULTS_PAGE_SIZE,
+        },
+        {
+            "experiments": experiments,
+            "only_with_results": True,
+            "results_layout": "rows",
+            "limit": _LIGANDS_WITH_RESULTS_PAGE_SIZE,
+            "select": ["id", "smiles", "canonical_smiles", "results"],
+        },
+        {
+            "experiments": experiments,
+            "only_with_results": True,
+            "results_layout": "rows",
+            "limit": _LIGANDS_WITH_RESULTS_PAGE_SIZE,
+            "select": ["id", "smiles", "canonical_smiles", "results"],
+            "sort": {"id": "asc"},
+        },
+    ]
+
+    last_error: DeepOriginException | None = None
+    for base_body in search_bodies:
+        try:
+            response = _paginate_ligands_with_results_search(
+                client=client,
+                org_key=org_key,
+                base_body=base_body,
+            )
+        except DeepOriginException as exc:
+            last_error = exc
+            continue
+
+        if response.get("data"):
+            return response
+
+    if last_error is not None:
+        raise last_error
+
+    return {"data": [], "meta": {}}
 
 
 _PATENT_RESULT_COLUMNS = (
@@ -386,11 +438,22 @@ class Patent(Execution, AsyncExecutableMixin, NotebookWatchMixin):
                 return df
 
         dto = self.dto
+        job_outputs: dict[str, Any] | None = None
         if isinstance(dto, dict):
-            job_outputs = dto.get("jobOutputs")
-            if isinstance(job_outputs, dict):
-                molecules = job_outputs.get("do_patent_molecules")
-                if isinstance(molecules, list):
-                    return _patent_molecules_to_dataframe(molecules)
+            raw_outputs = dto.get("jobOutputs")
+            if isinstance(raw_outputs, dict):
+                job_outputs = raw_outputs
+
+        if job_outputs is None:
+            fresh_dto = self.client.executions.get(exec_id)  # ty:ignore[unresolved-attribute]
+            if isinstance(fresh_dto, dict):
+                raw_outputs = fresh_dto.get("jobOutputs")
+                if isinstance(raw_outputs, dict):
+                    job_outputs = raw_outputs
+
+        if isinstance(job_outputs, dict):
+            molecules = job_outputs.get(_PATENT_OUTPUT_KEY)
+            if isinstance(molecules, list):
+                return _patent_molecules_to_dataframe(molecules)
 
         return None
