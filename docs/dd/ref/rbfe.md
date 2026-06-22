@@ -14,6 +14,12 @@ Exactly one of `ligands`, `pairs`, or `prepared_systems` must be provided.
 | `["konnektor", "system-prep", "rbfe"]` | Shared `protein` + `ligands[]` + `network_type` + FEP params | Konnektor edges, then `system` and `result` records |
 | `["system-prep", "rbfe"]` | Shared `protein` + `pairs[]` + FEP params | `system` then `result` records |
 | `["rbfe"]` | `prepared_systems[]` + FEP params | `result` records |
+| Any of the above + `cycle-closure` | Same inputs plus `exp_abfe` and/or `fep_abfe` anchors | Per-ligand absolute dG (`cycleclosureresults`) |
+
+Pass `exp_abfe` and/or `fep_abfe` to `RBFE(...)` to append the `cycle-closure`
+step automatically. At least one anchor ligand with a placeholder or measured dG
+value is required. See
+[RBFE cycle-closure workflow notebook](../../notebooks/clean/rbfe-6-cycle-closure-workflow.ipynb).
 
 For Konnektor mode, each ligand must be synced and registered (platform `id` and
 `file_path` required). Use `SystemPrep` for single-pair prep without FEP.
@@ -23,6 +29,10 @@ Start executions via `RBFE.start()` or the [Platform executions API](../../platf
 Rehydrate a submitted run with `RBFE.from_id(execution_id)`, `RBFE.from_last_run()`, or `RBFE.from_dto(dto)` to refresh status, watch progress in notebooks, or inspect stored inputs.
 
 After an RBFE leg completes, `RBFE.get_results()` returns a summary DataFrame with `protein_id`, `ligand1_id`, `ligand2_id`, and `ddG` (free-energy difference from `total` with `unit`, e.g. `-3875.483 kcal/mol`).
+
+When the workflow includes cycle closure, `RBFE.get_cycle_closure_results()` returns
+per-ligand absolute dG values with columns `ligand_id`, `dG`, `unit`, and optional
+`cluster`.
 
 ## Prepared systems
 

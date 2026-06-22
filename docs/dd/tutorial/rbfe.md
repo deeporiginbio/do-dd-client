@@ -90,7 +90,8 @@ rbfe.start()
 ```
 
 See the [RBFE many-ligands workflow notebook](../../notebooks/clean/rbfe-5-many-ligands-workflow.ipynb)
-for an end-to-end example on dev.
+for an end-to-end example on dev. For cycle closure with anchor ABFE values, see
+[RBFE cycle-closure workflow](../../notebooks/clean/rbfe-6-cycle-closure-workflow.ipynb).
 
 To preview a network interactively in Jupyter before submitting, use
 `Konnektor(ligands=...).run()` and call `.show_network()` on the result — see

@@ -62,6 +62,38 @@ def test_rbfe_ligands_build_params() -> None:
     assert "binding" in params
 
 
+def test_rbfe_ligands_cycle_closure_build_params() -> None:
+    """Anchor inputs append cycle-closure and serialize fep_abfe."""
+    protein = Protein(name="p", id="prot-1", remote_path="testing/brd.pdb")
+    ligand1 = Ligand.from_smiles("CCO", id="lig-1", remote_path="testing/lig1.sdf")
+    ligand2 = Ligand.from_smiles("CCN", id="lig-2", remote_path="testing/lig2.sdf")
+    ligand3 = Ligand.from_smiles("CCC", id="lig-3", remote_path="testing/lig3.sdf")
+    rbfe = RBFE(
+        protein=protein,
+        ligands=[ligand1, ligand2, ligand3],
+        fep_abfe=[{"ligand_id": "lig-1", "dG": -10.0}],
+    )
+    params = rbfe._build_params()
+    assert params["steps"] == [
+        "konnektor",
+        "system-prep",
+        "rbfe",
+        "cycle-closure",
+    ]
+    assert params["fep_abfe"] == [{"ligand_id": "lig-1", "dG": -10.0}]
+
+
+def test_rbfe_cycle_closure_requires_anchor() -> None:
+    """cycle-closure without anchors is rejected at construction."""
+    protein = Protein(name="p", id="prot-1", remote_path="testing/brd.pdb")
+    ligand1 = Ligand.from_smiles("CCO", id="lig-1", remote_path="testing/lig1.sdf")
+    ligand2 = Ligand.from_smiles("CCN", id="lig-2", remote_path="testing/lig2.sdf")
+    rbfe = RBFE(protein=protein, ligands=[ligand1, ligand2])
+    rbfe.steps = ["konnektor", "system-prep", "rbfe", "cycle-closure"]
+    with pytest.raises(ValueError, match="exp_abfe or fep_abfe is required"):
+        rbfe._validate_step_inputs()
+
+
 def test_rbfe_rbfe_steps_require_prepared_systems() -> None:
     """RBFE-only steps reject when no input mode is provided."""
     with pytest.raises(
