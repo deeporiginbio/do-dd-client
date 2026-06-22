@@ -11,3 +11,5 @@ client = DeepOriginClient()
 ```
 
 Notebook execution widgets: [Execution display](ref/execution_display.md).
+
+Cursor agents: [Platform MCP server](how-to/mcp.md) — query live dev data from chat.

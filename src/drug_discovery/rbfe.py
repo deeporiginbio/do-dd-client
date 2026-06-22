@@ -25,8 +25,9 @@ from deeporigin.platform.client import DeepOriginClient
 from deeporigin.platform.constants import TOOL_KEYS_AND_VERSIONS
 
 RBFEParams = ABFEParams
-RBFEWorkflowStep = Literal["konnektor", "system-prep", "rbfe"]
+RBFEWorkflowStep = Literal["konnektor", "system-prep", "rbfe", "cycle-closure"]
 KonnektorNetworkType = Literal["star", "mst", "cyclic"]
+RBFEAnchorInput = dict[str, str | float]
 
 
 @beartype
@@ -79,6 +80,45 @@ def _format_ddg(*, total: Any, unit: str | None) -> str | None:
     return str(total)
 
 
+def _cycle_closure_results_dataframe(
+    response: dict[str, Any],
+) -> pd.DataFrame | None:
+    """Build a summary table from cycle-closure result rows."""
+    records = response.get("data") or []
+    rows: list[dict[str, Any]] = []
+    for record in records:
+        if not isinstance(record, dict):
+            continue
+        payload = record.get("data", record)
+        if not isinstance(payload, dict):
+            continue
+        nested = payload.get("cycleclosureresults")
+        if isinstance(nested, list):
+            for item in nested:
+                if isinstance(item, dict):
+                    rows.append(
+                        {
+                            "ligand_id": item.get("ligand_id"),
+                            "dG": item.get("dG"),
+                            "unit": item.get("unit"),
+                            "cluster": item.get("cluster"),
+                        }
+                    )
+            continue
+        if "ligand_id" in payload and "dG" in payload:
+            rows.append(
+                {
+                    "ligand_id": payload.get("ligand_id"),
+                    "dG": payload.get("dG"),
+                    "unit": payload.get("unit"),
+                    "cluster": payload.get("cluster"),
+                }
+            )
+    if not rows:
+        return None
+    return pd.DataFrame(rows)
+
+
 def _rbfe_results_dataframe(
     response: dict[str, Any],
     *,
@@ -119,6 +159,7 @@ class RBFE(Execution, AsyncExecutableMixin, NotebookWatchMixin):
     - ``["konnektor", "system-prep", "rbfe"]``: ``protein`` + ``ligands``
     - ``["system-prep", "rbfe"]``: ``protein`` + ``pairs``
     - ``["rbfe"]``: ``prepared_systems``
+    - Append ``cycle-closure`` when ``exp_abfe`` and/or ``fep_abfe`` anchors are set
 
     Attributes:
         steps: Ordered workflow steps forwarded to the platform tool.
@@ -140,6 +181,8 @@ class RBFE(Execution, AsyncExecutableMixin, NotebookWatchMixin):
         protonate_protein: bool = False,
         retain_waters: bool = True,
         padding: float = 1.0,
+        exp_abfe: list[RBFEAnchorInput] | None = None,
+        fep_abfe: list[RBFEAnchorInput] | None = None,
         tool_version: str = TOOL_KEYS_AND_VERSIONS["rbfe"]["tool_version"],
         client: DeepOriginClient | None = None,
         name: str | None = None,
@@ -167,6 +210,8 @@ class RBFE(Execution, AsyncExecutableMixin, NotebookWatchMixin):
             protonate_protein: Protonate protein during prep.
             retain_waters: Retain crystal waters during prep.
             padding: Solvation box padding (nm) during prep.
+            exp_abfe: Experimental ABFE anchor values for cycle closure.
+            fep_abfe: FEP-ABFE anchor values for cycle closure.
             tool_version: Platform tool version pin.
             client: Optional API client.
             name: Optional execution label.
@@ -176,6 +221,8 @@ class RBFE(Execution, AsyncExecutableMixin, NotebookWatchMixin):
         """
         super().__init__(client=client)
         self.tool_version = tool_version
+        self.exp_abfe = list(exp_abfe or [])
+        self.fep_abfe = list(fep_abfe or [])
         self.protein = protein
         if ligands is None:
             self.ligands = LigandSet()
@@ -211,6 +258,9 @@ class RBFE(Execution, AsyncExecutableMixin, NotebookWatchMixin):
             self.steps = ["konnektor", "system-prep", "rbfe"]
         else:
             self.steps = ["system-prep", "rbfe"]
+        if self.exp_abfe or self.fep_abfe:
+            if "cycle-closure" not in self.steps:
+                self.steps = [*self.steps, "cycle-closure"]
         self._validate_step_inputs()
 
     @property
@@ -274,6 +324,12 @@ class RBFE(Execution, AsyncExecutableMixin, NotebookWatchMixin):
         instance.protonate_protein = bool(inputs.get("protonate_protein", False))
         instance.retain_waters = bool(inputs.get("retain_waters", True))
         instance.padding = float(inputs.get("padding", 1.0))
+        instance.exp_abfe = [
+            dict(item) for item in inputs.get("exp_abfe", []) if isinstance(item, dict)
+        ]
+        instance.fep_abfe = [
+            dict(item) for item in inputs.get("fep_abfe", []) if isinstance(item, dict)
+        ]
         instance._params = (
             _fep_params_from_inputs(inputs)
             if "rbfe" in instance.steps
@@ -375,6 +431,10 @@ class RBFE(Execution, AsyncExecutableMixin, NotebookWatchMixin):
                 raise ValueError(f"pairs is required for steps={self.steps!r}.")
         if self.steps == ["rbfe"] and not self.prepared_systems:
             raise ValueError("prepared_systems is required for steps=['rbfe'].")
+        if "cycle-closure" in self.steps and not (self.exp_abfe or self.fep_abfe):
+            raise ValueError(
+                "exp_abfe or fep_abfe is required when steps include 'cycle-closure'."
+            )
 
     def _ensure_synced_inputs(self) -> None:
         """Sync protein and ligands before submission."""
@@ -436,6 +496,11 @@ class RBFE(Execution, AsyncExecutableMixin, NotebookWatchMixin):
             ]
         if "rbfe" in self.steps:
             out.update(_simulation_blocks(self._params))
+        if "cycle-closure" in self.steps:
+            if self.exp_abfe:
+                out["exp_abfe"] = self.exp_abfe
+            if self.fep_abfe:
+                out["fep_abfe"] = self.fep_abfe
         return out
 
     def _make_payload(
@@ -490,6 +555,20 @@ class RBFE(Execution, AsyncExecutableMixin, NotebookWatchMixin):
         self.sync()
         response = super().get_results()
         return _rbfe_results_dataframe(response, tool_key=self.tool_key)
+
+    def get_cycle_closure_results(self, **_kwargs: Any) -> pd.DataFrame | None:
+        """Retrieve per-ligand absolute dG values from cycle closure.
+
+        Returns:
+            A DataFrame with columns ``ligand_id``, ``dG``, ``unit``, and
+            optional ``cluster``, or ``None`` if no cycle-closure rows exist yet.
+
+        Raises:
+            ValueError: If no execution has been started.
+        """
+        self.sync()
+        response = super().get_results()
+        return _cycle_closure_results_dataframe(response)
 
     @beartype
     def get_prepared_system(
