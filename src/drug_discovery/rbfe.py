@@ -175,7 +175,7 @@ class RBFE(Execution, AsyncExecutableMixin, NotebookWatchMixin):
 
     tool_key: str = TOOL_KEYS_AND_VERSIONS["rbfe"]["tool_key"]
 
-    def __init__(  # NOSONAR
+    def __init__(
         self,
         *,
         protein: Protein | None = None,
@@ -193,7 +193,7 @@ class RBFE(Execution, AsyncExecutableMixin, NotebookWatchMixin):
         tool_version: str = TOOL_KEYS_AND_VERSIONS["rbfe"]["tool_version"],
         client: DeepOriginClient | None = None,
         name: str | None = None,
-    ) -> None:
+    ) -> None:  # NOSONAR
         """Create an RBFE batch workflow execution.
 
         Platform ``steps`` are inferred in :meth:`_post_init`:
@@ -424,29 +424,41 @@ class RBFE(Execution, AsyncExecutableMixin, NotebookWatchMixin):
     def _validate_step_inputs(self) -> None:
         """Validate constructor arguments for the selected workflow steps."""
         if "konnektor" in self.steps:
-            if self.protein is None:
-                raise ValueError(f"protein is required for steps={self.steps!r}.")
-            if len(self.ligands) < 2:
-                raise ValueError(
-                    f"ligands requires at least two ligands for steps={self.steps!r}."
-                )
+            self._validate_konnektor_inputs()
         elif "system-prep" in self.steps:
-            if self.protein is None:
-                raise ValueError(f"protein is required for steps={self.steps!r}.")
-            if not self.pairs:
-                raise ValueError(f"pairs is required for steps={self.steps!r}.")
+            self._validate_system_prep_inputs()
         if self.steps == ["rbfe"] and not self.prepared_systems:
             raise ValueError("prepared_systems is required for steps=['rbfe'].")
         if "cycle-closure" in self.steps:
-            if "rbfe" not in self.steps:
-                raise ValueError("cycle-closure requires 'rbfe' in steps.")
-            if self.steps[-1] != "cycle-closure":
-                raise ValueError("cycle-closure must be the final workflow step.")
-            if not (self.exp_abfe or self.fep_abfe):
-                raise ValueError(
-                    "exp_abfe or fep_abfe is required when steps include 'cycle-closure'."
-                )
-            self._validate_cycle_closure_anchors()
+            self._validate_cycle_closure_inputs()
+
+    def _validate_konnektor_inputs(self) -> None:
+        """Validate inputs for Konnektor workflow steps."""
+        if self.protein is None:
+            raise ValueError(f"protein is required for steps={self.steps!r}.")
+        if len(self.ligands) < 2:
+            raise ValueError(
+                f"ligands requires at least two ligands for steps={self.steps!r}."
+            )
+
+    def _validate_system_prep_inputs(self) -> None:
+        """Validate inputs for system-prep workflow steps."""
+        if self.protein is None:
+            raise ValueError(f"protein is required for steps={self.steps!r}.")
+        if not self.pairs:
+            raise ValueError(f"pairs is required for steps={self.steps!r}.")
+
+    def _validate_cycle_closure_inputs(self) -> None:
+        """Validate cycle-closure step ordering and anchor payloads."""
+        if "rbfe" not in self.steps:
+            raise ValueError("cycle-closure requires 'rbfe' in steps.")
+        if self.steps[-1] != "cycle-closure":
+            raise ValueError("cycle-closure must be the final workflow step.")
+        if not (self.exp_abfe or self.fep_abfe):
+            raise ValueError(
+                "exp_abfe or fep_abfe is required when steps include 'cycle-closure'."
+            )
+        self._validate_cycle_closure_anchors()
 
     def _validate_cycle_closure_anchors(self) -> None:
         """Validate anchor payloads before cycle-closure submission."""
@@ -460,8 +472,7 @@ class RBFE(Execution, AsyncExecutableMixin, NotebookWatchMixin):
                     raise ValueError(
                         f"{label} entries require a non-empty string 'ligand_id'."
                     )
-                dG = anchor.get("dG")
-                if not isinstance(dG, (int, float)):
+                if not isinstance(anchor.get("dG"), (int, float)):
                     raise ValueError(f"{label} entries require a numeric 'dG' value.")
 
     def _ensure_synced_inputs(self) -> None:
