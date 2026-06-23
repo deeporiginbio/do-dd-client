@@ -176,7 +176,7 @@ class RBFE(Execution, AsyncExecutableMixin, NotebookWatchMixin):
     tool_key: str = TOOL_KEYS_AND_VERSIONS["rbfe"]["tool_key"]
 
     def __init__(
-        self,  # NOSONAR(S107)
+        self,
         *,
         protein: Protein | None = None,
         ligands: LigandSet | list[Ligand] | None = None,
@@ -192,6 +192,7 @@ class RBFE(Execution, AsyncExecutableMixin, NotebookWatchMixin):
         fep_abfe: list[RBFEAnchorInput] | None = None,
         tool_version: str = TOOL_KEYS_AND_VERSIONS["rbfe"]["tool_version"],
         client: DeepOriginClient | None = None,
+        name: str | None = None,
     ) -> None:
         """Create an RBFE batch workflow execution.
 
@@ -220,6 +221,7 @@ class RBFE(Execution, AsyncExecutableMixin, NotebookWatchMixin):
             fep_abfe: FEP-ABFE anchor values for cycle closure.
             tool_version: Platform tool version pin.
             client: Optional API client.
+            name: Optional execution label.
 
         Raises:
             ValueError: When inputs are missing or mutually exclusive.
@@ -243,6 +245,7 @@ class RBFE(Execution, AsyncExecutableMixin, NotebookWatchMixin):
         self.protonate_protein = protonate_protein
         self.retain_waters = retain_waters
         self.padding = padding
+        self.name = name
         self._post_init()
 
     def _post_init(self) -> None:
