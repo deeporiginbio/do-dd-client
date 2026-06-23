@@ -80,8 +80,34 @@ def _format_ddg(*, total: Any, unit: str | None) -> str | None:
     return str(total)
 
 
+def _cycle_closure_row_from_item(item: dict[str, Any]) -> dict[str, Any]:
+    """Extract one cycle-closure summary row from a result item."""
+    return {
+        "ligand_id": item.get("ligand_id"),
+        "dG": item.get("dG"),
+        "unit": item.get("unit"),
+        "cluster": item.get("cluster"),
+    }
+
+
+def _cycle_closure_rows_from_payload(payload: dict[str, Any]) -> list[dict[str, Any]]:
+    """Parse cycle-closure rows from a single data-platform result payload."""
+    nested = payload.get("cycleclosureresults")
+    if isinstance(nested, list):
+        return [
+            _cycle_closure_row_from_item(item)
+            for item in nested
+            if isinstance(item, dict)
+        ]
+    if "ligand_id" in payload and "dG" in payload:
+        return [_cycle_closure_row_from_item(payload)]
+    return []
+
+
 def _cycle_closure_results_dataframe(
     response: dict[str, Any],
+    *,
+    tool_key: str,
 ) -> pd.DataFrame | None:
     """Build a summary table from cycle-closure result rows."""
     records = response.get("data") or []
@@ -89,31 +115,12 @@ def _cycle_closure_results_dataframe(
     for record in records:
         if not isinstance(record, dict):
             continue
+        if record.get("tool_key") != tool_key:
+            continue
         payload = record.get("data", record)
         if not isinstance(payload, dict):
             continue
-        nested = payload.get("cycleclosureresults")
-        if isinstance(nested, list):
-            for item in nested:
-                if isinstance(item, dict):
-                    rows.append(
-                        {
-                            "ligand_id": item.get("ligand_id"),
-                            "dG": item.get("dG"),
-                            "unit": item.get("unit"),
-                            "cluster": item.get("cluster"),
-                        }
-                    )
-            continue
-        if "ligand_id" in payload and "dG" in payload:
-            rows.append(
-                {
-                    "ligand_id": payload.get("ligand_id"),
-                    "dG": payload.get("dG"),
-                    "unit": payload.get("unit"),
-                    "cluster": payload.get("cluster"),
-                }
-            )
+        rows.extend(_cycle_closure_rows_from_payload(payload))
     if not rows:
         return None
     return pd.DataFrame(rows)
@@ -168,7 +175,7 @@ class RBFE(Execution, AsyncExecutableMixin, NotebookWatchMixin):
 
     tool_key: str = TOOL_KEYS_AND_VERSIONS["rbfe"]["tool_key"]
 
-    def __init__(
+    def __init__(  # NOSONAR
         self,
         *,
         protein: Protein | None = None,
@@ -258,9 +265,8 @@ class RBFE(Execution, AsyncExecutableMixin, NotebookWatchMixin):
             self.steps = ["konnektor", "system-prep", "rbfe"]
         else:
             self.steps = ["system-prep", "rbfe"]
-        if self.exp_abfe or self.fep_abfe:
-            if "cycle-closure" not in self.steps:
-                self.steps = [*self.steps, "cycle-closure"]
+        if (self.exp_abfe or self.fep_abfe) and "cycle-closure" not in self.steps:
+            self.steps = [*self.steps, "cycle-closure"]
         self._validate_step_inputs()
 
     @property
@@ -431,10 +437,32 @@ class RBFE(Execution, AsyncExecutableMixin, NotebookWatchMixin):
                 raise ValueError(f"pairs is required for steps={self.steps!r}.")
         if self.steps == ["rbfe"] and not self.prepared_systems:
             raise ValueError("prepared_systems is required for steps=['rbfe'].")
-        if "cycle-closure" in self.steps and not (self.exp_abfe or self.fep_abfe):
-            raise ValueError(
-                "exp_abfe or fep_abfe is required when steps include 'cycle-closure'."
-            )
+        if "cycle-closure" in self.steps:
+            if "rbfe" not in self.steps:
+                raise ValueError("cycle-closure requires 'rbfe' in steps.")
+            if self.steps[-1] != "cycle-closure":
+                raise ValueError("cycle-closure must be the final workflow step.")
+            if not (self.exp_abfe or self.fep_abfe):
+                raise ValueError(
+                    "exp_abfe or fep_abfe is required when steps include 'cycle-closure'."
+                )
+            self._validate_cycle_closure_anchors()
+
+    def _validate_cycle_closure_anchors(self) -> None:
+        """Validate anchor payloads before cycle-closure submission."""
+        for label, anchors in (
+            ("exp_abfe", self.exp_abfe),
+            ("fep_abfe", self.fep_abfe),
+        ):
+            for anchor in anchors:
+                ligand_id = anchor.get("ligand_id")
+                if not isinstance(ligand_id, str) or not ligand_id:
+                    raise ValueError(
+                        f"{label} entries require a non-empty string 'ligand_id'."
+                    )
+                dG = anchor.get("dG")
+                if not isinstance(dG, (int, float)):
+                    raise ValueError(f"{label} entries require a numeric 'dG' value.")
 
     def _ensure_synced_inputs(self) -> None:
         """Sync protein and ligands before submission."""
@@ -568,7 +596,7 @@ class RBFE(Execution, AsyncExecutableMixin, NotebookWatchMixin):
         """
         self.sync()
         response = super().get_results()
-        return _cycle_closure_results_dataframe(response)
+        return _cycle_closure_results_dataframe(response, tool_key=self.tool_key)
 
     @beartype
     def get_prepared_system(

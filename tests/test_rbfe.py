@@ -11,6 +11,7 @@ from deeporigin.drug_discovery.execution import Execution
 from deeporigin.drug_discovery.rbfe import (
     RBFE,
     RBFEParams,
+    _cycle_closure_results_dataframe,
     _ligand_from_pair_input,
     _rbfe_results_dataframe,
 )
@@ -92,6 +93,176 @@ def test_rbfe_cycle_closure_requires_anchor() -> None:
     rbfe.steps = ["konnektor", "system-prep", "rbfe", "cycle-closure"]
     with pytest.raises(ValueError, match="exp_abfe or fep_abfe is required"):
         rbfe._validate_step_inputs()
+
+
+def test_rbfe_exp_abfe_build_params() -> None:
+    """exp_abfe anchors append cycle-closure and serialize exp_abfe only."""
+    protein = Protein(name="p", id="prot-1", remote_path="testing/brd.pdb")
+    ligand1 = Ligand.from_smiles("CCO", id="lig-1", remote_path="testing/lig1.sdf")
+    ligand2 = Ligand.from_smiles("CCN", id="lig-2", remote_path="testing/lig2.sdf")
+    rbfe = RBFE(
+        protein=protein,
+        ligands=[ligand1, ligand2],
+        exp_abfe=[{"ligand_id": "lig-1", "dG": -9.0}],
+    )
+    params = rbfe._build_params()
+    assert "cycle-closure" in params["steps"]
+    assert params["exp_abfe"] == [{"ligand_id": "lig-1", "dG": -9.0}]
+    assert "fep_abfe" not in params
+
+
+def test_cycle_closure_results_dataframe_nested_list() -> None:
+    """Nested cycleclosureresults lists flatten into summary rows."""
+    rbfe_tool_key = TOOL_KEYS_AND_VERSIONS["rbfe"]["tool_key"]
+    response = {
+        "data": [
+            {
+                "tool_key": rbfe_tool_key,
+                "data": {
+                    "cycleclosureresults": [
+                        {
+                            "ligand_id": "lig-1",
+                            "dG": -10.0,
+                            "unit": "kcal/mol",
+                            "cluster": "A",
+                        },
+                        {"ligand_id": "lig-2", "dG": -8.5, "unit": "kcal/mol"},
+                    ]
+                },
+            }
+        ]
+    }
+    df = _cycle_closure_results_dataframe(response, tool_key=rbfe_tool_key)
+    assert df is not None
+    assert len(df) == 2
+    assert df.iloc[0]["ligand_id"] == "lig-1"
+    assert df.iloc[0]["dG"] == -10.0
+    assert df.iloc[0]["cluster"] == "A"
+
+
+def test_cycle_closure_results_dataframe_flat_payload() -> None:
+    """Flat ligand_id/dG payloads are accepted as single rows."""
+    rbfe_tool_key = TOOL_KEYS_AND_VERSIONS["rbfe"]["tool_key"]
+    response = {
+        "data": [
+            {
+                "tool_key": rbfe_tool_key,
+                "data": {"ligand_id": "lig-3", "dG": -5.0, "unit": "kcal/mol"},
+            }
+        ]
+    }
+    df = _cycle_closure_results_dataframe(response, tool_key=rbfe_tool_key)
+    assert df is not None
+    assert len(df) == 1
+    assert df.iloc[0]["ligand_id"] == "lig-3"
+
+
+def test_cycle_closure_results_dataframe_none_when_empty() -> None:
+    """Non-cycle-closure payloads return None."""
+    rbfe_tool_key = TOOL_KEYS_AND_VERSIONS["rbfe"]["tool_key"]
+    assert (
+        _cycle_closure_results_dataframe({"data": []}, tool_key=rbfe_tool_key) is None
+    )
+    assert (
+        _cycle_closure_results_dataframe(
+            {"data": ["not-a-dict"]}, tool_key=rbfe_tool_key
+        )
+        is None
+    )
+    assert (
+        _cycle_closure_results_dataframe(
+            {"data": [{"data": {"other": "stuff"}}]},
+            tool_key=rbfe_tool_key,
+        )
+        is None
+    )
+
+
+def test_cycle_closure_results_dataframe_filters_non_rbfe_tool_key() -> None:
+    """System-prep and other tool results are excluded from cycle-closure table."""
+    rbfe_tool_key = TOOL_KEYS_AND_VERSIONS["rbfe"]["tool_key"]
+    sysprep_tool_key = TOOL_KEYS_AND_VERSIONS["sysprep"]["tool_key"]
+    response = {
+        "data": [
+            {
+                "tool_key": sysprep_tool_key,
+                "data": {
+                    "cycleclosureresults": [
+                        {"ligand_id": "lig-1", "dG": -1.0, "unit": "kcal/mol"},
+                    ]
+                },
+            },
+            {
+                "tool_key": rbfe_tool_key,
+                "data": {
+                    "cycleclosureresults": [
+                        {"ligand_id": "lig-2", "dG": -2.0, "unit": "kcal/mol"},
+                    ]
+                },
+            },
+        ]
+    }
+    df = _cycle_closure_results_dataframe(response, tool_key=rbfe_tool_key)
+    assert df is not None
+    assert len(df) == 1
+    assert df.iloc[0]["ligand_id"] == "lig-2"
+
+
+def test_rbfe_cycle_closure_rejects_malformed_anchor() -> None:
+    """Malformed anchor payloads are rejected before submission."""
+    protein = Protein(name="p", id="prot-1", remote_path="testing/brd.pdb")
+    ligand1 = Ligand.from_smiles("CCO", id="lig-1", remote_path="testing/lig1.sdf")
+    ligand2 = Ligand.from_smiles("CCN", id="lig-2", remote_path="testing/lig2.sdf")
+    with pytest.raises(ValueError, match="non-empty string 'ligand_id'"):
+        RBFE(
+            protein=protein,
+            ligands=[ligand1, ligand2],
+            fep_abfe=[{"ligand_id": "", "dG": -10.0}],
+        )
+    with pytest.raises(ValueError, match="numeric 'dG' value"):
+        RBFE(
+            protein=protein,
+            ligands=[ligand1, ligand2],
+            fep_abfe=[{"ligand_id": "lig-1", "dG": "bad"}],
+        )
+
+
+def test_rbfe_get_cycle_closure_results(monkeypatch: pytest.MonkeyPatch) -> None:
+    """get_cycle_closure_results syncs and returns the summary DataFrame."""
+    rbfe = RBFE(
+        prepared_systems=[
+            PreparedSystem(
+                binding_xml_path="b.xml",
+                solvation_xml_path="s.xml",
+                system_pdb_path="p.pdb",
+            )
+        ],
+        client=MagicMock(spec=DeepOriginClient),
+    )
+    rbfe._id = "exec-top"
+    rbfe_tool_key = TOOL_KEYS_AND_VERSIONS["rbfe"]["tool_key"]
+    platform_response = {
+        "data": [
+            {
+                "tool_key": rbfe_tool_key,
+                "data": {
+                    "cycleclosureresults": [
+                        {"ligand_id": "lig-1", "dG": -10.0, "unit": "kcal/mol"},
+                    ]
+                },
+            }
+        ]
+    }
+    monkeypatch.setattr(rbfe, "sync", MagicMock())
+    monkeypatch.setattr(
+        Execution,
+        "get_results",
+        lambda self, **kwargs: platform_response,
+    )
+    out = rbfe.get_cycle_closure_results()
+    assert isinstance(out, pd.DataFrame)
+    assert out.iloc[0]["ligand_id"] == "lig-1"
+    rbfe.sync.assert_called_once()
 
 
 def test_rbfe_rbfe_steps_require_prepared_systems() -> None:
