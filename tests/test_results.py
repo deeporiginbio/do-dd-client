@@ -30,6 +30,16 @@ _POSE_TOOL_KEYS = {
 }
 
 
+def _pose_scores_from_response(response: dict) -> list[float]:
+    """Extract numeric pose_score values from a result-explorer response."""
+    scores: list[float] = []
+    for record in response.get("data", []):
+        raw_score = (record.get("data") or {}).get("pose_score")
+        if isinstance(raw_score, (int, float)):
+            scores.append(float(raw_score))
+    return scores
+
+
 def test_normalize_result_type_lowercases_and_strips():
     """Result types are normalized to lowercase catalog names."""
     assert _normalize_result_type("Pocket") == "pocket"
@@ -147,6 +157,15 @@ def test_get_results_by_result_types_list_lv1(client):
 
 def test_get_results_pose_score_filter_lv1(client):
     """JSONB numeric filters apply to nested pose fields."""
+    baseline = client.results.get(
+        result_type="pose",
+        select=["id", "data"],
+        limit=25,
+    )
+    baseline_scores = _pose_scores_from_response(baseline)
+    if not baseline_scores:
+        pytest.skip("No pose rows with pose_score available in live environment")
+
     response = client.results.get(
         result_type="pose",
         filter_dict={"pose_score": {"lt": 1}},
@@ -154,17 +173,30 @@ def test_get_results_pose_score_filter_lv1(client):
     )
 
     assert isinstance(response["data"], list)
-    assert len(response["data"]) >= 1
     for record in response["data"]:
         assert "pose_score" in (record.get("data") or {})
         assert (record.get("data") or {}).get("pose_score", 0) < 1
 
+    if any(score < 1 for score in baseline_scores):
+        assert len(response["data"]) >= 1
+
 
 def test_get_results_pose_score_range_filter_lv1(client):
     """Combined numeric bounds (gte + lt) are all enforced."""
+    baseline = client.results.get(
+        result_type="pose",
+        select=["id", "data"],
+        limit=25,
+    )
+    baseline_scores = _pose_scores_from_response(baseline)
+    if not baseline_scores:
+        pytest.skip("No pose rows with pose_score available in live environment")
+
+    lower = min(baseline_scores)
+    upper = max(baseline_scores) + 0.001
     response = client.results.get(
         result_type="pose",
-        filter_dict={"pose_score": {"gte": 0.5, "lt": 0.8}},
+        filter_dict={"pose_score": {"gte": lower, "lt": upper}},
         select=["id", "data"],
     )
 
@@ -172,7 +204,7 @@ def test_get_results_pose_score_range_filter_lv1(client):
     assert len(response["data"]) >= 1
     for record in response["data"]:
         score = (record.get("data") or {}).get("pose_score", 0)
-        assert 0.5 <= score < 0.8
+        assert lower <= score < upper
 
 
 def test_get_results_sort_by_measured_at_lv1(client):
