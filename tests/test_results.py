@@ -19,6 +19,16 @@ from deeporigin.platform.results import (
 if TYPE_CHECKING:
     from deeporigin.drug_discovery import Protein
 
+_POCKET_TOOL_KEYS = {
+    TOOL_KEYS_AND_VERSIONS["pocket_finder"]["tool_key"],
+    "deeporigin.pocketfinder",
+}
+_POSE_TOOL_KEYS = {
+    TOOL_KEYS_AND_VERSIONS["docking"]["tool_key"],
+    TOOL_KEYS_AND_VERSIONS["constrained_docking"]["tool_key"],
+    "deeporigin.bulk-docking",
+}
+
 
 def test_normalize_result_type_lowercases_and_strips():
     """Result types are normalized to lowercase catalog names."""
@@ -111,27 +121,28 @@ def test_get_results_by_result_type_pocket_lv1(client):
     """Filter result-explorer rows by a single result_type directive."""
     response = client.results.get(
         result_type="pocket",
-        select=["id", "result_type", "tool_key", "data"],
+        select=["id", "tool_key", "data"],
     )
 
     assert isinstance(response["data"], list)
     assert len(response["data"]) >= 1
     for record in response["data"]:
-        assert record.get("result_type") == "pocket"
+        assert record.get("tool_key") in _POCKET_TOOL_KEYS
 
 
 def test_get_results_by_result_types_list_lv1(client):
     """Filter result-explorer rows by multiple result_type values."""
     response = client.results.get(
         result_type=["Pocket", "Pose"],
-        select=["id", "result_type", "tool_key", "data"],
+        select=["id", "tool_key", "data"],
     )
 
     assert isinstance(response["data"], list)
     assert len(response["data"]) >= 1
-    result_types = {record.get("result_type") for record in response["data"]}
-    assert result_types.issubset({"pocket", "pose"})
-    assert len(result_types) >= 1
+    allowed_tool_keys = _POCKET_TOOL_KEYS | _POSE_TOOL_KEYS
+    tool_keys = {record.get("tool_key") for record in response["data"]}
+    assert tool_keys.issubset(allowed_tool_keys)
+    assert len(tool_keys) >= 1
 
 
 def test_get_results_pose_score_filter_lv1(client):
@@ -139,13 +150,13 @@ def test_get_results_pose_score_filter_lv1(client):
     response = client.results.get(
         result_type="pose",
         filter_dict={"pose_score": {"lt": 1}},
-        select=["id", "result_type", "data"],
+        select=["id", "data"],
     )
 
     assert isinstance(response["data"], list)
     assert len(response["data"]) >= 1
     for record in response["data"]:
-        assert record.get("result_type") == "pose"
+        assert "pose_score" in (record.get("data") or {})
         assert (record.get("data") or {}).get("pose_score", 0) < 1
 
 
@@ -154,7 +165,7 @@ def test_get_results_pose_score_range_filter_lv1(client):
     response = client.results.get(
         result_type="pose",
         filter_dict={"pose_score": {"gte": 0.5, "lt": 0.8}},
-        select=["id", "result_type", "data"],
+        select=["id", "data"],
     )
 
     assert isinstance(response["data"], list)
@@ -168,7 +179,7 @@ def test_get_results_sort_by_measured_at_lv1(client):
     """Sort directive orders rows by measured_at descending."""
     response = client.results.get(
         sort={"measured_at": "desc"},
-        select=["result_type", "measured_at"],
+        select=["measured_at"],
     )
 
     measured_at_values = [
