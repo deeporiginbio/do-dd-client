@@ -157,6 +157,89 @@ class Results:
             scoped_filter["project_id"] = {"eq": client_project_id}
         return scoped_filter
 
+    def _prepare_search_filter(
+        self,
+        *,
+        filter_dict: dict[str, Any] | None,
+        result_type: str | list[str] | None,
+        compute_job_id: str | None,
+    ) -> dict[str, Any]:
+        """Build the final filter dict for result-explorer search.
+
+        Args:
+            filter_dict: Caller filter criteria, or ``None``.
+            result_type: Optional platform catalog base entity filter.
+            compute_job_id: Optional compute job ID filter.
+
+        Returns:
+            Scoped, merged filter dictionary for the search endpoint.
+
+        Raises:
+            ValueError: If ``result_type`` is duplicated in ``filter_dict``.
+        """
+        prepared = {} if filter_dict is None else filter_dict.copy()
+        if result_type is not None and _filter_dict_has_result_type(prepared):
+            raise ValueError(
+                "Cannot pass result_type both as a keyword argument and in filter_dict."
+            )
+        if result_type is not None:
+            prepared.update(_build_result_type_filter(result_type))
+        prepared = self._apply_project_scope(filter_dict=prepared)
+        if compute_job_id is not None:
+            prepared["compute_job_id"] = {"eq": compute_job_id}
+        return prepared
+
+    def _fetch_result_pages(
+        self,
+        *,
+        filter_dict: dict[str, Any],
+        page_size: int,
+        select: list[str],
+        sort: dict[str, str] | None,
+        limit: int | None,
+    ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+        """Paginate result-explorer search until *limit* or no next cursor.
+
+        Args:
+            filter_dict: Final filter for the search endpoint.
+            page_size: Records requested per page.
+            select: Fields to return for each record.
+            sort: Optional sort mapping.
+            limit: Maximum total records to return, or ``None`` for all pages.
+
+        Returns:
+            Tuple of accumulated records and the last API response body.
+        """
+        url = f"/data-platform/{self._c.org_key}/result-explorer/search"
+        all_data: list[dict[str, Any]] = []
+        cursor: str | None = None
+        response: dict[str, Any] = {}
+
+        while True:
+            body: dict[str, Any] = {
+                "filter": filter_dict,
+                "limit": page_size,
+                "select": select,
+            }
+            if sort is not None:
+                body["sort"] = sort
+            if cursor is not None:
+                body["cursor"] = cursor
+
+            response = self._c.post_json(url, body=body)
+            all_data.extend(response.get("data", []))
+
+            if limit is not None and len(all_data) >= limit:
+                all_data = all_data[:limit]
+                break
+
+            next_cursor = response.get("meta", {}).get("nextCursor")
+            if not next_cursor:
+                break
+            cursor = next_cursor
+
+        return all_data, response
+
     def get(
         self,
         *,
@@ -203,59 +286,28 @@ class Results:
             ValueError: If ``result_type`` is passed both as a kwarg and inside
                 ``filter_dict``.
         """
-        if filter_dict is None:
-            filter_dict = {}
-        else:
-            filter_dict = filter_dict.copy()
-
-        if result_type is not None and _filter_dict_has_result_type(filter_dict):
-            raise ValueError(
-                "Cannot pass result_type both as a keyword argument and in filter_dict."
-            )
-
-        if result_type is not None:
-            filter_dict.update(_build_result_type_filter(result_type))
-
-        filter_dict = self._apply_project_scope(filter_dict=filter_dict)
-        if compute_job_id is not None:
-            filter_dict["compute_job_id"] = {"eq": compute_job_id}
+        filter_dict = self._prepare_search_filter(
+            filter_dict=filter_dict,
+            result_type=result_type,
+            compute_job_id=compute_job_id,
+        )
         if select is None:
             # note -- compute_job_id is the same as executionId in the rest of the system
             # IMPORTANT! execution_id is not the same as executionId in the rest of the system
             select = ["id", "tool_key", "tool_version", "data", "compute_job_id"]
 
-        if limit is not None:
-            page_size = min(limit, DEFAULT_SEARCH_PAGE_SIZE)
-        else:
-            page_size = DEFAULT_SEARCH_PAGE_SIZE
-
-        url = f"/data-platform/{self._c.org_key}/result-explorer/search"
-        all_data: list[dict[str, Any]] = []
-        cursor: str | None = None
-
-        while True:
-            body: dict[str, Any] = {
-                "filter": filter_dict,
-                "limit": page_size,
-                "select": select,
-            }
-            if sort is not None:
-                body["sort"] = sort
-            if cursor is not None:
-                body["cursor"] = cursor
-
-            response = self._c.post_json(url, body=body)
-            all_data.extend(response.get("data", []))
-
-            if limit is not None and len(all_data) >= limit:
-                all_data = all_data[:limit]
-                break
-
-            next_cursor = response.get("meta", {}).get("nextCursor")
-            if not next_cursor:
-                break
-            cursor = next_cursor
-
+        page_size = (
+            min(limit, DEFAULT_SEARCH_PAGE_SIZE)
+            if limit is not None
+            else DEFAULT_SEARCH_PAGE_SIZE
+        )
+        all_data, response = self._fetch_result_pages(
+            filter_dict=filter_dict,
+            page_size=page_size,
+            select=select,
+            sort=sort,
+            limit=limit,
+        )
         response["data"] = all_data
         return response
 
