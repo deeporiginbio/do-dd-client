@@ -149,6 +149,21 @@ def test_get_results_pose_score_filter_lv1(client):
         assert (record.get("data") or {}).get("pose_score", 0) < 1
 
 
+def test_get_results_pose_score_range_filter_lv1(client):
+    """Combined numeric bounds (gte + lt) are all enforced."""
+    response = client.results.get(
+        result_type="pose",
+        filter_dict={"pose_score": {"gte": 0.5, "lt": 0.8}},
+        select=["id", "result_type", "data"],
+    )
+
+    assert isinstance(response["data"], list)
+    assert len(response["data"]) >= 1
+    for record in response["data"]:
+        score = (record.get("data") or {}).get("pose_score", 0)
+        assert 0.5 <= score < 0.8
+
+
 def test_get_results_sort_by_measured_at_lv1(client):
     """Sort directive orders rows by measured_at descending."""
     response = client.results.get(

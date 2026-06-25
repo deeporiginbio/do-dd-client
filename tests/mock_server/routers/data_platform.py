@@ -315,16 +315,28 @@ def _matches_condition(
         "gt": lambda actual_num, bound: actual_num > bound,
         "gte": lambda actual_num, bound: actual_num >= bound,
     }
+    actual_num = _numeric_value(actual)
     for op, compare in comparison_ops.items():
         if op not in condition:
             continue
-        actual_num = _numeric_value(actual)
         bound_num = _numeric_value(condition[op])
         if actual_num is None or bound_num is None:
             return False
-        return compare(actual_num, bound_num)
+        if not compare(actual_num, bound_num):
+            return False
 
     return True
+
+
+def _sort_key_component(value: Any) -> tuple[int, Any]:
+    """Build a sort key that avoids mixed-type comparisons."""
+    if value is _FIELD_MISSING:
+        return (1, 0)
+    if isinstance(value, bool):
+        return (0, value)
+    if isinstance(value, (int, float)):
+        return (0, float(value))
+    return (0, value)
 
 
 def _apply_sort(
@@ -335,18 +347,14 @@ def _apply_sort(
     if not sort_dict:
         return records
 
-    def key_fn(record: dict[str, Any]) -> tuple[Any, ...]:
-        keys: list[Any] = []
-        for field in sort_dict:
-            val = _field_value(record, field)
-            keys.append("" if val is _FIELD_MISSING else val)
-        return tuple(keys)
-
-    reverse = any(
-        isinstance(direction, str) and direction.lower() == "desc"
-        for direction in sort_dict.values()
-    )
-    return sorted(records, key=key_fn, reverse=reverse)
+    sorted_records = list(records)
+    for field, direction in reversed(list(sort_dict.items())):
+        reverse = isinstance(direction, str) and direction.lower() == "desc"
+        sorted_records.sort(
+            key=lambda record: _sort_key_component(_field_value(record, field)),
+            reverse=reverse,
+        )
+    return sorted_records
 
 
 def _apply_eq_filters(
