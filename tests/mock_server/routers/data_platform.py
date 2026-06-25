@@ -22,6 +22,8 @@ MOCK_DEFAULT_PROJECT_NAME = "python-client-test-project-kfsresf"
 # Stable id for the in-memory mock data platform only (not a public SDK constant).
 MOCK_DEFAULT_PROJECT_ID = "09DEFAULTPROJECT00"
 
+_FIELD_MISSING = object()
+
 
 def _base_default_project_record() -> dict[str, Any]:
     """Return the default in-memory project row pre-seeded in the mock server."""
@@ -244,17 +246,107 @@ def _field_value(record: dict[str, Any], key: str) -> Any:
         key: The field name to look up.
 
     Returns:
-        The value found in the top-level record or nested ``data``, or a
-        sentinel ``_MISSING`` object when the key is absent from both.
+        The value found in the top-level record or nested ``data``, or
+        ``_FIELD_MISSING`` when the key is absent from both.
     """
-    _MISSING = object()
-    val = record.get(key, _MISSING)
-    if val is not _MISSING:
+    val = record.get(key, _FIELD_MISSING)
+    if val is not _FIELD_MISSING:
         return val
     data = record.get("data")
     if isinstance(data, dict):
-        return data.get(key, _MISSING)
-    return _MISSING
+        return data.get(key, _FIELD_MISSING)
+    return _FIELD_MISSING
+
+
+def _normalize_result_type_value(value: Any) -> Any:
+    """Normalize result-type filter operands for case-insensitive matching."""
+    if isinstance(value, str):
+        return value.strip().lower()
+    return value
+
+
+def _numeric_value(value: Any) -> float | None:
+    """Coerce a field value to float when possible."""
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, (int, float)):
+        return float(value)
+    if isinstance(value, str):
+        try:
+            return float(value)
+        except ValueError:
+            return None
+    return None
+
+
+def _matches_condition(
+    record: dict[str, Any],
+    key: str,
+    condition: dict[str, Any],
+) -> bool:
+    """Return whether *record* satisfies a single-field filter condition."""
+    raw_value = _field_value(record, key)
+    if raw_value is _FIELD_MISSING:
+        return False
+
+    if key == "result_type":
+        actual = _normalize_result_type_value(raw_value)
+    else:
+        actual = raw_value
+
+    if "eq" in condition:
+        expected = condition["eq"]
+        if key == "result_type":
+            expected = _normalize_result_type_value(expected)
+        return actual == expected
+
+    if "in" in condition:
+        allowed = condition["in"]
+        if not isinstance(allowed, list):
+            allowed = [allowed]
+        if key == "result_type":
+            allowed_set = {_normalize_result_type_value(item) for item in allowed}
+            return actual in allowed_set
+        return actual in set(allowed)
+
+    comparison_ops = {
+        "lt": lambda actual_num, bound: actual_num < bound,
+        "lte": lambda actual_num, bound: actual_num <= bound,
+        "gt": lambda actual_num, bound: actual_num > bound,
+        "gte": lambda actual_num, bound: actual_num >= bound,
+    }
+    for op, compare in comparison_ops.items():
+        if op not in condition:
+            continue
+        actual_num = _numeric_value(actual)
+        bound_num = _numeric_value(condition[op])
+        if actual_num is None or bound_num is None:
+            return False
+        return compare(actual_num, bound_num)
+
+    return True
+
+
+def _apply_sort(
+    records: list[dict[str, Any]],
+    sort_dict: dict[str, Any],
+) -> list[dict[str, Any]]:
+    """Sort records by one or more fields (top-level or nested ``data``)."""
+    if not sort_dict:
+        return records
+
+    def key_fn(record: dict[str, Any]) -> tuple[Any, ...]:
+        keys: list[Any] = []
+        for field in sort_dict:
+            val = _field_value(record, field)
+            keys.append("" if val is _FIELD_MISSING else val)
+        return tuple(keys)
+
+    reverse = any(
+        isinstance(direction, str) and direction.lower() == "desc"
+        for direction in sort_dict.values()
+    )
+    return sorted(records, key=key_fn, reverse=reverse)
 
 
 def _apply_eq_filters(
@@ -281,9 +373,8 @@ def _apply_eq_filters(
     Raises:
         ValueError: If a filter condition uses an unsupported operator.
     """
-    _MISSING = object()
     results = list(records)
-    allowed_ops = {"eq", "in"}
+    allowed_ops = {"eq", "in", "lt", "lte", "gt", "gte"}
     skip_keys = {"props"}
 
     for prop in filter_dict.get("props", []):
@@ -291,16 +382,17 @@ def _apply_eq_filters(
         op = prop["op"]
         val = prop["value"]
 
-        if op == "eq":
-            results = [r for r in results if _field_value(r, col) == val]
-        elif op == "in":
-            value_set = set(val) if isinstance(val, list) else {val}
-            results = [
-                r
-                for r in results
-                if _field_value(r, col) is not _MISSING
-                and _field_value(r, col) in value_set
-            ]
+        if op not in allowed_ops:
+            raise ValueError(
+                f"Unsupported filter operator(s) for props column '{col}': {op}"
+            )
+
+        if op in {"eq", "in"}:
+            condition = {op: val}
+            results = [r for r in results if _matches_condition(r, col, condition)]
+        elif op in {"lt", "lte", "gt", "gte"}:
+            condition = {op: val}
+            results = [r for r in results if _matches_condition(r, col, condition)]
 
     for key, condition in filter_dict.items():
         if key in skip_keys:
@@ -316,17 +408,7 @@ def _apply_eq_filters(
                 f"{', '.join(sorted(unknown_ops))}"
             )
 
-        if "eq" in condition:
-            expected = condition["eq"]
-            results = [r for r in results if _field_value(r, key) == expected]
-        elif "in" in condition:
-            value_set = set(condition["in"])
-            results = [
-                r
-                for r in results
-                if _field_value(r, key) is not _MISSING
-                and _field_value(r, key) in value_set
-            ]
+        results = [r for r in results if _matches_condition(r, key, condition)]
 
     return results
 
@@ -517,6 +599,11 @@ def create_data_platform_router(
         body = await request.json()
         filter_dict = body.get("filter", {})
         select = body.get("select")
+        sort_dict = body.get("sort", {})
+
+        measured_at_pocket = "2026-01-02T12:00:00.000Z"
+        measured_at_pose = "2026-01-01T12:00:00.000Z"
+        measured_at_prepared = "2026-01-03T12:00:00.000Z"
 
         # Build the full pool of fixture-backed results first, then filter.
         all_results: list[dict[str, Any]] = []
@@ -553,6 +640,7 @@ def create_data_platform_router(
                 "tool_key": pf_tool["key"],
                 "tool_version": pf_tool["version"],
                 "result_type": "pocket",
+                "measured_at": measured_at_pocket,
                 "data": pocket,
                 "compute_job_id": run_pf.get("id") or run_pf.get("executionId"),
             }
@@ -569,6 +657,7 @@ def create_data_platform_router(
                     "tool_key": dk_tool["key"] or "deeporigin.docking",
                     "tool_version": dk_tool["version"],
                     "result_type": "pose",
+                    "measured_at": measured_at_pose,
                     "data": pose,
                     "compute_job_id": run_dk.get("id") or run_dk.get("executionId"),
                 }
@@ -589,6 +678,7 @@ def create_data_platform_router(
                         "tool_key": sp_tool["key"] or "deeporigin.system-prep",
                         "tool_version": sp_tool["version"],
                         "result_type": "preparedsystem",
+                        "measured_at": measured_at_prepared,
                         "data": system_out,
                         "compute_job_id": run_sp.get("id") or run_sp.get("executionId"),
                     }
@@ -607,6 +697,9 @@ def create_data_platform_router(
                 k: v for k, v in filter_dict.items() if k != "compute_job_id"
             }
             filtered = _apply_eq_filters(all_results, safe_filter)
+
+        if sort_dict:
+            filtered = _apply_sort(filtered, sort_dict)
 
         page = filtered
         if select:

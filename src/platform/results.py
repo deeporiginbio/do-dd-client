@@ -9,6 +9,55 @@ from deeporigin.utils.constants import DEFAULT_SEARCH_PAGE_SIZE
 if TYPE_CHECKING:
     from deeporigin.platform.client import DeepOriginClient
 
+_RESULT_TYPE_POSE = "pose"
+_RESULT_TYPE_POCKET = "pocket"
+_RESULT_TYPE_PREPARED_SYSTEM = "preparedsystem"
+_RESULT_TYPE_ABFE_RESULT = "abferesult"
+
+
+def _normalize_result_type(value: str) -> str:
+    """Normalize a platform result-type directive value.
+
+    Args:
+        value: Raw result type from caller input.
+
+    Returns:
+        Lowercased, stripped catalog base entity name.
+    """
+    return value.strip().lower()
+
+
+def _build_result_type_filter(result_type: str | list[str]) -> dict[str, Any]:
+    """Build a top-level ``result_type`` filter directive for result-explorer.
+
+    Args:
+        result_type: Single type or list of platform catalog base entities.
+
+    Returns:
+        Filter fragment ``{"result_type": {"eq": ...}}`` or ``{"in": [...]}``.
+    """
+    if isinstance(result_type, list):
+        normalized = [_normalize_result_type(value) for value in result_type]
+        return {"result_type": {"in": normalized}}
+    return {"result_type": {"eq": _normalize_result_type(result_type)}}
+
+
+def _filter_dict_has_result_type(filter_dict: dict[str, Any]) -> bool:
+    """Return whether *filter_dict* already constrains ``result_type``.
+
+    Args:
+        filter_dict: Result-explorer filter dictionary.
+
+    Returns:
+        ``True`` when a top-level or ``props`` ``result_type`` filter is present.
+    """
+    if "result_type" in filter_dict:
+        return True
+    for prop in filter_dict.get("props", []):
+        if isinstance(prop, dict) and prop.get("column") == "result_type":
+            return True
+    return False
+
 
 def _build_result_filter(**kwargs: Any) -> dict[str, Any]:
     """Build equality filter fields for result-explorer queries.
@@ -112,9 +161,11 @@ class Results:
         self,
         *,
         filter_dict: dict[str, Any] | None = None,
+        result_type: str | list[str] | None = None,
         compute_job_id: str | None = None,
         limit: int | None = 1000,
         select: list[str] | None = None,
+        sort: dict[str, str] | None = None,
     ) -> dict:
         """Low-level paginated search against the result-explorer API.
 
@@ -131,19 +182,40 @@ class Results:
 
         Args:
             filter_dict: Raw filter criteria forwarded to the
-                result-explorer search endpoint.
+                result-explorer search endpoint (e.g. ``score``, ``protein_id``).
+            result_type: Platform catalog base entity (``pose``, ``pocket``,
+                ``preparedsystem``, ``abferesult``, …). Accepts a single value
+                or list; input is case-insensitive. Maps to the top-level
+                ``filter.result_type`` directive. Cannot be combined with
+                ``result_type`` in ``filter_dict``.
             compute_job_id: Optional compute job ID to filter by.
             limit: Maximum total number of results to return across all
                 pages. Defaults to 1000.
             select: List of fields to select. Defaults to
                 ``["id", "tool_key", "tool_version", "data", "compute_job_id"]``.
+            sort: Optional sort mapping field names to ``"asc"`` or ``"desc"``.
 
         Returns:
             Dictionary with ``data`` (all records across pages) and ``meta``
             from the final response.
+
+        Raises:
+            ValueError: If ``result_type`` is passed both as a kwarg and inside
+                ``filter_dict``.
         """
         if filter_dict is None:
             filter_dict = {}
+        else:
+            filter_dict = filter_dict.copy()
+
+        if result_type is not None and _filter_dict_has_result_type(filter_dict):
+            raise ValueError(
+                "Cannot pass result_type both as a keyword argument and in filter_dict."
+            )
+
+        if result_type is not None:
+            filter_dict.update(_build_result_type_filter(result_type))
+
         filter_dict = self._apply_project_scope(filter_dict=filter_dict)
         if compute_job_id is not None:
             filter_dict["compute_job_id"] = {"eq": compute_job_id}
@@ -167,6 +239,8 @@ class Results:
                 "limit": page_size,
                 "select": select,
             }
+            if sort is not None:
+                body["sort"] = sort
             if cursor is not None:
                 body["cursor"] = cursor
 
@@ -221,20 +295,19 @@ class Results:
             Dictionary with ``data`` (all records across pages) and ``meta``
             from the final response.
         """
-        filter_dict: dict[str, Any] = {
-            "props": [{"column": "result_type", "op": "eq", "value": "pose"}]
-        }
-        filter_dict.update(
-            _build_result_filter(
+        return self.get(
+            result_type=_RESULT_TYPE_POSE,
+            filter_dict=_build_result_filter(
                 protein_id=protein_id,
                 ligand_id=ligand_id,
                 compute_job_id=compute_job_id,
                 tool_version=tool_version,
                 effort=effort,
                 best_pose=best_pose,
-            )
+            ),
+            limit=limit,
+            select=select,
         )
-        return self.get(filter_dict=filter_dict, limit=limit, select=select)
 
     def get_pockets(
         self,
@@ -271,20 +344,19 @@ class Results:
             Dictionary with ``data`` (all records across pages) and ``meta``
             from the final response.
         """
-        filter_dict: dict[str, Any] = {
-            "props": [{"column": "result_type", "op": "eq", "value": "pocket"}]
-        }
-        filter_dict.update(
-            _build_result_filter(
+        return self.get(
+            result_type=_RESULT_TYPE_POCKET,
+            filter_dict=_build_result_filter(
                 id=id,
                 protein_id=protein_id,
                 compute_job_id=compute_job_id,
                 pocket_count=pocket_count,
                 pocket_min_size=pocket_min_size,
                 tool_version=tool_version,
-            )
+            ),
+            limit=limit,
+            select=select,
         )
-        return self.get(filter_dict=filter_dict, limit=limit, select=select)
 
     def get_prepared_systems(
         self,
@@ -329,27 +401,27 @@ class Results:
             Dictionary with ``data`` (all matching records across pages) and
             ``meta`` from the final response.
         """
-        filter_dict: dict[str, Any] = {
-            "props": [{"column": "result_type", "op": "eq", "value": "preparedsystem"}]
-        }
-        filter_dict.update(
-            _build_result_filter(
-                protein_id=protein_id,
-                ligand1_id=ligand1_id,
-                ligand2_id=ligand2_id,
-                compute_job_id=compute_job_id,
-                padding=padding,
-                retain_waters=retain_waters,
-                protonate_protein=protonate_protein,
-                tool_version=tool_version,
-            )
+        filter_dict = _build_result_filter(
+            protein_id=protein_id,
+            ligand1_id=ligand1_id,
+            ligand2_id=ligand2_id,
+            compute_job_id=compute_job_id,
+            padding=padding,
+            retain_waters=retain_waters,
+            protonate_protein=protonate_protein,
+            tool_version=tool_version,
         )
         # there is a bug upstream that is causing the add_H_atoms field to be called add_h_atoms
         # while this is sorted out we're disabling this filter for now
         # if add_H_atoms is not None:
         #     filter_dict["add_h_atoms"] = {"eq": add_H_atoms}
 
-        return self.get(filter_dict=filter_dict, limit=limit, select=select)
+        return self.get(
+            result_type=_RESULT_TYPE_PREPARED_SYSTEM,
+            filter_dict=filter_dict,
+            limit=limit,
+            select=select,
+        )
 
     def get_abfe_results(
         self,
@@ -384,18 +456,17 @@ class Results:
             Dictionary with ``data`` (all matching records across pages) and
             ``meta`` from the final response.
         """
-        filter_dict: dict[str, Any] = {
-            "props": [{"column": "result_type", "op": "eq", "value": "abferesult"}]
-        }
-        filter_dict.update(
-            _build_result_filter(
+        return self.get(
+            result_type=_RESULT_TYPE_ABFE_RESULT,
+            filter_dict=_build_result_filter(
                 protein_id=protein_id,
                 ligand1_id=ligand1_id,
                 compute_job_id=compute_job_id,
                 tool_version=tool_version,
-            )
+            ),
+            limit=limit,
+            select=select,
         )
-        return self.get(filter_dict=filter_dict, limit=limit, select=select)
 
     def with_ligands(
         self,

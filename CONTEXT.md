@@ -51,3 +51,10 @@ _Avoid_: treating pins as exact semver strings when comparing against `tools.lis
 Platform tool `deeporigin.draco` that extracts chemical structures from a PDF.
 CLI class `Patent`. Billing item `DO_PATENT` (per page).
 _Avoid_: `Draco` as the public API name; `DoPatentMolecule` as a CLI type
+
+**Result type**:
+Platform catalog base entity from a tool output schema's `x-data-type` (e.g.
+`pose`, `pocket`, `preparedsystem`, `abferesult`). Used as a result-explorer
+filter directive to narrow which `results__*` tables are searched; not a stored
+column on result rows.
+_Avoid_: `Binding` for docking poses (use `pose`); conflating with `tool_key`
