@@ -37,7 +37,8 @@ def _build_result_type_filter(result_type: str | list[str]) -> dict[str, Any]:
         result_type: Single type or list of platform catalog base entities.
 
     Returns:
-        Filter fragment ``{"result_type": {"eq": ...}}`` or ``{"in": [...]}``.
+        Filter fragment ``{"result_type": {"eq": ...}}`` or
+        ``{"result_type": {"in": [...]}}``.
     """
     if isinstance(result_type, list):
         normalized = [_normalize_result_type(value) for value in result_type]
