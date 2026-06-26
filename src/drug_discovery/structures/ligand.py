@@ -1337,6 +1337,8 @@ class Ligand(Entity):
         proj_id = self.resolved_project_id(client=client)
         if proj_id is not None:
             kwargs["project_id"] = proj_id
+        if self.tags is not None:
+            kwargs["tags"] = self.tags
 
         result = client.entities.create_ligand(**kwargs)  # ty: ignore[unresolved-attribute]
 
@@ -1509,6 +1511,8 @@ class Ligand(Entity):
         proj_id = self.resolved_project_id(client=client)
         if proj_id is not None:
             row["project_id"] = proj_id
+        if self.tags is not None:
+            row["tags"] = self.tags
         return row
 
     @beartype

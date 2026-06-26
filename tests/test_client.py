@@ -152,6 +152,53 @@ def test_executions_create_includes_client_project_id():
     assert captured["projectId"] == "test-project-uuid"
 
 
+def test_executions_create_includes_client_tag():
+    """``executions.create`` sends ``client.tag`` as ``tag`` when set."""
+    DeepOriginClient.close_all()
+
+    client = DeepOriginClient.from_local()
+    client.tag = "billing-tag-abc"
+    captured = _stub_post_json_capturing_body(client)
+
+    client.clusters.get_default_cluster_id = (  # type: ignore[method-assign]
+        lambda: "test-cluster-id"
+    )
+
+    client.executions.create(
+        tool_key="test.tool",
+        tool_version="1.0.0",
+        data={"inputs": {"test": "param"}, "outputs": {}, "metadata": {}},
+    )
+
+    assert captured["tag"] == "billing-tag-abc"
+
+
+def test_executions_create_data_tag_overrides_client_tag():
+    """An explicit ``tag`` in ``data`` is not replaced by ``client.tag``."""
+    DeepOriginClient.close_all()
+
+    client = DeepOriginClient.from_local()
+    client.tag = "client-default"
+    captured = _stub_post_json_capturing_body(client)
+
+    client.clusters.get_default_cluster_id = (  # type: ignore[method-assign]
+        lambda: "test-cluster-id"
+    )
+
+    client.executions.create(
+        tool_key="test.tool",
+        tool_version="1.0.0",
+        data={
+            "inputs": {},
+            "outputs": {},
+            "metadata": {},
+            "tag": "explicit-tag",
+        },
+    )
+
+    assert captured["tag"] == "explicit-tag"
+
+
 def test_executions_create_targets_tool_endpoint():
     """``executions.create`` POSTs to ``/tools/{org}/tools/{key}/{version}/executions``."""
     DeepOriginClient.close_all()

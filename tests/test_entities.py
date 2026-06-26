@@ -357,3 +357,48 @@ def test_update_ligand_not_found_lv1(client: DeepOriginClient):
 
     with pytest.raises(DeepOriginException):
         client.entities.update_ligand(missing_id, name="missing")  # ty:ignore[unresolved-attribute]
+
+
+def test_create_ligand_with_tags_lv1(client: DeepOriginClient):
+    """Create ligand persists tags on the platform row."""
+    tag = f"tags-{uuid.uuid4().hex[:12]}"
+    entity_tags = {"campaign": tag}
+    create = client.entities.create_ligand(
+        smiles="CC(C)C",
+        name=f"tagged-ligand-{tag}",
+        tags=entity_tags,
+    )
+    lig_id = create["data"]["id"]
+    try:
+        row = client.entities.get_ligand(lig_id)
+        assert row["tags"] == entity_tags
+    finally:
+        client.entities.delete(entity="ligands", entity_id=lig_id)
+
+
+def test_update_ligand_with_tags_lv1(client: DeepOriginClient):
+    """Update ligand can set tags (jsonb object)."""
+    tag = f"upd-tags-{uuid.uuid4().hex[:12]}"
+    create = client.entities.create_ligand(smiles="CCO", name=f"tag-upd-{tag}")
+    lig_id = create["data"]["id"]
+    entity_tags = {"batch": tag}
+    try:
+        client.entities.update_ligand(lig_id, tags=entity_tags)
+        row = client.entities.get_ligand(lig_id)
+        assert row["tags"] == entity_tags
+    finally:
+        client.entities.delete(entity="ligands", entity_id=lig_id)
+
+
+def test_ligand_register_passes_tags_lv1(client: DeepOriginClient):
+    """Ligand.register forwards Entity.tags to create_ligand."""
+    tag = f"reg-{uuid.uuid4().hex[:12]}"
+    entity_tags = {"origin": tag}
+    ligand = Ligand.from_smiles("CCC", tags=entity_tags)
+    ligand.register(client=client)
+    assert ligand.id is not None
+    try:
+        row = client.entities.get_ligand(ligand.id)
+        assert row["tags"] == entity_tags
+    finally:
+        client.entities.delete(entity="ligands", entity_id=ligand.id)

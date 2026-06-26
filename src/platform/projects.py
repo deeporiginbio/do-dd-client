@@ -157,6 +157,7 @@ class Projects:
         name: str,
         description: str | None = None,
         slug: str | None = None,
+        tags: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         """Create a project row.
 
@@ -164,6 +165,7 @@ class Projects:
             name: Display name (required by the platform schema).
             description: Optional long description.
             slug: Optional slug; generated from ``name`` when omitted.
+            tags: Data-platform metadata tags (jsonb object).
 
         Returns:
             API response containing the created row under ``data``.
@@ -175,6 +177,8 @@ class Projects:
         }
         if description is not None:
             set_dict["description"] = description
+        if tags is not None:
+            set_dict["tags"] = tags
 
         body: dict[str, Any] = {
             "set": set_dict,

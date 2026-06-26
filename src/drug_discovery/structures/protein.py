@@ -1396,6 +1396,8 @@ class Protein(Entity):
         proj_id = self.resolved_project_id(client=client)
         if proj_id is not None:
             kwargs["project_id"] = proj_id
+        if self.tags is not None:
+            kwargs["tags"] = self.tags
 
         result = client.entities.create_protein(**kwargs)
 

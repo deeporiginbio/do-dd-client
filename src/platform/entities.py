@@ -503,6 +503,7 @@ class Entities:
         tpsa: float | None = None,
         molecular_weight: float | None = None,
         variant_name_tag: str = "",
+        tags: dict[str, Any] | None = None,
     ) -> dict:
         """Create a new ligand.
 
@@ -518,6 +519,7 @@ class Entities:
             tpsa: Topological polar surface area.
             molecular_weight: Molecular weight.
             variant_name_tag: Variant name tag. Defaults to empty string.
+            tags: Data-platform metadata tags (jsonb object).
 
         Returns:
             Dictionary containing the created ligand data.
@@ -545,6 +547,8 @@ class Entities:
             set_dict["tpsa"] = tpsa
         if molecular_weight is not None:
             set_dict["molecular_weight"] = molecular_weight
+        if tags is not None:
+            set_dict["tags"] = tags
 
         body: dict[str, Any] = {
             "set": set_dict,
@@ -598,7 +602,7 @@ class Entities:
         tpsa: float | None = None,
         molecular_weight: float | None = None,
         variant_name_tag: str | None = None,
-        tags: list[str] | None = None,
+        tags: dict[str, Any] | None = None,
     ) -> dict:
         """Update an existing ligand by ID.
 
@@ -618,7 +622,7 @@ class Entities:
             tpsa: Topological polar surface area.
             molecular_weight: Molecular weight.
             variant_name_tag: Variant name tag.
-            tags: Tags for the ligand.
+            tags: Data-platform metadata tags (jsonb object).
 
         Returns:
             Dictionary containing the updated ligand data.
@@ -768,6 +772,7 @@ class Entities:
         protein_name: str | None = None,
         protein_length: int | None = None,
         project_id: str | None = None,
+        tags: dict[str, Any] | None = None,
     ) -> dict:
         """Create a new protein.
 
@@ -779,6 +784,7 @@ class Entities:
             protein_name: Protein name.
             protein_length: Protein length.
             project_id: Project ID for the protein.
+            tags: Data-platform metadata tags (jsonb object).
 
         Returns:
             Dictionary containing the created protein data.
@@ -799,6 +805,8 @@ class Entities:
             set_dict["protein_name"] = protein_name
         if protein_length is not None:
             set_dict["protein_length"] = protein_length
+        if tags is not None:
+            set_dict["tags"] = tags
 
         body: dict[str, Any] = {
             "set": set_dict,
@@ -821,7 +829,7 @@ class Entities:
         protein_name: str | None = None,
         protein_length: int | None = None,
         project_id: str | None = None,
-        tags: list[str] | None = None,
+        tags: dict[str, Any] | None = None,
     ) -> dict:
         """Update an existing protein by ID.
 
@@ -837,7 +845,7 @@ class Entities:
             protein_name: Protein name.
             protein_length: Protein length.
             project_id: Project ID for the protein.
-            tags: Tags for the protein.
+            tags: Data-platform metadata tags (jsonb object).
 
         Returns:
             Dictionary containing the updated protein data.
