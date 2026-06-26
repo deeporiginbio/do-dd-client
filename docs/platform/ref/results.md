@@ -17,6 +17,20 @@ client = DeepOriginClient()
 # Get docking poses for a protein
 poses = client.results.get_poses(protein_id="08BSPN61NYVE3")
 
+# Get results by platform catalog result type (case-insensitive)
+typed = client.results.get(
+    result_type=["pocket", "pose"],
+    sort={"measured_at": "desc"},
+    limit=50,
+)
+
+# Sort by JSONB tool-data fields (offset pagination is used automatically)
+top_poses = client.results.get(
+    result_type="pose",
+    sort={"pose_score": "desc"},
+    limit=200,
+)
+
 # Get binding pockets for a protein
 pockets = client.results.get_pockets(protein_id="08BSPN61NYVE3")
 

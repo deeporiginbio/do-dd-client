@@ -3,12 +3,210 @@
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
+from unittest.mock import MagicMock
+
+import pytest
 
 from deeporigin.platform.constants import TOOL_KEYS_AND_VERSIONS
-from deeporigin.platform.results import _build_result_filter
+from deeporigin.platform.results import (
+    Results,
+    _build_result_filter,
+    _build_result_type_filter,
+    _filter_dict_has_result_type,
+    _normalize_result_type,
+    _sort_uses_jsonb_fields,
+)
+from tests.mock_server.routers.data_platform import _apply_eq_filters
 
 if TYPE_CHECKING:
     from deeporigin.drug_discovery import Protein
+
+_POCKET_TOOL_KEYS = {
+    TOOL_KEYS_AND_VERSIONS["pocket_finder"]["tool_key"],
+    "deeporigin.pocketfinder",
+}
+_POSE_TOOL_KEYS = {
+    TOOL_KEYS_AND_VERSIONS["docking"]["tool_key"],
+    TOOL_KEYS_AND_VERSIONS["constrained_docking"]["tool_key"],
+    "deeporigin.bulk-docking",
+}
+
+
+def _pose_scores_from_response(response: dict) -> list[float]:
+    """Extract numeric pose_score values from a result-explorer response."""
+    scores: list[float] = []
+    for record in response.get("data", []):
+        raw_score = (record.get("data") or {}).get("pose_score")
+        if isinstance(raw_score, (int, float)):
+            scores.append(float(raw_score))
+    return scores
+
+
+def test_normalize_result_type_lowercases_and_strips():
+    """Result types are normalized to lowercase catalog names."""
+    assert _normalize_result_type("Pocket") == "pocket"
+    assert _normalize_result_type("  Pose ") == "pose"
+
+
+def test_apply_eq_filters_rejects_mixed_membership_and_comparison_operators():
+    """Mock result-explorer rejects ambiguous eq/in + lt/gte filter shapes."""
+    records = [{"id": "1", "score": 1.0}]
+    with pytest.raises(ValueError, match="cannot mix membership"):
+        _apply_eq_filters(records, {"score": {"eq": 1, "lt": 2}})
+
+
+def test_build_result_type_filter_eq_and_in():
+    """Single values use eq; lists use in with normalized values."""
+    assert _build_result_type_filter("Pocket") == {
+        "result_type": {"eq": "pocket"},
+    }
+    assert _build_result_type_filter(["Pocket", "Pose"]) == {
+        "result_type": {"in": ["pocket", "pose"]},
+    }
+
+
+def test_filter_dict_has_result_type_detects_top_level_and_props():
+    """Conflict detection covers top-level and props result_type filters."""
+    assert _filter_dict_has_result_type({"result_type": {"eq": "pose"}})
+    assert _filter_dict_has_result_type(
+        {"props": [{"column": "result_type", "op": "eq", "value": "pose"}]}
+    )
+    assert not _filter_dict_has_result_type({"protein_id": {"eq": "p1"}})
+
+
+def test_get_result_type_conflict_raises():
+    """Passing result_type both as kwarg and in filter_dict raises ValueError."""
+    mock_client = MagicMock()
+    mock_client.org_key = "test-org"
+    mock_client.project_id = None
+    results = Results(mock_client)
+
+    with pytest.raises(ValueError, match="Cannot pass result_type"):
+        results.get(
+            result_type="pose",
+            filter_dict={"result_type": {"eq": "pocket"}},
+        )
+
+
+def test_get_compute_job_id_conflict_with_in_operator_raises():
+    """compute_job_id kwarg cannot override a non-eq filter_dict operator."""
+    mock_client = MagicMock()
+    mock_client.org_key = "test-org"
+    mock_client.project_id = None
+    results = Results(mock_client)
+
+    with pytest.raises(ValueError, match="Conflicting compute_job_id"):
+        results.get(
+            compute_job_id="job-a",
+            filter_dict={"compute_job_id": {"in": ["job-a", "job-b"]}},
+        )
+
+
+def test_get_compute_job_id_conflict_with_mismatched_eq_raises():
+    """compute_job_id kwarg must match an existing eq filter in filter_dict."""
+    mock_client = MagicMock()
+    mock_client.org_key = "test-org"
+    mock_client.project_id = None
+    results = Results(mock_client)
+
+    with pytest.raises(ValueError, match="Conflicting compute_job_id"):
+        results.get(
+            compute_job_id="job-a",
+            filter_dict={"compute_job_id": {"eq": "job-b"}},
+        )
+
+
+def test_sort_uses_jsonb_fields_detects_non_canonical_keys():
+    """JSONB tool-data sort keys require offset pagination."""
+    assert _sort_uses_jsonb_fields({"pose_score": "desc"})
+    assert not _sort_uses_jsonb_fields({"measured_at": "desc"})
+    assert _sort_uses_jsonb_fields(
+        {"measured_at": "desc", "pose_score": "asc"},
+    )
+    assert _sort_uses_jsonb_fields({"data": "asc"})
+    assert _sort_uses_jsonb_fields({"parameters": "desc"})
+
+
+def test_get_passes_sort_in_request_body():
+    """Results.get forwards sort to the result-explorer search endpoint."""
+    mock_client = MagicMock()
+    mock_client.org_key = "test-org"
+    mock_client.project_id = None
+    mock_client.post_json.return_value = {"data": [], "meta": {}}
+    results = Results(mock_client)
+
+    results.get(sort={"measured_at": "desc"}, limit=5)
+
+    body = mock_client.post_json.call_args.kwargs["body"]
+    assert body["sort"] == {"measured_at": "desc"}
+    assert "result_type" not in body["filter"]
+    assert "cursor" not in body
+    assert "offset" not in body
+
+
+def test_get_jsonb_sort_uses_offset_pagination():
+    """JSONB sort keys paginate with offset instead of cursor."""
+    mock_client = MagicMock()
+    mock_client.org_key = "test-org"
+    mock_client.project_id = None
+    mock_client.post_json.side_effect = [
+        {
+            "data": [{"id": "1", "data": {"pose_score": 1.0}}],
+            "meta": {"hasMore": True},
+        },
+        {
+            "data": [{"id": "2", "data": {"pose_score": 2.0}}],
+            "meta": {"hasMore": False},
+        },
+    ]
+    results = Results(mock_client)
+
+    response = results.get(
+        result_type="pose",
+        sort={"pose_score": "desc"},
+        limit=None,
+        select=["id", "data"],
+    )
+
+    assert len(response["data"]) == 2
+    first_body = mock_client.post_json.call_args_list[0].kwargs["body"]
+    second_body = mock_client.post_json.call_args_list[1].kwargs["body"]
+    assert first_body["sort"] == {"pose_score": "desc"}
+    assert first_body["offset"] == 0
+    assert "cursor" not in first_body
+    assert second_body["offset"] == 100
+    assert "cursor" not in second_body
+
+
+def test_get_canonical_sort_uses_cursor_pagination():
+    """Canonical sort keys continue to paginate with cursor tokens."""
+    mock_client = MagicMock()
+    mock_client.org_key = "test-org"
+    mock_client.project_id = None
+    mock_client.post_json.side_effect = [
+        {
+            "data": [{"id": "1", "measured_at": "2026-01-02T00:00:00Z"}],
+            "meta": {"nextCursor": "cursor-page-2"},
+        },
+        {
+            "data": [{"id": "2", "measured_at": "2026-01-01T00:00:00Z"}],
+            "meta": {},
+        },
+    ]
+    results = Results(mock_client)
+
+    response = results.get(
+        sort={"measured_at": "desc"},
+        limit=None,
+        select=["id", "measured_at"],
+    )
+
+    assert len(response["data"]) == 2
+    first_body = mock_client.post_json.call_args_list[0].kwargs["body"]
+    second_body = mock_client.post_json.call_args_list[1].kwargs["body"]
+    assert "offset" not in first_body
+    assert second_body["cursor"] == "cursor-page-2"
+    assert "offset" not in second_body
 
 
 def test_build_result_filter_eq_and_omits_none():
@@ -42,6 +240,121 @@ def test_get_results_lv1(client, registered_protein: "Protein"):
     for record in response["data"]:
         for field in ("id", "tool_key", "tool_version", "data", "compute_job_id"):
             assert field in record, f"Expected '{field}' key in record"
+
+
+def test_get_results_by_result_type_pocket_lv1(client):
+    """Filter result-explorer rows by a single result_type directive."""
+    response = client.results.get(
+        result_type="pocket",
+        select=["id", "tool_key", "data"],
+    )
+
+    assert isinstance(response["data"], list)
+    if client.env != "local" and not response["data"]:
+        pytest.skip("No pocket rows available in live environment")
+    assert len(response["data"]) >= 1
+    for record in response["data"]:
+        assert record.get("tool_key") in _POCKET_TOOL_KEYS
+
+
+def test_get_results_by_result_types_list_lv1(client):
+    """Filter result-explorer rows by multiple result_type values."""
+    response = client.results.get(
+        result_type=["Pocket", "Pose"],
+        select=["id", "tool_key", "data"],
+    )
+
+    assert isinstance(response["data"], list)
+    if client.env != "local" and not response["data"]:
+        pytest.skip(
+            "No pocket/pose rows available in live environment for multi-type query"
+        )
+    assert len(response["data"]) >= 1
+    allowed_tool_keys = _POCKET_TOOL_KEYS | _POSE_TOOL_KEYS
+    tool_keys = {record.get("tool_key") for record in response["data"]}
+    assert tool_keys.issubset(allowed_tool_keys)
+    assert len(tool_keys) >= 1
+
+
+def test_get_results_pose_score_filter_lv1(client):
+    """JSONB numeric filters apply to nested pose fields."""
+    baseline = client.results.get(
+        result_type="pose",
+        select=["id", "data"],
+        limit=25,
+    )
+    baseline_scores = _pose_scores_from_response(baseline)
+    if not baseline_scores:
+        pytest.skip("No pose rows with pose_score available in live environment")
+
+    response = client.results.get(
+        result_type="pose",
+        filter_dict={"pose_score": {"lt": 1}},
+        select=["id", "data"],
+    )
+
+    assert isinstance(response["data"], list)
+    if client.env != "local" and not response["data"]:
+        pytest.skip(
+            "Live result-explorer returned no rows for pose_score filter; "
+            "backend JSONB numeric filters may not be deployed yet."
+        )
+
+    assert len(response["data"]) >= 1
+    for record in response["data"]:
+        assert "pose_score" in (record.get("data") or {})
+        assert (record.get("data") or {}).get("pose_score", 0) < 1
+
+
+def test_get_results_pose_score_range_filter_lv1(client):
+    """Combined numeric bounds (gte + lt) are all enforced."""
+    baseline = client.results.get(
+        result_type="pose",
+        select=["id", "data"],
+        limit=25,
+    )
+    baseline_scores = _pose_scores_from_response(baseline)
+    if not baseline_scores:
+        pytest.skip("No pose rows with pose_score available in live environment")
+
+    lower = min(baseline_scores)
+    upper = max(baseline_scores) + 0.001
+    response = client.results.get(
+        result_type="pose",
+        filter_dict={"pose_score": {"gte": lower, "lt": upper}},
+        select=["id", "data"],
+    )
+
+    assert isinstance(response["data"], list)
+    if client.env != "local" and not response["data"]:
+        pytest.skip(
+            "Live result-explorer returned no rows for combined pose_score "
+            "bounds; backend JSONB numeric filters may not be deployed yet."
+        )
+
+    assert len(response["data"]) >= 1
+    for record in response["data"]:
+        score = (record.get("data") or {}).get("pose_score", 0)
+        assert lower <= score < upper
+
+
+def test_get_results_sort_by_measured_at_lv1(client):
+    """Sort directive orders rows by measured_at descending."""
+    response = client.results.get(
+        sort={"measured_at": "desc"},
+        select=["measured_at"],
+    )
+
+    measured_at_values = [
+        record["measured_at"]
+        for record in response["data"]
+        if record.get("measured_at") is not None
+    ]
+    if len(measured_at_values) < 2:
+        pytest.skip(
+            "Need at least two rows with non-null measured_at to validate sort order"
+        )
+    assert measured_at_values == sorted(measured_at_values, reverse=True)
 
 
 def test_get_results_with_tool_version_lv1(client, registered_protein: "Protein"):

@@ -22,6 +22,8 @@ MOCK_DEFAULT_PROJECT_NAME = "python-client-test-project-kfsresf"
 # Stable id for the in-memory mock data platform only (not a public SDK constant).
 MOCK_DEFAULT_PROJECT_ID = "09DEFAULTPROJECT00"
 
+_FIELD_MISSING = object()
+
 
 def _base_default_project_record() -> dict[str, Any]:
     """Return the default in-memory project row pre-seeded in the mock server."""
@@ -244,17 +246,145 @@ def _field_value(record: dict[str, Any], key: str) -> Any:
         key: The field name to look up.
 
     Returns:
-        The value found in the top-level record or nested ``data``, or a
-        sentinel ``_MISSING`` object when the key is absent from both.
+        The value found in the top-level record or nested ``data``, or
+        ``_FIELD_MISSING`` when the key is absent from both.
     """
-    _MISSING = object()
-    val = record.get(key, _MISSING)
-    if val is not _MISSING:
+    val = record.get(key, _FIELD_MISSING)
+    if val is not _FIELD_MISSING:
         return val
     data = record.get("data")
     if isinstance(data, dict):
-        return data.get(key, _MISSING)
-    return _MISSING
+        return data.get(key, _FIELD_MISSING)
+    return _FIELD_MISSING
+
+
+def _normalize_result_type_value(value: Any) -> Any:
+    """Normalize result-type filter operands for case-insensitive matching."""
+    if isinstance(value, str):
+        return value.strip().lower()
+    return value
+
+
+def _numeric_value(value: Any) -> float | None:
+    """Coerce a field value to float when possible."""
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, (int, float)):
+        return float(value)
+    if isinstance(value, str):
+        try:
+            return float(value)
+        except ValueError:
+            return None
+    return None
+
+
+def _validate_filter_condition(key: str, condition: dict[str, Any]) -> None:
+    """Raise ValueError when a filter condition has invalid operator combinations."""
+    membership_ops = {"eq", "in"} & set(condition.keys())
+    comparison_ops = {"lt", "lte", "gt", "gte"} & set(condition.keys())
+
+    if not membership_ops and not comparison_ops:
+        raise ValueError(f"Filter condition for field '{key}' must include an operator")
+
+    if membership_ops and comparison_ops:
+        raise ValueError(
+            f"Filter condition for field '{key}' cannot mix membership "
+            f"operators with comparison operators"
+        )
+
+    if len(membership_ops) > 1:
+        raise ValueError(
+            f"Filter condition for field '{key}' cannot include both "
+            f"'eq' and 'in' operators"
+        )
+
+
+def _matches_condition(
+    record: dict[str, Any],
+    key: str,
+    condition: dict[str, Any],
+) -> bool:
+    """Return whether *record* satisfies a single-field filter condition."""
+    raw_value = _field_value(record, key)
+    if raw_value is _FIELD_MISSING:
+        return False
+
+    if key == "result_type":
+        actual = _normalize_result_type_value(raw_value)
+    else:
+        actual = raw_value
+
+    if not condition:
+        return False
+
+    if "eq" in condition:
+        expected = condition["eq"]
+        if key == "result_type":
+            expected = _normalize_result_type_value(expected)
+        return actual == expected
+
+    if "in" in condition:
+        allowed = condition["in"]
+        if not isinstance(allowed, list):
+            allowed = [allowed]
+        if key == "result_type":
+            allowed_set = {_normalize_result_type_value(item) for item in allowed}
+            return actual in allowed_set
+        return actual in set(allowed)
+
+    comparison_ops = {
+        "lt": lambda actual_num, bound: actual_num < bound,
+        "lte": lambda actual_num, bound: actual_num <= bound,
+        "gt": lambda actual_num, bound: actual_num > bound,
+        "gte": lambda actual_num, bound: actual_num >= bound,
+    }
+    actual_num = _numeric_value(actual)
+    saw_comparison = False
+    for op, compare in comparison_ops.items():
+        if op not in condition:
+            continue
+        saw_comparison = True
+        bound_num = _numeric_value(condition[op])
+        if actual_num is None or bound_num is None:
+            return False
+        if not compare(actual_num, bound_num):
+            return False
+
+    return saw_comparison
+
+
+def _sort_key_component(value: Any) -> tuple[int, Any]:
+    """Build a sort key that avoids mixed-type comparisons."""
+    if value is _FIELD_MISSING or value is None:
+        return (2, "")
+    if isinstance(value, bool):
+        return (0, int(value))
+    if isinstance(value, (int, float)):
+        return (0, float(value))
+    if isinstance(value, str):
+        return (1, value)
+    if isinstance(value, (dict, list)):
+        return (1, str(value))
+    return (1, str(value))
+
+
+def _apply_sort(
+    records: list[dict[str, Any]],
+    sort_dict: dict[str, Any],
+) -> list[dict[str, Any]]:
+    """Sort records by one or more fields (top-level or nested ``data``)."""
+    if not sort_dict:
+        return records
+
+    sorted_records = list(records)
+    for field, direction in reversed(list(sort_dict.items())):
+        reverse = isinstance(direction, str) and direction.lower() == "desc"
+        sorted_records.sort(
+            key=lambda record: _sort_key_component(_field_value(record, field)),
+            reverse=reverse,
+        )
+    return sorted_records
 
 
 def _apply_eq_filters(
@@ -281,9 +411,8 @@ def _apply_eq_filters(
     Raises:
         ValueError: If a filter condition uses an unsupported operator.
     """
-    _MISSING = object()
     results = list(records)
-    allowed_ops = {"eq", "in"}
+    allowed_ops = {"eq", "in", "lt", "lte", "gt", "gte"}
     skip_keys = {"props"}
 
     for prop in filter_dict.get("props", []):
@@ -291,16 +420,17 @@ def _apply_eq_filters(
         op = prop["op"]
         val = prop["value"]
 
-        if op == "eq":
-            results = [r for r in results if _field_value(r, col) == val]
-        elif op == "in":
-            value_set = set(val) if isinstance(val, list) else {val}
-            results = [
-                r
-                for r in results
-                if _field_value(r, col) is not _MISSING
-                and _field_value(r, col) in value_set
-            ]
+        if op not in allowed_ops:
+            raise ValueError(
+                f"Unsupported filter operator(s) for props column '{col}': {op}"
+            )
+
+        if op in {"eq", "in"}:
+            condition = {op: val}
+            results = [r for r in results if _matches_condition(r, col, condition)]
+        elif op in {"lt", "lte", "gt", "gte"}:
+            condition = {op: val}
+            results = [r for r in results if _matches_condition(r, col, condition)]
 
     for key, condition in filter_dict.items():
         if key in skip_keys:
@@ -316,17 +446,8 @@ def _apply_eq_filters(
                 f"{', '.join(sorted(unknown_ops))}"
             )
 
-        if "eq" in condition:
-            expected = condition["eq"]
-            results = [r for r in results if _field_value(r, key) == expected]
-        elif "in" in condition:
-            value_set = set(condition["in"])
-            results = [
-                r
-                for r in results
-                if _field_value(r, key) is not _MISSING
-                and _field_value(r, key) in value_set
-            ]
+        _validate_filter_condition(key, condition)
+        results = [r for r in results if _matches_condition(r, key, condition)]
 
     return results
 
@@ -510,13 +631,18 @@ def create_data_platform_router(
     async def search_result_explorer(org_key: str, request: Request) -> dict[str, Any]:
         """Search result-explorer records with ``{"field": {"eq": value}}`` filters.
 
-        The local mock returns every matching row in one response (no ``limit`` /
-        pagination cap) so callers such as :meth:`Docking.get_results` receive full
-        pose sets (e.g. 128 bulk-docking rows) in a single request.
+        Supports ``offset``/``limit`` pagination (including ``meta.hasMore`` for
+        offset pages). When neither is sent, returns every matching row in one
+        response so legacy callers receive full pose sets in a single request.
         """
         body = await request.json()
         filter_dict = body.get("filter", {})
         select = body.get("select")
+        sort_dict = body.get("sort", {})
+
+        measured_at_pocket = "2026-01-02T12:00:00.000Z"
+        measured_at_pose = "2026-01-01T12:00:00.000Z"
+        measured_at_prepared = "2026-01-03T12:00:00.000Z"
 
         # Build the full pool of fixture-backed results first, then filter.
         all_results: list[dict[str, Any]] = []
@@ -553,6 +679,7 @@ def create_data_platform_router(
                 "tool_key": pf_tool["key"],
                 "tool_version": pf_tool["version"],
                 "result_type": "pocket",
+                "measured_at": measured_at_pocket,
                 "data": pocket,
                 "compute_job_id": run_pf.get("id") or run_pf.get("executionId"),
             }
@@ -569,6 +696,7 @@ def create_data_platform_router(
                     "tool_key": dk_tool["key"] or "deeporigin.docking",
                     "tool_version": dk_tool["version"],
                     "result_type": "pose",
+                    "measured_at": measured_at_pose,
                     "data": pose,
                     "compute_job_id": run_dk.get("id") or run_dk.get("executionId"),
                 }
@@ -589,6 +717,7 @@ def create_data_platform_router(
                         "tool_key": sp_tool["key"] or "deeporigin.system-prep",
                         "tool_version": sp_tool["version"],
                         "result_type": "preparedsystem",
+                        "measured_at": measured_at_prepared,
                         "data": system_out,
                         "compute_job_id": run_sp.get("id") or run_sp.get("executionId"),
                     }
@@ -608,11 +737,36 @@ def create_data_platform_router(
             }
             filtered = _apply_eq_filters(all_results, safe_filter)
 
-        page = filtered
+        if sort_dict:
+            filtered = _apply_sort(filtered, sort_dict)
+
+        offset = body.get("offset", 0)
+        limit = body.get("limit")
+        cursor_raw = body.get("cursor")
+        total = len(filtered)
+
+        if "offset" in body:
+            page_size = limit if limit is not None else total
+            page = filtered[offset : offset + page_size]
+            meta = {
+                "count": len(page),
+                "hasMore": offset + len(page) < total,
+            }
+        elif cursor_raw is not None or limit is not None:
+            start = int(cursor_raw) if cursor_raw else 0
+            page_size = limit if limit is not None else total
+            page = filtered[start : start + page_size]
+            meta = {"count": len(page)}
+            if start + len(page) < total:
+                meta["nextCursor"] = str(start + len(page))
+        else:
+            page = filtered
+            meta = {"count": len(page)}
+
         if select:
             page = [{k: v for k, v in r.items() if k in select} for r in page]
 
-        return {"data": page, "meta": {"count": len(page)}}
+        return {"data": page, "meta": meta}
 
     @router.post("/data-platform/{org_key}/executions/search")
     async def search_executions(org_key: str, request: Request) -> dict[str, Any]:

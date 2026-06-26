@@ -52,6 +52,14 @@ Platform tool `deeporigin.draco` that extracts chemical structures from a PDF.
 CLI class `Patent`. Billing item `DO_PATENT` (per page).
 _Avoid_: `Draco` as the public API name; `DoPatentMolecule` as a CLI type
 
+**Result type**:
+Platform catalog base entity from a tool output schema's `x-data-type` (e.g.
+`pose`, `pocket`, `preparedsystem`, `abferesult`). Used as a result-explorer
+filter directive to narrow which `results__*` tables are searched. Result rows
+may echo a top-level `result_type` field in API responses, but that is separate
+from the filter directive and not a generic stored entity column like `protein_id`.
+_Avoid_: `Binding` for docking poses (use `pose`); conflating with `tool_key`
+
 **Structure viewer**:
 Jupyter 3D Mol* embed for macromolecules, ligands, docked poses, pockets, and
 trajectories. Rendered via `render_html()` in a notebook cell.
