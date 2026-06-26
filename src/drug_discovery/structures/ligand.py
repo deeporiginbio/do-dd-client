@@ -1490,8 +1490,8 @@ class Ligand(Entity):
             row["formal_charge"] = self.formal_charge
         except Exception:
             warnings.warn(
-                f"Could not compute molecular descriptors for "
-                f"'{smiles_value}'; formal_charge defaults to 0.",
+                f"Could not compute formal_charge for "
+                f"'{smiles_value}'; defaulting to 0.",
                 stacklevel=2,
             )
             row.setdefault("formal_charge", 0)

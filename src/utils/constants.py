@@ -24,6 +24,7 @@ API_ENDPOINT = {
 
 
 DEFAULT_SEARCH_PAGE_SIZE = 100
+"""Default page size for paginated entity search requests."""
 
 ENTITY_SEARCH_TIMEOUT_SECONDS = 60.0
 """HTTP timeout (seconds) for data-platform entity search requests.
@@ -41,7 +42,6 @@ LIGAND_MOLPROPS_SET_FIELDS: frozenset[str] = frozenset(
     )
 )
 """Ligand ``set`` fields computed by molprops; not writable on create/update."""
-"""Default page size for paginated entity search requests."""
 
 RESULT_EXPLORER_CANONICAL_SORT_FIELDS: frozenset[str] = frozenset(
     {
