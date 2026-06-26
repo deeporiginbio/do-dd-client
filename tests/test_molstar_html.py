@@ -57,7 +57,8 @@ def test_render_protein_html_escapes_script_tags_in_pdb(tmp_path: Path) -> None:
     html = render_protein_html(pdb_path=str(pdb_path))
 
     assert "</script><script>alert(1)</script>" not in html
-    pdb_b64 = base64.b64encode(pdb_path.read_bytes()).decode("ascii")
+    pdb_text = pdb_path.read_text(encoding="utf-8")
+    pdb_b64 = base64.b64encode(pdb_text.encode("utf-8")).decode("ascii")
     assert f'atob("{pdb_b64}")' in html
 
 
