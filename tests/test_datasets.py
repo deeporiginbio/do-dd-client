@@ -12,11 +12,13 @@ def test_create_dataset(client: DeepOriginClient):
         dataset_version="1.0.0",
         summary="A test dataset",
         tags=["HTS", "FBDD"],
+        changelog="Initial import",
     )
     assert "data" in result
     assert result["data"]["name"] == "Test Dataset"
     assert result["data"]["dataset_key"] == "test.dataset"
     assert result["data"]["tags"] == {"dataset_tags": ["HTS", "FBDD"]}
+    assert result["data"]["changelog"] == "Initial import"
 
 
 def test_search_datasets(client: DeepOriginClient):

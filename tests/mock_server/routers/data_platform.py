@@ -871,6 +871,7 @@ def create_data_platform_router(
             "file_size_bytes": meta.get("file_size_bytes"),
             "tags": meta.get("tags"),
             "sample_rows": meta.get("datasetPreview"),
+            "changelog": meta.get("changelog"),
             "dataset_schema": set_data.get("datasetSchema"),
         }
         return {k: v for k, v in flat.items() if v is not None}

@@ -40,6 +40,7 @@ def _build_dataset_admin_set(
     file_size_bytes: int | None = None,
     dataset_schema: dict[str, Any] | None = None,
     sample_rows: list[dict[str, Any]] | None = None,
+    changelog: str | None = None,
 ) -> dict[str, Any]:
     """Build the admin ``set`` bundle expected by data-platform dataset create."""
     dataset_meta: dict[str, Any] = {"name": name}
@@ -60,6 +61,8 @@ def _build_dataset_admin_set(
         dataset_meta["file_size_bytes"] = file_size_bytes
     if sample_rows is not None:
         dataset_meta["datasetPreview"] = sample_rows
+    if changelog is not None:
+        dataset_meta["changelog"] = changelog
 
     schema = (
         dataset_schema
@@ -232,6 +235,7 @@ class Datasets:
             file_size_bytes=file_size_bytes,
             dataset_schema=dataset_schema,
             sample_rows=sample_rows,
+            changelog=changelog,
         )
 
         return self._c.post_json(
