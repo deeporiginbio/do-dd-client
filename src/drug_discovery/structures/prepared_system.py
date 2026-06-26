@@ -102,15 +102,11 @@ class PreparedSystem:
             lazy=True,
         )
 
-        from deeporigin_molstar import ProteinViewer
+        from deeporigin.viz.molstar_html import render_protein_html
 
         from deeporigin.utils.notebook import render_html
 
-        protein_viewer = ProteinViewer(
-            data=local_pdb,
-            format="pdb",
-        )
-        html_content = protein_viewer.render_protein()
+        html_content = render_protein_html(pdb_path=local_pdb)
         return render_html(html_content)
 
     @classmethod

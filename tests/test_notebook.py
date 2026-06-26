@@ -1,8 +1,15 @@
 """Tests for notebook utility functions."""
 
+import base64
+
 import pytest
 
-from src.utils.notebook import render_progress_bar, show_progress_bar
+from deeporigin.utils.notebook import (
+    _iframe_markup_for_html_document,
+    _iframe_src_for_html_document,
+    render_progress_bar,
+    show_progress_bar,
+)
 
 
 def test_render_progress_bar_basic():
@@ -107,3 +114,22 @@ def test_show_progress_bar():
         # If IPython is not available, that's okay for this test
         if "IPython" not in str(type(e).__name__):
             raise
+
+
+def test_iframe_src_uses_base64_data_uri() -> None:
+    """HTML documents embed via base64 data URI, not srcdoc."""
+    html = "<!DOCTYPE html><html><body>hi</body></html>"
+    src = _iframe_src_for_html_document(html)
+
+    assert src.startswith("data:text/html;base64,")
+    decoded = base64.b64decode(src.split(",", 1)[1]).decode("utf-8")
+    assert decoded == html
+
+
+def test_iframe_markup_allows_scripts() -> None:
+    """Iframe sandbox must allow scripts for Mol* and other JS viewers."""
+    markup = _iframe_markup_for_html_document("<html></html>", height=400)
+
+    assert 'sandbox="allow-scripts allow-same-origin"' in markup
+    assert "srcdoc=" not in markup
+    assert "data:text/html;base64," in markup

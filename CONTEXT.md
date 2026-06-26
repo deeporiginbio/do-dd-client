@@ -51,3 +51,14 @@ _Avoid_: treating pins as exact semver strings when comparing against `tools.lis
 Platform tool `deeporigin.draco` that extracts chemical structures from a PDF.
 CLI class `Patent`. Billing item `DO_PATENT` (per page).
 _Avoid_: `Draco` as the public API name; `DoPatentMolecule` as a CLI type
+
+**Structure viewer**:
+Jupyter 3D Mol* embed for macromolecules, ligands, docked poses, pockets, and
+trajectories. Rendered via `render_html()` in a notebook cell.
+_Avoid_: conflating with RDKit 2D structure images (`render_smiles_in_dataframe`)
+
+**Legacy structure viewer**:
+`deeporigin-molstar` Python package plus `balto.biosim.ai/molstar/gallery.js`.
+Being replaced by the in-client `deeporigin.viz` HTML builder and hosted
+`molstarLib` at `os.dev.deeporigin.io`.
+_Avoid_: `biosim_molstar` when referring to the pip package name (`deeporigin-molstar`)
