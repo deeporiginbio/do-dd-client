@@ -110,6 +110,37 @@ def _merge_compute_job_id_filter(
     prepared["compute_job_id"] = {"eq": compute_job_id}
 
 
+def _parse_incoming_project_id(
+    incoming_project_filter: Any,
+    *,
+    client_project_id: str | None,
+) -> str | None:
+    """Extract a project ID from a filter value.
+
+    Args:
+        incoming_project_filter: Raw ``project_id`` filter from the caller.
+        client_project_id: Project ID configured on the client, if any.
+
+    Returns:
+        Normalized project ID string, or ``None`` when the filter shape does
+        not specify a single project.
+
+    Raises:
+        ValueError: If ``client_project_id`` is set and the filter uses an
+            unsupported operator shape.
+    """
+    if isinstance(incoming_project_filter, dict):
+        if "eq" in incoming_project_filter:
+            return incoming_project_filter["eq"]
+        if client_project_id is not None:
+            raise ValueError(
+                "When client.project_id is set, filter_dict['project_id'] "
+                "must be a scalar or {'eq': ...}."
+            )
+        return None
+    return incoming_project_filter
+
+
 def _build_result_filter(**kwargs: Any) -> dict[str, Any]:
     """Build equality filter fields for result-explorer queries.
 
@@ -178,17 +209,10 @@ class Results:
         incoming_project_filter = scoped_filter.get("project_id")
 
         if incoming_project_filter is not None:
-            incoming_project_id: str | None = None
-            if isinstance(incoming_project_filter, dict):
-                if "eq" in incoming_project_filter:
-                    incoming_project_id = incoming_project_filter["eq"]
-                elif client_project_id is not None:
-                    raise ValueError(
-                        "When client.project_id is set, filter_dict['project_id'] "
-                        "must be a scalar or {'eq': ...}."
-                    )
-            else:
-                incoming_project_id = incoming_project_filter
+            incoming_project_id = _parse_incoming_project_id(
+                incoming_project_filter,
+                client_project_id=client_project_id,
+            )
 
             if (
                 client_project_id is not None
