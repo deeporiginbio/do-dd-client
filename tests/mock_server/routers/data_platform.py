@@ -294,6 +294,9 @@ def _matches_condition(
     else:
         actual = raw_value
 
+    if not condition:
+        return False
+
     if "eq" in condition:
         expected = condition["eq"]
         if key == "result_type":
@@ -316,16 +319,18 @@ def _matches_condition(
         "gte": lambda actual_num, bound: actual_num >= bound,
     }
     actual_num = _numeric_value(actual)
+    saw_comparison = False
     for op, compare in comparison_ops.items():
         if op not in condition:
             continue
+        saw_comparison = True
         bound_num = _numeric_value(condition[op])
         if actual_num is None or bound_num is None:
             return False
         if not compare(actual_num, bound_num):
             return False
 
-    return True
+    return saw_comparison
 
 
 def _sort_key_component(value: Any) -> tuple[int, Any]:
@@ -711,6 +716,7 @@ def create_data_platform_router(
 
         offset = body.get("offset", 0)
         limit = body.get("limit")
+        cursor_raw = body.get("cursor")
         total = len(filtered)
 
         if "offset" in body:
@@ -720,6 +726,13 @@ def create_data_platform_router(
                 "count": len(page),
                 "hasMore": offset + len(page) < total,
             }
+        elif cursor_raw is not None:
+            start = int(cursor_raw) if cursor_raw else 0
+            page_size = limit if limit is not None else total
+            page = filtered[start : start + page_size]
+            meta = {"count": len(page)}
+            if start + len(page) < total:
+                meta["nextCursor"] = str(start + len(page))
         else:
             page = filtered
             meta = {"count": len(page)}

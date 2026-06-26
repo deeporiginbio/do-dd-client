@@ -207,6 +207,18 @@ class Results:
             prepared.update(_build_result_type_filter(result_type))
         prepared = self._apply_project_scope(filter_dict=prepared)
         if compute_job_id is not None:
+            existing = prepared.get("compute_job_id")
+            if existing is not None:
+                existing_id: str | None = None
+                if isinstance(existing, dict):
+                    existing_id = existing.get("eq")
+                else:
+                    existing_id = existing
+                if existing_id is not None and existing_id != compute_job_id:
+                    raise ValueError(
+                        "Conflicting compute_job_id: filter_dict and keyword "
+                        "argument do not match."
+                    )
             prepared["compute_job_id"] = {"eq": compute_job_id}
         return prepared
 
