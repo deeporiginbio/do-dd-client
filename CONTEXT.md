@@ -58,3 +58,14 @@ Platform catalog base entity from a tool output schema's `x-data-type` (e.g.
 filter directive to narrow which `results__*` tables are searched; not a stored
 column on result rows.
 _Avoid_: `Binding` for docking poses (use `pose`); conflating with `tool_key`
+
+**Structure viewer**:
+Jupyter 3D Mol* embed for macromolecules, ligands, docked poses, pockets, and
+trajectories. Rendered via `render_html()` in a notebook cell.
+_Avoid_: conflating with RDKit 2D structure images (`render_smiles_in_dataframe`)
+
+**Legacy structure viewer**:
+`deeporigin-molstar` Python package plus `balto.biosim.ai/molstar/gallery.js`.
+Being replaced by the in-client `deeporigin.viz` HTML builder and hosted
+`molstarLib` at `os.dev.deeporigin.io`.
+_Avoid_: `biosim_molstar` when referring to the pip package name (`deeporigin-molstar`)

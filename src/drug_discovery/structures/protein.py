@@ -1295,18 +1295,14 @@ class Protein(Entity):
                 ligands = LigandSet(ligands)
             sdf_file = ligands.to_sdf()
 
-        from deeporigin_molstar import ProteinViewer
-
         if pockets is None and sdf_file is None:
-            # we're only showing the protein, use ProteinViewer
+            from deeporigin.viz.molstar_html import render_protein_html
 
-            protein_viewer = ProteinViewer(
-                data=current_protein_file,
-                format="pdb",
-            )
-            html_content = protein_viewer.render_protein()
+            html_content = render_protein_html(pdb_path=current_protein_file)
             return render_html(html_content)
         elif pockets is not None and sdf_file is None:
+            from deeporigin_molstar import ProteinViewer
+
             # make sure we
             for pocket in pockets:
                 pocket.download()
