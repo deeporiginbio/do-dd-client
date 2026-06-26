@@ -102,7 +102,10 @@ class Executions:
             payload["tag"] = self._c.tag
         if billing is not None:
             payload["billing"] = billing
-        elif getattr(self._c, "billing_tag", None) is not None and "billing" not in payload:
+        elif (
+            getattr(self._c, "billing_tag", None) is not None
+            and "billing" not in payload
+        ):
             payload["billing"] = self._c.billing_tag
 
         req_timeout = (

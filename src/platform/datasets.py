@@ -61,10 +61,14 @@ def _build_dataset_admin_set(
     if sample_rows is not None:
         dataset_meta["datasetPreview"] = sample_rows
 
-    schema = dataset_schema if dataset_schema is not None else {
-        "type": "object",
-        "properties": {},
-    }
+    schema = (
+        dataset_schema
+        if dataset_schema is not None
+        else {
+            "type": "object",
+            "properties": {},
+        }
+    )
     return {
         "file_path": file_path,
         "dataset_key": dataset_key,

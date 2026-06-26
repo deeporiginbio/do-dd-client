@@ -25,8 +25,8 @@ automatic confirmation is performed.
 from __future__ import annotations
 
 import builtins
-import copy
 from contextlib import contextmanager
+import copy
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Any, ClassVar, Literal, Self
 
@@ -145,11 +145,15 @@ class Execution:
     ) -> dict[str, Any]:
         """Submit ``data`` via :meth:`~deeporigin.platform.executions.Executions.create`."""
         resolved_key = tool_key if tool_key is not None else self.tool_key
-        resolved_version = tool_version if tool_version is not None else getattr(
-            self, "tool_version", None
+        resolved_version = (
+            tool_version
+            if tool_version is not None
+            else getattr(self, "tool_version", None)
         )
         if not resolved_key or not resolved_version:
-            raise ValueError("tool_key and tool_version are required for execution create")
+            raise ValueError(
+                "tool_key and tool_version are required for execution create"
+            )
         extra: dict[str, Any] = {}
         if self._execution_tag_override is not None:
             extra["tag"] = self._execution_tag_override
