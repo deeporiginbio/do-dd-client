@@ -181,7 +181,7 @@ def _iframe_src_for_html_document(html: str) -> str:
     import base64
 
     encoded = base64.b64encode(html.encode("utf-8")).decode("ascii")
-    return f"data:text/html;base64,{encoded}"
+    return f"data:text/html;charset=utf-8;base64,{encoded}"
 
 
 def _iframe_markup_for_html_document(html: str, *, height: int) -> str:

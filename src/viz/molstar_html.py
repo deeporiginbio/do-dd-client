@@ -25,6 +25,11 @@ def _read_structure_file(path: str) -> str:
     return file_path.read_text(encoding="utf-8")
 
 
+def _json_for_script_tag(value: str) -> str:
+    """JSON-encode a string for safe embedding inside a ``<script>`` tag."""
+    return json.dumps(value).replace("<", "\\u003c")
+
+
 def render_protein_html(*, pdb_path: str, style: str = "cartoon") -> str:
     """Build iframe-ready HTML for protein-only visualization.
 
@@ -41,7 +46,7 @@ def render_protein_html(*, pdb_path: str, style: str = "cartoon") -> str:
     pdb_b64 = base64.b64encode(_read_structure_file(pdb_path).encode("utf-8")).decode(
         "ascii"
     )
-    style_json = json.dumps(style)
+    style_json = _json_for_script_tag(style)
 
     return f"""<!DOCTYPE html>
 <html lang="en">

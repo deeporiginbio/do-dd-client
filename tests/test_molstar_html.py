@@ -62,6 +62,21 @@ def test_render_protein_html_escapes_script_tags_in_pdb(tmp_path: Path) -> None:
     assert f'atob("{pdb_b64}")' in html
 
 
+def test_render_protein_html_escapes_script_tags_in_style(tmp_path: Path) -> None:
+    """Style values with </script> are JSON-escaped so they cannot break script tags."""
+    pdb_path = tmp_path / "minimal.pdb"
+    pdb_path.write_text(
+        "ATOM      1  N   ALA A   1       0.000   0.000   0.000\n", encoding="utf-8"
+    )
+
+    html = render_protein_html(
+        pdb_path=str(pdb_path), style="</script><script>alert(1)</script>"
+    )
+
+    assert "</script><script>alert(1)</script>" not in html
+    assert '"\\u003c/script>' in html
+
+
 def test_render_protein_html_missing_file_raises() -> None:
     """Missing PDB path raises FileNotFoundError."""
     with pytest.raises(FileNotFoundError, match="Structure file not found"):

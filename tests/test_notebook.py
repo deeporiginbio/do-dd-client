@@ -121,7 +121,7 @@ def test_iframe_src_uses_base64_data_uri() -> None:
     html = "<!DOCTYPE html><html><body>hi</body></html>"
     src = _iframe_src_for_html_document(html)
 
-    assert src.startswith("data:text/html;base64,")
+    assert src.startswith("data:text/html;charset=utf-8;base64,")
     decoded = base64.b64decode(src.split(",", 1)[1]).decode("utf-8")
     assert decoded == html
 
@@ -132,4 +132,4 @@ def test_iframe_markup_allows_scripts() -> None:
 
     assert 'sandbox="allow-scripts allow-same-origin"' in markup
     assert "srcdoc=" not in markup
-    assert "data:text/html;base64," in markup
+    assert "data:text/html;charset=utf-8;base64," in markup
