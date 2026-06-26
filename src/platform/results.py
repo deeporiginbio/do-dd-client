@@ -380,8 +380,9 @@ class Results:
         build the filter for you.  Use this method directly only when you
         need a filter shape that no wrapper covers yet.
 
-        Automatically paginates using cursor-based pagination until all
-        matching records have been fetched.
+        Automatically paginates until all matching records have been fetched.
+        Canonical-column sorts use cursor pagination; JSONB tool-data sort
+        keys use offset pagination (see ``sort`` below).
 
         When ``client.project_id`` is set, this method automatically enforces
         ``filter.project_id == client.project_id``.
