@@ -713,16 +713,16 @@ def create_data_platform_router(
         limit = body.get("limit")
         total = len(filtered)
 
-        if limit is None and offset == 0:
-            page = filtered
-            meta: dict[str, Any] = {"count": len(page)}
-        else:
+        if "offset" in body:
             page_size = limit if limit is not None else total
             page = filtered[offset : offset + page_size]
             meta = {
                 "count": len(page),
                 "hasMore": offset + len(page) < total,
             }
+        else:
+            page = filtered
+            meta = {"count": len(page)}
 
         if select:
             page = [{k: v for k, v in r.items() if k in select} for r in page]
