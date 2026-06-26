@@ -80,6 +80,36 @@ def _sort_uses_jsonb_fields(sort: dict[str, str] | None) -> bool:
     return any(key not in RESULT_EXPLORER_CANONICAL_SORT_FIELDS for key in sort)
 
 
+def _merge_compute_job_id_filter(
+    prepared: dict[str, Any],
+    compute_job_id: str,
+) -> None:
+    """Merge *compute_job_id* into *prepared*, raising on conflict.
+
+    Args:
+        prepared: Filter dict being built for result-explorer search.
+        compute_job_id: Compute job ID from the keyword argument.
+
+    Raises:
+        ValueError: If ``filter_dict`` already constrains ``compute_job_id``
+            with a different value or operator shape.
+    """
+    existing = prepared.get("compute_job_id")
+    if existing is not None:
+        if isinstance(existing, dict):
+            if set(existing.keys()) != {"eq"} or existing.get("eq") != compute_job_id:
+                raise ValueError(
+                    "Conflicting compute_job_id: filter_dict and keyword "
+                    "argument do not match."
+                )
+        elif existing != compute_job_id:
+            raise ValueError(
+                "Conflicting compute_job_id: filter_dict and keyword "
+                "argument do not match."
+            )
+    prepared["compute_job_id"] = {"eq": compute_job_id}
+
+
 def _build_result_filter(**kwargs: Any) -> dict[str, Any]:
     """Build equality filter fields for result-explorer queries.
 
@@ -207,23 +237,7 @@ class Results:
             prepared.update(_build_result_type_filter(result_type))
         prepared = self._apply_project_scope(filter_dict=prepared)
         if compute_job_id is not None:
-            existing = prepared.get("compute_job_id")
-            if existing is not None:
-                if isinstance(existing, dict):
-                    if (
-                        set(existing.keys()) != {"eq"}
-                        or existing.get("eq") != compute_job_id
-                    ):
-                        raise ValueError(
-                            "Conflicting compute_job_id: filter_dict and keyword "
-                            "argument do not match."
-                        )
-                elif existing != compute_job_id:
-                    raise ValueError(
-                        "Conflicting compute_job_id: filter_dict and keyword "
-                        "argument do not match."
-                    )
-            prepared["compute_job_id"] = {"eq": compute_job_id}
+            _merge_compute_job_id_filter(prepared, compute_job_id)
         return prepared
 
     def _fetch_result_pages(
