@@ -29,8 +29,6 @@ import copy
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Any, ClassVar, Literal, Self
 
-from beartype import beartype
-
 from deeporigin.platform.constants import (
     ALLOWED_STATUS_TRANSITIONS,
     is_success_status,
