@@ -26,6 +26,31 @@ API_ENDPOINT = {
 DEFAULT_SEARCH_PAGE_SIZE = 100
 """Default page size for paginated entity search requests."""
 
+RESULT_EXPLORER_CANONICAL_SORT_FIELDS: frozenset[str] = frozenset(
+    {
+        "id",
+        "created_at",
+        "updated_at",
+        "modified_by",
+        "deleted",
+        "project_id",
+        "execution_id",
+        "tool_id",
+        "tool_key",
+        "tool_version",
+        "measured_at",
+        "ligand_canonical_id",
+        "protein_canonical_id",
+        "data",
+        "parameters",
+        "result_table_name",
+        "compute_job_id",
+        "execution_name",
+        "tool_name",
+    }
+)
+"""Result-explorer columns that support cursor (keyset) pagination when used in ``sort``."""
+
 HTTP_RETRYABLE_STATUS_CODES: frozenset[int] = frozenset((429, 500, 502, 503, 504))
 """HTTP status codes for which :class:`~deeporigin.platform.client.DeepOriginClient` retries requests."""
 

@@ -4,7 +4,10 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
-from deeporigin.utils.constants import DEFAULT_SEARCH_PAGE_SIZE
+from deeporigin.utils.constants import (
+    DEFAULT_SEARCH_PAGE_SIZE,
+    RESULT_EXPLORER_CANONICAL_SORT_FIELDS,
+)
 
 if TYPE_CHECKING:
     from deeporigin.platform.client import DeepOriginClient
@@ -57,6 +60,23 @@ def _filter_dict_has_result_type(filter_dict: dict[str, Any]) -> bool:
         if isinstance(prop, dict) and prop.get("column") == "result_type":
             return True
     return False
+
+
+def _sort_uses_jsonb_fields(sort: dict[str, str] | None) -> bool:
+    """Return whether *sort* includes any JSONB tool-data field keys.
+
+    The data-platform result-explorer rejects cursor pagination when sorting
+    by non-canonical (JSONB) fields; callers must use offset pagination instead.
+
+    Args:
+        sort: Optional sort mapping from :meth:`Results.get`.
+
+    Returns:
+        ``True`` when at least one sort key is not a canonical column.
+    """
+    if sort is None:
+        return False
+    return any(key not in RESULT_EXPLORER_CANONICAL_SORT_FIELDS for key in sort)
 
 
 def _build_result_filter(**kwargs: Any) -> dict[str, Any]:
@@ -198,13 +218,53 @@ class Results:
         sort: dict[str, str] | None,
         limit: int | None,
     ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
-        """Paginate result-explorer search until *limit* or no next cursor.
+        """Paginate result-explorer search until *limit* or no further pages.
+
+        Canonical sort keys use cursor pagination. JSONB/data sort keys fall back
+        to offset pagination because the backend rejects cursor + JSONB sort.
 
         Args:
             filter_dict: Final filter for the search endpoint.
             page_size: Records requested per page.
             select: Fields to return for each record.
             sort: Optional sort mapping.
+            limit: Maximum total records to return, or ``None`` for all pages.
+
+        Returns:
+            Tuple of accumulated records and the last API response body.
+        """
+        if _sort_uses_jsonb_fields(sort):
+            return self._fetch_result_pages_by_offset(
+                filter_dict=filter_dict,
+                page_size=page_size,
+                select=select,
+                sort=sort,
+                limit=limit,
+            )
+        return self._fetch_result_pages_by_cursor(
+            filter_dict=filter_dict,
+            page_size=page_size,
+            select=select,
+            sort=sort,
+            limit=limit,
+        )
+
+    def _fetch_result_pages_by_cursor(
+        self,
+        *,
+        filter_dict: dict[str, Any],
+        page_size: int,
+        select: list[str],
+        sort: dict[str, str] | None,
+        limit: int | None,
+    ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+        """Paginate result-explorer search with cursor tokens.
+
+        Args:
+            filter_dict: Final filter for the search endpoint.
+            page_size: Records requested per page.
+            select: Fields to return for each record.
+            sort: Optional sort mapping (canonical columns only).
             limit: Maximum total records to return, or ``None`` for all pages.
 
         Returns:
@@ -237,6 +297,69 @@ class Results:
             if not next_cursor:
                 break
             cursor = next_cursor
+
+        return all_data, response
+
+    def _fetch_result_pages_by_offset(
+        self,
+        *,
+        filter_dict: dict[str, Any],
+        page_size: int,
+        select: list[str],
+        sort: dict[str, str] | None,
+        limit: int | None,
+    ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+        """Paginate result-explorer search with offset/limit pages.
+
+        Used when sorting by JSONB tool-data fields, which the backend does not
+        support with cursor pagination.
+
+        Args:
+            filter_dict: Final filter for the search endpoint.
+            page_size: Records requested per page.
+            select: Fields to return for each record.
+            sort: Optional sort mapping (may include JSONB field keys).
+            limit: Maximum total records to return, or ``None`` for all pages.
+
+        Returns:
+            Tuple of accumulated records and the last API response body.
+        """
+        url = f"/data-platform/{self._c.org_key}/result-explorer/search"
+        all_data: list[dict[str, Any]] = []
+        offset = 0
+        response: dict[str, Any] = {}
+
+        while True:
+            body: dict[str, Any] = {
+                "filter": filter_dict,
+                "limit": page_size,
+                "select": select,
+                "offset": offset,
+            }
+            if sort is not None:
+                body["sort"] = sort
+
+            response = self._c.post_json(url, body=body)
+            page_data = response.get("data", [])
+            all_data.extend(page_data)
+
+            if limit is not None and len(all_data) >= limit:
+                all_data = all_data[:limit]
+                break
+
+            if not page_data:
+                break
+
+            meta = response.get("meta", {})
+            has_more = meta.get("hasMore")
+            if has_more is False:
+                break
+            if has_more is True:
+                offset += page_size
+                continue
+            if len(page_data) < page_size:
+                break
+            offset += page_size
 
         return all_data, response
 
@@ -277,6 +400,10 @@ class Results:
             select: List of fields to select. Defaults to
                 ``["id", "tool_key", "tool_version", "data", "compute_job_id"]``.
             sort: Optional sort mapping field names to ``"asc"`` or ``"desc"``.
+                Canonical columns (``measured_at``, ``tool_key``, …) paginate
+                with cursors. JSONB tool-data fields (``pose_score``, …)
+                automatically use offset pagination because the backend rejects
+                cursor pagination combined with JSONB sort keys.
 
         Returns:
             Dictionary with ``data`` (all records across pages) and ``meta``

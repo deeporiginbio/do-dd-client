@@ -14,6 +14,7 @@ from deeporigin.platform.results import (
     _build_result_type_filter,
     _filter_dict_has_result_type,
     _normalize_result_type,
+    _sort_uses_jsonb_fields,
 )
 
 if TYPE_CHECKING:
@@ -79,6 +80,15 @@ def test_get_result_type_conflict_raises():
         )
 
 
+def test_sort_uses_jsonb_fields_detects_non_canonical_keys():
+    """JSONB tool-data sort keys require offset pagination."""
+    assert _sort_uses_jsonb_fields({"pose_score": "desc"})
+    assert not _sort_uses_jsonb_fields({"measured_at": "desc"})
+    assert _sort_uses_jsonb_fields(
+        {"measured_at": "desc", "pose_score": "asc"},
+    )
+
+
 def test_get_passes_sort_in_request_body():
     """Results.get forwards sort to the result-explorer search endpoint."""
     mock_client = MagicMock()
@@ -92,6 +102,73 @@ def test_get_passes_sort_in_request_body():
     body = mock_client.post_json.call_args.kwargs["body"]
     assert body["sort"] == {"measured_at": "desc"}
     assert "result_type" not in body["filter"]
+    assert "cursor" not in body
+    assert "offset" not in body
+
+
+def test_get_jsonb_sort_uses_offset_pagination():
+    """JSONB sort keys paginate with offset instead of cursor."""
+    mock_client = MagicMock()
+    mock_client.org_key = "test-org"
+    mock_client.project_id = None
+    mock_client.post_json.side_effect = [
+        {
+            "data": [{"id": "1", "data": {"pose_score": 1.0}}],
+            "meta": {"hasMore": True},
+        },
+        {
+            "data": [{"id": "2", "data": {"pose_score": 2.0}}],
+            "meta": {"hasMore": False},
+        },
+    ]
+    results = Results(mock_client)
+
+    response = results.get(
+        result_type="pose",
+        sort={"pose_score": "desc"},
+        limit=None,
+        select=["id", "data"],
+    )
+
+    assert len(response["data"]) == 2
+    first_body = mock_client.post_json.call_args_list[0].kwargs["body"]
+    second_body = mock_client.post_json.call_args_list[1].kwargs["body"]
+    assert first_body["sort"] == {"pose_score": "desc"}
+    assert first_body["offset"] == 0
+    assert "cursor" not in first_body
+    assert second_body["offset"] == 100
+    assert "cursor" not in second_body
+
+
+def test_get_canonical_sort_uses_cursor_pagination():
+    """Canonical sort keys continue to paginate with cursor tokens."""
+    mock_client = MagicMock()
+    mock_client.org_key = "test-org"
+    mock_client.project_id = None
+    mock_client.post_json.side_effect = [
+        {
+            "data": [{"id": "1", "measured_at": "2026-01-02T00:00:00Z"}],
+            "meta": {"nextCursor": "cursor-page-2"},
+        },
+        {
+            "data": [{"id": "2", "measured_at": "2026-01-01T00:00:00Z"}],
+            "meta": {},
+        },
+    ]
+    results = Results(mock_client)
+
+    response = results.get(
+        sort={"measured_at": "desc"},
+        limit=None,
+        select=["id", "measured_at"],
+    )
+
+    assert len(response["data"]) == 2
+    first_body = mock_client.post_json.call_args_list[0].kwargs["body"]
+    second_body = mock_client.post_json.call_args_list[1].kwargs["body"]
+    assert "offset" not in first_body
+    assert second_body["cursor"] == "cursor-page-2"
+    assert "offset" not in second_body
 
 
 def test_build_result_filter_eq_and_omits_none():

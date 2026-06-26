@@ -25,6 +25,13 @@ typed = client.results.get(
     limit=50,
 )
 
+# Sort by JSONB tool-data fields (offset pagination is used automatically)
+top_poses = client.results.get(
+    result_type="pose",
+    sort={"pose_score": "desc"},
+    limit=200,
+)
+
 # Get binding pockets for a protein
 pockets = client.results.get_pockets(protein_id="08BSPN61NYVE3")
 
