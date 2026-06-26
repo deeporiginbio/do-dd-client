@@ -25,11 +25,12 @@ Strangler-fig migration from the legacy `deeporigin-molstar` Python package
 
 ## Verification notebooks
 
-Throwaway notebooks live in `docs/notebooks/dirty/` (gitignored). One per phase:
+Develop in `docs/notebooks/dirty/` (gitignored), then promote to
+`docs/notebooks/clean/` via `./scripts/notebooks.sh`. Committed notebooks:
 
 | Phase | Notebook |
 |-------|----------|
-| 1 | `molstar-protein-view.ipynb` |
+| 1 | `docs/notebooks/clean/molstar-protein-view.ipynb` |
 | 2 | `molstar-pocket-view.ipynb` |
 | 3 | `molstar-ligand-view.ipynb` |
 | 4 | `molstar-docked-poses.ipynb` |

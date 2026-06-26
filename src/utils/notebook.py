@@ -185,7 +185,11 @@ def _iframe_src_for_html_document(html: str) -> str:
 
 
 def _iframe_markup_for_html_document(html: str, *, height: int) -> str:
-    """Build iframe markup for a self-contained HTML document."""
+    """Build iframe markup for a self-contained HTML document.
+
+    The HTML is embedded with ``allow-scripts`` and ``allow-same-origin`` so
+    Mol* and similar viewers can run. Only pass trusted, SDK-generated HTML.
+    """
     src = _iframe_src_for_html_document(html)
     return (
         f'<iframe src="{src}" '

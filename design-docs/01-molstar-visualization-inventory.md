@@ -65,7 +65,7 @@ spec sandboxes srcdoc documents without `allow-scripts`, which blocks Mol*.
 
 - New module: `src/viz/molstar_html.py`
 - Wire: `Protein.show()` when no pockets/ligands; `PreparedSystem.show()`
-- Notebook: `docs/notebooks/dirty/molstar-protein-view.ipynb`
+- Notebook: `docs/notebooks/clean/molstar-protein-view.ipynb`
 
 ### Phase 2 — pockets
 
