@@ -335,13 +335,17 @@ def _matches_condition(
 
 def _sort_key_component(value: Any) -> tuple[int, Any]:
     """Build a sort key that avoids mixed-type comparisons."""
-    if value is _FIELD_MISSING:
-        return (1, 0)
+    if value is _FIELD_MISSING or value is None:
+        return (2, "")
     if isinstance(value, bool):
-        return (0, value)
+        return (0, int(value))
     if isinstance(value, (int, float)):
         return (0, float(value))
-    return (0, value)
+    if isinstance(value, str):
+        return (1, value)
+    if isinstance(value, (dict, list)):
+        return (1, str(value))
+    return (1, str(value))
 
 
 def _apply_sort(
