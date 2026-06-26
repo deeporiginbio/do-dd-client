@@ -55,8 +55,9 @@ _Avoid_: `Draco` as the public API name; `DoPatentMolecule` as a CLI type
 **Result type**:
 Platform catalog base entity from a tool output schema's `x-data-type` (e.g.
 `pose`, `pocket`, `preparedsystem`, `abferesult`). Used as a result-explorer
-filter directive to narrow which `results__*` tables are searched; not a stored
-column on result rows.
+filter directive to narrow which `results__*` tables are searched. Result rows
+may echo a top-level `result_type` field in API responses, but that is separate
+from the filter directive and not a generic stored entity column like `protein_id`.
 _Avoid_: `Binding` for docking poses (use `pose`); conflating with `tool_key`
 
 **Structure viewer**:

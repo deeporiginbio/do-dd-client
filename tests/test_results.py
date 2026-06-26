@@ -342,6 +342,10 @@ def test_get_results_sort_by_measured_at_lv1(client):
         for record in response["data"]
         if record.get("measured_at") is not None
     ]
+    if len(measured_at_values) < 2:
+        pytest.skip(
+            "Need at least two rows with non-null measured_at to validate sort order"
+        )
     assert measured_at_values == sorted(measured_at_values, reverse=True)
 
 
