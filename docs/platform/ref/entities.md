@@ -21,11 +21,6 @@ ligand = client.entities.create_ligand(
     smiles="CCOc1ccc2nc(S(=O)(=O)N3CCN(CC3)C)c(N)c2c1",
     name="Compound-12345",
     formal_charge=0,
-    hbond_donor_count=1,
-    hbond_acceptor_count=6,
-    rotatable_bond_count=5,
-    tpsa=85.12,
-    molecular_weight=447.5,
 )
 
 # Delete an entity

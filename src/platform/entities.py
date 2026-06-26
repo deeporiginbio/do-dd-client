@@ -4,10 +4,28 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
-from deeporigin.utils.constants import DEFAULT_SEARCH_PAGE_SIZE
+from deeporigin.utils.constants import (
+    DEFAULT_SEARCH_PAGE_SIZE,
+    ENTITY_SEARCH_TIMEOUT_SECONDS,
+    LIGAND_MOLPROPS_SET_FIELDS,
+)
 
 if TYPE_CHECKING:
     from deeporigin.platform.client import DeepOriginClient
+
+
+def _writable_ligand_set_fields(set_dict: dict[str, Any]) -> dict[str, Any]:
+    """Return a ligand create/update ``set`` payload without molprops fields.
+
+    Molecular descriptors such as ``molecular_weight`` and ``hbond_donor_count``
+    are populated by the molprops tool on the platform, not on ligand create.
+    """
+    return {
+        key: value
+        for key, value in set_dict.items()
+        if key not in LIGAND_MOLPROPS_SET_FIELDS
+    }
+
 
 # Minimal returning for proteins batch create (triggers require INSERT path, not COPY).
 PROTEIN_BATCH_CREATE_RETURNING_FIELDS = ["id"]
@@ -158,6 +176,7 @@ class Entities:
         return self._c.post_json(
             f"/data-platform/{self._c.org_key}/{entity}/search",
             body=body,
+            timeout=ENTITY_SEARCH_TIMEOUT_SECONDS,
         )
 
     def get(self, *, entity: str, entity_id: str) -> dict:
@@ -512,11 +531,11 @@ class Entities:
             name: Name of the ligand.
             mol_file: Path to the molecule file (e.g., SDF file) in remote storage.
             formal_charge: Formal charge. Defaults to 0.
-            hbond_donor_count: Number of hydrogen bond donors.
-            hbond_acceptor_count: Number of hydrogen bond acceptors.
-            rotatable_bond_count: Number of rotatable bonds.
-            tpsa: Topological polar surface area.
-            molecular_weight: Molecular weight.
+            hbond_donor_count: Ignored on create; computed by molprops on the platform.
+            hbond_acceptor_count: Ignored on create; computed by molprops on the platform.
+            rotatable_bond_count: Ignored on create; computed by molprops on the platform.
+            tpsa: Ignored on create; computed by molprops on the platform.
+            molecular_weight: Ignored on create; computed by molprops on the platform.
             variant_name_tag: Variant name tag. Defaults to empty string.
 
         Returns:
@@ -547,7 +566,7 @@ class Entities:
             set_dict["molecular_weight"] = molecular_weight
 
         body: dict[str, Any] = {
-            "set": set_dict,
+            "set": _writable_ligand_set_fields(set_dict),
             "returning": LIGAND_RETURNING_FIELDS,
         }
 
@@ -574,7 +593,7 @@ class Entities:
             list of created ligand records.
         """
         body: dict[str, Any] = {
-            "rows": rows,
+            "rows": [_writable_ligand_set_fields(row) for row in rows],
             "returning": LIGAND_RETURNING_FIELDS,
         }
 
@@ -612,11 +631,11 @@ class Entities:
             name: Name of the ligand.
             mol_file: Path to the molecule file in remote storage.
             formal_charge: Formal charge.
-            hbond_donor_count: Number of hydrogen bond donors.
-            hbond_acceptor_count: Number of hydrogen bond acceptors.
-            rotatable_bond_count: Number of rotatable bonds.
-            tpsa: Topological polar surface area.
-            molecular_weight: Molecular weight.
+            hbond_donor_count: Ignored on update; computed by molprops on the platform.
+            hbond_acceptor_count: Ignored on update; computed by molprops on the platform.
+            rotatable_bond_count: Ignored on update; computed by molprops on the platform.
+            tpsa: Ignored on update; computed by molprops on the platform.
+            molecular_weight: Ignored on update; computed by molprops on the platform.
             variant_name_tag: Variant name tag.
             tags: Tags for the ligand.
 
@@ -655,7 +674,7 @@ class Entities:
         return self.update(
             "ligands",
             id,
-            set_dict=set_dict,
+            set_dict=_writable_ligand_set_fields(set_dict),
             returning=LIGAND_RETURNING_FIELDS,
         )
 

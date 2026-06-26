@@ -42,6 +42,7 @@ def test_search_ligands_molecular_weight_lv1(client: DeepOriginClient):
     response = client.entities.search_ligands(
         min_molecular_weight=250,
         max_molecular_weight=550,
+        limit=10,
     )
 
     assert isinstance(response, dict), "Expected a dictionary response"
@@ -155,11 +156,6 @@ def test_create_ligand_lv1(client: DeepOriginClient):
             smiles=smiles,
             name="Compound-12345",
             formal_charge=0,
-            hbond_donor_count=1,
-            hbond_acceptor_count=6,
-            rotatable_bond_count=5,
-            tpsa=85.12,
-            molecular_weight=447.5,
         )
     except DeepOriginException as e:
         if "409" in str(e):

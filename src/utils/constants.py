@@ -24,6 +24,23 @@ API_ENDPOINT = {
 
 
 DEFAULT_SEARCH_PAGE_SIZE = 100
+
+ENTITY_SEARCH_TIMEOUT_SECONDS = 60.0
+"""HTTP timeout (seconds) for data-platform entity search requests.
+
+Some filter combinations (e.g. ``molecular_weight`` range on ligands) can take
+longer than the client's default 10s read timeout on dev and staging."""
+
+LIGAND_MOLPROPS_SET_FIELDS: frozenset[str] = frozenset(
+    (
+        "molecular_weight",
+        "hbond_donor_count",
+        "hbond_acceptor_count",
+        "rotatable_bond_count",
+        "tpsa",
+    )
+)
+"""Ligand ``set`` fields computed by molprops; not writable on create/update."""
 """Default page size for paginated entity search requests."""
 
 RESULT_EXPLORER_CANONICAL_SORT_FIELDS: frozenset[str] = frozenset(
