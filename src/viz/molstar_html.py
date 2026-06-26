@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import base64
 import json
+import math
 from pathlib import Path
 import re
 
@@ -37,7 +38,11 @@ _CSS_NAMED_COLORS: dict[str, int] = {
 }
 
 _RGB_COLOR_RE = re.compile(
-    r"^rgba?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)(?:\s*,\s*[\d.]+\s*)?\)$",
+    r"^rgb\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*\)$",
+    re.IGNORECASE,
+)
+_RGBA_COLOR_RE = re.compile(
+    r"^rgba\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*,\s*([\d.]+)\s*\)$",
     re.IGNORECASE,
 )
 
@@ -65,10 +70,26 @@ def _json_value_for_script_tag(value: object) -> str:
     return json.dumps(value).replace("<", "\\u003c")
 
 
+def _validate_surface_alpha(name: str, value: float) -> float:
+    """Validate a surface opacity value before embedding it in generated JS."""
+    if not math.isfinite(value) or value < 0 or value > 1:
+        raise ValueError(f"{name} must be a finite number in [0, 1], got {value!r}")
+    return value
+
+
+def _parse_rgb_channels(color: str, *, red: str, green: str, blue: str) -> int:
+    """Convert validated RGB channel strings to a hex integer."""
+    channels = (int(red), int(green), int(blue))
+    if any(channel > 255 for channel in channels):
+        raise ValueError(f"Unsupported CSS color: {color!r}")
+    return (channels[0] << 16) | (channels[1] << 8) | channels[2]
+
+
 def css_color_to_hex(color: str) -> int:
     """Convert a CSS color string to a hex integer for molstarLib ``PocketColor.value``.
 
-    Supports named colors (e.g. ``red``), ``#rgb`` / ``#rrggbb``, and ``rgb(r,g,b)``.
+    Supports named colors (e.g. ``red``), ``#rgb`` / ``#rrggbb``, ``rgb(r,g,b)``,
+    and ``rgba(r,g,b,a)`` (alpha is validated but ignored for the hex value).
 
     Args:
         color: CSS color string.
@@ -90,10 +111,21 @@ def css_color_to_hex(color: str) -> int:
 
     rgb_match = _RGB_COLOR_RE.match(normalized)
     if rgb_match:
-        red, green, blue = (int(channel) for channel in rgb_match.groups())
-        if any(channel > 255 for channel in (red, green, blue)):
+        return _parse_rgb_channels(
+            color, red=rgb_match[1], green=rgb_match[2], blue=rgb_match[3]
+        )
+
+    rgba_match = _RGBA_COLOR_RE.match(normalized)
+    if rgba_match:
+        alpha = float(rgba_match[4])
+        if not math.isfinite(alpha) or alpha < 0 or alpha > 1:
             raise ValueError(f"Unsupported CSS color: {color!r}")
-        return (red << 16) | (green << 8) | blue
+        return _parse_rgb_channels(
+            color,
+            red=rgba_match[1],
+            green=rgba_match[2],
+            blue=rgba_match[3],
+        )
 
     if normalized in _CSS_NAMED_COLORS:
         return _CSS_NAMED_COLORS[normalized]
@@ -235,10 +267,19 @@ def render_protein_with_pockets_html(
             "pocket_paths, pocket_colors, and pocket_labels must have the same length"
         )
 
+    protein_surface_alpha = _validate_surface_alpha(
+        "protein_surface_alpha", protein_surface_alpha
+    )
+    pocket_surface_alpha = _validate_surface_alpha(
+        "pocket_surface_alpha", pocket_surface_alpha
+    )
+
     pdb_b64 = _encode_text_base64(_read_structure_file(pdb_path))
     pocket_payloads = [
         pocket_data_for_js(path=path, color=color, label=label)
-        for path, color, label in zip(pocket_paths, pocket_colors, pocket_labels)
+        for path, color, label in zip(
+            pocket_paths, pocket_colors, pocket_labels, strict=True
+        )
     ]
     pockets_json = _json_value_for_script_tag(pocket_payloads)
     protein_style_json = _json_for_script_tag(protein_style)

@@ -93,6 +93,25 @@ def test_css_color_to_hex_red() -> None:
     assert css_color_to_hex("red") == 0xFF0000
     assert css_color_to_hex("#ff5733") == 0xFF5733
     assert css_color_to_hex("rgb(0, 128, 255)") == 0x0080FF
+    assert css_color_to_hex("rgba(0, 128, 255, 0.5)") == 0x0080FF
+
+
+def test_css_color_to_hex_rejects_invalid_rgb() -> None:
+    """Four-channel rgb() syntax is rejected."""
+    with pytest.raises(ValueError, match="Unsupported CSS color"):
+        css_color_to_hex("rgb(0, 128, 255, 0.5)")
+
+
+def test_render_protein_with_pockets_html_rejects_invalid_alpha() -> None:
+    """Surface alpha values outside [0, 1] raise ValueError."""
+    with pytest.raises(ValueError, match="protein_surface_alpha"):
+        render_protein_with_pockets_html(
+            pdb_path=str(_FIXTURE_PDB),
+            pocket_paths=[str(_FIXTURE_POCKET)],
+            pocket_colors=["red"],
+            pocket_labels=["pocket-1"],
+            protein_surface_alpha=1.5,
+        )
 
 
 def test_render_protein_with_pockets_html_api() -> None:
