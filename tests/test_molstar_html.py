@@ -8,7 +8,9 @@ import pytest
 from deeporigin.viz.molstar_html import (
     MOLSTAR_HOST_ASSET_BASE_URL,
     MOLSTAR_JS_URL,
+    css_color_to_hex,
     render_protein_html,
+    render_protein_with_pockets_html,
 )
 
 _FIXTURE_PDB = (
@@ -17,6 +19,9 @@ _FIXTURE_PDB = (
     / "entities"
     / "proteins"
     / "51f3f8008c28559b18cb6eb1ae048b24604274a91659e8bc12d27151de594c80.pdb"
+)
+_FIXTURE_POCKET = (
+    Path(__file__).parent / "fixtures" / "files" / "pocketfinder" / "pocket_1.pdb"
 )
 
 
@@ -81,3 +86,98 @@ def test_render_protein_html_missing_file_raises() -> None:
     """Missing PDB path raises FileNotFoundError."""
     with pytest.raises(FileNotFoundError, match="Structure file not found"):
         render_protein_html(pdb_path="/nonexistent/path/to/protein.pdb")
+
+
+def test_css_color_to_hex_red() -> None:
+    """Named CSS colors convert to hex integers for molstarLib."""
+    assert css_color_to_hex("red") == 0xFF0000
+    assert css_color_to_hex("#ff5733") == 0xFF5733
+    assert css_color_to_hex("rgb(0, 128, 255)") == 0x0080FF
+    assert css_color_to_hex("rgba(0, 128, 255, 0.5)") == 0x0080FF
+
+
+def test_css_color_to_hex_rejects_invalid_rgb() -> None:
+    """Four-channel rgb() syntax is rejected."""
+    with pytest.raises(ValueError, match="Unsupported CSS color"):
+        css_color_to_hex("rgb(0, 128, 255, 0.5)")
+
+
+def test_css_color_to_hex_rejects_invalid_rgba_alpha() -> None:
+    """Malformed rgba alpha strings raise the standard color error."""
+    with pytest.raises(ValueError, match="Unsupported CSS color"):
+        css_color_to_hex("rgba(0, 128, 255, not-a-number)")
+
+
+def test_render_protein_with_pockets_html_rejects_invalid_alpha() -> None:
+    """Surface alpha values outside [0, 1] raise ValueError."""
+    with pytest.raises(ValueError, match="protein_surface_alpha"):
+        render_protein_with_pockets_html(
+            pdb_path=str(_FIXTURE_PDB),
+            pocket_paths=[str(_FIXTURE_POCKET)],
+            pocket_colors=["red"],
+            pocket_labels=["pocket-1"],
+            protein_surface_alpha=1.5,
+        )
+
+
+def test_render_protein_with_pockets_html_api() -> None:
+    """Generated HTML references renderStructureAndPockets with legacy alpha defaults."""
+    html = render_protein_with_pockets_html(
+        pdb_path=str(_FIXTURE_PDB),
+        pocket_paths=[str(_FIXTURE_POCKET)],
+        pocket_colors=["red"],
+        pocket_labels=["pocket-1"],
+    )
+
+    assert "renderStructureAndPockets" in html
+    assert '"gaussian-surface"' in html
+    assert "0.1" in html
+    assert "0.7" in html
+    assert '"uniform"' in html
+    assert str(0xFF0000) in html
+
+
+def test_render_protein_with_pockets_embeds_pockets() -> None:
+    """Pocket PDB content is embedded in the generated HTML as base64."""
+    pocket_text = _FIXTURE_POCKET.read_text(encoding="utf-8")
+    pocket_b64 = base64.b64encode(pocket_text.encode("utf-8")).decode("ascii")
+    html = render_protein_with_pockets_html(
+        pdb_path=str(_FIXTURE_PDB),
+        pocket_paths=[str(_FIXTURE_POCKET)],
+        pocket_colors=["red"],
+        pocket_labels=["pocket-1"],
+    )
+
+    assert pocket_b64 in html
+    assert "COMPND    pocket" not in html
+
+
+def test_pocket_json_script_escape(tmp_path: Path) -> None:
+    """Malicious pocket labels cannot break out of script tags."""
+    pdb_path = tmp_path / "minimal.pdb"
+    pdb_path.write_text(
+        "ATOM      1  N   ALA A   1       0.000   0.000   0.000\n", encoding="utf-8"
+    )
+    pocket_path = tmp_path / "pocket.pdb"
+    pocket_path.write_text("COMPND    pocket\n", encoding="utf-8")
+
+    html = render_protein_with_pockets_html(
+        pdb_path=str(pdb_path),
+        pocket_paths=[str(pocket_path)],
+        pocket_colors=["red"],
+        pocket_labels=["</script><script>alert(1)</script>"],
+    )
+
+    assert "</script><script>alert(1)</script>" not in html
+    assert "\\u003c/script>" in html
+
+
+def test_render_protein_with_pockets_mismatched_lengths_raises() -> None:
+    """Mismatched pocket list lengths raise ValueError."""
+    with pytest.raises(ValueError, match="same length"):
+        render_protein_with_pockets_html(
+            pdb_path=str(_FIXTURE_PDB),
+            pocket_paths=[str(_FIXTURE_POCKET)],
+            pocket_colors=["red", "blue"],
+            pocket_labels=["pocket-1"],
+        )

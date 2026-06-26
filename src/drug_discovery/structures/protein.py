@@ -1301,33 +1301,19 @@ class Protein(Entity):
             html_content = render_protein_html(pdb_path=current_protein_file)
             return render_html(html_content)
         elif pockets is not None and sdf_file is None:
-            from deeporigin_molstar import ProteinViewer
+            from deeporigin.viz.molstar_html import render_protein_with_pockets_html
 
-            # make sure we
             for pocket in pockets:
                 pocket.download()
 
-            # need to show pockets
-            pocket_surface_alpha: float = 0.7
-            protein_surface_alpha: float = 0.1
-
-            protein_viewer = ProteinViewer(data=current_protein_file, format="pdb")
-            pocket_paths = [str(pocket.local_path) for pocket in pockets]
-
-            # Retrieve and customize pocket visualization configuration
-            pocket_config = protein_viewer.get_pocket_visualization_config()
-            pocket_config.surface_alpha = pocket_surface_alpha
-
-            protein_config = protein_viewer.get_protein_visualization_config()
-            protein_config.style_type = "cartoon"
-            protein_config.surface_alpha = protein_surface_alpha
-            pocket_config.surface_colors = [pocket.color for pocket in pockets]
-
-            # Render the protein with pockets
-            html_content = protein_viewer.render_protein_with_pockets(
-                pocket_paths=pocket_paths,
-                pocket_config=pocket_config,
-                protein_config=protein_config,
+            html_content = render_protein_with_pockets_html(
+                pdb_path=current_protein_file,
+                pocket_paths=[str(pocket.local_path) for pocket in pockets],
+                pocket_colors=[pocket.color for pocket in pockets],
+                pocket_labels=[
+                    pocket.name or f"pocket-{index + 1}"
+                    for index, pocket in enumerate(pockets)
+                ],
             )
 
             return render_html(html_content)

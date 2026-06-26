@@ -16,23 +16,29 @@ Strangler-fig migration from the legacy `deeporigin-molstar` Python package
 | Phase | Visualization | SDK entry points | Status |
 |-------|---------------|------------------|--------|
 | 1 | Protein structure | `Protein.show()`, `PreparedSystem.show()` | **Done** |
-| 2 | Protein + binding pockets | `Protein.show(pockets=...)` | Pending |
+| 2 | Protein + binding pockets | `Protein.show(pockets=...)` | **Done** |
 | 3 | Ligand 3D | `Ligand.show()`, `LigandSet.show()` | Pending |
 | 4 | Protein + docked poses | `Protein.show(poses=...)` | Pending |
 | 5 | Docking search box | `Docking.show_box()`, `ConstrainedDocking.show_box()` | Pending |
 | 6 | MD trajectory | `ABFE.show_trajectory()` | Pending |
 | 7 | Remove `deeporigin-molstar` dep | `visualize.py`, static doc embeds | Pending |
 
-## Verification notebooks
+## Bundle delivery
+
+The CLI loads the hosted molstarLib IIFE from `os.dev.deeporigin.io/molstar/latest/`.
+Icon assets resolve via `<base href="https://os.deeporigin.io/host/">`. The bundle is
+not vendored into the CLI package — platform-ui owns releases. Revisit a
+`DEEPORIGIN_MOLSTAR_JS_URL` env override only if offline notebooks become a hard
+requirement.
+
+## Verification notebook
 
 Develop in `docs/notebooks/dirty/` (gitignored), then promote to
-`docs/notebooks/clean/` via `./scripts/notebooks.sh`. Committed notebooks:
+`docs/notebooks/clean/` via `bash scripts/notebooks.sh`.
 
-| Phase | Notebook |
-|-------|----------|
-| 1 | `docs/notebooks/clean/molstar-protein-view.ipynb` |
-| 2 | `molstar-pocket-view.ipynb` |
-| 3 | `molstar-ligand-view.ipynb` |
-| 4 | `molstar-docked-poses.ipynb` |
-| 5 | `molstar-docking-box.ipynb` |
-| 6 | `molstar-trajectory.ipynb` |
+| Notebook | Purpose |
+|----------|---------|
+| [`docs/notebooks/clean/molstar-visualization-catalog.ipynb`](../docs/notebooks/clean/molstar-visualization-catalog.ipynb) | Unified progress dashboard — one section per inventory visualization (#1–#7), with ✅/⏳ status badges |
+
+The older phase-1-only notebook (`molstar-protein-view.ipynb`) remains for reference;
+new verification work should go in the catalog notebook.
