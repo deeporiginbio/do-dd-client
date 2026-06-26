@@ -279,6 +279,27 @@ def _numeric_value(value: Any) -> float | None:
     return None
 
 
+def _validate_filter_condition(key: str, condition: dict[str, Any]) -> None:
+    """Raise ValueError when a filter condition has invalid operator combinations."""
+    membership_ops = {"eq", "in"} & set(condition.keys())
+    comparison_ops = {"lt", "lte", "gt", "gte"} & set(condition.keys())
+
+    if not membership_ops and not comparison_ops:
+        raise ValueError(f"Filter condition for field '{key}' must include an operator")
+
+    if membership_ops and comparison_ops:
+        raise ValueError(
+            f"Filter condition for field '{key}' cannot mix membership "
+            f"operators with comparison operators"
+        )
+
+    if len(membership_ops) > 1:
+        raise ValueError(
+            f"Filter condition for field '{key}' cannot include both "
+            f"'eq' and 'in' operators"
+        )
+
+
 def _matches_condition(
     record: dict[str, Any],
     key: str,
@@ -425,6 +446,7 @@ def _apply_eq_filters(
                 f"{', '.join(sorted(unknown_ops))}"
             )
 
+        _validate_filter_condition(key, condition)
         results = [r for r in results if _matches_condition(r, key, condition)]
 
     return results

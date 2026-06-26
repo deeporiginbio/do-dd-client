@@ -16,6 +16,7 @@ from deeporigin.platform.results import (
     _normalize_result_type,
     _sort_uses_jsonb_fields,
 )
+from tests.mock_server.routers.data_platform import _apply_eq_filters
 
 if TYPE_CHECKING:
     from deeporigin.drug_discovery import Protein
@@ -45,6 +46,13 @@ def test_normalize_result_type_lowercases_and_strips():
     """Result types are normalized to lowercase catalog names."""
     assert _normalize_result_type("Pocket") == "pocket"
     assert _normalize_result_type("  Pose ") == "pose"
+
+
+def test_apply_eq_filters_rejects_mixed_membership_and_comparison_operators():
+    """Mock result-explorer rejects ambiguous eq/in + lt/gte filter shapes."""
+    records = [{"id": "1", "score": 1.0}]
+    with pytest.raises(ValueError, match="cannot mix membership"):
+        _apply_eq_filters(records, {"score": {"eq": 1, "lt": 2}})
 
 
 def test_build_result_type_filter_eq_and_in():
