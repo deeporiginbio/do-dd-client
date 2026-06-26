@@ -87,6 +87,8 @@ def test_sort_uses_jsonb_fields_detects_non_canonical_keys():
     assert _sort_uses_jsonb_fields(
         {"measured_at": "desc", "pose_score": "asc"},
     )
+    assert _sort_uses_jsonb_fields({"data": "asc"})
+    assert _sort_uses_jsonb_fields({"parameters": "desc"})
 
 
 def test_get_passes_sort_in_request_body():

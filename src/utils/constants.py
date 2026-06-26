@@ -41,15 +41,17 @@ RESULT_EXPLORER_CANONICAL_SORT_FIELDS: frozenset[str] = frozenset(
         "measured_at",
         "ligand_canonical_id",
         "protein_canonical_id",
-        "data",
-        "parameters",
         "result_table_name",
         "compute_job_id",
         "execution_name",
         "tool_name",
     }
 )
-"""Result-explorer columns that support cursor (keyset) pagination when used in ``sort``."""
+"""Scalar result-explorer columns that support cursor pagination in ``sort``.
+
+Whole JSON payload columns such as ``data`` and ``parameters`` are excluded:
+sorting by them requires offset pagination (same as nested tool-data keys).
+"""
 
 HTTP_RETRYABLE_STATUS_CODES: frozenset[int] = frozenset((429, 500, 502, 503, 504))
 """HTTP status codes for which :class:`~deeporigin.platform.client.DeepOriginClient` retries requests."""
