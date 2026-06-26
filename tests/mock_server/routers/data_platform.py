@@ -730,7 +730,7 @@ def create_data_platform_router(
                 "count": len(page),
                 "hasMore": offset + len(page) < total,
             }
-        elif cursor_raw is not None:
+        elif cursor_raw is not None or limit is not None:
             start = int(cursor_raw) if cursor_raw else 0
             page_size = limit if limit is not None else total
             page = filtered[start : start + page_size]

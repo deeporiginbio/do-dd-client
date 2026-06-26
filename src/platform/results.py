@@ -209,12 +209,16 @@ class Results:
         if compute_job_id is not None:
             existing = prepared.get("compute_job_id")
             if existing is not None:
-                existing_id: str | None = None
                 if isinstance(existing, dict):
-                    existing_id = existing.get("eq")
-                else:
-                    existing_id = existing
-                if existing_id is not None and existing_id != compute_job_id:
+                    if (
+                        set(existing.keys()) != {"eq"}
+                        or existing.get("eq") != compute_job_id
+                    ):
+                        raise ValueError(
+                            "Conflicting compute_job_id: filter_dict and keyword "
+                            "argument do not match."
+                        )
+                elif existing != compute_job_id:
                     raise ValueError(
                         "Conflicting compute_job_id: filter_dict and keyword "
                         "argument do not match."

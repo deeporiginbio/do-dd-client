@@ -80,6 +80,34 @@ def test_get_result_type_conflict_raises():
         )
 
 
+def test_get_compute_job_id_conflict_with_in_operator_raises():
+    """compute_job_id kwarg cannot override a non-eq filter_dict operator."""
+    mock_client = MagicMock()
+    mock_client.org_key = "test-org"
+    mock_client.project_id = None
+    results = Results(mock_client)
+
+    with pytest.raises(ValueError, match="Conflicting compute_job_id"):
+        results.get(
+            compute_job_id="job-a",
+            filter_dict={"compute_job_id": {"in": ["job-a", "job-b"]}},
+        )
+
+
+def test_get_compute_job_id_conflict_with_mismatched_eq_raises():
+    """compute_job_id kwarg must match an existing eq filter in filter_dict."""
+    mock_client = MagicMock()
+    mock_client.org_key = "test-org"
+    mock_client.project_id = None
+    results = Results(mock_client)
+
+    with pytest.raises(ValueError, match="Conflicting compute_job_id"):
+        results.get(
+            compute_job_id="job-a",
+            filter_dict={"compute_job_id": {"eq": "job-b"}},
+        )
+
+
 def test_sort_uses_jsonb_fields_detects_non_canonical_keys():
     """JSONB tool-data sort keys require offset pagination."""
     assert _sort_uses_jsonb_fields({"pose_score": "desc"})
