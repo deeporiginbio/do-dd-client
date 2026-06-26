@@ -1,5 +1,6 @@
 """Tests for Mol* HTML builders."""
 
+import base64
 from pathlib import Path
 
 import pytest
@@ -32,12 +33,13 @@ def test_render_protein_html_includes_molstar_bundle_and_api() -> None:
 
 
 def test_render_protein_html_embeds_pdb_content() -> None:
-    """PDB file content is embedded in the generated HTML."""
+    """PDB file content is embedded in the generated HTML as base64."""
     pdb_text = _FIXTURE_PDB.read_text(encoding="utf-8")
     html = render_protein_html(pdb_path=str(_FIXTURE_PDB))
+    pdb_b64 = base64.b64encode(pdb_text.encode("utf-8")).decode("ascii")
 
-    assert "HEADER    HYDROLASE/HYDROLASE INHIBITOR" in html
-    assert pdb_text.splitlines()[0] in html
+    assert f'atob("{pdb_b64}")' in html
+    assert "HEADER    HYDROLASE/HYDROLASE INHIBITOR" not in html
 
 
 def test_render_protein_html_custom_style() -> None:
@@ -47,14 +49,16 @@ def test_render_protein_html_custom_style() -> None:
     assert "ball-and-stick" in html
 
 
-def test_render_protein_html_escapes_backticks_in_pdb(tmp_path: Path) -> None:
-    """Backticks in PDB REMARK lines are escaped for JS template literals."""
+def test_render_protein_html_escapes_script_tags_in_pdb(tmp_path: Path) -> None:
+    """PDB text with </script> is base64-encoded so it cannot break out of script tags."""
     pdb_path = tmp_path / "escape-test.pdb"
-    pdb_path.write_text("REMARK `backtick` and ${template}\n", encoding="utf-8")
+    pdb_path.write_text("REMARK </script><script>alert(1)</script>\n", encoding="utf-8")
 
     html = render_protein_html(pdb_path=str(pdb_path))
 
-    assert "REMARK \\`backtick\\` and \\${template}" in html
+    assert "</script><script>alert(1)</script>" not in html
+    pdb_b64 = base64.b64encode(pdb_path.read_bytes()).decode("ascii")
+    assert f'atob("{pdb_b64}")' in html
 
 
 def test_render_protein_html_missing_file_raises() -> None:

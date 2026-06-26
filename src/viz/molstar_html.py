@@ -6,6 +6,8 @@ the legacy deeporigin-molstar Python package.
 
 from __future__ import annotations
 
+import base64
+import json
 from pathlib import Path
 
 MOLSTAR_JS_URL = "https://os.dev.deeporigin.io/molstar/latest/index.js"
@@ -13,11 +15,6 @@ MOLSTAR_JS_URL = "https://os.dev.deeporigin.io/molstar/latest/index.js"
 MOLSTAR_HOST_ASSET_BASE_URL = "https://os.deeporigin.io/host/"
 
 _VIEWER_CONTAINER_ID = "DeepOriginMolstarViewer"
-
-
-def _escape_js_template_literal(value: str) -> str:
-    """Escape a string for safe embedding inside a JS template literal."""
-    return value.replace("\\", "\\\\").replace("`", "\\`").replace("${", "\\${")
 
 
 def _read_structure_file(path: str) -> str:
@@ -39,10 +36,12 @@ def render_protein_html(*, pdb_path: str, style: str = "cartoon") -> str:
         style: Mol* representation type for the polymer (default ``cartoon``).
 
     Returns:
-        A complete HTML document suitable for ``render_html()`` iframe srcdoc.
+        A complete HTML document suitable for ``render_html()`` iframe embedding.
     """
-    pdb_data = _escape_js_template_literal(_read_structure_file(pdb_path))
-    style_literal = _escape_js_template_literal(style)
+    pdb_b64 = base64.b64encode(_read_structure_file(pdb_path).encode("utf-8")).decode(
+        "ascii"
+    )
+    style_json = json.dumps(style)
 
     return f"""<!DOCTYPE html>
 <html lang="en">
@@ -82,12 +81,12 @@ def render_protein_html(*, pdb_path: str, style: str = "cartoon") -> str:
         throw new Error("molstarLib bundle did not load from {MOLSTAR_JS_URL}");
       }}
       const viewer = await molstarLib.initViewer("{_VIEWER_CONTAINER_ID}");
-      const proteinData = `{pdb_data}`;
+      const proteinData = atob("{pdb_b64}");
       await viewer.api.loadFromRawContent(
         proteinData,
         "pdb",
         "protein",
-        "{style_literal}",
+        {style_json},
       );
     }};
 
