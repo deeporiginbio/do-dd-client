@@ -172,6 +172,29 @@ def get_notebook_environment() -> str:
     return "other"
 
 
+def _iframe_src_for_html_document(html: str) -> str:
+    """Return a data-URI ``src`` for embedding a full HTML document in an iframe.
+
+    Uses base64 rather than ``srcdoc`` so scripts are not blocked by the implicit
+    srcdoc sandbox (which omits ``allow-scripts`` per the HTML spec).
+    """
+    import base64
+
+    encoded = base64.b64encode(html.encode("utf-8")).decode("ascii")
+    return f"data:text/html;base64,{encoded}"
+
+
+def _iframe_markup_for_html_document(html: str, *, height: int) -> str:
+    """Build iframe markup for a self-contained HTML document."""
+    src = _iframe_src_for_html_document(html)
+    return (
+        f'<iframe src="{src}" '
+        f'sandbox="allow-scripts allow-same-origin" '
+        f'style="width:100%;height:{height}px;border:0" '
+        f'loading="lazy" referrerpolicy="no-referrer"></iframe>'
+    )
+
+
 def render_html(
     html: str,
     *,
@@ -197,24 +220,11 @@ def render_html(
             raise ValueError(
                 "return_iframe_string is not supported in marimo; use default rendering."
             )
-        import base64
-
         import marimo as mo
 
-        src = "data:text/html;base64," + base64.b64encode(html.encode("utf-8")).decode(
-            "ascii"
-        )
-
-        return mo.Html(f"""
-        <iframe src="{src}" style="width:100%;height:{height}px;border:0"
-                loading="lazy" referrerpolicy="no-referrer"></iframe>
-        """)
+        return mo.Html(_iframe_markup_for_html_document(html, height=height))
     else:
-        iframe_code = f"""
-            <iframe srcdoc="{html.replace('"', "&quot;")}" 
-                    style="width:100%; height:{height}px; border:0;">
-            </iframe>
-        """
+        iframe_code = _iframe_markup_for_html_document(html, height=height)
         if return_iframe_string:
             return iframe_code
         return display(HTML(iframe_code))
