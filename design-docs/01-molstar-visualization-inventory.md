@@ -25,7 +25,7 @@ spec sandboxes srcdoc documents without `allow-scripts`, which blocks Mol*.
 | # | Visualization | SDK entry point | Legacy viewer / method | New `molstarLib` API | Phase |
 |---|---------------|-----------------|------------------------|----------------------|-------|
 | 1 | Protein structure | `Protein.show()`, `PreparedSystem.show()` | `ProteinViewer.render_protein()` | `initViewer` + `loadFromRawContent` | **1** |
-| 2 | Protein + binding pockets | `Protein.show(pockets=...)` | `ProteinViewer.render_protein_with_pockets()` | `renderStructureAndPockets` | 2 |
+| 2 | Protein + binding pockets | `Protein.show(pockets=...)` | `ProteinViewer.render_protein_with_pockets()` | `renderStructureAndPockets` | **2** |
 | 3 | Single ligand 3D | `Ligand.show()`, `Ligand._repr_html_()` | `MoleculeViewer.render_ligand()` | `loadFromRawContent` (sdf) | 3 |
 | 4 | Ligand set 3D | `LigandSet.show()` | `MoleculeViewer.render_ligand()` (combined SDF) | `loadFromRawContent` or `loadAndMerge` | 3 |
 | 5 | Protein + docked poses | `Protein.show(poses=...)` | `DockingViewer.render_with_separate_crystal()` | `visualizeDockedLigands` | 4 |
@@ -69,7 +69,10 @@ spec sandboxes srcdoc documents without `allow-scripts`, which blocks Mol*.
 
 ### Phase 2 — pockets
 
-Map `Pocket.color` to `PocketData` (`{ data, color: { name, value }, label }`).
+- `render_protein_with_pockets_html()` in `src/viz/molstar_html.py`
+- Wire: `Protein.show(pockets=...)`
+- Map `Pocket.color` CSS strings → `PocketData.color.value` hex at render time
+- Catalog notebook section #2 in `docs/notebooks/clean/molstar-visualization-catalog.ipynb`
 
 ### Phase 5 — bounding box
 
@@ -91,7 +94,7 @@ XTC is binary; embed as base64 in HTML (legacy package does this today).
 
 | File | Coverage |
 |------|----------|
-| `tests/test_molstar_html.py` | Phase 1 HTML generation |
+| `tests/test_molstar_html.py` | Phase 1–2 HTML generation |
 | `tests/test_docking.py` | Mocks `DockingViewer` for `show_box` (phase 5) |
 
 ## Static doc embeds
