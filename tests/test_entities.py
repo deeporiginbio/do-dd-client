@@ -402,3 +402,18 @@ def test_ligand_register_passes_tags_lv1(client: DeepOriginClient):
         assert row["tags"] == entity_tags
     finally:
         client.entities.delete(entity="ligands", entity_id=ligand.id)
+
+
+def test_ligand_sync_applies_tags_to_existing_row_lv1(client: DeepOriginClient):
+    """When sync finds an existing ligand, ``Entity.tags`` are patched on."""
+    tag = f"sync-tags-{uuid.uuid4().hex[:12]}"
+    create = client.entities.create_ligand(smiles="CCCC", name=f"sync-tag-{tag}")
+    lig_id = create["data"]["id"]
+    entity_tags = {"patched": tag}
+    try:
+        ligand = Ligand.from_smiles("CCCC", tags=entity_tags)
+        ligand.sync(client=client)
+        row = client.entities.get_ligand(lig_id)
+        assert row["tags"] == entity_tags
+    finally:
+        client.entities.delete(entity="ligands", entity_id=lig_id)

@@ -1463,6 +1463,8 @@ class Protein(Entity):
             ep = existing_protein.get("project_id")
             if ep is not None:
                 self.project_id = str(ep)
+            if self.tags is not None and self.id is not None:
+                client.entities.update_protein(self.id, tags=self.tags)
             return
 
         self.register(client=client)

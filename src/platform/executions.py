@@ -60,6 +60,8 @@ class Executions:
         tool_version: str,
         data: dict,
         timeout: float | None = None,
+        tag: str | None = None,
+        billing: str | None = None,
     ) -> dict:
         """Create (run) an execution of a tool with a specific version.
 
@@ -75,6 +77,9 @@ class Executions:
                 short timeout (e.g. molprops, protonation, system-prep).
                 When ``client.tag`` is set, it is sent as ``tag`` unless the
                 caller already included ``tag`` in ``data``.
+            tag: Per-call billing tag override (wins over ``client.tag``).
+            billing: Per-call runtime billing tag override (wins over
+                ``client.billing_tag``; forwarded to the tool as ``DO_TAGS``).
 
         Returns:
             Dictionary containing the execution response from the API.
@@ -91,8 +96,14 @@ class Executions:
 
         payload["app"] = self._c._app
         payload["session"] = self._c._session
-        if self._c.tag is not None and "tag" not in payload:
+        if tag is not None:
+            payload["tag"] = tag
+        elif self._c.tag is not None and "tag" not in payload:
             payload["tag"] = self._c.tag
+        if billing is not None:
+            payload["billing"] = billing
+        elif getattr(self._c, "billing_tag", None) is not None and "billing" not in payload:
+            payload["billing"] = self._c.billing_tag
 
         req_timeout = (
             timeout if timeout is not None else TOOL_EXECUTION_POST_TIMEOUT_SECONDS

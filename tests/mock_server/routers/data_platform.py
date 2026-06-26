@@ -814,11 +814,21 @@ def create_data_platform_router(
         for key, value in filter_dict.items():
             if isinstance(value, dict) and "in" in value:
                 allowed = value["in"]
+
+                def _record_tag_values(record: dict[str, Any], field: str) -> list[Any]:
+                    raw = record.get(field)
+                    if isinstance(raw, list):
+                        return raw
+                    if isinstance(raw, dict):
+                        dataset_tags = raw.get("dataset_tags")
+                        if isinstance(dataset_tags, list):
+                            return dataset_tags
+                    return []
+
                 results_list = [
                     r
                     for r in results_list
-                    if isinstance(r.get(key), list)
-                    and all(t in r[key] for t in allowed)
+                    if all(t in _record_tag_values(r, key) for t in allowed)
                 ]
             elif isinstance(value, dict) and "eq" in value:
                 results_list = [r for r in results_list if r.get(key) == value["eq"]]
@@ -844,11 +854,32 @@ def create_data_platform_router(
             )
         return {"data": _datasets[dataset_id]}
 
+    def _flatten_dataset_admin_set(set_data: dict[str, Any]) -> dict[str, Any]:
+        """Expand admin bundle ``set`` into flat mock row fields."""
+        if "datasetMeta" not in set_data:
+            return set_data
+        meta = set_data.get("datasetMeta") or {}
+        flat: dict[str, Any] = {
+            "name": meta.get("name"),
+            "file_path": set_data.get("file_path"),
+            "dataset_key": set_data.get("dataset_key"),
+            "dataset_version": set_data.get("dataset_version"),
+            "description": meta.get("description"),
+            "source_url": meta.get("source_url"),
+            "source_name": meta.get("source_label"),
+            "compound_count": meta.get("compound_count"),
+            "file_size_bytes": meta.get("file_size_bytes"),
+            "tags": meta.get("tags"),
+            "sample_rows": meta.get("datasetPreview"),
+            "dataset_schema": set_data.get("datasetSchema"),
+        }
+        return {k: v for k, v in flat.items() if v is not None}
+
     @router.post("/data-platform/admin/datasets")
     async def admin_create_dataset(request: Request) -> dict[str, Any]:
         """Create a dataset (admin)."""
         body = await request.json()
-        set_data = body.get("set", {})
+        set_data = _flatten_dataset_admin_set(body.get("set", {}))
         did = "ds-" + str(uuid.uuid4()).replace("-", "")[:12]
         now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z"
         record: dict[str, Any] = {
@@ -873,7 +904,7 @@ def create_data_platform_router(
                 status_code=404, detail=f"Dataset {dataset_id} not found"
             )
         body = await request.json()
-        set_data = body.get("set", {})
+        set_data = _flatten_dataset_admin_set(body.get("set", {}))
         _datasets[dataset_id].update(set_data)
         return {"data": _datasets[dataset_id], "meta": {"affected": 1}}
 

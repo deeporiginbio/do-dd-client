@@ -14,6 +14,66 @@ ADMIN_PREFIX = "/data-platform/admin"
 _SUPERUSER_REALM_ROLE = "do-super-user"
 
 
+def _coerce_dataset_tags(
+    tags: dict[str, Any] | list[str] | None,
+) -> dict[str, Any] | None:
+    """Map caller tags to the jsonb object shape stored on dataset rows."""
+    if tags is None:
+        return None
+    if isinstance(tags, list):
+        return {"dataset_tags": tags}
+    return tags
+
+
+def _build_dataset_admin_set(
+    *,
+    name: str,
+    file_path: str,
+    dataset_key: str,
+    dataset_version: str,
+    summary: str | None = None,
+    description: str | None = None,
+    source_url: str | None = None,
+    source_name: str | None = None,
+    tags: dict[str, Any] | list[str] | None = None,
+    compound_count: int | None = None,
+    file_size_bytes: int | None = None,
+    dataset_schema: dict[str, Any] | None = None,
+    sample_rows: list[dict[str, Any]] | None = None,
+) -> dict[str, Any]:
+    """Build the admin ``set`` bundle expected by data-platform dataset create."""
+    dataset_meta: dict[str, Any] = {"name": name}
+    if description is not None:
+        dataset_meta["description"] = description
+    elif summary is not None:
+        dataset_meta["description"] = summary
+    if source_url is not None:
+        dataset_meta["source_url"] = source_url
+    if source_name is not None:
+        dataset_meta["source_label"] = source_name
+    coerced_tags = _coerce_dataset_tags(tags)
+    if coerced_tags is not None:
+        dataset_meta["tags"] = coerced_tags
+    if compound_count is not None:
+        dataset_meta["compound_count"] = compound_count
+    if file_size_bytes is not None:
+        dataset_meta["file_size_bytes"] = file_size_bytes
+    if sample_rows is not None:
+        dataset_meta["datasetPreview"] = sample_rows
+
+    schema = dataset_schema if dataset_schema is not None else {
+        "type": "object",
+        "properties": {},
+    }
+    return {
+        "file_path": file_path,
+        "dataset_key": dataset_key,
+        "dataset_version": dataset_version,
+        "datasetMeta": dataset_meta,
+        "datasetSchema": schema,
+    }
+
+
 class Datasets:
     """Dataset API wrapper.
 
@@ -124,7 +184,7 @@ class Datasets:
         description: str | None = None,
         source_url: str | None = None,
         source_name: str | None = None,
-        tags: list[str] | None = None,
+        tags: dict[str, Any] | list[str] | None = None,
         compound_count: int | None = None,
         file_size_bytes: int | None = None,
         dataset_schema: dict[str, Any] | None = None,
@@ -142,7 +202,8 @@ class Datasets:
             description: Full detail text.
             source_url: Link to original data source.
             source_name: Display label for the external source link.
-            tags: List of tag strings.
+            tags: Dataset tags as a jsonb object, or a list of strings (stored as
+                ``{"dataset_tags": [...]}`` on the platform).
             compound_count: Total number of compounds/rows.
             file_size_bytes: Size of the dataset file in bytes.
             dataset_schema: JSON Schema with x-* extensions describing import structure.
@@ -153,32 +214,21 @@ class Datasets:
             Dictionary containing the created dataset record.
         """
         self._require_superuser()
-        set_dict: dict[str, Any] = {
-            "name": name,
-            "file_path": file_path,
-            "dataset_key": dataset_key,
-            "dataset_version": dataset_version,
-        }
-        if summary is not None:
-            set_dict["summary"] = summary
-        if description is not None:
-            set_dict["description"] = description
-        if source_url is not None:
-            set_dict["source_url"] = source_url
-        if source_name is not None:
-            set_dict["source_name"] = source_name
-        if tags is not None:
-            set_dict["tags"] = tags
-        if compound_count is not None:
-            set_dict["compound_count"] = compound_count
-        if file_size_bytes is not None:
-            set_dict["file_size_bytes"] = file_size_bytes
-        if dataset_schema is not None:
-            set_dict["dataset_schema"] = dataset_schema
-        if sample_rows is not None:
-            set_dict["sample_rows"] = sample_rows
-        if changelog is not None:
-            set_dict["changelog"] = changelog
+        set_dict = _build_dataset_admin_set(
+            name=name,
+            file_path=file_path,
+            dataset_key=dataset_key,
+            dataset_version=dataset_version,
+            summary=summary,
+            description=description,
+            source_url=source_url,
+            source_name=source_name,
+            tags=tags,
+            compound_count=compound_count,
+            file_size_bytes=file_size_bytes,
+            dataset_schema=dataset_schema,
+            sample_rows=sample_rows,
+        )
 
         return self._c.post_json(
             f"{ADMIN_PREFIX}/datasets",

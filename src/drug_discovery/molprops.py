@@ -100,6 +100,8 @@ def run_molprops_combined(
     properties: set[str],
     client: DeepOriginClient,
     quote: bool = False,
+    tag: str | None = None,
+    billing: str | None = None,
 ) -> tuple[list[dict], dict]:
     """Issue one combined-tool execution and return ``(rows, raw_dto)``.
 
@@ -120,6 +122,8 @@ def run_molprops_combined(
         tool_key=TOOL_KEYS_AND_VERSIONS["mol_props"]["tool_key"],
         tool_version=TOOL_KEYS_AND_VERSIONS["mol_props"]["tool_version"],
         data=body,
+        tag=tag,
+        billing=billing,
     )
     rows = [] if quote else _execution_outputs_as_rows(raw)
     return rows, raw
@@ -167,6 +171,7 @@ class Molprops(Execution, SyncExecutableMixin):
     """
 
     tool_key: str = TOOL_KEYS_AND_VERSIONS["mol_props"]["tool_key"]
+    tool_version: str = TOOL_KEYS_AND_VERSIONS["mol_props"]["tool_version"]
 
     @beartype
     def __init__(
@@ -213,7 +218,13 @@ class Molprops(Execution, SyncExecutableMixin):
         return self._batch_size
 
     @beartype
-    def run(self, *, quote: bool = False) -> Molprops:
+    def run(
+        self,
+        *,
+        quote: bool = False,
+        tag: str | None = None,
+        billing: str | None = None,
+    ) -> Molprops:
         """Execute the combined molprops tool, mutate ligands, and set :attr:`cost`.
 
         With ``quote=True``, sends **one** ``client.executions.create`` with every
@@ -246,36 +257,41 @@ class Molprops(Execution, SyncExecutableMixin):
                 lig.id = str(idx)
         ligand_set = LigandSet(ligands=self._ligands)
 
-        if quote:
-            _unused_rows, raw = run_molprops_combined(
-                ligand_set=ligand_set,
-                properties=self._properties,
-                client=self.client,
-                quote=True,
-            )
-            self.update_from_dto(raw)
-            return self
-
-        merged: list[dict] = []
-        raw_responses: list[dict] = []
-        batches = ligand_set.batches(self._batch_size)
-        n_ligands = len(self._ligands)
-        use_batch_bar = len(batches) > 1
-        with tqdm(
-            total=n_ligands,
-            desc="Molprops",
-            unit="ligand",
-            disable=not use_batch_bar,
-        ) as pbar:
-            for batch_ligands in batches:
-                batch_rows, batch_raw = run_molprops_combined(
-                    ligand_set=LigandSet(ligands=batch_ligands),
+        with self._execution_tags(tag=tag, billing=billing):
+            if quote:
+                _unused_rows, raw = run_molprops_combined(
+                    ligand_set=ligand_set,
                     properties=self._properties,
                     client=self.client,
+                    quote=True,
+                    tag=tag,
+                    billing=billing,
                 )
-                merged.extend(batch_rows)
-                raw_responses.append(batch_raw)
-                pbar.update(len(batch_ligands))
+                self.update_from_dto(raw)
+                return self
+
+            merged: list[dict] = []
+            raw_responses: list[dict] = []
+            batches = ligand_set.batches(self._batch_size)
+            n_ligands = len(self._ligands)
+            use_batch_bar = len(batches) > 1
+            with tqdm(
+                total=n_ligands,
+                desc="Molprops",
+                unit="ligand",
+                disable=not use_batch_bar,
+            ) as pbar:
+                for batch_ligands in batches:
+                    batch_rows, batch_raw = run_molprops_combined(
+                        ligand_set=LigandSet(ligands=batch_ligands),
+                        properties=self._properties,
+                        client=self.client,
+                        tag=tag,
+                        billing=billing,
+                    )
+                    merged.extend(batch_rows)
+                    raw_responses.append(batch_raw)
+                    pbar.update(len(batch_ligands))
 
         if raw_responses:
             self.update_from_dto(raw_responses[-1])

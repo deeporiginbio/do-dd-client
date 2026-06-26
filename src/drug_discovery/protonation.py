@@ -33,6 +33,7 @@ class Protonation(Execution, SyncExecutableMixin):
     """Run ligand protonation through the platform tools API (sync)."""
 
     tool_key: str = TOOL_KEYS_AND_VERSIONS["protonation"]["tool_key"]
+    tool_version: str = TOOL_KEYS_AND_VERSIONS["protonation"]["tool_version"]
     ligands: LigandSet
 
     @beartype
@@ -127,6 +128,8 @@ class Protonation(Execution, SyncExecutableMixin):
         *,
         quote: bool = False,
         approve_amount: int | None = None,
+        tag: str | None = None,
+        billing: str | None = None,
     ) -> Any:
         """Execute protonation via the platform tools API.
 
@@ -149,12 +152,12 @@ class Protonation(Execution, SyncExecutableMixin):
             species is a new ``Ligand`` instance.
         """
         input_first = self.ligands.ligands[0]
+        resolved_amount = 0 if quote else approve_amount
 
-        response = self.client.executions.create(  # ty:ignore[unresolved-attribute]
-            tool_key=self.tool_key,
-            tool_version=TOOL_KEYS_AND_VERSIONS["protonation"]["tool_version"],
-            data=self._make_payload(approve_amount=approve_amount, sync=True),
-        )
+        with self._execution_tags(tag=tag, billing=billing):
+            response = self._create_execution(
+                data=self._make_payload(approve_amount=resolved_amount, sync=True),
+            )
 
         outputs = _execution_outputs_dict(response)
         if outputs.get("pH") != self._ph:

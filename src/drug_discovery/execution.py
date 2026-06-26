@@ -26,6 +26,7 @@ from __future__ import annotations
 
 import builtins
 import copy
+from contextlib import contextmanager
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Any, ClassVar, Literal, Self
 
@@ -113,6 +114,54 @@ class Execution:
 
             client = DeepOriginClient()
         self.client: DeepOriginClient = client
+        self._execution_tag_override: str | None = None
+        self._execution_billing_override: str | None = None
+
+    @contextmanager
+    def _execution_tags(
+        self,
+        *,
+        tag: str | None = None,
+        billing: str | None = None,
+    ):
+        """Temporarily override execution ``tag`` / ``billing`` for one create call."""
+        prev_tag = self._execution_tag_override
+        prev_billing = self._execution_billing_override
+        self._execution_tag_override = tag
+        self._execution_billing_override = billing
+        try:
+            yield
+        finally:
+            self._execution_tag_override = prev_tag
+            self._execution_billing_override = prev_billing
+
+    def _create_execution(
+        self,
+        *,
+        data: dict[str, Any],
+        tool_key: str | None = None,
+        tool_version: str | None = None,
+        timeout: float | None = None,
+    ) -> dict[str, Any]:
+        """Submit ``data`` via :meth:`~deeporigin.platform.executions.Executions.create`."""
+        resolved_key = tool_key if tool_key is not None else self.tool_key
+        resolved_version = tool_version if tool_version is not None else getattr(
+            self, "tool_version", None
+        )
+        if not resolved_key or not resolved_version:
+            raise ValueError("tool_key and tool_version are required for execution create")
+        extra: dict[str, Any] = {}
+        if self._execution_tag_override is not None:
+            extra["tag"] = self._execution_tag_override
+        if self._execution_billing_override is not None:
+            extra["billing"] = self._execution_billing_override
+        return self.client.executions.create(  # ty:ignore[unresolved-attribute]
+            tool_key=resolved_key,
+            tool_version=resolved_version,
+            data=data,
+            timeout=timeout,
+            **extra,
+        )
 
     @property
     def id(self) -> str | None:

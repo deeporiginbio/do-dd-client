@@ -360,6 +360,7 @@ class DeepOriginClient(metaclass=_DeepOriginMeta):
         max_retry_delay: float = 60.0,
         record: bool = False,
         tag: str | None = None,
+        billing_tag: str | None = None,
         _app: str = "python-client",
         _session: str | None = None,
     ) -> None: ...
@@ -378,6 +379,7 @@ class DeepOriginClient(metaclass=_DeepOriginMeta):
         max_retry_delay: float = 60.0,
         record: bool = False,
         tag: str | None = None,
+        billing_tag: str | None = None,
         _app: str = "python-client",
         _session: str | None = None,
     ) -> None: ...
@@ -395,6 +397,7 @@ class DeepOriginClient(metaclass=_DeepOriginMeta):
         max_retry_delay: float = 60.0,
         record: bool = False,
         tag: str | None = None,
+        billing_tag: str | None = None,
         _app: str = "python-client",
         _session: str | None = None,
     ) -> None:
@@ -419,7 +422,9 @@ class DeepOriginClient(metaclass=_DeepOriginMeta):
                 Delay = min(retry_backoff_factor * (2 ** attempt), max_retry_delay).
             max_retry_delay: Maximum delay in seconds between retry attempts.
             record: Whether to record tool execution responses for testing.
-            tag: Optional tag applied to all tool executions.
+            tag: Optional billing tag applied to all tool executions (``tag`` field).
+            billing_tag: Optional runtime billing tag (``billing`` field / ``DO_TAGS``).
+                Distinct from :attr:`billing`, the billing API wrapper.
             _app: Internal app identifier. Part of the singleton cache key.
             _session: Internal session identifier. Part of the singleton cache key.
                 A UUID v4 is generated when ``None``.
@@ -521,6 +526,7 @@ class DeepOriginClient(metaclass=_DeepOriginMeta):
         self.max_retry_delay = max_retry_delay
         self.record = record
         self.tag = tag
+        self.billing_tag = billing_tag
         self._app = _app
         self._session = str(uuid.uuid4()) if _session is None else _session
 
@@ -661,6 +667,8 @@ class DeepOriginClient(metaclass=_DeepOriginMeta):
         repr_str = f"DeepOrigin Platform Client for {name} (org_key={self._org_key}, base_url={self._base_url})"
         if self.tag is not None:
             repr_str += f" (tag={self.tag})"
+        if self.billing_tag is not None:
+            repr_str += f" (billing_tag={self.billing_tag})"
         return repr_str
 
     # -------- Factory classmethods --------

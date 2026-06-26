@@ -189,6 +189,48 @@ class Projects:
             body=body,
         )
 
+    def update(
+        self,
+        project_id: str,
+        *,
+        name: str | None = None,
+        description: str | None = None,
+        tags: dict[str, Any] | None = None,
+        notes: str | None = None,
+    ) -> dict[str, Any]:
+        """Update a project row (creates a new immutable version on the platform).
+
+        Args:
+            project_id: Data platform project id.
+            name: Updated display name.
+            description: Updated description.
+            tags: Data-platform metadata tags (jsonb object).
+            notes: Updated internal notes.
+
+        Returns:
+            API response containing the updated row under ``data``.
+        """
+        set_dict: dict[str, Any] = {}
+        if name is not None:
+            set_dict["name"] = name
+        if description is not None:
+            set_dict["description"] = description
+        if tags is not None:
+            set_dict["tags"] = tags
+        if notes is not None:
+            set_dict["notes"] = notes
+        if not set_dict:
+            raise ValueError("At least one field must be provided to update a project")
+
+        body: dict[str, Any] = {
+            "set": set_dict,
+            "returning": PROJECT_RETURNING_FIELDS,
+        }
+        return self._c._patch(
+            f"/data-platform/{self._c.org_key}/projects/{project_id}",
+            json=body,
+        ).json()
+
     def delete(self, project_id: str) -> dict[str, Any]:
         """Delete a project by id (data platform soft delete).
 

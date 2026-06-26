@@ -268,6 +268,8 @@ class PocketFinder(
         *,
         quote: bool = False,
         approve_amount: int | None = None,
+        tag: str | None = None,
+        billing: str | None = None,
     ) -> list[Pocket] | None:
         """Execute pocket finding synchronously (blocking).
 
@@ -294,11 +296,10 @@ class PocketFinder(
         """
         self._ensure_protein_remote()
         resolved_amount = 0 if quote else approve_amount
-        dto = self.client.executions.create(  # ty:ignore[unresolved-attribute]
-            data=self._make_payload(approve_amount=resolved_amount, sync=True),
-            tool_key=self.tool_key,
-            tool_version=self.tool_version,
-        )
+        with self._execution_tags(tag=tag, billing=billing):
+            dto = self._create_execution(
+                data=self._make_payload(approve_amount=resolved_amount, sync=True),
+            )
         self.update_from_dto(dto)
 
         if self.status == "Quoted":
@@ -318,10 +319,8 @@ class PocketFinder(
             approve_amount: Spend cap forwarded to the platform.
         """
         self._ensure_protein_remote()
-        execution_dto = self.client.executions.create(  # ty:ignore[unresolved-attribute]
+        execution_dto = self._create_execution(
             data=self._make_payload(approve_amount=approve_amount, sync=False),
-            tool_key=self.tool_key,
-            tool_version=self.tool_version,
         )
         execution_id = execution_dto.get("executionId")
         if execution_id is None:

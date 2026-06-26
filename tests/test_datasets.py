@@ -16,7 +16,7 @@ def test_create_dataset(client: DeepOriginClient):
     assert "data" in result
     assert result["data"]["name"] == "Test Dataset"
     assert result["data"]["dataset_key"] == "test.dataset"
-    assert result["data"]["tags"] == ["HTS", "FBDD"]
+    assert result["data"]["tags"] == {"dataset_tags": ["HTS", "FBDD"]}
 
 
 def test_search_datasets(client: DeepOriginClient):
@@ -77,8 +77,9 @@ def test_search_datasets_with_tag_filter(client: DeepOriginClient):
     assert len(result["data"]) > 0
     for ds in result["data"]:
         if ds.get("tags"):
-            assert "HTS" in ds["tags"]
-            assert "FBDD" in ds["tags"]
+            tag_list = ds["tags"].get("dataset_tags", [])
+            assert "HTS" in tag_list
+            assert "FBDD" in tag_list
 
 
 def test_get_dataset(client: DeepOriginClient):

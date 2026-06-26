@@ -287,6 +287,8 @@ class SystemPrep(Execution, SyncExecutableMixin):
         *,
         quote: bool = False,
         approve_amount: int | None = None,
+        tag: str | None = None,
+        billing: str | None = None,
     ) -> PreparedSystem | None:
         """Execute system preparation (blocking).
 
@@ -311,13 +313,12 @@ class SystemPrep(Execution, SyncExecutableMixin):
             ValueError: If the execution did not return usable output paths.
         """
         resolved_amount = 0 if quote else approve_amount
-        dto = self.client.executions.create(  # ty:ignore[unresolved-attribute]
-            data=self._build_system_prep_body(
-                sync=True, approve_amount=resolved_amount
-            ),
-            tool_key=self.tool_key,
-            tool_version=self.tool_version,
-        )
+        with self._execution_tags(tag=tag, billing=billing):
+            dto = self._create_execution(
+                data=self._build_system_prep_body(
+                    sync=True, approve_amount=resolved_amount
+                ),
+            )
         self.update_from_dto(dto)
 
         if self.status == "Quoted":

@@ -199,6 +199,27 @@ def test_executions_create_data_tag_overrides_client_tag():
     assert captured["tag"] == "explicit-tag"
 
 
+def test_executions_create_includes_client_billing_tag():
+    """``executions.create`` sends ``client.billing_tag`` as ``billing`` when set."""
+    DeepOriginClient.close_all()
+
+    client = DeepOriginClient.from_local()
+    client.billing_tag = "runtime-bill-1"
+    captured = _stub_post_json_capturing_body(client)
+
+    client.clusters.get_default_cluster_id = (  # type: ignore[method-assign]
+        lambda: "test-cluster-id"
+    )
+
+    client.executions.create(
+        tool_key="test.tool",
+        tool_version="1.0.0",
+        data={"inputs": {}, "outputs": {}, "metadata": {}},
+    )
+
+    assert captured["billing"] == "runtime-bill-1"
+
+
 def test_executions_create_targets_tool_endpoint():
     """``executions.create`` POSTs to ``/tools/{org}/tools/{key}/{version}/executions``."""
     DeepOriginClient.close_all()

@@ -572,11 +572,7 @@ class ABFE(Execution, AsyncExecutableMixin, NotebookWatchMixin):
         """
         self._ensure_synced_inputs()
         payload = self._make_payload(approve_amount=approve_amount, sync=False)
-        execution_dto = self.client.executions.create(  # ty:ignore[unresolved-attribute]
-            data=payload,
-            tool_key=self.tool_key,
-            tool_version=self.tool_version,
-        )
+        execution_dto = self._create_execution(data=payload)
 
         if execution_dto.get("executionId") is None:
             msg = "Execution response must contain 'executionId'"

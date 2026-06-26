@@ -1406,6 +1406,8 @@ class Ligand(Entity):
             mol_file = existing_ligand.get("mol_file")
             if mol_file:
                 self.remote_path = mol_file
+            if self.tags is not None and self.id is not None:
+                client.entities.update_ligand(self.id, tags=self.tags)
             return
 
         self.register(client=client, remote_path=remote_path)
