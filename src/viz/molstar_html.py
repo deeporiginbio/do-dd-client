@@ -117,7 +117,10 @@ def css_color_to_hex(color: str) -> int:
 
     rgba_match = _RGBA_COLOR_RE.match(normalized)
     if rgba_match:
-        alpha = float(rgba_match[4])
+        try:
+            alpha = float(rgba_match[4])
+        except ValueError as exc:
+            raise ValueError(f"Unsupported CSS color: {color!r}") from exc
         if not math.isfinite(alpha) or alpha < 0 or alpha > 1:
             raise ValueError(f"Unsupported CSS color: {color!r}")
         return _parse_rgb_channels(

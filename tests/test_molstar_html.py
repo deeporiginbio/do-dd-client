@@ -102,6 +102,12 @@ def test_css_color_to_hex_rejects_invalid_rgb() -> None:
         css_color_to_hex("rgb(0, 128, 255, 0.5)")
 
 
+def test_css_color_to_hex_rejects_invalid_rgba_alpha() -> None:
+    """Malformed rgba alpha strings raise the standard color error."""
+    with pytest.raises(ValueError, match="Unsupported CSS color"):
+        css_color_to_hex("rgba(0, 128, 255, not-a-number)")
+
+
 def test_render_protein_with_pockets_html_rejects_invalid_alpha() -> None:
     """Surface alpha values outside [0, 1] raise ValueError."""
     with pytest.raises(ValueError, match="protein_surface_alpha"):
