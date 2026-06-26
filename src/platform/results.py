@@ -557,7 +557,7 @@ class Results:
         """Get system-prep results, optionally filtered by inputs and options.
 
         Convenience wrapper around :meth:`get` with
-        ``tool_key="deeporigin.system-prep"``. Optional args filter on the
+        ``result_type="preparedsystem"``. Optional args filter on the
         tool result ``data`` (e.g. protein_id, ligand1_id, padding,
         add_H_atoms, retain_waters, protonate_protein).
 

@@ -600,9 +600,9 @@ def create_data_platform_router(
     async def search_result_explorer(org_key: str, request: Request) -> dict[str, Any]:
         """Search result-explorer records with ``{"field": {"eq": value}}`` filters.
 
-        The local mock returns every matching row in one response (no ``limit`` /
-        pagination cap) so callers such as :meth:`Docking.get_results` receive full
-        pose sets (e.g. 128 bulk-docking rows) in a single request.
+        Supports ``offset``/``limit`` pagination (including ``meta.hasMore`` for
+        offset pages). When neither is sent, returns every matching row in one
+        response so legacy callers receive full pose sets in a single request.
         """
         body = await request.json()
         filter_dict = body.get("filter", {})
@@ -709,11 +709,25 @@ def create_data_platform_router(
         if sort_dict:
             filtered = _apply_sort(filtered, sort_dict)
 
-        page = filtered
+        offset = body.get("offset", 0)
+        limit = body.get("limit")
+        total = len(filtered)
+
+        if limit is None and offset == 0:
+            page = filtered
+            meta: dict[str, Any] = {"count": len(page)}
+        else:
+            page_size = limit if limit is not None else total
+            page = filtered[offset : offset + page_size]
+            meta = {
+                "count": len(page),
+                "hasMore": offset + len(page) < total,
+            }
+
         if select:
             page = [{k: v for k, v in r.items() if k in select} for r in page]
 
-        return {"data": page, "meta": {"count": len(page)}}
+        return {"data": page, "meta": meta}
 
     @router.post("/data-platform/{org_key}/executions/search")
     async def search_executions(org_key: str, request: Request) -> dict[str, Any]:
