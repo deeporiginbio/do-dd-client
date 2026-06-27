@@ -28,7 +28,8 @@ class Entity(ABC):
     :meth:`resolved_project_id` so the id comes from the client.
 
     ``tags`` is optional data-platform metadata (jsonb object on the row).
-    When set, :meth:`sync` / :meth:`register` include it on create.
+    When set, :meth:`sync` / :meth:`register` include it on create. Provenance
+    ``app`` / ``session`` are merged from the client automatically on writes.
     """
 
     id: str | None = field(default=None, kw_only=True)

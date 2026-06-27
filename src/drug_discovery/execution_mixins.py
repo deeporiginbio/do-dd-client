@@ -94,8 +94,6 @@ class AsyncExecutableMixin:
         *,
         quote: bool = False,
         approve_amount: int | None = None,
-        tag: str | None = None,
-        billing: str | None = None,
         **kwargs,
     ) -> None:
         """Submit a persisted async execution to the platform.
@@ -114,8 +112,6 @@ class AsyncExecutableMixin:
             approve_amount: Spend cap passed to the platform as ``approveAmount``.
                 ``0`` requests a quote only. ``None`` omits the field (platform
                 runs immediately).
-            tag: Optional billing tag override for this run.
-            billing: Optional runtime billing tag override (``billing`` field).
             **kwargs: Forwarded verbatim to ``_start_impl``.
 
         Raises:
@@ -127,11 +123,7 @@ class AsyncExecutableMixin:
                 "start() is only allowed when status is None."
             )
         resolved_amount = 0 if quote else approve_amount
-        if tag is not None or billing is not None:
-            with self._execution_tags(tag=tag, billing=billing):
-                self._start_impl(approve_amount=resolved_amount, **kwargs)
-        else:
-            self._start_impl(approve_amount=resolved_amount, **kwargs)
+        self._start_impl(approve_amount=resolved_amount, **kwargs)
 
     def _start_impl(self, *, approve_amount: int | None = None, **kwargs) -> None:
         """Perform the actual async submission. Must be overridden by subclasses.

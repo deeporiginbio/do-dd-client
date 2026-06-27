@@ -278,8 +278,6 @@ class ConstrainedDocking(Execution, SyncExecutableMixin, NotebookWatchMixin):
         *,
         quote: bool = False,
         approve_amount: int | None = None,
-        tag: str | None = None,
-        billing: str | None = None,
     ) -> LigandSet | None:
         """Execute constrained docking synchronously (blocking).
 
@@ -297,10 +295,9 @@ class ConstrainedDocking(Execution, SyncExecutableMixin, NotebookWatchMixin):
         self._validate_sync_run_params()
         self._ensure_platform_inputs()
         resolved_amount = 0 if quote else approve_amount
-        with self._execution_tags(tag=tag, billing=billing):
-            dto = self._create_execution(
-                data=self._build_create_payload(approve_amount=resolved_amount),
-            )
+        dto = self._create_execution(
+            data=self._build_create_payload(approve_amount=resolved_amount),
+        )
         self.update_from_dto(dto)
 
         if self.status == "Quoted":

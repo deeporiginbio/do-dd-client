@@ -100,8 +100,6 @@ def run_molprops_combined(
     properties: set[str],
     client: DeepOriginClient,
     quote: bool = False,
-    tag: str | None = None,
-    billing: str | None = None,
 ) -> tuple[list[dict], dict]:
     """Issue one combined-tool execution and return ``(rows, raw_dto)``.
 
@@ -122,8 +120,6 @@ def run_molprops_combined(
         tool_key=TOOL_KEYS_AND_VERSIONS["mol_props"]["tool_key"],
         tool_version=TOOL_KEYS_AND_VERSIONS["mol_props"]["tool_version"],
         data=body,
-        tag=tag,
-        billing=billing,
     )
     rows = [] if quote else _execution_outputs_as_rows(raw)
     return rows, raw
@@ -222,8 +218,6 @@ class Molprops(Execution, SyncExecutableMixin):
         self,
         *,
         quote: bool = False,
-        tag: str | None = None,
-        billing: str | None = None,
     ) -> Molprops:
         """Execute the combined molprops tool, mutate ligands, and set :attr:`cost`.
 
@@ -263,8 +257,6 @@ class Molprops(Execution, SyncExecutableMixin):
                 properties=self._properties,
                 client=self.client,
                 quote=True,
-                tag=tag,
-                billing=billing,
             )
             self.update_from_dto(raw)
             return self
@@ -285,8 +277,6 @@ class Molprops(Execution, SyncExecutableMixin):
                     ligand_set=LigandSet(ligands=batch_ligands),
                     properties=self._properties,
                     client=self.client,
-                    tag=tag,
-                    billing=billing,
                 )
                 merged.extend(batch_rows)
                 raw_responses.append(batch_raw)

@@ -128,8 +128,6 @@ class Protonation(Execution, SyncExecutableMixin):
         *,
         quote: bool = False,
         approve_amount: int | None = None,
-        tag: str | None = None,
-        billing: str | None = None,
     ) -> Any:
         """Execute protonation via the platform tools API.
 
@@ -154,10 +152,9 @@ class Protonation(Execution, SyncExecutableMixin):
         input_first = self.ligands.ligands[0]
         resolved_amount = 0 if quote else approve_amount
 
-        with self._execution_tags(tag=tag, billing=billing):
-            response = self._create_execution(
-                data=self._make_payload(approve_amount=resolved_amount, sync=True),
-            )
+        response = self._create_execution(
+            data=self._make_payload(approve_amount=resolved_amount, sync=True),
+        )
 
         outputs = _execution_outputs_dict(response)
         if outputs.get("pH") != self._ph:

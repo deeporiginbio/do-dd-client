@@ -101,9 +101,19 @@ Optional mutable attributes can be set after construction:
 
 ```{.python notest}
 client.tag = "my-experiment"
+client.billing_tag = "runtime-billing"
 client.max_retries = 5
 client.record = True
 ```
+
+### Execution billing tags
+
+Set ``client.tag`` and/or ``client.billing_tag`` once on the client. Every
+``executions.create`` call (including tool ``run()`` / ``start()``) sends those
+values as the platform ``tag`` and ``billing`` fields when present. There is no
+per-run override on tool methods. Advanced callers may still set ``tag`` or
+``billing`` explicitly inside the ``data`` payload passed to
+``executions.create``.
 
 ## Retry Configuration
 

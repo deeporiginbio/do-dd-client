@@ -10,7 +10,7 @@ import uuid
 if TYPE_CHECKING:
     from deeporigin.platform.client import DeepOriginClient
 
-from deeporigin.platform.entities import _coerce_entity_tags
+from deeporigin.platform.tags import merge_entity_tags
 
 # Must match ``projects`` schema fields (snake_case). Versioned entities expose
 # ``canonical_id`` at the API; ``renderRowForClient`` maps it to ``id`` when
@@ -159,7 +159,7 @@ class Projects:
         name: str,
         description: str | None = None,
         slug: str | None = None,
-        tags: dict[str, Any] | list[str] | None = None,
+        tags: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         """Create a project row.
 
@@ -167,8 +167,8 @@ class Projects:
             name: Display name (required by the platform schema).
             description: Optional long description.
             slug: Optional slug; generated from ``name`` when omitted.
-            tags: Data-platform metadata tags (jsonb object), or a list of strings
-                (stored as ``{"legacy_tags": [...]}`` on the platform).
+            tags: Data-platform metadata tags (jsonb object). Provenance
+                ``app`` / ``session`` are merged from the client automatically.
 
         Returns:
             API response containing the created row under ``data``.
@@ -180,9 +180,7 @@ class Projects:
         }
         if description is not None:
             set_dict["description"] = description
-        coerced_tags = _coerce_entity_tags(tags)
-        if coerced_tags is not None:
-            set_dict["tags"] = coerced_tags
+        set_dict["tags"] = merge_entity_tags(self._c, tags, always=True)
 
         body: dict[str, Any] = {
             "set": set_dict,
@@ -199,7 +197,7 @@ class Projects:
         *,
         name: str | None = None,
         description: str | None = None,
-        tags: dict[str, Any] | list[str] | None = None,
+        tags: dict[str, Any] | None = None,
         notes: str | None = None,
     ) -> dict[str, Any]:
         """Update a project row (creates a new immutable version on the platform).
@@ -208,8 +206,8 @@ class Projects:
             project_id: Data platform project id.
             name: Updated display name.
             description: Updated description.
-            tags: Data-platform metadata tags (jsonb object), or a list of strings
-                (stored as ``{"legacy_tags": [...]}`` on the platform).
+            tags: Data-platform metadata tags (jsonb object). When provided,
+                provenance ``app`` / ``session`` are merged from the client.
             notes: Updated internal notes.
 
         Returns:
@@ -220,9 +218,9 @@ class Projects:
             set_dict["name"] = name
         if description is not None:
             set_dict["description"] = description
-        coerced_tags = _coerce_entity_tags(tags)
-        if coerced_tags is not None:
-            set_dict["tags"] = coerced_tags
+        merged_tags = merge_entity_tags(self._c, tags, always=False)
+        if merged_tags is not None:
+            set_dict["tags"] = merged_tags
         if notes is not None:
             set_dict["notes"] = notes
         if not set_dict:

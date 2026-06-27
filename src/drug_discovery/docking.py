@@ -275,8 +275,6 @@ class Docking(Execution, SyncExecutableMixin, AsyncExecutableMixin, NotebookWatc
         *,
         quote: bool = False,
         approve_amount: int | None = None,
-        tag: str | None = None,
-        billing: str | None = None,
     ) -> LigandSet | None:
         """Execute docking synchronously (blocking).
 
@@ -304,12 +302,11 @@ class Docking(Execution, SyncExecutableMixin, AsyncExecutableMixin, NotebookWatc
         """
         self._ensure_inputs_for_sync_run()
         resolved_amount = 0 if quote else approve_amount
-        with self._execution_tags(tag=tag, billing=billing):
-            dto = self._create_execution(
-                data=self._build_docking_create_payload(
-                    sync=True, approve_amount=resolved_amount
-                ),
-            )
+        dto = self._create_execution(
+            data=self._build_docking_create_payload(
+                sync=True, approve_amount=resolved_amount
+            ),
+        )
         self.update_from_dto(dto)
 
         if self.status == "Quoted":

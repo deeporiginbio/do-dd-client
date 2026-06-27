@@ -297,8 +297,6 @@ class Konnektor(Execution, SyncExecutableMixin):
         *,
         quote: bool = False,
         approve_amount: int | None = None,
-        tag: str | None = None,
-        billing: str | None = None,
     ) -> KonnektorResult | None:
         """Run Konnektor synchronously and return the network result.
 
@@ -316,10 +314,9 @@ class Konnektor(Execution, SyncExecutableMixin):
         """
         self._ensure_platform_inputs()
         resolved_amount = 0 if quote else approve_amount
-        with self._execution_tags(tag=tag, billing=billing):
-            response = self._create_execution(
-                data=self._make_payload(approve_amount=resolved_amount, sync=not quote),
-            )
+        response = self._create_execution(
+            data=self._make_payload(approve_amount=resolved_amount, sync=not quote),
+        )
         self.update_from_dto(response)
 
         if self.status == "Quoted":

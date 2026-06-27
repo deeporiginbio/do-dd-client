@@ -268,8 +268,6 @@ class PocketFinder(
         *,
         quote: bool = False,
         approve_amount: int | None = None,
-        tag: str | None = None,
-        billing: str | None = None,
     ) -> list[Pocket] | None:
         """Execute pocket finding synchronously (blocking).
 
@@ -296,10 +294,9 @@ class PocketFinder(
         """
         self._ensure_protein_remote()
         resolved_amount = 0 if quote else approve_amount
-        with self._execution_tags(tag=tag, billing=billing):
-            dto = self._create_execution(
-                data=self._make_payload(approve_amount=resolved_amount, sync=True),
-            )
+        dto = self._create_execution(
+            data=self._make_payload(approve_amount=resolved_amount, sync=True),
+        )
         self.update_from_dto(dto)
 
         if self.status == "Quoted":

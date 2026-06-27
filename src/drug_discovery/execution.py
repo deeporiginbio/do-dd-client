@@ -25,7 +25,6 @@ automatic confirmation is performed.
 from __future__ import annotations
 
 import builtins
-from contextlib import contextmanager
 import copy
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Any, ClassVar, Literal, Self
@@ -114,26 +113,6 @@ class Execution:
 
             client = DeepOriginClient()
         self.client: DeepOriginClient = client
-        self._execution_tag_override: str | None = None
-        self._execution_billing_override: str | None = None
-
-    @contextmanager
-    def _execution_tags(
-        self,
-        *,
-        tag: str | None = None,
-        billing: str | None = None,
-    ):
-        """Temporarily override execution ``tag`` / ``billing`` for one create call."""
-        prev_tag = self._execution_tag_override
-        prev_billing = self._execution_billing_override
-        self._execution_tag_override = tag
-        self._execution_billing_override = billing
-        try:
-            yield
-        finally:
-            self._execution_tag_override = prev_tag
-            self._execution_billing_override = prev_billing
 
     def _create_execution(
         self,
@@ -147,16 +126,10 @@ class Execution:
             raise ValueError(
                 "tool_key and tool_version are required for execution create"
             )
-        extra: dict[str, Any] = {}
-        if self._execution_tag_override is not None:
-            extra["tag"] = self._execution_tag_override
-        if self._execution_billing_override is not None:
-            extra["billing"] = self._execution_billing_override
         return self.client.executions.create(  # ty:ignore[unresolved-attribute]
             tool_key=resolved_key,
             tool_version=resolved_version,
             data=data,
-            **extra,
         )
 
     @property

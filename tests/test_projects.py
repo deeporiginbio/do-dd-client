@@ -5,6 +5,17 @@ import uuid
 from deeporigin.platform import DeepOriginClient
 
 
+def _expected_entity_tags(
+    client: DeepOriginClient,
+    user_tags: dict[str, str] | None = None,
+) -> dict[str, str]:
+    """Build expected tags including client provenance."""
+    expected: dict[str, str] = dict(user_tags or {})
+    expected.setdefault("app", client._app)
+    expected.setdefault("session", client._session)
+    return expected
+
+
 def test_projects_search_name_icontains(client: DeepOriginClient) -> None:
     """``search(name=...)`` sends icontains and filters by project name."""
     run_id = str(uuid.uuid4())
@@ -80,5 +91,5 @@ def test_projects_update_tags_and_notes(client: DeepOriginClient) -> None:
     )
 
     row = updated["data"][0]
-    assert row["tags"] == entity_tags
+    assert row["tags"] == _expected_entity_tags(client, entity_tags)
     assert row["notes"] == notes

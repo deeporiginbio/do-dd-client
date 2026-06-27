@@ -4,21 +4,11 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
+from deeporigin.platform.tags import merge_entity_tags, stamp_batch_row_tags
 from deeporigin.utils.constants import DEFAULT_SEARCH_PAGE_SIZE
 
 if TYPE_CHECKING:
     from deeporigin.platform.client import DeepOriginClient
-
-
-def _coerce_entity_tags(
-    tags: dict[str, Any] | list[str] | None,
-) -> dict[str, Any] | None:
-    """Map caller tags to the jsonb object shape stored on entity rows."""
-    if tags is None:
-        return None
-    if isinstance(tags, list):
-        return {"legacy_tags": tags}
-    return tags
 
 
 # Minimal returning for proteins batch create (triggers require INSERT path, not COPY).
@@ -232,7 +222,7 @@ class Entities:
             elif entity == "proteins":
                 effective_returning = PROTEIN_BATCH_CREATE_RETURNING_FIELDS
 
-        body: dict[str, Any] = {"rows": rows}
+        body: dict[str, Any] = {"rows": stamp_batch_row_tags(self._c, rows)}
         if effective_returning is not None:
             body["returning"] = effective_returning
 
@@ -515,7 +505,7 @@ class Entities:
         tpsa: float | None = None,
         molecular_weight: float | None = None,
         variant_name_tag: str = "",
-        tags: dict[str, Any] | list[str] | None = None,
+        tags: dict[str, Any] | None = None,
     ) -> dict:
         """Create a new ligand.
 
@@ -531,8 +521,8 @@ class Entities:
             tpsa: Topological polar surface area.
             molecular_weight: Molecular weight.
             variant_name_tag: Variant name tag. Defaults to empty string.
-            tags: Data-platform metadata tags (jsonb object), or a list of strings
-                (stored as ``{"legacy_tags": [...]}`` on the platform).
+            tags: Data-platform metadata tags (jsonb object). Provenance
+                ``app`` / ``session`` are merged from the client automatically.
 
         Returns:
             Dictionary containing the created ligand data.
@@ -560,9 +550,7 @@ class Entities:
             set_dict["tpsa"] = tpsa
         if molecular_weight is not None:
             set_dict["molecular_weight"] = molecular_weight
-        coerced_tags = _coerce_entity_tags(tags)
-        if coerced_tags is not None:
-            set_dict["tags"] = coerced_tags
+        set_dict["tags"] = merge_entity_tags(self._c, tags, always=True)
 
         body: dict[str, Any] = {
             "set": set_dict,
@@ -592,7 +580,7 @@ class Entities:
             list of created ligand records.
         """
         body: dict[str, Any] = {
-            "rows": rows,
+            "rows": stamp_batch_row_tags(self._c, rows),
             "returning": LIGAND_RETURNING_FIELDS,
         }
 
@@ -616,7 +604,7 @@ class Entities:
         tpsa: float | None = None,
         molecular_weight: float | None = None,
         variant_name_tag: str | None = None,
-        tags: dict[str, Any] | list[str] | None = None,
+        tags: dict[str, Any] | None = None,
     ) -> dict:
         """Update an existing ligand by ID.
 
@@ -636,8 +624,8 @@ class Entities:
             tpsa: Topological polar surface area.
             molecular_weight: Molecular weight.
             variant_name_tag: Variant name tag.
-            tags: Data-platform metadata tags (jsonb object), or a list of strings
-                (stored as ``{"legacy_tags": [...]}`` on the platform).
+            tags: Data-platform metadata tags (jsonb object). When provided,
+                provenance ``app`` / ``session`` are merged from the client.
 
         Returns:
             Dictionary containing the updated ligand data.
@@ -668,9 +656,9 @@ class Entities:
             set_dict["molecular_weight"] = molecular_weight
         if variant_name_tag is not None:
             set_dict["variant_name_tag"] = variant_name_tag
-        coerced_tags = _coerce_entity_tags(tags)
-        if coerced_tags is not None:
-            set_dict["tags"] = coerced_tags
+        merged_tags = merge_entity_tags(self._c, tags, always=False)
+        if merged_tags is not None:
+            set_dict["tags"] = merged_tags
 
         return self.update(
             "ligands",
@@ -788,7 +776,7 @@ class Entities:
         protein_name: str | None = None,
         protein_length: int | None = None,
         project_id: str | None = None,
-        tags: dict[str, Any] | list[str] | None = None,
+        tags: dict[str, Any] | None = None,
     ) -> dict:
         """Create a new protein.
 
@@ -800,8 +788,8 @@ class Entities:
             protein_name: Protein name.
             protein_length: Protein length.
             project_id: Project ID for the protein.
-            tags: Data-platform metadata tags (jsonb object), or a list of strings
-                (stored as ``{"legacy_tags": [...]}`` on the platform).
+            tags: Data-platform metadata tags (jsonb object). When provided,
+                provenance ``app`` / ``session`` are merged from the client.
 
         Returns:
             Dictionary containing the created protein data.
@@ -822,9 +810,7 @@ class Entities:
             set_dict["protein_name"] = protein_name
         if protein_length is not None:
             set_dict["protein_length"] = protein_length
-        coerced_tags = _coerce_entity_tags(tags)
-        if coerced_tags is not None:
-            set_dict["tags"] = coerced_tags
+        set_dict["tags"] = merge_entity_tags(self._c, tags, always=True)
 
         body: dict[str, Any] = {
             "set": set_dict,
@@ -847,7 +833,7 @@ class Entities:
         protein_name: str | None = None,
         protein_length: int | None = None,
         project_id: str | None = None,
-        tags: dict[str, Any] | list[str] | None = None,
+        tags: dict[str, Any] | None = None,
     ) -> dict:
         """Update an existing protein by ID.
 
@@ -863,8 +849,8 @@ class Entities:
             protein_name: Protein name.
             protein_length: Protein length.
             project_id: Project ID for the protein.
-            tags: Data-platform metadata tags (jsonb object), or a list of strings
-                (stored as ``{"legacy_tags": [...]}`` on the platform).
+            tags: Data-platform metadata tags (jsonb object). When provided,
+                provenance ``app`` / ``session`` are merged from the client.
 
         Returns:
             Dictionary containing the updated protein data.
@@ -887,9 +873,9 @@ class Entities:
             set_dict["protein_name"] = protein_name
         if protein_length is not None:
             set_dict["protein_length"] = protein_length
-        coerced_tags = _coerce_entity_tags(tags)
-        if coerced_tags is not None:
-            set_dict["tags"] = coerced_tags
+        merged_tags = merge_entity_tags(self._c, tags, always=False)
+        if merged_tags is not None:
+            set_dict["tags"] = merged_tags
 
         return self.update(
             "proteins",
