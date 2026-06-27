@@ -52,7 +52,6 @@ from deeporigin.utils.env import _ensure_do_folder
 if TYPE_CHECKING:
     from deeporigin.platform.billing import Billing
     from deeporigin.platform.clusters import Clusters
-    from deeporigin.platform.datasets import Datasets
     from deeporigin.platform.entities import Entities
     from deeporigin.platform.executions import Executions
     from deeporigin.platform.files import Files
@@ -311,7 +310,6 @@ class DeepOriginClient(metaclass=_DeepOriginMeta):
 
     tools: Tools | None
     clusters: Clusters | None
-    datasets: Datasets | None
     files: Files  # client always has files
     executions: Executions | None
     user_logs: UserLogs | None
@@ -512,13 +510,6 @@ class DeepOriginClient(metaclass=_DeepOriginMeta):
             self.projects = Projects(_client)
         except ImportError:
             self.projects = None
-
-        try:
-            from deeporigin.platform.datasets import Datasets
-
-            self.datasets = Datasets(_client)
-        except ImportError:
-            self.datasets = None
 
         self.max_retries = max_retries
         self.retryable_status_codes = HTTP_RETRYABLE_STATUS_CODES
