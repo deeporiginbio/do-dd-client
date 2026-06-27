@@ -79,7 +79,7 @@ class Executions:
                 caller already included ``tag`` in ``data``.
             tag: Per-call billing tag override (wins over ``client.tag``).
             billing: Per-call runtime billing tag override (wins over
-                ``client.billing_tag``; forwarded to the tool as ``DO_TAGS``).
+                ``client.billing_tag``).
 
         Returns:
             Dictionary containing the execution response from the API.

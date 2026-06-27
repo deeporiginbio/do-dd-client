@@ -9,6 +9,18 @@ from deeporigin.utils.constants import DEFAULT_SEARCH_PAGE_SIZE
 if TYPE_CHECKING:
     from deeporigin.platform.client import DeepOriginClient
 
+
+def _coerce_entity_tags(
+    tags: dict[str, Any] | list[str] | None,
+) -> dict[str, Any] | None:
+    """Map caller tags to the jsonb object shape stored on entity rows."""
+    if tags is None:
+        return None
+    if isinstance(tags, list):
+        return {"legacy_tags": tags}
+    return tags
+
+
 # Minimal returning for proteins batch create (triggers require INSERT path, not COPY).
 PROTEIN_BATCH_CREATE_RETURNING_FIELDS = ["id"]
 
@@ -503,7 +515,7 @@ class Entities:
         tpsa: float | None = None,
         molecular_weight: float | None = None,
         variant_name_tag: str = "",
-        tags: dict[str, Any] | None = None,
+        tags: dict[str, Any] | list[str] | None = None,
     ) -> dict:
         """Create a new ligand.
 
@@ -519,7 +531,8 @@ class Entities:
             tpsa: Topological polar surface area.
             molecular_weight: Molecular weight.
             variant_name_tag: Variant name tag. Defaults to empty string.
-            tags: Data-platform metadata tags (jsonb object).
+            tags: Data-platform metadata tags (jsonb object), or a list of strings
+                (stored as ``{"legacy_tags": [...]}`` on the platform).
 
         Returns:
             Dictionary containing the created ligand data.
@@ -547,8 +560,9 @@ class Entities:
             set_dict["tpsa"] = tpsa
         if molecular_weight is not None:
             set_dict["molecular_weight"] = molecular_weight
-        if tags is not None:
-            set_dict["tags"] = tags
+        coerced_tags = _coerce_entity_tags(tags)
+        if coerced_tags is not None:
+            set_dict["tags"] = coerced_tags
 
         body: dict[str, Any] = {
             "set": set_dict,
@@ -602,7 +616,7 @@ class Entities:
         tpsa: float | None = None,
         molecular_weight: float | None = None,
         variant_name_tag: str | None = None,
-        tags: dict[str, Any] | None = None,
+        tags: dict[str, Any] | list[str] | None = None,
     ) -> dict:
         """Update an existing ligand by ID.
 
@@ -622,7 +636,8 @@ class Entities:
             tpsa: Topological polar surface area.
             molecular_weight: Molecular weight.
             variant_name_tag: Variant name tag.
-            tags: Data-platform metadata tags (jsonb object).
+            tags: Data-platform metadata tags (jsonb object), or a list of strings
+                (stored as ``{"legacy_tags": [...]}`` on the platform).
 
         Returns:
             Dictionary containing the updated ligand data.
@@ -653,8 +668,9 @@ class Entities:
             set_dict["molecular_weight"] = molecular_weight
         if variant_name_tag is not None:
             set_dict["variant_name_tag"] = variant_name_tag
-        if tags is not None:
-            set_dict["tags"] = tags
+        coerced_tags = _coerce_entity_tags(tags)
+        if coerced_tags is not None:
+            set_dict["tags"] = coerced_tags
 
         return self.update(
             "ligands",
@@ -772,7 +788,7 @@ class Entities:
         protein_name: str | None = None,
         protein_length: int | None = None,
         project_id: str | None = None,
-        tags: dict[str, Any] | None = None,
+        tags: dict[str, Any] | list[str] | None = None,
     ) -> dict:
         """Create a new protein.
 
@@ -784,7 +800,8 @@ class Entities:
             protein_name: Protein name.
             protein_length: Protein length.
             project_id: Project ID for the protein.
-            tags: Data-platform metadata tags (jsonb object).
+            tags: Data-platform metadata tags (jsonb object), or a list of strings
+                (stored as ``{"legacy_tags": [...]}`` on the platform).
 
         Returns:
             Dictionary containing the created protein data.
@@ -805,8 +822,9 @@ class Entities:
             set_dict["protein_name"] = protein_name
         if protein_length is not None:
             set_dict["protein_length"] = protein_length
-        if tags is not None:
-            set_dict["tags"] = tags
+        coerced_tags = _coerce_entity_tags(tags)
+        if coerced_tags is not None:
+            set_dict["tags"] = coerced_tags
 
         body: dict[str, Any] = {
             "set": set_dict,
@@ -829,7 +847,7 @@ class Entities:
         protein_name: str | None = None,
         protein_length: int | None = None,
         project_id: str | None = None,
-        tags: dict[str, Any] | None = None,
+        tags: dict[str, Any] | list[str] | None = None,
     ) -> dict:
         """Update an existing protein by ID.
 
@@ -845,7 +863,8 @@ class Entities:
             protein_name: Protein name.
             protein_length: Protein length.
             project_id: Project ID for the protein.
-            tags: Data-platform metadata tags (jsonb object).
+            tags: Data-platform metadata tags (jsonb object), or a list of strings
+                (stored as ``{"legacy_tags": [...]}`` on the platform).
 
         Returns:
             Dictionary containing the updated protein data.
@@ -868,8 +887,9 @@ class Entities:
             set_dict["protein_name"] = protein_name
         if protein_length is not None:
             set_dict["protein_length"] = protein_length
-        if tags is not None:
-            set_dict["tags"] = tags
+        coerced_tags = _coerce_entity_tags(tags)
+        if coerced_tags is not None:
+            set_dict["tags"] = coerced_tags
 
         return self.update(
             "proteins",

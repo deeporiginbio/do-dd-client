@@ -139,17 +139,10 @@ class Execution:
         self,
         *,
         data: dict[str, Any],
-        tool_key: str | None = None,
-        tool_version: str | None = None,
-        timeout: float | None = None,
     ) -> dict[str, Any]:
         """Submit ``data`` via :meth:`~deeporigin.platform.executions.Executions.create`."""
-        resolved_key = tool_key if tool_key is not None else self.tool_key
-        resolved_version = (
-            tool_version
-            if tool_version is not None
-            else getattr(self, "tool_version", None)
-        )
+        resolved_key = self.tool_key
+        resolved_version = getattr(self, "tool_version", None)
         if not resolved_key or not resolved_version:
             raise ValueError(
                 "tool_key and tool_version are required for execution create"
@@ -163,7 +156,6 @@ class Execution:
             tool_key=resolved_key,
             tool_version=resolved_version,
             data=data,
-            timeout=timeout,
             **extra,
         )
 

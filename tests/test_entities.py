@@ -390,6 +390,21 @@ def test_update_ligand_with_tags_lv1(client: DeepOriginClient):
         client.entities.delete(entity="ligands", entity_id=lig_id)
 
 
+def test_update_ligand_list_tags_coerced_lv1(client: DeepOriginClient):
+    """Update ligand coerces list tags to the jsonb object shape (legacy back-compat)."""
+    tag = f"list-tags-{uuid.uuid4().hex[:12]}"
+    create = client.entities.create_ligand(smiles="COC", name=f"list-tag-{tag}")
+    lig_id = create["data"]["id"]
+    list_tags = [tag, "screening"]
+    expected = {"legacy_tags": list_tags}
+    try:
+        client.entities.update_ligand(lig_id, tags=list_tags)
+        row = client.entities.get_ligand(lig_id)
+        assert row["tags"] == expected
+    finally:
+        client.entities.delete(entity="ligands", entity_id=lig_id)
+
+
 def test_ligand_register_passes_tags_lv1(client: DeepOriginClient):
     """Ligand.register forwards Entity.tags to create_ligand."""
     tag = f"reg-{uuid.uuid4().hex[:12]}"

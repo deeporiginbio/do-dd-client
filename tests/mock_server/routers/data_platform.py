@@ -1000,8 +1000,8 @@ def create_data_platform_router(
             "name": name,
             "slug": slug,
             "description": set_data.get("description"),
-            "tags": None,
-            "notes": None,
+            "tags": set_data.get("tags"),
+            "notes": set_data.get("notes"),
             "url_token": None,
         }
         projects[pid] = record

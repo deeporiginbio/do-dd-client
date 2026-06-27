@@ -423,7 +423,7 @@ class DeepOriginClient(metaclass=_DeepOriginMeta):
             max_retry_delay: Maximum delay in seconds between retry attempts.
             record: Whether to record tool execution responses for testing.
             tag: Optional billing tag applied to all tool executions (``tag`` field).
-            billing_tag: Optional runtime billing tag (``billing`` field / ``DO_TAGS``).
+            billing_tag: Optional runtime billing tag (``billing`` field).
                 Distinct from :attr:`billing`, the billing API wrapper.
             _app: Internal app identifier. Part of the singleton cache key.
             _session: Internal session identifier. Part of the singleton cache key.

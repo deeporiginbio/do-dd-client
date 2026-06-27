@@ -62,3 +62,23 @@ def test_projects_user_create_upserts_by_exact_name(client: DeepOriginClient) ->
     r = client.projects.search(filter_dict={"name": {"eq": name}}, limit=10)
     rows = r.get("data") or []
     assert len(rows) == 1
+
+
+def test_projects_update_tags_and_notes(client: DeepOriginClient) -> None:
+    """``projects.update`` persists tags and notes on the platform row."""
+    run_id = uuid.uuid4().hex[:12]
+    name = f"CLI test test_projects_update_tags_and_notes {run_id}"
+    created = client.projects.create(name=name)
+    project_id = created["data"]["canonical_id"]
+    entity_tags = {"team": run_id}
+    notes = f"notes-{run_id}"
+
+    updated = client.projects.update(
+        project_id,
+        tags=entity_tags,
+        notes=notes,
+    )
+
+    row = updated["data"][0]
+    assert row["tags"] == entity_tags
+    assert row["notes"] == notes

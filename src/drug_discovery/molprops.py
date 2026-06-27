@@ -257,41 +257,40 @@ class Molprops(Execution, SyncExecutableMixin):
                 lig.id = str(idx)
         ligand_set = LigandSet(ligands=self._ligands)
 
-        with self._execution_tags(tag=tag, billing=billing):
-            if quote:
-                _unused_rows, raw = run_molprops_combined(
-                    ligand_set=ligand_set,
+        if quote:
+            _unused_rows, raw = run_molprops_combined(
+                ligand_set=ligand_set,
+                properties=self._properties,
+                client=self.client,
+                quote=True,
+                tag=tag,
+                billing=billing,
+            )
+            self.update_from_dto(raw)
+            return self
+
+        merged: list[dict] = []
+        raw_responses: list[dict] = []
+        batches = ligand_set.batches(self._batch_size)
+        n_ligands = len(self._ligands)
+        use_batch_bar = len(batches) > 1
+        with tqdm(
+            total=n_ligands,
+            desc="Molprops",
+            unit="ligand",
+            disable=not use_batch_bar,
+        ) as pbar:
+            for batch_ligands in batches:
+                batch_rows, batch_raw = run_molprops_combined(
+                    ligand_set=LigandSet(ligands=batch_ligands),
                     properties=self._properties,
                     client=self.client,
-                    quote=True,
                     tag=tag,
                     billing=billing,
                 )
-                self.update_from_dto(raw)
-                return self
-
-            merged: list[dict] = []
-            raw_responses: list[dict] = []
-            batches = ligand_set.batches(self._batch_size)
-            n_ligands = len(self._ligands)
-            use_batch_bar = len(batches) > 1
-            with tqdm(
-                total=n_ligands,
-                desc="Molprops",
-                unit="ligand",
-                disable=not use_batch_bar,
-            ) as pbar:
-                for batch_ligands in batches:
-                    batch_rows, batch_raw = run_molprops_combined(
-                        ligand_set=LigandSet(ligands=batch_ligands),
-                        properties=self._properties,
-                        client=self.client,
-                        tag=tag,
-                        billing=billing,
-                    )
-                    merged.extend(batch_rows)
-                    raw_responses.append(batch_raw)
-                    pbar.update(len(batch_ligands))
+                merged.extend(batch_rows)
+                raw_responses.append(batch_raw)
+                pbar.update(len(batch_ligands))
 
         if raw_responses:
             self.update_from_dto(raw_responses[-1])
