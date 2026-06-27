@@ -302,12 +302,10 @@ class Docking(Execution, SyncExecutableMixin, AsyncExecutableMixin, NotebookWatc
         """
         self._ensure_inputs_for_sync_run()
         resolved_amount = 0 if quote else approve_amount
-        dto = self.client.executions.create(  # ty:ignore[unresolved-attribute]
+        dto = self._create_execution(
             data=self._build_docking_create_payload(
                 sync=True, approve_amount=resolved_amount
             ),
-            tool_key=self.tool_key,
-            tool_version=self.tool_version,
         )
         self.update_from_dto(dto)
 
@@ -334,11 +332,7 @@ class Docking(Execution, SyncExecutableMixin, AsyncExecutableMixin, NotebookWatc
             sync=False, approve_amount=approve_amount
         )
 
-        execution_dto = self.client.executions.create(  # ty:ignore[unresolved-attribute]
-            data=payload,
-            tool_key=self.tool_key,
-            tool_version=self.tool_version,
-        )
+        execution_dto = self._create_execution(data=payload)
         self._id = execution_dto.get("executionId")
         self.status = execution_dto.get("status")
 

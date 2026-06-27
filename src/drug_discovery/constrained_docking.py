@@ -295,10 +295,8 @@ class ConstrainedDocking(Execution, SyncExecutableMixin, NotebookWatchMixin):
         self._validate_sync_run_params()
         self._ensure_platform_inputs()
         resolved_amount = 0 if quote else approve_amount
-        dto = self.client.executions.create(  # ty:ignore[unresolved-attribute]
+        dto = self._create_execution(
             data=self._build_create_payload(approve_amount=resolved_amount),
-            tool_key=self.tool_key,
-            tool_version=self.tool_version,
         )
         self.update_from_dto(dto)
 

@@ -311,12 +311,10 @@ class SystemPrep(Execution, SyncExecutableMixin):
             ValueError: If the execution did not return usable output paths.
         """
         resolved_amount = 0 if quote else approve_amount
-        dto = self.client.executions.create(  # ty:ignore[unresolved-attribute]
+        dto = self._create_execution(
             data=self._build_system_prep_body(
                 sync=True, approve_amount=resolved_amount
             ),
-            tool_key=self.tool_key,
-            tool_version=self.tool_version,
         )
         self.update_from_dto(dto)
 

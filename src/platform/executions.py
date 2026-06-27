@@ -73,6 +73,10 @@ class Executions:
                 ``TOOL_EXECUTION_POST_TIMEOUT_SECONDS`` (600s), since quoting and
                 synchronous execution creation can exceed the client's default
                 short timeout (e.g. molprops, protonation, system-prep).
+                When ``client.tag`` is set, it is sent as ``tag`` unless the
+                caller already included ``tag`` in ``data``. When
+                ``client.billing_tag`` is set, it is sent as ``billing`` unless
+                the caller already included ``billing`` in ``data``.
 
         Returns:
             Dictionary containing the execution response from the API.
@@ -89,6 +93,13 @@ class Executions:
 
         payload["app"] = self._c._app
         payload["session"] = self._c._session
+        if self._c.tag is not None and "tag" not in payload:
+            payload["tag"] = self._c.tag
+        if (
+            getattr(self._c, "billing_tag", None) is not None
+            and "billing" not in payload
+        ):
+            payload["billing"] = self._c.billing_tag
 
         req_timeout = (
             timeout if timeout is not None else TOOL_EXECUTION_POST_TIMEOUT_SECONDS

@@ -1337,6 +1337,8 @@ class Ligand(Entity):
         proj_id = self.resolved_project_id(client=client)
         if proj_id is not None:
             kwargs["project_id"] = proj_id
+        if self.tags is not None:
+            kwargs["tags"] = self.tags
 
         result = client.entities.create_ligand(**kwargs)  # ty: ignore[unresolved-attribute]
 
@@ -1404,6 +1406,8 @@ class Ligand(Entity):
             mol_file = existing_ligand.get("mol_file")
             if mol_file:
                 self.remote_path = mol_file
+            if self.tags is not None and self.id is not None:
+                client.entities.update_ligand(self.id, tags=self.tags)
             return
 
         self.register(client=client, remote_path=remote_path)
@@ -1509,6 +1513,8 @@ class Ligand(Entity):
         proj_id = self.resolved_project_id(client=client)
         if proj_id is not None:
             row["project_id"] = proj_id
+        if self.tags is not None:
+            row["tags"] = self.tags
         return row
 
     @beartype

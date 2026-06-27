@@ -52,6 +52,23 @@ Platform tool `deeporigin.draco` that extracts chemical structures from a PDF.
 CLI class `Patent`. Billing item `DO_PATENT` (per page).
 _Avoid_: `Draco` as the public API name; `DoPatentMolecule` as a CLI type
 
+**Execution billing tag**:
+Optional string on ``DeepOriginClient`` (``client.tag`` / ``client.billing_tag``)
+applied to every tool execution for billing attribution. Configured once on the
+client; not overridable per ``run()`` or ``start()``.
+_Avoid_: conflating with entity jsonb ``tags`` or UUI source-filter provenance
+
+**Entity provenance tags**:
+Flat ``app`` and ``session`` keys on an entity row's jsonb ``tags`` column.
+Stamped automatically on entity/project writes from ``client._app`` and
+``client._session`` so UUI source-filter queries match CLI-created rows.
+_Avoid_: ``legacy_tags`` (migration artifact for old text columns, not a write target)
+
+**Entity user tags**:
+Optional caller-defined keys in the same jsonb ``tags`` object (e.g.
+``{"campaign": "foo"}``). Dict only; list shorthand is not supported.
+_Avoid_: conflating with execution billing tags or dataset catalog tags
+
 **Result type**:
 Platform catalog base entity from a tool output schema's `x-data-type` (e.g.
 `pose`, `pocket`, `preparedsystem`, `abferesult`). Used as a result-explorer
