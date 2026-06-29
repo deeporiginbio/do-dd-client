@@ -500,6 +500,13 @@ class Entities:
         mol_file: str | None = None,
         variant_name_tag: str = "",
         tags: dict[str, Any] | None = None,
+        # Deprecated: these are now server-computed from SMILES and are ignored.
+        molecular_weight: float | None = None,
+        formal_charge: int | None = None,
+        hbond_donor_count: int | None = None,
+        hbond_acceptor_count: int | None = None,
+        rotatable_bond_count: int | None = None,
+        tpsa: float | None = None,
     ) -> dict:
         """Create a new ligand.
 
@@ -511,6 +518,12 @@ class Entities:
             variant_name_tag: Variant name tag. Defaults to empty string.
             tags: Data-platform metadata tags (jsonb object). Provenance
                 ``app`` / ``session`` are merged from the client automatically.
+            molecular_weight: Deprecated. Server-computed from SMILES; ignored.
+            formal_charge: Deprecated. Server-computed from SMILES; ignored.
+            hbond_donor_count: Deprecated. Server-computed from SMILES; ignored.
+            hbond_acceptor_count: Deprecated. Server-computed from SMILES; ignored.
+            rotatable_bond_count: Deprecated. Server-computed from SMILES; ignored.
+            tpsa: Deprecated. Server-computed from SMILES; ignored.
 
         Returns:
             Dictionary containing the created ligand data.
@@ -576,6 +589,13 @@ class Entities:
         mol_file: str | None = None,
         variant_name_tag: str | None = None,
         tags: dict[str, Any] | None = None,
+        # Deprecated: these are now server-computed from SMILES and are ignored.
+        molecular_weight: float | None = None,
+        formal_charge: int | None = None,
+        hbond_donor_count: int | None = None,
+        hbond_acceptor_count: int | None = None,
+        rotatable_bond_count: int | None = None,
+        tpsa: float | None = None,
     ) -> dict:
         """Update an existing ligand by ID.
 
@@ -591,6 +611,12 @@ class Entities:
             variant_name_tag: Variant name tag.
             tags: Data-platform metadata tags (jsonb object). When provided,
                 provenance ``app`` / ``session`` are merged from the client.
+            molecular_weight: Deprecated. Server-computed from SMILES; ignored.
+            formal_charge: Deprecated. Server-computed from SMILES; ignored.
+            hbond_donor_count: Deprecated. Server-computed from SMILES; ignored.
+            hbond_acceptor_count: Deprecated. Server-computed from SMILES; ignored.
+            rotatable_bond_count: Deprecated. Server-computed from SMILES; ignored.
+            tpsa: Deprecated. Server-computed from SMILES; ignored.
 
         Returns:
             Dictionary containing the updated ligand data.
