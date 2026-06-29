@@ -30,7 +30,9 @@ def test_pocket_finder_run_quote_true_lv1(
     pf = PocketFinder(protein=registered_protein, client=client)
     result = pf.run(quote=True)
     if pf.status == "FailedQuotation":
-        pytest.skip(f"PocketFinder quote returned FailedQuotation; platform tool may be unavailable.")
+        pytest.skip(
+            f"PocketFinder quote returned FailedQuotation; platform tool may be unavailable."
+        )
     assert result is None, "run(quote=True) should return None"
     assert pf.estimate is not None, "Estimate should be set"
     assert pf.status == "Quoted"

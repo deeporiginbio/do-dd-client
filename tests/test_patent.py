@@ -280,7 +280,9 @@ def test_patent_start_quote_true_lv1(client: DeepOriginClient) -> None:
     patent.start(quote=True)
 
     if patent.status == "FailedQuotation":
-        pytest.skip(f"Patent quote returned FailedQuotation on {client.env}; platform tool may be unavailable.")
+        pytest.skip(
+            f"Patent quote returned FailedQuotation on {client.env}; platform tool may be unavailable."
+        )
     assert patent.status == "Quoted"
     assert patent.estimate is not None
     if patent.estimate <= 0:
@@ -302,7 +304,9 @@ def test_patent_quote_confirm_run_get_results_lv1(client: DeepOriginClient) -> N
     patent = Patent(pdf=PATENT_PDF_PATH, client=client)
     patent.start(quote=True)
     if patent.status == "FailedQuotation":
-        pytest.skip(f"Patent quote returned FailedQuotation on {client.env}; platform tool may be unavailable.")
+        pytest.skip(
+            f"Patent quote returned FailedQuotation on {client.env}; platform tool may be unavailable."
+        )
     assert patent.status == "Quoted"
 
     patent.confirm()
@@ -336,7 +340,9 @@ def test_patent_cancel_lv1(client: DeepOriginClient) -> None:
     patent = Patent(pdf=PATENT_PDF_PATH, client=client)
     patent.start(quote=True)
     if patent.status == "FailedQuotation":
-        pytest.skip(f"Patent quote returned FailedQuotation on {client.env}; platform tool may be unavailable.")
+        pytest.skip(
+            f"Patent quote returned FailedQuotation on {client.env}; platform tool may be unavailable."
+        )
     patent.confirm()
 
     for _ in range(30):
