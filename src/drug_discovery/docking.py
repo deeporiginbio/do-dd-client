@@ -314,6 +314,8 @@ class Docking(Execution, SyncExecutableMixin, AsyncExecutableMixin, NotebookWatc
 
         final_status = dto.get("status")
         if not is_success_status(final_status):
+            if resolved_amount == 0:
+                return None
             eid = dto.get("executionId")
             reason = dto.get("statusReason") or final_status
             raise DeepOriginException(

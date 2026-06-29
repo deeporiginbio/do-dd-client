@@ -498,14 +498,15 @@ class Entities:
         project_id: str | None = None,
         name: str | None = None,
         mol_file: str | None = None,
-        formal_charge: int = 0,
+        variant_name_tag: str = "",
+        tags: dict[str, Any] | None = None,
+        # Deprecated: these are now server-computed from SMILES and are ignored.
+        molecular_weight: float | None = None,
+        formal_charge: int | None = None,
         hbond_donor_count: int | None = None,
         hbond_acceptor_count: int | None = None,
         rotatable_bond_count: int | None = None,
         tpsa: float | None = None,
-        molecular_weight: float | None = None,
-        variant_name_tag: str = "",
-        tags: dict[str, Any] | None = None,
     ) -> dict:
         """Create a new ligand.
 
@@ -514,15 +515,15 @@ class Entities:
             project_id: Project ID for the ligand.
             name: Name of the ligand.
             mol_file: Path to the molecule file (e.g., SDF file) in remote storage.
-            formal_charge: Formal charge. Defaults to 0.
-            hbond_donor_count: Number of hydrogen bond donors.
-            hbond_acceptor_count: Number of hydrogen bond acceptors.
-            rotatable_bond_count: Number of rotatable bonds.
-            tpsa: Topological polar surface area.
-            molecular_weight: Molecular weight.
             variant_name_tag: Variant name tag. Defaults to empty string.
             tags: Data-platform metadata tags (jsonb object). Provenance
                 ``app`` / ``session`` are merged from the client automatically.
+            molecular_weight: Deprecated. Server-computed from SMILES; ignored.
+            formal_charge: Deprecated. Server-computed from SMILES; ignored.
+            hbond_donor_count: Deprecated. Server-computed from SMILES; ignored.
+            hbond_acceptor_count: Deprecated. Server-computed from SMILES; ignored.
+            rotatable_bond_count: Deprecated. Server-computed from SMILES; ignored.
+            tpsa: Deprecated. Server-computed from SMILES; ignored.
 
         Returns:
             Dictionary containing the created ligand data.
@@ -530,7 +531,6 @@ class Entities:
         set_dict: dict[str, Any] = {
             "subtable_name": "ligands",
             "smiles": smiles,
-            "formal_charge": formal_charge,
             "variant_name_tag": variant_name_tag,
         }
 
@@ -540,16 +540,6 @@ class Entities:
             set_dict["name"] = name
         if mol_file is not None:
             set_dict["mol_file"] = mol_file
-        if hbond_donor_count is not None:
-            set_dict["hbond_donor_count"] = hbond_donor_count
-        if hbond_acceptor_count is not None:
-            set_dict["hbond_acceptor_count"] = hbond_acceptor_count
-        if rotatable_bond_count is not None:
-            set_dict["rotatable_bond_count"] = rotatable_bond_count
-        if tpsa is not None:
-            set_dict["tpsa"] = tpsa
-        if molecular_weight is not None:
-            set_dict["molecular_weight"] = molecular_weight
         set_dict["tags"] = merge_entity_tags(self._c, tags, always=True)
 
         body: dict[str, Any] = {
@@ -597,14 +587,15 @@ class Entities:
         project_id: str | None = None,
         name: str | None = None,
         mol_file: str | None = None,
+        variant_name_tag: str | None = None,
+        tags: dict[str, Any] | None = None,
+        # Deprecated: these are now server-computed from SMILES and are ignored.
+        molecular_weight: float | None = None,
         formal_charge: int | None = None,
         hbond_donor_count: int | None = None,
         hbond_acceptor_count: int | None = None,
         rotatable_bond_count: int | None = None,
         tpsa: float | None = None,
-        molecular_weight: float | None = None,
-        variant_name_tag: str | None = None,
-        tags: dict[str, Any] | None = None,
     ) -> dict:
         """Update an existing ligand by ID.
 
@@ -617,15 +608,15 @@ class Entities:
             project_id: Project ID for the ligand.
             name: Name of the ligand.
             mol_file: Path to the molecule file in remote storage.
-            formal_charge: Formal charge.
-            hbond_donor_count: Number of hydrogen bond donors.
-            hbond_acceptor_count: Number of hydrogen bond acceptors.
-            rotatable_bond_count: Number of rotatable bonds.
-            tpsa: Topological polar surface area.
-            molecular_weight: Molecular weight.
             variant_name_tag: Variant name tag.
             tags: Data-platform metadata tags (jsonb object). When provided,
                 provenance ``app`` / ``session`` are merged from the client.
+            molecular_weight: Deprecated. Server-computed from SMILES; ignored.
+            formal_charge: Deprecated. Server-computed from SMILES; ignored.
+            hbond_donor_count: Deprecated. Server-computed from SMILES; ignored.
+            hbond_acceptor_count: Deprecated. Server-computed from SMILES; ignored.
+            rotatable_bond_count: Deprecated. Server-computed from SMILES; ignored.
+            tpsa: Deprecated. Server-computed from SMILES; ignored.
 
         Returns:
             Dictionary containing the updated ligand data.
@@ -642,18 +633,6 @@ class Entities:
             set_dict["name"] = name
         if mol_file is not None:
             set_dict["mol_file"] = mol_file
-        if formal_charge is not None:
-            set_dict["formal_charge"] = formal_charge
-        if hbond_donor_count is not None:
-            set_dict["hbond_donor_count"] = hbond_donor_count
-        if hbond_acceptor_count is not None:
-            set_dict["hbond_acceptor_count"] = hbond_acceptor_count
-        if rotatable_bond_count is not None:
-            set_dict["rotatable_bond_count"] = rotatable_bond_count
-        if tpsa is not None:
-            set_dict["tpsa"] = tpsa
-        if molecular_weight is not None:
-            set_dict["molecular_weight"] = molecular_weight
         if variant_name_tag is not None:
             set_dict["variant_name_tag"] = variant_name_tag
         merged_tags = merge_entity_tags(self._c, tags, always=False)

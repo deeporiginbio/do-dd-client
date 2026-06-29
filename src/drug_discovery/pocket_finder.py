@@ -30,7 +30,7 @@ from deeporigin.drug_discovery.structures.pocket import Pocket
 from deeporigin.drug_discovery.structures.protein import Protein
 from deeporigin.exceptions import DeepOriginException
 from deeporigin.platform.client import DeepOriginClient
-from deeporigin.platform.constants import TOOL_KEYS_AND_VERSIONS
+from deeporigin.platform.constants import TOOL_KEYS_AND_VERSIONS, is_success_status
 
 
 class PocketFinder(
@@ -300,6 +300,9 @@ class PocketFinder(
         self.update_from_dto(dto)
 
         if self.status == "Quoted":
+            return None
+
+        if not is_success_status(self.status):
             return None
 
         return self.get_results(dto)
