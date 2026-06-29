@@ -2,6 +2,7 @@
 
 import uuid
 
+import httpx
 import pytest
 
 from deeporigin.drug_discovery import BRD_DATA_DIR
@@ -48,6 +49,7 @@ def test_search_ligands_lv1(client: DeepOriginClient):
     assert isinstance(response["data"], list), "Expected 'data' to be a list"
 
 
+@pytest.mark.xfail(raises=httpx.ReadTimeout, strict=False, reason="platform search timeout")
 def test_search_ligands_molecular_weight_lv1(client: DeepOriginClient):
     """Test searching ligands with molecular weight filters."""
     response = client.entities.search_ligands(
@@ -378,7 +380,11 @@ def test_create_ligand_with_tags_lv1(client: DeepOriginClient):
         row = client.entities.get_ligand(lig_id)
         assert row["tags"] == _expected_entity_tags(client, entity_tags)
     finally:
-        client.entities.delete(entity="ligands", entity_id=lig_id)
+        try:
+            client.entities.delete(entity="ligands", entity_id=lig_id)
+        except DeepOriginException as _e:
+            if "404" not in str(_e):
+                raise
 
 
 def test_update_ligand_with_tags_lv1(client: DeepOriginClient):
@@ -392,7 +398,11 @@ def test_update_ligand_with_tags_lv1(client: DeepOriginClient):
         row = client.entities.get_ligand(lig_id)
         assert row["tags"] == _expected_entity_tags(client, entity_tags)
     finally:
-        client.entities.delete(entity="ligands", entity_id=lig_id)
+        try:
+            client.entities.delete(entity="ligands", entity_id=lig_id)
+        except DeepOriginException as _e:
+            if "404" not in str(_e):
+                raise
 
 
 def test_create_ligand_stamps_provenance_without_tags_lv1(client: DeepOriginClient):
@@ -404,7 +414,11 @@ def test_create_ligand_stamps_provenance_without_tags_lv1(client: DeepOriginClie
         row = client.entities.get_ligand(lig_id)
         assert row["tags"] == _expected_entity_tags(client)
     finally:
-        client.entities.delete(entity="ligands", entity_id=lig_id)
+        try:
+            client.entities.delete(entity="ligands", entity_id=lig_id)
+        except DeepOriginException as _e:
+            if "404" not in str(_e):
+                raise
 
 
 def test_ligand_register_passes_tags_lv1(client: DeepOriginClient):
@@ -418,7 +432,11 @@ def test_ligand_register_passes_tags_lv1(client: DeepOriginClient):
         row = client.entities.get_ligand(ligand.id)
         assert row["tags"] == _expected_entity_tags(client, entity_tags)
     finally:
-        client.entities.delete(entity="ligands", entity_id=ligand.id)
+        try:
+            client.entities.delete(entity="ligands", entity_id=ligand.id)
+        except DeepOriginException as _e:
+            if "404" not in str(_e):
+                raise
 
 
 def test_ligand_sync_applies_tags_to_existing_row_lv1(client: DeepOriginClient):
@@ -433,4 +451,8 @@ def test_ligand_sync_applies_tags_to_existing_row_lv1(client: DeepOriginClient):
         row = client.entities.get_ligand(lig_id)
         assert row["tags"] == _expected_entity_tags(client, entity_tags)
     finally:
-        client.entities.delete(entity="ligands", entity_id=lig_id)
+        try:
+            client.entities.delete(entity="ligands", entity_id=lig_id)
+        except DeepOriginException as _e:
+            if "404" not in str(_e):
+                raise
