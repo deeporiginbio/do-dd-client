@@ -1324,16 +1324,6 @@ class Ligand(Entity):
         if variant_name_tag:
             kwargs["variant_name_tag"] = variant_name_tag
 
-        try:
-            kwargs["formal_charge"] = self.formal_charge
-            kwargs["molecular_weight"] = self.molecular_weight
-            kwargs["hbond_donor_count"] = self.hbond_donor_count
-            kwargs["hbond_acceptor_count"] = self.hbond_acceptor_count
-            kwargs["rotatable_bond_count"] = self.rotatable_bond_count
-            kwargs["tpsa"] = self.tpsa
-        except Exception:
-            pass
-
         proj_id = self.resolved_project_id(client=client)
         if proj_id is not None:
             kwargs["project_id"] = proj_id
@@ -1495,21 +1485,6 @@ class Ligand(Entity):
             row["mol_file"] = self.remote_path
         if self.name is not None:
             row["name"] = self.name
-        try:
-            row["formal_charge"] = self.formal_charge
-            row["molecular_weight"] = self.molecular_weight
-            row["hbond_donor_count"] = self.hbond_donor_count
-            row["hbond_acceptor_count"] = self.hbond_acceptor_count
-            row["rotatable_bond_count"] = self.rotatable_bond_count
-            row["tpsa"] = self.tpsa
-        except Exception:
-            warnings.warn(
-                f"Could not compute molecular descriptors for "
-                f"'{smiles_value}'; formal_charge defaults to 0.",
-                stacklevel=2,
-            )
-            row.setdefault("formal_charge", 0)
-
         proj_id = self.resolved_project_id(client=client)
         if proj_id is not None:
             row["project_id"] = proj_id

@@ -165,12 +165,6 @@ def test_create_ligand_lv1(client: DeepOriginClient):
         response = client.entities.create_ligand(
             smiles=smiles,
             name="Compound-12345",
-            formal_charge=0,
-            hbond_donor_count=1,
-            hbond_acceptor_count=6,
-            rotatable_bond_count=5,
-            tpsa=85.12,
-            molecular_weight=447.5,
         )
     except DeepOriginException as e:
         if "409" in str(e):
