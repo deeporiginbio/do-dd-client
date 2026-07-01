@@ -57,6 +57,7 @@ def test_search_ligands_molecular_weight_lv1(client: DeepOriginClient):
     response = client.entities.search_ligands(
         min_molecular_weight=250,
         max_molecular_weight=550,
+        limit=10,
     )
 
     assert isinstance(response, dict), "Expected a dictionary response"

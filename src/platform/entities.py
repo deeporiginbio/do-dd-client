@@ -5,10 +5,27 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any
 
 from deeporigin.platform.tags import merge_entity_tags, stamp_batch_row_tags
-from deeporigin.utils.constants import DEFAULT_SEARCH_PAGE_SIZE
+from deeporigin.utils.constants import (
+    DEFAULT_SEARCH_PAGE_SIZE,
+    ENTITY_SEARCH_TIMEOUT_SECONDS,
+    LIGAND_MOLPROPS_SET_FIELDS,
+)
 
 if TYPE_CHECKING:
     from deeporigin.platform.client import DeepOriginClient
+
+
+def _writable_ligand_set_fields(set_dict: dict[str, Any]) -> dict[str, Any]:
+    """Return a ligand create/update ``set`` payload without molprops fields.
+
+    Molecular descriptors such as ``molecular_weight`` and ``hbond_donor_count``
+    are populated by the molprops tool on the platform, not on ligand create.
+    """
+    return {
+        key: value
+        for key, value in set_dict.items()
+        if key not in LIGAND_MOLPROPS_SET_FIELDS
+    }
 
 
 # Minimal returning for proteins batch create (triggers require INSERT path, not COPY).
@@ -160,6 +177,7 @@ class Entities:
         return self._c.post_json(
             f"/data-platform/{self._c.org_key}/{entity}/search",
             body=body,
+            timeout=ENTITY_SEARCH_TIMEOUT_SECONDS,
         )
 
     def get(self, *, entity: str, entity_id: str) -> dict:
@@ -543,7 +561,7 @@ class Entities:
         set_dict["tags"] = merge_entity_tags(self._c, tags, always=True)
 
         body: dict[str, Any] = {
-            "set": set_dict,
+            "set": _writable_ligand_set_fields(set_dict),
             "returning": LIGAND_RETURNING_FIELDS,
         }
 
@@ -570,7 +588,10 @@ class Entities:
             list of created ligand records.
         """
         body: dict[str, Any] = {
-            "rows": stamp_batch_row_tags(self._c, rows),
+            "rows": [
+                _writable_ligand_set_fields(row)
+                for row in stamp_batch_row_tags(self._c, rows)
+            ],
             "returning": LIGAND_RETURNING_FIELDS,
         }
 
@@ -642,7 +663,7 @@ class Entities:
         return self.update(
             "ligands",
             id,
-            set_dict=set_dict,
+            set_dict=_writable_ligand_set_fields(set_dict),
             returning=LIGAND_RETURNING_FIELDS,
         )
 
