@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
+from deeporigin.platform.tags import merge_entity_tags, stamp_batch_row_tags
 from deeporigin.utils.constants import (
     DEFAULT_SEARCH_PAGE_SIZE,
     ENTITY_SEARCH_TIMEOUT_SECONDS,
@@ -239,7 +240,7 @@ class Entities:
             elif entity == "proteins":
                 effective_returning = PROTEIN_BATCH_CREATE_RETURNING_FIELDS
 
-        body: dict[str, Any] = {"rows": rows}
+        body: dict[str, Any] = {"rows": stamp_batch_row_tags(self._c, rows)}
         if effective_returning is not None:
             body["returning"] = effective_returning
 
@@ -515,13 +516,15 @@ class Entities:
         project_id: str | None = None,
         name: str | None = None,
         mol_file: str | None = None,
-        formal_charge: int = 0,
+        variant_name_tag: str = "",
+        tags: dict[str, Any] | None = None,
+        # Deprecated: these are now server-computed from SMILES and are ignored.
+        molecular_weight: float | None = None,
+        formal_charge: int | None = None,
         hbond_donor_count: int | None = None,
         hbond_acceptor_count: int | None = None,
         rotatable_bond_count: int | None = None,
         tpsa: float | None = None,
-        molecular_weight: float | None = None,
-        variant_name_tag: str = "",
     ) -> dict:
         """Create a new ligand.
 
@@ -530,13 +533,15 @@ class Entities:
             project_id: Project ID for the ligand.
             name: Name of the ligand.
             mol_file: Path to the molecule file (e.g., SDF file) in remote storage.
-            formal_charge: Formal charge. Defaults to 0.
-            hbond_donor_count: Ignored on create; computed by molprops on the platform.
-            hbond_acceptor_count: Ignored on create; computed by molprops on the platform.
-            rotatable_bond_count: Ignored on create; computed by molprops on the platform.
-            tpsa: Ignored on create; computed by molprops on the platform.
-            molecular_weight: Ignored on create; computed by molprops on the platform.
             variant_name_tag: Variant name tag. Defaults to empty string.
+            tags: Data-platform metadata tags (jsonb object). Provenance
+                ``app`` / ``session`` are merged from the client automatically.
+            molecular_weight: Deprecated. Server-computed from SMILES; ignored.
+            formal_charge: Deprecated. Server-computed from SMILES; ignored.
+            hbond_donor_count: Deprecated. Server-computed from SMILES; ignored.
+            hbond_acceptor_count: Deprecated. Server-computed from SMILES; ignored.
+            rotatable_bond_count: Deprecated. Server-computed from SMILES; ignored.
+            tpsa: Deprecated. Server-computed from SMILES; ignored.
 
         Returns:
             Dictionary containing the created ligand data.
@@ -544,7 +549,6 @@ class Entities:
         set_dict: dict[str, Any] = {
             "subtable_name": "ligands",
             "smiles": smiles,
-            "formal_charge": formal_charge,
             "variant_name_tag": variant_name_tag,
         }
 
@@ -554,16 +558,7 @@ class Entities:
             set_dict["name"] = name
         if mol_file is not None:
             set_dict["mol_file"] = mol_file
-        if hbond_donor_count is not None:
-            set_dict["hbond_donor_count"] = hbond_donor_count
-        if hbond_acceptor_count is not None:
-            set_dict["hbond_acceptor_count"] = hbond_acceptor_count
-        if rotatable_bond_count is not None:
-            set_dict["rotatable_bond_count"] = rotatable_bond_count
-        if tpsa is not None:
-            set_dict["tpsa"] = tpsa
-        if molecular_weight is not None:
-            set_dict["molecular_weight"] = molecular_weight
+        set_dict["tags"] = merge_entity_tags(self._c, tags, always=True)
 
         body: dict[str, Any] = {
             "set": _writable_ligand_set_fields(set_dict),
@@ -593,7 +588,10 @@ class Entities:
             list of created ligand records.
         """
         body: dict[str, Any] = {
-            "rows": [_writable_ligand_set_fields(row) for row in rows],
+            "rows": [
+                _writable_ligand_set_fields(row)
+                for row in stamp_batch_row_tags(self._c, rows)
+            ],
             "returning": LIGAND_RETURNING_FIELDS,
         }
 
@@ -610,14 +608,15 @@ class Entities:
         project_id: str | None = None,
         name: str | None = None,
         mol_file: str | None = None,
+        variant_name_tag: str | None = None,
+        tags: dict[str, Any] | None = None,
+        # Deprecated: these are now server-computed from SMILES and are ignored.
+        molecular_weight: float | None = None,
         formal_charge: int | None = None,
         hbond_donor_count: int | None = None,
         hbond_acceptor_count: int | None = None,
         rotatable_bond_count: int | None = None,
         tpsa: float | None = None,
-        molecular_weight: float | None = None,
-        variant_name_tag: str | None = None,
-        tags: list[str] | None = None,
     ) -> dict:
         """Update an existing ligand by ID.
 
@@ -630,14 +629,15 @@ class Entities:
             project_id: Project ID for the ligand.
             name: Name of the ligand.
             mol_file: Path to the molecule file in remote storage.
-            formal_charge: Formal charge.
-            hbond_donor_count: Ignored on update; computed by molprops on the platform.
-            hbond_acceptor_count: Ignored on update; computed by molprops on the platform.
-            rotatable_bond_count: Ignored on update; computed by molprops on the platform.
-            tpsa: Ignored on update; computed by molprops on the platform.
-            molecular_weight: Ignored on update; computed by molprops on the platform.
             variant_name_tag: Variant name tag.
-            tags: Tags for the ligand.
+            tags: Data-platform metadata tags (jsonb object). When provided,
+                provenance ``app`` / ``session`` are merged from the client.
+            molecular_weight: Deprecated. Server-computed from SMILES; ignored.
+            formal_charge: Deprecated. Server-computed from SMILES; ignored.
+            hbond_donor_count: Deprecated. Server-computed from SMILES; ignored.
+            hbond_acceptor_count: Deprecated. Server-computed from SMILES; ignored.
+            rotatable_bond_count: Deprecated. Server-computed from SMILES; ignored.
+            tpsa: Deprecated. Server-computed from SMILES; ignored.
 
         Returns:
             Dictionary containing the updated ligand data.
@@ -654,22 +654,11 @@ class Entities:
             set_dict["name"] = name
         if mol_file is not None:
             set_dict["mol_file"] = mol_file
-        if formal_charge is not None:
-            set_dict["formal_charge"] = formal_charge
-        if hbond_donor_count is not None:
-            set_dict["hbond_donor_count"] = hbond_donor_count
-        if hbond_acceptor_count is not None:
-            set_dict["hbond_acceptor_count"] = hbond_acceptor_count
-        if rotatable_bond_count is not None:
-            set_dict["rotatable_bond_count"] = rotatable_bond_count
-        if tpsa is not None:
-            set_dict["tpsa"] = tpsa
-        if molecular_weight is not None:
-            set_dict["molecular_weight"] = molecular_weight
         if variant_name_tag is not None:
             set_dict["variant_name_tag"] = variant_name_tag
-        if tags is not None:
-            set_dict["tags"] = tags
+        merged_tags = merge_entity_tags(self._c, tags, always=False)
+        if merged_tags is not None:
+            set_dict["tags"] = merged_tags
 
         return self.update(
             "ligands",
@@ -787,6 +776,7 @@ class Entities:
         protein_name: str | None = None,
         protein_length: int | None = None,
         project_id: str | None = None,
+        tags: dict[str, Any] | None = None,
     ) -> dict:
         """Create a new protein.
 
@@ -798,6 +788,8 @@ class Entities:
             protein_name: Protein name.
             protein_length: Protein length.
             project_id: Project ID for the protein.
+            tags: Data-platform metadata tags (jsonb object). When provided,
+                provenance ``app`` / ``session`` are merged from the client.
 
         Returns:
             Dictionary containing the created protein data.
@@ -818,6 +810,7 @@ class Entities:
             set_dict["protein_name"] = protein_name
         if protein_length is not None:
             set_dict["protein_length"] = protein_length
+        set_dict["tags"] = merge_entity_tags(self._c, tags, always=True)
 
         body: dict[str, Any] = {
             "set": set_dict,
@@ -840,7 +833,7 @@ class Entities:
         protein_name: str | None = None,
         protein_length: int | None = None,
         project_id: str | None = None,
-        tags: list[str] | None = None,
+        tags: dict[str, Any] | None = None,
     ) -> dict:
         """Update an existing protein by ID.
 
@@ -856,7 +849,8 @@ class Entities:
             protein_name: Protein name.
             protein_length: Protein length.
             project_id: Project ID for the protein.
-            tags: Tags for the protein.
+            tags: Data-platform metadata tags (jsonb object). When provided,
+                provenance ``app`` / ``session`` are merged from the client.
 
         Returns:
             Dictionary containing the updated protein data.
@@ -879,8 +873,9 @@ class Entities:
             set_dict["protein_name"] = protein_name
         if protein_length is not None:
             set_dict["protein_length"] = protein_length
-        if tags is not None:
-            set_dict["tags"] = tags
+        merged_tags = merge_entity_tags(self._c, tags, always=False)
+        if merged_tags is not None:
+            set_dict["tags"] = merged_tags
 
         return self.update(
             "proteins",

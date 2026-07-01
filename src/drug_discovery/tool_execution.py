@@ -343,10 +343,6 @@ class ToolExecution(Execution, AsyncExecutableMixin, NotebookWatchMixin):
             payload["name"] = self.name
         if approve_amount is not None:
             payload["approveAmount"] = approve_amount
-        execution_dto = self.client.executions.create(
-            data=payload,
-            tool_key=self.tool_key,
-            tool_version=self.tool_version,
-        )
+        execution_dto = self._create_execution(data=payload)
         self._id = execution_dto.get("executionId")
         self.status = execution_dto.get("status")

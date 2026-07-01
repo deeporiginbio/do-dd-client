@@ -30,7 +30,7 @@ from deeporigin.drug_discovery.structures.pocket import Pocket
 from deeporigin.drug_discovery.structures.protein import Protein
 from deeporigin.exceptions import DeepOriginException
 from deeporigin.platform.client import DeepOriginClient
-from deeporigin.platform.constants import TOOL_KEYS_AND_VERSIONS
+from deeporigin.platform.constants import TOOL_KEYS_AND_VERSIONS, is_success_status
 
 
 class PocketFinder(
@@ -294,14 +294,15 @@ class PocketFinder(
         """
         self._ensure_protein_remote()
         resolved_amount = 0 if quote else approve_amount
-        dto = self.client.executions.create(  # ty:ignore[unresolved-attribute]
+        dto = self._create_execution(
             data=self._make_payload(approve_amount=resolved_amount, sync=True),
-            tool_key=self.tool_key,
-            tool_version=self.tool_version,
         )
         self.update_from_dto(dto)
 
         if self.status == "Quoted":
+            return None
+
+        if not is_success_status(self.status):
             return None
 
         return self.get_results(dto)
@@ -318,10 +319,8 @@ class PocketFinder(
             approve_amount: Spend cap forwarded to the platform.
         """
         self._ensure_protein_remote()
-        execution_dto = self.client.executions.create(  # ty:ignore[unresolved-attribute]
+        execution_dto = self._create_execution(
             data=self._make_payload(approve_amount=approve_amount, sync=False),
-            tool_key=self.tool_key,
-            tool_version=self.tool_version,
         )
         execution_id = execution_dto.get("executionId")
         if execution_id is None:

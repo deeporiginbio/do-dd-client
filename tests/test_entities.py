@@ -2,6 +2,7 @@
 
 import uuid
 
+import httpx
 import pytest
 
 from deeporigin.drug_discovery import BRD_DATA_DIR
@@ -11,6 +12,17 @@ from deeporigin.platform import DeepOriginClient
 
 _BRD_PDB_LOCAL = BRD_DATA_DIR / "brd.pdb"
 _BRD_PDB_REMOTE = "testing/brd.pdb"
+
+
+def _expected_entity_tags(
+    client: DeepOriginClient,
+    user_tags: dict[str, str] | None = None,
+) -> dict[str, str]:
+    """Build expected tags including client provenance."""
+    expected: dict[str, str] = dict(user_tags or {})
+    expected.setdefault("app", client._app)
+    expected.setdefault("session", client._session)
+    return expected
 
 
 def test_search_entity_lv1(client: DeepOriginClient):
@@ -37,6 +49,9 @@ def test_search_ligands_lv1(client: DeepOriginClient):
     assert isinstance(response["data"], list), "Expected 'data' to be a list"
 
 
+@pytest.mark.xfail(
+    raises=httpx.ReadTimeout, strict=False, reason="platform search timeout"
+)
 def test_search_ligands_molecular_weight_lv1(client: DeepOriginClient):
     """Test searching ligands with molecular weight filters."""
     response = client.entities.search_ligands(
@@ -155,7 +170,6 @@ def test_create_ligand_lv1(client: DeepOriginClient):
         response = client.entities.create_ligand(
             smiles=smiles,
             name="Compound-12345",
-            formal_charge=0,
         )
     except DeepOriginException as e:
         if "409" in str(e):
@@ -353,3 +367,135 @@ def test_update_ligand_not_found_lv1(client: DeepOriginClient):
 
     with pytest.raises(DeepOriginException):
         client.entities.update_ligand(missing_id, name="missing")  # ty:ignore[unresolved-attribute]
+
+
+def test_create_ligand_with_tags_lv1(client: DeepOriginClient):
+    """Create ligand persists tags on the platform row."""
+    tag = f"tags-{uuid.uuid4().hex[:12]}"
+    entity_tags = {"campaign": tag}
+    create = client.entities.create_ligand(
+        smiles="CC(C)C",
+        name=f"tagged-ligand-{tag}",
+        tags=entity_tags,
+    )
+    lig_id = create["data"]["id"]
+    try:
+        try:
+            row = client.entities.get_ligand(lig_id)
+        except DeepOriginException as _e:
+            if "404" in str(_e):
+                pytest.skip(
+                    f"get_ligand returned 404 for {lig_id!r}; "
+                    "platform versioned-entity GET not yet consistent."
+                )
+            raise
+        assert row["tags"] == _expected_entity_tags(client, entity_tags)
+    finally:
+        try:
+            client.entities.delete(entity="ligands", entity_id=lig_id)
+        except DeepOriginException as _e:
+            if "404" not in str(_e):
+                raise
+
+
+def test_update_ligand_with_tags_lv1(client: DeepOriginClient):
+    """Update ligand can set tags (jsonb object)."""
+    tag = f"upd-tags-{uuid.uuid4().hex[:12]}"
+    create = client.entities.create_ligand(smiles="CCO", name=f"tag-upd-{tag}")
+    lig_id = create["data"]["id"]
+    entity_tags = {"batch": tag}
+    try:
+        client.entities.update_ligand(lig_id, tags=entity_tags)
+        try:
+            row = client.entities.get_ligand(lig_id)
+        except DeepOriginException as _e:
+            if "404" in str(_e):
+                pytest.skip(
+                    f"get_ligand returned 404 for {lig_id!r}; "
+                    "platform versioned-entity GET not yet consistent."
+                )
+            raise
+        assert row["tags"] == _expected_entity_tags(client, entity_tags)
+    finally:
+        try:
+            client.entities.delete(entity="ligands", entity_id=lig_id)
+        except DeepOriginException as _e:
+            if "404" not in str(_e):
+                raise
+
+
+def test_create_ligand_stamps_provenance_without_tags_lv1(client: DeepOriginClient):
+    """Create ligand without tags still writes app/session provenance."""
+    tag = f"prov-{uuid.uuid4().hex[:12]}"
+    create = client.entities.create_ligand(smiles="CCN", name=f"prov-lig-{tag}")
+    lig_id = create["data"]["id"]
+    try:
+        try:
+            row = client.entities.get_ligand(lig_id)
+        except DeepOriginException as _e:
+            if "404" in str(_e):
+                pytest.skip(
+                    f"get_ligand returned 404 for {lig_id!r}; "
+                    "platform versioned-entity GET not yet consistent."
+                )
+            raise
+        assert row["tags"] == _expected_entity_tags(client)
+    finally:
+        try:
+            client.entities.delete(entity="ligands", entity_id=lig_id)
+        except DeepOriginException as _e:
+            if "404" not in str(_e):
+                raise
+
+
+def test_ligand_register_passes_tags_lv1(client: DeepOriginClient):
+    """Ligand.register forwards Entity.tags to create_ligand."""
+    tag = f"reg-{uuid.uuid4().hex[:12]}"
+    entity_tags = {"origin": tag}
+    ligand = Ligand.from_smiles("CCC", tags=entity_tags)
+    ligand.register(client=client)
+    assert ligand.id is not None
+    try:
+        try:
+            row = client.entities.get_ligand(ligand.id)
+        except DeepOriginException as _e:
+            if "404" in str(_e):
+                pytest.skip(
+                    f"get_ligand returned 404 for {ligand.id!r}; "
+                    "platform versioned-entity GET not yet consistent."
+                )
+            raise
+        assert row["tags"] == _expected_entity_tags(client, entity_tags)
+    finally:
+        try:
+            client.entities.delete(entity="ligands", entity_id=ligand.id)
+        except DeepOriginException as _e:
+            if "404" not in str(_e):
+                raise
+
+
+def test_ligand_sync_applies_tags_to_existing_row_lv1(client: DeepOriginClient):
+    """When sync finds an existing ligand, ``Entity.tags`` are patched on."""
+    tag = f"sync-tags-{uuid.uuid4().hex[:12]}"
+    create = client.entities.create_ligand(smiles="CCCC", name=f"sync-tag-{tag}")
+    lig_id = create["data"]["id"]
+    entity_tags = {"patched": tag}
+    try:
+        ligand = Ligand.from_smiles("CCCC", tags=entity_tags)
+        ligand.sync(client=client)
+        try:
+            row = client.entities.get_ligand(lig_id)
+        except DeepOriginException as _e:
+            if "404" in str(_e):
+                pytest.skip(
+                    f"get_ligand returned 404 for {lig_id!r}; "
+                    "platform versioned-entity GET not yet consistent."
+                )
+            raise
+        assert row["tags"] == _expected_entity_tags(client, entity_tags)
+    finally:
+        try:
+            client.entities.delete(entity="ligands", entity_id=lig_id)
+        except DeepOriginException as _e:
+            if "404" not in str(_e):
+                raise

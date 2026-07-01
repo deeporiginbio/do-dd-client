@@ -167,6 +167,7 @@ class Molprops(Execution, SyncExecutableMixin):
     """
 
     tool_key: str = TOOL_KEYS_AND_VERSIONS["mol_props"]["tool_key"]
+    tool_version: str = TOOL_KEYS_AND_VERSIONS["mol_props"]["tool_version"]
 
     @beartype
     def __init__(
@@ -213,7 +214,11 @@ class Molprops(Execution, SyncExecutableMixin):
         return self._batch_size
 
     @beartype
-    def run(self, *, quote: bool = False) -> Molprops:
+    def run(
+        self,
+        *,
+        quote: bool = False,
+    ) -> Molprops:
         """Execute the combined molprops tool, mutate ligands, and set :attr:`cost`.
 
         With ``quote=True``, sends **one** ``client.executions.create`` with every

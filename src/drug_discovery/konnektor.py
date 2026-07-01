@@ -314,9 +314,7 @@ class Konnektor(Execution, SyncExecutableMixin):
         """
         self._ensure_platform_inputs()
         resolved_amount = 0 if quote else approve_amount
-        response = self.client.executions.create(  # ty:ignore[unresolved-attribute]
-            tool_key=self.tool_key,
-            tool_version=self.tool_version,
+        response = self._create_execution(
             data=self._make_payload(approve_amount=resolved_amount, sync=not quote),
         )
         self.update_from_dto(response)

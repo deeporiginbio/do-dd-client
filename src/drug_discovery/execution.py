@@ -114,6 +114,24 @@ class Execution:
             client = DeepOriginClient()
         self.client: DeepOriginClient = client
 
+    def _create_execution(
+        self,
+        *,
+        data: dict[str, Any],
+    ) -> dict[str, Any]:
+        """Submit ``data`` via :meth:`~deeporigin.platform.executions.Executions.create`."""
+        resolved_key = self.tool_key
+        resolved_version = getattr(self, "tool_version", None)
+        if not resolved_key or not resolved_version:
+            raise ValueError(
+                "tool_key and tool_version are required for execution create"
+            )
+        return self.client.executions.create(  # ty:ignore[unresolved-attribute]
+            tool_key=resolved_key,
+            tool_version=resolved_version,
+            data=data,
+        )
+
     @property
     def id(self) -> str | None:
         """Platform execution ID when set (read-only)."""

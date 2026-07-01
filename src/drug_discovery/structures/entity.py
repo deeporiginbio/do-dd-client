@@ -7,7 +7,7 @@ The Entity class provides methods to manage file uploads, such as protein struct
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import ClassVar, Optional
+from typing import Any, ClassVar, Optional
 
 from deeporigin.exceptions import DeepOriginException
 from deeporigin.platform.client import DeepOriginClient
@@ -26,12 +26,17 @@ class Entity(ABC):
     ``project_id`` optionally pins the data platform project for this row. When
     unset, pass the :class:`~deeporigin.platform.client.DeepOriginClient` into
     :meth:`resolved_project_id` so the id comes from the client.
+
+    ``tags`` is optional data-platform metadata (jsonb object on the row).
+    When set, :meth:`sync` / :meth:`register` include it on create. Provenance
+    ``app`` / ``session`` are merged from the client automatically on writes.
     """
 
     id: str | None = field(default=None, kw_only=True)
     remote_path: str | None = field(default=None, kw_only=True)
     local_path: str | None = field(default=None, kw_only=True)
     project_id: str | None = field(default=None, kw_only=True)
+    tags: dict[str, Any] | None = field(default=None, kw_only=True)
 
     _remote_path_base: ClassVar[str] = ""
     _preferred_ext: ClassVar[str] = ""
