@@ -3,15 +3,15 @@
     "failedQuotations": [],
     "successfulQuotations": [
         {
-            "itemCode": "DO_CONSTRAINED_DOCKING",
+            "itemCode": "DO_DOCK",
             "orgId": "deeporigin",
             "priceEach": 0.2,
             "priceTotal": 0.2,
             "pricingRecordType": "regular",
             "pricingRecords": [
                 {
-                    "itemKey": "DO_CONSTRAINED_DOCKING",
-                    "itemName": "Constrained docking",
+                    "itemKey": "DO_DOCK",
+                    "itemName": "Docking",
                     "priceEach": 0.2,
                     "qty": 1,
                     "tierQtyFrom": 0,
