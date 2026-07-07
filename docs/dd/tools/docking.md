@@ -140,30 +140,36 @@ docking.estimate  # total estimated cost across all ligands
 
 ## Constrained docking
 
-Use [`ConstrainedDocking`](../ref/constrained_docking.md) to dock a ligand while pulling selected atoms toward target coordinates with harmonic constraints.
+Use [`ConstrainedDocking`](../ref/constrained_docking.md) to dock test ligands while
+preserving a reference binding mode. The platform derives harmonic constraints
+**server-side** from MCS alignment between each test ligand and a supplied
+reference pose. Callers provide ``reference_ligand`` (scaffold identity) and
+``reference_pose`` (required 3D SDF coordinates); they do not pass constraint
+atom lists.
 
-Typically, constraints are derived from a reference docked pose for a similar ligand using a Maximum Common Substructure (MCS). You can pass a docked reference ligand directly, or supply explicit constraint dictionaries.
+### Dock-then-constrain pipeline
 
-### MCS workflow (reference pose)
-
-Dock a reference ligand, then constrained-dock a query ligand aligned to that pose:
+Dock a reference ligand, upload the best pose SDF, then constrained-dock analogs:
 
 ```{.python notest}
 from deeporigin.drug_discovery import ConstrainedDocking, Docking
 
 ref_poses = Docking(protein=protein, pocket=pocket, ligand=reference_ligand).run()
 reference_pose = ref_poses.ligands[0]
+reference_pose.sync(remote_path="testing/reference-pose.sdf")
 
 cd = ConstrainedDocking(
     protein=protein,
     pocket=pocket,
+    reference_ligand=reference_ligand,
+    reference_pose=reference_pose,
     ligand=query_ligand,
-    reference=reference_pose,
 )
 poses = cd.run()
 ```
 
-The query ligand must have a structure file on the platform (load from SDF/MOL2 and call `query_ligand.sync()`). The reference pose must have 3D coordinates (for example from `Docking.run()`).
+Each test ligand must have a structure file on the platform (load from SDF/MOL2
+and call ``ligand.sync()``). The reference pose must have 3D coordinates.
 
 To view new poses together with the reference pose:
 
@@ -171,26 +177,62 @@ To view new poses together with the reference pose:
 protein.show(poses=reference_pose + poses)
 ```
 
-### Explicit constraints
+Inspect whether harmonic constraints were applied via the ``constrained`` property
+on each pose in ``poses.to_dataframe()``. When MCS cannot match a test ligand,
+the tool free-docks that ligand and sets ``constrained=False``.
 
-For advanced use, pass precomputed constraints (1-based atom indices in the ligand structure file):
+Retrieve the reference pose echoed by the tool:
 
 ```{.python notest}
-ligand = Ligand.from_sdf("query.sdf")
-ligand.sync()
+reported_reference = cd.get_reference_pose()
+```
 
+### Multiple test ligands (async)
+
+Pass ``ligands=`` and use ``start()`` / ``watch()`` for batch constrained docking:
+
+```{.python notest}
 cd = ConstrainedDocking(
     protein=protein,
     pocket=pocket,
-    ligand=ligand,
-    constraints=[
-        {"index": 1, "coordinates": [-15.0, -0.23, 10.56], "energy": 5.0},
-    ],
+    reference_ligand=reference_ligand,
+    reference_pose=reference_pose,
+    ligands=analogs,
+)
+cd.start()
+# … wait for completion …
+poses = cd.get_results()
+```
+
+### MCS override
+
+Force a common scaffold with ``mcs_smarts`` or ``mcs_smiles`` (mutually exclusive):
+
+```{.python notest}
+cd = ConstrainedDocking(
+    protein=protein,
+    pocket=pocket,
+    reference_ligand=reference_ligand,
+    reference_pose=reference_pose,
+    ligand=query_ligand,
+    mcs_smarts="C(=O)",
 )
 poses = cd.run()
 ```
 
-You can also build constraints locally with [`LigandSet.compute_constraints()`](../how-to/ligands.md#constraints) and pass the first list entry for a single ligand.
+### Estimating cost
+
+```{.python notest}
+cd = ConstrainedDocking(
+    protein=protein,
+    pocket=pocket,
+    reference_ligand=reference_ligand,
+    reference_pose=reference_pose,
+    ligand=query_ligand,
+)
+cd.run(quote=True)
+cd.estimate
+```
 
 ## Filtering docking outputs
 

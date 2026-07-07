@@ -1162,6 +1162,31 @@ def create_tools_router(
         outputs = _replace_ids_in_outputs(
             outputs, protein_id=protein_id, ligand_id=ligand_id
         )
+        if tkey == "deeporigin.constrained-docking":
+            poses = outputs.get("poses")
+            if isinstance(poses, list):
+                for pose in poses:
+                    if isinstance(pose, dict):
+                        pose.setdefault("constrained", True)
+                        pose.setdefault("effort", user_inputs.get("effort", 1))
+                        pose.setdefault("best_pose", True)
+            reference = (
+                user_inputs.get("reference", {})
+                if isinstance(user_inputs, dict)
+                else {}
+            )
+            ref_pose = reference.get("pose", {}) if isinstance(reference, dict) else {}
+            ref_ligand = (
+                reference.get("ligand", {}) if isinstance(reference, dict) else {}
+            )
+            if isinstance(ref_pose, dict) and ref_pose.get("file_path"):
+                outputs["reference_pose"] = {
+                    "file_path": ref_pose["file_path"],
+                    "ligand_id": ref_ligand.get("id")
+                    if isinstance(ref_ligand, dict)
+                    else None,
+                    "protein_id": protein_id,
+                }
         execution["jobOutputs"] = outputs
         _inject_result_explorer_records_from_outputs(
             tool_key=tkey,
@@ -1709,6 +1734,7 @@ def create_tools_router(
             return _normalize_execution(execution)
         if (
             tool_key == "deeporigin.constrained-docking"
+            and inputs.get("sync") is True
             and n_lig == 1
             and not quote_only
         ):

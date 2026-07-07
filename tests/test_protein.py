@@ -85,6 +85,19 @@ def test_from_file_lv0():
     )
 
 
+def test_bounding_box_volume_lv0():
+    """Bounding box volume matches the product of coordinate spans in Å³."""
+    protein = Protein.from_file(BRD_DATA_DIR / "brd.pdb")
+    coords = protein.coordinates
+    span = coords.max(axis=0) - coords.min(axis=0)
+    expected = float(span[0] * span[1] * span[2])
+
+    volume = protein.bounding_box_volume()
+
+    assert volume == expected
+    assert volume > 0
+
+
 def test_from_file_invalid_pdb_lv0():
     pdb_path = Path(__file__).parent / "fixtures" / "1eby-illegal-element-name.pdb"
     with pytest.raises(

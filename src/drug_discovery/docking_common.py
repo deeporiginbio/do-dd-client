@@ -7,7 +7,7 @@ from typing import Any
 
 import numpy as np
 
-from deeporigin.drug_discovery.structures.ligand import LigandSet
+from deeporigin.drug_discovery.structures.ligand import Ligand, LigandSet
 from deeporigin.drug_discovery.structures.pocket import Pocket
 from deeporigin.drug_discovery.structures.protein import Protein
 from deeporigin.exceptions import DeepOriginException
@@ -108,3 +108,39 @@ def load_docking_poses_from_execution(
             title="Could not load docking poses",
             message=("No poses could be parsed from the data platform or jobOutputs."),
         ) from exc
+
+
+def load_reference_pose_from_execution(
+    exec_id: str,
+    *,
+    client: DeepOriginClient,
+    dto: dict[str, Any] | None = None,
+) -> Ligand:
+    """Load the reference pose from a constrained docking execution.
+
+    Args:
+        exec_id: Platform execution ID.
+        client: API client.
+        dto: Optional execution payload to avoid an extra GET.
+
+    Returns:
+        The reference pose as a :class:`Ligand`.
+
+    Raises:
+        DeepOriginException: If no reference pose could be loaded.
+    """
+    if dto is None:
+        dto = client.executions.get(exec_id)  # ty:ignore[unresolved-attribute]
+    jo = dto.get("jobOutputs")
+    if isinstance(jo, dict):
+        raw = jo.get("reference_pose")
+        if isinstance(raw, dict):
+            pose_set = LigandSet.from_json([raw], client=client)
+            return pose_set.ligands[0]
+
+    raise DeepOriginException(
+        title="Could not load reference pose",
+        message=(
+            "No reference_pose could be parsed from jobOutputs for this execution."
+        ),
+    )

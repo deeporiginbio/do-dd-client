@@ -247,6 +247,29 @@ protein = Protein.from_pdb_id("1EBY")
 ligand = protein.extract_ligand()
 ```
 
+### Check ligand pose clashes
+
+Use :meth:`Protein.has_ligand_clashes` to verify that a docked ligand pose does not
+sterically overlap the receptor. The ligand SDF must already be in the same coordinate
+frame as the protein structure.
+
+```python
+from deeporigin.drug_discovery import Protein
+
+protein = Protein.from_file("brd.pdb")
+
+if protein.has_ligand_clashes("pose.sdf"):
+    raise ValueError("Pose has steric clashes with receptor")
+
+# Use a stricter cutoff (default is 2.5 Å)
+if protein.has_ligand_clashes("pose.sdf", contact_distance=2.0):
+    raise ValueError("Pose is too close to receptor atoms")
+```
+
+By default, the check compares the ligand against protein atoms only (excluding HETATM
+records and waters) and ignores hydrogens. Customize this with ``protein_atoms_only``,
+``exclude_waters``, and ``heavy_atoms_only``.
+
 !!! warning "Method mutates the `Protein` object"
     The `extract_ligand()` method not only extracts the ligand but also **mutates the protein object** by removing the ligand from the protein structure. This means that after calling this method, the protein will no longer contain the ligand atoms.
 

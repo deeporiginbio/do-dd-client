@@ -7,15 +7,18 @@ from typing import Any, Self
 
 from beartype import beartype
 
-from deeporigin.drug_discovery import align
 from deeporigin.drug_discovery.docking_common import (
     build_docking_metadata,
     build_pocket_tool_params,
     load_docking_poses_from_execution,
+    load_reference_pose_from_execution,
     resolve_docking_box_geometry,
 )
 from deeporigin.drug_discovery.execution import Execution
-from deeporigin.drug_discovery.execution_mixins import SyncExecutableMixin
+from deeporigin.drug_discovery.execution_mixins import (
+    AsyncExecutableMixin,
+    SyncExecutableMixin,
+)
 from deeporigin.drug_discovery.notebook_watch_mixin import NotebookWatchMixin
 from deeporigin.drug_discovery.structures.ligand import Ligand, LigandSet
 from deeporigin.drug_discovery.structures.pocket import Pocket
@@ -25,44 +28,66 @@ from deeporigin.exceptions import DeepOriginException
 from deeporigin.platform.client import DeepOriginClient
 from deeporigin.platform.constants import TOOL_KEYS_AND_VERSIONS, is_success_status
 
-_CONSTRAINT_REQUIRED_KEYS = frozenset({"index", "coordinates", "energy"})
-
 
 def _constrained_ligand_tool_input_row(lig: Ligand) -> dict[str, Any]:
-    """Build one ligand entry for constrained docking (id, smiles, and file_path)."""
+    """Build one test-ligand entry for constrained docking tool inputs."""
     if lig.remote_path is None:
         raise ValueError(
             "Ligand must be synced to the platform with a structure file "
             "(remote_path) for constrained docking. Use Ligand.from_file or "
             "from_sdf and call ligand.sync() before running."
         )
-    return {
+    row: dict[str, Any] = {
         "id": lig.id,
-        "smiles": lig.smiles,
         "file_path": lig.remote_path,
     }
+    if lig.smiles is not None:
+        row["smiles"] = lig.smiles
+    return row
 
 
-def _constrained_docking_default_name(protein: Protein, ligand: Ligand) -> str:
+def _reference_ligand_tool_input_row(lig: Ligand) -> dict[str, Any]:
+    """Build the reference.ligand entry for constrained docking tool inputs."""
+    if lig.remote_path is None:
+        raise ValueError(
+            "Reference ligand must be synced to the platform with a structure file "
+            "(remote_path). Load from SDF/MOL2 and call reference_ligand.sync()."
+        )
+    row: dict[str, Any] = {
+        "id": lig.id,
+        "file_path": lig.remote_path,
+    }
+    return row
+
+
+def _reference_pose_tool_input_row(lig: Ligand) -> dict[str, Any]:
+    """Build the reference.pose entry for constrained docking tool inputs."""
+    if lig.remote_path is None:
+        raise ValueError(
+            "Reference pose must be synced to the platform with a structure file "
+            "(remote_path). Load from SDF/MOL2 and call reference_pose.sync()."
+        )
+    row: dict[str, Any] = {"file_path": lig.remote_path}
+    pose_id = lig.properties.get("id")
+    if pose_id is not None:
+        row["id"] = str(pose_id)
+    return row
+
+
+def _constrained_docking_default_name(protein: Protein, ligands: LigandSet) -> str:
     """Build a short human-readable label for a ConstrainedDocking execution."""
     p = protein.name
-    if ligand.name is not None and ligand.name.strip():
-        lig_label = ligand.name.strip()
-    else:
-        lig_label = ligand.smiles if ligand.smiles else "unnamed ligand"
-    return f"Constrained docking {p} to {lig_label}"
-
-
-def _validate_explicit_constraints(constraints: list[dict[str, Any]]) -> None:
-    """Raise if any constraint entry is missing required keys."""
-    if not constraints:
-        raise ValueError("constraints must contain at least one entry.")
-    for idx, entry in enumerate(constraints):
-        missing = sorted(_CONSTRAINT_REQUIRED_KEYS - set(entry.keys()))
-        if missing:
-            raise ValueError(
-                f"Constraint at index {idx} missing required keys: {missing}"
-            )
+    n = len(ligands)
+    if n == 0:
+        return f"Constrained docking {p} to 0 ligands"
+    if n == 1:
+        lig = ligands.ligands[0]
+        if lig.name is not None and lig.name.strip():
+            lig_label = lig.name.strip()
+        else:
+            lig_label = lig.smiles if lig.smiles else "unnamed ligand"
+        return f"Constrained docking {p} to {lig_label}"
+    return f"Constrained docking {p} to {n} ligands"
 
 
 def _ligand_has_3d_structure(ligand: Ligand) -> bool:
@@ -71,52 +96,35 @@ def _ligand_has_3d_structure(ligand: Ligand) -> bool:
     return mol is not None and mol.GetNumConformers() > 0
 
 
-def _constraints_from_reference(
-    *,
-    ligand: Ligand,
-    reference: Ligand,
-    constraint_energy: float,
-) -> list[dict[str, Any]]:
-    """Compute harmonic constraints for *ligand* aligned to *reference* via MCS."""
-    if not _ligand_has_3d_structure(ligand):
-        raise ValueError(
-            "Ligand must have a 3D structure for MCS constraint computation. "
-            "Load from SDF/MOL2 or ensure conformers are present."
-        )
-    if not _ligand_has_3d_structure(reference):
-        raise ValueError(
-            "Reference ligand must have a 3D structure (e.g. a docked pose). "
-            "Download the reference pose or pass a ligand with coordinates."
-        )
-
-    mcs_mol = LigandSet(ligands=[ligand, reference]).mcs()
-    computed = align.compute_constraints(
-        mols=[ligand.mol],
-        reference=reference.mol,
-        mcs_mol=mcs_mol,
-        energy=constraint_energy,
-    )
-    return computed[0]
-
-
-class ConstrainedDocking(Execution, SyncExecutableMixin, NotebookWatchMixin):
+class ConstrainedDocking(
+    Execution,
+    SyncExecutableMixin,
+    AsyncExecutableMixin,
+    NotebookWatchMixin,
+):
     """Harmonic constrained docking via ``deeporigin.constrained-docking``.
 
-    Dock exactly one ligand with atom-position constraints. Supply either
-    explicit ``constraints`` or a docked ``reference`` ligand; MCS alignment
-    derives constraints from the reference pose when ``reference`` is used.
+    Dock test ligands using harmonic constraints derived **server-side** from a
+    reference ligand pose via MCS alignment. Callers supply
+    ``reference_ligand`` (scaffold identity) and ``reference_pose`` (3D
+    coordinates); the platform derives per-atom constraints for each test
+    ligand.
 
-    Execution is synchronous only: call :meth:`run`, or :meth:`run` with
-    ``quote=True`` for a cost estimate. There is no async :meth:`start` path for
-    this tool.
+    :meth:`run` sets ``inputs.sync=true`` for exactly **one** test ligand
+    (blocking). :meth:`start` sets ``inputs.sync=false`` for **two or more**
+    test ligands (async workflow). Track async jobs with ``.sync()``,
+    ``.wait()``, or ``await watch()``.
 
     Attributes:
         protein: Target protein structure.
-        ligand: Ligand to dock (must have a structure file on the platform).
+        ligands: Test ligands to constrain-dock.
         pocket: Binding pocket defining the docking box.
-        constraints: Harmonic constraints sent to the tool.
+        reference_ligand: Template ligand identity for MCS constraint derivation.
+        reference_pose: Required 3D reference pose SDF used for constraints.
+        constraint_energy: Harmonic constraint weight sent to the tool.
         effort: Docking effort level (1 = fastest, 5 = most thorough).
         name: Execution label, set automatically unless overridden.
+        batch_size: Workflow batch size for async :meth:`start` (default 8).
     """
 
     tool_key: str = TOOL_KEYS_AND_VERSIONS["constrained_docking"]["tool_key"]
@@ -127,11 +135,15 @@ class ConstrainedDocking(Execution, SyncExecutableMixin, NotebookWatchMixin):
         *,
         protein: Protein,
         pocket: Pocket,
-        ligand: Ligand,
-        constraints: list[dict[str, Any]] | None = None,
-        reference: Ligand | None = None,
+        reference_ligand: Ligand,
+        reference_pose: Ligand,
+        ligand: Ligand | None = None,
+        ligands: LigandSet | None = None,
         constraint_energy: float = 5.0,
+        mcs_smarts: str | None = None,
+        mcs_smiles: str | None = None,
         effort: int = 1,
+        batch_size: int = 8,
         tool_version: str = TOOL_KEYS_AND_VERSIONS["constrained_docking"][
             "tool_version"
         ],
@@ -143,55 +155,63 @@ class ConstrainedDocking(Execution, SyncExecutableMixin, NotebookWatchMixin):
         Args:
             protein: Protein structure to dock into.
             pocket: Binding pocket defining the search box.
-            ligand: Single ligand to dock. Must be syncable with a structure file.
-            constraints: Explicit harmonic constraints. Mutually exclusive with
-                ``reference``.
-            reference: Reference ligand with 3D coordinates; constraints are
-                computed via MCS alignment. Mutually exclusive with
-                ``constraints``.
-            constraint_energy: Energy weight when deriving constraints from
-                ``reference`` (default 5.0).
+            reference_ligand: Reference/template ligand entity for MCS alignment.
+            reference_pose: Required 3D pose SDF for constraint derivation.
+            ligand: Single test ligand. Mutually exclusive with ``ligands``.
+            ligands: Set of test ligands. Mutually exclusive with ``ligand``.
+            constraint_energy: Harmonic constraint weight (default 5.0).
+            mcs_smarts: Optional SMARTS override for the common scaffold.
+            mcs_smiles: Optional SMILES override for the common scaffold.
             effort: Docking effort level (1–5).
-            tool_version: Platform tool version for :meth:`run` and :meth:`quote`.
+            batch_size: Workflow batch size for async :meth:`start` (default 8).
+            tool_version: Platform tool version for execution create calls.
             client: Optional API client.
             name: Optional execution label.
         """
-        if (constraints is None) == (reference is None):
-            raise ValueError(
-                "Exactly one of constraints or reference must be provided."
-            )
+        provided = sum(x is not None for x in (ligand, ligands))
+        if provided != 1:
+            raise ValueError("Exactly one of ligand or ligands must be provided.")
+
+        if mcs_smarts is not None and mcs_smiles is not None:
+            raise ValueError("mcs_smarts and mcs_smiles are mutually exclusive.")
 
         if protein.id is None:
             raise ValueError("Protein must have an ID.")
+
+        if not _ligand_has_3d_structure(reference_pose):
+            raise ValueError(
+                "reference_pose must have a 3D structure (e.g. a docked pose SDF). "
+                "Load from SDF/MOL2 or download from a prior Docking.run()."
+            )
 
         if not 1 <= effort <= 5:
             raise DeepOriginException(
                 f"effort must be between 1 and 5 inclusive, got {effort}"
             ) from None
 
-        if constraints is not None:
-            _validate_explicit_constraints(constraints)
-            resolved_constraints = constraints
-        else:
-            assert reference is not None
-            resolved_constraints = _constraints_from_reference(
-                ligand=ligand,
-                reference=reference,
-                constraint_energy=constraint_energy,
-            )
+        if batch_size <= 0:
+            raise ValueError("batch_size must be a positive integer.")
+
+        if ligand is not None:
+            ligands = LigandSet(ligands=[ligand])
+        assert ligands is not None
 
         super().__init__(client=client)
         self.tool_version = tool_version
         self.effort = effort
+        self._batch_size = batch_size
         self._protein = protein
         self._pocket = pocket
-        self._ligand = ligand
-        self._constraints = resolved_constraints
-        self._reference = reference
+        self._reference_ligand = reference_ligand
+        self._reference_pose = reference_pose
+        self._ligands = ligands
+        self._constraint_energy = constraint_energy
+        self._mcs_smarts = mcs_smarts
+        self._mcs_smiles = mcs_smiles
         self.name = (
             name
             if name is not None
-            else _constrained_docking_default_name(protein, ligand)
+            else _constrained_docking_default_name(protein, ligands)
         )
 
     @property
@@ -205,40 +225,114 @@ class ConstrainedDocking(Execution, SyncExecutableMixin, NotebookWatchMixin):
         return self._pocket
 
     @property
+    def reference_ligand(self) -> Ligand:
+        """Reference/template ligand used for MCS constraint derivation."""
+        return self._reference_ligand
+
+    @property
+    def reference_pose(self) -> Ligand:
+        """Required 3D reference pose submitted to the tool."""
+        return self._reference_pose
+
+    @property
+    def ligands(self) -> LigandSet:
+        """Test ligands to constrain-dock."""
+        return self._ligands
+
+    @property
     def ligand(self) -> Ligand:
-        """Ligand to dock."""
-        return self._ligand
+        """Single test ligand when exactly one was provided."""
+        if len(self._ligands) != 1:
+            raise ValueError(
+                "ligand property is only available when exactly one test ligand "
+                "was provided; use ligands instead."
+            )
+        return self._ligands.ligands[0]
 
     @property
-    def constraints(self) -> list[dict[str, Any]]:
-        """Harmonic constraints submitted to the tool."""
-        return self._constraints
+    def constraint_energy(self) -> float:
+        """Harmonic constraint energy weight sent to the tool."""
+        return self._constraint_energy
 
     @property
-    def reference(self) -> Ligand | None:
-        """Reference ligand used to derive constraints, if any."""
-        return self._reference
+    def mcs_smarts(self) -> str | None:
+        """Optional SMARTS override for the common scaffold."""
+        return self._mcs_smarts
+
+    @property
+    def mcs_smiles(self) -> str | None:
+        """Optional SMILES override for the common scaffold."""
+        return self._mcs_smiles
+
+    @property
+    def batch_size(self) -> int:
+        """Workflow batch size for async :meth:`start` (default 8)."""
+        return self._batch_size
+
+    def start(
+        self,
+        *,
+        quote: bool = False,
+        approve_amount: int | None = None,
+        **kwargs: Any,
+    ) -> None:
+        """Submit a persisted async execution. Requires at least two test ligands.
+
+        For a single test ligand, use :meth:`run` instead.
+
+        Args:
+            quote: Shorthand for ``approve_amount=0``.
+            approve_amount: Spend cap forwarded to the platform.
+            **kwargs: Forwarded to ``_start_impl``.
+        """
+        if len(self.ligands) == 1 and not quote:
+            raise ValueError(
+                "Cannot start: ConstrainedDocking with a single test ligand must "
+                "use run(), not start()."
+            )
+        super().start(quote=quote, approve_amount=approve_amount, **kwargs)
 
     def _validate_sync_run_params(self) -> None:
         """Raise if :meth:`run` preconditions are not met."""
+        if len(self.ligands) != 1:
+            raise ValueError(
+                "run() requires exactly one test ligand; use start() for multiple."
+            ) from None
         if not 1 <= self.effort <= 5:
             raise DeepOriginException(
                 f"effort must be between 1 and 5 inclusive, got {self.effort}"
             ) from None
 
     def _ensure_platform_inputs(self) -> None:
-        """Sync protein and ligand to the data platform with structure files."""
+        """Sync protein, reference entities, and test ligands to the platform."""
         self.protein.sync(lazy=True, client=self.client)
-        self.ligand.sync(lazy=True, client=self.client)
-        if self.ligand.remote_path is None:
-            raise ValueError(
-                "Ligand must have a structure file on the platform for constrained "
-                "docking. Load from SDF/MOL2 with Ligand.from_file or from_sdf "
-                "and call ligand.sync()."
-            )
+        self.reference_ligand.sync(lazy=True, client=self.client)
+        if self.reference_pose.properties.get("id") is None:
+            self.reference_pose.sync(lazy=True, client=self.client)
+        self.ligands.sync(lazy=True, client=self.client)
 
-    def _build_tool_inputs(self) -> tuple[dict[str, Any], dict[str, str]]:
+        if self.reference_ligand.remote_path is None:
+            raise ValueError(
+                "reference_ligand must have a structure file on the platform."
+            )
+        if self.reference_pose.remote_path is None:
+            raise ValueError(
+                "reference_pose must have a structure file on the platform."
+            )
+        for lig in self.ligands:
+            if lig.remote_path is None:
+                raise ValueError(
+                    "Each test ligand must have a structure file on the platform "
+                    "for constrained docking."
+                )
+
+    def _build_tool_inputs(
+        self,
+        *,
+        ligand_set: LigandSet | None = None,
+    ) -> tuple[dict[str, Any], dict[str, str]]:
         """Build params and metadata for ``client.executions.create``."""
+        to_dock = self.ligands if ligand_set is None else ligand_set
         pocket_center, box_size = resolve_docking_box_geometry(self.pocket)
         metadata = build_docking_metadata(self.protein)
         pocket_params = build_pocket_tool_params(self.pocket, pocket_center, box_size)
@@ -250,18 +344,28 @@ class ConstrainedDocking(Execution, SyncExecutableMixin, NotebookWatchMixin):
                 "id": self.protein.id,
                 "file_path": self.protein.remote_path,
             },
-            "ligands": [_constrained_ligand_tool_input_row(self.ligand)],
-            "constraints": self._constraints,
+            "reference": {
+                "ligand": _reference_ligand_tool_input_row(self.reference_ligand),
+                "pose": _reference_pose_tool_input_row(self.reference_pose),
+            },
+            "ligands": [_constrained_ligand_tool_input_row(lig) for lig in to_dock],
+            "constraint_energy": self.constraint_energy,
         }
+        if self.mcs_smarts is not None:
+            params["mcs_smarts"] = self.mcs_smarts
+        if self.mcs_smiles is not None:
+            params["mcs_smiles"] = self.mcs_smiles
         return params, metadata
 
     def _build_create_payload(
         self,
         *,
         approve_amount: int | None = None,
+        sync: bool = False,
     ) -> dict[str, Any]:
         """Build the body dict for ``client.executions.create``."""
         params, metadata = self._build_tool_inputs()
+        params["sync"] = sync
         payload: dict[str, Any] = {
             "inputs": params,
             "outputs": {},
@@ -271,6 +375,7 @@ class ConstrainedDocking(Execution, SyncExecutableMixin, NotebookWatchMixin):
             payload["name"] = self.name
         if approve_amount is not None:
             payload["approveAmount"] = approve_amount
+        payload["batchSize"] = self._batch_size
         return payload
 
     def run(
@@ -296,7 +401,10 @@ class ConstrainedDocking(Execution, SyncExecutableMixin, NotebookWatchMixin):
         self._ensure_platform_inputs()
         resolved_amount = 0 if quote else approve_amount
         dto = self._create_execution(
-            data=self._build_create_payload(approve_amount=resolved_amount),
+            data=self._build_create_payload(
+                approve_amount=resolved_amount,
+                sync=True,
+            ),
         )
         self.update_from_dto(dto)
 
@@ -315,6 +423,17 @@ class ConstrainedDocking(Execution, SyncExecutableMixin, NotebookWatchMixin):
             ) from None
 
         return self.get_results(dto, all_poses=True)
+
+    def _start_impl(self, *, approve_amount: int | None = None, **kwargs: Any) -> None:
+        """Submit constrained docking as a persisted async execution."""
+        self._ensure_platform_inputs()
+        payload = self._build_create_payload(
+            approve_amount=approve_amount,
+            sync=False,
+        )
+        execution_dto = self._create_execution(data=payload)
+        self._id = execution_dto.get("executionId")
+        self.status = execution_dto.get("status")
 
     @classmethod
     def from_dto(
@@ -341,17 +460,27 @@ class ConstrainedDocking(Execution, SyncExecutableMixin, NotebookWatchMixin):
                 "this execution may have been created with an older input schema."
             )
 
-        ligands_input = inputs.get("ligands", [])
-        if len(ligands_input) != 1:
+        reference_input = inputs.get("reference", {})
+        ref_ligand_input = reference_input.get("ligand", {})
+        ref_pose_input = dict(reference_input.get("pose", {}))
+        if not ref_ligand_input:
             raise ValueError(
-                "Constrained docking requires exactly one ligand in userInputs."
+                "Missing 'reference.ligand' in execution userInputs; "
+                "this execution may have been created with an older input schema."
             )
+        if not ref_pose_input:
+            raise ValueError(
+                "Missing 'reference.pose' in execution userInputs; "
+                "this execution may have been created with an older input schema."
+            )
+        if "smiles" not in ref_pose_input and ref_ligand_input.get("smiles"):
+            ref_pose_input["smiles"] = ref_ligand_input["smiles"]
 
-        raw_constraints = inputs.get("constraints")
-        if not raw_constraints:
-            raise ValueError("Missing 'constraints' in execution userInputs.")
+        ligands_input = inputs.get("ligands", [])
+        if not ligands_input:
+            raise ValueError("Missing 'ligands' in execution userInputs.")
 
-        with concurrent.futures.ThreadPoolExecutor(max_workers=3) as executor:
+        with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
             fut_protein = executor.submit(
                 Protein.from_id,
                 protein_id,
@@ -359,9 +488,21 @@ class ConstrainedDocking(Execution, SyncExecutableMixin, NotebookWatchMixin):
                 download=False,
                 remote_path_override=protein_input.get("file_path"),
             )
-            fut_ligand = executor.submit(
+            fut_ref_ligand = executor.submit(
                 LigandSet.from_ids,
-                [ligands_input[0]["id"]],
+                [ref_ligand_input["id"]],
+                client=instance.client,
+                download=False,
+                ligand_inputs=[ref_ligand_input],
+            )
+            fut_ref_pose = executor.submit(
+                LigandSet.from_json,
+                [ref_pose_input],
+                client=instance.client,
+            )
+            fut_ligands = executor.submit(
+                LigandSet.from_ids,
+                [lig["id"] for lig in ligands_input],
                 client=instance.client,
                 download=False,
                 ligand_inputs=ligands_input,
@@ -376,12 +517,16 @@ class ConstrainedDocking(Execution, SyncExecutableMixin, NotebookWatchMixin):
                 fut_pocket = None
 
         instance._protein = fut_protein.result()
-        ligand_set = fut_ligand.result()
-        instance._ligand = ligand_set.ligands[0]
-        instance._constraints = list(raw_constraints)
-        instance._reference = None
+        instance._reference_ligand = fut_ref_ligand.result().ligands[0]
+        instance._reference_pose = fut_ref_pose.result().ligands[0]
+        instance._ligands = fut_ligands.result()
         raw_effort = inputs.get("effort")
         instance.effort = int(raw_effort) if raw_effort is not None else cls.effort
+        instance._constraint_energy = float(
+            inputs.get("constraint_energy", 5.0),
+        )
+        instance._mcs_smarts = inputs.get("mcs_smarts")
+        instance._mcs_smiles = inputs.get("mcs_smiles")
         if fut_pocket is not None:
             instance._pocket = fut_pocket.result()
         else:
@@ -392,6 +537,16 @@ class ConstrainedDocking(Execution, SyncExecutableMixin, NotebookWatchMixin):
                 box_size_y=pocket_input.get("box_size_y"),
                 box_size_z=pocket_input.get("box_size_z"),
             )
+
+        meta = execution.get("metadata") or {}
+        raw_batch = execution.get("batchSize")
+        if raw_batch is None:
+            raw_batch = meta.get("batchSize")
+        try:
+            bs = int(raw_batch) if raw_batch is not None else 8
+        except (TypeError, ValueError):
+            bs = 8
+        instance._batch_size = bs if bs > 0 else 8
 
         return instance
 
@@ -408,6 +563,25 @@ class ConstrainedDocking(Execution, SyncExecutableMixin, NotebookWatchMixin):
             client=self.client,
             dto=dto,
             all_poses=all_poses,
+        )
+
+    @beartype
+    def get_reference_pose(
+        self,
+        dto: dict[str, Any] | None = None,
+    ) -> Ligand:
+        """Load the reference pose reported by this execution.
+
+        Args:
+            dto: Optional execution payload to avoid an extra GET.
+
+        Returns:
+            The reference pose as a :class:`Ligand`.
+        """
+        return load_reference_pose_from_execution(
+            self._ensure_id(),
+            client=self.client,
+            dto=dto,
         )
 
     def get_poses(self, *, all_poses: bool = False) -> LigandSet:

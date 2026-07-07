@@ -5,6 +5,13 @@ NOTEBOOKS_DIR="docs/notebooks"
 DIRTY="${NOTEBOOKS_DIR}/dirty"
 CLEAN="${NOTEBOOKS_DIR}/clean"
 
+# Skip Jupyter scratch notebooks (e.g. Untitled.ipynb, Untitled1.ipynb).
+is_untitled_notebook() {
+    local name_lower
+    name_lower="$(printf '%s' "$1" | tr '[:upper:]' '[:lower:]')"
+    [[ "$name_lower" == *untitled* ]]
+}
+
 # List .ipynb files in dirty/ modified since the last commit (or all if no commits yet).
 find_dirty_notebooks_since_last_commit() {
     if [ ! -d "$DIRTY" ]; then
@@ -25,6 +32,11 @@ mkdir -p "$CLEAN"
 CHANGED_NOTEBOOKS=()
 while IFS= read -r notebook; do
     [ -n "$notebook" ] || continue
+    name="$(basename "$notebook")"
+    if is_untitled_notebook "$name"; then
+        echo "Skipping untitled notebook: $name"
+        continue
+    fi
     CHANGED_NOTEBOOKS+=("$notebook")
 done < <(find_dirty_notebooks_since_last_commit)
 

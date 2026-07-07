@@ -82,6 +82,81 @@ Jupyter 3D Mol* embed for macromolecules, ligands, docked poses, pockets, and
 trajectories. Rendered via `render_html()` in a notebook cell.
 _Avoid_: conflating with RDKit 2D structure images (`render_smiles_in_dataframe`)
 
+**Reference ligand**:
+Template ligand whose identity anchors MCS harmonic constraints for test ligands
+in `deeporigin.constrained-docking`. CLI kwarg `reference_ligand`; platform
+input `reference.ligand`.
+_Avoid_: conflating with `reference_pose` (3D coordinates only)
+
+**Reference pose**:
+Required 3D coordinates of the reference ligand in the binding site.
+CLI kwarg `reference_pose`; platform input `reference.pose`. Must be supplied
+explicitly by callers (typically a docked pose SDF).
+_Avoid_: letting the server resolve best_pose implicitly; conflating `Ligand.id`
+(ligands-table id) with the pose result id sent as `reference.pose.id`
+
+**Pose result ID**:
+Platform result-explorer id for a docked pose (`result_type=pose`). Distinct from
+ligands-table id. On pose-hydrated `Ligand` objects today, stored as
+`properties["id"]` (not `Ligand.id`).
+_Avoid_: ligand id; `Ligand.id` when you mean the pose row
+
+**Pose**:
+3D conformation backed by an SDF registered in the data platform pose result
+table (`results__*`, `result_type=pose`). Has platform pose `id` and parent
+`ligand_id`. Sources include docking output and external SDFs (e.g. co-crystal
+ligands) registered via **Pose registration**.
+_Avoid_: using `Ligand` when you mean a pose result with pose-scoped identity;
+conflating with docking-only outputs
+
+**Pose-consuming tool input**:
+Downstream tools that need 3D coordinates (SystemPrep ABFE/RBFE, ABFE, RBFE)
+accept `Pose` via kwargs `pose`, `pose1`, `pose2` — not `ligand`. Standalone
+ligand parameterization (SystemPrep without protein) still uses `ligand: Ligand`.
+_Avoid_: `ligand=` when passing a docked pose or registered 3D conformer
+
+**PoseSet**:
+Collection of :class:`Pose` objects. Owns pose loading from docking results,
+result-explorer queries, and filtering (e.g. best pose per ligand). Replaces
+pose-hydrated :class:`LigandSet` usage.
+_Avoid_: :class:`LigandSet` for docked poses or pose result rows
+
+**Ligand.get_poses()**:
+Query result-explorer for poses whose ``ligand_id`` matches the ligand's
+platform id; returns a :class:`PoseSet`. Parent→child discovery path.
+_Avoid_: storing pose ids on :class:`Ligand` (e.g. ``properties[\"id\"]``)
+
+**Pose registration**:
+Pass-through platform tool that uploads an external SDF and publishes a minimal
+pose result so the data platform assigns a pose `id` and stores the row in the
+pose table. Used when the user has 3D coordinates outside prior docking.
+Output schema is **lighter than docking** (no ``pose_score`` / ``effort`` /
+``best_pose``); rows use ``x-result-group: poses`` and ``x-data-type: Pose`` so
+they ingest into the same pose result family as docked poses.
+Resolves parent ``ligand_id`` by auto-syncing canonical SMILES from the SDF
+(``Ligand.sync()`` link-or-create); caller may pass an explicit ``Ligand`` to
+override (e.g. a specific ``variant_name_tag``). Optional ``protein_id`` when a
+target protein is known (e.g. co-crystal); omit when registering a standalone
+3D conformer.
+_Avoid_: storing external SDF coordinates only on the ligands table; conflating
+with ``Ligand.sync()`` alone (identity only — registration also creates the pose row)
+
+**Poses vs Ligands v1 scope**:
+Initial release is CLI + platform-toolbox only. Platform UI / UUI changes
+follow in a later release.
+_Avoid_: blocking CLI/toolbox work on UUI pose-input UX
+
+**Test ligand**:
+Ligand to constrain-dock relative to the reference; CLI `ligand` / `ligands`;
+platform input `ligands[]`. Constraints are derived server-side via MCS.
+_Avoid_: Reference ligand; ligand (when you mean only the test set)
+
+**Free-dock fallback**:
+Per-ligand outcome when MCS cannot match a test ligand to the reference scaffold;
+that ligand runs as standard docking with `constrained: false` on outputs.
+_Avoid_: unconstrained docking (informal); MCS failure (ambiguous with override
+errors on the reference)
+
 **Legacy structure viewer**:
 `deeporigin-molstar` Python package plus `balto.biosim.ai/molstar/gallery.js`.
 Being replaced by the in-client `deeporigin.viz` HTML builder and hosted

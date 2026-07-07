@@ -26,6 +26,7 @@ from deeporigin.drug_discovery.constants import (
     PROTEINS_DIR,
     STATE_DUMP_PATH,
 )
+from deeporigin.drug_discovery.utils.structure_qc import _any_ligand_protein_clashes
 from deeporigin.exceptions import DeepOriginException
 from deeporigin.platform.client import DeepOriginClient
 from deeporigin.utils.env import _ensure_do_folder
@@ -465,6 +466,102 @@ class Protein(Entity):
         self.download(lazy=True)
         assert self.structure is not None
         return self.structure.coord
+
+    def bounding_box_volume(self) -> float:
+        """Compute the volume of the axis-aligned bounding box of the protein.
+
+        Uses atomic coordinates to estimate size as the product of the spans
+        along each axis. Coordinates are in Angstroms, so the result is in
+        cubic Angstroms (Å³).
+
+        Returns:
+            float: Bounding box volume in Å³.
+        """
+        coords = self.coordinates
+        span = coords.max(axis=0) - coords.min(axis=0)
+        return float(span[0] * span[1] * span[2])
+
+    def has_ligand_clashes(
+        self,
+        ligand: Ligand | str | Path,
+        *,
+        contact_distance: float = 2.5,
+        protein_atoms_only: bool = True,
+        exclude_waters: bool = True,
+        heavy_atoms_only: bool = True,
+    ) -> bool:
+        """Check whether a ligand pose sterically clashes with this protein.
+
+        Compares ligand atom coordinates against protein atom coordinates and
+        returns ``True`` when any pair is closer than ``contact_distance``.
+
+        The ligand SDF must already be in the same coordinate frame as the
+        protein structure (for example, a docked pose aligned to the receptor).
+
+        Args:
+            ligand: A :class:`Ligand` instance or path to a single-molecule SDF.
+            contact_distance: Distance threshold (Å) below which a pair is a clash.
+            protein_atoms_only: When ``True``, exclude HETATM records so the
+                check compares the ligand against the receptor only.
+            exclude_waters: When ``True``, remove solvent before checking.
+            heavy_atoms_only: When ``True``, ignore hydrogen atoms on both sides.
+
+        Returns:
+            ``True`` if at least one ligand atom clashes with a protein atom.
+
+        Raises:
+            ValueError: If the protein structure is not loaded.
+            DeepOriginException: If the ligand does not have 3D coordinates.
+        """
+        self.download(lazy=True)
+        if self.structure is None:
+            raise ValueError("Protein structure is not loaded.")
+
+        if isinstance(ligand, (str, Path)):
+            ligand_obj = Ligand.from_sdf(ligand)
+        else:
+            ligand_obj = ligand
+
+        if not ligand_obj.has_3d_structure():
+            raise DeepOriginException(
+                title="Ligand missing 3D coordinates",
+                message=(
+                    "Cannot check ligand clashes because the ligand does not "
+                    "have 3D coordinates."
+                ),
+            )
+
+        structure = self.structure
+        atom_mask = np.ones(len(structure), dtype=bool)
+
+        if protein_atoms_only:
+            atom_mask &= ~structure.hetero
+
+        if exclude_waters:
+            from biotite.structure import filter_solvent
+
+            atom_mask &= ~filter_solvent(structure)
+
+        if heavy_atoms_only:
+            atom_mask &= structure.element != "H"
+
+        protein_atoms = structure[atom_mask]
+        protein_coords = protein_atoms.coord
+
+        ligand_coords = ligand_obj.coordinates
+        if heavy_atoms_only:
+            ligand_elements = ligand_obj.get_species()
+            heavy_mask = np.array(
+                [element != "H" for element in ligand_elements],
+                dtype=bool,
+            )
+            ligand_coords = ligand_coords[heavy_mask]
+
+        return _any_ligand_protein_clashes(
+            ligand_coords,
+            protein_coords,
+            contact_distance=contact_distance,
+        )
 
     def _filter_hetatm_records(
         self, exclude_water: bool = True, keep_resnames: Optional[list[str]] = None
