@@ -7,7 +7,12 @@ from typing import Any
 
 import numpy as np
 
-from deeporigin.drug_discovery.structures.ligand import Ligand, LigandSet
+from deeporigin.drug_discovery.structures.ligand import (
+    Ligand,
+    LigandSet,
+    _is_scored_docking_pose_data,
+    _ligand_smiles_map_from_tool_payload,
+)
 from deeporigin.drug_discovery.structures.pocket import Pocket
 from deeporigin.drug_discovery.structures.protein import Protein
 from deeporigin.exceptions import DeepOriginException
@@ -64,6 +69,123 @@ def build_docking_metadata(protein: Protein) -> dict[str, str]:
     }
 
 
+def _normalize_pose_row_smiles(row: dict[str, Any]) -> None:
+    """Copy ``ligand_smiles`` onto ``smiles`` when the latter is absent."""
+    if isinstance(row.get("smiles"), str) and row["smiles"].strip():
+        return
+    ligand_smiles = row.get("ligand_smiles")
+    if isinstance(ligand_smiles, str) and ligand_smiles.strip():
+        row["smiles"] = ligand_smiles.strip()
+
+
+def _pose_result_records_to_rows(
+    records: list[dict[str, Any]],
+    *,
+    client: DeepOriginClient,
+    execution_id: str | None,
+) -> list[dict[str, Any]]:
+    """Convert result-explorer pose records to ``LigandSet.from_json`` rows."""
+    job_ids: set[str] = set()
+    if execution_id:
+        job_ids.add(str(execution_id))
+    for rec in records:
+        jid = rec.get("compute_job_id")
+        if jid:
+            job_ids.add(str(jid))
+
+    smiles_by_job: dict[str, dict[str, str]] = {}
+    for jid in job_ids:
+        try:
+            dto = client.executions.get(jid)  # ty:ignore[unresolved-attribute]
+        except Exception:
+            smiles_by_job[jid] = {}
+        else:
+            smiles_by_job[jid] = _ligand_smiles_map_from_tool_payload(dto)
+
+    rows: list[dict[str, Any]] = []
+    for rec in records:
+        if not isinstance(rec, dict):
+            continue
+        data = rec.get("data")
+        if not isinstance(data, dict):
+            data = {}
+        row = dict(data)
+        _normalize_pose_row_smiles(row)
+        jid = str(rec.get("compute_job_id") or execution_id or "")
+        smi_map = smiles_by_job.get(jid, {})
+        lid = row.get("ligand_id")
+        if (
+            not (isinstance(row.get("smiles"), str) and row["smiles"].strip())
+            and not (
+                isinstance(row.get("canonical_smiles"), str)
+                and row["canonical_smiles"].strip()
+            )
+            and lid is not None
+        ):
+            sm = smi_map.get(str(lid))
+            if sm:
+                row["smiles"] = sm
+        rid = rec.get("id")
+        if rid is not None:
+            row["id"] = str(rid)
+        rows.append(row)
+    return rows
+
+
+def load_scored_poses_from_result_explorer(
+    execution_id: str | None,
+    *,
+    client: DeepOriginClient,
+    protein_id: str | None = None,
+    best_pose: bool | None = None,
+) -> LigandSet:
+    """Load scored docking poses from result-explorer rows for one execution.
+
+    Skips constrained-docking ``reference_pose`` metadata rows, which share the
+    Pose catalog but lack ``pose_score`` / ``best_pose`` fields.
+
+    Args:
+        execution_id: Platform execution / compute job id.
+        client: API client.
+        protein_id: Optional protein id filter.
+        best_pose: When set, restrict to rows whose ``data.best_pose`` matches.
+
+    Returns:
+        A ``LigandSet`` of docked poses.
+
+    Raises:
+        ValueError: If no scored pose rows match.
+    """
+    get_poses_kwargs: dict[str, Any] = dict(
+        protein_id=protein_id,
+        compute_job_id=execution_id,
+        limit=None,
+    )
+    if best_pose is not None:
+        get_poses_kwargs["best_pose"] = best_pose
+
+    response = client.results.get_poses(**get_poses_kwargs)
+    raw_records = [rec for rec in response.get("data", []) if isinstance(rec, dict)]
+    records = [
+        rec for rec in raw_records if _is_scored_docking_pose_data(rec.get("data"))
+    ]
+
+    if not records:
+        raise ValueError(
+            "No scored docking pose results found for "
+            f"protein_id={protein_id!r} execution_id={execution_id!r} "
+            f"({len(raw_records)} raw result-explorer row(s); "
+            f"{len(raw_records) - len(records)} looked like reference/metadata only)."
+        )
+
+    rows = _pose_result_records_to_rows(
+        records,
+        client=client,
+        execution_id=execution_id,
+    )
+    return LigandSet.from_json(rows, client=client)
+
+
 def load_docking_poses_from_execution(
     exec_id: str,
     *,
@@ -72,6 +194,9 @@ def load_docking_poses_from_execution(
     all_poses: bool = False,
 ) -> LigandSet:
     """Load docked poses from the data platform or execution ``jobOutputs``.
+
+    Async workflow executions usually persist poses only in result-explorer, not
+    in ``jobOutputs.poses``.
 
     Args:
         exec_id: Platform execution ID.
@@ -87,27 +212,49 @@ def load_docking_poses_from_execution(
         DeepOriginException: If no poses could be loaded.
     """
     best_pose: bool | None = None if all_poses else True
+    errors: list[str] = []
 
     try:
-        return LigandSet.from_result(
-            execution_id=exec_id,
-            best_pose=best_pose,
+        poses = load_scored_poses_from_result_explorer(
+            exec_id,
             client=client,
+            best_pose=best_pose,
         )
-    except Exception:
-        pass
+        if len(poses) > 0:
+            return poses
+        errors.append("result-explorer returned zero scored pose rows")
+    except Exception as exc:
+        errors.append(f"result-explorer: {exc}")
 
     try:
         if dto is None:
             dto = client.executions.get(exec_id)  # ty:ignore[unresolved-attribute]
         jo = dto.get("jobOutputs")
         raw = jo.get("poses", []) if isinstance(jo, dict) else []
-        return LigandSet.from_json(raw, client=client)
+        if not raw:
+            errors.append("jobOutputs.poses is empty")
+            raise ValueError("jobOutputs.poses is empty")
+        rows = [dict(item) for item in raw if isinstance(item, dict)]
+        for row in rows:
+            _normalize_pose_row_smiles(row)
+        poses = LigandSet.from_json(rows, client=client)
+        if len(poses) == 0:
+            errors.append("jobOutputs.poses parsed to an empty LigandSet")
+            raise ValueError("jobOutputs.poses parsed to an empty LigandSet")
+        return poses
     except Exception as exc:
-        raise DeepOriginException(
-            title="Could not load docking poses",
-            message=("No poses could be parsed from the data platform or jobOutputs."),
-        ) from exc
+        if str(exc) not in errors:
+            errors.append(f"jobOutputs: {exc}")
+
+    detail = "; ".join(errors)
+    raise DeepOriginException(
+        title="Could not load docking poses",
+        message=(
+            f"No poses could be loaded for execution {exec_id!r}. {detail}. "
+            "Async constrained docking stores poses in result-explorer only; "
+            "confirm this id matches compute_job_id on the platform debug page."
+        ),
+    ) from None
 
 
 def load_reference_pose_from_execution(

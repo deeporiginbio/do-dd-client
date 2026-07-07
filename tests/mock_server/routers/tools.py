@@ -1127,6 +1127,20 @@ def create_tools_router(
             }
             results.append(record)
 
+        if tool_key == "deeporigin.constrained-docking":
+            reference_pose = job_outputs.get("reference_pose")
+            if isinstance(reference_pose, dict):
+                results.append(
+                    {
+                        "id": "08" + str(uuid.uuid4()).replace("-", "").upper()[:11],
+                        "tool_key": tool_key,
+                        "tool_version": tool_version,
+                        "result_type": result_type,
+                        "data": dict(reference_pose),
+                        "compute_job_id": execution_id,
+                    }
+                )
+
     def _inject_docking_tool_execution_results(execution: dict[str, Any]) -> None:
         """Mirror docking fixture poses into ``results`` when an execution completes."""
         eid = execution.get("executionId")

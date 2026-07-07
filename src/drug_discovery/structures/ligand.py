@@ -1781,6 +1781,18 @@ def _tool_user_inputs_params(dto: dict[str, Any]) -> dict[str, Any]:
     return root
 
 
+def _is_scored_docking_pose_data(data: Any) -> bool:
+    """Return True when result-explorer ``data`` is a docked pose, not ``reference_pose``.
+
+    Constrained docking stores ``reference_pose`` rows in the same Pose catalog
+    table as scored poses. Those rows lack ``pose_score`` / ``best_pose`` metadata.
+    """
+
+    if not isinstance(data, dict):
+        return False
+    return "pose_score" in data or "best_pose" in data
+
+
 def _ligand_smiles_map_from_tool_payload(dto: dict[str, Any]) -> dict[str, str]:
     """Build ligand entity id -> SMILES from user inputs embedded in ``dto``."""
 
@@ -2644,6 +2656,10 @@ class LigandSet:
         SMILES from each row's ``compute_job_id`` execution (``userInputs``) when
         absent on the pose payload, then delegates to :meth:`from_json`.
 
+        Rows that look like constrained-docking ``reference_pose`` metadata (no
+        ``pose_score`` or ``best_pose``) are skipped because they share the Pose
+        result catalog with scored poses.
+
         Args:
             protein_id: Optional protein id filter.
             execution_id: Optional compute job / execution id filter.
@@ -2661,68 +2677,16 @@ class LigandSet:
         if client is None:
             client = DeepOriginClient()
 
-        get_poses_kwargs: dict[str, Any] = dict(
-            protein_id=protein_id,
-            compute_job_id=execution_id,
-            limit=None,
+        from deeporigin.drug_discovery.docking_common import (
+            load_scored_poses_from_result_explorer,
         )
-        if best_pose is not None:
-            get_poses_kwargs["best_pose"] = best_pose
 
-        response = client.results.get_poses(**get_poses_kwargs)
-        records = response.get("data", [])
-
-        if not records:
-            raise ValueError(
-                "No docking pose results found for "
-                f"protein_id={protein_id!r} execution_id={execution_id!r}."
-            )
-
-        job_ids: set[str] = set()
-        if execution_id:
-            job_ids.add(str(execution_id))
-        for rec in records:
-            jid = rec.get("compute_job_id")
-            if jid:
-                job_ids.add(str(jid))
-
-        smiles_by_job: dict[str, dict[str, str]] = {}
-        for jid in job_ids:
-            try:
-                dto = client.executions.get(jid)  # ty:ignore[unresolved-attribute]
-            except Exception:
-                smiles_by_job[jid] = {}
-            else:
-                smiles_by_job[jid] = _ligand_smiles_map_from_tool_payload(dto)
-
-        rows: list[dict[str, Any]] = []
-        for rec in records:
-            if not isinstance(rec, dict):
-                continue
-            data = rec.get("data")
-            if not isinstance(data, dict):
-                data = {}
-            row = dict(data)
-            jid = str(rec.get("compute_job_id") or execution_id or "")
-            smi_map = smiles_by_job.get(jid, {})
-            lid = row.get("ligand_id")
-            if (
-                not (isinstance(row.get("smiles"), str) and row["smiles"].strip())
-                and not (
-                    isinstance(row.get("canonical_smiles"), str)
-                    and row["canonical_smiles"].strip()
-                )
-                and lid is not None
-            ):
-                sm = smi_map.get(str(lid))
-                if sm:
-                    row["smiles"] = sm
-            rid = rec.get("id")
-            if rid is not None:
-                row["id"] = str(rid)
-            rows.append(row)
-
-        return cls.from_json(rows, client=client)
+        return load_scored_poses_from_result_explorer(
+            execution_id,
+            client=client,
+            protein_id=protein_id,
+            best_pose=best_pose,
+        )
 
     @classmethod
     def from_dir(cls, directory: str | Path) -> Self:

@@ -8,7 +8,11 @@ import pytest
 
 from deeporigin.drug_discovery import BRD_DATA_DIR, ConstrainedDocking, Docking, Ligand
 from deeporigin.drug_discovery.constrained_docking import _reference_pose_tool_input_row
-from deeporigin.drug_discovery.structures.ligand import LigandSet
+from deeporigin.drug_discovery.docking_common import load_docking_poses_from_execution
+from deeporigin.drug_discovery.structures.ligand import (
+    LigandSet,
+    _is_scored_docking_pose_data,
+)
 from deeporigin.exceptions import DeepOriginException
 from deeporigin.platform.constants import TOOL_KEYS_AND_VERSIONS
 from tests.conftest import check_tool_exists
@@ -386,3 +390,120 @@ def test_constrained_docking_run_with_reference_workflow(
 
     assert isinstance(poses, LigandSet)
     assert len(poses) >= 1
+
+
+def test_is_scored_docking_pose_data_excludes_reference_pose() -> None:
+    """Reference pose rows in the Pose table lack scoring metadata."""
+    assert (
+        _is_scored_docking_pose_data(
+            {
+                "file_path": "tool-runs/job/reference_pose.sdf",
+                "ligand_id": "ref-ligand",
+                "protein_id": "protein-1",
+            }
+        )
+        is False
+    )
+    assert (
+        _is_scored_docking_pose_data(
+            {
+                "best_pose": False,
+                "file_path": "tool-runs/job/pose.sdf",
+                "ligand_id": "query-ligand",
+                "ligand_smiles": "CCO",
+                "pose_score": 0.75,
+                "protein_id": "protein-1",
+            }
+        )
+        is True
+    )
+
+
+def test_from_result_skips_reference_pose_rows(client) -> None:
+    """from_result ignores constrained-docking reference_pose rows in Pose results."""
+    execution_id = "exec-with-reference-pose"
+    client.results.get_poses = lambda **kwargs: {
+        "data": [
+            {
+                "id": "ref-row",
+                "compute_job_id": execution_id,
+                "data": {
+                    "file_path": "tool-runs/job/reference_pose.sdf",
+                    "ligand_id": "ref-ligand",
+                    "protein_id": "protein-1",
+                },
+            },
+            {
+                "id": "pose-row",
+                "compute_job_id": execution_id,
+                "data": {
+                    "best_pose": True,
+                    "file_path": "tool-runs/job/pose.sdf",
+                    "ligand_id": "query-ligand",
+                    "ligand_smiles": "CCO",
+                    "pose_score": 0.75,
+                    "protein_id": "protein-1",
+                },
+            },
+        ],
+        "meta": {},
+    }
+
+    poses = LigandSet.from_result(execution_id=execution_id, client=client)
+
+    assert len(poses) == 1
+    assert poses.ligands[0].id == "query-ligand"
+    assert poses.ligands[0].remote_path == "tool-runs/job/pose.sdf"
+
+
+def test_load_docking_poses_from_execution_ignores_reference_pose(client) -> None:
+    """get_results path loads scored poses even when reference_pose is present."""
+    execution_id = "exec-mixed-pose-results"
+    client.results.get_poses = lambda **kwargs: {
+        "data": [
+            {
+                "id": "ref-row",
+                "compute_job_id": execution_id,
+                "data": {
+                    "file_path": "tool-runs/job/reference_pose.sdf",
+                    "ligand_id": "ref-ligand",
+                    "protein_id": "protein-1",
+                },
+            },
+            {
+                "id": "pose-row",
+                "compute_job_id": execution_id,
+                "data": {
+                    "best_pose": True,
+                    "file_path": "tool-runs/job/pose.sdf",
+                    "ligand_id": "query-ligand",
+                    "ligand_smiles": "CCO",
+                    "pose_score": 0.75,
+                    "protein_id": "protein-1",
+                },
+            },
+        ],
+        "meta": {},
+    }
+
+    poses = load_docking_poses_from_execution(
+        execution_id,
+        client=client,
+        all_poses=True,
+    )
+
+    assert len(poses) == 1
+    assert poses.ligands[0].properties.get("pose_score") == 0.75
+
+
+def test_load_docking_poses_from_execution_raises_when_empty(client) -> None:
+    """Empty result-explorer and jobOutputs responses raise DeepOriginException."""
+    execution_id = "exec-no-poses"
+    client.results.get_poses = lambda **kwargs: {"data": [], "meta": {}}
+    client.executions.get = lambda _eid: {"jobOutputs": {"poses": []}}
+
+    with pytest.raises(DeepOriginException, match="Could not load docking poses"):
+        load_docking_poses_from_execution(execution_id, client=client)
+
+    with pytest.raises(DeepOriginException, match=execution_id):
+        load_docking_poses_from_execution(execution_id, client=client)
