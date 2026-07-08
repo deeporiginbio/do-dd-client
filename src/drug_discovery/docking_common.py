@@ -251,7 +251,7 @@ def load_docking_poses_from_execution(
         title="Could not load docking poses",
         message=(
             f"No poses could be loaded for execution {exec_id!r}. {detail}. "
-            "Async constrained docking stores poses in result-explorer only; "
+            "Async executions often store poses in result-explorer only; "
             "confirm this id matches compute_job_id on the platform debug page."
         ),
     ) from None
