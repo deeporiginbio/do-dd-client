@@ -717,7 +717,7 @@ class ConstrainedDocking(
         self,
         *,
         poses: Ligand | LigandSet | list[Ligand] | None = None,
-    ) -> str | None:
+    ):
         """Visualize the protein with the docking search box in a Jupyter notebook.
 
         When ``poses`` is provided, docked ligands are overlaid with the wireframe
@@ -728,7 +728,8 @@ class ConstrainedDocking(
                 single :class:`Ligand`, a :class:`LigandSet`, or a list of ligands.
 
         Returns:
-            Result of :func:`~deeporigin.utils.notebook.render_html` for the Mol* viewer.
+            Result of :func:`~deeporigin.utils.notebook.render_html` for the Mol*
+            viewer (``None`` after Jupyter display, or a marimo ``mo.Html`` wrapper).
 
         Raises:
             DeepOriginException: If the protein structure cannot be loaded locally.

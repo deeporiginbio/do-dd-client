@@ -610,7 +610,7 @@ class Docking(Execution, SyncExecutableMixin, AsyncExecutableMixin, NotebookWatc
         self,
         *,
         poses: Ligand | LigandSet | list[Ligand] | None = None,
-    ) -> str | None:
+    ):
         """Visualize the protein with the docking search box in a Jupyter notebook.
 
         Renders the target protein and a wireframe box from :attr:`pocket` center and
@@ -625,7 +625,8 @@ class Docking(Execution, SyncExecutableMixin, AsyncExecutableMixin, NotebookWatc
                 single :class:`Ligand`, a :class:`LigandSet`, or a list of ligands.
 
         Returns:
-            Result of :func:`~deeporigin.utils.notebook.render_html` for the Mol* viewer.
+            Result of :func:`~deeporigin.utils.notebook.render_html` for the Mol*
+            viewer (``None`` after Jupyter display, or a marimo ``mo.Html`` wrapper).
 
         Raises:
             DeepOriginException: If the protein structure cannot be loaded locally.

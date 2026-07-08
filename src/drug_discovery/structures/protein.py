@@ -1375,7 +1375,9 @@ class Protein(Entity):
 
         Raises:
             DeepOriginException: If both ``ligand`` and ``ligands``/``poses`` are set.
+            ValueError: If ``ligands`` or ``poses`` is provided but empty.
         """
+        from deeporigin.drug_discovery.docking_common import _pose_label_for_viewer
         from deeporigin.utils.notebook import render_html
         from deeporigin.viz.molstar_html import (
             ligand_data_for_js,
@@ -1403,28 +1405,18 @@ class Protein(Entity):
                 pose_ligands = list(ligands.ligands)
             else:
                 pose_ligands = list(ligands)
+            if not pose_ligands:
+                raise ValueError("ligands/poses must be non-empty when provided")
 
         has_pockets = pockets is not None and len(pockets) > 0
         has_poses = len(pose_ligands) > 0
-
-        def _pose_label(item: Ligand, index: int) -> str:
-            """Pick a LigandManager label: name → SMILES → ligand-{i}."""
-            name = getattr(item, "name", None)
-            if name and name not in ("", "Unknown_Ligand"):
-                return str(name)
-            smiles = getattr(item, "smiles", None) or getattr(
-                item, "canonical_smiles", None
-            )
-            if smiles:
-                return str(smiles)
-            return f"ligand-{index}"
 
         def _ligand_payloads() -> list[dict[str, object]]:
             """Build per-ligand molstarLib payloads from pose ligands."""
             return [
                 ligand_data_for_js(
                     path=item.to_sdf(),
-                    label=_pose_label(item, index),
+                    label=_pose_label_for_viewer(item, index),
                 )
                 for index, item in enumerate(pose_ligands)
             ]

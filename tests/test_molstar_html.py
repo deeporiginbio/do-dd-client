@@ -294,6 +294,41 @@ def test_render_docking_box_rejects_non_positive_size() -> None:
         )
 
 
+def test_render_docking_box_rejects_non_numeric_geometry() -> None:
+    """Non-numeric center/size/radius raise ValueError, not TypeError."""
+    with pytest.raises(ValueError, match="finite"):
+        render_docking_box_html(
+            pdb_path=str(_FIXTURE_PDB),
+            box_center=["x", 0.0, 0.0],  # type: ignore[list-item]
+            box_size=[10.0, 10.0, 10.0],
+        )
+    with pytest.raises(ValueError, match="radius"):
+        render_docking_box_html(
+            pdb_path=str(_FIXTURE_PDB),
+            box_center=[0.0, 0.0, 0.0],
+            box_size=[10.0, 10.0, 10.0],
+            radius="wide",  # type: ignore[arg-type]
+        )
+
+
+def test_render_docking_box_rejects_invalid_color() -> None:
+    """Non-int or out-of-range color raises ValueError."""
+    with pytest.raises(ValueError, match="color"):
+        render_docking_box_html(
+            pdb_path=str(_FIXTURE_PDB),
+            box_center=[0.0, 0.0, 0.0],
+            box_size=[10.0, 10.0, 10.0],
+            color="yellow",  # type: ignore[arg-type]
+        )
+    with pytest.raises(ValueError, match="color"):
+        render_docking_box_html(
+            pdb_path=str(_FIXTURE_PDB),
+            box_center=[0.0, 0.0, 0.0],
+            box_size=[10.0, 10.0, 10.0],
+            color=0x1000000,
+        )
+
+
 def test_render_protein_with_box_and_poses_html_api() -> None:
     """Box+poses HTML composes visualizeDockedLigands then renderBoundingBox."""
     payloads = [

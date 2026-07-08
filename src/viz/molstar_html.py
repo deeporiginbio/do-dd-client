@@ -513,6 +513,13 @@ def render_protein_with_pockets_and_poses_html(
     return _render_viewer_html(script_body=script_body)
 
 
+def _is_finite_number(value: object) -> bool:
+    """Return True if ``value`` is a finite int/float (not bool)."""
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return False
+    return math.isfinite(value)
+
+
 def _validate_docking_box_geometry(
     *,
     box_center: list[float],
@@ -535,16 +542,35 @@ def _validate_docking_box_geometry(
     """
     if len(box_center) != 3 or len(box_size) != 3:
         raise ValueError("box_center and box_size must each have length 3")
-    if any(not math.isfinite(value) for value in (*box_center, *box_size)):
+    if any(not _is_finite_number(value) for value in (*box_center, *box_size)):
         raise ValueError("box_center and box_size must be finite numbers")
     if any(size <= 0 for size in box_size):
         raise ValueError(f"box_size extents must be positive, got {box_size!r}")
-    if not math.isfinite(radius) or radius <= 0:
+    if not _is_finite_number(radius) or radius <= 0:
         raise ValueError(f"radius must be a positive finite number, got {radius!r}")
 
     min_corner = [box_center[i] - box_size[i] / 2 for i in range(3)]
     max_corner = [box_center[i] + box_size[i] / 2 for i in range(3)]
     return min_corner, max_corner
+
+
+def _validate_docking_box_color(color: object) -> int:
+    """Validate a docking-box hex color for safe JS embedding.
+
+    Args:
+        color: Hex color integer in ``[0, 0xFFFFFF]``.
+
+    Returns:
+        The validated color as ``int``.
+
+    Raises:
+        ValueError: If ``color`` is not an int in range (bools rejected).
+    """
+    if isinstance(color, bool) or not isinstance(color, int):
+        raise ValueError(f"color must be an int in [0, 0xFFFFFF], got {color!r}")
+    if color < 0 or color > 0xFFFFFF:
+        raise ValueError(f"color must be an int in [0, 0xFFFFFF], got {color!r}")
+    return color
 
 
 def render_docking_box_html(
@@ -572,13 +598,16 @@ def render_docking_box_html(
         A complete HTML document suitable for ``render_html()`` iframe embedding.
 
     Raises:
-        ValueError: If center/size are not length-3 finite vectors, or size <= 0.
+        ValueError: If center/size are not length-3 finite vectors, size <= 0,
+            radius is not a positive finite number, or ``color`` is not an
+            int in ``[0, 0xFFFFFF]``.
     """
     min_corner, max_corner = _validate_docking_box_geometry(
         box_center=box_center,
         box_size=box_size,
         radius=radius,
     )
+    color = _validate_docking_box_color(color)
 
     pdb_b64 = _encode_text_base64(_read_structure_file(pdb_path))
     min_json = _json_value_for_script_tag(min_corner)
@@ -638,7 +667,8 @@ def render_protein_with_box_and_poses_html(
         A complete HTML document suitable for ``render_html()`` iframe embedding.
 
     Raises:
-        ValueError: If box geometry is invalid or ``ligand_payloads`` is empty.
+        ValueError: If box geometry is invalid, ``ligand_payloads`` is empty, or
+            ``color`` is not an int in ``[0, 0xFFFFFF]``.
     """
     if not ligand_payloads:
         raise ValueError("ligand_payloads must be non-empty")
@@ -648,6 +678,7 @@ def render_protein_with_box_and_poses_html(
         box_size=box_size,
         radius=radius,
     )
+    color = _validate_docking_box_color(color)
 
     pdb_b64 = _encode_text_base64(_read_structure_file(pdb_path))
     ligands_json = _json_value_for_script_tag(ligand_payloads)
