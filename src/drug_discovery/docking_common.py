@@ -40,6 +40,66 @@ def resolve_docking_box_geometry(pocket: Pocket) -> tuple[list[float], list[floa
     return pocket_center, box_size
 
 
+def _pose_label_for_viewer(item: Ligand, index: int) -> str:
+    """Pick a LigandManager label: name → SMILES → ligand-{i}."""
+    name = getattr(item, "name", None)
+    if name and name not in ("", "Unknown_Ligand"):
+        return str(name)
+    smiles = getattr(item, "smiles", None) or getattr(item, "canonical_smiles", None)
+    if smiles:
+        return str(smiles)
+    return f"ligand-{index}"
+
+
+def normalize_pose_ligands(
+    poses: Ligand | LigandSet | list[Ligand],
+) -> list[Ligand]:
+    """Normalize a poses argument into a flat list of ``Ligand`` objects.
+
+    Args:
+        poses: A single ligand, ligand set, or list of ligands.
+
+    Returns:
+        Flat list of ligands.
+
+    Raises:
+        ValueError: If ``poses`` is empty after normalization.
+    """
+    if isinstance(poses, Ligand):
+        pose_ligands = [poses]
+    elif isinstance(poses, LigandSet):
+        pose_ligands = list(poses.ligands)
+    else:
+        pose_ligands = list(poses)
+    if not pose_ligands:
+        raise ValueError("poses must be non-empty")
+    return pose_ligands
+
+
+def ligand_payloads_for_viewer(
+    poses: Ligand | LigandSet | list[Ligand],
+) -> list[dict[str, object]]:
+    """Build per-ligand molstarLib payloads for docking visualizations.
+
+    Args:
+        poses: A single ligand, ligand set, or list of ligands.
+
+    Returns:
+        List of dicts suitable for ``render_protein_with_poses_html`` and
+        ``render_protein_with_box_and_poses_html``.
+    """
+    from deeporigin.viz.molstar_html import ligand_data_for_js
+
+    pose_ligands = normalize_pose_ligands(poses)
+    return [
+        ligand_data_for_js(
+            path=item.to_sdf(),
+            label=_pose_label_for_viewer(item, index),
+        )
+        for index, item in enumerate(pose_ligands)
+    ]
+
+
 def build_pocket_tool_params(
     pocket: Pocket,
     pocket_center: list[float],

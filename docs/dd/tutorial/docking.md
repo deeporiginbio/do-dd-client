@@ -101,6 +101,13 @@ docking = Docking(protein=protein, pocket=pocket, ligand=ligand)
 docking.show_box()
 ```
 
+To overlay docked poses with the search box (e.g. after `run()` / `get_poses()`):
+
+```{.python notest}
+poses = docking.get_poses()
+docking.show_box(poses=poses)
+```
+
 You should see something like this:
 
 <iframe 
@@ -200,6 +207,11 @@ To visualize the docked poses on the protein, use:
 poses.download()
 protein.show(poses=poses)
 ```
+
+All poses are loaded and overlaid on the protein. When there is more than one pose, a
+navigation bar appears at the bottom of the viewer: use its ◀ / ▶ buttons or the
+Left/Right arrow keys to cycle through an "all poses" view and each individual pose one
+at a time.
 
 <iframe 
     src="../../images/brd-docked-poses.html" 

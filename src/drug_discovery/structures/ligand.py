@@ -14,19 +14,18 @@ from typing import Any, Callable, ClassVar, Literal, Optional, Self, cast
 import warnings
 
 from beartype import beartype
-from deeporigin_molstar import MoleculeViewer
 import numpy as np
 import pandas as pd
 from rdkit import Chem, RDLogger
 from rdkit.Chem import AllChem, SaltRemover, rdMolDescriptors
 
 from deeporigin.drug_discovery.constants import LIGANDS_DIR, SUPPORTED_ATOM_SYMBOLS
-from deeporigin.drug_discovery.utils.visualize import jupyter_visualization
 from deeporigin.drug_discovery.validation import validate_fragments
 from deeporigin.exceptions import DeepOriginException
 from deeporigin.platform.client import DeepOriginClient
 from deeporigin.utils.constants import number
 from deeporigin.utils.env import _ensure_do_folder
+from deeporigin.viz.molstar_html import render_ligand_html
 
 from .entity import Entity
 
@@ -1526,23 +1525,18 @@ class Ligand(Entity):
         return MolToImage(self.mol)
 
     def _ligand_viewer_html(self) -> str:
-        """Raw HTML from the molstar viewer for this ligand (no iframe / display)."""
-        sdf_file = self.to_sdf()
-        viewer = MoleculeViewer(str(sdf_file), format="sdf")
-        ligand_config = viewer.get_ligand_visualization_config()
-        return viewer.render_ligand(ligand_config=ligand_config)
+        """Return iframe-ready HTML for this ligand via :func:`render_ligand_html`."""
+        return render_ligand_html(sdf_path=self.to_sdf())
 
-    def show(self) -> str | None:
-        """
-        Visualize the current state of the ligand molecule.
+    def show(self):
+        """Visualize the current state of the ligand molecule.
 
         Returns:
-        - str: HTML representation of the visualization.
+            Result of :func:`~deeporigin.utils.notebook.render_html` for the Mol*
+            viewer (``None`` after Jupyter display, or a marimo ``mo.Html`` wrapper).
 
         Raises:
-        - Exception: If visualization fails.
-
-
+            DeepOriginException: If visualization fails.
         """
         try:
             html = self._ligand_viewer_html()
@@ -2725,15 +2719,22 @@ class LigandSet:
         for ligand in self.ligands:
             ligand.add_hydrogens()
 
-    @jupyter_visualization
-    def show(self) -> str | None:
-        """
-        Visualize all ligands in this LigandSet in 3D
-        """
+    def show(self):
+        """Visualize all ligands in this LigandSet in 3D.
 
+        Uses the legacy ``deeporigin_molstar.MoleculeViewer`` because the hosted
+        molstarLib bundle does not yet split multi-molecule SDF files correctly.
+        Single-ligand :meth:`Ligand.show` uses the new molstarLib path.
+
+        Returns:
+            Result of :func:`~deeporigin.utils.notebook.render_html` for the Mol*
+            viewer (``None`` after Jupyter display, or a marimo ``mo.Html`` wrapper).
+        """
         sdf_file = self.to_sdf()
 
         try:
+            from deeporigin_molstar import MoleculeViewer
+
             viewer = MoleculeViewer(str(sdf_file), format="sdf")
             ligand_config = viewer.get_ligand_visualization_config()
             html = viewer.render_ligand(ligand_config=ligand_config)

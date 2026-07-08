@@ -162,3 +162,10 @@ errors on the reference)
 Being replaced by the in-client `deeporigin.viz` HTML builder and hosted
 `molstarLib` at `os.dev.deeporigin.io`.
 _Avoid_: `biosim_molstar` when referring to the pip package name (`deeporigin-molstar`)
+
+**Docking search box**:
+Axis-aligned wireframe of the docking tool's search extents, derived from
+pocket center and `box_size_{x,y,z}` (same geometry submitted with docking).
+Shown via `Docking.show_box()` / `ConstrainedDocking.show_box()`.
+_Avoid_: pocket box; docking pocket (when meaning pocket surfaces); conflating
+with `Protein.show(pockets=...)` gaussian surfaces

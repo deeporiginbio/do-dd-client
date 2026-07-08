@@ -456,11 +456,38 @@ def test_embed():
     ligands.embed()
 
 
-def test_show():
-    """Test that we can show a LigandSet"""
+def test_show(monkeypatch):
+    """Test that LigandSet.show uses legacy MoleculeViewer (multi-mol SDF)."""
+    captured: dict[str, object] = {}
+
+    class FakeViewer:
+        def __init__(self, path: str, format: str = "sdf") -> None:
+            captured["path"] = path
+            captured["format"] = format
+
+        def get_ligand_visualization_config(self) -> dict:
+            return {"fake": True}
+
+        def render_ligand(self, *, ligand_config: dict) -> str:
+            captured["ligand_config"] = ligand_config
+            return "<div id='legacy-ligand-set'>ok</div>"
+
+    monkeypatch.setattr(
+        "deeporigin_molstar.MoleculeViewer",
+        FakeViewer,
+    )
+    monkeypatch.setattr(
+        "deeporigin.utils.notebook.render_html",
+        lambda html, **_kwargs: html,
+    )
 
     ligands = LigandSet.from_smiles(BRD_SMILES)
-    ligands.show()
+    result = ligands.show()
+
+    assert result == "<div id='legacy-ligand-set'>ok</div>"
+    assert captured["format"] == "sdf"
+    assert Path(str(captured["path"])).suffix == ".sdf"
+    assert captured["ligand_config"] == {"fake": True}
 
 
 def test_from_dir():

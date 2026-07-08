@@ -23,7 +23,6 @@ from deeporigin.drug_discovery.notebook_watch_mixin import NotebookWatchMixin
 from deeporigin.drug_discovery.structures.ligand import Ligand, LigandSet
 from deeporigin.drug_discovery.structures.pocket import Pocket
 from deeporigin.drug_discovery.structures.protein import Protein
-from deeporigin.drug_discovery.utils.visualize import jupyter_visualization
 from deeporigin.exceptions import DeepOriginException
 from deeporigin.platform.client import DeepOriginClient
 from deeporigin.platform.constants import TOOL_KEYS_AND_VERSIONS, is_success_status
@@ -714,9 +713,28 @@ class ConstrainedDocking(
         poses.download(client=self.client, lazy=True)
         return poses
 
-    @jupyter_visualization
-    def show_box(self) -> str:
-        """Visualize the protein with the docking search box in a Jupyter notebook."""
+    def show_box(
+        self,
+        *,
+        poses: Ligand | LigandSet | list[Ligand] | None = None,
+    ):
+        """Visualize the protein with the docking search box in a Jupyter notebook.
+
+        When ``poses`` is provided, docked ligands are overlaid with the wireframe
+        search box (``visualizeDockedLigands`` + ``renderBoundingBox``).
+
+        Args:
+            poses: Optional docked pose(s) to overlay with the search box. Accepts a
+                single :class:`Ligand`, a :class:`LigandSet`, or a list of ligands.
+
+        Returns:
+            Result of :func:`~deeporigin.utils.notebook.render_html` for the Mol*
+            viewer (``None`` after Jupyter display, or a marimo ``mo.Html`` wrapper).
+
+        Raises:
+            DeepOriginException: If the protein structure cannot be loaded locally.
+            ValueError: If ``poses`` is an empty collection.
+        """
         if self.protein.structure is None:
             self.protein.download(client=self.client)
         if self.protein.structure is None:
@@ -728,14 +746,28 @@ class ConstrainedDocking(
                 ),
             ) from None
 
+        from deeporigin.drug_discovery.docking_common import ligand_payloads_for_viewer
+        from deeporigin.utils.notebook import render_html
+        from deeporigin.viz.molstar_html import (
+            render_docking_box_html,
+            render_protein_with_box_and_poses_html,
+        )
+
         protein_file = self.protein._dump_state()
         pocket_center, box_size = resolve_docking_box_geometry(self.pocket)
-
-        from deeporigin_molstar import DockingViewer
-
-        return DockingViewer().render_bounding_box(
-            protein_data=protein_file,
-            protein_format="pdb",
-            box_center=pocket_center,
-            box_size=box_size,
+        if poses is None:
+            return render_html(
+                render_docking_box_html(
+                    pdb_path=protein_file,
+                    box_center=list(pocket_center),
+                    box_size=list(box_size),
+                )
+            )
+        return render_html(
+            render_protein_with_box_and_poses_html(
+                pdb_path=protein_file,
+                box_center=list(pocket_center),
+                box_size=list(box_size),
+                ligand_payloads=ligand_payloads_for_viewer(poses),
+            )
         )

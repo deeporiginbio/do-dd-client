@@ -17,8 +17,10 @@ MOLSTAR_JS_URL = "https://os.dev.deeporigin.io/molstar/latest/index.js"
 MOLSTAR_HOST_ASSET_BASE_URL = "https://os.deeporigin.io/host/"
 
 _VIEWER_CONTAINER_ID = "DeepOriginMolstarViewer"
-_DEFAULT_POCKET_SURFACE_ALPHA = 0.7
+_DEFAULT_POCKET_SURFACE_ALPHA = 0.25
 _DEFAULT_PROTEIN_SURFACE_ALPHA = 0.1
+_DEFAULT_DOCKING_BOX_RADIUS = 0.2
+_DEFAULT_DOCKING_BOX_COLOR = 0xFFFF00
 
 _CSS_NAMED_COLORS: dict[str, int] = {
     "aliceblue": 0xF0F8FF,
@@ -257,7 +259,7 @@ def render_protein_with_pockets_html(
         pocket_labels: Display labels, one per pocket.
         protein_style: Mol* representation type for the protein polymer.
         protein_surface_alpha: Surface opacity for the protein (legacy default 0.1).
-        pocket_surface_alpha: Surface opacity for pockets (legacy default 0.7).
+        pocket_surface_alpha: Surface opacity for pockets (default 0.25).
 
     Returns:
         A complete HTML document suitable for ``render_html()`` iframe embedding.
@@ -312,6 +314,405 @@ def render_protein_with_pockets_html(
         "ball-and-stick",
         {pocket_surface_alpha},
       );
+    }};"""
+
+    return _render_viewer_html(script_body=script_body)
+
+
+def ligand_data_for_js(*, path: str, label: str | None = None) -> dict[str, object]:
+    """Build a docked-ligand payload for embedding in generated Mol* HTML.
+
+    Args:
+        path: Path to an SDF file on disk.
+        label: Optional display label for the ligand in the viewer.
+
+    Returns:
+        Dict with base64-encoded SDF data and an optional label.
+    """
+    payload: dict[str, object] = {
+        "dataB64": _encode_text_base64(_read_structure_file(path)),
+    }
+    if label is not None:
+        payload["label"] = label
+    return payload
+
+
+def _decode_ligand_payloads_js(variable_name: str = "ligandPayloads") -> str:
+    """Return JS that maps base64 ligand payloads to ``DockedLigandData`` objects."""
+    return f"""const ligands = {variable_name}.map((ligand) => {{
+        const entry = {{ data: atob(ligand.dataB64) }};
+        if (ligand.label !== undefined) {{
+          entry.label = ligand.label;
+        }}
+        return entry;
+      }});"""
+
+
+def render_ligand_html(*, sdf_path: str, style: str = "ball-and-stick") -> str:
+    """Build iframe-ready HTML for a single-ligand SDF.
+
+    For multi-ligand sets, prefer :meth:`LigandSet.show` (legacy viewer): the hosted
+    molstarLib bundle does not yet split multi-molecule SDF files correctly.
+
+    Args:
+        sdf_path: Path to a single-molecule SDF file on disk.
+        style: Mol* representation type for the ligand (default ``ball-and-stick``).
+
+    Returns:
+        A complete HTML document suitable for ``render_html()`` iframe embedding.
+    """
+    sdf_b64 = _encode_text_base64(_read_structure_file(sdf_path))
+    style_json = _json_for_script_tag(style)
+
+    script_body = f"""const initViewer = async () => {{
+      if (typeof molstarLib === "undefined" || typeof molstarLib.initViewer !== "function") {{
+        throw new Error("molstarLib bundle did not load from {MOLSTAR_JS_URL}");
+      }}
+      const viewer = await molstarLib.initViewer("{_VIEWER_CONTAINER_ID}");
+      const ligandData = atob("{sdf_b64}");
+      await viewer.api.loadFromRawContent(
+        ligandData,
+        "sdf",
+        "ligand",
+        {style_json},
+      );
+    }};"""
+
+    return _render_viewer_html(script_body=script_body)
+
+
+def render_protein_with_poses_html(
+    *,
+    pdb_path: str,
+    ligand_payloads: list[dict[str, object]],
+    protein_style: str = "cartoon",
+    ligand_style: str = "ball-and-stick",
+) -> str:
+    """Build iframe-ready HTML for a protein with docked ligand poses.
+
+    Args:
+        pdb_path: Path to the protein PDB file on disk.
+        ligand_payloads: Per-ligand dicts from :func:`ligand_data_for_js`.
+        protein_style: Mol* representation type for the protein polymer.
+        ligand_style: Mol* representation type for docked ligands.
+
+    Returns:
+        A complete HTML document suitable for ``render_html()`` iframe embedding.
+
+    Raises:
+        ValueError: If ``ligand_payloads`` is empty.
+    """
+    if not ligand_payloads:
+        raise ValueError("ligand_payloads must be non-empty")
+
+    pdb_b64 = _encode_text_base64(_read_structure_file(pdb_path))
+    ligands_json = _json_value_for_script_tag(ligand_payloads)
+    protein_style_json = _json_for_script_tag(protein_style)
+    ligand_style_json = _json_for_script_tag(ligand_style)
+    decode_ligands = _decode_ligand_payloads_js()
+
+    script_body = f"""const initViewer = async () => {{
+      if (typeof molstarLib === "undefined" || typeof molstarLib.initViewer !== "function") {{
+        throw new Error("molstarLib bundle did not load from {MOLSTAR_JS_URL}");
+      }}
+      const viewer = await molstarLib.initViewer("{_VIEWER_CONTAINER_ID}");
+      const proteinData = atob("{pdb_b64}");
+      const ligandPayloads = {ligands_json};
+      {decode_ligands}
+      await viewer.api.visualizeDockedLigands(
+        proteinData,
+        "pdb",
+        ligands,
+        "sdf",
+        {protein_style_json},
+        {ligand_style_json},
+      );
+    }};"""
+
+    return _render_viewer_html(script_body=script_body)
+
+
+def render_protein_with_pockets_and_poses_html(
+    *,
+    pdb_path: str,
+    pocket_paths: list[str],
+    pocket_colors: list[str],
+    pocket_labels: list[str],
+    ligand_payloads: list[dict[str, object]],
+    protein_style: str = "cartoon",
+    ligand_style: str = "ball-and-stick",
+    pocket_surface_alpha: float = _DEFAULT_POCKET_SURFACE_ALPHA,
+) -> str:
+    """Build iframe-ready HTML for protein + pockets + docked poses.
+
+    Args:
+        pdb_path: Path to the protein PDB file on disk.
+        pocket_paths: Paths to pocket structure files on disk.
+        pocket_colors: CSS color strings, one per pocket.
+        pocket_labels: Display labels, one per pocket.
+        ligand_payloads: Per-ligand dicts from :func:`ligand_data_for_js`.
+        protein_style: Mol* representation type for the protein polymer.
+        ligand_style: Mol* representation type for docked ligands.
+        pocket_surface_alpha: Surface opacity for pockets.
+
+    Returns:
+        A complete HTML document suitable for ``render_html()`` iframe embedding.
+
+    Raises:
+        ValueError: If pocket lists differ in length or ``ligand_payloads`` is empty.
+    """
+    if not (len(pocket_paths) == len(pocket_colors) == len(pocket_labels)):
+        raise ValueError(
+            "pocket_paths, pocket_colors, and pocket_labels must have the same length"
+        )
+    if not ligand_payloads:
+        raise ValueError("ligand_payloads must be non-empty")
+
+    pocket_surface_alpha = _validate_surface_alpha(
+        "pocket_surface_alpha", pocket_surface_alpha
+    )
+
+    pdb_b64 = _encode_text_base64(_read_structure_file(pdb_path))
+    pocket_payloads = [
+        pocket_data_for_js(path=path, color=color, label=label)
+        for path, color, label in zip(
+            pocket_paths, pocket_colors, pocket_labels, strict=True
+        )
+    ]
+    pockets_json = _json_value_for_script_tag(pocket_payloads)
+    ligands_json = _json_value_for_script_tag(ligand_payloads)
+    protein_style_json = _json_for_script_tag(protein_style)
+    ligand_style_json = _json_for_script_tag(ligand_style)
+    decode_ligands = _decode_ligand_payloads_js()
+
+    script_body = f"""const initViewer = async () => {{
+      if (typeof molstarLib === "undefined" || typeof molstarLib.initViewer !== "function") {{
+        throw new Error("molstarLib bundle did not load from {MOLSTAR_JS_URL}");
+      }}
+      const viewer = await molstarLib.initViewer("{_VIEWER_CONTAINER_ID}");
+      const proteinData = atob("{pdb_b64}");
+      const pocketPayloads = {pockets_json};
+      const pocketDataList = pocketPayloads.map((pocket) => ({{
+        data: atob(pocket.dataB64),
+        color: pocket.color,
+        label: pocket.label,
+      }}));
+      const ligandPayloads = {ligands_json};
+      {decode_ligands}
+      await viewer.api.renderStructureWithPocketsAndLigands(
+        proteinData,
+        "pdb",
+        pocketDataList,
+        "pdb",
+        ligands,
+        "sdf",
+        "gaussian-surface",
+        {pocket_surface_alpha},
+        {protein_style_json},
+        {ligand_style_json},
+      );
+    }};"""
+
+    return _render_viewer_html(script_body=script_body)
+
+
+def _is_finite_number(value: object) -> bool:
+    """Return True if ``value`` is a finite int/float (not bool)."""
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return False
+    return math.isfinite(value)
+
+
+def _validate_docking_box_geometry(
+    *,
+    box_center: list[float],
+    box_size: list[float],
+    radius: float,
+) -> tuple[list[float], list[float]]:
+    """Validate docking-box inputs and return ``(min_corner, max_corner)``.
+
+    Args:
+        box_center: Docking box center ``[x, y, z]`` in angstroms.
+        box_size: Docking box extents ``[sx, sy, sz]`` in angstroms.
+        radius: Wireframe mesh radius.
+
+    Returns:
+        Min and max corners derived from center ± half-size.
+
+    Raises:
+        ValueError: If center/size are not length-3 finite vectors, size <= 0,
+            or radius is not a positive finite number.
+    """
+    if len(box_center) != 3 or len(box_size) != 3:
+        raise ValueError("box_center and box_size must each have length 3")
+    if any(not _is_finite_number(value) for value in (*box_center, *box_size)):
+        raise ValueError("box_center and box_size must be finite numbers")
+    if any(size <= 0 for size in box_size):
+        raise ValueError(f"box_size extents must be positive, got {box_size!r}")
+    if not _is_finite_number(radius) or radius <= 0:
+        raise ValueError(f"radius must be a positive finite number, got {radius!r}")
+
+    min_corner = [box_center[i] - box_size[i] / 2 for i in range(3)]
+    max_corner = [box_center[i] + box_size[i] / 2 for i in range(3)]
+    return min_corner, max_corner
+
+
+def _validate_docking_box_color(color: object) -> int:
+    """Validate a docking-box hex color for safe JS embedding.
+
+    Args:
+        color: Hex color integer in ``[0, 0xFFFFFF]``.
+
+    Returns:
+        The validated color as ``int``.
+
+    Raises:
+        ValueError: If ``color`` is not an int in range (bools rejected).
+    """
+    if isinstance(color, bool) or not isinstance(color, int):
+        raise ValueError(f"color must be an int in [0, 0xFFFFFF], got {color!r}")
+    if color < 0 or color > 0xFFFFFF:
+        raise ValueError(f"color must be an int in [0, 0xFFFFFF], got {color!r}")
+    return color
+
+
+def render_docking_box_html(
+    *,
+    pdb_path: str,
+    box_center: list[float],
+    box_size: list[float],
+    radius: float = _DEFAULT_DOCKING_BOX_RADIUS,
+    color: int = _DEFAULT_DOCKING_BOX_COLOR,
+) -> str:
+    """Build iframe-ready HTML for a protein with a docking search box.
+
+    Uses a duck-typed ``{{min, max}}`` object in place of Mol* ``Box3D`` because the
+    hosted molstarLib IIFE does not yet export ``Box3D`` / ``Vec3``. See ADR
+    ``docs/adr/0001-docking-box-without-exported-box3d.md``.
+
+    Args:
+        pdb_path: Path to the protein PDB file on disk.
+        box_center: Docking box center ``[x, y, z]`` in angstroms.
+        box_size: Docking box extents ``[sx, sy, sz]`` in angstroms.
+        radius: Wireframe mesh radius (default ``0.2``).
+        color: Hex color integer for the box (default ``0xFFFF00``).
+
+    Returns:
+        A complete HTML document suitable for ``render_html()`` iframe embedding.
+
+    Raises:
+        ValueError: If center/size are not length-3 finite vectors, size <= 0,
+            radius is not a positive finite number, or ``color`` is not an
+            int in ``[0, 0xFFFFFF]``.
+    """
+    min_corner, max_corner = _validate_docking_box_geometry(
+        box_center=box_center,
+        box_size=box_size,
+        radius=radius,
+    )
+    color = _validate_docking_box_color(color)
+
+    pdb_b64 = _encode_text_base64(_read_structure_file(pdb_path))
+    min_json = _json_value_for_script_tag(min_corner)
+    max_json = _json_value_for_script_tag(max_corner)
+
+    script_body = f"""const initViewer = async () => {{
+      if (typeof molstarLib === "undefined" || typeof molstarLib.initViewer !== "function") {{
+        throw new Error("molstarLib bundle did not load from {MOLSTAR_JS_URL}");
+      }}
+      const viewer = await molstarLib.initViewer("{_VIEWER_CONTAINER_ID}");
+      const proteinData = atob("{pdb_b64}");
+      const structureRef = await viewer.api.loadFromRawContent(
+        proteinData,
+        "pdb",
+        "protein",
+        "cartoon",
+      );
+      // Duck-typed Box3D: molstarLib IIFE does not export Box3D/Vec3 yet.
+      const box = {{ min: {min_json}, max: {max_json} }};
+      await viewer.api.renderBoundingBox(structureRef, box, {{
+        radius: {radius},
+        color: {color},
+      }});
+    }};"""
+
+    return _render_viewer_html(script_body=script_body)
+
+
+def render_protein_with_box_and_poses_html(
+    *,
+    pdb_path: str,
+    box_center: list[float],
+    box_size: list[float],
+    ligand_payloads: list[dict[str, object]],
+    protein_style: str = "cartoon",
+    ligand_style: str = "ball-and-stick",
+    radius: float = _DEFAULT_DOCKING_BOX_RADIUS,
+    color: int = _DEFAULT_DOCKING_BOX_COLOR,
+) -> str:
+    """Build iframe-ready HTML for protein + docking box + docked poses.
+
+    Composes ``visualizeDockedLigands`` (returns a structure ref) with
+    ``renderBoundingBox`` on that ref. There is no dedicated molstarLib method for
+    this combo; the CLI composes existing APIs.
+
+    Args:
+        pdb_path: Path to the protein PDB file on disk.
+        box_center: Docking box center ``[x, y, z]`` in angstroms.
+        box_size: Docking box extents ``[sx, sy, sz]`` in angstroms.
+        ligand_payloads: Per-ligand dicts from :func:`ligand_data_for_js`.
+        protein_style: Mol* representation type for the protein polymer.
+        ligand_style: Mol* representation type for docked ligands.
+        radius: Wireframe mesh radius (default ``0.2``).
+        color: Hex color integer for the box (default ``0xFFFF00``).
+
+    Returns:
+        A complete HTML document suitable for ``render_html()`` iframe embedding.
+
+    Raises:
+        ValueError: If box geometry is invalid, ``ligand_payloads`` is empty, or
+            ``color`` is not an int in ``[0, 0xFFFFFF]``.
+    """
+    if not ligand_payloads:
+        raise ValueError("ligand_payloads must be non-empty")
+
+    min_corner, max_corner = _validate_docking_box_geometry(
+        box_center=box_center,
+        box_size=box_size,
+        radius=radius,
+    )
+    color = _validate_docking_box_color(color)
+
+    pdb_b64 = _encode_text_base64(_read_structure_file(pdb_path))
+    ligands_json = _json_value_for_script_tag(ligand_payloads)
+    protein_style_json = _json_for_script_tag(protein_style)
+    ligand_style_json = _json_for_script_tag(ligand_style)
+    min_json = _json_value_for_script_tag(min_corner)
+    max_json = _json_value_for_script_tag(max_corner)
+    decode_ligands = _decode_ligand_payloads_js()
+
+    script_body = f"""const initViewer = async () => {{
+      if (typeof molstarLib === "undefined" || typeof molstarLib.initViewer !== "function") {{
+        throw new Error("molstarLib bundle did not load from {MOLSTAR_JS_URL}");
+      }}
+      const viewer = await molstarLib.initViewer("{_VIEWER_CONTAINER_ID}");
+      const proteinData = atob("{pdb_b64}");
+      const ligandPayloads = {ligands_json};
+      {decode_ligands}
+      const structureRef = await viewer.api.visualizeDockedLigands(
+        proteinData,
+        "pdb",
+        ligands,
+        "sdf",
+        {protein_style_json},
+        {ligand_style_json},
+      );
+      // Duck-typed Box3D: molstarLib IIFE does not export Box3D/Vec3 yet.
+      const box = {{ min: {min_json}, max: {max_json} }};
+      await viewer.api.renderBoundingBox(structureRef, box, {{
+        radius: {radius},
+        color: {color},
+      }});
     }};"""
 
     return _render_viewer_html(script_body=script_body)
