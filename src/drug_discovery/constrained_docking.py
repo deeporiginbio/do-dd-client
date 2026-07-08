@@ -352,6 +352,8 @@ class ConstrainedDocking(
         if ligand is not None:
             ligands = LigandSet(ligands=[ligand])
         assert ligands is not None
+        if len(ligands) == 0:
+            raise ValueError("At least one test ligand is required.")
 
         super().__init__(client=client)
         self.tool_version = tool_version
