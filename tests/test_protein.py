@@ -98,10 +98,14 @@ def test_bounding_box_volume_lv0():
     assert volume > 0
 
 
-def test_bounding_box_volume_requires_loaded_structure(monkeypatch) -> None:
-    """bounding_box_volume raises ValueError when structure is unavailable."""
-    protein = Protein(name="test", structure=None, remote_path="testing/brd.pdb")
-    monkeypatch.setattr(protein, "download", lambda **kwargs: None)
+def test_bounding_box_volume_requires_loaded_structure(
+    client: DeepOriginClient,
+) -> None:
+    """Metadata-only platform proteins cannot compute bounding box volume."""
+    protein = Protein.from_id("metadata-only-bbox", client=client)
+
+    assert protein.structure is None
+    assert protein.remote_path is None
 
     with pytest.raises(ValueError, match="Protein structure is not loaded"):
         protein.bounding_box_volume()

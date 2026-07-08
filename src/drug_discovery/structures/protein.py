@@ -480,7 +480,10 @@ class Protein(Entity):
         Raises:
             ValueError: If the protein structure is not loaded.
         """
-        self.download(lazy=True)
+        if self.structure is None:
+            if self.local_path is None and self.remote_path is None:
+                raise ValueError("Protein structure is not loaded.")
+            self.download(lazy=True)
         if self.structure is None:
             raise ValueError("Protein structure is not loaded.")
 
