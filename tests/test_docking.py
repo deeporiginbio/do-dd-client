@@ -191,6 +191,22 @@ def test_show_box_with_poses_calls_box_and_poses_html(
     assert Path(call_kwargs["pdb_path"]).is_file()
 
 
+def test_show_box_empty_poses_raises(
+    registered_protein,
+    unregistered_pocket,
+    registered_ligand,
+) -> None:
+    """show_box(poses=[]) raises ValueError before rendering."""
+    docking = Docking(
+        protein=registered_protein,
+        pocket=unregistered_pocket,
+        ligand=registered_ligand,
+    )
+
+    with pytest.raises(ValueError, match="non-empty"):
+        docking.show_box(poses=[])
+
+
 def test_docking_accepts_single_ligand(
     registered_protein, unregistered_pocket, registered_ligand
 ):
