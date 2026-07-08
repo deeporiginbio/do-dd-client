@@ -458,8 +458,6 @@ def test_embed():
 
 def test_show(monkeypatch):
     """Test that LigandSet.show uses legacy MoleculeViewer (multi-mol SDF)."""
-    from deeporigin.drug_discovery.structures import ligand as ligand_mod
-
     captured: dict[str, object] = {}
 
     class FakeViewer:
@@ -474,7 +472,10 @@ def test_show(monkeypatch):
             captured["ligand_config"] = ligand_config
             return "<div id='legacy-ligand-set'>ok</div>"
 
-    monkeypatch.setattr(ligand_mod, "MoleculeViewer", FakeViewer)
+    monkeypatch.setattr(
+        "deeporigin_molstar.MoleculeViewer",
+        FakeViewer,
+    )
     monkeypatch.setattr(
         "deeporigin.utils.notebook.render_html",
         lambda html, **_kwargs: html,

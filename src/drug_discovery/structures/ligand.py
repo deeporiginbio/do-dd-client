@@ -14,7 +14,6 @@ from typing import Any, Callable, ClassVar, Literal, Optional, Self, cast
 import warnings
 
 from beartype import beartype
-from deeporigin_molstar import MoleculeViewer
 import numpy as np
 import pandas as pd
 from rdkit import Chem, RDLogger
@@ -2732,6 +2731,8 @@ class LigandSet:
         sdf_file = self.to_sdf()
 
         try:
+            from deeporigin_molstar import MoleculeViewer
+
             viewer = MoleculeViewer(str(sdf_file), format="sdf")
             ligand_config = viewer.get_ligand_visualization_config()
             html = viewer.render_ligand(ligand_config=ligand_config)
