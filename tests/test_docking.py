@@ -150,6 +150,47 @@ def test_show_box_calls_render_docking_box_html(
     assert Path(call_kwargs["pdb_path"]).is_file()
 
 
+def test_show_box_with_poses_calls_box_and_poses_html(
+    registered_protein,
+    unregistered_pocket,
+    registered_ligand,
+) -> None:
+    """show_box(poses=...) uses render_protein_with_box_and_poses_html."""
+    docking = Docking(
+        protein=registered_protein,
+        pocket=unregistered_pocket,
+        ligand=registered_ligand,
+    )
+    center, box_size = docking._resolve_docking_box_geometry()
+    mock_builder = MagicMock(return_value="<html>box+poses</html>")
+    payloads = [{"dataB64": "abc", "label": "pose-1"}]
+
+    with (
+        patch(
+            "deeporigin.drug_discovery.docking_common.ligand_payloads_for_viewer",
+            return_value=payloads,
+        ) as mock_payloads,
+        patch(
+            "deeporigin.viz.molstar_html.render_protein_with_box_and_poses_html",
+            mock_builder,
+        ),
+        patch(
+            "deeporigin.utils.notebook.render_html",
+            side_effect=lambda html: html,
+        ),
+    ):
+        html = docking.show_box(poses=registered_ligand)
+
+    assert html == "<html>box+poses</html>"
+    mock_payloads.assert_called_once_with(registered_ligand)
+    mock_builder.assert_called_once()
+    call_kwargs = mock_builder.call_args.kwargs
+    assert call_kwargs["box_center"] == list(center)
+    assert call_kwargs["box_size"] == list(box_size)
+    assert call_kwargs["ligand_payloads"] == payloads
+    assert Path(call_kwargs["pdb_path"]).is_file()
+
+
 def test_docking_accepts_single_ligand(
     registered_protein, unregistered_pocket, registered_ligand
 ):

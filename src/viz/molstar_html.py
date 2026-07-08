@@ -17,7 +17,7 @@ MOLSTAR_JS_URL = "https://os.dev.deeporigin.io/molstar/latest/index.js"
 MOLSTAR_HOST_ASSET_BASE_URL = "https://os.deeporigin.io/host/"
 
 _VIEWER_CONTAINER_ID = "DeepOriginMolstarViewer"
-_DEFAULT_POCKET_SURFACE_ALPHA = 0.7
+_DEFAULT_POCKET_SURFACE_ALPHA = 0.25
 _DEFAULT_PROTEIN_SURFACE_ALPHA = 0.1
 _DEFAULT_DOCKING_BOX_RADIUS = 0.2
 _DEFAULT_DOCKING_BOX_COLOR = 0xFFFF00
@@ -177,46 +177,6 @@ def _render_viewer_html(*, script_body: str) -> str:
       width: 100%;
       height: 100vh;
     }}
-    .do-pose-nav {{
-      position: fixed;
-      bottom: 12px;
-      left: 50%;
-      transform: translateX(-50%);
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      padding: 6px 10px;
-      background: rgba(255, 255, 255, 0.92);
-      border: 1px solid #d0d0d0;
-      border-radius: 8px;
-      box-shadow: 0 1px 4px rgba(0, 0, 0, 0.15);
-      font-family: sans-serif;
-      font-size: 13px;
-      color: #222;
-      z-index: 10;
-      user-select: none;
-    }}
-    .do-pose-nav-btn {{
-      border: 1px solid #c0c0c0;
-      background: #f7f7f7;
-      border-radius: 6px;
-      width: 28px;
-      height: 28px;
-      cursor: pointer;
-      font-size: 12px;
-      line-height: 1;
-      color: #222;
-    }}
-    .do-pose-nav-btn:hover {{
-      background: #ececec;
-    }}
-    .do-pose-nav-label {{
-      min-width: 180px;
-      text-align: center;
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
-    }}
   </style>
 </head>
 <body>
@@ -299,7 +259,7 @@ def render_protein_with_pockets_html(
         pocket_labels: Display labels, one per pocket.
         protein_style: Mol* representation type for the protein polymer.
         protein_surface_alpha: Surface opacity for the protein (legacy default 0.1).
-        pocket_surface_alpha: Surface opacity for pockets (legacy default 0.7).
+        pocket_surface_alpha: Surface opacity for pockets (default 0.25).
 
     Returns:
         A complete HTML document suitable for ``render_html()`` iframe embedding.
@@ -388,112 +348,6 @@ def _decode_ligand_payloads_js(variable_name: str = "ligandPayloads") -> str:
       }});"""
 
 
-def _pose_navigation_js(*, labels_json: str) -> str:
-    """Return JS that adds a prev/next pose-navigation overlay to the viewer.
-
-    Assumes a molstarLib ``viewer`` is in scope and that docked poses have been
-    loaded and tagged ``ligand-0 .. ligand-(N-1)`` (e.g. by
-    ``visualizeDockedLigands``). Renders a control bar with arrow buttons and wires
-    ArrowLeft/ArrowRight keyboard shortcuts. The navigation cycles through an
-    "all poses" state (``-1``) and each individual pose (``0 .. N-1``): the all
-    state shows every pose overlaid via ``toggleAllLigandsVisibility(true)`` while
-    a single-pose state isolates one pose via ``viewer.api.showLigandAtIndex``.
-
-    Args:
-        labels_json: JSON array of per-pose labels, script-tag-safe encoded.
-
-    Returns:
-        A JavaScript snippet to embed inside the viewer init function.
-    """
-    return f"""
-      const poseLabels = {labels_json};
-      const poseCount = poseLabels.length;
-      if (poseCount > 1) {{
-        const plugin = viewer.getPlugin();
-        let currentPose = -1;
-        let poseBusy = false;
-
-        const navBar = document.createElement("div");
-        navBar.className = "do-pose-nav";
-        const prevBtn = document.createElement("button");
-        prevBtn.type = "button";
-        prevBtn.className = "do-pose-nav-btn";
-        prevBtn.setAttribute("aria-label", "Previous pose");
-        prevBtn.textContent = "\\u25C0";
-        const nextBtn = document.createElement("button");
-        nextBtn.type = "button";
-        nextBtn.className = "do-pose-nav-btn";
-        nextBtn.setAttribute("aria-label", "Next pose");
-        nextBtn.textContent = "\\u25B6";
-        const navLabel = document.createElement("span");
-        navLabel.className = "do-pose-nav-label";
-        navBar.appendChild(prevBtn);
-        navBar.appendChild(navLabel);
-        navBar.appendChild(nextBtn);
-        document.body.appendChild(navBar);
-
-        const renderNavLabel = () => {{
-          if (currentPose === -1) {{
-            navLabel.textContent = "All poses (" + poseCount + ")";
-          }} else {{
-            const name = poseLabels[currentPose];
-            const suffix = name ? ": " + name : "";
-            navLabel.textContent =
-              "Pose " + (currentPose + 1) + "/" + poseCount + suffix;
-          }}
-        }};
-
-        const applyPoseState = async () => {{
-          if (poseBusy) return;
-          poseBusy = true;
-          try {{
-            if (currentPose === -1) {{
-              await plugin.ligandManager?.toggleAllLigandsVisibility(true);
-            }} else {{
-              await viewer.api.showLigandAtIndex(currentPose);
-            }}
-          }} catch (err) {{
-            console.error("Pose navigation failed:", err);
-          }} finally {{
-            poseBusy = false;
-          }}
-        }};
-
-        // Cycle: all -> 0 -> 1 -> ... -> N-1 -> all
-        const stepPose = (delta) => {{
-          currentPose += delta;
-          if (currentPose < -1) currentPose = poseCount - 1;
-          if (currentPose >= poseCount) currentPose = -1;
-          renderNavLabel();
-          applyPoseState();
-        }};
-
-        prevBtn.addEventListener("click", () => stepPose(-1));
-        nextBtn.addEventListener("click", () => stepPose(1));
-        window.addEventListener("keydown", (event) => {{
-          if (event.key === "ArrowRight") {{
-            event.preventDefault();
-            stepPose(1);
-          }} else if (event.key === "ArrowLeft") {{
-            event.preventDefault();
-            stepPose(-1);
-          }}
-        }});
-
-        renderNavLabel();
-      }}
-    """
-
-
-def _pose_labels_json(ligand_payloads: list[dict[str, object]]) -> str:
-    """Build a script-tag-safe JSON array of pose labels from ligand payloads."""
-    labels = [
-        str(payload["label"]) if "label" in payload else ""
-        for payload in ligand_payloads
-    ]
-    return _json_value_for_script_tag(labels)
-
-
 def render_ligand_html(*, sdf_path: str, style: str = "ball-and-stick") -> str:
     """Build iframe-ready HTML for a ligand (or combined ligand-set) SDF.
 
@@ -553,9 +407,6 @@ def render_protein_with_poses_html(
     protein_style_json = _json_for_script_tag(protein_style)
     ligand_style_json = _json_for_script_tag(ligand_style)
     decode_ligands = _decode_ligand_payloads_js()
-    pose_navigation = _pose_navigation_js(
-        labels_json=_pose_labels_json(ligand_payloads)
-    )
 
     script_body = f"""const initViewer = async () => {{
       if (typeof molstarLib === "undefined" || typeof molstarLib.initViewer !== "function") {{
@@ -573,7 +424,6 @@ def render_protein_with_poses_html(
         {protein_style_json},
         {ligand_style_json},
       );
-      {pose_navigation}
     }};"""
 
     return _render_viewer_html(script_body=script_body)
@@ -631,9 +481,6 @@ def render_protein_with_pockets_and_poses_html(
     protein_style_json = _json_for_script_tag(protein_style)
     ligand_style_json = _json_for_script_tag(ligand_style)
     decode_ligands = _decode_ligand_payloads_js()
-    pose_navigation = _pose_navigation_js(
-        labels_json=_pose_labels_json(ligand_payloads)
-    )
 
     script_body = f"""const initViewer = async () => {{
       if (typeof molstarLib === "undefined" || typeof molstarLib.initViewer !== "function") {{
@@ -661,10 +508,43 @@ def render_protein_with_pockets_and_poses_html(
         {protein_style_json},
         {ligand_style_json},
       );
-      {pose_navigation}
     }};"""
 
     return _render_viewer_html(script_body=script_body)
+
+
+def _validate_docking_box_geometry(
+    *,
+    box_center: list[float],
+    box_size: list[float],
+    radius: float,
+) -> tuple[list[float], list[float]]:
+    """Validate docking-box inputs and return ``(min_corner, max_corner)``.
+
+    Args:
+        box_center: Docking box center ``[x, y, z]`` in angstroms.
+        box_size: Docking box extents ``[sx, sy, sz]`` in angstroms.
+        radius: Wireframe mesh radius.
+
+    Returns:
+        Min and max corners derived from center ± half-size.
+
+    Raises:
+        ValueError: If center/size are not length-3 finite vectors, size <= 0,
+            or radius is not a positive finite number.
+    """
+    if len(box_center) != 3 or len(box_size) != 3:
+        raise ValueError("box_center and box_size must each have length 3")
+    if any(not math.isfinite(value) for value in (*box_center, *box_size)):
+        raise ValueError("box_center and box_size must be finite numbers")
+    if any(size <= 0 for size in box_size):
+        raise ValueError(f"box_size extents must be positive, got {box_size!r}")
+    if not math.isfinite(radius) or radius <= 0:
+        raise ValueError(f"radius must be a positive finite number, got {radius!r}")
+
+    min_corner = [box_center[i] - box_size[i] / 2 for i in range(3)]
+    max_corner = [box_center[i] + box_size[i] / 2 for i in range(3)]
+    return min_corner, max_corner
 
 
 def render_docking_box_html(
@@ -694,17 +574,11 @@ def render_docking_box_html(
     Raises:
         ValueError: If center/size are not length-3 finite vectors, or size <= 0.
     """
-    if len(box_center) != 3 or len(box_size) != 3:
-        raise ValueError("box_center and box_size must each have length 3")
-    if any(not math.isfinite(value) for value in (*box_center, *box_size)):
-        raise ValueError("box_center and box_size must be finite numbers")
-    if any(size <= 0 for size in box_size):
-        raise ValueError(f"box_size extents must be positive, got {box_size!r}")
-    if not math.isfinite(radius) or radius <= 0:
-        raise ValueError(f"radius must be a positive finite number, got {radius!r}")
-
-    min_corner = [box_center[i] - box_size[i] / 2 for i in range(3)]
-    max_corner = [box_center[i] + box_size[i] / 2 for i in range(3)]
+    min_corner, max_corner = _validate_docking_box_geometry(
+        box_center=box_center,
+        box_size=box_size,
+        radius=radius,
+    )
 
     pdb_b64 = _encode_text_base64(_read_structure_file(pdb_path))
     min_json = _json_value_for_script_tag(min_corner)
@@ -721,6 +595,83 @@ def render_docking_box_html(
         "pdb",
         "protein",
         "cartoon",
+      );
+      // Duck-typed Box3D: molstarLib IIFE does not export Box3D/Vec3 yet.
+      const box = {{ min: {min_json}, max: {max_json} }};
+      await viewer.api.renderBoundingBox(structureRef, box, {{
+        radius: {radius},
+        color: {color},
+      }});
+    }};"""
+
+    return _render_viewer_html(script_body=script_body)
+
+
+def render_protein_with_box_and_poses_html(
+    *,
+    pdb_path: str,
+    box_center: list[float],
+    box_size: list[float],
+    ligand_payloads: list[dict[str, object]],
+    protein_style: str = "cartoon",
+    ligand_style: str = "ball-and-stick",
+    radius: float = _DEFAULT_DOCKING_BOX_RADIUS,
+    color: int = _DEFAULT_DOCKING_BOX_COLOR,
+) -> str:
+    """Build iframe-ready HTML for protein + docking box + docked poses.
+
+    Composes ``visualizeDockedLigands`` (returns a structure ref) with
+    ``renderBoundingBox`` on that ref. There is no dedicated molstarLib method for
+    this combo; the CLI composes existing APIs.
+
+    Args:
+        pdb_path: Path to the protein PDB file on disk.
+        box_center: Docking box center ``[x, y, z]`` in angstroms.
+        box_size: Docking box extents ``[sx, sy, sz]`` in angstroms.
+        ligand_payloads: Per-ligand dicts from :func:`ligand_data_for_js`.
+        protein_style: Mol* representation type for the protein polymer.
+        ligand_style: Mol* representation type for docked ligands.
+        radius: Wireframe mesh radius (default ``0.2``).
+        color: Hex color integer for the box (default ``0xFFFF00``).
+
+    Returns:
+        A complete HTML document suitable for ``render_html()`` iframe embedding.
+
+    Raises:
+        ValueError: If box geometry is invalid or ``ligand_payloads`` is empty.
+    """
+    if not ligand_payloads:
+        raise ValueError("ligand_payloads must be non-empty")
+
+    min_corner, max_corner = _validate_docking_box_geometry(
+        box_center=box_center,
+        box_size=box_size,
+        radius=radius,
+    )
+
+    pdb_b64 = _encode_text_base64(_read_structure_file(pdb_path))
+    ligands_json = _json_value_for_script_tag(ligand_payloads)
+    protein_style_json = _json_for_script_tag(protein_style)
+    ligand_style_json = _json_for_script_tag(ligand_style)
+    min_json = _json_value_for_script_tag(min_corner)
+    max_json = _json_value_for_script_tag(max_corner)
+    decode_ligands = _decode_ligand_payloads_js()
+
+    script_body = f"""const initViewer = async () => {{
+      if (typeof molstarLib === "undefined" || typeof molstarLib.initViewer !== "function") {{
+        throw new Error("molstarLib bundle did not load from {MOLSTAR_JS_URL}");
+      }}
+      const viewer = await molstarLib.initViewer("{_VIEWER_CONTAINER_ID}");
+      const proteinData = atob("{pdb_b64}");
+      const ligandPayloads = {ligands_json};
+      {decode_ligands}
+      const structureRef = await viewer.api.visualizeDockedLigands(
+        proteinData,
+        "pdb",
+        ligands,
+        "sdf",
+        {protein_style_json},
+        {ligand_style_json},
       );
       // Duck-typed Box3D: molstarLib IIFE does not export Box3D/Vec3 yet.
       const box = {{ min: {min_json}, max: {max_json} }};

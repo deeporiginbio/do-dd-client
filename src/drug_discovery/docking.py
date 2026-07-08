@@ -606,18 +606,30 @@ class Docking(Execution, SyncExecutableMixin, AsyncExecutableMixin, NotebookWatc
         poses.download(client=self.client, lazy=True)
         return poses
 
-    def show_box(self) -> str | None:
+    def show_box(
+        self,
+        *,
+        poses: Ligand | LigandSet | list[Ligand] | None = None,
+    ) -> str | None:
         """Visualize the protein with the docking search box in a Jupyter notebook.
 
         Renders the target protein and a wireframe box from :attr:`pocket` center and
         ``box_size_x`` / ``box_size_y`` / ``box_size_z`` (same geometry as
         :meth:`run` and :meth:`start` submit to the docking tool).
 
+        When ``poses`` is provided, docked ligands are overlaid as well
+        (``visualizeDockedLigands`` + ``renderBoundingBox``).
+
+        Args:
+            poses: Optional docked pose(s) to overlay with the search box. Accepts a
+                single :class:`Ligand`, a :class:`LigandSet`, or a list of ligands.
+
         Returns:
             Result of :func:`~deeporigin.utils.notebook.render_html` for the Mol* viewer.
 
         Raises:
             DeepOriginException: If the protein structure cannot be loaded locally.
+            ValueError: If ``poses`` is an empty collection.
         """
         if self.protein.structure is None:
             self.protein.download(client=self.client)
@@ -630,15 +642,28 @@ class Docking(Execution, SyncExecutableMixin, AsyncExecutableMixin, NotebookWatc
                 ),
             ) from None
 
+        from deeporigin.drug_discovery.docking_common import ligand_payloads_for_viewer
         from deeporigin.utils.notebook import render_html
-        from deeporigin.viz.molstar_html import render_docking_box_html
+        from deeporigin.viz.molstar_html import (
+            render_docking_box_html,
+            render_protein_with_box_and_poses_html,
+        )
 
         protein_file = self.protein._dump_state()
         pocket_center, box_size = self._resolve_docking_box_geometry()
+        if poses is None:
+            return render_html(
+                render_docking_box_html(
+                    pdb_path=protein_file,
+                    box_center=list(pocket_center),
+                    box_size=list(box_size),
+                )
+            )
         return render_html(
-            render_docking_box_html(
+            render_protein_with_box_and_poses_html(
                 pdb_path=protein_file,
                 box_center=list(pocket_center),
                 box_size=list(box_size),
+                ligand_payloads=ligand_payloads_for_viewer(poses),
             )
         )

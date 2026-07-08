@@ -14,6 +14,7 @@ from typing import Any, Callable, ClassVar, Literal, Optional, Self, cast
 import warnings
 
 from beartype import beartype
+from deeporigin_molstar import MoleculeViewer
 import numpy as np
 import pandas as pd
 from rdkit import Chem, RDLogger
@@ -2722,11 +2723,22 @@ class LigandSet:
             ligand.add_hydrogens()
 
     def show(self) -> str | None:
-        """Visualize all ligands in this LigandSet in 3D via hosted molstarLib."""
+        """Visualize all ligands in this LigandSet in 3D.
+
+        Uses the legacy ``deeporigin_molstar.MoleculeViewer`` because the hosted
+        molstarLib bundle does not yet split multi-molecule SDF files correctly.
+        Single-ligand :meth:`Ligand.show` uses the new molstarLib path.
+        """
+        sdf_file = self.to_sdf()
+
         try:
+            viewer = MoleculeViewer(str(sdf_file), format="sdf")
+            ligand_config = viewer.get_ligand_visualization_config()
+            html = viewer.render_ligand(ligand_config=ligand_config)
+
             from deeporigin.utils.notebook import render_html
 
-            return render_html(render_ligand_html(sdf_path=self.to_sdf()))
+            return render_html(html)
         except Exception as e:
             raise DeepOriginException(f"Visualization failed: {str(e)}") from e
 

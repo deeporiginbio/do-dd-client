@@ -101,6 +101,13 @@ docking = Docking(protein=protein, pocket=pocket, ligand=ligand)
 docking.show_box()
 ```
 
+To overlay docked poses with the search box (e.g. after `run()` / `get_poses()`):
+
+```{.python notest}
+poses = docking.get_poses()
+docking.show_box(poses=poses)
+```
+
 You should see something like this:
 
 <iframe 

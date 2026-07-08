@@ -18,10 +18,12 @@ Strangler-fig migration from the legacy `deeporigin-molstar` Python package
 |-------|---------------|------------------|--------|
 | 1 | Protein structure | `Protein.show()`, `PreparedSystem.show()` | **Done** |
 | 2 | Protein + binding pockets | `Protein.show(pockets=...)` | **Done** |
-| 3 | Ligand 3D | `Ligand.show()`, `LigandSet.show()` | **Done** |
+| 3 | Ligand 3D | `Ligand.show()` | **Done** (single ligand) |
+| 3b | Ligand set 3D | `LigandSet.show()` | **Rolled back** — legacy `MoleculeViewer` until multi-mol SDF works in molstarLib |
 | 4 | Protein + docked poses | `Protein.show(poses=...)` | **Done** |
 | 5 | Protein + pockets + poses | `Protein.show(pockets=..., poses=...)` | **Done** |
 | 6 | Docking search box | `Docking.show_box()`, `ConstrainedDocking.show_box()` | **Done** |
+| 6b | Protein + box + poses | `Docking.show_box(poses=...)`, `ConstrainedDocking.show_box(poses=...)` | **Done** |
 | 7 | MD trajectory | `ABFE.show_trajectory()` | Pending |
 | 8 | Remove `deeporigin-molstar` dep | `visualize.py`, static doc embeds | Pending |
 
@@ -40,7 +42,7 @@ Develop in `docs/notebooks/dirty/` (gitignored), then promote to
 
 | Notebook | Purpose |
 |----------|---------|
-| [`docs/notebooks/clean/molstar-visualization-catalog.ipynb`](../docs/notebooks/clean/molstar-visualization-catalog.ipynb) | Unified progress dashboard — one section per inventory visualization (#1–#8), with ✅/⏳ status badges |
+| [`docs/notebooks/clean/molstar-visualization-catalog.ipynb`](../docs/notebooks/clean/molstar-visualization-catalog.ipynb) | Unified progress dashboard — one section per inventory visualization (#1–#9), with ✅/⏳ status badges |
 
 The older phase-1-only notebook (`molstar-protein-view.ipynb`) remains for reference;
 new verification work should go in the catalog notebook.

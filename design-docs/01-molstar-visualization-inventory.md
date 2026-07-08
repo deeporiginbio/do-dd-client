@@ -27,12 +27,13 @@ spec sandboxes srcdoc documents without `allow-scripts`, which blocks Mol*.
 | 1 | Protein structure | `Protein.show()`, `PreparedSystem.show()` | `ProteinViewer.render_protein()` | `initViewer` + `loadFromRawContent` | **1 Done** |
 | 2 | Protein + binding pockets | `Protein.show(pockets=...)` | `ProteinViewer.render_protein_with_pockets()` | `renderStructureAndPockets` | **2 Done** |
 | 3 | Single ligand 3D | `Ligand.show()`, `Ligand._repr_html_()` | `MoleculeViewer.render_ligand()` | `loadFromRawContent` (sdf) | **3 Done** |
-| 4 | Ligand set 3D | `LigandSet.show()` | `MoleculeViewer.render_ligand()` (combined SDF) | `loadFromRawContent` (combined sdf) | **3 Done** |
+| 4 | Ligand set 3D | `LigandSet.show()` | `MoleculeViewer.render_ligand()` (combined SDF) | `loadFromRawContent` (combined sdf) | **Rolled back** — multi-mol SDF not yet supported in molstarLib; keep legacy viewer |
 | 5 | Protein + docked poses | `Protein.show(poses=...)` | `DockingViewer.render_with_separate_crystal()` | `visualizeDockedLigands` | **4 Done** |
 | 6 | Protein + pockets + poses | `Protein.show(pockets=..., poses=...)` | *(not supported)* | `renderStructureWithPocketsAndLigands` | **5 Done** |
 | 7 | Docking search box | `Docking.show_box()`, `ConstrainedDocking.show_box()` | `DockingViewer.render_bounding_box()` | `loadFromRawContent` + `renderBoundingBox` | **6 Done** |
-| 8 | MD trajectory | `ABFE.show_trajectory()` | `ProteinViewer.render_trajectory()` | `loadWithTrajectory` | 7 |
-| 9 | Notebook HTML wrapper | `@jupyter_visualization`, ABFE direct call | `JupyterViewer.visualize()` | Reuse `render_html()` only | 8 |
+| 8 | Protein + box + poses | `Docking.show_box(poses=...)`, `ConstrainedDocking.show_box(poses=...)` | *(not supported)* | `visualizeDockedLigands` + `renderBoundingBox` | **6b Done** |
+| 9 | MD trajectory | `ABFE.show_trajectory()` | `ProteinViewer.render_trajectory()` | `loadWithTrajectory` | 7 |
+| 10 | Notebook HTML wrapper | `@jupyter_visualization`, ABFE direct call | `JupyterViewer.visualize()` | Reuse `render_html()` only | 8 |
 
 **Out of scope:** `render_smiles_in_dataframe()` in
 `src/drug_discovery/utils/visualize.py` — RDKit 2D only.
@@ -60,6 +61,7 @@ spec sandboxes srcdoc documents without `allow-scripts`, which blocks Mol*.
 | `renderStructureWithSeperateCrystal` | `visualizeDockedLigands` |
 | *(pockets + poses)* | `renderStructureWithPocketsAndLigands` |
 | `renderLigandWidthBoundingBox` / `render_bounding_box` | `loadFromRawContent` then `renderBoundingBox` |
+| *(box + poses)* | `visualizeDockedLigands` then `renderBoundingBox` |
 | `renderStructureWithTrajectory` | `loadWithTrajectory` |
 
 ## Phase notes
@@ -80,7 +82,9 @@ spec sandboxes srcdoc documents without `allow-scripts`, which blocks Mol*.
 ### Phase 3 — ligand / ligand set
 
 - `render_ligand_html()` → `loadFromRawContent` (sdf)
-- Wire: `Ligand.show()`, `LigandSet.show()` (combined SDF; lib splits multi-mol)
+- Wire: `Ligand.show()` (single-mol SDF)
+- `LigandSet.show()` remains on legacy `MoleculeViewer` until molstarLib
+  correctly splits multi-molecule SDF files
 
 ### Phase 4 — protein + docked poses
 
@@ -101,6 +105,14 @@ spec sandboxes srcdoc documents without `allow-scripts`, which blocks Mol*.
 - Duck-typed `{min,max}` until [PUI-2203](https://deeporigin.atlassian.net/browse/PUI-2203);
   see [ADR 0001](../docs/adr/0001-docking-box-without-exported-box3d.md)
 
+### Phase 6b — protein + box + poses
+
+- `render_protein_with_box_and_poses_html()` composes `visualizeDockedLigands`
+  (returns structure ref) then `renderBoundingBox` on that ref
+- Wire: `Docking.show_box(poses=...)`, `ConstrainedDocking.show_box(poses=...)`
+- No dedicated molstarLib convenience method; CLI composes existing APIs
+- Catalog inventory row #8
+
 ### Phase 7 — trajectory
 
 XTC is binary; embed as base64 in HTML (legacy package does this today).
@@ -116,8 +128,8 @@ XTC is binary; embed as base64 in HTML (legacy package does this today).
 
 | File | Coverage |
 |------|----------|
-| `tests/test_molstar_html.py` | Phase 1–6 HTML generation |
-| `tests/test_docking.py` | Mocks `render_docking_box_html` for `show_box` |
+| `tests/test_molstar_html.py` | Phase 1–6 / 6b HTML generation |
+| `tests/test_docking.py` | Mocks HTML builders for `show_box` / `show_box(poses=...)` |
 
 ## Static doc embeds
 
