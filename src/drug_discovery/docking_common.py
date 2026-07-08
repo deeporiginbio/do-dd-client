@@ -78,13 +78,11 @@ def _normalize_pose_row_smiles(row: dict[str, Any]) -> None:
         row["smiles"] = ligand_smiles.strip()
 
 
-def _pose_result_records_to_rows(
+def _collect_pose_job_ids(
     records: list[dict[str, Any]],
-    *,
-    client: DeepOriginClient,
     execution_id: str | None,
-) -> list[dict[str, Any]]:
-    """Convert result-explorer pose records to ``LigandSet.from_json`` rows."""
+) -> set[str]:
+    """Collect compute job ids referenced by result-explorer pose records."""
     job_ids: set[str] = set()
     if execution_id:
         job_ids.add(str(execution_id))
@@ -92,7 +90,14 @@ def _pose_result_records_to_rows(
         jid = rec.get("compute_job_id")
         if jid:
             job_ids.add(str(jid))
+    return job_ids
 
+
+def _load_smiles_by_job(
+    client: DeepOriginClient,
+    job_ids: set[str],
+) -> dict[str, dict[str, str]]:
+    """Load ligand-id to SMILES maps for each compute job id."""
     smiles_by_job: dict[str, dict[str, str]] = {}
     for jid in job_ids:
         try:
@@ -101,34 +106,79 @@ def _pose_result_records_to_rows(
             smiles_by_job[jid] = {}
         else:
             smiles_by_job[jid] = _ligand_smiles_map_from_tool_payload(dto)
+    return smiles_by_job
 
+
+def _row_has_smiles(row: dict[str, Any]) -> bool:
+    """Return True when the row already has a usable SMILES field."""
+    smiles = row.get("smiles")
+    if isinstance(smiles, str) and smiles.strip():
+        return True
+    canonical = row.get("canonical_smiles")
+    return isinstance(canonical, str) and bool(canonical.strip())
+
+
+def _apply_execution_smiles_fallback(
+    row: dict[str, Any],
+    *,
+    smiles_by_job: dict[str, dict[str, str]],
+    job_id: str,
+) -> None:
+    """Backfill ``row['smiles']`` from execution userInputs when missing."""
+    if _row_has_smiles(row):
+        return
+    ligand_id = row.get("ligand_id")
+    if ligand_id is None:
+        return
+    smi = smiles_by_job.get(job_id, {}).get(str(ligand_id))
+    if smi:
+        row["smiles"] = smi
+
+
+def _pose_record_to_row(
+    rec: dict[str, Any],
+    *,
+    smiles_by_job: dict[str, dict[str, str]],
+    execution_id: str | None,
+) -> dict[str, Any]:
+    """Convert one result-explorer pose record to a ``LigandSet.from_json`` row."""
+    data = rec.get("data")
+    if not isinstance(data, dict):
+        data = {}
+    row = dict(data)
+    _normalize_pose_row_smiles(row)
+    job_id = str(rec.get("compute_job_id") or execution_id or "")
+    _apply_execution_smiles_fallback(
+        row,
+        smiles_by_job=smiles_by_job,
+        job_id=job_id,
+    )
+    result_id = rec.get("id")
+    if result_id is not None:
+        row["id"] = str(result_id)
+    return row
+
+
+def _pose_result_records_to_rows(
+    records: list[dict[str, Any]],
+    *,
+    client: DeepOriginClient,
+    execution_id: str | None,
+) -> list[dict[str, Any]]:
+    """Convert result-explorer pose records to ``LigandSet.from_json`` rows."""
+    job_ids = _collect_pose_job_ids(records, execution_id)
+    smiles_by_job = _load_smiles_by_job(client, job_ids)
     rows: list[dict[str, Any]] = []
     for rec in records:
         if not isinstance(rec, dict):
             continue
-        data = rec.get("data")
-        if not isinstance(data, dict):
-            data = {}
-        row = dict(data)
-        _normalize_pose_row_smiles(row)
-        jid = str(rec.get("compute_job_id") or execution_id or "")
-        smi_map = smiles_by_job.get(jid, {})
-        lid = row.get("ligand_id")
-        if (
-            not (isinstance(row.get("smiles"), str) and row["smiles"].strip())
-            and not (
-                isinstance(row.get("canonical_smiles"), str)
-                and row["canonical_smiles"].strip()
+        rows.append(
+            _pose_record_to_row(
+                rec,
+                smiles_by_job=smiles_by_job,
+                execution_id=execution_id,
             )
-            and lid is not None
-        ):
-            sm = smi_map.get(str(lid))
-            if sm:
-                row["smiles"] = sm
-        rid = rec.get("id")
-        if rid is not None:
-            row["id"] = str(rid)
-        rows.append(row)
+        )
     return rows
 
 

@@ -98,6 +98,157 @@ def _ligand_has_3d_structure(ligand: Ligand) -> bool:
     return mol is not None and mol.GetNumConformers() > 0
 
 
+def _parse_mcs_override_kwargs(
+    mcs_override: dict[str, Any],
+) -> tuple[str | None, str | None]:
+    """Extract optional MCS override kwargs accepted by :class:`ConstrainedDocking`."""
+    allowed = {"mcs_smarts", "mcs_smiles"}
+    unexpected = set(mcs_override) - allowed
+    if unexpected:
+        unexpected_list = ", ".join(sorted(unexpected))
+        raise TypeError(
+            "ConstrainedDocking() got unexpected keyword argument(s): "
+            f"{unexpected_list}"
+        )
+    mcs_smarts = mcs_override.get("mcs_smarts")
+    mcs_smiles = mcs_override.get("mcs_smiles")
+    if mcs_smarts is not None and mcs_smiles is not None:
+        raise ValueError("mcs_smarts and mcs_smiles are mutually exclusive.")
+    return mcs_smarts, mcs_smiles
+
+
+def _batch_size_from_execution(execution: dict[str, Any]) -> int:
+    """Resolve workflow batch size from an execution DTO."""
+    meta = execution.get("metadata") or {}
+    raw_batch = execution.get("batchSize")
+    if raw_batch is None:
+        raw_batch = meta.get("batchSize")
+    try:
+        batch_size = int(raw_batch) if raw_batch is not None else 8
+    except (TypeError, ValueError):
+        batch_size = 8
+    return batch_size if batch_size > 0 else 8
+
+
+def _parse_constrained_docking_user_inputs(
+    execution: dict[str, Any],
+) -> tuple[
+    dict[str, Any],
+    dict[str, Any],
+    str,
+    dict[str, Any],
+    dict[str, Any],
+    list[dict[str, Any]],
+    str | None,
+]:
+    """Parse constrained docking ``userInputs`` from an execution DTO."""
+    inputs = execution.get("userInputs", {})
+    pocket_input = inputs.get("pocket", {})
+    pocket_id = pocket_input.get("id") or inputs.get("pocket_id")
+
+    protein_input = inputs.get("protein", {})
+    protein_id = protein_input.get("id")
+    if protein_id is None:
+        raise ValueError(
+            "Missing 'protein.id' in execution userInputs; "
+            "this execution may have been created with an older input schema."
+        )
+
+    reference_input = inputs.get("reference", {})
+    ref_ligand_input = reference_input.get("ligand", {})
+    ref_pose_input = dict(reference_input.get("pose", {}))
+    if not ref_ligand_input:
+        raise ValueError(
+            "Missing 'reference.ligand' in execution userInputs; "
+            "this execution may have been created with an older input schema."
+        )
+    if not ref_pose_input:
+        raise ValueError(
+            "Missing 'reference.pose' in execution userInputs; "
+            "this execution may have been created with an older input schema."
+        )
+    if "smiles" not in ref_pose_input and ref_ligand_input.get("smiles"):
+        ref_pose_input["smiles"] = ref_ligand_input["smiles"]
+
+    ligands_input = inputs.get("ligands", [])
+    if not ligands_input:
+        raise ValueError("Missing 'ligands' in execution userInputs.")
+
+    return (
+        inputs,
+        protein_input,
+        str(protein_id),
+        ref_ligand_input,
+        ref_pose_input,
+        ligands_input,
+        pocket_id,
+    )
+
+
+def _load_constrained_docking_entities(
+    instance: ConstrainedDocking,
+    *,
+    protein_input: dict[str, Any],
+    protein_id: str,
+    ref_ligand_input: dict[str, Any],
+    ref_pose_input: dict[str, Any],
+    ligands_input: list[dict[str, Any]],
+    pocket_input: dict[str, Any],
+    pocket_id: str | None,
+) -> None:
+    """Hydrate constrained docking entities from parsed execution inputs."""
+    with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
+        fut_protein = executor.submit(
+            Protein.from_id,
+            protein_id,
+            client=instance.client,
+            download=False,
+            remote_path_override=protein_input.get("file_path"),
+        )
+        fut_ref_ligand = executor.submit(
+            LigandSet.from_ids,
+            [ref_ligand_input["id"]],
+            client=instance.client,
+            download=False,
+            ligand_inputs=[ref_ligand_input],
+        )
+        fut_ref_pose = executor.submit(
+            LigandSet.from_json,
+            [ref_pose_input],
+            client=instance.client,
+        )
+        fut_ligands = executor.submit(
+            LigandSet.from_ids,
+            [lig["id"] for lig in ligands_input],
+            client=instance.client,
+            download=False,
+            ligand_inputs=ligands_input,
+        )
+        if pocket_id is not None:
+            fut_pocket = executor.submit(
+                Pocket.from_id,
+                pocket_id,
+                client=instance.client,
+            )
+        else:
+            fut_pocket = None
+
+    instance._protein = fut_protein.result()
+    instance._reference_ligand = fut_ref_ligand.result().ligands[0]
+    instance._reference_pose = fut_ref_pose.result().ligands[0]
+    instance._ligands = fut_ligands.result()
+    if fut_pocket is not None:
+        instance._pocket = fut_pocket.result()
+    else:
+        instance._pocket = Pocket(
+            id=None,
+            center=pocket_input.get("center"),
+            box_size_x=pocket_input.get("box_size_x"),
+            box_size_y=pocket_input.get("box_size_y"),
+            box_size_z=pocket_input.get("box_size_z"),
+        )
+
+
 class ConstrainedDocking(
     Execution,
     SyncExecutableMixin,
@@ -142,8 +293,6 @@ class ConstrainedDocking(
         ligand: Ligand | None = None,
         ligands: LigandSet | None = None,
         constraint_energy: float = 5.0,
-        mcs_smarts: str | None = None,
-        mcs_smiles: str | None = None,
         effort: int = 1,
         batch_size: int = 8,
         tool_version: str = TOOL_KEYS_AND_VERSIONS["constrained_docking"][
@@ -151,6 +300,7 @@ class ConstrainedDocking(
         ],
         client: DeepOriginClient | None = None,
         name: str | None = None,
+        **mcs_override: Any,
     ) -> None:
         """Create a ConstrainedDocking execution.
 
@@ -162,20 +312,17 @@ class ConstrainedDocking(
             ligand: Single test ligand. Mutually exclusive with ``ligands``.
             ligands: Set of test ligands. Mutually exclusive with ``ligand``.
             constraint_energy: Harmonic constraint weight (default 5.0).
-            mcs_smarts: Optional SMARTS override for the common scaffold.
-            mcs_smiles: Optional SMILES override for the common scaffold.
             effort: Docking effort level (1–5).
             batch_size: Workflow batch size for async :meth:`start` (default 8).
             tool_version: Platform tool version for execution create calls.
             client: Optional API client.
             name: Optional execution label.
+            **mcs_override: Optional ``mcs_smarts`` or ``mcs_smiles`` override.
         """
+        mcs_smarts, mcs_smiles = _parse_mcs_override_kwargs(mcs_override)
         provided = sum(x is not None for x in (ligand, ligands))
         if provided != 1:
             raise ValueError("Exactly one of ligand or ligands must be provided.")
-
-        if mcs_smarts is not None and mcs_smiles is not None:
-            raise ValueError("mcs_smarts and mcs_smiles are mutually exclusive.")
 
         if protein.id is None:
             raise ValueError("Protein must have an ID.")
@@ -449,79 +596,29 @@ class ConstrainedDocking(
         execution = instance._dto
         if execution is None:
             raise RuntimeError("from_dto did not set _dto")
-        inputs = execution.get("userInputs", {})
 
+        (
+            inputs,
+            protein_input,
+            protein_id,
+            ref_ligand_input,
+            ref_pose_input,
+            ligands_input,
+            pocket_id,
+        ) = _parse_constrained_docking_user_inputs(execution)
         pocket_input = inputs.get("pocket", {})
-        pocket_id = pocket_input.get("id") or inputs.get("pocket_id")
 
-        protein_input = inputs.get("protein", {})
-        protein_id = protein_input.get("id")
-        if protein_id is None:
-            raise ValueError(
-                "Missing 'protein.id' in execution userInputs; "
-                "this execution may have been created with an older input schema."
-            )
+        _load_constrained_docking_entities(
+            instance,
+            protein_input=protein_input,
+            protein_id=protein_id,
+            ref_ligand_input=ref_ligand_input,
+            ref_pose_input=ref_pose_input,
+            ligands_input=ligands_input,
+            pocket_input=pocket_input,
+            pocket_id=pocket_id,
+        )
 
-        reference_input = inputs.get("reference", {})
-        ref_ligand_input = reference_input.get("ligand", {})
-        ref_pose_input = dict(reference_input.get("pose", {}))
-        if not ref_ligand_input:
-            raise ValueError(
-                "Missing 'reference.ligand' in execution userInputs; "
-                "this execution may have been created with an older input schema."
-            )
-        if not ref_pose_input:
-            raise ValueError(
-                "Missing 'reference.pose' in execution userInputs; "
-                "this execution may have been created with an older input schema."
-            )
-        if "smiles" not in ref_pose_input and ref_ligand_input.get("smiles"):
-            ref_pose_input["smiles"] = ref_ligand_input["smiles"]
-
-        ligands_input = inputs.get("ligands", [])
-        if not ligands_input:
-            raise ValueError("Missing 'ligands' in execution userInputs.")
-
-        with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
-            fut_protein = executor.submit(
-                Protein.from_id,
-                protein_id,
-                client=instance.client,
-                download=False,
-                remote_path_override=protein_input.get("file_path"),
-            )
-            fut_ref_ligand = executor.submit(
-                LigandSet.from_ids,
-                [ref_ligand_input["id"]],
-                client=instance.client,
-                download=False,
-                ligand_inputs=[ref_ligand_input],
-            )
-            fut_ref_pose = executor.submit(
-                LigandSet.from_json,
-                [ref_pose_input],
-                client=instance.client,
-            )
-            fut_ligands = executor.submit(
-                LigandSet.from_ids,
-                [lig["id"] for lig in ligands_input],
-                client=instance.client,
-                download=False,
-                ligand_inputs=ligands_input,
-            )
-            if pocket_id is not None:
-                fut_pocket = executor.submit(
-                    Pocket.from_id,
-                    pocket_id,
-                    client=instance.client,
-                )
-            else:
-                fut_pocket = None
-
-        instance._protein = fut_protein.result()
-        instance._reference_ligand = fut_ref_ligand.result().ligands[0]
-        instance._reference_pose = fut_ref_pose.result().ligands[0]
-        instance._ligands = fut_ligands.result()
         raw_effort = inputs.get("effort")
         instance.effort = int(raw_effort) if raw_effort is not None else cls.effort
         instance._constraint_energy = float(
@@ -529,26 +626,7 @@ class ConstrainedDocking(
         )
         instance._mcs_smarts = inputs.get("mcs_smarts")
         instance._mcs_smiles = inputs.get("mcs_smiles")
-        if fut_pocket is not None:
-            instance._pocket = fut_pocket.result()
-        else:
-            instance._pocket = Pocket(
-                id=None,
-                center=pocket_input.get("center"),
-                box_size_x=pocket_input.get("box_size_x"),
-                box_size_y=pocket_input.get("box_size_y"),
-                box_size_z=pocket_input.get("box_size_z"),
-            )
-
-        meta = execution.get("metadata") or {}
-        raw_batch = execution.get("batchSize")
-        if raw_batch is None:
-            raw_batch = meta.get("batchSize")
-        try:
-            bs = int(raw_batch) if raw_batch is not None else 8
-        except (TypeError, ValueError):
-            bs = 8
-        instance._batch_size = bs if bs > 0 else 8
+        instance._batch_size = _batch_size_from_execution(execution)
 
         return instance
 

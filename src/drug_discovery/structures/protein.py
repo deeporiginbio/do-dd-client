@@ -35,6 +35,8 @@ from .entity import Entity
 from .ligand import Ligand, LigandSet
 from .pocket import Pocket
 
+_PROTEIN_STRUCTURE_NOT_LOADED_MSG = "Protein structure is not loaded."
+
 
 @dataclass
 @beartype
@@ -482,10 +484,10 @@ class Protein(Entity):
         """
         if self.structure is None:
             if self.local_path is None and self.remote_path is None:
-                raise ValueError("Protein structure is not loaded.")
+                raise ValueError(_PROTEIN_STRUCTURE_NOT_LOADED_MSG)
             self.download(lazy=True)
         if self.structure is None:
-            raise ValueError("Protein structure is not loaded.")
+            raise ValueError(_PROTEIN_STRUCTURE_NOT_LOADED_MSG)
 
         coords = self.structure.coord
         span = coords.max(axis=0) - coords.min(axis=0)
@@ -529,7 +531,7 @@ class Protein(Entity):
 
         self.download(lazy=True)
         if self.structure is None:
-            raise ValueError("Protein structure is not loaded.")
+            raise ValueError(_PROTEIN_STRUCTURE_NOT_LOADED_MSG)
 
         if isinstance(ligand, (str, Path)):
             ligand_obj = Ligand.from_sdf(ligand)
