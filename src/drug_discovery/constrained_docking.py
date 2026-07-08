@@ -138,6 +138,33 @@ def _batch_size_from_execution(execution: dict[str, Any]) -> int:
     return batch_size if batch_size > 0 else 8
 
 
+def _expect_mapping(value: Any, field: str) -> dict[str, Any]:
+    """Return ``value`` when it is a mapping; otherwise raise ValueError."""
+    if isinstance(value, dict):
+        return value
+    raise ValueError(
+        f"Invalid '{field}' in execution userInputs; expected an object."
+    )
+
+
+def _expect_ligand_input_list(value: Any) -> list[dict[str, Any]]:
+    """Validate the constrained-docking ``ligands`` input list."""
+    if not isinstance(value, list):
+        raise ValueError(
+            "Invalid 'ligands' in execution userInputs; expected a list."
+        )
+    rows: list[dict[str, Any]] = []
+    for idx, item in enumerate(value):
+        if not isinstance(item, dict):
+            raise ValueError(
+                f"Invalid ligands[{idx}] in execution userInputs; expected an object."
+            )
+        rows.append(item)
+    if not rows:
+        raise ValueError("Missing 'ligands' in execution userInputs.")
+    return rows
+
+
 def _parse_constrained_docking_user_inputs(
     execution: dict[str, Any],
 ) -> tuple[
@@ -156,10 +183,10 @@ def _parse_constrained_docking_user_inputs(
     if not isinstance(raw_inputs, dict):
         raise ValueError("Missing or invalid userInputs in execution DTO.")
     inputs = raw_inputs
-    pocket_input = inputs.get("pocket", {})
+    pocket_input = _expect_mapping(inputs.get("pocket", {}), "pocket")
     pocket_id = pocket_input.get("id") or inputs.get("pocket_id")
 
-    protein_input = inputs.get("protein", {})
+    protein_input = _expect_mapping(inputs.get("protein", {}), "protein")
     protein_id = protein_input.get("id")
     if protein_id is None:
         raise ValueError(
@@ -167,9 +194,14 @@ def _parse_constrained_docking_user_inputs(
             "this execution may have been created with an older input schema."
         )
 
-    reference_input = inputs.get("reference", {})
-    ref_ligand_input = reference_input.get("ligand", {})
-    ref_pose_input = dict(reference_input.get("pose", {}))
+    reference_input = _expect_mapping(inputs.get("reference", {}), "reference")
+    ref_ligand_input = _expect_mapping(
+        reference_input.get("ligand", {}),
+        "reference.ligand",
+    )
+    ref_pose_input = dict(
+        _expect_mapping(reference_input.get("pose", {}), "reference.pose")
+    )
     if not ref_ligand_input:
         raise ValueError(
             "Missing 'reference.ligand' in execution userInputs; "
@@ -183,9 +215,7 @@ def _parse_constrained_docking_user_inputs(
     if "smiles" not in ref_pose_input and ref_ligand_input.get("smiles"):
         ref_pose_input["smiles"] = ref_ligand_input["smiles"]
 
-    ligands_input = inputs.get("ligands", [])
-    if not ligands_input:
-        raise ValueError("Missing 'ligands' in execution userInputs.")
+    ligands_input = _expect_ligand_input_list(inputs.get("ligands", []))
 
     return (
         inputs,
