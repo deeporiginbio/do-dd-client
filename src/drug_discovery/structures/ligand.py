@@ -1526,7 +1526,7 @@ class Ligand(Entity):
         return MolToImage(self.mol)
 
     def _ligand_viewer_html(self) -> str:
-        """Raw HTML from the molstar viewer for this ligand (no iframe / display)."""
+        """Return iframe-ready HTML for this ligand via :func:`render_ligand_html`."""
         return render_ligand_html(sdf_path=self.to_sdf())
 
     def show(self) -> str | None:

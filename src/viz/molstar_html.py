@@ -349,10 +349,13 @@ def _decode_ligand_payloads_js(variable_name: str = "ligandPayloads") -> str:
 
 
 def render_ligand_html(*, sdf_path: str, style: str = "ball-and-stick") -> str:
-    """Build iframe-ready HTML for a ligand (or combined ligand-set) SDF.
+    """Build iframe-ready HTML for a single-ligand SDF.
+
+    For multi-ligand sets, prefer :meth:`LigandSet.show` (legacy viewer): the hosted
+    molstarLib bundle does not yet split multi-molecule SDF files correctly.
 
     Args:
-        sdf_path: Path to an SDF file on disk (single- or multi-molecule).
+        sdf_path: Path to a single-molecule SDF file on disk.
         style: Mol* representation type for the ligand (default ``ball-and-stick``).
 
     Returns:
