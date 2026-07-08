@@ -77,7 +77,7 @@ def test_ensure_platform_inputs_skips_sync_for_platform_pose(
     reference_ligand.id = "brd-2"
     reference_pose.remote_path = "testing/docked-pose.sdf"
     reference_pose.id = "brd-2"
-    reference_pose.properties["id"] = "pose-from-docking"
+    reference_pose.properties["pose_result_id"] = "pose-from-docking"
 
     cd = ConstrainedDocking(
         protein=registered_protein,
@@ -397,7 +397,9 @@ def test_constrained_docking_run_with_reference_workflow(
     ref_poses = ref_docking.run()
     assert ref_poses is not None and len(ref_poses) >= 1
     reference_pose = ref_poses.ligands[0]
-    pose_result_id = reference_pose.properties.get("id")
+    pose_result_id = reference_pose.properties.get("pose_result_id")
+    if pose_result_id is None:
+        pose_result_id = reference_pose.properties.get("id")
     assert pose_result_id is not None
 
     query_ligand = Ligand.from_sdf(BRD_DATA_DIR / "brd-3.sdf")

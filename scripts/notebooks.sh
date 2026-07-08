@@ -9,7 +9,7 @@ CLEAN="${NOTEBOOKS_DIR}/clean"
 is_untitled_notebook() {
     local name_lower
     name_lower="$(printf '%s' "$1" | tr '[:upper:]' '[:lower:]')"
-    [[ "$name_lower" == *untitled* ]]
+    [[ "$name_lower" =~ ^untitled[0-9]*\.ipynb$ ]]
 }
 
 # List .ipynb files in dirty/ modified since the last commit (or all if no commits yet).

@@ -65,14 +65,9 @@ def _reference_ligand_tool_input_row(lig: Ligand) -> dict[str, Any]:
 def _reference_pose_result_id(lig: Ligand) -> str | None:
     """Return the platform pose-result id for ``reference.pose.id``, if any."""
     pose_result_id = lig.properties.get("pose_result_id")
-    if pose_result_id is not None:
-        return str(pose_result_id)
-    legacy_id = lig.properties.get("id")
-    if legacy_id is None:
+    if pose_result_id is None:
         return None
-    if lig.id is not None and str(legacy_id) == str(lig.id):
-        return None
-    return str(legacy_id)
+    return str(pose_result_id)
 
 
 def _reference_pose_tool_input_row(lig: Ligand) -> dict[str, Any]:
