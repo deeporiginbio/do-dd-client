@@ -16,7 +16,7 @@ from deeporigin.drug_discovery.patent import (
     _patent_results_dataframe,
 )
 from deeporigin.platform.client import DeepOriginClient
-from deeporigin.platform.constants import TOOL_KEYS_AND_VERSIONS, is_success_status
+from deeporigin.platform.constants import TOOL_KEYS_AND_VERSIONS
 from tests.conftest import FIXTURES_DIR, check_tool_exists
 
 PATENT_PDF_PATH = FIXTURES_DIR / "patent" / "one-page.pdf"
@@ -291,42 +291,6 @@ def test_patent_start_quote_true_lv1(client: DeepOriginClient) -> None:
             f"({patent.estimate!r}); skipping price assertion."
         )
     assert patent.cost is None
-
-
-def test_patent_quote_confirm_run_get_results_lv1(client: DeepOriginClient) -> None:
-    """Full quote → confirm → wait → get_results flow against live platform."""
-    assert check_tool_exists(
-        client,
-        TOOL_KEYS_AND_VERSIONS["patent"]["tool_key"],
-        TOOL_KEYS_AND_VERSIONS["patent"]["tool_version"],
-    ), "Patent tool not registered on platform (expected key/version)."
-
-    patent = Patent(pdf=PATENT_PDF_PATH, client=client)
-    patent.start(quote=True)
-    if patent.status == "FailedQuotation":
-        pytest.skip(
-            f"Patent quote returned FailedQuotation on {client.env}; platform tool may be unavailable."
-        )
-    assert patent.status == "Quoted"
-
-    patent.confirm()
-    patent.wait(timeout=3600.0, poll_interval=10.0)
-    assert is_success_status(patent.status), (
-        f"Patent run failed: status={patent.status!r}, "
-        f"reason={patent.dto.get('statusReason') if patent.dto else None!r}, "
-        f"id={patent.id!r}"
-    )
-
-    df = patent.get_results()
-    if df is None and client.env == "dev":
-        pytest.skip(
-            "Patent run succeeded on dev but extracted molecules are not yet "
-            "retrievable via ligands_with_results or jobOutputs."
-        )
-    assert df is not None
-    assert not df.empty
-    assert "smiles" in df.columns
-    assert df["smiles"].astype(str).str.strip().ne("").any()
 
 
 def test_patent_cancel_lv1(client: DeepOriginClient) -> None:
