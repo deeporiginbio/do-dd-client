@@ -25,11 +25,14 @@ def _any_ligand_protein_clashes(
         return False
 
     threshold_sq = contact_distance * contact_distance
-    chunk_size = 512
-    for start in range(0, len(ligand_coords), chunk_size):
-        ligand_chunk = ligand_coords[start : start + chunk_size]
-        diff = ligand_chunk[:, np.newaxis, :] - protein_coords[np.newaxis, :, :]
-        dist_sq = np.sum(diff * diff, axis=2)
-        if np.any(dist_sq < threshold_sq):
-            return True
+    ligand_chunk_size = 512
+    protein_chunk_size = 2048
+    for lig_start in range(0, len(ligand_coords), ligand_chunk_size):
+        ligand_chunk = ligand_coords[lig_start : lig_start + ligand_chunk_size]
+        for prot_start in range(0, len(protein_coords), protein_chunk_size):
+            protein_chunk = protein_coords[prot_start : prot_start + protein_chunk_size]
+            diff = ligand_chunk[:, np.newaxis, :] - protein_chunk[np.newaxis, :, :]
+            dist_sq = np.sum(diff * diff, axis=2)
+            if np.any(dist_sq < threshold_sq):
+                return True
     return False
