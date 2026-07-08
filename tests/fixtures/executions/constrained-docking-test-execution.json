@@ -18,23 +18,17 @@
     "tag": null,
     "tool": {
         "key": "deeporigin.constrained-docking",
-        "version": "3.2.3"
+        "version": "3.4.18"
     },
     "type": "ToolExecution",
     "updatedAt": "2026-03-26T12:07:52.195Z",
     "userInputs": {
-        "constraints": [
-            {
-                "coordinates": [-15.0, -0.23, 10.56],
-                "energy": 5.0,
-                "index": 1
-            }
-        ],
+        "constraint_energy": 5.0,
         "effort": 1,
         "ligands": [
             {
-                "file_path": "testing/brd-2.sdf",
-                "id": "brd-2",
+                "file_path": "testing/brd-3.sdf",
+                "id": "brd-3",
                 "smiles": "Cc1cccc(-c2nn(C)c3cccc(C(=O)N4CCN(c5ccc(C)cc5)CC4)c23)c1"
             }
         ],
@@ -51,6 +45,38 @@
         "protein": {
             "file_path": "testing/brd.pdb",
             "id": "brd"
+        },
+        "reference": {
+            "ligand": {
+                "file_path": "testing/brd-2.sdf",
+                "id": "brd-2",
+                "smiles": "Cc1cccc(-c2nn(C)c3cccc(C(=O)N4CCN(c5ccc(C)cc5)CC4)c23)c1"
+            },
+            "pose": {
+                "file_path": "testing/brd-2-pose.sdf"
+            }
+        },
+        "sync": true
+    },
+    "jobOutputs": {
+        "poses": [
+            {
+                "best_pose": true,
+                "binding_energy": -8.0,
+                "constrained": true,
+                "effort": 1,
+                "file_path": "testing/constrained-docking/brd-3-pose.sdf",
+                "ligand_id": "brd-3",
+                "pose_score": 0.9,
+                "protein_id": "brd",
+                "smiles": "Cc1cccc(-c2nn(C)c3cccc(C(=O)N4CCN(c5ccc(C)cc5)CC4)c23)c1"
+            }
+        ],
+        "reference_pose": {
+            "file_path": "testing/brd-2-pose.sdf",
+            "ligand_id": "brd-2",
+            "protein_id": "brd",
+            "smiles": "Cc1cccc(-c2nn(C)c3cccc(C(=O)N4CCN(c5ccc(C)cc5)CC4)c23)c1"
         }
     },
     "userOutputs": {}
