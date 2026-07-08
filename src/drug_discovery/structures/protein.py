@@ -476,8 +476,15 @@ class Protein(Entity):
 
         Returns:
             float: Bounding box volume in Å³.
+
+        Raises:
+            ValueError: If the protein structure is not loaded.
         """
-        coords = self.coordinates
+        self.download(lazy=True)
+        if self.structure is None:
+            raise ValueError("Protein structure is not loaded.")
+
+        coords = self.structure.coord
         span = coords.max(axis=0) - coords.min(axis=0)
         return float(span[0] * span[1] * span[2])
 

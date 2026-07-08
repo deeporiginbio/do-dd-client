@@ -156,11 +156,11 @@ def load_scored_poses_from_result_explorer(
     Raises:
         ValueError: If no scored pose rows match.
     """
-    get_poses_kwargs: dict[str, Any] = dict(
-        protein_id=protein_id,
-        compute_job_id=execution_id,
-        limit=None,
-    )
+    get_poses_kwargs: dict[str, Any] = {
+        "protein_id": protein_id,
+        "compute_job_id": execution_id,
+        "limit": None,
+    }
     if best_pose is not None:
         get_poses_kwargs["best_pose"] = best_pose
 
@@ -257,6 +257,36 @@ def load_docking_poses_from_execution(
     ) from None
 
 
+def _enrich_reference_pose_row(
+    row: dict[str, Any],
+    *,
+    dto: dict[str, Any],
+) -> dict[str, Any]:
+    """Ensure ``reference_pose`` jobOutputs rows include SMILES for remote loading."""
+    enriched = dict(row)
+    _normalize_pose_row_smiles(enriched)
+    if isinstance(enriched.get("smiles"), str) and enriched["smiles"].strip():
+        return enriched
+    canonical = enriched.get("canonical_smiles")
+    if isinstance(canonical, str) and canonical.strip():
+        return enriched
+
+    params = dto.get("userInputs") or dto.get("inputs") or {}
+    reference = params.get("reference") if isinstance(params, dict) else {}
+    ref_ligand = reference.get("ligand") if isinstance(reference, dict) else {}
+    ref_smiles = ref_ligand.get("smiles") if isinstance(ref_ligand, dict) else None
+    if isinstance(ref_smiles, str) and ref_smiles.strip():
+        enriched["smiles"] = ref_smiles.strip()
+        return enriched
+
+    ligand_id = enriched.get("ligand_id")
+    if ligand_id is not None:
+        smi = _ligand_smiles_map_from_tool_payload(dto).get(str(ligand_id))
+        if smi:
+            enriched["smiles"] = smi
+    return enriched
+
+
 def load_reference_pose_from_execution(
     exec_id: str,
     *,
@@ -282,7 +312,8 @@ def load_reference_pose_from_execution(
     if isinstance(jo, dict):
         raw = jo.get("reference_pose")
         if isinstance(raw, dict):
-            pose_set = LigandSet.from_json([raw], client=client)
+            row = _enrich_reference_pose_row(raw, dto=dto)
+            pose_set = LigandSet.from_json([row], client=client)
             return pose_set.ligands[0]
 
     raise DeepOriginException(

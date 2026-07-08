@@ -57,6 +57,8 @@ def _reference_ligand_tool_input_row(lig: Ligand) -> dict[str, Any]:
         "id": lig.id,
         "file_path": lig.remote_path,
     }
+    if lig.smiles is not None:
+        row["smiles"] = lig.smiles
     return row
 
 

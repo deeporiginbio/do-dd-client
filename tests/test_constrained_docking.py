@@ -193,6 +193,7 @@ def test_build_tool_inputs_includes_reference_and_sync(
 
     assert "reference" in params
     assert params["reference"]["ligand"]["file_path"] == reference_ligand.remote_path
+    assert params["reference"]["ligand"]["smiles"] == reference_ligand.smiles
     assert params["reference"]["pose"]["file_path"] == reference_pose.remote_path
     assert params["constraint_energy"] == 5.0
     assert params["mcs_smarts"] == "C(=O)"
@@ -278,6 +279,27 @@ def test_get_reference_pose_from_fixture_dto(client) -> None:
     dto = json.loads(fixture_path.read_text())
     cd = ConstrainedDocking.from_dto(dto, client=client)
 
+    ref = cd.get_reference_pose(dto)
+    assert ref.remote_path == "testing/brd-2-pose.sdf"
+
+
+def test_get_reference_pose_falls_back_to_user_inputs_smiles(client) -> None:
+    """get_reference_pose resolves SMILES from userInputs when jobOutputs omit it."""
+    from deeporigin.drug_discovery.docking_common import _enrich_reference_pose_row
+
+    fixture_path = (
+        Path(__file__).parent
+        / "fixtures/executions/constrained-docking-test-execution.json"
+    )
+    dto = json.loads(fixture_path.read_text())
+    raw = dict(dto["jobOutputs"]["reference_pose"])
+    raw.pop("smiles", None)
+
+    enriched = _enrich_reference_pose_row(raw, dto=dto)
+
+    assert enriched["smiles"] == dto["userInputs"]["reference"]["ligand"]["smiles"]
+
+    cd = ConstrainedDocking.from_dto(dto, client=client)
     ref = cd.get_reference_pose(dto)
     assert ref.remote_path == "testing/brd-2-pose.sdf"
 

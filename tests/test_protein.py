@@ -98,6 +98,15 @@ def test_bounding_box_volume_lv0():
     assert volume > 0
 
 
+def test_bounding_box_volume_requires_loaded_structure(monkeypatch) -> None:
+    """bounding_box_volume raises ValueError when structure is unavailable."""
+    protein = Protein(name="test", structure=None, remote_path="testing/brd.pdb")
+    monkeypatch.setattr(protein, "download", lambda **kwargs: None)
+
+    with pytest.raises(ValueError, match="Protein structure is not loaded"):
+        protein.bounding_box_volume()
+
+
 def test_from_file_invalid_pdb_lv0():
     pdb_path = Path(__file__).parent / "fixtures" / "1eby-illegal-element-name.pdb"
     with pytest.raises(
