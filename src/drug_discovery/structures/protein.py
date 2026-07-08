@@ -1377,10 +1377,9 @@ class Protein(Entity):
             DeepOriginException: If both ``ligand`` and ``ligands``/``poses`` are set.
             ValueError: If ``ligands`` or ``poses`` is provided but empty.
         """
-        from deeporigin.drug_discovery.docking_common import _pose_label_for_viewer
+        from deeporigin.drug_discovery.docking_common import ligand_payloads_for_viewer
         from deeporigin.utils.notebook import render_html
         from deeporigin.viz.molstar_html import (
-            ligand_data_for_js,
             render_protein_html,
             render_protein_with_pockets_and_poses_html,
             render_protein_with_pockets_html,
@@ -1410,16 +1409,6 @@ class Protein(Entity):
 
         has_pockets = pockets is not None and len(pockets) > 0
         has_poses = len(pose_ligands) > 0
-
-        def _ligand_payloads() -> list[dict[str, object]]:
-            """Build per-ligand molstarLib payloads from pose ligands."""
-            return [
-                ligand_data_for_js(
-                    path=item.to_sdf(),
-                    label=_pose_label_for_viewer(item, index),
-                )
-                for index, item in enumerate(pose_ligands)
-            ]
 
         def _pocket_args() -> tuple[list[str], list[str], list[str]]:
             """Download pockets and return paths, colors, and labels."""
@@ -1453,7 +1442,7 @@ class Protein(Entity):
             return render_html(
                 render_protein_with_poses_html(
                     pdb_path=current_protein_file,
-                    ligand_payloads=_ligand_payloads(),
+                    ligand_payloads=ligand_payloads_for_viewer(pose_ligands),
                 )
             )
 
@@ -1464,7 +1453,7 @@ class Protein(Entity):
                 pocket_paths=pocket_paths,
                 pocket_colors=pocket_colors,
                 pocket_labels=pocket_labels,
-                ligand_payloads=_ligand_payloads(),
+                ligand_payloads=ligand_payloads_for_viewer(pose_ligands),
             )
         )
 
