@@ -142,17 +142,13 @@ def _expect_mapping(value: Any, field: str) -> dict[str, Any]:
     """Return ``value`` when it is a mapping; otherwise raise ValueError."""
     if isinstance(value, dict):
         return value
-    raise ValueError(
-        f"Invalid '{field}' in execution userInputs; expected an object."
-    )
+    raise ValueError(f"Invalid '{field}' in execution userInputs; expected an object.")
 
 
 def _expect_ligand_input_list(value: Any) -> list[dict[str, Any]]:
     """Validate the constrained-docking ``ligands`` input list."""
     if not isinstance(value, list):
-        raise ValueError(
-            "Invalid 'ligands' in execution userInputs; expected a list."
-        )
+        raise ValueError("Invalid 'ligands' in execution userInputs; expected a list.")
     rows: list[dict[str, Any]] = []
     for idx, item in enumerate(value):
         if not isinstance(item, dict):
