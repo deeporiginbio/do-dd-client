@@ -1194,13 +1194,19 @@ def create_tools_router(
                 reference.get("ligand", {}) if isinstance(reference, dict) else {}
             )
             if isinstance(ref_pose, dict) and ref_pose.get("file_path"):
-                outputs["reference_pose"] = {
+                reference_pose_output: dict[str, Any] = {
                     "file_path": ref_pose["file_path"],
                     "ligand_id": ref_ligand.get("id")
                     if isinstance(ref_ligand, dict)
                     else None,
                     "protein_id": protein_id,
                 }
+                ref_smiles = (
+                    ref_ligand.get("smiles") if isinstance(ref_ligand, dict) else None
+                )
+                if ref_smiles:
+                    reference_pose_output["smiles"] = ref_smiles
+                outputs["reference_pose"] = reference_pose_output
         execution["jobOutputs"] = outputs
         _inject_result_explorer_records_from_outputs(
             tool_key=tkey,

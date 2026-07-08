@@ -254,15 +254,15 @@ sterically overlap the receptor. The ligand SDF must already be in the same coor
 frame as the protein structure.
 
 ```python
-from deeporigin.drug_discovery import Protein
+from deeporigin.drug_discovery import BRD_DATA_DIR, Protein
 
-protein = Protein.from_file("brd.pdb")
+protein = Protein.from_file(BRD_DATA_DIR / "brd.pdb")
 
-if protein.has_ligand_clashes("pose.sdf"):
+if protein.has_ligand_clashes(BRD_DATA_DIR / "brd-2.sdf"):
     raise ValueError("Pose has steric clashes with receptor")
 
 # Use a stricter cutoff (default is 2.5 Å)
-if protein.has_ligand_clashes("pose.sdf", contact_distance=2.0):
+if protein.has_ligand_clashes(BRD_DATA_DIR / "brd-2.sdf", contact_distance=2.0):
     raise ValueError("Pose is too close to receptor atoms")
 ```
 

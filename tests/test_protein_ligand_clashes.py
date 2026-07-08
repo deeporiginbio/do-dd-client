@@ -68,6 +68,15 @@ def test_has_ligand_clashes_no_3d_raises() -> None:
         protein.has_ligand_clashes(ligand)
 
 
+def test_has_ligand_clashes_rejects_nonpositive_contact_distance() -> None:
+    """Non-positive contact distances should raise ValueError."""
+    protein = _load_brd_protein()
+    ligand = _load_brd_pose()
+
+    with pytest.raises(ValueError, match="contact_distance must be positive"):
+        protein.has_ligand_clashes(ligand, contact_distance=0.0)
+
+
 def test_has_ligand_clashes_protein_atoms_only() -> None:
     """Default filtering excludes hetero atoms such as waters from clash checks."""
     protein = _load_brd_protein()

@@ -510,9 +510,13 @@ class Protein(Entity):
             ``True`` if at least one ligand atom clashes with a protein atom.
 
         Raises:
-            ValueError: If the protein structure is not loaded.
+            ValueError: If the protein structure is not loaded or
+                ``contact_distance`` is not positive.
             DeepOriginException: If the ligand does not have 3D coordinates.
         """
+        if contact_distance <= 0:
+            raise ValueError("contact_distance must be positive.")
+
         self.download(lazy=True)
         if self.structure is None:
             raise ValueError("Protein structure is not loaded.")
