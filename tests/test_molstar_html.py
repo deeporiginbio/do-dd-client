@@ -197,7 +197,10 @@ def test_render_ligand_html_includes_api() -> None:
     assert MOLSTAR_JS_URL in html
     assert "loadFromRawContent" in html
     assert '"sdf"' in html
-    sdf_b64 = base64.b64encode(_FIXTURE_SDF.read_bytes()).decode("ascii")
+    # Use read_text (not read_bytes) so CRLF checkouts on Windows match
+    # Path.read_text newline translation used by render_ligand_html.
+    sdf_text = _FIXTURE_SDF.read_text(encoding="utf-8")
+    sdf_b64 = base64.b64encode(sdf_text.encode("utf-8")).decode("ascii")
     assert f'atob("{sdf_b64}")' in html
 
 
