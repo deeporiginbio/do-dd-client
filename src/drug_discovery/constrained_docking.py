@@ -150,7 +150,12 @@ def _parse_constrained_docking_user_inputs(
     str | None,
 ]:
     """Parse constrained docking ``userInputs`` from an execution DTO."""
-    inputs = execution.get("userInputs", {})
+    raw_inputs = execution.get("userInputs")
+    if not isinstance(raw_inputs, dict):
+        raw_inputs = execution.get("inputs")
+    if not isinstance(raw_inputs, dict):
+        raise ValueError("Missing or invalid userInputs in execution DTO.")
+    inputs = raw_inputs
     pocket_input = inputs.get("pocket", {})
     pocket_id = pocket_input.get("id") or inputs.get("pocket_id")
 
