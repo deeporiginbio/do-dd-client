@@ -9,8 +9,13 @@ from deeporigin.viz.molstar_html import (
     MOLSTAR_HOST_ASSET_BASE_URL,
     MOLSTAR_JS_URL,
     css_color_to_hex,
+    ligand_data_for_js,
+    render_docking_box_html,
+    render_ligand_html,
     render_protein_html,
+    render_protein_with_pockets_and_poses_html,
     render_protein_with_pockets_html,
+    render_protein_with_poses_html,
 )
 
 _FIXTURE_PDB = (
@@ -23,6 +28,7 @@ _FIXTURE_PDB = (
 _FIXTURE_POCKET = (
     Path(__file__).parent / "fixtures" / "files" / "pocketfinder" / "pocket_1.pdb"
 )
+_FIXTURE_SDF = Path(__file__).parent / "fixtures" / "files" / "testing" / "brd-2.sdf"
 
 
 def test_render_protein_html_includes_molstar_bundle_and_api() -> None:
@@ -180,4 +186,153 @@ def test_render_protein_with_pockets_mismatched_lengths_raises() -> None:
             pocket_paths=[str(_FIXTURE_POCKET)],
             pocket_colors=["red", "blue"],
             pocket_labels=["pocket-1"],
+        )
+
+
+def test_render_ligand_html_includes_api() -> None:
+    """Ligand HTML references loadFromRawContent with sdf format."""
+    html = render_ligand_html(sdf_path=str(_FIXTURE_SDF))
+
+    assert MOLSTAR_JS_URL in html
+    assert "loadFromRawContent" in html
+    assert '"sdf"' in html
+    sdf_b64 = base64.b64encode(_FIXTURE_SDF.read_bytes()).decode("ascii")
+    assert f'atob("{sdf_b64}")' in html
+
+
+def test_render_protein_with_poses_html_api() -> None:
+    """Pose HTML references visualizeDockedLigands with per-ligand payloads."""
+    payloads = [
+        ligand_data_for_js(path=str(_FIXTURE_SDF), label="brd-2"),
+    ]
+    html = render_protein_with_poses_html(
+        pdb_path=str(_FIXTURE_PDB),
+        ligand_payloads=payloads,
+    )
+
+    assert "visualizeDockedLigands" in html
+    assert "brd-2" in html
+    assert payloads[0]["dataB64"] in html
+
+
+def test_render_protein_with_poses_includes_navigation() -> None:
+    """Multi-pose HTML wires arrow/keyboard navigation via showLigandAtIndex."""
+    payloads = [
+        ligand_data_for_js(path=str(_FIXTURE_SDF), label="brd-2"),
+        ligand_data_for_js(path=str(_FIXTURE_SDF), label="brd-3"),
+    ]
+    html = render_protein_with_poses_html(
+        pdb_path=str(_FIXTURE_PDB),
+        ligand_payloads=payloads,
+    )
+
+    assert "do-pose-nav" in html
+    assert "showLigandAtIndex" in html
+    assert "toggleAllLigandsVisibility" in html
+    assert "ArrowRight" in html
+    assert "ArrowLeft" in html
+    assert '["brd-2", "brd-3"]' in html
+
+
+def test_render_protein_with_poses_navigation_gated_on_multiple() -> None:
+    """Navigation JS activates only when more than one pose is present."""
+    html = render_protein_with_poses_html(
+        pdb_path=str(_FIXTURE_PDB),
+        ligand_payloads=[ligand_data_for_js(path=str(_FIXTURE_SDF), label="brd-2")],
+    )
+
+    assert "poseCount > 1" in html
+
+
+def test_render_protein_with_poses_empty_raises() -> None:
+    """Empty ligand_payloads raises ValueError."""
+    with pytest.raises(ValueError, match="non-empty"):
+        render_protein_with_poses_html(
+            pdb_path=str(_FIXTURE_PDB),
+            ligand_payloads=[],
+        )
+
+
+def test_render_protein_with_pockets_and_poses_html_api() -> None:
+    """Combined HTML references renderStructureWithPocketsAndLigands."""
+    payloads = [ligand_data_for_js(path=str(_FIXTURE_SDF), label="pose-1")]
+    html = render_protein_with_pockets_and_poses_html(
+        pdb_path=str(_FIXTURE_PDB),
+        pocket_paths=[str(_FIXTURE_POCKET)],
+        pocket_colors=["red"],
+        pocket_labels=["pocket-1"],
+        ligand_payloads=payloads,
+    )
+
+    assert "renderStructureWithPocketsAndLigands" in html
+    assert '"gaussian-surface"' in html
+    assert "pose-1" in html
+    assert "0.7" in html
+
+
+def test_render_protein_with_pockets_and_poses_includes_navigation() -> None:
+    """Combined pockets+poses HTML also wires pose navigation."""
+    payloads = [
+        ligand_data_for_js(path=str(_FIXTURE_SDF), label="pose-1"),
+        ligand_data_for_js(path=str(_FIXTURE_SDF), label="pose-2"),
+    ]
+    html = render_protein_with_pockets_and_poses_html(
+        pdb_path=str(_FIXTURE_PDB),
+        pocket_paths=[str(_FIXTURE_POCKET)],
+        pocket_colors=["red"],
+        pocket_labels=["pocket-1"],
+        ligand_payloads=payloads,
+    )
+
+    assert "do-pose-nav" in html
+    assert "showLigandAtIndex" in html
+    assert "toggleAllLigandsVisibility" in html
+
+
+def test_ligand_label_script_escape(tmp_path: Path) -> None:
+    """Malicious ligand labels cannot break out of script tags."""
+    pdb_path = tmp_path / "minimal.pdb"
+    pdb_path.write_text(
+        "ATOM      1  N   ALA A   1       0.000   0.000   0.000\n", encoding="utf-8"
+    )
+    sdf_path = tmp_path / "lig.sdf"
+    sdf_path.write_text(_FIXTURE_SDF.read_text(encoding="utf-8"), encoding="utf-8")
+
+    html = render_protein_with_poses_html(
+        pdb_path=str(pdb_path),
+        ligand_payloads=[
+            ligand_data_for_js(
+                path=str(sdf_path),
+                label="</script><script>alert(1)</script>",
+            )
+        ],
+    )
+
+    assert "</script><script>alert(1)</script>" not in html
+    assert "\\u003c/script>" in html
+
+
+def test_render_docking_box_html_api() -> None:
+    """Docking-box HTML loads protein then calls renderBoundingBox with min/max."""
+    html = render_docking_box_html(
+        pdb_path=str(_FIXTURE_PDB),
+        box_center=[10.0, 20.0, 30.0],
+        box_size=[4.0, 6.0, 8.0],
+    )
+
+    assert "loadFromRawContent" in html
+    assert "renderBoundingBox" in html
+    assert "[8.0, 17.0, 26.0]" in html
+    assert "[12.0, 23.0, 34.0]" in html
+    assert "0.2" in html
+    assert str(0xFFFF00) in html
+
+
+def test_render_docking_box_rejects_non_positive_size() -> None:
+    """Non-positive box extents raise ValueError."""
+    with pytest.raises(ValueError, match="positive"):
+        render_docking_box_html(
+            pdb_path=str(_FIXTURE_PDB),
+            box_center=[0.0, 0.0, 0.0],
+            box_size=[10.0, 0.0, 10.0],
         )

@@ -10,6 +10,7 @@ Strangler-fig migration from the legacy `deeporigin-molstar` Python package
 | # | Doc | Scope | Status |
 |---|-----|-------|--------|
 | 1 | [01-molstar-visualization-inventory.md](./01-molstar-visualization-inventory.md) | Full visualization inventory, API mapping, phased rollout | Active |
+| ADR | [../docs/adr/0001-docking-box-without-exported-box3d.md](../docs/adr/0001-docking-box-without-exported-box3d.md) | Duck-typed Box3D until PUI-2203 | Accepted |
 
 ## Migration status
 
@@ -17,11 +18,12 @@ Strangler-fig migration from the legacy `deeporigin-molstar` Python package
 |-------|---------------|------------------|--------|
 | 1 | Protein structure | `Protein.show()`, `PreparedSystem.show()` | **Done** |
 | 2 | Protein + binding pockets | `Protein.show(pockets=...)` | **Done** |
-| 3 | Ligand 3D | `Ligand.show()`, `LigandSet.show()` | Pending |
-| 4 | Protein + docked poses | `Protein.show(poses=...)` | Pending |
-| 5 | Docking search box | `Docking.show_box()`, `ConstrainedDocking.show_box()` | Pending |
-| 6 | MD trajectory | `ABFE.show_trajectory()` | Pending |
-| 7 | Remove `deeporigin-molstar` dep | `visualize.py`, static doc embeds | Pending |
+| 3 | Ligand 3D | `Ligand.show()`, `LigandSet.show()` | **Done** |
+| 4 | Protein + docked poses | `Protein.show(poses=...)` | **Done** |
+| 5 | Protein + pockets + poses | `Protein.show(pockets=..., poses=...)` | **Done** |
+| 6 | Docking search box | `Docking.show_box()`, `ConstrainedDocking.show_box()` | **Done** |
+| 7 | MD trajectory | `ABFE.show_trajectory()` | Pending |
+| 8 | Remove `deeporigin-molstar` dep | `visualize.py`, static doc embeds | Pending |
 
 ## Bundle delivery
 
@@ -38,7 +40,7 @@ Develop in `docs/notebooks/dirty/` (gitignored), then promote to
 
 | Notebook | Purpose |
 |----------|---------|
-| [`docs/notebooks/clean/molstar-visualization-catalog.ipynb`](../docs/notebooks/clean/molstar-visualization-catalog.ipynb) | Unified progress dashboard — one section per inventory visualization (#1–#7), with ✅/⏳ status badges |
+| [`docs/notebooks/clean/molstar-visualization-catalog.ipynb`](../docs/notebooks/clean/molstar-visualization-catalog.ipynb) | Unified progress dashboard — one section per inventory visualization (#1–#8), with ✅/⏳ status badges |
 
 The older phase-1-only notebook (`molstar-protein-view.ipynb`) remains for reference;
 new verification work should go in the catalog notebook.

@@ -116,39 +116,38 @@ def test_resolve_docking_box_geometry_matches_tool_inputs(
     ]
 
 
-def test_show_box_calls_render_bounding_box(
+def test_show_box_calls_render_docking_box_html(
     registered_protein,
     unregistered_pocket,
     registered_ligand,
 ) -> None:
-    """show_box passes protein path, center, and box size to Mol* render_bounding_box."""
+    """show_box passes protein path, center, and box size to render_docking_box_html."""
     docking = Docking(
         protein=registered_protein,
         pocket=unregistered_pocket,
         ligand=registered_ligand,
     )
     center, box_size = docking._resolve_docking_box_geometry()
-    mock_render = MagicMock(return_value="<html>box</html>")
-    mock_viewer = MagicMock()
-    mock_viewer.render_bounding_box = mock_render
+    mock_builder = MagicMock(return_value="<html>box</html>")
 
     with (
-        patch("deeporigin_molstar.DockingViewer", return_value=mock_viewer),
         patch(
-            "deeporigin.drug_discovery.utils.visualize.JupyterViewer.visualize",
+            "deeporigin.viz.molstar_html.render_docking_box_html",
+            mock_builder,
+        ),
+        patch(
+            "deeporigin.utils.notebook.render_html",
             side_effect=lambda html: html,
         ),
     ):
         html = docking.show_box()
 
     assert html == "<html>box</html>"
-    mock_render.assert_called_once()
-    call_kwargs = mock_render.call_args.kwargs
-    assert call_kwargs["protein_format"] == "pdb"
-    assert call_kwargs["box_center"] == center
-    assert call_kwargs["box_size"] == box_size
-    protein_path = call_kwargs["protein_data"]
-    assert Path(protein_path).is_file()
+    mock_builder.assert_called_once()
+    call_kwargs = mock_builder.call_args.kwargs
+    assert call_kwargs["box_center"] == list(center)
+    assert call_kwargs["box_size"] == list(box_size)
+    assert Path(call_kwargs["pdb_path"]).is_file()
 
 
 def test_docking_accepts_single_ligand(

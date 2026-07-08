@@ -201,6 +201,11 @@ poses.download()
 protein.show(poses=poses)
 ```
 
+All poses are loaded and overlaid on the protein. When there is more than one pose, a
+navigation bar appears at the bottom of the viewer: use its ◀ / ▶ buttons or the
+Left/Right arrow keys to cycle through an "all poses" view and each individual pose one
+at a time.
+
 <iframe 
     src="../../images/brd-docked-poses.html" 
     width="100%" 

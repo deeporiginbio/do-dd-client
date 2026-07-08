@@ -1353,39 +1353,40 @@ class Protein(Entity):
         self,
         *,
         pockets: Optional[list[Pocket]] = None,
-        sdf_file: Optional[str] = None,
         ligand: Optional[Ligand] = None,
         ligands: Optional[LigandSet | list[Ligand]] = None,
         poses: Optional[LigandSet | list[Ligand]] = None,
     ):
-        """Visualize the protein structure in a Jupyter notebook using MolStar viewer.
+        """Visualize the protein structure in a Jupyter notebook using Mol*.
 
-        This method provides interactive 3D visualization of the protein structure with optional
-        highlighting of binding pockets and docked ligands. The visualization is rendered directly
-        in Jupyter notebooks using the MolStar viewer.
+        Renders via the hosted ``molstarLib`` bundle. Protein-only and pockets-only
+        views, docked poses, and pockets+poses are supported.
+
+        When more than one pose is supplied, all poses are loaded and overlaid, and a
+        navigation bar is shown at the bottom of the viewer. Use its ◀ / ▶ buttons or
+        the Left/Right arrow keys to cycle through an "all poses" view and each
+        individual pose one at a time.
 
         Args:
-            pockets (Optional[list[Pocket]], optional): List of Pocket objects to highlight
-                in the visualization. Each pocket will be displayed with its defined color
-                and transparency. Defaults to None.
-            sdf_file (Optional[str], optional): Path to an SDF file containing docked ligand
-                structures. When provided, the ligands will be displayed alongside the protein
-                structure. Defaults to None.
+            pockets: Optional pocket overlays (gaussian surfaces).
+            ligand: Optional single ligand / docked pose to overlay.
+            ligands: Optional ligand set (or list) to overlay as docked poses.
+            poses: Alias for ``ligands``.
 
-
-        Notes:
-            - When pockets are provided, they are displayed with semi-transparent surfaces
-              (alpha=0.7) while the protein is shown with a more transparent surface (alpha=0.1)
-            - The protein is displayed in cartoon representation when pockets are shown
-            - When an SDF file is provided, the visualization includes both the protein and
-              the docked ligands in their respective binding poses
+        Raises:
+            DeepOriginException: If both ``ligand`` and ``ligands``/``poses`` are set.
         """
-
         from deeporigin.utils.notebook import render_html
+        from deeporigin.viz.molstar_html import (
+            ligand_data_for_js,
+            render_protein_html,
+            render_protein_with_pockets_and_poses_html,
+            render_protein_with_pockets_html,
+            render_protein_with_poses_html,
+        )
 
         current_protein_file = self._dump_state()
 
-        # poses is an alias for ligands
         if poses is not None:
             ligands = poses
 
@@ -1394,57 +1395,86 @@ class Protein(Entity):
                 "Either ligand or ligands must be provided, not both"
             ) from None
 
-        if ligand is not None and sdf_file is not None:
-            raise DeepOriginException(
-                "Either ligand or sdf_file must be provided, not both"
-            ) from None
-
-        if ligands is not None and sdf_file is not None:
-            raise DeepOriginException(
-                "Either ligands or sdf_file must be provided, not both"
-            ) from None
-
+        pose_ligands: list[Ligand] = []
         if ligand is not None:
-            sdf_file = ligand.to_sdf()
+            pose_ligands = [ligand]
         elif ligands is not None:
-            if isinstance(ligands, list):
-                ligands = LigandSet(ligands)
-            sdf_file = ligands.to_sdf()
+            if isinstance(ligands, LigandSet):
+                pose_ligands = list(ligands.ligands)
+            else:
+                pose_ligands = list(ligands)
 
-        if pockets is None and sdf_file is None:
-            from deeporigin.viz.molstar_html import render_protein_html
+        has_pockets = pockets is not None and len(pockets) > 0
+        has_poses = len(pose_ligands) > 0
 
-            html_content = render_protein_html(pdb_path=current_protein_file)
-            return render_html(html_content)
-        elif pockets is not None and sdf_file is None:
-            from deeporigin.viz.molstar_html import render_protein_with_pockets_html
+        def _pose_label(item: Ligand, index: int) -> str:
+            """Pick a LigandManager label: name → SMILES → ligand-{i}."""
+            name = getattr(item, "name", None)
+            if name and name not in ("", "Unknown_Ligand"):
+                return str(name)
+            smiles = getattr(item, "smiles", None) or getattr(
+                item, "canonical_smiles", None
+            )
+            if smiles:
+                return str(smiles)
+            return f"ligand-{index}"
 
+        def _ligand_payloads() -> list[dict[str, object]]:
+            """Build per-ligand molstarLib payloads from pose ligands."""
+            return [
+                ligand_data_for_js(
+                    path=item.to_sdf(),
+                    label=_pose_label(item, index),
+                )
+                for index, item in enumerate(pose_ligands)
+            ]
+
+        def _pocket_args() -> tuple[list[str], list[str], list[str]]:
+            """Download pockets and return paths, colors, and labels."""
+            assert pockets is not None
             for pocket in pockets:
                 pocket.download()
-
-            html_content = render_protein_with_pockets_html(
-                pdb_path=current_protein_file,
-                pocket_paths=[str(pocket.local_path) for pocket in pockets],
-                pocket_colors=[pocket.color for pocket in pockets],
-                pocket_labels=[
+            return (
+                [str(pocket.local_path) for pocket in pockets],
+                [pocket.color for pocket in pockets],
+                [
                     pocket.name or f"pocket-{index + 1}"
                     for index, pocket in enumerate(pockets)
                 ],
             )
 
-            return render_html(html_content)
-        elif sdf_file is not None:
-            from deeporigin_molstar import DockingViewer
+        if not has_pockets and not has_poses:
+            return render_html(render_protein_html(pdb_path=current_protein_file))
 
-            docking_viewer = DockingViewer()
-            html_content = docking_viewer.render_with_separate_crystal(
-                protein_data=current_protein_file,
-                protein_format="pdb",
-                ligands_data=[sdf_file],
-                ligand_format="sdf",
+        if has_pockets and not has_poses:
+            pocket_paths, pocket_colors, pocket_labels = _pocket_args()
+            return render_html(
+                render_protein_with_pockets_html(
+                    pdb_path=current_protein_file,
+                    pocket_paths=pocket_paths,
+                    pocket_colors=pocket_colors,
+                    pocket_labels=pocket_labels,
+                )
             )
 
-            return render_html(html_content)
+        if has_poses and not has_pockets:
+            return render_html(
+                render_protein_with_poses_html(
+                    pdb_path=current_protein_file,
+                    ligand_payloads=_ligand_payloads(),
+                )
+            )
+
+        pocket_paths, pocket_colors, pocket_labels = _pocket_args()
+        return render_html(
+            render_protein_with_pockets_and_poses_html(
+                pdb_path=current_protein_file,
+                pocket_paths=pocket_paths,
+                pocket_colors=pocket_colors,
+                pocket_labels=pocket_labels,
+                ligand_payloads=_ligand_payloads(),
+            )
+        )
 
     def _repr_html_(self):
         """

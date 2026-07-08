@@ -14,19 +14,18 @@ from typing import Any, Callable, ClassVar, Literal, Optional, Self, cast
 import warnings
 
 from beartype import beartype
-from deeporigin_molstar import MoleculeViewer
 import numpy as np
 import pandas as pd
 from rdkit import Chem, RDLogger
 from rdkit.Chem import AllChem, SaltRemover, rdMolDescriptors
 
 from deeporigin.drug_discovery.constants import LIGANDS_DIR, SUPPORTED_ATOM_SYMBOLS
-from deeporigin.drug_discovery.utils.visualize import jupyter_visualization
 from deeporigin.drug_discovery.validation import validate_fragments
 from deeporigin.exceptions import DeepOriginException
 from deeporigin.platform.client import DeepOriginClient
 from deeporigin.utils.constants import number
 from deeporigin.utils.env import _ensure_do_folder
+from deeporigin.viz.molstar_html import render_ligand_html
 
 from .entity import Entity
 
@@ -1527,10 +1526,7 @@ class Ligand(Entity):
 
     def _ligand_viewer_html(self) -> str:
         """Raw HTML from the molstar viewer for this ligand (no iframe / display)."""
-        sdf_file = self.to_sdf()
-        viewer = MoleculeViewer(str(sdf_file), format="sdf")
-        ligand_config = viewer.get_ligand_visualization_config()
-        return viewer.render_ligand(ligand_config=ligand_config)
+        return render_ligand_html(sdf_path=self.to_sdf())
 
     def show(self) -> str | None:
         """
@@ -2725,22 +2721,12 @@ class LigandSet:
         for ligand in self.ligands:
             ligand.add_hydrogens()
 
-    @jupyter_visualization
     def show(self) -> str | None:
-        """
-        Visualize all ligands in this LigandSet in 3D
-        """
-
-        sdf_file = self.to_sdf()
-
+        """Visualize all ligands in this LigandSet in 3D via hosted molstarLib."""
         try:
-            viewer = MoleculeViewer(str(sdf_file), format="sdf")
-            ligand_config = viewer.get_ligand_visualization_config()
-            html = viewer.render_ligand(ligand_config=ligand_config)
-
             from deeporigin.utils.notebook import render_html
 
-            return render_html(html)
+            return render_html(render_ligand_html(sdf_path=self.to_sdf()))
         except Exception as e:
             raise DeepOriginException(f"Visualization failed: {str(e)}") from e
 

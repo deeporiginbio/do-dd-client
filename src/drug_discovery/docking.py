@@ -21,7 +21,6 @@ from deeporigin.drug_discovery.notebook_watch_mixin import NotebookWatchMixin
 from deeporigin.drug_discovery.structures.ligand import Ligand, LigandSet
 from deeporigin.drug_discovery.structures.pocket import Pocket
 from deeporigin.drug_discovery.structures.protein import Protein
-from deeporigin.drug_discovery.utils.visualize import jupyter_visualization
 from deeporigin.exceptions import DeepOriginException
 from deeporigin.platform.client import DeepOriginClient
 from deeporigin.platform.constants import TOOL_KEYS_AND_VERSIONS, is_success_status
@@ -607,18 +606,15 @@ class Docking(Execution, SyncExecutableMixin, AsyncExecutableMixin, NotebookWatc
         poses.download(client=self.client, lazy=True)
         return poses
 
-    @jupyter_visualization
-    def show_box(self) -> str:
+    def show_box(self) -> str | None:
         """Visualize the protein with the docking search box in a Jupyter notebook.
 
         Renders the target protein and a wireframe box from :attr:`pocket` center and
         ``box_size_x`` / ``box_size_y`` / ``box_size_z`` (same geometry as
-        :meth:`run` and :meth:`start` submit to the docking tool). Requires the
-        ``tools`` optional dependency (``deeporigin-molstar``).
+        :meth:`run` and :meth:`start` submit to the docking tool).
 
         Returns:
-            HTML string for the Mol* viewer (wrapped for display by
-            :func:`~deeporigin.drug_discovery.utils.visualize.jupyter_visualization`).
+            Result of :func:`~deeporigin.utils.notebook.render_html` for the Mol* viewer.
 
         Raises:
             DeepOriginException: If the protein structure cannot be loaded locally.
@@ -634,14 +630,15 @@ class Docking(Execution, SyncExecutableMixin, AsyncExecutableMixin, NotebookWatc
                 ),
             ) from None
 
+        from deeporigin.utils.notebook import render_html
+        from deeporigin.viz.molstar_html import render_docking_box_html
+
         protein_file = self.protein._dump_state()
         pocket_center, box_size = self._resolve_docking_box_geometry()
-
-        from deeporigin_molstar import DockingViewer
-
-        return DockingViewer().render_bounding_box(
-            protein_data=protein_file,
-            protein_format="pdb",
-            box_center=pocket_center,
-            box_size=box_size,
+        return render_html(
+            render_docking_box_html(
+                pdb_path=protein_file,
+                box_center=list(pocket_center),
+                box_size=list(box_size),
+            )
         )
