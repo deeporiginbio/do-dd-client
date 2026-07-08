@@ -62,6 +62,19 @@ def _reference_ligand_tool_input_row(lig: Ligand) -> dict[str, Any]:
     return row
 
 
+def _reference_pose_result_id(lig: Ligand) -> str | None:
+    """Return the platform pose-result id for ``reference.pose.id``, if any."""
+    pose_result_id = lig.properties.get("pose_result_id")
+    if pose_result_id is not None:
+        return str(pose_result_id)
+    legacy_id = lig.properties.get("id")
+    if legacy_id is None:
+        return None
+    if lig.id is not None and str(legacy_id) == str(lig.id):
+        return None
+    return str(legacy_id)
+
+
 def _reference_pose_tool_input_row(lig: Ligand) -> dict[str, Any]:
     """Build the reference.pose entry for constrained docking tool inputs."""
     if lig.remote_path is None:
@@ -70,9 +83,9 @@ def _reference_pose_tool_input_row(lig: Ligand) -> dict[str, Any]:
             "(remote_path). Load from SDF/MOL2 and call reference_pose.sync()."
         )
     row: dict[str, Any] = {"file_path": lig.remote_path}
-    pose_id = lig.properties.get("id")
+    pose_id = _reference_pose_result_id(lig)
     if pose_id is not None:
-        row["id"] = str(pose_id)
+        row["id"] = pose_id
     return row
 
 
@@ -425,9 +438,12 @@ class ConstrainedDocking(
         approve_amount: int | None = None,
         **kwargs: Any,
     ) -> None:
-        """Submit a persisted async execution. Requires at least two test ligands.
+        """Submit a persisted async execution.
 
-        For a single test ligand, use :meth:`run` instead.
+        Requires at least two test ligands unless ``quote=True`` (cost estimate
+        only), in which case a single test ligand is allowed.
+
+        For a single-ligand docking run, use :meth:`run` instead.
 
         Args:
             quote: Shorthand for ``approve_amount=0``.
@@ -456,7 +472,7 @@ class ConstrainedDocking(
         """Sync protein, reference entities, and test ligands to the platform."""
         self.protein.sync(lazy=True, client=self.client)
         self.reference_ligand.sync(lazy=True, client=self.client)
-        if self.reference_pose.properties.get("id") is None:
+        if self.reference_pose.remote_path is None:
             self.reference_pose.sync(lazy=True, client=self.client)
         self.ligands.sync(lazy=True, client=self.client)
 

@@ -2581,6 +2581,7 @@ class LigandSet:
 
         rex = entry.get("id")
         if rex is not None:
+            lig.properties["pose_result_id"] = str(rex)
             lig.properties["id"] = str(rex)
 
         for key, val in entry.items():

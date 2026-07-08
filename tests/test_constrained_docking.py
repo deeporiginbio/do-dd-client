@@ -30,7 +30,7 @@ def test_reference_pose_tool_input_row_uses_pose_result_id() -> None:
     pose = Ligand.from_sdf(BRD_DATA_DIR / "brd-2.sdf")
     pose.id = "ligand-abc"
     pose.remote_path = "testing/reference-pose.sdf"
-    pose.properties["id"] = "pose-xyz"
+    pose.properties["pose_result_id"] = "pose-xyz"
 
     row = _reference_pose_tool_input_row(pose)
 
@@ -39,6 +39,19 @@ def test_reference_pose_tool_input_row_uses_pose_result_id() -> None:
         "id": "pose-xyz",
     }
     assert row["id"] != pose.id
+
+
+def test_reference_pose_tool_input_row_ignores_sdf_id_property() -> None:
+    """SDF-derived id properties must not be forwarded as reference.pose.id."""
+    pose = Ligand.from_sdf(BRD_DATA_DIR / "brd-2.sdf")
+    pose.id = "ligand-abc"
+    pose.remote_path = "testing/reference-pose-static.sdf"
+    pose.properties["id"] = "ligand-abc"
+
+    row = _reference_pose_tool_input_row(pose)
+
+    assert row == {"file_path": "testing/reference-pose-static.sdf"}
+    assert "id" not in row
 
 
 def test_reference_pose_tool_input_row_omits_id_for_static_sdf() -> None:
@@ -58,7 +71,7 @@ def test_ensure_platform_inputs_skips_sync_for_platform_pose(
     unregistered_pocket,
     registered_ligand,
 ) -> None:
-    """Platform poses (properties['id'] set) must not run ligand sync."""
+    """Platform poses with remote_path already set must not run ligand sync."""
     reference_ligand, reference_pose = _make_reference_pair()
     reference_ligand.remote_path = "testing/brd-2.sdf"
     reference_ligand.id = "brd-2"

@@ -529,7 +529,10 @@ class Protein(Entity):
         if contact_distance <= 0:
             raise ValueError("contact_distance must be positive.")
 
-        self.download(lazy=True)
+        if self.structure is None:
+            if self.local_path is None and self.remote_path is None:
+                raise ValueError(_PROTEIN_STRUCTURE_NOT_LOADED_MSG)
+            self.download(lazy=True)
         if self.structure is None:
             raise ValueError(_PROTEIN_STRUCTURE_NOT_LOADED_MSG)
 
@@ -553,7 +556,7 @@ class Protein(Entity):
         if protein_atoms_only:
             atom_mask &= ~structure.hetero
 
-        if exclude_waters:
+        if exclude_waters and not protein_atoms_only:
             from biotite.structure import filter_solvent
 
             atom_mask &= ~filter_solvent(structure)
