@@ -1,5 +1,6 @@
 """Tests for filesystem utilities."""
 
+import os
 from pathlib import Path
 
 import pytest
@@ -73,9 +74,9 @@ def test_expand_user_tilde_only() -> None:
 
 def test_expand_user_tilde_path() -> None:
     """Expand tilde-prefixed paths under the home directory."""
-    assert (
-        expand_user("~/data", user_home_dirname="/home/tester") == "/home/tester/data"
-    )
+    home = "/home/tester"
+    path = f"~{os.path.sep}data"
+    assert expand_user(path, user_home_dirname=home) == os.path.join(home, "data")
 
 
 def test_expand_user_absolute_passthrough() -> None:
