@@ -5,7 +5,7 @@ from unittest.mock import patch
 import numpy as np
 import pytest
 
-from deeporigin.plots import _create_hover_tooltip, scatter
+from deeporigin.plots import _create_hover_tooltip, plot_heatmap, scatter
 
 
 def test_scatter_basic_functionality():
@@ -574,3 +574,51 @@ def test_scatter_default_width_height():
         # Verify default width and height
         assert figure.width == 800
         assert figure.height == 800
+
+
+def test_plot_heatmap_basic_square_matrix():
+    """plot_heatmap renders a square matrix."""
+    values = np.array([[0.0, 1.0], [1.0, 0.0]])
+
+    with patch("deeporigin.plots.show") as mock_show:
+        plot_heatmap(values, labels=["A", "B"], title="Heatmap")
+
+        mock_show.assert_called_once()
+        figure = mock_show.call_args[0][0]
+        assert figure.title.text == "Heatmap"
+
+
+def test_plot_heatmap_non_square_raises():
+    """plot_heatmap rejects non-square matrices."""
+    values = np.array([[0.0, 1.0, 2.0], [1.0, 0.0, 2.0]])
+
+    with pytest.raises(ValueError, match="square NxN matrix"):
+        plot_heatmap(values)
+
+
+def test_plot_heatmap_label_length_mismatch():
+    """plot_heatmap validates label length against matrix size."""
+    values = np.array([[0.0, 1.0], [1.0, 0.0]])
+
+    with pytest.raises(ValueError, match="Length of `labels`"):
+        plot_heatmap(values, labels=["only-one"])
+
+
+def test_plot_heatmap_nan_and_custom_clim():
+    """plot_heatmap handles NaNs and explicit color limits."""
+    values = np.array([[np.nan, 2.0], [2.0, 2.0]])
+
+    with patch("deeporigin.plots.show") as mock_show:
+        plot_heatmap(values, clim=(0.0, 5.0))
+
+        mock_show.assert_called_once()
+
+
+def test_plot_heatmap_degenerate_color_scale():
+    """plot_heatmap widens identical vmin/vmax values."""
+    values = np.array([[2.0, 2.0], [2.0, 2.0]])
+
+    with patch("deeporigin.plots.show") as mock_show:
+        plot_heatmap(values)
+
+        mock_show.assert_called_once()

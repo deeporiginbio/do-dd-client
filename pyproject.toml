@@ -37,6 +37,7 @@ core = [
 lint = ["ruff"]
 test = [
     "pytest",
+    "pytest-cov",
     "pytest-html",
     "parameterized",
     "coverage",
@@ -108,6 +109,19 @@ universal = true
 
 [tool.coverage.run]
 omit = ["src/data_hub/client.py", "tests/*.py"]
+source = ["src"]
+
+[tool.coverage.report]
+show_missing = true
+skip_empty = true
+exclude_lines = [
+    "pragma: no cover",
+    "if TYPE_CHECKING:",
+    "@overload",
+]
+
+[tool.coverage.html]
+directory = "htmlcov"
 
 
 [tool.pytest.ini_options]
