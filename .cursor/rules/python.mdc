@@ -49,9 +49,9 @@ When modifying an existing function, make the following changes together:
 - Pytest functions only (`def test_*()`); no `unittest.TestCase`
 - Use the `client` fixture from `tests/conftest.py` for platform API tests; run with `--env local` (autouse mock server)
 - Prefer `test_<domain>_local.py` for mock-server integration; pure helpers belong in unit tests with no network
-- Do not use `unittest.mock` (`MagicMock`, `@patch`, `patch.object`) or `monkeypatch` to stub our own code
-- When the platform is involved, extend the mock server and fixtures — do not mock `DeepOriginClient` or its wrappers
-- For external libraries only (httpx, bokeh, IPython), use library-native test hooks (`httpx.MockTransport`, inject a fake, etc.) — not `monkeypatch`
+- Do not mock `DeepOriginClient` / platform wrappers when the mock server can cover the behavior
+- Do not use `unittest.mock` or `monkeypatch` to stub our production methods in platform-facing tests — extend the mock server or inject dependencies
+- Stdlib/external boundaries may use library-native test doubles (`httpx.MockTransport`) or `monkeypatch` when no injectable seam exists; prefer an injectable `when=`/`now_fn` when that API already exists
 - See `.github/copilot-instructions.md` and `docs/dev/mock-server.md` for details and examples
 
 # Delivering new SDK features

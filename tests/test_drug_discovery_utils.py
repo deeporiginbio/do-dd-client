@@ -45,7 +45,11 @@ def test_set_test_run_recurses() -> None:
 
 
 def test_load_params_reads_json(monkeypatch: pytest.MonkeyPatch) -> None:
-    """_load_params loads JSON from the packaged params resource."""
+    """_load_params loads JSON via ``importlib.resources.open_text``.
+
+    The ``deeporigin.json`` package is not always present in editable checkouts, so
+    this test doubles the stdlib resource loader (not production SDK code).
+    """
     fixture = {"effort": 2, "mode": "fast"}
 
     @contextmanager

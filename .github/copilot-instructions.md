@@ -30,9 +30,11 @@ Write **pytest-style** tests. Do not use `unittest.TestCase`.
 
 ### Don't
 
-- `unittest.mock` (`MagicMock`, `@patch`, `patch.object`) on our code or the platform client.
-- `monkeypatch` / `pytest.MonkeyPatch` to replace attributes on modules or instances under test.
-- `MagicMock(spec=DeepOriginClient)` or mocking `client.executions.create` / `client.tools.get` when the mock server can serve the response.
+- Mock `DeepOriginClient` / platform wrappers (`MagicMock(spec=DeepOriginClient)`, stubbing `client.executions.create` / `client.tools.get`) when the mock server can serve the response.
+- Use `unittest.mock` or `monkeypatch` to stub **our production methods** in platform-facing tests — extend the mock server or inject dependencies instead.
+- Prefer not to reach for `MagicMock`/`@patch` for SDK objects that talk to the platform; canned request-shape helpers or the `client` fixture are preferred.
+
+OK at stdlib/external boundaries when needed (e.g. controlling `datetime.now` for relative timestamps, or `httpx.MockTransport`). Prefer an injectable `when=`/`now_fn` when that API already exists.
 
 ### Reference tests
 

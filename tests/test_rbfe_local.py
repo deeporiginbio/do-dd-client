@@ -108,6 +108,19 @@ def test_rbfe_from_id_get_results_local(client: DeepOriginClient) -> None:
     assert df.iloc[0]["ddG"] == "-3875.483 kcal/mol"
 
 
+def test_rbfe_from_id_get_cycle_closure_results_local(
+    client: DeepOriginClient,
+) -> None:
+    """Preloaded execution fixture returns cycle-closure absolute dG rows."""
+    rbfe = RBFE.from_id(MOCK_RBFE_EXECUTION_ID, client=client)
+    out = rbfe.get_cycle_closure_results()
+    assert out is not None
+    assert {"ligand_id", "dG", "unit"}.issubset(out.columns)
+    assert len(out) == 2
+    assert out.iloc[0]["ligand_id"] == "08DK80B7DYTXH"
+    assert float(out.iloc[0]["dG"]) == -10.0
+
+
 def test_rbfe_sysprep_and_fep_local(client: DeepOriginClient) -> None:
     """BRD pair: system-prep (RBFE mode) then quote → confirm → wait → results."""
     protein = Protein.from_file(BRD_DATA_DIR / "brd.pdb")

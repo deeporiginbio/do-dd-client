@@ -1375,6 +1375,14 @@ def create_tools_router(
                 for key in ("ligand1_id", "ligand2_id", "protein_id"):
                     if ps0.get(key) is not None:
                         data[key] = ps0[key]
+        if isinstance(data, dict) and "cycleclosureresults" not in data:
+            data["cycleclosureresults"] = [
+                {
+                    "ligand_id": data.get("ligand1_id") or "lig-1",
+                    "dG": -10.0,
+                    "unit": "kcal/mol",
+                },
+            ]
         results.append(template)
         executions[eid] = execution
         _inject_rbfe_user_logs(str(eid))

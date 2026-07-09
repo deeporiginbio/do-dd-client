@@ -18,35 +18,57 @@ from tests.conftest import check_tool_exists
 if TYPE_CHECKING:
     from deeporigin.platform.client import DeepOriginClient
 
+# compute_job_id that the mock result-explorer treats as an empty page (no rematch).
+_NO_PREPARED_SYSTEM_ROWS_ID = "__no_prepared_system_rows__"
 
-def _block_prepared_system_from_result(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Force ``PreparedSystem.from_result`` to fail so ``get_results`` uses fallbacks."""
 
-    @classmethod
-    def _raise_from_result(cls, **kwargs: object) -> list[PreparedSystem]:
-        raise ValueError("no rows")
-
-    monkeypatch.setattr(PreparedSystem, "from_result", _raise_from_result)
+def _minimal_sysprep_dto(
+    *,
+    execution_id: str = _NO_PREPARED_SYSTEM_ROWS_ID,
+    job_outputs: dict | None = None,
+) -> dict:
+    """Build a minimal tools execution DTO for system prep."""
+    sp = TOOL_KEYS_AND_VERSIONS["sysprep"]
+    dto: dict = {
+        "executionId": execution_id,
+        "tool": {"key": sp["tool_key"], "version": sp["tool_version"]},
+        "status": "Succeeded",
+        "name": "sysprep-test",
+        "userInputs": {},
+    }
+    if job_outputs is not None:
+        dto["jobOutputs"] = job_outputs
+    return dto
 
 
 def test_system_prep_get_results_falls_back_to_job_outputs(
     client: DeepOriginClient,
-    brd_protein: Protein,
-    brd_ligand: Ligand,
-    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """When ``from_result`` fails, ``jobOutputs.system`` is parsed via ``from_json``."""
-    _block_prepared_system_from_result(monkeypatch)
+    """When explorer has no rows, ``jobOutputs.system`` is parsed via ``from_json``."""
+    system_payload = {
+        "binding_xml_file_path": "tool-runs/exec/bsm_system.xml",
+        "solvation_xml_ligand_file_path": "tool-runs/exec/solvation_ligand.xml",
+        "system_pdb_file_path": "tool-runs/exec/system.pdb",
+        "add_H_atoms": True,
+        "padding": 1,
+        "protein_id": "brd",
+        "protonate_protein": True,
+        "retain_waters": False,
+    }
+    protein = Protein.from_file(BRD_DATA_DIR / "brd.pdb")
+    ligand = Ligand.from_smiles("CCO")
+    sysprep = SystemPrep(protein=protein, ligand=ligand, client=client)
+    sysprep.update_from_dto(
+        _minimal_sysprep_dto(job_outputs={"system": system_payload})
+    )
 
-    sysprep = SystemPrep(protein=brd_protein, ligand=brd_ligand, client=client)
-    prepared = sysprep.run()
-    dto = client.executions.get(sysprep.id)  # ty:ignore[unresolved-attribute]
-
-    out = sysprep.get_results(dto)
+    out = sysprep.get_results(
+        _minimal_sysprep_dto(job_outputs={"system": system_payload})
+    )
 
     assert isinstance(out, PreparedSystem)
-    assert out.binding_xml_path == prepared.binding_xml_path
-    assert out.system_pdb_path == prepared.system_pdb_path
+    assert out.binding_xml_path == system_payload["binding_xml_file_path"]
+    assert out.system_pdb_path == system_payload["system_pdb_file_path"]
 
 
 def test_system_prep_get_results_requires_id(client: DeepOriginClient) -> None:
@@ -59,37 +81,17 @@ def test_system_prep_get_results_requires_id(client: DeepOriginClient) -> None:
         sysprep.get_results()
 
 
-def _minimal_sysprep_dto(*, execution_id: str = "exec-sysprep-1") -> dict:
-    """Build a minimal tools execution DTO for system prep."""
-    sp = TOOL_KEYS_AND_VERSIONS["sysprep"]
-    return {
-        "executionId": execution_id,
-        "tool": {"key": sp["tool_key"], "version": sp["tool_version"]},
-        "status": "Succeeded",
-        "name": "sysprep-test",
-        "userInputs": {},
-    }
-
-
 def test_system_prep_get_results_raises_when_no_paths(
     client: DeepOriginClient,
-    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """When both data platform and ``jobOutputs`` fail, raise sysprep message."""
-    _block_prepared_system_from_result(monkeypatch)
     protein = Protein.from_file(BRD_DATA_DIR / "brd.pdb")
     ligand = Ligand.from_smiles("CCO")
     sysprep = SystemPrep(protein=protein, ligand=ligand, client=client)
-    sysprep.update_from_dto(_minimal_sysprep_dto())
-
-    monkeypatch.setattr(
-        client.executions,
-        "get",
-        lambda _exec_id: {"jobOutputs": {}},
-    )
+    sysprep.update_from_dto(_minimal_sysprep_dto(job_outputs={}))
 
     with pytest.raises(ValueError, match=SYSPREP_NO_OUTPUT_PATHS_MSG):
-        sysprep.get_results()
+        sysprep.get_results(_minimal_sysprep_dto(job_outputs={}))
 
 
 @pytest.mark.parametrize(

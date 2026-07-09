@@ -226,48 +226,6 @@ def test_rbfe_cycle_closure_rejects_malformed_anchor() -> None:
         )
 
 
-def test_rbfe_get_cycle_closure_results(
-    client: DeepOriginClient,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """get_cycle_closure_results syncs and returns the summary DataFrame."""
-    rbfe = RBFE(
-        prepared_systems=[
-            PreparedSystem(
-                binding_xml_path="b.xml",
-                solvation_xml_path="s.xml",
-                system_pdb_path="p.pdb",
-            )
-        ],
-        client=client,
-    )
-    rbfe._id = "exec-top"
-    rbfe_tool_key = TOOL_KEYS_AND_VERSIONS["rbfe"]["tool_key"]
-    platform_response = {
-        "data": [
-            {
-                "tool_key": rbfe_tool_key,
-                "data": {
-                    "cycleclosureresults": [
-                        {"ligand_id": "lig-1", "dG": -10.0, "unit": "kcal/mol"},
-                    ]
-                },
-            }
-        ]
-    }
-    sync_calls: list[None] = []
-    monkeypatch.setattr(rbfe, "sync", lambda: sync_calls.append(None))
-    monkeypatch.setattr(
-        Execution,
-        "get_results",
-        lambda self, **kwargs: platform_response,
-    )
-    out = rbfe.get_cycle_closure_results()
-    assert isinstance(out, pd.DataFrame)
-    assert out.iloc[0]["ligand_id"] == "lig-1"
-    assert len(sync_calls) == 1
-
-
 def test_rbfe_rbfe_steps_require_prepared_systems() -> None:
     """RBFE-only steps reject when no input mode is provided."""
     with pytest.raises(

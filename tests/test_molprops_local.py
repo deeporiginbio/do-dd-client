@@ -1,4 +1,4 @@
-"""Unit tests for :class:`~deeporigin.drug_discovery.molprops.Molprops`."""
+"""Local mock-server tests for :class:`~deeporigin.drug_discovery.molprops.Molprops`."""
 
 from __future__ import annotations
 
