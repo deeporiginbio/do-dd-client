@@ -1,0 +1,24 @@
+{
+  "anyFailed": false,
+  "failedQuotations": [],
+  "successfulQuotations": [
+    {
+      "qty": 1,
+      "orgId": "deeporigin",
+      "status": "OK",
+      "itemCode": "DO_ABFE",
+      "priceEach": 119.2128,
+      "priceTotal": 119.2128,
+      "pricingRecords": [
+        {
+          "qty": 1,
+          "itemKey": "DO_ABFE",
+          "itemName": "Absolute Binding Free Energy (ABFE)",
+          "priceEach": 119.2128,
+          "totalPrice": 119.2128
+        }
+      ],
+      "pricingRecordType": "regular"
+    }
+  ]
+}

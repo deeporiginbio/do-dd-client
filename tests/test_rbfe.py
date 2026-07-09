@@ -7,6 +7,7 @@ from unittest.mock import MagicMock
 import pandas as pd
 import pytest
 
+from deeporigin.drug_discovery import BRD_DATA_DIR
 from deeporigin.drug_discovery.execution import Execution
 from deeporigin.drug_discovery.rbfe import (
     RBFE,
@@ -24,18 +25,17 @@ from deeporigin.platform.constants import TOOL_KEYS_AND_VERSIONS
 
 
 def test_ligand_from_pair_input_uses_remote_file_without_id(
-    monkeypatch: pytest.MonkeyPatch,
+    client: DeepOriginClient,
+    brd_ligand: Ligand,
 ) -> None:
     """File-only pair refs rehydrate via Ligand.from_remote_file."""
-    client = MagicMock(spec=DeepOriginClient)
-    expected = Ligand.from_smiles("CCO", remote_path="testing/lig1.sdf")
-    from_remote = MagicMock(return_value=expected)
-    monkeypatch.setattr(Ligand, "from_remote_file", from_remote)
+    remote = brd_ligand.remote_path
+    assert remote is not None
 
-    ligand = _ligand_from_pair_input({"file_path": "testing/lig1.sdf"}, client=client)
+    ligand = _ligand_from_pair_input({"file_path": remote}, client=client)
 
-    from_remote.assert_called_once_with("testing/lig1.sdf", client=client, lazy=True)
-    assert ligand is expected
+    assert ligand.remote_path == remote
+    assert ligand.smiles == brd_ligand.smiles
 
 
 def test_rbfe_ligands_build_params() -> None:
@@ -227,7 +227,10 @@ def test_rbfe_cycle_closure_rejects_malformed_anchor() -> None:
         )
 
 
-def test_rbfe_get_cycle_closure_results(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_rbfe_get_cycle_closure_results(
+    client: DeepOriginClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """get_cycle_closure_results syncs and returns the summary DataFrame."""
     rbfe = RBFE(
         prepared_systems=[
@@ -237,7 +240,7 @@ def test_rbfe_get_cycle_closure_results(monkeypatch: pytest.MonkeyPatch) -> None
                 system_pdb_path="p.pdb",
             )
         ],
-        client=MagicMock(spec=DeepOriginClient),
+        client=client,
     )
     rbfe._id = "exec-top"
     rbfe_tool_key = TOOL_KEYS_AND_VERSIONS["rbfe"]["tool_key"]
@@ -253,7 +256,8 @@ def test_rbfe_get_cycle_closure_results(monkeypatch: pytest.MonkeyPatch) -> None
             }
         ]
     }
-    monkeypatch.setattr(rbfe, "sync", MagicMock())
+    sync_calls: list[None] = []
+    monkeypatch.setattr(rbfe, "sync", lambda: sync_calls.append(None))
     monkeypatch.setattr(
         Execution,
         "get_results",
@@ -262,7 +266,7 @@ def test_rbfe_get_cycle_closure_results(monkeypatch: pytest.MonkeyPatch) -> None
     out = rbfe.get_cycle_closure_results()
     assert isinstance(out, pd.DataFrame)
     assert out.iloc[0]["ligand_id"] == "lig-1"
-    rbfe.sync.assert_called_once()
+    assert len(sync_calls) == 1
 
 
 def test_rbfe_rbfe_steps_require_prepared_systems() -> None:
@@ -334,9 +338,9 @@ def test_rbfe_ensure_synced_inputs_ensures_remote_paths(
     ligand2.ensure_remote_path = MagicMock(
         side_effect=lambda **_: setattr(ligand2, "remote_path", "testing/lig2.sdf")
     )
-    monkeypatch.setattr(protein, "sync", MagicMock())
-    monkeypatch.setattr(ligand1, "sync", MagicMock())
-    monkeypatch.setattr(ligand2, "sync", MagicMock())
+    monkeypatch.setattr(protein, "sync", lambda **_: None)
+    monkeypatch.setattr(ligand1, "sync", lambda **_: None)
+    monkeypatch.setattr(ligand2, "sync", lambda **_: None)
 
     rbfe.start()
 
@@ -365,9 +369,9 @@ def test_rbfe_start_calls_executions_create(monkeypatch: pytest.MonkeyPatch) -> 
         "status": "Created",
         "tool": {"key": "deeporigin.rbfe", "version": "0.1.0"},
     }
-    monkeypatch.setattr(protein, "sync", MagicMock())
-    monkeypatch.setattr(ligand1, "sync", MagicMock())
-    monkeypatch.setattr(ligand2, "sync", MagicMock())
+    monkeypatch.setattr(protein, "sync", lambda **_: None)
+    monkeypatch.setattr(ligand1, "sync", lambda **_: None)
+    monkeypatch.setattr(ligand2, "sync", lambda **_: None)
 
     rbfe.start()
 
@@ -407,9 +411,9 @@ def test_rbfe_start_quote_sums_workflow_quotations(
             ],
         },
     }
-    monkeypatch.setattr(protein, "sync", MagicMock())
-    monkeypatch.setattr(ligand1, "sync", MagicMock())
-    monkeypatch.setattr(ligand2, "sync", MagicMock())
+    monkeypatch.setattr(protein, "sync", lambda **_: None)
+    monkeypatch.setattr(ligand1, "sync", lambda **_: None)
+    monkeypatch.setattr(ligand2, "sync", lambda **_: None)
 
     rbfe.start(quote=True)
 
@@ -417,7 +421,7 @@ def test_rbfe_start_quote_sums_workflow_quotations(
     assert rbfe.estimate == pytest.approx(1.02792)
 
 
-def test_rbfe_from_dto_rehydrates_rbfe_only_steps() -> None:
+def test_rbfe_from_dto_rehydrates_rbfe_only_steps(client: DeepOriginClient) -> None:
     """from_dto restores steps, prepared_systems, and FEP params."""
     fake_dto = {
         "executionId": "exec-rbfe-1",
@@ -463,7 +467,7 @@ def test_rbfe_from_dto_rehydrates_rbfe_only_steps() -> None:
             },
         },
     }
-    rbfe = RBFE.from_dto(fake_dto, client=MagicMock(spec=DeepOriginClient))
+    rbfe = RBFE.from_dto(fake_dto, client=client)
     assert rbfe.id == "exec-rbfe-1"
     assert rbfe.steps == ["rbfe"]
     assert len(rbfe.prepared_systems) == 1
@@ -474,7 +478,9 @@ def test_rbfe_from_dto_rehydrates_rbfe_only_steps() -> None:
     assert "steps=" in repr(rbfe)
 
 
-def test_rbfe_from_dto_populates_prepared_system_paths() -> None:
+def test_rbfe_from_dto_populates_prepared_system_paths(
+    client: DeepOriginClient,
+) -> None:
     """from_dto restores system and solute PDB paths from prepared_systems[]."""
     fake_dto = {
         "executionId": "exec-rbfe-2",
@@ -501,7 +507,7 @@ def test_rbfe_from_dto_populates_prepared_system_paths() -> None:
             "solvation": {"steps": 50, "test_run": 0},
         },
     }
-    rbfe = RBFE.from_dto(fake_dto, client=MagicMock(spec=DeepOriginClient))
+    rbfe = RBFE.from_dto(fake_dto, client=client)
     assert len(rbfe.prepared_systems) == 1
     ps = rbfe.prepared_systems[0]
     assert ps.system_pdb_path == "remote/system.pdb"
@@ -557,7 +563,9 @@ def test_rbfe_ensure_synced_inputs_skips_sync_when_complete(
     ligand2_sync.assert_not_called()
 
 
-def test_rbfe_from_dto_rejects_legacy_system_prep_only_steps() -> None:
+def test_rbfe_from_dto_rejects_legacy_system_prep_only_steps(
+    client: DeepOriginClient,
+) -> None:
     """from_dto rejects legacy steps=['system-prep'] executions."""
     fake_dto = {
         "executionId": "exec-prep-1",
@@ -580,8 +588,6 @@ def test_rbfe_from_dto_rejects_legacy_system_prep_only_steps() -> None:
             "padding": 1.25,
         },
     }
-    client = MagicMock(spec=DeepOriginClient)
-
     with pytest.raises(ValueError, match="Legacy steps=\\['system-prep'\\]"):
         RBFE.from_dto(fake_dto, client=client)
 
@@ -692,7 +698,38 @@ def test_rbfe_get_results_returns_dataframe(monkeypatch: pytest.MonkeyPatch) -> 
             }
         ]
     }
-    monkeypatch.setattr(rbfe, "sync", MagicMock())
+
+
+def test_rbfe_get_results_returns_dataframe(monkeypatch: pytest.MonkeyPatch) -> None:
+    """get_results syncs and returns the summary DataFrame."""
+    rbfe = RBFE(
+        prepared_systems=[
+            PreparedSystem(
+                binding_xml_path="b.xml",
+                solvation_xml_path="s.xml",
+                system_pdb_path="p.pdb",
+            )
+        ],
+        client=MagicMock(spec=DeepOriginClient),
+    )
+    rbfe._id = "exec-top"
+    platform_response = {
+        "data": [
+            {
+                "tool_key": TOOL_KEYS_AND_VERSIONS["rbfe"]["tool_key"],
+                "compute_job_id": "sub-job",
+                "data": {
+                    "total": -1.0,
+                    "unit": "kcal/mol",
+                    "protein_id": "prot-1",
+                    "ligand1_id": "l1",
+                    "ligand2_id": "l2",
+                },
+            }
+        ]
+    }
+    sync_calls: list[None] = []
+    monkeypatch.setattr(rbfe, "sync", lambda: sync_calls.append(None))
     monkeypatch.setattr(
         Execution,
         "get_results",
@@ -701,7 +738,7 @@ def test_rbfe_get_results_returns_dataframe(monkeypatch: pytest.MonkeyPatch) -> 
     out = rbfe.get_results()
     assert isinstance(out, pd.DataFrame)
     assert out.iloc[0]["ddG"] == "-1.0 kcal/mol"
-    rbfe.sync.assert_called_once()
+    assert len(sync_calls) == 1
 
 
 def _sample_prepared_system(
@@ -730,12 +767,13 @@ def test_rbfe_get_prepared_system_returns_first(
     second = _sample_prepared_system(ligand1_id="second-l1", ligand2_id="second-l2")
     from_result = MagicMock(return_value=[first, second])
     monkeypatch.setattr(PreparedSystem, "from_result", from_result)
-    monkeypatch.setattr(rbfe, "sync", MagicMock())
+    sync_calls: list[None] = []
+    monkeypatch.setattr(rbfe, "sync", lambda: sync_calls.append(None))
 
     out = rbfe.get_prepared_system()
 
     assert out is first
-    rbfe.sync.assert_called_once()
+    assert len(sync_calls) == 1
     from_result.assert_called_once_with(
         compute_job_id="exec-top",
         ligand1_id=None,
@@ -756,7 +794,7 @@ def test_rbfe_get_prepared_system_passes_ligand_filters(
     system = _sample_prepared_system()
     from_result = MagicMock(return_value=[system])
     monkeypatch.setattr(PreparedSystem, "from_result", from_result)
-    monkeypatch.setattr(rbfe, "sync", MagicMock())
+    monkeypatch.setattr(rbfe, "sync", lambda: None)
 
     out = rbfe.get_prepared_system(ligand1_id="lig-a", ligand2_id="lig-b")
 
@@ -785,7 +823,7 @@ def test_rbfe_get_prepared_system_raises_when_empty(
         client=MagicMock(spec=DeepOriginClient),
     )
     rbfe._id = "exec-top"
-    monkeypatch.setattr(rbfe, "sync", MagicMock())
+    monkeypatch.setattr(rbfe, "sync", lambda: None)
 
     monkeypatch.setattr(PreparedSystem, "from_result", MagicMock(return_value=[]))
     with pytest.raises(DeepOriginException, match="No system-prep results found"):

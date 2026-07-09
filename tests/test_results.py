@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
-from unittest.mock import MagicMock
 
 import pytest
 
@@ -20,6 +19,9 @@ from tests.mock_server.routers.data_platform import _apply_eq_filters
 
 if TYPE_CHECKING:
     from deeporigin.drug_discovery import Protein
+    from deeporigin.platform.client import DeepOriginClient
+
+from unittest.mock import MagicMock
 
 _POCKET_TOOL_KEYS = {
     TOOL_KEYS_AND_VERSIONS["pocket_finder"]["tool_key"],
@@ -74,12 +76,9 @@ def test_filter_dict_has_result_type_detects_top_level_and_props():
     assert not _filter_dict_has_result_type({"protein_id": {"eq": "p1"}})
 
 
-def test_get_result_type_conflict_raises():
+def test_get_result_type_conflict_raises(client: DeepOriginClient):
     """Passing result_type both as kwarg and in filter_dict raises ValueError."""
-    mock_client = MagicMock()
-    mock_client.org_key = "test-org"
-    mock_client.project_id = None
-    results = Results(mock_client)
+    results = Results(client)
 
     with pytest.raises(ValueError, match="Cannot pass result_type"):
         results.get(
@@ -88,12 +87,11 @@ def test_get_result_type_conflict_raises():
         )
 
 
-def test_get_compute_job_id_conflict_with_in_operator_raises():
+def test_get_compute_job_id_conflict_with_in_operator_raises(
+    client: DeepOriginClient,
+):
     """compute_job_id kwarg cannot override a non-eq filter_dict operator."""
-    mock_client = MagicMock()
-    mock_client.org_key = "test-org"
-    mock_client.project_id = None
-    results = Results(mock_client)
+    results = Results(client)
 
     with pytest.raises(ValueError, match="Conflicting compute_job_id"):
         results.get(
@@ -102,12 +100,11 @@ def test_get_compute_job_id_conflict_with_in_operator_raises():
         )
 
 
-def test_get_compute_job_id_conflict_with_mismatched_eq_raises():
+def test_get_compute_job_id_conflict_with_mismatched_eq_raises(
+    client: DeepOriginClient,
+):
     """compute_job_id kwarg must match an existing eq filter in filter_dict."""
-    mock_client = MagicMock()
-    mock_client.org_key = "test-org"
-    mock_client.project_id = None
-    results = Results(mock_client)
+    results = Results(client)
 
     with pytest.raises(ValueError, match="Conflicting compute_job_id"):
         results.get(

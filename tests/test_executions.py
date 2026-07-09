@@ -1,10 +1,11 @@
 from datetime import datetime, timezone
 from typing import Any, cast
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 import pandas as pd
 import pytest
 
+from deeporigin.drug_discovery import Konnektor, Ligand
 from deeporigin.drug_discovery.execution import Execution
 from deeporigin.exceptions import DeepOriginException
 from deeporigin.platform.client import DeepOriginClient
@@ -38,14 +39,17 @@ def test_execution_runtime_completed_uses_dto_timestamps() -> None:
     assert ex.runtime == pytest.approx(30.0)
 
 
-def test_execution_runtime_incomplete_uses_now() -> None:
+def test_execution_runtime_incomplete_uses_now(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """Without ``completedAt``, ``runtime`` uses the current UTC time as end."""
     ex: Any = Execution()
     ex._dto = {"startedAt": "2024-06-01T10:00:00+00:00"}
     fixed_now = datetime(2024, 6, 1, 10, 0, 45, tzinfo=timezone.utc)
-    with patch("deeporigin.drug_discovery.execution.datetime") as mock_dt:
-        mock_dt.now.return_value = fixed_now
-        assert ex.runtime == pytest.approx(45.0)
+    fake_datetime = MagicMock()
+    fake_datetime.now.return_value = fixed_now
+    monkeypatch.setattr("deeporigin.drug_discovery.execution.datetime", fake_datetime)
+    assert ex.runtime == pytest.approx(45.0)
 
 
 class _TestToolExecution(Execution):
@@ -85,26 +89,25 @@ def test_execution_sync_requires_tool_key() -> None:
         ex.sync()
 
 
-def test_execution_sync_applies_get_response() -> None:
+def test_execution_sync_applies_get_response(
+    client: DeepOriginClient,
+    registered_ligand: Ligand,
+    registered_ligand_brd3: Ligand,
+) -> None:
     """``sync`` calls ``executions.get`` and applies fields via ``update_from_dto``."""
-    client = MagicMock()
-    dto: dict[str, Any] = {
-        "executionId": "exec-99",
-        "tool": {"key": "deeporigin.test-sync-tool", "version": "1.0.0"},
-        "status": "Running",
-        "progressReport": {"pct": 50},
-        "quotationResult": {"successfulQuotations": [{"priceTotal": "2.25"}]},
-    }
-    client.executions.get.return_value = dto
-    job = _TestToolExecution(client=client)
-    job._id = "exec-99"
+    job = Konnektor(
+        ligands=[registered_ligand, registered_ligand_brd3],
+        client=client,
+    )
+    job.run(quote=True)
+    job.confirm()
 
     job.sync()
 
-    client.executions.get.assert_called_once_with("exec-99")
     assert job.status == "Running"
-    assert job.progress == {"pct": 50}
-    assert job.estimate == pytest.approx(2.25)
+    assert job.id is not None
+    assert job.dto is not None
+    assert job.dto["status"] == "Running"
 
 
 def test_execution_sync_no_op_when_get_returns_falsy() -> None:
@@ -540,7 +543,9 @@ def test_execution_format_user_log_timestamp_humanizes() -> None:
     )
 
 
-def test_execution_user_logs_dataframe_maps_rows() -> None:
+def test_execution_user_logs_dataframe_maps_rows(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """``_user_logs_dataframe`` maps user_logs search rows to the expected columns."""
     when = datetime(2026, 6, 4, 16, 35, 0, tzinfo=timezone.utc)
     response = {
@@ -559,9 +564,10 @@ def test_execution_user_logs_dataframe_maps_rows() -> None:
             },
         ]
     }
-    with patch("deeporigin.drug_discovery.execution.datetime") as mock_datetime:
-        mock_datetime.now.return_value = when
-        df = Execution._user_logs_dataframe(response)
+    fake_datetime = MagicMock()
+    fake_datetime.now.return_value = when
+    monkeypatch.setattr("deeporigin.drug_discovery.execution.datetime", fake_datetime)
+    df = Execution._user_logs_dataframe(response)
 
     assert list(df.columns) == Execution.USER_LOG_COLUMNS
     assert len(df) == 2

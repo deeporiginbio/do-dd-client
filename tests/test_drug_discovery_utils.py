@@ -5,7 +5,8 @@ from __future__ import annotations
 from contextlib import contextmanager
 from io import StringIO
 import json
-from unittest.mock import patch
+
+import pytest
 
 from deeporigin.drug_discovery.utils import _load_params, _set_test_run, is_test_run
 
@@ -43,7 +44,7 @@ def test_set_test_run_recurses() -> None:
     assert payload["nested"][1]["other"]["test_run"] == 1
 
 
-def test_load_params_reads_json() -> None:
+def test_load_params_reads_json(monkeypatch: pytest.MonkeyPatch) -> None:
     """_load_params loads JSON from the packaged params resource."""
     fixture = {"effort": 2, "mode": "fast"}
 
@@ -52,8 +53,8 @@ def test_load_params_reads_json() -> None:
         assert resource == "docking.json"
         yield StringIO(json.dumps(fixture))
 
-    with patch(
+    monkeypatch.setattr(
         "deeporigin.drug_discovery.utils.importlib.resources.open_text",
         fake_open_text,
-    ):
-        assert _load_params("docking") == fixture
+    )
+    assert _load_params("docking") == fixture

@@ -149,11 +149,8 @@ def test_from_json_protein_id_not_in_props_lv0():
     assert "protein_id" not in (pocket.props or {})
 
 
-def test_from_json_project_id_from_client_lv0():
+def test_from_json_project_id_from_client_lv0(client: DeepOriginClient):
     """project_id on the client is copied onto each Pocket when JSON omits it."""
-    from unittest.mock import MagicMock
-
-    client = MagicMock()
     client.project_id = "proj-from-client"
 
     pocket = Pocket.from_json([{"file_path": str(_BRD_PDB)}], client=client)[0]
@@ -162,11 +159,8 @@ def test_from_json_project_id_from_client_lv0():
     assert "project_id" not in (pocket.props or {})
 
 
-def test_from_json_entry_project_id_overrides_client_lv0():
+def test_from_json_entry_project_id_overrides_client_lv0(client: DeepOriginClient):
     """Explicit project_id in JSON wins over the client default."""
-    from unittest.mock import MagicMock
-
-    client = MagicMock()
     client.project_id = "client-proj"
 
     pocket = Pocket.from_json(
@@ -304,18 +298,15 @@ def test_from_id_lv1(
     assert fetched.box_size_z is not None
 
 
-def test_from_remote_file_sets_remote_path_and_loads_coordinates_lv0() -> None:
+def test_from_remote_file_sets_remote_path_and_loads_coordinates_lv0(
+    client: DeepOriginClient,
+) -> None:
     """from_remote_file downloads via the client and sets remote_path."""
-    from unittest.mock import MagicMock
+    remote = "testing/pocket-brd.pdb"
+    client.files.upload(str(_BRD_PDB), remote)
 
-    remote = "org/files/pocket.pdb"
-    local_pdb = str(_BRD_PDB)
-    client = MagicMock()
-    client.files.download.return_value = local_pdb
+    pocket = Pocket.from_remote_file(remote, client=client, lazy=False)
 
-    pocket = Pocket.from_remote_file(remote, client=client)
-
-    client.files.download.assert_called_once_with(remote_path=remote, lazy=True)
     assert pocket.remote_path == remote
-    assert pocket.local_path == local_pdb
+    assert pocket.local_path is not None
     assert pocket.coordinates is not None

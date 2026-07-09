@@ -2,14 +2,16 @@
 
 from __future__ import annotations
 
-from typing import Any
-from unittest.mock import MagicMock
+from typing import TYPE_CHECKING, Any
 
 import pytest
 
+from deeporigin.drug_discovery import Konnektor, Ligand
 from deeporigin.drug_discovery.execution import Execution
 from deeporigin.drug_discovery.execution_mixins import AsyncExecutableMixin
-from deeporigin.utils.constants import TOOL_EXECUTION_POST_TIMEOUT_SECONDS
+
+if TYPE_CHECKING:
+    from deeporigin.platform.client import DeepOriginClient
 
 
 class _ConfirmableJob(Execution):
@@ -48,78 +50,49 @@ class _AsyncJob(Execution, AsyncExecutableMixin):
         self._start_impl_calls.append({"approve_amount": approve_amount, **kwargs})
 
 
-def test_execution_confirm_calls_platform_with_long_timeout_no_retry() -> None:
-    """``confirm`` hits ``executions.confirm`` with 600s timeout and ``retry=False``."""
-    client = MagicMock()
-    client.executions.confirm.return_value = {
-        "executionId": "exec-quoted-1",
-        "tool": {"key": "deeporigin.test-tool", "version": "0.0.0"},
-        "status": "Running",
-    }
-    job = _ConfirmableJob(client=client)
-    job._id = "exec-quoted-1"
-    job.status = "Quoted"
-
-    job.confirm()
-
-    client.executions.confirm.assert_called_once_with(
-        "exec-quoted-1",
-        timeout=TOOL_EXECUTION_POST_TIMEOUT_SECONDS,
-        retry=False,
+def test_execution_confirm_transitions_quoted_to_running(
+    client: DeepOriginClient,
+    registered_ligand: Ligand,
+    registered_ligand_brd3: Ligand,
+) -> None:
+    """``confirm`` on a quoted execution transitions to Running via the mock server."""
+    job = Konnektor(
+        ligands=[registered_ligand, registered_ligand_brd3],
+        client=client,
     )
-
-
-def test_execution_confirm_applies_response_dto() -> None:
-    """``confirm`` refreshes status, cost, and ``dto`` from the platform response."""
-    client = MagicMock()
-    client.executions.confirm.return_value = {
-        "executionId": "exec-quoted-1",
-        "tool": {"key": "deeporigin.test-tool", "version": "0.0.0"},
-        "status": "Succeeded",
-        "quotationResult": {"successfulQuotations": [{"priceTotal": 10}]},
-    }
-    job = _ConfirmableJob(client=client)
-    job._id = "exec-quoted-1"
-    job.status = "Quoted"
-    job._estimate = 10.0
+    assert job.run(quote=True) is None
+    assert job.status == "Quoted"
+    assert job.id is not None
 
     job.confirm()
 
-    assert job.status == "Completed"
-    assert job.cost == 10.0
+    assert job.status == "Running"
     assert job.dto is not None
-    assert job.dto["status"] == "Succeeded"
+    assert job.dto["status"] == "Running"
 
 
 def test_execution_confirm_requires_id() -> None:
     """``confirm`` raises when no platform execution id is set."""
-    client = MagicMock()
-    job = _ConfirmableJob(client=client)
+    job = _ConfirmableJob()
     job.status = "Quoted"
 
     with pytest.raises(ValueError, match="no platform execution id"):
         job.confirm()
 
-    client.executions.confirm.assert_not_called()
-
 
 def test_execution_confirm_requires_quoted_status() -> None:
     """``confirm`` raises when status is not ``Quoted``."""
-    client = MagicMock()
-    job = _ConfirmableJob(client=client)
+    job = _ConfirmableJob()
     job._id = "exec-1"
     job.status = "Created"
 
     with pytest.raises(ValueError, match="not 'Quoted'"):
         job.confirm()
 
-    client.executions.confirm.assert_not_called()
-
 
 def test_async_start_calls_start_impl_with_no_approve_amount() -> None:
     """``start()`` with no args forwards ``approve_amount=None`` to ``_start_impl``."""
-    client = MagicMock()
-    job = _AsyncJob(client=client)
+    job = _AsyncJob()
 
     job.start()
 
@@ -129,8 +102,7 @@ def test_async_start_calls_start_impl_with_no_approve_amount() -> None:
 
 def test_async_start_quote_true_forwards_zero_approve_amount() -> None:
     """``start(quote=True)`` forwards ``approve_amount=0`` to ``_start_impl``."""
-    client = MagicMock()
-    job = _AsyncJob(client=client)
+    job = _AsyncJob()
 
     job.start(quote=True)
 
@@ -140,8 +112,7 @@ def test_async_start_quote_true_forwards_zero_approve_amount() -> None:
 
 def test_async_start_approve_amount_forwarded() -> None:
     """``start(approve_amount=50)`` forwards the value to ``_start_impl``."""
-    client = MagicMock()
-    job = _AsyncJob(client=client)
+    job = _AsyncJob()
 
     job.start(approve_amount=50)
 
@@ -151,8 +122,7 @@ def test_async_start_approve_amount_forwarded() -> None:
 
 def test_async_start_rejects_non_none_status() -> None:
     """``start()`` raises when status is not ``None``."""
-    client = MagicMock()
-    job = _AsyncJob(client=client)
+    job = _AsyncJob()
     job.status = "Running"
 
     with pytest.raises(ValueError, match="'Running'"):

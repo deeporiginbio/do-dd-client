@@ -1435,6 +1435,7 @@ def create_tools_router(
         """Get a single tool definition by key and version."""
         if tool_key == "nonexistent-tool":
             raise HTTPException(status_code=404, detail="Tool not found")
+        enabled = tool_key != "disabled-tool"
         return {
             "key": tool_key,
             "name": f"Tool {tool_key}",
@@ -1443,7 +1444,7 @@ def create_tools_router(
             "executors": [],
             "description": "Mock tool definition",
             "toolManifestVersion": "1.0.0",
-            "enabled": True,
+            "enabled": enabled,
         }
 
     @router.get("/tools/{org_key}/clusters")

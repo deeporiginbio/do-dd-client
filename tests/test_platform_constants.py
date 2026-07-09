@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import asyncio
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
+
+import pytest
 
 from deeporigin.drug_discovery.abfe import ABFE
 from deeporigin.drug_discovery.structures.prepared_system import PreparedSystem
@@ -58,11 +60,8 @@ def test_running_transitions_to_completed() -> None:
     assert ALLOWED_STATUS_TRANSITIONS["Succeeded"] == set()
 
 
-@patch("deeporigin.drug_discovery.notebook_watch_mixin.display")
-@patch("deeporigin.drug_discovery.notebook_watch_mixin.update_display")
 def test_watch_stops_when_status_is_completed(
-    mock_update_display,
-    mock_display,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """The notebook watch loop stops when sync reports ``Completed``."""
     ps = PreparedSystem(
@@ -92,9 +91,23 @@ def test_watch_stops_when_status_is_completed(
     abfe._dto = running
     abfe.status = "Running"
 
-    with patch.object(abfe, "_render_execution_html", return_value="<html>x</html>"):
-        asyncio.run(abfe._watch_until_terminal(interval=0.001))
+    update_calls: list[object] = []
+    monkeypatch.setattr(
+        "deeporigin.drug_discovery.notebook_watch_mixin.display",
+        lambda *args, **kwargs: None,
+    )
+    monkeypatch.setattr(
+        "deeporigin.drug_discovery.notebook_watch_mixin.update_display",
+        lambda *args, **kwargs: update_calls.append(None),
+    )
+    monkeypatch.setattr(
+        abfe,
+        "_render_execution_html",
+        lambda: "<html>x</html>",
+    )
+
+    asyncio.run(abfe._watch_until_terminal(interval=0.001))
 
     assert mock_client.executions.get.call_count >= 2
     assert abfe.status == "Completed"
-    assert mock_update_display.call_count >= 1
+    assert len(update_calls) >= 1
