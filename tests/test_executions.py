@@ -543,9 +543,7 @@ def test_execution_format_user_log_timestamp_humanizes() -> None:
     )
 
 
-def test_execution_user_logs_dataframe_maps_rows(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
+def test_execution_user_logs_dataframe_maps_rows() -> None:
     """``_user_logs_dataframe`` maps user_logs search rows to the expected columns."""
     when = datetime(2026, 6, 4, 16, 35, 0, tzinfo=timezone.utc)
     response = {
@@ -564,10 +562,7 @@ def test_execution_user_logs_dataframe_maps_rows(
             },
         ]
     }
-    fake_datetime = MagicMock()
-    fake_datetime.now.return_value = when
-    monkeypatch.setattr("deeporigin.drug_discovery.execution.datetime", fake_datetime)
-    df = Execution._user_logs_dataframe(response)
+    df = Execution._user_logs_dataframe(response, when=when)
 
     assert list(df.columns) == Execution.USER_LOG_COLUMNS
     assert len(df) == 2
