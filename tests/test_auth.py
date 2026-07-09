@@ -36,7 +36,7 @@ def _make_token(
     exp_offset: int = 3600,
     name: str = "Test User",
 ) -> str:
-    """Build an unsigned JWT for auth unit tests."""
+    """Build a signed HS256 JWT for auth unit tests."""
     return _jwt_str(
         jwt.encode(
             {
