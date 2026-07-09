@@ -3,8 +3,6 @@
 import os
 from pathlib import Path
 
-import pytest
-
 from deeporigin.utils.filesystem import (
     ensure_file_extension,
     expand_user,
