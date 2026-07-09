@@ -7,7 +7,6 @@ from unittest.mock import MagicMock
 import pandas as pd
 import pytest
 
-from deeporigin.drug_discovery import BRD_DATA_DIR
 from deeporigin.drug_discovery.execution import Execution
 from deeporigin.drug_discovery.rbfe import (
     RBFE,
@@ -670,7 +669,10 @@ def test_rbfe_results_dataframe_filters_non_rbfe_tool_key() -> None:
     assert df.iloc[0]["ddG"] == "-3875.483 kcal/mol"
 
 
-def test_rbfe_get_results_returns_dataframe(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_rbfe_get_results_returns_dataframe(
+    client: DeepOriginClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """get_results syncs and returns the summary DataFrame."""
     rbfe = RBFE(
         prepared_systems=[
@@ -680,37 +682,7 @@ def test_rbfe_get_results_returns_dataframe(monkeypatch: pytest.MonkeyPatch) -> 
                 system_pdb_path="p.pdb",
             )
         ],
-        client=MagicMock(spec=DeepOriginClient),
-    )
-    rbfe._id = "exec-top"
-    platform_response = {
-        "data": [
-            {
-                "tool_key": TOOL_KEYS_AND_VERSIONS["rbfe"]["tool_key"],
-                "compute_job_id": "sub-job",
-                "data": {
-                    "total": -1.0,
-                    "unit": "kcal/mol",
-                    "protein_id": "prot-1",
-                    "ligand1_id": "l1",
-                    "ligand2_id": "l2",
-                },
-            }
-        ]
-    }
-
-
-def test_rbfe_get_results_returns_dataframe(monkeypatch: pytest.MonkeyPatch) -> None:
-    """get_results syncs and returns the summary DataFrame."""
-    rbfe = RBFE(
-        prepared_systems=[
-            PreparedSystem(
-                binding_xml_path="b.xml",
-                solvation_xml_path="s.xml",
-                system_pdb_path="p.pdb",
-            )
-        ],
-        client=MagicMock(spec=DeepOriginClient),
+        client=client,
     )
     rbfe._id = "exec-top"
     platform_response = {
