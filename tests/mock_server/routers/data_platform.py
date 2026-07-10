@@ -725,7 +725,12 @@ def create_data_platform_router(
         all_results.extend(results)
 
         filtered = _apply_eq_filters(all_results, filter_dict)
-        if not filtered and filter_dict.get("compute_job_id", {}).get("eq") is not None:
+        compute_job_eq = filter_dict.get("compute_job_id", {}).get("eq")
+        # Sentinel: keep an empty page so callers can exercise missing-result paths
+        # without the fixture-id rematch below.
+        if compute_job_eq == "__no_prepared_system_rows__":
+            filtered = []
+        elif not filtered and compute_job_eq is not None:
             # Fixture IDs won't match dynamic execution IDs; keep legacy behaviour
             # when no injected row matches.
             safe_filter = {

@@ -5,7 +5,7 @@ These are meant to be run against a live instance.
 
 import pytest
 
-from deeporigin.drug_discovery import Ligand, LigandSet, Molprops
+from deeporigin.drug_discovery import Ligand, Molprops
 from deeporigin.platform.client import DeepOriginClient
 from deeporigin.platform.constants import TOOL_KEYS_AND_VERSIONS
 from tests.conftest import check_tool_exists

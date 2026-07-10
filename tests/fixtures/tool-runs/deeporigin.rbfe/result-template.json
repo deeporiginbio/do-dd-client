@@ -47,6 +47,13 @@
         "overlap_matrix_plot": "tool-runs/a5484958-059f-4b1b-ba2c-664adf23e8e8/protein/ligand1-ligand2/solvation/solvation/analysis/Prod_1/overlap_matrix.png",
         "lambda_transition_matrix_plot": "tool-runs/a5484958-059f-4b1b-ba2c-664adf23e8e8/protein/ligand1-ligand2/solvation/solvation/analysis/Prod_1/lambda_transition_matrix.png"
       }
+    ],
+    "cycleclosureresults": [
+      {
+        "ligand_id": "08DK80B7DYTXH",
+        "dG": -10.0,
+        "unit": "kcal/mol"
+      }
     ]
   },
   "compute_job_id": "a5484958-059f-4b1b-ba2c-664adf23e8e8"

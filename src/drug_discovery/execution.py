@@ -355,12 +355,17 @@ class Execution:
         return humanize.naturaltime(dt, when=ref)
 
     @staticmethod
-    def _user_logs_dataframe(response: dict[str, Any]) -> pd.DataFrame:
+    def _user_logs_dataframe(
+        response: dict[str, Any],
+        *,
+        when: datetime | None = None,
+    ) -> pd.DataFrame:
         """Build a tabular view from a data-platform ``user_logs`` search response.
 
         Args:
             response: Raw response from
                 :meth:`~deeporigin.platform.user_logs.UserLogs.search`.
+            when: Optional reference time for relative timestamp formatting.
 
         Returns:
             A DataFrame with columns from :attr:`USER_LOG_COLUMNS`.
@@ -379,7 +384,8 @@ class Execution:
                         record.get("tool_key")
                     ),
                     "timestamp": Execution._format_user_log_timestamp(
-                        record.get("date") or record.get("created_at")
+                        record.get("date") or record.get("created_at"),
+                        when=when,
                     ),
                     "message": record.get("message"),
                 }

@@ -23,7 +23,7 @@ from deeporigin.platform.client import DeepOriginClient
 from deeporigin.platform.constants import TOOL_KEYS_AND_VERSIONS
 
 
-def test_abfe_start_quote_populates_estimate_lv0(client: DeepOriginClient):
+def test_abfe_start_quote_populates_estimate_lv0(client: DeepOriginClient) -> None:
     """start(quote=True) should set estimate from quotationResult.priceTotal."""
     prepared_system = PreparedSystem(
         binding_xml_path="path/binding.xml",
@@ -31,22 +31,10 @@ def test_abfe_start_quote_populates_estimate_lv0(client: DeepOriginClient):
         system_pdb_path="path/system.pdb",
     )
     abfe = ABFE(prepared_system=prepared_system, name="Test ABFE", client=client)
-    quoted_dto = {
-        "executionId": "exec-quoted",
-        "status": "Quoted",
-        "approveAmount": 0,
-        "tool": {
-            "key": TOOL_KEYS_AND_VERSIONS["abfe"]["tool_key"],
-            "version": TOOL_KEYS_AND_VERSIONS["abfe"]["tool_version"],
-        },
-        "quotationResult": {
-            "successfulQuotations": [{"priceTotal": 119.2128}],
-        },
-    }
-    with patch.object(client.executions, "create", return_value=quoted_dto):
-        abfe.start(quote=True)
 
-    assert abfe.id == "exec-quoted"
+    abfe.start(quote=True)
+
+    assert abfe.id is not None
     assert abfe.status == "Quoted"
     assert abfe.estimate == pytest.approx(119.2128)
     assert abfe.cost is None
@@ -162,7 +150,7 @@ def test_abfe_ensure_synced_inputs_ensures_remote_paths(
     assert call_kwargs["data"]["inputs"]["protein"]["file_path"] == "testing/brd.pdb"
 
 
-def test_abfe_from_dto_requires_steps() -> None:
+def test_abfe_from_dto_requires_steps(client: DeepOriginClient) -> None:
     """from_dto rejects legacy payloads without steps."""
     fake_dto = {
         "executionId": "exec-legacy",
@@ -176,10 +164,12 @@ def test_abfe_from_dto_requires_steps() -> None:
         },
     }
     with pytest.raises(ValueError, match="Missing 'steps'"):
-        ABFE.from_dto(fake_dto, client=MagicMock())
+        ABFE.from_dto(fake_dto, client=client)
 
 
-def test_abfe_from_dto_rejects_system_prep_only_steps() -> None:
+def test_abfe_from_dto_rejects_system_prep_only_steps(
+    client: DeepOriginClient,
+) -> None:
     """from_dto rejects legacy steps=['system-prep'] executions."""
     fake_dto = {
         "executionId": "exec-prep",
@@ -192,7 +182,7 @@ def test_abfe_from_dto_rejects_system_prep_only_steps() -> None:
         },
     }
     with pytest.raises(ValueError, match="Legacy steps=\\['system-prep'\\]"):
-        ABFE.from_dto(fake_dto, client=MagicMock())
+        ABFE.from_dto(fake_dto, client=client)
 
 
 def test_abfe_from_dto_rehydrates_prepared_system_lv0(client: DeepOriginClient):
@@ -438,24 +428,16 @@ def test_abfe_prepared_system_does_not_auto_name(client: DeepOriginClient):
     assert abfe.name is None
 
 
-def test_abfe_combined_auto_names(client: DeepOriginClient):
+def test_abfe_combined_auto_names(
+    client: DeepOriginClient,
+    registered_protein: Protein,
+    registered_ligand: Ligand,
+) -> None:
     """Combined mode auto-generates a name from protein and ligand entities."""
-    protein = Protein(name="p", id="prot-1", remote_path="testing/brd.pdb")
-    ligand = Ligand.from_smiles("CCO", id="lig-1", remote_path="testing/lig1.sdf")
-    with (
-        patch.object(
-            client.entities,
-            "get_protein",
-            return_value={"protein_name": "MyProt"},
-        ),
-        patch.object(
-            client.entities,
-            "get_ligand",
-            return_value={"name": "MyLig"},
-        ),
-    ):
-        abfe = ABFE(protein=protein, ligand=ligand, client=client)
-        assert abfe.name == "ABFE: MyProt with MyLig"
+    abfe = ABFE(protein=registered_protein, ligand=registered_ligand, client=client)
+    assert abfe.name is not None
+    assert abfe.name.startswith("ABFE:")
+    assert "brd" in abfe.name.lower()
 
 
 def test_abfe_accepts_explicit_name_override_lv0():

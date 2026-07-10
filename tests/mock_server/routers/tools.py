@@ -1375,6 +1375,14 @@ def create_tools_router(
                 for key in ("ligand1_id", "ligand2_id", "protein_id"):
                     if ps0.get(key) is not None:
                         data[key] = ps0[key]
+        if isinstance(data, dict) and "cycleclosureresults" not in data:
+            data["cycleclosureresults"] = [
+                {
+                    "ligand_id": data.get("ligand1_id") or "lig-1",
+                    "dG": -10.0,
+                    "unit": "kcal/mol",
+                },
+            ]
         results.append(template)
         executions[eid] = execution
         _inject_rbfe_user_logs(str(eid))
@@ -1435,6 +1443,7 @@ def create_tools_router(
         """Get a single tool definition by key and version."""
         if tool_key == "nonexistent-tool":
             raise HTTPException(status_code=404, detail="Tool not found")
+        enabled = tool_key != "disabled-tool"
         return {
             "key": tool_key,
             "name": f"Tool {tool_key}",
@@ -1443,7 +1452,7 @@ def create_tools_router(
             "executors": [],
             "description": "Mock tool definition",
             "toolManifestVersion": "1.0.0",
-            "enabled": True,
+            "enabled": enabled,
         }
 
     @router.get("/tools/{org_key}/clusters")

@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
-from unittest.mock import MagicMock
 
 import pytest
 
@@ -20,6 +19,30 @@ from tests.mock_server.routers.data_platform import _apply_eq_filters
 
 if TYPE_CHECKING:
     from deeporigin.drug_discovery import Protein
+    from deeporigin.platform.client import DeepOriginClient
+
+
+class _RecordingResultsClient:
+    """Minimal stand-in for ``DeepOriginClient`` that records ``post_json`` bodies.
+
+    Used only for unit tests that assert request-shape (sort/pagination) without
+    going through the mock server. Not a substitute for platform-facing tests.
+    """
+
+    def __init__(self, responses: list[dict]) -> None:
+        """Store canned responses returned in order by ``post_json``."""
+        self.org_key = "test-org"
+        self.project_id = None
+        self._responses = list(responses)
+        self.post_json_bodies: list[dict] = []
+
+    def post_json(self, _url: str, *, body: dict) -> dict:
+        """Record ``body`` and return the next canned response."""
+        self.post_json_bodies.append(body)
+        if not self._responses:
+            return {"data": [], "meta": {}}
+        return self._responses.pop(0)
+
 
 _POCKET_TOOL_KEYS = {
     TOOL_KEYS_AND_VERSIONS["pocket_finder"]["tool_key"],
@@ -74,12 +97,9 @@ def test_filter_dict_has_result_type_detects_top_level_and_props():
     assert not _filter_dict_has_result_type({"protein_id": {"eq": "p1"}})
 
 
-def test_get_result_type_conflict_raises():
+def test_get_result_type_conflict_raises(client: DeepOriginClient):
     """Passing result_type both as kwarg and in filter_dict raises ValueError."""
-    mock_client = MagicMock()
-    mock_client.org_key = "test-org"
-    mock_client.project_id = None
-    results = Results(mock_client)
+    results = Results(client)
 
     with pytest.raises(ValueError, match="Cannot pass result_type"):
         results.get(
@@ -88,12 +108,11 @@ def test_get_result_type_conflict_raises():
         )
 
 
-def test_get_compute_job_id_conflict_with_in_operator_raises():
+def test_get_compute_job_id_conflict_with_in_operator_raises(
+    client: DeepOriginClient,
+):
     """compute_job_id kwarg cannot override a non-eq filter_dict operator."""
-    mock_client = MagicMock()
-    mock_client.org_key = "test-org"
-    mock_client.project_id = None
-    results = Results(mock_client)
+    results = Results(client)
 
     with pytest.raises(ValueError, match="Conflicting compute_job_id"):
         results.get(
@@ -102,12 +121,11 @@ def test_get_compute_job_id_conflict_with_in_operator_raises():
         )
 
 
-def test_get_compute_job_id_conflict_with_mismatched_eq_raises():
+def test_get_compute_job_id_conflict_with_mismatched_eq_raises(
+    client: DeepOriginClient,
+):
     """compute_job_id kwarg must match an existing eq filter in filter_dict."""
-    mock_client = MagicMock()
-    mock_client.org_key = "test-org"
-    mock_client.project_id = None
-    results = Results(mock_client)
+    results = Results(client)
 
     with pytest.raises(ValueError, match="Conflicting compute_job_id"):
         results.get(
@@ -129,15 +147,12 @@ def test_sort_uses_jsonb_fields_detects_non_canonical_keys():
 
 def test_get_passes_sort_in_request_body():
     """Results.get forwards sort to the result-explorer search endpoint."""
-    mock_client = MagicMock()
-    mock_client.org_key = "test-org"
-    mock_client.project_id = None
-    mock_client.post_json.return_value = {"data": [], "meta": {}}
-    results = Results(mock_client)
+    fake_client = _RecordingResultsClient([{"data": [], "meta": {}}])
+    results = Results(fake_client)  # type: ignore[arg-type]
 
     results.get(sort={"measured_at": "desc"}, limit=5)
 
-    body = mock_client.post_json.call_args.kwargs["body"]
+    body = fake_client.post_json_bodies[0]
     assert body["sort"] == {"measured_at": "desc"}
     assert "result_type" not in body["filter"]
     assert "cursor" not in body
@@ -146,20 +161,19 @@ def test_get_passes_sort_in_request_body():
 
 def test_get_jsonb_sort_uses_offset_pagination():
     """JSONB sort keys paginate with offset instead of cursor."""
-    mock_client = MagicMock()
-    mock_client.org_key = "test-org"
-    mock_client.project_id = None
-    mock_client.post_json.side_effect = [
-        {
-            "data": [{"id": "1", "data": {"pose_score": 1.0}}],
-            "meta": {"hasMore": True},
-        },
-        {
-            "data": [{"id": "2", "data": {"pose_score": 2.0}}],
-            "meta": {"hasMore": False},
-        },
-    ]
-    results = Results(mock_client)
+    fake_client = _RecordingResultsClient(
+        [
+            {
+                "data": [{"id": "1", "data": {"pose_score": 1.0}}],
+                "meta": {"hasMore": True},
+            },
+            {
+                "data": [{"id": "2", "data": {"pose_score": 2.0}}],
+                "meta": {"hasMore": False},
+            },
+        ]
+    )
+    results = Results(fake_client)  # type: ignore[arg-type]
 
     response = results.get(
         result_type="pose",
@@ -169,8 +183,8 @@ def test_get_jsonb_sort_uses_offset_pagination():
     )
 
     assert len(response["data"]) == 2
-    first_body = mock_client.post_json.call_args_list[0].kwargs["body"]
-    second_body = mock_client.post_json.call_args_list[1].kwargs["body"]
+    first_body = fake_client.post_json_bodies[0]
+    second_body = fake_client.post_json_bodies[1]
     assert first_body["sort"] == {"pose_score": "desc"}
     assert first_body["offset"] == 0
     assert "cursor" not in first_body
@@ -180,20 +194,19 @@ def test_get_jsonb_sort_uses_offset_pagination():
 
 def test_get_canonical_sort_uses_cursor_pagination():
     """Canonical sort keys continue to paginate with cursor tokens."""
-    mock_client = MagicMock()
-    mock_client.org_key = "test-org"
-    mock_client.project_id = None
-    mock_client.post_json.side_effect = [
-        {
-            "data": [{"id": "1", "measured_at": "2026-01-02T00:00:00Z"}],
-            "meta": {"nextCursor": "cursor-page-2"},
-        },
-        {
-            "data": [{"id": "2", "measured_at": "2026-01-01T00:00:00Z"}],
-            "meta": {},
-        },
-    ]
-    results = Results(mock_client)
+    fake_client = _RecordingResultsClient(
+        [
+            {
+                "data": [{"id": "1", "measured_at": "2026-01-02T00:00:00Z"}],
+                "meta": {"nextCursor": "cursor-page-2"},
+            },
+            {
+                "data": [{"id": "2", "measured_at": "2026-01-01T00:00:00Z"}],
+                "meta": {},
+            },
+        ]
+    )
+    results = Results(fake_client)  # type: ignore[arg-type]
 
     response = results.get(
         sort={"measured_at": "desc"},
@@ -202,8 +215,8 @@ def test_get_canonical_sort_uses_cursor_pagination():
     )
 
     assert len(response["data"]) == 2
-    first_body = mock_client.post_json.call_args_list[0].kwargs["body"]
-    second_body = mock_client.post_json.call_args_list[1].kwargs["body"]
+    first_body = fake_client.post_json_bodies[0]
+    second_body = fake_client.post_json_bodies[1]
     assert "offset" not in first_body
     assert second_body["cursor"] == "cursor-page-2"
     assert "offset" not in second_body

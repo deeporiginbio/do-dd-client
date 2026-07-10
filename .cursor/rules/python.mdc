@@ -44,6 +44,16 @@ When modifying an existing function, make the following changes together:
 - Run tests by using `uv run pytest --env local -x`. Fix failing tests. 
 - To test a specific function, use `uv run pytest -k --env local` 
 
+# Testing style
+
+- Pytest functions only (`def test_*()`); no `unittest.TestCase`
+- Use the `client` fixture from `tests/conftest.py` for platform API tests; run with `--env local` (autouse mock server)
+- Prefer `test_<domain>_local.py` for mock-server integration; pure helpers belong in unit tests with no network
+- Do not mock `DeepOriginClient` / platform wrappers when the mock server can cover the behavior
+- Do not use `unittest.mock` or `monkeypatch` to stub our production methods in platform-facing tests — extend the mock server or inject dependencies
+- Stdlib/external boundaries may use library-native test doubles (`httpx.MockTransport`) or `monkeypatch` when no injectable seam exists; prefer an injectable `when=`/`now_fn` when that API already exists
+- See `.github/copilot-instructions.md` and `docs/dev/mock-server.md` for details and examples
+
 # Delivering new SDK features
 
 When shipping a new user-facing SDK capability in the cli repo, include all of the following:

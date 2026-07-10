@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from unittest.mock import MagicMock, patch
+from typing import TYPE_CHECKING
 
 import pytest
 
@@ -11,64 +11,68 @@ from deeporigin.drug_discovery.structures.ligand import Ligand
 from deeporigin.drug_discovery.structures.prepared_system import PreparedSystem
 from deeporigin.drug_discovery.structures.protein import Protein
 from deeporigin.drug_discovery.system_prep import SystemPrep
-from deeporigin.platform.client import DeepOriginClient
 from deeporigin.platform.constants import TOOL_KEYS_AND_VERSIONS
 from deeporigin.utils.constants import SYSPREP_NO_OUTPUT_PATHS_MSG
 from tests.conftest import check_tool_exists
 
+if TYPE_CHECKING:
+    from deeporigin.platform.client import DeepOriginClient
 
-def _minimal_sysprep_dto(*, execution_id: str = "exec-sysprep-1") -> dict:
+# compute_job_id that the mock result-explorer treats as an empty page (no rematch).
+_NO_PREPARED_SYSTEM_ROWS_ID = "__no_prepared_system_rows__"
+
+
+def _minimal_sysprep_dto(
+    *,
+    execution_id: str = _NO_PREPARED_SYSTEM_ROWS_ID,
+    job_outputs: dict | None = None,
+) -> dict:
     """Build a minimal tools execution DTO for system prep."""
     sp = TOOL_KEYS_AND_VERSIONS["sysprep"]
-    return {
+    dto: dict = {
         "executionId": execution_id,
         "tool": {"key": sp["tool_key"], "version": sp["tool_version"]},
         "status": "Succeeded",
         "name": "sysprep-test",
         "userInputs": {},
     }
+    if job_outputs is not None:
+        dto["jobOutputs"] = job_outputs
+    return dto
 
 
-@patch.object(PreparedSystem, "from_json", autospec=True)
-@patch.object(PreparedSystem, "from_result", autospec=True)
 def test_system_prep_get_results_falls_back_to_job_outputs(
-    mock_from_result: MagicMock,
-    mock_from_json: MagicMock,
+    client: DeepOriginClient,
 ) -> None:
-    """When ``from_result`` fails, ``jobOutputs.system`` is parsed via ``from_json``."""
-    mock_from_result.side_effect = ValueError("no rows")
-    fake_ps = MagicMock(spec=PreparedSystem)
-    mock_from_json.return_value = fake_ps
-
-    client = MagicMock(spec=DeepOriginClient)
+    """When explorer has no rows, ``jobOutputs.system`` is parsed via ``from_json``."""
+    system_payload = {
+        "binding_xml_file_path": "tool-runs/exec/bsm_system.xml",
+        "solvation_xml_ligand_file_path": "tool-runs/exec/solvation_ligand.xml",
+        "system_pdb_file_path": "tool-runs/exec/system.pdb",
+        "add_H_atoms": True,
+        "padding": 1,
+        "protein_id": "brd",
+        "protonate_protein": True,
+        "retain_waters": False,
+    }
     protein = Protein.from_file(BRD_DATA_DIR / "brd.pdb")
     ligand = Ligand.from_smiles("CCO")
-    dto_exec = _minimal_sysprep_dto()
-    system_payload = {
-        "binding_xml_file_path": "b.xml",
-        "solvation_xml_ligand_file_path": "s.xml",
-        "system_pdb_file_path": "p.pdb",
-        "protein_id": protein.id,
-        "ligand1_id": ligand.id,
-    }
-    dto_exec["jobOutputs"] = {"system": system_payload}
-
     sysprep = SystemPrep(protein=protein, ligand=ligand, client=client)
-    sysprep.update_from_dto(dto_exec)
-
-    out = sysprep.get_results(dto_exec)
-
-    assert out is fake_ps
-    mock_from_result.assert_called_once_with(
-        compute_job_id="exec-sysprep-1",
-        client=client,
+    sysprep.update_from_dto(
+        _minimal_sysprep_dto(job_outputs={"system": system_payload})
     )
-    mock_from_json.assert_called_once_with(system_payload)
+
+    out = sysprep.get_results(
+        _minimal_sysprep_dto(job_outputs={"system": system_payload})
+    )
+
+    assert isinstance(out, PreparedSystem)
+    assert out.binding_xml_path == system_payload["binding_xml_file_path"]
+    assert out.system_pdb_path == system_payload["system_pdb_file_path"]
 
 
-def test_system_prep_get_results_requires_id() -> None:
+def test_system_prep_get_results_requires_id(client: DeepOriginClient) -> None:
     """``get_results`` raises when ``id`` has not been set."""
-    client = MagicMock(spec=DeepOriginClient)
     protein = Protein.from_file(BRD_DATA_DIR / "brd.pdb")
     ligand = Ligand.from_smiles("CCO")
     sysprep = SystemPrep(protein=protein, ligand=ligand, client=client)
@@ -77,21 +81,17 @@ def test_system_prep_get_results_requires_id() -> None:
         sysprep.get_results()
 
 
-def test_system_prep_get_results_raises_when_no_paths() -> None:
+def test_system_prep_get_results_raises_when_no_paths(
+    client: DeepOriginClient,
+) -> None:
     """When both data platform and ``jobOutputs`` fail, raise sysprep message."""
-    client = MagicMock(spec=DeepOriginClient)
-    client.executions = MagicMock()
-    client.executions.get.return_value = {"jobOutputs": {}}
     protein = Protein.from_file(BRD_DATA_DIR / "brd.pdb")
     ligand = Ligand.from_smiles("CCO")
     sysprep = SystemPrep(protein=protein, ligand=ligand, client=client)
-    sysprep.update_from_dto(_minimal_sysprep_dto())
+    sysprep.update_from_dto(_minimal_sysprep_dto(job_outputs={}))
 
-    with (
-        patch.object(PreparedSystem, "from_result", side_effect=ValueError("no")),
-        pytest.raises(ValueError, match=SYSPREP_NO_OUTPUT_PATHS_MSG),
-    ):
-        sysprep.get_results()
+    with pytest.raises(ValueError, match=SYSPREP_NO_OUTPUT_PATHS_MSG):
+        sysprep.get_results(_minimal_sysprep_dto(job_outputs={}))
 
 
 @pytest.mark.parametrize(

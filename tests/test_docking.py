@@ -331,7 +331,7 @@ def test_docking_run_quote_true_lv1(
 
     if docking.status == "FailedQuotation":
         pytest.skip(
-            f"Docking quote returned FailedQuotation; platform tool may be unavailable."
+            "Docking quote returned FailedQuotation; platform tool may be unavailable."
         )
     assert result is None, "run(quote=True) should return None"
     assert docking.estimate is not None, "Estimate should be set"
