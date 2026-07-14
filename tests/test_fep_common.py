@@ -6,6 +6,7 @@ import pytest
 
 from deeporigin.drug_discovery.fep_common import (
     ABFEParams,
+    RBFEParams,
     _fep_params_from_inputs,
     _prepared_system_tool_ref,
     _simulation_blocks,
@@ -52,10 +53,48 @@ def test_fep_params_from_inputs_round_trip() -> None:
         },
     }
     params = _fep_params_from_inputs(inputs)
+    assert isinstance(params, ABFEParams)
+    assert not isinstance(params, RBFEParams)
     assert params.temperature == pytest.approx(310.0)
     assert params.binding_n_windows == 20
     assert params.solvation_steps == 80000
     assert params.repeats == 3
+
+
+def test_fep_params_from_inputs_rbfe_cls() -> None:
+    """_fep_params_from_inputs can hydrate RBFEParams with relative defaults."""
+    params = _fep_params_from_inputs({}, params_cls=RBFEParams)
+    assert isinstance(params, RBFEParams)
+    assert params.binding_n_windows == 24
+    assert params.solvation_n_windows == 24
+
+
+def test_abfe_params_defaults_and_repr() -> None:
+    """ABFEParams keep absolute window defaults and label themselves in repr."""
+    params = ABFEParams()
+    assert params.binding_n_windows == 48
+    assert params.solvation_n_windows == 32
+    text = repr(params)
+    assert text.startswith("ABFEParams(")
+    assert "binding_n_windows: 48" in text
+
+
+def test_rbfe_params_defaults_and_repr() -> None:
+    """RBFEParams use MDSuite relative window defaults and label themselves."""
+    params = RBFEParams()
+    assert params.binding_n_windows == 24
+    assert params.solvation_n_windows == 24
+    text = repr(params)
+    assert text.startswith("RBFEParams(")
+    assert "binding_n_windows: 24" in text
+    assert "solvation_n_windows: 24" in text
+
+
+def test_simulation_blocks_accept_rbfe_params() -> None:
+    """_simulation_blocks serializes RBFEParams window counts."""
+    blocks = _simulation_blocks(RBFEParams())
+    assert blocks["binding"]["n_windows"] == 24
+    assert blocks["solvation"]["n_windows"] == 24
 
 
 def test_prepared_system_tool_ref_includes_optional_ids() -> None:

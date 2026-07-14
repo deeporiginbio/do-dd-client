@@ -54,7 +54,7 @@ _LAZY_IMPORTS = {
     "ABFE": ("deeporigin.drug_discovery.abfe", "ABFE"),
     "ABFEParams": ("deeporigin.drug_discovery.fep_common", "ABFEParams"),
     "RBFE": ("deeporigin.drug_discovery.rbfe", "RBFE"),
-    "RBFEParams": ("deeporigin.drug_discovery.rbfe", "RBFEParams"),
+    "RBFEParams": ("deeporigin.drug_discovery.fep_common", "RBFEParams"),
     "SystemPrep": ("deeporigin.drug_discovery.system_prep", "SystemPrep"),
     "Molprops": ("deeporigin.drug_discovery.molprops", "Molprops"),
     "Protonation": ("deeporigin.drug_discovery.protonation", "Protonation"),
