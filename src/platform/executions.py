@@ -77,6 +77,8 @@ class Executions:
                 caller already included ``tag`` in ``data``. When
                 ``client.billing_tag`` is set, it is sent as ``billing`` unless
                 the caller already included ``billing`` in ``data``.
+                Uses ``retry=False`` so a failed create (including gateway 504)
+                is not retried; retries can otherwise duplicate long sync jobs.
 
         Returns:
             Dictionary containing the execution response from the API.
@@ -105,10 +107,13 @@ class Executions:
             timeout if timeout is not None else TOOL_EXECUTION_POST_TIMEOUT_SECONDS
         )
 
+        # Single attempt: retrying a timed-out sync create can spawn duplicate
+        # long-running tool work (e.g. system-prep behind an nginx 504).
         return self._c.post_json(
             f"/tools/{self._c.org_key}/tools/{tool_key}/{tool_version}/executions",
             body=payload,
             timeout=req_timeout,
+            retry=False,
         )
 
     def _list_tools_executions_page(

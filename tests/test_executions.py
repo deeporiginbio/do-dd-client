@@ -260,25 +260,51 @@ def test_execution_get_user_logs_returns_dataframe() -> None:
 def test_execution_get_user_logs_lv1(client: DeepOriginClient) -> None:
     """Load a succeeded execution and fetch user_logs scoped to its execution id."""
 
-    search = client.executions.search(status="Completed", limit=200)  # ty:ignore[unresolved-attribute]
-    rows = search.get("data") or []
-    succeeded = [r for r in rows if r.get("status") in ("Completed", "Succeeded")]
-    if not succeeded:
+    # Prefer tools-native list so candidate IDs are known-loadable via GET.
+    listed = client.executions.list(page_size=50, order="createdAt desc")  # ty:ignore[unresolved-attribute]
+    list_rows = listed.get("data") or []
+    candidates: list[str] = []
+    for row in list_rows:
+        status = row.get("status")
+        if status not in ("Completed", "Succeeded"):
+            continue
+        exec_id = str(row.get("executionId") or row.get("id") or "")
+        if exec_id:
+            candidates.append(exec_id)
+
+    if not candidates:
+        search = client.executions.search(status="Completed", limit=200)  # ty:ignore[unresolved-attribute]
+        rows = search.get("data") or []
+        for row in rows:
+            if row.get("status") not in ("Completed", "Succeeded"):
+                continue
+            candidate = str(
+                row.get("compute_job_id")
+                or row.get("executionId")
+                or row.get("id")
+                or ""
+            )
+            if candidate:
+                candidates.append(candidate)
+
+    if not candidates:
         pytest.skip("no succeeded execution visible for this account")
 
-    row = succeeded[0]
-    # Data-platform rows often use ``id`` for the row key; tools ``GET`` needs the
-    # compute job UUID (``compute_job_id`` on DP rows, ``executionId`` on tools DTOs).
-    candidate = str(
-        row.get("compute_job_id") or row.get("executionId") or row.get("id") or ""
-    )
-    if not candidate:
-        pytest.skip("succeeded execution row missing execution id")
+    dto = None
+    last_error: DeepOriginException | None = None
+    for candidate in candidates[:20]:
+        try:
+            dto = client.executions.get(candidate)  # ty:ignore[unresolved-attribute]
+            break
+        except DeepOriginException as exc:
+            last_error = exc
+            continue
 
-    try:
-        dto = client.executions.get(candidate)  # ty:ignore[unresolved-attribute]
-    except DeepOriginException:
-        pytest.skip(f"tools API cannot load execution id {candidate!r}")
+    if dto is None:
+        pytest.skip(
+            "tools API cannot load any candidate execution id"
+            + (f" (last error: {last_error})" if last_error is not None else "")
+        )
 
     exec_id = str(dto.get("executionId") or "")
     if not exec_id:

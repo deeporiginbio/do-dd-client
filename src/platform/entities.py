@@ -53,6 +53,7 @@ LIGAND_RETURNING_FIELDS = [
     "tpsa",
     "molecular_weight",
     "structure_key",
+    "tags",
 ]
 
 PROTEIN_RETURNING_FIELDS = [
