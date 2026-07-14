@@ -423,7 +423,7 @@ def test_update_ligand_not_found_lv1(client: DeepOriginClient):
 
 
 def test_create_ligand_with_tags_lv1(client: DeepOriginClient):
-    """Create ligand persists tags on the platform row."""
+    """Create ligand returns tags (incl. provenance) on the write response."""
     tag = f"tags-{uuid.uuid4().hex[:12]}"
     entity_tags = {"campaign": tag}
     smiles = _unique_test_smiles(suffix="O")
