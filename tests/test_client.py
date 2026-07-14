@@ -74,6 +74,7 @@ def _stub_post_json_capturing_body(client: DeepOriginClient) -> dict:
         captured.update(body)
         captured["__endpoint__"] = endpoint
         captured["__timeout__"] = kwargs.get("timeout")
+        captured["__retry__"] = kwargs.get("retry")
         return {
             "executionId": "exec-stub",
             "status": "Completed",
@@ -129,6 +130,26 @@ def test_executions_create_uses_long_timeout():
     )
 
     assert captured["__timeout__"] == TOOL_EXECUTION_POST_TIMEOUT_SECONDS
+
+
+def test_executions_create_disables_retry():
+    """``executions.create`` uses a single HTTP attempt (``retry=False``)."""
+    DeepOriginClient.close_all()
+
+    client = DeepOriginClient.from_local()
+    captured = _stub_post_json_capturing_body(client)
+
+    client.clusters.get_default_cluster_id = (  # type: ignore[method-assign]
+        lambda: "test-cluster-id"
+    )
+
+    client.executions.create(
+        tool_key="test.tool",
+        tool_version="1.0.0",
+        data={"inputs": {"test": "param"}, "outputs": {}, "metadata": {}},
+    )
+
+    assert captured["__retry__"] is False
 
 
 def test_executions_create_includes_client_project_id():

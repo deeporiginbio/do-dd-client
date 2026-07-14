@@ -128,6 +128,10 @@ The client automatically retries requests that fail with:
 
 The client does not retry on client errors (4xx status codes except 429), as these typically indicate issues with the request itself rather than transient server problems.
 
+``executions.create`` (tool ``run()`` / ``start()`` / quote) always uses a
+**single HTTP attempt** (`retry=False`). Retrying a timed-out sync create can
+spawn duplicate long-running tool work after an upstream gateway 504.
+
 ### Configuring Retries
 
 You can customize retry behavior when creating a client:
