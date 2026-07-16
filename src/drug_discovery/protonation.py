@@ -191,7 +191,9 @@ class Protonation(Execution, SyncExecutableMixin):
                 inp.mol = new_mol
                 inp.smiles = smi
                 inp.protonated_at_ph = float(self._ph)
-                inp.protonation_concentration = float(conc) if conc is not None else None
+                inp.protonation_concentration = (
+                    float(conc) if conc is not None else None
+                )
                 ligands_out.append(inp)
                 continue
             if n_states == 1:
