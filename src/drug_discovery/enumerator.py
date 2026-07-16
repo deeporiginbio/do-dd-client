@@ -169,6 +169,24 @@ class Enumerator(Execution, SyncExecutableMixin):
             )
         if not self._ligand.smiles:
             raise ValueError("Enumerator requires a ligand with a SMILES string.")
+
+        if self._job_type in ENUMERATOR_MMP_JOB_TYPES:
+            self._validate_mmp()
+        elif self._job_type == "REACTION":
+            self._validate_reaction()
+        else:  # AVAILABLE_REACTIONS
+            if self._replace_ix is not None or self._reaction_sites is not None:
+                raise ValueError(
+                    "AVAILABLE_REACTIONS takes only a ligand; "
+                    "replace_ix and reaction_sites are not allowed."
+                )
+
+    def _validate_mmp(self) -> None:
+        """Validate ``replace_ix`` and numeric bounds for MMP modes (SCAFFOLD / ANALOGUE).
+
+        ``radius`` and ``max_fragment_size`` only affect the MMP payload, so their
+        bounds are enforced here rather than for every ``job_type``.
+        """
         if not (ENUMERATOR_RADIUS_MIN <= self._radius <= ENUMERATOR_RADIUS_MAX):
             raise ValueError(
                 f"radius must be between {ENUMERATOR_RADIUS_MIN} and "
@@ -183,20 +201,6 @@ class Enumerator(Execution, SyncExecutableMixin):
                 f"max_fragment_size must be between {ENUMERATOR_MAX_FRAGMENT_SIZE_MIN} "
                 f"and {ENUMERATOR_MAX_FRAGMENT_SIZE_MAX}, got {self._max_fragment_size}."
             )
-
-        if self._job_type in ENUMERATOR_MMP_JOB_TYPES:
-            self._validate_mmp()
-        elif self._job_type == "REACTION":
-            self._validate_reaction()
-        else:  # AVAILABLE_REACTIONS
-            if self._replace_ix is not None or self._reaction_sites is not None:
-                raise ValueError(
-                    "AVAILABLE_REACTIONS takes only a ligand; "
-                    "replace_ix and reaction_sites are not allowed."
-                )
-
-    def _validate_mmp(self) -> None:
-        """Validate ``replace_ix`` for the MMP modes (SCAFFOLD / ANALOGUE)."""
         if self._reaction_sites is not None:
             raise ValueError(
                 f"reaction_sites is not allowed for job_type {self._job_type!r}."
@@ -471,7 +475,8 @@ class Enumerator(Execution, SyncExecutableMixin):
             An ``Enumerator`` with ``id``, pricing fields, and domain inputs set.
 
         Raises:
-            ValueError: If the stored inputs are missing a ligand SMILES.
+            ValueError: If the stored inputs are missing a ligand SMILES or carry
+                a missing/unknown ``job_type``.
         """
         instance = super().from_dto(dto, client=client)
         inputs: dict[str, Any] = dto.get("userInputs") or dto.get("inputs") or {}
@@ -486,8 +491,15 @@ class Enumerator(Execution, SyncExecutableMixin):
         if ligand_in.get("id") is not None:
             ligand.id = str(ligand_in["id"])
 
+        job_type = str(inputs.get("job_type") or "")
+        if job_type not in ENUMERATOR_JOB_TYPES:
+            raise ValueError(
+                "Cannot rehydrate Enumerator: stored inputs have an unknown "
+                f"job_type {job_type!r}. Allowed: {sorted(ENUMERATOR_JOB_TYPES)}"
+            )
+
         instance._ligand = ligand
-        instance._job_type = str(inputs.get("job_type") or "")
+        instance._job_type = job_type
         instance._replace_ix = _normalize_replace_ix(inputs.get("replace_ix"))
         instance._reaction_sites = inputs.get("reaction_sites")
         instance._radius = int(inputs.get("radius", ENUMERATOR_RADIUS_MIN))

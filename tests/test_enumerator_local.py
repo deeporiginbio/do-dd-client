@@ -271,6 +271,22 @@ def test_enumerator_rejects_max_fragment_size_out_of_range(
         )
 
 
+def test_enumerator_ignores_mmp_bounds_for_non_mmp_modes(
+    client: DeepOriginClient,
+) -> None:
+    """radius / max_fragment_size bounds are not enforced outside MMP modes."""
+    parent = Ligand.from_smiles(_PARENT_SMILES)
+    enum = Enumerator(
+        ligand=parent,
+        job_type="AVAILABLE_REACTIONS",
+        radius=99,
+        max_fragment_size=99,
+        client=client,
+    )
+
+    assert enum.job_type == "AVAILABLE_REACTIONS"
+
+
 # -- rehydration ---------------------------------------------------------------
 
 
@@ -286,3 +302,22 @@ def test_enumerator_from_dto_rehydrates_inputs(client: DeepOriginClient) -> None
     assert restored.job_type == "SCAFFOLD"
     assert restored.ligand.smiles == _PARENT_SMILES
     assert restored.replace_ix == [3]
+
+
+def test_enumerator_from_dto_rejects_missing_job_type(
+    client: DeepOriginClient,
+) -> None:
+    """from_dto fails fast when the stored inputs carry no usable job_type."""
+    _assert_tool_available(client)
+    parent = Ligand.from_smiles(_PARENT_SMILES)
+    enum = Enumerator(ligand=parent, job_type="SCAFFOLD", replace_ix=3, client=client)
+    enum.run()
+
+    dto = dict(enum.dto)
+    inputs = dict(dto.get("userInputs") or dto.get("inputs") or {})
+    inputs.pop("job_type", None)
+    dto["userInputs"] = inputs
+    dto["inputs"] = inputs
+
+    with pytest.raises(ValueError, match="unknown job_type"):
+        Enumerator.from_dto(dto, client=client)
