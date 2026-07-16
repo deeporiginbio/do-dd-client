@@ -2,6 +2,12 @@
 
 Shared FEP parameter types and serialization helpers used by `ABFE` and `RBFE`.
 
+- [`ABFEParams`](#abfeparams) — absolute FEP defaults (`binding_n_windows=48`,
+  `solvation_n_windows=32`)
+- [`RBFEParams`](#rbfeparams) — relative FEP defaults (`binding_n_windows=24`,
+  `solvation_n_windows=24`), matching MDSuite when `n_windows` is unset for a
+  two-ligand (relative) run
+
 ::: src.drug_discovery.fep_common
     options:
       docstring_style: google

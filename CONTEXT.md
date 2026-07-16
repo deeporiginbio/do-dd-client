@@ -17,8 +17,8 @@ A single `ABFE(protein, ligand)` execution with `steps=["system-prep", "abfe"]`.
 _Avoid_: conflating the workflow *steps* with the platform tool key
 
 **FEP parameters**:
-Shared simulation settings (`ABFEParams`) for binding and solvation legs, used by both ABFE and RBFE.
-_Avoid_: Duplicating binding/solvation blocks per tool class
+Simulation settings for binding and solvation legs: `ABFEParams` (absolute defaults) and `RBFEParams` (relative defaults; 24 windows each, per MDSuite). Shared serialization via `_simulation_blocks`.
+_Avoid_: Aliasing `RBFEParams` to `ABFEParams`; duplicating binding/solvation blocks per tool class
 
 **Prepared system**:
 Simulation-ready binding and solvation XML files (and metadata) produced by system prep.

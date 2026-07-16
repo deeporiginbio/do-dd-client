@@ -10,7 +10,7 @@ import pandas as pd
 from deeporigin.drug_discovery.execution import Execution
 from deeporigin.drug_discovery.execution_mixins import AsyncExecutableMixin
 from deeporigin.drug_discovery.fep_common import (
-    ABFEParams,
+    RBFEParams,
     _fep_params_from_inputs,
     _ligand_tool_ref,
     _prepared_system_tool_ref,
@@ -24,7 +24,6 @@ from deeporigin.exceptions import DeepOriginException
 from deeporigin.platform.client import DeepOriginClient
 from deeporigin.platform.constants import TOOL_KEYS_AND_VERSIONS
 
-RBFEParams = ABFEParams
 RBFEWorkflowStep = Literal["konnektor", "system-prep", "rbfe", "cycle-closure"]
 KonnektorNetworkType = Literal["star", "mst", "cyclic"]
 RBFEAnchorInput = dict[str, str | float]
@@ -337,7 +336,7 @@ class RBFE(Execution, AsyncExecutableMixin, NotebookWatchMixin):
             dict(item) for item in inputs.get("fep_abfe", []) if isinstance(item, dict)
         ]
         instance._params = (
-            _fep_params_from_inputs(inputs)
+            _fep_params_from_inputs(inputs, params_cls=RBFEParams)
             if "rbfe" in instance.steps
             else RBFEParams()
         )

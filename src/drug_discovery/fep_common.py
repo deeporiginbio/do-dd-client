@@ -14,7 +14,7 @@ from deeporigin.exceptions import DeepOriginException
 
 @dataclass(frozen=True)
 class ABFEParams:
-    """FEP calculation parameters shared by ABFE and RBFE.
+    """FEP calculation parameters for absolute binding free energy (ABFE).
 
     Attributes:
         annihilate: Whether to annihilate the ligand.
@@ -61,7 +61,19 @@ class ABFEParams:
             changed = f.default is not f.default_factory and value != f.default
             marker = " *" if changed else ""
             lines.append(f"  {f.name}: {value}{marker}")
-        return "ABFEParams(\n" + "\n".join(lines) + "\n)"
+        return f"{type(self).__name__}(\n" + "\n".join(lines) + "\n)"
+
+
+@dataclass(frozen=True, repr=False)
+class RBFEParams(ABFEParams):
+    """FEP calculation parameters for relative binding free energy (RBFE).
+
+    Window defaults match MDSuite relative-FEP (`is_relative`) when ``n_windows``
+    is unset: 24 for both binding and solvation (vs ABFE's 48 / 32).
+    """
+
+    binding_n_windows: int = 24
+    solvation_n_windows: int = 24
 
 
 @beartype
@@ -133,8 +145,18 @@ def _simulation_blocks(params: ABFEParams) -> dict[str, dict[str, Any]]:
 
 
 @beartype
-def _fep_params_from_inputs(inputs: dict[str, Any]) -> ABFEParams:
-    """Build :class:`ABFEParams` from stored ``binding`` / ``solvation`` blocks."""
+def _fep_params_from_inputs(
+    inputs: dict[str, Any],
+    *,
+    params_cls: type[ABFEParams] = ABFEParams,
+) -> ABFEParams:
+    """Build FEP params from stored ``binding`` / ``solvation`` blocks.
+
+    Args:
+        inputs: Tool inputs containing optional ``binding`` / ``solvation`` dicts.
+        params_cls: Params class to instantiate (:class:`ABFEParams` or
+            :class:`RBFEParams`). Controls which defaults apply for missing fields.
+    """
     binding = inputs.get("binding", {})
     solvation = inputs.get("solvation", {})
     md_options = binding.get("emeq_md_options", {})
@@ -172,4 +194,4 @@ def _fep_params_from_inputs(inputs: dict[str, Any]) -> ABFEParams:
         if dto_key in md_options:
             kwargs[param_field] = md_options[dto_key]
 
-    return ABFEParams(**kwargs)
+    return params_cls(**kwargs)
