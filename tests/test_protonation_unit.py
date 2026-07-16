@@ -76,5 +76,3 @@ def test_protonation_make_payload_sync_flag() -> None:
     assert payload["sync"] is True
     assert payload["approveAmount"] == 0
     assert payload["inputs"]["ligand"]["smiles"] == "CCO"
-
-
