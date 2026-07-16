@@ -795,6 +795,39 @@ def test_ligand_protonate_sets_protonated_at_ph(client: DeepOriginClient):
     assert len(result.ligands) == 2
 
 
+def test_protonation_exposes_concentration(client: DeepOriginClient):
+    """Protonation.run() sets protonation_concentration on returned ligands."""
+    result = Protonation(smiles="CCO", ph=7.4, client=client).run()
+
+    assert len(result.ligands) >= 1
+    for lig in result.ligands:
+        assert lig.protonation_concentration is not None
+        assert isinstance(lig.protonation_concentration, float)
+        assert lig.protonation_concentration > 0
+
+
+def test_protonation_concentration_multi_state(client: DeepOriginClient):
+    """Multi-state protonation returns distinct concentrations that sum to ~100%."""
+    smiles = "C=CCCn1cc(-c2cccc(C(=O)N(C)C)c2)c2cc[nH]c2c1=O"
+    result = Protonation(smiles=smiles, ph=11.4, client=client).run()
+
+    assert len(result.ligands) == 2
+    concentrations = [lig.protonation_concentration for lig in result.ligands]
+    assert all(c is not None for c in concentrations)
+    assert sum(concentrations) == pytest.approx(100.0, abs=1.0)
+    assert concentrations[0] > concentrations[1]
+
+
+def test_protonation_concentration_on_merged_primary(client: DeepOriginClient):
+    """Concentration is set on the primary ligand when using ligand= input."""
+    ligand = Ligand.from_smiles("CCO")
+    result = Protonation(ligand=ligand, ph=7.4, client=client).run()
+
+    assert result.ligands[0] is ligand
+    assert ligand.protonation_concentration is not None
+    assert isinstance(ligand.protonation_concentration, float)
+
+
 @pytest.mark.parametrize(
     "sdf_file", sorted(BRD_DATA_DIR.glob("*.sdf")), ids=lambda p: p.stem
 )

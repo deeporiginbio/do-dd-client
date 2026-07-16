@@ -176,11 +176,13 @@ class Protonation(Execution, SyncExecutableMixin):
             raise ValueError(
                 "Protonation response missing protonation_states.smiles_list"
             )
+        concentration_list = states.get("concentration_list") or []
 
         base_name = input_first.name or ""
         ligands_out: list[Ligand] = []
         n_states = len(smiles_list)
         for i, smi in enumerate(smiles_list):
+            conc = concentration_list[i] if i < len(concentration_list) else None
             if i == 0 and self._merge_first_state_into_primary:
                 inp = input_first
                 new_mol = Chem.MolFromSmiles(smi)
@@ -189,6 +191,9 @@ class Protonation(Execution, SyncExecutableMixin):
                 inp.mol = new_mol
                 inp.smiles = smi
                 inp.protonated_at_ph = float(self._ph)
+                inp.protonation_concentration = (
+                    float(conc) if conc is not None else None
+                )
                 ligands_out.append(inp)
                 continue
             if n_states == 1:
@@ -199,6 +204,7 @@ class Protonation(Execution, SyncExecutableMixin):
                 nm = f"state_{i + 1}"
             child = Ligand.from_smiles(smi, name=nm)
             child.protonated_at_ph = float(self._ph)
+            child.protonation_concentration = float(conc) if conc is not None else None
             ligands_out.append(child)
 
         result = LigandSet(ligands=ligands_out)
