@@ -183,6 +183,7 @@ class Ligand(Entity):
     properties: dict = field(default_factory=dict)
     mol: Chem.Mol = field(kw_only=True)
     protonated_at_ph: float | None = None
+    protonation_concentration: float | None = None
     # Molprops / ADMET (populated by Molprops.run(); see _MOLPROPS_RESPONSE_TO_ATTR
     # for the API-key → attribute mapping for the combined molprops tool).
     log_s: float | None = None
