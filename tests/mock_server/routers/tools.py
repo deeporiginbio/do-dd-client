@@ -1073,6 +1073,136 @@ def create_tools_router(
 
         return execution
 
+    def _synthesize_available_reactions(smiles: str) -> list[dict[str, Any]]:
+        """Return deterministic AVAILABLE_REACTIONS hits for a parent SMILES."""
+        return [
+            {
+                "reaction_id": "suzuki",
+                "reaction_name": "Suzuki Coupling",
+                "reactant_role": "core_halide",
+                "atom_indices": [0, 1],
+            },
+            {
+                "reaction_id": "buchwald_hartwig",
+                "reaction_name": "Buchwald-Hartwig",
+                "reactant_role": "core_halide",
+                "atom_indices": [0, 1],
+            },
+        ]
+
+    def _synthesize_enumerator_csv(
+        *,
+        job_type: str,
+        inputs: dict[str, Any],
+        smiles: str,
+        parent_ligand_id: str,
+    ) -> str:
+        """Build a descriptor-enriched enumerator ``results.csv`` for MMP / REACTION."""
+        import csv
+        import io
+
+        from deeporigin.utils.constants import (
+            ENUMERATOR_RDKIT_DESCRIPTOR_COLUMNS,
+            ENUMERATOR_RESULTS_CSV_COLUMNS,
+        )
+
+        columns = list(ENUMERATOR_RESULTS_CSV_COLUMNS) + list(
+            ENUMERATOR_RDKIT_DESCRIPTOR_COLUMNS
+        )
+        is_reaction = job_type == "REACTION"
+        enumeration_mode = "REACTION" if is_reaction else "MMP"
+        reaction_sites = inputs.get("reaction_sites") or []
+        first_site = reaction_sites[0] if reaction_sites else {}
+        products = (
+            ["c1ccc(-c2ccccc2)cc1", "c1ccc(-c2ccncc2)cc1"]
+            if is_reaction
+            else ["Cc1ccccc1", "CCc1ccccc1"]
+        )
+
+        rows: list[dict[str, Any]] = []
+        for i, product in enumerate(products, start=1):
+            row: dict[str, Any] = {c: "" for c in columns}
+            row["row_id"] = i
+            row["smiles"] = product
+            row["parent_smiles"] = smiles
+            row["enumeration_mode"] = enumeration_mode
+            row["parent_ligand_id"] = parent_ligand_id
+            row["job_type"] = job_type
+            if is_reaction:
+                row["reaction_id"] = first_site.get("reaction_id", "")
+                row["reactant_role"] = first_site.get("reactant_role", "")
+                row["atom_indices"] = json.dumps(first_site.get("atom_indices", []))
+                row["building_block_id"] = f"EN300-{i:04d}"
+            else:
+                row["replace_ix"] = json.dumps(inputs.get("replace_ix", []))
+                row["radius"] = inputs.get("radius", 1)
+                row["max_fragment_size"] = inputs.get("max_fragment_size", 10)
+            descriptor_values = {
+                "molecular_weight": round(92.14 + i, 3),
+                "hbond_donor_count": 0,
+                "hbond_acceptor_count": 0,
+                "logp": round(1.5 + i * 0.1, 3),
+                "tpsa": 0.0,
+                "rotatable_bond_count": i,
+            }
+            for key, value in descriptor_values.items():
+                row[key] = value
+            rows.append(row)
+
+        buffer = io.StringIO()
+        writer = csv.DictWriter(buffer, fieldnames=columns)
+        writer.writeheader()
+        writer.writerows(rows)
+        return buffer.getvalue()
+
+    def _build_enumerator_execution(
+        *, org_key: str, tool_key: str, tool_version: str, body: dict[str, Any]
+    ) -> dict[str, Any]:
+        """Build a synchronous ``deeporigin.enumerator`` execution DTO.
+
+        For ``AVAILABLE_REACTIONS`` it returns inline ``available_reactions`` and
+        writes no CSV. For the MMP modes (``SCAFFOLD`` / ``ANALOGUE``) and
+        ``REACTION`` it writes a descriptor-enriched ``results.csv`` into the
+        mock file store and returns an ``enumeration_results`` row pointing at it.
+        """
+        execution = _create_blocking_run_dto(
+            org_key=org_key,
+            tool_key=tool_key,
+            tool_version=tool_version,
+            body=body,
+        )
+        eid = execution["executionId"]
+        inputs = body.get("inputs", {}) or {}
+        job_type = str(inputs.get("job_type") or "")
+        ligand_in = inputs.get("ligand") or {}
+        smiles = str(ligand_in.get("smiles") or "")
+        parent_ligand_id = str(ligand_in.get("id") or "")
+
+        if job_type == "AVAILABLE_REACTIONS":
+            execution["jobOutputs"] = {
+                "available_reactions": _synthesize_available_reactions(smiles),
+            }
+            return execution
+
+        csv_text = _synthesize_enumerator_csv(
+            job_type=job_type,
+            inputs=inputs,
+            smiles=smiles,
+            parent_ligand_id=parent_ligand_id,
+        )
+        csv_path = f"tool-runs/{eid}/results.csv"
+        file_storage[csv_path] = csv_text.encode("utf-8")
+
+        row: dict[str, Any] = {
+            "parent_smiles": smiles,
+            "cap_hit": False,
+            "csv_file_path": csv_path,
+        }
+        if parent_ligand_id:
+            row["parent_ligand_id"] = parent_ligand_id
+        execution["jobOutputs"] = {"enumeration_results": [row]}
+        return execution
+
     def _inject_result_explorer_records_from_outputs(
         *,
         tool_key: str,
@@ -1842,6 +1972,15 @@ def create_tools_router(
                 }
                 executions[execution["executionId"]] = execution
                 return _normalize_execution(execution)
+        if tool_key == "deeporigin.enumerator" and body.get("sync") is True:
+            execution = _build_enumerator_execution(
+                org_key=org_key,
+                tool_key=tool_key,
+                tool_version=tool_version,
+                body=body,
+            )
+            executions[execution["executionId"]] = execution
+            return _normalize_execution(execution)
         if tool_key == "deeporigin.mol-props-protonation":
             execution = _build_protonation_execution(
                 org_key=org_key,

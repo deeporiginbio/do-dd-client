@@ -138,4 +138,8 @@ TOOL_KEYS_AND_VERSIONS: dict[str, dict[str, str]] = {
         "tool_key": "deeporigin.draco",
         "tool_version": "latest",
     },
+    "enumerator": {
+        "tool_key": "deeporigin.enumerator",
+        "tool_version": "latest",
+    },
 }

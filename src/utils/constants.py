@@ -153,3 +153,65 @@ notebook cell until the execution reaches a terminal state. Used by doc notebook
 
 PROGRESS_TREE_DISPLAY_ACRONYMS: frozenset[str] = frozenset({"abfe", "rbfe"})
 """Workflow step tokens uppercased in progress-tree node labels (e.g. RBFE, ABFE)."""
+
+ENUMERATOR_JOB_TYPES: frozenset[str] = frozenset(
+    {"SCAFFOLD", "ANALOGUE", "AVAILABLE_REACTIONS", "REACTION"}
+)
+"""Valid ``job_type`` values for ``deeporigin.enumerator``.
+
+``SCAFFOLD`` and ``ANALOGUE`` are the two CReM matched-molecular-pair (MMP)
+flavors; ``AVAILABLE_REACTIONS`` discovers named-reaction sites; ``REACTION``
+enumerates products against the Enamine fragment library."""
+
+ENUMERATOR_MMP_JOB_TYPES: frozenset[str] = frozenset({"SCAFFOLD", "ANALOGUE"})
+"""``job_type`` values that run CReM MMP enumeration (require ``replace_ix``)."""
+
+ENUMERATOR_RADIUS_MIN = 1
+"""Minimum CReM environment ``radius`` accepted by the enumerator (MMP modes)."""
+
+ENUMERATOR_RADIUS_MAX = 5
+"""Maximum CReM environment ``radius`` accepted by the enumerator (MMP modes)."""
+
+ENUMERATOR_MAX_FRAGMENT_SIZE_MIN = 1
+"""Minimum ``max_fragment_size`` accepted by the enumerator (MMP modes)."""
+
+ENUMERATOR_MAX_FRAGMENT_SIZE_MAX = 15
+"""Maximum ``max_fragment_size`` accepted by the enumerator (MMP modes)."""
+
+ENUMERATOR_MAX_REACTION_SITES = 16
+"""Maximum number of ``reaction_sites`` accepted per REACTION enumeration."""
+
+ENUMERATOR_RESULTS_CSV_COLUMNS: tuple[str, ...] = (
+    "row_id",
+    "smiles",
+    "parent_smiles",
+    "enumeration_mode",
+    "parent_ligand_id",
+    "job_type",
+    "replace_ix",
+    "radius",
+    "max_fragment_size",
+    "reaction_id",
+    "reactant_role",
+    "atom_indices",
+    "building_block_id",
+)
+"""Base column order of the enumerator ``results.csv`` (before RDKit descriptors)."""
+
+ENUMERATOR_RDKIT_DESCRIPTOR_COLUMNS: tuple[str, ...] = (
+    "molecular_weight",
+    "hbond_donor_count",
+    "hbond_acceptor_count",
+    "logp",
+    "tpsa",
+    "rotatable_bond_count",
+)
+"""RDKit descriptor columns appended to the enumerator ``results.csv``."""
+
+ENUMERATOR_AVAILABLE_REACTIONS_COLUMNS: tuple[str, ...] = (
+    "reaction_id",
+    "reaction_name",
+    "reactant_role",
+    "atom_indices",
+)
+"""Column order for the DataFrame built from AVAILABLE_REACTIONS ``jobOutputs``."""
