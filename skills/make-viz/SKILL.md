@@ -43,7 +43,6 @@ Key builders in `deeporigin.viz.molstar_html` (all return a full HTML document):
 | `render_protein_with_pockets_and_poses_html` | protein + pockets + poses |
 | `render_docking_box_html` | protein + docking search box |
 | `render_protein_with_box_and_poses_html` | protein + box + poses |
-| `render_trajectory_html` | MD trajectory |
 
 `render_html(document_html, height=H, return_iframe_string=True)` returns the
 iframe string to write into `docs/images/<name>.html`.
