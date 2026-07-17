@@ -121,6 +121,14 @@ enum = Enumerator.from_id("<executionId>")
 df = enum.get_results()
 ```
 
+To re-fetch results from the most recently created `Enumerator` run without its
+ID, use `from_last_run()`:
+
+```{.python notest}
+enum = Enumerator.from_last_run()
+df = enum.get_results()
+```
+
 If you already have the execution payload from `client.executions.get`, use
 `Enumerator.from_dto(dto)` instead.
 

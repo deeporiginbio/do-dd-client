@@ -2,8 +2,7 @@
 
 This document describes how to run an [ABFE :octicons-link-external-16:](https://en.wikipedia.org/wiki/Free-energy_perturbation) simulation using Deep Origin tools.
 
-The `ABFE` class drives platform tool `deeporigin.abfe-end-to-end` with ordered workflow
-`steps`:
+The `ABFE` class runs an ordered sequence of workflow `steps`:
 
 - `["system-prep", "abfe"]` — protein + ligand through system prep, then FEP (default)
 - `["abfe"]` — FEP only on an existing `PreparedSystem`

@@ -1,6 +1,11 @@
-# `deeporigin.drug_discovery.konnektor`
+# `deeporigin.drug_discovery.structures.prepared_system`
 
-::: src.drug_discovery.konnektor.Konnektor
+`PreparedSystem` holds the output of system preparation: the binding and
+solvation XML files and the system PDB. You get one back from `SystemPrep.run()`
+and pass it to [`ABFE`](abfe.md) or [`RBFE`](rbfe.md) to reuse a prepared system
+and skip the preparation step.
+
+::: src.drug_discovery.structures.prepared_system
     options:
       docstring_style: google
       show_root_heading: false
