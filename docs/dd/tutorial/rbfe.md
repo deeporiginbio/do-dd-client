@@ -13,7 +13,7 @@ workflow `steps` are inferred for you:
 |----------|------------------|----------|
 | `ligands=[...]` (+ `protein`) | `["konnektor", "system-prep", "rbfe"]` | You have a congeneric series (each ligand must already have a docked pose in the binding site — see [Docking](./docking.md)) and want the workflow to plan the pairwise network for you |
 | `pairs=[(a, b), ...]` (+ `protein`) | `["system-prep", "rbfe"]` | You already know which ligand pairs you want to compare |
-| `prepared_systems=[...]` | `["rbfe"]` | You've already prepared systems with [SystemPrep](../tools/systemprep.md) and only want the FEP calculation |
+| `prepared_systems=[...]` | `["rbfe"]` | You've already prepared systems with [SystemPrep](../tools/systemprep.md) and only want the free energy perturbation (FEP) calculation |
 
 Add `exp_abfe` and/or `fep_abfe` anchors to any of the above to also append a
 `cycle-closure` step, which converts pairwise ΔΔG into per-ligand absolute dG.
@@ -121,7 +121,8 @@ ligand2=...).run()` — see [SystemPrep](../tools/systemprep.md).
 RBFE gives you *relative* values (ΔΔG between pairs). To turn these into
 *absolute* per-ligand values (dG), anchor the network with at least one known
 absolute value and append cycle closure. Provide the anchor as `fep_abfe`
-(computed by ABFE) and/or `exp_abfe` (measured experimentally):
+(computed by [absolute binding free energy (ABFE)](./abfe.md)) and/or `exp_abfe`
+(measured experimentally):
 
 ```{.python notest}
 anchor = [{"ligand_id": ligand1.id, "dG": -10.0}]
