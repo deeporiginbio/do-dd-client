@@ -2,8 +2,7 @@
 
 This document describes how to run an [ABFE :octicons-link-external-16:](https://en.wikipedia.org/wiki/Free-energy_perturbation) simulation using Deep Origin tools.
 
-The `ABFE` class drives platform tool `deeporigin.abfe-end-to-end` with ordered workflow
-`steps`:
+The `ABFE` class runs an ordered sequence of workflow `steps`:
 
 - `["system-prep", "abfe"]` — protein + ligand through system prep, then FEP (default)
 - `["abfe"]` — FEP only on an existing `PreparedSystem`
@@ -228,7 +227,7 @@ To view MD trajectories from this run, refer to [ABFE](../tools/abfe.md).
 
 ### Viewing overlap matrix
 
-An [FEP overlap matrix](https://pmc.ncbi.nlm.nih.gov/articles/PMC8388617/) is a diagnostic used in free energy perturbation calculations to evaluate how well neighboring λ states sample overlapping regions of configuration space. Each matrix element measures the statistical overlap between configurations from different states based on their energy distributions. The goal is to ensure every state has overlap with its neighbors in both directions – so that  off-diagonal elements are sufficiently larger than zero.
+An [FEP overlap matrix :octicons-link-external-16:](https://pmc.ncbi.nlm.nih.gov/articles/PMC8388617/) is a diagnostic used in free energy perturbation calculations to evaluate how well neighboring λ states sample overlapping regions of configuration space. Each matrix element measures the statistical overlap between configurations from different states based on their energy distributions. The goal is to ensure every state has overlap with its neighbors in both directions – so that  off-diagonal elements are sufficiently larger than zero.
 
 The plot path is read from the data-platform result for this execution (default
 `repeat=1`, same indexing as `abfe.show_trajectory`). In Jupyter:

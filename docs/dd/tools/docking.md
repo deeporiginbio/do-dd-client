@@ -138,6 +138,26 @@ docking.estimate  # total estimated cost across all ligands
 ```
 
 
+## Working with existing runs
+
+Reconnect to an asynchronous docking run started earlier, in this or a previous
+session, instead of re-submitting it:
+
+```{.python notest}
+# By execution id:
+docking = Docking.from_id("<executionId>")
+
+# Or the most recently created Docking run:
+docking = Docking.from_last_run()
+
+docking.sync()               # refresh status from the platform
+poses = docking.get_results()
+```
+
+`from_last_run()` returns the newest execution of that tool type, so call it on
+the class you submitted with — `ConstrainedDocking.from_last_run()` for a
+constrained run.
+
 ## Constrained docking
 
 Use [`ConstrainedDocking`](../ref/constrained_docking.md) to dock test ligands while

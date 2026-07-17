@@ -24,7 +24,7 @@ Docking and ABFE require a protein to be in a PDB file as input.
 Ligands can be imported from SDF files or SMILES strings. To run ABFE, the ligand must be in a SDF file.
 
 !!! tip "Example data"
-    If you want to explore these tools using some example data, we provide the [BRD4 protein](https://pubs.acs.org/doi/10.1021/acs.jctc.0c00660) and a few ligands. This is built into the `deeporigin` package and can be accessed using:
+    If you want to explore these tools using some example data, we provide the [BRD4 protein :octicons-link-external-16:](https://pubs.acs.org/doi/10.1021/acs.jctc.0c00660) and a few ligands. This is built into the `deeporigin` package and can be accessed using:
 
     ```{.python notest}
     from deeporigin.drug_discovery import BRD_DATA_DIR

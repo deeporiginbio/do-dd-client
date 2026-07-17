@@ -96,6 +96,15 @@ pf.sync()
 pockets = pf.get_results()
 ```
 
+To reconnect to the most recently created PocketFinder run without looking up its
+ID, use `from_last_run()`:
+
+```{.python notest}
+pf = PocketFinder.from_last_run()
+pf.sync()
+pockets = pf.get_results()
+```
+
 If you already have the execution payload from `client.executions.get`, use
 `PocketFinder.from_dto(dto)` instead.
 

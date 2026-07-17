@@ -81,6 +81,24 @@ If `window` is not present in the results `trajectories` map, the error lists th
 - For binding/solvation, use a `window` that exists in the results `trajectories` keys (`window_1`, …).
 - Ensure you have disk space and network access for downloads into the local Deep Origin cache.
 
+## Working with existing runs
+
+Reconnect to a run started earlier, in this or a previous session:
+
+```{.python notest}
+# By execution id:
+abfe = ABFE.from_id("<executionId>")
+
+# Or the most recently created ABFE run:
+abfe = ABFE.from_last_run()
+
+abfe.sync()            # refresh status from the platform
+abfe.get_results()
+```
+
+This rehydrates the stored inputs so you can check status, watch progress, fetch
+results, or visualize trajectories without re-specifying anything.
+
 ## Additional resources
 
 - [ABFE tutorial](../tutorial/abfe.md)

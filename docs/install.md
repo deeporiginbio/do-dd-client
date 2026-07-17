@@ -75,7 +75,7 @@ in your project root.
 
 ## OS and python support
 
-`deeporigin` is [tested](https://github.com/deeporiginbio/deeporigin-client/actions/workflows/main.yml) against the following versions of Python on Ubuntu Linux and Windows:
+`deeporigin` is [tested :octicons-link-external-16:](https://github.com/deeporiginbio/deeporigin-client/actions/workflows/main.yml) against the following versions of Python on Ubuntu Linux and Windows:
 
 | Python | macOS | Windows | Ubuntu |
 | -- | -- | -- | -- | 
