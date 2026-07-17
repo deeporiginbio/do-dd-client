@@ -1,0 +1,167 @@
+<div class="deeporigin-exec-display" id="exec_disp_rbfe_demo">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet" />
+    <style>
+        .do-progress-tree { font-size: 0.875rem; line-height: 1.4; }
+        .do-progress-node {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            gap: 0.35rem 0.5rem;
+            padding: 0.25rem 0 0.25rem 0.5rem;
+            margin-bottom: 0.125rem;
+            border-left: 3px solid var(--do-node-color, #adb5bd);
+        }
+        .do-progress-node-label { flex: 1 1 auto; min-width: 0; word-break: break-word; }
+        .do-progress-ring-group { display: inline-flex; align-items: center; gap: 0.25rem; flex-shrink: 0; }
+        .do-progress-complete-badge {
+            font-size: 0.65rem;
+            font-weight: 600;
+            padding: 0.1em 0.35em;
+            border-radius: 999px;
+            background: #e7f1ff;
+            color: #0d6efd;
+            white-space: nowrap;
+            line-height: 1.2;
+        }
+        .do-progress-node-badge {
+            flex-shrink: 0;
+            font-size: 0.7rem;
+            padding: 0.15em 0.5em;
+            border-radius: 999px;
+            color: #fff;
+            white-space: nowrap;
+        }
+        .do-progress-runtime { flex-shrink: 0; font-size: 0.7rem; color: #6c757d; white-space: nowrap; }
+        .do-progress-ring-spacer { display: inline-block; width: 18px; height: 18px; flex-shrink: 0; }
+    </style>
+    <div class="card shadow-sm" style="max-width: 42rem;">
+        <div class="card-header py-2">
+            <div class="fw-semibold">RBFE: brd congeneric series</div>
+            <div class="small mt-1"><code class="small text-body-secondary text-break">deeporigin.rbfe</code> <span aria-hidden="true" class="text-muted">·</span> <span class="text-muted">v0.3.3</span></div>
+        </div>
+        <div class="card-body py-3">
+            <div class="do-progress-tree" id="rbfe-demo-tree"></div>
+            <div class="small text-muted mt-2 text-break"><code>workflow-rz3e8s1sryqom96eema1n</code></div>
+        </div>
+        <div class="card-footer small py-2">
+            <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
+                <div class="d-flex align-items-center flex-wrap gap-2">
+                    <div class="text-muted">Last updated: 2026-07-13 23:07:31</div>
+                    <span class="d-inline-flex align-items-center gap-1 text-muted" id="rbfe-demo-live" title="Refreshing automatically"><span aria-hidden="true" class="spinner-border spinner-border-sm text-primary" role="status"></span><span>Live updates…</span></span>
+                </div>
+                <div class="d-flex align-items-center flex-wrap gap-2">
+                    <span class="badge rounded-pill bg-secondary-subtle text-secondary-emphasis border border-secondary-subtle align-middle" style="font-variant: small-caps; letter-spacing: 0.04em;" title="This run includes workflow child executions">WORKFLOW (2x)</span>
+                    <span class="badge rounded-pill bg-primary" id="rbfe-demo-status">Running</span>
+                </div>
+            </div>
+        </div>
+    </div>
+    <script>
+        (function () {
+            const GREEN = "#198754";
+            const BLUE = "#0d6efd";
+            const CIRC = 2 * Math.PI * 7.5;
+
+            // DFS-ordered nodes mirroring a real deeporigin.rbfe progress tree.
+            // Times are a compressed illustrative timeline (ms); the runtime
+            // labels are the real per-step durations from an actual run.
+            const NODES = [
+                { depth: 0, label: "Workflow rz3e8s1sryqom96eema1n", title: "workflow-rz3e8s1sryqom96eema1n", leaf: false, appear: 0, done: 18600 },
+                { depth: 1, label: "Prepare inputs", title: "prepare-inputs", leaf: true, runtime: "16s", appear: 300, done: 1500 },
+                { depth: 1, label: "Run konnektor", title: "run-konnektor", leaf: true, runtime: "12s", appear: 1700, done: 2700 },
+                { depth: 1, label: "Build pair list", title: "build-pair-list", leaf: true, runtime: "9s", appear: 2900, done: 3600 },
+                { depth: 1, label: "Pair pipeline", title: "pair-pipeline", leaf: false, appear: 3800, done: 16800 },
+                { depth: 2, label: "Pair pipeline 0", title: "pair-pipeline (pair 0)", leaf: false, appear: 3800, done: 15600 },
+                { depth: 3, label: "System prep task", title: "system-prep-task", leaf: true, runtime: "2m 26s", appear: 3800, done: 6000 },
+                { depth: 3, label: "Resolve prepared system", title: "resolve-prepared-system", leaf: true, runtime: "10s", appear: 6100, done: 6700 },
+                { depth: 3, label: "RBFE e2e task", title: "rbfe-e2e-task", leaf: true, runtime: "7h 23m", ring: true, appear: 6800, done: 15600 },
+                { depth: 2, label: "Pair pipeline 1", title: "pair-pipeline (pair 1)", leaf: false, appear: 3800, done: 16800 },
+                { depth: 3, label: "System prep task", title: "system-prep-task", leaf: true, runtime: "4m 54s", appear: 3800, done: 6600 },
+                { depth: 3, label: "Resolve prepared system", title: "resolve-prepared-system", leaf: true, runtime: "9s", appear: 6700, done: 7300 },
+                { depth: 3, label: "RBFE e2e task", title: "rbfe-e2e-task", leaf: true, runtime: "7h 28m", ring: true, appear: 7400, done: 16800 },
+                { depth: 1, label: "Run cycle closure", title: "run-cycle-closure", leaf: true, runtime: "40s", appear: 17000, done: 18400 },
+            ];
+
+            const END = 18600;
+            const HOLD_MS = 3500;
+
+            const tree = document.getElementById("rbfe-demo-tree");
+            const statusBadge = document.getElementById("rbfe-demo-status");
+            const live = document.getElementById("rbfe-demo-live");
+
+            function esc(s) {
+                return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;")
+                    .replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+            }
+
+            function ring(pct) {
+                const offset = (CIRC * (1 - pct / 100)).toFixed(2);
+                return '<span class="do-progress-ring-group">'
+                    + '<svg width="18" height="18" viewBox="0 0 18 18" role="img" '
+                    + 'aria-label="' + Math.round(pct) + '% complete">'
+                    + '<circle cx="9" cy="9" r="7.5" fill="none" stroke="#dee2e6" stroke-width="2.5"/>'
+                    + '<circle cx="9" cy="9" r="7.5" fill="none" stroke="' + BLUE + '" '
+                    + 'stroke-width="2.5" stroke-linecap="round" stroke-dasharray="' + CIRC.toFixed(2) + '" '
+                    + 'stroke-dashoffset="' + offset + '" transform="rotate(-90 9 9)"/></svg>'
+                    + '<span class="do-progress-complete-badge">' + Math.round(pct) + '%</span></span>';
+            }
+
+            function nodeHtml(n, t) {
+                const done = t >= n.done;
+                const color = done ? GREEN : BLUE;
+                const status = done ? "Succeeded" : "Running";
+                let html = '<div class="do-progress-node" style="margin-left: '
+                    + (n.depth * 1.5).toFixed(1) + 'rem; --do-node-color: ' + color
+                    + '; border-left-color: ' + color + ';">';
+                if (n.ring) {
+                    const pct = done ? 100 : Math.max(0, Math.min(100,
+                        ((t - n.appear) / (n.done - n.appear)) * 100));
+                    html += ring(pct);
+                } else {
+                    html += '<span class="do-progress-ring-spacer" aria-hidden="true"></span>';
+                }
+                html += '<span class="do-progress-node-label fw-medium" title="' + esc(n.title)
+                    + '">' + esc(n.label) + '</span>';
+                if (n.leaf) {
+                    if (n.runtime) {
+                        html += '<span class="do-progress-runtime">' + esc(n.runtime) + '</span>';
+                    }
+                    html += '<span class="do-progress-node-badge" style="background:' + color
+                        + '">' + status + '</span>';
+                }
+                html += '</div>';
+                return html;
+            }
+
+            function render(t) {
+                let html = "";
+                for (const n of NODES) {
+                    if (t >= n.appear) {
+                        html += nodeHtml(n, t);
+                    }
+                }
+                tree.innerHTML = html;
+                const finished = t >= END;
+                statusBadge.textContent = finished ? "Completed" : "Running";
+                statusBadge.className = "badge rounded-pill " + (finished ? "bg-success" : "bg-primary");
+                live.style.visibility = finished ? "hidden" : "visible";
+            }
+
+            let start = performance.now();
+            function tick(now) {
+                const elapsed = now - start;
+                if (elapsed <= END) {
+                    render(elapsed);
+                } else if (elapsed <= END + HOLD_MS) {
+                    render(END);
+                } else {
+                    start = now;
+                    render(0);
+                }
+                requestAnimationFrame(tick);
+            }
+            render(0);
+            requestAnimationFrame(tick);
+        })();
+    </script>
+</div>

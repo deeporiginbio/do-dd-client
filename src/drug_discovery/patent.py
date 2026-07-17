@@ -22,7 +22,6 @@ _PATENT_UPLOAD_PREFIX = "patent/"
 _LIGANDS_WITH_RESULTS_PAGE_SIZE = 1000
 
 
-@beartype
 def _patent_ligands_with_results_dataframe(
     response: dict[str, Any],
 ) -> pd.DataFrame | None:
@@ -49,7 +48,6 @@ def _patent_ligands_with_results_dataframe(
     return _patent_molecules_to_dataframe(molecules)
 
 
-@beartype
 def _paginate_ligands_with_results_search(
     *,
     client: DeepOriginClient,
@@ -94,7 +92,6 @@ def _paginate_ligands_with_results_search(
     return {"data": all_data, "meta": meta}
 
 
-@beartype
 def _fetch_patent_ligands_with_results(
     *,
     client: DeepOriginClient,
@@ -288,7 +285,6 @@ class Patent(Execution, AsyncExecutableMixin, NotebookWatchMixin):
             msg = f"Expected a .pdf file, got: {path.suffix!r}"
             raise ValueError(msg)
 
-    @beartype
     def _ensure_pdf_uploaded(self) -> str:
         """Upload the local PDF when needed and return the UFA remote key."""
         if self._remote_pdf_path is not None:

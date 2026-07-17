@@ -4,7 +4,7 @@
 
 To use the Deep Origin client, you must first obtain an API token. 
 
-Navigate to the [developer tokens tab](https://os.deeporigin.io/settings?tab=tokens) in your Deep Origin account. You will see a screen similar to:
+Navigate to the [developer tokens tab :octicons-link-external-16:](https://os.deeporigin.io/settings?tab=tokens) in your Deep Origin account. You will see a screen similar to:
 
 ![](../images/token-1.png)
 

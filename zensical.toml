@@ -20,6 +20,7 @@ nav = [
       {"Getting started" = "dd/tutorial/getting-started.md"},
       {"Docking" = "dd/tutorial/docking.md"},
       {"ABFE" = "dd/tutorial/abfe.md"},
+      {"RBFE" = "dd/tutorial/rbfe.md"},
     ]},
     {"How To" = [
       {"Work with Proteins" = "dd/how-to/proteins.md"},
@@ -35,6 +36,8 @@ nav = [
       {"Molprops" = "dd/tools/molprops.md"},
       {"Enumerator" = "dd/tools/enumerator.md"},
       {"ABFE" = "dd/tools/abfe.md"},
+      {"RBFE" = "dd/tools/rbfe.md"},
+      {"Patent" = "dd/tools/patent.md"},
     ]},
     {"Notebooks" = [
       {"Pocketfinder" = "notebooks/html/pocketfinder.html"},
@@ -63,6 +66,7 @@ nav = [
     {"konnektor" = "dd/ref/konnektor.md"},
     {"abfe" = "dd/ref/abfe.md"},
     {"rbfe" = "dd/ref/rbfe.md"},
+    {"patent" = "dd/ref/patent.md"},
   ]},
   {"Platform API" = [
     "platform/index.md",
@@ -153,6 +157,9 @@ pygments_lang_class = true
 [project.markdown_extensions.pymdownx.smartsymbols]
 [project.markdown_extensions.pymdownx.snippets]
 [project.markdown_extensions.pymdownx.superfences]
+custom_fences = [
+  { name = "mermaid", class = "mermaid", format = "pymdownx.superfences.fence_code_format" },
+]
 
 [project.markdown_extensions.pymdownx.tabbed]
 alternate_style = true

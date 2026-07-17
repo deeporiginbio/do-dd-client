@@ -1,8 +1,18 @@
 # Enumerator
 
-Generate analogue libraries from a parent [`Ligand`](../ref/ligand.md) using the
-Deep Origin Enumerator. `Enumerator` is a served tool: configure it with a single
-`job_type`, call `run()`, and get a `pandas.DataFrame` back.
+Generate [analogue :octicons-link-external-16:](https://en.wikipedia.org/wiki/Structural_analog) libraries
+from a parent [`Ligand`](../ref/ligand.md) on the Deep Origin platform.
+
+To run it you need:
+
+- a parent `Ligand` (built from a SMILES string)
+- a `job_type` that picks the enumeration mode (see the table below)
+- the inputs that mode requires (e.g. atom indices for matched-molecular-pair
+  ([MMP :octicons-link-external-16:](https://en.wikipedia.org/wiki/Matched_molecular_pair_analysis)) modes)
+
+Create an `Enumerator`, call `run()`, and get a `pandas.DataFrame` of results
+back. `run()` blocks until the job finishes, so you must be logged in
+(`deeporigin login`) before calling it.
 
 ## Modes
 
@@ -13,11 +23,30 @@ The tool exposes four `job_type` values:
 | `SCAFFOLD` | MMP: grow a fragment at one attachment atom | `replace_ix` (one atom index) | products CSV |
 | `ANALOGUE` | MMP: swap a connected fragment | `replace_ix` (one or more indices) | products CSV |
 | `AVAILABLE_REACTIONS` | Discover named-reaction sites on the parent | none | reaction-site table |
-| `REACTION` | Enumerate products against the Enamine fragment library | `reaction_sites` | products CSV |
+| `REACTION` | Enumerate products against the [Enamine :octicons-link-external-16:](https://enamine.net/) fragment library | `reaction_sites` | products CSV |
 
-`SCAFFOLD` and `ANALOGUE` are the two matched-molecular-pair (MMP) flavors, both
-backed by CReM. `AVAILABLE_REACTIONS` is a discovery step (it writes no CSV); its
+`SCAFFOLD` and `ANALOGUE` are the two MMP flavors, both
+backed by [CReM :octicons-link-external-16:](https://github.com/DrrDom/crem). `AVAILABLE_REACTIONS` is a
+discovery step (it writes no CSV); its
 output feeds `REACTION`.
+
+The two workflows below are independent — pick MMP *or* reaction enumeration:
+
+```mermaid
+flowchart TD
+    L["Parent Ligand (from SMILES)"] --> Q{"Choose job_type"}
+
+    Q -->|"SCAFFOLD (replace_ix = 1 atom)"| S["Grow a fragment at<br/>one attachment atom"]
+    Q -->|"ANALOGUE (replace_ix = 1+ atoms)"| A["Swap a connected fragment"]
+    Q -->|"reaction workflow"| AR["AVAILABLE_REACTIONS<br/>(discover reaction sites)"]
+
+    S --> P["products DataFrame"]
+    A --> P
+
+    AR --> RS["reaction-site table"]
+    RS -->|"pick rows, pass as reaction_sites"| R["REACTION<br/>(enumerate vs Enamine library)"]
+    R --> P
+```
 
 ## MMP enumeration (SCAFFOLD / ANALOGUE)
 
