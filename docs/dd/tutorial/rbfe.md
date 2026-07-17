@@ -6,8 +6,8 @@ RBFE compares two ligands bound to the same protein and reports the **difference
 in their binding free energies (ΔΔG). Run it across a series of related ligands to
 rank them relative to one another before committing to synthesis.
 
-The `RBFE` class drives platform tool `deeporigin.rbfe`. You choose *what* to run
-by *what you pass in*; the workflow `steps` are inferred for you:
+With the `RBFE` class, you choose *what* to run by *what you pass in*; the
+workflow `steps` are inferred for you:
 
 | You pass | Inferred `steps` | Use when |
 |----------|------------------|----------|

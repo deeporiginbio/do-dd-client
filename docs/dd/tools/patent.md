@@ -1,10 +1,9 @@
 # Patent
 
 Extract chemical structures from a patent or chemistry PDF with the Deep Origin
-Patent tool ("DO Patent"). `Patent` is a served tool backed by the platform tool
-`deeporigin.draco`: it reads the pages of a PDF, detects drawn molecules, and
-predicts a SMILES string for each one, together with a confidence score and the
-page it was found on.
+Patent tool ("DO Patent"). `Patent` reads the pages of a PDF, detects drawn
+molecules, and predicts a SMILES string for each one, together with a confidence
+score and the page it was found on.
 
 `Patent` is an **async** tool: submit the job with `start()`, track it with
 `watch()` or `wait()`, then read the extracted structures with `get_results()`.
