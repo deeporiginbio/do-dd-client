@@ -86,6 +86,16 @@ def _build_brd_protein() -> str:
     return render_protein_html(pdb_path=_brd_pdb())
 
 
+def _build_brd_no_water() -> str:
+    """BRD4 protein with waters removed (mirrors ``remove_water()`` + ``show()``)."""
+    from deeporigin.drug_discovery import Protein
+    from deeporigin.viz.molstar_html import render_protein_html
+
+    protein = Protein.from_file(_brd_pdb())
+    protein.remove_water()
+    return render_protein_html(pdb_path=protein._dump_state())
+
+
 def _build_brd_pocket() -> str:
     """BRD4 protein with a single binding pocket overlay."""
     from deeporigin.drug_discovery import Pocket
@@ -114,10 +124,48 @@ def _build_brd_docked_poses() -> str:
     )
 
 
+def _build_brd_docking_box() -> str:
+    """BRD4 protein with a docking search box (mirrors ``Docking.show_box()``).
+
+    Uses the shared pocket fixture with a 15 A cubic box, matching the docking
+    tutorial. Box center/size are resolved the same way ``Docking`` submits them.
+    """
+    from deeporigin.drug_discovery import Pocket
+    from deeporigin.drug_discovery.docking_common import resolve_docking_box_geometry
+    from deeporigin.viz.molstar_html import render_docking_box_html
+
+    pocket = Pocket.from_pdb_file(_pocket_fixture(), name="pocket-1")
+    pocket.box_size_x = pocket.box_size_y = pocket.box_size_z = 15.0
+    box_center, box_size = resolve_docking_box_geometry(pocket)
+    return render_docking_box_html(
+        pdb_path=_brd_pdb(),
+        box_center=box_center,
+        box_size=box_size,
+    )
+
+
+def _build_serotonin() -> str:
+    """Single serotonin ligand (mirrors ``Ligand.from_identifier(...).show()``).
+
+    Resolves the SMILES from PubChem (network) and generates a 3D conformer so the
+    Mol* ball-and-stick view has real coordinates.
+    """
+    from deeporigin.drug_discovery import Ligand
+    from deeporigin.viz.molstar_html import render_ligand_html
+
+    ligand = Ligand.from_identifier("serotonin")
+    if ligand.mol.GetNumConformers() == 0:
+        ligand.embed()
+    return render_ligand_html(sdf_path=ligand.to_sdf())
+
+
 VIZ_REGISTRY: dict[str, VizSpec] = {
     "brd-protein": VizSpec(build=_build_brd_protein, height=600),
+    "brd-no-water": VizSpec(build=_build_brd_no_water, height=600),
     "brd-pocket": VizSpec(build=_build_brd_pocket, height=600),
     "brd-docked-poses": VizSpec(build=_build_brd_docked_poses, height=600),
+    "brd-docking-box": VizSpec(build=_build_brd_docking_box, height=600),
+    "serotonin": VizSpec(build=_build_serotonin, height=600),
 }
 
 
