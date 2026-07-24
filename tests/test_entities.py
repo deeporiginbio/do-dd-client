@@ -14,6 +14,7 @@ _BRD_PDB_LOCAL = BRD_DATA_DIR / "brd.pdb"
 _BRD_PDB_REMOTE = "testing/brd.pdb"
 _GET_LIGAND_POLL_SECONDS = 15.0
 _GET_LIGAND_POLL_INTERVAL = 0.5
+_SMILES_BACKBONE_UNITS = 24
 
 
 def _expected_entity_tags(
@@ -28,20 +29,31 @@ def _expected_entity_tags(
 
 
 def _unique_test_smiles(*, suffix: str = "O") -> str:
-    """Build a one-off aliphatic SMILES unlikely to collide with existing ligands.
+    """Build a one-off aliphatic SMILES that will not collide with existing ligands.
 
-    Common short SMILES (``CCO``, ``CCC``, …) often resolve to soft-deleted
-    historical rows whose versioned GET still 404s. A long unique carbon chain
-    forces a fresh insert.
+    A ligand's identity in the data platform is its canonical SMILES, and
+    deleting a ligand only soft-deletes the row. Re-creating the same structure
+    returns the dead row's id, whose versioned GET still 404s, so every distinct
+    structure is effectively single-use for the lifetime of an environment. The
+    generated space therefore has to be much larger than the number of test runs
+    the environment will ever see.
+
+    Each backbone unit encodes one random bit as either a plain or a
+    methyl-branched carbon, giving ``2 ** _SMILES_BACKBONE_UNITS`` distinct
+    constitutional isomers per suffix while keeping the molecule small enough to
+    embed quickly.
 
     Args:
         suffix: Terminal heteroatom / group appended after the carbon chain.
 
     Returns:
-        SMILES string unique for this process invocation.
+        SMILES string, effectively unique per call.
     """
-    n = (int(uuid.uuid4().hex[:8], 16) % 40) + 12
-    return ("C" * n) + suffix
+    bits = uuid.uuid4().int & ((1 << _SMILES_BACKBONE_UNITS) - 1)
+    backbone = "".join(
+        "C(C)" if (bits >> i) & 1 else "C" for i in range(_SMILES_BACKBONE_UNITS)
+    )
+    return backbone + suffix
 
 
 def _wait_for_ligand(client: DeepOriginClient, lig_id: str) -> dict:
@@ -79,6 +91,17 @@ def _wait_for_ligand(client: DeepOriginClient, lig_id: str) -> dict:
             + (f": {last_error}" if last_error is not None else ".")
         ),
     ) from last_error
+
+
+def test_unique_test_smiles_generates_distinct_valid_molecules():
+    """Generated test SMILES are chemically valid and effectively never repeat."""
+    from rdkit import Chem
+
+    generated = [_unique_test_smiles(suffix="Cl") for _ in range(500)]
+
+    assert len(set(generated)) == len(generated)
+    for smiles in generated:
+        assert Chem.MolFromSmiles(smiles) is not None, f"invalid SMILES: {smiles}"
 
 
 def test_search_entity_lv1(client: DeepOriginClient):
