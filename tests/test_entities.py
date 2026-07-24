@@ -1,5 +1,6 @@
 """Tests for the Entities API wrapper."""
 
+import itertools
 import time
 import uuid
 
@@ -29,7 +30,7 @@ def _expected_entity_tags(
 
 
 def _unique_test_smiles(*, suffix: str = "O") -> str:
-    """Build a one-off aliphatic SMILES that will not collide with existing ligands.
+    """Build a one-off aliphatic SMILES very unlikely to collide with existing ligands.
 
     A ligand's identity in the data platform is its canonical SMILES, and
     deleting a ligand only soft-deletes the row. Re-creating the same structure
@@ -93,15 +94,36 @@ def _wait_for_ligand(client: DeepOriginClient, lig_id: str) -> dict:
     ) from last_error
 
 
-def test_unique_test_smiles_generates_distinct_valid_molecules():
-    """Generated test SMILES are chemically valid and effectively never repeat."""
+def test_unique_test_smiles_generates_distinct_valid_molecules(monkeypatch):
+    """Distinct draws map to distinct, chemically valid molecules.
+
+    Driven by a deterministic uuid sequence rather than real randomness. The
+    generator's collision resistance comes from the size of the draw space,
+    covered by ``test_unique_test_smiles_draw_space_is_large``; sampling uuid4
+    here would only give this assertion a chance of failing on a genuine
+    birthday collision.
+    """
     from rdkit import Chem
 
+    draws = itertools.count()
+    monkeypatch.setattr(uuid, "uuid4", lambda: uuid.UUID(int=next(draws)))
+
     generated = [_unique_test_smiles(suffix="Cl") for _ in range(500)]
+    canonical = []
+    for smiles in generated:
+        mol = Chem.MolFromSmiles(smiles)
+        assert mol is not None, f"invalid SMILES: {smiles}"
+        canonical.append(Chem.MolToSmiles(mol))
 
     assert len(set(generated)) == len(generated)
-    for smiles in generated:
-        assert Chem.MolFromSmiles(smiles) is not None, f"invalid SMILES: {smiles}"
+    # Ligands are keyed on canonical SMILES, so that is the identity that has
+    # to be distinct for the generator to do its job.
+    assert len(set(canonical)) == len(canonical)
+
+
+def test_unique_test_smiles_draw_space_is_large():
+    """The draw space must dwarf the number of live-test runs an environment sees."""
+    assert 2**_SMILES_BACKBONE_UNITS >= 16_000_000
 
 
 def test_search_entity_lv1(client: DeepOriginClient):
