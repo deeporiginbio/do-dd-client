@@ -10,7 +10,7 @@ import os
 from pathlib import Path
 import random
 import tempfile
-from typing import Any, Callable, ClassVar, Literal, Optional, Self, cast
+from typing import TYPE_CHECKING, Any, Callable, ClassVar, Literal, Optional, Self, cast
 import warnings
 
 from beartype import beartype
@@ -28,6 +28,9 @@ from deeporigin.utils.env import _ensure_do_folder
 from deeporigin.viz.molstar_html import render_ligand_html
 
 from .entity import Entity
+
+if TYPE_CHECKING:
+    from deeporigin.drug_discovery.structures.pose import PoseSet
 
 warnings.filterwarnings("ignore", category=UserWarning, module="rdkit")
 RDLogger.DisableLog("rdApp.*")  # ty:ignore[unresolved-attribute]
@@ -1407,7 +1410,7 @@ class Ligand(Entity):
         *,
         client: Optional[DeepOriginClient] = None,
         protein_id: str | None = None,
-    ) -> "deeporigin.drug_discovery.structures.pose.PoseSet":
+    ) -> "PoseSet":
         """Return platform poses whose ``ligand_id`` matches this ligand.
 
         Includes docked and registered poses (does not apply the scored-only
