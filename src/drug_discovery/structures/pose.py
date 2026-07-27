@@ -33,8 +33,6 @@ _POSE_JSON_RESERVED: frozenset[str] = frozenset(
         "binding_energy",
         "best_pose",
         "origin",
-        "effort",
-        "constrained",
     }
 )
 
@@ -469,6 +467,8 @@ class Pose(Entity):
             "local_path": self.local_path,
             "remote_path": self.remote_path,
             "protein_id": self.protein_id,
+            "project_id": self.project_id,
+            "compute_job_id": self.compute_job_id,
             "pose_score": self.pose_score,
             "binding_energy": self.binding_energy,
             "best_pose": self.best_pose,

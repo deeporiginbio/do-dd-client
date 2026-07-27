@@ -185,11 +185,18 @@ def test_pose_to_ligand_legacy_shape() -> None:
         ligand_id="LIG-XYZ",
         smiles="CCO",
         remote_path="entities/poses/test.sdf",
+        project_id="PROJ-1",
+        compute_job_id="JOB-1",
+        props={"effort": 1, "constrained": True},
     )
     lig = pose.to_ligand()
     assert lig.id == "LIG-XYZ"
     assert lig.properties.get("id") == "POSE-ABC"
     assert lig.properties.get("pose_result_id") == "POSE-ABC"
+    assert lig.project_id == "PROJ-1"
+    assert lig.properties.get("compute_job_id") == "JOB-1"
+    assert lig.properties.get("effort") == 1
+    assert lig.properties.get("constrained") is True
 
 
 def test_pose_set_from_result_after_docking_local(
