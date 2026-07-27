@@ -516,9 +516,11 @@ def _matches_registered_pose_row(
 ) -> bool:
     """Return whether a pose row matches registration lookup filters."""
 
-    if origin and data.get("origin") == origin:
-        return True
-    return bool(file_path and data.get("file_path") == file_path)
+    if file_path is not None:
+        return data.get("file_path") == file_path
+    if origin:
+        return data.get("origin") == origin
+    return False
 
 
 def _resolve_registered_pose_row(
@@ -624,6 +626,9 @@ class PoseSet:
         from deeporigin.drug_discovery.docking_common import (
             load_poses_from_result_explorer,
         )
+
+        if client is None:
+            client = DeepOriginClient()
 
         return load_poses_from_result_explorer(
             execution_id,

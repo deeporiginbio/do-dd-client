@@ -3441,4 +3441,6 @@ class LigandSet:
         )
 
 
+# Deferred import: pose.py imports Ligand at module load. Importing PoseSet after
+# class definition lets beartype resolve Ligand.get_poses() without a cycle.
 from deeporigin.drug_discovery.structures.pose import PoseSet  # noqa: E402
