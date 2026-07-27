@@ -386,12 +386,25 @@ class Pose(Entity):
                 message="Parent ligand must have a platform id before pose registration.",
             )
 
-        parent.upload(client=client)
-        parent.ensure_remote_path(client=client, label="Ligand")
+        staging = cls(
+            ligand_id=parent.id,
+            local_path=local_path,
+            smiles=parent.smiles or parent.canonical_smiles,
+            name=parent.name,
+            protein_id=protein_id,
+            origin=origin,
+        )
+        staging.upload(client=client)
+        pose_remote = staging.remote_path
+        if pose_remote is None:
+            raise DeepOriginException(
+                title="Pose upload failed",
+                message="Could not upload pose SDF to platform storage.",
+            )
 
         inputs: dict[str, Any] = {
             "register_pose": True,
-            "file_path": parent.remote_path,
+            "file_path": pose_remote,
             "ligand_id": parent.id,
             "origin": origin,
         }
@@ -421,7 +434,7 @@ class Pose(Entity):
             pose_row = _resolve_registered_pose_row(
                 client=client,
                 ligand_id=parent.id,
-                file_path=parent.remote_path,
+                file_path=pose_remote,
                 origin=origin,
                 fallback=pose_row,
             )
@@ -431,9 +444,8 @@ class Pose(Entity):
         if protein_id is not None:
             pose_row.setdefault("protein_id", protein_id)
         pose_row["local_path"] = local_path
-        if parent.remote_path is not None:
-            pose_row.setdefault("file_path", parent.remote_path)
-            pose_row.setdefault("remote_path", parent.remote_path)
+        pose_row.setdefault("file_path", pose_remote)
+        pose_row.setdefault("remote_path", pose_remote)
         if parent.smiles:
             pose_row.setdefault("smiles", parent.smiles)
 
