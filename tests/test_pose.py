@@ -112,7 +112,14 @@ def test_pose_set_getitem_slice_returns_pose_set() -> None:
 def test_pose_set_to_ligand_set_legacy_bridge() -> None:
     """PoseSet.to_ligand_set preserves pose ids in ligand properties."""
     pose_set = PoseSet.from_json(
-        [{"ligand_id": "L", "id": "P1", "smiles": "CCO", "remote_path": "entities/poses/p1.sdf"}]
+        [
+            {
+                "ligand_id": "L",
+                "id": "P1",
+                "smiles": "CCO",
+                "remote_path": "entities/poses/p1.sdf",
+            }
+        ]
     )
     ligand_set = pose_set.to_ligand_set()
     assert len(ligand_set) == 1
