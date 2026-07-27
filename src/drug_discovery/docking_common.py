@@ -14,6 +14,7 @@ from deeporigin.drug_discovery.structures.ligand import (
     _ligand_smiles_map_from_tool_payload,
 )
 from deeporigin.drug_discovery.structures.pocket import Pocket
+from deeporigin.drug_discovery.structures.pose import PoseSet
 from deeporigin.drug_discovery.structures.protein import Protein
 from deeporigin.exceptions import DeepOriginException
 from deeporigin.platform.client import DeepOriginClient
@@ -242,6 +243,70 @@ def _pose_result_records_to_rows(
     return rows
 
 
+def load_poses_from_result_explorer(
+    execution_id: str | None,
+    *,
+    client: DeepOriginClient,
+    protein_id: str | None = None,
+    ligand_id: str | list[str] | None = None,
+    best_pose: bool | None = None,
+    scored_only: bool = False,
+) -> PoseSet:
+    """Load pose rows from result-explorer into a :class:`PoseSet`.
+
+    Args:
+        execution_id: Platform execution / compute job id filter.
+        client: API client.
+        protein_id: Optional protein id filter.
+        ligand_id: Optional ligand id filter (single id or list).
+        best_pose: When set, restrict to rows whose ``data.best_pose`` matches.
+        scored_only: When ``True``, skip reference/metadata rows that lack
+            ``pose_score`` / ``best_pose`` (constrained-docking reference rows).
+
+    Returns:
+        A :class:`PoseSet` of matching poses.
+
+    Raises:
+        ValueError: If no pose rows match.
+    """
+    get_poses_kwargs: dict[str, Any] = {
+        "protein_id": protein_id,
+        "ligand_id": ligand_id,
+        "compute_job_id": execution_id,
+        "limit": None,
+    }
+    if best_pose is not None:
+        get_poses_kwargs["best_pose"] = best_pose
+
+    response = client.results.get_poses(**get_poses_kwargs)
+    raw_records = [rec for rec in response.get("data", []) if isinstance(rec, dict)]
+    records = raw_records
+    if scored_only:
+        records = [
+            rec for rec in raw_records if _is_scored_docking_pose_data(rec.get("data"))
+        ]
+
+    if not records:
+        detail = (
+            f"({len(raw_records)} raw result-explorer row(s); "
+            f"{len(raw_records) - len(records)} excluded by scored_only filter)."
+            if scored_only
+            else f"({len(raw_records)} raw result-explorer row(s))."
+        )
+        raise ValueError(
+            "No pose results found for "
+            f"protein_id={protein_id!r} execution_id={execution_id!r} "
+            f"ligand_id={ligand_id!r} {detail}"
+        )
+
+    rows = _pose_result_records_to_rows(
+        records,
+        client=client,
+        execution_id=execution_id,
+    )
+    return PoseSet.from_json(rows, client=client)
+
+
 def load_scored_poses_from_result_explorer(
     execution_id: str | None,
     *,
@@ -266,34 +331,14 @@ def load_scored_poses_from_result_explorer(
     Raises:
         ValueError: If no scored pose rows match.
     """
-    get_poses_kwargs: dict[str, Any] = {
-        "protein_id": protein_id,
-        "compute_job_id": execution_id,
-        "limit": None,
-    }
-    if best_pose is not None:
-        get_poses_kwargs["best_pose"] = best_pose
-
-    response = client.results.get_poses(**get_poses_kwargs)
-    raw_records = [rec for rec in response.get("data", []) if isinstance(rec, dict)]
-    records = [
-        rec for rec in raw_records if _is_scored_docking_pose_data(rec.get("data"))
-    ]
-
-    if not records:
-        raise ValueError(
-            "No scored docking pose results found for "
-            f"protein_id={protein_id!r} execution_id={execution_id!r} "
-            f"({len(raw_records)} raw result-explorer row(s); "
-            f"{len(raw_records) - len(records)} looked like reference/metadata only)."
-        )
-
-    rows = _pose_result_records_to_rows(
-        records,
+    pose_set = load_poses_from_result_explorer(
+        execution_id,
         client=client,
-        execution_id=execution_id,
+        protein_id=protein_id,
+        best_pose=best_pose,
+        scored_only=True,
     )
-    return LigandSet.from_json(rows, client=client)
+    return pose_set.to_ligand_set()
 
 
 def load_docking_poses_from_execution(
