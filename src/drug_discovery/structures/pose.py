@@ -481,6 +481,22 @@ def _pose_row_from_registration_execution(dto: dict[str, Any]) -> dict[str, Any]
     return None
 
 
+def _explorer_record_to_pose_row(
+    rec: dict[str, Any],
+    fallback: dict[str, Any],
+) -> dict[str, Any]:
+    """Merge a result-explorer pose record into a registration fallback row."""
+
+    data = rec.get("data")
+    row = dict(fallback)
+    if isinstance(data, dict):
+        row.update(data)
+    row["id"] = rec.get("id")
+    if rec.get("compute_job_id") is not None:
+        row.setdefault("compute_job_id", rec.get("compute_job_id"))
+    return row
+
+
 def _resolve_registered_pose_row(
     *,
     client: DeepOriginClient,
@@ -500,29 +516,16 @@ def _resolve_registered_pose_row(
         if not isinstance(data, dict):
             continue
         if origin and data.get("origin") == origin:
-            row = dict(fallback)
-            row.update(data)
-            row["id"] = rec.get("id")
-            if rec.get("compute_job_id") is not None:
-                row.setdefault("compute_job_id", rec.get("compute_job_id"))
-            return row
+            return _explorer_record_to_pose_row(rec, fallback)
         if file_path and data.get("file_path") == file_path:
-            row = dict(fallback)
-            row.update(data)
-            row["id"] = rec.get("id")
-            if rec.get("compute_job_id") is not None:
-                row.setdefault("compute_job_id", rec.get("compute_job_id"))
-            return row
+            return _explorer_record_to_pose_row(rec, fallback)
 
     if records:
         rec = records[-1]
         if isinstance(rec, dict):
             data = rec.get("data")
             if isinstance(data, dict):
-                row = dict(fallback)
-                row.update(data)
-                row["id"] = rec.get("id")
-                return row
+                return _explorer_record_to_pose_row(rec, fallback)
 
     return fallback
 
