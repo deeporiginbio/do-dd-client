@@ -497,6 +497,30 @@ def _explorer_record_to_pose_row(
     return row
 
 
+def _pose_record_data(rec: Any) -> dict[str, Any] | None:
+    """Return pose ``data`` payload when ``rec`` is a valid result-explorer row."""
+
+    if not isinstance(rec, dict):
+        return None
+    data = rec.get("data")
+    if not isinstance(data, dict):
+        return None
+    return data
+
+
+def _matches_registered_pose_row(
+    data: dict[str, Any],
+    *,
+    origin: str,
+    file_path: str | None,
+) -> bool:
+    """Return whether a pose row matches registration lookup filters."""
+
+    if origin and data.get("origin") == origin:
+        return True
+    return bool(file_path and data.get("file_path") == file_path)
+
+
 def _resolve_registered_pose_row(
     *,
     client: DeepOriginClient,
@@ -510,22 +534,21 @@ def _resolve_registered_pose_row(
     response = client.results.get_poses(ligand_id=ligand_id, limit=None)
     records = response.get("data", [])
     for rec in records:
-        if not isinstance(rec, dict):
+        data = _pose_record_data(rec)
+        if data is None:
             continue
-        data = rec.get("data")
-        if not isinstance(data, dict):
-            continue
-        if origin and data.get("origin") == origin:
-            return _explorer_record_to_pose_row(rec, fallback)
-        if file_path and data.get("file_path") == file_path:
+        if _matches_registered_pose_row(
+            data,
+            origin=origin,
+            file_path=file_path,
+        ):
             return _explorer_record_to_pose_row(rec, fallback)
 
     if records:
-        rec = records[-1]
-        if isinstance(rec, dict):
-            data = rec.get("data")
-            if isinstance(data, dict):
-                return _explorer_record_to_pose_row(rec, fallback)
+        last_rec = records[-1]
+        data = _pose_record_data(last_rec)
+        if data is not None:
+            return _explorer_record_to_pose_row(last_rec, fallback)
 
     return fallback
 
