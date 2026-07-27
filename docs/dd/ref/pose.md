@@ -46,7 +46,7 @@ for new code.
 
 ### Register an external SDF
 
-```python
+```{.python notest}
 from deeporigin.drug_discovery import Pose
 
 pose = Pose.from_sdf("cocrystal.sdf", protein_id=protein.id)
@@ -55,7 +55,7 @@ print(pose.id, pose.ligand_id)
 
 ### List poses for a ligand
 
-```python
+```{.python notest}
 ligand.sync()
 poses = ligand.get_poses()
 for pose in poses:
@@ -64,7 +64,7 @@ for pose in poses:
 
 ### Load poses from a docking run
 
-```python
+```{.python notest}
 from deeporigin.drug_discovery import PoseSet
 
 pose_set = PoseSet.from_result(execution_id=docking.id)
