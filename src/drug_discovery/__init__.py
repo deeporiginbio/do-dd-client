@@ -13,7 +13,9 @@ __all__ = [
     "Protein",
     "Ligand",
     "Pocket",
+    "Pose",
     "LigandSet",
+    "PoseSet",
     "PreparedSystem",
     "PocketFinder",
     "Docking",
@@ -41,6 +43,8 @@ _LAZY_IMPORTS = {
     "Ligand": ("deeporigin.drug_discovery.structures.ligand", "Ligand"),
     "LigandSet": ("deeporigin.drug_discovery.structures.ligand", "LigandSet"),
     "Pocket": ("deeporigin.drug_discovery.structures.pocket", "Pocket"),
+    "Pose": ("deeporigin.drug_discovery.structures.pose", "Pose"),
+    "PoseSet": ("deeporigin.drug_discovery.structures.pose", "PoseSet"),
     "PreparedSystem": (
         "deeporigin.drug_discovery.structures.prepared_system",
         "PreparedSystem",

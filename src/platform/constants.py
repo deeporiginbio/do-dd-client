@@ -142,4 +142,8 @@ TOOL_KEYS_AND_VERSIONS: dict[str, dict[str, str]] = {
         "tool_key": "deeporigin.enumerator",
         "tool_version": "latest",
     },
+    "import_dataset": {
+        "tool_key": "deeporigin.import-dataset",
+        "tool_version": "latest",
+    },
 }

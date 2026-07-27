@@ -910,6 +910,39 @@ def create_tools_router(
             },
         }
 
+    def _build_pose_registration_execution(
+        *,
+        org_key: str,
+        tool_key: str,
+        tool_version: str,
+        body: dict[str, Any],
+    ) -> dict[str, Any]:
+        """Build a synchronous ImportTool execution that registers one pose row."""
+        execution = _create_blocking_run_dto(
+            org_key=org_key,
+            tool_key=tool_key,
+            tool_version=tool_version,
+            body=body,
+        )
+        inputs = body.get("inputs", {}) or {}
+        if not inputs.get("register_pose"):
+            execution["jobOutputs"] = {"poses": []}
+            return execution
+
+        ligand_id = str(inputs.get("ligand_id") or "")
+        file_path = str(inputs.get("file_path") or "")
+        origin = str(inputs.get("origin") or "registered")
+        pose_row: dict[str, Any] = {
+            "file_path": file_path,
+            "ligand_id": ligand_id,
+            "origin": origin,
+        }
+        protein_id = inputs.get("protein_id")
+        if protein_id is not None:
+            pose_row["protein_id"] = str(protein_id)
+        execution["jobOutputs"] = {"poses": [pose_row]}
+        return execution
+
     def _build_protonation_execution(
         *, org_key: str, tool_key: str, tool_version: str, body: dict[str, Any]
     ) -> dict[str, Any]:
@@ -1219,6 +1252,7 @@ def create_tools_router(
             "deeporigin.pocket-finder": ("pockets", "pocket"),
             "deeporigin.docking": ("poses", "pose"),
             "deeporigin.constrained-docking": ("poses", "pose"),
+            "deeporigin.import-dataset": ("poses", "pose"),
             "deeporigin.system-prep": ("system", "preparedsystem"),
             "deeporigin.draco": ("do_patent_molecules", "dopatentmolecule"),
         }
@@ -1980,6 +2014,22 @@ def create_tools_router(
                 body=body,
             )
             executions[execution["executionId"]] = execution
+            return _normalize_execution(execution)
+        if tool_key == "deeporigin.import-dataset" and body.get("sync") is True:
+            execution = _build_pose_registration_execution(
+                org_key=org_key,
+                tool_key=tool_key,
+                tool_version=tool_version,
+                body=body,
+            )
+            eid = execution["executionId"]
+            executions[eid] = execution
+            _inject_result_explorer_records_from_outputs(
+                tool_key=tool_key,
+                tool_version=tool_version,
+                execution_id=eid,
+                job_outputs=execution.get("jobOutputs"),
+            )
             return _normalize_execution(execution)
         if tool_key == "deeporigin.mol-props-protonation":
             execution = _build_protonation_execution(

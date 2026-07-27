@@ -53,6 +53,7 @@ nav = [
     {"structures" = [
       {"Ligand" = "dd/ref/ligand.md"},
       {"LigandSet" = "dd/ref/ligandset.md"},
+      {"Pose" = "dd/ref/pose.md"},
       {"Protein" = "dd/ref/protein.md"},
       {"Pocket" = "dd/ref/pocket.md"},
     ]},

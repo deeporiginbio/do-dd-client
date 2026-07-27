@@ -1402,6 +1402,48 @@ class Ligand(Entity):
 
         self.register(client=client, remote_path=remote_path)
 
+    def get_poses(
+        self,
+        *,
+        client: Optional[DeepOriginClient] = None,
+        protein_id: str | None = None,
+    ) -> "deeporigin.drug_discovery.structures.pose.PoseSet":
+        """Return platform poses whose ``ligand_id`` matches this ligand.
+
+        Includes docked and registered poses (does not apply the scored-only
+        filter used by docking execution loaders).
+
+        Args:
+            client: Optional platform client.
+            protein_id: Optional protein id filter.
+
+        Returns:
+            :class:`~deeporigin.drug_discovery.structures.pose.PoseSet` of child poses.
+
+        Raises:
+            ValueError: If :attr:`id` is unset or no pose rows match.
+        """
+
+        if self.id is None:
+            raise ValueError(
+                "Ligand.get_poses() requires a platform ligand id; call sync() first."
+            )
+
+        from deeporigin.drug_discovery.docking_common import (
+            load_poses_from_result_explorer,
+        )
+
+        if client is None:
+            client = DeepOriginClient()
+
+        return load_poses_from_result_explorer(
+            None,
+            client=client,
+            protein_id=protein_id,
+            ligand_id=self.id,
+            scored_only=False,
+        )
+
     @beartype
     def update(
         self,
