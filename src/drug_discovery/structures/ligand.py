@@ -10,7 +10,7 @@ import os
 from pathlib import Path
 import random
 import tempfile
-from typing import TYPE_CHECKING, Any, Callable, ClassVar, Literal, Optional, Self, cast
+from typing import Any, Callable, ClassVar, Literal, Optional, Self, cast
 import warnings
 
 from beartype import beartype
@@ -28,9 +28,6 @@ from deeporigin.utils.env import _ensure_do_folder
 from deeporigin.viz.molstar_html import render_ligand_html
 
 from .entity import Entity
-
-if TYPE_CHECKING:
-    from deeporigin.drug_discovery.structures.pose import PoseSet
 
 warnings.filterwarnings("ignore", category=UserWarning, module="rdkit")
 RDLogger.DisableLog("rdApp.*")  # ty:ignore[unresolved-attribute]
@@ -3442,3 +3439,6 @@ class LigandSet:
             width=width,
             height=height,
         )
+
+
+from deeporigin.drug_discovery.structures.pose import PoseSet  # noqa: E402

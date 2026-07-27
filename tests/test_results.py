@@ -51,6 +51,7 @@ _POCKET_TOOL_KEYS = {
 _POSE_TOOL_KEYS = {
     TOOL_KEYS_AND_VERSIONS["docking"]["tool_key"],
     TOOL_KEYS_AND_VERSIONS["constrained_docking"]["tool_key"],
+    TOOL_KEYS_AND_VERSIONS["import_dataset"]["tool_key"],
     "deeporigin.bulk-docking",
 }
 
