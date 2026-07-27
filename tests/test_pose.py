@@ -79,10 +79,19 @@ def test_pose_from_json_coerces_metadata_fields() -> None:
 
 
 def test_pose_to_hash_prefers_platform_id() -> None:
-    """to_hash uses pose id, remote stem, or ligand hash fallback."""
+    """to_hash uses pose id, remote stem, local stem, ligand_id, or SMILES hash."""
     assert Pose(ligand_id="L", id="PID").to_hash() == "PID"
     remote_pose = Pose(ligand_id="L", remote_path="entities/poses/abc.sdf")
     assert remote_pose.to_hash() == "abc"
+    local_pose = Pose(ligand_id="L", local_path="/tmp/my-pose.sdf")
+    assert local_pose.to_hash() == "my-pose"
+    ligand_only = Pose(ligand_id="LIG-123")
+    assert ligand_only.to_hash() == "LIG-123"
+    distinct = [
+        Pose(ligand_id="LIG-A", local_path="/tmp/a.sdf").to_hash(),
+        Pose(ligand_id="LIG-B", local_path="/tmp/b.sdf").to_hash(),
+    ]
+    assert len(set(distinct)) == 2
 
 
 def test_pose_set_getitem_slice_returns_pose_set() -> None:

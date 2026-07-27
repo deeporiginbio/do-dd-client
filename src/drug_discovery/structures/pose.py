@@ -124,8 +124,17 @@ class Pose(Entity):
             return self.id
         if self.remote_path:
             return Path(self.remote_path).stem
-        lig = Ligand.from_smiles(self.smiles or "C")
-        return lig.to_hash()
+        if self.local_path:
+            return Path(self.local_path).stem
+        if self.ligand_id:
+            return self.ligand_id
+        if self.smiles:
+            return Ligand.from_smiles(self.smiles).to_hash()
+        raise DeepOriginException(
+            title="Pose has no hash identity",
+            message="Cannot derive remote path: set id, remote_path, local_path, "
+            "ligand_id, or smiles.",
+        )
 
     def to_file(self, file_path: str | Path | None = None) -> str:
         """Write this pose to an SDF file.
@@ -377,7 +386,8 @@ class Pose(Entity):
             sanitize=sanitize,
             remove_hydrogens=remove_hydrogens,
         )
-        parent.sync(client=client)
+        if ligand is None:
+            parent.sync(client=client)
         if parent.id is None:
             raise DeepOriginException(
                 title="Ligand sync failed",
