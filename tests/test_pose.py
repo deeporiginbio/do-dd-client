@@ -14,8 +14,136 @@ from deeporigin.drug_discovery import (
     Pose,
     PoseSet,
 )
+from deeporigin.drug_discovery.structures.pose import (
+    _optional_bool,
+    _optional_float,
+    _pose_row_from_registration_execution,
+)
 from deeporigin.platform.constants import TOOL_KEYS_AND_VERSIONS
 from tests.conftest import check_tool_exists
+
+
+def test_pose_coercion_helpers() -> None:
+    """Optional bool/float helpers accept common platform string forms."""
+    assert _optional_float("1.5") == 1.5
+    assert _optional_float(None) is None
+    assert _optional_float("bad") is None
+    assert _optional_bool("true") is True
+    assert _optional_bool("0") is False
+    assert _optional_bool("maybe") is None
+
+
+def test_pose_from_json_rejects_missing_ligand_id() -> None:
+    """from_json requires a non-empty ligand_id."""
+    with pytest.raises(ValueError, match="ligand_id"):
+        Pose.from_json([{"id": "P1", "remote_path": "entities/poses/x.sdf"}])
+
+
+def test_pose_from_json_remote_path_only_row() -> None:
+    """Remote-only rows hydrate SMILES without loading an SDF."""
+    pose = Pose.from_json(
+        [
+            {
+                "ligand_id": "L1",
+                "smiles": "CCO",
+                "id": "P1",
+                "remote_path": "entities/poses/p1.sdf",
+            }
+        ]
+    )[0]
+    assert pose.smiles == "CCO"
+    assert pose.remote_path == "entities/poses/p1.sdf"
+    assert pose.mol is None
+
+
+def test_pose_from_json_coerces_metadata_fields() -> None:
+    """Numeric and boolean platform fields are coerced on hydration."""
+    pose = Pose.from_json(
+        [
+            {
+                "ligand_id": "L1",
+                "id": "P1",
+                "smiles": "CCO",
+                "remote_path": "entities/poses/p1.sdf",
+                "pose_score": "-8.5",
+                "binding_energy": "1",
+                "best_pose": "true",
+                "custom_field": "x",
+            }
+        ]
+    )[0]
+    assert pose.pose_score == -8.5
+    assert pose.binding_energy == 1.0
+    assert pose.best_pose is True
+    assert pose.props == {"custom_field": "x"}
+
+
+def test_pose_to_hash_prefers_platform_id() -> None:
+    """to_hash uses pose id, remote stem, or ligand hash fallback."""
+    assert Pose(ligand_id="L", id="PID").to_hash() == "PID"
+    remote_pose = Pose(ligand_id="L", remote_path="entities/poses/abc.sdf")
+    assert remote_pose.to_hash() == "abc"
+
+
+def test_pose_set_getitem_slice_returns_pose_set() -> None:
+    """Slicing a PoseSet returns another PoseSet."""
+    pose_set = PoseSet.from_json(
+        [
+            {
+                "ligand_id": "L",
+                "id": "P1",
+                "smiles": "C",
+                "remote_path": "entities/poses/p1.sdf",
+            },
+            {
+                "ligand_id": "L",
+                "id": "P2",
+                "smiles": "CC",
+                "remote_path": "entities/poses/p2.sdf",
+            },
+        ]
+    )
+    subset = pose_set[0:1]
+    assert isinstance(subset, PoseSet)
+    assert len(subset) == 1
+    assert subset.poses[0].id == "P1"
+
+
+def test_pose_set_to_ligand_set_legacy_bridge() -> None:
+    """PoseSet.to_ligand_set preserves pose ids in ligand properties."""
+    pose_set = PoseSet.from_json(
+        [{"ligand_id": "L", "id": "P1", "smiles": "CCO", "remote_path": "entities/poses/p1.sdf"}]
+    )
+    ligand_set = pose_set.to_ligand_set()
+    assert len(ligand_set) == 1
+    assert ligand_set.ligands[0].properties.get("pose_result_id") == "P1"
+
+
+def test_pose_row_from_registration_execution_extracts_job_outputs() -> None:
+    """ImportTool registration payloads expose the first pose row."""
+    assert _pose_row_from_registration_execution({}) is None
+    row = _pose_row_from_registration_execution(
+        {"jobOutputs": {"poses": [{"id": "P1", "ligand_id": "L1"}]}}
+    )
+    assert row == {"id": "P1", "ligand_id": "L1"}
+
+
+def test_pose_sync_lazy_skips_when_remote_path_set() -> None:
+    """sync(lazy=True) is a no-op when remote_path is already populated."""
+    pose = Pose(ligand_id="L", remote_path="entities/poses/x.sdf")
+    pose.sync(lazy=True)
+
+
+def test_pose_to_file_writes_sdf(tmp_path: Path) -> None:
+    """to_file exports a loaded pose structure to disk."""
+    sdf_path = BRD_DATA_DIR / "brd-2.sdf"
+    pose = PoseSet.from_json(
+        [{"ligand_id": "L1", "id": "P1", "file_path": str(sdf_path)}]
+    ).poses[0]
+    out_path = tmp_path / "exported.sdf"
+    written = pose.to_file(out_path)
+    assert written == str(out_path)
+    assert out_path.exists()
 
 
 def test_pose_from_json_local_sdf(tmp_path: Path) -> None:
@@ -124,6 +252,19 @@ def test_pose_from_sdf_registers_local(client, registered_protein) -> None:
 
     found = registered_ligand_poses_for_id(client, pose.ligand_id)
     assert any(p.id == pose.id for p in found)
+
+
+def test_pose_from_id_round_trip_local(client, registered_protein) -> None:
+    """Pose.from_id reloads a registered pose by platform id."""
+    sdf_path = BRD_DATA_DIR / "brd-3.sdf"
+    registered = Pose.from_sdf(
+        sdf_path,
+        protein_id=registered_protein.id,
+        client=client,
+    )
+    fetched = Pose.from_id(registered.id, client=client)
+    assert fetched.id == registered.id
+    assert fetched.ligand_id == registered.ligand_id
 
 
 def registered_ligand_poses_for_id(client, ligand_id: str) -> PoseSet:
