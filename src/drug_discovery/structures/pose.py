@@ -110,11 +110,17 @@ class Pose(Entity):
         if self._mol is not None:
             return self._mol
         if self.local_path is not None:
-            supplier = Chem.SDMolSupplier(self.local_path, removeHs=False)
-            mol = supplier[0] if supplier else None
-            if mol is not None:
-                self._mol = mol
-            return self._mol
+            path = Path(self.local_path)
+            if not path.is_file():
+                return None
+            try:
+                supplier = Chem.SDMolSupplier(str(path), removeHs=False)
+                for candidate in supplier:
+                    if candidate is not None:
+                        self._mol = candidate
+                        return self._mol
+            except (OSError, RuntimeError, IndexError):
+                return None
         return None
 
     def to_hash(self) -> str:

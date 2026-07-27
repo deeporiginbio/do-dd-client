@@ -144,6 +144,18 @@ def test_pose_row_from_registration_execution_extracts_job_outputs() -> None:
     assert row == {"id": "P1", "ligand_id": "L1"}
 
 
+def test_pose_mol_returns_none_for_missing_local_path() -> None:
+    """mol returns None when local_path is missing or unreadable."""
+    assert Pose(ligand_id="L", local_path="/no/such/pose.sdf").mol is None
+
+
+def test_pose_mol_returns_none_for_empty_sdf(tmp_path: Path) -> None:
+    """mol returns None when the SDF file has no valid molecules."""
+    empty_sdf = tmp_path / "empty.sdf"
+    empty_sdf.write_text("")
+    assert Pose(ligand_id="L", local_path=str(empty_sdf)).mol is None
+
+
 def test_pose_sync_lazy_skips_when_remote_path_set() -> None:
     """sync(lazy=True) is a no-op when remote_path is already populated."""
     pose = Pose(ligand_id="L", remote_path="entities/poses/x.sdf")
