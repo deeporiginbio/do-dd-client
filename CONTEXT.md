@@ -149,6 +149,8 @@ _Avoid_: blocking CLI/toolbox work on UUI pose-input UX
 **Test ligand**:
 Ligand to constrain-dock relative to the reference; CLI `ligand` / `ligands`;
 platform input `ligands[]`. Constraints are derived server-side via MCS.
+SMILES-only inputs are valid when the reference pose supplies 3D coordinates
+(the server embeds an ephemeral structure for MCS atom indexing).
 _Avoid_: Reference ligand; ligand (when you mean only the test set)
 
 **Free-dock fallback**:
