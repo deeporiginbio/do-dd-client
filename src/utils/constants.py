@@ -144,6 +144,78 @@ MOLPROPS_PROPERTY_KEYS: frozenset[str] = frozenset(
 MOLPROPS_DEFAULT_PROPERTIES: frozenset[str] = MOLPROPS_PROPERTY_KEYS
 """Default full ADMET bundle for :class:`~deeporigin.drug_discovery.molprops.Molprops`."""
 
+ADMET_PROPERTY_NAMES: tuple[str, ...] = (
+    "hERG_classification",
+    "PPB_regression",
+    "AMES_classification",
+    "DILI_classification",
+    "Caco-2_regression",
+    "CL_regression",
+    "CYP450_3A4_Inhibitor_classification",
+    "BBB_classification",
+    "mdck_regression",
+    "PAMPA_classification",
+    "HIA_classification",
+    "Pgp_inhibitor_classification",
+    "VD_regression",
+    "CYP450_1A2_Inhibitor_classification",
+    "CYP450_2D6_Inhibitor_classification",
+    "CYP450_2C9_Inhibitor_classification",
+    "CYP450_3A4_Substrate_classification",
+    "OCT2_substrate_classification",
+    "Resp_classification",
+    "SKIN_classification",
+    "Genotoxicity_classification",
+    "Pgp_substrate_classification",
+    "OCT2_inhibitor_classification",
+    "CYP450_1A2_Substrate_classification",
+    "CYP450_2A6_Inhibitor_classification",
+    "CYP450_2A6_Substrate_classification",
+    "CYP450_2B6_Inhibitor_classification",
+    "CYP450_2B6_Substrate_classification",
+    "CYP450_2C8_Inhibitor_classification",
+    "CYP450_2C8_Substrate_classification",
+    "CYP450_2C19_Inhibitor_classification",
+    "CYP450_2C19_Substrate_classification",
+    "CYP450_2C9_Substrate_classification",
+    "CYP450_2D6_Substrate_classification",
+    "CYP450_2E1_Inhibitor_classification",
+    "CYP450_2E1_Substrate_classification",
+    "HIA_regression",
+    "HOB_f20_classification",
+    "HOB_f30_classification",
+    "HOB_f50_classification",
+    "fg_regression",
+    "fh_calc_regression",
+    "fh_exp_regression",
+    "AOT_mice_regression",
+    "AOT_rat_regression",
+    "Carcinogenicity_classification",
+    "AChE_inhibition_classification",
+    "Ototoxicity_classification",
+    "EI_classification",
+    "eye_corr_classification",
+    "ARE_classification",
+    "ATAD5_classification",
+    "HSE_classification",
+    "SR_MMP_classification",
+    "SR_p53_classification",
+    "BCF_regression",
+    "IGC50_regression",
+    "LC50DM_regression",
+    "LC50FM_regression",
+)
+"""admet-now task folder names for ``deeporigin.admet-properties``."""
+
+ADMET_PROPERTY_KEYS: frozenset[str] = frozenset(ADMET_PROPERTY_NAMES)
+"""Allowed property keys for :class:`~deeporigin.drug_discovery.admet.Admet`."""
+
+ADMET_EXECUTION_TIMEOUT_SECONDS = 900.0
+"""HTTP timeout (seconds) for ``deeporigin.admet-properties`` sync runs.
+
+Cold-start model loading in the admet-now served image can exceed the default
+600s POST timeout."""
+
 JOB_WATCH_BLOCK_ENV = "JOB_WATCH_BLOCK"
 """Env var for blocking :meth:`~deeporigin.drug_discovery.notebook_watch_mixin.NotebookWatchMixin.watch`.
 

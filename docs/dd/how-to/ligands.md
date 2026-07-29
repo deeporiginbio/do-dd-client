@@ -522,6 +522,43 @@ ADMET (Absorption, Distribution, Metabolism, Excretion, and Toxicity) properties
     ligands.to_dataframe()
     ```
 
+### Predicting ADMET endpoints (Admet)
+
+For the expanded admet-now endpoint set (59 absorption, distribution, metabolism,
+excretion, and toxicity models), use :class:`~deeporigin.drug_discovery.admet.Admet`.
+Unlike :class:`~deeporigin.drug_discovery.molprops.Molprops`, ``Admet.run()`` returns a
+:class:`pandas.DataFrame` and does **not** mutate your ligands in place.
+
+Property names match the platform tool keys (for example ``hERG_classification``,
+``PPB_regression``, ``CYP450_3A4_Inhibitor_classification``). Omit ``properties``
+to request all wired endpoints, or pass a list to limit the run:
+
+```{.python notest}
+from deeporigin.drug_discovery import Admet, Ligand
+
+ligand = Ligand.from_smiles("CCO")
+df = Admet(
+    ligands=[ligand],
+    properties=["hERG_classification", "AMES_classification"],
+).run()
+```
+
+``run()`` blocks until the job finishes. Request a cost estimate first with
+``run(quote=True)``; the job's ``estimate`` and execution ``status`` are updated
+from the platform response.
+
+For several ligands, pass a list or :class:`~deeporigin.drug_discovery.structures.ligand.LigandSet`:
+
+```{.python notest}
+from deeporigin.drug_discovery import Admet, LigandSet
+
+df = Admet(ligands=ligands, properties=["hERG_classification"]).run()
+```
+
+The DataFrame includes ``ligand_id``, ``smiles``, and one column per requested
+property. Classification endpoints are probabilities in ``[0, 1]``; regression
+endpoints use the model's native units.
+
 ### Random Sampling
 
 You can randomly sample ligands from a `LigandSet` using the `random_sample` method:
