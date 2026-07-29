@@ -22,10 +22,11 @@ _ADMET_PROPERTIES = [
 def test_admet_lv1(client: DeepOriginClient) -> None:
     """Run Admet against dev with a small property subset."""
     cfg = TOOL_KEYS_AND_VERSIONS["admet"]
-    assert check_tool_exists(client, cfg["tool_key"], cfg["tool_version"]), (
-        f"ADMET tool {cfg['tool_key']} (version {cfg['tool_version']}) "
-        "is not registered on the platform."
-    )
+    if not check_tool_exists(client, cfg["tool_key"], cfg["tool_version"]):
+        pytest.skip(
+            f"ADMET tool {cfg['tool_key']} (version {cfg['tool_version']}) "
+            f"is not registered on {client.env}."
+        )
 
     ligand = Ligand.from_smiles(
         "Fc1c(-c2cccc3ccccc23)ncc2c(N3C[C@H]4CC[C@@H](C3)N4)nc(OCC34CCCN3CCC4)nc12"
@@ -51,7 +52,11 @@ def test_admet_lv1(client: DeepOriginClient) -> None:
 def test_admet_run_quote_true(client: DeepOriginClient) -> None:
     """``run(quote=True)`` returns the job with estimate and does not produce a DataFrame."""
     cfg = TOOL_KEYS_AND_VERSIONS["admet"]
-    assert check_tool_exists(client, cfg["tool_key"], cfg["tool_version"])
+    if not check_tool_exists(client, cfg["tool_key"], cfg["tool_version"]):
+        pytest.skip(
+            f"ADMET tool {cfg['tool_key']} (version {cfg['tool_version']}) "
+            f"is not registered on {client.env}."
+        )
 
     ligand = Ligand.from_smiles("CCO")
     job = Admet(ligands=[ligand], properties=["hERG_classification"], client=client)
