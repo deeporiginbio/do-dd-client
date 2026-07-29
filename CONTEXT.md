@@ -5,6 +5,19 @@ system preparation, and free-energy calculations.
 
 ## Language
 
+**Molprops**:
+Legacy combined platform tool ``deeporigin.mol-props-combined`` that predicts seven
+molprops endpoints (logP, logD, logS, hERG, CYP, AMES, PAINS). The CLI class
+``Molprops`` mutates dedicated :class:`~deeporigin.drug_discovery.structures.ligand.Ligand`
+attributes in place.
+_Avoid_: conflating with ``Admet``; calling it "ADMET" when you mean the 59-endpoint tool
+
+**Admet**:
+admet-now served platform tool ``deeporigin.admet-properties`` with 59 selectable
+endpoints (task folder names such as ``hERG_classification``, ``PPB_regression``).
+The CLI class ``Admet`` returns a :class:`pandas.DataFrame`; it does not mutate ligands.
+_Avoid_: conflating admet-now keys with molprops keys (``herg`` vs ``hERG_classification``)
+
 **ABFE Workflow**:
 Platform tool `deeporigin.abfe-end-to-end` that runs ordered `steps` of
 `system-prep` and/or `abfe`. The CLI uses the same public key as platform-ui and

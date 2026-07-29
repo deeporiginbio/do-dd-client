@@ -502,6 +502,23 @@ def _synthesize_molprops_row(
     return row
 
 
+def _synthesize_admet_prediction_row(
+    *, smiles: str, ligand_id: str, requested: list[str]
+) -> dict[str, Any]:
+    """Build a synthetic admet-properties prediction row for one ligand."""
+
+    row: dict[str, Any] = {"smiles": smiles, "ligand_id": ligand_id}
+    seed = smiles or ligand_id
+    for prop in requested:
+        if prop.endswith("_classification"):
+            row[prop] = round(_stable_unit_float(seed, prop), 6)
+        elif prop.endswith("_regression"):
+            row[prop] = _stable_log_value(seed, prop, low=0.1, high=100.0)
+        else:
+            row[prop] = round(_stable_unit_float(seed, prop), 6)
+    return row
+
+
 def create_tools_router(
     *,
     executions: dict[str, dict[str, Any]],
@@ -1032,6 +1049,71 @@ def create_tools_router(
         quotation = _legacy_quotation(fixture)
         if quotation is not None:
             execution["quotationResult"] = quotation
+        return execution
+
+    def _build_admet_properties_execution(
+        *, org_key: str, tool_key: str, tool_version: str, body: dict[str, Any]
+    ) -> dict[str, Any]:
+        """Build a synchronous ``deeporigin.admet-properties`` execution DTO."""
+
+        from deeporigin.utils.constants import ADMET_PROPERTY_NAMES
+
+        execution = _create_blocking_run_dto(
+            org_key=org_key,
+            tool_key=tool_key,
+            tool_version=tool_version,
+            body=body,
+        )
+
+        inputs = body.get("inputs", {}) or {}
+        ligands_in = inputs.get("ligands") or []
+        requested_raw = inputs.get("properties")
+        if isinstance(requested_raw, list) and requested_raw:
+            requested = [p for p in requested_raw if isinstance(p, str)]
+        else:
+            requested = list(ADMET_PROPERTY_NAMES)
+
+        rows: list[dict[str, Any]] = []
+        for i, lig in enumerate(ligands_in):
+            if not isinstance(lig, dict):
+                continue
+            smiles = str(lig.get("smiles") or "")
+            lid = str(lig.get("id") if lig.get("id") is not None else i)
+            rows.append(
+                _synthesize_admet_prediction_row(
+                    smiles=smiles,
+                    ligand_id=lid,
+                    requested=requested,
+                )
+            )
+
+        execution["jobOutputs"] = {"predictions": rows}
+        execution["quotationResult"] = {
+            "anyFailed": False,
+            "failedQuotations": [],
+            "successfulQuotations": [
+                {
+                    "status": "OK",
+                    "itemCode": "DO_TOGO",
+                    "orgId": org_key,
+                    "qty": 1,
+                    "priceEach": 1.0,
+                    "priceTotal": 1.0,
+                    "pricingRecordType": "regular",
+                    "pricingRecords": [
+                        {
+                            "itemKey": "DO_TOGO",
+                            "itemName": "ADMET Properties prediction",
+                            "priceEach": 1.0,
+                            "totalPrice": 1.0,
+                            "qty": 1,
+                            "tierQtyFrom": 0,
+                            "tierQtyTo": 0,
+                        }
+                    ],
+                }
+            ],
+        }
         return execution
 
     def _build_combined_molprops_execution(
@@ -2038,6 +2120,22 @@ def create_tools_router(
                 tool_version=tool_version,
                 body=body,
             )
+            executions[execution["executionId"]] = execution
+            return _normalize_execution(execution)
+        if tool_key == "deeporigin.admet-properties":
+            execution = _build_admet_properties_execution(
+                org_key=org_key,
+                tool_key=tool_key,
+                tool_version=tool_version,
+                body=body,
+            )
+            if quote_only:
+                execution["status"] = "Quoted"
+                execution["jobOutputs"] = None
+                execution["approveAmount"] = 0
+                execution["startedAt"] = None
+                execution["completedAt"] = None
+                execution["progressReport"] = None
             executions[execution["executionId"]] = execution
             return _normalize_execution(execution)
         if tool_key == "deeporigin.mol-props-combined":
