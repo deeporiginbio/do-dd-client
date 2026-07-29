@@ -162,6 +162,9 @@ _Avoid_: blocking CLI/toolbox work on UUI pose-input UX
 **Test ligand**:
 Ligand to constrain-dock relative to the reference; CLI `ligand` / `ligands`;
 platform input `ligands[]`. Constraints are derived server-side via MCS.
+Test ligands may be SMILES-only (no structure file); the server embeds an
+ephemeral 3D structure for MCS. Reference ligand and reference pose still
+require 3D structure files on the platform.
 _Avoid_: Reference ligand; ligand (when you mean only the test set)
 
 **Free-dock fallback**:
