@@ -30,19 +30,26 @@ from deeporigin.platform.constants import TOOL_KEYS_AND_VERSIONS, is_success_sta
 
 def _constrained_ligand_tool_input_row(lig: Ligand) -> dict[str, Any]:
     """Build one test-ligand entry for constrained docking tool inputs."""
-    if lig.remote_path is None:
-        raise ValueError(
-            "Ligand must be synced to the platform with a structure file "
-            "(remote_path) for constrained docking. Use Ligand.from_file or "
-            "from_sdf and call ligand.sync() before running."
-        )
-    row: dict[str, Any] = {
-        "id": lig.id,
-        "file_path": lig.remote_path,
-    }
+    if lig.remote_path is not None:
+        row: dict[str, Any] = {
+            "id": lig.id,
+            "file_path": lig.remote_path,
+        }
+        if lig.smiles is not None:
+            row["smiles"] = lig.smiles
+        return row
     if lig.smiles is not None:
-        row["smiles"] = lig.smiles
-    return row
+        if lig.id is None:
+            raise ValueError(
+                "Test ligand must be synced to the platform before running "
+                "constrained docking with SMILES only. Call ligand.sync()."
+            )
+        return {"id": lig.id, "smiles": lig.smiles}
+    raise ValueError(
+        "Test ligand must have a structure file on the platform or SMILES for "
+        "constrained docking. Use Ligand.from_file or from_sdf and call "
+        "ligand.sync(), or Ligand.from_smiles and call ligand.sync()."
+    )
 
 
 def _reference_ligand_tool_input_row(lig: Ligand) -> dict[str, Any]:
@@ -299,7 +306,8 @@ class ConstrainedDocking(
     reference ligand pose via MCS alignment. Callers supply
     ``reference_ligand`` (scaffold identity) and ``reference_pose`` (3D
     coordinates); the platform derives per-atom constraints for each test
-    ligand.
+    ligand. Test ligands may be SMILES-only (no structure file) when
+    ``lig.smiles`` is set; the server embeds an ephemeral 3D structure for MCS.
 
     :meth:`run` sets ``inputs.sync=true`` for exactly **one** test ligand
     (blocking). :meth:`start` sets ``inputs.sync=false`` for **two or more**
@@ -512,10 +520,15 @@ class ConstrainedDocking(
                 "reference_pose must have a structure file on the platform."
             )
         for lig in self.ligands:
-            if lig.remote_path is None:
+            if lig.remote_path is None and lig.smiles is None:
                 raise ValueError(
                     "Each test ligand must have a structure file on the platform "
-                    "for constrained docking."
+                    "or SMILES for constrained docking."
+                )
+            if lig.remote_path is None and lig.id is None:
+                raise ValueError(
+                    "Each SMILES-only test ligand must be synced to the platform "
+                    "before running constrained docking. Call ligands.sync()."
                 )
 
     def _build_tool_inputs(

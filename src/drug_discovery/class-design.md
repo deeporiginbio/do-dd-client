@@ -42,7 +42,7 @@ module owns tool-specific payload and validation.
 |--------|----------------|
 | `docking_common.py` | Pocket box geometry, execution metadata, pose loading from platform/`jobOutputs` |
 | `docking.py` | `Docking` — bulk/async docking; ligand rows are `id` + `smiles` only |
-| `constrained_docking.py` | `ConstrainedDocking` — sync + async; server-derived MCS constraints from required `reference_ligand` + `reference_pose`; ligand rows include `file_path` |
+| `constrained_docking.py` | `ConstrainedDocking` — sync + async; server-derived MCS constraints from required `reference_ligand` + `reference_pose`; test ligand rows use `file_path` or `{id, smiles}` when SMILES-only |
 
 Do not import `ConstrainedDocking` from `docking.py` or vice versa. Both import shared
 helpers from `docking_common.py`. Tool-specific helpers (e.g. `_ligand_tool_input_row`,

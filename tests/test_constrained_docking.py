@@ -7,7 +7,10 @@ from unittest.mock import patch
 import pytest
 
 from deeporigin.drug_discovery import BRD_DATA_DIR, ConstrainedDocking, Docking, Ligand
-from deeporigin.drug_discovery.constrained_docking import _reference_pose_tool_input_row
+from deeporigin.drug_discovery.constrained_docking import (
+    _constrained_ligand_tool_input_row,
+    _reference_pose_tool_input_row,
+)
 from deeporigin.drug_discovery.docking_common import load_docking_poses_from_execution
 from deeporigin.drug_discovery.structures.ligand import (
     LigandSet,
@@ -16,6 +19,7 @@ from deeporigin.drug_discovery.structures.ligand import (
 from deeporigin.exceptions import DeepOriginException
 from deeporigin.platform.constants import TOOL_KEYS_AND_VERSIONS
 from tests.conftest import check_tool_exists
+from tests.test_entities import _unique_test_smiles
 
 
 def _make_reference_pair() -> tuple[Ligand, Ligand]:
@@ -23,6 +27,173 @@ def _make_reference_pair() -> tuple[Ligand, Ligand]:
     reference_ligand = Ligand.from_sdf(BRD_DATA_DIR / "brd-2.sdf")
     reference_pose = Ligand.from_sdf(BRD_DATA_DIR / "brd-2.sdf")
     return reference_ligand, reference_pose
+
+
+def test_constrained_ligand_tool_input_row_smiles_only() -> None:
+    """SMILES-only test ligands emit id and smiles without file_path."""
+    lig = Ligand.from_smiles("CCO")
+    lig.id = "lig-smiles-only"
+
+    row = _constrained_ligand_tool_input_row(lig)
+
+    assert row == {"id": "lig-smiles-only", "smiles": "CCO"}
+    assert "file_path" not in row
+
+
+def test_constrained_ligand_tool_input_row_still_includes_file_path() -> None:
+    """Structure-file test ligands still emit file_path."""
+    lig = Ligand.from_sdf(BRD_DATA_DIR / "brd-3.sdf")
+    lig.id = "brd-3"
+    lig.remote_path = "testing/brd-3.sdf"
+
+    row = _constrained_ligand_tool_input_row(lig)
+
+    assert row["file_path"] == "testing/brd-3.sdf"
+    assert row["id"] == "brd-3"
+
+
+def test_constrained_ligand_tool_input_row_rejects_no_file_no_smiles() -> None:
+    """Test ligands without structure file or SMILES are rejected."""
+    lig = Ligand.from_smiles("CCO")
+    lig.smiles = None
+
+    with pytest.raises(ValueError, match="structure file on the platform or SMILES"):
+        _constrained_ligand_tool_input_row(lig)
+
+
+def test_constrained_ligand_tool_input_row_smiles_only_requires_id() -> None:
+    """SMILES-only rows require a synced platform entity id."""
+    lig = Ligand.from_smiles("CCO")
+
+    with pytest.raises(ValueError, match="synced to the platform"):
+        _constrained_ligand_tool_input_row(lig)
+
+
+def test_ensure_platform_inputs_accepts_smiles_only_test_ligand(
+    client,
+    registered_protein,
+    unregistered_pocket,
+) -> None:
+    """SMILES-only test ligands pass validation after sync when id is set."""
+    reference_ligand, reference_pose = _make_reference_pair()
+    reference_ligand.remote_path = "testing/brd-2.sdf"
+    reference_ligand.id = "brd-2"
+    reference_pose.remote_path = "testing/docked-pose.sdf"
+    reference_pose.id = "brd-2"
+    reference_pose.properties["pose_result_id"] = "pose-from-docking"
+
+    test_ligand = Ligand.from_smiles("CC(C)O")
+    test_ligand.id = "smiles-only-test"
+
+    cd = ConstrainedDocking(
+        protein=registered_protein,
+        pocket=unregistered_pocket,
+        reference_ligand=reference_ligand,
+        reference_pose=reference_pose,
+        ligand=test_ligand,
+        client=client,
+    )
+
+    with (
+        patch.object(cd.protein, "sync") as protein_sync,
+        patch.object(cd.reference_ligand, "sync") as ref_ligand_sync,
+        patch.object(cd.reference_pose, "sync") as ref_pose_sync,
+        patch.object(cd.ligands, "sync") as ligands_sync,
+    ):
+        cd._ensure_platform_inputs()
+
+    protein_sync.assert_called_once()
+    ref_ligand_sync.assert_called_once()
+    ref_pose_sync.assert_not_called()
+    ligands_sync.assert_called_once()
+
+
+def test_build_tool_inputs_smiles_only_test_ligand(
+    client,
+    registered_protein,
+    unregistered_pocket,
+) -> None:
+    """Payload omits file_path on SMILES-only test ligands."""
+    reference_ligand, reference_pose = _make_reference_pair()
+    reference_ligand.remote_path = "testing/brd-2.sdf"
+    reference_ligand.id = "brd-2"
+    reference_pose.remote_path = "testing/docked-pose.sdf"
+    reference_pose.id = "brd-2"
+    reference_pose.properties["pose_result_id"] = "pose-from-docking"
+
+    test_ligand = Ligand.from_smiles("CC(C)O")
+    test_ligand.id = "smiles-only-test"
+
+    cd = ConstrainedDocking(
+        protein=registered_protein,
+        pocket=unregistered_pocket,
+        reference_ligand=reference_ligand,
+        reference_pose=reference_pose,
+        ligand=test_ligand,
+        client=client,
+    )
+
+    with (
+        patch.object(cd.protein, "sync"),
+        patch.object(cd.reference_ligand, "sync"),
+        patch.object(cd.reference_pose, "sync"),
+        patch.object(cd.ligands, "sync"),
+    ):
+        cd._ensure_platform_inputs()
+
+    params, _metadata = cd._build_tool_inputs()
+
+    assert len(params["ligands"]) == 1
+    assert params["ligands"][0] == {
+        "id": "smiles-only-test",
+        "smiles": "CC(C)O",
+    }
+    assert "file_path" not in params["ligands"][0]
+
+
+@pytest.mark.expects_results
+def test_constrained_docking_run_quote_true_smiles_only_test_ligand(
+    client,
+    registered_protein,
+    unregistered_pocket,
+) -> None:
+    """run(quote=True) accepts SMILES-only test ligands against the platform."""
+    assert check_tool_exists(
+        client,
+        TOOL_KEYS_AND_VERSIONS["constrained_docking"]["tool_key"],
+        TOOL_KEYS_AND_VERSIONS["constrained_docking"]["tool_version"],
+    ), "Constrained docking tool not registered on platform."
+
+    reference_ligand, reference_pose = _make_reference_pair()
+    reference_ligand.sync(
+        client=client,
+        remote_path="testing/constrained-docking/brd-2.sdf",
+    )
+    reference_pose.sync(
+        client=client,
+        remote_path="testing/constrained-docking/brd-2-pose.sdf",
+    )
+
+    test_ligand = Ligand.from_smiles(_unique_test_smiles(suffix="O"))
+    test_ligand.sync(client=client)
+    assert test_ligand.remote_path is None
+
+    cd = ConstrainedDocking(
+        protein=registered_protein,
+        pocket=unregistered_pocket,
+        reference_ligand=reference_ligand,
+        reference_pose=reference_pose,
+        ligand=test_ligand,
+        client=client,
+    )
+    params, _metadata = cd._build_tool_inputs()
+    assert "file_path" not in params["ligands"][0]
+
+    result = cd.run(quote=True)
+
+    assert result is None
+    assert cd.estimate is not None
+    assert cd.status == "Quoted"
 
 
 def test_reference_pose_tool_input_row_uses_pose_result_id() -> None:

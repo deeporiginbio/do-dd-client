@@ -188,8 +188,32 @@ cd = ConstrainedDocking(
 poses = cd.run()
 ```
 
-Each test ligand must have a structure file on the platform (load from SDF/MOL2
-and call ``ligand.sync()``). The reference pose must have 3D coordinates.
+Each test ligand must have SMILES or a structure file on the platform (load from
+SDF/MOL2 and call ``ligand.sync()``, or use ``Ligand.from_smiles`` and call
+``ligand.sync()``). The reference pose must have 3D coordinates.
+
+### SMILES-only test ligands
+
+When a test ligand has no structure file, provide SMILES and sync the entity:
+
+```{.python notest}
+from deeporigin.drug_discovery import ConstrainedDocking, Ligand
+
+test_ligand = Ligand.from_smiles("CC(C)O")
+test_ligand.sync()
+
+cd = ConstrainedDocking(
+    protein=protein,
+    pocket=pocket,
+    reference_ligand=reference_ligand,
+    reference_pose=reference_pose,
+    ligand=test_ligand,
+)
+poses = cd.run()
+```
+
+The platform embeds the SMILES to an ephemeral 3D structure for MCS alignment.
+Reference ligand and reference pose still require structure files on the platform.
 
 To view new poses together with the reference pose:
 
