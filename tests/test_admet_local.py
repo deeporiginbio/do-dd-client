@@ -51,9 +51,11 @@ def test_admet_run_quote_true(client: DeepOriginClient) -> None:
     assert check_tool_exists(client, cfg["tool_key"], cfg["tool_version"])
 
     ligand = Ligand.from_smiles("CCO")
+    assert ligand.id is None
     job = Admet(ligands=[ligand], properties=_ADMET_PROPERTIES, client=client)
     result = job.run(quote=True)
 
     assert result is job
+    assert ligand.id is None
     assert job.estimate is not None
     assert job.status == "Quoted"

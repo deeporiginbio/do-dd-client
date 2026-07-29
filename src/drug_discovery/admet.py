@@ -119,11 +119,9 @@ class Admet(Execution, SyncExecutableMixin):
         """Build tool ``inputs`` matching the admet-properties schema."""
         ligand_payloads: list[dict[str, str]] = []
         for idx, lig in enumerate(self._ligands):
-            if lig.id is None:
-                lig.id = str(idx)
             payload: dict[str, str] = {"smiles": lig.smiles or ""}
-            if lig.id is not None:
-                payload["id"] = str(lig.id)
+            ligand_id = lig.id if lig.id is not None else str(idx)
+            payload["id"] = str(ligand_id)
             ligand_payloads.append(payload)
         inputs: dict[str, Any] = {"ligands": ligand_payloads}
         if self._properties is not None:

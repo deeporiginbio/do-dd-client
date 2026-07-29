@@ -34,9 +34,6 @@ def test_admet_lv1(client: DeepOriginClient) -> None:
     job = Admet(ligands=[ligand], properties=_ADMET_PROPERTIES, client=client)
     df = job.run()
 
-    if df.empty:
-        pytest.skip("Admet returned no predictions; platform tool may be unavailable.")
-
     assert job.status == "Completed"
     assert job.id is not None
     assert "ligand_id" in df.columns
@@ -59,9 +56,11 @@ def test_admet_run_quote_true(client: DeepOriginClient) -> None:
         )
 
     ligand = Ligand.from_smiles("CCO")
+    assert ligand.id is None
     job = Admet(ligands=[ligand], properties=["hERG_classification"], client=client)
     result = job.run(quote=True)
 
     assert result is job
+    assert ligand.id is None
     assert job.estimate is not None
     assert getattr(job, "status", None) == "Quoted"
