@@ -19,7 +19,7 @@ Usage::
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Literal
 
 from beartype import beartype
 import pandas as pd
@@ -55,15 +55,20 @@ def _validate_admet_properties(properties: list[str] | None) -> list[str] | None
 
 
 def _execution_predictions(dto: dict[str, Any]) -> list[dict[str, Any]]:
-    """Return per-ligand prediction rows from an admet-properties execution DTO."""
+    """Return per-ligand prediction rows from an admet-properties execution DTO.
+
+    The served tool schema wraps rows under ``admet_properties``. Older mock
+    responses used ``predictions``; both keys are accepted.
+    """
 
     job_outputs = dto.get("jobOutputs")
     if not isinstance(job_outputs, dict):
         return []
-    predictions = job_outputs.get("predictions")
-    if not isinstance(predictions, list):
-        return []
-    return [row for row in predictions if isinstance(row, dict)]
+    for key in ("admet_properties", "predictions"):
+        rows = job_outputs.get(key)
+        if isinstance(rows, list):
+            return [row for row in rows if isinstance(row, dict)]
+    return []
 
 
 class Admet(Execution, SyncExecutableMixin):
@@ -80,6 +85,7 @@ class Admet(Execution, SyncExecutableMixin):
     Attributes:
         ligands: Ligands whose SMILES are sent to the tool.
         properties: Optional admet-now property keys to request, or ``None`` for all.
+        method: Inference path — ``togo`` (default) or ``maplight``.
     """
 
     tool_key: str = TOOL_KEYS_AND_VERSIONS["admet"]["tool_key"]
@@ -91,6 +97,7 @@ class Admet(Execution, SyncExecutableMixin):
         *,
         ligands: list[Ligand] | LigandSet,
         properties: list[str] | None = None,
+        method: Literal["maplight", "togo"] = "togo",
         client: DeepOriginClient | None = None,
     ) -> None:
         """Configure an ADMET prediction run for one or more ligands."""
@@ -102,11 +109,17 @@ class Admet(Execution, SyncExecutableMixin):
         if not self._ligands:
             raise ValueError("Admet requires at least one ligand.")
         self._properties = _validate_admet_properties(properties)
+        self._method = method
 
     @property
     def ligands(self) -> list[Ligand]:
         """Ligands targeted by this run (read-only)."""
         return self._ligands
+
+    @property
+    def method(self) -> str:
+        """Selected admet-now inference method."""
+        return self._method
 
     @property
     def properties(self) -> tuple[str, ...] | None:
@@ -124,6 +137,8 @@ class Admet(Execution, SyncExecutableMixin):
             payload["id"] = str(ligand_id)
             ligand_payloads.append(payload)
         inputs: dict[str, Any] = {"ligands": ligand_payloads}
+        if self._method != "togo":
+            inputs["method"] = self._method
         if self._properties is not None:
             inputs["properties"] = self._properties
         return inputs
@@ -238,7 +253,8 @@ class Admet(Execution, SyncExecutableMixin):
             raise DeepOriginException(
                 title="ADMET predictions missing",
                 message=(
-                    f"Admet execution {self.id!r} returned no predictions in jobOutputs."
+                    f"Admet execution {self.id!r} returned no admet_properties "
+                    f"rows in jobOutputs."
                 ),
             )
 
