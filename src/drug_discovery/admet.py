@@ -19,7 +19,7 @@ Usage::
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Literal
 
 from beartype import beartype
 import pandas as pd
@@ -80,6 +80,7 @@ class Admet(Execution, SyncExecutableMixin):
     Attributes:
         ligands: Ligands whose SMILES are sent to the tool.
         properties: Optional admet-now property keys to request, or ``None`` for all.
+        method: Inference path — ``togo`` (default) or ``maplight``.
     """
 
     tool_key: str = TOOL_KEYS_AND_VERSIONS["admet"]["tool_key"]
@@ -91,6 +92,7 @@ class Admet(Execution, SyncExecutableMixin):
         *,
         ligands: list[Ligand] | LigandSet,
         properties: list[str] | None = None,
+        method: Literal["maplight", "togo"] = "togo",
         client: DeepOriginClient | None = None,
     ) -> None:
         """Configure an ADMET prediction run for one or more ligands."""
@@ -102,11 +104,17 @@ class Admet(Execution, SyncExecutableMixin):
         if not self._ligands:
             raise ValueError("Admet requires at least one ligand.")
         self._properties = _validate_admet_properties(properties)
+        self._method = method
 
     @property
     def ligands(self) -> list[Ligand]:
         """Ligands targeted by this run (read-only)."""
         return self._ligands
+
+    @property
+    def method(self) -> str:
+        """Selected admet-now inference method."""
+        return self._method
 
     @property
     def properties(self) -> tuple[str, ...] | None:
@@ -123,7 +131,7 @@ class Admet(Execution, SyncExecutableMixin):
             ligand_id = lig.id if lig.id is not None else str(idx)
             payload["id"] = str(ligand_id)
             ligand_payloads.append(payload)
-        inputs: dict[str, Any] = {"ligands": ligand_payloads}
+        inputs: dict[str, Any] = {"ligands": ligand_payloads, "method": self._method}
         if self._properties is not None:
             inputs["properties"] = self._properties
         return inputs

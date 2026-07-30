@@ -59,3 +59,38 @@ def test_admet_run_quote_true(client: DeepOriginClient) -> None:
     assert ligand.id is None
     assert job.estimate is not None
     assert job.status == "Quoted"
+
+
+def test_admet_make_inputs_defaults_method_to_togo(client: DeepOriginClient) -> None:
+    """Omitting ``method`` forwards the Togo default to tool inputs."""
+    cfg = TOOL_KEYS_AND_VERSIONS["admet"]
+    assert check_tool_exists(client, cfg["tool_key"], cfg["tool_version"])
+
+    ligand = Ligand.from_smiles("CCO")
+    job = Admet(
+        ligands=[ligand],
+        properties=_ADMET_PROPERTIES,
+        client=client,
+    )
+    inputs = job._make_inputs()
+
+    assert inputs["method"] == "togo"
+    assert inputs["properties"] == _ADMET_PROPERTIES
+
+
+def test_admet_make_inputs_includes_method(client: DeepOriginClient) -> None:
+    """``method`` is forwarded to the tool inputs payload."""
+    cfg = TOOL_KEYS_AND_VERSIONS["admet"]
+    assert check_tool_exists(client, cfg["tool_key"], cfg["tool_version"])
+
+    ligand = Ligand.from_smiles("CCO")
+    job = Admet(
+        ligands=[ligand],
+        properties=_ADMET_PROPERTIES,
+        method="maplight",
+        client=client,
+    )
+    inputs = job._make_inputs()
+
+    assert inputs["method"] == "maplight"
+    assert inputs["properties"] == _ADMET_PROPERTIES

@@ -531,7 +531,10 @@ Unlike :class:`~deeporigin.drug_discovery.molprops.Molprops`, ``Admet.run()`` re
 
 Property names match the platform tool keys (for example ``hERG_classification``,
 ``PPB_regression``, ``CYP450_3A4_Inhibitor_classification``). Omit ``properties``
-to request all wired endpoints, or pass a list to limit the run:
+to request all wired endpoints, or pass a list to limit the run.
+
+Use ``method="togo"`` (default) for three-dimensional embedding models, or
+``method="maplight"`` for fingerprint-based models:
 
 ```{.python notest}
 from deeporigin.drug_discovery import Admet, Ligand
@@ -540,6 +543,16 @@ ligand = Ligand.from_smiles("CCO")
 df = Admet(
     ligands=[ligand],
     properties=["hERG_classification", "AMES_classification"],
+).run()
+```
+
+For MapLight explicitly:
+
+```{.python notest}
+df = Admet(
+    ligands=[ligand],
+    properties=["hERG_classification", "AMES_classification"],
+    method="maplight",
 ).run()
 ```
 
