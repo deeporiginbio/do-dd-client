@@ -131,7 +131,9 @@ class Admet(Execution, SyncExecutableMixin):
             ligand_id = lig.id if lig.id is not None else str(idx)
             payload["id"] = str(ligand_id)
             ligand_payloads.append(payload)
-        inputs: dict[str, Any] = {"ligands": ligand_payloads, "method": self._method}
+        inputs: dict[str, Any] = {"ligands": ligand_payloads}
+        if self._method != "togo":
+            inputs["method"] = self._method
         if self._properties is not None:
             inputs["properties"] = self._properties
         return inputs

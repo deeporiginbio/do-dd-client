@@ -62,7 +62,7 @@ def test_admet_run_quote_true(client: DeepOriginClient) -> None:
 
 
 def test_admet_make_inputs_defaults_method_to_togo(client: DeepOriginClient) -> None:
-    """Omitting ``method`` forwards the Togo default to tool inputs."""
+    """Default ``method`` is Togo and is omitted from inputs (tool default)."""
     cfg = TOOL_KEYS_AND_VERSIONS["admet"]
     assert check_tool_exists(client, cfg["tool_key"], cfg["tool_version"])
 
@@ -74,7 +74,8 @@ def test_admet_make_inputs_defaults_method_to_togo(client: DeepOriginClient) -> 
     )
     inputs = job._make_inputs()
 
-    assert inputs["method"] == "togo"
+    assert job.method == "togo"
+    assert "method" not in inputs
     assert inputs["properties"] == _ADMET_PROPERTIES
 
 
