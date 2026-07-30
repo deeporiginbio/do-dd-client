@@ -1087,7 +1087,7 @@ def create_tools_router(
                 )
             )
 
-        execution["jobOutputs"] = {"predictions": rows}
+        execution["jobOutputs"] = {"admet_properties": rows}
         execution["quotationResult"] = {
             "anyFailed": False,
             "failedQuotations": [],

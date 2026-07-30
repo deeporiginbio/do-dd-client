@@ -55,15 +55,20 @@ def _validate_admet_properties(properties: list[str] | None) -> list[str] | None
 
 
 def _execution_predictions(dto: dict[str, Any]) -> list[dict[str, Any]]:
-    """Return per-ligand prediction rows from an admet-properties execution DTO."""
+    """Return per-ligand prediction rows from an admet-properties execution DTO.
+
+    The served tool schema wraps rows under ``admet_properties``. Older mock
+    responses used ``predictions``; both keys are accepted.
+    """
 
     job_outputs = dto.get("jobOutputs")
     if not isinstance(job_outputs, dict):
         return []
-    predictions = job_outputs.get("predictions")
-    if not isinstance(predictions, list):
-        return []
-    return [row for row in predictions if isinstance(row, dict)]
+    for key in ("admet_properties", "predictions"):
+        rows = job_outputs.get(key)
+        if isinstance(rows, list):
+            return [row for row in rows if isinstance(row, dict)]
+    return []
 
 
 class Admet(Execution, SyncExecutableMixin):
@@ -248,7 +253,8 @@ class Admet(Execution, SyncExecutableMixin):
             raise DeepOriginException(
                 title="ADMET predictions missing",
                 message=(
-                    f"Admet execution {self.id!r} returned no predictions in jobOutputs."
+                    f"Admet execution {self.id!r} returned no admet_properties "
+                    f"rows in jobOutputs."
                 ),
             )
 
