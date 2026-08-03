@@ -44,8 +44,10 @@ mock-server:
 	    $(if $(RBFE_DURATION),--rbfe-duration $(RBFE_DURATION),)
 
 
-# Build image from current directory and start an interactive shell
-docker:
+# open DDOS-6937 interactive box wireframe notebook (throwaway prototype)
+prototype-ddos-6937:
+	uv run jupyter notebook prototypes/ddos-6937-interactive-box-wireframe/wireframe.ipynb
+
 	docker build --pull -t $(IMAGE_NAME) .
 	docker run --rm -it $(IMAGE_NAME)
 
