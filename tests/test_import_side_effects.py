@@ -2,19 +2,21 @@
 
 from __future__ import annotations
 
-from pathlib import Path
+import pathlib
 import sys
 
 import pytest
 
 
-def _blocked_home(tmp_path: Path) -> Path:
+def _blocked_home(tmp_path: pathlib.Path) -> pathlib.Path:
     """Return a HOME path whose parent directory does not exist."""
     return tmp_path / "missing" / "home"
 
 
 @pytest.fixture
-def blocked_home(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Path:
+def blocked_home(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: pathlib.Path
+) -> pathlib.Path:
     """Point HOME at a path whose parent cannot be created implicitly."""
     home = _blocked_home(tmp_path)
     monkeypatch.setenv("HOME", str(home))
@@ -29,7 +31,7 @@ def _clear_deeporigin_modules(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def test_import_config_does_not_create_deeporigin_dir(
-    blocked_home: Path,
+    blocked_home: pathlib.Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Importing deeporigin.config must not mkdir ~/.deeporigin."""
@@ -45,7 +47,7 @@ def test_import_config_does_not_create_deeporigin_dir(
 
 
 def test_import_platform_client_does_not_create_deeporigin_dir(
-    blocked_home: Path,
+    blocked_home: pathlib.Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Importing DeepOriginClient must not mkdir ~/.deeporigin."""
