@@ -184,15 +184,28 @@ def _iframe_src_for_html_document(html: str) -> str:
     return f"data:text/html;charset=utf-8;base64,{encoded}"
 
 
-def _iframe_markup_for_html_document(html: str, *, height: int) -> str:
+def _iframe_markup_for_html_document(
+    html: str,
+    *,
+    height: int,
+    bridge_id: str | None = None,
+) -> str:
     """Build iframe markup for a self-contained HTML document.
 
     The HTML is embedded with ``allow-scripts`` and ``allow-same-origin`` so
     Mol* and similar viewers can run. Only pass trusted, SDK-generated HTML.
+
+    Args:
+        html: Full HTML document to embed.
+        height: Iframe height in pixels.
+        bridge_id: When set, adds a stable ``id`` for the comm bridge script.
     """
     src = _iframe_src_for_html_document(html)
+    id_attr = f'id="do-bridge-{bridge_id}" ' if bridge_id else ""
+    data_attr = f'data-bridge-id="{bridge_id}" ' if bridge_id else ""
     return (
-        f'<iframe src="{src}" '
+        f"<iframe {id_attr}{data_attr}"
+        f'src="{src}" '
         f'sandbox="allow-scripts allow-same-origin" '
         f'style="width:100%;height:{height}px;border:0" '
         f'loading="lazy" referrerpolicy="no-referrer"></iframe>'

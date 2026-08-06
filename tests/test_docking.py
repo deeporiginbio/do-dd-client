@@ -137,7 +137,7 @@ def test_show_box_calls_render_docking_box_html(
         ),
         patch(
             "deeporigin.utils.notebook.render_html",
-            side_effect=lambda html: html,
+            side_effect=lambda html, **kwargs: html,
         ),
     ):
         html = docking.show_box()
@@ -147,7 +147,37 @@ def test_show_box_calls_render_docking_box_html(
     call_kwargs = mock_builder.call_args.kwargs
     assert call_kwargs["box_center"] == list(center)
     assert call_kwargs["box_size"] == list(box_size)
+    assert call_kwargs.get("rotation_deg") is None
     assert Path(call_kwargs["pdb_path"]).is_file()
+
+
+def test_show_box_forwards_committed_rotation_deg(
+    registered_protein,
+    unregistered_pocket,
+    registered_ligand,
+) -> None:
+    """show_box passes committed rotation_deg to static box HTML."""
+    docking = Docking(
+        protein=registered_protein,
+        pocket=unregistered_pocket,
+        ligand=registered_ligand,
+    )
+    docking._rotation_deg = [0.0, 45.0, 0.0]
+    mock_builder = MagicMock(return_value="<html>box</html>")
+
+    with (
+        patch(
+            "deeporigin.viz.molstar_html.render_docking_box_html",
+            mock_builder,
+        ),
+        patch(
+            "deeporigin.utils.notebook.render_html",
+            side_effect=lambda html, **kwargs: html,
+        ),
+    ):
+        docking.show_box()
+
+    assert mock_builder.call_args.kwargs["rotation_deg"] == [0.0, 45.0, 0.0]
 
 
 def test_show_box_with_poses_calls_box_and_poses_html(
@@ -176,7 +206,7 @@ def test_show_box_with_poses_calls_box_and_poses_html(
         ),
         patch(
             "deeporigin.utils.notebook.render_html",
-            side_effect=lambda html: html,
+            side_effect=lambda html, **kwargs: html,
         ),
     ):
         html = docking.show_box(poses=registered_ligand)
@@ -188,7 +218,41 @@ def test_show_box_with_poses_calls_box_and_poses_html(
     assert call_kwargs["box_center"] == list(center)
     assert call_kwargs["box_size"] == list(box_size)
     assert call_kwargs["ligand_payloads"] == payloads
+    assert call_kwargs.get("rotation_deg") is None
     assert Path(call_kwargs["pdb_path"]).is_file()
+
+
+def test_show_box_with_poses_forwards_committed_rotation_deg(
+    registered_protein,
+    unregistered_pocket,
+    registered_ligand,
+) -> None:
+    """show_box(poses=...) passes committed rotation_deg to box+poses HTML."""
+    docking = Docking(
+        protein=registered_protein,
+        pocket=unregistered_pocket,
+        ligand=registered_ligand,
+    )
+    docking._rotation_deg = [10.0, 20.0, 30.0]
+    mock_builder = MagicMock(return_value="<html>box+poses</html>")
+
+    with (
+        patch(
+            "deeporigin.drug_discovery.docking_common.ligand_payloads_for_viewer",
+            return_value=[{"dataB64": "abc", "label": "pose-1"}],
+        ),
+        patch(
+            "deeporigin.viz.molstar_html.render_protein_with_box_and_poses_html",
+            mock_builder,
+        ),
+        patch(
+            "deeporigin.utils.notebook.render_html",
+            side_effect=lambda html, **kwargs: html,
+        ),
+    ):
+        docking.show_box(poses=registered_ligand)
+
+    assert mock_builder.call_args.kwargs["rotation_deg"] == [10.0, 20.0, 30.0]
 
 
 def test_show_box_empty_poses_raises(

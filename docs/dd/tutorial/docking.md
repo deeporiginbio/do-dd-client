@@ -108,6 +108,24 @@ poses = docking.get_poses()
 docking.show_box(poses=poses)
 ```
 
+### Rotating the search box interactively
+
+In JupyterLab, pass `interactive=True` to rotate the search box with molstar's
+**Docking Box** controls (open **Settings** in the viewer). Click **Apply to
+notebook** to store the orientation on the `Docking` instance; subsequent
+`run()` or `start()` calls include `rotation_deg` in the pocket sent to the
+platform.
+
+```{.python notest}
+handle = docking.show_box(interactive=True)
+docking.rotation_deg  # set after Apply — e.g. [0.0, 45.0, 0.0]
+```
+
+Interactive mode requires JupyterLab with the project kernel (`make jupyter`).
+See the [Interactive docking box](../../notebooks/html/interactive-docking-box.html)
+notebook for a full walkthrough. Rotated docking on the platform requires
+toolbox docking **3.4.32+** on your org.
+
 You should see something like this:
 
 <iframe 

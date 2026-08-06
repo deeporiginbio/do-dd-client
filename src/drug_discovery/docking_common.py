@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
+import math
 import os
-from typing import Any
+from typing import Any, Callable
 
 import numpy as np
 
@@ -101,10 +102,91 @@ def ligand_payloads_for_viewer(
     ]
 
 
+def normalize_rotation_deg(value: object) -> list[float] | None:
+    """Normalize a rotation payload to ``[rx, ry, rz]`` or ``None`` for identity.
+
+    Args:
+        value: ``None``, a length-3 sequence of numbers, or a dict with ``x``/``y``/``z``.
+
+    Returns:
+        A length-3 list of finite floats, or ``None`` when absent or all zeros.
+
+    Raises:
+        ValueError: If ``value`` is present but not a valid rotation triple.
+    """
+    if value is None:
+        return None
+    try:
+        if isinstance(value, dict):
+            rotation = [
+                float(value.get("x", value.get("0", 0))),
+                float(value.get("y", value.get("1", 0))),
+                float(value.get("z", value.get("2", 0))),
+            ]
+        else:
+            rotation = [float(component) for component in value]  # type: ignore[arg-type]
+    except (TypeError, ValueError) as exc:
+        raise ValueError(
+            f"rotation_deg must be a length-3 sequence of numbers, got {value!r}"
+        ) from exc
+    if len(rotation) != 3:
+        raise ValueError(
+            f"rotation_deg must have length 3, got {len(rotation)} value(s)"
+        )
+    if not all(math.isfinite(angle) for angle in rotation):
+        raise ValueError(
+            f"rotation_deg values must be finite numbers, got {rotation!r}"
+        )
+    if all(abs(angle) < 1e-9 for angle in rotation):
+        return None
+    return rotation
+
+
+def parse_docking_box_commit(
+    payload: dict[str, Any],
+) -> tuple[list[float], list[float], list[float]]:
+    """Parse a docking-box commit payload from the interactive viewer.
+
+    Args:
+        payload: Dict with ``center``, ``box_size``, and ``rotation_deg`` keys.
+
+    Returns:
+        Tuple of (center, box_size, rotation_deg) where ``rotation_deg`` is always
+        a length-3 list (zeros when no rotation was applied).
+
+    Raises:
+        ValueError: If required geometry fields are missing or invalid.
+    """
+    center = payload.get("center")
+    box_size = payload.get("box_size")
+    if not isinstance(center, list) or len(center) != 3:
+        raise ValueError(f"commit payload center must be length 3, got {center!r}")
+    if not isinstance(box_size, list) or len(box_size) != 3:
+        raise ValueError(f"commit payload box_size must be length 3, got {box_size!r}")
+    if not all(math.isfinite(float(value)) for value in (*center, *box_size)):
+        raise ValueError(
+            f"commit payload center and box_size must be finite numbers, got {payload!r}"
+        )
+    if any(float(size) <= 0 for size in box_size):
+        raise ValueError(
+            f"commit payload box_size extents must be positive, got {box_size!r}"
+        )
+
+    normalized = normalize_rotation_deg(payload.get("rotation_deg"))
+    rotation_deg = normalized if normalized is not None else [0.0, 0.0, 0.0]
+    return (
+        [float(value) for value in center],
+        [float(value) for value in box_size],
+        rotation_deg,
+    )
+
+
 def build_pocket_tool_params(
     pocket: Pocket,
     pocket_center: list[float],
     box_size: list[float],
+    *,
+    rotation_deg: list[float] | None = None,
 ) -> dict[str, Any]:
     """Build pocket dict for docking tool ``inputs``."""
     pocket_params: dict[str, Any] = {
@@ -113,9 +195,113 @@ def build_pocket_tool_params(
         "box_size_z": box_size[2],
         "center": pocket_center,
     }
+    normalized_rotation = normalize_rotation_deg(rotation_deg)
+    if normalized_rotation is not None:
+        pocket_params["rotation_deg"] = normalized_rotation
     if pocket.id is not None:
         pocket_params["id"] = pocket.id
     return pocket_params
+
+
+def show_docking_box_in_notebook(
+    *,
+    protein: Protein,
+    pocket: Pocket,
+    client: DeepOriginClient | None,
+    interactive: bool,
+    on_commit: Callable[[dict[str, Any]], None] | None,
+    rotation_deg: list[float] | None = None,
+    poses: Ligand | LigandSet | list[Ligand] | None = None,
+    height: int = 620,
+):
+    """Render a protein + docking search box in a Jupyter or marimo notebook.
+
+    Args:
+        protein: Target protein (structure downloaded locally when needed).
+        pocket: Binding pocket defining the search box geometry.
+        client: Optional API client for protein download.
+        interactive: When ``True``, show molstar rotation controls with an Apply
+            button that commits box orientation back to Python via AnyWidget.
+        on_commit: Called with the committed payload when ``interactive=True``.
+        rotation_deg: Optional committed box rotation for static rendering.
+        poses: Optional docked pose(s) to overlay with the search box.
+        height: Viewer iframe height in pixels.
+
+    Returns:
+        Static mode: result of :func:`~deeporigin.utils.notebook.render_html`.
+        Interactive mode: :class:`~deeporigin.utils.iframe_comm_bridge.IframeCommHandle`.
+
+    Raises:
+        DeepOriginException: If the protein structure cannot be loaded locally.
+        RuntimeError: If ``interactive=True`` outside Jupyter.
+        ValueError: If ``poses`` is empty or interactive mode lacks ``on_commit``.
+    """
+    if protein.structure is None:
+        protein.download(client=client)
+    if protein.structure is None:
+        raise DeepOriginException(
+            title="Cannot visualize docking box",
+            message=(
+                "Protein structure is not available locally. Download the "
+                "protein or call protein.load_structure_from_local() first."
+            ),
+        ) from None
+
+    from deeporigin.utils.notebook import get_notebook_environment, render_html
+    from deeporigin.viz.molstar_html import (
+        render_docking_box_html,
+        render_interactive_docking_box_html,
+        render_protein_with_box_and_poses_html,
+    )
+
+    protein_file = protein._dump_state()
+    pocket_center, box_size = resolve_docking_box_geometry(pocket)
+
+    if interactive:
+        if get_notebook_environment() != "jupyter":
+            raise RuntimeError(
+                "Interactive box adjustment requires Jupyter "
+                "(JupyterLab or VS Code notebook)."
+            )
+        if on_commit is None:
+            raise ValueError("on_commit is required when interactive=True")
+
+        from deeporigin.utils.iframe_comm_bridge import (
+            render_interactive_html_with_comm,
+        )
+
+        return render_interactive_html_with_comm(
+            lambda bridge_id: render_interactive_docking_box_html(
+                pdb_path=protein_file,
+                box_center=list(pocket_center),
+                box_size=list(box_size),
+                bridge_id=bridge_id,
+            ),
+            on_commit=on_commit,
+            height=height,
+        )
+
+    if poses is None:
+        return render_html(
+            render_docking_box_html(
+                pdb_path=protein_file,
+                box_center=list(pocket_center),
+                box_size=list(box_size),
+                rotation_deg=rotation_deg,
+            ),
+            height=height,
+        )
+
+    return render_html(
+        render_protein_with_box_and_poses_html(
+            pdb_path=protein_file,
+            box_center=list(pocket_center),
+            box_size=list(box_size),
+            ligand_payloads=ligand_payloads_for_viewer(poses),
+            rotation_deg=rotation_deg,
+        ),
+        height=height,
+    )
 
 
 def build_docking_metadata(protein: Protein) -> dict[str, str]:

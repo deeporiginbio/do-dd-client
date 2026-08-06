@@ -576,11 +576,50 @@ def _validate_docking_box_color(color: object) -> int:
     return color
 
 
+def _rotation_deg_script_literal(rotation_deg: list[float] | None) -> str:
+    """Return a JS literal for ``rotation_deg``, or ``null`` when identity/absent."""
+    from deeporigin.drug_discovery.docking_common import normalize_rotation_deg
+
+    normalized = normalize_rotation_deg(rotation_deg)
+    if normalized is None:
+        return "null"
+    return _json_value_for_script_tag(normalized)
+
+
+def _apply_docking_box_rotation_js() -> str:
+    """Return JS helper applying rotation via molstar ``DockingBoxManager``."""
+    return """
+const applyDockingBoxRotation = (viewer, rotationDeg) => {
+  if (
+    !Array.isArray(rotationDeg)
+    || rotationDeg.length !== 3
+    || rotationDeg.every((value) => Math.abs(Number(value)) < 1e-9)
+  ) {
+    return;
+  }
+  const manager = viewer.getPlugin?.()?.dockingBoxManager;
+  if (!manager?.setRotation) {
+    console.warn(
+      "molstarLib dockingBoxManager.setRotation unavailable; "
+      + "box shown without rotation."
+    );
+    return;
+  }
+  manager.setRotation(
+    Number(rotationDeg[0]),
+    Number(rotationDeg[1]),
+    Number(rotationDeg[2]),
+  );
+};
+"""
+
+
 def render_docking_box_html(
     *,
     pdb_path: str,
     box_center: list[float],
     box_size: list[float],
+    rotation_deg: list[float] | None = None,
     radius: float = _DEFAULT_DOCKING_BOX_RADIUS,
     color: int = _DEFAULT_DOCKING_BOX_COLOR,
 ) -> str:
@@ -594,6 +633,8 @@ def render_docking_box_html(
         pdb_path: Path to the protein PDB file on disk.
         box_center: Docking box center ``[x, y, z]`` in angstroms.
         box_size: Docking box extents ``[sx, sy, sz]`` in angstroms.
+        rotation_deg: Optional ``[rx, ry, rz]`` Euler angles (degrees) applied to
+            the box mesh after ``renderBoundingBox`` (Rz·Ry·Rx about center).
         radius: Wireframe mesh radius (default ``0.2``).
         color: Hex color integer for the box (default ``0xFFFF00``).
 
@@ -615,8 +656,10 @@ def render_docking_box_html(
     pdb_b64 = _encode_text_base64(_read_structure_file(pdb_path))
     min_json = _json_value_for_script_tag(min_corner)
     max_json = _json_value_for_script_tag(max_corner)
+    rotation_json = _rotation_deg_script_literal(rotation_deg)
 
-    script_body = f"""const initViewer = async () => {{
+    script_body = f"""{_apply_docking_box_rotation_js()}
+const initViewer = async () => {{
       if (typeof molstarLib === "undefined" || typeof molstarLib.initViewer !== "function") {{
         throw new Error("molstarLib bundle did not load from {MOLSTAR_JS_URL}");
       }}
@@ -634,9 +677,247 @@ def render_docking_box_html(
         radius: {radius},
         color: {color},
       }});
+      applyDockingBoxRotation(viewer, {rotation_json});
     }};"""
 
     return _render_viewer_html(script_body=script_body)
+
+
+def render_interactive_docking_box_html(
+    *,
+    pdb_path: str,
+    box_center: list[float],
+    box_size: list[float],
+    bridge_id: str,
+    radius: float = _DEFAULT_DOCKING_BOX_RADIUS,
+    color: int = _DEFAULT_DOCKING_BOX_COLOR,
+) -> str:
+    """Build iframe HTML for an interactive protein + docking box viewer.
+
+    Loads molstarLib with ``DockingBoxControls`` (via Settings) and an Apply
+    overlay that commits ``center``, ``box_size``, and ``rotation_deg`` back to
+    Python through the iframe postMessage ↔ AnyWidget bridge.
+
+    Args:
+        pdb_path: Path to the protein PDB file on disk.
+        box_center: Docking box center ``[x, y, z]`` in angstroms.
+        box_size: Docking box extents ``[sx, sy, sz]`` in angstroms.
+        bridge_id: UUID matching the parent Comm bridge.
+        radius: Wireframe mesh radius.
+        color: Hex color integer for the box.
+
+    Returns:
+        A complete HTML document for iframe embedding.
+
+    Raises:
+        ValueError: If center/size are invalid (see :func:`_validate_docking_box_geometry`).
+    """
+    from deeporigin.utils.iframe_comm_bridge import (
+        DOCKING_BOX_COMMIT_ACK_MESSAGE_TYPE,
+        DOCKING_BOX_COMMIT_ERROR_MESSAGE_TYPE,
+        DOCKING_BOX_COMMIT_MESSAGE_TYPE,
+    )
+
+    min_corner, max_corner = _validate_docking_box_geometry(
+        box_center=box_center,
+        box_size=box_size,
+        radius=radius,
+    )
+    color = _validate_docking_box_color(color)
+
+    pdb_b64 = _encode_text_base64(_read_structure_file(pdb_path))
+    min_json = _json_value_for_script_tag(min_corner)
+    max_json = _json_value_for_script_tag(max_corner)
+    bridge_id_json = _json_value_for_script_tag(bridge_id)
+    message_type_json = _json_value_for_script_tag(DOCKING_BOX_COMMIT_MESSAGE_TYPE)
+    ack_message_type_json = _json_value_for_script_tag(
+        DOCKING_BOX_COMMIT_ACK_MESSAGE_TYPE
+    )
+    error_message_type_json = _json_value_for_script_tag(
+        DOCKING_BOX_COMMIT_ERROR_MESSAGE_TYPE
+    )
+
+    script_body = f"""let viewerRef = null;
+
+const readDockingBoxPayload = () => {{
+  if (!viewerRef?.api?.getDockingBox) {{
+    throw new Error(
+      "molstarLib getDockingBox API is unavailable. "
+      + "Update the hosted molstar bundle before using interactive box adjustment."
+    );
+  }}
+  const state = viewerRef.api.getDockingBox();
+  if (!state) {{
+    throw new Error("No docking box is rendered in the viewer.");
+  }}
+  const rot = state.rotationDeg;
+  return {{
+    center: state.center,
+    box_size: state.size,
+    rotation_deg: [rot[0], rot[1], rot[2]],
+  }};
+}};
+
+const postCommit = () => {{
+  const status = document.getElementById("do-box-status");
+  const applyButton = document.getElementById("do-box-apply");
+  try {{
+    const payload = readDockingBoxPayload();
+    applyButton.disabled = true;
+    window.parent.postMessage(
+      {{
+        type: {message_type_json},
+        bridge_id: {bridge_id_json},
+        payload,
+      }},
+      "*",
+    );
+    status.textContent =
+      "Applying rotation_deg=" + JSON.stringify(payload.rotation_deg) + "...";
+    status.style.color = "#94a3b8";
+  }} catch (error) {{
+    applyButton.disabled = false;
+    status.textContent = error?.message || String(error);
+    status.style.color = "#f87171";
+  }}
+}};
+
+const receiveCommitResult = (event) => {{
+  const data = event.data;
+  if (
+    event.source !== window.parent
+    || !data
+    || data.bridge_id !== {bridge_id_json}
+  ) {{
+    return;
+  }}
+
+  const status = document.getElementById("do-box-status");
+  document.getElementById("do-box-apply").disabled = false;
+  if (data.type === {ack_message_type_json}) {{
+    status.textContent =
+      "Committed rotation_deg=" + JSON.stringify(data.payload.rotation_deg);
+    status.style.color = "#94a3b8";
+  }} else if (data.type === {error_message_type_json}) {{
+    status.textContent = "Commit failed: " + data.message;
+    status.style.color = "#f87171";
+  }}
+}};
+
+const initViewer = async () => {{
+  if (typeof molstarLib === "undefined" || typeof molstarLib.initViewer !== "function") {{
+    throw new Error("molstarLib bundle did not load from {MOLSTAR_JS_URL}");
+  }}
+  const viewer = await molstarLib.initViewer("{_VIEWER_CONTAINER_ID}");
+  viewerRef = viewer;
+  const proteinData = atob("{pdb_b64}");
+  const structureRef = await viewer.api.loadFromRawContent(
+    proteinData,
+    "pdb",
+    "protein",
+    "cartoon",
+  );
+  const box = {{ min: {min_json}, max: {max_json} }};
+  await viewer.api.renderBoundingBox(structureRef, box, {{
+    radius: {radius},
+    color: {color},
+  }});
+  if (viewer.api.openDockingBoxPanel) {{
+    viewer.api.openDockingBoxPanel();
+  }}
+}};"""
+
+    return f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0">
+  <base href="{MOLSTAR_HOST_ASSET_BASE_URL}" />
+  <title>Interactive docking box</title>
+  <style>
+    html, body {{
+      margin: 0;
+      padding: 0;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      font-family: system-ui, sans-serif;
+    }}
+    #{_VIEWER_CONTAINER_ID} {{
+      width: 100%;
+      height: calc(100vh - 52px);
+    }}
+    #do-box-overlay {{
+      position: fixed;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 8px 12px;
+      padding: 8px 12px;
+      background: rgba(20, 24, 32, 0.92);
+      color: #f5f5f5;
+      font-size: 13px;
+      z-index: 1000;
+    }}
+    #do-box-apply {{
+      background: #2563eb;
+      color: white;
+      border: none;
+      border-radius: 4px;
+      padding: 6px 12px;
+      cursor: pointer;
+      font-weight: 600;
+    }}
+    #do-box-status {{
+      flex: 1 1 100%;
+      color: #94a3b8;
+      font-size: 12px;
+      min-height: 1.2em;
+    }}
+    #molstar-error {{
+      display: none;
+      color: #b00020;
+      padding: 12px;
+    }}
+  </style>
+</head>
+<body>
+  <div id="{_VIEWER_CONTAINER_ID}"></div>
+  <div id="do-box-overlay">
+    <span>Use Settings → Docking Box to rotate, then apply.</span>
+    <button id="do-box-apply" type="button">Apply to notebook</button>
+    <div id="do-box-status"></div>
+  </div>
+  <div id="molstar-error"></div>
+  <script src="{MOLSTAR_JS_URL}"></script>
+  <script>
+    const showError = (error) => {{
+      const el = document.getElementById("molstar-error");
+      el.style.display = "block";
+      el.textContent = "Mol* viewer failed to load: " + (error?.message || error);
+      console.error(error);
+    }};
+
+    {script_body}
+
+    document.getElementById("do-box-apply").addEventListener("click", postCommit);
+    window.addEventListener("message", receiveCommitResult);
+
+    const run = () => {{
+      initViewer().catch(showError);
+    }};
+
+    if (document.readyState === "loading") {{
+      document.addEventListener("DOMContentLoaded", run);
+    }} else {{
+      run();
+    }}
+  </script>
+</body>
+</html>"""
 
 
 def render_protein_with_box_and_poses_html(
@@ -645,6 +926,7 @@ def render_protein_with_box_and_poses_html(
     box_center: list[float],
     box_size: list[float],
     ligand_payloads: list[dict[str, object]],
+    rotation_deg: list[float] | None = None,
     protein_style: str = "cartoon",
     ligand_style: str = "ball-and-stick",
     radius: float = _DEFAULT_DOCKING_BOX_RADIUS,
@@ -661,6 +943,8 @@ def render_protein_with_box_and_poses_html(
         box_center: Docking box center ``[x, y, z]`` in angstroms.
         box_size: Docking box extents ``[sx, sy, sz]`` in angstroms.
         ligand_payloads: Per-ligand dicts from :func:`ligand_data_for_js`.
+        rotation_deg: Optional ``[rx, ry, rz]`` Euler angles (degrees) applied to
+            the box mesh after ``renderBoundingBox``.
         protein_style: Mol* representation type for the protein polymer.
         ligand_style: Mol* representation type for docked ligands.
         radius: Wireframe mesh radius (default ``0.2``).
@@ -689,9 +973,11 @@ def render_protein_with_box_and_poses_html(
     ligand_style_json = _json_for_script_tag(ligand_style)
     min_json = _json_value_for_script_tag(min_corner)
     max_json = _json_value_for_script_tag(max_corner)
+    rotation_json = _rotation_deg_script_literal(rotation_deg)
     decode_ligands = _decode_ligand_payloads_js()
 
-    script_body = f"""const initViewer = async () => {{
+    script_body = f"""{_apply_docking_box_rotation_js()}
+const initViewer = async () => {{
       if (typeof molstarLib === "undefined" || typeof molstarLib.initViewer !== "function") {{
         throw new Error("molstarLib bundle did not load from {MOLSTAR_JS_URL}");
       }}
@@ -713,6 +999,7 @@ def render_protein_with_box_and_poses_html(
         radius: {radius},
         color: {color},
       }});
+      applyDockingBoxRotation(viewer, {rotation_json});
     }};"""
 
     return _render_viewer_html(script_body=script_body)
