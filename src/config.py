@@ -36,9 +36,9 @@ __all__ = [
 def _ensure_config_file_exists() -> None:
     """Ensure the configuration file exists; create with defaults if missing."""
 
-    if not os.path.isfile(CONFIG_JSON_LOCATION):
+    if not CONFIG_JSON_LOCATION.is_file():
         default_data: dict = {"env": "prod", "org_key": ""}
-        os.makedirs(os.path.dirname(CONFIG_JSON_LOCATION), exist_ok=True)
+        CONFIG_JSON_LOCATION.parent.mkdir(parents=True, exist_ok=True)
         with open(CONFIG_JSON_LOCATION, "w") as file:
             json.dump(default_data, file, indent=2)
 
