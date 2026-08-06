@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import httpx
 import pytest
 
@@ -42,7 +44,9 @@ def test_signed_url_uses_normalized_path(client: DeepOriginClient) -> None:
 
 
 def test_download_direct_uses_normalized_path(
-    client: DeepOriginClient, monkeypatch: pytest.MonkeyPatch
+    client: DeepOriginClient,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
 ) -> None:
     """direct downloads must hit GET /files/{org}/{path} without a leading slash."""
     captured: list[str] = []
@@ -55,7 +59,7 @@ def test_download_direct_uses_normalized_path(
 
     local_path = client.files.download(
         remote_path="/seeded/proteins/BRD/BRD.pdb",
-        download_to_dir="/tmp",
+        download_to_dir=str(tmp_path),
         direct=True,
     )
 
