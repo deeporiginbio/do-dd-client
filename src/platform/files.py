@@ -22,6 +22,27 @@ _FILES_BASE = "/files"
 
 _MISSING_URL_FIELD = "Signed URL response missing 'url' field"
 
+
+def _normalize_remote_path(remote_path: str) -> str:
+    """Normalize a UFA remote path for platform API URL segments.
+
+    Data-platform rows and UUI often store paths with a leading slash
+    (e.g. ``/seeded/proteins/BRD.pdb``). The file-service expects keys without
+    one; embedding a leading slash in ``/signedUrl/{path}`` creates a double
+    slash that misses the signedUrl route and returns 404.
+
+    Args:
+        remote_path: Raw remote path from the caller.
+
+    Returns:
+        Path with leading slashes removed and repeated ``/`` collapsed.
+    """
+    normalized = remote_path.replace("\\", "/")
+    while "//" in normalized:
+        normalized = normalized.replace("//", "/")
+    return normalized.lstrip("/")
+
+
 # Signed-URL PUTs upload full file bodies; default httpx read timeout (5s) is too
 # short under concurrent upload_tree workers waiting on S3.
 _SIGNED_URL_UPLOAD_TIMEOUT = httpx.Timeout(
@@ -322,6 +343,7 @@ class Files:
         Raises:
             ValueError: If the API response is missing the 'url' field.
         """
+        remote_path = _normalize_remote_path(remote_path)
         params = {"upload": "true"} if upload else {}
 
         response = self._c.get_json(
@@ -486,6 +508,7 @@ class Files:
             RuntimeError: If any upload fails and ``skip_errors`` is False.
             ValueError: If ``local_path`` is not a file, directory, or list.
         """
+        remote_dir = _normalize_remote_path(remote_dir)
         if not remote_dir.endswith("/"):
             remote_dir += "/"
 
@@ -619,6 +642,7 @@ class Files:
         Returns:
             Either a list of remote keys or a list of metadata dicts.
         """
+        remote_path = _normalize_remote_path(remote_path)
         all_keys: list[str] = []
         all_objects: list[dict] = []
         continuation_token: str | None = None
@@ -665,7 +689,7 @@ class Files:
             Dictionary containing the upload response (e.g., eTag, s3 metadata).
         """
         local_path_str = str(local_path)
-        remote_path_str = str(remote_path)
+        remote_path_str = _normalize_remote_path(str(remote_path))
 
         # Read file content
         with open(local_path_str, "rb") as f:
@@ -766,6 +790,7 @@ class Files:
         Returns:
             The local path where the file was saved.
         """
+        remote_path = _normalize_remote_path(remote_path)
         dest: Path
         if direct:
             if local_path is not None:
@@ -866,6 +891,7 @@ class Files:
                 field.
             httpx.HTTPStatusError: If the server returns a non-2xx status.
         """
+        remote_path = _normalize_remote_path(remote_path)
         if direct:
             self._c.check_token()
             request = self._c._client.build_request(
@@ -984,6 +1010,7 @@ class Files:
                 200 status even if deletion fails, so this method checks the
                 response body for success.
         """
+        remote_path = _normalize_remote_path(remote_path)
         # Temporarily increase timeout if specified
         original_timeout = None
         if timeout is not None:
@@ -1062,6 +1089,7 @@ class Files:
         Returns:
             HTTP response headers (content-type, content-length, etag, etc.).
         """
+        remote_path = _normalize_remote_path(remote_path)
         response = self._c._head(f"/files/{self._c.org_key}/{remote_path}")
         return dict(response.headers)
 
@@ -1083,6 +1111,7 @@ class Files:
         Returns:
             The JSON response from the API.
         """
+        remote_path = _normalize_remote_path(remote_path)
         response = self._c._post(
             f"/files/{self._c.org_key}/{remote_path}",
             body={"url": source_url},
@@ -1108,6 +1137,7 @@ class Files:
         Returns:
             The local path where the ZIP file was saved.
         """
+        remote_path = _normalize_remote_path(remote_path)
         if local_path is not None:
             dest = Path(local_path)
         elif download_to_dir is not None:

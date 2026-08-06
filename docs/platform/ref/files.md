@@ -14,6 +14,10 @@ Example:
 keys = client.files.list(remote_path="entities/")
 ```
 
+Remote paths may be stored with a leading slash (for example `/seeded/proteins/BRD.pdb`
+from the data platform). The client strips leading slashes before calling the
+file-service API so signed URLs and direct downloads resolve correctly.
+
 ## Choosing a method
 
 Use this table to pick the right call. The client uses **two upload styles** (multipart via the platform API vs. signed URLs to object storage) and **two download styles** (signed URL streaming vs. direct GET through the API).
