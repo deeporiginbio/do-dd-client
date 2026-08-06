@@ -508,7 +508,6 @@ class Files:
             RuntimeError: If any upload fails and ``skip_errors`` is False.
             ValueError: If ``local_path`` is not a file, directory, or list.
         """
-        remote_dir = _normalize_remote_path(remote_dir)
         if not remote_dir.endswith("/"):
             remote_dir += "/"
 
