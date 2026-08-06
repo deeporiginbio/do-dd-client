@@ -152,6 +152,7 @@ class Docking(Execution, SyncExecutableMixin, AsyncExecutableMixin, NotebookWatc
         self._protein = protein
         self._pocket = pocket
         self._ligands = ligands
+        self._rotation_deg: list[float] | None = None
 
         self.name = (
             name if name is not None else _docking_default_name(protein, ligands)
@@ -171,6 +172,28 @@ class Docking(Execution, SyncExecutableMixin, AsyncExecutableMixin, NotebookWatc
     def ligands(self) -> LigandSet:
         """Set of ligands to dock."""
         return self._ligands
+
+    @property
+    def rotation_deg(self) -> list[float] | None:
+        """Committed box rotation ``[rx, ry, rz]`` from :meth:`show_box` (interactive).
+
+        Set when the user clicks Apply in an interactive box viewer. Ephemeral
+        session state — not persisted on :attr:`pocket`. ``None`` until committed
+        or when rotation is identity.
+        """
+        if self._rotation_deg is None:
+            return None
+        return list(self._rotation_deg)
+
+    def _commit_docking_box(self, payload: dict[str, Any]) -> None:
+        """Store rotation from an interactive box commit payload."""
+        from deeporigin.drug_discovery.docking_common import (
+            normalize_rotation_deg,
+            parse_docking_box_commit,
+        )
+
+        _, _, rotation_deg = parse_docking_box_commit(payload)
+        self._rotation_deg = normalize_rotation_deg(rotation_deg)
 
     @property
     def batch_size(self) -> int:
@@ -371,7 +394,12 @@ class Docking(Execution, SyncExecutableMixin, AsyncExecutableMixin, NotebookWatc
         ligands = list(to_dock)
         pocket_center, box_size = self._resolve_docking_box_geometry()
         metadata = build_docking_metadata(self.protein)
-        pocket_params = build_pocket_tool_params(self.pocket, pocket_center, box_size)
+        pocket_params = build_pocket_tool_params(
+            self.pocket,
+            pocket_center,
+            box_size,
+            rotation_deg=self._rotation_deg,
+        )
 
         params = {
             "effort": self.effort,
@@ -521,6 +549,7 @@ class Docking(Execution, SyncExecutableMixin, AsyncExecutableMixin, NotebookWatc
         except (TypeError, ValueError):
             bs = 16
         instance._batch_size = bs if bs > 0 else 16
+        instance._rotation_deg = None
 
         return instance
 
@@ -609,7 +638,9 @@ class Docking(Execution, SyncExecutableMixin, AsyncExecutableMixin, NotebookWatc
     def show_box(
         self,
         *,
+        interactive: bool = False,
         poses: Ligand | LigandSet | list[Ligand] | None = None,
+        height: int = 620,
     ):
         """Visualize the protein with the docking search box in a Jupyter notebook.
 
@@ -617,54 +648,47 @@ class Docking(Execution, SyncExecutableMixin, AsyncExecutableMixin, NotebookWatc
         ``box_size_x`` / ``box_size_y`` / ``box_size_z`` (same geometry as
         :meth:`run` and :meth:`start` submit to the docking tool).
 
+        When ``interactive=True``, molstar ``DockingBoxControls`` are available via
+        Settings. Click **Apply to notebook** to commit ``rotation_deg`` onto this
+        :class:`Docking` instance for subsequent :meth:`run` / :meth:`start` calls.
+
         When ``poses`` is provided, docked ligands are overlaid as well
-        (``visualizeDockedLigands`` + ``renderBoundingBox``).
+        (``visualizeDockedLigands`` + ``renderBoundingBox``). Interactive mode does
+        not support pose overlays in v1.
 
         Args:
+            interactive: When ``True``, enable box rotation readback via AnyWidget.
             poses: Optional docked pose(s) to overlay with the search box. Accepts a
                 single :class:`Ligand`, a :class:`LigandSet`, or a list of ligands.
+            height: Iframe height in pixels.
 
         Returns:
-            Result of :func:`~deeporigin.utils.notebook.render_html` for the Mol*
-            viewer (``None`` after Jupyter display, or a marimo ``mo.Html`` wrapper).
+            Static mode: result of :func:`~deeporigin.utils.notebook.render_html`.
+            Interactive mode:
+            :class:`~deeporigin.utils.iframe_comm_bridge.IframeCommHandle`.
 
         Raises:
             DeepOriginException: If the protein structure cannot be loaded locally.
-            ValueError: If ``poses`` is an empty collection.
+            RuntimeError: If ``interactive=True`` outside Jupyter.
+            ValueError: If ``poses`` is an empty collection or interactive mode is
+                combined with pose overlays.
         """
-        if self.protein.structure is None:
-            self.protein.download(client=self.client)
-        if self.protein.structure is None:
-            raise DeepOriginException(
-                title="Cannot visualize docking box",
-                message=(
-                    "Protein structure is not available locally. Download the "
-                    "protein or call protein.load_structure_from_local() first."
-                ),
-            ) from None
+        if interactive and poses is not None:
+            raise ValueError(
+                "interactive=True does not support pose overlays in v1; "
+                "call show_box(poses=...) with interactive=False."
+            )
 
-        from deeporigin.drug_discovery.docking_common import ligand_payloads_for_viewer
-        from deeporigin.utils.notebook import render_html
-        from deeporigin.viz.molstar_html import (
-            render_docking_box_html,
-            render_protein_with_box_and_poses_html,
+        from deeporigin.drug_discovery.docking_common import (
+            show_docking_box_in_notebook,
         )
 
-        protein_file = self.protein._dump_state()
-        pocket_center, box_size = self._resolve_docking_box_geometry()
-        if poses is None:
-            return render_html(
-                render_docking_box_html(
-                    pdb_path=protein_file,
-                    box_center=list(pocket_center),
-                    box_size=list(box_size),
-                )
-            )
-        return render_html(
-            render_protein_with_box_and_poses_html(
-                pdb_path=protein_file,
-                box_center=list(pocket_center),
-                box_size=list(box_size),
-                ligand_payloads=ligand_payloads_for_viewer(poses),
-            )
+        return show_docking_box_in_notebook(
+            protein=self.protein,
+            pocket=self.pocket,
+            client=self.client,
+            interactive=interactive,
+            on_commit=self._commit_docking_box,
+            poses=poses,
+            height=height,
         )

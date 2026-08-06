@@ -50,7 +50,14 @@ test = [
     "nbconvert",
     "ipykernel",
 ]
-dev = ["ipykernel", "jupyter-black"]
+dev = [
+    "anywidget>=0.11.0",
+    "ipykernel",
+    "ipywidgets>=8.1.0",
+    "jupyter-black",
+    "jupyterlab>=4.6.2",
+    "python-dotenv",
+]
 docs = [
     "zensical",
     "mkdocstrings-python",
@@ -66,6 +73,7 @@ tools = [
     "biotite",
     "biopython",
     "rcsb-api>=1.1.4",
+    "anywidget>=0.11.0",
 ]
 
 

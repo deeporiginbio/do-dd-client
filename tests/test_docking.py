@@ -137,7 +137,7 @@ def test_show_box_calls_render_docking_box_html(
         ),
         patch(
             "deeporigin.utils.notebook.render_html",
-            side_effect=lambda html: html,
+            side_effect=lambda html, **kwargs: html,
         ),
     ):
         html = docking.show_box()
@@ -176,7 +176,7 @@ def test_show_box_with_poses_calls_box_and_poses_html(
         ),
         patch(
             "deeporigin.utils.notebook.render_html",
-            side_effect=lambda html: html,
+            side_effect=lambda html, **kwargs: html,
         ),
     ):
         html = docking.show_box(poses=registered_ligand)

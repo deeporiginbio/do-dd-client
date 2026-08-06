@@ -1,10 +1,14 @@
 # PROTOTYPE — DDOS-6937 Interactive docking box wireframe
 
 **Throwaway.** Do not import from production code. Validates the notebook iframe →
-molstar box → Apply → Python Comm bridge before full SDK / molstarLib work.
+molstar box → Apply → Python AnyWidget bridge before full SDK / molstarLib work.
 
-**Question:** Does the postMessage + `ipykernel.comm.Comm` bridge deliver a
-`rotation_deg` payload to Python after the user adjusts an interactive molstar box?
+**Question:** Does an AnyWidget-hosted iframe deliver a `rotation_deg` payload to
+Python after the user adjusts an interactive molstar box in both JupyterLab and
+Cursor/VS Code?
+
+The earlier arbitrary output JavaScript + raw `ipykernel.comm.Comm` attempt is
+rejected: modern notebook frontends do not expose their kernel to output scripts.
 
 ## Run
 
@@ -30,7 +34,7 @@ Or open `wireframe.ipynb` manually and run all cells.
 
 | File | Role |
 |------|------|
-| `comm_bridge.py` | Portable Comm + postMessage bridge (candidate for `notebook.py`) |
+| `comm_bridge.py` | AnyWidget + postMessage bridge (candidate for `notebook.py`) |
 | `interactive_box_html.py` | Iframe HTML with molstar + Apply overlay |
 | `wireframe.ipynb` | Two-cell manual smoke test |
 
