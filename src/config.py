@@ -12,6 +12,7 @@ Behavior:
 
 import json
 import os
+from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal
 
 if TYPE_CHECKING:
@@ -19,9 +20,8 @@ if TYPE_CHECKING:
 
 from deeporigin.utils.constants import ENV_VARIABLES
 from deeporigin.utils.display import _supports_unicode_output
-from deeporigin.utils.env import _ensure_do_folder
 
-CONFIG_JSON_LOCATION = _ensure_do_folder() / "config.json"
+CONFIG_JSON_LOCATION = Path.home() / ".deeporigin" / "config.json"
 
 __all__ = [
     "get_org",
@@ -36,9 +36,9 @@ __all__ = [
 def _ensure_config_file_exists() -> None:
     """Ensure the configuration file exists; create with defaults if missing."""
 
-    if not os.path.isfile(CONFIG_JSON_LOCATION):
+    if not CONFIG_JSON_LOCATION.is_file():
         default_data: dict = {"env": "prod", "org_key": ""}
-        os.makedirs(os.path.dirname(CONFIG_JSON_LOCATION), exist_ok=True)
+        CONFIG_JSON_LOCATION.parent.mkdir(parents=True, exist_ok=True)
         with open(CONFIG_JSON_LOCATION, "w") as file:
             json.dump(default_data, file, indent=2)
 
