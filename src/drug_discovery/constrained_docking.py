@@ -795,6 +795,7 @@ class ConstrainedDocking(
             client=self.client,
             interactive=interactive,
             on_commit=self._commit_docking_box,
+            rotation_deg=self._rotation_deg,
             poses=poses,
             height=height,
         )

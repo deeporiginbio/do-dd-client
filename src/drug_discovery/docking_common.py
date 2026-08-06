@@ -210,6 +210,7 @@ def show_docking_box_in_notebook(
     client: DeepOriginClient | None,
     interactive: bool,
     on_commit: Callable[[dict[str, Any]], None] | None,
+    rotation_deg: list[float] | None = None,
     poses: Ligand | LigandSet | list[Ligand] | None = None,
     height: int = 620,
 ):
@@ -222,6 +223,7 @@ def show_docking_box_in_notebook(
         interactive: When ``True``, show molstar rotation controls with an Apply
             button that commits box orientation back to Python via AnyWidget.
         on_commit: Called with the committed payload when ``interactive=True``.
+        rotation_deg: Optional committed box rotation for static rendering.
         poses: Optional docked pose(s) to overlay with the search box.
         height: Viewer iframe height in pixels.
 
@@ -285,6 +287,7 @@ def show_docking_box_in_notebook(
                 pdb_path=protein_file,
                 box_center=list(pocket_center),
                 box_size=list(box_size),
+                rotation_deg=rotation_deg,
             ),
             height=height,
         )
@@ -295,6 +298,7 @@ def show_docking_box_in_notebook(
             box_center=list(pocket_center),
             box_size=list(box_size),
             ligand_payloads=ligand_payloads_for_viewer(poses),
+            rotation_deg=rotation_deg,
         ),
         height=height,
     )

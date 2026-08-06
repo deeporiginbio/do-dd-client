@@ -651,6 +651,7 @@ class Docking(Execution, SyncExecutableMixin, AsyncExecutableMixin, NotebookWatc
         When ``interactive=True``, molstar ``DockingBoxControls`` are available via
         Settings. Click **Apply to notebook** to commit ``rotation_deg`` onto this
         :class:`Docking` instance for subsequent :meth:`run` / :meth:`start` calls.
+        Static mode applies a previously committed ``rotation_deg`` to the box mesh.
 
         When ``poses`` is provided, docked ligands are overlaid as well
         (``visualizeDockedLigands`` + ``renderBoundingBox``). Interactive mode does
@@ -689,6 +690,7 @@ class Docking(Execution, SyncExecutableMixin, AsyncExecutableMixin, NotebookWatc
             client=self.client,
             interactive=interactive,
             on_commit=self._commit_docking_box,
+            rotation_deg=self._rotation_deg,
             poses=poses,
             height=height,
         )

@@ -576,11 +576,50 @@ def _validate_docking_box_color(color: object) -> int:
     return color
 
 
+def _rotation_deg_script_literal(rotation_deg: list[float] | None) -> str:
+    """Return a JS literal for ``rotation_deg``, or ``null`` when identity/absent."""
+    from deeporigin.drug_discovery.docking_common import normalize_rotation_deg
+
+    normalized = normalize_rotation_deg(rotation_deg)
+    if normalized is None:
+        return "null"
+    return _json_value_for_script_tag(normalized)
+
+
+def _apply_docking_box_rotation_js() -> str:
+    """Return JS helper applying rotation via molstar ``DockingBoxManager``."""
+    return """
+const applyDockingBoxRotation = (viewer, rotationDeg) => {
+  if (
+    !Array.isArray(rotationDeg)
+    || rotationDeg.length !== 3
+    || rotationDeg.every((value) => Math.abs(Number(value)) < 1e-9)
+  ) {
+    return;
+  }
+  const manager = viewer.getPlugin?.()?.dockingBoxManager;
+  if (!manager?.setRotation) {
+    console.warn(
+      "molstarLib dockingBoxManager.setRotation unavailable; "
+      + "box shown without rotation."
+    );
+    return;
+  }
+  manager.setRotation(
+    Number(rotationDeg[0]),
+    Number(rotationDeg[1]),
+    Number(rotationDeg[2]),
+  );
+};
+"""
+
+
 def render_docking_box_html(
     *,
     pdb_path: str,
     box_center: list[float],
     box_size: list[float],
+    rotation_deg: list[float] | None = None,
     radius: float = _DEFAULT_DOCKING_BOX_RADIUS,
     color: int = _DEFAULT_DOCKING_BOX_COLOR,
 ) -> str:
@@ -594,6 +633,8 @@ def render_docking_box_html(
         pdb_path: Path to the protein PDB file on disk.
         box_center: Docking box center ``[x, y, z]`` in angstroms.
         box_size: Docking box extents ``[sx, sy, sz]`` in angstroms.
+        rotation_deg: Optional ``[rx, ry, rz]`` Euler angles (degrees) applied to
+            the box mesh after ``renderBoundingBox`` (Rz·Ry·Rx about center).
         radius: Wireframe mesh radius (default ``0.2``).
         color: Hex color integer for the box (default ``0xFFFF00``).
 
@@ -615,8 +656,10 @@ def render_docking_box_html(
     pdb_b64 = _encode_text_base64(_read_structure_file(pdb_path))
     min_json = _json_value_for_script_tag(min_corner)
     max_json = _json_value_for_script_tag(max_corner)
+    rotation_json = _rotation_deg_script_literal(rotation_deg)
 
-    script_body = f"""const initViewer = async () => {{
+    script_body = f"""{_apply_docking_box_rotation_js()}
+const initViewer = async () => {{
       if (typeof molstarLib === "undefined" || typeof molstarLib.initViewer !== "function") {{
         throw new Error("molstarLib bundle did not load from {MOLSTAR_JS_URL}");
       }}
@@ -634,6 +677,7 @@ def render_docking_box_html(
         radius: {radius},
         color: {color},
       }});
+      applyDockingBoxRotation(viewer, {rotation_json});
     }};"""
 
     return _render_viewer_html(script_body=script_body)
@@ -882,6 +926,7 @@ def render_protein_with_box_and_poses_html(
     box_center: list[float],
     box_size: list[float],
     ligand_payloads: list[dict[str, object]],
+    rotation_deg: list[float] | None = None,
     protein_style: str = "cartoon",
     ligand_style: str = "ball-and-stick",
     radius: float = _DEFAULT_DOCKING_BOX_RADIUS,
@@ -898,6 +943,8 @@ def render_protein_with_box_and_poses_html(
         box_center: Docking box center ``[x, y, z]`` in angstroms.
         box_size: Docking box extents ``[sx, sy, sz]`` in angstroms.
         ligand_payloads: Per-ligand dicts from :func:`ligand_data_for_js`.
+        rotation_deg: Optional ``[rx, ry, rz]`` Euler angles (degrees) applied to
+            the box mesh after ``renderBoundingBox``.
         protein_style: Mol* representation type for the protein polymer.
         ligand_style: Mol* representation type for docked ligands.
         radius: Wireframe mesh radius (default ``0.2``).
@@ -926,9 +973,11 @@ def render_protein_with_box_and_poses_html(
     ligand_style_json = _json_for_script_tag(ligand_style)
     min_json = _json_value_for_script_tag(min_corner)
     max_json = _json_value_for_script_tag(max_corner)
+    rotation_json = _rotation_deg_script_literal(rotation_deg)
     decode_ligands = _decode_ligand_payloads_js()
 
-    script_body = f"""const initViewer = async () => {{
+    script_body = f"""{_apply_docking_box_rotation_js()}
+const initViewer = async () => {{
       if (typeof molstarLib === "undefined" || typeof molstarLib.initViewer !== "function") {{
         throw new Error("molstarLib bundle did not load from {MOLSTAR_JS_URL}");
       }}
@@ -950,6 +999,7 @@ def render_protein_with_box_and_poses_html(
         radius: {radius},
         color: {color},
       }});
+      applyDockingBoxRotation(viewer, {rotation_json});
     }};"""
 
     return _render_viewer_html(script_body=script_body)

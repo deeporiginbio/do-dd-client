@@ -284,6 +284,21 @@ def test_render_docking_box_html_api() -> None:
     assert str(0xFFFF00) in html
 
 
+def test_render_docking_box_html_applies_rotation_deg() -> None:
+    """Static box HTML applies rotation via DockingBoxManager after render."""
+    html = render_docking_box_html(
+        pdb_path=str(_FIXTURE_PDB),
+        box_center=[10.0, 20.0, 30.0],
+        box_size=[4.0, 6.0, 8.0],
+        rotation_deg=[0.0, 45.0, 0.0],
+    )
+
+    assert "applyDockingBoxRotation" in html
+    assert "dockingBoxManager" in html
+    assert "setRotation" in html
+    assert "[0.0, 45.0, 0.0]" in html
+
+
 def test_render_docking_box_rejects_non_positive_size() -> None:
     """Non-positive box extents raise ValueError."""
     with pytest.raises(ValueError, match="positive"):
@@ -348,6 +363,23 @@ def test_render_protein_with_box_and_poses_html_api() -> None:
     assert "[8.0, 17.0, 26.0]" in html
     assert "[12.0, 23.0, 34.0]" in html
     assert str(0xFFFF00) in html
+
+
+def test_render_protein_with_box_and_poses_html_applies_rotation_deg() -> None:
+    """Box+poses HTML applies rotation via DockingBoxManager after render."""
+    payloads = [
+        ligand_data_for_js(path=str(_FIXTURE_SDF), label="brd-2"),
+    ]
+    html = render_protein_with_box_and_poses_html(
+        pdb_path=str(_FIXTURE_PDB),
+        box_center=[10.0, 20.0, 30.0],
+        box_size=[4.0, 6.0, 8.0],
+        ligand_payloads=payloads,
+        rotation_deg=[0.0, 45.0, 0.0],
+    )
+
+    assert "applyDockingBoxRotation" in html
+    assert "[0.0, 45.0, 0.0]" in html
 
 
 def test_render_protein_with_box_and_poses_empty_raises() -> None:
