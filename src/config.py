@@ -12,6 +12,7 @@ Behavior:
 
 import json
 import os
+from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal
 
 if TYPE_CHECKING:
@@ -19,9 +20,8 @@ if TYPE_CHECKING:
 
 from deeporigin.utils.constants import ENV_VARIABLES
 from deeporigin.utils.display import _supports_unicode_output
-from deeporigin.utils.env import _ensure_do_folder
 
-CONFIG_JSON_LOCATION = _ensure_do_folder() / "config.json"
+CONFIG_JSON_LOCATION = Path.home() / ".deeporigin" / "config.json"
 
 __all__ = [
     "get_org",
