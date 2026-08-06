@@ -31,6 +31,12 @@ def test_normalize_rotation_deg_rejects_invalid_length() -> None:
         normalize_rotation_deg([0.0, 1.0])
 
 
+def test_normalize_rotation_deg_rejects_non_numeric_dict() -> None:
+    """normalize_rotation_deg raises ValueError for non-numeric dict values."""
+    with pytest.raises(ValueError, match="length-3 sequence of numbers"):
+        normalize_rotation_deg({"x": None, "y": 1.0, "z": 2.0})
+
+
 def test_parse_docking_box_commit_returns_geometry() -> None:
     """parse_docking_box_commit extracts center, box_size, and rotation."""
     center, box_size, rotation = parse_docking_box_commit(

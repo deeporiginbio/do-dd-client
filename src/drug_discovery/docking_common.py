@@ -116,19 +116,19 @@ def normalize_rotation_deg(value: object) -> list[float] | None:
     """
     if value is None:
         return None
-    if isinstance(value, dict):
-        rotation = [
-            float(value.get("x", value.get("0", 0))),
-            float(value.get("y", value.get("1", 0))),
-            float(value.get("z", value.get("2", 0))),
-        ]
-    else:
-        try:
+    try:
+        if isinstance(value, dict):
+            rotation = [
+                float(value.get("x", value.get("0", 0))),
+                float(value.get("y", value.get("1", 0))),
+                float(value.get("z", value.get("2", 0))),
+            ]
+        else:
             rotation = [float(component) for component in value]  # type: ignore[arg-type]
-        except (TypeError, ValueError) as exc:
-            raise ValueError(
-                f"rotation_deg must be a length-3 sequence of numbers, got {value!r}"
-            ) from exc
+    except (TypeError, ValueError) as exc:
+        raise ValueError(
+            f"rotation_deg must be a length-3 sequence of numbers, got {value!r}"
+        ) from exc
     if len(rotation) != 3:
         raise ValueError(
             f"rotation_deg must have length 3, got {len(rotation)} value(s)"

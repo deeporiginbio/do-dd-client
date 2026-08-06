@@ -4,6 +4,7 @@ SHELL := /bin/bash
 uname=$(shell uname -s)
 IMAGE_NAME := deeporigin-uv-temp
 repo=$(shell basename $(CURDIR))
+KERNEL_NAME := do-dd-client
 REPO_ROOT := $(CURDIR)
 
 chosen_tests=""
@@ -23,8 +24,8 @@ test:
 # Sync notebook deps, register kernel in .venv + user dir, verify widget env.
 jupyter:
 	uv sync $(foreach e,$(NOTEBOOK_EXTRAS),--extra $(e))
-	$(UV_RUN) python -m ipykernel install --sys-prefix --name $(repo) --display-name "Python (do-dd-client)"
-	$(UV_RUN) python -m ipykernel install --user --name $(repo) --display-name "Python (do-dd-client)"
+	$(UV_RUN) python -m ipykernel install --sys-prefix --name $(KERNEL_NAME) --display-name "Python (do-dd-client)"
+	$(UV_RUN) python -m ipykernel install --user --name $(KERNEL_NAME) --display-name "Python (do-dd-client)"
 	$(UV_RUN) python scripts/verify_notebook_widgets.py
 
 # launch JupyterLab from the project .venv (widgets require this server, not Homebrew / uv cache)
