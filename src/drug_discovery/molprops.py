@@ -7,7 +7,7 @@ properties to compute, and returns one row per input ligand keyed by
 
 Usage::
 
-    mp = Molprops(ligands=[ligand], props=["ames", "logp"])
+    mp = Molprops(ligands=[ligand], props=["logp", "logd"])
     mp.run(quote=True)  # one quote for all ligands + props (ignores ``batch_size``)
     mp.run()  # mutates ligands in place; sets ``cost`` on success
 

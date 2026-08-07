@@ -6,8 +6,9 @@ system preparation, and free-energy calculations.
 ## Language
 
 **Molprops**:
-Legacy combined platform tool ``deeporigin.mol-props-combined`` that predicts seven
-molprops endpoints (logP, logD, logS, hERG, CYP, AMES, PAINS). The CLI class
+Combined platform tool ``deeporigin.mol-props-combined`` for physicochemical
+properties (logP, logD, logS, PAINS). As of tool 0.9.3+, toxicity and metabolism
+endpoints (hERG, CYP, AMES) moved to ``deeporigin.admet-properties``. The CLI class
 ``Molprops`` mutates dedicated :class:`~deeporigin.drug_discovery.structures.ligand.Ligand`
 attributes in place.
 _Avoid_: conflating with ``Admet``; calling it "ADMET" when you mean the 59-endpoint tool
