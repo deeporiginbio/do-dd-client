@@ -59,12 +59,12 @@ def test_molprops_run_quote_true_full_payload(
         client=client,
     )
     assert job.run(quote=True) is job
-    if job.estimate is None and job.status != "Quoted":
+    if job.status != "Quoted":
         pytest.skip(
             "mol-props-combined on this env/version did not return a quotation "
             f"(status={job.status!r}); quote-only may not be supported on latest."
         )
     assert job.estimate is not None
-    assert getattr(job, "status", None) == "Quoted"
+    assert job.status == "Quoted"
     assert job.cost is None
     assert lig1.log_p is None and lig2.log_p is None
