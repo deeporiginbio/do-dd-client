@@ -137,7 +137,7 @@ TOOL_KEY_PREFIX = "deeporigin."
 """Platform tool-key prefix omitted in compact display (e.g. user log tables)."""
 
 MOLPROPS_PROPERTY_KEYS: frozenset[str] = frozenset(
-    ("ames", "cyp", "herg", "logd", "logp", "logs", "pains"),
+    ("logd", "logp", "logs", "pains"),
 )
 """Allowed molprops tool suffix keys (``deeporigin.mol-props-<key>``)."""
 
