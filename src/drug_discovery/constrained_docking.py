@@ -231,6 +231,21 @@ def _parse_constrained_docking_user_inputs(
     )
 
 
+def _structure_input_smiles(entry: dict[str, Any]) -> str:
+    """Extract a non-empty SMILES string from a structure-input dict."""
+
+    smiles = (
+        entry.get("smiles")
+        or entry.get("canonical_smiles")
+        or entry.get("ligand_smiles")
+    )
+    if not isinstance(smiles, str) or not smiles.strip():
+        raise ValueError(
+            "Structure input has a remote SDF but no smiles/canonical_smiles."
+        )
+    return smiles.strip()
+
+
 def _ligand_from_structure_input(
     entry: dict[str, Any],
     *,
@@ -249,29 +264,20 @@ def _ligand_from_structure_input(
         if remote_path is not None:
             lig.remote_path = remote_path
     else:
-        smiles = (
-            entry.get("smiles")
-            or entry.get("canonical_smiles")
-            or entry.get("ligand_smiles")
-        )
-        if not isinstance(smiles, str) or not smiles.strip():
-            raise ValueError(
-                "Structure input has a remote SDF but no smiles/canonical_smiles."
-            )
         if remote_path is None:
             raise ValueError("Structure input resolved to no remote_path.")
         lig = Ligand.from_smiles(
-            smiles=smiles.strip(), name=(entry.get("name") or "") or ""
+            smiles=_structure_input_smiles(entry),
+            name=(entry.get("name") or "") or "",
         )
         lig.remote_path = remote_path
 
     lid = entry.get("ligand_id") or entry.get("id")
     if lid is not None:
         lig.id = str(lid)
-    pose_result_id = entry.get("id")
-    if pose_result_id is not None and entry.get("ligand_id") is not None:
-        lig.properties["pose_result_id"] = str(pose_result_id)
-        lig.properties["id"] = str(pose_result_id)
+    if entry.get("ligand_id") is not None and entry.get("id") is not None:
+        lig.properties["pose_result_id"] = str(entry["id"])
+        lig.properties["id"] = str(entry["id"])
     return lig
 
 

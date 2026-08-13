@@ -413,6 +413,125 @@ def test_pose_set_filter_top_poses_from_docked_sdf() -> None:
     assert len(filtered) == 1
 
 
+def test_pose_to_ligand_from_smiles_and_local_sdf(tmp_path: Path) -> None:
+    """to_ligand hydrates from SMILES or a local SDF and copies metadata."""
+    from deeporigin.exceptions import DeepOriginException
+
+    smiles_pose = Pose(
+        ligand_id="L1",
+        id="P1",
+        smiles="CCO",
+        remote_path="entities/poses/p1.sdf",
+        pose_score=0.8,
+        binding_energy=-6.5,
+        best_pose=True,
+        protein_id="prot",
+        origin="docking",
+        name="ethanol",
+        props={"extra": 1},
+    )
+    lig = smiles_pose.to_ligand()
+    assert lig.id == "L1"
+    assert lig.properties["pose_result_id"] == "P1"
+    assert lig.properties["pose_score"] == 0.8
+    assert lig.properties["Binding Energy"] == -6.5
+    assert lig.properties["extra"] == 1
+    assert lig.remote_path == "entities/poses/p1.sdf"
+
+    src = BRD_DATA_DIR / "brd-3.sdf"
+    local = tmp_path / "pose.sdf"
+    local.write_bytes(src.read_bytes())
+    local_pose = Pose(
+        ligand_id="L2",
+        id="P2",
+        local_path=str(local),
+        remote_path="entities/poses/p2.sdf",
+    )
+    lig2 = local_pose.to_ligand()
+    assert lig2.id == "L2"
+    assert lig2.remote_path == "entities/poses/p2.sdf"
+    assert lig2.mol is not None
+
+    bare = Pose(ligand_id="L3", remote_path="entities/poses/missing.sdf")
+    with pytest.raises(DeepOriginException, match="local SDF or SMILES"):
+        bare.to_ligand()
+
+
+def test_pose_set_download_and_dataframe(tmp_path: Path) -> None:
+    """PoseSet download helpers assign local paths; to_dataframe covers empty sets."""
+    from deeporigin.drug_discovery.structures.pose import _assign_downloaded_pose_path
+
+    assert len(PoseSet(poses=[]).to_dataframe()) == 0
+
+    src = BRD_DATA_DIR / "brd-3.sdf"
+    local = tmp_path / "downloaded.sdf"
+    local.write_bytes(src.read_bytes())
+    pose = Pose(
+        ligand_id="L1",
+        id="P1",
+        smiles="CCO",
+        remote_path="entities/poses/p1.sdf",
+        pose_score=1.0,
+        binding_energy=-1.0,
+    )
+    _assign_downloaded_pose_path(
+        pose,
+        paths_by_remote={"entities/poses/p1.sdf": str(local)},
+        skip_errors=False,
+        sanitize=True,
+        remove_hydrogens=False,
+    )
+    assert pose.local_path == str(local)
+    assert pose.mol is not None
+
+    pose_set = PoseSet(poses=[pose])
+    df = pose_set.to_dataframe()
+    assert len(df) == 1
+
+    # download is a no-op when every pose already has local_path
+    pose_set.download()
+    assert pose.local_path == str(local)
+
+
+def test_normalize_pose_ligands_accepts_pose_set() -> None:
+    """Docking viz helpers accept Pose and PoseSet via to_ligand conversion."""
+    from deeporigin.drug_discovery.docking_common import normalize_pose_ligands
+
+    pose = Pose(
+        ligand_id="L1",
+        id="P1",
+        smiles="CCO",
+        remote_path="entities/poses/p1.sdf",
+        name="n1",
+    )
+    assert len(normalize_pose_ligands(pose)) == 1
+    assert len(normalize_pose_ligands(PoseSet(poses=[pose]))) == 1
+    assert len(normalize_pose_ligands([pose])) == 1
+
+
+def test_ligand_from_structure_input_remote_and_local(tmp_path: Path) -> None:
+    """Constrained docking structure-input helper builds Ligands without ligand_id."""
+    from deeporigin.drug_discovery.constrained_docking import (
+        _ligand_from_structure_input,
+    )
+
+    remote = _ligand_from_structure_input(
+        {"file_path": "testing/pose.sdf", "smiles": "CCO", "name": "ref"}
+    )
+    assert remote.remote_path == "testing/pose.sdf"
+    assert remote.smiles == "CCO"
+
+    src = BRD_DATA_DIR / "brd-2.sdf"
+    local = tmp_path / "ref.sdf"
+    local.write_bytes(src.read_bytes())
+    local_lig = _ligand_from_structure_input({"file_path": str(local), "id": "ref-id"})
+    assert local_lig.local_path == str(local) or Path(local_lig.to_sdf()).exists()
+    assert local_lig.id == "ref-id"
+
+    with pytest.raises(ValueError, match="smiles"):
+        _ligand_from_structure_input({"file_path": "testing/pose.sdf"})
+
+
 def test_ligand_get_poses_requires_id() -> None:
     """Ligand.get_poses raises when the ligand has no platform id."""
     ligand = Ligand.from_smiles("CCO")

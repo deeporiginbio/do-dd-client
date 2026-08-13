@@ -571,18 +571,11 @@ class Pose(Entity):
         prior_local = self.local_path
         out = super().download(lazy=lazy, client=client)
         if prior_local is None and self.local_path is not None:
-            path = Path(self.local_path)
-            if path.suffix.lower() == ".sdf" and path.is_file():
-                lig = Ligand.from_sdf(
-                    self.local_path,
-                    sanitize=sanitize,
-                    remove_hydrogens=remove_hydrogens,
-                )
-                self._mol = lig.mol
-                if self.smiles is None:
-                    self.smiles = lig.smiles or lig.canonical_smiles
-                if self.name in (None, ""):
-                    self.name = lig.name
+            _rehydrate_pose_from_local_sdf(
+                self,
+                sanitize=sanitize,
+                remove_hydrogens=remove_hydrogens,
+            )
         return out
 
     def to_ligand(self) -> Ligand:
@@ -593,49 +586,83 @@ class Pose(Entity):
         molstar overlays).
         """
 
-        if self.local_path is not None and Path(self.local_path).is_file():
-            lig = Ligand.from_sdf(self.local_path)
-            if self.remote_path is not None:
-                lig.remote_path = self.remote_path
-        elif self.smiles:
-            lig = Ligand.from_smiles(smiles=self.smiles, name=self.name or "")
-            if self.remote_path is not None:
-                lig.remote_path = self.remote_path
-            elif self.local_path is not None:
-                lig.remote_path = self.local_path
-        else:
-            raise DeepOriginException(
-                title="Cannot convert Pose to Ligand",
-                message=(
-                    "Pose needs a local SDF or SMILES to build a Ligand. "
-                    "Call download() first when only remote_path is set."
-                ),
-            )
-
-        lig.id = self.ligand_id
-        if self.project_id is not None:
-            lig.project_id = self.project_id
-        if self.id is not None:
-            lig.properties["pose_result_id"] = self.id
-            lig.properties["id"] = self.id
-        if self.pose_score is not None:
-            lig.properties["pose_score"] = self.pose_score
-        if self.binding_energy is not None:
-            lig.properties["Binding Energy"] = self.binding_energy
-            lig.properties["binding_energy"] = self.binding_energy
-        if self.best_pose is not None:
-            lig.properties["best_pose"] = self.best_pose
-        if self.protein_id is not None:
-            lig.properties["protein_id"] = self.protein_id
-        if self.compute_job_id is not None:
-            lig.properties["compute_job_id"] = self.compute_job_id
-        if self.origin is not None:
-            lig.properties["origin"] = self.origin
-        for key, val in self.props.items():
-            lig.properties[str(key)] = val
-        if self.name:
-            lig.name = self.name
+        lig = _ligand_from_pose_structure(self)
+        _copy_pose_metadata_onto_ligand(self, lig)
         return lig
+
+
+def _rehydrate_pose_from_local_sdf(
+    pose: Pose,
+    *,
+    sanitize: bool = True,
+    remove_hydrogens: bool = False,
+) -> None:
+    """Reload pose mol/smiles/name from ``local_path`` when it is an SDF file."""
+
+    if pose.local_path is None:
+        return
+    path = Path(pose.local_path)
+    if path.suffix.lower() != ".sdf" or not path.is_file():
+        return
+    lig = Ligand.from_sdf(
+        pose.local_path,
+        sanitize=sanitize,
+        remove_hydrogens=remove_hydrogens,
+    )
+    pose._mol = lig.mol
+    if pose.smiles is None:
+        pose.smiles = lig.smiles or lig.canonical_smiles
+    if pose.name in (None, ""):
+        pose.name = lig.name
+
+
+def _ligand_from_pose_structure(pose: Pose) -> Ligand:
+    """Build a Ligand from a pose's local SDF or SMILES."""
+
+    if pose.local_path is not None and Path(pose.local_path).is_file():
+        lig = Ligand.from_sdf(pose.local_path)
+        if pose.remote_path is not None:
+            lig.remote_path = pose.remote_path
+        return lig
+    if pose.smiles:
+        lig = Ligand.from_smiles(smiles=pose.smiles, name=pose.name or "")
+        lig.remote_path = pose.remote_path or pose.local_path
+        return lig
+    raise DeepOriginException(
+        title="Cannot convert Pose to Ligand",
+        message=(
+            "Pose needs a local SDF or SMILES to build a Ligand. "
+            "Call download() first when only remote_path is set."
+        ),
+    )
+
+
+def _copy_pose_metadata_onto_ligand(pose: Pose, lig: Ligand) -> None:
+    """Copy platform pose fields onto a legacy Ligand."""
+
+    lig.id = pose.ligand_id
+    if pose.project_id is not None:
+        lig.project_id = pose.project_id
+    if pose.id is not None:
+        lig.properties["pose_result_id"] = pose.id
+        lig.properties["id"] = pose.id
+    if pose.pose_score is not None:
+        lig.properties["pose_score"] = pose.pose_score
+    if pose.binding_energy is not None:
+        lig.properties["Binding Energy"] = pose.binding_energy
+        lig.properties["binding_energy"] = pose.binding_energy
+    if pose.best_pose is not None:
+        lig.properties["best_pose"] = pose.best_pose
+    if pose.protein_id is not None:
+        lig.properties["protein_id"] = pose.protein_id
+    if pose.compute_job_id is not None:
+        lig.properties["compute_job_id"] = pose.compute_job_id
+    if pose.origin is not None:
+        lig.properties["origin"] = pose.origin
+    for key, val in pose.props.items():
+        lig.properties[str(key)] = val
+    if pose.name:
+        lig.name = pose.name
 
 
 def _pose_row_from_registration_execution(dto: dict[str, Any]) -> dict[str, Any] | None:
@@ -852,34 +879,13 @@ class PoseSet:
             skip_errors=skip_errors,
         )
         for pose in pending:
-            rp = pose.remote_path
-            if not rp:
-                continue
-            local_path = paths_by_remote.get(rp)
-            if local_path is None:
-                if skip_errors:
-                    continue
-                raise RuntimeError(
-                    f"download_many returned no path for remote_path={rp!r}"
-                )
-            try:
-                pose.local_path = local_path
-                path = Path(local_path)
-                if path.suffix.lower() == ".sdf" and path.is_file():
-                    lig = Ligand.from_sdf(
-                        local_path,
-                        sanitize=sanitize,
-                        remove_hydrogens=remove_hydrogens,
-                    )
-                    pose._mol = lig.mol
-                    if pose.smiles is None:
-                        pose.smiles = lig.smiles or lig.canonical_smiles
-                    if pose.name in (None, ""):
-                        pose.name = lig.name
-            except Exception:
-                if skip_errors:
-                    continue
-                raise
+            _assign_downloaded_pose_path(
+                pose,
+                paths_by_remote=paths_by_remote,
+                skip_errors=skip_errors,
+                sanitize=sanitize,
+                remove_hydrogens=remove_hydrogens,
+            )
 
     def to_dataframe(self) -> pd.DataFrame:
         """Convert poses to a pandas DataFrame (via legacy ligand view)."""
@@ -942,6 +948,37 @@ class PoseSet:
             else:
                 best.append(min(poses, key=lambda p: _require_binding_energy(p)))
         return type(self)(poses=best)
+
+
+def _assign_downloaded_pose_path(
+    pose: Pose,
+    *,
+    paths_by_remote: dict[str, str],
+    skip_errors: bool,
+    sanitize: bool,
+    remove_hydrogens: bool,
+) -> None:
+    """Assign a downloaded local path onto ``pose`` and rehydrate when possible."""
+
+    rp = pose.remote_path
+    if not rp:
+        return
+    local_path = paths_by_remote.get(rp)
+    if local_path is None:
+        if skip_errors:
+            return
+        raise RuntimeError(f"download_many returned no path for remote_path={rp!r}")
+    try:
+        pose.local_path = local_path
+        _rehydrate_pose_from_local_sdf(
+            pose,
+            sanitize=sanitize,
+            remove_hydrogens=remove_hydrogens,
+        )
+    except Exception:
+        if skip_errors:
+            return
+        raise
 
 
 def _require_pose_score(pose: Pose) -> float:
