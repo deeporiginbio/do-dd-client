@@ -241,7 +241,8 @@ def _structure_input_smiles(entry: dict[str, Any]) -> str:
     )
     if not isinstance(smiles, str) or not smiles.strip():
         raise ValueError(
-            "Structure input has a remote SDF but no smiles/canonical_smiles."
+            "Structure input has a remote SDF but no "
+            "smiles/canonical_smiles/ligand_smiles."
         )
     return smiles.strip()
 
