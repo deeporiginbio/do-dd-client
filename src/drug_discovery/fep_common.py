@@ -8,6 +8,7 @@ from typing import Any
 from beartype import beartype
 
 from deeporigin.drug_discovery.structures.ligand import Ligand
+from deeporigin.drug_discovery.structures.pose import Pose
 from deeporigin.drug_discovery.structures.prepared_system import PreparedSystem
 from deeporigin.exceptions import DeepOriginException
 
@@ -90,6 +91,26 @@ def _ligand_tool_ref(ligand: Ligand) -> dict[str, str]:
     if ligand.id is not None:
         ref["id"] = ligand.id
     return ref
+
+
+@beartype
+def _pose_tool_ref(pose: Pose) -> dict[str, str]:
+    """Serialize a pose for workflow ``pose1`` / ``pairs[].pose*`` inputs."""
+    if pose.remote_path is None:
+        msg = "Pose must be synced before submitting (remote_path is missing)."
+        raise DeepOriginException(
+            title="Pose not synced",
+            message=msg,
+            fix="Call pose.sync(client=...) or Pose.from_sdf(...) before start().",
+        )
+    if pose.id is None:
+        msg = "Pose must have a platform id before submitting."
+        raise DeepOriginException(
+            title="Pose missing id",
+            message=msg,
+            fix="Register the pose (Pose.from_sdf) or load it from docking results.",
+        )
+    return {"id": pose.id, "file_path": pose.remote_path}
 
 
 @beartype

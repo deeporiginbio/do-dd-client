@@ -6,8 +6,9 @@ from typing import TYPE_CHECKING
 
 import pytest
 
-from deeporigin.drug_discovery import ABFE, SystemPrep
+from deeporigin.drug_discovery import ABFE, BRD_DATA_DIR, SystemPrep
 from deeporigin.drug_discovery.structures.ligand import Ligand
+from deeporigin.drug_discovery.structures.pose import Pose
 from deeporigin.drug_discovery.structures.protein import Protein
 
 if TYPE_CHECKING:
@@ -20,9 +21,14 @@ def test_abfe_sysprep_and_quote_local(
     registered_ligand: Ligand,
 ) -> None:
     """BRD pair: system-prep then ABFE quote against the mock server."""
+    pose = Pose.from_sdf(
+        BRD_DATA_DIR / "brd-2.sdf",
+        ligand=registered_ligand,
+        client=client,
+    )
     system = SystemPrep(
         protein=registered_protein,
-        ligand=registered_ligand,
+        pose=pose,
         client=client,
     ).run()
     assert system is not None

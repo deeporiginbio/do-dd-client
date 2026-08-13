@@ -13,6 +13,7 @@ from deeporigin.drug_discovery import (
     SystemPrep,
 )
 from deeporigin.drug_discovery.execution import Execution
+from deeporigin.drug_discovery.structures.pose import Pose
 from deeporigin.drug_discovery.structures.prepared_system import PreparedSystem
 from deeporigin.platform.client import DeepOriginClient
 from deeporigin.platform.progress_tree_display import is_v2_progress_tree
@@ -129,11 +130,13 @@ def test_rbfe_sysprep_and_fep_local(client: DeepOriginClient) -> None:
     ligand2 = Ligand.from_sdf(BRD_DATA_DIR / "brd-3.sdf")
     ligand1.sync(client=client)
     ligand2.sync(client=client)
+    pose1 = Pose.from_sdf(BRD_DATA_DIR / "brd-2.sdf", ligand=ligand1, client=client)
+    pose2 = Pose.from_sdf(BRD_DATA_DIR / "brd-3.sdf", ligand=ligand2, client=client)
 
     sysprep = SystemPrep(
         protein=protein,
-        ligand1=ligand1,
-        ligand2=ligand2,
+        pose1=pose1,
+        pose2=pose2,
         client=client,
     )
     system = sysprep.run()
@@ -162,8 +165,8 @@ def test_rbfe_sysprep_and_fep_local(client: DeepOriginClient) -> None:
     df = rbfe.get_results()
     assert df is not None
     assert len(df) >= 1
-    assert df.iloc[0]["ligand1_id"] == ligand1.id
-    assert df.iloc[0]["ligand2_id"] == ligand2.id
+    assert df.iloc[0]["ligand1_id"] == pose1.id
+    assert df.iloc[0]["ligand2_id"] == pose2.id
     assert "kcal/mol" in str(df.iloc[0]["ddG"])
 
     logs = rbfe.get_user_logs()
@@ -187,19 +190,21 @@ def test_prepared_system_from_result_after_sysprep_local(
     ligand2 = Ligand.from_sdf(BRD_DATA_DIR / "brd-3.sdf")
     ligand1.sync(client=client)
     ligand2.sync(client=client)
+    pose1 = Pose.from_sdf(BRD_DATA_DIR / "brd-2.sdf", ligand=ligand1, client=client)
+    pose2 = Pose.from_sdf(BRD_DATA_DIR / "brd-3.sdf", ligand=ligand2, client=client)
 
     system = SystemPrep(
         protein=protein,
-        ligand1=ligand1,
-        ligand2=ligand2,
+        pose1=pose1,
+        pose2=pose2,
         client=client,
     ).run()
     assert system is not None
 
     found = PreparedSystem.from_result(
         protein_id=protein.id,
-        ligand1_id=ligand1.id,
-        ligand2_id=ligand2.id,
+        ligand1_id=pose1.id,
+        ligand2_id=pose2.id,
         client=client,
     )
     assert len(found) >= 1

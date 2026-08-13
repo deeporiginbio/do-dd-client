@@ -12,12 +12,13 @@ from deeporigin.drug_discovery.execution_mixins import AsyncExecutableMixin
 from deeporigin.drug_discovery.fep_common import (
     RBFEParams,
     _fep_params_from_inputs,
-    _ligand_tool_ref,
+    _pose_tool_ref,
     _prepared_system_tool_ref,
     _simulation_blocks,
 )
 from deeporigin.drug_discovery.notebook_watch_mixin import NotebookWatchMixin
 from deeporigin.drug_discovery.structures.ligand import Ligand, LigandSet
+from deeporigin.drug_discovery.structures.pose import Pose
 from deeporigin.drug_discovery.structures.prepared_system import PreparedSystem
 from deeporigin.drug_discovery.structures.protein import Protein
 from deeporigin.exceptions import DeepOriginException
@@ -67,6 +68,23 @@ def _ligand_from_pair_input(ref: dict[str, Any], *, client: DeepOriginClient) ->
         msg = "Ligand pair input must include 'id' or 'file_path'."
         raise ValueError(msg)
     return Ligand.from_remote_file(str(file_path), client=client, lazy=True)
+
+
+def _pose_from_pair_input(ref: dict[str, Any]) -> Pose:
+    """Rehydrate a pose from an RBFE ``pairs[]`` pose reference."""
+    pose_id = ref.get("id")
+    file_path = ref.get("file_path")
+    if pose_id is None and not file_path:
+        msg = "Pose pair input must include 'id' or 'file_path'."
+        raise ValueError(msg)
+    return Pose(
+        ligand_id=str(ref.get("ligand_id") or ""),
+        id=str(pose_id) if pose_id is not None else None,
+        remote_path=str(file_path) if file_path else None,
+        name=ref.get("name"),
+        smiles=ref.get("smiles"),
+        protein_id=str(ref["protein_id"]) if ref.get("protein_id") else None,
+    )
 
 
 def _format_ddg(*, total: Any, unit: str | None) -> str | None:
@@ -179,7 +197,7 @@ class RBFE(Execution, AsyncExecutableMixin, NotebookWatchMixin):
         *,
         protein: Protein | None = None,
         ligands: LigandSet | list[Ligand] | None = None,
-        pairs: list[tuple[Ligand, Ligand]] | None = None,
+        pairs: list[tuple[Pose, Pose]] | None = None,
         prepared_systems: list[PreparedSystem] | None = None,
         network_type: KonnektorNetworkType = "mst",
         params: RBFEParams | None = None,
@@ -208,11 +226,11 @@ class RBFE(Execution, AsyncExecutableMixin, NotebookWatchMixin):
             protein: Shared protein for prep modes (required with ``ligands`` or
                 ``pairs``).
             ligands: Ligand set for Konnektor network planning (min 2).
-            pairs: Explicit ligand pairs for system-prep steps.
+            pairs: Explicit pose pairs for system-prep steps.
             prepared_systems: Prepared systems for RBFE-only steps.
             network_type: Konnektor topology when ``ligands`` is provided.
             params: FEP simulation parameters for plans that include ``rbfe``.
-            add_h_atoms: Add hydrogens to ligands during prep.
+            add_h_atoms: Add hydrogens to poses during prep.
             protonate_protein: Protonate protein during prep.
             retain_waters: Retain crystal waters during prep.
             padding: Solvation box padding (nm) during prep.
@@ -368,18 +386,43 @@ class RBFE(Execution, AsyncExecutableMixin, NotebookWatchMixin):
                 )
 
             if "konnektor" not in instance.steps:
-                instance.pairs = [
-                    (
-                        _ligand_from_pair_input(
+                instance.pairs = []
+                for pair in inputs.get("pairs", []):
+                    if not isinstance(pair, dict):
+                        continue
+                    if "pose1" in pair and "pose2" in pair:
+                        instance.pairs.append(
+                            (
+                                _pose_from_pair_input(pair["pose1"]),
+                                _pose_from_pair_input(pair["pose2"]),
+                            )
+                        )
+                    elif "ligand1" in pair and "ligand2" in pair:
+                        # Legacy executions: rehydrate ligands as pose stubs.
+                        lig1 = _ligand_from_pair_input(
                             pair["ligand1"], client=instance.client
-                        ),
-                        _ligand_from_pair_input(
+                        )
+                        lig2 = _ligand_from_pair_input(
                             pair["ligand2"], client=instance.client
-                        ),
-                    )
-                    for pair in inputs.get("pairs", [])
-                    if "ligand1" in pair and "ligand2" in pair
-                ]
+                        )
+                        instance.pairs.append(
+                            (
+                                Pose(
+                                    ligand_id=str(lig1.id or ""),
+                                    id=lig1.id,
+                                    remote_path=lig1.remote_path,
+                                    smiles=lig1.smiles,
+                                    name=lig1.name,
+                                ),
+                                Pose(
+                                    ligand_id=str(lig2.id or ""),
+                                    id=lig2.id,
+                                    remote_path=lig2.remote_path,
+                                    smiles=lig2.smiles,
+                                    name=lig2.name,
+                                ),
+                            )
+                        )
 
         if instance.steps == ["rbfe"] or (
             "rbfe" in instance.steps and inputs.get("prepared_systems")
@@ -475,20 +518,20 @@ class RBFE(Execution, AsyncExecutableMixin, NotebookWatchMixin):
                     raise ValueError(f"{label} entries require a numeric 'dG' value.")
 
     def _ensure_synced_inputs(self) -> None:
-        """Sync protein and ligands before submission."""
+        """Sync protein, ligands, and poses before submission."""
         client = self.client
         if self.protein is not None:
             self._sync_entity_if_needed(self.protein, client=client, label="Protein")
         if "konnektor" in self.steps:
             for ligand in self.ligands:
                 self._sync_entity_if_needed(ligand, client=client, label="Ligand")
-        for ligand1, ligand2 in self.pairs:
-            self._sync_entity_if_needed(ligand1, client=client, label="Ligand")
-            self._sync_entity_if_needed(ligand2, client=client, label="Ligand")
+        for pose1, pose2 in self.pairs:
+            self._sync_entity_if_needed(pose1, client=client, label="Pose")
+            self._sync_entity_if_needed(pose2, client=client, label="Pose")
 
     @staticmethod
     def _sync_entity_if_needed(
-        entity: Protein | Ligand,
+        entity: Protein | Ligand | Pose,
         *,
         client: DeepOriginClient,
         label: str,
@@ -515,10 +558,10 @@ class RBFE(Execution, AsyncExecutableMixin, NotebookWatchMixin):
             if "konnektor" not in self.steps:
                 out["pairs"] = [
                     {
-                        "ligand1": _ligand_tool_ref(ligand1),
-                        "ligand2": _ligand_tool_ref(ligand2),
+                        "pose1": _pose_tool_ref(pose1),
+                        "pose2": _pose_tool_ref(pose2),
                     }
-                    for ligand1, ligand2 in self.pairs
+                    for pose1, pose2 in self.pairs
                 ]
             out.update(
                 {

@@ -4,7 +4,7 @@ This document describes how to run an [ABFE :octicons-link-external-16:](https:/
 
 The `ABFE` class runs an ordered sequence of workflow `steps`:
 
-- `["system-prep", "abfe"]` — protein + ligand through system prep, then FEP (default)
+- `["system-prep", "abfe"]` — protein + pose through system prep, then FEP (default)
 - `["abfe"]` — FEP only on an existing `PreparedSystem`
 
 ## Prerequisites
@@ -18,25 +18,24 @@ from deeporigin.drug_discovery import (
     ABFE,
     ABFEParams,
     BRD_DATA_DIR,
+    Pose,
     Protein,
-    Ligand,
 )
 
 protein = Protein.from_file(BRD_DATA_DIR / "brd.pdb")
 protein.sync()
 
-ligand = Ligand.from_sdf(BRD_DATA_DIR / "brd-2.sdf")
-ligand.sync()
+pose = Pose.from_sdf(BRD_DATA_DIR / "brd-2.sdf")
 ```
 
 For more details on how to get started, see [:material-page-previous: Getting Started ](./getting-started.md).
 
 ## Combined workflow (recommended)
 
-Pass `protein` and `ligand` to run system preparation and ABFE in one execution:
+Pass `protein` and `pose` to run system preparation and ABFE in one execution:
 
 ```{.python notest}
-abfe = ABFE(protein=protein, ligand=ligand)
+abfe = ABFE(protein=protein, pose=pose)
 abfe.start(quote=True)
 abfe.estimate
 ```
@@ -57,7 +56,7 @@ You can still prepare the system separately with `SystemPrep`, then submit FEP-o
 ```{.python notest}
 from deeporigin.drug_discovery import SystemPrep, PreparedSystem
 
-sysprep = SystemPrep(protein=protein, ligand=ligand)
+sysprep = SystemPrep(protein=protein, pose=pose)
 system = sysprep.run()
 system.show()
 
@@ -68,7 +67,7 @@ abfe.estimate
 
 System prep builds two solvated models:
 
-1. **Binding system** — protein and ligand in explicit solvent (binding leg).
+1. **Binding system** — protein and pose in explicit solvent (binding leg).
 2. **Ligand solvation system** — ligand alone in solvent (solvation leg).
 
 You will see something like:
@@ -87,7 +86,7 @@ Before starting an ABFE run, you can estimate costs using `start(quote=True)` on
 either workflow entry point (combined or two-step):
 
 ```{.python notest}
-abfe = ABFE(protein=protein, ligand=ligand)
+abfe = ABFE(protein=protein, pose=pose)
 abfe.start(quote=True)
 abfe.estimate
 ```

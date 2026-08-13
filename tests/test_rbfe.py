@@ -16,6 +16,7 @@ from deeporigin.drug_discovery.rbfe import (
     _rbfe_results_dataframe,
 )
 from deeporigin.drug_discovery.structures.ligand import Ligand
+from deeporigin.drug_discovery.structures.pose import Pose
 from deeporigin.drug_discovery.structures.prepared_system import PreparedSystem
 from deeporigin.drug_discovery.structures.protein import Protein
 from deeporigin.exceptions import DeepOriginException
@@ -261,7 +262,25 @@ def test_rbfe_infers_combined_steps_from_protein_and_pairs() -> None:
     protein = Protein(name="p", id="prot-1", remote_path="testing/brd.pdb")
     ligand1 = Ligand.from_smiles("CCO", id="lig-1", remote_path="testing/lig1.sdf")
     ligand2 = Ligand.from_smiles("CCN", id="lig-2", remote_path="testing/lig2.sdf")
-    rbfe = RBFE(protein=protein, pairs=[(ligand1, ligand2)])
+    rbfe = RBFE(
+        protein=protein,
+        pairs=[
+            (
+                Pose(
+                    ligand_id="lig-1",
+                    id="pose-1",
+                    smiles="CCO",
+                    remote_path="testing/lig1.sdf",
+                ),
+                Pose(
+                    ligand_id="lig-2",
+                    id="pose-2",
+                    smiles="CCN",
+                    remote_path="testing/lig2.sdf",
+                ),
+            )
+        ],
+    )
     assert rbfe.steps == ["system-prep", "rbfe"]
     assert "binding" in rbfe._build_params()
 
@@ -271,14 +290,14 @@ def test_rbfe_ensure_synced_inputs_ensures_remote_paths(
 ) -> None:
     """start() ensures remote_path after lazy sync (metadata-only rehydration)."""
     protein = Protein(name="p", id="prot-1", remote_path=None)
-    ligand1 = Ligand.from_smiles("CCO", id="lig-1", remote_path=None)
-    ligand2 = Ligand.from_smiles("CCN", id="lig-2", remote_path=None)
+    pose1 = Pose(ligand_id="lig-1", id="pose-1", smiles="CCO", remote_path=None)
+    pose2 = Pose(ligand_id="lig-2", id="pose-2", smiles="CCN", remote_path=None)
     client = MagicMock(spec=DeepOriginClient)
     executions = MagicMock()
     client.executions = executions
     rbfe = RBFE(
         protein=protein,
-        pairs=[(ligand1, ligand2)],
+        pairs=[(pose1, pose2)],
         client=client,
     )
     executions.create.return_value = {
@@ -289,23 +308,24 @@ def test_rbfe_ensure_synced_inputs_ensures_remote_paths(
     protein.ensure_remote_path = MagicMock(
         side_effect=lambda **_: setattr(protein, "remote_path", "testing/brd.pdb")
     )
-    ligand1.ensure_remote_path = MagicMock(
-        side_effect=lambda **_: setattr(ligand1, "remote_path", "testing/lig1.sdf")
+    pose1.ensure_remote_path = MagicMock(
+        side_effect=lambda **_: setattr(pose1, "remote_path", "testing/lig1.sdf")
     )
-    ligand2.ensure_remote_path = MagicMock(
-        side_effect=lambda **_: setattr(ligand2, "remote_path", "testing/lig2.sdf")
+    pose2.ensure_remote_path = MagicMock(
+        side_effect=lambda **_: setattr(pose2, "remote_path", "testing/lig2.sdf")
     )
     monkeypatch.setattr(protein, "sync", lambda **_: None)
-    monkeypatch.setattr(ligand1, "sync", lambda **_: None)
-    monkeypatch.setattr(ligand2, "sync", lambda **_: None)
+    monkeypatch.setattr(pose1, "sync", lambda **_: None)
+    monkeypatch.setattr(pose2, "sync", lambda **_: None)
 
     rbfe.start()
 
     protein.ensure_remote_path.assert_called_once()
-    ligand1.ensure_remote_path.assert_called_once()
-    ligand2.ensure_remote_path.assert_called_once()
+    pose1.ensure_remote_path.assert_called_once()
+    pose2.ensure_remote_path.assert_called_once()
     call_kwargs = executions.create.call_args.kwargs
     assert call_kwargs["data"]["inputs"]["protein"]["file_path"] == "testing/brd.pdb"
+    assert call_kwargs["data"]["inputs"]["pairs"][0]["pose1"]["id"] == "pose-1"
 
 
 def test_rbfe_start_calls_executions_create(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -318,7 +338,22 @@ def test_rbfe_start_calls_executions_create(monkeypatch: pytest.MonkeyPatch) -> 
     client.executions = executions
     rbfe = RBFE(
         protein=protein,
-        pairs=[(ligand1, ligand2)],
+        pairs=[
+            (
+                Pose(
+                    ligand_id="lig-1",
+                    id="pose-1",
+                    smiles="CCO",
+                    remote_path="testing/lig1.sdf",
+                ),
+                Pose(
+                    ligand_id="lig-2",
+                    id="pose-2",
+                    smiles="CCN",
+                    remote_path="testing/lig2.sdf",
+                ),
+            )
+        ],
         client=client,
     )
     executions.create.return_value = {
@@ -350,7 +385,22 @@ def test_rbfe_start_quote_sums_workflow_quotations(
     client.executions = executions
     rbfe = RBFE(
         protein=protein,
-        pairs=[(ligand1, ligand2)],
+        pairs=[
+            (
+                Pose(
+                    ligand_id="lig-1",
+                    id="pose-1",
+                    smiles="CCO",
+                    remote_path="testing/lig1.sdf",
+                ),
+                Pose(
+                    ligand_id="lig-2",
+                    id="pose-2",
+                    smiles="CCN",
+                    remote_path="testing/lig2.sdf",
+                ),
+            )
+        ],
         client=client,
     )
     executions.create.return_value = {
@@ -476,14 +526,18 @@ def test_rbfe_ensure_synced_inputs_skips_sync_when_complete(
 ) -> None:
     """start() skips sync when id and remote_path are already set."""
     protein = Protein(name="p", id="prot-1", remote_path="testing/brd.pdb")
-    ligand1 = Ligand.from_smiles("CCO", id="lig-1", remote_path="testing/lig1.sdf")
-    ligand2 = Ligand.from_smiles("CCN", id="lig-2", remote_path="testing/lig2.sdf")
+    pose1 = Pose(
+        ligand_id="lig-1", id="pose-1", smiles="CCO", remote_path="testing/lig1.sdf"
+    )
+    pose2 = Pose(
+        ligand_id="lig-2", id="pose-2", smiles="CCN", remote_path="testing/lig2.sdf"
+    )
     client = MagicMock(spec=DeepOriginClient)
     executions = MagicMock()
     client.executions = executions
     rbfe = RBFE(
         protein=protein,
-        pairs=[(ligand1, ligand2)],
+        pairs=[(pose1, pose2)],
         client=client,
     )
     executions.create.return_value = {
@@ -492,23 +546,23 @@ def test_rbfe_ensure_synced_inputs_skips_sync_when_complete(
         "tool": {"key": "deeporigin.rbfe", "version": "0.1.0"},
     }
     protein_sync = MagicMock()
-    ligand1_sync = MagicMock()
-    ligand2_sync = MagicMock()
+    pose1_sync = MagicMock()
+    pose2_sync = MagicMock()
     monkeypatch.setattr(protein, "sync", protein_sync)
-    monkeypatch.setattr(ligand1, "sync", ligand1_sync)
-    monkeypatch.setattr(ligand2, "sync", ligand2_sync)
+    monkeypatch.setattr(pose1, "sync", pose1_sync)
+    monkeypatch.setattr(pose2, "sync", pose2_sync)
     monkeypatch.setattr(
         protein,
         "ensure_remote_path",
         MagicMock(side_effect=lambda **_: None),
     )
     monkeypatch.setattr(
-        ligand1,
+        pose1,
         "ensure_remote_path",
         MagicMock(side_effect=lambda **_: None),
     )
     monkeypatch.setattr(
-        ligand2,
+        pose2,
         "ensure_remote_path",
         MagicMock(side_effect=lambda **_: None),
     )
@@ -516,8 +570,8 @@ def test_rbfe_ensure_synced_inputs_skips_sync_when_complete(
     rbfe.start()
 
     protein_sync.assert_not_called()
-    ligand1_sync.assert_not_called()
-    ligand2_sync.assert_not_called()
+    pose1_sync.assert_not_called()
+    pose2_sync.assert_not_called()
 
 
 def test_rbfe_from_dto_rejects_legacy_system_prep_only_steps(
@@ -773,7 +827,25 @@ def test_rbfe_repr_shows_id_and_status_when_set() -> None:
     protein = Protein(name="p", id="prot-1", remote_path="testing/brd.pdb")
     ligand1 = Ligand.from_smiles("CCO", id="lig-1", remote_path="testing/lig1.sdf")
     ligand2 = Ligand.from_smiles("CCN", id="lig-2", remote_path="testing/lig2.sdf")
-    rbfe = RBFE(protein=protein, pairs=[(ligand1, ligand2)])
+    rbfe = RBFE(
+        protein=protein,
+        pairs=[
+            (
+                Pose(
+                    ligand_id="lig-1",
+                    id="pose-1",
+                    smiles="CCO",
+                    remote_path="testing/lig1.sdf",
+                ),
+                Pose(
+                    ligand_id="lig-2",
+                    id="pose-2",
+                    smiles="CCN",
+                    remote_path="testing/lig2.sdf",
+                ),
+            )
+        ],
+    )
     assert "id=" not in repr(rbfe)
     assert "status=" not in repr(rbfe)
 

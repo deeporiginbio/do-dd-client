@@ -18,14 +18,21 @@ We assume that you have
 If you have used docking on a number of ligands, you can find the best poses for each ligand using:
 
 ```{.python notest}
-poses = sim.docking.get_poses()
+poses = docking.get_poses()
 poses = poses.filter_top_poses()
 ```
 
-These poses can then be converted to ligands for legacy Complex workflows:
+Pass poses into SystemPrep / ABFE / RBFE (preferred):
 
 ```{.python notest}
-sim.ligands = poses.to_ligand_set()
+from deeporigin.drug_discovery import ABFE, SystemPrep
+
+pose = poses[0]
+sysprep = SystemPrep(protein=protein, pose=pose)
+prepared = sysprep.run()
+abfe = ABFE(prepared_system=prepared)
 ```
 
-and ABFE can be run on them as described [:material-page-previous: here](../tutorial/abfe.md)
+For the full ABFE walkthrough see [:material-page-previous: here](../tutorial/abfe.md).
+
+Legacy Complex workflows can still convert poses to ligands via `poses.to_ligand_set()`.

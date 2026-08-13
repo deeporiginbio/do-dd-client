@@ -8,6 +8,7 @@ import pytest
 
 from deeporigin.drug_discovery import BRD_DATA_DIR
 from deeporigin.drug_discovery.structures.ligand import Ligand
+from deeporigin.drug_discovery.structures.pose import Pose
 from deeporigin.drug_discovery.structures.prepared_system import PreparedSystem
 from deeporigin.drug_discovery.structures.protein import Protein
 from deeporigin.drug_discovery.system_prep import SystemPrep
@@ -56,8 +57,8 @@ def test_system_prep_get_results_falls_back_to_job_outputs(
         "retain_waters": False,
     }
     protein = Protein.from_file(BRD_DATA_DIR / "brd.pdb")
-    ligand = Ligand.from_smiles("CCO")
-    sysprep = SystemPrep(protein=protein, ligand=ligand, client=client)
+    pose = Pose(ligand_id="L", id="P", smiles="CCO")
+    sysprep = SystemPrep(protein=protein, pose=pose, client=client)
     sysprep.update_from_dto(
         _minimal_sysprep_dto(job_outputs={"system": system_payload})
     )
@@ -74,8 +75,8 @@ def test_system_prep_get_results_falls_back_to_job_outputs(
 def test_system_prep_get_results_requires_id(client: DeepOriginClient) -> None:
     """``get_results`` raises when ``id`` has not been set."""
     protein = Protein.from_file(BRD_DATA_DIR / "brd.pdb")
-    ligand = Ligand.from_smiles("CCO")
-    sysprep = SystemPrep(protein=protein, ligand=ligand, client=client)
+    pose = Pose(ligand_id="L", id="P", smiles="CCO")
+    sysprep = SystemPrep(protein=protein, pose=pose, client=client)
 
     with pytest.raises(ValueError, match="id is None"):
         sysprep.get_results()
@@ -86,8 +87,8 @@ def test_system_prep_get_results_raises_when_no_paths(
 ) -> None:
     """When both data platform and ``jobOutputs`` fail, raise sysprep message."""
     protein = Protein.from_file(BRD_DATA_DIR / "brd.pdb")
-    ligand = Ligand.from_smiles("CCO")
-    sysprep = SystemPrep(protein=protein, ligand=ligand, client=client)
+    pose = Pose(ligand_id="L", id="P", smiles="CCO")
+    sysprep = SystemPrep(protein=protein, pose=pose, client=client)
     sysprep.update_from_dto(_minimal_sysprep_dto(job_outputs={}))
 
     with pytest.raises(ValueError, match=SYSPREP_NO_OUTPUT_PATHS_MSG):
@@ -121,10 +122,13 @@ def test_sysprep_lv2(
 
     protein: Protein = request.getfixturevalue(protein_fixture)
     ligand: Ligand = request.getfixturevalue(ligand_fixture)
+    ligand.sync(client=client)
+    sdf = BRD_DATA_DIR / "brd-2.sdf"
+    pose = Pose.from_sdf(sdf, ligand=ligand, client=client)
 
     sysprep = SystemPrep(
         protein=protein,
-        ligand=ligand,
+        pose=pose,
         client=client,
         add_H_atoms=True,
         protonate_protein=True,
