@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any, ClassVar, Optional, Self
 
 from beartype import beartype
+import pandas as pd
 from rdkit import Chem
 
 from deeporigin.drug_discovery.structures.entity import Entity
@@ -35,6 +36,85 @@ _POSE_JSON_RESERVED: frozenset[str] = frozenset(
         "origin",
     }
 )
+
+
+def _strip_nonempty_str(value: Any) -> str | None:
+    """Return stripped string if ``value`` is a non-empty str, else None."""
+
+    if isinstance(value, str):
+        stripped = value.strip()
+        if stripped:
+            return stripped
+    return None
+
+
+def _path_points_to_existing_local_file(path: str) -> bool:
+    """Return True if ``path`` refers to an existing regular file on disk."""
+
+    try:
+        return Path(path).expanduser().is_file()
+    except (OSError, ValueError):
+        return False
+
+
+def _apply_file_path_to_paths(
+    *,
+    remote_path: str | None,
+    file_path: str,
+) -> tuple[str | None, str | None]:
+    """Set local and/or remote path from a ``file_path`` field (pose / API shape)."""
+
+    local_path: str | None = None
+    out_remote = remote_path
+    is_local_file = _path_points_to_existing_local_file(file_path)
+    if out_remote is None:
+        if is_local_file:
+            local_path = file_path
+        else:
+            out_remote = file_path
+    elif is_local_file:
+        local_path = file_path
+    return local_path, out_remote
+
+
+def _resolve_pose_entry_paths(
+    entry: dict[str, Any], idx: int
+) -> tuple[str | None, str | None]:
+    """Extract ``(local_path, remote_path)`` from a pose dict.
+
+    Args:
+        entry: Single pose dict (``file_path``, ``local_path``, and/or ``remote_path``).
+        idx: Index in the pose list (for error messages).
+
+    Returns:
+        At least one of ``local_path`` or ``remote_path`` is non-``None``.
+
+    Raises:
+        ValueError: If no usable path is present.
+    """
+
+    remote_path = _strip_nonempty_str(entry.get("remote_path"))
+    file_path = _strip_nonempty_str(entry.get("file_path"))
+    explicit_local = _strip_nonempty_str(entry.get("local_path"))
+
+    local_path: str | None = None
+
+    if file_path is not None:
+        local_path, remote_path = _apply_file_path_to_paths(
+            remote_path=remote_path,
+            file_path=file_path,
+        )
+    elif explicit_local is not None:
+        local_path = explicit_local
+
+    if local_path is None and remote_path is None:
+        raise ValueError(
+            f"Pose at index {idx} needs a valid 'file_path', 'local_path', or "
+            f"'remote_path' (got file_path={entry.get('file_path')!r}, "
+            f"remote_path={entry.get('remote_path')!r}): {entry}"
+        )
+
+    return local_path, remote_path
 
 
 def _optional_float(value: Any) -> float | None:
@@ -251,7 +331,7 @@ class Pose(Entity):
     ) -> Self:
         """Materialize one :class:`Pose` from a metadata dict."""
 
-        local_path, remote_path = LigandSet._resolve_pose_entry_paths(entry, idx)
+        local_path, remote_path = _resolve_pose_entry_paths(entry, idx)
         ligand_id = entry.get("ligand_id")
         if ligand_id is None or not str(ligand_id).strip():
             raise ValueError(
@@ -281,7 +361,7 @@ class Pose(Entity):
                 smiles = raw_smiles.strip()
 
         pose_id = entry.get("id")
-        proj = LigandSet._strip_nonempty_str(entry.get("project_id"))
+        proj = _strip_nonempty_str(entry.get("project_id"))
         if proj is None and client is not None:
             proj = getattr(client, "project_id", None)
 
@@ -299,12 +379,12 @@ class Pose(Entity):
             project_id=proj,
             smiles=smiles,
             name=str(name) if name is not None else None,
-            protein_id=LigandSet._strip_nonempty_str(entry.get("protein_id")),
-            compute_job_id=LigandSet._strip_nonempty_str(entry.get("compute_job_id")),
+            protein_id=_strip_nonempty_str(entry.get("protein_id")),
+            compute_job_id=_strip_nonempty_str(entry.get("compute_job_id")),
             pose_score=_optional_float(entry.get("pose_score")),
             binding_energy=_optional_float(entry.get("binding_energy")),
             best_pose=_optional_bool(entry.get("best_pose")),
-            origin=LigandSet._strip_nonempty_str(entry.get("origin")),
+            origin=_strip_nonempty_str(entry.get("origin")),
             props=props,
             _mol=mol,
         )
@@ -468,32 +548,94 @@ class Pose(Entity):
             pose.local_path = local_path
         return pose
 
+    def download(
+        self,
+        *,
+        lazy: bool = True,
+        client: DeepOriginClient | None = None,
+        sanitize: bool = True,
+        remove_hydrogens: bool = False,
+    ) -> str:
+        """Download the pose SDF and reload :attr:`mol` from disk when needed.
+
+        Args:
+            lazy: Reuse cached local files when True.
+            client: Optional platform client.
+            sanitize: Passed to :meth:`Ligand.from_sdf` when rehydrating.
+            remove_hydrogens: Passed to :meth:`Ligand.from_sdf` when rehydrating.
+
+        Returns:
+            Local file path.
+        """
+
+        prior_local = self.local_path
+        out = super().download(lazy=lazy, client=client)
+        if prior_local is None and self.local_path is not None:
+            path = Path(self.local_path)
+            if path.suffix.lower() == ".sdf" and path.is_file():
+                lig = Ligand.from_sdf(
+                    self.local_path,
+                    sanitize=sanitize,
+                    remove_hydrogens=remove_hydrogens,
+                )
+                self._mol = lig.mol
+                if self.smiles is None:
+                    self.smiles = lig.smiles or lig.canonical_smiles
+                if self.name in (None, ""):
+                    self.name = lig.name
+        return out
+
     def to_ligand(self) -> Ligand:
         """Convert this pose to a legacy pose-hydrated :class:`Ligand`.
 
         Prefer using :class:`Pose` directly; this exists for backward compatibility
-        with code paths that still expect :class:`Ligand` pose rows.
+        with code paths that still expect :class:`Ligand` pose rows (for example
+        molstar overlays).
         """
 
-        row: dict[str, Any] = {
-            "ligand_id": self.ligand_id,
-            "smiles": self.smiles,
-            "name": self.name,
-            "file_path": self.remote_path or self.local_path,
-            "local_path": self.local_path,
-            "remote_path": self.remote_path,
-            "protein_id": self.protein_id,
-            "project_id": self.project_id,
-            "compute_job_id": self.compute_job_id,
-            "pose_score": self.pose_score,
-            "binding_energy": self.binding_energy,
-            "best_pose": self.best_pose,
-            "origin": self.origin,
-        }
+        if self.local_path is not None and Path(self.local_path).is_file():
+            lig = Ligand.from_sdf(self.local_path)
+            if self.remote_path is not None:
+                lig.remote_path = self.remote_path
+        elif self.smiles:
+            lig = Ligand.from_smiles(smiles=self.smiles, name=self.name or "")
+            if self.remote_path is not None:
+                lig.remote_path = self.remote_path
+            elif self.local_path is not None:
+                lig.remote_path = self.local_path
+        else:
+            raise DeepOriginException(
+                title="Cannot convert Pose to Ligand",
+                message=(
+                    "Pose needs a local SDF or SMILES to build a Ligand. "
+                    "Call download() first when only remote_path is set."
+                ),
+            )
+
+        lig.id = self.ligand_id
+        if self.project_id is not None:
+            lig.project_id = self.project_id
         if self.id is not None:
-            row["id"] = self.id
-        row.update(self.props)
-        return LigandSet.from_json([row])[0]
+            lig.properties["pose_result_id"] = self.id
+            lig.properties["id"] = self.id
+        if self.pose_score is not None:
+            lig.properties["pose_score"] = self.pose_score
+        if self.binding_energy is not None:
+            lig.properties["Binding Energy"] = self.binding_energy
+            lig.properties["binding_energy"] = self.binding_energy
+        if self.best_pose is not None:
+            lig.properties["best_pose"] = self.best_pose
+        if self.protein_id is not None:
+            lig.properties["protein_id"] = self.protein_id
+        if self.compute_job_id is not None:
+            lig.properties["compute_job_id"] = self.compute_job_id
+        if self.origin is not None:
+            lig.properties["origin"] = self.origin
+        for key, val in self.props.items():
+            lig.properties[str(key)] = val
+        if self.name:
+            lig.name = self.name
+        return lig
 
 
 def _pose_row_from_registration_execution(dto: dict[str, Any]) -> dict[str, Any] | None:
@@ -671,3 +813,152 @@ class PoseSet:
         """Convert to a legacy :class:`LigandSet` of pose-hydrated ligands."""
 
         return LigandSet(ligands=[pose.to_ligand() for pose in self.poses])
+
+    def download(
+        self,
+        *,
+        client: Optional[DeepOriginClient] = None,
+        lazy: bool = True,
+        max_workers: int = 20,
+        skip_errors: bool = False,
+        sanitize: bool = True,
+        remove_hydrogens: bool = False,
+    ) -> None:
+        """Download platform SDF files for poses that lack a local path.
+
+        Args:
+            client: Optional platform client.
+            lazy: Reuse cached local files when True.
+            max_workers: Maximum concurrent downloads.
+            skip_errors: When False, raise on the first download failure.
+            sanitize: Passed to SDF rehydration after download.
+            remove_hydrogens: Passed to SDF rehydration after download.
+        """
+
+        pending = [
+            pose for pose in self.poses if pose.remote_path and pose.local_path is None
+        ]
+        if not pending:
+            return
+        if client is None:
+            client = DeepOriginClient()
+        remotes = list(
+            dict.fromkeys(rp for rp in (p.remote_path for p in pending) if rp)
+        )
+        paths_by_remote = client.files.download_many(
+            files=remotes,
+            lazy=lazy,
+            max_workers=max_workers,
+            skip_errors=skip_errors,
+        )
+        for pose in pending:
+            rp = pose.remote_path
+            if not rp:
+                continue
+            local_path = paths_by_remote.get(rp)
+            if local_path is None:
+                if skip_errors:
+                    continue
+                raise RuntimeError(
+                    f"download_many returned no path for remote_path={rp!r}"
+                )
+            try:
+                pose.local_path = local_path
+                path = Path(local_path)
+                if path.suffix.lower() == ".sdf" and path.is_file():
+                    lig = Ligand.from_sdf(
+                        local_path,
+                        sanitize=sanitize,
+                        remove_hydrogens=remove_hydrogens,
+                    )
+                    pose._mol = lig.mol
+                    if pose.smiles is None:
+                        pose.smiles = lig.smiles or lig.canonical_smiles
+                    if pose.name in (None, ""):
+                        pose.name = lig.name
+            except Exception:
+                if skip_errors:
+                    continue
+                raise
+
+    def to_dataframe(self) -> pd.DataFrame:
+        """Convert poses to a pandas DataFrame (via legacy ligand view)."""
+
+        if len(self.poses) == 0:
+            return pd.DataFrame()
+        return self.to_ligand_set().to_dataframe()
+
+    def show_df(self):
+        """Show poses in a dataframe with 2D visualizations."""
+
+        return self.to_ligand_set().show_df()
+
+    def to_sdf(self, output_path: str | Path | None = None) -> str:
+        """Write all poses with local structures to a multi-record SDF.
+
+        Args:
+            output_path: Destination path. When omitted, writes a temp file.
+
+        Returns:
+            Path to the written SDF.
+        """
+
+        return self.to_ligand_set().to_sdf(output_path)
+
+    def filter_top_poses(self, *, by_pose_score: bool = True) -> Self:
+        """Keep the best pose for each unique SMILES.
+
+        Groups by :attr:`Pose.smiles` and retains:
+        - maximum :attr:`Pose.pose_score` when ``by_pose_score`` is True, or
+        - minimum :attr:`Pose.binding_energy` otherwise.
+
+        Args:
+            by_pose_score: Select by pose score (True) or binding energy (False).
+
+        Returns:
+            A new :class:`PoseSet` with one pose per SMILES group.
+
+        Raises:
+            DeepOriginException: If a multi-pose group lacks the required score.
+        """
+
+        if not self.poses:
+            return type(self)(poses=[])
+
+        grouped: dict[str, list[Pose]] = {}
+        for pose in self.poses:
+            smiles = pose.smiles
+            if smiles is None:
+                continue
+            grouped.setdefault(smiles, []).append(pose)
+
+        best: list[Pose] = []
+        for poses in grouped.values():
+            if len(poses) == 1:
+                best.append(poses[0])
+                continue
+            if by_pose_score:
+                best.append(max(poses, key=lambda p: _require_pose_score(p)))
+            else:
+                best.append(min(poses, key=lambda p: _require_binding_energy(p)))
+        return type(self)(poses=best)
+
+
+def _require_pose_score(pose: Pose) -> float:
+    """Return pose_score or raise when missing/invalid."""
+
+    if pose.pose_score is None:
+        raise DeepOriginException(
+            f"Pose {pose.id or pose.name or 'unnamed'} missing pose_score"
+        )
+    return float(pose.pose_score)
+
+
+def _require_binding_energy(pose: Pose) -> float:
+    """Return binding_energy or raise when missing/invalid."""
+
+    if pose.binding_energy is None:
+        raise DeepOriginException(
+            f"Pose {pose.id or pose.name or 'unnamed'} missing binding_energy"
+        )
+    return float(pose.binding_energy)

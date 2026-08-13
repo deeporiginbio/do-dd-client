@@ -20,6 +20,7 @@ from deeporigin.drug_discovery.execution_mixins import (
 from deeporigin.drug_discovery.notebook_watch_mixin import NotebookWatchMixin
 from deeporigin.drug_discovery.structures.ligand import Ligand, LigandSet
 from deeporigin.drug_discovery.structures.pocket import Pocket
+from deeporigin.drug_discovery.structures.pose import Pose, PoseSet
 from deeporigin.drug_discovery.structures.protein import Protein
 from deeporigin.exceptions import DeepOriginException
 from deeporigin.platform.client import DeepOriginClient
@@ -297,7 +298,7 @@ class Docking(Execution, SyncExecutableMixin, AsyncExecutableMixin, NotebookWatc
         *,
         quote: bool = False,
         approve_amount: int | None = None,
-    ) -> LigandSet | None:
+    ) -> PoseSet | None:
         """Execute docking synchronously (blocking).
 
         Submits one synchronous tools execution and returns docked poses from the
@@ -314,7 +315,7 @@ class Docking(Execution, SyncExecutableMixin, AsyncExecutableMixin, NotebookWatc
             approve_amount: Spend cap forwarded to the platform as ``approveAmount``.
 
         Returns:
-            A ``LigandSet`` of docked poses, or ``None`` when the platform
+            A :class:`PoseSet` of docked poses, or ``None`` when the platform
             responds with ``Quoted`` status.
 
         Raises:
@@ -559,13 +560,12 @@ class Docking(Execution, SyncExecutableMixin, AsyncExecutableMixin, NotebookWatc
         dto: dict[str, Any] | None = None,
         *,
         all_poses: bool = False,
-    ) -> LigandSet:
+    ) -> PoseSet:
         """Load docked poses for this execution from the data platform or ``jobOutputs``.
 
-        Tries :meth:`~deeporigin.drug_discovery.structures.ligand.LigandSet.from_result`
-        first (fast metadata path, no SDF download). On failure, parses
-        ``jobOutputs.poses`` from ``dto``, or fetches the execution DTO via
-        ``client.executions.get`` when ``dto`` is omitted.
+        Tries result-explorer first (fast metadata path, no SDF download). On
+        failure, parses ``jobOutputs.poses`` from ``dto``, or fetches the
+        execution DTO via ``client.executions.get`` when ``dto`` is omitted.
 
         To convert the result to a DataFrame::
 
@@ -580,7 +580,7 @@ class Docking(Execution, SyncExecutableMixin, AsyncExecutableMixin, NotebookWatc
                 best pose per ligand.
 
         Returns:
-            A ``LigandSet`` of docked poses.
+            A :class:`PoseSet` of docked poses.
 
         Raises:
             ValueError: If :attr:`id` is unset.
@@ -617,15 +617,15 @@ class Docking(Execution, SyncExecutableMixin, AsyncExecutableMixin, NotebookWatc
             [ligand for ligand in self.ligands if ligand.id in missing_ids]
         )
 
-    def get_poses(self, *, all_poses: bool = False) -> LigandSet:
-        """Download pose SDFs from the platform and return a ``LigandSet``.
+    def get_poses(self, *, all_poses: bool = False) -> PoseSet:
+        """Download pose SDFs from the platform and return a :class:`PoseSet`.
 
         Args:
             all_poses: If True, download all poses for each ligand. If False (default),
                 download only the best pose per ligand.
 
         Returns:
-            A ``LigandSet`` of docked poses.
+            A :class:`PoseSet` of docked poses.
 
         Raises:
             ValueError: If no execution has been started.
@@ -639,7 +639,13 @@ class Docking(Execution, SyncExecutableMixin, AsyncExecutableMixin, NotebookWatc
         self,
         *,
         interactive: bool = False,
-        poses: Ligand | LigandSet | list[Ligand] | None = None,
+        poses: Ligand
+        | LigandSet
+        | Pose
+        | PoseSet
+        | list[Ligand]
+        | list[Pose]
+        | None = None,
         height: int = 620,
     ):
         """Visualize the protein with the docking search box in a Jupyter notebook.
@@ -660,7 +666,8 @@ class Docking(Execution, SyncExecutableMixin, AsyncExecutableMixin, NotebookWatc
         Args:
             interactive: When ``True``, enable box rotation readback via AnyWidget.
             poses: Optional docked pose(s) to overlay with the search box. Accepts a
-                single :class:`Ligand`, a :class:`LigandSet`, or a list of ligands.
+                :class:`Pose`, :class:`PoseSet`, :class:`Ligand`, :class:`LigandSet`,
+                or a list.
             height: Iframe height in pixels.
 
         Returns:

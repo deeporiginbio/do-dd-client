@@ -308,13 +308,13 @@ def registered_ligand_poses_for_id(client, ligand_id: str) -> PoseSet:
     return PoseSet.from_result(ligand_id=ligand_id, client=client, scored_only=False)
 
 
-def test_load_scored_poses_still_returns_ligand_set(
+def test_docking_get_results_returns_pose_set(
     client,
     registered_protein,
     unregistered_pocket,
     registered_ligand,
 ) -> None:
-    """Legacy LigandSet.from_result remains unchanged in Phase 2."""
+    """Docking.get_results returns PoseSet with distinct pose and ligand ids."""
     docking = Docking(
         protein=registered_protein,
         pocket=unregistered_pocket,
@@ -322,9 +322,95 @@ def test_load_scored_poses_still_returns_ligand_set(
         client=client,
     )
     docking.run()
-    legacy = LigandSet.from_result(execution_id=docking.id, client=client)
-    assert len(legacy) >= 1
-    assert isinstance(legacy.ligands[0], Ligand)
+    pose_set = PoseSet.from_result(execution_id=docking.id, client=client)
+    assert len(pose_set) >= 1
+    assert isinstance(pose_set[0], Pose)
+    assert pose_set[0].id is not None
+    assert pose_set[0].ligand_id is not None
+    assert pose_set[0].id != pose_set[0].ligand_id
+
+
+def test_pose_set_filter_top_poses() -> None:
+    """PoseSet.filter_top_poses keeps one pose per SMILES by score or energy."""
+    from deeporigin.exceptions import DeepOriginException
+
+    poses = PoseSet(
+        poses=[
+            Pose(
+                ligand_id="L1",
+                id="P1",
+                smiles="CCO",
+                remote_path="a.sdf",
+                pose_score=0.3,
+                binding_energy=-5.0,
+            ),
+            Pose(
+                ligand_id="L1",
+                id="P2",
+                smiles="CCO",
+                remote_path="b.sdf",
+                pose_score=0.9,
+                binding_energy=-7.0,
+            ),
+            Pose(
+                ligand_id="L2",
+                id="P3",
+                smiles="CCN",
+                remote_path="c.sdf",
+                pose_score=0.5,
+                binding_energy=-6.0,
+            ),
+        ]
+    )
+    by_score = poses.filter_top_poses(by_pose_score=True)
+    assert len(by_score) == 2
+    assert {p.id for p in by_score} == {"P2", "P3"}
+
+    by_energy = poses.filter_top_poses(by_pose_score=False)
+    assert len(by_energy) == 2
+    assert {p.id for p in by_energy} == {"P2", "P3"}
+
+    assert len(PoseSet(poses=[]).filter_top_poses()) == 0
+
+    missing = PoseSet(
+        poses=[
+            Pose(ligand_id="L", id="A", smiles="C", remote_path="a.sdf"),
+            Pose(ligand_id="L", id="B", smiles="C", remote_path="b.sdf"),
+        ]
+    )
+    with pytest.raises(DeepOriginException, match="missing pose_score"):
+        missing.filter_top_poses(by_pose_score=True)
+
+
+def test_pose_set_filter_top_poses_from_docked_sdf() -> None:
+    """filter_top_poses collapses multi-pose SDF fixtures to one pose per molecule."""
+    ligands = LigandSet.from_sdf("tests/fixtures/docked-poses.sdf")
+    assert len(ligands) == 16
+    poses = PoseSet(
+        poses=[
+            Pose(
+                ligand_id=f"L{i}",
+                id=f"P{i}",
+                smiles=str(
+                    lig.properties.get("SMILES")
+                    or lig.properties.get("initial_smiles")
+                    or lig.smiles
+                ),
+                local_path=lig.local_path,
+                pose_score=_optional_float(
+                    lig.properties.get("pose_score") or lig.properties.get("POSE SCORE")
+                ),
+                binding_energy=_optional_float(
+                    lig.properties.get("Binding Energy")
+                    or lig.properties.get("binding_energy")
+                ),
+                _mol=lig.mol,
+            )
+            for i, lig in enumerate(ligands)
+        ]
+    )
+    filtered = poses.filter_top_poses(by_pose_score=False)
+    assert len(filtered) == 1
 
 
 def test_ligand_get_poses_requires_id() -> None:

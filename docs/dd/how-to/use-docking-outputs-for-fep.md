@@ -22,10 +22,10 @@ poses = sim.docking.get_poses()
 poses = poses.filter_top_poses()
 ```
 
-These poses can then be used as ligands:
+These poses can then be converted to ligands for legacy Complex workflows:
 
 ```{.python notest}
-sim.ligands = poses
+sim.ligands = poses.to_ligand_set()
 ```
 
 and ABFE can be run on them as described [:material-page-previous: here](../tutorial/abfe.md)

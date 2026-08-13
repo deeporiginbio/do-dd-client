@@ -16,6 +16,7 @@ from deeporigin.drug_discovery.structures.ligand import (
     LigandSet,
     _is_scored_docking_pose_data,
 )
+from deeporigin.drug_discovery.structures.pose import Pose, PoseSet
 from deeporigin.exceptions import DeepOriginException
 from deeporigin.platform.constants import TOOL_KEYS_AND_VERSIONS
 from tests.conftest import check_tool_exists
@@ -567,7 +568,7 @@ def test_constrained_docking_run_with_reference_workflow(
     )
     ref_poses = ref_docking.run()
     assert ref_poses is not None and len(ref_poses) >= 1
-    reference_pose = ref_poses.ligands[0]
+    reference_pose = ref_poses[0].to_ligand()
     pose_result_id = reference_pose.properties.get("pose_result_id")
     if pose_result_id is None:
         pose_result_id = reference_pose.properties.get("id")
@@ -596,8 +597,13 @@ def test_constrained_docking_run_with_reference_workflow(
 
     poses = cd.run()
 
-    assert isinstance(poses, LigandSet)
+    assert isinstance(poses, PoseSet)
     assert len(poses) >= 1
+    for pose in poses:
+        assert isinstance(pose, Pose)
+        assert pose.id is not None
+        assert pose.ligand_id is not None
+        assert pose.id != pose.ligand_id
 
 
 def test_is_scored_docking_pose_data_excludes_reference_pose() -> None:
@@ -628,7 +634,7 @@ def test_is_scored_docking_pose_data_excludes_reference_pose() -> None:
 
 
 def test_from_result_skips_reference_pose_rows(client) -> None:
-    """from_result ignores constrained-docking reference_pose rows in Pose results."""
+    """PoseSet.from_result ignores constrained-docking reference_pose rows."""
     execution_id = "exec-with-reference-pose"
     client.results.get_poses = lambda **kwargs: {
         "data": [
@@ -657,11 +663,13 @@ def test_from_result_skips_reference_pose_rows(client) -> None:
         "meta": {},
     }
 
-    poses = LigandSet.from_result(execution_id=execution_id, client=client)
-
+    poses = PoseSet.from_result(
+        execution_id=execution_id, client=client, scored_only=True
+    )
     assert len(poses) == 1
-    assert poses.ligands[0].id == "query-ligand"
-    assert poses.ligands[0].remote_path == "tool-runs/job/pose.sdf"
+    assert poses[0].id == "pose-row"
+    assert poses[0].ligand_id == "query-ligand"
+    assert poses[0].remote_path == "tool-runs/job/pose.sdf"
 
 
 def test_load_docking_poses_from_execution_ignores_reference_pose(client) -> None:
@@ -701,7 +709,9 @@ def test_load_docking_poses_from_execution_ignores_reference_pose(client) -> Non
     )
 
     assert len(poses) == 1
-    assert poses.ligands[0].properties.get("pose_score") == 0.75
+    assert isinstance(poses, PoseSet)
+    assert poses[0].pose_score == 0.75
+    assert poses[0].ligand_id == "query-ligand"
 
 
 def test_load_docking_poses_from_execution_raises_when_empty(client) -> None:

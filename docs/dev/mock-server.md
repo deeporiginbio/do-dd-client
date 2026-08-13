@@ -135,7 +135,7 @@ Some fixtures (docking, pocket-finder, system-prep) were recorded with whatever 
 
 ### 4. Result-explorer injection
 
-In production, when a tool execution completes, a message-queue flow writes structured outputs (pockets, poses, system, …) into a **result-explorer** table. Client code later queries this table to retrieve results — for example, `LigandSet.from_result(protein_id=...)` calls `client.results.get_poses(protein_id=...)`, which searches the result-explorer.
+In production, when a tool execution completes, a message-queue flow writes structured outputs (pockets, poses, system, …) into a **result-explorer** table. Client code later queries this table to retrieve results — for example, `PoseSet.from_result(protein_id=...)` calls `client.results.get_poses(protein_id=...)`, which searches the result-explorer.
 
 The mock server emulates this with `_inject_result_explorer_records_from_outputs`. After a tool execution returns, it checks the `output_key_map`:
 
@@ -150,7 +150,7 @@ output_key_map = {
 
 Each entry maps a tool manifest key to the `jobOutputs` field that should be mirrored into the shared result-explorer store and the `result_type` to tag those records with. Tool-specific helpers (`_inject_docking_tool_execution_results`, `_inject_pocketfinder_tool_execution_results`, `_inject_sysprep_tool_execution_results`) load the same fixture shapes and call this generic injector.
 
-**When adding a new tool**, extend `output_key_map` and any tool-specific injectors in `routers/tools.py` so downstream queries (e.g., `Pocket.from_result`, `LigandSet.from_result`) can find the records.
+**When adding a new tool**, extend `output_key_map` and any tool-specific injectors in `routers/tools.py` so downstream queries (e.g., `Pocket.from_result`, `PoseSet.from_result`) can find the records.
 
 ### 5. Result-explorer queries
 
@@ -175,7 +175,7 @@ Here's the full flow for `test_docking_with_data_platform_lv2`:
           replaces protein_id/ligand_id, and pushes the "poses" rows into
           the result-explorer store
 
-4. LigandSet.from_result(protein_id=...)
+4. PoseSet.from_result(protein_id=...)
    → POST /data-platform/{org}/result-explorer/search
        filter: {protein_id: {eq: "<fresh ID>"}, tool_id: {in: [...]}}
    → _apply_eq_filters matches record["data"]["protein_id"]

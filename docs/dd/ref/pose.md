@@ -38,11 +38,11 @@ A **Pose** is a 3D ligand conformation stored in the platform pose result table
 (`result_type=pose`). It has its own platform **pose id** (`Pose.id`) and a
 parent **ligand id** (`Pose.ligand_id`) in the ligands table.
 
-Use :class:`Pose` / :class:`PoseSet` when you need pose-scoped identity. Docking
-outputs still return :class:`~deeporigin.drug_discovery.LigandSet` from
-:meth:`~deeporigin.drug_discovery.Docking.get_poses` until a later release; prefer
-:meth:`PoseSet.from_result` or :meth:`~deeporigin.drug_discovery.Ligand.get_poses`
-for new code.
+Use :class:`Pose` / :class:`PoseSet` when you need pose-scoped identity.
+:meth:`~deeporigin.drug_discovery.Docking.get_results` and
+:meth:`~deeporigin.drug_discovery.Docking.get_poses` return :class:`PoseSet`.
+You can also load poses with :meth:`PoseSet.from_result` or
+:meth:`~deeporigin.drug_discovery.Ligand.get_poses`.
 
 ### Register an external SDF
 

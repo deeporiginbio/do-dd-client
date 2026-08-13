@@ -211,7 +211,7 @@ When working with docking results, you often have multiple poses for the same mo
 
 ```{.python notest}
 
-# assuming poses comes from protein.dock() or Docking.run() / tool results (Complex.docking was removed)
+# assuming poses comes from Docking.get_poses() / Docking.run()
 
 # Filter to keep only the best pose per molecule (by binding energy)
 best_poses = poses.filter_top_poses()
@@ -222,7 +222,7 @@ best_poses = poses.filter_top_poses(by_pose_score=True)
 ```
 
 !!! note "Creates New Object"
-    The `filter_top_poses()` method creates a new `LigandSet` containing only the best pose for each unique molecule. The original LigandSet is not modified. By default, it selects poses by minimum binding energy, but you can use `by_pose_score=True` to select by maximum pose score instead.
+    The `filter_top_poses()` method creates a new `PoseSet` containing only the best pose for each unique molecule. The original set is not modified. By default, it selects poses by minimum binding energy, but you can use `by_pose_score=True` to select by maximum pose score instead.
 
 
 ## Visualization

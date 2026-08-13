@@ -13,6 +13,7 @@ from deeporigin.drug_discovery.docking import (
     _ligand_tool_input_row,
 )
 from deeporigin.drug_discovery.structures.ligand import Ligand, LigandSet
+from deeporigin.drug_discovery.structures.pose import Pose, PoseSet
 from deeporigin.exceptions import DeepOriginException
 from deeporigin.platform.constants import (
     TERMINAL_STATES,
@@ -473,11 +474,13 @@ def test_docking_run_lv2(
     )
     poses = docking.run()
 
-    assert isinstance(poses, LigandSet), "run() should return a LigandSet"
+    assert isinstance(poses, PoseSet), "run() should return a PoseSet"
     assert len(poses) >= 1, "Expected at least one pose"
     for pose in poses:
-        assert isinstance(pose, Ligand), "Each pose should be a Ligand"
-        assert pose.mol is not None, "Pose should have a loaded RDKit mol"
+        assert isinstance(pose, Pose), "Each pose should be a Pose"
+        assert pose.id is not None
+        assert pose.ligand_id is not None
+        assert pose.id != pose.ligand_id
         assert pose.smiles is not None, "Pose should have SMILES"
 
 
@@ -536,11 +539,14 @@ def test_docking_start_sync_get_results_lv3(
     )
 
     poses = docking.get_results()
-    assert poses is not None, "get_results() should return a LigandSet after Completed"
-    assert isinstance(poses, LigandSet), "get_results() should return a LigandSet"
+    assert poses is not None, "get_results() should return a PoseSet after Completed"
+    assert isinstance(poses, PoseSet), "get_results() should return a PoseSet"
     assert len(poses) >= 1, "Expected at least one pose"
     for pose in poses:
-        assert isinstance(pose, Ligand), "Each pose should be a Ligand"
+        assert isinstance(pose, Pose), "Each pose should be a Pose"
+        assert pose.id is not None
+        assert pose.ligand_id is not None
+        assert pose.id != pose.ligand_id
         assert pose.smiles is not None, "Pose should have SMILES"
 
     df = poses.to_dataframe()
@@ -551,6 +557,6 @@ def test_docking_start_sync_get_results_lv3(
     assert sdf_poses is not None, "get_poses() should return poses after Completed"
     assert len(sdf_poses) >= 1, "Expected at least one pose"
     for pose in sdf_poses:
-        assert isinstance(pose, Ligand), "Each pose should be a Ligand"
-        assert pose.mol is not None, "Pose should have a loaded RDKit mol"
+        assert isinstance(pose, Pose), "Each pose should be a Pose"
+        assert pose.local_path is not None
         assert pose.smiles is not None, "Pose should have SMILES"

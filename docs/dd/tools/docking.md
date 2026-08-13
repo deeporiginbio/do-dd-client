@@ -95,7 +95,7 @@ poses.to_sdf()
 
 ### Using functions
 
-Several ligands in a LigandSet can be docked by passing `ligands` to [`Docking`](../ref/docking.md), then [`Docking.start()`](../ref/docking.md) (async). Poll with [`sync()`](../ref/docking.md) or Jupyter helpers until the job completes, then call [`get_results()`](../ref/docking.md) to retrieve a `LigandSet` of poses.
+Several ligands in a LigandSet can be docked by passing `ligands` to [`Docking`](../ref/docking.md), then [`Docking.start()`](../ref/docking.md) (async). Poll with [`sync()`](../ref/docking.md) or Jupyter helpers until the job completes, then call [`get_results()`](../ref/docking.md) to retrieve a `PoseSet` of poses.
 
 ```{.python notest}
 docking = Docking(protein=protein, pocket=pocket, ligands=ligands)

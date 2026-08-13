@@ -34,6 +34,7 @@ from deeporigin.utils.env import _ensure_do_folder
 from .entity import Entity
 from .ligand import Ligand, LigandSet
 from .pocket import Pocket
+from .pose import Pose, PoseSet
 
 _PROTEIN_STRUCTURE_NOT_LOADED_MSG = "Protein structure is not loaded."
 
@@ -1355,7 +1356,7 @@ class Protein(Entity):
         pockets: Optional[list[Pocket]] = None,
         ligand: Optional[Ligand] = None,
         ligands: Optional[LigandSet | list[Ligand]] = None,
-        poses: Optional[LigandSet | list[Ligand]] = None,
+        poses: Optional[LigandSet | PoseSet | list[Ligand] | list[Pose]] = None,
     ):
         """Visualize the protein structure in a Jupyter notebook using Mol*.
 
@@ -1371,7 +1372,7 @@ class Protein(Entity):
             pockets: Optional pocket overlays (gaussian surfaces).
             ligand: Optional single ligand / docked pose to overlay.
             ligands: Optional ligand set (or list) to overlay as docked poses.
-            poses: Alias for ``ligands``.
+            poses: Alias for ``ligands``; also accepts :class:`PoseSet`.
 
         Raises:
             DeepOriginException: If both ``ligand`` and ``ligands``/``poses`` are set.
@@ -1400,10 +1401,17 @@ class Protein(Entity):
         if ligand is not None:
             pose_ligands = [ligand]
         elif ligands is not None:
-            if isinstance(ligands, LigandSet):
+            if isinstance(ligands, PoseSet):
+                pose_ligands = list(ligands.to_ligand_set().ligands)
+            elif isinstance(ligands, LigandSet):
                 pose_ligands = list(ligands.ligands)
             else:
-                pose_ligands = list(ligands)
+                pose_ligands = []
+                for item in ligands:
+                    if isinstance(item, Pose):
+                        pose_ligands.append(item.to_ligand())
+                    else:
+                        pose_ligands.append(item)
             if not pose_ligands:
                 raise ValueError("ligands/poses must be non-empty when provided")
 
