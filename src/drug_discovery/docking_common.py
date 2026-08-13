@@ -15,7 +15,7 @@ from deeporigin.drug_discovery.structures.ligand import (
     _ligand_smiles_map_from_tool_payload,
 )
 from deeporigin.drug_discovery.structures.pocket import Pocket
-from deeporigin.drug_discovery.structures.pose import PoseSet
+from deeporigin.drug_discovery.structures.pose import Pose, PoseSet
 from deeporigin.drug_discovery.structures.protein import Protein
 from deeporigin.exceptions import DeepOriginException
 from deeporigin.platform.client import DeepOriginClient
@@ -42,7 +42,7 @@ def resolve_docking_box_geometry(pocket: Pocket) -> tuple[list[float], list[floa
     return pocket_center, box_size
 
 
-def _pose_label_for_viewer(item: Ligand, index: int) -> str:
+def _pose_label_for_viewer(item: Ligand | Pose, index: int) -> str:
     """Pick a LigandManager label: name → SMILES → ligand-{i}."""
     name = getattr(item, "name", None)
     if name and name not in ("", "Unknown_Ligand"):
@@ -54,12 +54,15 @@ def _pose_label_for_viewer(item: Ligand, index: int) -> str:
 
 
 def normalize_pose_ligands(
-    poses: Ligand | LigandSet | list[Ligand],
+    poses: Ligand | LigandSet | Pose | PoseSet | list[Ligand] | list[Pose],
 ) -> list[Ligand]:
     """Normalize a poses argument into a flat list of ``Ligand`` objects.
 
+    :class:`Pose` / :class:`PoseSet` values are converted via
+    :meth:`Pose.to_ligand` for molstar overlays.
+
     Args:
-        poses: A single ligand, ligand set, or list of ligands.
+        poses: A single ligand/pose, set, or list.
 
     Returns:
         Flat list of ligands.
@@ -67,24 +70,33 @@ def normalize_pose_ligands(
     Raises:
         ValueError: If ``poses`` is empty after normalization.
     """
-    if isinstance(poses, Ligand):
+    if isinstance(poses, Pose):
+        pose_ligands = [poses.to_ligand()]
+    elif isinstance(poses, PoseSet):
+        pose_ligands = list(poses.to_ligand_set().ligands)
+    elif isinstance(poses, Ligand):
         pose_ligands = [poses]
     elif isinstance(poses, LigandSet):
         pose_ligands = list(poses.ligands)
     else:
-        pose_ligands = list(poses)
+        pose_ligands = []
+        for item in poses:
+            if isinstance(item, Pose):
+                pose_ligands.append(item.to_ligand())
+            else:
+                pose_ligands.append(item)
     if not pose_ligands:
         raise ValueError("poses must be non-empty")
     return pose_ligands
 
 
 def ligand_payloads_for_viewer(
-    poses: Ligand | LigandSet | list[Ligand],
+    poses: Ligand | LigandSet | Pose | PoseSet | list[Ligand] | list[Pose],
 ) -> list[dict[str, object]]:
     """Build per-ligand molstarLib payloads for docking visualizations.
 
     Args:
-        poses: A single ligand, ligand set, or list of ligands.
+        poses: A single ligand/pose, set, or list.
 
     Returns:
         List of dicts suitable for ``render_protein_with_poses_html`` and
@@ -388,7 +400,7 @@ def _pose_record_to_row(
     smiles_by_job: dict[str, dict[str, str]],
     execution_id: str | None,
 ) -> dict[str, Any]:
-    """Convert one result-explorer pose record to a ``LigandSet.from_json`` row."""
+    """Convert one result-explorer pose record to a PoseSet.from_json row."""
     data = rec.get("data")
     if not isinstance(data, dict):
         data = {}
@@ -412,7 +424,7 @@ def _pose_result_records_to_rows(
     client: DeepOriginClient,
     execution_id: str | None,
 ) -> list[dict[str, Any]]:
-    """Convert result-explorer pose records to ``LigandSet.from_json`` rows."""
+    """Convert result-explorer pose records to PoseSet.from_json rows."""
     job_ids = _collect_pose_job_ids(records, execution_id)
     smiles_by_job = _load_smiles_by_job(client, job_ids)
     rows: list[dict[str, Any]] = []
@@ -499,7 +511,7 @@ def load_scored_poses_from_result_explorer(
     client: DeepOriginClient,
     protein_id: str | None = None,
     best_pose: bool | None = None,
-) -> LigandSet:
+) -> PoseSet:
     """Load scored docking poses from result-explorer rows for one execution.
 
     Skips constrained-docking ``reference_pose`` metadata rows, which share the
@@ -512,19 +524,18 @@ def load_scored_poses_from_result_explorer(
         best_pose: When set, restrict to rows whose ``data.best_pose`` matches.
 
     Returns:
-        A ``LigandSet`` of docked poses.
+        A :class:`PoseSet` of docked poses.
 
     Raises:
         ValueError: If no scored pose rows match.
     """
-    pose_set = load_poses_from_result_explorer(
+    return load_poses_from_result_explorer(
         execution_id,
         client=client,
         protein_id=protein_id,
         best_pose=best_pose,
         scored_only=True,
     )
-    return pose_set.to_ligand_set()
 
 
 def load_docking_poses_from_execution(
@@ -533,7 +544,7 @@ def load_docking_poses_from_execution(
     client: DeepOriginClient,
     dto: dict[str, Any] | None = None,
     all_poses: bool = False,
-) -> LigandSet:
+) -> PoseSet:
     """Load docked poses from the data platform or execution ``jobOutputs``.
 
     Async workflow executions usually persist poses only in result-explorer, not
@@ -547,7 +558,7 @@ def load_docking_poses_from_execution(
             pose per ligand.
 
     Returns:
-        A ``LigandSet`` of docked poses.
+        A :class:`PoseSet` of docked poses.
 
     Raises:
         DeepOriginException: If no poses could be loaded.
@@ -578,10 +589,10 @@ def load_docking_poses_from_execution(
         rows = [dict(item) for item in raw if isinstance(item, dict)]
         for row in rows:
             _normalize_pose_row_smiles(row)
-        poses = LigandSet.from_json(rows, client=client)
+        poses = PoseSet.from_json(rows, client=client)
         if len(poses) == 0:
-            errors.append("jobOutputs.poses parsed to an empty LigandSet")
-            raise ValueError("jobOutputs.poses parsed to an empty LigandSet")
+            errors.append("jobOutputs.poses parsed to an empty PoseSet")
+            raise ValueError("jobOutputs.poses parsed to an empty PoseSet")
         return poses
     except Exception as exc:
         if str(exc) not in errors:
@@ -633,7 +644,7 @@ def load_reference_pose_from_execution(
     *,
     client: DeepOriginClient,
     dto: dict[str, Any] | None = None,
-) -> Ligand:
+) -> Pose:
     """Load the reference pose from a constrained docking execution.
 
     Args:
@@ -642,7 +653,7 @@ def load_reference_pose_from_execution(
         dto: Optional execution payload to avoid an extra GET.
 
     Returns:
-        The reference pose as a :class:`Ligand`.
+        The reference pose as a :class:`Pose`.
 
     Raises:
         DeepOriginException: If no reference pose could be loaded.
@@ -654,8 +665,7 @@ def load_reference_pose_from_execution(
         raw = jo.get("reference_pose")
         if isinstance(raw, dict):
             row = _enrich_reference_pose_row(raw, dto=dto)
-            pose_set = LigandSet.from_json([row], client=client)
-            return pose_set.ligands[0]
+            return Pose.from_json([row], client=client)[0]
 
     raise DeepOriginException(
         title="Could not load reference pose",

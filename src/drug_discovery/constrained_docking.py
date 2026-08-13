@@ -22,6 +22,7 @@ from deeporigin.drug_discovery.execution_mixins import (
 from deeporigin.drug_discovery.notebook_watch_mixin import NotebookWatchMixin
 from deeporigin.drug_discovery.structures.ligand import Ligand, LigandSet
 from deeporigin.drug_discovery.structures.pocket import Pocket
+from deeporigin.drug_discovery.structures.pose import Pose, PoseSet
 from deeporigin.drug_discovery.structures.protein import Protein
 from deeporigin.exceptions import DeepOriginException
 from deeporigin.platform.client import DeepOriginClient
@@ -230,6 +231,57 @@ def _parse_constrained_docking_user_inputs(
     )
 
 
+def _structure_input_smiles(entry: dict[str, Any]) -> str:
+    """Extract a non-empty SMILES string from a structure-input dict."""
+
+    smiles = (
+        entry.get("smiles")
+        or entry.get("canonical_smiles")
+        or entry.get("ligand_smiles")
+    )
+    if not isinstance(smiles, str) or not smiles.strip():
+        raise ValueError(
+            "Structure input has a remote SDF but no "
+            "smiles/canonical_smiles/ligand_smiles."
+        )
+    return smiles.strip()
+
+
+def _ligand_from_structure_input(
+    entry: dict[str, Any],
+    *,
+    client: DeepOriginClient | None = None,
+) -> Ligand:
+    """Hydrate a tool-input structure row (pose SDF + optional SMILES) as a Ligand.
+
+    Constrained-docking ``reference.pose`` inputs may omit ``ligand_id``; they are
+    still Ligand-shaped for tool submission / ``from_dto`` rehydration.
+    """
+    from deeporigin.drug_discovery.structures.pose import _resolve_pose_entry_paths
+
+    local_path, remote_path = _resolve_pose_entry_paths(dict(entry), 0)
+    if local_path is not None:
+        lig = Ligand.from_sdf(local_path)
+        if remote_path is not None:
+            lig.remote_path = remote_path
+    else:
+        if remote_path is None:
+            raise ValueError("Structure input resolved to no remote_path.")
+        lig = Ligand.from_smiles(
+            smiles=_structure_input_smiles(entry),
+            name=(entry.get("name") or "") or "",
+        )
+        lig.remote_path = remote_path
+
+    lid = entry.get("ligand_id") or entry.get("id")
+    if lid is not None:
+        lig.id = str(lid)
+    if entry.get("ligand_id") is not None and entry.get("id") is not None:
+        lig.properties["pose_result_id"] = str(entry["id"])
+        lig.properties["id"] = str(entry["id"])
+    return lig
+
+
 def _load_constrained_docking_entities(
     instance: ConstrainedDocking,
     *,
@@ -258,8 +310,8 @@ def _load_constrained_docking_entities(
             ligand_inputs=[ref_ligand_input],
         )
         fut_ref_pose = executor.submit(
-            LigandSet.from_json,
-            [ref_pose_input],
+            _ligand_from_structure_input,
+            ref_pose_input,
             client=instance.client,
         )
         fut_ligands = executor.submit(
@@ -280,7 +332,7 @@ def _load_constrained_docking_entities(
 
     instance._protein = fut_protein.result()
     instance._reference_ligand = fut_ref_ligand.result().ligands[0]
-    instance._reference_pose = fut_ref_pose.result().ligands[0]
+    instance._reference_pose = fut_ref_pose.result()
     instance._ligands = fut_ligands.result()
     if fut_pocket is not None:
         instance._pocket = fut_pocket.result()
@@ -609,7 +661,7 @@ class ConstrainedDocking(
         *,
         quote: bool = False,
         approve_amount: int | None = None,
-    ) -> LigandSet | None:
+    ) -> PoseSet | None:
         """Execute constrained docking synchronously (blocking).
 
         Args:
@@ -617,7 +669,7 @@ class ConstrainedDocking(
             approve_amount: Spend cap forwarded to the platform as ``approveAmount``.
 
         Returns:
-            A ``LigandSet`` of docked poses, or ``None`` when quoted.
+            A :class:`PoseSet` of docked poses, or ``None`` when quoted.
 
         Raises:
             DeepOriginException: If the execution does not succeed or poses
@@ -714,7 +766,7 @@ class ConstrainedDocking(
         dto: dict[str, Any] | None = None,
         *,
         all_poses: bool = False,
-    ) -> LigandSet:
+    ) -> PoseSet:
         """Load docked poses for this execution from the data platform or ``jobOutputs``."""
         return load_docking_poses_from_execution(
             self._ensure_id(),
@@ -727,14 +779,14 @@ class ConstrainedDocking(
     def get_reference_pose(
         self,
         dto: dict[str, Any] | None = None,
-    ) -> Ligand:
+    ) -> Pose:
         """Load the reference pose reported by this execution.
 
         Args:
             dto: Optional execution payload to avoid an extra GET.
 
         Returns:
-            The reference pose as a :class:`Ligand`.
+            The reference pose as a :class:`Pose`.
         """
         return load_reference_pose_from_execution(
             self._ensure_id(),
@@ -742,8 +794,8 @@ class ConstrainedDocking(
             dto=dto,
         )
 
-    def get_poses(self, *, all_poses: bool = False) -> LigandSet:
-        """Download pose SDFs from the platform and return a ``LigandSet``."""
+    def get_poses(self, *, all_poses: bool = False) -> PoseSet:
+        """Download pose SDFs from the platform and return a :class:`PoseSet`."""
         poses = self.get_results(all_poses=all_poses)
         poses.download(client=self.client, lazy=True)
         return poses
@@ -752,7 +804,13 @@ class ConstrainedDocking(
         self,
         *,
         interactive: bool = False,
-        poses: Ligand | LigandSet | list[Ligand] | None = None,
+        poses: Ligand
+        | LigandSet
+        | Pose
+        | PoseSet
+        | list[Ligand]
+        | list[Pose]
+        | None = None,
         height: int = 620,
     ):
         """Visualize the protein with the docking search box in a Jupyter notebook.
