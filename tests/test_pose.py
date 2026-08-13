@@ -537,3 +537,240 @@ def test_ligand_get_poses_requires_id() -> None:
     ligand = Ligand.from_smiles("CCO")
     with pytest.raises(ValueError, match="platform ligand id"):
         ligand.get_poses()
+
+
+def test_pose_path_helpers_edge_cases(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Cover rare path-resolution branches used by pose hydration."""
+    from unittest.mock import MagicMock
+
+    from deeporigin.drug_discovery.structures.pose import (
+        _apply_file_path_to_paths,
+        _path_points_to_existing_local_file,
+        _resolve_pose_entry_paths,
+    )
+
+    bad = MagicMock()
+    bad.expanduser.return_value.is_file.side_effect = OSError("boom")
+    with monkeypatch.context() as m:
+        m.setattr(
+            "deeporigin.drug_discovery.structures.pose.Path",
+            lambda *_a, **_k: bad,
+        )
+        assert _path_points_to_existing_local_file("x") is False
+
+    local = tmp_path / "pose.sdf"
+    local.write_text("dummy")
+    # Existing local file when remote_path is already set → local_path assigned.
+    got_local, got_remote = _apply_file_path_to_paths(
+        remote_path="entities/poses/p.sdf",
+        file_path=str(local),
+    )
+    assert got_local == str(local)
+    assert got_remote == "entities/poses/p.sdf"
+
+    # Explicit local_path without file_path.
+    lp, rp = _resolve_pose_entry_paths(
+        {"local_path": str(local), "ligand_id": "L1"},
+        0,
+    )
+    assert lp == str(local)
+    assert rp is None
+
+    with pytest.raises(ValueError, match="needs a valid"):
+        _resolve_pose_entry_paths({"ligand_id": "L1"}, 3)
+
+
+def test_pose_download_rehydrates_from_sdf(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Pose.download reloads mol when a remote pose first gains a local SDF."""
+    from deeporigin.drug_discovery.structures.entity import Entity
+
+    src = BRD_DATA_DIR / "brd-3.sdf"
+    local = tmp_path / "pose.sdf"
+    local.write_bytes(src.read_bytes())
+    pose = Pose(
+        ligand_id="L1",
+        id="P1",
+        remote_path="entities/poses/p1.sdf",
+        smiles=None,
+        name="",
+    )
+
+    def _fake_download(self, *, lazy: bool = True, client=None):
+        self.local_path = str(local)
+        return str(local)
+
+    monkeypatch.setattr(Entity, "download", _fake_download)
+    out = pose.download()
+    assert out == str(local)
+    assert pose.mol is not None
+    assert pose.smiles
+    assert pose.name
+
+
+def test_rehydrate_pose_early_returns(tmp_path: Path) -> None:
+    """_rehydrate_pose_from_local_sdf no-ops without a usable SDF path."""
+    from deeporigin.drug_discovery.structures.pose import _rehydrate_pose_from_local_sdf
+
+    bare = Pose(ligand_id="L1", remote_path="entities/poses/p.sdf")
+    _rehydrate_pose_from_local_sdf(bare)
+    assert bare.mol is None
+
+    non_sdf = tmp_path / "pose.pdb"
+    non_sdf.write_text("ATOM")
+    with_pdb = Pose(ligand_id="L1", local_path=str(non_sdf), smiles="CCO")
+    _rehydrate_pose_from_local_sdf(with_pdb)
+    assert with_pdb.smiles == "CCO"
+
+
+def test_pose_set_download_assigns_paths(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """PoseSet.download uses files.download_many and assigns local paths."""
+    from deeporigin.platform.client import DeepOriginClient
+
+    src = BRD_DATA_DIR / "brd-3.sdf"
+    local = tmp_path / "p.sdf"
+    local.write_bytes(src.read_bytes())
+    pose = Pose(
+        ligand_id="L1",
+        id="P1",
+        smiles="CCO",
+        remote_path="entities/poses/p1.sdf",
+    )
+    pose_set = PoseSet(poses=[pose])
+
+    client = DeepOriginClient.__new__(DeepOriginClient)
+
+    class _FakeFiles:
+        def download_many(self, **_kwargs):
+            return {"entities/poses/p1.sdf": str(local)}
+
+    client.files = _FakeFiles()  # type: ignore[assignment]
+    pose_set.download(client=client)
+    assert pose.local_path == str(local)
+    assert pose.mol is not None
+
+
+def test_assign_downloaded_pose_path_error_paths(tmp_path: Path) -> None:
+    """_assign_downloaded_pose_path honors skip_errors and missing map entries."""
+    from deeporigin.drug_discovery.structures.pose import _assign_downloaded_pose_path
+
+    pose = Pose(ligand_id="L1", remote_path="entities/poses/missing.sdf")
+    _assign_downloaded_pose_path(
+        pose,
+        paths_by_remote={},
+        skip_errors=True,
+        sanitize=True,
+        remove_hydrogens=False,
+    )
+    assert pose.local_path is None
+
+    with pytest.raises(RuntimeError, match="no path"):
+        _assign_downloaded_pose_path(
+            pose,
+            paths_by_remote={},
+            skip_errors=False,
+            sanitize=True,
+            remove_hydrogens=False,
+        )
+
+    # no remote → no-op
+    no_remote = Pose(ligand_id="L1", local_path=str(tmp_path / "x.sdf"))
+    _assign_downloaded_pose_path(
+        no_remote,
+        paths_by_remote={},
+        skip_errors=False,
+        sanitize=True,
+        remove_hydrogens=False,
+    )
+
+    # rehydrate failure with skip_errors
+    bad = Pose(ligand_id="L1", remote_path="entities/poses/bad.sdf")
+    bad_path = tmp_path / "bad.sdf"
+    bad_path.write_text("not an sdf")
+    _assign_downloaded_pose_path(
+        bad,
+        paths_by_remote={"entities/poses/bad.sdf": str(bad_path)},
+        skip_errors=True,
+        sanitize=True,
+        remove_hydrogens=False,
+    )
+
+
+def test_pose_set_show_df_to_sdf_and_filter_skips(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """show_df/to_sdf delegate; filter_top_poses skips missing SMILES."""
+    from deeporigin.drug_discovery.structures.pose import _require_binding_energy
+    from deeporigin.exceptions import DeepOriginException
+
+    pose = Pose(
+        ligand_id="L1",
+        id="P1",
+        smiles="CCO",
+        remote_path="entities/poses/p1.sdf",
+        pose_score=1.0,
+        binding_energy=-2.0,
+    )
+    no_smiles = Pose(
+        ligand_id="L2",
+        id="P2",
+        smiles=None,
+        remote_path="entities/poses/p2.sdf",
+        pose_score=9.0,
+    )
+    pose_set = PoseSet(poses=[pose, no_smiles])
+    filtered = pose_set.filter_top_poses()
+    assert len(filtered) == 1
+    assert filtered[0].id == "P1"
+
+    with pytest.raises(DeepOriginException, match="binding_energy"):
+        _require_binding_energy(Pose(ligand_id="L3", remote_path="x.sdf"))
+
+    monkeypatch.setattr(LigandSet, "show_df", lambda self: "shown")
+    monkeypatch.setattr(
+        LigandSet,
+        "to_sdf",
+        lambda self, output_path=None: str(tmp_path / "out.sdf"),
+    )
+    assert PoseSet(poses=[pose]).show_df() == "shown"
+    assert PoseSet(poses=[pose]).to_sdf(tmp_path / "out.sdf").endswith("out.sdf")
+
+
+def test_normalize_pose_ligands_accepts_ligand_list() -> None:
+    """List[Ligand] branch of normalize_pose_ligands is covered."""
+    from deeporigin.drug_discovery.docking_common import normalize_pose_ligands
+
+    lig = Ligand.from_smiles("CCO", name="ethanol")
+    out = normalize_pose_ligands([lig])
+    assert len(out) == 1
+    assert out[0] is lig
+
+
+def test_ligand_from_structure_input_local_with_remote_and_ids(
+    tmp_path: Path,
+) -> None:
+    """Local SDF + remote_path + dual ids set pose_result_id properties."""
+    from deeporigin.drug_discovery.constrained_docking import (
+        _ligand_from_structure_input,
+    )
+
+    src = BRD_DATA_DIR / "brd-2.sdf"
+    local = tmp_path / "ref.sdf"
+    local.write_bytes(src.read_bytes())
+    lig = _ligand_from_structure_input(
+        {
+            "file_path": str(local),
+            "remote_path": "entities/poses/ref.sdf",
+            "ligand_id": "Lref",
+            "id": "Pref",
+        }
+    )
+    assert lig.remote_path == "entities/poses/ref.sdf"
+    assert lig.id == "Lref"
+    assert lig.properties["pose_result_id"] == "Pref"
+    assert lig.properties["id"] == "Pref"

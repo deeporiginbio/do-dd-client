@@ -543,3 +543,39 @@ def test_from_remote_file_sets_remote_path_lv0(client: DeepOriginClient) -> None
     assert protein.remote_path == remote
     assert protein.local_path == local_pdb
     assert protein.structure is not None
+
+
+def test_protein_show_accepts_pose_set_and_pose_list(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Protein.show converts PoseSet / list[Pose] via to_ligand for molstar."""
+    from unittest.mock import patch
+
+    from deeporigin.drug_discovery.structures.pose import Pose, PoseSet
+
+    protein = Protein.from_file(BRD_DATA_DIR / "brd.pdb")
+    local = tmp_path / "pose.sdf"
+    local.write_bytes((BRD_DATA_DIR / "brd-3.sdf").read_bytes())
+    pose = Pose(
+        ligand_id="L1",
+        id="P1",
+        local_path=str(local),
+        remote_path="entities/poses/p1.sdf",
+        name="ethanol",
+    )
+
+    monkeypatch.setattr(
+        "deeporigin.utils.notebook.render_html",
+        lambda html: html,
+    )
+    with patch(
+        "deeporigin.viz.molstar_html.render_protein_with_poses_html",
+        return_value="<poses/>",
+    ) as render_poses:
+        out = protein.show(poses=PoseSet(poses=[pose]))
+        assert out == "<poses/>"
+        render_poses.assert_called_once()
+        out2 = protein.show(poses=[pose])
+        assert out2 == "<poses/>"
+        assert render_poses.call_count == 2
