@@ -14,6 +14,7 @@
         "reportMissingModuleSource": "none"
     },
     "python.defaultInterpreterPath": "${workspaceFolder}/.venv/bin/python",
+    "jupyter.defaultKernel": "do-dd-client",
     "python.analysis.extraPaths": [
         "${workspaceFolder}"
     ],
