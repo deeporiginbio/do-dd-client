@@ -38,6 +38,18 @@ _Avoid_: Aliasing `RBFEParams` to `ABFEParams`; duplicating binding/solvation bl
 Simulation-ready binding and solvation XML files (and metadata) produced by system prep.
 _Avoid_: "system" alone when meaning the prepared molecular system artifact
 
+**Protein Prep**:
+Platform tool `deeporigin.protein-prep` that cleans a caller-supplied protein
+structure (explicit keep/remove lists, loop modelling, protonation). CLI class
+`ProteinPrep` is async-only (`start()`, not `run()`).
+_Avoid_: SystemPrep / FEP assembly; quoting this tool (billing is skipped)
+
+**Prepared protein (CLI)**:
+In-memory :class:`~deeporigin.drug_discovery.structures.protein.Protein` returned
+by `ProteinPrep.get_results()`, whose structure is the cleaned PDB. Not a
+proteins-table row until the caller `sync()` or `update()`.
+_Avoid_: public `PreparedProtein` type; PreparedSystem
+
 **Workflow step**:
 A named stage in a combined workflow execution (`system-prep`, `abfe`, `rbfe`, `konnektor`).
 _Avoid_: `mode` for v5 workflow tools

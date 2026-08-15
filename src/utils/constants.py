@@ -104,6 +104,15 @@ SYSPREP_NO_OUTPUT_PATHS_MSG = (
 )
 """Used by ``SystemPrep.run`` / ``get_results`` when output paths are missing."""
 
+PROTEIN_PREP_PDB_ID_PATTERN = r"^[A-Za-z0-9]{4}$"
+"""JSON Schema pattern for Protein Prep ``pdb_id`` (loop-modelling templates)."""
+
+PROTEIN_PREP_NO_OUTPUT_PATHS_MSG = (
+    "Protein preparation did not return a prepared PDB path. "
+    "The tool execution may have failed or returned an unexpected format."
+)
+"""Used by ``ProteinPrep.get_results`` when the prepared PDB path is missing."""
+
 BOOTSTRAP_5_CSS_CDN_URL = (
     "https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css"
 )
