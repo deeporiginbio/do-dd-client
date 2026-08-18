@@ -121,6 +121,85 @@ def test_show_box_interactive_uses_comm_bridge(
     assert on_commit.__self__ is docking
 
 
+def test_show_box_interactive_forwards_session_rotation(
+    registered_protein,
+    unregistered_pocket,
+    registered_ligand,
+) -> None:
+    """interactive show_box hydrates HTML with session rotation used by run()."""
+    docking = Docking(
+        protein=registered_protein,
+        pocket=unregistered_pocket,
+        ligand=registered_ligand,
+    )
+    docking._rotation_deg = [0.0, 45.0, 0.0]
+    handle = IframeCommHandle(bridge_id="test-bridge")
+
+    with (
+        patch(
+            "deeporigin.utils.notebook.get_notebook_environment",
+            return_value="jupyter",
+        ),
+        patch(
+            "deeporigin.utils.iframe_comm_bridge.render_interactive_html_with_comm",
+            return_value=handle,
+        ) as mock_bridge,
+        patch(
+            "deeporigin.viz.molstar_html.render_interactive_docking_box_html",
+            return_value="<html></html>",
+        ) as mock_html,
+    ):
+        docking.show_box(interactive=True)
+        html_builder = mock_bridge.call_args.args[0]
+        html_builder("bridge-id")
+
+    assert mock_html.call_args.kwargs["rotation_used_by_run"] is True
+    assert mock_html.call_args.kwargs["rotation_deg"] == [0.0, 45.0, 0.0]
+
+
+def test_constrained_show_box_interactive_is_visualization_only(
+    registered_protein,
+    unregistered_pocket,
+) -> None:
+    """ConstrainedDocking interactive overlay is visualization-only."""
+    from tests.test_constrained_docking import _make_reference_pair
+
+    reference_ligand, reference_pose = _make_reference_pair()
+    reference_ligand.remote_path = "testing/brd-2.sdf"
+    reference_ligand.id = "brd-2"
+    reference_pose.remote_path = "testing/docked-pose.sdf"
+    reference_pose.id = "brd-2-pose"
+
+    constrained = ConstrainedDocking(
+        protein=registered_protein,
+        pocket=unregistered_pocket,
+        reference_ligand=reference_ligand,
+        reference_pose=reference_pose,
+        ligand=Ligand.from_smiles("CCO"),
+    )
+    handle = IframeCommHandle(bridge_id="test-bridge")
+
+    with (
+        patch(
+            "deeporigin.utils.notebook.get_notebook_environment",
+            return_value="jupyter",
+        ),
+        patch(
+            "deeporigin.utils.iframe_comm_bridge.render_interactive_html_with_comm",
+            return_value=handle,
+        ) as mock_bridge,
+        patch(
+            "deeporigin.viz.molstar_html.render_interactive_docking_box_html",
+            return_value="<html></html>",
+        ) as mock_html,
+    ):
+        constrained.show_box(interactive=True)
+        html_builder = mock_bridge.call_args.args[0]
+        html_builder("bridge-id")
+
+    assert mock_html.call_args.kwargs["rotation_used_by_run"] is False
+
+
 def test_show_box_interactive_rejects_pose_overlay(
     registered_protein,
     unregistered_pocket,
@@ -195,9 +274,8 @@ def test_render_interactive_html_with_comm_round_trips_commit() -> None:
 
 def test_render_interactive_docking_box_html_uses_get_docking_box(
     registered_protein,
-    unregistered_pocket,
 ) -> None:
-    """Interactive HTML uses molstar getDockingBox readback without prototype sliders."""
+    """Interactive HTML commits on molstar gesture-end without an Apply button."""
     from deeporigin.viz.molstar_html import render_interactive_docking_box_html
 
     protein_file = registered_protein._dump_state()
@@ -206,10 +284,39 @@ def test_render_interactive_docking_box_html_uses_get_docking_box(
         box_center=[0.0, 0.0, 0.0],
         box_size=[15.0, 15.0, 15.0],
         bridge_id="bridge-123",
+        rotation_deg=[0.0, 45.0, 0.0],
     )
     assert "getDockingBox" in html
+    assert "onDockingBoxChange" in html
+    assert "applyDockingBoxRotation" in html
+    assert "setRotation" in html
     assert "proto-rot-x" not in html
-    assert "Apply to notebook" in html
-    assert "Applying rotation_deg=" in html
+    assert "Apply to notebook" not in html
+    assert "do-box-apply" not in html
+    assert "Synced rotation_deg=" in html
+    assert "Visualization only" not in html
+    assert "do-box-hint" not in html
+    assert "Session rotation syncs" not in html
+    assert "rgba(20, 24, 32, 0.92)" not in html
+    assert "calc(100vh" not in html
     assert "deeporigin:docking-box-commit-ack" in html
     assert Path(protein_file).is_file()
+
+
+def test_render_interactive_docking_box_html_constrained_warns(
+    registered_protein,
+) -> None:
+    """Constrained overlay warns that run() ignores rotation."""
+    from deeporigin.viz.molstar_html import render_interactive_docking_box_html
+
+    protein_file = registered_protein._dump_state()
+    html = render_interactive_docking_box_html(
+        pdb_path=protein_file,
+        box_center=[0.0, 0.0, 0.0],
+        box_size=[15.0, 15.0, 15.0],
+        bridge_id="bridge-123",
+        rotation_used_by_run=False,
+    )
+    assert "Visualization only" in html
+    assert "ConstrainedDocking.run() ignores rotation" in html
+    assert "Apply to notebook" not in html

@@ -516,9 +516,10 @@ class ConstrainedDocking(
 
     @property
     def rotation_deg(self) -> list[float] | None:
-        """Committed box rotation from interactive :meth:`show_box` (visualization only).
+        """Session rotation from interactive :meth:`show_box` (visualization only).
 
-        Constrained docking :meth:`run` / :meth:`start` ignore rotation in v1.
+        Set on molstar gesture-end. Constrained docking :meth:`run` / :meth:`start`
+        ignore rotation in v1.
         """
         if self._rotation_deg is None:
             return None
@@ -816,14 +817,16 @@ class ConstrainedDocking(
         """Visualize the protein with the docking search box in a Jupyter notebook.
 
         When ``interactive=True``, molstar ``DockingBoxControls`` are available via
-        Settings. Click **Apply to notebook** to commit ``rotation_deg`` onto this
-        instance. Constrained docking :meth:`run` / :meth:`start` ignore rotation in v1.
+        Settings. Releasing a rotation control stores ``rotation_deg`` on this
+        instance (visualization only). Constrained docking :meth:`run` /
+        :meth:`start` ignore rotation in v1.
 
         When ``poses`` is provided, docked ligands are overlaid with the wireframe
         search box. Interactive mode does not support pose overlays in v1.
 
         Args:
             interactive: When ``True``, enable box rotation readback via AnyWidget.
+                Session rotation updates on molstar gesture-end (visualization only).
             poses: Optional docked pose(s) to overlay with the search box.
             height: Iframe height in pixels.
 
@@ -854,6 +857,7 @@ class ConstrainedDocking(
             interactive=interactive,
             on_commit=self._commit_docking_box,
             rotation_deg=self._rotation_deg,
+            rotation_used_by_run=False,
             poses=poses,
             height=height,
         )

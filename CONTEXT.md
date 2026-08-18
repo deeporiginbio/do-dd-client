@@ -193,8 +193,23 @@ Being replaced by the in-client `deeporigin.viz` HTML builder and hosted
 _Avoid_: `biosim_molstar` when referring to the pip package name (`deeporigin-molstar`)
 
 **Docking search box**:
-Axis-aligned wireframe of the docking tool's search extents, derived from
-pocket center and `box_size_{x,y,z}` (same geometry submitted with docking).
-Shown via `Docking.show_box()` / `ConstrainedDocking.show_box()`.
+Wireframe of the docking tool's search extents, derived from pocket center and
+`box_size_{x,y,z}` (same geometry submitted with docking). May be rotated in
+the notebook viewer; that orientation is **session rotation**, not a property
+of the pocket. Shown via `Docking.show_box()` / `ConstrainedDocking.show_box()`.
 _Avoid_: pocket box; docking pocket (when meaning pocket surfaces); conflating
-with `Protein.show(pockets=...)` gaussian surfaces
+with `Protein.show(pockets=...)` gaussian surfaces; treating the box as
+axis-aligned only
+
+**Session rotation**:
+Ephemeral Euler angles `[rx, ry, rz]` on a `Docking` or `ConstrainedDocking`
+instance, written by interactive `show_box` on molstar gesture-end. Not stored
+on `Pocket`. Free docking `run()` / `start()` forward it; ConstrainedDocking
+ignores it in v1. `None` when unset or identity.
+_Avoid_: Apply; pocket rotation; treating printed cell output as live
+
+**Box commit**:
+Kernel write of session rotation from a molstar gesture-end whose `rotationDeg`
+changed. Appearance-only molstar edits (color, size, visibility) are not box
+commits.
+_Avoid_: Apply to notebook; conflating with center/size edits

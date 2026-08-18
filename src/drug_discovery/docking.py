@@ -176,9 +176,9 @@ class Docking(Execution, SyncExecutableMixin, AsyncExecutableMixin, NotebookWatc
 
     @property
     def rotation_deg(self) -> list[float] | None:
-        """Committed box rotation ``[rx, ry, rz]`` from :meth:`show_box` (interactive).
+        """Session rotation ``[rx, ry, rz]`` from :meth:`show_box` (interactive).
 
-        Set when the user clicks Apply in an interactive box viewer. Ephemeral
+        Set on molstar gesture-end (slider release, drag end, reset). Ephemeral
         session state — not persisted on :attr:`pocket`. ``None`` until committed
         or when rotation is identity.
         """
@@ -655,9 +655,10 @@ class Docking(Execution, SyncExecutableMixin, AsyncExecutableMixin, NotebookWatc
         :meth:`run` and :meth:`start` submit to the docking tool).
 
         When ``interactive=True``, molstar ``DockingBoxControls`` are available via
-        Settings. Click **Apply to notebook** to commit ``rotation_deg`` onto this
+        Settings. Releasing a rotation control commits ``rotation_deg`` onto this
         :class:`Docking` instance for subsequent :meth:`run` / :meth:`start` calls.
-        Static mode applies a previously committed ``rotation_deg`` to the box mesh.
+        The overlay shows the last synced rotation. Static mode applies a previously
+        committed ``rotation_deg`` to the box mesh.
 
         When ``poses`` is provided, docked ligands are overlaid as well
         (``visualizeDockedLigands`` + ``renderBoundingBox``). Interactive mode does
@@ -665,6 +666,7 @@ class Docking(Execution, SyncExecutableMixin, AsyncExecutableMixin, NotebookWatc
 
         Args:
             interactive: When ``True``, enable box rotation readback via AnyWidget.
+                Session rotation updates on molstar gesture-end.
             poses: Optional docked pose(s) to overlay with the search box. Accepts a
                 :class:`Pose`, :class:`PoseSet`, :class:`Ligand`, :class:`LigandSet`,
                 or a list.
@@ -698,6 +700,7 @@ class Docking(Execution, SyncExecutableMixin, AsyncExecutableMixin, NotebookWatc
             interactive=interactive,
             on_commit=self._commit_docking_box,
             rotation_deg=self._rotation_deg,
+            rotation_used_by_run=True,
             poses=poses,
             height=height,
         )
