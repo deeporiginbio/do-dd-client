@@ -111,14 +111,15 @@ docking.show_box(poses=poses)
 ### Rotating the search box interactively
 
 In JupyterLab, pass `interactive=True` to rotate the search box with molstar's
-**Docking Box** controls (open **Settings** in the viewer). Click **Apply to
-notebook** to store the orientation on the `Docking` instance; subsequent
-`run()` or `start()` calls include `rotation_deg` in the pocket sent to the
-platform.
+**Docking Box** controls (open **Settings** in the viewer). Releasing a slider
+or ending a canvas drag stores the orientation on the `Docking` instance;
+subsequent `run()` or `start()` calls include `rotation_deg` in the pocket sent
+to the platform. The overlay shows the last synced rotation. Printed cell output
+does not update until you re-run the cell.
 
 ```{.python notest}
 handle = docking.show_box(interactive=True)
-docking.rotation_deg  # set after Apply — e.g. [0.0, 45.0, 0.0]
+docking.rotation_deg  # after a rotation gesture — e.g. [0.0, 45.0, 0.0]
 ```
 
 Interactive mode requires JupyterLab with the project kernel (`make jupyter`).
