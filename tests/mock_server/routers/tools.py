@@ -1336,6 +1336,7 @@ def create_tools_router(
             "deeporigin.constrained-docking": ("poses", "pose"),
             "deeporigin.import-dataset": ("poses", "pose"),
             "deeporigin.system-prep": ("system", "preparedsystem"),
+            "deeporigin.protein-prep": ("protein", "preparedprotein"),
             "deeporigin.draco": ("do_patent_molecules", "dopatentmolecule"),
         }
 
@@ -1557,6 +1558,44 @@ def create_tools_router(
                 system["ligand1_id"] = ligand1_id
             if ligand2_id is not None:
                 system["ligand2_id"] = ligand2_id
+        execution["jobOutputs"] = outputs
+        _inject_result_explorer_records_from_outputs(
+            tool_key=tkey,
+            tool_version=tool_version,
+            execution_id=eid,
+            job_outputs=outputs,
+        )
+
+    def _inject_protein_prep_tool_execution_results(
+        execution: dict[str, Any],
+    ) -> None:
+        """Mirror protein-prep fixture outputs into ``results`` for tool executions."""
+        eid = execution.get("executionId")
+        tool = execution.get("tool") or {}
+        tkey = tool.get("key")
+        tool_version = tool.get("version", "0.0.0")
+        if not eid or tkey != "deeporigin.protein-prep":
+            return
+        if any(r.get("compute_job_id") == eid for r in results):
+            return
+
+        fixture = copy.deepcopy(load_fixture("tool-runs/deeporigin.protein-prep/run"))
+        outputs = _legacy_outputs_to_job_outputs(fixture)
+        if not isinstance(outputs, dict):
+            return
+
+        user_inputs = execution.get("userInputs", {})
+        protein = (
+            user_inputs.get("protein", {}) if isinstance(user_inputs, dict) else {}
+        )
+        protein_id = protein.get("id") if isinstance(protein, dict) else None
+        pdb_id = user_inputs.get("pdb_id") if isinstance(user_inputs, dict) else None
+        protein_out = outputs.get("protein")
+        if isinstance(protein_out, dict):
+            if protein_id is not None:
+                protein_out["protein_id"] = protein_id
+            if pdb_id is not None:
+                protein_out["pdb_id"] = pdb_id
         execution["jobOutputs"] = outputs
         _inject_result_explorer_records_from_outputs(
             tool_key=tkey,
@@ -2048,6 +2087,17 @@ def create_tools_router(
             eid = execution["executionId"]
             executions[eid] = execution
             _inject_sysprep_tool_execution_results(execution)
+            return _normalize_execution(execution)
+        if tool_key == "deeporigin.protein-prep" and not quote_only:
+            execution = _create_blocking_run_dto(
+                org_key=org_key,
+                tool_key=tool_key,
+                tool_version=tool_version,
+                body=body,
+            )
+            eid = execution["executionId"]
+            executions[eid] = execution
+            _inject_protein_prep_tool_execution_results(execution)
             return _normalize_execution(execution)
         if tool_key == "deeporigin.konnektor":
             if quote_only:

@@ -134,6 +134,10 @@ TOOL_KEYS_AND_VERSIONS: dict[str, dict[str, str]] = {
         "tool_key": "deeporigin.system-prep",
         "tool_version": "1",
     },
+    "protein_prep": {
+        "tool_key": "deeporigin.protein-prep",
+        "tool_version": "latest",
+    },
     "patent": {
         "tool_key": "deeporigin.draco",
         "tool_version": "latest",

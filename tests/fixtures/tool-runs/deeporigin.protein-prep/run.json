@@ -1,0 +1,12 @@
+{
+  "jobOutputs": {
+    "protein": {
+      "force_field": "amber14",
+      "pdb_id": "1EBY",
+      "ph": 7.4,
+      "protein_id": "placeholder",
+      "protein_pdb_file_path": "testing/brd.pdb",
+      "protonate_protein": true
+    }
+  }
+}

@@ -1,9 +1,9 @@
 # Tools on Deep Origin
 
 Deep Origin tools are available through small Python classes that wrap platform
-executions. Each class represents one tool, such as [`PocketFinder`](../ref/pocket_finder.md)
-or [`Docking`](../ref/docking.md), and provides a consistent way to prepare
-inputs, estimate cost, submit work, and retrieve results.
+executions. Each class represents one tool, such as [`PocketFinder`](../ref/pocket_finder.md),
+[`ProteinPrep`](../ref/protein_prep.md), or [`Docking`](../ref/docking.md), and
+provides a consistent way to prepare inputs, submit work, and retrieve results.
 
 Some tools finish quickly and can be run synchronously. Others may run for
 longer and are better submitted asynchronously, so your notebook or script can
@@ -82,3 +82,5 @@ The commonly available methods are:
 
 Not every method is available on every tool. The tool-specific pages document
 the supported execution modes, inputs, outputs, and examples.
+[`ProteinPrep`](proteinprep.md) is async-only (`start()`, not `run()`) and does
+not produce a cost quote.
