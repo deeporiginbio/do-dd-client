@@ -8,10 +8,12 @@ from deeporigin.drug_discovery.fep_common import (
     ABFEParams,
     RBFEParams,
     _fep_params_from_inputs,
+    _ligand_tool_ref,
     _pose_tool_ref,
     _prepared_system_tool_ref,
     _simulation_blocks,
 )
+from deeporigin.drug_discovery.structures.ligand import Ligand
 from deeporigin.drug_discovery.structures.pose import Pose
 from deeporigin.drug_discovery.structures.prepared_system import PreparedSystem
 from deeporigin.exceptions import DeepOriginException
@@ -140,3 +142,25 @@ def test_pose_tool_ref_requires_platform_id() -> None:
     pose = Pose(ligand_id="lig-1", remote_path="testing/pose.sdf")
     with pytest.raises(DeepOriginException, match="platform id"):
         _pose_tool_ref(pose)
+
+
+def test_ligand_tool_ref_serializes_synced_ligand() -> None:
+    """_ligand_tool_ref emits remote file_path and optional platform id."""
+    ligand = Ligand.from_smiles("CCO", id="lig-1", remote_path="testing/lig.sdf")
+    assert _ligand_tool_ref(ligand) == {
+        "id": "lig-1",
+        "file_path": "testing/lig.sdf",
+    }
+
+
+def test_ligand_tool_ref_allows_missing_id() -> None:
+    """_ligand_tool_ref omits id when the ligand is file-only."""
+    ligand = Ligand.from_smiles("CCO", id=None, remote_path="testing/lig.sdf")
+    assert _ligand_tool_ref(ligand) == {"file_path": "testing/lig.sdf"}
+
+
+def test_ligand_tool_ref_requires_remote_path() -> None:
+    """_ligand_tool_ref rejects ligands that are not synced."""
+    ligand = Ligand.from_smiles("CCO", id="lig-1")
+    with pytest.raises(DeepOriginException, match="remote_path"):
+        _ligand_tool_ref(ligand)

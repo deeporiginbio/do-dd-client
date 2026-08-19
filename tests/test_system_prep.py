@@ -95,6 +95,29 @@ def test_system_prep_get_results_raises_when_no_paths(
         sysprep.get_results(_minimal_sysprep_dto(job_outputs={}))
 
 
+def test_system_prep_rbfe_mode_builds_pose2_payload(
+    client: DeepOriginClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """RBFE mode serializes both pose1 and pose2 in tool inputs."""
+    protein = Protein(name="p", id="prot-1", remote_path="testing/brd.pdb")
+    pose1 = Pose(ligand_id="lig-1", id="pose-1", remote_path="testing/l1.sdf")
+    pose2 = Pose(ligand_id="lig-2", id="pose-2", remote_path="testing/l2.sdf")
+    sysprep = SystemPrep(protein=protein, pose1=pose1, pose2=pose2, client=client)
+    text = repr(sysprep)
+    assert "pose2_id='pose-2'" in text
+    assert "is_rbfe=True" in text
+    monkeypatch.setattr(protein, "sync", lambda **_: None)
+    monkeypatch.setattr(pose1, "sync", lambda **_: None)
+    monkeypatch.setattr(pose2, "sync", lambda **_: None)
+    monkeypatch.setattr(protein, "ensure_remote_path", lambda **_: None)
+    monkeypatch.setattr(pose1, "ensure_remote_path", lambda **_: None)
+    monkeypatch.setattr(pose2, "ensure_remote_path", lambda **_: None)
+    inputs = sysprep.sync_inputs()
+    assert inputs["pose1"]["id"] == "pose-1"
+    assert inputs["pose2"]["id"] == "pose-2"
+
+
 @pytest.mark.parametrize(
     ("protein_fixture", "ligand_fixture"),
     [

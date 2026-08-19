@@ -12,6 +12,7 @@ from deeporigin.drug_discovery.abfe import (
     _abfe_default_name_from_entities,
     _abfe_results_dataframe,
     _ligand_display_label_from_entity,
+    _pose_from_tool_input,
     _protein_display_name_from_entity,
 )
 from deeporigin.drug_discovery.execution import Execution
@@ -190,6 +191,64 @@ def test_abfe_from_dto_rejects_system_prep_only_steps(
     }
     with pytest.raises(ValueError, match="Legacy steps=\\['system-prep'\\]"):
         ABFE.from_dto(fake_dto, client=client)
+
+
+def test_pose_from_tool_input_rehydrates_pose_ref() -> None:
+    """_pose_from_tool_input rebuilds Pose kwargs from stored execution inputs."""
+    pose = _pose_from_tool_input(
+        {
+            "id": "pose-1",
+            "file_path": "testing/l1.sdf",
+            "ligand_id": "lig-1",
+            "name": "pose a",
+            "smiles": "CCO",
+            "protein_id": "prot-1",
+        }
+    )
+    assert pose.id == "pose-1"
+    assert pose.remote_path == "testing/l1.sdf"
+    assert pose.ligand_id == "lig-1"
+    assert pose.name == "pose a"
+    assert pose.protein_id == "prot-1"
+
+
+def test_pose_from_tool_input_requires_id_or_file_path() -> None:
+    """_pose_from_tool_input rejects empty pose references."""
+    with pytest.raises(ValueError, match="id.*file_path"):
+        _pose_from_tool_input({})
+
+
+def test_abfe_from_dto_rehydrates_combined_pose(client: DeepOriginClient) -> None:
+    """from_dto restores protein + pose1 for combined system-prep + abfe runs."""
+    fake_dto = {
+        "executionId": "exec-combined",
+        "status": "Succeeded",
+        "tool": {
+            "key": TOOL_KEYS_AND_VERSIONS["abfe"]["tool_key"],
+            "version": "0.1.0",
+        },
+        "userInputs": {
+            "steps": ["system-prep", "abfe"],
+            "protein": {"id": "prot-1", "file_path": "testing/brd.pdb"},
+            "pose1": {
+                "id": "pose-1",
+                "file_path": "testing/lig1.sdf",
+                "ligand_id": "lig-1",
+            },
+            "add_H_atoms": True,
+            "retain_waters": False,
+            "padding": 1.25,
+        },
+    }
+    abfe = ABFE.from_dto(fake_dto, client=client)
+    assert abfe.steps == ["system-prep", "abfe"]
+    assert abfe.protein is not None
+    assert abfe.protein.id == "prot-1"
+    assert abfe.pose1 is not None
+    assert abfe.pose1.id == "pose-1"
+    assert abfe.pose1.remote_path == "testing/lig1.sdf"
+    assert abfe.add_h_atoms is True
+    assert abfe.padding == pytest.approx(1.25)
 
 
 def test_abfe_from_dto_rehydrates_prepared_system_lv0(client: DeepOriginClient):

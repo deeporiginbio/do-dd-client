@@ -13,6 +13,7 @@ from deeporigin.drug_discovery.rbfe import (
     RBFEParams,
     _cycle_closure_results_dataframe,
     _ligand_from_pair_input,
+    _pose_from_pair_input,
     _rbfe_results_dataframe,
 )
 from deeporigin.drug_discovery.structures.ligand import Ligand
@@ -36,6 +37,104 @@ def test_ligand_from_pair_input_uses_remote_file_without_id(
 
     assert ligand.remote_path == remote
     assert ligand.smiles == brd_ligand.smiles
+
+
+def test_pose_from_pair_input_rehydrates_pose_ref() -> None:
+    """_pose_from_pair_input rebuilds Pose kwargs from RBFE pair payloads."""
+    pose = _pose_from_pair_input(
+        {
+            "id": "pose-2",
+            "file_path": "testing/l2.sdf",
+            "ligand_id": "lig-2",
+            "name": "pose b",
+            "smiles": "CCN",
+            "protein_id": "prot-1",
+        }
+    )
+    assert pose.id == "pose-2"
+    assert pose.remote_path == "testing/l2.sdf"
+    assert pose.ligand_id == "lig-2"
+    assert pose.name == "pose b"
+
+
+def test_pose_from_pair_input_requires_id_or_file_path() -> None:
+    """_pose_from_pair_input rejects empty pose references."""
+    with pytest.raises(ValueError, match="id.*file_path"):
+        _pose_from_pair_input({})
+
+
+def test_rbfe_from_dto_rehydrates_pose_pairs(client: DeepOriginClient) -> None:
+    """from_dto restores explicit pose1/pose2 pairs for combined RBFE runs."""
+    fake_dto = {
+        "executionId": "exec-pairs",
+        "status": "Succeeded",
+        "tool": {
+            "key": TOOL_KEYS_AND_VERSIONS["rbfe"]["tool_key"],
+            "version": "0.1.0",
+        },
+        "userInputs": {
+            "steps": ["system-prep", "rbfe"],
+            "protein": {"id": "prot-1", "file_path": "testing/brd.pdb"},
+            "pairs": [
+                {
+                    "pose1": {
+                        "id": "pose-1",
+                        "file_path": "testing/l1.sdf",
+                        "ligand_id": "lig-1",
+                    },
+                    "pose2": {
+                        "id": "pose-2",
+                        "file_path": "testing/l2.sdf",
+                        "ligand_id": "lig-2",
+                    },
+                }
+            ],
+        },
+    }
+    rbfe = RBFE.from_dto(fake_dto, client=client)
+    assert len(rbfe.pairs) == 1
+    pose1, pose2 = rbfe.pairs[0]
+    assert pose1.id == "pose-1"
+    assert pose2.id == "pose-2"
+    assert pose1.remote_path == "testing/l1.sdf"
+    assert pose2.remote_path == "testing/l2.sdf"
+
+
+def test_rbfe_from_dto_rehydrates_legacy_ligand_pairs(
+    client: DeepOriginClient,
+    brd_ligand: Ligand,
+    brd_ligand_brd3: Ligand,
+) -> None:
+    """Legacy ligand1/ligand2 pair payloads are converted to Pose stubs."""
+    remote1 = brd_ligand.remote_path
+    remote2 = brd_ligand_brd3.remote_path
+    assert remote1 is not None and remote2 is not None
+    fake_dto = {
+        "executionId": "exec-legacy",
+        "status": "Succeeded",
+        "tool": {
+            "key": TOOL_KEYS_AND_VERSIONS["rbfe"]["tool_key"],
+            "version": "0.1.0",
+        },
+        "userInputs": {
+            "steps": ["system-prep", "rbfe"],
+            "protein": {"id": "prot-1", "file_path": "testing/brd.pdb"},
+            "pairs": [
+                {
+                    "ligand1": {"id": brd_ligand.id, "file_path": remote1},
+                    "ligand2": {"id": brd_ligand_brd3.id, "file_path": remote2},
+                }
+            ],
+        },
+    }
+    rbfe = RBFE.from_dto(fake_dto, client=client)
+    assert len(rbfe.pairs) == 1
+    pose1, pose2 = rbfe.pairs[0]
+    assert isinstance(pose1, Pose)
+    assert pose1.id == brd_ligand.id
+    assert pose1.remote_path == remote1
+    assert pose2.id == brd_ligand_brd3.id
+    assert pose2.remote_path == remote2
 
 
 def test_rbfe_ligands_build_params() -> None:

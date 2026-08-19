@@ -99,9 +99,6 @@ class SystemPrep(Execution, SyncExecutableMixin):
                 "but not both and not only one of pose1/pose2."
             )
 
-        if _rbfe_mode and (pose1 is None or pose2 is None):
-            raise ValueError("pose1 and pose2 are required in RBFE mode.")
-
         self.tool_version = tool_version
         self._protein = protein
         if _abfe_mode:
@@ -109,7 +106,6 @@ class SystemPrep(Execution, SyncExecutableMixin):
             self._pose1 = pose
             self._pose2 = None
         else:
-            assert pose1 is not None and pose2 is not None
             self._pose1 = pose1
             self._pose2 = pose2
         self._padding = padding
