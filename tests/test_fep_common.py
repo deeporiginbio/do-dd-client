@@ -8,10 +8,13 @@ from deeporigin.drug_discovery.fep_common import (
     ABFEParams,
     RBFEParams,
     _fep_params_from_inputs,
+    _pose_tool_ref,
     _prepared_system_tool_ref,
     _simulation_blocks,
 )
+from deeporigin.drug_discovery.structures.pose import Pose
 from deeporigin.drug_discovery.structures.prepared_system import PreparedSystem
+from deeporigin.exceptions import DeepOriginException
 
 
 def test_simulation_blocks_round_trip() -> None:
@@ -110,3 +113,30 @@ def test_prepared_system_tool_ref_includes_optional_ids() -> None:
     ref = _prepared_system_tool_ref(ps)
     assert ref["binding_xml_file_path"] == "testing/a.xml"
     assert ref["ligand2_id"] == "lig-2"
+
+
+def test_pose_tool_ref_serializes_synced_pose() -> None:
+    """_pose_tool_ref emits platform id and remote file_path."""
+    pose = Pose(
+        ligand_id="lig-1",
+        id="pose-1",
+        remote_path="testing/pose.sdf",
+    )
+    assert _pose_tool_ref(pose) == {
+        "id": "pose-1",
+        "file_path": "testing/pose.sdf",
+    }
+
+
+def test_pose_tool_ref_requires_remote_path() -> None:
+    """_pose_tool_ref rejects poses that are not synced."""
+    pose = Pose(ligand_id="lig-1", id="pose-1")
+    with pytest.raises(DeepOriginException, match="remote_path"):
+        _pose_tool_ref(pose)
+
+
+def test_pose_tool_ref_requires_platform_id() -> None:
+    """_pose_tool_ref rejects poses without a platform id."""
+    pose = Pose(ligand_id="lig-1", remote_path="testing/pose.sdf")
+    with pytest.raises(DeepOriginException, match="platform id"):
+        _pose_tool_ref(pose)

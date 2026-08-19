@@ -591,6 +591,25 @@ class Pose(Entity):
         return lig
 
 
+def _first_valid_mol_from_sdf(
+    path: str | Path,
+    *,
+    sanitize: bool = True,
+    remove_hydrogens: bool = False,
+) -> Chem.Mol | None:
+    """Return the first parseable molecule from an SDF (single- or multi-record)."""
+
+    supplier = Chem.SDMolSupplier(
+        str(path),
+        sanitize=sanitize,
+        removeHs=remove_hydrogens,
+    )
+    for candidate in supplier:
+        if candidate is not None:
+            return candidate
+    return None
+
+
 def _rehydrate_pose_from_local_sdf(
     pose: Pose,
     *,
@@ -604,11 +623,14 @@ def _rehydrate_pose_from_local_sdf(
     path = Path(pose.local_path)
     if path.suffix.lower() != ".sdf" or not path.is_file():
         return
-    lig = Ligand.from_sdf(
-        pose.local_path,
+    mol = _first_valid_mol_from_sdf(
+        path,
         sanitize=sanitize,
         remove_hydrogens=remove_hydrogens,
     )
+    if mol is None:
+        return
+    lig = Ligand.from_rdkit_mol(mol, properties=mol.GetPropsAsDict())
     pose._mol = lig.mol
     if pose.smiles is None:
         pose.smiles = lig.smiles or lig.canonical_smiles
