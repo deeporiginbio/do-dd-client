@@ -260,8 +260,6 @@ def test_rbfe_rbfe_steps_build_params() -> None:
 def test_rbfe_infers_combined_steps_from_protein_and_pairs() -> None:
     """protein + pairs without prep_only selects system-prep + RBFE steps."""
     protein = Protein(name="p", id="prot-1", remote_path="testing/brd.pdb")
-    ligand1 = Ligand.from_smiles("CCO", id="lig-1", remote_path="testing/lig1.sdf")
-    ligand2 = Ligand.from_smiles("CCN", id="lig-2", remote_path="testing/lig2.sdf")
     rbfe = RBFE(
         protein=protein,
         pairs=[
@@ -825,8 +823,6 @@ def test_rbfe_get_prepared_system_raises_when_empty(
 def test_rbfe_repr_shows_id_and_status_when_set() -> None:
     """__repr__ includes platform execution id and status when available."""
     protein = Protein(name="p", id="prot-1", remote_path="testing/brd.pdb")
-    ligand1 = Ligand.from_smiles("CCO", id="lig-1", remote_path="testing/lig1.sdf")
-    ligand2 = Ligand.from_smiles("CCN", id="lig-2", remote_path="testing/lig2.sdf")
     rbfe = RBFE(
         protein=protein,
         pairs=[

@@ -10,7 +10,7 @@ import os
 from pathlib import Path
 import random
 import tempfile
-from typing import Any, Callable, ClassVar, Literal, Optional, Self, cast
+from typing import Any, Callable, Literal, Optional, Self, cast
 import warnings
 
 from beartype import beartype
