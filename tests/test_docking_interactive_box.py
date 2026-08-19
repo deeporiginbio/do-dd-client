@@ -39,9 +39,9 @@ def test_docking_commit_docking_box_stores_geometry_and_rotation(
         }
     )
     assert docking.pocket.center == [0.0, 0.0, 0.0]
-    assert docking.pocket.box_size_x == 15.0
+    assert docking.pocket.box_size_x == pytest.approx(21.213, rel=1e-3)
     assert docking.pocket.box_size_y == 15.0
-    assert docking.pocket.box_size_z == 15.0
+    assert docking.pocket.box_size_z == pytest.approx(21.213, rel=1e-3)
     assert docking.rotation_deg == [0.0, 45.0, 0.0]
 
 
@@ -203,6 +203,56 @@ def test_constrained_docking_uses_parent_aabb_for_nested_box(
     assert params["pocket"]["box_size_x"] == 25.0
     assert params["pocket"]["box_size_y"] == 24.0
     assert params["pocket"]["box_size_z"] == 25.0
+    assert "rotation_deg" not in params["pocket"]
+
+
+def test_constrained_docking_uses_lab_aabb_after_rotated_commit(
+    client,
+    registered_protein,
+    registered_ligand,
+) -> None:
+    """Constrained docking reads lab-frame AABB after a rotated interactive commit."""
+    from tests.test_constrained_docking import _make_reference_pair
+
+    reference_ligand, reference_pose = _make_reference_pair()
+    reference_ligand.remote_path = "testing/brd-2.sdf"
+    reference_ligand.id = "brd-2"
+    reference_pose.remote_path = "testing/docked-pose.sdf"
+    reference_pose.id = "brd-2-pose"
+
+    test_a = Ligand.from_smiles("CCO")
+    test_a.id = "test-a"
+    test_b = Ligand.from_smiles("CC(C)O")
+    test_b.id = "test-b"
+
+    pocket = _pocket_with_box_fixture()
+    Docking(
+        protein=registered_protein,
+        pocket=pocket,
+        ligand=registered_ligand,
+        client=client,
+    )._commit_docking_box(
+        {
+            "center": [1.0, 2.0, 3.0],
+            "box_size": [22.0, 20.0, 21.0],
+            "rotation_deg": [0.0, 45.0, 0.0],
+        }
+    )
+
+    constrained = ConstrainedDocking(
+        protein=registered_protein,
+        pocket=pocket,
+        reference_ligand=reference_ligand,
+        reference_pose=reference_pose,
+        ligands=[test_a, test_b],
+        client=client,
+    )
+
+    params, _ = constrained._build_tool_inputs()
+
+    assert params["pocket"]["box_size_x"] == pytest.approx(30.405, rel=1e-3)
+    assert params["pocket"]["box_size_y"] == pytest.approx(20.0)
+    assert params["pocket"]["box_size_z"] == pytest.approx(30.405, rel=1e-3)
     assert "rotation_deg" not in params["pocket"]
 
 

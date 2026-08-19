@@ -133,6 +133,45 @@ def normalize_rotation_deg(value: object) -> list[float] | None:
     return rotation
 
 
+def _euler_rotation_matrix_deg(rotation_deg: list[float]) -> np.ndarray:
+    """Build lab←local rotation matrix (Rz·Ry·Rx) from Euler degrees.
+
+    Matches molstar ``DockingBoxManager.setRotation(rx, ry, rz)`` ordering.
+    """
+    rx, ry, rz = (math.radians(value) for value in rotation_deg)
+    cx, sx = math.cos(rx), math.sin(rx)
+    cy, sy = math.cos(ry), math.sin(ry)
+    cz, sz = math.cos(rz), math.sin(rz)
+    rot_x = np.array([[1.0, 0.0, 0.0], [0.0, cx, -sx], [0.0, sx, cx]])
+    rot_y = np.array([[cy, 0.0, sy], [0.0, 1.0, 0.0], [-sy, 0.0, cy]])
+    rot_z = np.array([[cz, -sz, 0.0], [sz, cz, 0.0], [0.0, 0.0, 1.0]])
+    return rot_z @ rot_y @ rot_x
+
+
+def lab_frame_aabb_extents_from_obb(
+    obb_extents: list[float],
+    rotation_deg: list[float],
+) -> list[float]:
+    """Derive lab-frame AABB extents from local OBB extents and rotation.
+
+    Committed viewer ``box_size`` values are local (OBB) extents. Parent
+    ``box_size_*`` fields store lab-frame AABB extents for tools that omit
+    ``rotation_deg`` (e.g. constrained docking v1).
+
+    Args:
+        obb_extents: Local box dimensions ``[sx, sy, sz]`` in Angstroms.
+        rotation_deg: Euler rotation ``[rx, ry, rz]`` in degrees (Rz·Ry·Rx).
+
+    Returns:
+        Lab-frame axis-aligned box dimensions along X/Y/Z.
+    """
+    if all(abs(angle) < 1e-9 for angle in rotation_deg):
+        return [float(value) for value in obb_extents]
+    rotation = _euler_rotation_matrix_deg(rotation_deg)
+    obb = np.asarray(obb_extents, dtype=float)
+    return (np.abs(rotation) @ obb).tolist()
+
+
 def apply_committed_docking_box_geometry(
     pocket: Pocket,
     center: list[float],
@@ -151,13 +190,15 @@ def apply_committed_docking_box_geometry(
         rotation_deg: Committed rotation triple (identity ``[0, 0, 0]`` allowed).
     """
     pocket.center = center
-    pocket.box_size_x = box_size[0]
-    pocket.box_size_y = box_size[1]
-    pocket.box_size_z = box_size[2]
+    obb_extents = [float(value) for value in box_size]
+    lab_extents = lab_frame_aabb_extents_from_obb(obb_extents, rotation_deg)
+    pocket.box_size_x = lab_extents[0]
+    pocket.box_size_y = lab_extents[1]
+    pocket.box_size_z = lab_extents[2]
     if pocket.box is not None:
-        pocket.box.box_size_x = float(box_size[0])
-        pocket.box.box_size_y = float(box_size[1])
-        pocket.box.box_size_z = float(box_size[2])
+        pocket.box.box_size_x = obb_extents[0]
+        pocket.box.box_size_y = obb_extents[1]
+        pocket.box.box_size_z = obb_extents[2]
         pocket.box.rotation_deg = list(rotation_deg)
 
 

@@ -4,6 +4,7 @@ import pytest
 
 from deeporigin.drug_discovery.docking_common import (
     build_pocket_tool_params,
+    lab_frame_aabb_extents_from_obb,
     normalize_rotation_deg,
     parse_docking_box_commit,
 )
@@ -75,3 +76,20 @@ def test_build_pocket_tool_params_omits_identity_rotation(
         rotation_deg=[0.0, 0.0, 0.0],
     )
     assert "rotation_deg" not in params
+
+
+def test_lab_frame_aabb_extents_from_obb_y_rotation() -> None:
+    """45° Y rotation expands lab-frame X/Z AABB from local OBB extents."""
+    aabb = lab_frame_aabb_extents_from_obb([22.0, 20.0, 21.0], [0.0, 45.0, 0.0])
+    assert aabb[0] == pytest.approx(30.405, rel=1e-3)
+    assert aabb[1] == pytest.approx(20.0)
+    assert aabb[2] == pytest.approx(30.405, rel=1e-3)
+
+
+def test_lab_frame_aabb_extents_identity_is_unchanged() -> None:
+    """Identity rotation leaves OBB extents unchanged in lab frame."""
+    assert lab_frame_aabb_extents_from_obb([10.0, 11.0, 12.0], [0.0, 0.0, 0.0]) == [
+        10.0,
+        11.0,
+        12.0,
+    ]
