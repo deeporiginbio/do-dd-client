@@ -133,19 +133,51 @@ def normalize_rotation_deg(value: object) -> list[float] | None:
     return rotation
 
 
+def apply_committed_docking_box_geometry(
+    pocket: Pocket,
+    center: list[float],
+    box_size: list[float],
+    rotation_deg: list[float],
+) -> None:
+    """Write committed interactive box geometry onto pocket fields.
+
+    Updates parent ``box_size_*`` and, when present, nested ``pocket.box`` so
+    subsequent resolution sees the committed extents and rotation.
+
+    Args:
+        pocket: Binding pocket to update.
+        center: Committed box center in Angstroms.
+        box_size: Committed half-extents per axis in Angstroms.
+        rotation_deg: Committed rotation triple (identity ``[0, 0, 0]`` allowed).
+    """
+    pocket.center = center
+    pocket.box_size_x = box_size[0]
+    pocket.box_size_y = box_size[1]
+    pocket.box_size_z = box_size[2]
+    if pocket.box is not None:
+        pocket.box.box_size_x = float(box_size[0])
+        pocket.box.box_size_y = float(box_size[1])
+        pocket.box.box_size_z = float(box_size[2])
+        pocket.box.rotation_deg = list(rotation_deg)
+
+
 def resolve_pocket_docking_box(
     pocket: Pocket,
+    *,
+    use_inferred_obb: bool = True,
 ) -> tuple[list[float], list[float], list[float] | None]:
     """Resolve pocket center, box extents, and inferred rotation for docking.
 
-    When ``pocket.box`` is present (pocket-finder PCA OBB output), sizes and
-    inferred rotation come from that nested object. Legacy pockets without
-    ``box`` use parent ``box_size_*`` with no inferred rotation.
+    When ``pocket.box`` is present (pocket-finder PCA OBB output) and
+    ``use_inferred_obb`` is true, sizes and inferred rotation come from that
+    nested object. Otherwise parent ``box_size_*`` are used (lab-frame AABB).
 
     Box sizes default to ``2 * cbrt(volume)`` per axis when not set on the pocket.
 
     Args:
         pocket: Binding pocket defining the search box.
+        use_inferred_obb: When false, always use parent ``box_size_*`` even if
+            ``pocket.box`` is present. Use for tools that omit ``rotation_deg``.
 
     Returns:
         A tuple of (pocket_center, box_size, inferred_rotation_deg) where
@@ -155,7 +187,7 @@ def resolve_pocket_docking_box(
     default_box = float(2 * np.cbrt(pocket.volume or 0))
     pocket_center = pocket.get_center().tolist()
 
-    if pocket.box is not None:
+    if pocket.box is not None and use_inferred_obb:
         box = pocket.box
         box_size = [
             float(box.box_size_x),
@@ -169,7 +201,10 @@ def resolve_pocket_docking_box(
     box_size_y = pocket.box_size_y if pocket.box_size_y is not None else default_box
     box_size_z = pocket.box_size_z if pocket.box_size_z is not None else default_box
     box_size = [float(box_size_x), float(box_size_y), float(box_size_z)]
-    return pocket_center, box_size, None
+    inferred = None
+    if pocket.box is not None:
+        inferred = normalize_rotation_deg(pocket.box.rotation_deg)
+    return pocket_center, box_size, inferred
 
 
 def effective_docking_rotation_deg(
@@ -196,20 +231,30 @@ def effective_docking_rotation_deg(
     return None
 
 
-def resolve_docking_box_geometry(pocket: Pocket) -> tuple[list[float], list[float]]:
+def resolve_docking_box_geometry(
+    pocket: Pocket,
+    *,
+    use_inferred_obb: bool = True,
+) -> tuple[list[float], list[float]]:
     """Resolve pocket center and box extents for docking tool inputs.
 
     Box sizes default to ``2 * cbrt(volume)`` per axis when not set on the pocket.
-    When ``pocket.box`` is present, OBB sizes from that object are preferred.
+    When ``pocket.box`` is present and ``use_inferred_obb`` is true, OBB sizes
+    from that object are preferred.
 
     Args:
         pocket: Binding pocket defining the search box.
+        use_inferred_obb: When false, use parent lab-frame ``box_size_*`` even if
+            ``pocket.box`` is present. Required when ``rotation_deg`` is omitted.
 
     Returns:
         A tuple of (pocket_center, box_size) where each is a length-3 list of
         floats in Angstroms.
     """
-    pocket_center, box_size, _ = resolve_pocket_docking_box(pocket)
+    pocket_center, box_size, _ = resolve_pocket_docking_box(
+        pocket,
+        use_inferred_obb=use_inferred_obb,
+    )
     return pocket_center, box_size
 
 

@@ -622,7 +622,10 @@ class ConstrainedDocking(
     ) -> tuple[dict[str, Any], dict[str, str]]:
         """Build params and metadata for ``client.executions.create``."""
         to_dock = self.ligands if ligand_set is None else ligand_set
-        pocket_center, box_size = resolve_docking_box_geometry(self.pocket)
+        pocket_center, box_size = resolve_docking_box_geometry(
+            self.pocket,
+            use_inferred_obb=False,
+        )
         metadata = build_docking_metadata(self.protein)
         pocket_params = build_pocket_tool_params(self.pocket, pocket_center, box_size)
 

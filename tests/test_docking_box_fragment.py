@@ -74,3 +74,25 @@ def test_effective_docking_rotation_deg_uses_inferred_when_session_unset() -> No
 def test_effective_docking_rotation_deg_none_when_both_absent() -> None:
     """No rotation when neither session nor inferred orientation is available."""
     assert effective_docking_rotation_deg(session=None, inferred=None) is None
+
+
+def test_effective_docking_rotation_deg_identity_session_overrides_inferred() -> None:
+    """Explicit identity session rotation suppresses pocket-finder inferred angle."""
+    assert effective_docking_rotation_deg(
+        session=[0.0, 0.0, 0.0],
+        inferred=[5.0, 10.0, 15.0],
+    ) == [0.0, 0.0, 0.0]
+
+
+def test_resolve_pocket_docking_box_parent_aabb_when_obb_disabled() -> None:
+    """Parent lab-frame sizes apply when inferred OBB resolution is disabled."""
+    pocket = Pocket.from_json([_POCKET_WITH_BOX])[0]
+
+    center, box_size, inferred = resolve_pocket_docking_box(
+        pocket,
+        use_inferred_obb=False,
+    )
+
+    assert center == pytest.approx([1.0, 2.0, 3.0])
+    assert box_size == pytest.approx([25.0, 24.0, 25.0])
+    assert inferred == pytest.approx([5.0, 10.0, 15.0])

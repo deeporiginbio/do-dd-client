@@ -191,16 +191,19 @@ class Docking(Execution, SyncExecutableMixin, AsyncExecutableMixin, NotebookWatc
     def _commit_docking_box(self, payload: dict[str, Any]) -> None:
         """Store committed docking-box geometry from the interactive viewer."""
         from deeporigin.drug_discovery.docking_common import (
-            normalize_rotation_deg,
+            apply_committed_docking_box_geometry,
             parse_docking_box_commit,
         )
 
         center, box_size, rotation_deg = parse_docking_box_commit(payload)
-        self.pocket.center = center
-        self.pocket.box_size_x = box_size[0]
-        self.pocket.box_size_y = box_size[1]
-        self.pocket.box_size_z = box_size[2]
-        self._rotation_deg = normalize_rotation_deg(rotation_deg)
+        apply_committed_docking_box_geometry(
+            self.pocket,
+            center,
+            box_size,
+            rotation_deg,
+        )
+        # Preserve explicit identity ([0, 0, 0]) so it overrides inferred rotation.
+        self._rotation_deg = list(rotation_deg)
 
     @property
     def batch_size(self) -> int:
