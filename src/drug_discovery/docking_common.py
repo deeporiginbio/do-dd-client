@@ -233,8 +233,8 @@ def show_docking_box_in_notebook(
         protein: Target protein (structure downloaded locally when needed).
         pocket: Binding pocket defining the search box geometry.
         client: Optional API client for protein download.
-        interactive: When ``True``, show molstar rotation controls. Gesture-end
-            commits box orientation back to Python via AnyWidget.
+        interactive: When ``True``, show molstar box controls. Gesture-end
+            commits box geometry and rotation back to Python via AnyWidget.
         on_commit: Called with the committed payload when ``interactive=True``.
         rotation_deg: Optional session rotation to hydrate (interactive) or
             apply (static).

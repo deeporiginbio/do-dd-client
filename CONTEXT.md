@@ -209,7 +209,8 @@ ignores it in v1. `None` when unset or identity.
 _Avoid_: Apply; pocket rotation; treating printed cell output as live
 
 **Box commit**:
-Kernel write of session rotation from a molstar gesture-end whose `rotationDeg`
-changed. Appearance-only molstar edits (color, size, visibility) are not box
-commits.
-_Avoid_: Apply to notebook; conflating with center/size edits
+Kernel write of docking search-box geometry from a molstar gesture-end. Commits
+updated `center` and `box_size` onto `Pocket`, plus `rotationDeg` as session
+rotation on the `Docking` instance. Appearance-only molstar edits (color,
+visibility) are not box commits.
+_Avoid_: Apply to notebook; treating resize/recenter as visualization-only edits
