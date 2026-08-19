@@ -18,12 +18,12 @@ from deeporigin.utils.iframe_comm_bridge import (
 )
 
 
-def test_docking_commit_docking_box_stores_rotation(
+def test_docking_commit_docking_box_stores_geometry_and_rotation(
     registered_protein,
     unregistered_pocket,
     registered_ligand,
 ) -> None:
-    """_commit_docking_box stores normalized rotation on the Docking instance."""
+    """_commit_docking_box stores committed geometry and normalized rotation."""
     docking = Docking(
         protein=registered_protein,
         pocket=unregistered_pocket,
@@ -36,24 +36,38 @@ def test_docking_commit_docking_box_stores_rotation(
             "rotation_deg": [0.0, 45.0, 0.0],
         }
     )
+    assert docking.pocket.center == [0.0, 0.0, 0.0]
+    assert docking.pocket.box_size_x == 15.0
+    assert docking.pocket.box_size_y == 15.0
+    assert docking.pocket.box_size_z == 15.0
     assert docking.rotation_deg == [0.0, 45.0, 0.0]
 
 
-def test_docking_tool_inputs_forward_rotation_deg(
+def test_docking_tool_inputs_forward_committed_geometry_and_rotation(
     client,
     registered_protein,
     unregistered_pocket,
     registered_ligand,
 ) -> None:
-    """_build_tool_inputs includes rotation_deg after interactive commit."""
+    """_build_tool_inputs includes committed geometry and rotation."""
     docking = Docking(
         protein=registered_protein,
         pocket=unregistered_pocket,
         ligand=registered_ligand,
         client=client,
     )
-    docking._rotation_deg = [0.0, 30.0, 0.0]
+    docking._commit_docking_box(
+        {
+            "center": [1.0, 2.0, 3.0],
+            "box_size": [16.0, 18.0, 20.0],
+            "rotation_deg": [0.0, 30.0, 0.0],
+        }
+    )
     params, _ = docking._build_tool_inputs()
+    assert params["pocket"]["center"] == [1.0, 2.0, 3.0]
+    assert params["pocket"]["box_size_x"] == 16.0
+    assert params["pocket"]["box_size_y"] == 18.0
+    assert params["pocket"]["box_size_z"] == 20.0
     assert params["pocket"]["rotation_deg"] == [0.0, 30.0, 0.0]
 
 
@@ -275,7 +289,7 @@ def test_render_interactive_html_with_comm_round_trips_commit() -> None:
 def test_render_interactive_docking_box_html_uses_get_docking_box(
     registered_protein,
 ) -> None:
-    """Interactive HTML commits on molstar gesture-end without an Apply button."""
+    """Interactive HTML commits geometry on molstar gesture-end."""
     from deeporigin.viz.molstar_html import render_interactive_docking_box_html
 
     protein_file = registered_protein._dump_state()
@@ -293,7 +307,8 @@ def test_render_interactive_docking_box_html_uses_get_docking_box(
     assert "proto-rot-x" not in html
     assert "Apply to notebook" not in html
     assert "do-box-apply" not in html
-    assert "Synced rotation_deg=" in html
+    assert "Syncing box geometry..." in html
+    assert "Synced box geometry:" in html
     assert "Visualization only" not in html
     assert "do-box-hint" not in html
     assert "Session rotation syncs" not in html

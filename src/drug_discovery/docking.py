@@ -187,13 +187,17 @@ class Docking(Execution, SyncExecutableMixin, AsyncExecutableMixin, NotebookWatc
         return list(self._rotation_deg)
 
     def _commit_docking_box(self, payload: dict[str, Any]) -> None:
-        """Store rotation from an interactive box commit payload."""
+        """Store committed docking-box geometry from the interactive viewer."""
         from deeporigin.drug_discovery.docking_common import (
             normalize_rotation_deg,
             parse_docking_box_commit,
         )
 
-        _, _, rotation_deg = parse_docking_box_commit(payload)
+        center, box_size, rotation_deg = parse_docking_box_commit(payload)
+        self.pocket.center = center
+        self.pocket.box_size_x = box_size[0]
+        self.pocket.box_size_y = box_size[1]
+        self.pocket.box_size_z = box_size[2]
         self._rotation_deg = normalize_rotation_deg(rotation_deg)
 
     @property
@@ -655,10 +659,11 @@ class Docking(Execution, SyncExecutableMixin, AsyncExecutableMixin, NotebookWatc
         :meth:`run` and :meth:`start` submit to the docking tool).
 
         When ``interactive=True``, molstar ``DockingBoxControls`` are available via
-        Settings. Releasing a rotation control commits ``rotation_deg`` onto this
-        :class:`Docking` instance for subsequent :meth:`run` / :meth:`start` calls.
-        The overlay shows the last synced rotation. Static mode applies a previously
-        committed ``rotation_deg`` to the box mesh.
+        Settings. Releasing a box edit commits center/size geometry onto
+        :attr:`pocket` and commits ``rotation_deg`` onto this :class:`Docking`
+        instance for subsequent :meth:`run` / :meth:`start` calls. The overlay shows
+        the last synced geometry. Static mode applies a previously committed
+        ``rotation_deg`` to the box mesh.
 
         When ``poses`` is provided, docked ligands are overlaid as well
         (``visualizeDockedLigands`` + ``renderBoundingBox``). Interactive mode does
@@ -666,7 +671,7 @@ class Docking(Execution, SyncExecutableMixin, AsyncExecutableMixin, NotebookWatc
 
         Args:
             interactive: When ``True``, enable box rotation readback via AnyWidget.
-                Session rotation updates on molstar gesture-end.
+                Box geometry updates on molstar gesture-end.
             poses: Optional docked pose(s) to overlay with the search box. Accepts a
                 :class:`Pose`, :class:`PoseSet`, :class:`Ligand`, :class:`LigandSet`,
                 or a list.

@@ -697,8 +697,8 @@ def render_interactive_docking_box_html(
     """Build iframe HTML for an interactive protein + docking box viewer.
 
     Loads molstarLib with ``DockingBoxControls`` (via Settings). Gesture-end
-    events from ``onDockingBoxChange`` commit ``rotation_deg`` back to Python
-    through the iframe postMessage ↔ AnyWidget bridge.
+    events from ``onDockingBoxChange`` commit box geometry and ``rotation_deg``
+    back to Python through the iframe postMessage ↔ AnyWidget bridge.
 
     Args:
         pdb_path: Path to the protein PDB file on disk.
@@ -753,15 +753,52 @@ def render_interactive_docking_box_html(
     apply_rotation_js = _apply_docking_box_rotation_js()
     script_body = f"""{apply_rotation_js}
 const seedRotation = {rotation_json};
-let lastPostedRotation = Array.isArray(seedRotation)
-  ? [Number(seedRotation[0]), Number(seedRotation[1]), Number(seedRotation[2])]
-  : [0, 0, 0];
+const seedCenter = {_json_value_for_script_tag(box_center)};
+const seedSize = {_json_value_for_script_tag(box_size)};
 
-const rotationsEqual = (left, right) => {{
+const normalizeTriplet = (values) => {{
+  if (!Array.isArray(values) || values.length !== 3) {{
+    return null;
+  }}
+  return values.map((value) => Number(value));
+}};
+
+const tripletsEqual = (left, right) => {{
   if (!left || !right || left.length !== 3 || right.length !== 3) {{
     return false;
   }}
   return left.every((value, index) => Math.abs(Number(value) - Number(right[index])) < 1e-6);
+}};
+
+const normalizePayload = (payload) => {{
+  const center = normalizeTriplet(payload?.center);
+  const boxSize = normalizeTriplet(payload?.box_size);
+  const rotation = normalizeTriplet(payload?.rotation_deg) || [0, 0, 0];
+  if (!center || !boxSize) {{
+    return null;
+  }}
+  return {{
+    center,
+    box_size: boxSize,
+    rotation_deg: rotation,
+  }};
+}};
+
+let lastPostedPayload = normalizePayload({{
+  center: seedCenter,
+  box_size: seedSize,
+  rotation_deg: Array.isArray(seedRotation) ? seedRotation : [0, 0, 0],
+}});
+
+const payloadsEqual = (left, right) => {{
+  if (!left || !right) {{
+    return false;
+  }}
+  return (
+    tripletsEqual(left.center, right.center)
+    && tripletsEqual(left.box_size, right.box_size)
+    && tripletsEqual(left.rotation_deg, right.rotation_deg)
+  );
 }};
 
 const setStatus = (text, color) => {{
@@ -769,6 +806,19 @@ const setStatus = (text, color) => {{
   status.textContent = text;
   status.style.color = color;
 }};
+
+const roundTriplet = (values) => {{
+  if (!Array.isArray(values) || values.length !== 3) {{
+    return values;
+  }}
+  return values.map((value) => Number(Number(value).toFixed(2)));
+}};
+
+const formatGeometryForDisplay = (payload) => JSON.stringify({{
+  center: roundTriplet(payload.center),
+  box_size: roundTriplet(payload.box_size),
+  rotation_deg: roundTriplet(payload.rotation_deg),
+}});
 
 const payloadFromState = (state) => {{
   const rot = state.rotationDeg;
@@ -781,7 +831,7 @@ const payloadFromState = (state) => {{
 
 const postCommit = (payload) => {{
   try {{
-    lastPostedRotation = payload.rotation_deg.slice();
+    lastPostedPayload = normalizePayload(payload);
     window.parent.postMessage(
       {{
         type: {message_type_json},
@@ -791,7 +841,7 @@ const postCommit = (payload) => {{
       "*",
     );
     setStatus(
-      "Syncing rotation_deg=" + JSON.stringify(payload.rotation_deg) + "...",
+      "Syncing box geometry...",
       "#334155",
     );
   }} catch (error) {{
@@ -803,8 +853,8 @@ const onDockingBoxChange = (state) => {{
   if (!state) {{
     return;
   }}
-  const payload = payloadFromState(state);
-  if (rotationsEqual(payload.rotation_deg, lastPostedRotation)) {{
+  const payload = normalizePayload(payloadFromState(state));
+  if (!payload || payloadsEqual(payload, lastPostedPayload)) {{
     return;
   }}
   postCommit(payload);
@@ -821,8 +871,12 @@ const receiveCommitResult = (event) => {{
   }}
 
   if (data.type === {ack_message_type_json}) {{
+    const payload = normalizePayload(data.payload);
+    if (payload) {{
+      lastPostedPayload = payload;
+    }}
     setStatus(
-      "Synced rotation_deg=" + JSON.stringify(data.payload.rotation_deg),
+      "Synced box geometry: " + formatGeometryForDisplay(data.payload),
       "#334155",
     );
   }} else if (data.type === {error_message_type_json}) {{
@@ -862,7 +916,12 @@ const initViewer = async () => {{
   applyDockingBoxRotation(viewer, seedRotation);
   if (Array.isArray(seedRotation)) {{
     setStatus(
-      "Synced rotation_deg=" + JSON.stringify(lastPostedRotation),
+      "Synced box geometry: "
+      + formatGeometryForDisplay({{
+        center: seedCenter,
+        box_size: seedSize,
+        rotation_deg: seedRotation,
+      }}),
       "#334155",
     );
   }}
