@@ -10,9 +10,11 @@ from beartype import beartype
 from deeporigin.drug_discovery.docking_common import (
     build_docking_metadata,
     build_pocket_tool_params,
+    effective_docking_rotation_deg,
     load_docking_poses_from_execution,
     load_reference_pose_from_execution,
     resolve_docking_box_geometry,
+    resolve_pocket_docking_box,
 )
 from deeporigin.drug_discovery.execution import Execution
 from deeporigin.drug_discovery.execution_mixins import (
@@ -535,6 +537,14 @@ class ConstrainedDocking(
         _, _, rotation_deg = parse_docking_box_commit(payload)
         self._rotation_deg = normalize_rotation_deg(rotation_deg)
 
+    def _effective_docking_rotation_deg_for_viz(self) -> list[float] | None:
+        """Session rotation, else pocket-finder inferred ``box`` rotation (viz only)."""
+        _, _, inferred = resolve_pocket_docking_box(self.pocket)
+        return effective_docking_rotation_deg(
+            session=self._rotation_deg,
+            inferred=inferred,
+        )
+
     @property
     def batch_size(self) -> int:
         """Workflow batch size for async :meth:`start` (default 8)."""
@@ -612,7 +622,10 @@ class ConstrainedDocking(
     ) -> tuple[dict[str, Any], dict[str, str]]:
         """Build params and metadata for ``client.executions.create``."""
         to_dock = self.ligands if ligand_set is None else ligand_set
-        pocket_center, box_size = resolve_docking_box_geometry(self.pocket)
+        pocket_center, box_size = resolve_docking_box_geometry(
+            self.pocket,
+            use_inferred_obb=False,
+        )
         metadata = build_docking_metadata(self.protein)
         pocket_params = build_pocket_tool_params(self.pocket, pocket_center, box_size)
 
@@ -856,7 +869,7 @@ class ConstrainedDocking(
             client=self.client,
             interactive=interactive,
             on_commit=self._commit_docking_box,
-            rotation_deg=self._rotation_deg,
+            rotation_deg=self._effective_docking_rotation_deg_for_viz(),
             rotation_used_by_run=False,
             poses=poses,
             height=height,

@@ -23,6 +23,16 @@ from deeporigin.platform.client import DeepOriginClient
 
 
 @dataclass
+class PocketBox:
+    """PCA-aligned docking box fragment from pocket-finder ``box`` output."""
+
+    box_size_x: float
+    box_size_y: float
+    box_size_z: float
+    rotation_deg: list[float]
+
+
+@dataclass
 class Pocket(Entity):
     """Class representing a binding pocket in a protein structure.
 
@@ -52,6 +62,7 @@ class Pocket(Entity):
     box_size_x: Optional[float] = None
     box_size_y: Optional[float] = None
     box_size_z: Optional[float] = None
+    box: Optional[PocketBox] = None
 
     pocket_count: Optional[int] = None
     pocket_min_size: Optional[int] = None
@@ -328,12 +339,24 @@ class Pocket(Entity):
         if all(
             v is not None for v in (self.box_size_x, self.box_size_y, self.box_size_z)
         ):
+            box_label = "Box size" if self.box is None else "Box size (lab frame)"
             table_data.append(
                 [
-                    "Box size",
+                    box_label,
                     f"{self.box_size_x:.2f} \u00d7 {self.box_size_y:.2f} \u00d7 {self.box_size_z:.2f} \u00c5",
                 ]
             )
+
+        if self.box is not None:
+            box = self.box
+            table_data.append(
+                [
+                    "Docking box size",
+                    f"{box.box_size_x:.2f} \u00d7 {box.box_size_y:.2f} \u00d7 {box.box_size_z:.2f} \u00c5",
+                ]
+            )
+            rx, ry, rz = box.rotation_deg
+            table_data.append(["rotation_deg", f"({rx:.2f}, {ry:.2f}, {rz:.2f})"])
 
         property_rows = [
             ("Volume", self.volume, " \u00c5\u00b3"),
@@ -473,6 +496,75 @@ class Pocket(Entity):
         "polar_apolar_SASA_ratio": "polar_apolar_sasa_ratio",
         "pocket_center": "center",
     }
+
+    @classmethod
+    def _parse_box(cls, entry: dict[str, Any]) -> PocketBox | None:
+        """Parse nested pocket-finder ``box`` output when present.
+
+        Args:
+            entry: Single pocket dict from pocket-finder jobOutputs or result-explorer.
+
+        Returns:
+            A :class:`PocketBox` when ``entry`` contains a valid ``box`` object,
+            otherwise ``None``.
+
+        Raises:
+            ValueError: If ``box`` is present but missing required fields or has
+                invalid types.
+        """
+        raw = entry.get("box")
+        if raw is None:
+            return None
+        if not isinstance(raw, dict):
+            raise ValueError(f"pocket box must be an object, got {raw!r}")
+
+        missing = [
+            key
+            for key in ("box_size_x", "box_size_y", "box_size_z", "rotation_deg")
+            if key not in raw
+        ]
+        if missing:
+            raise ValueError(
+                f"pocket box missing required field(s): {', '.join(missing)}"
+            )
+
+        try:
+            box_size_x = float(raw["box_size_x"])
+            box_size_y = float(raw["box_size_y"])
+            box_size_z = float(raw["box_size_z"])
+        except (TypeError, ValueError) as exc:
+            raise ValueError(
+                f"pocket box box_size_* must be numbers, got {raw!r}"
+            ) from exc
+
+        rotation_raw = raw["rotation_deg"]
+        if not isinstance(rotation_raw, list) or len(rotation_raw) != 3:
+            raise ValueError(
+                f"pocket box rotation_deg must be a length-3 list, got {rotation_raw!r}"
+            )
+        try:
+            rotation_deg = [float(value) for value in rotation_raw]
+        except (TypeError, ValueError) as exc:
+            raise ValueError(
+                f"pocket box rotation_deg must contain numbers, got {rotation_raw!r}"
+            ) from exc
+
+        sizes = (box_size_x, box_size_y, box_size_z)
+        if not all(np.isfinite(size) and size > 0 for size in sizes):
+            raise ValueError(
+                f"pocket box box_size_* must be positive finite numbers, got {raw!r}"
+            )
+        if not all(np.isfinite(angle) for angle in rotation_deg):
+            raise ValueError(
+                f"pocket box rotation_deg must be finite numbers, got {rotation_raw!r}"
+            )
+
+        return PocketBox(
+            box_size_x=box_size_x,
+            box_size_y=box_size_y,
+            box_size_z=box_size_z,
+            rotation_deg=rotation_deg,
+        )
 
     @staticmethod
     def _path_points_to_existing_local_file(path: str) -> bool:
@@ -631,6 +723,7 @@ class Pocket(Entity):
                 "remote_path",
                 "protein_id",
                 "project_id",
+                "box",
             }
             | cls._PROPERTY_ATTRS
             | json_mapped_keys
@@ -654,6 +747,8 @@ class Pocket(Entity):
                 if json_key in entry and attr_name not in attr_kwargs:
                     attr_kwargs[attr_name] = entry[json_key]
 
+            parsed_box = cls._parse_box(entry)
+
             props = {k: v for k, v in entry.items() if k not in reserved_keys}
 
             project_id: str | None = entry.get("project_id")
@@ -670,6 +765,7 @@ class Pocket(Entity):
                 props=props,
                 color=colors[idx % len(colors)],
                 _client=client,
+                box=parsed_box,
                 **attr_kwargs,
             )
             pockets.append(pocket)

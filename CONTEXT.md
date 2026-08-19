@@ -194,19 +194,32 @@ _Avoid_: `biosim_molstar` when referring to the pip package name (`deeporigin-mo
 
 **Docking search box**:
 Wireframe of the docking tool's search extents, derived from pocket center and
-`box_size_{x,y,z}` (same geometry submitted with docking). May be rotated in
-the notebook viewer; that orientation is **session rotation**, not a property
-of the pocket. Shown via `Docking.show_box()` / `ConstrainedDocking.show_box()`.
+box sizes (same geometry submitted with docking). When pocket-finder emitted a
+nested `box`, default sizes and orientation come from **Inferred box orientation**
+; otherwise from parent lab-frame `box_size_{x,y,z}` (axis-aligned). **Session
+rotation** overrides inferred orientation in the notebook and on subsequent
+`run()` / `start()` when set. Shown via `Docking.show_box()` /
+`ConstrainedDocking.show_box()`.
 _Avoid_: pocket box; docking pocket (when meaning pocket surfaces); conflating
 with `Protein.show(pockets=...)` gaussian surfaces; treating the box as
-axis-aligned only
+always axis-aligned on new pocket-finder runs
+
+**Inferred box orientation**:
+PCA-aligned docking box rotation and OBB sizes from pocket-finder's nested
+`box` on a `Pocket` (`Pocket.box`). Distinct from **Session rotation**
+(ephemeral, gesture-committed on `Docking`). Session rotation overrides inferred
+when set. Legacy indexed pockets without `box` have no inferred orientation.
+_Avoid_: parent lab-frame `box_size_*` alone when passing orientation to docking;
+session rotation (when you mean pocket-finder output)
 
 **Session rotation**:
 Ephemeral Euler angles `[rx, ry, rz]` on a `Docking` or `ConstrainedDocking`
 instance, written by interactive `show_box` on molstar gesture-end. Not stored
-on `Pocket`. Free docking `run()` / `start()` forward it; ConstrainedDocking
-ignores it in v1. `None` when unset or identity.
-_Avoid_: Apply; pocket rotation; treating printed cell output as live
+on `Pocket`. Overrides **Inferred box orientation** when set. Free docking
+`run()` / `start()` forward it; ConstrainedDocking ignores it in v1. `None`
+when unset or identity.
+_Avoid_: Apply; pocket rotation; inferred box orientation; treating printed cell
+output as live
 
 **Box commit**:
 Kernel write of docking search-box geometry from a molstar gesture-end. Commits

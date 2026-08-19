@@ -21,27 +21,6 @@ from deeporigin.exceptions import DeepOriginException
 from deeporigin.platform.client import DeepOriginClient
 
 
-def resolve_docking_box_geometry(pocket: Pocket) -> tuple[list[float], list[float]]:
-    """Resolve pocket center and box extents for docking tool inputs.
-
-    Box sizes default to ``2 * cbrt(volume)`` per axis when not set on the pocket.
-
-    Args:
-        pocket: Binding pocket defining the search box.
-
-    Returns:
-        A tuple of (pocket_center, box_size) where each is a length-3 list of
-        floats in Angstroms.
-    """
-    default_box = float(2 * np.cbrt(pocket.volume or 0))
-    box_size_x = pocket.box_size_x if pocket.box_size_x is not None else default_box
-    box_size_y = pocket.box_size_y if pocket.box_size_y is not None else default_box
-    box_size_z = pocket.box_size_z if pocket.box_size_z is not None else default_box
-    pocket_center = pocket.get_center().tolist()
-    box_size = [float(box_size_x), float(box_size_y), float(box_size_z)]
-    return pocket_center, box_size
-
-
 def _pose_label_for_viewer(item: Ligand | Pose, index: int) -> str:
     """Pick a LigandManager label: name → SMILES → ligand-{i}."""
     name = getattr(item, "name", None)
@@ -152,6 +131,176 @@ def normalize_rotation_deg(value: object) -> list[float] | None:
     if all(abs(angle) < 1e-9 for angle in rotation):
         return None
     return rotation
+
+
+def _euler_rotation_matrix_deg(rotation_deg: list[float]) -> np.ndarray:
+    """Build lab←local rotation matrix (Rz·Ry·Rx) from Euler degrees.
+
+    Matches molstar ``DockingBoxManager.setRotation(rx, ry, rz)`` ordering.
+    """
+    rx, ry, rz = (math.radians(value) for value in rotation_deg)
+    cx, sx = math.cos(rx), math.sin(rx)
+    cy, sy = math.cos(ry), math.sin(ry)
+    cz, sz = math.cos(rz), math.sin(rz)
+    rot_x = np.array([[1.0, 0.0, 0.0], [0.0, cx, -sx], [0.0, sx, cx]])
+    rot_y = np.array([[cy, 0.0, sy], [0.0, 1.0, 0.0], [-sy, 0.0, cy]])
+    rot_z = np.array([[cz, -sz, 0.0], [sz, cz, 0.0], [0.0, 0.0, 1.0]])
+    return rot_z @ rot_y @ rot_x
+
+
+def lab_frame_aabb_extents_from_obb(
+    obb_extents: list[float],
+    rotation_deg: list[float],
+) -> list[float]:
+    """Derive lab-frame AABB extents from local OBB extents and rotation.
+
+    Committed viewer ``box_size`` values are local (OBB) extents. Parent
+    ``box_size_*`` fields store lab-frame AABB extents for tools that omit
+    ``rotation_deg`` (e.g. constrained docking v1).
+
+    Args:
+        obb_extents: Local box dimensions ``[sx, sy, sz]`` in Angstroms.
+        rotation_deg: Euler rotation ``[rx, ry, rz]`` in degrees (Rz·Ry·Rx).
+
+    Returns:
+        Lab-frame axis-aligned box dimensions along X/Y/Z.
+    """
+    if all(abs(angle) < 1e-9 for angle in rotation_deg):
+        return [float(value) for value in obb_extents]
+    rotation = _euler_rotation_matrix_deg(rotation_deg)
+    obb = np.asarray(obb_extents, dtype=float)
+    return (np.abs(rotation) @ obb).tolist()
+
+
+def apply_committed_docking_box_geometry(
+    pocket: Pocket,
+    center: list[float],
+    box_size: list[float],
+    rotation_deg: list[float],
+) -> None:
+    """Write committed interactive box geometry onto pocket fields.
+
+    Updates parent ``box_size_*`` and, when present, nested ``pocket.box`` so
+    subsequent resolution sees the committed extents and rotation.
+
+    Args:
+        pocket: Binding pocket to update.
+        center: Committed box center in Angstroms.
+        box_size: Committed half-extents per axis in Angstroms.
+        rotation_deg: Committed rotation triple (identity ``[0, 0, 0]`` allowed).
+    """
+    pocket.center = center
+    obb_extents = [float(value) for value in box_size]
+    if pocket.box is not None:
+        pocket.box.box_size_x = obb_extents[0]
+        pocket.box.box_size_y = obb_extents[1]
+        pocket.box.box_size_z = obb_extents[2]
+        pocket.box.rotation_deg = list(rotation_deg)
+        lab_extents = lab_frame_aabb_extents_from_obb(obb_extents, rotation_deg)
+        pocket.box_size_x = lab_extents[0]
+        pocket.box_size_y = lab_extents[1]
+        pocket.box_size_z = lab_extents[2]
+    else:
+        pocket.box_size_x = obb_extents[0]
+        pocket.box_size_y = obb_extents[1]
+        pocket.box_size_z = obb_extents[2]
+
+
+def resolve_pocket_docking_box(
+    pocket: Pocket,
+    *,
+    use_inferred_obb: bool = True,
+) -> tuple[list[float], list[float], list[float] | None]:
+    """Resolve pocket center, box extents, and inferred rotation for docking.
+
+    When ``pocket.box`` is present (pocket-finder PCA OBB output) and
+    ``use_inferred_obb`` is true, sizes and inferred rotation come from that
+    nested object. Otherwise parent ``box_size_*`` are used (lab-frame AABB).
+
+    Box sizes default to ``2 * cbrt(volume)`` per axis when not set on the pocket.
+
+    Args:
+        pocket: Binding pocket defining the search box.
+        use_inferred_obb: When false, always use parent ``box_size_*`` even if
+            ``pocket.box`` is present. Use for tools that omit ``rotation_deg``.
+
+    Returns:
+        A tuple of (pocket_center, box_size, inferred_rotation_deg) where
+        ``inferred_rotation_deg`` is a length-3 list or ``None`` when absent or
+        identity.
+    """
+    default_box = float(2 * np.cbrt(pocket.volume or 0))
+    pocket_center = pocket.get_center().tolist()
+
+    if pocket.box is not None and use_inferred_obb:
+        box = pocket.box
+        box_size = [
+            float(box.box_size_x),
+            float(box.box_size_y),
+            float(box.box_size_z),
+        ]
+        inferred_rotation = normalize_rotation_deg(box.rotation_deg)
+        return pocket_center, box_size, inferred_rotation
+
+    box_size_x = pocket.box_size_x if pocket.box_size_x is not None else default_box
+    box_size_y = pocket.box_size_y if pocket.box_size_y is not None else default_box
+    box_size_z = pocket.box_size_z if pocket.box_size_z is not None else default_box
+    box_size = [float(box_size_x), float(box_size_y), float(box_size_z)]
+    inferred = None
+    if pocket.box is not None:
+        inferred = normalize_rotation_deg(pocket.box.rotation_deg)
+    return pocket_center, box_size, inferred
+
+
+def effective_docking_rotation_deg(
+    *,
+    session: list[float] | None,
+    inferred: list[float] | None,
+) -> list[float] | None:
+    """Pick rotation for docking viz and tool inputs.
+
+    Session rotation from interactive ``show_box`` overrides pocket-finder
+    inferred orientation when set.
+
+    Args:
+        session: Ephemeral rotation on ``Docking`` / ``ConstrainedDocking``.
+        inferred: Rotation from ``pocket.box.rotation_deg`` when present.
+
+    Returns:
+        Effective rotation triple, or ``None`` when neither source applies.
+    """
+    if session is not None:
+        return list(session)
+    if inferred is not None:
+        return list(inferred)
+    return None
+
+
+def resolve_docking_box_geometry(
+    pocket: Pocket,
+    *,
+    use_inferred_obb: bool = True,
+) -> tuple[list[float], list[float]]:
+    """Resolve pocket center and box extents for docking tool inputs.
+
+    Box sizes default to ``2 * cbrt(volume)`` per axis when not set on the pocket.
+    When ``pocket.box`` is present and ``use_inferred_obb`` is true, OBB sizes
+    from that object are preferred.
+
+    Args:
+        pocket: Binding pocket defining the search box.
+        use_inferred_obb: When false, use parent lab-frame ``box_size_*`` even if
+            ``pocket.box`` is present. Required when ``rotation_deg`` is omitted.
+
+    Returns:
+        A tuple of (pocket_center, box_size) where each is a length-3 list of
+        floats in Angstroms.
+    """
+    pocket_center, box_size, _ = resolve_pocket_docking_box(
+        pocket,
+        use_inferred_obb=use_inferred_obb,
+    )
+    return pocket_center, box_size
 
 
 def parse_docking_box_commit(
@@ -271,7 +420,7 @@ def show_docking_box_in_notebook(
     )
 
     protein_file = protein._dump_state()
-    pocket_center, box_size = resolve_docking_box_geometry(pocket)
+    pocket_center, box_size, _ = resolve_pocket_docking_box(pocket)
 
     if interactive:
         if get_notebook_environment() != "jupyter":

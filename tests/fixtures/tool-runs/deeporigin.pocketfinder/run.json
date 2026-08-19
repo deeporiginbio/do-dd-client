@@ -244,6 +244,12 @@
                     -4.9440002,
                     15.457001
                 ],
+                "box": {
+                    "box_size_x": 22.0,
+                    "box_size_y": 20.0,
+                    "box_size_z": 21.0,
+                    "rotation_deg": [5.0, 10.0, 15.0]
+                },
                 "pocket_count": 1,
                 "pocket_min_size": 30,
                 "polar_SASA": 309.8629,
