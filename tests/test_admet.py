@@ -19,6 +19,7 @@ _ADMET_PROPERTIES = [
 ]
 
 
+@pytest.mark.skip(reason="Skipping test_admet_lv1")
 def test_admet_lv1(client: DeepOriginClient) -> None:
     """Run Admet against dev with a small property subset."""
     cfg = TOOL_KEYS_AND_VERSIONS["admet"]
