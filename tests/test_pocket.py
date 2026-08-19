@@ -129,6 +129,84 @@ def test_from_json_platform_file_path_is_remote_lazy_lv0():
     assert "pocket_min_size" not in (pocket.props or {})
 
 
+def test_from_json_parses_nested_box_lv0():
+    """Nested pocket-finder box is stored on Pocket.box, not in props."""
+    data = [
+        {
+            "file_path": str(_BRD_PDB),
+            "protein_id": "prot_1",
+            "volume": 300.0,
+            "pocket_center": [1.0, 2.0, 3.0],
+            "box_size_x": 25.0,
+            "box_size_y": 24.0,
+            "box_size_z": 25.0,
+            "box": {
+                "box_size_x": 22.0,
+                "box_size_y": 20.0,
+                "box_size_z": 21.0,
+                "rotation_deg": [5.0, 10.0, 15.0],
+            },
+        }
+    ]
+
+    pocket = Pocket.from_json(data)[0]
+
+    assert pocket.box is not None
+    assert pocket.box.box_size_x == pytest.approx(22.0)
+    assert pocket.box.box_size_y == pytest.approx(20.0)
+    assert pocket.box.box_size_z == pytest.approx(21.0)
+    assert pocket.box.rotation_deg == pytest.approx([5.0, 10.0, 15.0])
+    assert pocket.box_size_x == pytest.approx(25.0)
+    assert "box" not in (pocket.props or {})
+
+
+def test_from_json_legacy_without_box_has_none_box_lv0():
+    """Legacy pocket rows without box leave Pocket.box unset."""
+    data = [
+        {
+            "file_path": str(_BRD_PDB),
+            "protein_id": "prot_1",
+            "volume": 42.0,
+            "box_size_x": 14.0,
+            "box_size_y": 19.0,
+            "box_size_z": 20.0,
+        }
+    ]
+
+    pocket = Pocket.from_json(data)[0]
+
+    assert pocket.box is None
+
+
+def test_pocket_repr_includes_rotation_deg_when_box_present_lv0():
+    """Pocket repr shows nested box rotation_deg and OBB sizes."""
+    data = [
+        {
+            "file_path": str(_BRD_PDB),
+            "protein_id": "prot_1",
+            "volume": 300.0,
+            "pocket_center": [1.0, 2.0, 3.0],
+            "box_size_x": 25.0,
+            "box_size_y": 24.0,
+            "box_size_z": 25.0,
+            "box": {
+                "box_size_x": 22.0,
+                "box_size_y": 20.0,
+                "box_size_z": 21.0,
+                "rotation_deg": [5.0, 10.0, 15.0],
+            },
+        }
+    ]
+
+    text = repr(Pocket.from_json(data)[0])
+
+    assert "rotation_deg" in text
+    assert "5.00" in text
+    assert "10.00" in text
+    assert "15.00" in text
+    assert "Docking box size" in text
+
+
 def test_from_json_id_is_set_lv0():
     """When an 'id' key is present it should populate the Pocket.id attribute."""
     data = [{"id": "pocket-abc-123", "file_path": str(_BRD_PDB)}]

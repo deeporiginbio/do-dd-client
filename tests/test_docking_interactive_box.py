@@ -6,9 +6,11 @@ from unittest.mock import patch
 
 import pytest
 
+from deeporigin.drug_discovery import BRD_DATA_DIR
 from deeporigin.drug_discovery.constrained_docking import ConstrainedDocking
 from deeporigin.drug_discovery.docking import Docking
 from deeporigin.drug_discovery.structures.ligand import Ligand
+from deeporigin.drug_discovery.structures.pocket import Pocket
 from deeporigin.utils.iframe_comm_bridge import (
     _WIDGET_ESM,
     DOCKING_BOX_COMMIT_ACK_MESSAGE_TYPE,
@@ -69,6 +71,82 @@ def test_docking_tool_inputs_forward_committed_geometry_and_rotation(
     assert params["pocket"]["box_size_y"] == 18.0
     assert params["pocket"]["box_size_z"] == 20.0
     assert params["pocket"]["rotation_deg"] == [0.0, 30.0, 0.0]
+
+
+def _pocket_with_box_fixture() -> Pocket:
+    brd_pdb = Path(BRD_DATA_DIR) / "brd.pdb"
+    return Pocket.from_json(
+        [
+            {
+                "file_path": str(brd_pdb),
+                "protein_id": "prot_1",
+                "volume": 300.0,
+                "pocket_center": [1.0, 2.0, 3.0],
+                "box_size_x": 25.0,
+                "box_size_y": 24.0,
+                "box_size_z": 25.0,
+                "box": {
+                    "box_size_x": 22.0,
+                    "box_size_y": 20.0,
+                    "box_size_z": 21.0,
+                    "rotation_deg": [5.0, 10.0, 15.0],
+                },
+            }
+        ]
+    )[0]
+
+
+def test_session_rotation_overrides_inferred_on_tool_inputs(
+    client,
+    registered_protein,
+    registered_ligand,
+) -> None:
+    """Committed session rotation wins over pocket.box inferred orientation."""
+    docking = Docking(
+        protein=registered_protein,
+        pocket=_pocket_with_box_fixture(),
+        ligand=registered_ligand,
+        client=client,
+    )
+    docking._rotation_deg = [0.0, 45.0, 0.0]
+
+    params, _ = docking._build_tool_inputs()
+
+    assert params["pocket"]["rotation_deg"] == [0.0, 45.0, 0.0]
+
+
+def test_show_box_interactive_session_overrides_inferred_rotation(
+    registered_protein,
+    registered_ligand,
+) -> None:
+    """Interactive show_box uses session rotation instead of pocket.box default."""
+    docking = Docking(
+        protein=registered_protein,
+        pocket=_pocket_with_box_fixture(),
+        ligand=registered_ligand,
+    )
+    docking._rotation_deg = [0.0, 45.0, 0.0]
+    handle = IframeCommHandle(bridge_id="test-bridge")
+
+    with (
+        patch(
+            "deeporigin.utils.notebook.get_notebook_environment",
+            return_value="jupyter",
+        ),
+        patch(
+            "deeporigin.utils.iframe_comm_bridge.render_interactive_html_with_comm",
+            return_value=handle,
+        ) as mock_bridge,
+        patch(
+            "deeporigin.viz.molstar_html.render_interactive_docking_box_html",
+            return_value="<html></html>",
+        ) as mock_html,
+    ):
+        docking.show_box(interactive=True)
+        html_builder = mock_bridge.call_args.args[0]
+        html_builder("bridge-id")
+
+    assert mock_html.call_args.kwargs["rotation_deg"] == [0.0, 45.0, 0.0]
 
 
 def test_constrained_docking_tool_inputs_omit_rotation_deg(

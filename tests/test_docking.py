@@ -7,12 +7,14 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+from deeporigin.drug_discovery import BRD_DATA_DIR
 from deeporigin.drug_discovery.docking import (
     Docking,
     _docking_default_name,
     _ligand_tool_input_row,
 )
 from deeporigin.drug_discovery.structures.ligand import Ligand, LigandSet
+from deeporigin.drug_discovery.structures.pocket import Pocket
 from deeporigin.drug_discovery.structures.pose import Pose, PoseSet
 from deeporigin.exceptions import DeepOriginException
 from deeporigin.platform.constants import (
@@ -270,6 +272,79 @@ def test_show_box_empty_poses_raises(
 
     with pytest.raises(ValueError, match="non-empty"):
         docking.show_box(poses=[])
+
+
+def _pocket_with_box_fixture() -> Pocket:
+    brd_pdb = Path(BRD_DATA_DIR) / "brd.pdb"
+    return Pocket.from_json(
+        [
+            {
+                "file_path": str(brd_pdb),
+                "protein_id": "prot_1",
+                "volume": 300.0,
+                "pocket_center": [1.0, 2.0, 3.0],
+                "box_size_x": 25.0,
+                "box_size_y": 24.0,
+                "box_size_z": 25.0,
+                "box": {
+                    "box_size_x": 22.0,
+                    "box_size_y": 20.0,
+                    "box_size_z": 21.0,
+                    "rotation_deg": [5.0, 10.0, 15.0],
+                },
+            }
+        ]
+    )[0]
+
+
+def test_build_tool_inputs_includes_inferred_rotation_from_box(
+    client,
+    registered_protein,
+    registered_ligand,
+) -> None:
+    """_build_tool_inputs forwards pocket.box rotation_deg when session is unset."""
+    pocket = _pocket_with_box_fixture()
+    docking = Docking(
+        protein=registered_protein,
+        pocket=pocket,
+        ligand=registered_ligand,
+        client=client,
+    )
+
+    params, _ = docking._build_tool_inputs()
+
+    assert params["pocket"]["box_size_x"] == 22.0
+    assert params["pocket"]["box_size_y"] == 20.0
+    assert params["pocket"]["box_size_z"] == 21.0
+    assert params["pocket"]["rotation_deg"] == [5.0, 10.0, 15.0]
+
+
+def test_show_box_forwards_inferred_rotation_from_box(
+    registered_protein,
+    registered_ligand,
+) -> None:
+    """show_box seeds wireframe rotation from pocket.box when session is unset."""
+    pocket = _pocket_with_box_fixture()
+    docking = Docking(
+        protein=registered_protein,
+        pocket=pocket,
+        ligand=registered_ligand,
+    )
+    mock_builder = MagicMock(return_value="<html>box</html>")
+
+    with (
+        patch(
+            "deeporigin.viz.molstar_html.render_docking_box_html",
+            mock_builder,
+        ),
+        patch(
+            "deeporigin.utils.notebook.render_html",
+            side_effect=lambda html, **kwargs: html,
+        ),
+    ):
+        docking.show_box()
+
+    assert mock_builder.call_args.kwargs["rotation_deg"] == [5.0, 10.0, 15.0]
 
 
 def test_docking_accepts_single_ligand(
