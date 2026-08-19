@@ -39,9 +39,9 @@ def test_docking_commit_docking_box_stores_geometry_and_rotation(
         }
     )
     assert docking.pocket.center == [0.0, 0.0, 0.0]
-    assert docking.pocket.box_size_x == pytest.approx(21.213, rel=1e-3)
+    assert docking.pocket.box_size_x == 15.0
     assert docking.pocket.box_size_y == 15.0
-    assert docking.pocket.box_size_z == pytest.approx(21.213, rel=1e-3)
+    assert docking.pocket.box_size_z == 15.0
     assert docking.rotation_deg == [0.0, 45.0, 0.0]
 
 

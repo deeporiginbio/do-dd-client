@@ -191,15 +191,19 @@ def apply_committed_docking_box_geometry(
     """
     pocket.center = center
     obb_extents = [float(value) for value in box_size]
-    lab_extents = lab_frame_aabb_extents_from_obb(obb_extents, rotation_deg)
-    pocket.box_size_x = lab_extents[0]
-    pocket.box_size_y = lab_extents[1]
-    pocket.box_size_z = lab_extents[2]
     if pocket.box is not None:
         pocket.box.box_size_x = obb_extents[0]
         pocket.box.box_size_y = obb_extents[1]
         pocket.box.box_size_z = obb_extents[2]
         pocket.box.rotation_deg = list(rotation_deg)
+        lab_extents = lab_frame_aabb_extents_from_obb(obb_extents, rotation_deg)
+        pocket.box_size_x = lab_extents[0]
+        pocket.box_size_y = lab_extents[1]
+        pocket.box_size_z = lab_extents[2]
+    else:
+        pocket.box_size_x = obb_extents[0]
+        pocket.box_size_y = obb_extents[1]
+        pocket.box_size_z = obb_extents[2]
 
 
 def resolve_pocket_docking_box(
