@@ -1,6 +1,6 @@
-# merge-ready lessons
+## 2026-08-19 — PR #606 — interactive box geometry sync
 
-Notes from past merge-ready cycles. Read before starting; append after success.
+Pre-commit `nb-clean` promotion can inject `protein.sync()` into notebook setup cells; verify clean notebooks after commit when claiming “no platform sync until run”. Copilot catches this reliably — resolve before re-review.
 
 ## 2026-08-14 — PR #604 — ProteinPrep async wrapper
 
