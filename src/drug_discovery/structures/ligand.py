@@ -150,6 +150,25 @@ def _assert_path_is_csv(path: Path) -> None:
     )
 
 
+def _first_valid_mol_from_sdf(
+    path: str | Path,
+    *,
+    sanitize: bool = True,
+    remove_hydrogens: bool = False,
+) -> Chem.Mol | None:
+    """Return the first parseable molecule from an SDF (single- or multi-record)."""
+
+    supplier = Chem.SDMolSupplier(
+        str(path),
+        sanitize=sanitize,
+        removeHs=remove_hydrogens,
+    )
+    for candidate in supplier:
+        if candidate is not None:
+            return candidate
+    return None
+
+
 @dataclass
 @beartype
 class Ligand(Entity):
@@ -522,11 +541,14 @@ class Ligand(Entity):
         if Path(path_str).suffix.lower() != ".sdf":
             return
         prev_props = dict(self.properties)
-        reloaded = type(self).from_sdf(
+        mol = _first_valid_mol_from_sdf(
             path_str,
             sanitize=sanitize,
             remove_hydrogens=remove_hydrogens,
         )
+        if mol is None:
+            return
+        reloaded = type(self).from_rdkit_mol(mol, properties=mol.GetPropsAsDict())
         self.mol = reloaded.mol
         self.smiles = reloaded.smiles
         self.properties = {**reloaded.properties, **prev_props}

@@ -11,7 +11,11 @@ import pandas as pd
 from rdkit import Chem
 
 from deeporigin.drug_discovery.structures.entity import Entity
-from deeporigin.drug_discovery.structures.ligand import Ligand, LigandSet
+from deeporigin.drug_discovery.structures.ligand import (
+    Ligand,
+    LigandSet,
+    _first_valid_mol_from_sdf,
+)
 from deeporigin.exceptions import DeepOriginException
 from deeporigin.platform.client import DeepOriginClient
 from deeporigin.platform.constants import TOOL_KEYS_AND_VERSIONS
@@ -591,25 +595,6 @@ class Pose(Entity):
         return lig
 
 
-def _first_valid_mol_from_sdf(
-    path: str | Path,
-    *,
-    sanitize: bool = True,
-    remove_hydrogens: bool = False,
-) -> Chem.Mol | None:
-    """Return the first parseable molecule from an SDF (single- or multi-record)."""
-
-    supplier = Chem.SDMolSupplier(
-        str(path),
-        sanitize=sanitize,
-        removeHs=remove_hydrogens,
-    )
-    for candidate in supplier:
-        if candidate is not None:
-            return candidate
-    return None
-
-
 def _rehydrate_pose_from_local_sdf(
     pose: Pose,
     *,
@@ -642,10 +627,13 @@ def _ligand_from_pose_structure(pose: Pose) -> Ligand:
     """Build a Ligand from a pose's local SDF or SMILES."""
 
     if pose.local_path is not None and Path(pose.local_path).is_file():
-        lig = Ligand.from_sdf(pose.local_path)
-        if pose.remote_path is not None:
-            lig.remote_path = pose.remote_path
-        return lig
+        mol = pose._mol or _first_valid_mol_from_sdf(pose.local_path)
+        if mol is not None:
+            lig = Ligand.from_rdkit_mol(mol, name=pose.name or "")
+            lig.local_path = pose.local_path
+            if pose.remote_path is not None:
+                lig.remote_path = pose.remote_path
+            return lig
     if pose.smiles:
         lig = Ligand.from_smiles(smiles=pose.smiles, name=pose.name or "")
         lig.remote_path = pose.remote_path or pose.local_path
