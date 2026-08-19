@@ -1,3 +1,11 @@
+# merge-ready lessons
+
+Notes from past merge-ready cycles. Read before starting; append after success.
+
+## 2026-08-19 — PR #607 — docking box rotation from pocket
+
+Copilot caught three real geometry edge cases on pocket-finder nested `box`: interactive commits must sync nested OBB sizes, identity rotation `[0,0,0]` must not normalize to `None` (or inferred rotation wins), and constrained docking must use parent AABB sizes when omitting `rotation_deg`. Fix all three before re-review.
+
 ## 2026-08-19 — PR #606 — interactive box geometry sync
 
 Pre-commit `nb-clean` promotion can inject `protein.sync()` into notebook setup cells; verify clean notebooks after commit when claiming “no platform sync until run”. Copilot catches this reliably — resolve before re-review.
