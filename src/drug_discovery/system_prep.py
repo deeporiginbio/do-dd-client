@@ -87,8 +87,10 @@ class SystemPrep(Execution, SyncExecutableMixin):
             ValueError: If RBFE mode but pose1 or pose2 is missing.
 
         Note:
-            Protein and pose ``id`` values may be unset until :meth:`sync_inputs`
-            runs (upload/sync assigns platform ids).
+            Protein ``id`` may be unset until :meth:`sync_inputs` runs. Pose
+            platform ids come from :meth:`~deeporigin.drug_discovery.structures.pose.Pose.from_sdf`
+            or docking results — :meth:`~deeporigin.drug_discovery.structures.pose.Pose.sync`
+            only uploads SDF bytes and does not register a new pose id.
         """
         super().__init__(client=client)
         _abfe_mode = pose is not None and pose1 is None and pose2 is None

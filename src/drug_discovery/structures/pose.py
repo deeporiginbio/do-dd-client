@@ -629,7 +629,11 @@ def _ligand_from_pose_structure(pose: Pose) -> Ligand:
     if pose.local_path is not None and Path(pose.local_path).is_file():
         mol = pose._mol or _first_valid_mol_from_sdf(pose.local_path)
         if mol is not None:
-            lig = Ligand.from_rdkit_mol(mol, name=pose.name or "")
+            lig = Ligand.from_rdkit_mol(
+                mol,
+                name=pose.name or "",
+                properties=mol.GetPropsAsDict(),
+            )
             lig.local_path = pose.local_path
             if pose.remote_path is not None:
                 lig.remote_path = pose.remote_path
