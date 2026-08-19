@@ -12,14 +12,16 @@ org_key="deeporigin"
 NOTEBOOK ?= .
 JUPYTER_PORT ?= 8888
 NOTEBOOK_EXTRAS := dev core tools
+TEST_EXTRAS := test core tools plots
 UV_RUN = uv run $(foreach e,$(NOTEBOOK_EXTRAS),--extra $(e))
+UV_TEST_RUN = uv run $(foreach e,$(TEST_EXTRAS),--extra $(e))
 
 test:
 	uv run --extra lint ruff format .
 	uv run --extra lint ruff check --select I . --fix
-	uv run --extra test interrogate -c pyproject.toml -vv . -f 100 --omit-covered-files
-	uv run --extra test pytest -x --failed-first -k $(chosen_tests) --env local --org_key $(org_key)
-	uv run --extra test pytest -x docs --markdown-docs --markdown-docs-syntax=superfences --env local
+	$(UV_TEST_RUN) interrogate -c pyproject.toml -vv . -f 100 --omit-covered-files
+	$(UV_TEST_RUN) pytest -x --failed-first -k $(chosen_tests) --env local --org_key $(org_key)
+	$(UV_TEST_RUN) pytest -x docs --markdown-docs --markdown-docs-syntax=superfences --env local
 
 # Sync notebook deps, register kernel in .venv + user dir, verify widget env.
 jupyter:
