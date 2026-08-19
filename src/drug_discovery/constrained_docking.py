@@ -10,9 +10,11 @@ from beartype import beartype
 from deeporigin.drug_discovery.docking_common import (
     build_docking_metadata,
     build_pocket_tool_params,
+    effective_docking_rotation_deg,
     load_docking_poses_from_execution,
     load_reference_pose_from_execution,
     resolve_docking_box_geometry,
+    resolve_pocket_docking_box,
 )
 from deeporigin.drug_discovery.execution import Execution
 from deeporigin.drug_discovery.execution_mixins import (
@@ -516,9 +518,10 @@ class ConstrainedDocking(
 
     @property
     def rotation_deg(self) -> list[float] | None:
-        """Committed box rotation from interactive :meth:`show_box` (visualization only).
+        """Session rotation from interactive :meth:`show_box` (visualization only).
 
-        Constrained docking :meth:`run` / :meth:`start` ignore rotation in v1.
+        Set on molstar gesture-end. Constrained docking :meth:`run` / :meth:`start`
+        ignore rotation in v1.
         """
         if self._rotation_deg is None:
             return None
@@ -533,6 +536,14 @@ class ConstrainedDocking(
 
         _, _, rotation_deg = parse_docking_box_commit(payload)
         self._rotation_deg = normalize_rotation_deg(rotation_deg)
+
+    def _effective_docking_rotation_deg_for_viz(self) -> list[float] | None:
+        """Session rotation, else pocket-finder inferred ``box`` rotation (viz only)."""
+        _, _, inferred = resolve_pocket_docking_box(self.pocket)
+        return effective_docking_rotation_deg(
+            session=self._rotation_deg,
+            inferred=inferred,
+        )
 
     @property
     def batch_size(self) -> int:
@@ -611,7 +622,10 @@ class ConstrainedDocking(
     ) -> tuple[dict[str, Any], dict[str, str]]:
         """Build params and metadata for ``client.executions.create``."""
         to_dock = self.ligands if ligand_set is None else ligand_set
-        pocket_center, box_size = resolve_docking_box_geometry(self.pocket)
+        pocket_center, box_size = resolve_docking_box_geometry(
+            self.pocket,
+            use_inferred_obb=False,
+        )
         metadata = build_docking_metadata(self.protein)
         pocket_params = build_pocket_tool_params(self.pocket, pocket_center, box_size)
 
@@ -816,14 +830,16 @@ class ConstrainedDocking(
         """Visualize the protein with the docking search box in a Jupyter notebook.
 
         When ``interactive=True``, molstar ``DockingBoxControls`` are available via
-        Settings. Click **Apply to notebook** to commit ``rotation_deg`` onto this
-        instance. Constrained docking :meth:`run` / :meth:`start` ignore rotation in v1.
+        Settings. Releasing a rotation control stores ``rotation_deg`` on this
+        instance (visualization only). Constrained docking :meth:`run` /
+        :meth:`start` ignore rotation in v1.
 
         When ``poses`` is provided, docked ligands are overlaid with the wireframe
         search box. Interactive mode does not support pose overlays in v1.
 
         Args:
             interactive: When ``True``, enable box rotation readback via AnyWidget.
+                Session rotation updates on molstar gesture-end (visualization only).
             poses: Optional docked pose(s) to overlay with the search box.
             height: Iframe height in pixels.
 
@@ -853,7 +869,8 @@ class ConstrainedDocking(
             client=self.client,
             interactive=interactive,
             on_commit=self._commit_docking_box,
-            rotation_deg=self._rotation_deg,
+            rotation_deg=self._effective_docking_rotation_deg_for_viz(),
+            rotation_used_by_run=False,
             poses=poses,
             height=height,
         )

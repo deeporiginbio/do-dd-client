@@ -5,7 +5,6 @@ from __future__ import annotations
 
 from pathlib import Path
 import subprocess
-import sys
 import time
 import urllib.error
 import urllib.request
@@ -90,7 +89,7 @@ def main() -> None:
             frame = iframe.content_frame
             if frame is None:
                 raise SystemExit("AnyWidget iframe did not attach a content frame")
-            frame.get_by_role("button", name="Apply to notebook").wait_for(
+            frame.locator("#DeepOriginMolstarViewer").wait_for(
                 state="visible",
                 timeout=60_000,
             )

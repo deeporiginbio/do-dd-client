@@ -203,6 +203,22 @@ pf = PocketFinder(protein, pocket_count=5)
 pockets = pf.run()
 ```
 
+### Preparing a protein
+
+Clean a structure (keep/remove lists, loop modelling, protonation) with
+[ProteinPrep](../tools/proteinprep.md). Protein Prep is async-only: `start()`,
+then `wait()` or `watch()`, then `get_results()`.
+
+```{.python notest}
+from deeporigin.drug_discovery import Protein, ProteinPrep
+
+protein = Protein.from_pdb_id("1EBY")
+prep = ProteinPrep(protein)
+prep.start()
+prep.wait()
+prepared = prep.get_results()
+```
+
 ### Visualizing a protein
 
 ??? warning "Browser support"

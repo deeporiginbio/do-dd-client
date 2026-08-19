@@ -689,20 +689,25 @@ def render_interactive_docking_box_html(
     box_center: list[float],
     box_size: list[float],
     bridge_id: str,
+    rotation_deg: list[float] | None = None,
+    rotation_used_by_run: bool = True,
     radius: float = _DEFAULT_DOCKING_BOX_RADIUS,
     color: int = _DEFAULT_DOCKING_BOX_COLOR,
 ) -> str:
     """Build iframe HTML for an interactive protein + docking box viewer.
 
-    Loads molstarLib with ``DockingBoxControls`` (via Settings) and an Apply
-    overlay that commits ``center``, ``box_size``, and ``rotation_deg`` back to
-    Python through the iframe postMessage ↔ AnyWidget bridge.
+    Loads molstarLib with ``DockingBoxControls`` (via Settings). Gesture-end
+    events from ``onDockingBoxChange`` commit box geometry and ``rotation_deg``
+    back to Python through the iframe postMessage ↔ AnyWidget bridge.
 
     Args:
         pdb_path: Path to the protein PDB file on disk.
         box_center: Docking box center ``[x, y, z]`` in angstroms.
         box_size: Docking box extents ``[sx, sy, sz]`` in angstroms.
         bridge_id: UUID matching the parent Comm bridge.
+        rotation_deg: Optional session rotation to restore on the box mesh.
+        rotation_used_by_run: When ``False``, overlay warns that ``run()``
+            ignores rotation (ConstrainedDocking v1).
         radius: Wireframe mesh radius.
         color: Hex color integer for the box.
 
@@ -728,6 +733,7 @@ def render_interactive_docking_box_html(
     pdb_b64 = _encode_text_base64(_read_structure_file(pdb_path))
     min_json = _json_value_for_script_tag(min_corner)
     max_json = _json_value_for_script_tag(max_corner)
+    rotation_json = _rotation_deg_script_literal(rotation_deg)
     bridge_id_json = _json_value_for_script_tag(bridge_id)
     message_type_json = _json_value_for_script_tag(DOCKING_BOX_COMMIT_MESSAGE_TYPE)
     ack_message_type_json = _json_value_for_script_tag(
@@ -736,20 +742,85 @@ def render_interactive_docking_box_html(
     error_message_type_json = _json_value_for_script_tag(
         DOCKING_BOX_COMMIT_ERROR_MESSAGE_TYPE
     )
+    warning_html = ""
+    if not rotation_used_by_run:
+        warning_html = (
+            '<div id="do-box-warning">'
+            "Visualization only — ConstrainedDocking.run() ignores rotation in v1."
+            "</div>"
+        )
 
-    script_body = f"""let viewerRef = null;
+    apply_rotation_js = _apply_docking_box_rotation_js()
+    script_body = f"""{apply_rotation_js}
+const seedRotation = {rotation_json};
+const seedCenter = {_json_value_for_script_tag(box_center)};
+const seedSize = {_json_value_for_script_tag(box_size)};
 
-const readDockingBoxPayload = () => {{
-  if (!viewerRef?.api?.getDockingBox) {{
-    throw new Error(
-      "molstarLib getDockingBox API is unavailable. "
-      + "Update the hosted molstar bundle before using interactive box adjustment."
-    );
+const normalizeTriplet = (values) => {{
+  if (!Array.isArray(values) || values.length !== 3) {{
+    return null;
   }}
-  const state = viewerRef.api.getDockingBox();
-  if (!state) {{
-    throw new Error("No docking box is rendered in the viewer.");
+  return values.map((value) => Number(value));
+}};
+
+const tripletsEqual = (left, right) => {{
+  if (!left || !right || left.length !== 3 || right.length !== 3) {{
+    return false;
   }}
+  return left.every((value, index) => Math.abs(Number(value) - Number(right[index])) < 1e-6);
+}};
+
+const normalizePayload = (payload) => {{
+  const center = normalizeTriplet(payload?.center);
+  const boxSize = normalizeTriplet(payload?.box_size);
+  const rotation = normalizeTriplet(payload?.rotation_deg) || [0, 0, 0];
+  if (!center || !boxSize) {{
+    return null;
+  }}
+  return {{
+    center,
+    box_size: boxSize,
+    rotation_deg: rotation,
+  }};
+}};
+
+let lastPostedPayload = normalizePayload({{
+  center: seedCenter,
+  box_size: seedSize,
+  rotation_deg: Array.isArray(seedRotation) ? seedRotation : [0, 0, 0],
+}});
+
+const payloadsEqual = (left, right) => {{
+  if (!left || !right) {{
+    return false;
+  }}
+  return (
+    tripletsEqual(left.center, right.center)
+    && tripletsEqual(left.box_size, right.box_size)
+    && tripletsEqual(left.rotation_deg, right.rotation_deg)
+  );
+}};
+
+const setStatus = (text, color) => {{
+  const status = document.getElementById("do-box-status");
+  status.textContent = text;
+  status.style.color = color;
+}};
+
+const roundTriplet = (values) => {{
+  if (!Array.isArray(values) || values.length !== 3) {{
+    return values;
+  }}
+  return values.map((value) => Number(Number(value).toFixed(2)));
+}};
+
+const formatGeometryForDisplay = (payload) => JSON.stringify({{
+  center: roundTriplet(payload.center),
+  box_size: roundTriplet(payload.box_size),
+  rotation_deg: roundTriplet(payload.rotation_deg),
+}});
+
+const payloadFromState = (state) => {{
   const rot = state.rotationDeg;
   return {{
     center: state.center,
@@ -758,12 +829,9 @@ const readDockingBoxPayload = () => {{
   }};
 }};
 
-const postCommit = () => {{
-  const status = document.getElementById("do-box-status");
-  const applyButton = document.getElementById("do-box-apply");
+const postCommit = (payload) => {{
   try {{
-    const payload = readDockingBoxPayload();
-    applyButton.disabled = true;
+    lastPostedPayload = normalizePayload(payload);
     window.parent.postMessage(
       {{
         type: {message_type_json},
@@ -772,14 +840,24 @@ const postCommit = () => {{
       }},
       "*",
     );
-    status.textContent =
-      "Applying rotation_deg=" + JSON.stringify(payload.rotation_deg) + "...";
-    status.style.color = "#94a3b8";
+    setStatus(
+      "Syncing box geometry...",
+      "#334155",
+    );
   }} catch (error) {{
-    applyButton.disabled = false;
-    status.textContent = error?.message || String(error);
-    status.style.color = "#f87171";
+    setStatus(error?.message || String(error), "#b91c1c");
   }}
+}};
+
+const onDockingBoxChange = (state) => {{
+  if (!state) {{
+    return;
+  }}
+  const payload = normalizePayload(payloadFromState(state));
+  if (!payload || payloadsEqual(payload, lastPostedPayload)) {{
+    return;
+  }}
+  postCommit(payload);
 }};
 
 const receiveCommitResult = (event) => {{
@@ -792,15 +870,17 @@ const receiveCommitResult = (event) => {{
     return;
   }}
 
-  const status = document.getElementById("do-box-status");
-  document.getElementById("do-box-apply").disabled = false;
   if (data.type === {ack_message_type_json}) {{
-    status.textContent =
-      "Committed rotation_deg=" + JSON.stringify(data.payload.rotation_deg);
-    status.style.color = "#94a3b8";
+    const payload = normalizePayload(data.payload);
+    if (payload) {{
+      lastPostedPayload = payload;
+    }}
+    setStatus(
+      "Synced box geometry: " + formatGeometryForDisplay(data.payload),
+      "#334155",
+    );
   }} else if (data.type === {error_message_type_json}) {{
-    status.textContent = "Commit failed: " + data.message;
-    status.style.color = "#f87171";
+    setStatus("Commit failed: " + data.message, "#b91c1c");
   }}
 }};
 
@@ -809,7 +889,18 @@ const initViewer = async () => {{
     throw new Error("molstarLib bundle did not load from {MOLSTAR_JS_URL}");
   }}
   const viewer = await molstarLib.initViewer("{_VIEWER_CONTAINER_ID}");
-  viewerRef = viewer;
+  if (typeof viewer.api.getDockingBox !== "function") {{
+    throw new Error(
+      "molstarLib getDockingBox API is unavailable. "
+      + "Update the hosted molstar bundle before using interactive box adjustment."
+    );
+  }}
+  if (typeof viewer.api.onDockingBoxChange !== "function") {{
+    throw new Error(
+      "molstarLib onDockingBoxChange API is unavailable. "
+      + "Update the hosted molstar bundle before using interactive box adjustment."
+    );
+  }}
   const proteinData = atob("{pdb_b64}");
   const structureRef = await viewer.api.loadFromRawContent(
     proteinData,
@@ -822,6 +913,19 @@ const initViewer = async () => {{
     radius: {radius},
     color: {color},
   }});
+  applyDockingBoxRotation(viewer, seedRotation);
+  if (Array.isArray(seedRotation)) {{
+    setStatus(
+      "Synced box geometry: "
+      + formatGeometryForDisplay({{
+        center: seedCenter,
+        box_size: seedSize,
+        rotation_deg: seedRotation,
+      }}),
+      "#334155",
+    );
+  }}
+  viewer.api.onDockingBoxChange(onDockingBoxChange);
   if (viewer.api.openDockingBoxPanel) {{
     viewer.api.openDockingBoxPanel();
   }}
@@ -845,37 +949,35 @@ const initViewer = async () => {{
     }}
     #{_VIEWER_CONTAINER_ID} {{
       width: 100%;
-      height: calc(100vh - 52px);
+      height: 100%;
     }}
     #do-box-overlay {{
       position: fixed;
-      left: 0;
-      right: 0;
-      bottom: 0;
+      left: 8px;
+      right: 8px;
+      bottom: 8px;
       display: flex;
-      flex-wrap: wrap;
-      align-items: center;
-      gap: 8px 12px;
-      padding: 8px 12px;
-      background: rgba(20, 24, 32, 0.92);
-      color: #f5f5f5;
-      font-size: 13px;
+      flex-direction: column;
+      align-items: flex-start;
+      gap: 4px;
+      pointer-events: none;
       z-index: 1000;
+      font-size: 12px;
     }}
-    #do-box-apply {{
-      background: #2563eb;
-      color: white;
-      border: none;
+    #do-box-warning {{
+      color: #92400e;
+      background: #fff;
+      padding: 4px 8px;
       border-radius: 4px;
-      padding: 6px 12px;
-      cursor: pointer;
-      font-weight: 600;
+    }}
+    #do-box-status:empty {{
+      display: none;
     }}
     #do-box-status {{
-      flex: 1 1 100%;
-      color: #94a3b8;
-      font-size: 12px;
-      min-height: 1.2em;
+      color: #334155;
+      background: #fff;
+      padding: 4px 8px;
+      border-radius: 4px;
     }}
     #molstar-error {{
       display: none;
@@ -887,8 +989,7 @@ const initViewer = async () => {{
 <body>
   <div id="{_VIEWER_CONTAINER_ID}"></div>
   <div id="do-box-overlay">
-    <span>Use Settings → Docking Box to rotate, then apply.</span>
-    <button id="do-box-apply" type="button">Apply to notebook</button>
+    {warning_html}
     <div id="do-box-status"></div>
   </div>
   <div id="molstar-error"></div>
@@ -903,7 +1004,6 @@ const initViewer = async () => {{
 
     {script_body}
 
-    document.getElementById("do-box-apply").addEventListener("click", postCommit);
     window.addEventListener("message", receiveCommitResult);
 
     const run = () => {{

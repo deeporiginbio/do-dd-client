@@ -38,6 +38,18 @@ _Avoid_: Aliasing `RBFEParams` to `ABFEParams`; duplicating binding/solvation bl
 Simulation-ready binding and solvation XML files (and metadata) produced by system prep.
 _Avoid_: "system" alone when meaning the prepared molecular system artifact
 
+**Protein Prep**:
+Platform tool `deeporigin.protein-prep` that cleans a caller-supplied protein
+structure (explicit keep/remove lists, loop modelling, protonation). CLI class
+`ProteinPrep` is async-only (`start()`, not `run()`).
+_Avoid_: SystemPrep / FEP assembly; quoting this tool (billing is skipped)
+
+**Prepared protein (CLI)**:
+In-memory :class:`~deeporigin.drug_discovery.structures.protein.Protein` returned
+by `ProteinPrep.get_results()`, whose structure is the cleaned PDB. Not a
+proteins-table row until the caller `sync()` or `update()`.
+_Avoid_: public `PreparedProtein` type; PreparedSystem
+
 **Workflow step**:
 A named stage in a combined workflow execution (`system-prep`, `abfe`, `rbfe`, `konnektor`).
 _Avoid_: `mode` for v5 workflow tools
@@ -181,8 +193,37 @@ Being replaced by the in-client `deeporigin.viz` HTML builder and hosted
 _Avoid_: `biosim_molstar` when referring to the pip package name (`deeporigin-molstar`)
 
 **Docking search box**:
-Axis-aligned wireframe of the docking tool's search extents, derived from
-pocket center and `box_size_{x,y,z}` (same geometry submitted with docking).
-Shown via `Docking.show_box()` / `ConstrainedDocking.show_box()`.
+Wireframe of the docking tool's search extents, derived from pocket center and
+box sizes (same geometry submitted with docking). When pocket-finder emitted a
+nested `box`, default sizes and orientation come from **Inferred box orientation**
+; otherwise from parent lab-frame `box_size_{x,y,z}` (axis-aligned). **Session
+rotation** overrides inferred orientation in the notebook and on subsequent
+`run()` / `start()` when set. Shown via `Docking.show_box()` /
+`ConstrainedDocking.show_box()`.
 _Avoid_: pocket box; docking pocket (when meaning pocket surfaces); conflating
-with `Protein.show(pockets=...)` gaussian surfaces
+with `Protein.show(pockets=...)` gaussian surfaces; treating the box as
+always axis-aligned on new pocket-finder runs
+
+**Inferred box orientation**:
+PCA-aligned docking box rotation and OBB sizes from pocket-finder's nested
+`box` on a `Pocket` (`Pocket.box`). Distinct from **Session rotation**
+(ephemeral, gesture-committed on `Docking`). Session rotation overrides inferred
+when set. Legacy indexed pockets without `box` have no inferred orientation.
+_Avoid_: parent lab-frame `box_size_*` alone when passing orientation to docking;
+session rotation (when you mean pocket-finder output)
+
+**Session rotation**:
+Ephemeral Euler angles `[rx, ry, rz]` on a `Docking` or `ConstrainedDocking`
+instance, written by interactive `show_box` on molstar gesture-end. Not stored
+on `Pocket`. Overrides **Inferred box orientation** when set. Free docking
+`run()` / `start()` forward it; ConstrainedDocking ignores it in v1. `None`
+when unset or identity.
+_Avoid_: Apply; pocket rotation; inferred box orientation; treating printed cell
+output as live
+
+**Box commit**:
+Kernel write of docking search-box geometry from a molstar gesture-end. Commits
+updated `center` and `box_size` onto `Pocket`, plus `rotationDeg` as session
+rotation on the `Docking` instance. Appearance-only molstar edits (color,
+visibility) are not box commits.
+_Avoid_: Apply to notebook; treating resize/recenter as visualization-only edits

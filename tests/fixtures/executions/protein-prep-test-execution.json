@@ -1,0 +1,55 @@
+{
+    "app": "python-client",
+    "approveAmount": null,
+    "billing": null,
+    "cluster": {
+        "id": "d638d3cd-833f-476b-87fe-ca6d76e66049"
+    },
+    "completedAt": "2026-08-14T12:00:00.000Z",
+    "createdAt": "2026-08-14T11:59:00.000Z",
+    "createdBy": "6b96d8f8-0f55-474c-a86c-e09651ba4b20",
+    "executionId": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+    "executionType": "tool",
+    "metadata": {},
+    "name": "ProteinPrep on brd",
+    "orgKey": "deeporigin",
+    "progressReport": {
+        "complete": 100
+    },
+    "projectId": null,
+    "quotationResult": null,
+    "resourceId": "proteinpreptest001",
+    "session": "f8a98c5e-18ed-4b5e-b08a-f38a21d11254",
+    "startedAt": "2026-08-14T11:59:10.000Z",
+    "status": "Completed",
+    "statusReason": null,
+    "tag": null,
+    "tool": {
+        "key": "deeporigin.protein-prep",
+        "version": "0.1.0"
+    },
+    "type": "ToolExecution",
+    "updatedAt": "2026-08-14T12:00:00.000Z",
+    "userInputs": {
+        "keep_chain_ids": ["A"],
+        "keep_cofactor_ids": ["MG"],
+        "keep_water_residue_names": ["HOH"],
+        "pdb_id": "1EBY",
+        "protein": {
+            "file_path": "testing/brd.pdb",
+            "id": "brd"
+        },
+        "remove_ligand_ids": ["LIG"]
+    },
+    "userOutputs": {},
+    "jobOutputs": {
+        "protein": {
+            "force_field": "amber14",
+            "pdb_id": "1EBY",
+            "ph": 7.4,
+            "protein_id": "brd",
+            "protein_pdb_file_path": "testing/brd.pdb",
+            "protonate_protein": true
+        }
+    }
+}

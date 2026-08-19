@@ -9,8 +9,10 @@ import numpy as np
 from deeporigin.drug_discovery.docking_common import (
     build_docking_metadata,
     build_pocket_tool_params,
+    effective_docking_rotation_deg,
     load_docking_poses_from_execution,
     resolve_docking_box_geometry,
+    resolve_pocket_docking_box,
 )
 from deeporigin.drug_discovery.execution import Execution
 from deeporigin.drug_discovery.execution_mixins import (
@@ -176,9 +178,9 @@ class Docking(Execution, SyncExecutableMixin, AsyncExecutableMixin, NotebookWatc
 
     @property
     def rotation_deg(self) -> list[float] | None:
-        """Committed box rotation ``[rx, ry, rz]`` from :meth:`show_box` (interactive).
+        """Session rotation ``[rx, ry, rz]`` from :meth:`show_box` (interactive).
 
-        Set when the user clicks Apply in an interactive box viewer. Ephemeral
+        Set on molstar gesture-end (slider release, drag end, reset). Ephemeral
         session state — not persisted on :attr:`pocket`. ``None`` until committed
         or when rotation is identity.
         """
@@ -187,14 +189,21 @@ class Docking(Execution, SyncExecutableMixin, AsyncExecutableMixin, NotebookWatc
         return list(self._rotation_deg)
 
     def _commit_docking_box(self, payload: dict[str, Any]) -> None:
-        """Store rotation from an interactive box commit payload."""
+        """Store committed docking-box geometry from the interactive viewer."""
         from deeporigin.drug_discovery.docking_common import (
-            normalize_rotation_deg,
+            apply_committed_docking_box_geometry,
             parse_docking_box_commit,
         )
 
-        _, _, rotation_deg = parse_docking_box_commit(payload)
-        self._rotation_deg = normalize_rotation_deg(rotation_deg)
+        center, box_size, rotation_deg = parse_docking_box_commit(payload)
+        apply_committed_docking_box_geometry(
+            self.pocket,
+            center,
+            box_size,
+            rotation_deg,
+        )
+        # Preserve explicit identity ([0, 0, 0]) so it overrides inferred rotation.
+        self._rotation_deg = list(rotation_deg)
 
     @property
     def batch_size(self) -> int:
@@ -375,6 +384,14 @@ class Docking(Execution, SyncExecutableMixin, AsyncExecutableMixin, NotebookWatc
         """Resolve pocket center and box extents used for docking and visualization."""
         return resolve_docking_box_geometry(self.pocket)
 
+    def _effective_docking_rotation_deg(self) -> list[float] | None:
+        """Session rotation, else pocket-finder inferred ``box`` rotation."""
+        _, _, inferred = resolve_pocket_docking_box(self.pocket)
+        return effective_docking_rotation_deg(
+            session=self._rotation_deg,
+            inferred=inferred,
+        )
+
     def _build_tool_inputs(
         self, *, ligand_set: LigandSet | None = None
     ) -> tuple[dict, dict]:
@@ -399,7 +416,7 @@ class Docking(Execution, SyncExecutableMixin, AsyncExecutableMixin, NotebookWatc
             self.pocket,
             pocket_center,
             box_size,
-            rotation_deg=self._rotation_deg,
+            rotation_deg=self._effective_docking_rotation_deg(),
         )
 
         params = {
@@ -651,13 +668,16 @@ class Docking(Execution, SyncExecutableMixin, AsyncExecutableMixin, NotebookWatc
         """Visualize the protein with the docking search box in a Jupyter notebook.
 
         Renders the target protein and a wireframe box from :attr:`pocket` center and
-        ``box_size_x`` / ``box_size_y`` / ``box_size_z`` (same geometry as
-        :meth:`run` and :meth:`start` submit to the docking tool).
+        box sizes (same geometry as :meth:`run` and :meth:`start` submit to the
+        docking tool). When pocket-finder emitted nested ``box``, the wireframe
+        defaults to that inferred orientation unless **session rotation** is set.
 
         When ``interactive=True``, molstar ``DockingBoxControls`` are available via
-        Settings. Click **Apply to notebook** to commit ``rotation_deg`` onto this
-        :class:`Docking` instance for subsequent :meth:`run` / :meth:`start` calls.
-        Static mode applies a previously committed ``rotation_deg`` to the box mesh.
+        Settings. Releasing a box edit commits center/size geometry onto
+        :attr:`pocket` and commits ``rotation_deg`` onto this :class:`Docking`
+        instance for subsequent :meth:`run` / :meth:`start` calls. The overlay shows
+        the last synced geometry. Static mode applies session or inferred
+        ``rotation_deg`` to the box mesh.
 
         When ``poses`` is provided, docked ligands are overlaid as well
         (``visualizeDockedLigands`` + ``renderBoundingBox``). Interactive mode does
@@ -665,6 +685,7 @@ class Docking(Execution, SyncExecutableMixin, AsyncExecutableMixin, NotebookWatc
 
         Args:
             interactive: When ``True``, enable box rotation readback via AnyWidget.
+                Box geometry updates on molstar gesture-end.
             poses: Optional docked pose(s) to overlay with the search box. Accepts a
                 :class:`Pose`, :class:`PoseSet`, :class:`Ligand`, :class:`LigandSet`,
                 or a list.
@@ -697,7 +718,8 @@ class Docking(Execution, SyncExecutableMixin, AsyncExecutableMixin, NotebookWatc
             client=self.client,
             interactive=interactive,
             on_commit=self._commit_docking_box,
-            rotation_deg=self._rotation_deg,
+            rotation_deg=self._effective_docking_rotation_deg(),
+            rotation_used_by_run=True,
             poses=poses,
             height=height,
         )
