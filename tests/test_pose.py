@@ -626,6 +626,17 @@ def test_rehydrate_pose_early_returns(tmp_path: Path) -> None:
     assert with_pdb.smiles == "CCO"
 
 
+def test_rehydrate_pose_uses_first_valid_mol_in_multi_record_sdf() -> None:
+    """Bulk-docking pose files may bundle many records in one SDF."""
+    from deeporigin.drug_discovery.structures.pose import _rehydrate_pose_from_local_sdf
+
+    multi_sdf = Path(__file__).resolve().parent / "fixtures" / "files" / "128poses.sdf"
+    pose = Pose(ligand_id="L1", id="P1", local_path=str(multi_sdf), smiles=None)
+    _rehydrate_pose_from_local_sdf(pose)
+    assert pose.mol is not None
+    assert pose.smiles
+
+
 def test_pose_set_download_assigns_paths(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

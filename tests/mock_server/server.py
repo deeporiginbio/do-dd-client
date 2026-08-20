@@ -285,7 +285,6 @@ class MockServer:
             return
 
         poses_per_ligand = 16
-        sdf_path = MOCK_BULK_DOCKING_POSES_SDF_PATH
 
         for i, row in enumerate(records):
             row["compute_job_id"] = MOCK_BULK_DOCKING_EXECUTION_ID
@@ -295,6 +294,7 @@ class MockServer:
 
             lig_index = min(i // poses_per_ligand, len(brd_ids) - 1)
             ligand_id = brd_ids[lig_index]
+            brd_num = lig_index + 2
 
             data = row.get("data")
             if not isinstance(data, dict):
@@ -304,7 +304,7 @@ class MockServer:
             data["pocket_id"] = MOCK_CANONICAL_POCKET_ID
             data["protein_id"] = MOCK_CANONICAL_PROTEIN_ID
             data["ligand_id"] = ligand_id
-            data["file_path"] = sdf_path
+            data["file_path"] = f"testing/brd-{brd_num}.sdf"
 
     def _load_result_explorer_fixtures(self) -> None:
         """Load result-explorer fixture files into the in-memory results store.

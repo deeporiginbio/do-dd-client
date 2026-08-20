@@ -1,8 +1,8 @@
-"""SystemPrep -- sync-only execution for preparing a protein-ligand system for ABFE or RBFE.
+"""SystemPrep -- sync-only execution for preparing a protein-pose system for ABFE or RBFE.
 
 Usage (ABFE)::
 
-    sysprep = SystemPrep(protein=protein, ligand=ligand)
+    sysprep = SystemPrep(protein=protein, pose=pose)
     sysprep.run(quote=True)   # populates sysprep.estimate; status == "Quoted"
     prepared = sysprep.run()  # returns PreparedSystem via get_results()
     # Use prepared.binding_xml_path, prepared.solvation_xml_path, etc.
@@ -10,7 +10,7 @@ Usage (ABFE)::
 
 Usage (RBFE)::
 
-    sysprep = SystemPrep(protein=protein, ligand1=lig1, ligand2=lig2)
+    sysprep = SystemPrep(protein=protein, pose1=pose_a, pose2=pose_b)
     prepared = sysprep.run()
 """
 
@@ -22,7 +22,8 @@ from beartype import beartype
 
 from deeporigin.drug_discovery.execution import Execution
 from deeporigin.drug_discovery.execution_mixins import SyncExecutableMixin
-from deeporigin.drug_discovery.structures.ligand import Ligand
+from deeporigin.drug_discovery.fep_common import _pose_tool_ref
+from deeporigin.drug_discovery.structures.pose import Pose
 from deeporigin.drug_discovery.structures.prepared_system import PreparedSystem
 from deeporigin.drug_discovery.structures.protein import Protein
 from deeporigin.platform.client import DeepOriginClient
@@ -31,19 +32,19 @@ from deeporigin.utils.constants import SYSPREP_NO_OUTPUT_PATHS_MSG
 
 
 class SystemPrep(Execution, SyncExecutableMixin):
-    """Prepare a protein-ligand system for ABFE or RBFE (sync-only).
+    """Prepare a protein-pose system for ABFE or RBFE (sync-only).
 
-    Use either a single ``ligand`` (ABFE) or ``ligand1`` and ``ligand2`` (RBFE).
+    Use either a single ``pose`` (ABFE) or ``pose1`` and ``pose2`` (RBFE).
     Calls ``client.executions.create`` with ``sync=True`` for :meth:`run` to
     produce binding XML, solvation XML, and system PDB. After ``run()``, pass the
     instance to ``ABFE(system=...)`` (ABFE mode) or use the paths for RBFE.
 
     Attributes:
         protein: Protein structure used for preparation.
-        ligand: Convenience alias for :attr:`ligand1` (ABFE callers pass ``ligand=``;
-            it is stored as ``ligand1`` internally).
-        ligand1: Primary ligand (ABFE) or first ligand of the pair (RBFE).
-        ligand2: Second ligand (RBFE only); ``None`` in ABFE mode.
+        pose: Convenience alias for :attr:`pose1` (ABFE callers pass ``pose=``;
+            it is stored as ``pose1`` internally).
+        pose1: Primary pose (ABFE) or first pose of the pair (RBFE).
+        pose2: Second pose (RBFE only); ``None`` in ABFE mode.
     """
 
     tool_key: str = TOOL_KEYS_AND_VERSIONS["sysprep"]["tool_key"]
@@ -52,9 +53,9 @@ class SystemPrep(Execution, SyncExecutableMixin):
         self,
         *,
         protein: Protein,
-        ligand: Ligand | None = None,
-        ligand1: Ligand | None = None,
-        ligand2: Ligand | None = None,
+        pose: Pose | None = None,
+        pose1: Pose | None = None,
+        pose2: Pose | None = None,
         padding: float = 1.0,
         retain_waters: bool = False,
         add_H_atoms: bool = True,  # NOSONAR
@@ -63,18 +64,18 @@ class SystemPrep(Execution, SyncExecutableMixin):
         tool_version: str = TOOL_KEYS_AND_VERSIONS["sysprep"]["tool_version"],
         client: DeepOriginClient | None = None,
     ) -> None:
-        """Create a SystemPrep for ABFE (single ligand) or RBFE (ligand pair).
+        """Create a SystemPrep for ABFE (single pose) or RBFE (pose pair).
 
-        Exactly one of (ligand) or (ligand1 and ligand2) must be provided.
+        Exactly one of (pose) or (pose1 and pose2) must be provided.
 
         Args:
             protein: Protein structure for system preparation.
-            ligand: Single ligand for ABFE. Mutually exclusive with ligand1/ligand2.
-            ligand1: First ligand for RBFE. Must be used together with ligand2.
-            ligand2: Second ligand for RBFE. Must be used together with ligand1.
+            pose: Single pose for ABFE. Mutually exclusive with pose1/pose2.
+            pose1: First pose for RBFE. Must be used together with pose2.
+            pose2: Second pose for RBFE. Must be used together with pose1.
             padding: Padding distance in nm around the system. Defaults to 1.0.
             retain_waters: Whether to keep water molecules. Defaults to False.
-            add_H_atoms: Whether to add hydrogen atoms to the ligand(s). Defaults to True.
+            add_H_atoms: Whether to add hydrogen atoms to the pose(s). Defaults to True.
             protonate_protein: Whether to protonate the protein. Defaults to True.
             box_size: Simulation box dimensions (X, Y, Z) in nm. Optional.
             tool_version: Platform tool version. Settable so callers can pin or
@@ -82,35 +83,33 @@ class SystemPrep(Execution, SyncExecutableMixin):
             client: Optional API client. Uses the default if not provided.
 
         Raises:
-            ValueError: If neither (ligand) nor (ligand1 and ligand2) is set, or both are set.
-            ValueError: If RBFE mode but ligand1 or ligand2 is missing.
+            ValueError: If neither (pose) nor (pose1 and pose2) is set, or both are set.
+            ValueError: If RBFE mode but pose1 or pose2 is missing.
 
         Note:
-            Protein and ligand ``id`` values may be unset until :meth:`sync_inputs`
-            runs (upload/sync assigns platform ids).
+            Protein ``id`` may be unset until :meth:`sync_inputs` runs. Pose
+            platform ids come from :meth:`~deeporigin.drug_discovery.structures.pose.Pose.from_sdf`
+            or docking results — :meth:`~deeporigin.drug_discovery.structures.pose.Pose.sync`
+            only uploads SDF bytes and does not register a new pose id.
         """
         super().__init__(client=client)
-        _abfe_mode = ligand is not None and ligand1 is None and ligand2 is None
-        _rbfe_mode = ligand is None and ligand1 is not None and ligand2 is not None
+        _abfe_mode = pose is not None and pose1 is None and pose2 is None
+        _rbfe_mode = pose is None and pose1 is not None and pose2 is not None
         if not (_abfe_mode or _rbfe_mode):
             raise ValueError(
-                "Provide either ligand (ABFE) or both ligand1 and ligand2 (RBFE), "
-                "but not both and not only one of ligand1/ligand2."
+                "Provide either pose (ABFE) or both pose1 and pose2 (RBFE), "
+                "but not both and not only one of pose1/pose2."
             )
-
-        if _rbfe_mode and (ligand1 is None or ligand2 is None):
-            raise ValueError("ligand1 and ligand2 are required in RBFE mode.")
 
         self.tool_version = tool_version
         self._protein = protein
         if _abfe_mode:
-            assert ligand is not None
-            self._ligand1 = ligand
-            self._ligand2 = None
+            assert pose is not None
+            self._pose1 = pose
+            self._pose2 = None
         else:
-            assert ligand1 is not None and ligand2 is not None
-            self._ligand1 = ligand1
-            self._ligand2 = ligand2
+            self._pose1 = pose1
+            self._pose2 = pose2
         self._padding = padding
         self._retain_waters = retain_waters
         self._add_H_atoms = add_H_atoms
@@ -123,19 +122,19 @@ class SystemPrep(Execution, SyncExecutableMixin):
         return self._protein
 
     @property
-    def ligand(self) -> Ligand:
-        """Alias for :attr:`ligand1` (single-ligand ABFE input is stored there)."""
-        return self._ligand1
+    def pose(self) -> Pose:
+        """Alias for :attr:`pose1` (single-pose ABFE input is stored there)."""
+        return self._pose1
 
     @property
-    def ligand1(self) -> Ligand:
-        """Primary ligand (ABFE) or first ligand of the RBFE pair."""
-        return self._ligand1
+    def pose1(self) -> Pose:
+        """Primary pose (ABFE) or first pose of the RBFE pair."""
+        return self._pose1
 
     @property
-    def ligand2(self) -> Ligand | None:
-        """Second ligand in RBFE mode; ``None`` in ABFE mode."""
-        return self._ligand2
+    def pose2(self) -> Pose | None:
+        """Second pose in RBFE mode; ``None`` in ABFE mode."""
+        return self._pose2
 
     @property
     def padding(self) -> float:
@@ -146,43 +145,38 @@ class SystemPrep(Execution, SyncExecutableMixin):
         """Return a concise summary of this SystemPrep."""
         parts = ["SystemPrep("]
         parts.append(f"  protein_id={self.protein.id!r},")
-        parts.append(f"  ligand1_id={self.ligand1.id!r},")
-        if self._ligand2 is not None:
-            parts.append(f"  ligand2_id={self._ligand2.id!r},")
-        parts.append(f"  is_rbfe={self._ligand2 is not None},")
+        parts.append(f"  pose1_id={self.pose1.id!r},")
+        if self._pose2 is not None:
+            parts.append(f"  pose2_id={self._pose2.id!r},")
+        parts.append(f"  is_rbfe={self._pose2 is not None},")
         parts.append(")")
         return "\n".join(parts)
 
     def sync_inputs(self) -> dict[str, Any]:
-        """Sync protein and ligand(s) to the platform and return tool ``inputs``."""
-        ligand1 = self._ligand1
-        ligand2 = self._ligand2
+        """Sync protein and pose(s) to the platform and return tool ``inputs``."""
+        pose1 = self._pose1
+        pose2 = self._pose2
         protein = self._protein
         client = self.client
 
         protein.sync(lazy=True, client=client)
-        ligand1.sync(lazy=True, client=client)
-        if ligand2 is not None:
-            ligand2.sync(lazy=True, client=client)
+        pose1.sync(lazy=True, client=client)
+        if pose2 is not None:
+            pose2.sync(lazy=True, client=client)
 
         protein.ensure_remote_path(client=client, label="Protein")
-        ligand1.ensure_remote_path(client=client, label="Ligand")
-        if ligand2 is not None:
-            ligand2.ensure_remote_path(client=client, label="Second ligand")
+        pose1.ensure_remote_path(client=client, label="Pose")
+        if pose2 is not None:
+            pose2.ensure_remote_path(client=client, label="Second pose")
 
-        if protein.id is None or ligand1.id is None:
+        if protein.id is None:
             raise ValueError(
-                "protein and ligand1 must have an id after sync "
-                "(sync or create with id first)."
-            )
-        if ligand2 is not None and ligand2.id is None:
-            raise ValueError(
-                "ligand2 must have an id after sync (sync or create with id first)."
+                "protein must have an id after sync (sync or create with id first)."
             )
 
         inputs: dict[str, Any] = {
             "protein": {"id": protein.id, "file_path": protein.remote_path},
-            "ligand1": {"id": ligand1.id, "file_path": ligand1.remote_path},
+            "pose1": _pose_tool_ref(pose1),
             "add_H_atoms": self._add_H_atoms,
             "protonate_protein": self._protonate_protein,
             "retain_waters": self._retain_waters,
@@ -192,8 +186,8 @@ class SystemPrep(Execution, SyncExecutableMixin):
         if self._box_size is not None:
             inputs["box_size"] = self._box_size
 
-        if ligand2 is not None:
-            inputs["ligand2"] = {"id": ligand2.id, "file_path": ligand2.remote_path}
+        if pose2 is not None:
+            inputs["pose2"] = _pose_tool_ref(pose2)
 
         return inputs
 

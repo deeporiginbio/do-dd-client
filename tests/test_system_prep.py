@@ -8,6 +8,7 @@ import pytest
 
 from deeporigin.drug_discovery import BRD_DATA_DIR
 from deeporigin.drug_discovery.structures.ligand import Ligand
+from deeporigin.drug_discovery.structures.pose import Pose
 from deeporigin.drug_discovery.structures.prepared_system import PreparedSystem
 from deeporigin.drug_discovery.structures.protein import Protein
 from deeporigin.drug_discovery.system_prep import SystemPrep
@@ -56,8 +57,8 @@ def test_system_prep_get_results_falls_back_to_job_outputs(
         "retain_waters": False,
     }
     protein = Protein.from_file(BRD_DATA_DIR / "brd.pdb")
-    ligand = Ligand.from_smiles("CCO")
-    sysprep = SystemPrep(protein=protein, ligand=ligand, client=client)
+    pose = Pose(ligand_id="L", id="P", smiles="CCO")
+    sysprep = SystemPrep(protein=protein, pose=pose, client=client)
     sysprep.update_from_dto(
         _minimal_sysprep_dto(job_outputs={"system": system_payload})
     )
@@ -74,8 +75,8 @@ def test_system_prep_get_results_falls_back_to_job_outputs(
 def test_system_prep_get_results_requires_id(client: DeepOriginClient) -> None:
     """``get_results`` raises when ``id`` has not been set."""
     protein = Protein.from_file(BRD_DATA_DIR / "brd.pdb")
-    ligand = Ligand.from_smiles("CCO")
-    sysprep = SystemPrep(protein=protein, ligand=ligand, client=client)
+    pose = Pose(ligand_id="L", id="P", smiles="CCO")
+    sysprep = SystemPrep(protein=protein, pose=pose, client=client)
 
     with pytest.raises(ValueError, match="id is None"):
         sysprep.get_results()
@@ -86,12 +87,35 @@ def test_system_prep_get_results_raises_when_no_paths(
 ) -> None:
     """When both data platform and ``jobOutputs`` fail, raise sysprep message."""
     protein = Protein.from_file(BRD_DATA_DIR / "brd.pdb")
-    ligand = Ligand.from_smiles("CCO")
-    sysprep = SystemPrep(protein=protein, ligand=ligand, client=client)
+    pose = Pose(ligand_id="L", id="P", smiles="CCO")
+    sysprep = SystemPrep(protein=protein, pose=pose, client=client)
     sysprep.update_from_dto(_minimal_sysprep_dto(job_outputs={}))
 
     with pytest.raises(ValueError, match=SYSPREP_NO_OUTPUT_PATHS_MSG):
         sysprep.get_results(_minimal_sysprep_dto(job_outputs={}))
+
+
+def test_system_prep_rbfe_mode_builds_pose2_payload(
+    client: DeepOriginClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """RBFE mode serializes both pose1 and pose2 in tool inputs."""
+    protein = Protein(name="p", id="prot-1", remote_path="testing/brd.pdb")
+    pose1 = Pose(ligand_id="lig-1", id="pose-1", remote_path="testing/l1.sdf")
+    pose2 = Pose(ligand_id="lig-2", id="pose-2", remote_path="testing/l2.sdf")
+    sysprep = SystemPrep(protein=protein, pose1=pose1, pose2=pose2, client=client)
+    text = repr(sysprep)
+    assert "pose2_id='pose-2'" in text
+    assert "is_rbfe=True" in text
+    monkeypatch.setattr(protein, "sync", lambda **_: None)
+    monkeypatch.setattr(pose1, "sync", lambda **_: None)
+    monkeypatch.setattr(pose2, "sync", lambda **_: None)
+    monkeypatch.setattr(protein, "ensure_remote_path", lambda **_: None)
+    monkeypatch.setattr(pose1, "ensure_remote_path", lambda **_: None)
+    monkeypatch.setattr(pose2, "ensure_remote_path", lambda **_: None)
+    inputs = sysprep.sync_inputs()
+    assert inputs["pose1"]["id"] == "pose-1"
+    assert inputs["pose2"]["id"] == "pose-2"
 
 
 @pytest.mark.parametrize(
@@ -121,10 +145,13 @@ def test_sysprep_lv2(
 
     protein: Protein = request.getfixturevalue(protein_fixture)
     ligand: Ligand = request.getfixturevalue(ligand_fixture)
+    ligand.sync(client=client)
+    sdf = BRD_DATA_DIR / "brd-2.sdf"
+    pose = Pose.from_sdf(sdf, ligand=ligand, client=client)
 
     sysprep = SystemPrep(
         protein=protein,
-        ligand=ligand,
+        pose=pose,
         client=client,
         add_H_atoms=True,
         protonate_protein=True,

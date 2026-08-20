@@ -113,8 +113,8 @@ rbfe.start(quote=True)
 rbfe.estimate
 ```
 
-Prepare a single pair separately with `SystemPrep(protein=..., ligand1=...,
-ligand2=...).run()` — see [SystemPrep](../tools/systemprep.md).
+Prepare a single pair separately with `SystemPrep(protein=..., pose1=...,
+pose2=...).run()` — see [SystemPrep](../tools/systemprep.md).
 
 ## Converting to absolute binding free energy
 

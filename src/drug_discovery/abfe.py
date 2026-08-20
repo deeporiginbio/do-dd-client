@@ -13,12 +13,12 @@ from deeporigin.drug_discovery.execution_mixins import AsyncExecutableMixin
 from deeporigin.drug_discovery.fep_common import (
     ABFEParams,
     _fep_params_from_inputs,
-    _ligand_tool_ref,
+    _pose_tool_ref,
     _prepared_system_tool_ref,
     _simulation_blocks,
 )
 from deeporigin.drug_discovery.notebook_watch_mixin import NotebookWatchMixin
-from deeporigin.drug_discovery.structures.ligand import Ligand
+from deeporigin.drug_discovery.structures.pose import Pose
 from deeporigin.drug_discovery.structures.prepared_system import PreparedSystem
 from deeporigin.drug_discovery.structures.protein import Protein
 from deeporigin.exceptions import DeepOriginException
@@ -72,30 +72,28 @@ def _ligand_display_label_from_entity(*, entity: dict, fallback_id: str) -> str:
 def _abfe_default_name_from_entities(
     *,
     protein: Protein,
-    ligand: Ligand,
+    pose: Pose,
     client: DeepOriginClient,
 ) -> str:
     """Build a short human-readable label for a combined ABFE execution.
 
     Args:
         protein: Protein used for system preparation.
-        ligand: Ligand used for system preparation.
+        pose: Pose used for system preparation.
         client: API client used to resolve entities.
 
     Returns:
         A string such as ``ABFE: BRD4 with CCO``.
     """
     protein_id = protein.id
-    ligand_id = ligand.id
+    ligand_id = pose.ligand_id
     protein_id_str = (
         str(protein_id).strip()
         if protein_id is not None and str(protein_id).strip()
         else ""
     )
     ligand_id_str = (
-        str(ligand_id).strip()
-        if ligand_id is not None and str(ligand_id).strip()
-        else ""
+        str(ligand_id).strip() if ligand_id and str(ligand_id).strip() else ""
     )
 
     if protein_id_str:
@@ -118,7 +116,7 @@ def _abfe_default_name_from_entities(
         except Exception:
             ligand_label = ligand_id_str
     else:
-        ligand_label = "unknown ligand"
+        ligand_label = pose.name or pose.smiles or pose.id or "unknown pose"
 
     return f"ABFE: {protein_label} with {ligand_label}"
 
@@ -253,23 +251,21 @@ def _abfe_results_dataframe(
     return df[head + tail]
 
 
-def _ligand_from_tool_input(ref: dict[str, Any], *, client: DeepOriginClient) -> Ligand:
-    """Rehydrate a ligand from an ABFE ``ligand1`` reference."""
-    lig_id = ref.get("id")
+def _pose_from_tool_input(ref: dict[str, Any]) -> Pose:
+    """Rehydrate a pose from an ABFE ``pose1`` reference."""
+    pose_id = ref.get("id")
     file_path = ref.get("file_path")
-    if lig_id is not None:
-        assert client.entities is not None
-        data = client.entities.get_ligand(id=str(lig_id))
-        return Ligand._from_platform_record(
-            data=data,
-            client=client,
-            download=False,
-            mol_file_override=str(file_path) if file_path else None,
-        )
-    if not file_path:
-        msg = "Ligand input must include 'id' or 'file_path'."
+    if pose_id is None and not file_path:
+        msg = "Pose input must include 'id' or 'file_path'."
         raise ValueError(msg)
-    return Ligand.from_smiles("C", id=None, remote_path=str(file_path))
+    return Pose(
+        ligand_id=str(ref.get("ligand_id") or ""),
+        id=str(pose_id) if pose_id is not None else None,
+        remote_path=str(file_path) if file_path else None,
+        name=ref.get("name"),
+        smiles=ref.get("smiles"),
+        protein_id=str(ref["protein_id"]) if ref.get("protein_id") else None,
+    )
 
 
 class ABFE(Execution, AsyncExecutableMixin, NotebookWatchMixin):
@@ -277,7 +273,7 @@ class ABFE(Execution, AsyncExecutableMixin, NotebookWatchMixin):
 
     Platform ``steps`` are inferred from constructor inputs (see :meth:`_post_init`):
 
-    - ``["system-prep", "abfe"]``: ``protein`` + ``ligand`` / ``ligand1``
+    - ``["system-prep", "abfe"]``: ``protein`` + ``pose`` / ``pose1``
     - ``["abfe"]``: ``prepared_system``
 
     Attributes:
@@ -292,8 +288,8 @@ class ABFE(Execution, AsyncExecutableMixin, NotebookWatchMixin):
         self,
         *,
         protein: Protein | None = None,
-        ligand: Ligand | None = None,
-        ligand1: Ligand | None = None,
+        pose: Pose | None = None,
+        pose1: Pose | None = None,
         prepared_system: PreparedSystem | None = None,
         params: ABFEParams | None = None,
         add_h_atoms: bool = False,
@@ -309,18 +305,18 @@ class ABFE(Execution, AsyncExecutableMixin, NotebookWatchMixin):
         Platform ``steps`` are inferred in :meth:`_post_init`:
 
         - ``prepared_system`` -> ``["abfe"]`` (FEP on existing system)
-        - ``protein`` + ``ligand`` / ``ligand1`` -> ``["system-prep", "abfe"]``
+        - ``protein`` + ``pose`` / ``pose1`` -> ``["system-prep", "abfe"]``
 
-        Exactly one of ``prepared_system`` or (``protein`` + ligand) must be
-        provided. ``ligand`` and ``ligand1`` are mutually exclusive aliases.
+        Exactly one of ``prepared_system`` or (``protein`` + pose) must be
+        provided. ``pose`` and ``pose1`` are mutually exclusive aliases.
 
         Args:
             protein: Protein for combined system-prep + ABFE mode.
-            ligand: Ligand for combined mode (alias for ``ligand1``).
-            ligand1: Ligand for combined mode.
+            pose: Pose for combined mode (alias for ``pose1``).
+            pose1: Pose for combined mode.
             prepared_system: Prepared system for ABFE-only steps.
             params: FEP simulation parameters.
-            add_h_atoms: Add hydrogens to ligand during prep.
+            add_h_atoms: Add hydrogens to pose during prep.
             protonate_protein: Protonate protein during prep.
             retain_waters: Retain crystal waters during prep.
             padding: Solvation box padding (nm) during prep.
@@ -334,9 +330,9 @@ class ABFE(Execution, AsyncExecutableMixin, NotebookWatchMixin):
         super().__init__(client=client)
         self.tool_version = tool_version
         self.protein = protein
-        if ligand is not None and ligand1 is not None:
-            raise ValueError("Provide only one of ligand or ligand1, not both.")
-        self.ligand1 = ligand if ligand is not None else ligand1
+        if pose is not None and pose1 is not None:
+            raise ValueError("Provide only one of pose or pose1, not both.")
+        self.pose1 = pose if pose is not None else pose1
         self.prepared_system = prepared_system
         self._params = params if params is not None else ABFEParams()
         self.add_h_atoms = add_h_atoms
@@ -349,12 +345,12 @@ class ABFE(Execution, AsyncExecutableMixin, NotebookWatchMixin):
     def _post_init(self) -> None:
         """Infer platform ``steps`` from constructor inputs and validate."""
         has_prep = self.prepared_system is not None
-        has_combined = self.protein is not None and self.ligand1 is not None
+        has_combined = self.protein is not None and self.pose1 is not None
         mode_count = sum([has_prep, has_combined])
 
         if mode_count != 1:
             raise ValueError(
-                "Exactly one of prepared_system or (protein and ligand/ligand1) "
+                "Exactly one of prepared_system or (protein and pose/pose1) "
                 "must be provided."
             )
         if has_prep:
@@ -365,10 +361,10 @@ class ABFE(Execution, AsyncExecutableMixin, NotebookWatchMixin):
 
         if has_combined and self.name is None:
             assert self.protein is not None
-            assert self.ligand1 is not None
+            assert self.pose1 is not None
             self.name = _abfe_default_name_from_entities(
                 protein=self.protein,
-                ligand=self.ligand1,
+                pose=self.pose1,
                 client=self.client,
             )
 
@@ -425,7 +421,7 @@ class ABFE(Execution, AsyncExecutableMixin, NotebookWatchMixin):
             raise ValueError(msg)
 
         instance.protein = None
-        instance.ligand1 = None
+        instance.pose1 = None
         instance.prepared_system = None
         instance.add_h_atoms = bool(inputs.get("add_H_atoms", False))
         instance.protonate_protein = bool(inputs.get("protonate_protein", False))
@@ -454,12 +450,9 @@ class ABFE(Execution, AsyncExecutableMixin, NotebookWatchMixin):
                     remote_path=str(protein_input["file_path"]),
                 )
 
-            ligand_input = inputs.get("ligand1", {})
-            if ligand_input:
-                instance.ligand1 = _ligand_from_tool_input(
-                    ligand_input,
-                    client=instance.client,
-                )
+            pose_input = inputs.get("pose1") or inputs.get("ligand1") or {}
+            if pose_input:
+                instance.pose1 = _pose_from_tool_input(pose_input)
 
         if instance.steps == ["abfe"]:
             prepared_system_input = inputs.get("prepared_system", {})
@@ -502,34 +495,32 @@ class ABFE(Execution, AsyncExecutableMixin, NotebookWatchMixin):
         if "system-prep" in self.steps:
             if self.protein is None:
                 raise ValueError(f"protein is required for steps={self.steps!r}.")
-            if self.ligand1 is None:
-                raise ValueError(
-                    f"ligand/ligand1 is required for steps={self.steps!r}."
-                )
+            if self.pose1 is None:
+                raise ValueError(f"pose/pose1 is required for steps={self.steps!r}.")
         if self.steps == ["abfe"] and self.prepared_system is None:
             raise ValueError("prepared_system is required for steps=['abfe'].")
 
     def _ensure_synced_inputs(self) -> None:
-        """Sync protein and ligand before submission."""
+        """Sync protein and pose before submission."""
         client = self.client
         if self.protein is not None:
             self.protein.sync(lazy=True, client=client)
             self.protein.ensure_remote_path(client=client, label="Protein")
-        if self.ligand1 is not None and "system-prep" in self.steps:
-            self.ligand1.sync(lazy=True, client=client)
-            self.ligand1.ensure_remote_path(client=client, label="Ligand")
+        if self.pose1 is not None and "system-prep" in self.steps:
+            self.pose1.sync(lazy=True, client=client)
+            self.pose1.ensure_remote_path(client=client, label="Pose")
 
     def _build_params(self) -> dict[str, Any]:
         """Construct workflow input parameters for ``deeporigin.abfe-end-to-end``."""
         out: dict[str, Any] = {"steps": self.steps}
         if "system-prep" in self.steps:
             assert self.protein is not None
-            assert self.ligand1 is not None
+            assert self.pose1 is not None
             out["protein"] = {
                 "id": self.protein.id,
                 "file_path": self.protein.remote_path,
             }
-            out["ligand1"] = _ligand_tool_ref(self.ligand1)
+            out["pose1"] = _pose_tool_ref(self.pose1)
             out.update(
                 {
                     "add_H_atoms": self.add_h_atoms,

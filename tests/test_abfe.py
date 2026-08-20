@@ -12,11 +12,13 @@ from deeporigin.drug_discovery.abfe import (
     _abfe_default_name_from_entities,
     _abfe_results_dataframe,
     _ligand_display_label_from_entity,
+    _pose_from_tool_input,
     _protein_display_name_from_entity,
 )
 from deeporigin.drug_discovery.execution import Execution
 from deeporigin.drug_discovery.fep_common import ABFEParams
 from deeporigin.drug_discovery.structures.ligand import Ligand
+from deeporigin.drug_discovery.structures.pose import Pose
 from deeporigin.drug_discovery.structures.prepared_system import PreparedSystem
 from deeporigin.drug_discovery.structures.protein import Protein
 from deeporigin.platform.client import DeepOriginClient
@@ -57,12 +59,14 @@ def test_abfe_start_rejects_non_none_status_lv0(client: DeepOriginClient):
 
 
 def test_abfe_combined_build_params() -> None:
-    """protein + ligand selects system-prep + ABFE steps and prep flags."""
+    """protein + pose selects system-prep + ABFE steps and prep flags."""
     protein = Protein(name="p", id="prot-1", remote_path="testing/brd.pdb")
-    ligand = Ligand.from_smiles("CCO", id="lig-1", remote_path="testing/lig1.sdf")
+    pose = Pose(
+        ligand_id="lig-1", id="pose-1", smiles="CCO", remote_path="testing/lig1.sdf"
+    )
     abfe = ABFE(
         protein=protein,
-        ligand=ligand,
+        pose=pose,
         retain_waters=False,
         padding=1.5,
         params=ABFEParams(test_run=1),
@@ -70,8 +74,8 @@ def test_abfe_combined_build_params() -> None:
     params = abfe._build_params()
     assert params["steps"] == ["system-prep", "abfe"]
     assert params["protein"]["file_path"] == "testing/brd.pdb"
-    assert params["ligand1"]["id"] == "lig-1"
-    assert params["ligand1"]["file_path"] == "testing/lig1.sdf"
+    assert params["pose1"]["id"] == "pose-1"
+    assert params["pose1"]["file_path"] == "testing/lig1.sdf"
     assert params["padding"] == pytest.approx(1.5)
     assert params["binding"]["test_run"] == 1
 
@@ -101,21 +105,25 @@ def test_abfe_mutually_exclusive_inputs() -> None:
         system_pdb_path="c.pdb",
     )
     protein = Protein(name="p", id="prot-1", remote_path="testing/brd.pdb")
-    ligand = Ligand.from_smiles("CCO", id="lig-1", remote_path="testing/lig1.sdf")
+    pose = Pose(
+        ligand_id="lig-1", id="pose-1", smiles="CCO", remote_path="testing/lig1.sdf"
+    )
 
     with pytest.raises(ValueError, match="Exactly one of"):
         ABFE()
 
     with pytest.raises(ValueError, match="Exactly one of"):
-        ABFE(prepared_system=ps, protein=protein, ligand=ligand)
+        ABFE(prepared_system=ps, protein=protein, pose=pose)
 
 
-def test_abfe_ligand_ligand1_mutual_exclusion() -> None:
-    """ligand and ligand1 cannot both be provided."""
+def test_abfe_pose_pose1_mutual_exclusion() -> None:
+    """pose and pose1 cannot both be provided."""
     protein = Protein(name="p", id="prot-1", remote_path="testing/brd.pdb")
-    ligand = Ligand.from_smiles("CCO", id="lig-1", remote_path="testing/lig1.sdf")
-    with pytest.raises(ValueError, match="only one of ligand or ligand1"):
-        ABFE(protein=protein, ligand=ligand, ligand1=ligand)
+    pose = Pose(
+        ligand_id="lig-1", id="pose-1", smiles="CCO", remote_path="testing/lig1.sdf"
+    )
+    with pytest.raises(ValueError, match="only one of pose or pose1"):
+        ABFE(protein=protein, pose=pose, pose1=pose)
 
 
 def test_abfe_ensure_synced_inputs_ensures_remote_paths(
@@ -123,11 +131,11 @@ def test_abfe_ensure_synced_inputs_ensures_remote_paths(
 ) -> None:
     """start() ensures remote_path after lazy sync."""
     protein = Protein(name="p", id="prot-1", remote_path=None)
-    ligand = Ligand.from_smiles("CCO", id="lig-1", remote_path=None)
+    pose = Pose(ligand_id="lig-1", id="pose-1", smiles="CCO", remote_path=None)
     client = MagicMock(spec=DeepOriginClient)
     executions = MagicMock()
     client.executions = executions
-    abfe = ABFE(protein=protein, ligand=ligand, client=client)
+    abfe = ABFE(protein=protein, pose=pose, client=client)
     executions.create.return_value = {
         "executionId": "exec-123",
         "status": "Created",
@@ -136,16 +144,16 @@ def test_abfe_ensure_synced_inputs_ensures_remote_paths(
     protein.ensure_remote_path = MagicMock(
         side_effect=lambda **_: setattr(protein, "remote_path", "testing/brd.pdb")
     )
-    ligand.ensure_remote_path = MagicMock(
-        side_effect=lambda **_: setattr(ligand, "remote_path", "testing/lig1.sdf")
+    pose.ensure_remote_path = MagicMock(
+        side_effect=lambda **_: setattr(pose, "remote_path", "testing/lig1.sdf")
     )
     monkeypatch.setattr(protein, "sync", MagicMock())
-    monkeypatch.setattr(ligand, "sync", MagicMock())
+    monkeypatch.setattr(pose, "sync", MagicMock())
 
     abfe.start()
 
     protein.ensure_remote_path.assert_called_once()
-    ligand.ensure_remote_path.assert_called_once()
+    pose.ensure_remote_path.assert_called_once()
     call_kwargs = executions.create.call_args.kwargs
     assert call_kwargs["data"]["inputs"]["protein"]["file_path"] == "testing/brd.pdb"
 
@@ -183,6 +191,64 @@ def test_abfe_from_dto_rejects_system_prep_only_steps(
     }
     with pytest.raises(ValueError, match="Legacy steps=\\['system-prep'\\]"):
         ABFE.from_dto(fake_dto, client=client)
+
+
+def test_pose_from_tool_input_rehydrates_pose_ref() -> None:
+    """_pose_from_tool_input rebuilds Pose kwargs from stored execution inputs."""
+    pose = _pose_from_tool_input(
+        {
+            "id": "pose-1",
+            "file_path": "testing/l1.sdf",
+            "ligand_id": "lig-1",
+            "name": "pose a",
+            "smiles": "CCO",
+            "protein_id": "prot-1",
+        }
+    )
+    assert pose.id == "pose-1"
+    assert pose.remote_path == "testing/l1.sdf"
+    assert pose.ligand_id == "lig-1"
+    assert pose.name == "pose a"
+    assert pose.protein_id == "prot-1"
+
+
+def test_pose_from_tool_input_requires_id_or_file_path() -> None:
+    """_pose_from_tool_input rejects empty pose references."""
+    with pytest.raises(ValueError, match="id.*file_path"):
+        _pose_from_tool_input({})
+
+
+def test_abfe_from_dto_rehydrates_combined_pose(client: DeepOriginClient) -> None:
+    """from_dto restores protein + pose1 for combined system-prep + abfe runs."""
+    fake_dto = {
+        "executionId": "exec-combined",
+        "status": "Succeeded",
+        "tool": {
+            "key": TOOL_KEYS_AND_VERSIONS["abfe"]["tool_key"],
+            "version": "0.1.0",
+        },
+        "userInputs": {
+            "steps": ["system-prep", "abfe"],
+            "protein": {"id": "prot-1", "file_path": "testing/brd.pdb"},
+            "pose1": {
+                "id": "pose-1",
+                "file_path": "testing/lig1.sdf",
+                "ligand_id": "lig-1",
+            },
+            "add_H_atoms": True,
+            "retain_waters": False,
+            "padding": 1.25,
+        },
+    }
+    abfe = ABFE.from_dto(fake_dto, client=client)
+    assert abfe.steps == ["system-prep", "abfe"]
+    assert abfe.protein is not None
+    assert abfe.protein.id == "prot-1"
+    assert abfe.pose1 is not None
+    assert abfe.pose1.id == "pose-1"
+    assert abfe.pose1.remote_path == "testing/lig1.sdf"
+    assert abfe.add_h_atoms is True
+    assert abfe.padding == pytest.approx(1.25)
 
 
 def test_abfe_from_dto_rehydrates_prepared_system_lv0(client: DeepOriginClient):
@@ -306,7 +372,9 @@ def test_abfe_duplicate_lv0(client: DeepOriginClient):
 def test_abfe_default_name_helper_resolves_entities_lv0(client: DeepOriginClient):
     """_abfe_default_name_from_entities loads entities and formats the label."""
     protein = Protein(name="fallback", id="prot-123", remote_path="testing/p.pdb")
-    ligand = Ligand.from_smiles("CCO", id="lig-456", remote_path="testing/l.sdf")
+    pose = Pose(
+        ligand_id="lig-456", id="pose-1", smiles="CCO", remote_path="testing/l.sdf"
+    )
     with (
         patch.object(
             client.entities,
@@ -322,7 +390,7 @@ def test_abfe_default_name_helper_resolves_entities_lv0(client: DeepOriginClient
         assert (
             _abfe_default_name_from_entities(
                 protein=protein,
-                ligand=ligand,
+                pose=pose,
                 client=client,
             )
             == "ABFE: Protein X with Ligand Y"
@@ -332,7 +400,7 @@ def test_abfe_default_name_helper_resolves_entities_lv0(client: DeepOriginClient
 def test_abfe_default_name_ligand_smiles_when_no_name_lv0(client: DeepOriginClient):
     """Ligand label uses canonical_smiles or smiles when name is absent."""
     protein = Protein(name="p", id="p1", remote_path="testing/p.pdb")
-    ligand = Ligand.from_smiles("CCO", id="l1", remote_path="testing/l.sdf")
+    pose = Pose(ligand_id="l1", id="pose-1", smiles="CCO", remote_path="testing/l.sdf")
     with (
         patch.object(
             client.entities,
@@ -348,7 +416,7 @@ def test_abfe_default_name_ligand_smiles_when_no_name_lv0(client: DeepOriginClie
         assert (
             _abfe_default_name_from_entities(
                 protein=protein,
-                ligand=ligand,
+                pose=pose,
                 client=client,
             )
             == "ABFE: 1ABC with CCO"
@@ -358,7 +426,7 @@ def test_abfe_default_name_ligand_smiles_when_no_name_lv0(client: DeepOriginClie
 def test_abfe_default_name_unknown_ids_lv0(client: DeepOriginClient):
     """Missing IDs use fallback labels and do not call the entities API."""
     protein = Protein(name="MyProt", id=None, remote_path="testing/p.pdb")
-    ligand = Ligand.from_smiles("CCO", id=None, remote_path="testing/l.sdf")
+    pose = Pose(ligand_id="", id=None, remote_path="testing/l.sdf")
     get_protein = MagicMock()
     get_ligand = MagicMock()
     with (
@@ -368,10 +436,10 @@ def test_abfe_default_name_unknown_ids_lv0(client: DeepOriginClient):
         assert (
             _abfe_default_name_from_entities(
                 protein=protein,
-                ligand=ligand,
+                pose=pose,
                 client=client,
             )
-            == "ABFE: MyProt with unknown ligand"
+            == "ABFE: MyProt with unknown pose"
         )
     get_protein.assert_not_called()
     get_ligand.assert_not_called()
@@ -380,7 +448,9 @@ def test_abfe_default_name_unknown_ids_lv0(client: DeepOriginClient):
 def test_abfe_default_name_api_error_falls_back_to_id_lv0(client: DeepOriginClient):
     """When get_protein fails, fall back to the protein entity ID string."""
     protein = Protein(name="p", id="prot-123", remote_path="testing/p.pdb")
-    ligand = Ligand.from_smiles("CCO", id="lig-456", remote_path="testing/l.sdf")
+    pose = Pose(
+        ligand_id="lig-456", id="pose-1", smiles="CCO", remote_path="testing/l.sdf"
+    )
     with (
         patch.object(
             client.entities, "get_protein", side_effect=OSError("unavailable")
@@ -390,7 +460,7 @@ def test_abfe_default_name_api_error_falls_back_to_id_lv0(client: DeepOriginClie
         assert (
             _abfe_default_name_from_entities(
                 protein=protein,
-                ligand=ligand,
+                pose=pose,
                 client=client,
             )
             == "ABFE: prot-123 with Named"
@@ -434,7 +504,14 @@ def test_abfe_combined_auto_names(
     registered_ligand: Ligand,
 ) -> None:
     """Combined mode auto-generates a name from protein and ligand entities."""
-    abfe = ABFE(protein=registered_protein, ligand=registered_ligand, client=client)
+    from deeporigin.drug_discovery import BRD_DATA_DIR
+
+    pose = Pose.from_sdf(
+        BRD_DATA_DIR / "brd-2.sdf",
+        ligand=registered_ligand,
+        client=client,
+    )
+    abfe = ABFE(protein=registered_protein, pose=pose, client=client)
     assert abfe.name is not None
     assert abfe.name.startswith("ABFE:")
     assert "brd" in abfe.name.lower()

@@ -950,6 +950,7 @@ def create_tools_router(
         file_path = str(inputs.get("file_path") or "")
         origin = str(inputs.get("origin") or "registered")
         pose_row: dict[str, Any] = {
+            "id": f"pose-{uuid.uuid4().hex[:12]}",
             "file_path": file_path,
             "ligand_id": ligand_id,
             "origin": origin,
@@ -958,6 +959,14 @@ def create_tools_router(
         if protein_id is not None:
             pose_row["protein_id"] = str(protein_id)
         execution["jobOutputs"] = {"poses": [pose_row]}
+        eid = execution.get("executionId")
+        if eid:
+            _inject_result_explorer_records_from_outputs(
+                tool_key=tool_key,
+                tool_version=tool_version,
+                execution_id=eid,
+                job_outputs={"poses": [pose_row]},
+            )
         return execution
 
     def _build_protonation_execution(
@@ -1364,7 +1373,10 @@ def create_tools_router(
                     best_pose_seen.add(ligand_key)
                 extra["best_pose"] = data["best_pose"]
             record = {
-                "id": "08" + str(uuid.uuid4()).replace("-", "").upper()[:11],
+                "id": str(
+                    data.get("id")
+                    or ("08" + str(uuid.uuid4()).replace("-", "").upper()[:11])
+                ),
                 "tool_key": tool_key,
                 "tool_version": tool_version,
                 "result_type": result_type,
@@ -1537,7 +1549,10 @@ def create_tools_router(
         if not isinstance(user_inputs, dict):
             user_inputs = {}
         fixture_name = "tool-runs/deeporigin.system-prep/run"
-        if user_inputs.get("ligand2") is not None:
+        if (
+            user_inputs.get("ligand2") is not None
+            or user_inputs.get("pose2") is not None
+        ):
             fixture_name = "tool-runs/deeporigin.system-prep/run-rbfe"
         fixture = copy.deepcopy(load_fixture(fixture_name))
         outputs = _legacy_outputs_to_job_outputs(fixture)
@@ -1550,14 +1565,26 @@ def create_tools_router(
         ligand1_id = ligand1.get("id") if isinstance(ligand1, dict) else None
         ligand2 = user_inputs.get("ligand2") or {}
         ligand2_id = ligand2.get("id") if isinstance(ligand2, dict) else None
+        pose1 = user_inputs.get("pose1") or {}
+        pose1_id = pose1.get("id") if isinstance(pose1, dict) else None
+        pose2 = user_inputs.get("pose2") or {}
+        pose2_id = pose2.get("id") if isinstance(pose2, dict) else None
         system = outputs.get("system")
         if isinstance(system, dict):
             if protein_id is not None:
                 system["protein_id"] = protein_id
             if ligand1_id is not None:
                 system["ligand1_id"] = ligand1_id
+            elif pose1_id is not None:
+                system["ligand1_id"] = pose1_id
+                system["pose1_id"] = pose1_id
+                system["ligand1_pose_id"] = pose1_id
             if ligand2_id is not None:
                 system["ligand2_id"] = ligand2_id
+            elif pose2_id is not None:
+                system["ligand2_id"] = pose2_id
+                system["pose2_id"] = pose2_id
+                system["ligand2_pose_id"] = pose2_id
         execution["jobOutputs"] = outputs
         _inject_result_explorer_records_from_outputs(
             tool_key=tkey,
