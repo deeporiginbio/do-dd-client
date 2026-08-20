@@ -663,7 +663,9 @@ const initViewer = async () => {{
       if (typeof molstarLib === "undefined" || typeof molstarLib.initViewer !== "function") {{
         throw new Error("molstarLib bundle did not load from {MOLSTAR_JS_URL}");
       }}
-      const viewer = await molstarLib.initViewer("{_VIEWER_CONTAINER_ID}");
+      const viewer = await molstarLib.initViewer("{_VIEWER_CONTAINER_ID}", {{
+        showDockingBoxControls: false,
+      }});
       const proteinData = atob("{pdb_b64}");
       const structureRef = await viewer.api.loadFromRawContent(
         proteinData,
@@ -1081,7 +1083,9 @@ const initViewer = async () => {{
       if (typeof molstarLib === "undefined" || typeof molstarLib.initViewer !== "function") {{
         throw new Error("molstarLib bundle did not load from {MOLSTAR_JS_URL}");
       }}
-      const viewer = await molstarLib.initViewer("{_VIEWER_CONTAINER_ID}");
+      const viewer = await molstarLib.initViewer("{_VIEWER_CONTAINER_ID}", {{
+        showDockingBoxControls: false,
+      }});
       const proteinData = atob("{pdb_b64}");
       const ligandPayloads = {ligands_json};
       {decode_ligands}

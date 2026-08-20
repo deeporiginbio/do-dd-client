@@ -528,6 +528,7 @@ def test_render_interactive_docking_box_html_uses_get_docking_box(
     assert "do-box-apply" not in html
     assert "Syncing box geometry..." in html
     assert "Synced box geometry:" in html
+    assert "showDockingBoxControls: false" not in html
     assert "Visualization only" not in html
     assert "do-box-hint" not in html
     assert "Session rotation syncs" not in html
