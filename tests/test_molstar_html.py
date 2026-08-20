@@ -282,6 +282,7 @@ def test_render_docking_box_html_api() -> None:
     assert "[12.0, 23.0, 34.0]" in html
     assert "0.2" in html
     assert str(0xFFFF00) in html
+    assert "showDockingBoxControls: false" in html
 
 
 def test_render_docking_box_html_applies_rotation_deg() -> None:
@@ -363,6 +364,7 @@ def test_render_protein_with_box_and_poses_html_api() -> None:
     assert "[8.0, 17.0, 26.0]" in html
     assert "[12.0, 23.0, 34.0]" in html
     assert str(0xFFFF00) in html
+    assert "showDockingBoxControls: false" in html
 
 
 def test_render_protein_with_box_and_poses_html_applies_rotation_deg() -> None:
