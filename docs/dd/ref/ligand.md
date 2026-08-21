@@ -31,7 +31,7 @@ Until molprops has been run or the platform record has pinned values, these fiel
 
 Use `Ligand.prepare()` to perform common preparation steps before docking:
 
-- salt removal, kekulization
+- organic-parent selection (counterion stripping when unambiguous), kekulization
 - fragment validation (rejects multiple non-identical fragments)
 - validation of atom symbols against supported types
 

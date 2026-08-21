@@ -336,7 +336,7 @@ ligands.show_grid()
 
 ### Preparing Ligands
 
-You can prepare a ligand for downstream workflows using the `prepare()` method. This performs salt removal, kekulization, fragment validation (rejects multiple non-identical fragments), and validates atom types:
+You can prepare a ligand for downstream workflows using the `prepare()` method. This selects an organic parent when the input is an unambiguous salt (organic fragment plus inorganic counterions), kekulizes, validates fragments (rejects multiple non-identical fragments), and validates atom types. Coordination complexes without an organic parent (for example cisplatin) are left unstripped:
 
 === "Ligand"
 
