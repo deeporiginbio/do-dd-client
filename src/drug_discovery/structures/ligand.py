@@ -19,11 +19,7 @@ import pandas as pd
 from rdkit import Chem, RDLogger
 from rdkit.Chem import AllChem, rdMolDescriptors
 
-from deeporigin.drug_discovery.constants import (
-    LIGANDS_DIR,
-    METAL_ELEMENTS,
-    SUPPORTED_ATOM_SYMBOLS,
-)
+from deeporigin.drug_discovery.constants import LIGANDS_DIR, SUPPORTED_ATOM_SYMBOLS
 from deeporigin.drug_discovery.validation import validate_fragments
 from deeporigin.exceptions import DeepOriginException
 from deeporigin.platform.client import DeepOriginClient
@@ -43,13 +39,6 @@ FILE_FORMATS = Literal["mol", "mol2", "pdb", "pdbqt", "xyz", "sdf"]
 def _fragment_has_carbon(mol: Chem.Mol) -> bool:
     """Return True if ``mol`` contains at least one carbon atom."""
     return any(atom.GetAtomicNum() == 6 for atom in mol.GetAtoms())
-
-
-def _is_lone_metal_ion(mol: Chem.Mol) -> bool:
-    """Return True if ``mol`` is a single metal heavy atom (e.g. ``[Zn+2]``)."""
-    if mol.GetNumHeavyAtoms() != 1:
-        return False
-    return mol.GetAtomWithIdx(0).GetSymbol().upper() in METAL_ELEMENTS
 
 
 def choose_parent_mol(mol: Chem.Mol) -> Chem.Mol:
@@ -73,15 +62,7 @@ def choose_parent_mol(mol: Chem.Mol) -> Chem.Mol:
 
     organic = [frag for frag in frags if _fragment_has_carbon(frag)]
     if len(organic) == 1:
-        parent = organic[0]
-        if _is_lone_metal_ion(parent):
-            warnings.warn(
-                "Refusing to normalize to a lone metal ion; keeping all fragments.",
-                UserWarning,
-                stacklevel=2,
-            )
-            return mol
-        return parent
+        return organic[0]
 
     # Multiple organics, or no organic parent (e.g. cisplatin): do not strip.
     return mol
@@ -771,12 +752,15 @@ class Ligand(Entity):
         Raises:
             DeepOriginException: If parent selection or kekulization fails
         """
-        before = Chem.MolToSmiles(Chem.RemoveHs(self.mol), canonical=True)
-        parent = choose_parent_mol(self.mol)
-        if parent is None:
-            raise DeepOriginException("Parent fragment selection failed.")
+        try:
+            before = Chem.MolToSmiles(Chem.RemoveHs(self.mol), canonical=True)
+            parent = choose_parent_mol(self.mol)
+            after = Chem.MolToSmiles(Chem.RemoveHs(parent), canonical=True)
+        except DeepOriginException:
+            raise
+        except Exception as e:
+            raise DeepOriginException(f"Parent fragment selection failed: {e}") from e
 
-        after = Chem.MolToSmiles(Chem.RemoveHs(parent), canonical=True)
         if after != before:
             warnings.warn(
                 f"Normalized multi-fragment ligand from {before!r} to {after!r}.",
