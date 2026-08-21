@@ -17,7 +17,7 @@ from beartype import beartype
 import numpy as np
 import pandas as pd
 from rdkit import Chem, RDLogger
-from rdkit.Chem import AllChem, SaltRemover, rdMolDescriptors
+from rdkit.Chem import AllChem, rdMolDescriptors
 
 from deeporigin.drug_discovery.constants import LIGANDS_DIR, SUPPORTED_ATOM_SYMBOLS
 from deeporigin.drug_discovery.validation import validate_fragments
@@ -34,6 +34,39 @@ RDLogger.DisableLog("rdApp.*")  # ty:ignore[unresolved-attribute]
 
 
 FILE_FORMATS = Literal["mol", "mol2", "pdb", "pdbqt", "xyz", "sdf"]
+
+
+def _fragment_has_carbon(mol: Chem.Mol) -> bool:
+    """Return True if ``mol`` contains at least one carbon atom."""
+    return any(atom.GetAtomicNum() == 6 for atom in mol.GetAtoms())
+
+
+def choose_parent_mol(mol: Chem.Mol) -> Chem.Mol:
+    """Select the parent structure from a possibly multi-fragment molecule.
+
+    Prefers a single carbon-containing (organic) fragment over inorganic
+    counterions. Multi-fragment inputs with no organic parent (for example
+    coordination complexes like cisplatin) or with multiple organic fragments
+    are left unchanged so callers do not silently lose ligands or mixtures.
+
+    Args:
+        mol: RDKit molecule, possibly with disconnected fragments.
+
+    Returns:
+        The chosen parent molecule, or ``mol`` unchanged when stripping would
+        be ambiguous or unsafe.
+    """
+    frags = Chem.GetMolFrags(mol, asMols=True, sanitizeFrags=True)
+    if len(frags) <= 1:
+        return mol
+
+    organic = [frag for frag in frags if _fragment_has_carbon(frag)]
+    if len(organic) == 1:
+        return organic[0]
+
+    # Multiple organics, or no organic parent (e.g. cisplatin): do not strip.
+    return mol
+
 
 # Keys returned by ``deeporigin.mol-props-combined`` rows → Ligand attribute
 # names (snake_case). Mirrors the ``molprops[*]`` items in the combined tool's
@@ -709,23 +742,38 @@ class Ligand(Entity):
 
     def process_mol(self) -> None:
         """
-        Clean the ligand molecule by removing hydrogens and sanitizing the structure.
+        Clean the ligand molecule by selecting an organic parent and kekulizing.
+
+        When the input has a single carbon-containing fragment plus inorganic
+        counterions, the organic parent is kept. Coordination complexes and
+        multi-organic mixtures are left unchanged. Emits a :class:`UserWarning`
+        when the kept structure differs from the input.
 
         Raises:
-            DeepOriginException: If salt removal or kekulization fails
+            DeepOriginException: If parent selection or kekulization fails
         """
-        remover = SaltRemover.SaltRemover()
+        try:
+            before = Chem.MolToSmiles(Chem.RemoveHs(self.mol), canonical=True)
+            parent = choose_parent_mol(self.mol)
+            after = Chem.MolToSmiles(Chem.RemoveHs(parent), canonical=True)
+        except DeepOriginException:
+            raise
+        except Exception as e:
+            raise DeepOriginException(f"Parent fragment selection failed: {e}") from e
 
-        stripped_mol = remover.StripMol(self.mol)
-        if stripped_mol is None:
-            raise DeepOriginException("Salt removal failed.")
+        if after != before:
+            warnings.warn(
+                f"Normalized multi-fragment ligand from {before!r} to {after!r}.",
+                UserWarning,
+                stacklevel=2,
+            )
 
         try:
-            Chem.Kekulize(stripped_mol, clearAromaticFlags=False)
+            Chem.Kekulize(parent, clearAromaticFlags=False)
         except Chem.KekulizeException as e:
             raise DeepOriginException("Kekulization failed.") from e
 
-        self.mol = stripped_mol
+        self.mol = parent
 
     def unsupported_atom_symbols(self) -> list[str]:
         """Sorted unique atom symbols in :attr:`mol` not in ``SUPPORTED_ATOM_SYMBOLS``."""
@@ -745,7 +793,7 @@ class Ligand(Entity):
         """Prepare the ligand for downstream workflows.
 
         The routine performs the following using RDKit and internal utilities:
-        - Salt removal
+        - Organic-parent selection (counterion stripping when unambiguous)
         - Kekulization
         - Fragment validation (rejects multiple non-identical fragments)
         - Wildcard atom validation (rejects '*' atoms)
@@ -763,7 +811,7 @@ class Ligand(Entity):
                                multiple non-identical fragments are detected.
         """
         # Start from current molecule
-        # 1) Salt removal and kekulization (reuse process_mol)
+        # 1) Organic-parent selection and kekulization (reuse process_mol)
         self.process_mol()
 
         # 2) Fragment validation
@@ -964,6 +1012,8 @@ class Ligand(Entity):
         Pass a molecule via the keyword argument ``mol`` (see class factories such as
         :meth:`from_smiles` and :meth:`from_rdkit_mol`).
         """
+        # Record the caller-supplied structure before parent-fragment selection.
+        initial_smiles = Chem.MolToSmiles(Chem.RemoveHs(self.mol), canonical=True)
 
         self.process_mol()
         self.smiles = Chem.MolToSmiles(Chem.RemoveHs(self.mol), canonical=True)
@@ -973,7 +1023,7 @@ class Ligand(Entity):
 
         self.set_conformer_id()
 
-        self.mol.SetProp("initial_smiles", Chem.MolToSmiles(Chem.RemoveHs(self.mol)))
+        self.mol.SetProp("initial_smiles", initial_smiles)
 
         if self.name is None:
             self.name = "Unknown_Ligand"
@@ -2574,7 +2624,7 @@ class LigandSet:
         Prepare all ligands in the set for downstream workflows.
 
         This calls the prepare() method on each Ligand in the set, which performs:
-        - Salt removal
+        - Organic-parent selection (counterion stripping when unambiguous)
         - Kekulization
         - Fragment validation (rejects multiple non-identical fragments)
         - Validation of atom types against supported symbols

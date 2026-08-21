@@ -2,6 +2,7 @@ import os
 from pathlib import Path
 import tempfile
 import uuid
+import warnings
 
 import numpy as np
 import pytest
@@ -381,7 +382,7 @@ def test_ligand_mol_from_file_formats(file_type):
 
 # Test instance methods
 def test_ligand_process_mol():
-    """Test the process_mol method for salt removal and kekulization"""
+    """Test the process_mol method for parent selection and kekulization"""
 
     # Create a simple molecule
     ligand = Ligand.from_smiles("CCO", name="Ethanol")
@@ -392,7 +393,7 @@ def test_ligand_process_mol():
 
 
 def test_ligand_prepare_basic():
-    """Prepare should salt-strip, kekulize, and validate atom types"""
+    """Prepare should select parent, kekulize, and validate atom types"""
 
     ligand = Ligand.from_smiles("CCO", name="Ethanol")
     # Ensure prepare runs and sets properties
@@ -404,6 +405,60 @@ def test_ligand_prepare_basic():
     assert all(a in SUPPORTED_ATOM_SYMBOLS for a in ligand.atom_types)
     # Prepared attribute
     assert ligand.prepared, "Ligand should be prepared"
+
+
+@pytest.mark.parametrize(
+    ("smiles", "expected_smiles", "expect_warning"),
+    [
+        # DDOS-7357: organic acid + metal — keep the organic parent, not the metal
+        ("CC(=O)[O-].[Zn+2]", "CC(=O)[O-]", True),
+        # DDOS-7357: coordination complex — do not strip ammine ligands
+        ("N.N.Cl[Pt]Cl", "N.N.Cl[Pt]Cl", False),
+        # DDOS-7357: single organic fragment — unchanged
+        ("CC(=O)Oc1ccccc1C(=O)O", "CC(=O)Oc1ccccc1C(=O)O", False),
+        # Classic pharmaceutical salt — keep organic parent
+        ("CC(=O)O.[Na+]", "CC(=O)O", True),
+        ("c1ccccc1.Cl", "c1ccccc1", True),
+    ],
+)
+def test_ligand_from_smiles_organic_parent_selection(
+    smiles: str,
+    expected_smiles: str,
+    expect_warning: bool,
+) -> None:
+    """Construction keeps the organic parent, not catalogue salt leftovers."""
+    from rdkit import Chem
+
+    expected_canonical = Chem.MolToSmiles(
+        Chem.MolFromSmiles(expected_smiles), canonical=True
+    )
+    if expect_warning:
+        with pytest.warns(UserWarning, match="Normalized multi-fragment"):
+            ligand = Ligand.from_smiles(smiles)
+    else:
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            ligand = Ligand.from_smiles(smiles)
+        assert not any(
+            issubclass(w.category, UserWarning)
+            and "Normalized multi-fragment" in str(w.message)
+            for w in caught
+        )
+
+    assert ligand.smiles == expected_canonical
+    assert ligand.mol.GetProp("initial_smiles") == Chem.MolToSmiles(
+        Chem.MolFromSmiles(smiles), canonical=True
+    )
+
+
+def test_ligand_cisplatin_retains_ammine_and_platinum() -> None:
+    """Cisplatin must keep N and Pt after construction (DDOS-7357)."""
+    ligand = Ligand.from_smiles("N.N.Cl[Pt]Cl")
+    symbols = {atom.GetSymbol() for atom in ligand.mol.GetAtoms()}
+    assert "N" in symbols
+    assert "Pt" in symbols
+    assert "Cl" in symbols
+    assert ligand.mol.GetNumAtoms() == 5
 
 
 def test_ligand_prepare_remove_hydrogens():
