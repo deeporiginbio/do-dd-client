@@ -501,3 +501,82 @@ def test_pocket_show_raises_when_protein_id_cannot_be_loaded_lv1(
 
     with pytest.raises(DeepOriginException, match="protein"):
         pocket.show()
+
+
+def test_pocket_show_loads_attached_parent_structure_lv0(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A metadata-only parent (from_dto rehydration) is loaded before showing."""
+    protein = Protein.from_file(_BRD_PDB)
+    protein.structure = None
+    pocket = Pocket.from_pdb_file(_BRD_PDB)
+    pocket.protein = protein
+    captured = _stub_protein_pocket_viewer(monkeypatch)
+
+    result = pocket.show()
+
+    assert result == "<pockets/>"
+    assert protein.structure is not None
+    assert captured["pocket_paths"] == [str(pocket.local_path)]
+
+
+def test_pocket_show_raises_when_parent_structure_cannot_load_lv0() -> None:
+    """A parent with no structure and nothing to download from fails loudly."""
+    protein = Protein.from_file(_BRD_PDB)
+    protein.structure = None
+    protein.local_path = None
+    protein.remote_path = None
+    pocket = Pocket.from_pdb_file(_BRD_PDB)
+    pocket.protein = protein
+
+    with pytest.raises(DeepOriginException, match="structure of parent protein"):
+        pocket.show()
+
+
+def test_pocket_show_downloads_pocket_with_its_client_lv0(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A remote pocket is fetched with the client that resolved its parent."""
+    protein = Protein.from_file(_BRD_PDB)
+    pocket = Pocket.from_pdb_file(_BRD_PDB)
+    pocket.protein = protein
+    pocket.remote_path = "entities/pockets/remote-pocket.pdb"
+    pocket.local_path = None
+    sentinel_client = object()
+    pocket._client = sentinel_client
+    clients_used: list[object] = []
+
+    def fake_download(self, *, client=None, lazy: bool = True) -> str:
+        """Record the client used and pretend the pocket landed on disk."""
+        clients_used.append(client)
+        self.local_path = str(_BRD_PDB)
+        return self.local_path
+
+    monkeypatch.setattr(Pocket, "download", fake_download)
+    _stub_protein_pocket_viewer(monkeypatch)
+
+    pocket.show()
+
+    assert clients_used[0] is sentinel_client
+
+
+def test_pocket_show_wraps_platform_error_with_parent_context_lv0(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Platform failures keep their detail but name the parent protein."""
+    pocket = Pocket.from_pdb_file(_BRD_PDB)
+    pocket.protein_id = "protein-does-not-exist"
+
+    def fake_from_id(*args: object, **kwargs: object) -> Protein:
+        """Simulate a platform rejection for an unresolvable protein id."""
+        raise DeepOriginException(
+            title="Request to platform API failed.",
+            message="Invalid id format.",
+        )
+
+    monkeypatch.setattr(Protein, "from_id", fake_from_id)
+
+    with pytest.raises(DeepOriginException, match="parent protein") as excinfo:
+        pocket.show()
+
+    assert "Invalid id format." in str(excinfo.value)

@@ -432,7 +432,8 @@ class Pocket(Entity):
         Sugar for ``protein.show(pockets=[self])``. Uses :attr:`protein` when
         attached; otherwise loads the parent with
         :meth:`~deeporigin.drug_discovery.structures.protein.Protein.from_id`
-        from :attr:`protein_id`.
+        from :attr:`protein_id`. The parent structure and this pocket are
+        downloaded with this pocket's client when they are not local yet.
 
         Returns:
             Result of :meth:`~deeporigin.drug_discovery.structures.protein.Protein.show`.
@@ -442,6 +443,8 @@ class Pocket(Entity):
                 loading the protein by id fails.
         """
         parent = self._resolve_parent_protein()
+        if self.local_path is None and self.remote_path is not None:
+            self.download(client=self._client)
         return parent.show(pockets=[self])
 
     def _resolve_parent_protein(self) -> Protein:
@@ -454,7 +457,7 @@ class Pocket(Entity):
             DeepOriginException: If the parent cannot be resolved.
         """
         if self.protein is not None:
-            return self.protein
+            return self._ensure_parent_structure(self.protein)
         if not self.protein_id:
             raise DeepOriginException(
                 title="Cannot visualize pocket",
@@ -472,16 +475,63 @@ class Pocket(Entity):
 
         try:
             parent = Protein.from_id(self.protein_id, client=self._client)
-        except DeepOriginException:
-            raise
         except Exception as exc:
-            raise DeepOriginException(
-                title="Cannot visualize pocket",
-                message=f"Could not load parent protein {self.protein_id!r}.",
-                fix="Call protein.show(pockets=[pocket]) with a loaded Protein.",
+            raise self._cannot_load_parent(
+                f"Could not load parent protein {self.protein_id!r}.", exc
             ) from exc
         self.protein = parent
+        return self._ensure_parent_structure(parent)
+
+    def _ensure_parent_structure(self, parent: Protein) -> Protein:
+        """Download the parent structure when only metadata is attached.
+
+        Rehydrated parents (``Protein.from_id(..., download=False)``, as used by
+        :meth:`PocketFinder.from_dto`) carry no ``structure``, and
+        :meth:`Protein.show` serializes the structure. Download it with this
+        pocket's client before delegating.
+
+        Args:
+            parent: The parent protein attached to this pocket.
+
+        Returns:
+            The same protein, with :attr:`Protein.structure` loaded.
+
+        Raises:
+            DeepOriginException: If the structure cannot be downloaded.
+        """
+        if parent.structure is not None:
+            return parent
+
+        identifier = parent.id or self.protein_id
+        try:
+            parent.download(client=self._client)
+        except Exception as exc:
+            raise self._cannot_load_parent(
+                f"Could not load the structure of parent protein {identifier!r}.",
+                exc,
+            ) from exc
         return parent
+
+    @staticmethod
+    def _cannot_load_parent(message: str, exc: Exception) -> DeepOriginException:
+        """Build the error raised when the parent protein cannot be visualized.
+
+        Keeps the underlying platform detail in the message so callers still see
+        why the load failed.
+
+        Args:
+            message: Context describing which parent protein could not be loaded.
+            exc: The underlying failure.
+
+        Returns:
+            The ``DeepOriginException`` to raise.
+        """
+        detail = exc.body if isinstance(exc, DeepOriginException) else str(exc)
+        return DeepOriginException(
+            title="Cannot visualize pocket",
+            message=f"{message}\n{detail}" if detail else message,
+            fix="Call protein.show(pockets=[pocket]) with a loaded Protein.",
+        )
 
     @classmethod
     def from_residue_number(
