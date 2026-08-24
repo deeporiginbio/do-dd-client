@@ -577,17 +577,31 @@ def _validate_docking_box_color(color: object) -> int:
 
 
 def _rotation_deg_script_literal(rotation_deg: list[float] | None) -> str:
-    """Return a JS literal for ``rotation_deg``, or ``null`` when identity/absent."""
-    from deeporigin.drug_discovery.docking_common import normalize_rotation_deg
+    """Return a JS literal for molstar mesh Euler, or ``null`` when identity.
+
+    ``rotation_deg`` from docking / pocket-finder is lab→working. Molstar
+    ``setRotation`` rotates the AABB mesh by ``R``, so the iframe receives
+    Euler of ``Rᵀ`` (DDOS-7441).
+    """
+    from deeporigin.drug_discovery.docking_common import (
+        normalize_rotation_deg,
+        transpose_rotation_deg,
+    )
 
     normalized = normalize_rotation_deg(rotation_deg)
     if normalized is None:
         return "null"
-    return _json_value_for_script_tag(normalized)
+    mesh = transpose_rotation_deg(normalized)
+    rounded = [round(value, 10) for value in mesh]
+    return _json_value_for_script_tag(rounded)
 
 
 def _apply_docking_box_rotation_js() -> str:
-    """Return JS helper applying rotation via molstar ``DockingBoxManager``."""
+    """Return JS helper applying mesh Euler via molstar ``DockingBoxManager``.
+
+    Callers must pass mesh Euler (``Rᵀ`` of lab→working), not pocket-finder
+    ``rotation_deg`` directly.
+    """
     return """
 const applyDockingBoxRotation = (viewer, rotationDeg) => {
   if (
@@ -633,8 +647,8 @@ def render_docking_box_html(
         pdb_path: Path to the protein PDB file on disk.
         box_center: Docking box center ``[x, y, z]`` in angstroms.
         box_size: Docking box extents ``[sx, sy, sz]`` in angstroms.
-        rotation_deg: Optional ``[rx, ry, rz]`` Euler angles (degrees) applied to
-            the box mesh after ``renderBoundingBox`` (Rz·Ry·Rx about center).
+        rotation_deg: Optional lab→working ``[rx, ry, rz]`` Euler (degrees).
+            Converted to mesh Euler (``Rᵀ``) before ``setRotation``.
         radius: Wireframe mesh radius (default ``0.2``).
         color: Hex color integer for the box (default ``0xFFFF00``).
 
@@ -707,7 +721,9 @@ def render_interactive_docking_box_html(
         box_center: Docking box center ``[x, y, z]`` in angstroms.
         box_size: Docking box extents ``[sx, sy, sz]`` in angstroms.
         bridge_id: UUID matching the parent Comm bridge.
-        rotation_deg: Optional session rotation to restore on the box mesh.
+        rotation_deg: Optional lab→working session rotation. Converted to
+            mesh Euler before ``setRotation``; commits are converted back
+            in :func:`~deeporigin.drug_discovery.docking_common.parse_docking_box_commit`.
         rotation_used_by_run: When ``False``, overlay warns that ``run()``
             ignores rotation (ConstrainedDocking v1).
         radius: Wireframe mesh radius.
@@ -1045,8 +1061,8 @@ def render_protein_with_box_and_poses_html(
         box_center: Docking box center ``[x, y, z]`` in angstroms.
         box_size: Docking box extents ``[sx, sy, sz]`` in angstroms.
         ligand_payloads: Per-ligand dicts from :func:`ligand_data_for_js`.
-        rotation_deg: Optional ``[rx, ry, rz]`` Euler angles (degrees) applied to
-            the box mesh after ``renderBoundingBox``.
+        rotation_deg: Optional lab→working ``[rx, ry, rz]`` Euler (degrees).
+            Converted to mesh Euler (``Rᵀ``) before ``setRotation``.
         protein_style: Mol* representation type for the protein polymer.
         ligand_style: Mol* representation type for docked ligands.
         radius: Wireframe mesh radius (default ``0.2``).

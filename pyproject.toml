@@ -56,6 +56,7 @@ dev = [
     "ipywidgets>=8.1.0",
     "jupyter-black",
     "jupyterlab>=4.6.2",
+    "jupyterlab-execute-time",
     "python-dotenv",
 ]
 docs = [

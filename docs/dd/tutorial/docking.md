@@ -118,6 +118,12 @@ poses = docking.get_poses()
 docking.show_box(poses=poses)
 ```
 
+Docking samples the ligand **inside** that oriented box (the ligand's
+placement / centroid is constrained to the search volume). Atoms of a
+finite-size ligand can stick out of a tight pocket-finder box even when
+the pose is valid. The pose should overlap the wireframe, not sit in a
+mirrored copy of it.
+
 ### Rotating the search box interactively
 
 In JupyterLab, pass `interactive=True` to rotate the search box with molstar's
@@ -132,7 +138,8 @@ handle = docking.show_box(interactive=True)
 docking.rotation_deg  # after a rotation gesture — e.g. [0.0, 45.0, 0.0]
 ```
 
-Interactive mode requires JupyterLab with the project kernel (`make jupyter`).
+Interactive mode requires JupyterLab from this package's virtual environment
+(`make jupyter-lab`).
 See the [Interactive docking box](../../notebooks/html/interactive-docking-box.html)
 notebook for a full walkthrough. Rotated docking on the platform requires
 toolbox docking **3.4.32+** on your org.

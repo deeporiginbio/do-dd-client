@@ -222,6 +222,14 @@ def test_pocket_finder_lv2(
     pocket = pockets[0]
     assert isinstance(pocket, Pocket), "Expected Pocket object"
 
+    assert pocket.protein is protein, (
+        "PocketFinder results should attach the finder protein"
+    )
+    if protein.id is not None:
+        assert pocket.protein_id == protein.id, (
+            "Pocket protein_id should match protein.id"
+        )
+
     if protein_fixture == "registered_protein":
         assert pocket.protein_id == protein.id, (
             "Pocket protein_id should match protein.id"

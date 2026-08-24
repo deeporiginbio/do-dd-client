@@ -12,13 +12,13 @@ rejected: modern notebook frontends do not expose their kernel to output scripts
 
 ## Run
 
-From the `do-dd-client` repo root (JupyterLab or VS Code notebook):
+From the repo root (JupyterLab or VS Code notebook, using this package's `.venv`):
 
 ```bash
-make prototype-ddos-6937
+make jupyter-lab NOTEBOOK=prototypes/ddos-6937-interactive-box-wireframe/wireframe.ipynb
 ```
 
-Or open `wireframe.ipynb` manually and run all cells.
+Or open `wireframe.ipynb` in that environment and run all cells.
 
 ## What to try
 

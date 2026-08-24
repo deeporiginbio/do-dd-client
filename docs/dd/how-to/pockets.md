@@ -60,3 +60,19 @@ pocket = Pocket.from_ligand(ligand, name="ligand_pocket")
 ```
 
 This uses the ligand coordinates as the pocket definition. For loading ligands from other sources, see [Work with Ligands](ligands.md).
+
+## Visualization
+
+Pockets from PocketFinder keep a parent protein. Show one pocket in that protein:
+
+```{.python notest}
+pocket.show()
+```
+
+That is the same as `protein.show(pockets=[pocket])`. To overlay several pockets at once:
+
+```{.python notest}
+protein.show(pockets=pockets)
+```
+
+Pockets created from a ligand, residue number, or PDB file have no parent until you assign `pocket.protein` or `pocket.protein_id`. Without a resolvable parent, `pocket.show()` raises; pass the protein explicitly with `protein.show(pockets=[pocket])`.

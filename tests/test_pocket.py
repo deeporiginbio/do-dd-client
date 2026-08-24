@@ -12,6 +12,7 @@ import numpy as np
 import pytest
 
 from deeporigin.drug_discovery import BRD_DATA_DIR, Pocket, Protein
+from deeporigin.exceptions import DeepOriginException
 
 if TYPE_CHECKING:
     from deeporigin.platform import DeepOriginClient
@@ -388,3 +389,115 @@ def test_from_remote_file_sets_remote_path_and_loads_coordinates_lv0(
     assert pocket.remote_path == remote
     assert pocket.local_path is not None
     assert pocket.coordinates is not None
+
+
+def _stub_protein_pocket_viewer(monkeypatch: pytest.MonkeyPatch) -> dict[str, object]:
+    """Replace Mol* HTML helpers so Pocket.show() does not need a notebook."""
+    captured: dict[str, object] = {}
+
+    def fake_pockets_html(**kwargs: object) -> str:
+        captured.update(kwargs)
+        return "<pockets/>"
+
+    monkeypatch.setattr(
+        "deeporigin.utils.notebook.render_html",
+        lambda html: html,
+    )
+    monkeypatch.setattr(
+        "deeporigin.viz.molstar_html.render_protein_with_pockets_html",
+        fake_pockets_html,
+    )
+    return captured
+
+
+def test_pocket_protein_fills_missing_protein_id_lv0() -> None:
+    """Attaching a protein with an id fills protein_id when it was missing."""
+    protein = Protein.from_file(_BRD_PDB)
+    protein.id = "prot_abc"
+    pocket = Pocket.from_pdb_file(_BRD_PDB)
+
+    assert pocket.protein_id is None
+    pocket.protein = protein
+    assert pocket.protein is protein
+    assert pocket.protein_id == "prot_abc"
+
+
+def test_pocket_protein_does_not_overwrite_protein_id_lv0() -> None:
+    """An existing protein_id is kept when a parent protein is attached."""
+    protein = Protein.from_file(_BRD_PDB)
+    protein.id = "prot_new"
+    pocket = Pocket.from_pdb_file(_BRD_PDB, protein_id="prot_old")
+
+    pocket.protein = protein
+    assert pocket.protein_id == "prot_old"
+    assert pocket.protein is protein
+
+
+def test_pocket_protein_does_not_clear_protein_id_lv0() -> None:
+    """A parent with no id does not wipe protein_id."""
+    protein = Protein.from_file(_BRD_PDB)
+    protein.id = None
+    pocket = Pocket.from_pdb_file(_BRD_PDB, protein_id="prot_keep")
+
+    pocket.protein = protein
+    assert pocket.protein_id == "prot_keep"
+
+
+def test_pocket_show_uses_attached_protein_lv0(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """pocket.show() overlays this pocket on the attached parent protein."""
+    protein = Protein.from_file(_BRD_PDB)
+    pocket = Pocket.from_pdb_file(_BRD_PDB)
+    pocket.protein = protein
+    captured = _stub_protein_pocket_viewer(monkeypatch)
+
+    result = pocket.show()
+
+    assert result == "<pockets/>"
+    pocket_paths = captured["pocket_paths"]
+    assert isinstance(pocket_paths, list)
+    assert len(pocket_paths) == 1
+
+
+def test_pocket_show_raises_without_parent_lv0() -> None:
+    """pocket.show() fails loudly when no parent can be resolved."""
+    pocket = Pocket.from_pdb_file(_BRD_PDB)
+
+    assert pocket.protein is None
+    assert pocket.protein_id is None
+    with pytest.raises(DeepOriginException, match="no parent protein"):
+        pocket.show()
+
+
+def test_pocket_show_loads_parent_by_protein_id_lv1(
+    client: DeepOriginClient,
+    registered_protein: Protein,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """When only protein_id is set, show() loads the protein then caches it."""
+    pocket = Pocket.from_pdb_file(_BRD_PDB)
+    pocket.protein_id = registered_protein.id
+    pocket._client = client
+    captured = _stub_protein_pocket_viewer(monkeypatch)
+
+    result = pocket.show()
+
+    assert result == "<pockets/>"
+    assert pocket.protein is not None
+    assert pocket.protein.id == registered_protein.id
+    pocket_paths = captured["pocket_paths"]
+    assert isinstance(pocket_paths, list)
+    assert len(pocket_paths) == 1
+
+
+def test_pocket_show_raises_when_protein_id_cannot_be_loaded_lv1(
+    client: DeepOriginClient,
+) -> None:
+    """show() fails if protein_id does not resolve on the platform."""
+    pocket = Pocket.from_pdb_file(_BRD_PDB)
+    pocket.protein_id = "protein-does-not-exist"
+    pocket._client = client
+
+    with pytest.raises(DeepOriginException, match="protein"):
+        pocket.show()

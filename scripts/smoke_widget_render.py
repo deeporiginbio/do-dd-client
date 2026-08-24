@@ -46,7 +46,7 @@ def main() -> None:
     except ImportError as error:
         raise SystemExit(
             "playwright is required for browser smoke test.\n"
-            "Run: make smoke-widget-render"
+            "Install playwright in the project venv, then rerun this script."
         ) from error
 
     repo_root = _repo_root()
@@ -54,7 +54,7 @@ def main() -> None:
     port = 8899
     base_url = f"http://127.0.0.1:{port}"
     notebook_rel = "docs/notebooks/dirty/interactive-docking-box.ipynb"
-    lab_url = f"{base_url}/lab/tree/{notebook_rel}?kernel_name=do-dd-client"
+    lab_url = f"{base_url}/lab/tree/{notebook_rel}"
 
     server = subprocess.Popen(
         [

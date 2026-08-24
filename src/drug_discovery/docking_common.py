@@ -134,9 +134,14 @@ def normalize_rotation_deg(value: object) -> list[float] | None:
 
 
 def _euler_rotation_matrix_deg(rotation_deg: list[float]) -> np.ndarray:
-    """Build lab←local rotation matrix (Rz·Ry·Rx) from Euler degrees.
+    """Build lab→working rotation matrix ``R = Rz·Ry·Rx`` from Euler degrees.
 
-    Matches molstar ``DockingBoxManager.setRotation(rx, ry, rz)`` ordering.
+    Same composition as toolbox docking / pocket-finder ``rotation_deg``.
+    Docking applies ``R`` to the protein about the pocket center. Molstar
+    ``DockingBoxManager.setRotation`` applies the same ``R`` to the AABB
+    **mesh** (local→lab), so the drawn axes are columns of ``R``. True OBB
+    axes in the protein-file frame are columns of ``Rᵀ`` — use
+    :func:`transpose_rotation_deg` on the viz path (DDOS-7441).
     """
     rx, ry, rz = (math.radians(value) for value in rotation_deg)
     cx, sx = math.cos(rx), math.sin(rx)
@@ -146,6 +151,51 @@ def _euler_rotation_matrix_deg(rotation_deg: list[float]) -> np.ndarray:
     rot_y = np.array([[cy, 0.0, sy], [0.0, 1.0, 0.0], [-sy, 0.0, cy]])
     rot_z = np.array([[cz, -sz, 0.0], [sz, cz, 0.0], [0.0, 0.0, 1.0]])
     return rot_z @ rot_y @ rot_x
+
+
+def _zyx_euler_deg_from_matrix(rotation: np.ndarray) -> list[float]:
+    """Extract ZYX Euler degrees from ``R = Rz·Ry·Rx``.
+
+    Args:
+        rotation: 3×3 rotation matrix.
+
+    Returns:
+        ``[rx, ry, rz]`` in degrees matching :func:`_euler_rotation_matrix_deg`.
+    """
+    r00 = float(rotation[0, 0])
+    r01 = float(rotation[0, 1])
+    r10 = float(rotation[1, 0])
+    r11 = float(rotation[1, 1])
+    r20 = float(rotation[2, 0])
+    r21 = float(rotation[2, 1])
+    r22 = float(rotation[2, 2])
+    cosine_y = math.hypot(r00, r10)
+    if cosine_y > 1e-8:
+        rx = math.atan2(r21, r22)
+        ry = math.atan2(-r20, cosine_y)
+        rz = math.atan2(r10, r00)
+    else:
+        rx = 0.0
+        ry = math.atan2(-r20, cosine_y)
+        rz = math.atan2(-r01, r11)
+    return [math.degrees(rx), math.degrees(ry), math.degrees(rz)]
+
+
+def transpose_rotation_deg(rotation_deg: list[float]) -> list[float]:
+    """Return ZYX Euler degrees for ``Rᵀ`` given ZYX Euler for ``R``.
+
+    Converts lab→working ``rotation_deg`` (docking / pocket-finder) to molstar
+    mesh Euler and back. Involutive on the rotation (Euler triples may differ
+    at gimbal singularities).
+
+    Args:
+        rotation_deg: ``[rx, ry, rz]`` in degrees for ``R = Rz·Ry·Rx``.
+
+    Returns:
+        ``[rx, ry, rz]`` in degrees for ``Rᵀ`` under the same convention.
+    """
+    rotation = _euler_rotation_matrix_deg(rotation_deg)
+    return _zyx_euler_deg_from_matrix(rotation.T)
 
 
 def lab_frame_aabb_extents_from_obb(
@@ -158,6 +208,10 @@ def lab_frame_aabb_extents_from_obb(
     ``box_size_*`` fields store lab-frame AABB extents for tools that omit
     ``rotation_deg`` (e.g. constrained docking v1).
 
+    ``rotation_deg`` is lab→working (``R`` applied to the protein). OBB axes
+    in the protein-file frame are columns of ``Rᵀ``, so extents are
+    ``|Rᵀ| @ obb``.
+
     Args:
         obb_extents: Local box dimensions ``[sx, sy, sz]`` in Angstroms.
         rotation_deg: Euler rotation ``[rx, ry, rz]`` in degrees (Rz·Ry·Rx).
@@ -169,7 +223,7 @@ def lab_frame_aabb_extents_from_obb(
         return [float(value) for value in obb_extents]
     rotation = _euler_rotation_matrix_deg(rotation_deg)
     obb = np.asarray(obb_extents, dtype=float)
-    return (np.abs(rotation) @ obb).tolist()
+    return (np.abs(rotation.T) @ obb).tolist()
 
 
 def apply_committed_docking_box_geometry(
@@ -310,10 +364,13 @@ def parse_docking_box_commit(
 
     Args:
         payload: Dict with ``center``, ``box_size``, and ``rotation_deg`` keys.
+            ``rotation_deg`` is molstar mesh Euler (local→lab); it is
+            converted to lab→working for docking.
 
     Returns:
-        Tuple of (center, box_size, rotation_deg) where ``rotation_deg`` is always
-        a length-3 list (zeros when no rotation was applied).
+        Tuple of (center, box_size, rotation_deg) where ``rotation_deg`` is
+        lab→working Euler (transpose of the viewer's mesh Euler). Always a
+        length-3 list (zeros when no rotation was applied).
 
     Raises:
         ValueError: If required geometry fields are missing or invalid.
@@ -334,7 +391,11 @@ def parse_docking_box_commit(
         )
 
     normalized = normalize_rotation_deg(payload.get("rotation_deg"))
-    rotation_deg = normalized if normalized is not None else [0.0, 0.0, 0.0]
+    mesh_rotation = normalized if normalized is not None else [0.0, 0.0, 0.0]
+    # Viewer posts molstar mesh Euler (local→lab). Convert to lab→working.
+    rotation_deg = transpose_rotation_deg(mesh_rotation)
+    if all(abs(angle) < 1e-9 for angle in rotation_deg):
+        rotation_deg = [0.0, 0.0, 0.0]
     return (
         [float(value) for value in center],
         [float(value) for value in box_size],
