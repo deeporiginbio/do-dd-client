@@ -231,7 +231,8 @@ class PocketFinder(
                 platform path fails but the sync response included ``jobOutputs``.
 
         Returns:
-            List of ``Pocket`` objects for this execution.
+            List of ``Pocket`` objects for this execution. Each pocket has
+            :attr:`Pocket.protein` set to this finder's protein.
 
         Raises:
             ValueError: If :attr:`id` is unset.

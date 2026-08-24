@@ -38,10 +38,11 @@ class PocketBox:
 
 @dataclass
 class Pocket(Entity):
-    """Class representing a binding pocket in a protein structure.
+    """Binding pocket in a protein structure.
 
-    This class provides essential methods
-    for pocket analysis, visualization, and coordinate manipulation.
+    PocketFinder results attach a parent :class:`Protein` on :attr:`protein`
+    (and :attr:`protein_id` when known). :meth:`show` overlays this pocket on
+    that protein.
     """
 
     _remote_path_base = "entities/pockets/"
