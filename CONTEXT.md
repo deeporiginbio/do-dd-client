@@ -27,7 +27,8 @@ execution's ``properties`` is the endpoint list from the current tool definition
 (the caller may trim it before the run). A past execution restores ``properties``
 from recorded inputs. The CLI class ``Admet`` returns a
 :class:`pandas.DataFrame`; it does not mutate ligands.
-_Avoid_: constructor ``properties=``; ``properties is None`` meaning “all” on a
+_Avoid_: constructor ``properties=``; ``ADMET_PROPERTY_NAMES`` /
+``ADMET_PROPERTY_KEYS``; ``properties is None`` meaning “all” on a
 new run; calling definition-fill “hydration” (that word is ``from_dto`` /
 structure files); conflating with ``Molprops`` (``herg`` vs
 ``hERG_classification``)

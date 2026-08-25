@@ -14,7 +14,10 @@ the live enum so the new draft can assign `properties`.
 
 Baking drifted (`Fu_regression` landed on the tool while the client still had
 59 names). Fetching at construct and sending the instance list keeps the CLI
-catalog aligned with the definition the user can see. Pinning the resolved
+catalog aligned with the definition the user can see. The baked
+`ADMET_PROPERTY_NAMES` / `ADMET_PROPERTY_KEYS` constants in
+`deeporigin.utils.constants` are removed; callers should read
+`Admet(...).properties` instead of importing those names. Pinning the resolved
 semver would couple the draft to one version; leaving `"latest"` matches the
 existing tool pin and accepts that construct-time enum and execute-time
 resolution can differ.
