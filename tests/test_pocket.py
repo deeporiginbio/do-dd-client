@@ -542,6 +542,7 @@ def test_pocket_show_downloads_pocket_with_its_client_lv0(
     pocket.protein = protein
     pocket.remote_path = "entities/pockets/remote-pocket.pdb"
     pocket.local_path = None
+    pocket.coordinates = None
     sentinel_client = object()
     pocket._client = sentinel_client
     clients_used: list[object] = []
@@ -580,3 +581,23 @@ def test_pocket_show_wraps_platform_error_with_parent_context_lv0(
         pocket.show()
 
     assert "Invalid id format." in str(excinfo.value)
+
+
+def test_pocket_show_materializes_coordinate_only_pocket_lv0(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A pocket from from_residue_number() has no file; show() writes one."""
+    protein = Protein.from_file(_BRD_PDB)
+    pocket = Pocket.from_residue_number(protein, residue_number=100, cutoff=5.0)
+    pocket.protein = protein
+    captured = _stub_protein_pocket_viewer(monkeypatch)
+
+    assert pocket.local_path is None
+    assert pocket.remote_path is None
+
+    result = pocket.show()
+
+    assert result == "<pockets/>"
+    assert pocket.local_path is not None
+    assert Path(pocket.local_path).exists()
+    assert captured["pocket_paths"] == [str(pocket.local_path)]

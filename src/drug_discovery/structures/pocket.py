@@ -432,8 +432,9 @@ class Pocket(Entity):
         Sugar for ``protein.show(pockets=[self])``. Uses :attr:`protein` when
         attached; otherwise loads the parent with
         :meth:`~deeporigin.drug_discovery.structures.protein.Protein.from_id`
-        from :attr:`protein_id`. The parent structure and this pocket are
-        downloaded with this pocket's client when they are not local yet.
+        from :attr:`protein_id`. The parent structure is downloaded with this
+        pocket's client when only metadata is attached, and this pocket is
+        written to (or downloaded to) a local file when it has none.
 
         Returns:
             Result of :meth:`~deeporigin.drug_discovery.structures.protein.Protein.show`.
@@ -443,9 +444,24 @@ class Pocket(Entity):
                 loading the protein by id fails.
         """
         parent = self._resolve_parent_protein()
-        if self.local_path is None and self.remote_path is not None:
-            self.download(client=self._client)
+        self._ensure_local_file()
         return parent.show(pockets=[self])
+
+    def _ensure_local_file(self) -> None:
+        """Make sure this pocket has a local file for the viewer to load.
+
+        :meth:`Protein.show` reads ``pocket.local_path``. Coordinate-only
+        pockets (:meth:`from_residue_number`) are materialized with
+        :meth:`to_file`; remote pockets are downloaded with this pocket's
+        client so the parent's clientless download is a no-op.
+        """
+        if self.local_path is not None:
+            return
+        if self.coordinates is not None:
+            self.local_path = self.to_file()
+            return
+        if self.remote_path is not None:
+            self.download(client=self._client)
 
     def _resolve_parent_protein(self) -> Protein:
         """Return the parent protein, loading it by id when not attached.

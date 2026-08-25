@@ -8,7 +8,7 @@ Ubuntu notebook CI failed on `protein.show(poses=poses)` until the bulk-docking 
 
 ## 2026-08-19 — PR #607 — docking box rotation from pocket
 
-Copilot caught three real geometry edge cases on pocket-finder nested `box`: interactive commits must sync nested OBB sizes, identity rotation `[0,0,0]` must not normalize to `None` (or inferred rotation wins), and constrained docking must use parent AABB sizes when omitting `rotation_deg`. Committed viewer sizes are OBB-local — derive parent lab-frame AABB via `abs(Rz·Ry·Rx) @ obb` only when `pocket.box` exists; legacy pockets keep OBB on parent for free docking with rotation.
+Copilot caught three real geometry edge cases on pocket-finder nested `box`: interactive commits must sync nested OBB sizes, identity rotation `[0,0,0]` must not normalize to `None` (or inferred rotation wins), and constrained docking must use parent AABB sizes when omitting `rotation_deg`. Committed viewer sizes are OBB-local — derive parent lab-frame AABB from the OBB only when `pocket.box` exists; legacy pockets keep OBB on parent for free docking with rotation. (Superseded by PR #611 / DDOS-7441: `rotation_deg` is now lab→working, so the extents formula is `abs(Rᵀ) @ obb`; the composed result for viewer-committed boxes is unchanged.)
 
 ## 2026-08-19 — PR #606 — interactive box geometry sync
 
