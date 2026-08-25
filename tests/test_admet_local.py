@@ -257,3 +257,21 @@ def test_admet_duplicate_makes_properties_writable(
     assert isinstance(copy.properties, list)
     copy.properties = ["hERG_classification"]
     assert copy.properties == ["hERG_classification"]
+
+
+def test_admet_from_dto_duplicate_can_assign_properties(
+    client: DeepOriginClient,
+) -> None:
+    """``from_dto`` then ``duplicate()`` fetches the enum so assignment works."""
+    _assert_tool_available(client)
+    ligand = Ligand.from_smiles("CCO")
+    job = Admet(ligands=[ligand], client=client)
+    job.properties = list(_ADMET_PROPERTIES)
+    job.run()
+    assert job.dto is not None
+
+    restored = Admet.from_dto(job.dto, client=client)
+    copy = restored.duplicate()
+    assert copy.id is None
+    copy.properties = ["hERG_classification"]
+    assert copy.properties == ["hERG_classification"]

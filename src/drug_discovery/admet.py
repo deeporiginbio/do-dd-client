@@ -139,16 +139,30 @@ def _ligands_from_inputs(inputs: dict[str, Any]) -> list[Ligand]:
 def _properties_from_inputs(
     inputs: dict[str, Any],
 ) -> tuple[str, ...] | None:
-    """Restore recorded properties, or ``None`` when the payload omitted them."""
+    """Restore recorded properties, or ``None`` when the payload omitted them.
+
+    A present ``properties`` field must be a non-empty list of unique
+    non-empty strings. Omitted or ``None`` stays ``None``.
+    """
 
     if "properties" not in inputs or inputs.get("properties") is None:
         return None
     raw = inputs.get("properties")
     if not isinstance(raw, list):
         raise ValueError("Cannot rehydrate Admet: stored properties is not a list.")
-    names = [item for item in raw if isinstance(item, str)]
-    if len(names) != len(raw):
-        raise ValueError("Cannot rehydrate Admet: stored properties must be strings.")
+    if not raw:
+        raise ValueError("Cannot rehydrate Admet: stored properties is empty.")
+    names: list[str] = []
+    for item in raw:
+        if not isinstance(item, str) or not item:
+            raise ValueError(
+                "Cannot rehydrate Admet: stored properties must be non-empty strings."
+            )
+        names.append(item)
+    if len(names) != len(set(names)):
+        raise ValueError(
+            "Cannot rehydrate Admet: stored properties must not contain duplicates."
+        )
     return tuple(names)
 
 
@@ -191,13 +205,7 @@ class Admet(Execution, SyncExecutableMixin):
             self._ligands = list(ligands)
         if not self._ligands:
             raise ValueError("Admet requires at least one ligand.")
-        if self.client.tools is None:
-            raise RuntimeError("DeepOriginClient has no tools API")
-        definition = self.client.tools.get(
-            tool_key=self.tool_key,
-            tool_version=self.tool_version,
-        )
-        endpoints = _endpoints_from_definition(definition)
+        endpoints = self._fetch_definition_endpoints()
         self._allowed_endpoints: frozenset[str] | None = frozenset(endpoints)
         self._properties: list[str] | tuple[str, ...] | None = list(endpoints)
         self._method = method
@@ -235,6 +243,16 @@ class Admet(Execution, SyncExecutableMixin):
             )
         self._properties = _validate_admet_properties(value, allowed=allowed)
 
+    def _fetch_definition_endpoints(self) -> list[str]:
+        """Return endpoint names from the live admet-properties tool definition."""
+        if self.client.tools is None:
+            raise RuntimeError("DeepOriginClient has no tools API")
+        definition = self.client.tools.get(
+            tool_key=self.tool_key,
+            tool_version=self.tool_version,
+        )
+        return _endpoints_from_definition(definition)
+
     def update_from_dto(self, dto: dict[str, Any]) -> None:
         """Apply execution fields from ``dto`` and freeze ``properties``."""
         super().update_from_dto(dto)
@@ -243,10 +261,18 @@ class Admet(Execution, SyncExecutableMixin):
             self._properties = tuple(properties)
 
     def duplicate(self, *, client: DeepOriginClient | None = None) -> Self:
-        """Copy configuration into a new draft with writable ``properties``."""
+        """Copy configuration into a new draft with writable ``properties``.
+
+        ``from_dto`` does not fetch the tool definition, so a rehydrated
+        instance has no allowlist. Fetch it here so the draft can assign
+        ``properties`` like a constructor-built instance.
+        """
         new = super().duplicate(client=client)
         if isinstance(getattr(new, "_properties", None), tuple):
             new._properties = list(new._properties)
+        if getattr(new, "_allowed_endpoints", None) is None:
+            endpoints = new._fetch_definition_endpoints()
+            new._allowed_endpoints = frozenset(endpoints)
         return new
 
     def _ensure_properties_for_run(self) -> None:

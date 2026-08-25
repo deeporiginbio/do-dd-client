@@ -112,6 +112,20 @@ def test_properties_from_inputs_omitted_is_none() -> None:
     )
 
 
+def test_properties_from_inputs_rejects_empty_blank_and_duplicates() -> None:
+    """A present properties field must be a non-empty unique list of names."""
+    with pytest.raises(ValueError, match="empty"):
+        _properties_from_inputs({"properties": []})
+    with pytest.raises(ValueError, match="non-empty strings"):
+        _properties_from_inputs({"properties": [""]})
+    with pytest.raises(ValueError, match="non-empty strings"):
+        _properties_from_inputs({"properties": [1]})
+    with pytest.raises(ValueError, match="duplicates"):
+        _properties_from_inputs(
+            {"properties": ["hERG_classification", "hERG_classification"]}
+        )
+
+
 def test_ligands_from_inputs_builds_ligands() -> None:
     """Stored ligand SMILES and ids are restored."""
     ligands = _ligands_from_inputs(
