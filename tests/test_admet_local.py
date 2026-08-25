@@ -212,11 +212,9 @@ def test_admet_from_dto_restores_recorded_properties(
         restored.properties = ["hERG_classification"]
 
 
-def test_admet_from_dto_omitted_properties_stays_none(
-    client: DeepOriginClient,
-) -> None:
-    """A historical payload that omitted properties keeps ``properties is None``."""
-    dto = {
+def _historical_omit_dto() -> dict:
+    """Completed Admet DTO whose stored inputs omitted properties."""
+    return {
         "executionId": "admet-historical-omit",
         "status": "Completed",
         "tool": {
@@ -236,7 +234,13 @@ def test_admet_from_dto_omitted_properties_stays_none(
             ]
         },
     }
-    restored = Admet.from_dto(dto, client=client)
+
+
+def test_admet_from_dto_omitted_properties_stays_none(
+    client: DeepOriginClient,
+) -> None:
+    """A historical payload that omitted properties keeps ``properties is None``."""
+    restored = Admet.from_dto(_historical_omit_dto(), client=client)
     assert restored.properties is None
     assert restored.ligands[0].smiles == "CCO"
     assert restored.method == "togo"
@@ -275,3 +279,20 @@ def test_admet_from_dto_duplicate_can_assign_properties(
     assert copy.id is None
     copy.properties = ["hERG_classification"]
     assert copy.properties == ["hERG_classification"]
+
+
+def test_admet_from_dto_duplicate_fills_omitted_properties(
+    client: DeepOriginClient,
+) -> None:
+    """``duplicate()`` of an omitted-properties DTO fills the live enum."""
+    _assert_tool_available(client)
+    restored = Admet.from_dto(_historical_omit_dto(), client=client)
+    assert restored.properties is None
+
+    copy = restored.duplicate()
+    enum = _definition_enum(client)
+    assert copy.id is None
+    assert copy.properties == enum
+    assert isinstance(copy.properties, list)
+    copy.properties.remove("AMES_classification")
+    assert "AMES_classification" not in copy.properties

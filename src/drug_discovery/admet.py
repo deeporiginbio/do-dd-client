@@ -265,7 +265,8 @@ class Admet(Execution, SyncExecutableMixin):
 
         ``from_dto`` does not fetch the tool definition, so a rehydrated
         instance has no allowlist. Fetch it here so the draft can assign
-        ``properties`` like a constructor-built instance.
+        ``properties`` like a constructor-built instance. If the source
+        omitted ``properties``, fill the draft from the live enum.
         """
         new = super().duplicate(client=client)
         if isinstance(getattr(new, "_properties", None), tuple):
@@ -273,6 +274,8 @@ class Admet(Execution, SyncExecutableMixin):
         if getattr(new, "_allowed_endpoints", None) is None:
             endpoints = new._fetch_definition_endpoints()
             new._allowed_endpoints = frozenset(endpoints)
+            if new._properties is None:
+                new._properties = list(endpoints)
         return new
 
     def _ensure_properties_for_run(self) -> None:
