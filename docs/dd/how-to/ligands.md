@@ -524,14 +524,16 @@ ADMET (Absorption, Distribution, Metabolism, Excretion, and Toxicity) properties
 
 ### Predicting ADMET endpoints (Admet)
 
-For the expanded admet-now endpoint set (59 absorption, distribution, metabolism,
+For the expanded admet-now endpoint set (absorption, distribution, metabolism,
 excretion, and toxicity models), use :class:`~deeporigin.drug_discovery.admet.Admet`.
 Unlike :class:`~deeporigin.drug_discovery.molprops.Molprops`, ``Admet.run()`` returns a
 :class:`pandas.DataFrame` and does **not** mutate your ligands in place.
 
-Property names match the platform tool keys (for example ``hERG_classification``,
-``PPB_regression``, ``CYP450_3A4_Inhibitor_classification``). Omit ``properties``
-to request all wired endpoints, or pass a list to limit the run.
+Constructing ``Admet`` loads the current tool definition and fills
+``properties`` with every wired endpoint (for example
+``hERG_classification``, ``PPB_regression``,
+``CYP450_3A4_Inhibitor_classification``). Trim or replace that list before
+``run()`` to request a subset.
 
 Use ``method="togo"`` (default) for three-dimensional embedding models, or
 ``method="maplight"`` for fingerprint-based models:
@@ -540,20 +542,17 @@ Use ``method="togo"`` (default) for three-dimensional embedding models, or
 from deeporigin.drug_discovery import Admet, Ligand
 
 ligand = Ligand.from_smiles("CCO")
-df = Admet(
-    ligands=[ligand],
-    properties=["hERG_classification", "AMES_classification"],
-).run()
+admet = Admet(ligands=[ligand])
+admet.properties = ["hERG_classification", "AMES_classification"]
+df = admet.run()
 ```
 
 For MapLight explicitly:
 
 ```{.python notest}
-df = Admet(
-    ligands=[ligand],
-    properties=["hERG_classification", "AMES_classification"],
-    method="maplight",
-).run()
+admet = Admet(ligands=[ligand], method="maplight")
+admet.properties = ["hERG_classification", "AMES_classification"]
+df = admet.run()
 ```
 
 ``run()`` blocks until the job finishes. Request a cost estimate first with
@@ -565,7 +564,9 @@ For several ligands, pass a list or :class:`~deeporigin.drug_discovery.structure
 ```{.python notest}
 from deeporigin.drug_discovery import Admet, LigandSet
 
-df = Admet(ligands=ligands, properties=["hERG_classification"]).run()
+admet = Admet(ligands=ligands)
+admet.properties = ["hERG_classification"]
+df = admet.run()
 ```
 
 The DataFrame includes ``ligand_id``, ``smiles``, and one column per requested

@@ -38,6 +38,70 @@ _RBFE_STAGE_KONNEKTOR = (0.12, 0.20)
 _RBFE_STAGE_BUILD_PAIRS = (0.20, 0.28)
 _RBFE_STAGE_PAIR_PIPELINE = (0.28, 1.00)
 
+# Endpoint enum for mock ``deeporigin.admet-properties`` (tool definition + omit-all).
+MOCK_ADMET_ENDPOINTS: tuple[str, ...] = (
+    "hERG_classification",
+    "PPB_regression",
+    "Fu_regression",
+    "AMES_classification",
+    "DILI_classification",
+    "Caco-2_regression",
+    "CL_regression",
+    "CYP450_3A4_Inhibitor_classification",
+    "BBB_classification",
+    "mdck_regression",
+    "PAMPA_classification",
+    "HIA_classification",
+    "Pgp_inhibitor_classification",
+    "VD_regression",
+    "CYP450_1A2_Inhibitor_classification",
+    "CYP450_2D6_Inhibitor_classification",
+    "CYP450_2C9_Inhibitor_classification",
+    "CYP450_3A4_Substrate_classification",
+    "OCT2_substrate_classification",
+    "Resp_classification",
+    "SKIN_classification",
+    "Genotoxicity_classification",
+    "Pgp_substrate_classification",
+    "OCT2_inhibitor_classification",
+    "CYP450_1A2_Substrate_classification",
+    "CYP450_2A6_Inhibitor_classification",
+    "CYP450_2A6_Substrate_classification",
+    "CYP450_2B6_Inhibitor_classification",
+    "CYP450_2B6_Substrate_classification",
+    "CYP450_2C8_Inhibitor_classification",
+    "CYP450_2C8_Substrate_classification",
+    "CYP450_2C19_Inhibitor_classification",
+    "CYP450_2C19_Substrate_classification",
+    "CYP450_2C9_Substrate_classification",
+    "CYP450_2D6_Substrate_classification",
+    "CYP450_2E1_Inhibitor_classification",
+    "CYP450_2E1_Substrate_classification",
+    "HIA_regression",
+    "HOB_f20_classification",
+    "HOB_f30_classification",
+    "HOB_f50_classification",
+    "fg_regression",
+    "fh_calc_regression",
+    "fh_exp_regression",
+    "AOT_mice_regression",
+    "AOT_rat_regression",
+    "Carcinogenicity_classification",
+    "AChE_inhibition_classification",
+    "Ototoxicity_classification",
+    "EI_classification",
+    "eye_corr_classification",
+    "ARE_classification",
+    "ATAD5_classification",
+    "HSE_classification",
+    "SR_MMP_classification",
+    "SR_p53_classification",
+    "BCF_regression",
+    "IGC50_regression",
+    "LC50DM_regression",
+    "LC50FM_regression",
+)
+
 
 def _rbfe_ts(start_dt: datetime, duration_s: float, fraction: float) -> str:
     """Return an ISO-8601 UTC timestamp at *fraction* of the mock run."""
@@ -1065,8 +1129,6 @@ def create_tools_router(
     ) -> dict[str, Any]:
         """Build a synchronous ``deeporigin.admet-properties`` execution DTO."""
 
-        from deeporigin.utils.constants import ADMET_PROPERTY_NAMES
-
         execution = _create_blocking_run_dto(
             org_key=org_key,
             tool_key=tool_key,
@@ -1080,7 +1142,7 @@ def create_tools_router(
         if isinstance(requested_raw, list) and requested_raw:
             requested = [p for p in requested_raw if isinstance(p, str)]
         else:
-            requested = list(ADMET_PROPERTY_NAMES)
+            requested = list(MOCK_ADMET_ENDPOINTS)
 
         rows: list[dict[str, Any]] = []
         for i, lig in enumerate(ligands_in):
@@ -1756,6 +1818,28 @@ def create_tools_router(
         if tool_key == "nonexistent-tool":
             raise HTTPException(status_code=404, detail="Tool not found")
         enabled = tool_key != "disabled-tool"
+        if tool_key == "deeporigin.admet-properties":
+            return {
+                "key": tool_key,
+                "name": "deeporigin-admet-properties",
+                "version": tool_version,
+                "enabled": enabled,
+                "toolManifestVersion": "1.0.0",
+                "description": "Mock admet-properties tool definition",
+                "inputs": {
+                    "properties": {
+                        "properties": {
+                            "items": {
+                                "enum": list(MOCK_ADMET_ENDPOINTS),
+                                "type": "string",
+                            },
+                            "minItems": 1,
+                            "type": "array",
+                            "uniqueItems": True,
+                        }
+                    }
+                },
+            }
         return {
             "key": tool_key,
             "name": f"Tool {tool_key}",

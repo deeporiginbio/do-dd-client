@@ -32,7 +32,8 @@ def test_admet_lv1(client: DeepOriginClient) -> None:
     ligand = Ligand.from_smiles(
         "Fc1c(-c2cccc3ccccc23)ncc2c(N3C[C@H]4CC[C@@H](C3)N4)nc(OCC34CCCN3CCC4)nc12"
     )
-    job = Admet(ligands=[ligand], properties=_ADMET_PROPERTIES, client=client)
+    job = Admet(ligands=[ligand], client=client)
+    job.properties = list(_ADMET_PROPERTIES)
     df = job.run()
 
     assert job.status == "Completed"
@@ -58,7 +59,8 @@ def test_admet_run_quote_true(client: DeepOriginClient) -> None:
 
     ligand = Ligand.from_smiles("CCO")
     assert ligand.id is None
-    job = Admet(ligands=[ligand], properties=["hERG_classification"], client=client)
+    job = Admet(ligands=[ligand], client=client)
+    job.properties = ["hERG_classification"]
     result = job.run(quote=True)
 
     assert result is job
