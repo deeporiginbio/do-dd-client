@@ -11,13 +11,27 @@ properties (logP, logD, logS, PAINS). As of tool 0.9.3+, toxicity and metabolism
 endpoints (hERG, CYP, AMES) moved to ``deeporigin.admet-properties``. The CLI class
 ``Molprops`` mutates dedicated :class:`~deeporigin.drug_discovery.structures.ligand.Ligand`
 attributes in place.
-_Avoid_: conflating with ``Admet``; calling it "ADMET" when you mean the 59-endpoint tool
+_Avoid_: conflating with ``Admet``; calling it "ADMET" when you mean the
+admet-properties tool
+
+**Admet endpoint**:
+A selectable admet-now task folder name (e.g. ``AMES_classification``) listed on
+the ``deeporigin.admet-properties`` tool definition. The catalog is owned by the
+definition, not by the CLI.
+_Avoid_: JSON Schema ``inputs.properties``; molprops keys (``herg``); a fixed count
+of endpoints baked into the client
 
 **Admet**:
-admet-now served platform tool ``deeporigin.admet-properties`` with 59 selectable
-endpoints (task folder names such as ``hERG_classification``, ``PPB_regression``).
-The CLI class ``Admet`` returns a :class:`pandas.DataFrame`; it does not mutate ligands.
-_Avoid_: conflating admet-now keys with molprops keys (``herg`` vs ``hERG_classification``)
+admet-now served platform tool ``deeporigin.admet-properties``. A new Admet
+execution's ``properties`` is the endpoint list from the current tool definition
+(the caller may trim it before the run). A past execution restores ``properties``
+from recorded inputs. The CLI class ``Admet`` returns a
+:class:`pandas.DataFrame`; it does not mutate ligands.
+_Avoid_: constructor ``properties=``; ``ADMET_PROPERTY_NAMES`` /
+``ADMET_PROPERTY_KEYS``; ``properties is None`` meaning “all” on a
+new run; calling definition-fill “hydration” (that word is ``from_dto`` /
+structure files); conflating with ``Molprops`` (``herg`` vs
+``hERG_classification``)
 
 **ABFE Workflow**:
 Platform tool `deeporigin.abfe-end-to-end` that runs ordered `steps` of
