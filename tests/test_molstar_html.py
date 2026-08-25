@@ -286,7 +286,7 @@ def test_render_docking_box_html_api() -> None:
 
 
 def test_render_docking_box_html_applies_rotation_deg() -> None:
-    """Static box HTML applies rotation via DockingBoxManager after render."""
+    """Static box HTML applies mesh Euler (Rᵀ) via DockingBoxManager."""
     html = render_docking_box_html(
         pdb_path=str(_FIXTURE_PDB),
         box_center=[10.0, 20.0, 30.0],
@@ -297,7 +297,8 @@ def test_render_docking_box_html_applies_rotation_deg() -> None:
     assert "applyDockingBoxRotation" in html
     assert "dockingBoxManager" in html
     assert "setRotation" in html
-    assert "[0.0, 45.0, 0.0]" in html
+    assert "[0.0, -45.0, 0.0]" in html
+    assert "[0.0, 45.0, 0.0]" not in html
 
 
 def test_render_docking_box_rejects_non_positive_size() -> None:
@@ -368,7 +369,7 @@ def test_render_protein_with_box_and_poses_html_api() -> None:
 
 
 def test_render_protein_with_box_and_poses_html_applies_rotation_deg() -> None:
-    """Box+poses HTML applies rotation via DockingBoxManager after render."""
+    """Box+poses HTML applies mesh Euler (Rᵀ) via DockingBoxManager."""
     payloads = [
         ligand_data_for_js(path=str(_FIXTURE_SDF), label="brd-2"),
     ]
@@ -381,7 +382,8 @@ def test_render_protein_with_box_and_poses_html_applies_rotation_deg() -> None:
     )
 
     assert "applyDockingBoxRotation" in html
-    assert "[0.0, 45.0, 0.0]" in html
+    assert "[0.0, -45.0, 0.0]" in html
+    assert "[0.0, 45.0, 0.0]" not in html
 
 
 def test_render_protein_with_box_and_poses_empty_raises() -> None:

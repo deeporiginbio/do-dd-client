@@ -187,7 +187,13 @@ You should see a table similar to:
 
 ### 3D visualization in a protein
 
-Pockets can be visualized using:
+Each pocket from PocketFinder can show itself on its parent protein:
+
+```{.python notest}
+pockets[0].show()
+```
+
+That is sugar for `protein.show(pockets=[pockets[0]])`. To overlay every pocket from the run:
 
 ```{.python notest}
 protein.show(pockets=pockets)

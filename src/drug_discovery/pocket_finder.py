@@ -231,7 +231,8 @@ class PocketFinder(
                 platform path fails but the sync response included ``jobOutputs``.
 
         Returns:
-            List of ``Pocket`` objects for this execution.
+            List of ``Pocket`` objects for this execution. Each pocket has
+            :attr:`Pocket.protein` set to this finder's protein.
 
         Raises:
             ValueError: If :attr:`id` is unset.
@@ -241,26 +242,30 @@ class PocketFinder(
         exec_id = self._ensure_id()
 
         try:
-            return Pocket.from_result(
+            pockets = Pocket.from_result(
                 execution_id=exec_id,
                 client=self.client,
             )
         except Exception:
-            pass
+            pockets = None
 
-        try:
-            if dto is None:
-                dto = self.client.executions.get(exec_id)  # ty:ignore[unresolved-attribute]
-            jo = dto.get("jobOutputs")
-            raw = jo.get("pockets", []) if isinstance(jo, dict) else []
-            return Pocket.from_json(raw, client=self.client)
-        except Exception:
-            raise DeepOriginException(
-                title="Could not load pockets",
-                message=(
-                    "No pockets could be parsed from the data platform or jobOutputs."
-                ),
-            ) from None
+        if pockets is None:
+            try:
+                if dto is None:
+                    dto = self.client.executions.get(exec_id)  # ty:ignore[unresolved-attribute]
+                jo = dto.get("jobOutputs")
+                raw = jo.get("pockets", []) if isinstance(jo, dict) else []
+                pockets = Pocket.from_json(raw, client=self.client)
+            except Exception:
+                raise DeepOriginException(
+                    title="Could not load pockets",
+                    message=(
+                        "No pockets could be parsed from the data platform or "
+                        "jobOutputs."
+                    ),
+                ) from None
+
+        return self._stamp_parent_protein(pockets)
 
     @beartype
     def run(
@@ -306,6 +311,22 @@ class PocketFinder(
             return None
 
         return self.get_results(dto)
+
+    def _stamp_parent_protein(self, pockets: list[Pocket]) -> list[Pocket]:
+        """Attach this finder's protein to each pocket.
+
+        Sets :attr:`Pocket.protein` to this run's protein. Fills
+        :attr:`Pocket.protein_id` when it is missing and the protein has an id.
+
+        Args:
+            pockets: Pockets loaded from the platform or job outputs.
+
+        Returns:
+            The same list, with parent protein stamped on each pocket.
+        """
+        for pocket in pockets:
+            pocket.protein = self._protein
+        return pockets
 
     def _start_impl(self, *, approve_amount: int | None = None, **kwargs: Any) -> None:
         """Submit pocket finding as a persisted async execution (``sync=False``).

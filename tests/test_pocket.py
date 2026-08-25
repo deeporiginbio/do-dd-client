@@ -12,6 +12,7 @@ import numpy as np
 import pytest
 
 from deeporigin.drug_discovery import BRD_DATA_DIR, Pocket, Protein
+from deeporigin.exceptions import DeepOriginException
 
 if TYPE_CHECKING:
     from deeporigin.platform import DeepOriginClient
@@ -388,3 +389,215 @@ def test_from_remote_file_sets_remote_path_and_loads_coordinates_lv0(
     assert pocket.remote_path == remote
     assert pocket.local_path is not None
     assert pocket.coordinates is not None
+
+
+def _stub_protein_pocket_viewer(monkeypatch: pytest.MonkeyPatch) -> dict[str, object]:
+    """Replace Mol* HTML helpers so Pocket.show() does not need a notebook."""
+    captured: dict[str, object] = {}
+
+    def fake_pockets_html(**kwargs: object) -> str:
+        captured.update(kwargs)
+        return "<pockets/>"
+
+    monkeypatch.setattr(
+        "deeporigin.utils.notebook.render_html",
+        lambda html: html,
+    )
+    monkeypatch.setattr(
+        "deeporigin.viz.molstar_html.render_protein_with_pockets_html",
+        fake_pockets_html,
+    )
+    return captured
+
+
+def test_pocket_protein_fills_missing_protein_id_lv0() -> None:
+    """Attaching a protein with an id fills protein_id when it was missing."""
+    protein = Protein.from_file(_BRD_PDB)
+    protein.id = "prot_abc"
+    pocket = Pocket.from_pdb_file(_BRD_PDB)
+
+    assert pocket.protein_id is None
+    pocket.protein = protein
+    assert pocket.protein is protein
+    assert pocket.protein_id == "prot_abc"
+
+
+def test_pocket_protein_does_not_overwrite_protein_id_lv0() -> None:
+    """An existing protein_id is kept when a parent protein is attached."""
+    protein = Protein.from_file(_BRD_PDB)
+    protein.id = "prot_new"
+    pocket = Pocket.from_pdb_file(_BRD_PDB, protein_id="prot_old")
+
+    pocket.protein = protein
+    assert pocket.protein_id == "prot_old"
+    assert pocket.protein is protein
+
+
+def test_pocket_protein_does_not_clear_protein_id_lv0() -> None:
+    """A parent with no id does not wipe protein_id."""
+    protein = Protein.from_file(_BRD_PDB)
+    protein.id = None
+    pocket = Pocket.from_pdb_file(_BRD_PDB, protein_id="prot_keep")
+
+    pocket.protein = protein
+    assert pocket.protein_id == "prot_keep"
+
+
+def test_pocket_show_uses_attached_protein_lv0(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """pocket.show() overlays this pocket on the attached parent protein."""
+    protein = Protein.from_file(_BRD_PDB)
+    pocket = Pocket.from_pdb_file(_BRD_PDB)
+    pocket.protein = protein
+    captured = _stub_protein_pocket_viewer(monkeypatch)
+
+    result = pocket.show()
+
+    assert result == "<pockets/>"
+    pocket_paths = captured["pocket_paths"]
+    assert isinstance(pocket_paths, list)
+    assert len(pocket_paths) == 1
+
+
+def test_pocket_show_raises_without_parent_lv0() -> None:
+    """pocket.show() fails loudly when no parent can be resolved."""
+    pocket = Pocket.from_pdb_file(_BRD_PDB)
+
+    assert pocket.protein is None
+    assert pocket.protein_id is None
+    with pytest.raises(DeepOriginException, match="no parent protein"):
+        pocket.show()
+
+
+def test_pocket_show_loads_parent_by_protein_id_lv1(
+    client: DeepOriginClient,
+    registered_protein: Protein,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """When only protein_id is set, show() loads the protein then caches it."""
+    pocket = Pocket.from_pdb_file(_BRD_PDB)
+    pocket.protein_id = registered_protein.id
+    pocket._client = client
+    captured = _stub_protein_pocket_viewer(monkeypatch)
+
+    result = pocket.show()
+
+    assert result == "<pockets/>"
+    assert pocket.protein is not None
+    assert pocket.protein.id == registered_protein.id
+    pocket_paths = captured["pocket_paths"]
+    assert isinstance(pocket_paths, list)
+    assert len(pocket_paths) == 1
+
+
+def test_pocket_show_raises_when_protein_id_cannot_be_loaded_lv1(
+    client: DeepOriginClient,
+) -> None:
+    """show() fails if protein_id does not resolve on the platform."""
+    pocket = Pocket.from_pdb_file(_BRD_PDB)
+    pocket.protein_id = "protein-does-not-exist"
+    pocket._client = client
+
+    with pytest.raises(DeepOriginException, match="protein"):
+        pocket.show()
+
+
+def test_pocket_show_loads_attached_parent_structure_lv0(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A metadata-only parent (from_dto rehydration) is loaded before showing."""
+    protein = Protein.from_file(_BRD_PDB)
+    protein.structure = None
+    pocket = Pocket.from_pdb_file(_BRD_PDB)
+    pocket.protein = protein
+    captured = _stub_protein_pocket_viewer(monkeypatch)
+
+    result = pocket.show()
+
+    assert result == "<pockets/>"
+    assert protein.structure is not None
+    assert captured["pocket_paths"] == [str(pocket.local_path)]
+
+
+def test_pocket_show_raises_when_parent_structure_cannot_load_lv0() -> None:
+    """A parent with no structure and nothing to download from fails loudly."""
+    protein = Protein.from_file(_BRD_PDB)
+    protein.structure = None
+    protein.local_path = None
+    protein.remote_path = None
+    pocket = Pocket.from_pdb_file(_BRD_PDB)
+    pocket.protein = protein
+
+    with pytest.raises(DeepOriginException, match="structure of parent protein"):
+        pocket.show()
+
+
+def test_pocket_show_downloads_pocket_with_its_client_lv0(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A remote pocket is fetched with the client that resolved its parent."""
+    protein = Protein.from_file(_BRD_PDB)
+    pocket = Pocket.from_pdb_file(_BRD_PDB)
+    pocket.protein = protein
+    pocket.remote_path = "entities/pockets/remote-pocket.pdb"
+    pocket.local_path = None
+    pocket.coordinates = None
+    sentinel_client = object()
+    pocket._client = sentinel_client
+    clients_used: list[object] = []
+
+    def fake_download(self, *, client=None, lazy: bool = True) -> str:
+        """Record the client used and pretend the pocket landed on disk."""
+        clients_used.append(client)
+        self.local_path = str(_BRD_PDB)
+        return self.local_path
+
+    monkeypatch.setattr(Pocket, "download", fake_download)
+    _stub_protein_pocket_viewer(monkeypatch)
+
+    pocket.show()
+
+    assert clients_used[0] is sentinel_client
+
+
+def test_pocket_show_wraps_platform_error_with_parent_context_lv0(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Platform failures keep their detail but name the parent protein."""
+    pocket = Pocket.from_pdb_file(_BRD_PDB)
+    pocket.protein_id = "protein-does-not-exist"
+
+    def fake_from_id(*args: object, **kwargs: object) -> Protein:
+        """Simulate a platform rejection for an unresolvable protein id."""
+        raise DeepOriginException(
+            title="Request to platform API failed.",
+            message="Invalid id format.",
+        )
+
+    monkeypatch.setattr(Protein, "from_id", fake_from_id)
+
+    with pytest.raises(DeepOriginException, match="parent protein") as excinfo:
+        pocket.show()
+
+    assert "Invalid id format." in str(excinfo.value)
+
+
+def test_pocket_show_materializes_coordinate_only_pocket_lv0(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A pocket from from_residue_number() has no file; show() writes one."""
+    protein = Protein.from_file(_BRD_PDB)
+    pocket = Pocket.from_residue_number(protein, residue_number=100, cutoff=5.0)
+    pocket.protein = protein
+    captured = _stub_protein_pocket_viewer(monkeypatch)
+
+    assert pocket.local_path is None
+    assert pocket.remote_path is None
+
+    result = pocket.show()
+
+    assert result == "<pockets/>"
+    assert pocket.local_path is not None
+    assert Path(pocket.local_path).exists()
+    assert captured["pocket_paths"] == [str(pocket.local_path)]

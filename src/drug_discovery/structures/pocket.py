@@ -12,14 +12,18 @@ from dataclasses import dataclass, field
 import hashlib
 from pathlib import Path
 import tempfile
-from typing import Any, ClassVar, Optional, Self
+from typing import TYPE_CHECKING, Any, ClassVar, Optional, Self
 
 import numpy as np
 
 from deeporigin.drug_discovery.constants import POCKETS_BASE_DIR
 from deeporigin.drug_discovery.structures.entity import Entity
 from deeporigin.drug_discovery.structures.ligand import Ligand
+from deeporigin.exceptions import DeepOriginException
 from deeporigin.platform.client import DeepOriginClient
+
+if TYPE_CHECKING:
+    from deeporigin.drug_discovery.structures.protein import Protein
 
 
 @dataclass
@@ -34,10 +38,11 @@ class PocketBox:
 
 @dataclass
 class Pocket(Entity):
-    """Class representing a binding pocket in a protein structure.
+    """Binding pocket in a protein structure.
 
-    This class provides essential methods
-    for pocket analysis, visualization, and coordinate manipulation.
+    PocketFinder results attach a parent :class:`Protein` on :attr:`protein`
+    (and :attr:`protein_id` when known). :meth:`show` overlays this pocket on
+    that protein.
     """
 
     _remote_path_base = "entities/pockets/"
@@ -68,6 +73,7 @@ class Pocket(Entity):
     pocket_min_size: Optional[int] = None
 
     props: Optional[dict[str, Any]] = field(default_factory=dict)
+    protein: Protein | None = field(default=None, repr=False, compare=False)
     _client: Optional[DeepOriginClient] = field(default=None, repr=False)
 
     def __post_init__(self):
@@ -85,6 +91,29 @@ class Pocket(Entity):
                 directory.mkdir(parents=True, exist_ok=True)
                 num = len(list(directory.glob(f"{self.name}*")))
                 self.name = f"{self.name}_{num + 1}"
+
+        self._sync_protein_id_from_parent()
+
+    def __setattr__(self, name: str, value: object) -> None:
+        """Assign attributes; attaching ``protein`` fills ``protein_id`` when missing."""
+        super().__setattr__(name, value)
+        if name == "protein":
+            self._sync_protein_id_from_parent()
+
+    def _sync_protein_id_from_parent(self) -> None:
+        """Copy ``protein.id`` onto ``protein_id`` when the id is missing.
+
+        Does not overwrite an existing ``protein_id``. Does not clear
+        ``protein_id`` when the attached protein has no id.
+        """
+        parent = getattr(self, "protein", None)
+        if parent is None:
+            return
+        if getattr(self, "protein_id", None) is not None:
+            return
+        parent_id = getattr(parent, "id", None)
+        if parent_id:
+            super().__setattr__("protein_id", parent_id)
 
     def _load_coordinates_from_file(self, path: str) -> None:
         """Read a PDB file and populate ``self.coordinates``.
@@ -396,6 +425,129 @@ class Pocket(Entity):
                 "Pocket has no center and coordinates could not be loaded."
             )
         return np.asarray(self.center, dtype=float)
+
+    def show(self) -> Any:
+        """Visualize this pocket overlaid on its parent protein.
+
+        Sugar for ``protein.show(pockets=[self])``. Uses :attr:`protein` when
+        attached; otherwise loads the parent with
+        :meth:`~deeporigin.drug_discovery.structures.protein.Protein.from_id`
+        from :attr:`protein_id`. The parent structure is downloaded with this
+        pocket's client when only metadata is attached, and this pocket is
+        written to (or downloaded to) a local file when it has none.
+
+        Returns:
+            Result of :meth:`~deeporigin.drug_discovery.structures.protein.Protein.show`.
+
+        Raises:
+            DeepOriginException: If no parent protein can be resolved, or if
+                loading the protein by id fails.
+        """
+        parent = self._resolve_parent_protein()
+        self._ensure_local_file()
+        return parent.show(pockets=[self])
+
+    def _ensure_local_file(self) -> None:
+        """Make sure this pocket has a local file for the viewer to load.
+
+        :meth:`Protein.show` reads ``pocket.local_path``. Coordinate-only
+        pockets (:meth:`from_residue_number`) are materialized with
+        :meth:`to_file`; remote pockets are downloaded with this pocket's
+        client so the parent's clientless download is a no-op.
+        """
+        if self.local_path is not None:
+            return
+        if self.coordinates is not None:
+            self.local_path = self.to_file()
+            return
+        if self.remote_path is not None:
+            self.download(client=self._client)
+
+    def _resolve_parent_protein(self) -> Protein:
+        """Return the parent protein, loading it by id when not attached.
+
+        Returns:
+            The in-process parent protein.
+
+        Raises:
+            DeepOriginException: If the parent cannot be resolved.
+        """
+        if self.protein is not None:
+            return self._ensure_parent_structure(self.protein)
+        if not self.protein_id:
+            raise DeepOriginException(
+                title="Cannot visualize pocket",
+                message=(
+                    "This pocket has no parent protein. Pocket.show() overlays "
+                    "the pocket on its parent protein."
+                ),
+                fix=(
+                    "Call protein.show(pockets=[pocket]) with the protein, or "
+                    "run PocketFinder so the pocket keeps a parent."
+                ),
+            )
+
+        from deeporigin.drug_discovery.structures.protein import Protein
+
+        try:
+            parent = Protein.from_id(self.protein_id, client=self._client)
+        except Exception as exc:
+            raise self._cannot_load_parent(
+                f"Could not load parent protein {self.protein_id!r}.", exc
+            ) from exc
+        self.protein = parent
+        return self._ensure_parent_structure(parent)
+
+    def _ensure_parent_structure(self, parent: Protein) -> Protein:
+        """Download the parent structure when only metadata is attached.
+
+        Rehydrated parents (``Protein.from_id(..., download=False)``, as used by
+        :meth:`PocketFinder.from_dto`) carry no ``structure``, and
+        :meth:`Protein.show` serializes the structure. Download it with this
+        pocket's client before delegating.
+
+        Args:
+            parent: The parent protein attached to this pocket.
+
+        Returns:
+            The same protein, with :attr:`Protein.structure` loaded.
+
+        Raises:
+            DeepOriginException: If the structure cannot be downloaded.
+        """
+        if parent.structure is not None:
+            return parent
+
+        identifier = parent.id or self.protein_id
+        try:
+            parent.download(client=self._client)
+        except Exception as exc:
+            raise self._cannot_load_parent(
+                f"Could not load the structure of parent protein {identifier!r}.",
+                exc,
+            ) from exc
+        return parent
+
+    @staticmethod
+    def _cannot_load_parent(message: str, exc: Exception) -> DeepOriginException:
+        """Build the error raised when the parent protein cannot be visualized.
+
+        Keeps the underlying platform detail in the message so callers still see
+        why the load failed.
+
+        Args:
+            message: Context describing which parent protein could not be loaded.
+            exc: The underlying failure.
+
+        Returns:
+            The ``DeepOriginException`` to raise.
+        """
+        detail = exc.body if isinstance(exc, DeepOriginException) else str(exc)
+        return DeepOriginException(
+            title="Cannot visualize pocket",
+            message=f"{message}\n{detail}" if detail else message,
+            fix="Call protein.show(pockets=[pocket]) with a loaded Protein.",
+        )
 
     @classmethod
     def from_residue_number(

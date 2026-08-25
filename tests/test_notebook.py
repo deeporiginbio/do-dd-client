@@ -1,12 +1,15 @@
 """Tests for notebook utility functions."""
 
 import base64
+import warnings
 
+from IPython.display import IFrame
 import pytest
 
 from deeporigin.utils.notebook import (
     _iframe_markup_for_html_document,
     _iframe_src_for_html_document,
+    render_html,
     render_progress_bar,
     show_progress_bar,
 )
@@ -133,3 +136,35 @@ def test_iframe_markup_allows_scripts() -> None:
     assert 'sandbox="allow-scripts allow-same-origin"' in markup
     assert "srcdoc=" not in markup
     assert "data:text/html;charset=utf-8;base64," in markup
+
+
+def test_iframe_markup_includes_bridge_id() -> None:
+    """Comm-bridge iframes expose a stable id for the postMessage script."""
+    markup = _iframe_markup_for_html_document(
+        "<html></html>",
+        height=400,
+        bridge_id="abc",
+    )
+
+    assert 'id="do-bridge-abc"' in markup
+    assert 'data-bridge-id="abc"' in markup
+
+
+def test_render_html_displays_iframe_without_warning(monkeypatch) -> None:
+    """Jupyter display must use IFrame so IPython does not warn about HTML iframes."""
+    displayed: list[object] = []
+
+    def fake_display(obj: object) -> object:
+        """Capture the object passed to IPython display."""
+        displayed.append(obj)
+        return obj
+
+    monkeypatch.setattr("deeporigin.utils.notebook.display", fake_display)
+
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        render_html("<html></html>", height=400)
+
+    assert len(displayed) == 1
+    assert isinstance(displayed[0], IFrame)
+    assert not any("IFrame instead" in str(warning.message) for warning in caught)

@@ -4,7 +4,7 @@ from typing import Optional
 
 from beartype import beartype
 from IPython import get_ipython
-from IPython.display import HTML, display
+from IPython.display import HTML, IFrame, display
 
 
 @beartype
@@ -184,13 +184,13 @@ def _iframe_src_for_html_document(html: str) -> str:
     return f"data:text/html;charset=utf-8;base64,{encoded}"
 
 
-def _iframe_markup_for_html_document(
+def _iframe_for_html_document(
     html: str,
     *,
     height: int,
     bridge_id: str | None = None,
-) -> str:
-    """Build iframe markup for a self-contained HTML document.
+) -> IFrame:
+    """Return an :class:`~IPython.display.IFrame` for a self-contained HTML document.
 
     The HTML is embedded with ``allow-scripts`` and ``allow-same-origin`` so
     Mol* and similar viewers can run. Only pass trusted, SDK-generated HTML.
@@ -200,16 +200,41 @@ def _iframe_markup_for_html_document(
         height: Iframe height in pixels.
         bridge_id: When set, adds a stable ``id`` for the comm bridge script.
     """
-    src = _iframe_src_for_html_document(html)
-    id_attr = f'id="do-bridge-{bridge_id}" ' if bridge_id else ""
-    data_attr = f'data-bridge-id="{bridge_id}" ' if bridge_id else ""
-    return (
-        f"<iframe {id_attr}{data_attr}"
-        f'src="{src}" '
-        f'sandbox="allow-scripts allow-same-origin" '
-        f'style="width:100%;height:{height}px;border:0" '
-        f'loading="lazy" referrerpolicy="no-referrer"></iframe>'
+    extras = [
+        'sandbox="allow-scripts allow-same-origin"',
+        f'style="width:100%;height:{height}px;border:0"',
+        'loading="lazy"',
+        'referrerpolicy="no-referrer"',
+    ]
+    if bridge_id:
+        extras.append(f'id="do-bridge-{bridge_id}"')
+        extras.append(f'data-bridge-id="{bridge_id}"')
+    return IFrame(
+        _iframe_src_for_html_document(html),
+        width="100%",
+        height=height,
+        extras=extras,
     )
+
+
+def _iframe_markup_for_html_document(
+    html: str,
+    *,
+    height: int,
+    bridge_id: str | None = None,
+) -> str:
+    """Build iframe markup for a self-contained HTML document.
+
+    Args:
+        html: Full HTML document to embed.
+        height: Iframe height in pixels.
+        bridge_id: When set, adds a stable ``id`` for the comm bridge script.
+    """
+    return _iframe_for_html_document(
+        html,
+        height=height,
+        bridge_id=bridge_id,
+    )._repr_html_()
 
 
 def render_html(
@@ -230,6 +255,10 @@ def render_html(
     Returns:
         In marimo: a ``mo.Html`` wrapper. In Jupyter, ``None`` after ``display`` unless
         ``return_iframe_string`` is True, in which case the iframe HTML string.
+
+    Notes:
+        Jupyter uses :class:`~IPython.display.IFrame` rather than wrapping iframe
+        markup in :class:`~IPython.display.HTML`, which warns to use ``IFrame``.
     """
 
     if get_notebook_environment() == "marimo":
@@ -241,7 +270,7 @@ def render_html(
 
         return mo.Html(_iframe_markup_for_html_document(html, height=height))
     else:
-        iframe_code = _iframe_markup_for_html_document(html, height=height)
+        iframe = _iframe_for_html_document(html, height=height)
         if return_iframe_string:
-            return iframe_code
-        return display(HTML(iframe_code))
+            return iframe._repr_html_()
+        return display(iframe)

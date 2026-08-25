@@ -201,7 +201,12 @@ from deeporigin.drug_discovery import PocketFinder, Protein
 protein = Protein.from_pdb_id("1EBY")
 pf = PocketFinder(protein, pocket_count=5)
 pockets = pf.run()
+pockets[0].show()
 ```
+
+`Pocket.show()` overlays that pocket on its parent protein (the same as
+`protein.show(pockets=[pocket])`). To show every pocket from the run, call
+`protein.show(pockets=pockets)`.
 
 ### Preparing a protein
 

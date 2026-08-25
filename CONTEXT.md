@@ -50,6 +50,28 @@ by `ProteinPrep.get_results()`, whose structure is the cleaned PDB. Not a
 proteins-table row until the caller `sync()` or `update()`.
 _Avoid_: public `PreparedProtein` type; PreparedSystem
 
+**Protein**:
+A macromolecular target structure. Once synced, a platform proteins-table row.
+_Avoid_: PreparedSystem; Prepared protein (CLI) when you mean a catalog protein
+
+**Pocket**:
+A binding cavity on a Protein. PocketFinder results are catalog rows of result
+type `pocket`. Other constructors can produce a Pocket with no parent (local PDB,
+ligand-derived, docking box).
+_Avoid_: Docking search box; pocket box when meaning the cavity surface
+
+**Parent protein**:
+The Protein a Pocket was found in. Durable identity is `protein_id`. The
+in-process parent is `Pocket.protein` when attached. A Pocket can be shown in
+the Structure viewer when the parent is resolvable (attached Protein or
+`protein_id`). Other constructors may leave both unset.
+_Avoid_: `pdb_id` (RCSB code); Docking's protein input when you mean the Pocket's parent
+
+**PocketFinder**:
+Platform tool `deeporigin.pocket-finder` and CLI execution that detects pockets
+on a Protein and returns them as Pocket objects.
+_Avoid_: `PocketFinder.show()` as Structure viewer (that method is the execution card)
+
 **Workflow step**:
 A named stage in a combined workflow execution (`system-prep`, `abfe`, `rbfe`, `konnektor`).
 _Avoid_: `mode` for v5 workflow tools

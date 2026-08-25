@@ -9,6 +9,7 @@ import pytest
 from deeporigin.drug_discovery import BRD_DATA_DIR
 from deeporigin.drug_discovery.constrained_docking import ConstrainedDocking
 from deeporigin.drug_discovery.docking import Docking
+from deeporigin.drug_discovery.docking_common import transpose_rotation_deg
 from deeporigin.drug_discovery.structures.ligand import Ligand
 from deeporigin.drug_discovery.structures.pocket import Pocket
 from deeporigin.utils.iframe_comm_bridge import (
@@ -35,14 +36,14 @@ def test_docking_commit_docking_box_stores_geometry_and_rotation(
         {
             "center": [0.0, 0.0, 0.0],
             "box_size": [15.0, 15.0, 15.0],
-            "rotation_deg": [0.0, 45.0, 0.0],
+            "rotation_deg": transpose_rotation_deg([0.0, 45.0, 0.0]),
         }
     )
     assert docking.pocket.center == [0.0, 0.0, 0.0]
     assert docking.pocket.box_size_x == 15.0
     assert docking.pocket.box_size_y == 15.0
     assert docking.pocket.box_size_z == 15.0
-    assert docking.rotation_deg == [0.0, 45.0, 0.0]
+    assert docking.rotation_deg == pytest.approx([0.0, 45.0, 0.0])
 
 
 def test_docking_tool_inputs_forward_committed_geometry_and_rotation(
@@ -62,7 +63,7 @@ def test_docking_tool_inputs_forward_committed_geometry_and_rotation(
         {
             "center": [1.0, 2.0, 3.0],
             "box_size": [16.0, 18.0, 20.0],
-            "rotation_deg": [0.0, 30.0, 0.0],
+            "rotation_deg": transpose_rotation_deg([0.0, 30.0, 0.0]),
         }
     )
     params, _ = docking._build_tool_inputs()
@@ -70,7 +71,7 @@ def test_docking_tool_inputs_forward_committed_geometry_and_rotation(
     assert params["pocket"]["box_size_x"] == 16.0
     assert params["pocket"]["box_size_y"] == 18.0
     assert params["pocket"]["box_size_z"] == 20.0
-    assert params["pocket"]["rotation_deg"] == [0.0, 30.0, 0.0]
+    assert params["pocket"]["rotation_deg"] == pytest.approx([0.0, 30.0, 0.0])
 
 
 def _pocket_with_box_fixture() -> Pocket:
@@ -130,7 +131,7 @@ def test_commit_updates_nested_box_sizes(
         {
             "center": [1.0, 2.0, 3.0],
             "box_size": [18.0, 19.0, 20.0],
-            "rotation_deg": [5.0, 10.0, 15.0],
+            "rotation_deg": transpose_rotation_deg([5.0, 10.0, 15.0]),
         }
     )
 
@@ -235,7 +236,7 @@ def test_constrained_docking_uses_lab_aabb_after_rotated_commit(
         {
             "center": [1.0, 2.0, 3.0],
             "box_size": [22.0, 20.0, 21.0],
-            "rotation_deg": [0.0, 45.0, 0.0],
+            "rotation_deg": transpose_rotation_deg([0.0, 45.0, 0.0]),
         }
     )
 
@@ -523,6 +524,8 @@ def test_render_interactive_docking_box_html_uses_get_docking_box(
     assert "onDockingBoxChange" in html
     assert "applyDockingBoxRotation" in html
     assert "setRotation" in html
+    assert "[0.0, -45.0, 0.0]" in html
+    assert "[0.0, 45.0, 0.0]" not in html
     assert "proto-rot-x" not in html
     assert "Apply to notebook" not in html
     assert "do-box-apply" not in html
