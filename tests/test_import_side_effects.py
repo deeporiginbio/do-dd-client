@@ -17,9 +17,14 @@ def _blocked_home(tmp_path: pathlib.Path) -> pathlib.Path:
 def blocked_home(
     monkeypatch: pytest.MonkeyPatch, tmp_path: pathlib.Path
 ) -> pathlib.Path:
-    """Point HOME at a path whose parent cannot be created implicitly."""
+    """Point the user home at a path whose parent cannot be created implicitly."""
     home = _blocked_home(tmp_path)
     monkeypatch.setenv("HOME", str(home))
+    # ntpath.expanduser ignores HOME: it reads USERPROFILE, then HOMEDRIVE +
+    # HOMEPATH. Patch those too so Path.home() is redirected on Windows.
+    monkeypatch.setenv("USERPROFILE", str(home))
+    monkeypatch.delenv("HOMEDRIVE", raising=False)
+    monkeypatch.delenv("HOMEPATH", raising=False)
     return home
 
 
