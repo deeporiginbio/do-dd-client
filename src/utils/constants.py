@@ -107,6 +107,9 @@ SYSPREP_NO_OUTPUT_PATHS_MSG = (
 PROTEIN_PREP_PDB_ID_PATTERN = r"^[A-Za-z0-9]{4}$"
 """JSON Schema pattern for Protein Prep ``pdb_id`` (loop-modelling templates)."""
 
+PROTEIN_PREP_DISPLAY_NONE = "(none)"
+"""Display value for unavailable Protein Prep configuration."""
+
 PROTEIN_PREP_NO_OUTPUT_PATHS_MSG = (
     "Protein preparation did not return a prepared PDB path. "
     "The tool execution may have failed or returned an unexpected format."
@@ -122,24 +125,21 @@ PROTEIN_PREP_PDB_ID_REQUIRED_MSG = (
 
 PROTEIN_PREP_NO_RECOMMENDATION_MSG = (
     "Protein Prep did not return a recommendation. "
-    "This execution may have used action='prepare', failed, or returned an "
-    "unexpected format."
+    "The recommendation operation may have failed or returned an unexpected format."
 )
-"""Used by ``ProteinPrep.get_recommendation`` when the inventory is missing."""
+"""Used by ``ProteinPrep.recommend`` when the inventory is missing."""
 
 PROTEIN_PREP_RECOMMEND_NOT_PREPARE_MSG = (
-    "This ProteinPrep ran action='recommend' and did not produce a prepared "
-    "protein. Call get_recommendation(), then as_prepare() (or "
-    "ProteinPrep.from_recommendation) to submit a prepare run."
+    "This historical ProteinPrep execution contains a recommendation and did "
+    "not produce a prepared protein. Inspect the recommendation property."
 )
 """Used by ``ProteinPrep.get_results`` on a recommend execution."""
 
 PROTEIN_PREP_RUN_REQUIRES_LOOPS_OFF_MSG = (
-    "run() is only valid for prepare with model_missing_loops=False. "
-    "Use start() for recommend or for prepare with loop modelling, or call "
-    "as_prepare(model_missing_loops=False) first."
+    "run() requires model_missing_loops=False. Use start() when loop modelling "
+    "is enabled."
 )
-"""Used by ``ProteinPrep.run`` when the instance is not loops-off prepare."""
+"""Used by ``ProteinPrep.run`` when loop modelling is enabled."""
 
 BOOTSTRAP_5_CSS_CDN_URL = (
     "https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css"

@@ -1,10 +1,10 @@
 # `deeporigin.drug_discovery.protein_prep`
 
 `ProteinPrep` drives platform tool `deeporigin.protein-prep`. Recommend
-inventories components; prepare applies a frozen Selection then cleans the
-structure. ``start()`` is always valid. ``run()`` is only for prepare with
-``model_missing_loops=False``: it blocks and returns an in-memory ``Protein``.
-There is no quote.
+inventories components and updates the same object with an editable Selection.
+Prepare applies resolved keep/skip decisions and cleans the structure.
+``run()`` is loops-off and blocking; ``start()`` submits asynchronous prepare
+with loop modelling either off or on. There is no quote.
 
 ::: src.drug_discovery.protein_prep
     options:

@@ -1,27 +1,25 @@
-"""ProteinPrep -- recommend then prepare a protein (async, plus sync loops-off).
+"""Recommend settings and prepare a protein with one mutable configuration.
 
-Protein Prep v2 is two steps on one tool key:
+Protein Prep uses two platform operations behind one user-facing object:
 
 1. ``action="recommend"`` inventories chains, ligands, cofactors, and waters.
-2. ``action="prepare"`` applies a digest-bound frozen Selection, then runs
+2. ``action="prepare"`` applies a digest-bound Selection, then runs
    loop modelling (unless ``model_missing_loops=False``) and protonation.
-
-``start()`` is always valid. ``run()`` is only valid for loops-off prepare
-(blocks until the job finishes).
 
 Usage::
 
-    rec = ProteinPrep(protein)  # pdb_id optional; stored for as_prepare()
-    rec.start()
-    rec.wait()
-    recommendation = rec.get_recommendation()
-
-    prep = rec.as_prepare(model_missing_loops=False)
-    prepared = prep.run()  # in-memory Protein; id is None
+    prep = ProteinPrep(protein)
+    prep.recommend()
+    prep.keep(["chain:A"])
+    prep.skip(["ligand:LIG:A:100"])
+    prep.model_missing_loops = False
+    prepared = prep.run()
 """
 
 from __future__ import annotations
 
+from collections.abc import Iterable
+from copy import deepcopy
 from html import escape
 import re
 from typing import Any, Literal, NamedTuple, Self
@@ -39,18 +37,20 @@ from deeporigin.exceptions import DeepOriginException
 from deeporigin.platform.client import DeepOriginClient
 from deeporigin.platform.constants import TOOL_KEYS_AND_VERSIONS
 from deeporigin.utils.constants import (
+    PROTEIN_PREP_DISPLAY_NONE,  # ty:ignore[unresolved-import]
     PROTEIN_PREP_NO_OUTPUT_PATHS_MSG,
-    PROTEIN_PREP_NO_RECOMMENDATION_MSG,
+    PROTEIN_PREP_NO_RECOMMENDATION_MSG,  # ty:ignore[unresolved-import]
     PROTEIN_PREP_PDB_ID_PATTERN,
-    PROTEIN_PREP_PDB_ID_REQUIRED_MSG,
-    PROTEIN_PREP_RECOMMEND_NOT_PREPARE_MSG,
-    PROTEIN_PREP_RUN_REQUIRES_LOOPS_OFF_MSG,
+    PROTEIN_PREP_PDB_ID_REQUIRED_MSG,  # ty:ignore[unresolved-import]
+    PROTEIN_PREP_RECOMMEND_NOT_PREPARE_MSG,  # ty:ignore[unresolved-import]
+    PROTEIN_PREP_RUN_REQUIRES_LOOPS_OFF_MSG,  # ty:ignore[unresolved-import]
 )
 
 _PDB_ID_RE = re.compile(PROTEIN_PREP_PDB_ID_PATTERN)
 _RESULT_TYPE_PREPARED_PROTEIN = "preparedprotein"
 _VALID_ACTIONS = frozenset({"recommend", "prepare"})
-_VALID_DECISIONS = frozenset({"keep", "skip"})
+_VALID_DECISIONS = frozenset({"keep", "review", "skip"})
+_RESOLVED_DECISIONS = frozenset({"keep", "skip"})
 
 ProteinPrepAction = Literal["recommend", "prepare"]
 
@@ -127,18 +127,18 @@ def _optional_pdb_id(*, protein: Protein, pdb_id: str | None) -> str | None:
 
 
 def _copy_selection(selection: dict[str, Any]) -> dict[str, Any]:
-    """Return a JSON-shape copy of a frozen Selection.
+    """Return a validated JSON-shape copy of a Selection.
 
     Args:
         selection: Selection object with ``source_sha256``, ``analyzer_version``,
             and ``decisions``.
 
     Returns:
-        Copy with string keys and ``keep``/``skip`` decision values.
+        Copy with string keys and ``keep``/``review``/``skip`` decisions.
 
     Raises:
         ValueError: If required keys are missing, ``decisions`` is not an
-            object, or a decision is not ``keep`` or ``skip``.
+            object, or a decision is not ``keep``, ``review``, or ``skip``.
     """
     for key in ("source_sha256", "analyzer_version", "decisions"):
         if key not in selection:
@@ -153,8 +153,8 @@ def _copy_selection(selection: dict[str, Any]) -> dict[str, Any]:
         decision = str(raw_decision)
         if decision not in _VALID_DECISIONS:
             raise ValueError(
-                f"selection.decisions[{component_id!r}] must be 'keep' or "
-                f"'skip', got {raw_decision!r}."
+                f"selection.decisions[{component_id!r}] must be 'keep', "
+                f"'review', or 'skip', got {raw_decision!r}."
             )
         decisions[str(component_id)] = decision
     return {
@@ -171,16 +171,17 @@ def _format_selection_display(selection: dict[str, Any] | None) -> str:
         selection: Current selection, or ``None`` on a recommend run.
 
     Returns:
-        Count of keep/skip decisions, or ``(none)`` when unset.
+        Count of keep/review/skip decisions, or ``(none)`` when unset.
     """
     if selection is None:
-        return "(none)"
+        return PROTEIN_PREP_DISPLAY_NONE
     decisions = selection.get("decisions") or {}
     if not isinstance(decisions, dict) or not decisions:
-        return "(none)"
+        return PROTEIN_PREP_DISPLAY_NONE
     keep_n = sum(1 for value in decisions.values() if value == "keep")
+    review_n = sum(1 for value in decisions.values() if value == "review")
     skip_n = sum(1 for value in decisions.values() if value == "skip")
-    return f"{keep_n} keep, {skip_n} skip"
+    return f"{keep_n} keep, {review_n} review, {skip_n} skip"
 
 
 def _protein_tool_input(protein: Protein) -> dict[str, Any]:
@@ -237,35 +238,21 @@ def _protein_from_prepared_data(
     )
 
 
-def selection_from_recommendation(
+def _selection_from_recommendation(
     recommendation: dict[str, Any],
-    *,
-    resolve_review_as: str = "skip",
 ) -> dict[str, Any]:
-    """Build a frozen Selection from a recommend ``jobOutputs`` payload.
-
-    Each component's tri-state recommendation becomes a binary ``keep`` or
-    ``skip``. Items marked ``review`` are mapped with *resolve_review_as*
-    (default ``skip``).
+    """Build an editable Selection from recommendation output.
 
     Args:
         recommendation: ``jobOutputs.recommendation`` dict (``source_sha256``,
             ``analyzer_version``, ``components``).
-        resolve_review_as: Decision to apply to every ``review`` component.
-            Must be ``keep`` or ``skip``.
-
     Returns:
         Selection with ``source_sha256``, ``analyzer_version``, and
-        ``decisions``.
+        tri-state ``decisions``.
 
     Raises:
-        ValueError: If the recommendation is missing required fields, a
-            component has no id, or *resolve_review_as* is invalid.
+        ValueError: If required data is missing or a component is invalid.
     """
-    if resolve_review_as not in _VALID_DECISIONS:
-        raise ValueError(
-            f"resolve_review_as must be 'keep' or 'skip', got {resolve_review_as!r}."
-        )
     source_sha256 = recommendation.get("source_sha256")
     analyzer_version = recommendation.get("analyzer_version")
     components = recommendation.get("components")
@@ -284,8 +271,6 @@ def selection_from_recommendation(
         if not component_id or not str(component_id).strip():
             raise ValueError(f"recommendation.components[{index}] must include id.")
         rec = str(raw.get("recommendation") or "")
-        if rec == "review":
-            rec = resolve_review_as
         if rec not in _VALID_DECISIONS:
             raise ValueError(
                 f"recommendation.components[{index}] recommendation must be "
@@ -305,27 +290,23 @@ class ProteinPrep(
     AsyncExecutableMixin,
     NotebookWatchMixin,
 ):
-    """Prepare a protein via ``deeporigin.protein-prep``.
+    """Recommend settings and prepare a protein.
 
-    :meth:`start` is always valid. With no ``selection``, it runs
-    ``action=recommend``. After that job finishes, :meth:`as_prepare` (or
-    :meth:`from_recommendation`) builds a prepare run.
+    :meth:`recommend` blocks, updates :attr:`recommendation` and
+    :attr:`selection`, and deliberately leaves :attr:`id` unset. Resolve
+    ``review`` decisions with :meth:`keep` and :meth:`skip`, then call
+    :meth:`run` for blocking loops-off preparation or :meth:`start` for
+    asynchronous preparation.
 
-    :meth:`run` is only valid for prepare with ``model_missing_loops=False``
-    (skips loop modelling). It blocks until the job finishes and returns an
-    in-memory :class:`Protein` via :meth:`get_results`. Recommend and
-    loops-on prepare must use :meth:`start`. Quoting is unused (billing is
-    skipped).
-
-    Displaying the object (``print(prep)`` or a notebook cell) lists every
-    input you can set and its current value.
+    A prepare submission binds the object to its durable execution. Once
+    :attr:`id` is set, configuration is permanently frozen.
 
     Attributes:
-        protein: Input protein structure (unchanged after the run).
-        action: ``recommend`` or ``prepare``.
-        pdb_id: 4-character PDB ID for loop-modelling templates (prepare).
-        selection: Frozen keep/skip map (prepare only).
-        model_missing_loops: When ``False``, prepare skips loop modelling.
+        protein: Constructor-only input protein structure.
+        pdb_id: Mutable 4-character PDB ID for loop-modelling templates.
+        selection: Editable keep/review/skip map. Reads return a copy.
+        recommendation: Read-only analyzer evidence. Reads return a copy.
+        model_missing_loops: Whether prepare models missing loops.
     """
 
     tool_key: str = TOOL_KEYS_AND_VERSIONS["protein_prep"]["tool_key"]
@@ -335,7 +316,6 @@ class ProteinPrep(
         self,
         protein: Protein,
         *,
-        action: ProteinPrepAction | None = None,
         pdb_id: str | None = None,
         selection: dict[str, Any] | None = None,
         model_missing_loops: bool = True,
@@ -344,77 +324,167 @@ class ProteinPrep(
     ) -> None:
         """Create a ProteinPrep for the given protein.
 
-        With no ``selection``, this is a recommend run. Pass ``selection``
-        (or use :meth:`as_prepare`) for prepare.
+        Call :meth:`recommend` to populate a Selection, or pass an existing
+        Selection and prepare immediately.
 
         Args:
-            protein: Protein structure to inventory or prepare.
-            action: ``recommend`` or ``prepare``. Inferred from whether
-                ``selection`` is set when omitted.
+            protein: Protein structure to inventory or prepare. It cannot be
+                replaced after construction.
             pdb_id: 4-character PDB ID for loop modelling. Inferred from
-                ``protein.pdb_id`` when omitted. Required for prepare unless
-                ``model_missing_loops`` is ``False``. Stored on recommend runs
-                so :meth:`as_prepare` can reuse it.
-            selection: Digest-bound frozen Selection (``source_sha256``,
-                ``analyzer_version``, ``decisions``). Required for prepare.
+                ``protein.pdb_id`` when omitted.
+            selection: Optional digest-bound Selection with ``source_sha256``,
+                ``analyzer_version``, and ``decisions``.
             model_missing_loops: When ``False``, skip loop modelling and do
-                not require ``pdb_id``. Ignored for recommend (must stay
-                ``True``).
+                not require ``pdb_id``.
             tool_version: Platform tool version pin.
             client: Optional API client. Uses the default if not provided.
 
         Raises:
-            ValueError: If ``action``/``selection`` disagree, ``pdb_id`` is
-                missing for loops-on prepare, ``pdb_id`` is malformed, or
-                ``selection`` is invalid.
+            ValueError: If ``pdb_id`` or ``selection`` is invalid.
         """
         super().__init__(client=client)
         self.tool_version = tool_version
         self._protein = protein
-        resolved_action = _resolve_action(action=action, selection=selection)
-        if resolved_action == "recommend" and not model_missing_loops:
-            raise ValueError(
-                "model_missing_loops=False requires action='prepare' and a "
-                "selection. Run recommend first, then "
-                "as_prepare(model_missing_loops=False)."
-            )
-        self._action: ProteinPrepAction = resolved_action
+        self._operation_kind: ProteinPrepAction | None = None
         self._pdb_id = _optional_pdb_id(protein=protein, pdb_id=pdb_id)
         self._selection = _copy_selection(selection) if selection is not None else None
-        self._model_missing_loops = (
-            True if resolved_action == "recommend" else model_missing_loops
-        )
-        if (
-            resolved_action == "prepare"
-            and self._model_missing_loops
-            and not self._pdb_id
-        ):
-            raise ValueError(PROTEIN_PREP_PDB_ID_REQUIRED_MSG)
+        self._recommendation: dict[str, Any] | None = None
+        self._model_missing_loops = model_missing_loops
 
     @property
     def protein(self) -> Protein:
-        """Input protein structure used for recommendation or preparation."""
+        """Constructor-only protein used for recommendation and preparation."""
         return self._protein
 
-    @property
-    def action(self) -> str:
-        """``recommend`` or ``prepare``."""
-        return self._action
+    def _require_unbound(self, attribute: str) -> None:
+        """Raise when configuration mutation follows durable submission.
+
+        Args:
+            attribute: Configuration attribute or operation being changed.
+
+        Raises:
+            AttributeError: If this object has a durable execution ID.
+        """
+        if self.id is not None:
+            raise AttributeError(
+                f"cannot assign to {attribute!r}: execution id is already set"
+            )
 
     @property
     def pdb_id(self) -> str | None:
         """4-character PDB ID used for loop-modelling templates, if set."""
         return self._pdb_id
 
+    @pdb_id.setter
+    def pdb_id(self, value: str | None) -> None:
+        """Set or clear ``pdb_id`` before this execution is submitted."""
+        self._require_unbound("pdb_id")
+        if value is None or not str(value).strip():
+            self._pdb_id = None
+            return
+        self._pdb_id = _normalize_pdb_id(str(value))
+
     @property
     def selection(self) -> dict[str, Any] | None:
-        """Frozen Selection for prepare; ``None`` on a recommend run."""
-        return self._selection
+        """Editable Selection copy, or ``None`` before recommendation."""
+        if self._selection is None:
+            return None
+        return _copy_selection(self._selection)
+
+    @selection.setter
+    def selection(self, value: dict[str, Any] | None) -> None:
+        """Set or clear a copied Selection before prepare submission."""
+        self._require_unbound("selection")
+        self._selection = _copy_selection(value) if value is not None else None
+
+    @property
+    def recommendation(self) -> dict[str, Any] | None:
+        """Analyzer evidence copy, or ``None`` when unavailable."""
+        if self._recommendation is None:
+            return None
+        return deepcopy(self._recommendation)
 
     @property
     def model_missing_loops(self) -> bool:
         """Whether prepare will run loop modelling (unused for recommend)."""
         return self._model_missing_loops
+
+    @model_missing_loops.setter
+    def model_missing_loops(self, value: bool) -> None:
+        """Set the loop-modelling flag before this execution is submitted."""
+        self._require_unbound("model_missing_loops")
+        self._model_missing_loops = bool(value)
+
+    def _validate_for_submit(self) -> None:
+        """Raise if current settings cannot prepare the protein.
+
+        Raises:
+            ValueError: If Selection is absent or unresolved, or loops-on
+                prepare has no ``pdb_id``.
+        """
+        if self._selection is None:
+            raise ValueError(
+                "ProteinPrep has no selection. Call recommend() or assign selection "
+                "before run() or start()."
+            )
+        unresolved = sorted(
+            component_id
+            for component_id, decision in self._selection["decisions"].items()
+            if decision == "review"
+        )
+        if unresolved:
+            joined = ", ".join(unresolved)
+            raise ValueError(
+                f"Resolve review decisions before preparation: {joined}. "
+                "Use keep([...]) or skip([...])."
+            )
+        if self._model_missing_loops and not self._pdb_id:
+            raise ValueError(PROTEIN_PREP_PDB_ID_REQUIRED_MSG)
+
+    def _set_decisions(self, component_ids: Iterable[str], decision: str) -> None:
+        """Set one decision for named Selection components.
+
+        Args:
+            component_ids: Iterable of component IDs to update.
+            decision: ``keep`` or ``skip``.
+
+        Raises:
+            AttributeError: If this object is bound to an execution.
+            TypeError: If *component_ids* is a bare string.
+            ValueError: If Selection is absent or IDs are unknown.
+        """
+        self._require_unbound(decision)
+        if isinstance(component_ids, str):
+            raise TypeError(f"{decision}() requires an iterable of component IDs.")
+        if self._selection is None:
+            raise ValueError(
+                f"{decision}() requires a selection. Call recommend() or assign "
+                "selection first."
+            )
+        resolved_ids = [str(component_id) for component_id in component_ids]
+        known_ids = self._selection["decisions"]
+        unknown_ids = sorted(set(resolved_ids) - set(known_ids))
+        if unknown_ids:
+            joined = ", ".join(unknown_ids)
+            raise ValueError(f"Unknown Selection component IDs: {joined}.")
+        for component_id in resolved_ids:
+            known_ids[component_id] = decision
+
+    def keep(self, component_ids: Iterable[str]) -> None:
+        """Mark named Selection components to keep.
+
+        Args:
+            component_ids: Iterable of component IDs from :attr:`recommendation`.
+        """
+        self._set_decisions(component_ids, "keep")
+
+    def skip(self, component_ids: Iterable[str]) -> None:
+        """Mark named Selection components to skip.
+
+        Args:
+            component_ids: Iterable of component IDs from :attr:`recommendation`.
+        """
+        self._set_decisions(component_ids, "skip")
 
     def _parameter_rows(self) -> list[tuple[str, str]]:
         """Return ``(name, value)`` rows for text and HTML display.
@@ -424,13 +494,23 @@ class ProteinPrep(
         """
         rows: list[tuple[str, str]] = [
             ("protein", _protein_display_value(self.protein)),
-            ("action", self.action),
-            ("pdb_id", self.pdb_id if self.pdb_id else "(none)"),
+            (
+                "pdb_id",
+                self.pdb_id if self.pdb_id else PROTEIN_PREP_DISPLAY_NONE,
+            ),
             (
                 "model_missing_loops",
                 str(self.model_missing_loops),
             ),
             ("selection", _format_selection_display(self.selection)),
+            (
+                "recommendation",
+                (
+                    "available"
+                    if self._recommendation is not None
+                    else PROTEIN_PREP_DISPLAY_NONE
+                ),
+            ),
             ("tool_version", str(self.tool_version)),
         ]
         if self.name:
@@ -440,6 +520,9 @@ class ProteinPrep(
         status = getattr(self, "status", None)
         if status:
             rows.append(("status", str(status)))
+        progress = getattr(self, "progress", None)
+        if progress:
+            rows.append(("progress", str(progress)))
         return rows
 
     def __repr__(self) -> str:
@@ -491,10 +574,10 @@ class ProteinPrep(
         self._protein.sync(lazy=True, client=self.client)
         self._protein.ensure_remote_path(client=self.client, label="Protein")
 
-    def _make_payload(
+    def _make_protein_prep_payload(
         self,
         *,
-        approve_amount: int | None,
+        action: ProteinPrepAction,
         sync: bool,
     ) -> dict[str, Any]:
         """Build the POST body for ``executions.create``.
@@ -504,20 +587,19 @@ class ProteinPrep(
         ``sync`` property.
 
         Args:
-            approve_amount: Spend cap; omitted from the body when ``None``.
-            sync: ``True`` for :meth:`run` (blocking create); ``False`` for
-                :meth:`start`.
+            action: Internal platform operation.
+            sync: Whether create blocks until completion.
 
         Returns:
             Payload for ``client.executions.create``.
         """
         inputs: dict[str, Any] = {
-            "action": self._action,
+            "action": action,
             "protein": _protein_tool_input(self._protein),
         }
-        if self._action == "prepare":
-            if self._selection is None:
-                raise ValueError("prepare requires a selection.")
+        if action == "prepare":
+            self._validate_for_submit()
+            assert self._selection is not None
             inputs["selection"] = {
                 "source_sha256": self._selection["source_sha256"],
                 "analyzer_version": self._selection["analyzer_version"],
@@ -527,184 +609,101 @@ class ProteinPrep(
                 inputs["model_missing_loops"] = False
             if self._pdb_id:
                 inputs["pdb_id"] = self._pdb_id
-        payload: dict[str, Any] = {
+        return {
             "inputs": inputs,
             "outputs": {},
             "metadata": {},
             "sync": sync,
         }
-        if approve_amount is not None:
-            payload["approveAmount"] = approve_amount
-        return payload
 
-    def _start_impl(self, *, approve_amount: int | None = None, **kwargs: Any) -> None:
-        """Submit protein prep as a persisted async execution.
+    def recommend(self) -> None:
+        """Recommend settings into this object without binding an execution ID.
 
-        Args:
-            approve_amount: Spend cap forwarded to the platform. ``None`` omits
-                the field (the tool has no quote).
-            **kwargs: Unused; accepted for mixin compatibility.
+        The platform operation is synchronous and persisted by the backend, but
+        its execution ID is deliberately not copied onto this object. Repeated
+        calls atomically replace :attr:`recommendation` and :attr:`selection`
+        only after a complete recommendation is available.
+
+        Raises:
+            AttributeError: If this object is already bound to prepare.
+            DeepOriginException: If recommendation output is unavailable.
         """
-        _ = kwargs
+        self._require_unbound("recommend")
+        self._ensure_protein_remote()
+        dto = self._create_execution(
+            data=self._make_protein_prep_payload(action="recommend", sync=True),
+        )
+        recommendation = self._recommendation_from_dto(dto)
+        execution_id = dto.get("executionId")
+        if recommendation is None and execution_id is not None:
+            try:
+                fetched = self.client.executions.get(  # ty:ignore[unresolved-attribute]
+                    str(execution_id)
+                )
+            except Exception:
+                fetched = None
+            recommendation = self._recommendation_from_dto(fetched)
+        if recommendation is None:
+            raise DeepOriginException(
+                title="Could not load protein recommendation",
+                message=PROTEIN_PREP_NO_RECOMMENDATION_MSG,
+            )
+        selection = _selection_from_recommendation(recommendation)
+        self._recommendation = deepcopy(recommendation)
+        self._selection = selection
+
+    def start(self) -> None:  # ty: ignore[invalid-method-override]
+        """Submit preparation asynchronously and bind this object to it.
+
+        Raises:
+            ValueError: If already submitted or settings cannot prepare.
+        """
+        if self.id is not None or self.status is not None:
+            raise ValueError("Cannot start: this ProteinPrep is already bound.")
+        self._validate_for_submit()
         self._ensure_protein_remote()
         execution_dto = self._create_execution(
-            data=self._make_payload(approve_amount=approve_amount, sync=False),
+            data=self._make_protein_prep_payload(action="prepare", sync=False),
         )
         if execution_dto.get("executionId") is None:
             raise ValueError("Execution response must contain 'executionId'") from None
+        self._operation_kind = "prepare"
         self.update_from_dto(execution_dto)
 
     def _require_loops_off_prepare(self) -> None:
         """Raise unless this instance may ``run()``.
 
-        ``run()`` is only legal for ``action='prepare'`` with
-        ``model_missing_loops=False``.
+        ``run()`` is only legal with ``model_missing_loops=False``.
 
         Raises:
-            ValueError: If this is a recommend run or loops-on prepare.
+            ValueError: If loop modelling is enabled.
         """
-        if self._action != "prepare" or self._model_missing_loops:
+        if self._model_missing_loops:
             raise ValueError(PROTEIN_PREP_RUN_REQUIRES_LOOPS_OFF_MSG)
 
-    def run(
-        self,
-        *,
-        quote: bool = False,
-        approve_amount: int | None = None,
-    ) -> Protein | None:
+    def run(self) -> Protein:
         """Execute loops-off prepare synchronously (blocking).
 
-        Only valid when :attr:`action` is ``prepare`` and
-        :attr:`model_missing_loops` is ``False``. Recommend and loops-on
-        prepare must use :meth:`start`.
-
-        Pass ``quote=True`` (or ``approve_amount=0``) to request a cost
-        estimate only. Billing is skipped for this tool, so quoting is
-        unused. If the platform returns a ``Quoted`` DTO, ``None`` is
-        returned.
-
-        Args:
-            quote: Shorthand for ``approve_amount=0``.
-            approve_amount: Spend cap forwarded to the platform as
-                ``approveAmount``.
+        Only valid when :attr:`model_missing_loops` is ``False``.
 
         Returns:
-            An in-memory :class:`Protein`, or ``None`` when the platform
-            responds with ``Quoted`` status.
+            An in-memory prepared :class:`Protein`.
 
         Raises:
-            ValueError: If this is not loops-off prepare.
+            ValueError: If already submitted or this is not loops-off prepare.
             DeepOriginException: If no prepared PDB path could be loaded.
         """
+        if self.id is not None or self.status is not None:
+            raise ValueError("Cannot run: this ProteinPrep is already bound.")
         self._require_loops_off_prepare()
+        self._validate_for_submit()
         self._ensure_protein_remote()
-        resolved_amount = 0 if quote else approve_amount
         dto = self._create_execution(
-            data=self._make_payload(approve_amount=resolved_amount, sync=True),
+            data=self._make_protein_prep_payload(action="prepare", sync=True),
         )
+        self._operation_kind = "prepare"
         self.update_from_dto(dto)
-
-        if self.status == "Quoted":
-            return None
-
         return self.get_results(dto)
-
-    @staticmethod
-    def selection_from_recommendation(
-        recommendation: dict[str, Any],
-        *,
-        resolve_review_as: str = "skip",
-    ) -> dict[str, Any]:
-        """Build a frozen Selection from a recommend result.
-
-        See :func:`selection_from_recommendation`.
-        """
-        return selection_from_recommendation(
-            recommendation,
-            resolve_review_as=resolve_review_as,
-        )
-
-    @classmethod
-    def from_recommendation(
-        cls,
-        protein: Protein,
-        recommendation: dict[str, Any],
-        *,
-        pdb_id: str | None = None,
-        model_missing_loops: bool = True,
-        resolve_review_as: str = "skip",
-        tool_version: str = TOOL_KEYS_AND_VERSIONS["protein_prep"]["tool_version"],
-        client: DeepOriginClient | None = None,
-    ) -> Self:
-        """Build a prepare ``ProteinPrep`` from a recommend payload.
-
-        Args:
-            protein: Same protein that was recommended (same structure bytes).
-            recommendation: ``jobOutputs.recommendation`` dict.
-            pdb_id: PDB ID for loop modelling. Inferred from
-                ``protein.pdb_id`` when omitted.
-            model_missing_loops: When ``False``, skip loop modelling.
-            resolve_review_as: Binary decision for every ``review`` component.
-            tool_version: Platform tool version pin.
-            client: Optional API client.
-
-        Returns:
-            A ``ProteinPrep`` with ``action='prepare'`` ready for ``start()``
-            or, when ``model_missing_loops=False``, ``run()``.
-        """
-        selection = selection_from_recommendation(
-            recommendation,
-            resolve_review_as=resolve_review_as,
-        )
-        return cls(
-            protein,
-            action="prepare",
-            pdb_id=pdb_id,
-            selection=selection,
-            model_missing_loops=model_missing_loops,
-            tool_version=tool_version,
-            client=client,
-        )
-
-    def as_prepare(
-        self,
-        *,
-        pdb_id: str | None = None,
-        model_missing_loops: bool = True,
-        resolve_review_as: str = "skip",
-    ) -> ProteinPrep:
-        """Return a prepare ``ProteinPrep`` from this completed recommend run.
-
-        Args:
-            pdb_id: PDB ID for loop modelling. Defaults to this instance's
-                ``pdb_id`` (constructor / ``protein.pdb_id``).
-            model_missing_loops: When ``False``, skip loop modelling.
-            resolve_review_as: Binary decision for every ``review`` component.
-
-        Returns:
-            A new ``ProteinPrep`` with ``action='prepare'``. Call ``run()``
-            when ``model_missing_loops=False``, or ``start()`` otherwise.
-
-        Raises:
-            ValueError: If this instance is not a recommend run, or no
-                recommendation is available yet.
-        """
-        if self._action != "recommend":
-            raise ValueError(
-                "as_prepare() requires a recommend run. Construct ProteinPrep "
-                "without selection and call start() first."
-            )
-        recommendation = self.get_recommendation()
-        resolved_pdb_id = pdb_id if pdb_id is not None else self._pdb_id
-        return type(self).from_recommendation(
-            self._protein,
-            recommendation,
-            pdb_id=resolved_pdb_id,
-            model_missing_loops=model_missing_loops,
-            resolve_review_as=resolve_review_as,
-            tool_version=self.tool_version,
-            client=self.client,
-        )
 
     @staticmethod
     def _parse_inputs_dict(inputs: dict[str, Any]) -> _ParsedInputs:
@@ -771,9 +770,8 @@ class ProteinPrep(
     ) -> Self:
         """Construct a ``ProteinPrep`` from a tools execution DTO.
 
-        Rehydrates ``protein``, ``action``, ``pdb_id``, ``selection``, and
-        ``model_missing_loops`` from ``userInputs`` (falling back to
-        ``inputs``).
+        Rehydrates historical recommendation and preparation executions while
+        keeping their operation kind private.
 
         Args:
             dto: Execution payload (same shape as ``client.executions.get``).
@@ -813,9 +811,14 @@ class ProteinPrep(
                 structure=None,
                 remote_path=file_path,
             )
-        instance._action = parsed.action
+        instance._operation_kind = parsed.action
         instance._pdb_id = parsed.pdb_id
         instance._selection = parsed.selection
+        instance._recommendation = instance._recommendation_from_dto(dto)
+        if instance._selection is None and instance._recommendation is not None:
+            instance._selection = _selection_from_recommendation(
+                instance._recommendation
+            )
         instance._model_missing_loops = parsed.model_missing_loops
         return instance
 
@@ -851,39 +854,6 @@ class ProteinPrep(
         return None
 
     @beartype
-    def get_recommendation(self, dto: dict[str, Any] | None = None) -> dict[str, Any]:
-        """Load the component inventory from a recommend run.
-
-        Args:
-            dto: Optional execution payload. Passing it avoids an extra GET
-                when ``jobOutputs.recommendation`` is already in hand.
-
-        Returns:
-            The ``recommendation`` object (``source_sha256``,
-            ``analyzer_version``, ``components``, ``chain_id_mapping``).
-
-        Raises:
-            ValueError: If :attr:`id` is unset.
-            DeepOriginException: If no recommendation could be loaded.
-        """
-        exec_id = self._ensure_id()
-        for candidate in (dto, self._dto):
-            recommendation = self._recommendation_from_dto(candidate)
-            if recommendation is not None:
-                return recommendation
-        try:
-            exec_dto = self.client.executions.get(exec_id)  # ty:ignore[unresolved-attribute]
-        except Exception:
-            exec_dto = None
-        recommendation = self._recommendation_from_dto(exec_dto)
-        if recommendation is not None:
-            return recommendation
-        raise DeepOriginException(
-            title="Could not load protein recommendation",
-            message=PROTEIN_PREP_NO_RECOMMENDATION_MSG,
-        )
-
-    @beartype
     def get_results(self, dto: dict[str, Any] | None = None) -> Protein:
         """Load the prepared protein as an in-memory :class:`Protein`.
 
@@ -906,7 +876,7 @@ class ProteinPrep(
                 PDB path could be loaded.
         """
         exec_id = self._ensure_id()
-        if self._action == "recommend":
+        if self._operation_kind == "recommend":
             raise DeepOriginException(
                 title="Could not load prepared protein",
                 message=PROTEIN_PREP_RECOMMEND_NOT_PREPARE_MSG,
@@ -941,37 +911,3 @@ class ProteinPrep(
             title="Could not load prepared protein",
             message=PROTEIN_PREP_NO_OUTPUT_PATHS_MSG,
         )
-
-
-def _resolve_action(
-    *,
-    action: str | None,
-    selection: dict[str, Any] | None,
-) -> ProteinPrepAction:
-    """Infer or validate ``recommend`` vs ``prepare``.
-
-    Args:
-        action: Explicit action, or ``None`` to infer from *selection*.
-        selection: Frozen Selection, or ``None`` for recommend.
-
-    Returns:
-        ``recommend`` or ``prepare``.
-
-    Raises:
-        ValueError: If *action* is unknown, or *action* and *selection*
-            disagree.
-    """
-    if action is not None and action not in _VALID_ACTIONS:
-        raise ValueError(f"action must be 'recommend' or 'prepare', got {action!r}.")
-    if action == "recommend":
-        if selection is not None:
-            raise ValueError("action='recommend' does not accept a selection.")
-        return "recommend"
-    if action == "prepare":
-        if selection is None:
-            raise ValueError(
-                "action='prepare' requires a selection. Run recommend first, "
-                "or pass selection= from selection_from_recommendation()."
-            )
-        return "prepare"
-    return "prepare" if selection is not None else "recommend"

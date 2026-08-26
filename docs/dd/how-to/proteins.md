@@ -211,18 +211,20 @@ pockets[0].show()
 ### Preparing a protein
 
 Inventory components, then clean the structure (optional loop modelling,
-protonation) with [ProteinPrep](../tools/proteinprep.md). Recommend with
-`start()`. To skip loop modelling, call `as_prepare(model_missing_loops=False)`
-then `run()`, which blocks until the prepared protein is ready.
+protonation) with [ProteinPrep](../tools/proteinprep.md). `recommend()` updates
+the same object with an editable Selection. Resolve any review decisions, then
+disable loop modelling and call `run()`, which blocks until the prepared
+protein is ready.
 
 ```{.python notest}
 from deeporigin.drug_discovery import Protein, ProteinPrep
 
 protein = Protein.from_pdb_id("1EBY")
-rec = ProteinPrep(protein)
-rec.start()
-rec.wait()
-prepared = rec.as_prepare(model_missing_loops=False).run()
+prep = ProteinPrep(protein=protein)
+prep.recommend()
+prep.skip(["ligand:LIG:A:100"])  # Resolve IDs marked for review.
+prep.model_missing_loops = False
+prepared = prep.run()
 ```
 
 ### Visualizing a protein

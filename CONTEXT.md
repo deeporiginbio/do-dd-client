@@ -54,23 +54,33 @@ _Avoid_: "system" alone when meaning the prepared molecular system artifact
 
 **Protein Prep**:
 Platform tool `deeporigin.protein-prep` that inventories a caller-supplied
-protein (`action=recommend`) then applies a frozen Selection and protonation
-(`action=prepare`). Loop modelling runs on prepare unless the caller sets
-loops-off prepare. CLI class `ProteinPrep`: `ProteinPrep(protein).start()` is
-recommend; `.start()` is always legal. `.run()` is loops-off prepare only and
-must be `method: direct` (fail loud otherwise). Recommend is always direct and
-is not a `.run()` path.
+protein, records editable keep/review/skip decisions, then applies resolved
+keep/skip decisions and protonation. CLI class `ProteinPrep` is one preparation
+session: `.recommend()` updates its Selection without binding its execution id;
+`.run()` or `.start()` submits durable preparation and permanently binds the
+object. `protein` is constructor-only. Loop modelling runs unless the caller
+sets loops-off prepare.
 _Avoid_: SystemPrep / FEP assembly; quoting this tool (billing is skipped);
-v1 keep/remove lists (`keep_chain_ids`, …); treating loops-off as skipping
-recommend or Selection; `watch()` on a `.run()` / sync execution; `inputs.sync`
+public `action`; a separate recommend object; silently converting `review` to
+`skip`; v1 keep/remove lists (`keep_chain_ids`, …); treating loops-off as
+skipping Protein Prep; `watch()` on a `.run()` / sync execution; `inputs.sync`
 on protein-prep (not in the tool schema)
+
+**Protein Prep Selection**:
+Digest-bound component decision map produced by `ProteinPrep.recommend()` or
+provided by the caller. Editable SDK state may contain `keep`, `review`, or
+`skip`; durable preparation requires every `review` to be resolved. `keep()` and
+`skip()` change only named component ids.
+_Avoid_: silently resolving `review`; treating a Selection as analyzer evidence
+(that is the recommendation)
 
 **Loops-off prepare**:
 Protein Prep `action=prepare` with `model_missing_loops=false`: apply the
 frozen Selection (keep/skip chains, waters, ligands, cofactors), skip loop
 modelling, still protonate. Quoted `method: direct`; `pdb_id` optional.
-_Avoid_: skipping Protein Prep; skipping protonation; constructing
-`ProteinPrep(protein, model_missing_loops=False)` (illegal on recommend)
+CLI `.run()` blocks and returns the prepared Protein; `.start()` is also valid.
+_Avoid_: skipping Protein Prep; skipping protonation; treating loops-off as
+requiring synchronous SDK use
 
 **Prepared protein (CLI)**:
 In-memory :class:`~deeporigin.drug_discovery.structures.protein.Protein` returned

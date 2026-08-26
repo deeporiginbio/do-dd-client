@@ -1,123 +1,126 @@
 # ProteinPrep
 
-Inventory and prepare a [`Protein`](../ref/protein.md) with the Deep Origin
-Protein Prep tool. The tool is two steps on one key:
+Inventory and prepare a [`Protein`](../ref/protein.md) with one configurable
+`ProteinPrep` object. Recommendation identifies chains, ligands, cofactors, and
+waters. Preparation applies your keep/skip decisions, protonates the structure,
+and optionally models missing loops.
 
-1. **Recommend** inventories chains, ligands, cofactors, and waters.
-2. **Prepare** applies a frozen keep/skip map (a Selection), then protonates
-   and optionally runs loop modelling.
+## Recommend and review
 
-`start()` is always valid. Track those jobs with `wait()` or `watch()`, then
-load results. `run()` is only valid when you skip loop modelling
-(`model_missing_loops=False`): it blocks until the prepare job finishes and
-returns the prepared protein. This tool does not produce a cost quote.
-
-`get_results()` (after a prepare run) returns an in-memory
-[`Protein`](../ref/protein.md) whose `remote_path` points at the prepared PDB.
-That object has no platform protein id until you `sync()` or `update()` it. The
-input protein on the `ProteinPrep` instance is unchanged.
-
-## Recommending components
-
-Create a protein, then a `ProteinPrep` with no selection. `start()` submits
-`action=recommend`. After the job finishes, `get_recommendation()` returns the
-component inventory.
+Create the object and request recommended settings. `recommend()` blocks,
+returns `None`, and updates both `recommendation` and `selection`. It does not
+bind the object to the temporary recommendation execution.
 
 ```{.python notest}
-from deeporigin.drug_discovery import Protein, ProteinPrep, BRD_DATA_DIR
+from deeporigin.drug_discovery import BRD_DATA_DIR, Protein, ProteinPrep
 
 protein = Protein.from_file(BRD_DATA_DIR / "brd.pdb")
-rec = ProteinPrep(protein, pdb_id="1EBY")
-rec.start()
-rec.wait()
-recommendation = rec.get_recommendation()
+prep = ProteinPrep(protein=protein)
+prep.recommend()
 ```
 
-`pdb_id` is optional on recommend. If the protein already has `pdb_id` (for
-example from `Protein.from_pdb_id`), or you pass it here, `as_prepare()` reuses
-it for loop-modelling templates.
+`prep.recommendation` contains the complete analyzer evidence.
+`prep.selection` contains the editable decisions. Both properties return
+defensive copies.
 
-In a notebook, watch progress while the execution runs:
+Recommendations may mark ambiguous components as `review`. Resolve them before
+preparation with the component IDs from `prep.recommendation`:
 
 ```{.python notest}
-rec = ProteinPrep(protein, pdb_id="1EBY")
-rec.start()
-task = await rec.watch()
-rec.wait()
-recommendation = rec.get_recommendation()
+prep.keep(["chain:A", "cofactor:HEM:A:200"])
+prep.skip(["ligand:LIG:A:100"])
 ```
 
-## Preparing a protein
+`keep()` and `skip()` change only the IDs you name. They reject unknown IDs.
+Preparation reports any unresolved `review` IDs instead of silently skipping
+them.
 
-Turn the recommendation into a frozen Selection (every `review` becomes `skip`
-by default). Skip loop modelling and block until the prepared protein is
-ready:
+You may call `recommend()` again before preparation. A successful refresh
+replaces the recommendation and Selection. If refresh fails, the previous
+successful settings remain intact.
+
+## Prepare without loop modelling
+
+Disable loop modelling to use blocking preparation:
 
 ```{.python notest}
-prep = rec.as_prepare(model_missing_loops=False)
+prep.model_missing_loops = False
 prepared = prep.run()
 ```
 
-Loop modelling stays on by default. That path is longer, so submit with
-`start()` instead of `run()`:
+`run()` returns an in-memory [`Protein`](../ref/protein.md) whose
+`remote_path` points to the prepared Protein Data Bank (PDB) file. It has no
+platform protein ID until you call `sync()` or `update()`. The original input
+protein is unchanged.
+
+Loops-off preparation may also run asynchronously:
 
 ```{.python notest}
-prep = rec.as_prepare()
 prep.start()
 prep.wait()
 prepared = prep.get_results()
 ```
 
-Or build the prepare run yourself from the recommendation dict:
+## Prepare with loop modelling
+
+Loop modelling is enabled by default and may take longer, so use `start()`:
 
 ```{.python notest}
-prep = ProteinPrep.from_recommendation(protein, recommendation, pdb_id="1EBY")
+prep.pdb_id = "1EBY"
+prep.model_missing_loops = True
+prep.start()
+prep.wait()
+prepared = prep.get_results()
 ```
 
-The tool needs a 4-character
+Loop modelling requires a four-character
 [Protein Data Bank (PDB) :octicons-link-external-16:](https://www.rcsb.org/)
-ID for loop-modelling templates unless you skip loop modelling with
-`model_missing_loops=False`.
+ID. `ProteinPrep` initially uses `protein.pdb_id` when available; otherwise set
+`prep.pdb_id` before submission.
 
-You can edit the Selection before prepare. `selection_from_recommendation`
-maps each component to `keep` or `skip`; pass `resolve_review_as="keep"` to
-keep items the analyzer marked for review:
+## Use a saved Selection
+
+Advanced callers can skip recommendation by passing or assigning a saved
+Selection:
 
 ```{.python notest}
-selection = ProteinPrep.selection_from_recommendation(
-    recommendation,
-    resolve_review_as="skip",
-)
-selection["decisions"]["chain:A"] = "keep"
 prep = ProteinPrep(
-    protein,
-    selection=selection,
+    protein=protein,
+    selection=saved_selection,
     model_missing_loops=False,
 )
 prepared = prep.run()
 ```
 
-Displaying the object in a notebook or REPL lists every parameter you can
-set and its current value (`action`, `pdb_id`, `selection`, and so on):
+A Selection contains `source_sha256`, `analyzer_version`, and a `decisions`
+mapping. Assignment copies and validates it. Local decisions may contain
+`review`, but all reviews must become `keep` or `skip` before preparation.
+
+## Object lifecycle
+
+`protein` is constructor-only. Before preparation, you may change `pdb_id`,
+`selection`, and `model_missing_loops`.
+
+`run()` or `start()` binds the object to the durable preparation execution and
+sets `prep.id`. From that point onward, configuration is permanently frozen.
+Displaying the object shows its configuration, a Selection summary,
+recommendation availability, and—after submission—execution status and
+progress.
+
+This tool does not produce a cost quote, so Protein Prep methods have no
+`quote` or `approve_amount` arguments.
+
+## Reconnect to an execution
+
+Reconnect to a durable preparation or historical recommendation execution:
 
 ```{.python notest}
-prep
-```
-
-## Working with existing runs
-
-Reconnect to a Protein Prep run started earlier, in this or a previous session:
-
-```{.python notest}
-from deeporigin.drug_discovery import ProteinPrep
-
 prep = ProteinPrep.from_id("<executionId>")
-# Or the most recently created ProteinPrep run:
+# Or:
 prep = ProteinPrep.from_last_run()
-
-prep.sync()
-if prep.action == "recommend":
-    recommendation = prep.get_recommendation()
-else:
-    prepared = prep.get_results()
 ```
+
+For preparation executions, call `sync()` and `get_results()`. Historical
+recommendation executions expose their evidence through `prep.recommendation`.
+The internal platform operation is deliberately not exposed as user-settable
+`action`.
