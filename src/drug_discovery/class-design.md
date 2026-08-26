@@ -11,7 +11,7 @@ This concerns the tool/execution wrapper classes:
 - ConstrainedDocking
 - SystemPrep
 - PocketFinder
-- ProteinPrep (async-only: ``start()``, no ``run()``)
+- ProteinPrep (``start()`` always; ``run()`` only for loops-off prepare)
 
 etc
 

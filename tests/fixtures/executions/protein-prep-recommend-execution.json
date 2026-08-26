@@ -1,0 +1,74 @@
+{
+    "app": "python-client",
+    "approveAmount": null,
+    "billing": null,
+    "cluster": {
+        "id": "d638d3cd-833f-476b-87fe-ca6d76e66049"
+    },
+    "completedAt": "2026-08-14T12:00:00.000Z",
+    "createdAt": "2026-08-14T11:59:00.000Z",
+    "createdBy": "6b96d8f8-0f55-474c-a86c-e09651ba4b20",
+    "executionId": "b2c3d4e5-f6a7-8901-bcde-f12345678901",
+    "executionType": "tool",
+    "metadata": {},
+    "name": "ProteinPrep recommend on brd",
+    "orgKey": "deeporigin",
+    "progressReport": {
+        "complete": 100
+    },
+    "projectId": null,
+    "quotationResult": null,
+    "resourceId": "proteinpreptest002",
+    "session": "f8a98c5e-18ed-4b5e-b08a-f38a21d11254",
+    "startedAt": "2026-08-14T11:59:10.000Z",
+    "status": "Completed",
+    "statusReason": null,
+    "tag": null,
+    "tool": {
+        "key": "deeporigin.protein-prep",
+        "version": "2.0.8"
+    },
+    "type": "ToolExecution",
+    "updatedAt": "2026-08-14T12:00:00.000Z",
+    "userInputs": {
+        "action": "recommend",
+        "protein": {
+            "file_path": "testing/brd.pdb",
+            "id": "brd"
+        }
+    },
+    "userOutputs": {},
+    "jobOutputs": {
+        "recommendation": {
+            "analyzer_version": "1.0.0",
+            "chain_id_mapping": {},
+            "components": [
+                {
+                    "author": { "chain_id": "A" },
+                    "id": "chain:A",
+                    "kind": "chain",
+                    "label": "Chain A",
+                    "reason": "Ordinary protein chain",
+                    "reason_code": "ordinary_protein_chain",
+                    "recommendation": "keep",
+                    "subtype": "protein"
+                },
+                {
+                    "author": {
+                        "chain_id": "A",
+                        "resname": "LIG",
+                        "resseq": 100
+                    },
+                    "id": "ligand:LIG:A:100",
+                    "kind": "ligand",
+                    "label": "LIG",
+                    "reason": "Ambiguous ligand",
+                    "reason_code": "ambiguous_ligand",
+                    "recommendation": "review",
+                    "subtype": "small_molecule"
+                }
+            ],
+            "source_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        }
+    }
+}

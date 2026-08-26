@@ -53,10 +53,24 @@ Simulation-ready binding and solvation XML files (and metadata) produced by syst
 _Avoid_: "system" alone when meaning the prepared molecular system artifact
 
 **Protein Prep**:
-Platform tool `deeporigin.protein-prep` that cleans a caller-supplied protein
-structure (explicit keep/remove lists, loop modelling, protonation). CLI class
-`ProteinPrep` is async-only (`start()`, not `run()`).
-_Avoid_: SystemPrep / FEP assembly; quoting this tool (billing is skipped)
+Platform tool `deeporigin.protein-prep` that inventories a caller-supplied
+protein (`action=recommend`) then applies a frozen Selection and protonation
+(`action=prepare`). Loop modelling runs on prepare unless the caller sets
+loops-off prepare. CLI class `ProteinPrep`: `ProteinPrep(protein).start()` is
+recommend; `.start()` is always legal. `.run()` is loops-off prepare only and
+must be `method: direct` (fail loud otherwise). Recommend is always direct and
+is not a `.run()` path.
+_Avoid_: SystemPrep / FEP assembly; quoting this tool (billing is skipped);
+v1 keep/remove lists (`keep_chain_ids`, …); treating loops-off as skipping
+recommend or Selection; `watch()` on a `.run()` / sync execution; `inputs.sync`
+on protein-prep (not in the tool schema)
+
+**Loops-off prepare**:
+Protein Prep `action=prepare` with `model_missing_loops=false`: apply the
+frozen Selection (keep/skip chains, waters, ligands, cofactors), skip loop
+modelling, still protonate. Quoted `method: direct`; `pdb_id` optional.
+_Avoid_: skipping Protein Prep; skipping protonation; constructing
+`ProteinPrep(protein, model_missing_loops=False)` (illegal on recommend)
 
 **Prepared protein (CLI)**:
 In-memory :class:`~deeporigin.drug_discovery.structures.protein.Protein` returned

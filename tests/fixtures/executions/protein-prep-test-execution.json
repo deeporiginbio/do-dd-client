@@ -26,20 +26,25 @@
     "tag": null,
     "tool": {
         "key": "deeporigin.protein-prep",
-        "version": "0.1.0"
+        "version": "2.0.8"
     },
     "type": "ToolExecution",
     "updatedAt": "2026-08-14T12:00:00.000Z",
     "userInputs": {
-        "keep_chain_ids": ["A"],
-        "keep_cofactor_ids": ["MG"],
-        "keep_water_residue_names": ["HOH"],
+        "action": "prepare",
         "pdb_id": "1EBY",
         "protein": {
             "file_path": "testing/brd.pdb",
             "id": "brd"
         },
-        "remove_ligand_ids": ["LIG"]
+        "selection": {
+            "analyzer_version": "1.0.0",
+            "decisions": {
+                "chain:A": "keep",
+                "ligand:LIG:A:100": "skip"
+            },
+            "source_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        }
     },
     "userOutputs": {},
     "jobOutputs": {

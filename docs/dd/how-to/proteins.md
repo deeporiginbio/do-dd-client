@@ -210,18 +210,19 @@ pockets[0].show()
 
 ### Preparing a protein
 
-Clean a structure (keep/remove lists, loop modelling, protonation) with
-[ProteinPrep](../tools/proteinprep.md). Protein Prep is async-only: `start()`,
-then `wait()` or `watch()`, then `get_results()`.
+Inventory components, then clean the structure (optional loop modelling,
+protonation) with [ProteinPrep](../tools/proteinprep.md). Recommend with
+`start()`. To skip loop modelling, call `as_prepare(model_missing_loops=False)`
+then `run()`, which blocks until the prepared protein is ready.
 
 ```{.python notest}
 from deeporigin.drug_discovery import Protein, ProteinPrep
 
 protein = Protein.from_pdb_id("1EBY")
-prep = ProteinPrep(protein)
-prep.start()
-prep.wait()
-prepared = prep.get_results()
+rec = ProteinPrep(protein)
+rec.start()
+rec.wait()
+prepared = rec.as_prepare(model_missing_loops=False).run()
 ```
 
 ### Visualizing a protein

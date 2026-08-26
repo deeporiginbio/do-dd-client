@@ -1,9 +1,10 @@
 # `deeporigin.drug_discovery.protein_prep`
 
-`ProteinPrep` drives platform tool `deeporigin.protein-prep` to clean a protein
-structure. The workflow is async-only: ``start()``, then ``wait()`` /
-``watch()``, then ``get_results()`` (an in-memory ``Protein``). There is no
-``run()`` and no quote.
+`ProteinPrep` drives platform tool `deeporigin.protein-prep`. Recommend
+inventories components; prepare applies a frozen Selection then cleans the
+structure. ``start()`` is always valid. ``run()`` is only for prepare with
+``model_missing_loops=False``: it blocks and returns an in-memory ``Protein``.
+There is no quote.
 
 ::: src.drug_discovery.protein_prep
     options:
