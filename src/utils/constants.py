@@ -141,6 +141,45 @@ PROTEIN_PREP_RUN_REQUIRES_LOOPS_OFF_MSG = (
 )
 """Used by ``ProteinPrep.run`` when loop modelling is enabled."""
 
+PROTEIN_PREP_COMPONENT_KINDS: frozenset[str] = frozenset(
+    {"chain", "ligand", "cofactor", "water"}
+)
+"""Valid Protein Prep Component ``kind`` values for table filters and keep/skip."""
+
+PROTEIN_PREP_RECOMMENDATION_COLUMNS: tuple[str, ...] = (
+    "id",
+    "kind",
+    "subtype",
+    "label",
+    "recommendation",
+    "decision",
+    "reason",
+    "evidence",
+)
+"""Column order for the Protein Prep Recommendation view DataFrame."""
+
+PROTEIN_PREP_KEEP_SKIP_EMPTY_MSG = (
+    "{method}() requires component IDs or keyword filters."
+)
+"""Used when ``keep()`` / ``skip()`` are called with no ids and no matchers."""
+
+PROTEIN_PREP_KEEP_SKIP_MIXED_MSG = "Pass component IDs or keyword filters, not both."
+"""Used when ``keep()`` / ``skip()`` receive both positional ids and matchers."""
+
+PROTEIN_PREP_KEEP_SKIP_VIEW_MSG = (
+    "{method}() accepts a DataFrame from recommendation(...), "
+    "not the recommendation view itself."
+)
+"""Used when ``keep()`` / ``skip()`` are passed the uncalled Recommendation view."""
+
+PROTEIN_PREP_DATAFRAME_ID_COLUMN_MSG = "DataFrame must include an 'id' column."
+"""Used when ``keep()`` / ``skip()`` receive a DataFrame without ``id``."""
+
+PROTEIN_PREP_SUBTYPE_REQUIRES_RECOMMENDATION_MSG = (
+    "subtype= requires a recommendation. Call recommend() first."
+)
+"""Used when ``keep()`` / ``skip()`` filter by subtype without analyzer evidence."""
+
 BOOTSTRAP_5_CSS_CDN_URL = (
     "https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css"
 )

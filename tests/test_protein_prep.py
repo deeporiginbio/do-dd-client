@@ -6,9 +6,10 @@ import inspect
 import json
 from pathlib import Path
 
+import pandas as pd
 import pytest
 
-from deeporigin.drug_discovery import Protein, ProteinPrep
+from deeporigin.drug_discovery import Protein, ProteinPrep, RecommendationView
 from deeporigin.exceptions import DeepOriginException
 from deeporigin.platform import DeepOriginClient
 from deeporigin.platform.constants import TOOL_KEYS_AND_VERSIONS, is_success_status
@@ -52,9 +53,64 @@ _SAMPLE_RECOMMENDATION = {
     ],
     "source_sha256": _SHA256,
 }
+_WATER_RECOMMENDATION = {
+    "analyzer_version": "1.0.0",
+    "chain_id_mapping": {},
+    "components": [
+        *_SAMPLE_RECOMMENDATION["components"],
+        {
+            "author": {"chain_id": "A", "resname": "HOH", "resseq": 310},
+            "evidence": {},
+            "id": "water:A:HOH:310:",
+            "kind": "water",
+            "label": "HOH A 310",
+            "reason": "No pocket context; review whether this water should be retained.",
+            "reason_code": "water_review",
+            "recommendation": "review",
+            "subtype": "crystal",
+        },
+        {
+            "author": {"chain_id": "A", "resname": "HOH", "resseq": 311},
+            "evidence": {"n_coord": 1},
+            "id": "water:A:HOH:311:",
+            "kind": "water",
+            "label": "HOH A 311",
+            "reason": "Water coordinates protein or a kept metal.",
+            "reason_code": "coordinating_water",
+            "recommendation": "keep",
+            "subtype": "coordinating",
+        },
+    ],
+    "source_sha256": _SHA256,
+}
+_WATER_SELECTION = {
+    "analyzer_version": "1.0.0",
+    "decisions": {
+        "chain:A": "keep",
+        "ligand:LIG:A:100": "review",
+        "water:A:HOH:310:": "review",
+        "water:A:HOH:311:": "keep",
+    },
+    "source_sha256": _SHA256,
+}
+
+
+def _prep_with_inventory(
+    *,
+    recommendation: dict = _SAMPLE_RECOMMENDATION,
+    selection: dict = _DRAFT_SELECTION,
+) -> ProteinPrep:
+    """Return a ProteinPrep with analyzer evidence and a draft Selection."""
+    prep = ProteinPrep(protein=Protein(name="test"), selection=selection)
+    prep._recommendation = recommendation
+    return prep
 
 
 def _protein_with_remote(*, pdb_id: str | None = "1EBY") -> Protein:
+    """Return a protein whose remote path avoids upload in payload tests."""
+    protein = Protein(name="test", pdb_id=pdb_id)
+    protein.remote_path = "testing/brd.pdb"
+    return protein
     """Return a protein whose remote path avoids upload in payload tests."""
     protein = Protein(name="test", pdb_id=pdb_id)
     protein.remote_path = "testing/brd.pdb"
@@ -137,16 +193,15 @@ def test_selection_getter_returns_defensive_copy() -> None:
     assert prep.selection == _DRAFT_SELECTION
 
 
-def test_recommendation_getter_returns_defensive_copy() -> None:
-    """Nested mutation of recommendation evidence does not change the object."""
-    prep = ProteinPrep(protein=Protein(name="test"))
-    prep._recommendation = _SAMPLE_RECOMMENDATION
+def test_recommendation_view_raw_is_defensive_copy() -> None:
+    """Mutating RecommendationView.raw does not change stored analyzer evidence."""
+    prep = _prep_with_inventory()
 
     recommendation = prep.recommendation
-    assert recommendation is not None
-    recommendation["components"][0]["label"] = "changed"
-    assert prep.recommendation is not None
-    assert prep.recommendation["components"][0]["label"] == "Chain A"
+    assert isinstance(recommendation, RecommendationView)
+    raw = recommendation.raw
+    raw["components"][0]["label"] = "changed"
+    assert recommendation.raw["components"][0]["label"] == "Chain A"
 
 
 def test_keep_and_skip_change_only_named_components() -> None:
@@ -156,23 +211,22 @@ def test_keep_and_skip_change_only_named_components() -> None:
         selection=_DRAFT_SELECTION,
     )
 
-    prep.skip(["ligand:LIG:A:100"])
-    prep.keep(["chain:A"])
+    assert prep.skip(["ligand:LIG:A:100"]) is prep
+    assert prep.keep(["chain:A"]) is prep
 
     assert prep.selection == _SAMPLE_SELECTION
 
 
-@pytest.mark.parametrize("method_name", ["keep", "skip"])
-def test_keep_and_skip_reject_bare_string(method_name: str) -> None:
-    """Decision methods require an iterable container, not a bare string."""
+def test_keep_accepts_a_single_component_id() -> None:
+    """A bare component id string is treated as a one-element list."""
     prep = ProteinPrep(
         protein=Protein(name="test"),
         selection=_DRAFT_SELECTION,
     )
-    method = getattr(prep, method_name)
 
-    with pytest.raises(TypeError, match="iterable"):
-        method("chain:A")
+    prep.skip("ligand:LIG:A:100")
+
+    assert prep.selection == _SAMPLE_SELECTION
 
 
 def test_keep_reports_all_unknown_component_ids() -> None:
@@ -193,6 +247,193 @@ def test_keep_requires_selection() -> None:
 
     with pytest.raises(ValueError, match=r"recommend\(\)"):
         prep.keep(["chain:A"])
+
+
+def test_recommendation_view_table_columns_and_live_decision() -> None:
+    """The view exposes the locked columns and current Selection Decisions."""
+    prep = _prep_with_inventory()
+
+    df = prep.recommendation()
+
+    assert list(df.columns) == [
+        "id",
+        "kind",
+        "subtype",
+        "label",
+        "recommendation",
+        "decision",
+        "reason",
+        "evidence",
+    ]
+    ligand = df.set_index("id").loc["ligand:LIG:A:100"]
+    assert ligand["recommendation"] == "review"
+    assert ligand["decision"] == "review"
+    prep.keep("ligand:LIG:A:100")
+    updated = prep.recommendation().set_index("id").loc["ligand:LIG:A:100"]
+    assert updated["recommendation"] == "review"
+    assert updated["decision"] == "keep"
+
+
+def test_recommendation_view_filters_by_decision() -> None:
+    """pp.recommendation(decision='review') returns unresolved rows."""
+    prep = _prep_with_inventory()
+
+    df = prep.recommendation(decision="review")
+
+    assert list(df["id"]) == ["ligand:LIG:A:100"]
+
+
+def test_recommendation_view_and_filters() -> None:
+    """View kwargs AND together."""
+    prep = _prep_with_inventory(
+        recommendation=_WATER_RECOMMENDATION,
+        selection=_WATER_SELECTION,
+    )
+
+    df = prep.recommendation(kind="water", decision="review")
+
+    assert list(df["id"]) == ["water:A:HOH:310:"]
+
+
+def test_recommendation_view_rejects_invalid_kind() -> None:
+    """Unknown kind values error instead of matching nothing."""
+    prep = _prep_with_inventory()
+
+    with pytest.raises(ValueError, match="kind must be one of"):
+        prep.recommendation(kind="waters")
+
+
+def test_recommendation_view_has_no_keep() -> None:
+    """keep/skip stay on ProteinPrep; recommend().keep() is not supported."""
+    prep = _prep_with_inventory()
+
+    assert not hasattr(prep.recommendation, "keep")
+    assert not hasattr(prep.recommendation, "skip")
+
+
+def test_keep_kind_is_sugar_for_matching_ids() -> None:
+    """keep(kind='water') overwrites every water Decision, including prior skips."""
+    prep = _prep_with_inventory(
+        recommendation=_WATER_RECOMMENDATION,
+        selection=_WATER_SELECTION,
+    )
+    prep.skip("water:A:HOH:311:")
+
+    prep.keep(kind="water")
+
+    decisions = prep.selection["decisions"]
+    assert decisions["water:A:HOH:310:"] == "keep"
+    assert decisions["water:A:HOH:311:"] == "keep"
+    assert decisions["ligand:LIG:A:100"] == "review"
+
+
+def test_keep_accepts_filtered_dataframe() -> None:
+    """keep(df) uses the DataFrame id column."""
+    prep = _prep_with_inventory(
+        recommendation=_WATER_RECOMMENDATION,
+        selection=_WATER_SELECTION,
+    )
+
+    prep.keep(prep.recommendation(decision="review"))
+
+    decisions = prep.selection["decisions"]
+    assert decisions["ligand:LIG:A:100"] == "keep"
+    assert decisions["water:A:HOH:310:"] == "keep"
+    assert decisions["water:A:HOH:311:"] == "keep"
+
+
+def test_keep_rejects_mixed_ids_and_kwargs() -> None:
+    """Positional ids and matcher kwargs are mutually exclusive."""
+    prep = _prep_with_inventory()
+
+    with pytest.raises(ValueError, match="not both"):
+        prep.keep(["chain:A"], kind="water")
+    assert prep.selection == _DRAFT_SELECTION
+
+
+def test_keep_without_ids_or_kwargs_errors() -> None:
+    """Empty keep() is not sugar for keep([])."""
+    prep = _prep_with_inventory()
+
+    with pytest.raises(ValueError, match="requires component IDs"):
+        prep.keep()
+
+
+def test_keep_invalid_kind_errors() -> None:
+    """Typo'd kind values error; they are not treated as zero matches."""
+    prep = _prep_with_inventory()
+
+    with pytest.raises(ValueError, match="kind must be one of"):
+        prep.keep(kind="waters")
+
+
+def test_keep_zero_matches_is_noop() -> None:
+    """A valid matcher that hits nothing is sugar for an empty id list."""
+    prep = _prep_with_inventory()
+
+    prep.keep(kind="water")
+
+    assert prep.selection == _DRAFT_SELECTION
+
+
+def test_keep_kind_without_recommendation_uses_id_prefix() -> None:
+    """kind= can match Selection ids when analyzer evidence is absent."""
+    prep = ProteinPrep(protein=Protein(name="test"), selection=_DRAFT_SELECTION)
+
+    prep.keep(kind="ligand")
+
+    assert prep.selection["decisions"]["ligand:LIG:A:100"] == "keep"
+    assert prep.selection["decisions"]["chain:A"] == "keep"
+
+
+def test_keep_subtype_without_recommendation_errors() -> None:
+    """subtype= needs analyzer evidence."""
+    prep = ProteinPrep(protein=Protein(name="test"), selection=_DRAFT_SELECTION)
+
+    with pytest.raises(ValueError, match="subtype="):
+        prep.keep(subtype="crystal")
+
+
+def test_recommendation_view_filters_by_analyzer_tag() -> None:
+    """recommendation= filters frozen analyzer tags, not live Decisions."""
+    prep = _prep_with_inventory()
+    prep.keep("ligand:LIG:A:100")
+
+    df = prep.recommendation(recommendation="review")
+
+    assert list(df["id"]) == ["ligand:LIG:A:100"]
+    assert list(df["decision"]) == ["keep"]
+
+
+def test_keep_rejects_uncalled_view() -> None:
+    """The uncalled view is not a DataFrame of ids."""
+    prep = _prep_with_inventory()
+
+    with pytest.raises(TypeError, match="not the recommendation view"):
+        prep.keep(prep.recommendation)
+
+
+def test_keep_dataframe_requires_id_column() -> None:
+    """DataFrame matchers must expose an id column."""
+    prep = _prep_with_inventory()
+
+    with pytest.raises(ValueError, match="id"):
+        prep.keep(pd.DataFrame({"kind": ["water"]}))
+
+
+def test_skip_decision_review_resolves_reviews() -> None:
+    """skip(decision='review') is sugar for skipping unresolved Components."""
+    prep = _prep_with_inventory(
+        recommendation=_WATER_RECOMMENDATION,
+        selection=_WATER_SELECTION,
+    )
+
+    prep.skip(decision="review")
+
+    decisions = prep.selection["decisions"]
+    assert decisions["ligand:LIG:A:100"] == "skip"
+    assert decisions["water:A:HOH:310:"] == "skip"
+    assert decisions["chain:A"] == "keep"
 
 
 def test_prepare_requires_selection_before_upload() -> None:
@@ -343,7 +584,7 @@ def test_repr_uses_user_concepts_not_action() -> None:
     assert "action" not in text
     assert "1 keep, 1 review, 0 skip" in text
     assert "recommendation" in text
-    assert "available" in text
+    assert "2 components" in text
 
 
 def test_repr_adds_durable_execution_state() -> None:
@@ -387,7 +628,7 @@ def test_from_dto_rehydrates_recommendation(
     prep = ProteinPrep.from_dto(dto, client=client)
 
     assert prep._operation_kind == "recommend"
-    assert prep.recommendation is not None
+    assert isinstance(prep.recommendation, RecommendationView)
     assert prep.selection == _DRAFT_SELECTION
     with pytest.raises(DeepOriginException, match="did not produce"):
         prep.get_results(dto)
@@ -434,7 +675,7 @@ def test_recommend_updates_same_object_without_id(
 
     result = prep.recommend()
 
-    assert result is None
+    assert isinstance(result, RecommendationView)
     assert prep.id is None
     assert prep.status is None
     assert prep.recommendation is not None

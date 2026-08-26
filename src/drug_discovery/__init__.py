@@ -35,6 +35,7 @@ __all__ = [
     "Patent",
     "Enumerator",
     "ProteinPrep",
+    "RecommendationView",
 ]
 
 DATA_DIR = files("deeporigin.data")
@@ -70,6 +71,10 @@ _LAZY_IMPORTS = {
     "Patent": ("deeporigin.drug_discovery.patent", "Patent"),
     "Enumerator": ("deeporigin.drug_discovery.enumerator", "Enumerator"),
     "ProteinPrep": ("deeporigin.drug_discovery.protein_prep", "ProteinPrep"),
+    "RecommendationView": (
+        "deeporigin.drug_discovery.protein_prep",
+        "RecommendationView",
+    ),
     "Execution": ("deeporigin.drug_discovery.execution", "Execution"),
     "PlatformStatus": ("deeporigin.platform.constants", "PlatformStatus"),
 }

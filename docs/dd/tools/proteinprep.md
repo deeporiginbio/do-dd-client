@@ -8,8 +8,8 @@ and optionally models missing loops.
 ## Recommend and review
 
 Create the object and request recommended settings. `recommend()` blocks,
-returns `None`, and updates both `recommendation` and `selection`. It does not
-bind the object to the temporary recommendation execution.
+returns a component table, and updates both `recommendation` and `selection`.
+It does not bind the object to the temporary recommendation execution.
 
 ```{.python notest}
 from deeporigin.drug_discovery import BRD_DATA_DIR, Protein, ProteinPrep
@@ -19,19 +19,29 @@ prep = ProteinPrep(protein=protein)
 prep.recommend()
 ```
 
-`prep.recommendation` contains the complete analyzer evidence.
-`prep.selection` contains the editable decisions. Both properties return
-defensive copies.
-
-Recommendations may mark ambiguous components as `review`. Resolve them before
-preparation with the component IDs from `prep.recommendation`:
+`prep.recommendation` is a table of inventoried components. Columns include
+the analyzer's frozen `recommendation` tag and your live `decision`. Filter
+with keyword arguments; the call returns a
+[pandas :octicons-link-external-16:](https://pandas.pydata.org/) DataFrame:
 
 ```{.python notest}
-prep.keep(["chain:A", "cofactor:HEM:A:200"])
-prep.skip(["ligand:LIG:A:100"])
+prep.recommendation(decision="review")
 ```
 
-`keep()` and `skip()` change only the IDs you name. They reject unknown IDs.
+The analyzer payload is `prep.recommendation.raw`. `prep.selection` is the
+editable decision map and returns a defensive copy.
+
+Resolve every `review` decision before preparation. `keep()` and `skip()`
+accept component IDs, a filtered DataFrame, or keyword matchers (`kind`,
+`subtype`, `decision`). Matchers are equivalent to passing the matching IDs:
+
+```{.python notest}
+prep.keep(kind="water")
+prep.skip(decision="review")
+prep.keep(["chain:A", "cofactor:HEM:A:200"])
+```
+
+Do not mix IDs with keyword matchers in one call. Unknown IDs are rejected.
 Preparation reports any unresolved `review` IDs instead of silently skipping
 them.
 
@@ -104,8 +114,8 @@ mapping. Assignment copies and validates it. Local decisions may contain
 `run()` or `start()` binds the object to the durable preparation execution and
 sets `prep.id`. From that point onward, configuration is permanently frozen.
 Displaying the object shows its configuration, a Selection summary,
-recommendation availability, and—after submission—execution status and
-progress.
+recommendation component count, and—after submission—execution status and
+progress. Display `prep.recommendation` to see the component table.
 
 This tool does not produce a cost quote, so Protein Prep methods have no
 `quote` or `approve_amount` arguments.
@@ -121,6 +131,7 @@ prep = ProteinPrep.from_last_run()
 ```
 
 For preparation executions, call `sync()` and `get_results()`. Historical
-recommendation executions expose their evidence through `prep.recommendation`.
+recommendation executions expose their component table through
+`prep.recommendation`.
 The internal platform operation is deliberately not exposed as user-settable
 `action`.

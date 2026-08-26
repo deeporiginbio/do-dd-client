@@ -10,21 +10,22 @@ Usage::
 
     prep = ProteinPrep(protein)
     prep.recommend()
-    prep.keep(["chain:A"])
-    prep.skip(["ligand:LIG:A:100"])
+    prep.keep(kind="water")
+    prep.skip(decision="review")
     prep.model_missing_loops = False
     prepared = prep.run()
 """
 
 from __future__ import annotations
 
-from collections.abc import Iterable
+from collections.abc import Iterable, Mapping
 from copy import deepcopy
 from html import escape
 import re
 from typing import Any, Literal, NamedTuple, Self
 
 from beartype import beartype
+import pandas as pd
 
 from deeporigin.drug_discovery.execution import Execution
 from deeporigin.drug_discovery.execution_mixins import (
@@ -37,13 +38,20 @@ from deeporigin.exceptions import DeepOriginException
 from deeporigin.platform.client import DeepOriginClient
 from deeporigin.platform.constants import TOOL_KEYS_AND_VERSIONS
 from deeporigin.utils.constants import (
+    PROTEIN_PREP_COMPONENT_KINDS,  # ty:ignore[unresolved-import]
+    PROTEIN_PREP_DATAFRAME_ID_COLUMN_MSG,  # ty:ignore[unresolved-import]
     PROTEIN_PREP_DISPLAY_NONE,  # ty:ignore[unresolved-import]
+    PROTEIN_PREP_KEEP_SKIP_EMPTY_MSG,  # ty:ignore[unresolved-import]
+    PROTEIN_PREP_KEEP_SKIP_MIXED_MSG,  # ty:ignore[unresolved-import]
+    PROTEIN_PREP_KEEP_SKIP_VIEW_MSG,  # ty:ignore[unresolved-import]
     PROTEIN_PREP_NO_OUTPUT_PATHS_MSG,
     PROTEIN_PREP_NO_RECOMMENDATION_MSG,  # ty:ignore[unresolved-import]
     PROTEIN_PREP_PDB_ID_PATTERN,
     PROTEIN_PREP_PDB_ID_REQUIRED_MSG,  # ty:ignore[unresolved-import]
     PROTEIN_PREP_RECOMMEND_NOT_PREPARE_MSG,  # ty:ignore[unresolved-import]
+    PROTEIN_PREP_RECOMMENDATION_COLUMNS,  # ty:ignore[unresolved-import]
     PROTEIN_PREP_RUN_REQUIRES_LOOPS_OFF_MSG,  # ty:ignore[unresolved-import]
+    PROTEIN_PREP_SUBTYPE_REQUIRES_RECOMMENDATION_MSG,  # ty:ignore[unresolved-import]
 )
 
 _PDB_ID_RE = re.compile(PROTEIN_PREP_PDB_ID_PATTERN)
@@ -284,6 +292,287 @@ def _selection_from_recommendation(
     }
 
 
+def _kind_from_component_id(component_id: str) -> str | None:
+    """Return the Component kind encoded in a transport id, if valid.
+
+    Args:
+        component_id: Selection / recommendation component id.
+
+    Returns:
+        ``chain``, ``ligand``, ``cofactor``, or ``water`` when the id prefix
+        is a known kind, otherwise ``None``.
+    """
+    prefix = component_id.split(":", 1)[0]
+    if prefix in PROTEIN_PREP_COMPONENT_KINDS:
+        return prefix
+    return None
+
+
+def _validate_component_matchers(
+    *,
+    kind: str | None,
+    subtype: str | None,
+    recommendation: str | None,
+    decision: str | None,
+) -> None:
+    """Raise if a table / keep matcher value is not in its allowed set.
+
+    Args:
+        kind: Optional Component kind filter.
+        subtype: Optional subtype filter (any string is allowed).
+        recommendation: Optional frozen analyzer-tag filter.
+        decision: Optional live Selection Decision filter.
+
+    Raises:
+        ValueError: If ``kind``, ``recommendation``, or ``decision`` is set
+            to a value outside its allowed set.
+    """
+    del subtype
+    if kind is not None and kind not in PROTEIN_PREP_COMPONENT_KINDS:
+        allowed = ", ".join(sorted(PROTEIN_PREP_COMPONENT_KINDS))
+        raise ValueError(f"kind must be one of {allowed}, got {kind!r}.")
+    if recommendation is not None and recommendation not in _VALID_DECISIONS:
+        raise ValueError(
+            "recommendation must be 'keep', 'review', or 'skip', "
+            f"got {recommendation!r}."
+        )
+    if decision is not None and decision not in _VALID_DECISIONS:
+        raise ValueError(
+            f"decision must be 'keep', 'review', or 'skip', got {decision!r}."
+        )
+
+
+def _empty_recommendation_dataframe() -> pd.DataFrame:
+    """Return an empty Component table with the canonical column order."""
+    return pd.DataFrame({column: [] for column in PROTEIN_PREP_RECOMMENDATION_COLUMNS})
+
+
+def _rows_to_recommendation_dataframe(rows: list[dict[str, Any]]) -> pd.DataFrame:
+    """Build a Component DataFrame in canonical column order.
+
+    Args:
+        rows: Component row dicts with Recommendation view keys.
+
+    Returns:
+        DataFrame with :data:`PROTEIN_PREP_RECOMMENDATION_COLUMNS`.
+    """
+    if not rows:
+        return _empty_recommendation_dataframe()
+    return pd.DataFrame(rows)[list(PROTEIN_PREP_RECOMMENDATION_COLUMNS)]
+
+
+def _recommendation_rows(
+    payload: dict[str, Any],
+    decisions: dict[str, str],
+) -> list[dict[str, Any]]:
+    """Build table rows from analyzer components and live Decisions.
+
+    Args:
+        payload: Analyzer recommendation dict with ``components``.
+        decisions: Current Selection ``id → decision`` map.
+
+    Returns:
+        One row dict per component, in payload order.
+    """
+    rows: list[dict[str, Any]] = []
+    for raw in payload.get("components") or []:
+        if not isinstance(raw, dict):
+            continue
+        component_id = str(raw.get("id") or "")
+        if not component_id:
+            continue
+        analyzer_tag = raw.get("recommendation")
+        rows.append(
+            {
+                "id": component_id,
+                "kind": raw.get("kind"),
+                "subtype": raw.get("subtype"),
+                "label": raw.get("label"),
+                "recommendation": analyzer_tag,
+                "decision": decisions.get(component_id, analyzer_tag),
+                "reason": raw.get("reason"),
+                "evidence": raw.get("evidence") or {},
+            }
+        )
+    return rows
+
+
+def _selection_rows(decisions: dict[str, str]) -> list[dict[str, Any]]:
+    """Build table rows from a Selection when analyzer evidence is missing.
+
+    Args:
+        decisions: Current Selection ``id → decision`` map.
+
+    Returns:
+        One row dict per Selection id. ``subtype`` / analyzer fields are empty.
+    """
+    rows: list[dict[str, Any]] = []
+    for component_id, live_decision in decisions.items():
+        rows.append(
+            {
+                "id": str(component_id),
+                "kind": _kind_from_component_id(str(component_id)),
+                "subtype": None,
+                "label": None,
+                "recommendation": None,
+                "decision": live_decision,
+                "reason": None,
+                "evidence": {},
+            }
+        )
+    return rows
+
+
+def _filter_recommendation_dataframe(
+    df: pd.DataFrame,
+    *,
+    kind: str | None = None,
+    subtype: str | None = None,
+    recommendation: str | None = None,
+    decision: str | None = None,
+) -> pd.DataFrame:
+    """Return rows matching all provided Component matchers (AND).
+
+    Args:
+        df: Component table.
+        kind: Optional kind equality filter.
+        subtype: Optional subtype equality filter.
+        recommendation: Optional frozen analyzer-tag filter.
+        decision: Optional live Decision filter.
+
+    Returns:
+        Filtered copy with a reset index. Empty when nothing matches.
+
+    Raises:
+        ValueError: If a matcher value is invalid.
+    """
+    _validate_component_matchers(
+        kind=kind,
+        subtype=subtype,
+        recommendation=recommendation,
+        decision=decision,
+    )
+    if df.empty:
+        return df.copy()
+    mask = pd.Series(True, index=df.index)
+    if kind is not None:
+        mask &= df["kind"] == kind
+    if subtype is not None:
+        mask &= df["subtype"] == subtype
+    if recommendation is not None:
+        mask &= df["recommendation"] == recommendation
+    if decision is not None:
+        mask &= df["decision"] == decision
+    return df.loc[mask].reset_index(drop=True)
+
+
+def _ids_from_positional(
+    component_ids: str | Iterable[str] | pd.DataFrame,
+    *,
+    method: str,
+) -> list[str]:
+    """Normalize keep/skip positional ids from a string, iterable, or DataFrame.
+
+    Args:
+        component_ids: Single id, iterable of ids, or DataFrame with ``id``.
+        method: ``keep`` or ``skip``, for error messages.
+
+    Returns:
+        Component ids as strings, preserving order.
+
+    Raises:
+        TypeError: If *component_ids* is a Recommendation view or a mapping.
+        ValueError: If a DataFrame has no ``id`` column.
+    """
+    if isinstance(component_ids, RecommendationView):
+        raise TypeError(PROTEIN_PREP_KEEP_SKIP_VIEW_MSG.format(method=method))
+    if isinstance(component_ids, pd.DataFrame):
+        if "id" not in component_ids.columns:
+            raise ValueError(PROTEIN_PREP_DATAFRAME_ID_COLUMN_MSG)
+        return [str(value) for value in component_ids["id"].tolist()]
+    if isinstance(component_ids, Mapping):
+        raise TypeError(f"{method}() requires component IDs or keyword filters.")
+    if isinstance(component_ids, str):
+        return [component_ids]
+    return [str(component_id) for component_id in component_ids]
+
+
+class RecommendationView:
+    """Callable notebook table of Protein Prep Components.
+
+    Uncalled, Jupyter displays the full inventory. Calling AND-filters rows
+    and returns a :class:`~pandas.DataFrame`. Live Selection Decisions are
+    read from the parent :class:`ProteinPrep` on each access.
+
+    Attributes:
+        raw: Deep copy of the analyzer recommendation payload.
+    """
+
+    def __init__(self, prep: ProteinPrep) -> None:
+        """Bind this view to a ProteinPrep that has analyzer evidence.
+
+        Args:
+            prep: Parent session whose ``_recommendation`` is set.
+        """
+        self._prep = prep
+
+    @property
+    def raw(self) -> dict[str, Any]:
+        """Deep copy of the analyzer recommendation payload."""
+        payload = self._prep._recommendation
+        if payload is None:
+            return {}
+        return deepcopy(payload)
+
+    def _dataframe(self) -> pd.DataFrame:
+        """Return the unfiltered Component table with live Decisions."""
+        payload = self._prep._recommendation
+        if not isinstance(payload, dict):
+            return _empty_recommendation_dataframe()
+        decisions: dict[str, str] = {}
+        if self._prep._selection is not None:
+            decisions = dict(self._prep._selection["decisions"])
+        return _rows_to_recommendation_dataframe(
+            _recommendation_rows(payload, decisions)
+        )
+
+    def __call__(
+        self,
+        *,
+        kind: str | None = None,
+        subtype: str | None = None,
+        recommendation: str | None = None,
+        decision: str | None = None,
+    ) -> pd.DataFrame:
+        """Return a DataFrame of Components matching all provided filters.
+
+        Args:
+            kind: Component kind (``chain``, ``ligand``, ``cofactor``,
+                ``water``).
+            subtype: Analyzer subtype string.
+            recommendation: Frozen analyzer keep/review/skip tag.
+            decision: Live Selection Decision.
+
+        Returns:
+            Filtered Component table. Unfiltered when no kwargs are set.
+        """
+        return _filter_recommendation_dataframe(
+            self._dataframe(),
+            kind=kind,
+            subtype=subtype,
+            recommendation=recommendation,
+            decision=decision,
+        )
+
+    def __repr__(self) -> str:
+        """Return the Component table as text."""
+        return self._dataframe().to_string()
+
+    def _repr_html_(self) -> str:
+        """Return the Component table as HTML for Jupyter."""
+        return self._dataframe()._repr_html_()
+
+
 class ProteinPrep(
     Execution,
     SyncExecutableMixin,
@@ -305,7 +594,8 @@ class ProteinPrep(
         protein: Constructor-only input protein structure.
         pdb_id: Mutable 4-character PDB ID for loop-modelling templates.
         selection: Editable keep/review/skip map. Reads return a copy.
-        recommendation: Read-only analyzer evidence. Reads return a copy.
+        recommendation: Callable Component table, or ``None`` before
+            recommend. Analyzer payload is :attr:`RecommendationView.raw`.
         model_missing_loops: Whether prepare models missing loops.
     """
 
@@ -398,11 +688,11 @@ class ProteinPrep(
         self._selection = _copy_selection(value) if value is not None else None
 
     @property
-    def recommendation(self) -> dict[str, Any] | None:
-        """Analyzer evidence copy, or ``None`` when unavailable."""
+    def recommendation(self) -> RecommendationView | None:
+        """Callable Component table, or ``None`` when analyzer evidence is missing."""
         if self._recommendation is None:
             return None
-        return deepcopy(self._recommendation)
+        return RecommendationView(self)
 
     @property
     def model_missing_loops(self) -> bool:
@@ -436,10 +726,105 @@ class ProteinPrep(
             joined = ", ".join(unresolved)
             raise ValueError(
                 f"Resolve review decisions before preparation: {joined}. "
-                "Use keep([...]) or skip([...])."
+                "Use keep() or skip()."
             )
         if self._model_missing_loops and not self._pdb_id:
             raise ValueError(PROTEIN_PREP_PDB_ID_REQUIRED_MSG)
+
+    def _component_dataframe(self) -> pd.DataFrame:
+        """Return the Component table used by keep/skip matchers.
+
+        Uses analyzer evidence when :attr:`recommendation` is set, otherwise
+        Selection ids with kind inferred from the id prefix.
+
+        Returns:
+            DataFrame with :data:`PROTEIN_PREP_RECOMMENDATION_COLUMNS`.
+        """
+        decisions: dict[str, str] = {}
+        if self._selection is not None:
+            decisions = dict(self._selection["decisions"])
+        if self._recommendation is not None:
+            return _rows_to_recommendation_dataframe(
+                _recommendation_rows(self._recommendation, decisions)
+            )
+        return _rows_to_recommendation_dataframe(_selection_rows(decisions))
+
+    def _ids_matching(
+        self,
+        *,
+        kind: str | None,
+        subtype: str | None,
+        decision: str | None,
+    ) -> list[str]:
+        """Return Selection component ids matching AND keep/skip kwargs.
+
+        Args:
+            kind: Optional Component kind.
+            subtype: Optional subtype. Requires analyzer evidence.
+            decision: Optional live Selection Decision.
+
+        Returns:
+            Matching ids in table order. Empty when nothing matches.
+
+        Raises:
+            ValueError: If a matcher is invalid, or ``subtype`` is used
+                without a recommendation.
+        """
+        if subtype is not None and self._recommendation is None:
+            raise ValueError(PROTEIN_PREP_SUBTYPE_REQUIRES_RECOMMENDATION_MSG)
+        filtered = _filter_recommendation_dataframe(
+            self._component_dataframe(),
+            kind=kind,
+            subtype=subtype,
+            decision=decision,
+        )
+        return [str(value) for value in filtered["id"].tolist()]
+
+    def _apply_decisions(
+        self,
+        component_ids: str | Iterable[str] | pd.DataFrame | None,
+        *,
+        decision_value: str,
+        kind: str | None,
+        subtype: str | None,
+        decision: str | None,
+    ) -> None:
+        """Resolve ids from positional args or matchers, then set Decisions.
+
+        Args:
+            component_ids: Optional ids, DataFrame, or ``None`` when using
+                keyword matchers.
+            decision_value: ``keep`` or ``skip``.
+            kind: Optional kind matcher.
+            subtype: Optional subtype matcher.
+            decision: Optional live Decision matcher.
+
+        Raises:
+            AttributeError: If this object is bound to an execution.
+            TypeError: If positional ids have the wrong type.
+            ValueError: If Selection is missing, styles are mixed, matchers
+                are invalid, or named ids are unknown.
+        """
+        self._require_unbound(decision_value)
+        if self._selection is None:
+            raise ValueError(
+                f"{decision_value}() requires a selection. Call recommend() or "
+                "assign selection first."
+            )
+        has_positional = component_ids is not None
+        has_kwargs = any(value is not None for value in (kind, subtype, decision))
+        if has_positional and has_kwargs:
+            raise ValueError(PROTEIN_PREP_KEEP_SKIP_MIXED_MSG)
+        if not has_positional and not has_kwargs:
+            raise ValueError(
+                PROTEIN_PREP_KEEP_SKIP_EMPTY_MSG.format(method=decision_value)
+            )
+        if has_kwargs:
+            resolved = self._ids_matching(kind=kind, subtype=subtype, decision=decision)
+        else:
+            assert component_ids is not None
+            resolved = _ids_from_positional(component_ids, method=decision_value)
+        self._set_decisions(resolved, decision_value)
 
     def _set_decisions(self, component_ids: Iterable[str], decision: str) -> None:
         """Set one decision for named Selection components.
@@ -449,20 +834,14 @@ class ProteinPrep(
             decision: ``keep`` or ``skip``.
 
         Raises:
-            AttributeError: If this object is bound to an execution.
             TypeError: If *component_ids* is a bare string.
-            ValueError: If Selection is absent or IDs are unknown.
+            ValueError: If IDs are unknown.
         """
-        self._require_unbound(decision)
         if isinstance(component_ids, str):
             raise TypeError(f"{decision}() requires an iterable of component IDs.")
-        if self._selection is None:
-            raise ValueError(
-                f"{decision}() requires a selection. Call recommend() or assign "
-                "selection first."
-            )
-        resolved_ids = [str(component_id) for component_id in component_ids]
+        assert self._selection is not None
         known_ids = self._selection["decisions"]
+        resolved_ids = [str(component_id) for component_id in component_ids]
         unknown_ids = sorted(set(resolved_ids) - set(known_ids))
         if unknown_ids:
             joined = ", ".join(unknown_ids)
@@ -470,21 +849,67 @@ class ProteinPrep(
         for component_id in resolved_ids:
             known_ids[component_id] = decision
 
-    def keep(self, component_ids: Iterable[str]) -> None:
-        """Mark named Selection components to keep.
+    def keep(
+        self,
+        component_ids: str | Iterable[str] | pd.DataFrame | None = None,
+        *,
+        kind: str | None = None,
+        subtype: str | None = None,
+        decision: str | None = None,
+    ) -> Self:
+        """Mark matching Selection components to keep.
+
+        Pass ids (a string, iterable, or DataFrame ``id`` column) *or*
+        keyword matchers, not both. ``kind="water"`` is equivalent to
+        passing every water component id.
 
         Args:
-            component_ids: Iterable of component IDs from :attr:`recommendation`.
-        """
-        self._set_decisions(component_ids, "keep")
+            component_ids: Component ids to keep.
+            kind: Keep every Component of this kind.
+            subtype: Keep every Component of this subtype.
+            decision: Keep every Component with this live Decision.
 
-    def skip(self, component_ids: Iterable[str]) -> None:
-        """Mark named Selection components to skip.
+        Returns:
+            This :class:`ProteinPrep` (for chaining).
+        """
+        self._apply_decisions(
+            component_ids,
+            decision_value="keep",
+            kind=kind,
+            subtype=subtype,
+            decision=decision,
+        )
+        return self
+
+    def skip(
+        self,
+        component_ids: str | Iterable[str] | pd.DataFrame | None = None,
+        *,
+        kind: str | None = None,
+        subtype: str | None = None,
+        decision: str | None = None,
+    ) -> Self:
+        """Mark matching Selection components to skip.
+
+        Same calling styles as :meth:`keep`.
 
         Args:
-            component_ids: Iterable of component IDs from :attr:`recommendation`.
+            component_ids: Component ids to skip.
+            kind: Skip every Component of this kind.
+            subtype: Skip every Component of this subtype.
+            decision: Skip every Component with this live Decision.
+
+        Returns:
+            This :class:`ProteinPrep` (for chaining).
         """
-        self._set_decisions(component_ids, "skip")
+        self._apply_decisions(
+            component_ids,
+            decision_value="skip",
+            kind=kind,
+            subtype=subtype,
+            decision=decision,
+        )
+        return self
 
     def _parameter_rows(self) -> list[tuple[str, str]]:
         """Return ``(name, value)`` rows for text and HTML display.
@@ -506,7 +931,7 @@ class ProteinPrep(
             (
                 "recommendation",
                 (
-                    "available"
+                    f"{len(self._recommendation.get('components') or [])} components"
                     if self._recommendation is not None
                     else PROTEIN_PREP_DISPLAY_NONE
                 ),
@@ -616,13 +1041,16 @@ class ProteinPrep(
             "sync": sync,
         }
 
-    def recommend(self) -> None:
+    def recommend(self) -> RecommendationView:
         """Recommend settings into this object without binding an execution ID.
 
         The platform operation is synchronous and persisted by the backend, but
         its execution ID is deliberately not copied onto this object. Repeated
         calls atomically replace :attr:`recommendation` and :attr:`selection`
         only after a complete recommendation is available.
+
+        Returns:
+            The :class:`RecommendationView` table for this inventory.
 
         Raises:
             AttributeError: If this object is already bound to prepare.
@@ -651,6 +1079,9 @@ class ProteinPrep(
         selection = _selection_from_recommendation(recommendation)
         self._recommendation = deepcopy(recommendation)
         self._selection = selection
+        view = self.recommendation
+        assert view is not None
+        return view
 
     def start(self) -> None:  # ty: ignore[invalid-method-override]
         """Submit preparation asynchronously and bind this object to it.
