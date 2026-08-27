@@ -82,5 +82,7 @@ The commonly available methods are:
 
 Not every method is available on every tool. The tool-specific pages document
 the supported execution modes, inputs, outputs, and examples.
-[`ProteinPrep`](proteinprep.md) is async-only (`start()`, not `run()`) and does
-not produce a cost quote.
+[`ProteinPrep`](proteinprep.md) inventories with `recommend()`, then prepares.
+Skip loop modelling (`model_missing_loops=False`) and call `run()` to block until
+the prepared protein is ready; loop modelling uses `start()`. This tool
+does not produce a cost quote.

@@ -107,11 +107,78 @@ SYSPREP_NO_OUTPUT_PATHS_MSG = (
 PROTEIN_PREP_PDB_ID_PATTERN = r"^[A-Za-z0-9]{4}$"
 """JSON Schema pattern for Protein Prep ``pdb_id`` (loop-modelling templates)."""
 
+PROTEIN_PREP_DISPLAY_NONE = "(none)"
+"""Display value for unavailable Protein Prep configuration."""
+
 PROTEIN_PREP_NO_OUTPUT_PATHS_MSG = (
     "Protein preparation did not return a prepared PDB path. "
     "The tool execution may have failed or returned an unexpected format."
 )
 """Used by ``ProteinPrep.get_results`` when the prepared PDB path is missing."""
+
+PROTEIN_PREP_PDB_ID_REQUIRED_MSG = (
+    "pdb_id is required when preparing with loop modelling. "
+    "Pass pdb_id= as a 4-character PDB identifier, or set protein.pdb_id. "
+    "To skip loop modelling, pass model_missing_loops=False."
+)
+"""Used by ``ProteinPrep`` when prepare + loops-on is missing ``pdb_id``."""
+
+PROTEIN_PREP_NO_RECOMMENDATION_MSG = (
+    "Protein Prep did not return a recommendation. "
+    "The recommendation operation may have failed or returned an unexpected format."
+)
+"""Used by ``ProteinPrep.recommend`` when the inventory is missing."""
+
+PROTEIN_PREP_RECOMMEND_NOT_PREPARE_MSG = (
+    "This historical ProteinPrep execution contains a recommendation and did "
+    "not produce a prepared protein. Inspect the recommendation property."
+)
+"""Used by ``ProteinPrep.get_results`` on a recommend execution."""
+
+PROTEIN_PREP_RUN_REQUIRES_LOOPS_OFF_MSG = (
+    "run() requires model_missing_loops=False. Use start() when loop modelling "
+    "is enabled."
+)
+"""Used by ``ProteinPrep.run`` when loop modelling is enabled."""
+
+PROTEIN_PREP_COMPONENT_KINDS: frozenset[str] = frozenset(
+    {"chain", "ligand", "cofactor", "water"}
+)
+"""Valid Protein Prep Component ``kind`` values for table filters and keep/skip."""
+
+PROTEIN_PREP_RECOMMENDATION_COLUMNS: tuple[str, ...] = (
+    "id",
+    "kind",
+    "subtype",
+    "label",
+    "recommendation",
+    "decision",
+    "reason",
+    "evidence",
+)
+"""Column order for the Protein Prep Recommendation view DataFrame."""
+
+PROTEIN_PREP_KEEP_SKIP_EMPTY_MSG = (
+    "{method}() requires component IDs or keyword filters."
+)
+"""Used when ``keep()`` / ``skip()`` are called with no ids and no matchers."""
+
+PROTEIN_PREP_KEEP_SKIP_MIXED_MSG = "Pass component IDs or keyword filters, not both."
+"""Used when ``keep()`` / ``skip()`` receive both positional ids and matchers."""
+
+PROTEIN_PREP_KEEP_SKIP_VIEW_MSG = (
+    "{method}() accepts a DataFrame from recommendation(...), "
+    "not the recommendation view itself."
+)
+"""Used when ``keep()`` / ``skip()`` are passed the uncalled Recommendation view."""
+
+PROTEIN_PREP_DATAFRAME_ID_COLUMN_MSG = "DataFrame must include an 'id' column."
+"""Used when ``keep()`` / ``skip()`` receive a DataFrame without ``id``."""
+
+PROTEIN_PREP_SUBTYPE_REQUIRES_RECOMMENDATION_MSG = (
+    "subtype= requires a recommendation. Call recommend() first."
+)
+"""Used when ``keep()`` / ``skip()`` filter by subtype without analyzer evidence."""
 
 BOOTSTRAP_5_CSS_CDN_URL = (
     "https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css"

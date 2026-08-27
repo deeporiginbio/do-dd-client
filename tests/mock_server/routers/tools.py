@@ -1668,12 +1668,18 @@ def create_tools_router(
         if any(r.get("compute_job_id") == eid for r in results):
             return
 
-        fixture = copy.deepcopy(load_fixture("tool-runs/deeporigin.protein-prep/run"))
+        user_inputs = execution.get("userInputs", {})
+        action = user_inputs.get("action") if isinstance(user_inputs, dict) else None
+        fixture_name = (
+            "tool-runs/deeporigin.protein-prep/recommend"
+            if action == "recommend"
+            else "tool-runs/deeporigin.protein-prep/run"
+        )
+        fixture = copy.deepcopy(load_fixture(fixture_name))
         outputs = _legacy_outputs_to_job_outputs(fixture)
         if not isinstance(outputs, dict):
             return
 
-        user_inputs = execution.get("userInputs", {})
         protein = (
             user_inputs.get("protein", {}) if isinstance(user_inputs, dict) else {}
         )

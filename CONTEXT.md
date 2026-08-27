@@ -53,10 +53,66 @@ Simulation-ready binding and solvation XML files (and metadata) produced by syst
 _Avoid_: "system" alone when meaning the prepared molecular system artifact
 
 **Protein Prep**:
-Platform tool `deeporigin.protein-prep` that cleans a caller-supplied protein
-structure (explicit keep/remove lists, loop modelling, protonation). CLI class
-`ProteinPrep` is async-only (`start()`, not `run()`).
-_Avoid_: SystemPrep / FEP assembly; quoting this tool (billing is skipped)
+Platform tool `deeporigin.protein-prep` that inventories a caller-supplied
+protein, records editable keep/review/skip Decisions, then applies resolved
+keep/skip Decisions and protonation. CLI class `ProteinPrep` is one preparation
+session: `.recommend()` updates its Selection without binding its execution id
+and returns the Recommendation view; `.run()` or `.start()` submits durable
+preparation and permanently binds the object. `protein` is constructor-only.
+Loop modelling runs unless the caller sets loops-off prepare.
+_Avoid_: SystemPrep / FEP assembly; quoting this tool (billing is skipped);
+public `action`; a separate recommend object; silently converting `review` to
+`skip`; v1 keep/remove lists (`keep_chain_ids`, …); treating loops-off as
+skipping Protein Prep; `watch()` on a `.run()` / sync execution; `inputs.sync`
+on protein-prep (not in the tool schema); treating `.recommendation` as a raw
+dict or a pandas DataFrame type
+
+**Protein Prep Selection**:
+Digest-bound component Decision map produced by `ProteinPrep.recommend()` or
+provided by the caller. Editable SDK state may contain `keep`, `review`, or
+`skip`; durable preparation requires every `review` to be resolved. `keep()` and
+`skip()` set Decisions for listed component ids, or for every Component matching
+keyword filters (`kind`, `subtype`, `decision`). Filters are equivalent to
+passing the matching ids. Positional ids and keyword filters are mutually
+exclusive. Both methods return the `ProteinPrep`.
+_Avoid_: silently resolving `review`; treating a Selection as analyzer evidence
+(that is the Component recommendation); treating matcher kwargs as a different
+operation from listing ids; mixing ids with matcher kwargs; `pp.recommend().keep()`
+(recommend returns the Recommendation view, not the `ProteinPrep`)
+
+**Component** (Protein Prep):
+One inventoried chain, ligand, cofactor, or water from recommend. Identity is
+the component `id` (for example `chain:A`, `water:A:HOH:310:`).
+_Avoid_: residue when you mean a Component; treating `label` as the id
+
+**Component recommendation**:
+The analyzer's frozen keep, review, or skip tag on a Component. It does not
+change when the caller edits Decisions.
+_Avoid_: Decision; the analyzer payload as a whole
+
+**Decision**:
+The caller's current keep, review, or skip value for a Component in the
+Selection. Edited by `keep()` / `skip()`. Preparation requires every Decision
+to be keep or skip.
+_Avoid_: `recommendation` when you mean the live Selection value; Component
+recommendation
+
+**Recommendation view**:
+Callable notebook table of Components on `ProteinPrep.recommendation` after
+recommend (also returned by `.recommend()`). Columns include frozen Component
+recommendation and live Decision. Calling it AND-filters (`kind`, `subtype`,
+`recommendation`, `decision`) and returns a DataFrame. Unset is `None`. `.raw`
+is the analyzer payload. Not mapping-like (`["components"]` is gone).
+_Avoid_: returning a DataFrame from the property itself; dict access on the view;
+`keep` / `skip` on the view (`pp.recommend().keep()` is not supported)
+
+**Loops-off prepare**:
+Protein Prep `action=prepare` with `model_missing_loops=false`: apply the
+frozen Selection (keep/skip chains, waters, ligands, cofactors), skip loop
+modelling, still protonate. Quoted `method: direct`; `pdb_id` optional.
+CLI `.run()` blocks and returns the prepared Protein; `.start()` is also valid.
+_Avoid_: skipping Protein Prep; skipping protonation; treating loops-off as
+requiring synchronous SDK use
 
 **Prepared protein (CLI)**:
 In-memory :class:`~deeporigin.drug_discovery.structures.protein.Protein` returned

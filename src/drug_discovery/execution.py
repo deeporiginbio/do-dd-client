@@ -180,6 +180,23 @@ class Execution:
         This property cannot be set manually."""
         return self._cost
 
+    def _require_no_execution_id(self, attr: str) -> None:
+        """Raise if this instance already has a platform execution id.
+
+        Used by input setters so callers can mutate configuration only before
+        ``start()``, ``run()``, or a quote.
+
+        Args:
+            attr: Public attribute the caller tried to assign.
+
+        Raises:
+            AttributeError: If :attr:`id` is set.
+        """
+        if getattr(self, "_id", None) is not None:
+            raise AttributeError(
+                f"cannot assign to {attr!r}: execution id is already set"
+            )
+
     @property
     def name(self) -> str | None:
         """Optional user-defined label for this execution.
@@ -191,8 +208,7 @@ class Execution:
     @name.setter
     def name(self, value: str | None) -> None:
         """Set ``name`` only before the platform assigns an execution ``id``."""
-        if getattr(self, "_id", None) is not None:
-            raise AttributeError("cannot assign to 'name': execution id is already set")
+        self._require_no_execution_id("name")
         self._name = value
 
     def _make_payload(

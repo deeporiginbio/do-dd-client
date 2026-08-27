@@ -1,0 +1,35 @@
+{
+  "jobOutputs": {
+    "recommendation": {
+      "analyzer_version": "1.0.0",
+      "chain_id_mapping": {},
+      "components": [
+        {
+          "author": { "chain_id": "A" },
+          "id": "chain:A",
+          "kind": "chain",
+          "label": "Chain A",
+          "reason": "Ordinary protein chain",
+          "reason_code": "ordinary_protein_chain",
+          "recommendation": "keep",
+          "subtype": "protein"
+        },
+        {
+          "author": {
+            "chain_id": "A",
+            "resname": "LIG",
+            "resseq": 100
+          },
+          "id": "ligand:LIG:A:100",
+          "kind": "ligand",
+          "label": "LIG",
+          "reason": "Ambiguous ligand",
+          "reason_code": "ambiguous_ligand",
+          "recommendation": "review",
+          "subtype": "small_molecule"
+        }
+      ],
+      "source_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    }
+  }
+}
