@@ -299,13 +299,21 @@ class Metabolism(Execution, SyncExecutableMixin):
         return new
 
     def _ensure_enzymes_for_run(self) -> None:
-        """Validate in-place edits before submitting the execution."""
+        """Validate in-place edits before submitting the execution.
+
+        Preserves the tuple/list invariant: a re-run on an already-executed
+        instance (``enzymes`` already frozen to a tuple) must not leave a
+        mutable list on ``self._enzymes`` if ``_create_execution`` raises
+        before :meth:`update_from_dto` re-freezes it.
+        """
         if self._enzymes is None:
             return
-        self._enzymes = _validate_metabolism_enzymes(
+        was_frozen = isinstance(self._enzymes, tuple)
+        validated = _validate_metabolism_enzymes(
             list(self._enzymes),
             allowed=_ALLOWED_ENZYMES,
         )
+        self._enzymes = tuple(validated) if was_frozen else validated
 
     def _make_inputs(self) -> dict[str, Any]:
         """Build tool ``inputs`` matching the metabolism schema."""

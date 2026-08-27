@@ -5,6 +5,7 @@ from __future__ import annotations
 import pytest
 
 from deeporigin.drug_discovery.metabolism import (
+    Metabolism,
     _ensure_ligand_cap,
     _job_output_rows,
     _ligands_from_inputs,
@@ -53,6 +54,25 @@ def test_validate_metabolism_enzymes_rejects_empty_unknown_and_duplicates() -> N
         _validate_metabolism_enzymes(["CYP3A4", "CYP3A4"], allowed=allowed)
     with pytest.raises(ValueError, match="Unknown"):
         _validate_metabolism_enzymes(["CYP3A5"], allowed=allowed)
+
+
+def test_ensure_enzymes_for_run_preserves_frozen_tuple() -> None:
+    """A re-run on an already-executed instance keeps ``enzymes`` a tuple.
+
+    ``_ensure_enzymes_for_run`` must not leave a mutable list on
+    ``self._enzymes`` if it runs again on an instance whose execution id is
+    already set (``enzymes`` frozen to a tuple) — that would break the
+    tuple/list invariant if ``_create_execution`` then raised before
+    ``update_from_dto`` re-froze it.
+    """
+    job = Metabolism(ligands=Ligand.from_smiles("CCO"))
+    job._enzymes = tuple(METABOLISM_ENZYMES)
+    job._id = "existing-execution-id"
+
+    job._ensure_enzymes_for_run()
+
+    assert isinstance(job._enzymes, tuple)
+    assert job._enzymes == METABOLISM_ENZYMES
 
 
 def test_job_output_rows_reads_sites_and_molecules() -> None:

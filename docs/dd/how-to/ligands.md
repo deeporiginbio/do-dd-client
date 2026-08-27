@@ -621,6 +621,7 @@ is also valid:
 ```{.python notest}
 from deeporigin.drug_discovery import Metabolism, LigandSet
 
+ligands = LigandSet.from_smiles(["CCO", "CC(=O)O"])
 job = Metabolism(ligands=ligands)
 sites = job.run()
 ```
