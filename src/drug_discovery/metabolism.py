@@ -6,10 +6,9 @@ instance is configured with ligands, then executed with a blocking
 rows (atom, enzyme, site confidence). :meth:`get_molecules` returns
 molecule-level ``confidence_tier`` rows.
 
-Construction copies the nine cytochrome P450 (CYP) isoform names into
-:attr:`enzymes`. Trim that list before :meth:`run` to filter the sites table.
-The tool still scores all nine; trimming is client-side. ``tool_version``
-stays ``"latest"``. Ligands are not mutated. Payload ``id`` is sent only when
+The tool scores every cytochrome P450 isoform it supports; the client does
+not select or filter enzymes. ``tool_version`` stays ``"latest"``. Ligands
+are not mutated. Payload ``id`` is sent only when
 :attr:`~deeporigin.drug_discovery.structures.ligand.Ligand.id` is already set.
 
 Usage::
@@ -17,7 +16,6 @@ Usage::
     from deeporigin.drug_discovery import Metabolism, Ligand
 
     job = Metabolism(ligands=Ligand.from_smiles("CCO"))
-    job.enzymes = ["CYP3A4", "CYP2D6"]
     sites = job.run()
     mols = job.get_molecules()
 """
@@ -36,7 +34,6 @@ from deeporigin.exceptions import DeepOriginException
 from deeporigin.platform.client import DeepOriginClient
 from deeporigin.platform.constants import TOOL_KEYS_AND_VERSIONS, is_success_status
 from deeporigin.utils.constants import (
-    METABOLISM_ENZYMES,
     METABOLISM_EXECUTION_TIMEOUT_SECONDS,
     METABOLISM_LIGAND_CAP,
 )
@@ -53,7 +50,6 @@ _MOLECULE_COLUMNS: tuple[str, ...] = (
     "smiles",
     "confidence_tier",
 )
-_ALLOWED_ENZYMES: frozenset[str] = frozenset(METABOLISM_ENZYMES)
 
 
 def _normalize_ligands(
@@ -97,36 +93,6 @@ def _ensure_ligand_cap(ligands: list[Ligand]) -> None:
         raise ValueError(
             f"Metabolism accepts at most {METABOLISM_LIGAND_CAP} ligands (got {n})."
         )
-
-
-def _validate_metabolism_enzymes(
-    enzymes: list[str] | tuple[str, ...],
-    *,
-    allowed: frozenset[str],
-) -> list[str]:
-    """Return a copy of *enzymes* or raise if the selection is invalid.
-
-    Args:
-        enzymes: Isoform names to keep in the sites table.
-        allowed: Allowlist (the nine CYP names).
-
-    Returns:
-        A new list of enzyme names in caller order.
-
-    Raises:
-        ValueError: If empty, duplicated, or not in *allowed*.
-    """
-
-    if not enzymes:
-        raise ValueError("enzymes must be non-empty.")
-    if len(enzymes) != len(set(enzymes)):
-        raise ValueError("enzymes must not contain duplicates.")
-    unknown = set(enzymes) - allowed
-    if unknown:
-        raise ValueError(
-            f"Unknown enzymes {sorted(unknown)}. Allowed: {sorted(allowed)}"
-        )
-    return list(enzymes)
 
 
 def _job_output_rows(dto: dict[str, Any], *, key: str) -> list[dict[str, Any]]:
@@ -207,15 +173,12 @@ def _ligands_from_inputs(inputs: dict[str, Any]) -> list[Ligand]:
 class Metabolism(Execution, SyncExecutableMixin):
     """Predict sites of metabolism for ligands via ``deeporigin.metabolism``.
 
-    Construction fills :attr:`enzymes` with the nine CYP isoform names.
-    Trim or replace that list before :meth:`run`. Ligands are **not** mutated
-    (contrast with :class:`~deeporigin.drug_discovery.molprops.Molprops`).
+    The tool scores every cytochrome P450 isoform it supports. Ligands are
+    **not** mutated (contrast with
+    :class:`~deeporigin.drug_discovery.molprops.Molprops`).
 
     Attributes:
         ligands: Ligands whose SMILES are sent to the tool.
-        enzymes: CYP isoform names used to filter the sites table. A list on a
-            draft instance (no execution ``id``); a tuple after ``id`` is set;
-            ``None`` on a past execution rehydrated from the platform.
     """
 
     tool_key: str = TOOL_KEYS_AND_VERSIONS["metabolism"]["tool_key"]
@@ -230,9 +193,7 @@ class Metabolism(Execution, SyncExecutableMixin):
     ) -> None:
         """Configure a site-of-metabolism run for one or more ligands.
 
-        Fills :attr:`enzymes` with the nine CYP names. Does not take
-        ``enzymes=`` — inspect and trim ``enzymes`` after construct. Does not
-        pin ``tool_version``; it stays ``"latest"``.
+        Does not pin ``tool_version``; it stays ``"latest"``.
 
         Args:
             ligands: A ligand, a list of ligands, or a :class:`LigandSet`.
@@ -245,75 +206,11 @@ class Metabolism(Execution, SyncExecutableMixin):
         super().__init__(client=client)
         self._ligands: list[Ligand] = _normalize_ligands(ligands)
         _ensure_ligand_cap(self._ligands)
-        self._enzymes: list[str] | tuple[str, ...] | None = list(METABOLISM_ENZYMES)
 
     @property
     def ligands(self) -> list[Ligand]:
         """Ligands targeted by this run (read-only)."""
         return self._ligands
-
-    @property
-    def enzymes(self) -> list[str] | tuple[str, ...] | None:
-        """CYP isoform names used to filter the sites table.
-
-        A mutable list on a draft instance. After an execution ``id`` is set,
-        a tuple. ``None`` when a past execution is rehydrated (no trim was
-        stored on the tool).
-        """
-        return self._enzymes
-
-    @enzymes.setter
-    def enzymes(self, value: list[str]) -> None:
-        """Replace the draft enzyme list with a non-empty unique subset."""
-        if getattr(self, "_id", None) is not None:
-            raise AttributeError(
-                "cannot assign to 'enzymes': execution id is already set"
-            )
-        self._enzymes = _validate_metabolism_enzymes(value, allowed=_ALLOWED_ENZYMES)
-
-    def update_from_dto(self, dto: dict[str, Any]) -> None:
-        """Apply execution fields from ``dto`` and freeze ``enzymes``."""
-        super().update_from_dto(dto)
-        enzymes = getattr(self, "_enzymes", None)
-        if self._id is not None and isinstance(enzymes, list):
-            self._enzymes = tuple(enzymes)
-
-    def duplicate(self, *, client: DeepOriginClient | None = None) -> Self:
-        """Copy configuration into a new draft with writable ``enzymes``.
-
-        ``from_dto`` leaves ``enzymes`` as ``None`` (the tool never recorded a
-        trim). Fill the nine names here so the draft can assign ``enzymes``
-        like a constructor-built instance.
-
-        Args:
-            client: Optional API client for the new instance.
-
-        Returns:
-            A draft :class:`Metabolism` with no execution id.
-        """
-        new = super().duplicate(client=client)
-        if isinstance(getattr(new, "_enzymes", None), tuple):
-            new._enzymes = list(new._enzymes)
-        if new._enzymes is None:
-            new._enzymes = list(METABOLISM_ENZYMES)
-        return new
-
-    def _ensure_enzymes_for_run(self) -> None:
-        """Validate in-place edits before submitting the execution.
-
-        Preserves the tuple/list invariant: a re-run on an already-executed
-        instance (``enzymes`` already frozen to a tuple) must not leave a
-        mutable list on ``self._enzymes`` if ``_create_execution`` raises
-        before :meth:`update_from_dto` re-freezes it.
-        """
-        if self._enzymes is None:
-            return
-        was_frozen = isinstance(self._enzymes, tuple)
-        validated = _validate_metabolism_enzymes(
-            list(self._enzymes),
-            allowed=_ALLOWED_ENZYMES,
-        )
-        self._enzymes = tuple(validated) if was_frozen else validated
 
     def _make_inputs(self) -> dict[str, Any]:
         """Build tool ``inputs`` matching the metabolism schema."""
@@ -360,21 +257,18 @@ class Metabolism(Execution, SyncExecutableMixin):
     def run(self) -> pd.DataFrame:
         """Execute metabolism synchronously and return site rows.
 
-        Blocks until the job finishes. There is no ``quote=True`` path.
+        Blocks until the job finishes. There is no ``quote=True`` path. The
+        sites table includes every enzyme the tool scored.
 
         Returns:
-            A :class:`pandas.DataFrame` of Metabolism site rows, filtered to
-            :attr:`enzymes` when that list is set.
+            A :class:`pandas.DataFrame` of Metabolism site rows.
 
         Raises:
             DeepOriginException: If the execution did not complete successfully
                 or no site rows could be parsed.
-            ValueError: If ``enzymes`` is empty, has duplicates, or names
-                isoforms outside the nine CYP names, or if there are
-                more than 250 ligands.
+            ValueError: If there are more than 250 ligands.
         """
         _ensure_ligand_cap(self._ligands)
-        self._ensure_enzymes_for_run()
         dto = self._create_execution(data=self._make_payload())
         self.update_from_dto(dto)
 
@@ -420,8 +314,7 @@ class Metabolism(Execution, SyncExecutableMixin):
     def get_results(self, dto: dict[str, Any] | None = None) -> pd.DataFrame:
         """Return this execution's Metabolism site rows as a DataFrame.
 
-        When :attr:`enzymes` is set, only those isoform rows are kept. When
-        it is ``None`` (rehydrated jobs), every site row is returned.
+        Includes every enzyme the tool scored.
 
         Args:
             dto: Optional execution payload from ``executions.create`` /
@@ -433,8 +326,7 @@ class Metabolism(Execution, SyncExecutableMixin):
 
         Raises:
             ValueError: If :attr:`id` is unset and ``dto`` is omitted.
-            DeepOriginException: If no site rows could be parsed, or the
-                enzyme filter left no rows.
+            DeepOriginException: If no site rows could be parsed.
         """
         if dto is None:
             exec_id = self._ensure_id()
@@ -442,26 +334,13 @@ class Metabolism(Execution, SyncExecutableMixin):
 
         rows = _job_output_rows(dto, key="sites")
         self._require_rows(rows, kind="sites", key="sites")
-        df = _ordered_dataframe(rows, columns=_SITE_COLUMNS)
-        if self._enzymes is not None:
-            if "enzyme" not in df.columns:
-                self._require_rows([], kind="sites", key="sites")
-            df = df[df["enzyme"].isin(list(self._enzymes))]
-            if df.empty:
-                raise DeepOriginException(
-                    title="Metabolism sites missing",
-                    message=(
-                        f"Metabolism execution {self.id!r} had no site rows "
-                        f"for enzymes {list(self._enzymes)!r}."
-                    ),
-                )
-        return df.reset_index(drop=True)
+        return _ordered_dataframe(rows, columns=_SITE_COLUMNS).reset_index(drop=True)
 
     @beartype
     def get_molecules(self, dto: dict[str, Any] | None = None) -> pd.DataFrame:
         """Return molecule-level ``confidence_tier`` rows as a DataFrame.
 
-        Not filtered by :attr:`enzymes`. One row per scored SMILES.
+        One row per scored SMILES.
 
         Args:
             dto: Optional execution payload from ``executions.create`` /
@@ -497,8 +376,6 @@ class Metabolism(Execution, SyncExecutableMixin):
         """Construct a ``Metabolism`` from a tools execution DTO.
 
         Restores ligands from ``userInputs`` (falling back to ``inputs``).
-        ``enzymes`` stays ``None`` — the tool never recorded a trim, so
-        :meth:`get_results` returns every site row.
 
         Args:
             dto: Execution payload (same shape as ``client.executions.get``).
@@ -513,5 +390,4 @@ class Metabolism(Execution, SyncExecutableMixin):
         instance = super().from_dto(dto, client=client)
         inputs: dict[str, Any] = dto.get("userInputs") or dto.get("inputs") or {}
         instance._ligands = _ligands_from_inputs(inputs)
-        instance._enzymes = None
         return instance

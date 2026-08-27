@@ -10,14 +10,16 @@ import pytest
 from deeporigin.drug_discovery import Ligand, LigandSet, Metabolism
 from deeporigin.exceptions import DeepOriginException
 from deeporigin.platform.constants import TOOL_KEYS_AND_VERSIONS
-from deeporigin.utils.constants import METABOLISM_ENZYMES, METABOLISM_LIGAND_CAP
+from deeporigin.utils.constants import METABOLISM_LIGAND_CAP
 from tests.conftest import check_tool_exists
 from tests.mock_server.routers.tools import _synthesize_metabolism_outputs
 
 if TYPE_CHECKING:
     from deeporigin.platform.client import DeepOriginClient
 
-_N_SITES_PER_LIGAND = len(METABOLISM_ENZYMES) * 3
+_SAMPLE_SITES, _ = _synthesize_metabolism_outputs(smiles="CCO", ligand_id=None)
+_N_SITES_PER_LIGAND = len(_SAMPLE_SITES)
+_MOCK_ENZYMES = {row["enzyme"] for row in _SAMPLE_SITES}
 
 
 def _assert_tool_available(client: DeepOriginClient) -> None:
@@ -26,17 +28,16 @@ def _assert_tool_available(client: DeepOriginClient) -> None:
     assert check_tool_exists(client, cfg["tool_key"], cfg["tool_version"])
 
 
-def test_metabolism_construct_copies_nine_enzymes(
+def test_metabolism_construct_sets_tool_identity(
     client: DeepOriginClient,
 ) -> None:
-    """``Metabolism(...)`` fills ``enzymes`` with the nine DOSOM CYP names."""
+    """``Metabolism(...)`` pins the metabolism tool key and latest version."""
     _assert_tool_available(client)
     job = Metabolism(ligands=Ligand.from_smiles("CCO"), client=client)
 
-    assert job.enzymes == list(METABOLISM_ENZYMES)
-    assert isinstance(job.enzymes, list)
     assert job.tool_version == "latest"
     assert job.tool_key == "deeporigin.metabolism"
+    assert not hasattr(job, "enzymes")
 
 
 def test_metabolism_constructor_rejects_enzymes_kwarg(
@@ -62,31 +63,10 @@ def test_metabolism_constructor_rejects_quote_on_run(
         job.run(quote=True)  # ty:ignore[unexpected-keyword]
 
 
-def test_metabolism_enzymes_assign_and_inplace_trim(
-    client: DeepOriginClient,
-) -> None:
-    """Draft ``enzymes`` can be replaced or trimmed in place."""
-    _assert_tool_available(client)
-    job = Metabolism(ligands=Ligand.from_smiles("CCO"), client=client)
-
-    job.enzymes = ["CYP3A4", "CYP2D6"]
-    assert job.enzymes == ["CYP3A4", "CYP2D6"]
-
-    job.enzymes.remove("CYP2D6")
-    assert job.enzymes == ["CYP3A4"]
-
-    with pytest.raises(ValueError, match="Unknown"):
-        job.enzymes = ["CYP3A5"]
-    with pytest.raises(ValueError, match="non-empty"):
-        job.enzymes = []
-    with pytest.raises(ValueError, match="duplicates"):
-        job.enzymes = ["CYP3A4", "CYP3A4"]
-
-
 def test_metabolism_run_returns_sites_dataframe(
     client: DeepOriginClient,
 ) -> None:
-    """Normal ``run()`` returns site rows for all nine enzymes."""
+    """Normal ``run()`` returns site rows for every enzyme the tool scored."""
     _assert_tool_available(client)
     ligand = Ligand.from_smiles("CCO")
     job = Metabolism(ligands=ligand, client=client)
@@ -97,13 +77,9 @@ def test_metabolism_run_returns_sites_dataframe(
     assert len(df) == _N_SITES_PER_LIGAND
     for col in ("ligand_id", "smiles", "atom_index", "enzyme", "confidence"):
         assert col in df.columns
-    assert set(df["enzyme"]) == set(METABOLISM_ENZYMES)
+    assert set(df["enzyme"]) == _MOCK_ENZYMES
     assert job.status == "Completed"
     assert job.id is not None
-    assert isinstance(job.enzymes, tuple)
-    assert list(job.enzymes) == list(METABOLISM_ENZYMES)
-    with pytest.raises(AttributeError, match="execution id"):
-        job.enzymes = ["CYP3A4"]
 
     expected_sites, _ = _synthesize_metabolism_outputs(
         smiles="CCO",
@@ -146,19 +122,15 @@ def test_metabolism_run_sends_id_when_present(
     assert set(mols["confidence_tier"]).issubset({"high", "medium", "low"})
 
 
-def test_metabolism_enzyme_trim_filters_sites_not_molecules(
+def test_metabolism_get_molecules_one_row_per_ligand(
     client: DeepOriginClient,
 ) -> None:
-    """Trimmed ``enzymes`` filters site rows; ``get_molecules`` stays unfiltered."""
+    """``get_molecules`` returns one confidence-tier row per scored SMILES."""
     _assert_tool_available(client)
     job = Metabolism(ligands=Ligand.from_smiles("CCO"), client=client)
-    job.enzymes = ["CYP3A4", "CYP2D6"]
-
-    df = job.run()
+    job.run()
     mols = job.get_molecules()
 
-    assert set(df["enzyme"]) == {"CYP3A4", "CYP2D6"}
-    assert len(df) == 6
     assert len(mols) == 1
     assert list(mols.columns)[:3] == ["ligand_id", "smiles", "confidence_tier"]
 
@@ -174,17 +146,6 @@ def test_metabolism_accepts_ligandset(
     assert len(df) == _N_SITES_PER_LIGAND * 2
     assert set(df["smiles"]) == {"CCO", "CCN"}
     assert len(job.get_molecules()) == 2
-
-
-def test_metabolism_run_rejects_cleared_enzymes(
-    client: DeepOriginClient,
-) -> None:
-    """In-place empty ``enzymes`` fails at ``run()``."""
-    _assert_tool_available(client)
-    job = Metabolism(ligands=Ligand.from_smiles("CCO"), client=client)
-    job.enzymes.clear()
-    with pytest.raises(ValueError, match="non-empty"):
-        job.run()
 
 
 def test_metabolism_rejects_over_cap(client: DeepOriginClient) -> None:
@@ -216,56 +177,33 @@ def test_metabolism_get_results_missing_sites_raises(
         job.get_molecules(dto)
 
 
-def test_metabolism_from_dto_enzymes_is_none(
+def test_metabolism_from_dto_restores_ligands_and_all_sites(
     client: DeepOriginClient,
 ) -> None:
-    """``from_dto`` does not restore a trim; ``get_results`` returns all sites."""
+    """``from_dto`` restores ligands; ``get_results`` returns every site row."""
     _assert_tool_available(client)
     job = Metabolism(ligands=Ligand.from_smiles("CCO"), client=client)
-    job.enzymes = ["CYP3A4"]
     job.run()
     assert job.dto is not None
 
     restored = Metabolism.from_dto(job.dto, client=client)
     assert restored.id == job.id
-    assert restored.enzymes is None
     assert restored.ligands[0].smiles == "CCO"
-    with pytest.raises(AttributeError, match="execution id"):
-        restored.enzymes = ["CYP3A4"]
+    assert not hasattr(restored, "enzymes")
 
     all_sites = restored.get_results()
-    assert set(all_sites["enzyme"]) == set(METABOLISM_ENZYMES)
+    assert set(all_sites["enzyme"]) == _MOCK_ENZYMES
 
 
-def test_metabolism_duplicate_makes_enzymes_writable(
+def test_metabolism_duplicate_clears_id(
     client: DeepOriginClient,
 ) -> None:
-    """``duplicate()`` clears ``id`` and returns a mutable enzymes list."""
+    """``duplicate()`` clears ``id`` so the same ligands can be re-run."""
     _assert_tool_available(client)
     job = Metabolism(ligands=Ligand.from_smiles("CCO"), client=client)
-    job.enzymes = ["CYP3A4"]
     job.run()
 
     copy = job.duplicate()
     assert copy.id is None
-    assert isinstance(copy.enzymes, list)
-    copy.enzymes = ["CYP2D6"]
-    assert copy.enzymes == ["CYP2D6"]
-
-
-def test_metabolism_from_dto_duplicate_fills_enzymes(
-    client: DeepOriginClient,
-) -> None:
-    """``duplicate()`` of a rehydrated job fills the nine CYP names."""
-    _assert_tool_available(client)
-    job = Metabolism(ligands=Ligand.from_smiles("CCO"), client=client)
-    job.run()
-    assert job.dto is not None
-
-    restored = Metabolism.from_dto(job.dto, client=client)
-    assert restored.enzymes is None
-    copy = restored.duplicate()
-    assert copy.id is None
-    assert copy.enzymes == list(METABOLISM_ENZYMES)
-    copy.enzymes.remove("CYP1A2")
-    assert "CYP1A2" not in copy.enzymes
+    assert [lig.smiles for lig in copy.ligands] == ["CCO"]
+    assert not hasattr(copy, "enzymes")

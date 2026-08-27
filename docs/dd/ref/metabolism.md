@@ -1,9 +1,10 @@
 # `deeporigin.drug_discovery.metabolism`
 
 `Metabolism` drives platform tool `deeporigin.metabolism`. It scores ligands
-for sites of metabolism on nine cytochrome P450 (CYP) isoforms.
-``run()`` blocks and returns a table of sites. ``get_molecules()`` returns
-molecule-level reliability tiers. There is no quote and no ``start()``.
+for sites of metabolism on cytochrome P450 (CYP) isoforms.
+``run()`` blocks and returns a table of sites (every enzyme the tool scored).
+``get_molecules()`` returns molecule-level reliability tiers. There is no
+quote and no ``start()``.
 
 ::: src.drug_discovery.metabolism
     options:

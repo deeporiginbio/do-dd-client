@@ -10,10 +10,9 @@ from deeporigin.drug_discovery.metabolism import (
     _job_output_rows,
     _ligands_from_inputs,
     _normalize_ligands,
-    _validate_metabolism_enzymes,
 )
 from deeporigin.drug_discovery.structures.ligand import Ligand, LigandSet
-from deeporigin.utils.constants import METABOLISM_ENZYMES, METABOLISM_LIGAND_CAP
+from deeporigin.utils.constants import METABOLISM_LIGAND_CAP
 
 
 def test_normalize_ligands_accepts_ligand_list_and_set() -> None:
@@ -44,35 +43,15 @@ def test_ensure_ligand_cap_rejects_over_250() -> None:
     _ensure_ligand_cap([Ligand.from_smiles("CCO")])
 
 
-def test_validate_metabolism_enzymes_rejects_empty_unknown_and_duplicates() -> None:
-    """Draft selections must be a non-empty unique subset of the nine CYP names."""
-    allowed = frozenset(METABOLISM_ENZYMES)
-    assert _validate_metabolism_enzymes(["CYP3A4"], allowed=allowed) == ["CYP3A4"]
-    with pytest.raises(ValueError, match="non-empty"):
-        _validate_metabolism_enzymes([], allowed=allowed)
-    with pytest.raises(ValueError, match="duplicates"):
-        _validate_metabolism_enzymes(["CYP3A4", "CYP3A4"], allowed=allowed)
-    with pytest.raises(ValueError, match="Unknown"):
-        _validate_metabolism_enzymes(["CYP3A5"], allowed=allowed)
-
-
-def test_ensure_enzymes_for_run_preserves_frozen_tuple() -> None:
-    """A re-run on an already-executed instance keeps ``enzymes`` a tuple.
-
-    ``_ensure_enzymes_for_run`` must not leave a mutable list on
-    ``self._enzymes`` if it runs again on an instance whose execution id is
-    already set (``enzymes`` frozen to a tuple) — that would break the
-    tuple/list invariant if ``_create_execution`` then raised before
-    ``update_from_dto`` re-froze it.
-    """
+def test_metabolism_has_no_enzymes_attribute() -> None:
+    """Enzyme selection is not part of the Metabolism API."""
     job = Metabolism(ligands=Ligand.from_smiles("CCO"))
-    job._enzymes = tuple(METABOLISM_ENZYMES)
-    job._id = "existing-execution-id"
-
-    job._ensure_enzymes_for_run()
-
-    assert isinstance(job._enzymes, tuple)
-    assert job._enzymes == METABOLISM_ENZYMES
+    assert not hasattr(job, "enzymes")
+    with pytest.raises(TypeError):
+        Metabolism(  # ty:ignore[unexpected-keyword]
+            ligands=Ligand.from_smiles("CCO"),
+            enzymes=["CYP3A4"],
+        )
 
 
 def test_job_output_rows_reads_sites_and_molecules() -> None:

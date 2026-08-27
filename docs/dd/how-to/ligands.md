@@ -577,16 +577,14 @@ endpoints use the model's native units.
 
 [Site of metabolism :octicons-link-external-16:](https://en.wikipedia.org/wiki/Drug_metabolism)
 is the atom a drug-metabolizing enzyme is predicted to oxidize. The
-``Metabolism`` class scores your ligands against nine
+``Metabolism`` class scores your ligands against
 [cytochrome P450 (CYP) :octicons-link-external-16:](https://en.wikipedia.org/wiki/Cytochrome_P450)
 isoforms and returns a table of sites. Unlike
 :class:`~deeporigin.drug_discovery.molprops.Molprops`, ``Metabolism.run()``
 returns a :class:`pandas.DataFrame` and does **not** mutate your ligands.
 
-Constructing ``Metabolism`` fills ``enzymes`` with those nine isoform names
-(for example ``CYP3A4``, ``CYP2D6``). Inspect that list, then trim it before
-``run()`` if you only want some isoforms in the sites table. The platform
-still scores all nine; trimming only filters the table you get back.
+The tool scores every isoform it supports. ``run()`` returns all of those
+site rows; there is no client-side enzyme list to trim.
 
 SMILES strings are scored as you wrote them. Atom indices are 0-based on that
 string, so do not canonicalize the SMILES first. If a ligand already has a
@@ -601,15 +599,12 @@ from deeporigin.drug_discovery import Metabolism, Ligand
 
 ligand = Ligand.from_smiles("CCO")
 job = Metabolism(ligands=ligand)
-job.enzymes  # nine CYP isoform names; trim if you want a subset
-job.enzymes = ["CYP3A4", "CYP2D6"]
 sites = job.run()
 ```
 
 The sites table has ``ligand_id``, ``smiles``, ``atom_index``, ``enzyme``, and
 ``confidence`` (site-of-metabolism probability). Call ``get_molecules()`` for
 one reliability tier per scored ligand (``high``, ``medium``, or ``low``).
-That table is not filtered when you trim ``enzymes``.
 
 ```{.python notest}
 mols = job.get_molecules()

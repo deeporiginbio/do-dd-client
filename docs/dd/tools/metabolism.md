@@ -20,5 +20,5 @@ job.get_molecules()      # confidence_tier rows
 ```
 
 This rehydrates the stored ligands so you can check status or fetch results
-without re-specifying anything. Reconnected runs do not remember an enzyme
-trim; ``get_results()`` returns every site row the job produced.
+without re-specifying anything. ``get_results()`` returns every site row the
+job produced.

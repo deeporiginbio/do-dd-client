@@ -226,19 +226,6 @@ ADMET_EXECUTION_TIMEOUT_SECONDS = 900.0
 Cold-start model loading in the admet-now served image can exceed the default
 600s POST timeout."""
 
-METABOLISM_ENZYMES: tuple[str, ...] = (
-    "CYP1A2",
-    "CYP2A6",
-    "CYP2B6",
-    "CYP2C8",
-    "CYP2C9",
-    "CYP2C19",
-    "CYP2D6",
-    "CYP2E1",
-    "CYP3A4",
-)
-"""DOSOM cytochrome P450 isoform names scored by ``deeporigin.metabolism``."""
-
 METABOLISM_LIGAND_CAP = 250
 """Hard maximum number of ligands on a ``Metabolism`` run."""
 

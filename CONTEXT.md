@@ -37,23 +37,23 @@ structure files); conflating with ``Molprops`` (``herg`` vs
 Served platform tool ``deeporigin.metabolism`` and CLI class ``Metabolism``.
 Constructor ``ligands=`` accepts a ``Ligand``, a list of ligands, or a
 ``LigandSet``. A blocking ``run()`` scores Caller SMILES and returns a
-:class:`pandas.DataFrame` of Metabolism site rows. ``get_molecules()`` returns
-molecule-level ``confidence_tier`` rows. Ligands are not mutated. Payload
-sends ``id`` only when ``Ligand.id`` is already set. A new run copies the nine
-DOSOM enzymes onto ``enzymes``; the caller may trim that list before ``run()``.
+:class:`pandas.DataFrame` of Metabolism site rows for every enzyme the tool
+scored. ``get_molecules()`` returns molecule-level ``confidence_tier`` rows.
+Ligands are not mutated. Payload sends ``id`` only when ``Ligand.id`` is
+already set.
 _Avoid_: ``Admet`` CYP substrate/inhibitor endpoints; the April 24-enzyme PRD
-panel; ``self_test``; constructor ``enzymes=`` or ``properties=``; sending a
-synthetic ``id`` (Admet's ``str(idx)`` fallback); ``start()`` / ``watch()``;
-``run(quote=True)`` (Metabolism has no quote path)
+panel; ``self_test``; ``METABOLISM_ENZYMES``; ``job.enzymes``; constructor
+``enzymes=`` or ``properties=``; sending a synthetic ``id`` (Admet's
+``str(idx)`` fallback); ``start()`` / ``watch()``; ``run(quote=True)``
+(Metabolism has no quote path)
 
 **Metabolism enzyme**:
-One of the nine DOSOM CYP isoform names on a ``Metabolism`` instance
-(CYP1A2, CYP2A6, CYP2B6, CYP2C8, CYP2C9, CYP2C19, CYP2D6, CYP2E1, CYP3A4).
-Baked in the client (the tool definition has no enzyme enum or input). Trim
-filters site rows in ``get_results()``; the tool still scores all nine.
-``from_dto`` does not restore a trim (it was never a tool input).
-_Avoid_: ``properties``; Admet endpoints; fetching the list from
-``tools.get``; constructor ``enzymes=``; treating a trim as a tool subset
+The ``enzyme`` column on a Metabolism site row. The tool scores every
+cytochrome P450 isoform it supports; the client does not select, list, or
+filter isoforms. Names come from the tool output, not a client constant.
+_Avoid_: ``METABOLISM_ENZYMES``; ``job.enzymes``; constructor ``enzymes=``;
+trimming site rows in the client; ``properties``; Admet CYP endpoints;
+fetching an enzyme enum from ``tools.get``
 
 **Metabolism ligand cap**:
 Hard maximum of 250 ligands on a ``Metabolism`` run. The client raises

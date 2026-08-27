@@ -21,9 +21,19 @@ import uuid
 
 from fastapi import APIRouter, HTTPException, Request
 
-from deeporigin.utils.constants import METABOLISM_ENZYMES
-
 from ..constants import MOCK_BULK_DOCKING_EXECUTION_ID
+
+_MOCK_METABOLISM_ENZYMES: tuple[str, ...] = (
+    "CYP1A2",
+    "CYP2A6",
+    "CYP2B6",
+    "CYP2C8",
+    "CYP2C9",
+    "CYP2C19",
+    "CYP2D6",
+    "CYP2E1",
+    "CYP3A4",
+)
 
 RBFE_TEMPLATE_EXECUTION_ID = "a5484958-059f-4b1b-ba2c-664adf23e8e8"
 RBFE_NOHUP_FIXTURE_PATH = (
@@ -596,7 +606,7 @@ def _synthesize_metabolism_outputs(
 
     seed = smiles or (ligand_id or "")
     sites: list[dict[str, Any]] = []
-    for enzyme in METABOLISM_ENZYMES:
+    for enzyme in _MOCK_METABOLISM_ENZYMES:
         for rank in range(3):
             conf = round(
                 0.95 - 0.2 * rank + 0.04 * _stable_unit_float(seed, f"{enzyme}:{rank}"),
