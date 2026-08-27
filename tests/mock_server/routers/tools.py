@@ -21,6 +21,8 @@ import uuid
 
 from fastapi import APIRouter, HTTPException, Request
 
+from deeporigin.utils.constants import METABOLISM_ENZYMES
+
 from ..constants import MOCK_BULK_DOCKING_EXECUTION_ID
 
 RBFE_TEMPLATE_EXECUTION_ID = "a5484958-059f-4b1b-ba2c-664adf23e8e8"
@@ -581,6 +583,43 @@ def _synthesize_admet_prediction_row(
         else:
             row[prop] = round(_stable_unit_float(seed, prop), 6)
     return row
+
+
+def _synthesize_metabolism_outputs(
+    *, smiles: str, ligand_id: str | None
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    """Build synthetic metabolism ``sites`` and ``molecules`` for one ligand.
+
+    Emits top-3 atom rows per DOSOM CYP isoform (27 site rows) and one
+    molecule row with ``confidence_tier``.
+    """
+
+    seed = smiles or (ligand_id or "")
+    sites: list[dict[str, Any]] = []
+    for enzyme in METABOLISM_ENZYMES:
+        for rank in range(3):
+            conf = round(
+                0.95 - 0.2 * rank + 0.04 * _stable_unit_float(seed, f"{enzyme}:{rank}"),
+                6,
+            )
+            sites.append(
+                {
+                    "ligand_id": ligand_id,
+                    "smiles": smiles,
+                    "atom_index": rank,
+                    "enzyme": enzyme,
+                    "confidence": conf,
+                }
+            )
+    tier_idx = int(_stable_unit_float(seed, "tier") * 3) % 3
+    molecules = [
+        {
+            "ligand_id": ligand_id,
+            "smiles": smiles,
+            "confidence_tier": ("high", "medium", "low")[tier_idx],
+        }
+    ]
+    return sites, molecules
 
 
 def create_tools_router(
@@ -1184,6 +1223,43 @@ def create_tools_router(
                     ],
                 }
             ],
+        }
+        return execution
+
+    def _build_metabolism_execution(
+        *, org_key: str, tool_key: str, tool_version: str, body: dict[str, Any]
+    ) -> dict[str, Any]:
+        """Build a synchronous ``deeporigin.metabolism`` execution DTO."""
+
+        execution = _create_blocking_run_dto(
+            org_key=org_key,
+            tool_key=tool_key,
+            tool_version=tool_version,
+            body=body,
+        )
+
+        inputs = body.get("inputs", {}) or {}
+        ligands_in = inputs.get("ligands") or []
+        sites: list[dict[str, Any]] = []
+        molecules: list[dict[str, Any]] = []
+        for lig in ligands_in:
+            if not isinstance(lig, dict):
+                continue
+            smiles = str(lig.get("smiles") or "")
+            raw_id = lig.get("id")
+            ligand_id = str(raw_id) if raw_id is not None else None
+            lig_sites, lig_mols = _synthesize_metabolism_outputs(
+                smiles=smiles,
+                ligand_id=ligand_id,
+            )
+            sites.extend(lig_sites)
+            molecules.extend(lig_mols)
+
+        execution["jobOutputs"] = {"sites": sites, "molecules": molecules}
+        execution["quotationResult"] = {
+            "anyFailed": False,
+            "failedQuotations": [],
+            "successfulQuotations": [],
         }
         return execution
 
@@ -1846,6 +1922,23 @@ def create_tools_router(
                     }
                 },
             }
+        if tool_key == "deeporigin.metabolism":
+            return {
+                "key": tool_key,
+                "name": "deeporigin-metabolism",
+                "version": tool_version,
+                "enabled": enabled,
+                "toolManifestVersion": "6",
+                "description": "Mock metabolism tool definition",
+                "inputs": {
+                    "properties": {
+                        "ligands": {
+                            "type": "array",
+                            "minItems": 1,
+                        }
+                    }
+                },
+            }
         return {
             "key": tool_key,
             "name": f"Tool {tool_key}",
@@ -2303,6 +2396,15 @@ def create_tools_router(
                 execution["startedAt"] = None
                 execution["completedAt"] = None
                 execution["progressReport"] = None
+            executions[execution["executionId"]] = execution
+            return _normalize_execution(execution)
+        if tool_key == "deeporigin.metabolism":
+            execution = _build_metabolism_execution(
+                org_key=org_key,
+                tool_key=tool_key,
+                tool_version=tool_version,
+                body=body,
+            )
             executions[execution["executionId"]] = execution
             return _normalize_execution(execution)
         if tool_key == "deeporigin.mol-props-combined":

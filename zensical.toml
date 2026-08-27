@@ -35,6 +35,7 @@ nav = [
       {"Docking" = "dd/tools/docking.md"},
       {"SystemPrep" = "dd/tools/systemprep.md"},
       {"Molprops" = "dd/tools/molprops.md"},
+      {"Metabolism" = "dd/tools/metabolism.md"},
       {"Enumerator" = "dd/tools/enumerator.md"},
       {"ABFE" = "dd/tools/abfe.md"},
       {"RBFE" = "dd/tools/rbfe.md"},
@@ -46,6 +47,7 @@ nav = [
       {"Docking Many Ligands" = "notebooks/html/docking-many-ligands.html"},
       {"Interactive Docking Box" = "notebooks/html/interactive-docking-box.html"},
       {"Molprops" = "notebooks/html/molprops.html"},
+      {"Metabolism" = "notebooks/html/metabolism.html"},
       {"Projects" = "notebooks/html/projects.html"},
     ]},
   ]},
@@ -70,6 +72,7 @@ nav = [
       {"ABFE" = "dd/ref/abfe.md"},
       {"RBFE" = "dd/ref/rbfe.md"},
       {"Patent" = "dd/ref/patent.md"},
+      {"Metabolism" = "dd/ref/metabolism.md"},
     ]},
     {"Results" = [
       {"PreparedSystem" = "dd/ref/prepared_system.md"},

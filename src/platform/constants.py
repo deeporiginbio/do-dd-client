@@ -108,7 +108,7 @@ TOOL_KEYS_AND_VERSIONS: dict[str, dict[str, str]] = {
     },
     "pocket_finder": {
         "tool_key": "deeporigin.pocket-finder",
-        "tool_version": "1",
+        "tool_version": "latest",
     },
     "mol_props": {
         "tool_key": "deeporigin.mol-props-combined",
@@ -148,6 +148,10 @@ TOOL_KEYS_AND_VERSIONS: dict[str, dict[str, str]] = {
     },
     "admet": {
         "tool_key": "deeporigin.admet-properties",
+        "tool_version": "latest",
+    },
+    "metabolism": {
+        "tool_key": "deeporigin.metabolism",
         "tool_version": "latest",
     },
     "import_dataset": {
