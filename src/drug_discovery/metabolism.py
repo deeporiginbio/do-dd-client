@@ -99,7 +99,8 @@ def _metabolism_default_name(ligand_count: int) -> str:
     Returns:
         A string such as ``Site of Metabolism for 12 ligands``.
     """
-    return f"Site of Metabolism for {ligand_count} ligands"
+    suffix = "ligand" if ligand_count == 1 else "ligands"
+    return f"Site of Metabolism for {ligand_count} {suffix}"
 
 
 def _job_output_rows(dto: dict[str, Any], *, key: str) -> list[dict[str, Any]]:
@@ -247,12 +248,27 @@ class Metabolism(
             ligand_payloads.append(payload)
         return {"ligands": ligand_payloads}
 
-    def _make_payload(self, *, sync: bool) -> dict[str, Any]:
+    def _make_payload(
+        self,
+        *,
+        approve_amount: int | None,
+        sync: bool,
+    ) -> dict[str, Any]:
         """Build the body dict for ``client.executions.create``.
 
         Args:
+            approve_amount: Must be ``None``; Metabolism has no quote/billing
+                path (see :meth:`_start_impl`).
             sync: ``True`` for blocking :meth:`run`; ``False`` for :meth:`start`.
+
+        Raises:
+            ValueError: If ``approve_amount`` is not ``None``.
         """
+        if approve_amount is not None:
+            raise ValueError(
+                "Metabolism has no quote/approve_amount support; "
+                "call run() or start() without quote=True or approve_amount."
+            )
         payload: dict[str, Any] = {
             "inputs": self._make_inputs(),
             "outputs": {},
@@ -317,7 +333,9 @@ class Metabolism(
             ValueError: If there are 30 or more ligands.
         """
         self._ensure_run_ligand_count()
-        dto = self._create_execution(data=self._make_payload(sync=True))
+        dto = self._create_execution(
+            data=self._make_payload(approve_amount=None, sync=True)
+        )
         self.update_from_dto(dto)
 
         if not is_success_status(self.status):
@@ -340,12 +358,18 @@ class Metabolism(
         then call :meth:`get_results`.
 
         Args:
-            approve_amount: Unused (Metabolism has no quote path). Accepted for
-                mixin compatibility.
+            approve_amount: Must be ``None``; Metabolism has no quote/billing
+                path. ``start(quote=True)`` or an explicit ``approve_amount``
+                raises rather than silently running for real.
             **kwargs: Unused extra keyword arguments from the mixin.
+
+        Raises:
+            ValueError: If ``approve_amount`` is not ``None``.
         """
-        del approve_amount, kwargs
-        execution_dto = self._create_execution(data=self._make_payload(sync=False))
+        del kwargs
+        execution_dto = self._create_execution(
+            data=self._make_payload(approve_amount=approve_amount, sync=False)
+        )
         execution_id = execution_dto.get("executionId")
         if execution_id is None:
             raise ValueError("Execution response must contain 'executionId'") from None

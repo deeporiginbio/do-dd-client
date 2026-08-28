@@ -63,7 +63,7 @@ def test_metabolism_has_no_enzymes_attribute() -> None:
 
 def test_metabolism_default_name_helper() -> None:
     """Default name includes the ligand count."""
-    assert _metabolism_default_name(1) == "Site of Metabolism for 1 ligands"
+    assert _metabolism_default_name(1) == "Site of Metabolism for 1 ligand"
     assert _metabolism_default_name(12) == "Site of Metabolism for 12 ligands"
 
 
@@ -82,8 +82,31 @@ def test_metabolism_construct_accepts_custom_name() -> None:
 def test_metabolism_payload_includes_name() -> None:
     """Create payload carries the execution name."""
     job = Metabolism(ligands=Ligand.from_smiles("CCO"))
-    payload = job._make_payload(sync=True)
-    assert payload["name"] == "Site of Metabolism for 1 ligands"
+    payload = job._make_payload(approve_amount=None, sync=True)
+    assert payload["name"] == "Site of Metabolism for 1 ligand"
+
+
+def test_metabolism_make_payload_rejects_approve_amount() -> None:
+    """Metabolism has no quote/billing path; approve_amount must be None."""
+    job = Metabolism(ligands=Ligand.from_smiles("CCO"))
+    with pytest.raises(ValueError, match="no quote/approve_amount support"):
+        job._make_payload(approve_amount=0, sync=False)
+
+
+def test_metabolism_start_quote_fails_fast_instead_of_running() -> None:
+    """``start(quote=True)`` must not silently run for real."""
+    job = Metabolism(ligands=Ligand.from_smiles("CCO"))
+    with pytest.raises(ValueError, match="no quote/approve_amount support"):
+        job.start(quote=True)
+    assert job.status is None
+
+
+def test_metabolism_start_rejects_explicit_approve_amount() -> None:
+    """An explicit approve_amount also fails fast rather than running."""
+    job = Metabolism(ligands=Ligand.from_smiles("CCO"))
+    with pytest.raises(ValueError, match="no quote/approve_amount support"):
+        job.start(approve_amount=100)
+    assert job.status is None
 
 
 def test_job_output_rows_reads_sites_and_molecules() -> None:
