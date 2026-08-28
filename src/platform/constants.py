@@ -150,6 +150,10 @@ TOOL_KEYS_AND_VERSIONS: dict[str, dict[str, str]] = {
         "tool_key": "deeporigin.admet-properties",
         "tool_version": "latest",
     },
+    "metabolism": {
+        "tool_key": "deeporigin.metabolism",
+        "tool_version": "latest",
+    },
     "import_dataset": {
         "tool_key": "deeporigin.import-dataset",
         "tool_version": "latest",

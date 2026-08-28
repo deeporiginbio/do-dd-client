@@ -31,7 +31,55 @@ _Avoid_: constructor ``properties=``; ``ADMET_PROPERTY_NAMES`` /
 ``ADMET_PROPERTY_KEYS``; ``properties is None`` meaning “all” on a
 new run; calling definition-fill “hydration” (that word is ``from_dto`` /
 structure files); conflating with ``Molprops`` (``herg`` vs
-``hERG_classification``)
+``hERG_classification``); conflating with ``Metabolism`` (site of metabolism)
+
+**Metabolism**:
+Served platform tool ``deeporigin.metabolism`` and CLI class ``Metabolism``.
+Constructor ``ligands=`` accepts a ``Ligand``, a list of ligands, or a
+``LigandSet``. A blocking ``run()`` scores Caller SMILES and returns a
+:class:`pandas.DataFrame` of Metabolism site rows for every enzyme the tool
+scored. ``get_molecules()`` returns molecule-level ``confidence_tier`` rows.
+Ligands are not mutated. Payload sends ``id`` only when ``Ligand.id`` is
+already set.
+_Avoid_: ``Admet`` CYP substrate/inhibitor endpoints; the April 24-enzyme PRD
+panel; ``self_test``; ``METABOLISM_ENZYMES``; ``job.enzymes``; constructor
+``enzymes=`` or ``properties=``; sending a synthetic ``id`` (Admet's
+``str(idx)`` fallback); ``start()`` / ``watch()``; ``run(quote=True)``
+(Metabolism has no quote path)
+
+**Metabolism enzyme**:
+The ``enzyme`` column on a Metabolism site row. The tool scores every
+cytochrome P450 isoform it supports; the client does not select, list, or
+filter isoforms. Names come from the tool output, not a client constant.
+_Avoid_: ``METABOLISM_ENZYMES``; ``job.enzymes``; constructor ``enzymes=``;
+trimming site rows in the client; ``properties``; Admet CYP endpoints;
+fetching an enzyme enum from ``tools.get``
+
+**Metabolism ligand cap**:
+Hard maximum of 250 ligands on a ``Metabolism`` run. The client raises
+``ValueError`` before create.
+_Avoid_: ADMET workflow ligand threshold (routing, not a hard reject)
+
+**Metabolism site**:
+One ``sites[]`` row: optional ``ligand_id``, Caller SMILES, ``atom_index``,
+``enzyme``, and site ``confidence``. Grain of ``run()`` / ``get_results()``.
+_Avoid_: ``confidence_tier``; metabolite structure; nested per-ligand site arrays
+
+**Metabolism molecule**:
+One ``molecules[]`` row: optional ``ligand_id``, Caller SMILES, and
+``confidence_tier``. Grain of ``get_molecules()``. One row per scored SMILES.
+_Avoid_: copying ``confidence_tier`` onto a Metabolism site; a row for a skipped
+invalid ligand
+
+**Caller SMILES**:
+The ligand structure string that Metabolism scored. ``atom_index`` is only
+valid on this string. Sent as-is (not canonicalized).
+_Avoid_: rewriting to canonical SMILES; treating it as a predicted metabolite
+
+**confidence_tier**:
+Molecule-level reliability of a Metabolism score: ``high``, ``medium``, or
+``low``. Not site ``confidence``.
+_Avoid_: max or mean of site confidences; per-enzyme tier
 
 **ABFE Workflow**:
 Platform tool `deeporigin.abfe-end-to-end` that runs ordered `steps` of

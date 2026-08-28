@@ -226,6 +226,15 @@ ADMET_EXECUTION_TIMEOUT_SECONDS = 900.0
 Cold-start model loading in the admet-now served image can exceed the default
 600s POST timeout."""
 
+METABOLISM_LIGAND_CAP = 250
+"""Hard maximum number of ligands on a ``Metabolism`` run."""
+
+METABOLISM_EXECUTION_TIMEOUT_SECONDS = 900.0
+"""HTTP timeout (seconds) for ``deeporigin.metabolism`` sync runs.
+
+Cold-start loading of the DOSOM ensemble can exceed the default 600s POST
+timeout."""
+
 JOB_WATCH_BLOCK_ENV = "JOB_WATCH_BLOCK"
 """Env var for blocking :meth:`~deeporigin.drug_discovery.notebook_watch_mixin.NotebookWatchMixin.watch`.
 

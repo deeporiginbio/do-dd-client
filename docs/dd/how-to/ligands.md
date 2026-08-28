@@ -573,6 +573,54 @@ The DataFrame includes ``ligand_id``, ``smiles``, and one column per requested
 property. Classification endpoints are probabilities in ``[0, 1]``; regression
 endpoints use the model's native units.
 
+### Predicting sites of metabolism (Metabolism)
+
+[Site of metabolism :octicons-link-external-16:](https://en.wikipedia.org/wiki/Drug_metabolism)
+is the atom a drug-metabolizing enzyme is predicted to oxidize. The
+``Metabolism`` class scores your ligands against
+[cytochrome P450 (CYP) :octicons-link-external-16:](https://en.wikipedia.org/wiki/Cytochrome_P450)
+isoforms and returns a table of sites. Unlike
+:class:`~deeporigin.drug_discovery.molprops.Molprops`, ``Metabolism.run()``
+returns a :class:`pandas.DataFrame` and does **not** mutate your ligands.
+
+The tool scores every isoform it supports. ``run()`` returns all of those
+site rows; there is no client-side enzyme list to trim.
+
+SMILES strings are scored as you wrote them. Atom indices are 0-based on that
+string, so do not canonicalize the SMILES first. If a ligand already has a
+platform id, pass that ligand and results can be stored against it. SMILES-only
+ligands (no id) also work.
+
+``run()`` blocks until the job finishes. There is no cost quote. At most 250
+ligands per run.
+
+```{.python notest}
+from deeporigin.drug_discovery import Metabolism, Ligand
+
+ligand = Ligand.from_smiles("CCO")
+job = Metabolism(ligands=ligand)
+sites = job.run()
+```
+
+The sites table has ``ligand_id``, ``smiles``, ``atom_index``, ``enzyme``, and
+``confidence`` (site-of-metabolism probability). Call ``get_molecules()`` for
+one reliability tier per scored ligand (``high``, ``medium``, or ``low``).
+
+```{.python notest}
+mols = job.get_molecules()
+```
+
+A list of ligands or a :class:`~deeporigin.drug_discovery.structures.ligand.LigandSet`
+is also valid:
+
+```{.python notest}
+from deeporigin.drug_discovery import Metabolism, LigandSet
+
+ligands = LigandSet.from_smiles(["CCO", "CC(=O)O"])
+job = Metabolism(ligands=ligands)
+sites = job.run()
+```
+
 ### Random Sampling
 
 You can randomly sample ligands from a `LigandSet` using the `random_sample` method:

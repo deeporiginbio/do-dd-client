@@ -12,6 +12,7 @@ This concerns the tool/execution wrapper classes:
 - SystemPrep
 - PocketFinder
 - ProteinPrep (``start()`` always; ``run()`` only for loops-off prepare)
+- Admet / Metabolism (sync-only ``run()``)
 
 etc
 

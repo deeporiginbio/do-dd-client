@@ -2,6 +2,10 @@
 
 Notes from past merge-ready cycles. Read before starting; append after success.
 
+## 2026-08-27 — PR #615 — metabolism tool (DDOS-7477)
+
+Copilot caught a real invariant break, a docs bug, and scope creep: `_ensure_enzymes_for_run` unconditionally rebuilt `self._enzymes` as a `list`, so a re-run on an already-executed instance (enzymes frozen to a `tuple`) would silently unfreeze it if `_create_execution` raised before `update_from_dto` re-froze it — preserve the input's tuple/list-ness through validation, same class of bug as `admet.py`'s `_ensure_properties_for_run`, which has the identical unguarded pattern and should get the same fix if touched again. Also: `constants.py` diffs in these PRs are easy to eyeball-check for drive-by edits — this PR accidentally bumped `pocket_finder`'s pinned `tool_version` from `"1"` to `"latest"` while only meaning to add the `metabolism` entry.
+
 ## 2026-08-24 — PR #611 — notebook cleanup / Pocket.show
 
 Copilot found two real gaps in the new `Pocket.show()` delegation: a `from_dto`-rehydrated parent (`Protein.from_id(..., download=False)`) has `structure=None` so `Protein.show()` → `_dump_state()` raises, and `from_residue_number()` pockets have neither `local_path` nor `remote_path` so the delegated `pocket.download()` raises — hydrate the parent and materialize coordinates with `to_file()` before delegating, threading the pocket's `_client` through both. Level-1 CI failed on dev/staging/prod because `_resolve_parent_protein` re-raised the platform `DeepOriginException` verbatim ("Invalid id format"), which never mentions the protein: wrap platform errors with parent-protein context while keeping the original detail, and note that Copilot reads *this* file and will cite stale entries as an authoritative contract, so mark superseded lines explicitly.
