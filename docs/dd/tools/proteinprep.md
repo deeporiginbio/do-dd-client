@@ -61,7 +61,10 @@ prepared = prep.run()
 `run()` returns an in-memory [`Protein`](../ref/protein.md) whose
 `remote_path` points to the prepared Protein Data Bank (PDB) file. It has no
 platform protein ID until you call `sync()` or `update()`. The original input
-protein is unchanged.
+protein is unchanged. The prepared PDB carries a
+[`REMARK  99 DO_PREPARED`](../ref/prepared_protein_stamp.md) stamp; pass that
+`Protein` into Pocket Finder or other tools without re-serializing the file so
+the stamp stays intact.
 
 Loops-off preparation may also run asynchronously:
 

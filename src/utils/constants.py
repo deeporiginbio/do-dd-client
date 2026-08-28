@@ -104,6 +104,12 @@ SYSPREP_NO_OUTPUT_PATHS_MSG = (
 )
 """Used by ``SystemPrep.run`` / ``get_results`` when output paths are missing."""
 
+PREPARED_PROTEIN_STAMP_LINE = "REMARK  99 DO_PREPARED"
+"""Canonical PDB REMARK line marking a Prepared Protein (file-borne stamp).
+
+Written by Protein Prep before UFA upload. Downstream tools skip AUTO protein
+cleanup when this token is present. CLI writers must preserve it."""
+
 PROTEIN_PREP_PDB_ID_PATTERN = r"^[A-Za-z0-9]{4}$"
 """JSON Schema pattern for Protein Prep ``pdb_id`` (loop-modelling templates)."""
 
