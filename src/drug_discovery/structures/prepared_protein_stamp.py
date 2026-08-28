@@ -65,6 +65,4 @@ def stamp_prepared_protein_pdb(path: str | Path) -> None:
     if has_prepared_protein_stamp(pdb_path):
         return
     body = pdb_path.read_bytes()
-    pdb_path.write_bytes(
-        _STAMP_BYTES + body
-    )  # NOSONAR path is a local file path supplied by the trusted caller, not external input
+    pdb_path.write_bytes(_STAMP_BYTES + body)  # NOSONAR local path, not external input
