@@ -226,8 +226,12 @@ ADMET_EXECUTION_TIMEOUT_SECONDS = 900.0
 Cold-start model loading in the admet-now served image can exceed the default
 600s POST timeout."""
 
-METABOLISM_LIGAND_CAP = 250
-"""Hard maximum number of ligands on a ``Metabolism`` run."""
+METABOLISM_WORKFLOW_LIGAND_THRESHOLD = 30
+"""Ligand count at which ``Metabolism.run()`` must use ``start()`` instead.
+
+Matches platform preflight routing: batches at or above this size run as
+workflows. ``run()`` raises for ``len(ligands) >=`` this value; use
+``start()`` then ``wait()`` / ``watch()``."""
 
 METABOLISM_EXECUTION_TIMEOUT_SECONDS = 900.0
 """HTTP timeout (seconds) for ``deeporigin.metabolism`` sync runs.

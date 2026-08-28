@@ -6,13 +6,12 @@ import pytest
 
 from deeporigin.drug_discovery.metabolism import (
     Metabolism,
-    _ensure_ligand_cap,
     _job_output_rows,
     _ligands_from_inputs,
     _normalize_ligands,
 )
 from deeporigin.drug_discovery.structures.ligand import Ligand, LigandSet
-from deeporigin.utils.constants import METABOLISM_LIGAND_CAP
+from deeporigin.utils.constants import METABOLISM_WORKFLOW_LIGAND_THRESHOLD
 
 
 def test_normalize_ligands_accepts_ligand_list_and_set() -> None:
@@ -35,12 +34,19 @@ def test_normalize_ligands_rejects_empty_ligandset() -> None:
         _normalize_ligands(LigandSet(ligands=[]))
 
 
-def test_ensure_ligand_cap_rejects_over_250() -> None:
-    """More than 250 ligands is a client-side ValueError."""
-    ligands = [Ligand.from_smiles("CCO")] * (METABOLISM_LIGAND_CAP + 1)
-    with pytest.raises(ValueError, match="at most 250"):
-        _ensure_ligand_cap(ligands)
-    _ensure_ligand_cap([Ligand.from_smiles("CCO")])
+def test_metabolism_run_rejects_ge_threshold_ligands() -> None:
+    """``run()`` rejects workflow-scale batches before create."""
+    ligands = [Ligand.from_smiles("CCO")] * METABOLISM_WORKFLOW_LIGAND_THRESHOLD
+    job = Metabolism(ligands=ligands)
+    with pytest.raises(ValueError, match="start\\(\\) then wait\\(\\) or watch\\(\\)"):
+        job.run()
+
+
+def test_metabolism_construct_accepts_large_batch() -> None:
+    """Constructor does not enforce a client-side ligand cap."""
+    ligands = [Ligand.from_smiles("CCO")] * (METABOLISM_WORKFLOW_LIGAND_THRESHOLD + 50)
+    job = Metabolism(ligands=ligands)
+    assert len(job.ligands) == METABOLISM_WORKFLOW_LIGAND_THRESHOLD + 50
 
 
 def test_metabolism_has_no_enzymes_attribute() -> None:

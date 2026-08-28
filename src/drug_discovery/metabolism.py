@@ -1,9 +1,10 @@
-"""Metabolism -- predict sites of metabolism for ligands (sync-only).
+"""Metabolism -- predict sites of metabolism for ligands.
 
 Backed by the platform tool ``deeporigin.metabolism``. One :class:`Metabolism`
 instance is configured with ligands, then executed with a blocking
-:meth:`run`, which returns a :class:`pandas.DataFrame` of Metabolism site
-rows (atom, enzyme, site confidence). :meth:`get_molecules` returns
+:meth:`run` (small batches) or asynchronous :meth:`start` (larger batches).
+:meth:`run` returns a :class:`pandas.DataFrame` of Metabolism site rows
+(atom, enzyme, site confidence). :meth:`get_molecules` returns
 molecule-level ``confidence_tier`` rows.
 
 The tool scores every cytochrome P450 isoform it supports; the client does
@@ -11,13 +12,20 @@ not select or filter enzymes. ``tool_version`` stays ``"latest"``. Ligands
 are not mutated. Payload ``id`` is sent only when
 :attr:`~deeporigin.drug_discovery.structures.ligand.Ligand.id` is already set.
 
-Usage::
+Sync usage (blocking; fewer than 30 ligands)::
 
     from deeporigin.drug_discovery import Metabolism, Ligand
 
     job = Metabolism(ligands=Ligand.from_smiles("CCO"))
     sites = job.run()
     mols = job.get_molecules()
+
+Async usage (30 or more ligands, or any size)::
+
+    job = Metabolism(ligands=ligands)
+    job.start()
+    await job.watch()  # or job.wait()
+    sites = job.get_results()
 """
 
 from __future__ import annotations
@@ -28,14 +36,18 @@ from beartype import beartype
 import pandas as pd
 
 from deeporigin.drug_discovery.execution import Execution
-from deeporigin.drug_discovery.execution_mixins import SyncExecutableMixin
+from deeporigin.drug_discovery.execution_mixins import (
+    AsyncExecutableMixin,
+    SyncExecutableMixin,
+)
+from deeporigin.drug_discovery.notebook_watch_mixin import NotebookWatchMixin
 from deeporigin.drug_discovery.structures.ligand import Ligand, LigandSet
 from deeporigin.exceptions import DeepOriginException
 from deeporigin.platform.client import DeepOriginClient
 from deeporigin.platform.constants import TOOL_KEYS_AND_VERSIONS, is_success_status
 from deeporigin.utils.constants import (
     METABOLISM_EXECUTION_TIMEOUT_SECONDS,
-    METABOLISM_LIGAND_CAP,
+    METABOLISM_WORKFLOW_LIGAND_THRESHOLD,
 )
 
 _SITE_COLUMNS: tuple[str, ...] = (
@@ -76,23 +88,6 @@ def _normalize_ligands(
     if not out:
         raise ValueError("Metabolism requires at least one ligand.")
     return out
-
-
-def _ensure_ligand_cap(ligands: list[Ligand]) -> None:
-    """Raise if *ligands* exceeds :data:`METABOLISM_LIGAND_CAP`.
-
-    Args:
-        ligands: Ligands about to be submitted.
-
-    Raises:
-        ValueError: If there are more than 250 ligands.
-    """
-
-    n = len(ligands)
-    if n > METABOLISM_LIGAND_CAP:
-        raise ValueError(
-            f"Metabolism accepts at most {METABOLISM_LIGAND_CAP} ligands (got {n})."
-        )
 
 
 def _job_output_rows(dto: dict[str, Any], *, key: str) -> list[dict[str, Any]]:
@@ -170,12 +165,22 @@ def _ligands_from_inputs(inputs: dict[str, Any]) -> list[Ligand]:
     return ligands
 
 
-class Metabolism(Execution, SyncExecutableMixin):
+class Metabolism(
+    Execution,
+    SyncExecutableMixin,
+    AsyncExecutableMixin,
+    NotebookWatchMixin,
+):
     """Predict sites of metabolism for ligands via ``deeporigin.metabolism``.
 
     The tool scores every cytochrome P450 isoform it supports. Ligands are
     **not** mutated (contrast with
     :class:`~deeporigin.drug_discovery.molprops.Molprops`).
+
+    Use :meth:`run` for fewer than
+    :data:`~deeporigin.utils.constants.METABOLISM_WORKFLOW_LIGAND_THRESHOLD`
+    ligands (blocking). For larger batches, call :meth:`start`, then
+    :meth:`wait` or :meth:`watch`, then :meth:`get_results`.
 
     Attributes:
         ligands: Ligands whose SMILES are sent to the tool.
@@ -200,12 +205,10 @@ class Metabolism(Execution, SyncExecutableMixin):
             client: Optional API client. Uses the default if not provided.
 
         Raises:
-            ValueError: If no ligands are provided, or if there are more than
-                250 ligands.
+            ValueError: If no ligands are provided.
         """
         super().__init__(client=client)
         self._ligands: list[Ligand] = _normalize_ligands(ligands)
-        _ensure_ligand_cap(self._ligands)
 
     @property
     def ligands(self) -> list[Ligand]:
@@ -225,13 +228,17 @@ class Metabolism(Execution, SyncExecutableMixin):
             ligand_payloads.append(payload)
         return {"ligands": ligand_payloads}
 
-    def _make_payload(self) -> dict[str, Any]:
-        """Build the body dict for ``client.executions.create``."""
+    def _make_payload(self, *, sync: bool) -> dict[str, Any]:
+        """Build the body dict for ``client.executions.create``.
+
+        Args:
+            sync: ``True`` for blocking :meth:`run`; ``False`` for :meth:`start`.
+        """
         return {
             "inputs": self._make_inputs(),
             "outputs": {},
             "metadata": {},
-            "sync": True,
+            "sync": sync,
         }
 
     def _create_execution(
@@ -253,12 +260,31 @@ class Metabolism(Execution, SyncExecutableMixin):
             timeout=METABOLISM_EXECUTION_TIMEOUT_SECONDS,
         )
 
+    def _ensure_run_ligand_count(self) -> None:
+        """Raise if :meth:`run` is used with a workflow-scale batch.
+
+        Raises:
+            ValueError: If there are
+                :data:`~deeporigin.utils.constants.METABOLISM_WORKFLOW_LIGAND_THRESHOLD`
+                or more ligands.
+        """
+        n = len(self._ligands)
+        if n >= METABOLISM_WORKFLOW_LIGAND_THRESHOLD:
+            raise ValueError(
+                f"run() supports fewer than "
+                f"{METABOLISM_WORKFLOW_LIGAND_THRESHOLD} ligands "
+                f"(got {n}). Use start() then wait() or watch()."
+            )
+
     @beartype
     def run(self) -> pd.DataFrame:
         """Execute metabolism synchronously and return site rows.
 
-        Blocks until the job finishes. There is no ``quote=True`` path. The
-        sites table includes every enzyme the tool scored.
+        Blocks until the job finishes. Requires fewer than
+        :data:`~deeporigin.utils.constants.METABOLISM_WORKFLOW_LIGAND_THRESHOLD`
+        ligands; use :meth:`start` for larger batches. There is no
+        ``quote=True`` path. The sites table includes every enzyme the tool
+        scored.
 
         Returns:
             A :class:`pandas.DataFrame` of Metabolism site rows.
@@ -266,10 +292,10 @@ class Metabolism(Execution, SyncExecutableMixin):
         Raises:
             DeepOriginException: If the execution did not complete successfully
                 or no site rows could be parsed.
-            ValueError: If there are more than 250 ligands.
+            ValueError: If there are 30 or more ligands.
         """
-        _ensure_ligand_cap(self._ligands)
-        dto = self._create_execution(data=self._make_payload())
+        self._ensure_run_ligand_count()
+        dto = self._create_execution(data=self._make_payload(sync=True))
         self.update_from_dto(dto)
 
         if not is_success_status(self.status):
@@ -282,6 +308,29 @@ class Metabolism(Execution, SyncExecutableMixin):
             )
 
         return self.get_results(dto)
+
+    def _start_impl(self, *, approve_amount: int | None = None, **kwargs: Any) -> None:
+        """Submit metabolism as a persisted async execution (``sync=False``).
+
+        Sets :attr:`id`, :attr:`status`, and :attr:`_dto` from the platform
+        response. Poll :meth:`sync`, block with :meth:`wait`, or use
+        :meth:`watch` in Jupyter until the execution reaches a terminal state,
+        then call :meth:`get_results`.
+
+        Args:
+            approve_amount: Unused (Metabolism has no quote path). Accepted for
+                mixin compatibility.
+            **kwargs: Unused extra keyword arguments from the mixin.
+        """
+        del approve_amount, kwargs
+        execution_dto = self._create_execution(data=self._make_payload(sync=False))
+        execution_id = execution_dto.get("executionId")
+        if execution_id is None:
+            raise ValueError("Execution response must contain 'executionId'") from None
+
+        self._dto = execution_dto
+        self._id = execution_id
+        self.status = execution_dto.get("status")
 
     def _require_rows(
         self,

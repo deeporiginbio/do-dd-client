@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import time
 from typing import TYPE_CHECKING
 
 import pandas as pd
@@ -9,8 +10,12 @@ import pytest
 
 from deeporigin.drug_discovery import Ligand, LigandSet, Metabolism
 from deeporigin.exceptions import DeepOriginException
-from deeporigin.platform.constants import TOOL_KEYS_AND_VERSIONS
-from deeporigin.utils.constants import METABOLISM_LIGAND_CAP
+from deeporigin.platform.constants import (
+    TERMINAL_STATES,
+    TOOL_KEYS_AND_VERSIONS,
+    is_success_status,
+)
+from deeporigin.utils.constants import METABOLISM_WORKFLOW_LIGAND_THRESHOLD
 from tests.conftest import check_tool_exists
 from tests.mock_server.routers.tools import _synthesize_metabolism_outputs
 
@@ -148,12 +153,71 @@ def test_metabolism_accepts_ligandset(
     assert len(job.get_molecules()) == 2
 
 
-def test_metabolism_rejects_over_cap(client: DeepOriginClient) -> None:
-    """More than 250 ligands fails before create."""
-    ligand = Ligand.from_smiles("CCO")
-    ligands = [ligand] * (METABOLISM_LIGAND_CAP + 1)
-    with pytest.raises(ValueError, match="at most 250"):
-        Metabolism(ligands=ligands, client=client)
+def test_metabolism_run_rejects_ge_threshold(
+    client: DeepOriginClient,
+) -> None:
+    """``run()`` fails for workflow-scale batches; use ``start()`` instead."""
+    _assert_tool_available(client)
+    ligands = [Ligand.from_smiles("CCO")] * METABOLISM_WORKFLOW_LIGAND_THRESHOLD
+    job = Metabolism(ligands=ligands, client=client)
+    with pytest.raises(ValueError, match="start\\(\\) then wait\\(\\) or watch\\(\\)"):
+        job.run()
+
+
+def test_metabolism_start_async_payload(
+    client: DeepOriginClient,
+) -> None:
+    """``start`` submits ``sync=False`` and stores id/status."""
+    _assert_tool_available(client)
+    job = Metabolism(ligands=Ligand.from_smiles("CCO"), client=client)
+    job.start()
+
+    assert job.id is not None
+    assert job.status is not None
+    dto = job._dto or {}
+    assert dto.get("tool", {}).get("key") == "deeporigin.metabolism"
+    assert (dto.get("userInputs") or {}).get("ligands") == [{"smiles": "CCO"}]
+
+
+def test_metabolism_start_rejects_non_initial_status(
+    client: DeepOriginClient,
+) -> None:
+    """``start`` must refuse to resubmit when an execution already exists."""
+    job = Metabolism(ligands=Ligand.from_smiles("CCO"), client=client)
+    job._id = "exec-metabolism-existing"
+    job.status = "Running"
+
+    with pytest.raises(ValueError, match="already in 'Running' state"):
+        job.start()
+
+
+def test_metabolism_start_sync_get_results(
+    client: DeepOriginClient,
+) -> None:
+    """Start asynchronously, poll until done, then load sites and molecules."""
+    _assert_tool_available(client)
+    ligands = [Ligand.from_smiles("CCO")] * METABOLISM_WORKFLOW_LIGAND_THRESHOLD
+    job = Metabolism(ligands=ligands, client=client)
+    job.start()
+    assert job.id is not None
+
+    timeout_seconds = 5.0
+    poll_interval = 0.05
+    elapsed = 0.0
+    while elapsed < timeout_seconds:
+        job.sync()
+        if job.status in TERMINAL_STATES:
+            break
+        time.sleep(poll_interval)
+        elapsed += poll_interval
+
+    assert job.status in TERMINAL_STATES
+    assert is_success_status(job.status)
+
+    sites = job.get_results()
+    assert len(sites) == _N_SITES_PER_LIGAND * METABOLISM_WORKFLOW_LIGAND_THRESHOLD
+    mols = job.get_molecules()
+    assert len(mols) == METABOLISM_WORKFLOW_LIGAND_THRESHOLD
 
 
 def test_metabolism_get_results_missing_sites_raises(

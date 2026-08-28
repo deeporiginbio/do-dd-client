@@ -21,6 +21,8 @@ import uuid
 
 from fastapi import APIRouter, HTTPException, Request
 
+from deeporigin.utils.constants import METABOLISM_WORKFLOW_LIGAND_THRESHOLD
+
 from ..constants import MOCK_BULK_DOCKING_EXECUTION_ID
 
 _MOCK_METABOLISM_ENZYMES: tuple[str, ...] = (
@@ -851,6 +853,8 @@ def create_tools_router(
                 _inject_docking_tool_execution_results(execution)
             if tool_key == "deeporigin.draco":
                 _inject_patent_tool_execution_results(execution)
+            if tool_key == "deeporigin.metabolism":
+                _inject_metabolism_tool_execution_results(execution)
             progress_reports = _load_progress_reports(tool_key)
             if progress_reports:
                 final_report = progress_reports[-1]
@@ -1236,19 +1240,10 @@ def create_tools_router(
         }
         return execution
 
-    def _build_metabolism_execution(
-        *, org_key: str, tool_key: str, tool_version: str, body: dict[str, Any]
-    ) -> dict[str, Any]:
-        """Build a synchronous ``deeporigin.metabolism`` execution DTO."""
-
-        execution = _create_blocking_run_dto(
-            org_key=org_key,
-            tool_key=tool_key,
-            tool_version=tool_version,
-            body=body,
-        )
-
-        inputs = body.get("inputs", {}) or {}
+    def _metabolism_job_outputs_from_inputs(
+        inputs: dict[str, Any],
+    ) -> dict[str, list[dict[str, Any]]]:
+        """Synthesize metabolism ``sites`` / ``molecules`` from stored inputs."""
         ligands_in = inputs.get("ligands") or []
         sites: list[dict[str, Any]] = []
         molecules: list[dict[str, Any]] = []
@@ -1264,13 +1259,77 @@ def create_tools_router(
             )
             sites.extend(lig_sites)
             molecules.extend(lig_mols)
+        return {"sites": sites, "molecules": molecules}
 
-        execution["jobOutputs"] = {"sites": sites, "molecules": molecules}
+    def _inject_metabolism_tool_execution_results(
+        execution: dict[str, Any],
+    ) -> None:
+        """Fill ``jobOutputs`` for a completed async metabolism execution."""
+        if execution.get("jobOutputs"):
+            return
+        user_inputs = execution.get("userInputs") or {}
+        if not isinstance(user_inputs, dict):
+            user_inputs = {}
+        execution["jobOutputs"] = _metabolism_job_outputs_from_inputs(user_inputs)
+
+    def _build_metabolism_execution(
+        *, org_key: str, tool_key: str, tool_version: str, body: dict[str, Any]
+    ) -> dict[str, Any]:
+        """Build a synchronous ``deeporigin.metabolism`` execution DTO."""
+
+        execution = _create_blocking_run_dto(
+            org_key=org_key,
+            tool_key=tool_key,
+            tool_version=tool_version,
+            body=body,
+        )
+
+        inputs = body.get("inputs", {}) or {}
+        execution["jobOutputs"] = _metabolism_job_outputs_from_inputs(inputs)
         execution["quotationResult"] = {
             "anyFailed": False,
             "failedQuotations": [],
             "successfulQuotations": [],
         }
+        return execution
+
+    def _build_metabolism_async_execution(
+        *, org_key: str, tool_key: str, tool_version: str, body: dict[str, Any]
+    ) -> dict[str, Any]:
+        """Build a Running async ``deeporigin.metabolism`` execution DTO."""
+        now = datetime.now(timezone.utc)
+        ts = now.strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z"
+        eid = str(uuid.uuid4())
+        approve_amount = body.get("approveAmount", 0) or 0
+        execution: dict[str, Any] = {
+            "executionId": eid,
+            "createdAt": ts,
+            "updatedAt": ts,
+            "resourceId": _generate_resource_id(),
+            "status": "Running",
+            "userInputs": body.get("inputs", {}),
+            "userOutputs": body.get("outputs", {}),
+            "metadata": body.get("metadata", {}),
+            "approveAmount": approve_amount,
+            "jobOutputs": None,
+            "resourcesUsed": None,
+            "resourcesRequested": None,
+            "progressReport": json.dumps({"complete": 0}),
+            "statusReason": None,
+            "name": body.get("name"),
+            "orgKey": org_key,
+            "tool": {"key": tool_key, "version": tool_version},
+            "type": "ToolExecution",
+            "startedAt": ts,
+            "completedAt": None,
+            "quotationResult": {
+                "anyFailed": False,
+                "failedQuotations": [],
+                "successfulQuotations": [],
+            },
+        }
+        if body.get("projectId") is not None:
+            execution["projectId"] = body["projectId"]
         return execution
 
     def _build_combined_molprops_execution(
@@ -2409,13 +2468,29 @@ def create_tools_router(
             executions[execution["executionId"]] = execution
             return _normalize_execution(execution)
         if tool_key == "deeporigin.metabolism":
-            execution = _build_metabolism_execution(
+            n_ligands = len((body.get("inputs") or {}).get("ligands") or [])
+            # Sync small batches complete in one POST; async or large batches poll.
+            if (
+                body.get("sync") is True
+                and n_ligands < METABOLISM_WORKFLOW_LIGAND_THRESHOLD
+            ):
+                execution = _build_metabolism_execution(
+                    org_key=org_key,
+                    tool_key=tool_key,
+                    tool_version=tool_version,
+                    body=body,
+                )
+                executions[execution["executionId"]] = execution
+                return _normalize_execution(execution)
+            execution = _build_metabolism_async_execution(
                 org_key=org_key,
                 tool_key=tool_key,
                 tool_version=tool_version,
                 body=body,
             )
-            executions[execution["executionId"]] = execution
+            eid = execution["executionId"]
+            executions[eid] = execution
+            execution_start_times[eid] = datetime.now(timezone.utc)
             return _normalize_execution(execution)
         if tool_key == "deeporigin.mol-props-combined":
             execution = _build_combined_molprops_execution(

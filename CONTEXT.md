@@ -34,18 +34,19 @@ structure files); conflating with ``Molprops`` (``herg`` vs
 ``hERG_classification``); conflating with ``Metabolism`` (site of metabolism)
 
 **Metabolism**:
-Served platform tool ``deeporigin.metabolism`` and CLI class ``Metabolism``.
+Dual-mode platform tool ``deeporigin.metabolism`` and CLI class ``Metabolism``.
 Constructor ``ligands=`` accepts a ``Ligand``, a list of ligands, or a
-``LigandSet``. A blocking ``run()`` scores Caller SMILES and returns a
-:class:`pandas.DataFrame` of Metabolism site rows for every enzyme the tool
-scored. ``get_molecules()`` returns molecule-level ``confidence_tier`` rows.
+``LigandSet``. A blocking ``run()`` (fewer than the Metabolism workflow ligand
+threshold) scores Caller SMILES and returns a :class:`pandas.DataFrame` of
+Metabolism site rows for every enzyme the tool scored. Larger batches use
+``start()`` then ``wait()`` / ``watch()``, then ``get_results()``.
+``get_molecules()`` returns molecule-level ``confidence_tier`` rows.
 Ligands are not mutated. Payload sends ``id`` only when ``Ligand.id`` is
-already set.
+already set. There is no client-side ligand cap and no quote path.
 _Avoid_: ``Admet`` CYP substrate/inhibitor endpoints; the April 24-enzyme PRD
 panel; ``self_test``; ``METABOLISM_ENZYMES``; ``job.enzymes``; constructor
 ``enzymes=`` or ``properties=``; sending a synthetic ``id`` (Admet's
-``str(idx)`` fallback); ``start()`` / ``watch()``; ``run(quote=True)``
-(Metabolism has no quote path)
+``str(idx)`` fallback); ``run(quote=True)``; ``METABOLISM_LIGAND_CAP``
 
 **Metabolism enzyme**:
 The ``enzyme`` column on a Metabolism site row. The tool scores every
@@ -55,10 +56,12 @@ _Avoid_: ``METABOLISM_ENZYMES``; ``job.enzymes``; constructor ``enzymes=``;
 trimming site rows in the client; ``properties``; Admet CYP endpoints;
 fetching an enzyme enum from ``tools.get``
 
-**Metabolism ligand cap**:
-Hard maximum of 250 ligands on a ``Metabolism`` run. The client raises
-``ValueError`` before create.
-_Avoid_: ADMET workflow ligand threshold (routing, not a hard reject)
+**Metabolism workflow ligand threshold**:
+Client and platform routing boundary of 30 ligands. ``Metabolism.run()``
+raises when ``len(ligands) >= 30``; callers use ``start()`` then ``wait()`` /
+``watch()``. Platform preflight routes the same threshold to workflow vs
+direct. Constant: ``METABOLISM_WORKFLOW_LIGAND_THRESHOLD``.
+_Avoid_: a client hard cap; ADMET workflow ligand threshold (different tool)
 
 **Metabolism site**:
 One ``sites[]`` row: optional ``ligand_id``, Caller SMILES, ``atom_index``,
