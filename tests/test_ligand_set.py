@@ -153,6 +153,17 @@ def test_ligand_set_filter_unsupported():
     assert len(original) == 2
 
 
+def test_ligand_set_remove_unsupported():
+    """remove_unsupported mutates the set and drops unsupported ligands."""
+    ok = Ligand.from_smiles("CCO")
+    bad = Ligand.from_smiles("B")
+    ligands = LigandSet(ligands=[ok, bad])
+    result = ligands.remove_unsupported()
+    assert result is ligands
+    assert len(ligands) == 1
+    assert ligands.ligands[0].smiles == ok.smiles
+
+
 def test_ligand_set_from_csv():
     """Test that we can create Ligands from a CSV file using the from_csv classmethod"""
 
@@ -1004,8 +1015,20 @@ def test_ligand_set_sync_empty():
 def test_ligand_set_sync_rejects_unsupported_atoms():
     """sync() raises before platform calls if any ligand to sync has unsupported atoms."""
     ls = LigandSet(ligands=[Ligand.from_smiles("CCO"), Ligand.from_smiles("B")])
-    with pytest.raises(DeepOriginException, match="Cannot sync ligand set"):
+    with pytest.raises(
+        DeepOriginException,
+        match=r"Cannot sync ligand set:.*remove_unsupported\(\)",
+    ):
         ls.sync()
+
+
+def test_ligand_set_sync_after_remove_unsupported():
+    """sync() succeeds after remove_unsupported drops ligands with bad atoms."""
+    ls = LigandSet(ligands=[Ligand.from_smiles("CCO"), Ligand.from_smiles("B")])
+    ls.remove_unsupported()
+    ls.sync()
+    assert len(ls) == 1
+    assert ls.ligands[0].id is not None
 
 
 def test_ligand_set_sync_duplicate_smiles_lv1():

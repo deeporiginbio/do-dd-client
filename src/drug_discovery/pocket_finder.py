@@ -26,6 +26,7 @@ from deeporigin.drug_discovery.execution_mixins import (
     SyncExecutableMixin,
 )
 from deeporigin.drug_discovery.notebook_watch_mixin import NotebookWatchMixin
+from deeporigin.drug_discovery.protein_prep import _protein_tool_input
 from deeporigin.drug_discovery.structures.pocket import Pocket
 from deeporigin.drug_discovery.structures.protein import Protein
 from deeporigin.exceptions import DeepOriginException
@@ -135,10 +136,7 @@ class PocketFinder(
         """
         payload: dict[str, Any] = {
             "inputs": {
-                "protein": {
-                    "file_path": self._protein.remote_path,
-                    "id": self._protein.id,
-                },
+                "protein": _protein_tool_input(self._protein),
                 "pocket_count": self._pocket_count,
                 "pocket_min_size": self._pocket_min_size,
                 "sync": sync,
@@ -155,10 +153,12 @@ class PocketFinder(
         """Return ``protein`` input dict, ``pocket_count``, and ``pocket_min_size``."""
         protein_input = inputs.get("protein") or {}
         protein_id = protein_input.get("id")
-        if protein_id is None:
+        file_path = protein_input.get("file_path")
+        if protein_id is None and (not file_path or not str(file_path).strip()):
             raise ValueError(
-                "Missing 'protein.id' in execution userInputs; "
-                "this execution may have been created with an older input schema."
+                "Missing 'protein.id' or 'protein.file_path' in execution "
+                "userInputs; this execution may have been created with an "
+                "older input schema."
             )
         raw_count = inputs.get("pocket_count")
         raw_min_size = inputs.get("pocket_min_size")
@@ -186,10 +186,12 @@ class PocketFinder(
         """Construct a ``PocketFinder`` from a tools execution DTO.
 
         Rehydrates ``protein``, ``pocket_count``, and ``pocket_min_size`` from
-        ``userInputs`` (falling back to ``inputs`` for older payloads). The
-        protein is loaded with ``Protein.from_id(..., download=False)`` and
-        ``remote_path_override`` from the stored input, matching
-        :meth:`_make_payload` / :meth:`Docking.from_dto`.
+        ``userInputs`` (falling back to ``inputs`` for older payloads). When
+        ``protein.id`` is present, the protein is loaded with
+        ``Protein.from_id(..., download=False)`` and ``remote_path_override``
+        from the stored input. When only ``file_path`` is present (e.g. an
+        unregistered Prepared Protein), builds an in-memory Protein with that
+        remote path.
 
         Args:
             dto: Execution payload (same shape as ``client.executions.get``).
@@ -199,18 +201,29 @@ class PocketFinder(
             A ``PocketFinder`` with ``id``, pricing fields, and domain inputs set.
 
         Raises:
-            ValueError: If ``protein.id`` is missing from stored inputs.
+            ValueError: If neither ``protein.id`` nor ``protein.file_path`` is
+                present in stored inputs.
         """
         instance = super().from_dto(dto, client=client)
         inputs: dict[str, Any] = dto.get("userInputs") or dto.get("inputs") or {}
         protein_input, pocket_count, pocket_min_size = cls._parse_inputs_dict(inputs)
 
-        instance._protein = Protein.from_id(
-            str(protein_input["id"]),
-            client=client,
-            download=False,
-            remote_path_override=protein_input.get("file_path"),
-        )
+        protein_id = protein_input.get("id")
+        file_path = protein_input.get("file_path")
+        if protein_id is not None:
+            instance._protein = Protein.from_id(
+                str(protein_id),
+                client=client,
+                download=False,
+                remote_path_override=file_path,
+            )
+        else:
+            name = str(file_path).rsplit("/", 1)[-1] if file_path else "protein"
+            instance._protein = Protein(
+                name=name,
+                structure=None,
+                remote_path=str(file_path) if file_path else None,
+            )
         instance._pocket_count = pocket_count
         instance._pocket_min_size = pocket_min_size
 

@@ -2079,6 +2079,22 @@ class LigandSet:
             ligands=[lg for lg in self.ligands if not lg.has_unsupported_atoms()]
         )
 
+    def remove_unsupported(self) -> Self:
+        """
+        Remove ligands with unsupported atom types from this set in place.
+
+        Drops ligands whose molecules contain atom types outside
+        :data:`~deeporigin.drug_discovery.constants.SUPPORTED_ATOM_SYMBOLS`
+        (see :meth:`Ligand.has_unsupported_atoms`). Prefer this before
+        :meth:`sync` when a CSV or SDF includes metals or other atoms that
+        docking workflows do not support.
+
+        Returns:
+            LigandSet: This set after unsupported ligands are removed, for chaining.
+        """
+        self.ligands = [lg for lg in self.ligands if not lg.has_unsupported_atoms()]
+        return self
+
     def __str__(self) -> str:
         """Return string representation of the LigandSet.
 
@@ -2876,6 +2892,7 @@ class LigandSet:
         Raises:
             DeepOriginException: If any ligand to be synced contains atom types
                 outside :data:`~deeporigin.drug_discovery.constants.SUPPORTED_ATOM_SYMBOLS`.
+                Call :meth:`remove_unsupported` to drop those ligands first.
             ValueError: If any ligand to be synced has no ``canonical_smiles``.
         """
         if not self.ligands:
@@ -2897,7 +2914,8 @@ class LigandSet:
             raise DeepOriginException(
                 f"Cannot sync ligand set: {len(unsupported)} ligand(s) contain "
                 f"unsupported atom type(s) for docking workflows: {', '.join(symbols)}. "
-                "Fix or remove those atoms before calling sync()."
+                "Call remove_unsupported() to drop those ligands, or fix the atoms, "
+                "before calling sync()."
             )
 
         invalid = [lig for lig in ligands_to_sync if lig.canonical_smiles is None]
