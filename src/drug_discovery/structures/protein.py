@@ -1658,8 +1658,8 @@ class Protein(Entity):
         biotite rewrite.
 
         Args:
-            lazy: If True, skip syncing when the protein already has an ID or a
-                ``remote_path``. Defaults to False.
+            lazy: If True, skip syncing when the protein already has an ID.
+                Defaults to False.
             client: DeepOriginClient instance. If None, uses DeepOriginClient().
             remote_path: Custom remote path to upload to. Overrides the
                 default hash-based path.
@@ -1670,7 +1670,7 @@ class Protein(Entity):
             and sets :attr:`project_id` when a project scope applies or the platform
             row includes ``project_id``.
         """
-        if lazy and (self.id is not None or self.remote_path is not None):
+        if lazy and self.id is not None:
             if client is None:
                 client = DeepOriginClient()
             proj_id = self.resolved_project_id(client=client)

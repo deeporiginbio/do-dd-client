@@ -84,16 +84,27 @@ def test_protein_to_pdb_does_not_add_stamp_when_source_unstamped(
 
 
 def test_protein_sync_lazy_skips_upload_when_remote_path_set() -> None:
-    """sync(lazy=True) is a no-op when remote_path is already populated."""
+    """sync(lazy=True) still resolves an id, but skips upload, when remote_path
+    is already populated and no id is set yet."""
+    from deeporigin.platform.client import DeepOriginClient
+
     protein = Protein(
         name="prepared",
         structure=None,
         remote_path="entities/proteins/prepared.pdb",
     )
+    client = MagicMock(spec=DeepOriginClient)
+    client.project_id = None
+    client.entities = MagicMock()
+    client.entities.search_proteins.return_value = {
+        "data": [{"id": "prot-existing", "project_id": None}]
+    }
+
     with patch.object(protein, "upload") as upload:
-        protein.sync(lazy=True)
+        protein.sync(lazy=True, client=client)
+
     upload.assert_not_called()
-    assert protein.id is None
+    assert protein.id == "prot-existing"
     assert protein.remote_path == "entities/proteins/prepared.pdb"
 
 
