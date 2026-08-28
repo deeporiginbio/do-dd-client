@@ -90,6 +90,18 @@ def _normalize_ligands(
     return out
 
 
+def _metabolism_default_name(ligand_count: int) -> str:
+    """Build a short human-readable label for a Metabolism execution.
+
+    Args:
+        ligand_count: Number of ligands in the run.
+
+    Returns:
+        A string such as ``Site of Metabolism for 12 ligands``.
+    """
+    return f"Site of Metabolism for {ligand_count} ligands"
+
+
 def _job_output_rows(dto: dict[str, Any], *, key: str) -> list[dict[str, Any]]:
     """Return dict rows from ``jobOutputs[key]``.
 
@@ -184,6 +196,7 @@ class Metabolism(
 
     Attributes:
         ligands: Ligands whose SMILES are sent to the tool.
+        name: Execution label, set from the ligand count unless overridden.
     """
 
     tool_key: str = TOOL_KEYS_AND_VERSIONS["metabolism"]["tool_key"]
@@ -195,6 +208,7 @@ class Metabolism(
         *,
         ligands: Ligand | list[Ligand] | LigandSet,
         client: DeepOriginClient | None = None,
+        name: str | None = None,
     ) -> None:
         """Configure a site-of-metabolism run for one or more ligands.
 
@@ -203,12 +217,17 @@ class Metabolism(
         Args:
             ligands: A ligand, a list of ligands, or a :class:`LigandSet`.
             client: Optional API client. Uses the default if not provided.
+            name: Optional execution label. When omitted, set from the ligand
+                count (e.g. ``Site of Metabolism for 5 ligands``).
 
         Raises:
             ValueError: If no ligands are provided.
         """
         super().__init__(client=client)
         self._ligands: list[Ligand] = _normalize_ligands(ligands)
+        self.name = (
+            name if name is not None else _metabolism_default_name(len(self._ligands))
+        )
 
     @property
     def ligands(self) -> list[Ligand]:
@@ -234,12 +253,15 @@ class Metabolism(
         Args:
             sync: ``True`` for blocking :meth:`run`; ``False`` for :meth:`start`.
         """
-        return {
+        payload: dict[str, Any] = {
             "inputs": self._make_inputs(),
             "outputs": {},
             "metadata": {},
             "sync": sync,
         }
+        if self.name is not None:
+            payload["name"] = self.name
+        return payload
 
     def _create_execution(
         self,

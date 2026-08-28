@@ -8,6 +8,7 @@ from deeporigin.drug_discovery.metabolism import (
     Metabolism,
     _job_output_rows,
     _ligands_from_inputs,
+    _metabolism_default_name,
     _normalize_ligands,
 )
 from deeporigin.drug_discovery.structures.ligand import Ligand, LigandSet
@@ -58,6 +59,31 @@ def test_metabolism_has_no_enzymes_attribute() -> None:
             ligands=Ligand.from_smiles("CCO"),
             enzymes=["CYP3A4"],
         )
+
+
+def test_metabolism_default_name_helper() -> None:
+    """Default name includes the ligand count."""
+    assert _metabolism_default_name(1) == "Site of Metabolism for 1 ligands"
+    assert _metabolism_default_name(12) == "Site of Metabolism for 12 ligands"
+
+
+def test_metabolism_construct_sets_default_name() -> None:
+    """Constructor sets ``name`` from the ligand count when omitted."""
+    job = Metabolism(ligands=[Ligand.from_smiles("CCO"), Ligand.from_smiles("CCN")])
+    assert job.name == "Site of Metabolism for 2 ligands"
+
+
+def test_metabolism_construct_accepts_custom_name() -> None:
+    """Constructor ``name=`` overrides the default label."""
+    job = Metabolism(ligands=Ligand.from_smiles("CCO"), name="Custom SOM label")
+    assert job.name == "Custom SOM label"
+
+
+def test_metabolism_payload_includes_name() -> None:
+    """Create payload carries the execution name."""
+    job = Metabolism(ligands=Ligand.from_smiles("CCO"))
+    payload = job._make_payload(sync=True)
+    assert payload["name"] == "Site of Metabolism for 1 ligands"
 
 
 def test_job_output_rows_reads_sites_and_molecules() -> None:
