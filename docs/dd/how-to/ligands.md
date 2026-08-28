@@ -370,7 +370,7 @@ Docking workflows only support a fixed set of atom types. If a CSV or SDF includ
 metals or other unsupported atoms, `LigandSet.sync()` raises before uploading.
 Drop those ligands in place with `remove_unsupported()`:
 
-```python
+```{.python notest}
 from deeporigin.drug_discovery import LigandSet
 
 ligands = LigandSet.from_csv("path/to/ligands.csv")
