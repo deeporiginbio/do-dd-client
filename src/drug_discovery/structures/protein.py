@@ -35,6 +35,11 @@ from .entity import Entity
 from .ligand import Ligand, LigandSet
 from .pocket import Pocket
 from .pose import Pose, PoseSet
+from .prepared_protein_stamp import (
+    has_prepared_protein_stamp,
+    stamp_prepared_protein_pdb,
+    text_has_prepared_protein_stamp,
+)
 
 _PROTEIN_STRUCTURE_NOT_LOADED_MSG = "Protein structure is not loaded."
 
@@ -1149,6 +1154,10 @@ class Protein(Entity):
         protein has :attr:`remote_path` but no local file yet, raise; rehydrate with
         :meth:`download` first.
 
+        When the source PDB (:attr:`local_path` or :attr:`block_content`) carries a
+        Prepared Protein stamp (``REMARK  99 DO_PREPARED``), the stamp is
+        re-prepended after the biotite rewrite so the token is never dropped.
+
         Args:
             file_path (str): Path where the PDB file will be written.
 
@@ -1171,6 +1180,12 @@ class Protein(Entity):
                 ),
             )
 
+        source_has_stamp = False
+        if self.local_path is not None and Path(self.local_path).is_file():
+            source_has_stamp = has_prepared_protein_stamp(self.local_path)
+        elif isinstance(self.block_content, str) and self.block_content:
+            source_has_stamp = text_has_prepared_protein_stamp(self.block_content)
+
         if file_path is None:
             file_path = PROTEINS_DIR / (self.to_hash() + ".pdb")
 
@@ -1180,6 +1195,8 @@ class Protein(Entity):
             pdb_file = PDBFile()
             pdb_file.set_structure(self.structure)
             pdb_file.write(str(file_path))
+            if source_has_stamp:
+                stamp_prepared_protein_pdb(file_path)
             return str(file_path)
         except Exception as e:
             raise RuntimeError(
@@ -1500,8 +1517,11 @@ class Protein(Entity):
     ) -> None:
         """Register the protein as a new record in the data platform.
 
-        Uploads the protein file to remote storage and creates a new protein
+        Uploads the protein file when needed, then creates a new protein
         record, regardless of whether one already exists for this file path.
+        When :attr:`remote_path` is already set and ``remote_path`` is not
+        passed, skips upload so an existing UFA object (e.g. a Prepared
+        Protein with ``REMARK  99 DO_PREPARED``) is not overwritten.
 
         Args:
             client: DeepOriginClient instance. If None, uses DeepOriginClient().
@@ -1509,13 +1529,14 @@ class Protein(Entity):
                 default hash-based path.
 
         Returns:
-            None. As a side effect, uploads the protein and sets ``self.id``
-            to the newly created record's ID.
+            None. As a side effect, uploads the protein when needed and sets
+            ``self.id`` to the newly created record's ID.
         """
         if client is None:
             client = DeepOriginClient()
 
-        self.upload(client=client, remote_path=remote_path)
+        if remote_path is not None or self.remote_path is None:
+            self.upload(client=client, remote_path=remote_path)
 
         kwargs: dict[str, Any] = {
             "file_path": self.remote_path,
@@ -1548,13 +1569,18 @@ class Protein(Entity):
     ) -> None:
         """Sync the protein to the data platform.
 
-        Uploads the protein file and links to an existing record if one with
-        the same file path already exists, otherwise creates a new record via
-        :meth:`register`.
+        Uploads the protein file when needed and links to an existing record if
+        one with the same file path already exists, otherwise creates a new
+        record via :meth:`register`.
+
+        When :attr:`remote_path` is already set and ``remote_path`` is not
+        passed, skips upload so an existing UFA object (e.g. a Prepared Protein
+        stamped with ``REMARK  99 DO_PREPARED``) is not overwritten by a
+        biotite rewrite.
 
         Args:
-            lazy: If True, skip syncing when the protein already has an ID.
-                Defaults to False.
+            lazy: If True, skip syncing when the protein already has an ID or a
+                ``remote_path``. Defaults to False.
             client: DeepOriginClient instance. If None, uses DeepOriginClient().
             remote_path: Custom remote path to upload to. Overrides the
                 default hash-based path.
@@ -1565,7 +1591,7 @@ class Protein(Entity):
             and sets :attr:`project_id` when a project scope applies or the platform
             row includes ``project_id``.
         """
-        if lazy and self.id is not None:
+        if lazy and (self.id is not None or self.remote_path is not None):
             if client is None:
                 client = DeepOriginClient()
             proj_id = self.resolved_project_id(client=client)
@@ -1576,7 +1602,8 @@ class Protein(Entity):
         if client is None:
             client = DeepOriginClient()
 
-        self.upload(client=client, remote_path=remote_path)
+        if remote_path is not None or self.remote_path is None:
+            self.upload(client=client, remote_path=remote_path)
 
         proj_id = self.resolved_project_id(client=client)
         if proj_id is not None:
