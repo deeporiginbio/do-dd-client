@@ -24,6 +24,7 @@ from deeporigin.drug_discovery.constants import (
     METAL_ELEMENTS,
     METALS,
     PROTEINS_DIR,
+    STATE_DUMP_CIF_PATH,
     STATE_DUMP_PATH,
 )
 from deeporigin.drug_discovery.utils.structure_qc import _any_ligand_protein_clashes
@@ -1145,6 +1146,29 @@ class Protein(Entity):
                 f"Failed to create new Protein with modified structure: {str(e)}"
             ) from e
 
+    def _is_pdb_compatible(self) -> bool:
+        """Return whether :attr:`structure` fits classic PDB column limits.
+
+        Mirrors the hard failures in biotite's ``_check_pdb_compatibility`` that
+        block writing PDB (chain ID, residue name, atom name lengths, and NaN
+        coordinates). Soft wrap warnings for large IDs are ignored.
+
+        Returns:
+            True if a PDB write is expected to succeed; False if mmCIF is required.
+        """
+        if self.structure is None:
+            return False
+        structure = self.structure
+        if np.isnan(structure.coord).any():
+            return False
+        if any(len(name) > 1 for name in structure.chain_id):
+            return False
+        if any(len(name) > 3 for name in structure.res_name):
+            return False
+        if any(len(name) > 4 for name in structure.atom_name):
+            return False
+        return True
+
     @beartype
     def to_pdb(self, file_path: Optional[str | Path] = None) -> str:
         """
@@ -1204,8 +1228,57 @@ class Protein(Entity):
             ) from e
 
     @beartype
+    def to_cif(self, file_path: Optional[str | Path] = None) -> str:
+        """Write the protein structure to an mmCIF file.
+
+        Use this when the structure cannot be represented as classic PDB (for
+        example residue names longer than 3 characters). This is a local
+        operation on :attr:`structure`; rehydrate with :meth:`download` first if
+        only :attr:`remote_path` is set.
+
+        Args:
+            file_path: Path where the CIF file will be written. If ``None``, uses
+                a default path under the proteins cache directory.
+
+        Returns:
+            Path to the written CIF file.
+
+        Raises:
+            DeepOriginException: If ``remote_path`` is set but no local file exists
+                yet, or if :attr:`structure` is not loaded.
+            RuntimeError: If biotite fails to serialize the structure.
+        """
+        self._assert_rehydrated_for_file_export(
+            entity_label="Protein",
+            format_name="CIF",
+        )
+        if self.structure is None:
+            raise DeepOriginException(
+                title="Protein structure not loaded",
+                message=(
+                    "Cannot write CIF: structure is not loaded. "
+                    "Call download() or load_structure_from_local(), or load from file / PDB ID."
+                ),
+            )
+
+        if file_path is None:
+            file_path = PROTEINS_DIR / (self.to_hash() + ".cif")
+
+        try:
+            import biotite.structure.io.pdbx as pdbx
+
+            cif_file = pdbx.CIFFile()
+            pdbx.set_structure(cif_file, self.structure)
+            cif_file.write(str(file_path))
+            return str(file_path)
+        except Exception as e:
+            raise RuntimeError(
+                f"Failed to write structure to file {file_path}: {str(e)}"
+            ) from e
+
+    @beartype
     def to_file(self, file_path: Optional[str | Path] = None) -> str:
-        """Dump state to a file.
+        """Dump state to a PDB file.
 
         Args:
             file_path: Path where the file will be written. If None, uses default path.
@@ -1354,17 +1427,23 @@ class Protein(Entity):
 
     @beartype
     def _dump_state(self) -> str:
-        """Dump the current protein state to a fixed location in the user's home directory.
+        """Dump the current protein state for visualization.
+
+        Writes classic PDB when the in-memory structure fits PDB column limits;
+        otherwise writes mmCIF so structures with long residue names (common in
+        modern CIF files) can still be shown.
 
         Returns:
-            str: Path to the state dump file containing the protein structure.
+            Path to the state dump file (``.pdb`` or ``.cif``).
         """
-        # Create the .deeporigin directory if it doesn't exist
         STATE_DUMP_PATH.parent.mkdir(exist_ok=True)
 
-        # Use the constant file path
-        self.to_pdb(str(STATE_DUMP_PATH))
-        return str(STATE_DUMP_PATH)
+        if self._is_pdb_compatible():
+            self.to_pdb(str(STATE_DUMP_PATH))
+            return str(STATE_DUMP_PATH)
+
+        self.to_cif(str(STATE_DUMP_CIF_PATH))
+        return str(STATE_DUMP_CIF_PATH)
 
     @beartype
     def show(

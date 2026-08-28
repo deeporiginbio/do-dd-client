@@ -8,6 +8,7 @@ import pytest
 from deeporigin.viz.molstar_html import (
     MOLSTAR_HOST_ASSET_BASE_URL,
     MOLSTAR_JS_URL,
+    _molstar_structure_format,
     css_color_to_hex,
     ligand_data_for_js,
     render_docking_box_html,
@@ -42,6 +43,23 @@ def test_render_protein_html_includes_molstar_bundle_and_api() -> None:
     assert '"pdb"' in html
     assert "molstar-error" in html
     assert f'<base href="{MOLSTAR_HOST_ASSET_BASE_URL}"' in html
+
+
+def test_molstar_structure_format_maps_extensions() -> None:
+    """Path suffix maps to the Mol* StructureFormat string."""
+    assert _molstar_structure_format("/tmp/protein.pdb") == "pdb"
+    assert _molstar_structure_format("/tmp/protein.cif") == "mmcif"
+    assert _molstar_structure_format("/tmp/protein.mmcif") == "mmcif"
+    assert _molstar_structure_format("/tmp/protein.pdbqt") == "pdbqt"
+
+
+def test_render_protein_html_uses_mmcif_for_cif_path(tmp_path: Path) -> None:
+    """CIF inputs are loaded with the mmcif Mol* format."""
+    cif_path = tmp_path / "protein.cif"
+    cif_path.write_text("data_test\n_entry.id test\n", encoding="utf-8")
+    html = render_protein_html(pdb_path=str(cif_path))
+    assert '"mmcif"' in html
+    assert '"pdb"' not in html
 
 
 def test_render_protein_html_embeds_pdb_content() -> None:

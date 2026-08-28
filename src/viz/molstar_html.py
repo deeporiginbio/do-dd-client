@@ -57,6 +57,23 @@ def _read_structure_file(path: str) -> str:
     return file_path.read_text(encoding="utf-8")
 
 
+def _molstar_structure_format(path: str) -> str:
+    """Return the Mol* structure format string for a file path.
+
+    Args:
+        path: Path to a structure file (``.pdb``, ``.cif``, ``.mmcif``, …).
+
+    Returns:
+        A Mol* ``StructureFormat`` value such as ``pdb`` or ``mmcif``.
+    """
+    suffix = Path(path).suffix.lstrip(".").lower()
+    if suffix in {"cif", "mmcif"}:
+        return "mmcif"
+    if suffix == "pdbqt":
+        return "pdbqt"
+    return "pdb"
+
+
 def _encode_text_base64(text: str) -> str:
     """Return base64 encoding of UTF-8 text."""
     return base64.b64encode(text.encode("utf-8")).decode("ascii")
@@ -210,11 +227,12 @@ def _render_viewer_html(*, script_body: str) -> str:
 def render_protein_html(*, pdb_path: str, style: str = "cartoon") -> str:
     """Build iframe-ready HTML for protein-only visualization.
 
-    Loads a PDB file, embeds its content in generated HTML, and initializes the
-    hosted molstarLib viewer with a cartoon (or custom) representation.
+    Loads a PDB or mmCIF file, embeds its content in generated HTML, and
+    initializes the hosted molstarLib viewer with a cartoon (or custom)
+    representation.
 
     Args:
-        pdb_path: Path to a PDB file on disk.
+        pdb_path: Path to a PDB or mmCIF file on disk.
         style: Mol* representation type for the polymer (default ``cartoon``).
 
     Returns:
@@ -222,6 +240,7 @@ def render_protein_html(*, pdb_path: str, style: str = "cartoon") -> str:
     """
     pdb_b64 = _encode_text_base64(_read_structure_file(pdb_path))
     style_json = _json_for_script_tag(style)
+    format_json = _json_for_script_tag(_molstar_structure_format(pdb_path))
 
     script_body = f"""const initViewer = async () => {{
       if (typeof molstarLib === "undefined" || typeof molstarLib.initViewer !== "function") {{
@@ -231,7 +250,7 @@ def render_protein_html(*, pdb_path: str, style: str = "cartoon") -> str:
       const proteinData = atob("{pdb_b64}");
       await viewer.api.loadFromRawContent(
         proteinData,
-        "pdb",
+        {format_json},
         "protein",
         {style_json},
       );
@@ -253,7 +272,7 @@ def render_protein_with_pockets_html(
     """Build iframe-ready HTML for protein visualization with binding pockets.
 
     Args:
-        pdb_path: Path to the protein PDB file on disk.
+        pdb_path: Path to the protein PDB or mmCIF file on disk.
         pocket_paths: Paths to pocket structure files on disk.
         pocket_colors: CSS color strings, one per pocket.
         pocket_labels: Display labels, one per pocket.
@@ -280,6 +299,7 @@ def render_protein_with_pockets_html(
     )
 
     pdb_b64 = _encode_text_base64(_read_structure_file(pdb_path))
+    format_json = _json_for_script_tag(_molstar_structure_format(pdb_path))
     pocket_payloads = [
         pocket_data_for_js(path=path, color=color, label=label)
         for path, color, label in zip(
@@ -303,7 +323,7 @@ def render_protein_with_pockets_html(
       }}));
       await viewer.api.renderStructureAndPockets(
         proteinData,
-        "pdb",
+        {format_json},
         pocketDataList,
         "pdb",
         "gaussian-surface",
@@ -391,7 +411,7 @@ def render_protein_with_poses_html(
     """Build iframe-ready HTML for a protein with docked ligand poses.
 
     Args:
-        pdb_path: Path to the protein PDB file on disk.
+        pdb_path: Path to the protein PDB or mmCIF file on disk.
         ligand_payloads: Per-ligand dicts from :func:`ligand_data_for_js`.
         protein_style: Mol* representation type for the protein polymer.
         ligand_style: Mol* representation type for docked ligands.
@@ -406,6 +426,7 @@ def render_protein_with_poses_html(
         raise ValueError("ligand_payloads must be non-empty")
 
     pdb_b64 = _encode_text_base64(_read_structure_file(pdb_path))
+    format_json = _json_for_script_tag(_molstar_structure_format(pdb_path))
     ligands_json = _json_value_for_script_tag(ligand_payloads)
     protein_style_json = _json_for_script_tag(protein_style)
     ligand_style_json = _json_for_script_tag(ligand_style)
@@ -421,7 +442,7 @@ def render_protein_with_poses_html(
       {decode_ligands}
       await viewer.api.visualizeDockedLigands(
         proteinData,
-        "pdb",
+        {format_json},
         ligands,
         "sdf",
         {protein_style_json},
@@ -473,6 +494,7 @@ def render_protein_with_pockets_and_poses_html(
     )
 
     pdb_b64 = _encode_text_base64(_read_structure_file(pdb_path))
+    format_json = _json_for_script_tag(_molstar_structure_format(pdb_path))
     pocket_payloads = [
         pocket_data_for_js(path=path, color=color, label=label)
         for path, color, label in zip(
@@ -501,7 +523,7 @@ def render_protein_with_pockets_and_poses_html(
       {decode_ligands}
       await viewer.api.renderStructureWithPocketsAndLigands(
         proteinData,
-        "pdb",
+        {format_json},
         pocketDataList,
         "pdb",
         ligands,
@@ -668,6 +690,7 @@ def render_docking_box_html(
     color = _validate_docking_box_color(color)
 
     pdb_b64 = _encode_text_base64(_read_structure_file(pdb_path))
+    format_json = _json_for_script_tag(_molstar_structure_format(pdb_path))
     min_json = _json_value_for_script_tag(min_corner)
     max_json = _json_value_for_script_tag(max_corner)
     rotation_json = _rotation_deg_script_literal(rotation_deg)
@@ -683,7 +706,7 @@ const initViewer = async () => {{
       const proteinData = atob("{pdb_b64}");
       const structureRef = await viewer.api.loadFromRawContent(
         proteinData,
-        "pdb",
+        {format_json},
         "protein",
         "cartoon",
       );
@@ -749,6 +772,7 @@ def render_interactive_docking_box_html(
     color = _validate_docking_box_color(color)
 
     pdb_b64 = _encode_text_base64(_read_structure_file(pdb_path))
+    format_json = _json_for_script_tag(_molstar_structure_format(pdb_path))
     min_json = _json_value_for_script_tag(min_corner)
     max_json = _json_value_for_script_tag(max_corner)
     rotation_json = _rotation_deg_script_literal(rotation_deg)
@@ -922,7 +946,7 @@ const initViewer = async () => {{
   const proteinData = atob("{pdb_b64}");
   const structureRef = await viewer.api.loadFromRawContent(
     proteinData,
-    "pdb",
+    {format_json},
     "protein",
     "cartoon",
   );
@@ -1086,6 +1110,7 @@ def render_protein_with_box_and_poses_html(
     color = _validate_docking_box_color(color)
 
     pdb_b64 = _encode_text_base64(_read_structure_file(pdb_path))
+    format_json = _json_for_script_tag(_molstar_structure_format(pdb_path))
     ligands_json = _json_value_for_script_tag(ligand_payloads)
     protein_style_json = _json_for_script_tag(protein_style)
     ligand_style_json = _json_for_script_tag(ligand_style)
@@ -1107,7 +1132,7 @@ const initViewer = async () => {{
       {decode_ligands}
       const structureRef = await viewer.api.visualizeDockedLigands(
         proteinData,
-        "pdb",
+        {format_json},
         ligands,
         "sdf",
         {protein_style_json},
