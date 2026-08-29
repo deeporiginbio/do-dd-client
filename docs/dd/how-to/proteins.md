@@ -511,6 +511,21 @@ protein.to_cif("prepared_protein.cif")
 `Protein.show()` also falls back to mmCIF automatically when dumping state for the
 viewer, so visualization still works for those structures.
 
+### Marking a protein as prepared
+
+If you prepared the structure outside Deep Origin, stamp the local file so
+downstream tools skip automatic protein cleanup. See
+[Prepared Protein stamp](../ref/prepared_protein_stamp.md).
+
+```{.python notest}
+protein = Protein.from_file("my_prepared.pdb")  # or .cif
+protein.mark_as_prepared()
+protein.sync()
+```
+
+This does not run Protein Prep — it only writes the file-borne stamp in the
+file's native format (no CIF↔PDB conversion).
+
 !!! note "Platform proteins without a local file"
     If the protein was loaded with `from_id(..., download=False)`, it has `remote_path`
     but no local file yet. Call `download(client=...)` before `to_pdb()` or `to_file()`,

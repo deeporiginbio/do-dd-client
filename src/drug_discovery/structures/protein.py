@@ -38,7 +38,10 @@ from .pocket import Pocket
 from .pose import Pose, PoseSet
 from .prepared_protein_stamp import (
     has_prepared_protein_stamp,
+    stamp_prepared_protein,
+    stamp_prepared_protein_cif,
     stamp_prepared_protein_pdb,
+    text_has_prepared_protein_cif_stamp,
     text_has_prepared_protein_stamp,
 )
 
@@ -1169,6 +1172,52 @@ class Protein(Entity):
             return False
         return True
 
+    def _source_has_prepared_stamp(self) -> bool:
+        """Return True if the on-disk or in-memory source carries a prepared stamp."""
+        if self.local_path is not None and Path(self.local_path).is_file():
+            return has_prepared_protein_stamp(self.local_path)
+        if isinstance(self.block_content, str) and self.block_content:
+            return text_has_prepared_protein_stamp(
+                self.block_content
+            ) or text_has_prepared_protein_cif_stamp(self.block_content)
+        return False
+
+    def mark_as_prepared(self) -> Self:
+        """Stamp the on-disk protein file as a Prepared Protein.
+
+        Writes the canonical Prepared Protein token onto :attr:`local_path` in
+        the file's native format (PDB ``REMARK  99 DO_PREPARED`` or mmCIF
+        ``_deeporigin.prepared     DO_PREPARED``). Does **not** convert CIF to
+        PDB or vice versa. Does not upload; call :meth:`sync` afterward to push
+        the stamped bytes to UFA.
+
+        Idempotent when the file is already stamped. Requires a readable
+        :attr:`local_path` (for example after :meth:`from_file` or
+        :meth:`download`).
+
+        Returns:
+            Self, for chaining.
+
+        Raises:
+            DeepOriginException: If :attr:`local_path` is unset or not a file.
+        """
+        if self.local_path is None or not Path(self.local_path).is_file():
+            raise DeepOriginException(
+                title="No local protein file to stamp",
+                message=(
+                    "mark_as_prepared() requires a readable local_path. "
+                    "Load with Protein.from_file(...) or call download() first."
+                ),
+            )
+
+        stamp_prepared_protein(self.local_path)
+        # Keep in-memory block in sync with the stamped on-disk bytes.
+        try:
+            self.block_content = Path(self.local_path).read_text(encoding="utf-8")
+        except UnicodeDecodeError:
+            self.block_content = Path(self.local_path).read_text(encoding="latin-1")
+        return self
+
     @beartype
     def to_pdb(self, file_path: Optional[str | Path] = None) -> str:
         """
@@ -1178,9 +1227,10 @@ class Protein(Entity):
         protein has :attr:`remote_path` but no local file yet, raise; rehydrate with
         :meth:`download` first.
 
-        When the source PDB (:attr:`local_path` or :attr:`block_content`) carries a
-        Prepared Protein stamp (``REMARK  99 DO_PREPARED``), the stamp is
-        re-prepended after the biotite rewrite so the token is never dropped.
+        When the source structure file (:attr:`local_path` or :attr:`block_content`)
+        carries a Prepared Protein stamp (PDB REMARK or mmCIF
+        ``_deeporigin.prepared``), the PDB stamp is re-prepended after the biotite
+        rewrite so the token is never dropped (including CIF→PDB translation).
 
         Args:
             file_path (str): Path where the PDB file will be written.
@@ -1204,11 +1254,7 @@ class Protein(Entity):
                 ),
             )
 
-        source_has_stamp = False
-        if self.local_path is not None and Path(self.local_path).is_file():
-            source_has_stamp = has_prepared_protein_stamp(self.local_path)
-        elif isinstance(self.block_content, str) and self.block_content:
-            source_has_stamp = text_has_prepared_protein_stamp(self.block_content)
+        source_has_stamp = self._source_has_prepared_stamp()
 
         if file_path is None:
             file_path = PROTEINS_DIR / (self.to_hash() + ".pdb")
@@ -1236,6 +1282,11 @@ class Protein(Entity):
         operation on :attr:`structure`; rehydrate with :meth:`download` first if
         only :attr:`remote_path` is set.
 
+        When the source carries a Prepared Protein stamp (PDB or mmCIF), the
+        mmCIF stamp is written after the biotite rewrite so the token is
+        preserved (including PDB→CIF translation). External converters that
+        do not go through this method may still drop the stamp.
+
         Args:
             file_path: Path where the CIF file will be written. If ``None``, uses
                 a default path under the proteins cache directory.
@@ -1261,6 +1312,8 @@ class Protein(Entity):
                 ),
             )
 
+        source_has_stamp = self._source_has_prepared_stamp()
+
         if file_path is None:
             file_path = PROTEINS_DIR / (self.to_hash() + ".cif")
 
@@ -1270,6 +1323,8 @@ class Protein(Entity):
             cif_file = pdbx.CIFFile()
             pdbx.set_structure(cif_file, self.structure)
             cif_file.write(str(file_path))
+            if source_has_stamp:
+                stamp_prepared_protein_cif(file_path)
             return str(file_path)
         except Exception as e:
             raise RuntimeError(
@@ -1587,6 +1642,58 @@ class Protein(Entity):
             info_str += f"Info: {self.info}\n"
         return f"Protein:\n  {info_str}"
 
+    def upload(
+        self,
+        *,
+        client: Optional[DeepOriginClient] = None,
+        remote_path: Optional[str] = None,
+    ) -> None:
+        """Upload the protein file to remote storage.
+
+        When :attr:`local_path` points to an existing file, uploads those bytes
+        as-is (preserving PDB vs CIF and any Prepared Protein stamp). Does not
+        rewrite through :meth:`to_file` / :meth:`to_pdb` on that path. When no
+        local file exists, falls back to :meth:`Entity.upload` (serialize via
+        :meth:`to_file`).
+
+        Args:
+            client: DeepOriginClient instance. If None, uses DeepOriginClient().
+            remote_path: Destination remote path. When provided, sets
+                :attr:`remote_path` before uploading. If still unset, uses a
+                hash-based path whose extension matches the local file when
+                present.
+        """
+        if client is None:
+            client = DeepOriginClient()
+
+        if remote_path is not None:
+            self.remote_path = remote_path
+
+        if self.local_path is not None and Path(self.local_path).is_file():
+            local_file = str(self.local_path)
+            if self.remote_path is None:
+                ext = Path(local_file).suffix or self._preferred_ext
+                self.remote_path = f"{self._remote_path_base}{self.to_hash()}{ext}"
+            client.files.upload(
+                local_file,
+                remote_path=self.remote_path,
+            )
+            return
+
+        super().upload(client=client, remote_path=remote_path)
+
+    def _should_upload_local_bytes(self, *, remote_path: Optional[str]) -> bool:
+        """Return True when sync/register should upload from :attr:`local_path`.
+
+        Uploads when an explicit ``remote_path`` is passed, when no remote path
+        is set yet, or when a local file exists (so stamped bytes overwrite UFA).
+        """
+        if remote_path is not None:
+            return True
+        if self.local_path is not None and Path(self.local_path).is_file():
+            return True
+        return self.remote_path is None
+
     @beartype
     def register(
         self,
@@ -1598,9 +1705,9 @@ class Protein(Entity):
 
         Uploads the protein file when needed, then creates a new protein
         record, regardless of whether one already exists for this file path.
-        When :attr:`remote_path` is already set and ``remote_path`` is not
-        passed, skips upload so an existing UFA object (e.g. a Prepared
-        Protein with ``REMARK  99 DO_PREPARED``) is not overwritten.
+        When :attr:`local_path` is a readable file, uploads those bytes (create
+        or overwrite :attr:`remote_path`) without a biotite rewrite. When there
+        is no local file and :attr:`remote_path` is already set, skips upload.
 
         Args:
             client: DeepOriginClient instance. If None, uses DeepOriginClient().
@@ -1614,7 +1721,7 @@ class Protein(Entity):
         if client is None:
             client = DeepOriginClient()
 
-        if remote_path is not None or self.remote_path is None:
+        if self._should_upload_local_bytes(remote_path=remote_path):
             self.upload(client=client, remote_path=remote_path)
 
         kwargs: dict[str, Any] = {
@@ -1652,10 +1759,10 @@ class Protein(Entity):
         one with the same file path already exists, otherwise creates a new
         record via :meth:`register`.
 
-        When :attr:`remote_path` is already set and ``remote_path`` is not
-        passed, skips upload so an existing UFA object (e.g. a Prepared Protein
-        stamped with ``REMARK  99 DO_PREPARED``) is not overwritten by a
-        biotite rewrite.
+        When :attr:`local_path` is a readable file, always uploads those bytes
+        to :attr:`remote_path` (creating or overwriting the UFA object) without
+        converting CIF→PDB. When there is no local file and
+        :attr:`remote_path` is already set, skips upload.
 
         Args:
             lazy: If True, skip syncing when the protein already has an ID.
@@ -1681,7 +1788,7 @@ class Protein(Entity):
         if client is None:
             client = DeepOriginClient()
 
-        if remote_path is not None or self.remote_path is None:
+        if self._should_upload_local_bytes(remote_path=remote_path):
             self.upload(client=client, remote_path=remote_path)
 
         proj_id = self.resolved_project_id(client=client)

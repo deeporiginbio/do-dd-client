@@ -64,7 +64,8 @@ platform protein ID until you call `sync()` or `update()`. The original input
 protein is unchanged. The prepared PDB carries a
 [`REMARK  99 DO_PREPARED`](../ref/prepared_protein_stamp.md) stamp; pass that
 `Protein` into Pocket Finder or other tools without re-serializing the file so
-the stamp stays intact.
+the stamp stays intact. To stamp a structure you prepared outside Deep Origin
+(PDB or mmCIF), use [`Protein.mark_as_prepared()`](../ref/prepared_protein_stamp.md).
 
 Loops-off preparation may also run asynchronously:
 

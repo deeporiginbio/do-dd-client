@@ -110,6 +110,15 @@ PREPARED_PROTEIN_STAMP_LINE = "REMARK  99 DO_PREPARED"
 Written by Protein Prep before UFA upload. Downstream tools skip AUTO protein
 cleanup when this token is present. CLI writers must preserve it."""
 
+PREPARED_PROTEIN_CIF_STAMP_KEY = "_deeporigin.prepared"
+"""mmCIF data item name for the Prepared Protein stamp."""
+
+PREPARED_PROTEIN_CIF_STAMP_VALUE = "DO_PREPARED"
+"""Value of :data:`PREPARED_PROTEIN_CIF_STAMP_KEY` (same token as the PDB remark)."""
+
+PREPARED_PROTEIN_CIF_STAMP_LINE = "_deeporigin.prepared     DO_PREPARED"
+"""Canonical mmCIF line marking a Prepared Protein (file-borne stamp)."""
+
 PROTEIN_PREP_PDB_ID_PATTERN = r"^[A-Za-z0-9]{4}$"
 """JSON Schema pattern for Protein Prep ``pdb_id`` (loop-modelling templates)."""
 

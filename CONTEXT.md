@@ -171,6 +171,14 @@ by `ProteinPrep.get_results()`, whose structure is the cleaned PDB. Not a
 proteins-table row until the caller `sync()` or `update()`.
 _Avoid_: public `PreparedProtein` type; PreparedSystem
 
+**Prepared Protein stamp**:
+File-borne token that marks a structure as already prepared so downstream tools
+skip AUTO protein cleanup. PDB: `REMARK  99 DO_PREPARED`. mmCIF:
+`_deeporigin.prepared     DO_PREPARED`. Written by Protein Prep or
+`Protein.mark_as_prepared()`; never a public `PreparedProtein` type.
+_Avoid_: treating accidental PDB REMARK text inside CIF as prepared; converting
+CIF to PDB just to stamp
+
 **Protein**:
 A macromolecular target structure. Once synced, a platform proteins-table row.
 _Avoid_: PreparedSystem; Prepared protein (CLI) when you mean a catalog protein
