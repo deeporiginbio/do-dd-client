@@ -364,6 +364,23 @@ You can prepare a ligand for downstream workflows using the `prepare()` method. 
     !!! note "Mutation Behavior"
         The `prepare()` method mutates all ligands in the set and returns `self` for method chaining.
 
+### Removing unsupported ligands
+
+Docking workflows only support a fixed set of atom types. If a CSV or SDF includes
+metals or other unsupported atoms, `LigandSet.sync()` raises before uploading.
+Drop those ligands in place with `remove_unsupported()`:
+
+```{.python notest}
+from deeporigin.drug_discovery import LigandSet
+
+ligands = LigandSet.from_csv("path/to/ligands.csv")
+ligands.remove_unsupported()  # Mutates the set in place, returns self for chaining
+ligands.sync()
+```
+
+To keep the original set unchanged, use `filter_unsupported()`, which returns a new
+`LigandSet` without the unsupported ligands.
+
 ### Generating 3D Coordinates
 
 You can generate 3D coordinates for a single ligand or all ligands in a LigandSet using the `embed()` method. This is useful for preparing ligands for docking or other modeling tasks that require 3D structures.
@@ -591,8 +608,9 @@ string, so do not canonicalize the SMILES first. If a ligand already has a
 platform id, pass that ligand and results can be stored against it. SMILES-only
 ligands (no id) also work.
 
-``run()`` blocks until the job finishes. There is no cost quote. At most 250
-ligands per run.
+``run()`` blocks until the job finishes when you have fewer than 30 ligands.
+For 30 or more ligands, call ``start()``, then ``wait()`` or ``watch()`` in a
+notebook, then ``get_results()``. There is no cost quote.
 
 ```{.python notest}
 from deeporigin.drug_discovery import Metabolism, Ligand
@@ -619,6 +637,16 @@ from deeporigin.drug_discovery import Metabolism, LigandSet
 ligands = LigandSet.from_smiles(["CCO", "CC(=O)O"])
 job = Metabolism(ligands=ligands)
 sites = job.run()
+```
+
+Large batches use the async path:
+
+```{.python notest}
+job = Metabolism(ligands=many_ligands)
+job.start()
+job.wait()
+sites = job.get_results()
+mols = job.get_molecules()
 ```
 
 ### Random Sampling

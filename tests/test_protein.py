@@ -35,6 +35,41 @@ def test_to_pdb_requires_rehydration_when_remote_path_only():
         protein.to_file()
 
 
+def test_dump_state_writes_cif_when_resnames_exceed_pdb_limit(tmp_path: Path) -> None:
+    """_dump_state falls back to mmCIF when residue names exceed PDB limits."""
+    protein = Protein.from_file(BRD_DATA_DIR / "brd.pdb")
+    assert protein.structure is not None
+    protein.structure.res_name = np.array(
+        [
+            "ABCD" if i == 0 else name
+            for i, name in enumerate(protein.structure.res_name)
+        ]
+    )
+
+    dumped = Path(protein._dump_state())
+    assert dumped.suffix == ".cif"
+    assert dumped.is_file()
+    assert "data_" in dumped.read_text(encoding="utf-8")
+
+
+def test_to_cif_writes_mmcif(tmp_path: Path) -> None:
+    """to_cif serializes the current structure as mmCIF."""
+    protein = Protein.from_file(BRD_DATA_DIR / "brd.pdb")
+    out = tmp_path / "protein.cif"
+    written = protein.to_cif(out)
+    assert written == str(out)
+    assert out.is_file()
+    assert "atom_site" in out.read_text(encoding="utf-8")
+
+
+def test_dump_state_writes_pdb_when_compatible() -> None:
+    """_dump_state keeps PDB when the structure fits classic PDB limits."""
+    protein = Protein.from_file(BRD_DATA_DIR / "brd.pdb")
+    dumped = Path(protein._dump_state())
+    assert dumped.suffix == ".pdb"
+    assert dumped.is_file()
+
+
 def test_from_id_without_file_path_lv0(client: DeepOriginClient) -> None:
     """from_id returns metadata-only when the platform record has no file_path."""
     from unittest.mock import patch

@@ -76,6 +76,7 @@ class MockServer:
             "deeporigin.rbfe": 5.0,
             "deeporigin.docking": 0.1,  # short poll for local Docking.run (tools API)
             "deeporigin.draco": 3.0,
+            "deeporigin.metabolism": 0.1,  # short poll for local Metabolism.start
         }
         self.docking_speed = docking_speed
         self._load_execution_fixtures()

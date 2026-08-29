@@ -59,6 +59,7 @@ nav = [
       {"LigandSet" = "dd/ref/ligandset.md"},
       {"Pose" = "dd/ref/pose.md"},
       {"Protein" = "dd/ref/protein.md"},
+      {"Prepared Protein stamp" = "dd/ref/prepared_protein_stamp.md"},
       {"Pocket" = "dd/ref/pocket.md"},
     ]},
     {"Tools" = [

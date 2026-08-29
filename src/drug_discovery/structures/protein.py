@@ -24,6 +24,7 @@ from deeporigin.drug_discovery.constants import (
     METAL_ELEMENTS,
     METALS,
     PROTEINS_DIR,
+    STATE_DUMP_CIF_PATH,
     STATE_DUMP_PATH,
 )
 from deeporigin.drug_discovery.utils.structure_qc import _any_ligand_protein_clashes
@@ -35,6 +36,11 @@ from .entity import Entity
 from .ligand import Ligand, LigandSet
 from .pocket import Pocket
 from .pose import Pose, PoseSet
+from .prepared_protein_stamp import (
+    has_prepared_protein_stamp,
+    stamp_prepared_protein_pdb,
+    text_has_prepared_protein_stamp,
+)
 
 _PROTEIN_STRUCTURE_NOT_LOADED_MSG = "Protein structure is not loaded."
 
@@ -1140,6 +1146,29 @@ class Protein(Entity):
                 f"Failed to create new Protein with modified structure: {str(e)}"
             ) from e
 
+    def _is_pdb_compatible(self) -> bool:
+        """Return whether :attr:`structure` fits classic PDB column limits.
+
+        Mirrors the hard failures in biotite's ``_check_pdb_compatibility`` that
+        block writing PDB (chain ID, residue name, atom name lengths, and NaN
+        coordinates). Soft wrap warnings for large IDs are ignored.
+
+        Returns:
+            True if a PDB write is expected to succeed; False if mmCIF is required.
+        """
+        if self.structure is None:
+            return False
+        structure = self.structure
+        if np.isnan(structure.coord).any():
+            return False
+        if any(len(name) > 1 for name in structure.chain_id):
+            return False
+        if any(len(name) > 3 for name in structure.res_name):
+            return False
+        if any(len(name) > 4 for name in structure.atom_name):
+            return False
+        return True
+
     @beartype
     def to_pdb(self, file_path: Optional[str | Path] = None) -> str:
         """
@@ -1148,6 +1177,10 @@ class Protein(Entity):
         This is a local operation: it serializes the current :attr:`structure`. If the
         protein has :attr:`remote_path` but no local file yet, raise; rehydrate with
         :meth:`download` first.
+
+        When the source PDB (:attr:`local_path` or :attr:`block_content`) carries a
+        Prepared Protein stamp (``REMARK  99 DO_PREPARED``), the stamp is
+        re-prepended after the biotite rewrite so the token is never dropped.
 
         Args:
             file_path (str): Path where the PDB file will be written.
@@ -1171,6 +1204,12 @@ class Protein(Entity):
                 ),
             )
 
+        source_has_stamp = False
+        if self.local_path is not None and Path(self.local_path).is_file():
+            source_has_stamp = has_prepared_protein_stamp(self.local_path)
+        elif isinstance(self.block_content, str) and self.block_content:
+            source_has_stamp = text_has_prepared_protein_stamp(self.block_content)
+
         if file_path is None:
             file_path = PROTEINS_DIR / (self.to_hash() + ".pdb")
 
@@ -1180,6 +1219,57 @@ class Protein(Entity):
             pdb_file = PDBFile()
             pdb_file.set_structure(self.structure)
             pdb_file.write(str(file_path))
+            if source_has_stamp:
+                stamp_prepared_protein_pdb(file_path)
+            return str(file_path)
+        except Exception as e:
+            raise RuntimeError(
+                f"Failed to write structure to file {file_path}: {str(e)}"
+            ) from e
+
+    @beartype
+    def to_cif(self, file_path: Optional[str | Path] = None) -> str:
+        """Write the protein structure to an mmCIF file.
+
+        Use this when the structure cannot be represented as classic PDB (for
+        example residue names longer than 3 characters). This is a local
+        operation on :attr:`structure`; rehydrate with :meth:`download` first if
+        only :attr:`remote_path` is set.
+
+        Args:
+            file_path: Path where the CIF file will be written. If ``None``, uses
+                a default path under the proteins cache directory.
+
+        Returns:
+            Path to the written CIF file.
+
+        Raises:
+            DeepOriginException: If ``remote_path`` is set but no local file exists
+                yet, or if :attr:`structure` is not loaded.
+            RuntimeError: If biotite fails to serialize the structure.
+        """
+        self._assert_rehydrated_for_file_export(
+            entity_label="Protein",
+            format_name="CIF",
+        )
+        if self.structure is None:
+            raise DeepOriginException(
+                title="Protein structure not loaded",
+                message=(
+                    "Cannot write CIF: structure is not loaded. "
+                    "Call download() or load_structure_from_local(), or load from file / PDB ID."
+                ),
+            )
+
+        if file_path is None:
+            file_path = PROTEINS_DIR / (self.to_hash() + ".cif")
+
+        try:
+            import biotite.structure.io.pdbx as pdbx
+
+            cif_file = pdbx.CIFFile()
+            pdbx.set_structure(cif_file, self.structure)
+            cif_file.write(str(file_path))
             return str(file_path)
         except Exception as e:
             raise RuntimeError(
@@ -1188,7 +1278,7 @@ class Protein(Entity):
 
     @beartype
     def to_file(self, file_path: Optional[str | Path] = None) -> str:
-        """Dump state to a file.
+        """Dump state to a PDB file.
 
         Args:
             file_path: Path where the file will be written. If None, uses default path.
@@ -1337,17 +1427,23 @@ class Protein(Entity):
 
     @beartype
     def _dump_state(self) -> str:
-        """Dump the current protein state to a fixed location in the user's home directory.
+        """Dump the current protein state for visualization.
+
+        Writes classic PDB when the in-memory structure fits PDB column limits;
+        otherwise writes mmCIF so structures with long residue names (common in
+        modern CIF files) can still be shown.
 
         Returns:
-            str: Path to the state dump file containing the protein structure.
+            Path to the state dump file (``.pdb`` or ``.cif``).
         """
-        # Create the .deeporigin directory if it doesn't exist
         STATE_DUMP_PATH.parent.mkdir(exist_ok=True)
 
-        # Use the constant file path
-        self.to_pdb(str(STATE_DUMP_PATH))
-        return str(STATE_DUMP_PATH)
+        if self._is_pdb_compatible():
+            self.to_pdb(str(STATE_DUMP_PATH))
+            return str(STATE_DUMP_PATH)
+
+        self.to_cif(str(STATE_DUMP_CIF_PATH))
+        return str(STATE_DUMP_CIF_PATH)
 
     @beartype
     def show(
@@ -1500,8 +1596,11 @@ class Protein(Entity):
     ) -> None:
         """Register the protein as a new record in the data platform.
 
-        Uploads the protein file to remote storage and creates a new protein
+        Uploads the protein file when needed, then creates a new protein
         record, regardless of whether one already exists for this file path.
+        When :attr:`remote_path` is already set and ``remote_path`` is not
+        passed, skips upload so an existing UFA object (e.g. a Prepared
+        Protein with ``REMARK  99 DO_PREPARED``) is not overwritten.
 
         Args:
             client: DeepOriginClient instance. If None, uses DeepOriginClient().
@@ -1509,13 +1608,14 @@ class Protein(Entity):
                 default hash-based path.
 
         Returns:
-            None. As a side effect, uploads the protein and sets ``self.id``
-            to the newly created record's ID.
+            None. As a side effect, uploads the protein when needed and sets
+            ``self.id`` to the newly created record's ID.
         """
         if client is None:
             client = DeepOriginClient()
 
-        self.upload(client=client, remote_path=remote_path)
+        if remote_path is not None or self.remote_path is None:
+            self.upload(client=client, remote_path=remote_path)
 
         kwargs: dict[str, Any] = {
             "file_path": self.remote_path,
@@ -1548,9 +1648,14 @@ class Protein(Entity):
     ) -> None:
         """Sync the protein to the data platform.
 
-        Uploads the protein file and links to an existing record if one with
-        the same file path already exists, otherwise creates a new record via
-        :meth:`register`.
+        Uploads the protein file when needed and links to an existing record if
+        one with the same file path already exists, otherwise creates a new
+        record via :meth:`register`.
+
+        When :attr:`remote_path` is already set and ``remote_path`` is not
+        passed, skips upload so an existing UFA object (e.g. a Prepared Protein
+        stamped with ``REMARK  99 DO_PREPARED``) is not overwritten by a
+        biotite rewrite.
 
         Args:
             lazy: If True, skip syncing when the protein already has an ID.
@@ -1576,7 +1681,8 @@ class Protein(Entity):
         if client is None:
             client = DeepOriginClient()
 
-        self.upload(client=client, remote_path=remote_path)
+        if remote_path is not None or self.remote_path is None:
+            self.upload(client=client, remote_path=remote_path)
 
         proj_id = self.resolved_project_id(client=client)
         if proj_id is not None:

@@ -108,6 +108,7 @@ METAL_ELEMENTS = {
 # File paths
 DO_HOME_DIR = _ensure_do_folder()
 STATE_DUMP_PATH = DO_HOME_DIR / "state_dump.pdb"
+STATE_DUMP_CIF_PATH = DO_HOME_DIR / "state_dump.cif"
 PROTEINS_DIR = DO_HOME_DIR / "proteins"
 LIGANDS_DIR = DO_HOME_DIR / "ligands"
 

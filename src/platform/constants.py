@@ -108,7 +108,7 @@ TOOL_KEYS_AND_VERSIONS: dict[str, dict[str, str]] = {
     },
     "pocket_finder": {
         "tool_key": "deeporigin.pocket-finder",
-        "tool_version": "1",
+        "tool_version": "2",
     },
     "mol_props": {
         "tool_key": "deeporigin.mol-props-combined",

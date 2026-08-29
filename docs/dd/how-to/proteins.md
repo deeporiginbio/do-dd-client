@@ -501,6 +501,16 @@ file_path = protein.to_pdb("prepared_protein.pdb")
 
 If no file path is provided, the protein will be saved to a default location based on its hash.
 
+For structures that cannot be represented as classic PDB (for example residue names
+longer than three characters, common in modern mmCIF files), use `to_cif()`:
+
+```{.python notest}
+protein.to_cif("prepared_protein.cif")
+```
+
+`Protein.show()` also falls back to mmCIF automatically when dumping state for the
+viewer, so visualization still works for those structures.
+
 !!! note "Platform proteins without a local file"
     If the protein was loaded with `from_id(..., download=False)`, it has `remote_path`
     but no local file yet. Call `download(client=...)` before `to_pdb()` or `to_file()`,

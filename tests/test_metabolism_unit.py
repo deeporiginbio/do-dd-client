@@ -6,13 +6,13 @@ import pytest
 
 from deeporigin.drug_discovery.metabolism import (
     Metabolism,
-    _ensure_ligand_cap,
     _job_output_rows,
     _ligands_from_inputs,
+    _metabolism_default_name,
     _normalize_ligands,
 )
 from deeporigin.drug_discovery.structures.ligand import Ligand, LigandSet
-from deeporigin.utils.constants import METABOLISM_LIGAND_CAP
+from deeporigin.utils.constants import METABOLISM_WORKFLOW_LIGAND_THRESHOLD
 
 
 def test_normalize_ligands_accepts_ligand_list_and_set() -> None:
@@ -35,12 +35,19 @@ def test_normalize_ligands_rejects_empty_ligandset() -> None:
         _normalize_ligands(LigandSet(ligands=[]))
 
 
-def test_ensure_ligand_cap_rejects_over_250() -> None:
-    """More than 250 ligands is a client-side ValueError."""
-    ligands = [Ligand.from_smiles("CCO")] * (METABOLISM_LIGAND_CAP + 1)
-    with pytest.raises(ValueError, match="at most 250"):
-        _ensure_ligand_cap(ligands)
-    _ensure_ligand_cap([Ligand.from_smiles("CCO")])
+def test_metabolism_run_rejects_ge_threshold_ligands() -> None:
+    """``run()`` rejects workflow-scale batches before create."""
+    ligands = [Ligand.from_smiles("CCO")] * METABOLISM_WORKFLOW_LIGAND_THRESHOLD
+    job = Metabolism(ligands=ligands)
+    with pytest.raises(ValueError, match="start\\(\\) then wait\\(\\) or watch\\(\\)"):
+        job.run()
+
+
+def test_metabolism_construct_accepts_large_batch() -> None:
+    """Constructor does not enforce a client-side ligand cap."""
+    ligands = [Ligand.from_smiles("CCO")] * (METABOLISM_WORKFLOW_LIGAND_THRESHOLD + 50)
+    job = Metabolism(ligands=ligands)
+    assert len(job.ligands) == METABOLISM_WORKFLOW_LIGAND_THRESHOLD + 50
 
 
 def test_metabolism_has_no_enzymes_attribute() -> None:
@@ -52,6 +59,54 @@ def test_metabolism_has_no_enzymes_attribute() -> None:
             ligands=Ligand.from_smiles("CCO"),
             enzymes=["CYP3A4"],
         )
+
+
+def test_metabolism_default_name_helper() -> None:
+    """Default name includes the ligand count."""
+    assert _metabolism_default_name(1) == "Site of Metabolism for 1 ligand"
+    assert _metabolism_default_name(12) == "Site of Metabolism for 12 ligands"
+
+
+def test_metabolism_construct_sets_default_name() -> None:
+    """Constructor sets ``name`` from the ligand count when omitted."""
+    job = Metabolism(ligands=[Ligand.from_smiles("CCO"), Ligand.from_smiles("CCN")])
+    assert job.name == "Site of Metabolism for 2 ligands"
+
+
+def test_metabolism_construct_accepts_custom_name() -> None:
+    """Constructor ``name=`` overrides the default label."""
+    job = Metabolism(ligands=Ligand.from_smiles("CCO"), name="Custom SOM label")
+    assert job.name == "Custom SOM label"
+
+
+def test_metabolism_payload_includes_name() -> None:
+    """Create payload carries the execution name."""
+    job = Metabolism(ligands=Ligand.from_smiles("CCO"))
+    payload = job._make_payload(approve_amount=None, sync=True)
+    assert payload["name"] == "Site of Metabolism for 1 ligand"
+
+
+def test_metabolism_make_payload_rejects_approve_amount() -> None:
+    """Metabolism has no quote/billing path; approve_amount must be None."""
+    job = Metabolism(ligands=Ligand.from_smiles("CCO"))
+    with pytest.raises(ValueError, match="no quote/approve_amount support"):
+        job._make_payload(approve_amount=0, sync=False)
+
+
+def test_metabolism_start_quote_fails_fast_instead_of_running() -> None:
+    """``start(quote=True)`` must not silently run for real."""
+    job = Metabolism(ligands=Ligand.from_smiles("CCO"))
+    with pytest.raises(ValueError, match="no quote/approve_amount support"):
+        job.start(quote=True)
+    assert job.status is None
+
+
+def test_metabolism_start_rejects_explicit_approve_amount() -> None:
+    """An explicit approve_amount also fails fast rather than running."""
+    job = Metabolism(ligands=Ligand.from_smiles("CCO"))
+    with pytest.raises(ValueError, match="no quote/approve_amount support"):
+        job.start(approve_amount=100)
+    assert job.status is None
 
 
 def test_job_output_rows_reads_sites_and_molecules() -> None:

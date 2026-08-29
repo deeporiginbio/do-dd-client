@@ -2,9 +2,12 @@
 
 `Metabolism` drives platform tool `deeporigin.metabolism`. It scores ligands
 for sites of metabolism on cytochrome P450 (CYP) isoforms.
-``run()`` blocks and returns a table of sites (every enzyme the tool scored).
+
+Use ``run()`` for small batches (fewer than 30 ligands); it blocks and returns
+a table of sites (every enzyme the tool scored). For 30 or more ligands, call
+``start()``, then ``wait()`` or ``watch()``, then ``get_results()``.
 ``get_molecules()`` returns molecule-level reliability tiers. There is no
-quote and no ``start()``.
+cost quote and no client-side ligand cap.
 
 ::: src.drug_discovery.metabolism
     options:

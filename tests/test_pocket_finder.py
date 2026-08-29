@@ -79,6 +79,35 @@ def test_pocket_finder_from_dto_initializes_notebook_watch_state(client) -> None
     pf.stop_watching()
 
 
+def test_pocket_finder_make_payload_omits_null_protein_id() -> None:
+    """Prepared proteins without a platform id must not send protein.id=null."""
+    protein = Protein(
+        name="prepared",
+        structure=None,
+        remote_path="entities/proteins/prepared.pdb",
+    )
+    pf = PocketFinder(protein=protein)
+    payload = pf._make_payload(approve_amount=None, sync=True)
+    protein_input = payload["inputs"]["protein"]
+    assert protein_input == {"file_path": "entities/proteins/prepared.pdb"}
+    assert "id" not in protein_input
+
+
+def test_pocket_finder_from_dto_accepts_file_path_only_protein(client) -> None:
+    """from_dto rehydrates an unregistered protein from file_path alone."""
+    fixture_path = (
+        Path(__file__).parent / "fixtures/executions/pocket-finder-test-execution.json"
+    )
+    dto = json.loads(fixture_path.read_text())
+    dto = json.loads(json.dumps(dto))
+    dto["userInputs"]["protein"] = {"file_path": "entities/proteins/prepared.pdb"}
+
+    pf = PocketFinder.from_dto(dto, client=client)
+    assert pf.protein.id is None
+    assert pf.protein.remote_path == "entities/proteins/prepared.pdb"
+    assert pf.pocket_count == dto["userInputs"]["pocket_count"]
+
+
 def test_pocket_finder_from_dto_raises_on_tool_key_mismatch(client) -> None:
     """from_dto fails fast when DTO tool key does not match PocketFinder.tool_key."""
     fixture_path = (
