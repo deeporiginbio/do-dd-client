@@ -31,6 +31,13 @@ top_poses = client.results.get(
     limit=200,
 )
 
+# Larger per-page size for bulk unscoped fetches (fewer HTTP round-trips)
+all_sites = client.results.get(
+    result_type="metabolismsite",
+    limit=None,
+    page_size=1000,
+)
+
 # Get binding pockets for a protein
 pockets = client.results.get_pockets(protein_id="08BSPN61NYVE3")
 

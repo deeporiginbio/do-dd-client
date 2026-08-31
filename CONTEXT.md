@@ -40,13 +40,37 @@ Constructor ``ligands=`` accepts a ``Ligand``, a list of ligands, or a
 threshold) scores Caller SMILES and returns a :class:`pandas.DataFrame` of
 Metabolism site rows for every enzyme the tool scored. Larger batches use
 ``start()`` then ``wait()`` / ``watch()``, then ``get_results()``.
-``get_molecules()`` returns molecule-level ``confidence_tier`` rows.
+``get_molecules()`` returns molecule-level ``confidence_tier`` rows for **this
+execution**. Class-level ``fetch_results`` / ``fetch_molecules`` load indexed
+rows for a ligand set from the data platform (any past jobs) by ``ligand_id``.
+Before ``run`` / ``start``, if every ligand has a platform id and every id
+already has a Metabolism molecule, the client refuses (no execution); if the
+job still proceeds and any id is already indexed, it warns. No force/recompute.
 Ligands are not mutated. Payload sends ``id`` only when ``Ligand.id`` is
 already set. There is no client-side ligand cap and no quote path.
 _Avoid_: ``Admet`` CYP substrate/inhibitor endpoints; the April 24-enzyme PRD
 panel; ``self_test``; ``METABOLISM_ENZYMES``; ``job.enzymes``; constructor
 ``enzymes=`` or ``properties=``; sending a synthetic ``id`` (Admet's
-``str(idx)`` fallback); ``run(quote=True)``; ``METABOLISM_LIGAND_CAP``
+``str(idx)`` fallback); ``run(quote=True)``; ``METABOLISM_LIGAND_CAP``;
+using instance ``get_*`` for cross-execution ligand-set reads; soft-fetching
+inside ``run()``
+
+**Metabolism fetch**:
+Class-level ``Metabolism.fetch_results`` / ``fetch_molecules``: read indexed
+Metabolism site / molecule rows for the given ligands from the data platform
+by platform ``ligand_id``, unbound to any execution. May return partial or
+empty tables when some ligands lack an id or have no indexed rows.
+_Avoid_: instance ``get_results`` / ``get_molecules`` (one execution);
+``force`` / recompute; treating fetch as creating a job
+
+**Metabolism already-scored preflight**:
+Client check before ``run`` / ``start``: refuse when every ligand has a
+platform id and every id already has an indexed Metabolism molecule; otherwise
+create a real execution. When proceeding, warn if any ligand id is already
+indexed. Presence matches the platform MetabolismMolecule skip filter; not a
+recompute API.
+_Avoid_: client-only ``force=True``; merging indexed rows into instance
+``get_*``; refusing when any ligand lacks an id
 
 **Metabolism enzyme**:
 The ``enzyme`` column on a Metabolism site row. The tool scores every

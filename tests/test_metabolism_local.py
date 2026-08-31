@@ -194,7 +194,11 @@ def test_metabolism_start_rejects_non_initial_status(
 def test_metabolism_start_sync_get_results(
     client: DeepOriginClient,
 ) -> None:
-    """Start asynchronously, poll until done, then load sites and molecules."""
+    """Start asynchronously, poll until done, then load sites and molecules.
+
+    Async mock completions index rows in result-explorer only (empty
+    ``jobOutputs``), so this exercises the data-platform-first path.
+    """
     _assert_tool_available(client)
     ligands = [Ligand.from_smiles("CCO")] * METABOLISM_WORKFLOW_LIGAND_THRESHOLD
     job = Metabolism(ligands=ligands, client=client)
@@ -214,6 +218,12 @@ def test_metabolism_start_sync_get_results(
     assert job.status in TERMINAL_STATES
     assert is_success_status(job.status)
 
+    # Production-like: async DTO has empty jobOutputs; rows live in results.
+    dto = job.dto or {}
+    jo = dto.get("jobOutputs") or {}
+    assert jo.get("sites") == []
+    assert jo.get("molecules") == []
+
     sites = job.get_results()
     assert len(sites) == _N_SITES_PER_LIGAND * METABOLISM_WORKFLOW_LIGAND_THRESHOLD
     mols = job.get_molecules()
@@ -223,9 +233,10 @@ def test_metabolism_start_sync_get_results(
 def test_metabolism_get_results_missing_sites_raises(
     client: DeepOriginClient,
 ) -> None:
-    """Empty ``sites`` in jobOutputs is a loud failure."""
+    """Empty sites/molecules from both sources is a loud failure."""
     dto = {
-        "executionId": "metabolism-empty-sites",
+        # Mock sentinel: skip fixture rematch so result-explorer stays empty.
+        "executionId": "__no_result_rows__",
         "status": "Completed",
         "tool": {
             "key": TOOL_KEYS_AND_VERSIONS["metabolism"]["tool_key"],
@@ -271,3 +282,109 @@ def test_metabolism_duplicate_clears_id(
     assert copy.id is None
     assert [lig.smiles for lig in copy.ligands] == ["CCO"]
     assert not hasattr(copy, "enzymes")
+
+
+def test_metabolism_fetch_results_and_molecules_by_ligand_id(
+    client: DeepOriginClient,
+) -> None:
+    """``fetch_*`` loads indexed rows by ligand id without a new job."""
+    _assert_tool_available(client)
+    ligand = Ligand.from_smiles("CCO")
+    ligand.id = "lig-fetch-1"
+    job = Metabolism(ligands=ligand, client=client)
+    job.run()
+
+    sites = Metabolism.fetch_results(ligands=ligand, client=client)
+    mols = Metabolism.fetch_molecules(ligands=ligand, client=client)
+
+    assert len(sites) == _N_SITES_PER_LIGAND
+    assert set(sites["ligand_id"]) == {"lig-fetch-1"}
+    assert set(sites["enzyme"]) == _MOCK_ENZYMES
+    assert set(sites["smiles"]) == {"CCO"}
+    assert len(mols) == 1
+    assert set(mols["ligand_id"]) == {"lig-fetch-1"}
+    assert set(mols["smiles"]) == {"CCO"}
+    assert set(mols["confidence_tier"]).issubset({"high", "medium", "low"})
+
+
+def test_metabolism_fetch_without_ids_returns_empty(
+    client: DeepOriginClient,
+) -> None:
+    """Ligands without platform ids yield empty fetch tables with columns."""
+    _assert_tool_available(client)
+    ligand = Ligand.from_smiles("CCO")
+    assert ligand.id is None
+
+    sites = Metabolism.fetch_results(ligands=ligand, client=client)
+    mols = Metabolism.fetch_molecules(ligands=ligand, client=client)
+
+    assert len(sites) == 0
+    assert list(sites.columns)[:5] == [
+        "ligand_id",
+        "smiles",
+        "atom_index",
+        "enzyme",
+        "confidence",
+    ]
+    assert len(mols) == 0
+    assert list(mols.columns)[:3] == ["ligand_id", "smiles", "confidence_tier"]
+
+
+def test_metabolism_run_refuses_when_all_already_scored(
+    client: DeepOriginClient,
+) -> None:
+    """``run()`` raises before create when every id already has a molecule."""
+    _assert_tool_available(client)
+    ligand = Ligand.from_smiles("CCO")
+    ligand.id = "lig-already-1"
+    Metabolism(ligands=ligand, client=client).run()
+
+    again = Metabolism(ligands=ligand, client=client)
+    with pytest.raises(DeepOriginException, match="already have MetabolismMolecule"):
+        again.run()
+    assert again.id is None
+    assert again.status is None
+
+
+def test_metabolism_start_refuses_when_all_already_scored(
+    client: DeepOriginClient,
+) -> None:
+    """``start()`` raises before create when every id already has a molecule."""
+    _assert_tool_available(client)
+    ligand = Ligand.from_smiles("CCO")
+    ligand.id = "lig-already-start-1"
+    Metabolism(ligands=ligand, client=client).run()
+
+    again = Metabolism(ligands=ligand, client=client)
+    with pytest.raises(DeepOriginException, match="already have MetabolismMolecule"):
+        again.start()
+    assert again.id is None
+    assert again.status is None
+
+
+def test_metabolism_run_warns_when_some_already_scored(
+    client: DeepOriginClient,
+    recwarn: pytest.WarningsRecorder,
+) -> None:
+    """Partial already-scored still runs and emits a UserWarning."""
+    _assert_tool_available(client)
+    scored = Ligand.from_smiles("CCO")
+    scored.id = "lig-partial-scored"
+    Metabolism(ligands=scored, client=client).run()
+
+    fresh = Ligand.from_smiles("CCN")
+    assert fresh.id is None
+    job = Metabolism(ligands=[scored, fresh], client=client)
+    recwarn.clear()
+    df = job.run()
+
+    assert job.id is not None
+    assert len(df) >= _N_SITES_PER_LIGAND
+    matching = [
+        w
+        for w in recwarn
+        if issubclass(w.category, UserWarning)
+        and "already have indexed MetabolismMolecule" in str(w.message)
+    ]
+    assert matching
+    assert "sync path may recompute" in str(matching[0].message)

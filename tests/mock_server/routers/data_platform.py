@@ -728,7 +728,10 @@ def create_data_platform_router(
         compute_job_eq = filter_dict.get("compute_job_id", {}).get("eq")
         # Sentinel: keep an empty page so callers can exercise missing-result paths
         # without the fixture-id rematch below.
-        if compute_job_eq == "__no_prepared_system_rows__":
+        if compute_job_eq in (
+            "__no_prepared_system_rows__",
+            "__no_result_rows__",
+        ):
             filtered = []
         elif not filtered and compute_job_eq is not None:
             # Fixture IDs won't match dynamic execution IDs; keep legacy behaviour

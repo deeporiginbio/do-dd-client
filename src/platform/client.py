@@ -640,10 +640,11 @@ class DeepOriginClient(metaclass=_DeepOriginMeta):
         return "prod"
 
     def __repr__(self) -> str:
-        """Return a string representation of the client.
+        """Return a multiline string representation of the client.
 
         Returns:
-            A string showing the client's name (from token), org_key, and base_url.
+            A multiline string showing the client's name (from token), org_key,
+            base_url, and optional tag / billing_tag.
         """
         from deeporigin import auth
 
@@ -655,12 +656,17 @@ class DeepOriginClient(metaclass=_DeepOriginMeta):
         except Exception:
             pass
 
-        repr_str = f"DeepOrigin Platform Client for {name} (org_key={self._org_key}, base_url={self._base_url})"
+        lines = [
+            "DeepOrigin Platform Client",
+            f"  name: {name}",
+            f"  org_key: {self._org_key}",
+            f"  base_url: {self._base_url}",
+        ]
         if self.tag is not None:
-            repr_str += f" (tag={self.tag})"
+            lines.append(f"  tag: {self.tag}")
         if self.billing_tag is not None:
-            repr_str += f" (billing_tag={self.billing_tag})"
-        return repr_str
+            lines.append(f"  billing_tag: {self.billing_tag}")
+        return "\n".join(lines)
 
     # -------- Factory classmethods --------
 

@@ -5,9 +5,8 @@ for sites of metabolism on cytochrome P450 (CYP) isoforms.
 
 Use ``run()`` for small batches (fewer than 30 ligands); it blocks and returns
 a table of sites (every enzyme the tool scored). For 30 or more ligands, call
-``start()``, then ``wait()`` or ``watch()``, then ``get_results()``.
-``get_molecules()`` returns molecule-level reliability tiers. There is no
-cost quote and no client-side ligand cap.
+``start()``, then ``wait()`` or ``watch()``, then ``get_results()`` /
+``get_molecules()``. There is no cost quote and no client-side ligand cap.
 
 ::: src.drug_discovery.metabolism
     options:
