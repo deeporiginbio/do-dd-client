@@ -148,9 +148,14 @@ class PocketFinder(
         self._pocket_radius = (
             _DEFAULT_POCKET_RADIUS if pocket_radius is None else float(pocket_radius)
         )
-        self._align_to_pocket = (
-            False if align_to_pocket is None else bool(align_to_pocket)
-        )
+        if align_to_pocket is None:
+            self._align_to_pocket = False
+        elif isinstance(align_to_pocket, bool):
+            self._align_to_pocket = align_to_pocket
+        else:
+            raise ValueError(
+                f"align_to_pocket must be a bool, got {type(align_to_pocket).__name__}"
+            ) from None
         self._validate_construction(
             mode=mode,
             pocket_count_provided=pocket_count is not None,
@@ -221,7 +226,7 @@ class PocketFinder(
         align_to_pocket_provided: bool,
     ) -> None:
         """Raise if mode/kwargs mixing or structural checks fail."""
-        if mode not in _VALID_MODES:
+        if not isinstance(mode, str) or mode not in _VALID_MODES:
             raise ValueError(
                 f"mode must be one of {sorted(_VALID_MODES)}, got {mode!r}"
             ) from None
@@ -327,6 +332,11 @@ class PocketFinder(
     def _parse_protein_input(inputs: dict[str, Any]) -> dict[str, Any]:
         """Validate and return the ``protein`` sub-dict from execution inputs."""
         protein_input = inputs.get("protein") or {}
+        if not isinstance(protein_input, dict):
+            raise ValueError(
+                "'protein' in execution userInputs must be a dict, got "
+                f"{type(protein_input).__name__}"
+            ) from None
         protein_id = protein_input.get("id")
         file_path = protein_input.get("file_path")
         if protein_id is None and (not file_path or not str(file_path).strip()):
@@ -341,7 +351,7 @@ class PocketFinder(
     def _parse_mode(inputs: dict[str, Any]) -> PocketFinderMode:
         """Validate and return the ``mode`` from execution inputs."""
         raw_mode = inputs.get("mode") or "auto-find"
-        if raw_mode not in _VALID_MODES:
+        if not isinstance(raw_mode, str) or raw_mode not in _VALID_MODES:
             raise ValueError(
                 f"Invalid mode in execution inputs: {raw_mode!r}"
             ) from None
@@ -369,10 +379,17 @@ class PocketFinder(
                 "pocket_radius from execution inputs must be greater than 0"
             ) from None
 
+        raw_align = inputs.get("align_to_pocket", False)
+        if not isinstance(raw_align, bool):
+            raise ValueError(
+                "'align_to_pocket' in execution inputs must be a bool, got "
+                f"{type(raw_align).__name__}"
+            ) from None
+
         return {
             "selections": selections,
             "pocket_radius": pocket_radius,
-            "align_to_pocket": bool(inputs.get("align_to_pocket", False)),
+            "align_to_pocket": raw_align,
             "pocket_count": _DEFAULT_POCKET_COUNT,
             "pocket_min_size": _DEFAULT_POCKET_MIN_SIZE,
         }
@@ -649,7 +666,7 @@ def _normalize_selection_item(index: int, item: Any) -> PocketSelection:
             f"selections[{index}] must be a dict, got {type(item).__name__}"
         ) from None
     kind = item.get("kind")
-    if kind not in _VALID_SELECTION_KINDS:
+    if not isinstance(kind, str) or kind not in _VALID_SELECTION_KINDS:
         raise ValueError(
             f"selections[{index}].kind must be one of "
             f"{sorted(_VALID_SELECTION_KINDS)}, got {kind!r}"

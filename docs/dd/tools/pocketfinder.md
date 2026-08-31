@@ -81,7 +81,7 @@ pockets = pf.run()
 ```
 
 - `pocket_radius` is the half-edge of the docking cube in angstroms (default
-  `10`). Lab and box sizes are `2 * pocket_radius`.
+  `10`), so the box edge length is `2 * pocket_radius`.
 - `align_to_pocket=True` orients the box from a principal component analysis
   (PCA) of the selected atoms.
 - Do not pass `pocket_count` or `pocket_min_size` in this mode.

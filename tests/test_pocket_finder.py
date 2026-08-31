@@ -191,6 +191,33 @@ def test_pocket_finder_selection_rejects_non_positive_radius() -> None:
         )
 
 
+def test_pocket_finder_rejects_non_string_mode() -> None:
+    """A non-string mode raises ValueError, not a TypeError from the set check."""
+    with pytest.raises(ValueError, match="mode must be one of"):
+        PocketFinder(protein=_selection_protein(), mode=["auto-find"])  # type: ignore[arg-type]
+
+
+def test_pocket_finder_rejects_non_bool_align_to_pocket() -> None:
+    """A non-bool align_to_pocket raises ValueError instead of being coerced."""
+    with pytest.raises(ValueError, match="align_to_pocket must be a bool"):
+        PocketFinder(
+            protein=_selection_protein(),
+            mode="define-by-selection",
+            selections=_ligand_selection(),
+            align_to_pocket="false",  # type: ignore[arg-type]
+        )
+
+
+def test_pocket_finder_selection_rejects_non_string_kind() -> None:
+    """A non-string kind raises ValueError, not a TypeError from the set check."""
+    with pytest.raises(ValueError, match="kind must be one of"):
+        PocketFinder(
+            protein=_selection_protein(),
+            mode="define-by-selection",
+            selections=[{"kind": ["ligand"], "author": {"chain_id": "A"}}],
+        )
+
+
 def test_pocket_finder_from_dto_selection_mode(client) -> None:
     """from_dto rehydrates define-by-selection inputs from userInputs."""
     fixture_path = (
@@ -272,6 +299,19 @@ def test_pocket_finder_from_dto_accepts_file_path_only_protein(client) -> None:
     assert pf.protein.id is None
     assert pf.protein.remote_path == "entities/proteins/prepared.pdb"
     assert pf.pocket_count == dto["userInputs"]["pocket_count"]
+
+
+def test_pocket_finder_from_dto_rejects_non_dict_protein_input(client) -> None:
+    """from_dto raises ValueError, not AttributeError, on a malformed 'protein' input."""
+    fixture_path = (
+        Path(__file__).parent / "fixtures/executions/pocket-finder-test-execution.json"
+    )
+    dto = json.loads(fixture_path.read_text())
+    dto = json.loads(json.dumps(dto))
+    dto["userInputs"]["protein"] = "entities/proteins/prepared.pdb"
+
+    with pytest.raises(ValueError, match="'protein'.*must be a dict"):
+        PocketFinder.from_dto(dto, client=client)
 
 
 def test_pocket_finder_from_dto_raises_on_tool_key_mismatch(client) -> None:
