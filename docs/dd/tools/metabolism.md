@@ -67,3 +67,7 @@ job.wait()               # or await job.watch() in a notebook
 sites = job.get_results()
 mols = job.get_molecules()
 ```
+
+Batches larger than 100 ligands still use the same API. The client writes a
+Ligand list file, uploads it, and passes that file to the tool automatically —
+you do not choose a separate file input.

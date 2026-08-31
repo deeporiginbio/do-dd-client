@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import json
+from pathlib import Path
 import time
 from typing import TYPE_CHECKING
 
@@ -15,7 +17,10 @@ from deeporigin.platform.constants import (
     TOOL_KEYS_AND_VERSIONS,
     is_success_status,
 )
-from deeporigin.utils.constants import METABOLISM_WORKFLOW_LIGAND_THRESHOLD
+from deeporigin.utils.constants import (
+    METABOLISM_INLINE_LIGAND_CAP,
+    METABOLISM_WORKFLOW_LIGAND_THRESHOLD,
+)
 from tests.conftest import check_tool_exists
 from tests.mock_server.routers.tools import _synthesize_metabolism_outputs
 
@@ -177,6 +182,54 @@ def test_metabolism_start_async_payload(
     dto = job._dto or {}
     assert dto.get("tool", {}).get("key") == "deeporigin.metabolism"
     assert (dto.get("userInputs") or {}).get("ligands") == [{"smiles": "CCO"}]
+
+
+def test_metabolism_start_above_inline_cap_uses_ligands_file(
+    client: DeepOriginClient,
+) -> None:
+    """Batches above the inline cap submit ``ligands_file`` after UFA upload."""
+    _assert_tool_available(client)
+    n = METABOLISM_INLINE_LIGAND_CAP + 1
+    ligands = [Ligand.from_smiles("CCO")] * n
+    job = Metabolism(ligands=ligands, client=client)
+    inputs = job._make_inputs()
+    assert "ligands" not in inputs
+    remote = inputs["ligands_file"]
+    assert remote.startswith("metabolism/ligand-lists/")
+    assert job._remote_ligands_file == remote
+    # Cached path: second call does not re-upload a new key.
+    assert job._make_inputs()["ligands_file"] == remote
+
+    job.start()
+
+    dto = job._dto or {}
+    assert (dto.get("userInputs") or {}).get("ligands_file") == remote
+    assert "ligands" not in (dto.get("userInputs") or {})
+
+    # Uploaded body is a bare ligand array.
+    local = client.files.download(remote, direct=True)
+    parsed = json.loads(Path(local).read_text(encoding="utf-8"))
+    assert isinstance(parsed, list)
+    assert len(parsed) == n
+    assert parsed[0] == {"smiles": "CCO"}
+
+
+def test_metabolism_from_dto_rehydrates_ligands_file(
+    client: DeepOriginClient,
+) -> None:
+    """``from_dto`` downloads ``ligands_file`` and restores ligands."""
+    _assert_tool_available(client)
+    n = METABOLISM_INLINE_LIGAND_CAP + 1
+    job = Metabolism(ligands=[Ligand.from_smiles("CCO")] * n, client=client)
+    job.start()
+    assert job.dto is not None
+
+    restored = Metabolism.from_dto(job.dto, client=client)
+    assert len(restored.ligands) == n
+    assert restored.ligands[0].smiles == "CCO"
+    assert restored._remote_ligands_file == (job.dto.get("userInputs") or {}).get(
+        "ligands_file"
+    )
 
 
 def test_metabolism_start_rejects_non_initial_status(
