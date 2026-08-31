@@ -117,6 +117,53 @@ MOCK_ADMET_ENDPOINTS: tuple[str, ...] = (
 )
 
 
+def _synthesize_structure_report_row(
+    *,
+    pdb_id: str | None,
+    protein_id: str | None,
+    has_file: bool,
+) -> dict[str, Any]:
+    """Build one synthetic ``structure_reports`` row for the mock server."""
+    if has_file and pdb_id:
+        metadata_source = "file_header+rcsb"
+    elif pdb_id and not has_file:
+        metadata_source = "rcsb"
+    else:
+        metadata_source = "file_header"
+    row: dict[str, Any] = {
+        "metadata_source": metadata_source,
+        "field_status": {
+            "organism": "value",
+            "method": "value",
+            "resolution": "value",
+            "coverage": "value" if has_file else "unknown",
+            "rfree": "value",
+            "inhibitor": "value",
+        },
+        "resolution_score": 0.75,
+        "coverage_score": 0.9 if has_file else 0.0,
+        "rfree_score": 0.8,
+        "inhibitor_score": 1.0,
+        "method_score": 0.95,
+        "organism_score": 1.0,
+        "weighted_score": 0.82,
+        "grade": "A",
+        "coverage": 0.9 if has_file else None,
+        "has_ligand": True,
+        "method": "X-RAY DIFFRACTION",
+        "method_class": "x-ray",
+        "organism": "Homo sapiens",
+        "organism_class": "human",
+        "pdb_id": pdb_id,
+        "protein_id": protein_id,
+        "resolution": 1.5,
+        "rfree": 0.2,
+    }
+    if has_file:
+        row["source_sha256"] = "a" * 64
+    return row
+
+
 def _rbfe_ts(start_dt: datetime, duration_s: float, fraction: float) -> str:
     """Return an ISO-8601 UTC timestamp at *fraction* of the mock run."""
     when = start_dt + timedelta(seconds=duration_s * fraction)
@@ -1554,6 +1601,10 @@ def create_tools_router(
             "deeporigin.system-prep": ("system", "preparedsystem"),
             "deeporigin.protein-prep": ("protein", "preparedprotein"),
             "deeporigin.draco": ("do_patent_molecules", "dopatentmolecule"),
+            "deeporigin.structure-report": (
+                "structure_reports",
+                "structurereport",
+            ),
         }
 
         entry = output_key_map.get(tool_key)
@@ -2416,6 +2467,55 @@ def create_tools_router(
                     "network_html": "<html><body>Konnektor network</body></html>",
                 }
                 executions[execution["executionId"]] = execution
+                return _normalize_execution(execution)
+        if tool_key == "deeporigin.structure-report":
+            if quote_only:
+                execution = _create_execution_dto(
+                    tool_key=tool_key,
+                    tool_version=tool_version,
+                    org_key=org_key,
+                    body=body,
+                )
+                executions[execution["executionId"]] = execution
+                return _normalize_execution(execution)
+            if body.get("sync") is True:
+                execution = _create_blocking_run_dto(
+                    org_key=org_key,
+                    tool_key=tool_key,
+                    tool_version=tool_version,
+                    body=body,
+                )
+                inputs = body.get("inputs", {}) or {}
+                protein_in = inputs.get("protein")
+                pdb_raw = inputs.get("pdb_id")
+                pdb_id = (
+                    str(pdb_raw).upper()
+                    if isinstance(pdb_raw, str) and pdb_raw.strip()
+                    else None
+                )
+                protein_id = None
+                has_file = False
+                if isinstance(protein_in, dict):
+                    has_file = bool(protein_in.get("file_path"))
+                    if protein_in.get("id") is not None:
+                        protein_id = str(protein_in["id"])
+                execution["jobOutputs"] = {
+                    "structure_reports": [
+                        _synthesize_structure_report_row(
+                            pdb_id=pdb_id,
+                            protein_id=protein_id,
+                            has_file=has_file,
+                        )
+                    ]
+                }
+                eid = execution["executionId"]
+                executions[eid] = execution
+                _inject_result_explorer_records_from_outputs(
+                    tool_key=tool_key,
+                    tool_version=tool_version,
+                    execution_id=eid,
+                    job_outputs=execution.get("jobOutputs"),
+                )
                 return _normalize_execution(execution)
         if tool_key == "deeporigin.enumerator" and body.get("sync") is True:
             execution = _build_enumerator_execution(
