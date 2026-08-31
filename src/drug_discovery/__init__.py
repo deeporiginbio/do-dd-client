@@ -37,6 +37,8 @@ __all__ = [
     "Enumerator",
     "ProteinPrep",
     "RecommendationView",
+    "StructureReport",
+    "StructureReportResult",
 ]
 
 DATA_DIR = files("deeporigin.data")
@@ -76,6 +78,14 @@ _LAZY_IMPORTS = {
     "RecommendationView": (
         "deeporigin.drug_discovery.protein_prep",
         "RecommendationView",
+    ),
+    "StructureReport": (
+        "deeporigin.drug_discovery.structure_report",
+        "StructureReport",
+    ),
+    "StructureReportResult": (
+        "deeporigin.drug_discovery.structure_report",
+        "StructureReportResult",
     ),
     "Execution": ("deeporigin.drug_discovery.execution", "Execution"),
     "PlatformStatus": ("deeporigin.platform.constants", "PlatformStatus"),

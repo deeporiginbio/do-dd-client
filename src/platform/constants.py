@@ -154,6 +154,10 @@ TOOL_KEYS_AND_VERSIONS: dict[str, dict[str, str]] = {
         "tool_key": "deeporigin.metabolism",
         "tool_version": "latest",
     },
+    "structure_report": {
+        "tool_key": "deeporigin.structure-report",
+        "tool_version": "latest",
+    },
     "import_dataset": {
         "tool_key": "deeporigin.import-dataset",
         "tool_version": "latest",
