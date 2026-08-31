@@ -54,6 +54,44 @@ pockets = pf.run()
 `pf.run()` returns a list of `Pocket` objects. You will be charged for each run
 unless you request a quote first.
 
+#### Define by selection
+
+Use `mode="define-by-selection"` to build one pocket from residue, ligand, or
+cofactor selectors plus a radius, instead of running the auto-find classifier.
+Each selection is a dict with `kind` (`residue`, `ligand`, or `cofactor`) and
+`author` fields that match the protein structure (`chain_id` is required;
+`resseq`, `resname`, and `icode` as needed).
+
+```{.python notest}
+from deeporigin.drug_discovery import PocketFinder
+
+pf = PocketFinder(
+    protein,
+    mode="define-by-selection",
+    selections=[
+        {
+            "kind": "ligand",
+            "author": {"chain_id": "A", "resname": "LIG"},
+        }
+    ],
+    pocket_radius=10.0,
+    align_to_pocket=True,
+)
+pockets = pf.run()
+```
+
+- `pocket_radius` is the half-edge of the docking cube in angstroms (default
+  `10`), so the box edge length is `2 * pocket_radius`.
+- `align_to_pocket=True` orients the box from a principal component analysis
+  (PCA) of the selected atoms.
+- Do not pass `pocket_count` or `pocket_min_size` in this mode.
+- Exact matching of selections happens on the platform; the client only checks
+  structural shape and mode/kwargs consistency.
+
+Result handling is the same as auto-find: `run()` / `get_results()` return a
+list of `Pocket` objects (typically one). Classifier score fields on that
+pocket may be null.
+
 #### Asynchronous
 
 For longer runs, or when you want to keep the notebook responsive, submit the
@@ -128,7 +166,10 @@ pocket = Pocket.from_pdb_file("path/to/pocket.pdb", name="my_pocket")
 ### Other ways to define a pocket
 
 To define pockets from a residue number, a crystal ligand, or a standalone
-ligand file, see [Work with Pockets](../how-to/pockets.md).
+ligand file without running PocketFinder, see
+[Work with Pockets](../how-to/pockets.md). To build a docking box from
+residue/ligand/cofactor selectors via the platform tool, use
+[Define by selection](#define-by-selection) above.
 
 ### From a result-explorer record ID
 

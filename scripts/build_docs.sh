@@ -13,6 +13,7 @@ echo "✅ Dependencies installed"
 # Convert notebooks to HTML — same set as tests/test_notebooks.py (test_*_notebook)
 DOC_NOTEBOOKS=(
   docs/notebooks/clean/pocketfinder.ipynb
+  docs/notebooks/clean/pocket-finder-selection.ipynb
   docs/notebooks/clean/docking-single-ligand.ipynb
   docs/notebooks/clean/projects.ipynb
 )
