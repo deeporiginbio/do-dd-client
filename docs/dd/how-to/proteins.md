@@ -44,7 +44,7 @@ project. This is sugar over
 [`UniprotDiscovery.import_proteins`](../tools/uniprot-discovery.md); use
 `UniprotDiscovery` directly to browse all candidates or import multiple PDBs:
 
-```python
+```{.python notest}
 from deeporigin.drug_discovery import Protein
 
 protein = Protein.from_uniprot(

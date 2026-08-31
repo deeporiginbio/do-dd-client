@@ -38,10 +38,12 @@ FieldStatusValue = Literal["value", "not_applicable", "unknown"]
 
 # UniProtKB accessions: 6-char classic or 10-char isoform-style.
 _UNIPROT_ACCESSION_RE = re.compile(
-    r"^(?:[OPQ][0-9][A-Z0-9]{3}[0-9]|[A-NR-Z][0-9](?:[A-Z][A-Z0-9]{2}[0-9]){1,2})$",
+    r"^(?:[OPQ]\d[A-Z0-9]{3}\d|[A-NR-Z]\d(?:[A-Z][A-Z0-9]{2}\d){1,2})$",
     re.IGNORECASE,
 )
 _PDB_ID_RE = re.compile(r"^[A-Za-z0-9]{4}$")
+
+_INVALID_CANDIDATE_TITLE = "Invalid UniProt discovery candidate"
 
 _REQUIRED_CANDIDATE_KEYS = (
     "coverage_score",
@@ -121,21 +123,21 @@ class UniprotDiscoveryCandidate:
         missing = [key for key in _REQUIRED_CANDIDATE_KEYS if key not in data]
         if missing:
             raise DeepOriginException(
-                title="Invalid UniProt discovery candidate",
+                title=_INVALID_CANDIDATE_TITLE,
                 message=f"Missing required fields: {missing!r}.",
             ) from None
 
         field_status = data["field_status"]
         if not isinstance(field_status, dict):
             raise DeepOriginException(
-                title="Invalid UniProt discovery candidate",
+                title=_INVALID_CANDIDATE_TITLE,
                 message="Expected field_status to be a dict.",
             ) from None
 
         pdb_raw = data["pdb_id"]
         if not isinstance(pdb_raw, str) or not pdb_raw.strip():
             raise DeepOriginException(
-                title="Invalid UniProt discovery candidate",
+                title=_INVALID_CANDIDATE_TITLE,
                 message="Expected pdb_id to be a non-empty string.",
             ) from None
 
@@ -207,7 +209,7 @@ def _candidates_from_dto(dto: dict[str, Any]) -> list[UniprotDiscoveryCandidate]
     for index, row in enumerate(raw_rows):
         if not isinstance(row, dict):
             raise DeepOriginException(
-                title="Invalid UniProt discovery candidate",
+                title=_INVALID_CANDIDATE_TITLE,
                 message=(
                     f"Expected candidates[{index}] to be a dict, "
                     f"got {type(row).__name__}."
