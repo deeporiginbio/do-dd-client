@@ -167,6 +167,13 @@ class UniprotDiscoveryCandidate:
                 title=_INVALID_CANDIDATE_TITLE,
                 message="Expected pdb_id to be a non-empty string.",
             ) from None
+        try:
+            pdb_id = _normalize_pdb_id(pdb_raw)
+        except ValueError as error:
+            raise DeepOriginException(
+                title=_INVALID_CANDIDATE_TITLE,
+                message=str(error),
+            ) from error
 
         return cls(
             coverage_score=_required_float(data, "coverage_score"),
@@ -175,7 +182,7 @@ class UniprotDiscoveryCandidate:
             inhibitor_score=_required_float(data, "inhibitor_score"),
             method_score=_required_float(data, "method_score"),
             organism_score=_required_float(data, "organism_score"),
-            pdb_id=_normalize_pdb_id(pdb_raw),
+            pdb_id=pdb_id,
             recommended=bool(data["recommended"]),
             resolution_score=_required_float(data, "resolution_score"),
             rfree_score=_required_float(data, "rfree_score"),

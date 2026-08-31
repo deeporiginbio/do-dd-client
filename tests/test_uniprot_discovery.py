@@ -110,6 +110,25 @@ def test_uniprot_discovery_candidate_from_json_rejects_non_numeric_score() -> No
         UniprotDiscoveryCandidateCls.from_json(raw)
 
 
+def test_uniprot_discovery_candidate_from_json_rejects_malformed_pdb_id() -> None:
+    """A malformed ``pdb_id`` raises ``DeepOriginException``, not a bare ``ValueError``."""
+    raw = {
+        "coverage_score": 0.9,
+        "field_status": {},
+        "grade": "A",
+        "inhibitor_score": 1.0,
+        "method_score": 0.95,
+        "organism_score": 1.0,
+        "pdb_id": "not-a-valid-pdb-id",
+        "recommended": True,
+        "resolution_score": 0.75,
+        "rfree_score": 0.8,
+        "weighted_score": 0.9,
+    }
+    with pytest.raises(DeepOriginException, match="pdb_id"):
+        UniprotDiscoveryCandidateCls.from_json(raw)
+
+
 def test_candidates_from_dto_allows_empty() -> None:
     """Empty ``candidates`` is valid tool output."""
     assert _candidates_from_dto({"jobOutputs": {"candidates": []}}) == []
