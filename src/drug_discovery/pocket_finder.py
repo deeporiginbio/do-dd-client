@@ -145,9 +145,9 @@ class PocketFinder(
             _DEFAULT_POCKET_MIN_SIZE if pocket_min_size is None else pocket_min_size
         )
         self._selections: list[PocketSelection] | None = selections
-        self._pocket_radius = (
-            _DEFAULT_POCKET_RADIUS if pocket_radius is None else float(pocket_radius)
-        )
+        self._pocket_radius = _DEFAULT_POCKET_RADIUS
+        if pocket_radius is not None and mode == "define-by-selection":
+            self._pocket_radius = float(pocket_radius)
         if align_to_pocket is None:
             self._align_to_pocket = False
         elif isinstance(align_to_pocket, bool):

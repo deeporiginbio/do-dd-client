@@ -154,6 +154,17 @@ def test_pocket_finder_auto_find_rejects_selection_kwargs() -> None:
         )
 
 
+def test_pocket_finder_auto_find_rejects_bad_pocket_radius_with_clear_error() -> None:
+    """An invalid pocket_radius in auto-find mode surfaces the mutual-exclusion
+    error, not a stray float() conversion error, since it's never coerced."""
+    with pytest.raises(ValueError, match="pocket_radius is only valid"):
+        PocketFinder(
+            protein=_selection_protein(),
+            mode="auto-find",
+            pocket_radius="not-a-number",  # type: ignore[arg-type]
+        )
+
+
 def test_pocket_finder_selection_requires_non_empty_selections() -> None:
     """define-by-selection requires a non-empty selections list."""
     with pytest.raises(ValueError, match="non-empty list"):
