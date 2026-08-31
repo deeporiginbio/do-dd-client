@@ -51,6 +51,27 @@ _PDB_ID_RE = re.compile(r"^[A-Za-z0-9]{4}$")
 
 _INVALID_CANDIDATE_TITLE = "Invalid UniProt discovery candidate"
 
+
+def _required_float(data: dict[str, Any], key: str) -> float:
+    """Return ``float(data[key])``, honoring the ``from_json`` error contract.
+
+    Args:
+        data: Raw row from ``jobOutputs.candidates``. ``key`` is assumed present
+            (checked by the caller's required-keys pass).
+        key: Field name to convert.
+
+    Raises:
+        DeepOriginException: If the value is not numeric.
+    """
+    try:
+        return float(data[key])
+    except (TypeError, ValueError) as error:
+        raise DeepOriginException(
+            title=_INVALID_CANDIDATE_TITLE,
+            message=f"Expected {key!r} to be numeric, got {data[key]!r}.",
+        ) from error
+
+
 _REQUIRED_CANDIDATE_KEYS = (
     "coverage_score",
     "field_status",
@@ -148,17 +169,17 @@ class UniprotDiscoveryCandidate:
             ) from None
 
         return cls(
-            coverage_score=float(data["coverage_score"]),
+            coverage_score=_required_float(data, "coverage_score"),
             field_status=dict(field_status),
             grade=data["grade"],
-            inhibitor_score=float(data["inhibitor_score"]),
-            method_score=float(data["method_score"]),
-            organism_score=float(data["organism_score"]),
+            inhibitor_score=_required_float(data, "inhibitor_score"),
+            method_score=_required_float(data, "method_score"),
+            organism_score=_required_float(data, "organism_score"),
             pdb_id=_normalize_pdb_id(pdb_raw),
             recommended=bool(data["recommended"]),
-            resolution_score=float(data["resolution_score"]),
-            rfree_score=float(data["rfree_score"]),
-            weighted_score=float(data["weighted_score"]),
+            resolution_score=_required_float(data, "resolution_score"),
+            rfree_score=_required_float(data, "rfree_score"),
+            weighted_score=_required_float(data, "weighted_score"),
             coverage=_optional_float(data.get("coverage")),
             has_ligand=data.get("has_ligand"),
             method=data.get("method"),

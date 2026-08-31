@@ -91,6 +91,25 @@ def test_uniprot_discovery_candidate_from_json_round_trip() -> None:
     assert row.coverage is None
 
 
+def test_uniprot_discovery_candidate_from_json_rejects_non_numeric_score() -> None:
+    """A mistyped required numeric field raises ``DeepOriginException``, not a bare ``ValueError``."""
+    raw = {
+        "coverage_score": "not-a-number",
+        "field_status": {},
+        "grade": "A",
+        "inhibitor_score": 1.0,
+        "method_score": 0.95,
+        "organism_score": 1.0,
+        "pdb_id": "1m17",
+        "recommended": True,
+        "resolution_score": 0.75,
+        "rfree_score": 0.8,
+        "weighted_score": 0.9,
+    }
+    with pytest.raises(DeepOriginException, match="coverage_score"):
+        UniprotDiscoveryCandidateCls.from_json(raw)
+
+
 def test_candidates_from_dto_allows_empty() -> None:
     """Empty ``candidates`` is valid tool output."""
     assert _candidates_from_dto({"jobOutputs": {"candidates": []}}) == []
