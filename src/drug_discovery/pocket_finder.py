@@ -12,11 +12,22 @@ Async usage (persisted execution, watch in notebook)::
     pf.start()            # submits async; sets pf.id and pf.status
     await pf.watch()      # live Jupyter updates (or pf.sync() in a loop)
     pockets = pf.get_results()
+
+Define-by-selection (one pocket from residue/ligand/cofactor selectors)::
+
+    pf = PocketFinder(
+        protein,
+        mode="define-by-selection",
+        selections=[{"kind": "ligand", "author": {"chain_id": "A", "resname": "LIG"}}],
+        pocket_radius=10.0,
+        align_to_pocket=True,
+    )
+    pockets = pf.run()
 """
 
 from __future__ import annotations
 
-from typing import Any, Self
+from typing import Any, Literal, NotRequired, Self, TypedDict
 
 from beartype import beartype
 
@@ -33,6 +44,31 @@ from deeporigin.exceptions import DeepOriginException
 from deeporigin.platform.client import DeepOriginClient
 from deeporigin.platform.constants import TOOL_KEYS_AND_VERSIONS, is_success_status
 
+PocketFinderMode = Literal["auto-find", "define-by-selection"]
+PocketSelectionKind = Literal["residue", "ligand", "cofactor"]
+
+_VALID_MODES: frozenset[str] = frozenset({"auto-find", "define-by-selection"})
+_VALID_SELECTION_KINDS: frozenset[str] = frozenset({"residue", "ligand", "cofactor"})
+_DEFAULT_POCKET_COUNT = 1
+_DEFAULT_POCKET_MIN_SIZE = 30
+_DEFAULT_POCKET_RADIUS = 10.0
+
+
+class PocketSelectionAuthor(TypedDict):
+    """PDB/mmCIF author identity for a selected component (tool wire shape)."""
+
+    chain_id: str
+    resseq: NotRequired[int]
+    resname: NotRequired[str]
+    icode: NotRequired[str]
+
+
+class PocketSelection(TypedDict):
+    """One residue, ligand, or cofactor selector for define-by-selection mode."""
+
+    kind: PocketSelectionKind
+    author: PocketSelectionAuthor
+
 
 class PocketFinder(
     Execution,
@@ -41,6 +77,9 @@ class PocketFinder(
     NotebookWatchMixin,
 ):
     """Find binding pockets in a protein structure.
+
+    Supports ``mode="auto-find"`` (classifier; default) and
+    ``mode="define-by-selection"`` (one pocket from structured selections).
 
     The execution request body includes ``sync`` (``true`` = blocking, ``false`` =
     immediate DTO).     :meth:`run` sets ``"sync": true`` and blocks until the run
@@ -52,8 +91,12 @@ class PocketFinder(
 
     Attributes:
         protein: The protein to analyse.
-        pocket_count: Maximum number of pockets to detect.
-        pocket_min_size: Minimum pocket volume in cubic Angstroms.
+        mode: ``auto-find`` or ``define-by-selection``.
+        pocket_count: Maximum pockets (auto-find).
+        pocket_min_size: Minimum pocket volume in cubic Angstroms (auto-find).
+        selections: Selectors for define-by-selection (tool wire dicts).
+        pocket_radius: Half-edge of the docking cube in angstroms (selection).
+        align_to_pocket: PCA-orient ``box.rotation_deg`` from selection atoms.
     """
 
     tool_key: str = TOOL_KEYS_AND_VERSIONS["pocket_finder"]["tool_key"]
@@ -62,8 +105,12 @@ class PocketFinder(
         self,
         protein: Protein,
         *,
-        pocket_count: int = 1,
-        pocket_min_size: int = 30,
+        mode: PocketFinderMode = "auto-find",
+        pocket_count: int | None = None,
+        pocket_min_size: int | None = None,
+        selections: list[PocketSelection] | None = None,
+        pocket_radius: float | None = None,
+        align_to_pocket: bool | None = None,
         tool_version: str = TOOL_KEYS_AND_VERSIONS["pocket_finder"]["tool_version"],
         client: DeepOriginClient | None = None,
     ) -> None:
@@ -71,17 +118,47 @@ class PocketFinder(
 
         Args:
             protein: Protein structure to search for pockets.
-            pocket_count: Maximum number of pockets to detect. Defaults to 1.
-            pocket_min_size: Minimum pocket size in cubic Angstroms. Defaults to 30.
+            mode: ``auto-find`` (default) or ``define-by-selection``.
+            pocket_count: Max pockets to detect (auto-find). Defaults to 1.
+            pocket_min_size: Minimum pocket size in cubic Angstroms (auto-find).
+                Defaults to 30.
+            selections: Residue/ligand/cofactor selectors (define-by-selection).
+            pocket_radius: Half-edge of the docking cube in angstroms
+                (define-by-selection). Defaults to 10.
+            align_to_pocket: When true in define-by-selection, PCA-orient the
+                box from selection atoms. Defaults to false.
             tool_version: Platform tool version to run. Settable so callers
                 can pin or upgrade independently of the SDK release.
             client: Optional API client. Uses the default if not provided.
+
+        Raises:
+            ValueError: If mode/kwargs are inconsistent or structurally invalid.
         """
         super().__init__(client=client)
         self.tool_version = tool_version
         self._protein = protein
-        self._pocket_count = pocket_count
-        self._pocket_min_size = pocket_min_size
+        self._mode: PocketFinderMode = mode
+        self._pocket_count = (
+            _DEFAULT_POCKET_COUNT if pocket_count is None else pocket_count
+        )
+        self._pocket_min_size = (
+            _DEFAULT_POCKET_MIN_SIZE if pocket_min_size is None else pocket_min_size
+        )
+        self._selections: list[PocketSelection] | None = selections
+        self._pocket_radius = (
+            _DEFAULT_POCKET_RADIUS if pocket_radius is None else float(pocket_radius)
+        )
+        self._align_to_pocket = (
+            False if align_to_pocket is None else bool(align_to_pocket)
+        )
+        self._validate_construction(
+            mode=mode,
+            pocket_count_provided=pocket_count is not None,
+            pocket_min_size_provided=pocket_min_size is not None,
+            selections_provided=selections is not None,
+            pocket_radius_provided=pocket_radius is not None,
+            align_to_pocket_provided=align_to_pocket is not None,
+        )
 
     @property
     def protein(self) -> Protein:
@@ -89,30 +166,120 @@ class PocketFinder(
         return self._protein
 
     @property
+    def mode(self) -> PocketFinderMode:
+        """Pocket finder mode: ``auto-find`` or ``define-by-selection``."""
+        return self._mode
+
+    @property
     def pocket_count(self) -> int:
-        """Maximum number of pockets to detect."""
+        """Maximum number of pockets to detect (auto-find)."""
         return self._pocket_count
 
     @property
     def pocket_min_size(self) -> int:
-        """Minimum pocket volume in cubic Angstroms."""
+        """Minimum pocket volume in cubic Angstroms (auto-find)."""
         return self._pocket_min_size
+
+    @property
+    def selections(self) -> list[PocketSelection] | None:
+        """Selectors for define-by-selection mode, or None for auto-find."""
+        return self._selections
+
+    @property
+    def pocket_radius(self) -> float:
+        """Half-edge of the docking cube in angstroms (define-by-selection)."""
+        return self._pocket_radius
+
+    @property
+    def align_to_pocket(self) -> bool:
+        """Whether to PCA-orient the box from selection atoms."""
+        return self._align_to_pocket
 
     def __repr__(self) -> str:
         """Return a concise summary of the PocketFinder."""
-        parts = [f"PocketFinder protein={self.protein.id!r}"]
+        parts = [f"PocketFinder protein={self.protein.id!r}", f"mode={self.mode!r}"]
         if self.id:
             parts.append(f"id={self.id!r}")
-        parts.append(f"pocket_count={self.pocket_count}")
-        parts.append(f"pocket_min_size={self.pocket_min_size}")
+        if self._mode == "define-by-selection":
+            n = len(self._selections or [])
+            parts.append(f"selections={n}")
+            parts.append(f"pocket_radius={self.pocket_radius}")
+            parts.append(f"align_to_pocket={self.align_to_pocket}")
+        else:
+            parts.append(f"pocket_count={self.pocket_count}")
+            parts.append(f"pocket_min_size={self.pocket_min_size}")
         return f"<{' '.join(parts)}>"
 
-    def _validate_pocket_params(self) -> None:
-        """Raise if ``pocket_count`` or ``pocket_min_size`` are invalid."""
+    def _validate_construction(
+        self,
+        *,
+        mode: str,
+        pocket_count_provided: bool,
+        pocket_min_size_provided: bool,
+        selections_provided: bool,
+        pocket_radius_provided: bool,
+        align_to_pocket_provided: bool,
+    ) -> None:
+        """Raise if mode/kwargs mixing or structural checks fail."""
+        if mode not in _VALID_MODES:
+            raise ValueError(
+                f"mode must be one of {sorted(_VALID_MODES)}, got {mode!r}"
+            ) from None
+
+        if mode == "auto-find":
+            if selections_provided:
+                raise ValueError(
+                    "selections is only valid when mode is 'define-by-selection'"
+                ) from None
+            if pocket_radius_provided:
+                raise ValueError(
+                    "pocket_radius is only valid when mode is 'define-by-selection'"
+                ) from None
+            if align_to_pocket_provided:
+                raise ValueError(
+                    "align_to_pocket is only valid when mode is 'define-by-selection'"
+                ) from None
+            self._validate_auto_find_params()
+            return
+
+        if pocket_count_provided:
+            raise ValueError(
+                "pocket_count is only valid when mode is 'auto-find'"
+            ) from None
+        if pocket_min_size_provided:
+            raise ValueError(
+                "pocket_min_size is only valid when mode is 'auto-find'"
+            ) from None
+        if not selections_provided or not self._selections:
+            raise ValueError(
+                "selections must be a non-empty list when mode is 'define-by-selection'"
+            ) from None
+        self._selections = _normalize_selections(self._selections)
+        self._validate_selection_params()
+
+    def _validate_auto_find_params(self) -> None:
+        """Raise if auto-find ``pocket_count`` or ``pocket_min_size`` are invalid."""
         if self._pocket_count < 1:
             raise ValueError("pocket_count must be at least 1") from None
         if self._pocket_min_size < 1:
             raise ValueError("pocket_min_size must be at least 1") from None
+
+    def _validate_selection_params(self) -> None:
+        """Raise if define-by-selection numeric params are invalid."""
+        if self._pocket_radius <= 0:
+            raise ValueError("pocket_radius must be greater than 0") from None
+
+    def _validate_pocket_params(self) -> None:
+        """Validate mode-specific params before submit."""
+        if self._mode == "define-by-selection":
+            if not self._selections:
+                raise ValueError(
+                    "selections must be a non-empty list when mode is "
+                    "'define-by-selection'"
+                ) from None
+            self._validate_selection_params()
+        else:
+            self._validate_auto_find_params()
 
     def _ensure_protein_remote(self) -> None:
         """Upload/sync protein and ensure ``remote_path`` is set for the API."""
@@ -134,13 +301,21 @@ class PocketFinder(
         Argo workflow. A top-level ``sync`` would be silently dropped (AJV
         default ``true``).
         """
+        inputs: dict[str, Any] = {
+            "protein": _protein_tool_input(self._protein),
+            "mode": self._mode,
+            "sync": sync,
+        }
+        if self._mode == "define-by-selection":
+            inputs["selections"] = list(self._selections or [])
+            inputs["pocket_radius"] = self._pocket_radius
+            inputs["align_to_pocket"] = self._align_to_pocket
+        else:
+            inputs["pocket_count"] = self._pocket_count
+            inputs["pocket_min_size"] = self._pocket_min_size
+
         payload: dict[str, Any] = {
-            "inputs": {
-                "protein": _protein_tool_input(self._protein),
-                "pocket_count": self._pocket_count,
-                "pocket_min_size": self._pocket_min_size,
-                "sync": sync,
-            },
+            "inputs": inputs,
             "outputs": {},
             "metadata": {},
         }
@@ -149,8 +324,12 @@ class PocketFinder(
         return payload
 
     @staticmethod
-    def _parse_inputs_dict(inputs: dict[str, Any]) -> tuple[dict[str, Any], int, int]:
-        """Return ``protein`` input dict, ``pocket_count``, and ``pocket_min_size``."""
+    def _parse_inputs_dict(inputs: dict[str, Any]) -> dict[str, Any]:
+        """Parse execution ``userInputs`` into PocketFinder field values.
+
+        Returns:
+            Dict with ``protein_input``, ``mode``, and mode-specific fields.
+        """
         protein_input = inputs.get("protein") or {}
         protein_id = protein_input.get("id")
         file_path = protein_input.get("file_path")
@@ -160,21 +339,75 @@ class PocketFinder(
                 "userInputs; this execution may have been created with an "
                 "older input schema."
             )
+
+        raw_mode = inputs.get("mode") or "auto-find"
+        if raw_mode not in _VALID_MODES:
+            raise ValueError(
+                f"Invalid mode in execution inputs: {raw_mode!r}"
+            ) from None
+        mode: PocketFinderMode = raw_mode  # type: ignore[assignment]
+
+        if mode == "define-by-selection":
+            raw_selections = inputs.get("selections")
+            if not isinstance(raw_selections, list) or not raw_selections:
+                raise ValueError(
+                    "Missing or empty 'selections' in define-by-selection "
+                    "execution inputs."
+                ) from None
+            selections = _normalize_selections(raw_selections)
+            raw_radius = inputs.get("pocket_radius")
+            try:
+                pocket_radius = (
+                    float(raw_radius)
+                    if raw_radius is not None
+                    else _DEFAULT_POCKET_RADIUS
+                )
+            except (TypeError, ValueError) as exc:
+                raise ValueError("Invalid pocket_radius in execution inputs.") from exc
+            if pocket_radius <= 0:
+                raise ValueError(
+                    "pocket_radius from execution inputs must be greater than 0"
+                ) from None
+            align_to_pocket = bool(inputs.get("align_to_pocket", False))
+            return {
+                "protein_input": protein_input,
+                "mode": mode,
+                "selections": selections,
+                "pocket_radius": pocket_radius,
+                "align_to_pocket": align_to_pocket,
+                "pocket_count": _DEFAULT_POCKET_COUNT,
+                "pocket_min_size": _DEFAULT_POCKET_MIN_SIZE,
+            }
+
         raw_count = inputs.get("pocket_count")
         raw_min_size = inputs.get("pocket_min_size")
         try:
-            pocket_count = int(raw_count) if raw_count is not None else 1
+            pocket_count = (
+                int(raw_count) if raw_count is not None else _DEFAULT_POCKET_COUNT
+            )
         except (TypeError, ValueError) as exc:
             raise ValueError("Invalid pocket_count in execution inputs.") from exc
         try:
-            pocket_min_size = int(raw_min_size) if raw_min_size is not None else 30
+            pocket_min_size = (
+                int(raw_min_size)
+                if raw_min_size is not None
+                else _DEFAULT_POCKET_MIN_SIZE
+            )
         except (TypeError, ValueError) as exc:
             raise ValueError("Invalid pocket_min_size in execution inputs.") from exc
         if pocket_count < 1:
             raise ValueError("pocket_count from execution inputs must be at least 1")
         if pocket_min_size < 1:
             raise ValueError("pocket_min_size from execution inputs must be at least 1")
-        return protein_input, pocket_count, pocket_min_size
+        return {
+            "protein_input": protein_input,
+            "mode": mode,
+            "selections": None,
+            "pocket_radius": _DEFAULT_POCKET_RADIUS,
+            "align_to_pocket": False,
+            "pocket_count": pocket_count,
+            "pocket_min_size": pocket_min_size,
+        }
 
     @classmethod
     def from_dto(
@@ -185,9 +418,9 @@ class PocketFinder(
     ) -> Self:
         """Construct a ``PocketFinder`` from a tools execution DTO.
 
-        Rehydrates ``protein``, ``pocket_count``, and ``pocket_min_size`` from
-        ``userInputs`` (falling back to ``inputs`` for older payloads). When
-        ``protein.id`` is present, the protein is loaded with
+        Rehydrates ``protein`` and mode-specific inputs from ``userInputs``
+        (falling back to ``inputs`` for older payloads). When ``protein.id`` is
+        present, the protein is loaded with
         ``Protein.from_id(..., download=False)`` and ``remote_path_override``
         from the stored input. When only ``file_path`` is present (e.g. an
         unregistered Prepared Protein), builds an in-memory Protein with that
@@ -202,11 +435,12 @@ class PocketFinder(
 
         Raises:
             ValueError: If neither ``protein.id`` nor ``protein.file_path`` is
-                present in stored inputs.
+                present in stored inputs, or selection inputs are invalid.
         """
         instance = super().from_dto(dto, client=client)
         inputs: dict[str, Any] = dto.get("userInputs") or dto.get("inputs") or {}
-        protein_input, pocket_count, pocket_min_size = cls._parse_inputs_dict(inputs)
+        parsed = cls._parse_inputs_dict(inputs)
+        protein_input = parsed["protein_input"]
 
         protein_id = protein_input.get("id")
         file_path = protein_input.get("file_path")
@@ -224,8 +458,12 @@ class PocketFinder(
                 structure=None,
                 remote_path=str(file_path) if file_path else None,
             )
-        instance._pocket_count = pocket_count
-        instance._pocket_min_size = pocket_min_size
+        instance._mode = parsed["mode"]
+        instance._pocket_count = parsed["pocket_count"]
+        instance._pocket_min_size = parsed["pocket_min_size"]
+        instance._selections = parsed["selections"]
+        instance._pocket_radius = parsed["pocket_radius"]
+        instance._align_to_pocket = parsed["align_to_pocket"]
 
         return instance
 
@@ -363,3 +601,51 @@ class PocketFinder(
         self._dto = execution_dto
         self._id = execution_id
         self.status = execution_dto.get("status")
+
+
+def _normalize_selections(raw: list[Any]) -> list[PocketSelection]:
+    """Validate and return selection dicts matching the tool wire shape.
+
+    Args:
+        raw: Caller-provided selection list (dicts).
+
+    Returns:
+        Normalized ``PocketSelection`` dicts (shallow copies of author).
+
+    Raises:
+        ValueError: If any selection is structurally invalid.
+    """
+    normalized: list[PocketSelection] = []
+    for index, item in enumerate(raw):
+        if not isinstance(item, dict):
+            raise ValueError(
+                f"selections[{index}] must be a dict, got {type(item).__name__}"
+            ) from None
+        kind = item.get("kind")
+        if kind not in _VALID_SELECTION_KINDS:
+            raise ValueError(
+                f"selections[{index}].kind must be one of "
+                f"{sorted(_VALID_SELECTION_KINDS)}, got {kind!r}"
+            ) from None
+        author = item.get("author")
+        if not isinstance(author, dict):
+            raise ValueError(f"selections[{index}].author must be a dict") from None
+        chain_id = author.get("chain_id")
+        if chain_id is None or not str(chain_id).strip():
+            raise ValueError(
+                f"selections[{index}].author.chain_id is required"
+            ) from None
+        author_out: PocketSelectionAuthor = {"chain_id": str(chain_id).strip()}
+        if "resseq" in author and author["resseq"] is not None:
+            try:
+                author_out["resseq"] = int(author["resseq"])
+            except (TypeError, ValueError) as exc:
+                raise ValueError(
+                    f"selections[{index}].author.resseq must be an int"
+                ) from exc
+        if "resname" in author and author["resname"] is not None:
+            author_out["resname"] = str(author["resname"])
+        if "icode" in author and author["icode"] is not None:
+            author_out["icode"] = str(author["icode"])
+        normalized.append({"kind": kind, "author": author_out})
+    return normalized

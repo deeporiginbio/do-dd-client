@@ -18,6 +18,9 @@ __all__ = [
     "PoseSet",
     "PreparedSystem",
     "PocketFinder",
+    "PocketFinderMode",
+    "PocketSelection",
+    "PocketSelectionAuthor",
     "Docking",
     "ConstrainedDocking",
     "ABFE",
@@ -56,6 +59,18 @@ _LAZY_IMPORTS = {
         "PreparedSystem",
     ),
     "PocketFinder": ("deeporigin.drug_discovery.pocket_finder", "PocketFinder"),
+    "PocketFinderMode": (
+        "deeporigin.drug_discovery.pocket_finder",
+        "PocketFinderMode",
+    ),
+    "PocketSelection": (
+        "deeporigin.drug_discovery.pocket_finder",
+        "PocketSelection",
+    ),
+    "PocketSelectionAuthor": (
+        "deeporigin.drug_discovery.pocket_finder",
+        "PocketSelectionAuthor",
+    ),
     "Docking": ("deeporigin.drug_discovery.docking", "Docking"),
     "ConstrainedDocking": (
         "deeporigin.drug_discovery.constrained_docking",

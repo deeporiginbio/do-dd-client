@@ -91,6 +91,172 @@ def test_pocket_finder_make_payload_omits_null_protein_id() -> None:
     protein_input = payload["inputs"]["protein"]
     assert protein_input == {"file_path": "entities/proteins/prepared.pdb"}
     assert "id" not in protein_input
+    assert payload["inputs"]["mode"] == "auto-find"
+    assert payload["inputs"]["pocket_count"] == 1
+    assert payload["inputs"]["pocket_min_size"] == 30
+    assert "selections" not in payload["inputs"]
+
+
+def _selection_protein() -> Protein:
+    """Minimal protein for unit tests that do not hit the network."""
+    return Protein(
+        name="prepared",
+        structure=None,
+        remote_path="entities/proteins/prepared.pdb",
+    )
+
+
+def _ligand_selection() -> list[dict]:
+    """One ligand selector matching the tool wire shape."""
+    return [{"kind": "ligand", "author": {"chain_id": "A", "resname": "LIG"}}]
+
+
+def test_pocket_finder_selection_make_payload() -> None:
+    """define-by-selection payload sends mode, selections, radius, align flags."""
+    pf = PocketFinder(
+        protein=_selection_protein(),
+        mode="define-by-selection",
+        selections=_ligand_selection(),
+        pocket_radius=12.5,
+        align_to_pocket=True,
+    )
+    payload = pf._make_payload(approve_amount=None, sync=True)
+    inputs = payload["inputs"]
+    assert inputs["mode"] == "define-by-selection"
+    assert inputs["selections"] == [
+        {"kind": "ligand", "author": {"chain_id": "A", "resname": "LIG"}}
+    ]
+    assert inputs["pocket_radius"] == 12.5
+    assert inputs["align_to_pocket"] is True
+    assert "pocket_count" not in inputs
+    assert "pocket_min_size" not in inputs
+    assert inputs["sync"] is True
+
+
+def test_pocket_finder_selection_rejects_auto_find_kwargs() -> None:
+    """pocket_count is invalid in define-by-selection mode."""
+    with pytest.raises(ValueError, match="pocket_count is only valid"):
+        PocketFinder(
+            protein=_selection_protein(),
+            mode="define-by-selection",
+            selections=_ligand_selection(),
+            pocket_count=2,
+        )
+
+
+def test_pocket_finder_auto_find_rejects_selection_kwargs() -> None:
+    """selections is invalid in auto-find mode."""
+    with pytest.raises(ValueError, match="selections is only valid"):
+        PocketFinder(
+            protein=_selection_protein(),
+            mode="auto-find",
+            selections=_ligand_selection(),
+        )
+
+
+def test_pocket_finder_selection_requires_non_empty_selections() -> None:
+    """define-by-selection requires a non-empty selections list."""
+    with pytest.raises(ValueError, match="non-empty list"):
+        PocketFinder(
+            protein=_selection_protein(),
+            mode="define-by-selection",
+            selections=[],
+        )
+
+
+def test_pocket_finder_selection_requires_kind_and_chain_id() -> None:
+    """Each selection must have a valid kind and author.chain_id."""
+    with pytest.raises(ValueError, match="kind must be one of"):
+        PocketFinder(
+            protein=_selection_protein(),
+            mode="define-by-selection",
+            selections=[{"kind": "hetatm", "author": {"chain_id": "A"}}],
+        )
+    with pytest.raises(ValueError, match="chain_id is required"):
+        PocketFinder(
+            protein=_selection_protein(),
+            mode="define-by-selection",
+            selections=[{"kind": "residue", "author": {"resseq": 10}}],
+        )
+
+
+def test_pocket_finder_selection_rejects_non_positive_radius() -> None:
+    """pocket_radius must be greater than zero."""
+    with pytest.raises(ValueError, match="pocket_radius must be greater than 0"):
+        PocketFinder(
+            protein=_selection_protein(),
+            mode="define-by-selection",
+            selections=_ligand_selection(),
+            pocket_radius=0,
+        )
+
+
+def test_pocket_finder_from_dto_selection_mode(client) -> None:
+    """from_dto rehydrates define-by-selection inputs from userInputs."""
+    fixture_path = (
+        Path(__file__).parent / "fixtures/executions/pocket-finder-test-execution.json"
+    )
+    dto = json.loads(fixture_path.read_text())
+    dto = json.loads(json.dumps(dto))
+    dto["userInputs"] = {
+        "mode": "define-by-selection",
+        "protein": {"file_path": "entities/proteins/prepared.pdb"},
+        "selections": [
+            {
+                "kind": "residue",
+                "author": {"chain_id": "A", "resseq": 42, "resname": "TYR"},
+            }
+        ],
+        "pocket_radius": 8.0,
+        "align_to_pocket": True,
+        "sync": False,
+    }
+
+    pf = PocketFinder.from_dto(dto, client=client)
+    assert pf.mode == "define-by-selection"
+    assert pf.selections == [
+        {
+            "kind": "residue",
+            "author": {"chain_id": "A", "resseq": 42, "resname": "TYR"},
+        }
+    ]
+    assert pf.pocket_radius == 8.0
+    assert pf.align_to_pocket is True
+    assert pf.protein.remote_path == "entities/proteins/prepared.pdb"
+
+
+def test_pocket_finder_start_selection_submits_async_payload(
+    client: DeepOriginClient,
+    registered_protein: Protein,
+) -> None:
+    """``start`` in define-by-selection sends selection inputs with sync=False."""
+    assert check_tool_exists(
+        client,
+        TOOL_KEYS_AND_VERSIONS["pocket_finder"]["tool_key"],
+        TOOL_KEYS_AND_VERSIONS["pocket_finder"]["tool_version"],
+    ), "Pocket finder tool not registered on platform (expected key/version)."
+
+    selections = [{"kind": "ligand", "author": {"chain_id": "A", "resname": "BRD"}}]
+    pf = PocketFinder(
+        protein=registered_protein,
+        mode="define-by-selection",
+        selections=selections,
+        pocket_radius=10.0,
+        align_to_pocket=False,
+        client=client,
+    )
+    pf.start()
+
+    assert pf.id is not None
+    assert pf.status == "Quoted"
+    user_inputs = (pf._dto or {}).get("userInputs") or {}
+    assert user_inputs.get("mode") == "define-by-selection"
+    assert user_inputs.get("selections") == [
+        {"kind": "ligand", "author": {"chain_id": "A", "resname": "BRD"}}
+    ]
+    assert user_inputs.get("pocket_radius") == 10.0
+    assert user_inputs.get("align_to_pocket") is False
+    assert "pocket_count" not in user_inputs
 
 
 def test_pocket_finder_from_dto_accepts_file_path_only_protein(client) -> None:
@@ -145,6 +311,7 @@ def test_pocket_finder_start_submits_async_payload(
         == TOOL_KEYS_AND_VERSIONS["pocket_finder"]["tool_key"]
     )
     user_inputs = dto.get("userInputs") or {}
+    assert user_inputs.get("mode") == "auto-find"
     assert user_inputs.get("pocket_count") == pf.pocket_count
     assert user_inputs.get("pocket_min_size") == pf.pocket_min_size
     protein_input = user_inputs.get("protein") or {}

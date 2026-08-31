@@ -15,7 +15,7 @@ protein.remove_water()
 
 ### Using the PocketFinder tool
 
-To discover novel pockets on a protein structure, use the PocketFinder tool. See the [PocketFinder documentation](../tools/pocketfinder.md) for synchronous and asynchronous execution, cost estimates, loading results by record ID, and visualization.
+To discover novel pockets on a protein structure, use the PocketFinder tool. See the [PocketFinder documentation](../tools/pocketfinder.md) for synchronous and asynchronous execution, define-by-selection mode, cost estimates, loading results by record ID, and visualization.
 
 ### From a residue number
 
