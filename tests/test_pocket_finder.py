@@ -202,6 +202,18 @@ def test_pocket_finder_selection_rejects_non_positive_radius() -> None:
         )
 
 
+def test_pocket_finder_selection_rejects_non_numeric_radius() -> None:
+    """A non-numeric pocket_radius raises a clean ValueError, not a bare one
+    from float()."""
+    with pytest.raises(ValueError, match="pocket_radius must be a number"):
+        PocketFinder(
+            protein=_selection_protein(),
+            mode="define-by-selection",
+            selections=_ligand_selection(),
+            pocket_radius="not-a-number",  # type: ignore[arg-type]
+        )
+
+
 def test_pocket_finder_rejects_non_string_mode() -> None:
     """A non-string mode raises ValueError, not a TypeError from the set check."""
     with pytest.raises(ValueError, match="mode must be one of"):
@@ -348,6 +360,18 @@ def test_pocket_finder_from_dto_rejects_empty_string_mode(client) -> None:
     dto["userInputs"]["mode"] = ""
 
     with pytest.raises(ValueError, match="Invalid mode in execution inputs"):
+        PocketFinder.from_dto(dto, client=client)
+
+
+def test_pocket_finder_from_dto_rejects_non_dict_user_inputs(client) -> None:
+    """A non-dict 'userInputs' raises ValueError, not AttributeError."""
+    fixture_path = (
+        Path(__file__).parent / "fixtures/executions/pocket-finder-test-execution.json"
+    )
+    dto = json.loads(fixture_path.read_text())
+    dto["userInputs"] = ["not", "a", "dict"]
+
+    with pytest.raises(ValueError, match="'userInputs'/'inputs' must be a dict"):
         PocketFinder.from_dto(dto, client=client)
 
 

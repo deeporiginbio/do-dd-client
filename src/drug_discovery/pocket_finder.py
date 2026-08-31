@@ -147,7 +147,12 @@ class PocketFinder(
         self._selections: list[PocketSelection] | None = selections
         self._pocket_radius = _DEFAULT_POCKET_RADIUS
         if pocket_radius is not None and mode == "define-by-selection":
-            self._pocket_radius = float(pocket_radius)
+            try:
+                self._pocket_radius = float(pocket_radius)
+            except (TypeError, ValueError) as exc:
+                raise ValueError(
+                    f"pocket_radius must be a number, got {pocket_radius!r}"
+                ) from exc
         if align_to_pocket is None:
             self._align_to_pocket = False
         elif isinstance(align_to_pocket, bool):
@@ -436,6 +441,11 @@ class PocketFinder(
         Returns:
             Dict with ``protein_input``, ``mode``, and mode-specific fields.
         """
+        if not isinstance(inputs, dict):
+            raise ValueError(
+                "Execution 'userInputs'/'inputs' must be a dict, got "
+                f"{type(inputs).__name__}"
+            ) from None
         protein_input = cls._parse_protein_input(inputs)
         mode = cls._parse_mode(inputs)
         mode_fields = (
