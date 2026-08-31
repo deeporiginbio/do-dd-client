@@ -324,12 +324,8 @@ class PocketFinder(
         return payload
 
     @staticmethod
-    def _parse_inputs_dict(inputs: dict[str, Any]) -> dict[str, Any]:
-        """Parse execution ``userInputs`` into PocketFinder field values.
-
-        Returns:
-            Dict with ``protein_input``, ``mode``, and mode-specific fields.
-        """
+    def _parse_protein_input(inputs: dict[str, Any]) -> dict[str, Any]:
+        """Validate and return the ``protein`` sub-dict from execution inputs."""
         protein_input = inputs.get("protein") or {}
         protein_id = protein_input.get("id")
         file_path = protein_input.get("file_path")
@@ -339,46 +335,51 @@ class PocketFinder(
                 "userInputs; this execution may have been created with an "
                 "older input schema."
             )
+        return protein_input
 
+    @staticmethod
+    def _parse_mode(inputs: dict[str, Any]) -> PocketFinderMode:
+        """Validate and return the ``mode`` from execution inputs."""
         raw_mode = inputs.get("mode") or "auto-find"
         if raw_mode not in _VALID_MODES:
             raise ValueError(
                 f"Invalid mode in execution inputs: {raw_mode!r}"
             ) from None
-        mode: PocketFinderMode = raw_mode  # type: ignore[assignment]
+        return raw_mode  # type: ignore[return-value]
 
-        if mode == "define-by-selection":
-            raw_selections = inputs.get("selections")
-            if not isinstance(raw_selections, list) or not raw_selections:
-                raise ValueError(
-                    "Missing or empty 'selections' in define-by-selection "
-                    "execution inputs."
-                ) from None
-            selections = _normalize_selections(raw_selections)
-            raw_radius = inputs.get("pocket_radius")
-            try:
-                pocket_radius = (
-                    float(raw_radius)
-                    if raw_radius is not None
-                    else _DEFAULT_POCKET_RADIUS
-                )
-            except (TypeError, ValueError) as exc:
-                raise ValueError("Invalid pocket_radius in execution inputs.") from exc
-            if pocket_radius <= 0:
-                raise ValueError(
-                    "pocket_radius from execution inputs must be greater than 0"
-                ) from None
-            align_to_pocket = bool(inputs.get("align_to_pocket", False))
-            return {
-                "protein_input": protein_input,
-                "mode": mode,
-                "selections": selections,
-                "pocket_radius": pocket_radius,
-                "align_to_pocket": align_to_pocket,
-                "pocket_count": _DEFAULT_POCKET_COUNT,
-                "pocket_min_size": _DEFAULT_POCKET_MIN_SIZE,
-            }
+    @staticmethod
+    def _parse_selection_mode_fields(inputs: dict[str, Any]) -> dict[str, Any]:
+        """Parse define-by-selection fields from execution inputs."""
+        raw_selections = inputs.get("selections")
+        if not isinstance(raw_selections, list) or not raw_selections:
+            raise ValueError(
+                "Missing or empty 'selections' in define-by-selection execution inputs."
+            ) from None
+        selections = _normalize_selections(raw_selections)
 
+        raw_radius = inputs.get("pocket_radius")
+        try:
+            pocket_radius = (
+                float(raw_radius) if raw_radius is not None else _DEFAULT_POCKET_RADIUS
+            )
+        except (TypeError, ValueError) as exc:
+            raise ValueError("Invalid pocket_radius in execution inputs.") from exc
+        if pocket_radius <= 0:
+            raise ValueError(
+                "pocket_radius from execution inputs must be greater than 0"
+            ) from None
+
+        return {
+            "selections": selections,
+            "pocket_radius": pocket_radius,
+            "align_to_pocket": bool(inputs.get("align_to_pocket", False)),
+            "pocket_count": _DEFAULT_POCKET_COUNT,
+            "pocket_min_size": _DEFAULT_POCKET_MIN_SIZE,
+        }
+
+    @staticmethod
+    def _parse_auto_find_mode_fields(inputs: dict[str, Any]) -> dict[str, Any]:
+        """Parse auto-find fields from execution inputs."""
         raw_count = inputs.get("pocket_count")
         raw_min_size = inputs.get("pocket_min_size")
         try:
@@ -399,15 +400,30 @@ class PocketFinder(
             raise ValueError("pocket_count from execution inputs must be at least 1")
         if pocket_min_size < 1:
             raise ValueError("pocket_min_size from execution inputs must be at least 1")
+
         return {
-            "protein_input": protein_input,
-            "mode": mode,
             "selections": None,
             "pocket_radius": _DEFAULT_POCKET_RADIUS,
             "align_to_pocket": False,
             "pocket_count": pocket_count,
             "pocket_min_size": pocket_min_size,
         }
+
+    @classmethod
+    def _parse_inputs_dict(cls, inputs: dict[str, Any]) -> dict[str, Any]:
+        """Parse execution ``userInputs`` into PocketFinder field values.
+
+        Returns:
+            Dict with ``protein_input``, ``mode``, and mode-specific fields.
+        """
+        protein_input = cls._parse_protein_input(inputs)
+        mode = cls._parse_mode(inputs)
+        mode_fields = (
+            cls._parse_selection_mode_fields(inputs)
+            if mode == "define-by-selection"
+            else cls._parse_auto_find_mode_fields(inputs)
+        )
+        return {"protein_input": protein_input, "mode": mode, **mode_fields}
 
     @classmethod
     def from_dto(
@@ -603,6 +619,45 @@ class PocketFinder(
         self.status = execution_dto.get("status")
 
 
+def _normalize_selection_author(index: int, author: Any) -> PocketSelectionAuthor:
+    """Validate and return the ``author`` sub-dict of ``selections[index]``."""
+    if not isinstance(author, dict):
+        raise ValueError(f"selections[{index}].author must be a dict") from None
+    chain_id = author.get("chain_id")
+    if chain_id is None or not str(chain_id).strip():
+        raise ValueError(f"selections[{index}].author.chain_id is required") from None
+
+    author_out: PocketSelectionAuthor = {"chain_id": str(chain_id).strip()}
+    if "resseq" in author and author["resseq"] is not None:
+        try:
+            author_out["resseq"] = int(author["resseq"])
+        except (TypeError, ValueError) as exc:
+            raise ValueError(
+                f"selections[{index}].author.resseq must be an int"
+            ) from exc
+    if "resname" in author and author["resname"] is not None:
+        author_out["resname"] = str(author["resname"])
+    if "icode" in author and author["icode"] is not None:
+        author_out["icode"] = str(author["icode"])
+    return author_out
+
+
+def _normalize_selection_item(index: int, item: Any) -> PocketSelection:
+    """Validate and return a single normalized selection dict."""
+    if not isinstance(item, dict):
+        raise ValueError(
+            f"selections[{index}] must be a dict, got {type(item).__name__}"
+        ) from None
+    kind = item.get("kind")
+    if kind not in _VALID_SELECTION_KINDS:
+        raise ValueError(
+            f"selections[{index}].kind must be one of "
+            f"{sorted(_VALID_SELECTION_KINDS)}, got {kind!r}"
+        ) from None
+    author_out = _normalize_selection_author(index, item.get("author"))
+    return {"kind": kind, "author": author_out}
+
+
 def _normalize_selections(raw: list[Any]) -> list[PocketSelection]:
     """Validate and return selection dicts matching the tool wire shape.
 
@@ -615,37 +670,4 @@ def _normalize_selections(raw: list[Any]) -> list[PocketSelection]:
     Raises:
         ValueError: If any selection is structurally invalid.
     """
-    normalized: list[PocketSelection] = []
-    for index, item in enumerate(raw):
-        if not isinstance(item, dict):
-            raise ValueError(
-                f"selections[{index}] must be a dict, got {type(item).__name__}"
-            ) from None
-        kind = item.get("kind")
-        if kind not in _VALID_SELECTION_KINDS:
-            raise ValueError(
-                f"selections[{index}].kind must be one of "
-                f"{sorted(_VALID_SELECTION_KINDS)}, got {kind!r}"
-            ) from None
-        author = item.get("author")
-        if not isinstance(author, dict):
-            raise ValueError(f"selections[{index}].author must be a dict") from None
-        chain_id = author.get("chain_id")
-        if chain_id is None or not str(chain_id).strip():
-            raise ValueError(
-                f"selections[{index}].author.chain_id is required"
-            ) from None
-        author_out: PocketSelectionAuthor = {"chain_id": str(chain_id).strip()}
-        if "resseq" in author and author["resseq"] is not None:
-            try:
-                author_out["resseq"] = int(author["resseq"])
-            except (TypeError, ValueError) as exc:
-                raise ValueError(
-                    f"selections[{index}].author.resseq must be an int"
-                ) from exc
-        if "resname" in author and author["resname"] is not None:
-            author_out["resname"] = str(author["resname"])
-        if "icode" in author and author["icode"] is not None:
-            author_out["icode"] = str(author["icode"])
-        normalized.append({"kind": kind, "author": author_out})
-    return normalized
+    return [_normalize_selection_item(index, item) for index, item in enumerate(raw)]

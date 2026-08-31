@@ -47,6 +47,8 @@ __all__ = [
 DATA_DIR = files("deeporigin.data")
 BRD_DATA_DIR = DATA_DIR / "brd"
 
+_POCKET_FINDER_MODULE = "deeporigin.drug_discovery.pocket_finder"
+
 _LAZY_IMPORTS = {
     "Protein": ("deeporigin.drug_discovery.structures.protein", "Protein"),
     "Ligand": ("deeporigin.drug_discovery.structures.ligand", "Ligand"),
@@ -58,19 +60,10 @@ _LAZY_IMPORTS = {
         "deeporigin.drug_discovery.structures.prepared_system",
         "PreparedSystem",
     ),
-    "PocketFinder": ("deeporigin.drug_discovery.pocket_finder", "PocketFinder"),
-    "PocketFinderMode": (
-        "deeporigin.drug_discovery.pocket_finder",
-        "PocketFinderMode",
-    ),
-    "PocketSelection": (
-        "deeporigin.drug_discovery.pocket_finder",
-        "PocketSelection",
-    ),
-    "PocketSelectionAuthor": (
-        "deeporigin.drug_discovery.pocket_finder",
-        "PocketSelectionAuthor",
-    ),
+    "PocketFinder": (_POCKET_FINDER_MODULE, "PocketFinder"),
+    "PocketFinderMode": (_POCKET_FINDER_MODULE, "PocketFinderMode"),
+    "PocketSelection": (_POCKET_FINDER_MODULE, "PocketSelection"),
+    "PocketSelectionAuthor": (_POCKET_FINDER_MODULE, "PocketSelectionAuthor"),
     "Docking": ("deeporigin.drug_discovery.docking", "Docking"),
     "ConstrainedDocking": (
         "deeporigin.drug_discovery.constrained_docking",
