@@ -8,7 +8,7 @@ from typing import Any, Literal
 
 from beartype import beartype
 
-from deeporigin.drug_discovery.execution import Execution
+from deeporigin.drug_discovery.execution import Execution, _default_execution_payload
 from deeporigin.drug_discovery.execution_mixins import SyncExecutableMixin
 from deeporigin.drug_discovery.structures.ligand import Ligand, LigandSet
 from deeporigin.exceptions import DeepOriginException
@@ -280,17 +280,12 @@ class Konnektor(Execution, SyncExecutableMixin):
         sync: bool,
     ) -> dict[str, Any]:
         """Build the body dict for ``client.executions.create``."""
-        payload: dict[str, Any] = {
-            "inputs": self._make_inputs(),
-            "outputs": {},
-            "metadata": {},
-            "sync": sync,
-        }
-        if self.name is not None:
-            payload["name"] = self.name
-        if approve_amount is not None:
-            payload["approveAmount"] = approve_amount
-        return payload
+        return _default_execution_payload(
+            self._make_inputs(),
+            name=self.name,
+            approve_amount=approve_amount,
+            sync=sync,
+        )
 
     def run(
         self,

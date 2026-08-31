@@ -51,6 +51,48 @@ QuoteMode = Literal["sync", "async"]
 __all__ = ["Execution", "QuoteMode"]
 
 
+def _default_execution_payload(
+    inputs: dict[str, Any],
+    *,
+    name: str | None,
+    approve_amount: int | None,
+    sync: bool,
+) -> dict[str, Any]:
+    """Build the default body dict for ``client.executions.create``.
+
+    Shared by ``_make_payload`` overrides that need nothing beyond ``inputs``,
+    an optional ``name``, and ``approveAmount``.
+    """
+    payload: dict[str, Any] = {
+        "inputs": inputs,
+        "outputs": {},
+        "metadata": {},
+        "sync": sync,
+    }
+    if name is not None:
+        payload["name"] = name
+    if approve_amount is not None:
+        payload["approveAmount"] = approve_amount
+    return payload
+
+
+def _execution_outputs_dict(dto: dict[str, Any]) -> dict[str, Any]:
+    """Return ``jobOutputs`` from an execution DTO as a dict."""
+    outputs = dto.get("jobOutputs")
+    if isinstance(outputs, dict):
+        return outputs
+    if isinstance(outputs, list) and outputs and isinstance(outputs[0], dict):
+        return outputs[0]
+    return {}
+
+
+def _optional_float(value: Any) -> float | None:
+    """Return ``float(value)`` or ``None`` when ``value`` is ``None``."""
+    if value is None:
+        return None
+    return float(value)
+
+
 class Execution:
     """Base class for all execution types in the jobs-centric API.
 

@@ -158,6 +158,10 @@ TOOL_KEYS_AND_VERSIONS: dict[str, dict[str, str]] = {
         "tool_key": "deeporigin.structure-report",
         "tool_version": "latest",
     },
+    "uniprot_discovery": {
+        "tool_key": "deeporigin.uniprot-discovery",
+        "tool_version": "latest",
+    },
     "import_dataset": {
         "tool_key": "deeporigin.import-dataset",
         "tool_version": "latest",

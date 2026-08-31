@@ -773,6 +773,7 @@ class Entities:
         file_path: str,
         gene_symbol: str | None = None,
         pdb_id: str | None = None,
+        uniprot_accession: str | None = None,
         fasta_sequence: str | None = None,
         protein_name: str | None = None,
         protein_length: int | None = None,
@@ -785,6 +786,7 @@ class Entities:
             file_path: Path to the protein file (required).
             gene_symbol: Gene symbol.
             pdb_id: PDB ID.
+            uniprot_accession: UniProtKB accession.
             fasta_sequence: FASTA sequence.
             protein_name: Protein name.
             protein_length: Protein length.
@@ -805,6 +807,8 @@ class Entities:
             set_dict["gene_symbol"] = gene_symbol
         if pdb_id is not None:
             set_dict["pdb_id"] = pdb_id
+        if uniprot_accession is not None:
+            set_dict["uniprot_accession"] = uniprot_accession
         if fasta_sequence is not None:
             set_dict["fasta_sequence"] = fasta_sequence
         if protein_name is not None:
@@ -830,6 +834,7 @@ class Entities:
         file_path: str | None = None,
         gene_symbol: str | None = None,
         pdb_id: str | None = None,
+        uniprot_accession: str | None = None,
         fasta_sequence: str | None = None,
         protein_name: str | None = None,
         protein_length: int | None = None,
@@ -846,6 +851,7 @@ class Entities:
             file_path: Path to the protein structure file in remote storage.
             gene_symbol: Gene symbol.
             pdb_id: PDB ID.
+            uniprot_accession: UniProtKB accession.
             fasta_sequence: FASTA sequence.
             protein_name: Protein name.
             protein_length: Protein length.
@@ -868,6 +874,8 @@ class Entities:
             set_dict["gene_symbol"] = gene_symbol
         if pdb_id is not None:
             set_dict["pdb_id"] = pdb_id
+        if uniprot_accession is not None:
+            set_dict["uniprot_accession"] = uniprot_accession
         if fasta_sequence is not None:
             set_dict["fasta_sequence"] = fasta_sequence
         if protein_name is not None:
