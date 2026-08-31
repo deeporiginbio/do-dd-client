@@ -260,7 +260,11 @@ class PocketFinder(
             raise ValueError(
                 "pocket_min_size is only valid when mode is 'auto-find'"
             ) from None
-        if not selections_provided or not self._selections:
+        if (
+            not selections_provided
+            or not isinstance(self._selections, list)
+            or not self._selections
+        ):
             raise ValueError(
                 "selections must be a non-empty list when mode is 'define-by-selection'"
             ) from None

@@ -175,6 +175,17 @@ def test_pocket_finder_selection_requires_non_empty_selections() -> None:
         )
 
 
+def test_pocket_finder_selection_rejects_non_list_selections() -> None:
+    """A non-list selections (e.g. a string) raises the clear list-required
+    error instead of confusingly iterating it character-by-character."""
+    with pytest.raises(ValueError, match="non-empty list"):
+        PocketFinder(
+            protein=_selection_protein(),
+            mode="define-by-selection",
+            selections="not-a-list",  # type: ignore[arg-type]
+        )
+
+
 def test_pocket_finder_selection_requires_kind_and_chain_id() -> None:
     """Each selection must have a valid kind and author.chain_id."""
     with pytest.raises(ValueError, match="kind must be one of"):
