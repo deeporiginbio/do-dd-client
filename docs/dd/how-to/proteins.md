@@ -37,6 +37,24 @@ from deeporigin.drug_discovery import Protein
 protein = Protein.from_name("insulin")
 ```
 
+### From a UniProt accession (recommended PDB)
+
+Import the platform-recommended experimental PDB for a UniProtKB accession into a
+project. This is sugar over
+[`UniprotDiscovery.import_proteins`](../tools/uniprot-discovery.md); use
+`UniprotDiscovery` directly to browse all candidates or import multiple PDBs:
+
+```{.python notest}
+from deeporigin.drug_discovery import Protein
+
+protein = Protein.from_uniprot(
+    "P00533",
+    project_id=client.project_id,
+    client=client,
+)
+protein.pdb_id, protein.uniprot_accession
+```
+
 ### From a Deep Origin Data Platform ID
 
 You can create a Protein instance directly from a Deep Origin Data Platform ID. This method fetches the protein data from the platform, downloads the structure file, and creates a Protein instance with metadata from the platform:

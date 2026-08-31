@@ -57,6 +57,7 @@ class Protein(Entity):
     name: str
     structure: Any | None = field(default=None, repr=False)
     pdb_id: Optional[str] = None
+    uniprot_accession: Optional[str] = None
     info: Optional[dict] = None
     atom_types: Optional[np.ndarray] = None
     block_type: str = "pdb"
@@ -78,6 +79,44 @@ class Protein(Entity):
         pdb_id = results.to_dict()["result_set"][0]  # top hit
 
         return cls.from_pdb_id(pdb_id)
+
+    @classmethod
+    def from_uniprot(
+        cls,
+        uniprot_accession: str,
+        *,
+        project_id: str | None = None,
+        client: Optional[DeepOriginClient] = None,
+    ) -> Self:
+        """Import the recommended PDB for a UniProt accession into a project.
+
+        Thin sugar over
+        :meth:`~deeporigin.drug_discovery.uniprot_discovery.UniprotDiscovery.import_proteins`
+        for the single recommended candidate. For browsing all candidates or
+        importing multiple PDB IDs, use
+        :class:`~deeporigin.drug_discovery.uniprot_discovery.UniprotDiscovery`
+        directly.
+
+        Args:
+            uniprot_accession: UniProtKB accession (6 or 10 characters).
+            project_id: Project to sync into. Falls back to ``client.project_id``.
+            client: Optional API client.
+
+        Returns:
+            The synced recommended :class:`Protein`.
+
+        Raises:
+            DeepOriginException: If discovery or import fails (see
+                :meth:`~deeporigin.drug_discovery.uniprot_discovery.UniprotDiscovery.import_proteins`).
+        """
+        from deeporigin.drug_discovery.uniprot_discovery import UniprotDiscovery
+
+        proteins = UniprotDiscovery(
+            uniprot_accession=uniprot_accession,
+            project_id=project_id,
+            client=client,
+        ).import_proteins(project_id=project_id)
+        return proteins[0]
 
     @classmethod
     def from_id(
@@ -137,6 +176,7 @@ class Protein(Entity):
                 name=name,
                 structure=None,
                 pdb_id=data.get("pdb_id"),
+                uniprot_accession=data.get("uniprot_accession"),
                 info=None,
                 atom_types=None,
                 block_type="pdb",
@@ -168,6 +208,9 @@ class Protein(Entity):
 
         if data.get("pdb_id"):
             protein.pdb_id = data["pdb_id"]
+
+        if data.get("uniprot_accession"):
+            protein.uniprot_accession = data["uniprot_accession"]
 
         if data.get("project_id") is not None:
             protein.project_id = str(data["project_id"])
@@ -1731,6 +1774,9 @@ class Protein(Entity):
         if self.pdb_id is not None:
             kwargs["pdb_id"] = self.pdb_id
 
+        if self.uniprot_accession is not None:
+            kwargs["uniprot_accession"] = self.uniprot_accession
+
         if self.local_path is not None:
             kwargs["protein_length"] = self.length
         kwargs["protein_name"] = self.name
@@ -1811,8 +1857,16 @@ class Protein(Entity):
             ep = existing_protein.get("project_id")
             if ep is not None:
                 self.project_id = str(ep)
-            if self.tags is not None and self.id is not None:
-                client.entities.update_protein(self.id, tags=self.tags)
+            update_kwargs: dict[str, Any] = {}
+            if self.tags is not None:
+                update_kwargs["tags"] = self.tags
+            if (
+                self.uniprot_accession is not None
+                and existing_protein.get("uniprot_accession") != self.uniprot_accession
+            ):
+                update_kwargs["uniprot_accession"] = self.uniprot_accession
+            if update_kwargs and self.id is not None:
+                client.entities.update_protein(self.id, **update_kwargs)
             return
 
         self.register(client=client)
