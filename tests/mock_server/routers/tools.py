@@ -164,6 +164,71 @@ def _synthesize_structure_report_row(
     return row
 
 
+def _synthesize_uniprot_candidate(
+    *,
+    pdb_id: str,
+    recommended: bool,
+    grade: str,
+    weighted_score: float,
+) -> dict[str, Any]:
+    """Build one synthetic UniProt discovery ``candidates`` row."""
+    return {
+        "coverage_score": 0.9,
+        "field_status": {
+            "coverage": "value",
+            "inhibitor": "value",
+            "method": "value",
+            "organism": "value",
+            "resolution": "value",
+            "rfree": "value",
+        },
+        "grade": grade,
+        "inhibitor_score": 1.0,
+        "method_score": 0.95,
+        "organism_score": 1.0,
+        "pdb_id": pdb_id,
+        "recommended": recommended,
+        "resolution_score": 0.75,
+        "rfree_score": 0.8,
+        "weighted_score": weighted_score,
+        "coverage": 0.9,
+        "has_ligand": True,
+        "method": "X-RAY DIFFRACTION",
+        "method_class": "x-ray",
+        "organism": "Homo sapiens",
+        "organism_class": "human",
+        "resolution": 1.5,
+        "rfree": 0.2,
+    }
+
+
+def _synthesize_uniprot_discovery_outputs(accession: str) -> dict[str, Any]:
+    """Build ``jobOutputs`` for UniProt discovery.
+
+    Accession ``P99999`` yields an empty candidate list for empty-import tests.
+    """
+    normalized = accession.strip().upper()
+    if normalized == "P99999":
+        return {"uniprot_accession": normalized, "candidates": []}
+    return {
+        "uniprot_accession": normalized,
+        "candidates": [
+            _synthesize_uniprot_candidate(
+                pdb_id="1M17",
+                recommended=True,
+                grade="A",
+                weighted_score=0.9,
+            ),
+            _synthesize_uniprot_candidate(
+                pdb_id="4WR2",
+                recommended=False,
+                grade="B",
+                weighted_score=0.7,
+            ),
+        ],
+    }
+
+
 def _rbfe_ts(start_dt: datetime, duration_s: float, fraction: float) -> str:
     """Return an ISO-8601 UTC timestamp at *fraction* of the mock run."""
     when = start_dt + timedelta(seconds=duration_s * fraction)
@@ -2516,6 +2581,34 @@ def create_tools_router(
                     execution_id=eid,
                     job_outputs=execution.get("jobOutputs"),
                 )
+                return _normalize_execution(execution)
+        if tool_key == "deeporigin.uniprot-discovery":
+            if quote_only:
+                execution = _create_execution_dto(
+                    tool_key=tool_key,
+                    tool_version=tool_version,
+                    org_key=org_key,
+                    body=body,
+                )
+                executions[execution["executionId"]] = execution
+                return _normalize_execution(execution)
+            if body.get("sync") is True:
+                execution = _create_blocking_run_dto(
+                    org_key=org_key,
+                    tool_key=tool_key,
+                    tool_version=tool_version,
+                    body=body,
+                )
+                inputs = body.get("inputs", {}) or {}
+                accession_raw = inputs.get("uniprot_accession")
+                accession = (
+                    str(accession_raw).strip() if isinstance(accession_raw, str) else ""
+                )
+                execution["jobOutputs"] = _synthesize_uniprot_discovery_outputs(
+                    accession
+                )
+                eid = execution["executionId"]
+                executions[eid] = execution
                 return _normalize_execution(execution)
         if tool_key == "deeporigin.enumerator" and body.get("sync") is True:
             execution = _build_enumerator_execution(

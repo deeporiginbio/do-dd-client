@@ -39,6 +39,8 @@ __all__ = [
     "RecommendationView",
     "StructureReport",
     "StructureReportResult",
+    "UniprotDiscovery",
+    "UniprotDiscoveryCandidate",
 ]
 
 DATA_DIR = files("deeporigin.data")
@@ -86,6 +88,14 @@ _LAZY_IMPORTS = {
     "StructureReportResult": (
         "deeporigin.drug_discovery.structure_report",
         "StructureReportResult",
+    ),
+    "UniprotDiscovery": (
+        "deeporigin.drug_discovery.uniprot_discovery",
+        "UniprotDiscovery",
+    ),
+    "UniprotDiscoveryCandidate": (
+        "deeporigin.drug_discovery.uniprot_discovery",
+        "UniprotDiscoveryCandidate",
     ),
     "Execution": ("deeporigin.drug_discovery.execution", "Execution"),
     "PlatformStatus": ("deeporigin.platform.constants", "PlatformStatus"),
