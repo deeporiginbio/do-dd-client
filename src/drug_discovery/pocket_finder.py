@@ -488,7 +488,12 @@ class PocketFinder(
                 present in stored inputs, or selection inputs are invalid.
         """
         instance = super().from_dto(dto, client=client)
-        inputs: dict[str, Any] = dto.get("userInputs") or dto.get("inputs") or {}
+        raw_user_inputs = dto.get("userInputs")
+        inputs: dict[str, Any] = (
+            raw_user_inputs
+            if raw_user_inputs is not None
+            else (dto.get("inputs") or {})
+        )
         parsed = cls._parse_inputs_dict(inputs)
         protein_input = parsed["protein_input"]
 

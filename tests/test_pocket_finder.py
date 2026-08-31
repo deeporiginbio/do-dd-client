@@ -386,6 +386,19 @@ def test_pocket_finder_from_dto_rejects_non_dict_user_inputs(client) -> None:
         PocketFinder.from_dto(dto, client=client)
 
 
+def test_pocket_finder_from_dto_rejects_falsy_non_dict_user_inputs(client) -> None:
+    """A falsy non-dict 'userInputs' (e.g. []) must not be silently treated as
+    absent and fall through to the 'inputs' compat field."""
+    fixture_path = (
+        Path(__file__).parent / "fixtures/executions/pocket-finder-test-execution.json"
+    )
+    dto = json.loads(fixture_path.read_text())
+    dto["userInputs"] = []
+
+    with pytest.raises(ValueError, match="'userInputs'/'inputs' must be a dict"):
+        PocketFinder.from_dto(dto, client=client)
+
+
 def test_pocket_finder_from_dto_raises_on_tool_key_mismatch(client) -> None:
     """from_dto fails fast when DTO tool key does not match PocketFinder.tool_key."""
     fixture_path = (
