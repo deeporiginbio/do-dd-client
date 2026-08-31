@@ -26,7 +26,12 @@ from typing import Any, Literal, Self
 
 from beartype import beartype
 
-from deeporigin.drug_discovery.execution import Execution
+from deeporigin.drug_discovery.execution import (
+    Execution,
+    _default_execution_payload,
+    _execution_outputs_dict,
+    _optional_float,
+)
 from deeporigin.drug_discovery.execution_mixins import SyncExecutableMixin
 from deeporigin.drug_discovery.structures.protein import Protein
 from deeporigin.exceptions import DeepOriginException
@@ -162,23 +167,6 @@ class UniprotDiscoveryCandidate:
             resolution=_optional_float(data.get("resolution")),
             rfree=_optional_float(data.get("rfree")),
         )
-
-
-def _optional_float(value: Any) -> float | None:
-    """Return ``float(value)`` or ``None`` when ``value`` is ``None``."""
-    if value is None:
-        return None
-    return float(value)
-
-
-def _execution_outputs_dict(dto: dict[str, Any]) -> dict[str, Any]:
-    """Return ``jobOutputs`` from an execution DTO as a dict."""
-    outputs = dto.get("jobOutputs")
-    if isinstance(outputs, dict):
-        return outputs
-    if isinstance(outputs, list) and outputs and isinstance(outputs[0], dict):
-        return outputs[0]
-    return {}
 
 
 def _candidates_from_dto(dto: dict[str, Any]) -> list[UniprotDiscoveryCandidate]:
@@ -326,17 +314,12 @@ class UniprotDiscovery(Execution, SyncExecutableMixin):
         sync: bool,
     ) -> dict[str, Any]:
         """Build the body dict for ``client.executions.create``."""
-        payload: dict[str, Any] = {
-            "inputs": self._make_inputs(),
-            "outputs": {},
-            "metadata": {},
-            "sync": sync,
-        }
-        if self.name is not None:
-            payload["name"] = self.name
-        if approve_amount is not None:
-            payload["approveAmount"] = approve_amount
-        return payload
+        return _default_execution_payload(
+            self._make_inputs(),
+            name=self.name,
+            approve_amount=approve_amount,
+            sync=sync,
+        )
 
     def run(
         self,
