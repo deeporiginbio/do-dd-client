@@ -30,6 +30,32 @@ def _normalize_result_type(value: str) -> str:
     return value.strip().lower()
 
 
+def _resolve_request_page_size(
+    *,
+    limit: int | None,
+    page_size: int | None,
+) -> int:
+    """Resolve the per-request ``limit`` sent to result-explorer search.
+
+    Args:
+        limit: Caller total-record cap, or ``None`` for all matching rows.
+        page_size: Caller per-page size, or ``None`` for
+            :data:`~deeporigin.utils.constants.DEFAULT_SEARCH_PAGE_SIZE`.
+
+    Returns:
+        Positive page size used as the HTTP body ``limit`` for each page.
+
+    Raises:
+        ValueError: If ``page_size`` is set and is less than 1.
+    """
+    resolved = DEFAULT_SEARCH_PAGE_SIZE if page_size is None else page_size
+    if resolved < 1:
+        raise ValueError(f"page_size must be >= 1, got {resolved}")
+    if limit is not None:
+        return min(limit, resolved)
+    return resolved
+
+
 def _build_result_type_filter(result_type: str | list[str]) -> dict[str, Any]:
     """Build a top-level ``result_type`` filter directive for result-explorer.
 
@@ -425,6 +451,7 @@ class Results:
         result_type: str | list[str] | None = None,
         compute_job_id: str | None = None,
         limit: int | None = 1000,
+        page_size: int | None = None,
         select: list[str] | None = None,
         sort: dict[str, str] | None = None,
     ) -> dict:
@@ -453,6 +480,11 @@ class Results:
             compute_job_id: Optional compute job ID to filter by.
             limit: Maximum total number of results to return across all
                 pages. Defaults to 1000.
+            page_size: Records requested per HTTP page. Defaults to
+                :data:`~deeporigin.utils.constants.DEFAULT_SEARCH_PAGE_SIZE`.
+                When ``limit`` is set, each request uses
+                ``min(limit, page_size)``. Larger values reduce round-trips for
+                large unscoped fetches (``limit=None``).
             select: List of fields to select. Defaults to
                 ``["id", "tool_key", "tool_version", "data", "compute_job_id"]``.
             sort: Optional sort mapping field names to ``"asc"`` or ``"desc"``.
@@ -467,7 +499,7 @@ class Results:
 
         Raises:
             ValueError: If ``result_type`` is passed both as a kwarg and inside
-                ``filter_dict``.
+                ``filter_dict``, or if ``page_size`` is less than 1.
         """
         filter_dict = self._prepare_search_filter(
             filter_dict=filter_dict,
@@ -479,14 +511,13 @@ class Results:
             # IMPORTANT! execution_id is not the same as executionId in the rest of the system
             select = ["id", "tool_key", "tool_version", "data", "compute_job_id"]
 
-        page_size = (
-            min(limit, DEFAULT_SEARCH_PAGE_SIZE)
-            if limit is not None
-            else DEFAULT_SEARCH_PAGE_SIZE
+        resolved_page_size = _resolve_request_page_size(
+            limit=limit,
+            page_size=page_size,
         )
         all_data, response = self._fetch_result_pages(
             filter_dict=filter_dict,
-            page_size=page_size,
+            page_size=resolved_page_size,
             select=select,
             sort=sort,
             limit=limit,

@@ -24,7 +24,10 @@ API_ENDPOINT = {
 
 
 DEFAULT_SEARCH_PAGE_SIZE = 100
-"""Default page size for paginated entity search requests."""
+"""Default per-request page size for paginated search (entities / results).
+
+:meth:`~deeporigin.platform.results.Results.get` uses this when ``page_size``
+is omitted."""
 
 ENTITY_SEARCH_TIMEOUT_SECONDS = 60.0
 """HTTP timeout (seconds) for data-platform entity search requests.
@@ -253,6 +256,18 @@ METABOLISM_EXECUTION_TIMEOUT_SECONDS = 900.0
 
 Cold-start loading of the DOSOM ensemble can exceed the default 600s POST
 timeout."""
+
+METABOLISM_LIGAND_ID_QUERY_BATCH_SIZE = 500
+"""Max ligand ids per result-explorer ``ligand_id`` ``in`` filter for Metabolism.
+
+Used by ``fetch_results`` / ``fetch_molecules`` and the already-scored preflight
+(matches the toolbox MetabolismMolecule skip-filter batch size)."""
+
+METABOLISM_RESULT_EXPLORER_PAGE_SIZE = 1000
+"""Per-request page size for Metabolism result-explorer fetches.
+
+Site rows are flat (top-3 atoms × CYP isoforms), so the default page size of
+100 creates many sequential HTTP round-trips for modest ligand batches."""
 
 JOB_WATCH_BLOCK_ENV = "JOB_WATCH_BLOCK"
 """Env var for blocking :meth:`~deeporigin.drug_discovery.notebook_watch_mixin.NotebookWatchMixin.watch`.

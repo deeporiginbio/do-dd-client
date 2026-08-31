@@ -56,6 +56,30 @@ def test_client_tag_mutable_on_shared_instance():
     assert client.tag == "tag-b"
 
 
+def test_client_repr_is_multiline():
+    """Client ``repr`` is a multiline summary of identity and optional tags."""
+    DeepOriginClient.close_all()
+
+    client = DeepOriginClient.from_local()
+    assert repr(client) == (
+        "DeepOrigin Platform Client\n"
+        "  name: Local User\n"
+        "  org_key: deeporigin\n"
+        f"  base_url: {client.base_url}"
+    )
+
+    client.tag = "experiment-1"
+    client.billing_tag = "billing-1"
+    assert repr(client) == (
+        "DeepOrigin Platform Client\n"
+        "  name: Local User\n"
+        "  org_key: deeporigin\n"
+        f"  base_url: {client.base_url}\n"
+        "  tag: experiment-1\n"
+        "  billing_tag: billing-1"
+    )
+
+
 def _stub_post_json_capturing_body(client: DeepOriginClient) -> dict:
     """Replace ``client.post_json`` with a stub that records the request body.
 

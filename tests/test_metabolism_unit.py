@@ -6,13 +6,22 @@ import pytest
 
 from deeporigin.drug_discovery.metabolism import (
     Metabolism,
+    _backfill_smiles_from_ligands,
     _job_output_rows,
     _ligands_from_inputs,
     _metabolism_default_name,
     _normalize_ligands,
+    _ordered_dataframe,
+    _platform_ligand_ids,
+    _rows_for_ligand_ids,
+    _rows_from_result_explorer,
+    _unique_preserve_order,
 )
 from deeporigin.drug_discovery.structures.ligand import Ligand, LigandSet
-from deeporigin.utils.constants import METABOLISM_WORKFLOW_LIGAND_THRESHOLD
+from deeporigin.utils.constants import (
+    METABOLISM_RESULT_EXPLORER_PAGE_SIZE,
+    METABOLISM_WORKFLOW_LIGAND_THRESHOLD,
+)
 
 
 def test_normalize_ligands_accepts_ligand_list_and_set() -> None:
@@ -125,6 +134,41 @@ def test_job_output_rows_empty_when_missing() -> None:
     assert _job_output_rows({"jobOutputs": {"other": []}}, key="sites") == []
 
 
+def test_rows_from_result_explorer_extracts_data_payloads() -> None:
+    """Result-explorer records contribute their nested ``data`` dicts."""
+    site = {"smiles": "CCO", "enzyme": "CYP3A4", "atom_index": 0}
+    mol = {"smiles": "CCO", "confidence_tier": "high"}
+    response = {
+        "data": [
+            {"id": "1", "result_type": "metabolismsite", "data": site},
+            {"id": "2", "result_type": "metabolismmolecule", "data": mol},
+            {"id": "3", "result_type": "metabolismsite", "data": "skip"},
+            "not-a-dict",
+        ]
+    }
+    assert _rows_from_result_explorer(response) == [site, mol]
+    assert _rows_from_result_explorer({}) == []
+    assert _rows_from_result_explorer(None) == []
+
+
+def test_rows_from_result_explorer_expands_wrapped_payloads() -> None:
+    """Whole-schema wrappers under metabolismmolecules/sites are flattened."""
+    mol = {"ligand_id": "lig-1", "confidence_tier": "high"}
+    site = {
+        "ligand_id": "lig-1",
+        "atom_index": 0,
+        "enzyme": "CYP3A4",
+        "confidence": 0.9,
+    }
+    response = {
+        "data": [
+            {"data": {"metabolismmolecules": [mol]}},
+            {"data": {"metabolismsites": [site]}},
+        ]
+    }
+    assert _rows_from_result_explorer(response) == [mol, site]
+
+
 def test_ligands_from_inputs_builds_ligands() -> None:
     """Stored ligand SMILES and ids are restored; omitted id stays unset."""
     ligands = _ligands_from_inputs(
@@ -143,3 +187,78 @@ def test_ligands_from_inputs_rejects_missing_rows() -> None:
         _ligands_from_inputs({"ligands": ["CCO"]})
     with pytest.raises(ValueError, match="no SMILES"):
         _ligands_from_inputs({"ligands": [{"id": "1"}]})
+
+
+def test_platform_ligand_ids_skips_missing_and_blank() -> None:
+    """Only non-empty platform ids are collected."""
+    with_id = Ligand.from_smiles("CCO")
+    with_id.id = "lig-1"
+    blank = Ligand.from_smiles("CCN")
+    blank.id = "  "
+    no_id = Ligand.from_smiles("CCC")
+    assert _platform_ligand_ids([with_id, blank, no_id]) == ["lig-1"]
+
+
+def test_unique_preserve_order() -> None:
+    """Duplicates are dropped while keeping first-seen order."""
+    assert _unique_preserve_order(["a", "b", "a", "c", "b"]) == ["a", "b", "c"]
+
+
+def test_ordered_dataframe_empty_keeps_columns() -> None:
+    """An empty fetch returns preferred columns with no rows."""
+    df = _ordered_dataframe([], columns=("ligand_id", "smiles"))
+    assert list(df.columns) == ["ligand_id", "smiles"]
+    assert len(df) == 0
+
+
+def test_backfill_smiles_from_ligands_fills_missing() -> None:
+    """MQ-style rows without SMILES pick up Caller SMILES from ligands."""
+    lig = Ligand.from_smiles("CCO")
+    lig.id = "lig-1"
+    other = Ligand.from_smiles("CCN")
+    other.id = "lig-2"
+    rows = [
+        {"ligand_id": "lig-1", "confidence_tier": "high"},
+        {"ligand_id": "lig-2", "smiles": "CCN", "confidence_tier": "low"},
+        {"ligand_id": "lig-missing", "confidence_tier": "medium"},
+    ]
+    filled = _backfill_smiles_from_ligands(rows, ligands=[lig, other])
+    assert filled[0]["smiles"] == "CCO"
+    assert filled[1]["smiles"] == "CCN"
+    assert "smiles" not in filled[2]
+
+
+class _RecordingMetabolismResults:
+    """Record ``Results.get`` kwargs for Metabolism query helpers."""
+
+    def __init__(self) -> None:
+        """Initialize with an empty kwargs capture."""
+        self.kwargs: dict | None = None
+
+    def get(self, **kwargs: object) -> dict:
+        """Store kwargs and return an empty result-explorer payload."""
+        self.kwargs = kwargs
+        return {"data": []}
+
+
+class _RecordingMetabolismClient:
+    """Minimal client exposing ``results.get`` for unit tests."""
+
+    def __init__(self) -> None:
+        """Attach a recording Results stand-in."""
+        self.results = _RecordingMetabolismResults()
+
+
+def test_rows_for_ligand_ids_uses_metabolism_page_size() -> None:
+    """Metabolism result-explorer queries request page_size 1000."""
+    client = _RecordingMetabolismClient()
+    rows = _rows_for_ligand_ids(
+        client,  # type: ignore[arg-type]
+        ligand_ids=["lig-1"],
+        result_type="metabolismsite",
+    )
+    assert rows == []
+    assert client.results.kwargs is not None
+    assert client.results.kwargs["limit"] is None
+    assert client.results.kwargs["page_size"] == METABOLISM_RESULT_EXPLORER_PAGE_SIZE
+    assert METABOLISM_RESULT_EXPLORER_PAGE_SIZE == 1000
