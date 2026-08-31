@@ -13,8 +13,10 @@ from deeporigin.platform.results import (
     _build_result_type_filter,
     _filter_dict_has_result_type,
     _normalize_result_type,
+    _resolve_request_page_size,
     _sort_uses_jsonb_fields,
 )
+from deeporigin.utils.constants import DEFAULT_SEARCH_PAGE_SIZE
 from tests.mock_server.routers.data_platform import _apply_eq_filters
 
 if TYPE_CHECKING:
@@ -158,6 +160,50 @@ def test_get_passes_sort_in_request_body():
     assert "result_type" not in body["filter"]
     assert "cursor" not in body
     assert "offset" not in body
+
+
+def test_resolve_request_page_size_defaults_and_caps() -> None:
+    """Page size defaults to 100 and is capped by total limit when set."""
+    assert _resolve_request_page_size(limit=None, page_size=None) == (
+        DEFAULT_SEARCH_PAGE_SIZE
+    )
+    assert _resolve_request_page_size(limit=None, page_size=1000) == 1000
+    assert _resolve_request_page_size(limit=50, page_size=1000) == 50
+    assert _resolve_request_page_size(limit=5000, page_size=1000) == 1000
+    with pytest.raises(ValueError, match="page_size must be >= 1"):
+        _resolve_request_page_size(limit=None, page_size=0)
+
+
+def test_get_uses_configured_page_size() -> None:
+    """Results.get sends the caller page_size as each request's limit."""
+    fake_client = _RecordingResultsClient(
+        [
+            {
+                "data": [{"id": str(i)} for i in range(1000)],
+                "meta": {"nextCursor": "page-2"},
+            },
+            {
+                "data": [{"id": "1000"}],
+                "meta": {},
+            },
+        ]
+    )
+    results = Results(fake_client)  # type: ignore[arg-type]
+
+    response = results.get(limit=None, page_size=1000, select=["id"])
+
+    assert len(response["data"]) == 1001
+    assert fake_client.post_json_bodies[0]["limit"] == 1000
+    assert fake_client.post_json_bodies[1]["cursor"] == "page-2"
+    assert fake_client.post_json_bodies[1]["limit"] == 1000
+
+
+def test_get_rejects_invalid_page_size() -> None:
+    """Results.get raises when page_size is less than 1."""
+    fake_client = _RecordingResultsClient([])
+    results = Results(fake_client)  # type: ignore[arg-type]
+    with pytest.raises(ValueError, match="page_size must be >= 1"):
+        results.get(page_size=0)
 
 
 def test_get_jsonb_sort_uses_offset_pagination():

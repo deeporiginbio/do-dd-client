@@ -1373,16 +1373,70 @@ def create_tools_router(
             molecules.extend(lig_mols)
         return {"sites": sites, "molecules": molecules}
 
+    def _inject_metabolism_result_explorer_records(
+        *,
+        tool_key: str,
+        tool_version: str,
+        execution_id: str,
+        job_outputs: dict[str, Any],
+    ) -> None:
+        """Mirror metabolism ``sites`` / ``molecules`` into result-explorer."""
+        if any(
+            r.get("compute_job_id") == execution_id
+            and r.get("result_type") in ("metabolismsite", "metabolismmolecule")
+            for r in results
+        ):
+            return
+
+        for output_key, result_type in (
+            ("sites", "metabolismsite"),
+            ("molecules", "metabolismmolecule"),
+        ):
+            items = job_outputs.get(output_key)
+            if not isinstance(items, list):
+                continue
+            for item in items:
+                if not isinstance(item, dict):
+                    continue
+                results.append(
+                    {
+                        "id": "08" + str(uuid.uuid4()).replace("-", "").upper()[:11],
+                        "tool_key": tool_key,
+                        "tool_version": tool_version,
+                        "result_type": result_type,
+                        "data": dict(item),
+                        "compute_job_id": execution_id,
+                    }
+                )
+
     def _inject_metabolism_tool_execution_results(
         execution: dict[str, Any],
     ) -> None:
-        """Fill ``jobOutputs`` for a completed async metabolism execution."""
-        if execution.get("jobOutputs"):
+        """Index metabolism rows in result-explorer for a completed async run.
+
+        Matches production async workflow behavior: sites/molecules are
+        published to the data platform, not echoed in ``jobOutputs``.
+        """
+        eid = execution.get("executionId")
+        tool = execution.get("tool") or {}
+        tkey = str(tool.get("key") or "deeporigin.metabolism")
+        tool_version = str(tool.get("version") or "0.0.0")
+        if not eid:
             return
+
         user_inputs = execution.get("userInputs") or {}
         if not isinstance(user_inputs, dict):
             user_inputs = {}
-        execution["jobOutputs"] = _metabolism_job_outputs_from_inputs(user_inputs)
+        job_outputs = _metabolism_job_outputs_from_inputs(user_inputs)
+        # Async path: leave jobOutputs empty so the client must use
+        # result-explorer (same shape as a finished platform workflow run).
+        execution["jobOutputs"] = {"sites": [], "molecules": []}
+        _inject_metabolism_result_explorer_records(
+            tool_key=tkey,
+            tool_version=tool_version,
+            execution_id=str(eid),
+            job_outputs=job_outputs,
+        )
 
     def _build_metabolism_execution(
         *, org_key: str, tool_key: str, tool_version: str, body: dict[str, Any]
@@ -1397,7 +1451,16 @@ def create_tools_router(
         )
 
         inputs = body.get("inputs", {}) or {}
-        execution["jobOutputs"] = _metabolism_job_outputs_from_inputs(inputs)
+        job_outputs = _metabolism_job_outputs_from_inputs(inputs)
+        execution["jobOutputs"] = job_outputs
+        eid = execution.get("executionId")
+        if eid:
+            _inject_metabolism_result_explorer_records(
+                tool_key=tool_key,
+                tool_version=tool_version,
+                execution_id=str(eid),
+                job_outputs=job_outputs,
+            )
         execution["quotationResult"] = {
             "anyFailed": False,
             "failedQuotations": [],
