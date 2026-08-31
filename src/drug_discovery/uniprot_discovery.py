@@ -41,7 +41,8 @@ from deeporigin.platform.constants import TOOL_KEYS_AND_VERSIONS, is_success_sta
 UniprotDiscoveryGrade = Literal["A", "B", "C", "D"]
 FieldStatusValue = Literal["value", "not_applicable", "unknown"]
 
-# UniProtKB accessions: 6-char classic or 10-char isoform-style.
+# UniProtKB accessions: 6-char classic format or 10-char extended format.
+# Isoform suffixes (e.g. "-2") are a separate concept and not matched here.
 _UNIPROT_ACCESSION_RE = re.compile(
     r"^(?:[OPQ]\d[A-Z0-9]{3}\d|[A-NR-Z]\d(?:[A-Z][A-Z0-9]{2}\d){1,2})$",
     re.IGNORECASE,
