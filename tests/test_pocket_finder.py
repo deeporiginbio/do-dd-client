@@ -314,6 +314,32 @@ def test_pocket_finder_from_dto_rejects_non_dict_protein_input(client) -> None:
         PocketFinder.from_dto(dto, client=client)
 
 
+def test_pocket_finder_from_dto_rejects_falsy_non_dict_protein_input(client) -> None:
+    """A falsy non-dict 'protein' (e.g. []) must not be silently treated as missing."""
+    fixture_path = (
+        Path(__file__).parent / "fixtures/executions/pocket-finder-test-execution.json"
+    )
+    dto = json.loads(fixture_path.read_text())
+    dto = json.loads(json.dumps(dto))
+    dto["userInputs"]["protein"] = []
+
+    with pytest.raises(ValueError, match="'protein'.*must be a dict"):
+        PocketFinder.from_dto(dto, client=client)
+
+
+def test_pocket_finder_from_dto_rejects_empty_string_mode(client) -> None:
+    """A falsy invalid 'mode' (e.g. '') must not be silently coerced to auto-find."""
+    fixture_path = (
+        Path(__file__).parent / "fixtures/executions/pocket-finder-test-execution.json"
+    )
+    dto = json.loads(fixture_path.read_text())
+    dto = json.loads(json.dumps(dto))
+    dto["userInputs"]["mode"] = ""
+
+    with pytest.raises(ValueError, match="Invalid mode in execution inputs"):
+        PocketFinder.from_dto(dto, client=client)
+
+
 def test_pocket_finder_from_dto_raises_on_tool_key_mismatch(client) -> None:
     """from_dto fails fast when DTO tool key does not match PocketFinder.tool_key."""
     fixture_path = (

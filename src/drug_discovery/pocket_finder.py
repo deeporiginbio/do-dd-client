@@ -331,12 +331,13 @@ class PocketFinder(
     @staticmethod
     def _parse_protein_input(inputs: dict[str, Any]) -> dict[str, Any]:
         """Validate and return the ``protein`` sub-dict from execution inputs."""
-        protein_input = inputs.get("protein") or {}
-        if not isinstance(protein_input, dict):
+        raw_protein = inputs.get("protein")
+        if raw_protein is not None and not isinstance(raw_protein, dict):
             raise ValueError(
                 "'protein' in execution userInputs must be a dict, got "
-                f"{type(protein_input).__name__}"
+                f"{type(raw_protein).__name__}"
             ) from None
+        protein_input = raw_protein or {}
         protein_id = protein_input.get("id")
         file_path = protein_input.get("file_path")
         if protein_id is None and (not file_path or not str(file_path).strip()):
@@ -350,7 +351,9 @@ class PocketFinder(
     @staticmethod
     def _parse_mode(inputs: dict[str, Any]) -> PocketFinderMode:
         """Validate and return the ``mode`` from execution inputs."""
-        raw_mode = inputs.get("mode") or "auto-find"
+        raw_mode = inputs.get("mode")
+        if raw_mode is None:
+            raw_mode = "auto-find"
         if not isinstance(raw_mode, str) or raw_mode not in _VALID_MODES:
             raise ValueError(
                 f"Invalid mode in execution inputs: {raw_mode!r}"
