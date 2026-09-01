@@ -18,6 +18,8 @@ Indexed workflow rows often omit Caller SMILES; ``fetch_*`` fills ``smiles``
 from the ligands you pass, matched by platform id.
 
 Instance ``get_results()`` / ``get_molecules()`` still mean **this job only**.
+Do not call ``Metabolism.get_results(ligands)`` — that binds ligands as
+``self``; use ``fetch_results`` / ``fetch_molecules`` instead.
 
 ## Already scored ligands
 

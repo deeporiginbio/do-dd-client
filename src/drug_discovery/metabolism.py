@@ -263,6 +263,42 @@ def _resolve_client(client: DeepOriginClient | None) -> DeepOriginClient:
     return client if client is not None else DeepOriginClient()
 
 
+def _reject_classmethod_results_call(
+    receiver: object,
+    *,
+    instance_method: str,
+    fetch_method: str,
+) -> None:
+    """Reject ``Metabolism.get_* (ligands)`` mistaken for ``fetch_*``.
+
+    ``get_results`` / ``get_molecules`` are instance methods. Calling them on
+    the class with a ligand argument binds that argument as ``self`` and
+    produces a confusing ``AttributeError``. Detect that pattern and point
+    callers at the class-level ``fetch_*`` helpers.
+
+    Args:
+        receiver: The ``self`` value passed into the instance method.
+        instance_method: Name of the instance method that was called.
+        fetch_method: Matching class-level ``fetch_*`` method name.
+
+    Raises:
+        TypeError: If *receiver* looks like ligands rather than a
+            :class:`Metabolism` instance.
+    """
+
+    if isinstance(receiver, Metabolism):
+        return
+    if isinstance(receiver, (Ligand, LigandSet)) or (
+        isinstance(receiver, list)
+        and (len(receiver) == 0 or isinstance(receiver[0], Ligand))
+    ):
+        raise TypeError(
+            f"Metabolism.{instance_method}() is an instance method for one "
+            f"execution (job.{instance_method}()). To load indexed rows across "
+            f"past jobs, use Metabolism.{fetch_method}(ligands=...)."
+        )
+
+
 def _platform_ligand_ids(ligands: list[Ligand]) -> list[str]:
     """Return non-empty platform ligand ids in input order (duplicates kept).
 
@@ -891,6 +927,10 @@ class Metabolism(
         (``result_type=metabolismsite``), then falls back to
         ``jobOutputs.sites``. Includes every enzyme the tool scored.
 
+        For indexed sites across any past jobs (no execution required), use
+        :meth:`fetch_results` instead of calling this on the class with
+        ligands.
+
         Args:
             dto: Optional execution payload from ``executions.create`` /
                 ``executions.get`` used only for the jobOutputs fallback.
@@ -900,9 +940,15 @@ class Metabolism(
             ``enzyme``, and ``confidence``.
 
         Raises:
+            TypeError: If called as ``Metabolism.get_results(ligands)``.
             ValueError: If :attr:`id` is unset and ``dto`` is omitted.
             DeepOriginException: If no site rows could be parsed.
         """
+        _reject_classmethod_results_call(
+            self,
+            instance_method="get_results",
+            fetch_method="fetch_results",
+        )
         rows = self._fetch_output_rows(
             result_type=_RESULT_TYPE_SITES,
             job_outputs_key="sites",
@@ -919,6 +965,10 @@ class Metabolism(
         (``result_type=metabolismmolecule``), then falls back to
         ``jobOutputs.molecules``. One row per scored SMILES.
 
+        For indexed molecules across any past jobs (no execution required),
+        use :meth:`fetch_molecules` instead of calling this on the class
+        with ligands.
+
         Args:
             dto: Optional execution payload from ``executions.create`` /
                 ``executions.get`` used only for the jobOutputs fallback.
@@ -927,9 +977,15 @@ class Metabolism(
             DataFrame with ``ligand_id``, ``smiles``, and ``confidence_tier``.
 
         Raises:
+            TypeError: If called as ``Metabolism.get_molecules(ligands)``.
             ValueError: If :attr:`id` is unset and ``dto`` is omitted.
             DeepOriginException: If no molecule rows could be parsed.
         """
+        _reject_classmethod_results_call(
+            self,
+            instance_method="get_molecules",
+            fetch_method="fetch_molecules",
+        )
         rows = self._fetch_output_rows(
             result_type=_RESULT_TYPE_MOLECULES,
             job_outputs_key="molecules",

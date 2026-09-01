@@ -102,6 +102,24 @@ def test_metabolism_make_payload_rejects_approve_amount() -> None:
         job._make_payload(approve_amount=0, sync=False)
 
 
+def test_metabolism_get_results_classmethod_ligands_raises() -> None:
+    """``Metabolism.get_results(ligands)`` points callers to ``fetch_results``."""
+    lig = Ligand.from_smiles("CCO")
+    with pytest.raises(TypeError, match="fetch_results"):
+        Metabolism.get_results(lig)  # type: ignore[arg-type]
+    with pytest.raises(TypeError, match="fetch_results"):
+        Metabolism.get_results(LigandSet(ligands=[lig]))  # type: ignore[arg-type]
+    with pytest.raises(TypeError, match="fetch_results"):
+        Metabolism.get_results([lig])  # type: ignore[arg-type]
+
+
+def test_metabolism_get_molecules_classmethod_ligands_raises() -> None:
+    """``Metabolism.get_molecules(ligands)`` points callers to ``fetch_molecules``."""
+    lig = Ligand.from_smiles("CCO")
+    with pytest.raises(TypeError, match="fetch_molecules"):
+        Metabolism.get_molecules(lig)  # type: ignore[arg-type]
+
+
 def test_metabolism_start_quote_fails_fast_instead_of_running() -> None:
     """``start(quote=True)`` must not silently run for real."""
     job = Metabolism(ligands=Ligand.from_smiles("CCO"))
