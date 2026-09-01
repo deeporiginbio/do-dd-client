@@ -38,6 +38,7 @@ __all__ = [
     "KonnektorResult",
     "Patent",
     "Enumerator",
+    "LigandSearch",
     "ProteinPrep",
     "RecommendationView",
     "StructureReport",
@@ -84,6 +85,7 @@ _LAZY_IMPORTS = {
     "KonnektorResult": ("deeporigin.drug_discovery.konnektor", "KonnektorResult"),
     "Patent": ("deeporigin.drug_discovery.patent", "Patent"),
     "Enumerator": ("deeporigin.drug_discovery.enumerator", "Enumerator"),
+    "LigandSearch": ("deeporigin.drug_discovery.ligand_search", "LigandSearch"),
     "ProteinPrep": ("deeporigin.drug_discovery.protein_prep", "ProteinPrep"),
     "RecommendationView": (
         "deeporigin.drug_discovery.protein_prep",

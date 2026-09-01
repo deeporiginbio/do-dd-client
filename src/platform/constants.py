@@ -146,6 +146,10 @@ TOOL_KEYS_AND_VERSIONS: dict[str, dict[str, str]] = {
         "tool_key": "deeporigin.enumerator",
         "tool_version": "latest",
     },
+    "ligand_search": {
+        "tool_key": "deeporigin.ligand-search",
+        "tool_version": "latest",
+    },
     "admet": {
         "tool_key": "deeporigin.admet-properties",
         "tool_version": "latest",

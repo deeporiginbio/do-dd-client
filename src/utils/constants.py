@@ -340,3 +340,88 @@ ENUMERATOR_AVAILABLE_REACTIONS_COLUMNS: tuple[str, ...] = (
     "atom_indices",
 )
 """Column order for the DataFrame built from AVAILABLE_REACTIONS ``jobOutputs``."""
+
+
+LIGAND_SEARCH_MODES: frozenset[str] = frozenset(
+    {"EXACT", "SUBSTRUCTURE", "SIMILARITY_2D", "SYNTHON"}
+)
+"""Valid ``search_mode`` values for ``deeporigin.ligand-search``.
+
+``EXACT`` matches by InChIKey, ``SUBSTRUCTURE`` by SMARTS pattern,
+``SIMILARITY_2D`` by 2D fingerprint similarity, and ``SYNTHON`` searches
+un-enumerated combinatorial space.
+"""
+
+LIGAND_SEARCH_LIBRARIES: frozenset[str] = frozenset(
+    {"enamine_hll", "enamine_screening", "onepot", "enamine_real_synthons"}
+)
+"""Vendor libraries ``deeporigin.ligand-search`` can search."""
+
+LIGAND_SEARCH_MODE_LIBRARIES: dict[str, frozenset[str]] = {
+    "EXACT": frozenset({"enamine_hll", "enamine_screening"}),
+    "SUBSTRUCTURE": frozenset({"enamine_hll", "enamine_screening"}),
+    "SIMILARITY_2D": frozenset({"enamine_hll", "enamine_screening", "onepot"}),
+    "SYNTHON": frozenset({"onepot", "enamine_real_synthons"}),
+}
+"""Which libraries can serve each ``search_mode``.
+
+Onepot is a make-on-demand combinatorial space behind a search-only API: it has
+no bulk export and no InChIKey endpoint, so it cannot serve ``EXACT`` or
+``SUBSTRUCTURE``. A library that cannot serve the requested mode contributes a
+warning and zero hits rather than failing the run; a request where *no* selected
+library can serve the mode is an error.
+"""
+
+LIGAND_SEARCH_FINGERPRINTS: frozenset[str] = frozenset({"ECFP4", "ERG"})
+"""Valid ``fingerprint`` values for ``SIMILARITY_2D``."""
+
+LIGAND_SEARCH_REACTION_RULES: frozenset[str] = frozenset({"brics", "enamine"})
+"""Valid ``reaction_rules`` values for ``SYNTHON``.
+
+``enamine`` is declared but refuses to run until a vendor synthon feed is
+sourced; a synthon index records the rule set that built it and a search that
+disagrees is refused rather than silently falling back.
+"""
+
+LIGAND_SEARCH_DEFAULT_THRESHOLD = 0.4
+"""Default minimum Tanimoto similarity for ``SIMILARITY_2D``.
+
+Measured over all 460,160 HLL-460 compounds with ECFP4, the best hit was 0.600
+for acetaminophen and 0.357 for phenol, so a 0.7 threshold returns nothing at
+all. Result-set size is bounded by :data:`LIGAND_SEARCH_MAX_LIMIT` instead, which
+keeps the two independent levers.
+"""
+
+LIGAND_SEARCH_MAX_LIMIT = 1000
+"""Maximum hits a single search returns, applied once after merging libraries."""
+
+LIGAND_SEARCH_DEFAULT_SYNTHON_PREFILTER_SIZE = 100
+"""Default synthons pulled from each label bucket before reconstruction."""
+
+LIGAND_SEARCH_RESULTS_CSV_COLUMNS: tuple[str, ...] = (
+    "row_id",
+    "smiles",
+    "inchikey",
+    "library",
+    "vendor_name",
+    "vendor_catalog_id",
+    "vendor_url",
+    "result_type",
+    "synthon_ids",
+    "reaction_rules",
+    "score",
+    "match_size",
+    "vendor_molecular_weight",
+    "vendor_logp",
+    "vendor_tpsa",
+    "hbd",
+    "hba",
+    "rotatable_bonds",
+    "heavy_atoms",
+)
+"""Column order of the ligand-search results CSV.
+
+``vendor_catalog_id`` and ``vendor_url`` are blank rather than absent for hits
+that have neither. ``result_type`` is the discriminator saying which kind of hit
+a row is, so a consumer never infers it from which fields happen to be empty.
+"""
