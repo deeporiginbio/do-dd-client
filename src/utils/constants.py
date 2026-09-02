@@ -353,14 +353,14 @@ un-enumerated combinatorial space.
 """
 
 LIGAND_SEARCH_LIBRARIES: frozenset[str] = frozenset(
-    {"enamine_hll", "enamine_screening", "onepot", "enamine_real_synthons"}
+    {"enamine_hll", "onepot", "enamine_real_synthons"}
 )
 """Vendor libraries ``deeporigin.ligand-search`` can search."""
 
 LIGAND_SEARCH_MODE_LIBRARIES: dict[str, frozenset[str]] = {
-    "EXACT": frozenset({"enamine_hll", "enamine_screening"}),
-    "SUBSTRUCTURE": frozenset({"enamine_hll", "enamine_screening"}),
-    "SIMILARITY_2D": frozenset({"enamine_hll", "enamine_screening", "onepot"}),
+    "EXACT": frozenset({"enamine_hll"}),
+    "SUBSTRUCTURE": frozenset({"enamine_hll"}),
+    "SIMILARITY_2D": frozenset({"enamine_hll", "onepot"}),
     "SYNTHON": frozenset({"onepot", "enamine_real_synthons"}),
 }
 """Which libraries can serve each ``search_mode``.

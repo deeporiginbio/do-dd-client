@@ -29,11 +29,11 @@ Usage::
 
     query = Ligand.from_smiles("CC(=O)Nc1ccc(O)cc1")
 
-    # 2D similarity across two catalog libraries
+    # 2D similarity across the catalog and Onepot
     search = LigandSearch(
         query=query,
         search_mode="SIMILARITY_2D",
-        libraries=["enamine_hll", "enamine_screening"],
+        libraries=["enamine_hll", "onepot"],
     )
     hits = search.run()
 

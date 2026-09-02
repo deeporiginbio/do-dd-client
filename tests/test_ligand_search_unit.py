@@ -65,11 +65,18 @@ def test_onepot_cannot_serve_exact_or_substructure(
 
 
 def test_a_mixed_selection_is_allowed(stub_client: DeepOriginClient) -> None:
-    """One capable library is enough; the rest warn and contribute zero hits."""
+    """One capable library is enough; the rest warn and contribute zero hits.
+
+    ``enamine_real_synthons`` serves SYNTHON only, so this pairs a library that
+    can serve the mode with one that cannot -- the case the server warns about
+    rather than failing.
+    """
     search = _search(
-        stub_client, search_mode="SIMILARITY_2D", libraries=["enamine_hll", "onepot"]
+        stub_client,
+        search_mode="SIMILARITY_2D",
+        libraries=["enamine_hll", "enamine_real_synthons"],
     )
-    assert search.libraries == ["enamine_hll", "onepot"]
+    assert search.libraries == ["enamine_hll", "enamine_real_synthons"]
 
 
 def test_synthon_accepts_onepot_alongside_real_synthons(

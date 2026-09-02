@@ -20,7 +20,7 @@ back. `run()` blocks until the search finishes, so you must be logged in
 The tool exposes four `search_mode` values, and each library can serve only some
 of them:
 
-| `search_mode` | `enamine_hll`, `enamine_screening` | `onepot` | `enamine_real_synthons` |
+| `search_mode` | `enamine_hll` | `onepot` | `enamine_real_synthons` |
 | --- | --- | --- | --- |
 | `EXACT` | ✅ [InChIKey :octicons-link-external-16:](https://www.inchi-trust.org/) lookup | ❌ | ❌ |
 | `SUBSTRUCTURE` | ✅ smallest matches first | ❌ | ❌ |
@@ -67,7 +67,7 @@ query = Ligand.from_smiles("CC(=O)Nc1ccc(O)cc1")
 search = LigandSearch(
     query=query,
     search_mode="SIMILARITY_2D",
-    libraries=["enamine_hll", "enamine_screening"],
+    libraries=["enamine_hll", "onepot"],
 )
 hits = search.run()
 hits.head()
@@ -125,7 +125,7 @@ pattern:
 hits = LigandSearch(
     smarts="c1ccccc1Br",
     search_mode="SUBSTRUCTURE",
-    libraries=["enamine_hll", "enamine_screening"],
+    libraries=["enamine_hll"],
 ).run()
 ```
 
