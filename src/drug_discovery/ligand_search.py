@@ -199,6 +199,7 @@ class LigandSearch(
         self._cap_hit: bool | None = None
         self._row_count: int | None = None
         self._results_csv_path: str | None = None
+        self._library_report: list[dict[str, Any]] = []
         self._validate()
 
     def _validate(self) -> None:
@@ -344,6 +345,17 @@ class LigandSearch(
     def results_csv_path(self) -> str | None:
         """Remote path of the results CSV, or ``None`` before results are read."""
         return self._results_csv_path
+
+    @property
+    def library_report(self) -> list[dict[str, Any]]:
+        """Per-library ``{library_id, hit_count, warning}`` for the last run.
+
+        A library that could not serve the mode, or whose index was missing,
+        reports zero hits and a ``warning`` rather than failing the search --
+        so this is where a partially-served run explains itself. Empty before
+        results are read.
+        """
+        return list(self._library_report)
 
     def __repr__(self) -> str:
         """Return a concise summary of this LigandSearch."""
@@ -542,7 +554,12 @@ class LigandSearch(
         return local_path
 
     def _read_results_pointer(self, job_outputs: dict[str, Any]) -> str:
-        """Read the single pointer row and cache its metadata.
+        """Read the results pointer from ``jobOutputs`` and cache its metadata.
+
+        The tool returns its summary inline on ``jobOutputs`` (``results_csv``,
+        ``row_count``, ``truncated``, ``libraries``). The published
+        ``similarity_search_results`` row carries the same CSV path under
+        ``csv_file_path``, so both shapes are accepted.
 
         Args:
             job_outputs: The execution's ``jobOutputs`` mapping.
@@ -551,28 +568,42 @@ class LigandSearch(
             Remote path of the results CSV.
 
         Raises:
-            DeepOriginException: If the pointer row or its CSV path is missing.
+            DeepOriginException: If neither shape names a results CSV.
         """
-        results = [
-            row
-            for row in (job_outputs.get(_RESULTS_KEY) or [])
-            if isinstance(row, dict)
-        ]
-        if not results:
-            raise DeepOriginException(
-                title="No search results",
-                message=f"The execution returned no {_RESULTS_KEY}.",
-            )
-        first = results[0]
-        csv_path = first.get("csv_file_path")
-        if not csv_path:
-            raise DeepOriginException(
-                title="No results CSV",
-                message=f"{_RESULTS_KEY} is missing csv_file_path.",
-            )
+        csv_path = job_outputs.get("results_csv")
+        if csv_path:
+            self._cap_hit = bool(job_outputs.get("truncated", False))
+            row_count = job_outputs.get("row_count")
+            self._library_report = [
+                entry
+                for entry in (job_outputs.get("libraries") or [])
+                if isinstance(entry, dict)
+            ]
+        else:
+            rows = [
+                row
+                for row in (job_outputs.get(_RESULTS_KEY) or [])
+                if isinstance(row, dict)
+            ]
+            if not rows:
+                raise DeepOriginException(
+                    title="No search results",
+                    message=(
+                        "The execution returned neither results_csv nor "
+                        f"{_RESULTS_KEY}."
+                    ),
+                )
+            first = rows[0]
+            csv_path = first.get("csv_file_path")
+            if not csv_path:
+                raise DeepOriginException(
+                    title="No results CSV",
+                    message=f"{_RESULTS_KEY} is missing csv_file_path.",
+                )
+            self._cap_hit = bool(first.get("cap_hit", False))
+            row_count = first.get("row_count")
+            self._library_report = []
 
-        self._cap_hit = bool(first.get("cap_hit", False))
-        row_count = first.get("row_count")
         self._row_count = int(row_count) if row_count is not None else None
         self._results_csv_path = str(csv_path)
         return str(csv_path)
@@ -637,4 +668,5 @@ class LigandSearch(
         instance._cap_hit = None
         instance._row_count = None
         instance._results_csv_path = None
+        instance._library_report = []
         return instance

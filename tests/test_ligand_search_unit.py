@@ -269,7 +269,25 @@ class _FakeClient:
 
 
 def _pointer_dto(**overrides: Any) -> dict[str, Any]:
-    """A completed execution DTO carrying one results pointer row."""
+    """A completed execution DTO in the shape the tool actually returns.
+
+    Verified against dev on 2026-09-03: ``jobOutputs`` carries the summary
+    inline, not a ``similarity_search_results`` row.
+    """
+    outputs: dict[str, Any] = {
+        "results_csv": _CSV_PATH,
+        "results_meta": "tool-runs/exec-123/results.meta.json",
+        "row_count": 3,
+        "truncated": False,
+        "search_mode": "SIMILARITY_2D",
+        "libraries": [{"library_id": "enamine_hll", "hit_count": 3, "warning": None}],
+    }
+    outputs.update(overrides)
+    return {"jobOutputs": outputs}
+
+
+def _published_row_dto(**overrides: Any) -> dict[str, Any]:
+    """The published pointer-row shape, still accepted as a fallback."""
     row: dict[str, Any] = {
         "csv_file_path": _CSV_PATH,
         "cap_hit": False,
@@ -304,7 +322,7 @@ def test_get_results_records_a_truncated_run(
     """cap_hit tells the caller the CSV is not the whole answer."""
     search = _search(stub_client)
     search._id = "exec-123"
-    search.client = _FakeClient(_pointer_dto(cap_hit=True, row_count=1000))
+    search.client = _FakeClient(_pointer_dto(truncated=True, row_count=1000))
 
     search.get_results()
 
@@ -350,6 +368,45 @@ def test_download_results_writes_the_raw_csv(
     assert search.download_results(target) == target
     assert fake.files.requested == _CSV_PATH
     assert pd.read_csv(target).shape[0] == 3
+
+
+def test_get_results_reports_per_library_hits_and_warnings(
+    stub_client: DeepOriginClient,
+) -> None:
+    """A partially-served run explains itself through library_report."""
+    search = _search(stub_client)
+    search._id = "exec-123"
+    search.client = _FakeClient(
+        _pointer_dto(
+            libraries=[
+                {"library_id": "enamine_hll", "hit_count": 3, "warning": None},
+                {"library_id": "onepot", "hit_count": 0, "warning": "no API key"},
+            ]
+        )
+    )
+
+    search.get_results()
+
+    assert [entry["library_id"] for entry in search.library_report] == [
+        "enamine_hll",
+        "onepot",
+    ]
+    assert search.library_report[1]["warning"] == "no API key"
+
+
+def test_get_results_still_accepts_the_published_pointer_row(
+    stub_client: DeepOriginClient,
+) -> None:
+    """The published `similarity_search_results` shape remains a fallback."""
+    search = _search(stub_client)
+    search._id = "exec-123"
+    search.client = _FakeClient(_published_row_dto())
+
+    frame = search.get_results()
+
+    assert len(frame) == 3
+    assert search.results_csv_path == _CSV_PATH
+    assert search.library_report == []
 
 
 # -- rehydration ---------------------------------------------------------------
