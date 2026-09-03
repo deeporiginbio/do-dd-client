@@ -714,7 +714,10 @@ class ABFE(Execution, AsyncExecutableMixin, NotebookWatchMixin):
                 fix="Wait until the execution status is Completed, then try again.",
             ) from None
 
-        response = self.client.results.get(compute_job_id=self.id)
+        response = self.client.results.get(
+            compute_job_id=self.id,
+            filter_dict={"tool_key": {"eq": self.tool_key}},
+        )
         data = _abfe_first_result_data(response, tool_key=self.tool_key)
         if data is None:
             raise DeepOriginException(
@@ -832,7 +835,10 @@ class ABFE(Execution, AsyncExecutableMixin, NotebookWatchMixin):
                 ),
             ) from None
 
-        response = self.client.results.get(compute_job_id=self.id)
+        response = self.client.results.get(
+            compute_job_id=self.id,
+            filter_dict={"tool_key": {"eq": self.tool_key}},
+        )
         data = _abfe_first_result_data(response, tool_key=self.tool_key)
         if data is None:
             raise DeepOriginException(
@@ -911,7 +917,10 @@ class ABFE(Execution, AsyncExecutableMixin, NotebookWatchMixin):
                 ),
             ) from None
 
-        response = self.client.results.get(compute_job_id=self.id)
+        response = self.client.results.get(
+            compute_job_id=self.id,
+            filter_dict={"tool_key": {"eq": self.tool_key}},
+        )
         data = _abfe_first_result_data(response, tool_key=self.tool_key)
         if data is None:
             raise DeepOriginException(

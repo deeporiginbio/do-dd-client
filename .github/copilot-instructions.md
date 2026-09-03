@@ -63,3 +63,4 @@ When shipping user-facing SDK capability:
 - Creating notebooks under `docs/notebooks/clean/` directly
 - Using `List` / `Dict` instead of `list` / `dict` in type hints
 - Running pytest without `--env local` or `--env dev`
+- Calling `client.results.get(...)` without a `tool_key` filter when the producing tool is known; add `filter_dict={"tool_key": {"eq": ...}}` unless the query must intentionally span multiple tool families
