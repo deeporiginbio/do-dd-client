@@ -86,6 +86,40 @@ def _resolve_file_content(
     raise HTTPException(status_code=404, detail=f"File not found: {remote_path}")
 
 
+def _extract_multipart_file_bytes(content_type: str, body: bytes) -> bytes:
+    """Extract the ``file`` part from a multipart PUT body.
+
+    Avoids requiring ``python-multipart`` in the mock server environment.
+    """
+    boundary: str | None = None
+    for part in content_type.split(";"):
+        part = part.strip()
+        if part.lower().startswith("boundary="):
+            boundary = part.split("=", 1)[1].strip().strip('"')
+            break
+    if not boundary:
+        return body
+
+    marker = b"--" + boundary.encode("ascii", errors="ignore")
+    for section in body.split(marker):
+        header_blob, sep, payload = section.partition(b"\r\n\r\n")
+        if not sep:
+            continue
+        headers = header_blob.decode("latin-1", errors="ignore").lower()
+        if 'name="file"' not in headers and "name=file" not in headers:
+            continue
+        # Trailing CRLF before the next boundary marker.
+        if payload.endswith(b"\r\n"):
+            payload = payload[:-2]
+        # Closing boundary may append "--".
+        if payload.endswith(b"--"):
+            payload = payload[:-2]
+            if payload.endswith(b"\r\n"):
+                payload = payload[:-2]
+        return payload
+    return body
+
+
 def create_files_router(
     file_storage: dict[str, bytes], fixtures_dir: Path
 ) -> APIRouter:
@@ -189,7 +223,12 @@ def create_files_router(
         request: Request,
     ) -> dict[str, str]:
         """Upload a file."""
-        content = await request.body()
+        content_type = request.headers.get("content-type", "")
+        body = await request.body()
+        if "multipart/form-data" in content_type:
+            content = _extract_multipart_file_bytes(content_type, body)
+        else:
+            content = body
         file_storage[remote_path] = content
         return {"eTag": "mock-etag", "key": remote_path}
 

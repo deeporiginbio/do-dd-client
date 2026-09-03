@@ -1357,6 +1357,18 @@ def create_tools_router(
     ) -> dict[str, list[dict[str, Any]]]:
         """Synthesize metabolism ``sites`` / ``molecules`` from stored inputs."""
         ligands_in = inputs.get("ligands") or []
+        if not ligands_in:
+            remote = inputs.get("ligands_file")
+            if isinstance(remote, str) and remote.strip():
+                key = remote.strip().lstrip("/")
+                raw = file_storage.get(key) or file_storage.get(remote.strip())
+                if raw is not None:
+                    try:
+                        parsed = json.loads(raw.decode("utf-8"))
+                    except (UnicodeDecodeError, json.JSONDecodeError):
+                        parsed = []
+                    if isinstance(parsed, list):
+                        ligands_in = parsed
         sites: list[dict[str, Any]] = []
         molecules: list[dict[str, Any]] = []
         for lig in ligands_in:

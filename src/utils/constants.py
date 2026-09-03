@@ -251,6 +251,12 @@ Matches platform preflight routing: batches at or above this size run as
 workflows. ``run()`` raises for ``len(ligands) >=`` this value; use
 ``start()`` then ``wait()`` / ``watch()``."""
 
+METABOLISM_INLINE_LIGAND_CAP = 100
+"""Max ligands sent inline in Metabolism ``inputs.ligands``.
+
+Matches the platform Inline ligand cap. Larger batches dump a Ligand list
+file to UFA and pass ``inputs.ligands_file`` instead."""
+
 METABOLISM_EXECUTION_TIMEOUT_SECONDS = 900.0
 """HTTP timeout (seconds) for ``deeporigin.metabolism`` sync runs.
 
