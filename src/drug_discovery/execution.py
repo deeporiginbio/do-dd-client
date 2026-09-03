@@ -783,7 +783,12 @@ class Execution:
             raise ValueError(
                 "Cannot get results: no execution has been started (id is None)."
             )
-        return self.client.results.get(compute_job_id=exec_id, **kwargs)
+        request_kwargs = dict(kwargs)
+        if self.tool_key:
+            filter_dict = dict(request_kwargs.get("filter_dict") or {})
+            filter_dict.setdefault("tool_key", {"eq": self.tool_key})
+            request_kwargs["filter_dict"] = filter_dict
+        return self.client.results.get(compute_job_id=exec_id, **request_kwargs)
 
     def get_user_logs(
         self,

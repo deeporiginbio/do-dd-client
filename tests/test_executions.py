@@ -222,6 +222,42 @@ def test_execution_get_user_logs_no_id_noop() -> None:
     assert ex.get_user_logs() is None
 
 
+def test_execution_get_results_scopes_to_execution_tool_key() -> None:
+    """``get_results`` adds a ``tool_key`` filter for concrete executions."""
+    client = MagicMock()
+    client.results.get.return_value = {"data": [], "meta": {}}
+    job = _TestToolExecution(client=client)
+    job._id = "exec-123"
+
+    job.get_results(limit=5)
+
+    client.results.get.assert_called_once_with(
+        compute_job_id="exec-123",
+        filter_dict={"tool_key": {"eq": "deeporigin.test-sync-tool"}},
+        limit=5,
+    )
+
+
+def test_execution_get_results_preserves_explicit_tool_key_filter() -> None:
+    """``get_results`` does not override a caller-provided ``tool_key`` filter."""
+    client = MagicMock()
+    client.results.get.return_value = {"data": [], "meta": {}}
+    job = _TestToolExecution(client=client)
+    job._id = "exec-123"
+
+    job.get_results(
+        filter_dict={"tool_key": {"eq": "deeporigin.custom-tool"}, "foo": {"eq": "bar"}}
+    )
+
+    client.results.get.assert_called_once_with(
+        compute_job_id="exec-123",
+        filter_dict={
+            "tool_key": {"eq": "deeporigin.custom-tool"},
+            "foo": {"eq": "bar"},
+        },
+    )
+
+
 def test_execution_get_user_logs_returns_dataframe() -> None:
     """``get_user_logs`` maps ``UserLogs.search`` rows into a DataFrame."""
 

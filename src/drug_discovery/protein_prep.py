@@ -1315,6 +1315,7 @@ class ProteinPrep(
 
         try:
             response = self.client.results.get(
+                filter_dict={"tool_key": {"eq": self.tool_key}},
                 result_type=_RESULT_TYPE_PREPARED_PROTEIN,
                 compute_job_id=exec_id,
                 limit=1,
