@@ -10,10 +10,15 @@ import pandas as pd
 import pytest
 
 from deeporigin.drug_discovery import Protein, ProteinPrep, RecommendationView
+from deeporigin.drug_discovery.protein_prep import (
+    _protein_from_prepared_data,
+    _protein_prep_default_name,
+)
 from deeporigin.exceptions import DeepOriginException
 from deeporigin.platform import DeepOriginClient
 from deeporigin.platform.constants import TOOL_KEYS_AND_VERSIONS, is_success_status
 from tests.conftest import check_tool_exists
+from tests.mock_server.routers.data_platform import prepared_protein_remote_path
 
 _SHA256 = "a" * 64
 _SAMPLE_SELECTION = {
@@ -107,10 +112,6 @@ def _prep_with_inventory(
 
 
 def _protein_with_remote(*, pdb_id: str | None = "1EBY") -> Protein:
-    """Return a protein whose remote path avoids upload in payload tests."""
-    protein = Protein(name="test", pdb_id=pdb_id)
-    protein.remote_path = "testing/brd.pdb"
-    return protein
     """Return a protein whose remote path avoids upload in payload tests."""
     protein = Protein(name="test", pdb_id=pdb_id)
     protein.remote_path = "testing/brd.pdb"
@@ -436,6 +437,77 @@ def test_skip_decision_review_resolves_reviews() -> None:
     assert decisions["chain:A"] == "keep"
 
 
+def test_protein_prep_default_name_helper() -> None:
+    """Default prepare names reflect loops, pocket, and pdb_id / protein name."""
+    protein = Protein(name="brd", pdb_id="1EBY")
+
+    assert (
+        _protein_prep_default_name(
+            protein=protein,
+            pdb_id="1EBY",
+            model_missing_loops=False,
+            include_pocket=False,
+        )
+        == "Preparing 1EBY"
+    )
+    assert (
+        _protein_prep_default_name(
+            protein=protein,
+            pdb_id="1EBY",
+            model_missing_loops=True,
+            include_pocket=False,
+        )
+        == "Preparing and loop modelling 1EBY"
+    )
+    assert (
+        _protein_prep_default_name(
+            protein=protein,
+            pdb_id=None,
+            model_missing_loops=False,
+            include_pocket=True,
+        )
+        == "Preparing and finding pockets brd"
+    )
+    assert (
+        _protein_prep_default_name(
+            protein=protein,
+            pdb_id="1EBY",
+            model_missing_loops=True,
+            include_pocket=True,
+        )
+        == "Preparing, loop modelling, and finding pockets 1EBY"
+    )
+    assert (
+        _protein_prep_default_name(
+            protein=Protein(name=""),
+            pdb_id=None,
+            model_missing_loops=False,
+            include_pocket=False,
+        )
+        == "Preparing protein"
+    )
+
+
+def test_ensure_prepare_name_respects_explicit_name() -> None:
+    """Caller-provided names are kept; otherwise config drives the label."""
+    prep = ProteinPrep(
+        protein=Protein(name="brd", pdb_id="1EBY"),
+        selection=_SAMPLE_SELECTION,
+        model_missing_loops=False,
+    )
+    prep._ensure_prepare_name()
+    assert prep.name == "Preparing 1EBY"
+
+    named = ProteinPrep(
+        protein=Protein(name="brd", pdb_id="1EBY"),
+        selection=_SAMPLE_SELECTION,
+        model_missing_loops=True,
+        name="custom prep",
+    )
+    named._ensure_prepare_name()
+    assert named.name == "custom prep"
+
+
 def test_prepare_requires_selection_before_upload() -> None:
     """Prepare cannot begin until recommendation or assignment provides Selection."""
     prep = ProteinPrep(
@@ -477,6 +549,21 @@ def test_run_requires_loops_off() -> None:
         prep.run()
 
 
+def test_run_rejects_pocket_config() -> None:
+    """Blocking prepare is unavailable when pocket is configured."""
+    from deeporigin.drug_discovery import PocketFinderConfig
+
+    prep = ProteinPrep(
+        protein=Protein(name="test"),
+        selection=_SAMPLE_SELECTION,
+        model_missing_loops=False,
+        pocket=PocketFinderConfig(pocket_count=1, pocket_min_size=30),
+    )
+
+    with pytest.raises(ValueError, match=r"Use start\(\)"):
+        prep.run()
+
+
 def test_start_requires_pdb_id_when_loops_enabled() -> None:
     """Asynchronous loops-on prepare requires a PDB ID."""
     prep = ProteinPrep(
@@ -509,15 +596,17 @@ def test_configuration_freezes_permanently_after_id() -> None:
 
 
 def test_removed_api_is_absent() -> None:
-    """The old two-object and quote-oriented surface is removed."""
+    """The old two-object surface is removed; quote kwargs remain on start/run."""
     prep = ProteinPrep(protein=Protein(name="test"))
 
     assert not hasattr(prep, "as_prepare")
     assert not hasattr(prep, "from_recommendation")
     assert not hasattr(prep, "get_recommendation")
     assert not hasattr(prep, "selection_from_recommendation")
-    assert list(inspect.signature(prep.run).parameters) == []
-    assert list(inspect.signature(prep.start).parameters) == []
+    assert "quote" in inspect.signature(prep.run).parameters
+    assert "approve_amount" in inspect.signature(prep.run).parameters
+    assert "quote" in inspect.signature(prep.start).parameters
+    assert "approve_amount" in inspect.signature(prep.start).parameters
 
 
 def test_recommend_payload_is_blocking_and_minimal() -> None:
@@ -604,6 +693,28 @@ def test_repr_adds_durable_execution_state() -> None:
     assert "25" in text
 
 
+def test_repr_html_omits_progress() -> None:
+    """Jupyter HTML skips progress so large reports do not dominate the table."""
+    prep = ProteinPrep(
+        protein=Protein(name="brd", pdb_id="1EBY"),
+        selection=_SAMPLE_SELECTION,
+    )
+    prep._id = "exec-abc"
+    prep.status = "Running"
+    prep.progress = {
+        "id": "workflow-huge",
+        "status": "Running",
+        "children": [{"id": f"step-{i}", "status": "Succeeded"} for i in range(50)],
+    }
+
+    html = prep._repr_html_()
+
+    assert "exec-abc" in html
+    assert "Running" in html
+    assert "progress" not in html
+    assert "workflow-huge" not in html
+
+
 def test_from_dto_rehydrates_prepare_without_public_action(
     client: DeepOriginClient,
 ) -> None:
@@ -650,7 +761,10 @@ def test_from_dto_v1_prepare_still_gets_results(
 
     assert prep._operation_kind == "prepare"
     assert isinstance(prepared, Protein)
-    assert prepared.remote_path == "testing/brd.pdb"
+    assert prepared.id == "prep-a1b2c3d4e5f6"
+    assert prepared.remote_path == prepared_protein_remote_path(
+        "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+    )
 
 
 def test_get_results_requires_durable_id() -> None:
@@ -659,6 +773,35 @@ def test_get_results_requires_durable_id() -> None:
 
     with pytest.raises(ValueError, match="no execution"):
         prep.get_results()
+
+
+def test_protein_from_prepared_data_uses_registered_protein_id(
+    client: DeepOriginClient,
+) -> None:
+    """Prepare outputs resolve the registered prepared protein entity."""
+    prepared = _protein_from_prepared_data(
+        {"protein_id": "prep-a1b2c3d4e5f6", "pdb_id": "1EBY"},
+        client=client,
+        fallback_pdb_id=None,
+        fallback_name="brd",
+    )
+
+    assert prepared.id == "prep-a1b2c3d4e5f6"
+    assert prepared.pdb_id == "1EBY"
+    assert prepared.remote_path == prepared_protein_remote_path(
+        "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+    )
+
+
+def test_protein_from_prepared_data_requires_protein_id() -> None:
+    """Prepare outputs without ``protein_id`` are rejected."""
+    with pytest.raises(ValueError, match="prepared protein id"):
+        _protein_from_prepared_data(
+            {"pdb_id": "1EBY"},
+            client=DeepOriginClient(),
+            fallback_pdb_id=None,
+            fallback_name="brd",
+        )
 
 
 def test_recommend_updates_same_object_without_id(
@@ -700,8 +843,10 @@ def test_recommend_then_run_loops_off_returns_protein(
     prepared = prep.run()
 
     assert isinstance(prepared, Protein)
-    assert prepared.id is None
-    assert prepared.remote_path == "testing/brd.pdb"
+    assert prepared.id is not None
+    assert prepared.id != registered_protein.id
+    assert prepared.remote_path.startswith("entities/proteins/prepared/")
+    assert prepared.remote_path.endswith(".pdb")
     assert prep.id is not None
     if client.env == "local":
         assert is_success_status(prep.status)
@@ -728,3 +873,220 @@ def test_start_accepts_resolved_loops_off_prepare(
     assert prep.id is not None
     if client.env == "local":
         assert is_success_status(prep.status)
+
+
+def test_pocket_finder_config_to_tool_input_modes() -> None:
+    """Nested pocket config serializes each mode to the Target Preparation shape."""
+    from deeporigin.drug_discovery import PocketFinderConfig
+
+    auto = PocketFinderConfig(pocket_count=2, pocket_min_size=40)
+    assert auto.to_tool_input() == {
+        "mode": "auto-find",
+        "pocket_count": 2,
+        "pocket_min_size": 40.0,
+    }
+
+    selections = [{"kind": "ligand", "author": {"chain_id": "A", "resname": "LIG"}}]
+    defined = PocketFinderConfig(
+        mode="define-by-selection",
+        selections=selections,
+        pocket_radius=12.0,
+        align_to_pocket=True,
+    )
+    assert defined.to_tool_input() == {
+        "mode": "define-by-selection",
+        "selections": selections,
+        "pocket_radius": 12.0,
+        "align_to_pocket": True,
+    }
+
+    crystal = PocketFinderConfig(
+        mode="from-crystal-ligand",
+        component_id="ligand:LIG:A:100",
+        box_padding=4.0,
+    )
+    assert crystal.to_tool_input() == {
+        "mode": "from-crystal-ligand",
+        "crystal_ligand": {"component_id": "ligand:LIG:A:100"},
+        "box_padding": 4.0,
+    }
+
+
+def test_loops_off_no_pocket_payload_uses_protein_prep() -> None:
+    """Direct route keeps protein-prep action prepare and omits pocket."""
+    prep = ProteinPrep(
+        protein=_protein_with_remote(),
+        selection=_SAMPLE_SELECTION,
+        model_missing_loops=False,
+    )
+
+    assert prep._uses_composite_route() is False
+    payload = prep._make_protein_prep_payload(action="prepare", sync=True)
+    assert payload["inputs"]["action"] == "prepare"
+    assert "pocket" not in payload["inputs"]
+
+
+def test_loops_on_routes_to_target_prep_payload() -> None:
+    """Loops-on prepare builds action-less Target Preparation inputs."""
+    prep = ProteinPrep(
+        protein=_protein_with_remote(),
+        selection=_SAMPLE_SELECTION,
+        model_missing_loops=True,
+        pdb_id="1EBY",
+    )
+
+    assert prep._uses_composite_route() is True
+    payload = prep._make_target_prep_payload(approve_amount=None)
+    assert "action" not in payload["inputs"]
+    assert payload["inputs"]["model_missing_loops"] is True
+    assert "pocket" not in payload["inputs"]
+    assert "sync" not in payload
+
+
+def test_pocket_routes_to_target_prep_with_nested_pocket() -> None:
+    """Any pocket config nests under inputs.pocket on the composite payload."""
+    from deeporigin.drug_discovery import PocketFinderConfig
+
+    prep = ProteinPrep(
+        protein=_protein_with_remote(pdb_id=None),
+        selection=_SAMPLE_SELECTION,
+        model_missing_loops=False,
+        pocket=PocketFinderConfig(pocket_count=1, pocket_min_size=30),
+    )
+
+    payload = prep._make_target_prep_payload(approve_amount=12)
+    assert payload["approveAmount"] == 12
+    assert payload["inputs"]["pocket"] == {
+        "mode": "auto-find",
+        "pocket_count": 1,
+        "pocket_min_size": 30.0,
+    }
+
+
+def test_composite_start_uses_target_preparation_tool_key(
+    client: DeepOriginClient,
+    registered_protein: Protein,
+) -> None:
+    """Loops-on start binds to target-preparation major 2."""
+    prep = ProteinPrep(
+        protein=registered_protein,
+        selection=_SAMPLE_SELECTION,
+        model_missing_loops=True,
+        pdb_id="1EBY",
+        client=client,
+    )
+
+    prep.start()
+
+    assert prep.id is not None
+    assert prep.name == "Preparing and loop modelling 1EBY"
+    assert prep.tool_key == TOOL_KEYS_AND_VERSIONS["target_prep"]["tool_key"]
+    assert prep.tool_version == "2"
+    prepared = prep.get_results()
+    assert isinstance(prepared, Protein)
+    report = prep.get_report()
+    assert report is not None
+    assert report.report_role == "prepared"
+    with pytest.raises(ValueError, match="did not request pockets"):
+        prep.get_pockets()
+
+
+def test_pocket_start_exposes_pockets_and_supports_quote(
+    client: DeepOriginClient,
+    registered_protein: Protein,
+) -> None:
+    """Pocket-bearing start returns pockets and can quote first."""
+    from deeporigin.drug_discovery import PocketFinderConfig
+
+    quoted = ProteinPrep(
+        protein=registered_protein,
+        selection=_SAMPLE_SELECTION,
+        model_missing_loops=False,
+        pocket=PocketFinderConfig(pocket_count=1, pocket_min_size=30),
+        client=client,
+    )
+    quoted.start(quote=True)
+    assert quoted.status == "Quoted"
+    assert quoted.id is not None
+
+    prep = ProteinPrep(
+        protein=registered_protein,
+        selection=_SAMPLE_SELECTION,
+        model_missing_loops=False,
+        pocket=PocketFinderConfig(pocket_count=1, pocket_min_size=30),
+        client=client,
+    )
+    prep.start()
+    assert prep.tool_key == "deeporigin.target-preparation"
+    prepared = prep.get_results()
+    assert isinstance(prepared, Protein)
+    pockets = prep.get_pockets()
+    assert pockets is not None
+    assert len(pockets) >= 1
+    assert prep.get_report() is not None
+
+
+def test_direct_get_report_and_get_pockets_raise(
+    client: DeepOriginClient,
+    registered_protein: Protein,
+) -> None:
+    """Direct protein-prep prepare excludes report and pocket getters."""
+    prep = ProteinPrep(
+        protein=registered_protein,
+        selection=_SAMPLE_SELECTION,
+        model_missing_loops=False,
+        client=client,
+    )
+    prep.start()
+
+    with pytest.raises(ValueError, match="did not request a prepared Structure Report"):
+        prep.get_report()
+    with pytest.raises(ValueError, match="did not request pockets"):
+        prep.get_pockets()
+
+
+def test_get_pockets_returns_none_when_not_published() -> None:
+    """Requested pockets that have not been published yet return None."""
+    from deeporigin.drug_discovery import PocketFinderConfig
+
+    prep = ProteinPrep(
+        protein=Protein(name="test"),
+        selection=_SAMPLE_SELECTION,
+        model_missing_loops=False,
+        pocket=PocketFinderConfig(pocket_count=1, pocket_min_size=30),
+    )
+    prep._id = "pending-pockets"
+    prep.tool_key = TOOL_KEYS_AND_VERSIONS["target_prep"]["tool_key"]
+
+    assert prep.get_pockets({"jobOutputs": {}}) is None
+
+
+def test_get_pockets_returns_empty_list_for_zero_pocket_result() -> None:
+    """A completed valid zero-pocket payload returns []."""
+    from deeporigin.drug_discovery import PocketFinderConfig
+
+    prep = ProteinPrep(
+        protein=Protein(name="test"),
+        selection=_SAMPLE_SELECTION,
+        model_missing_loops=False,
+        pocket=PocketFinderConfig(pocket_count=1, pocket_min_size=30),
+    )
+    prep._id = "zero-pockets"
+    prep.tool_key = TOOL_KEYS_AND_VERSIONS["target_prep"]["tool_key"]
+
+    assert prep.get_pockets({"jobOutputs": {"pockets": []}}) == []
+
+
+def test_configuration_freezes_pocket_after_id() -> None:
+    """Pocket mutation fails once an execution id is present."""
+    from deeporigin.drug_discovery import PocketFinderConfig
+
+    prep = ProteinPrep(
+        protein=Protein(name="test"),
+        selection=_SAMPLE_SELECTION,
+        model_missing_loops=False,
+    )
+    prep._id = "exec-locked"
+
+    with pytest.raises(AttributeError, match="execution id is already set"):
+        prep.pocket = PocketFinderConfig(pocket_count=1, pocket_min_size=30)

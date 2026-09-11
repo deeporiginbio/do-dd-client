@@ -52,8 +52,7 @@
             "force_field": "amber14",
             "pdb_id": "1EBY",
             "ph": 7.4,
-            "protein_id": "brd",
-            "protein_pdb_file_path": "testing/brd.pdb",
+            "protein_id": "prep-a1b2c3d4e5f6",
             "protonate_protein": true
         }
     }

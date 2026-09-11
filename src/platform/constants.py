@@ -108,7 +108,7 @@ TOOL_KEYS_AND_VERSIONS: dict[str, dict[str, str]] = {
     },
     "pocket_finder": {
         "tool_key": "deeporigin.pocket-finder",
-        "tool_version": "2",
+        "tool_version": "3",
     },
     "mol_props": {
         "tool_key": "deeporigin.mol-props-combined",
@@ -137,6 +137,10 @@ TOOL_KEYS_AND_VERSIONS: dict[str, dict[str, str]] = {
     "protein_prep": {
         "tool_key": "deeporigin.protein-prep",
         "tool_version": "latest",
+    },
+    "target_prep": {
+        "tool_key": "deeporigin.target-preparation",
+        "tool_version": "2",
     },
     "patent": {
         "tool_key": "deeporigin.draco",

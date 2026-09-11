@@ -24,6 +24,7 @@ Usage::
 from __future__ import annotations
 
 from dataclasses import dataclass
+from html import escape as html_escape
 import re
 from typing import Any, Literal, Self
 
@@ -45,6 +46,7 @@ from deeporigin.platform.constants import TOOL_KEYS_AND_VERSIONS, is_success_sta
 StructureReportGrade = Literal["A", "B", "C", "D"]
 MetadataSource = Literal["rcsb", "file_header", "file_header+rcsb"]
 FieldStatusValue = Literal["value", "not_applicable", "unknown"]
+StructureReportRole = Literal["source", "prepared"]
 
 _PDB_ID_RE = re.compile(r"^[A-Za-z0-9]{4}$")
 
@@ -90,6 +92,8 @@ class StructureReportResult:
         rfree: Rfree (X-ray).
         source_sha256: SHA-256 of uploaded structure bytes (omitted in remote
             PDB-ID-only mode).
+        report_role: Target Preparation phase, when supplied by the parent
+            workflow.
     """
 
     metadata_source: MetadataSource
@@ -113,6 +117,7 @@ class StructureReportResult:
     resolution: float | None = None
     rfree: float | None = None
     source_sha256: str | None = None
+    report_role: StructureReportRole | None = None
 
     @classmethod
     def from_json(cls, data: dict[str, Any]) -> StructureReportResult:
@@ -163,7 +168,122 @@ class StructureReportResult:
             resolution=_optional_float(data.get("resolution")),
             rfree=_optional_float(data.get("rfree")),
             source_sha256=data.get("source_sha256"),
+            report_role=data.get("report_role"),
         )
+
+    def __repr__(self) -> str:
+        """Return a concise single-line representation for interactive use."""
+        identifier = self.pdb_id or self.protein_id or "-"
+
+        resolution = f"{self.resolution:.3f}" if self.resolution is not None else "-"
+        rfree = f"{self.rfree:.3f}" if self.rfree is not None else "-"
+
+        ligand = (
+            "yes"
+            if self.has_ligand is True
+            else "no"
+            if self.has_ligand is False
+            else "unknown"
+        )
+
+        return (
+            "StructureReportResult("
+            f"id={identifier!r}, "
+            f"grade={self.grade!r}, "
+            f"weighted_score={self.weighted_score:.3f}, "
+            f"resolution={resolution}, "
+            f"rfree={rfree}, "
+            f"has_ligand={ligand}, "
+            f"metadata_source={self.metadata_source!r}"
+            ")"
+        )
+
+    def _repr_html_(self) -> str:
+        """Return a compact HTML summary for Jupyter notebook rendering."""
+        grade_colors = {"A": "#1b5e20", "B": "#1e88e5", "C": "#f9a825", "D": "#c62828"}
+        grade_color = grade_colors.get(self.grade, "#616161")
+
+        identifier = self.pdb_id or self.protein_id or "-"
+        ligand = (
+            "Yes"
+            if self.has_ligand is True
+            else "No"
+            if self.has_ligand is False
+            else "Unknown"
+        )
+
+        resolution = f"{self.resolution:.3f}" if self.resolution is not None else "-"
+        rfree = f"{self.rfree:.3f}" if self.rfree is not None else "-"
+
+        method = html_escape(self.method) if self.method else "-"
+        method_class = html_escape(self.method_class) if self.method_class else "-"
+        organism = html_escape(self.organism) if self.organism else "-"
+        organism_class = (
+            html_escape(self.organism_class) if self.organism_class else "-"
+        )
+
+        return f"""
+<div style="font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace;">
+  <table style="border-collapse: collapse; border: 1px solid #e0e0e0; border-radius: 8px; overflow: hidden;">
+    <tr>
+      <th style="padding: 8px 12px; background: #f5f5f5; text-align: left; border-bottom: 1px solid #e0e0e0;">Grade</th>
+      <td style="padding: 8px 12px;"><span style="font-weight: 700; color: {grade_color};">{html_escape(self.grade)}</span></td>
+    </tr>
+    <tr>
+      <th style="padding: 8px 12px; background: #f5f5f5; text-align: left; border-bottom: 1px solid #e0e0e0;">Weighted score</th>
+      <td style="padding: 8px 12px;">{self.weighted_score:.3f}</td>
+    </tr>
+    <tr>
+      <th style="padding: 8px 12px; background: #f5f5f5; text-align: left; border-bottom: 1px solid #e0e0e0;">Metadata source</th>
+      <td style="padding: 8px 12px;">{html_escape(self.metadata_source)}</td>
+    </tr>
+    <tr>
+      <th style="padding: 8px 12px; background: #f5f5f5; text-align: left; border-bottom: 1px solid #e0e0e0;">Identifier</th>
+      <td style="padding: 8px 12px;">{html_escape(identifier)}</td>
+    </tr>
+    <tr>
+      <th style="padding: 8px 12px; background: #f5f5f5; text-align: left; border-bottom: 1px solid #e0e0e0;">Resolution / Rfree</th>
+      <td style="padding: 8px 12px;">{html_escape(resolution)} / {html_escape(rfree)}</td>
+    </tr>
+    <tr>
+      <th style="padding: 8px 12px; background: #f5f5f5; text-align: left; border-bottom: 1px solid #e0e0e0;">Ligand</th>
+      <td style="padding: 8px 12px;">{html_escape(ligand)}</td>
+    </tr>
+    <tr>
+      <th style="padding: 8px 12px; background: #f5f5f5; text-align: left; border-bottom: 1px solid #e0e0e0;">Method</th>
+      <td style="padding: 8px 12px;">{method} ({method_class})</td>
+    </tr>
+    <tr>
+      <th style="padding: 8px 12px; background: #f5f5f5; text-align: left; border-bottom: 1px solid #e0e0e0;">Organism</th>
+      <td style="padding: 8px 12px;">{organism} ({organism_class})</td>
+    </tr>
+    <tr>
+      <th style="padding: 8px 12px; background: #f5f5f5; text-align: left;">Resolution score</th>
+      <td style="padding: 8px 12px;">{self.resolution_score:.2f}</td>
+    </tr>
+    <tr>
+      <th style="padding: 8px 12px; background: #f5f5f5; text-align: left;">Coverage score</th>
+      <td style="padding: 8px 12px;">{self.coverage_score:.2f}</td>
+    </tr>
+    <tr>
+      <th style="padding: 8px 12px; background: #f5f5f5; text-align: left;">Rfree score</th>
+      <td style="padding: 8px 12px;">{self.rfree_score:.2f}</td>
+    </tr>
+    <tr>
+      <th style="padding: 8px 12px; background: #f5f5f5; text-align: left;">Inhibitor score</th>
+      <td style="padding: 8px 12px;">{self.inhibitor_score:.2f}</td>
+    </tr>
+    <tr>
+      <th style="padding: 8px 12px; background: #f5f5f5; text-align: left;">Method score</th>
+      <td style="padding: 8px 12px;">{self.method_score:.2f}</td>
+    </tr>
+    <tr>
+      <th style="padding: 8px 12px; background: #f5f5f5; text-align: left;">Organism score</th>
+      <td style="padding: 8px 12px;">{self.organism_score:.2f}</td>
+    </tr>
+  </table>
+</div>
+""".strip()
 
 
 def _structure_reports_from_dto(dto: dict[str, Any]) -> list[StructureReportResult]:

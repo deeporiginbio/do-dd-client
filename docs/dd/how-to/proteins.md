@@ -228,22 +228,33 @@ pockets[0].show()
 
 ### Preparing a protein
 
-Inventory components, then clean the structure (optional loop modelling,
-protonation) with [ProteinPrep](../tools/proteinprep.md). `recommend()` updates
-the same object with an editable Selection and returns a component table.
-Resolve any review decisions, then disable loop modelling and call `run()`,
-which blocks until the prepared protein is ready.
+Inventory components and prepare the structure with
+[ProteinPrep](../tools/proteinprep.md). Use standalone
+[StructureReport](../tools/structure-report.md) when you want a source-structure
+grade. `recommend()` updates the same object with an editable Selection.
+Resolve any review decisions, then either:
+
+- disable loop modelling and omit pocket config, then call `run()` for a
+  blocking prepared protein; or
+- enable loop modelling and/or set `pocket=PocketFinderConfig(...)`, then call
+  `start()` (use `quote=True` / `confirm()` when pockets are billable).
 
 ```{.python notest}
-from deeporigin.drug_discovery import Protein, ProteinPrep
+from deeporigin.drug_discovery import PocketFinderConfig, Protein, ProteinPrep
 
 protein = Protein.from_pdb_id("1EBY")
-prep = ProteinPrep(protein=protein)
+prep = ProteinPrep(
+    protein=protein,
+    pocket=PocketFinderConfig(pocket_count=3, pocket_min_size=80),
+)
 prep.recommend()
 prep.recommendation(decision="review")
 prep.skip(decision="review")
-prep.model_missing_loops = False
-prepared = prep.run()
+prep.start()
+prep.wait()
+prepared = prep.get_results()
+report = prep.get_report()
+pockets = prep.get_pockets()
 ```
 
 ### Visualizing a protein

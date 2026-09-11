@@ -83,6 +83,9 @@ The commonly available methods are:
 Not every method is available on every tool. The tool-specific pages document
 the supported execution modes, inputs, outputs, and examples.
 [`ProteinPrep`](proteinprep.md) inventories with `recommend()`, then prepares.
-Skip loop modelling (`model_missing_loops=False`) and call `run()` to block until
-the prepared protein is ready; loop modelling uses `start()`. This tool
-does not produce a cost quote.
+Skip loop modelling with no pocket (`model_missing_loops=False`) and call
+`run()` to block until the prepared protein is ready. Loop modelling or nested
+`pocket=PocketFinderConfig(...)` uses `start()` (and `quote` / `confirm` when
+pockets are billable). Use standalone [`StructureReport`](structure-report.md)
+for source assessment. Prepared reports and pockets from composite runs are
+available via `get_report()` and `get_pockets()`.

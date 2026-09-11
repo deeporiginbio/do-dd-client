@@ -3,7 +3,13 @@
 Inventory and prepare a [`Protein`](../ref/protein.md) with one configurable
 `ProteinPrep` object. Recommendation identifies chains, ligands, cofactors, and
 waters. Preparation applies your keep/skip decisions, protonates the structure,
-and optionally models missing loops.
+and optionally models missing loops. Optional nested
+[`PocketFinderConfig`](../ref/protein_prep.md) finds pockets on the prepared
+structure via Target Preparation.
+
+Use standalone [`StructureReport`](structure-report.md) for source-structure
+assessment. Composite preparation (loop modelling or pocket finding) always
+produces a prepared Structure Report; retrieve it with `get_report()`.
 
 ## Recommend and review
 
@@ -51,23 +57,23 @@ successful settings remain intact.
 
 ## Prepare without loop modelling
 
-Disable loop modelling to use blocking preparation:
+Disable loop modelling and leave `pocket` unset to use blocking preparation:
 
 ```{.python notest}
 prep.model_missing_loops = False
 prepared = prep.run()
 ```
 
-`run()` returns an in-memory [`Protein`](../ref/protein.md) whose
-`remote_path` points to the prepared Protein Data Bank (PDB) file. It has no
-platform protein ID until you call `sync()` or `update()`. The original input
-protein is unchanged. The prepared PDB carries a
+`run()` returns a registered [`Protein`](../ref/protein.md) for the prepared
+structure: a new platform row whose `remote_path` points to the prepared
+Protein Data Bank (PDB) file under `entities/proteins/prepared/`. The original
+input protein is unchanged. The prepared PDB carries a
 [`REMARK  99 DO_PREPARED`](../ref/prepared_protein_stamp.md) stamp; pass that
 `Protein` into Pocket Finder or other tools without re-serializing the file so
 the stamp stays intact. To stamp a structure you prepared outside Deep Origin
 (PDB or mmCIF), use [`Protein.mark_as_prepared()`](../ref/prepared_protein_stamp.md).
 
-Loops-off preparation may also run asynchronously:
+Loops-off preparation without a pocket may also run asynchronously:
 
 ```{.python notest}
 prep.start()
@@ -75,22 +81,38 @@ prep.wait()
 prepared = prep.get_results()
 ```
 
-## Prepare with loop modelling
+## Prepare with loop modelling or pockets
 
-Loop modelling is enabled by default and may take longer, so use `start()`:
+Loop modelling is enabled by default. When loops are on, or when you set
+`pocket=PocketFinderConfig(...)`, preparation uses the composite Target
+Preparation workflow. Use `start()` (blocking `run()` is not available):
 
 ```{.python notest}
-prep.pdb_id = "1EBY"
-prep.model_missing_loops = True
-prep.start()
+from deeporigin.drug_discovery import PocketFinderConfig, ProteinPrep
+
+prep = ProteinPrep(
+    protein=protein,
+    pocket=PocketFinderConfig(pocket_count=3, pocket_min_size=80),
+)
+prep.recommend()
+prep.skip(decision="review")
+prep.start(quote=True)
+# inspect prep.estimate, then:
+prep.confirm()
 prep.wait()
 prepared = prep.get_results()
+report = prep.get_report()
+pockets = prep.get_pockets()
 ```
 
 Loop modelling requires a four-character
 [Protein Data Bank (PDB) :octicons-link-external-16:](https://www.rcsb.org/)
 ID. `ProteinPrep` initially uses `protein.pdb_id` when available; otherwise set
 `prep.pdb_id` before submission.
+
+`get_report()` and `get_pockets()` raise when that artifact was not part of the
+run, return `None` while still pending, and `get_pockets()` returns `[]` for a
+valid zero-pocket result.
 
 ## Use a saved Selection
 
@@ -113,20 +135,27 @@ mapping. Assignment copies and validates it. Local decisions may contain
 ## Object lifecycle
 
 `protein` is constructor-only. Before preparation, you may change `pdb_id`,
-`selection`, and `model_missing_loops`.
+`selection`, `model_missing_loops`, and `pocket`.
 
 `run()` or `start()` binds the object to the durable preparation execution and
 sets `prep.id`. From that point onward, configuration is permanently frozen.
-Displaying the object shows its configuration, a Selection summary,
-recommendation component count, and—after submission—execution status and
-progress. Display `prep.recommendation` to see the component table.
+When you omit `name`, those methods label the execution from the current
+settings—for example `Preparing 1EBY`, `Preparing and loop modelling 1EBY`, or
+`Preparing, loop modelling, and finding pockets 1EBY` (PDB ID when set,
+otherwise the protein name). Displaying the object shows its configuration, a
+Selection summary, recommendation component count, and—after
+submission—execution `id` and `status`. Jupyter HTML omits `progress` (platform
+reports are large nested trees); inspect `prep.progress` when needed. Display
+`prep.recommendation` to see the component table.
 
-This tool does not produce a cost quote, so Protein Prep methods have no
-`quote` or `approve_amount` arguments.
+Direct loops-off preparation does not require a cost quote. Pocket-bearing
+composite runs are billable: use `start(quote=True)` then `confirm()`, or pass
+`approve_amount`.
 
 ## Reconnect to an execution
 
-Reconnect to a durable preparation or historical recommendation execution:
+Reconnect to a durable preparation or historical recommendation execution from
+either routed tool:
 
 ```{.python notest}
 prep = ProteinPrep.from_id("<executionId>")

@@ -6,7 +6,7 @@ import time
 
 import pytest
 
-from deeporigin.drug_discovery import Pocket, PocketFinder, Protein
+from deeporigin.drug_discovery import Ligand, Pocket, PocketFinder, Protein
 from deeporigin.platform import DeepOriginClient
 from deeporigin.platform.constants import (
     TERMINAL_STATES,
@@ -250,6 +250,127 @@ def test_pocket_finder_selection_rejects_non_string_kind() -> None:
             mode="define-by-selection",
             selections=[{"kind": ["ligand"], "author": {"chain_id": "A"}}],
         )
+
+
+def test_pocket_finder_crystal_ligand_make_payload_ligand_id() -> None:
+    """from-crystal-ligand with a bare ligand_id sends crystal_ligand.ligand_id."""
+    pf = PocketFinder(
+        protein=_selection_protein(),
+        mode="from-crystal-ligand",
+        ligand_id="635",
+        box_geometry="fixed-radius",
+        pocket_radius=8.0,
+    )
+    payload = pf._make_payload(approve_amount=None, sync=True)
+    inputs = payload["inputs"]
+    assert inputs["mode"] == "from-crystal-ligand"
+    assert inputs["crystal_ligand"] == {"ligand_id": "635"}
+    assert inputs["box_geometry"] == "fixed-radius"
+    assert inputs["pocket_radius"] == 8.0
+    assert "box_padding" not in inputs
+    assert "pocket_count" not in inputs
+    assert "selections" not in inputs
+
+
+def test_pocket_finder_crystal_ligand_make_payload_ligand_object() -> None:
+    """from-crystal-ligand with a Ligand sends crystal_ligand.file_path."""
+    ligand = Ligand.from_smiles("CCO", remote_path="entities/ligands/lig.sdf")
+    pf = PocketFinder(
+        protein=_selection_protein(),
+        mode="from-crystal-ligand",
+        crystal_ligand=ligand,
+        box_padding=2.5,
+    )
+    payload = pf._make_payload(approve_amount=None, sync=True)
+    inputs = payload["inputs"]
+    assert inputs["crystal_ligand"] == {"file_path": "entities/ligands/lig.sdf"}
+    assert inputs["box_padding"] == 2.5
+    assert "box_geometry" not in inputs
+
+
+def test_pocket_finder_crystal_ligand_requires_exactly_one_source() -> None:
+    """Exactly one of crystal_ligand/ligand_id is required."""
+    with pytest.raises(ValueError, match="is required when mode is"):
+        PocketFinder(protein=_selection_protein(), mode="from-crystal-ligand")
+
+    ligand = Ligand.from_smiles("CCO", remote_path="entities/ligands/lig.sdf")
+    with pytest.raises(ValueError, match="exactly one of"):
+        PocketFinder(
+            protein=_selection_protein(),
+            mode="from-crystal-ligand",
+            crystal_ligand=ligand,
+            ligand_id="635",
+        )
+
+
+def test_pocket_finder_crystal_ligand_rejects_auto_find_and_selection_kwargs() -> None:
+    """crystal_ligand/ligand_id/box_geometry/box_padding are from-crystal-ligand only."""
+    with pytest.raises(ValueError, match="only valid when mode is"):
+        PocketFinder(
+            protein=_selection_protein(),
+            mode="auto-find",
+            ligand_id="635",
+        )
+    with pytest.raises(ValueError, match="only valid when mode is"):
+        PocketFinder(
+            protein=_selection_protein(),
+            mode="define-by-selection",
+            selections=_ligand_selection(),
+            box_geometry="fixed-radius",
+        )
+    with pytest.raises(ValueError, match="pocket_count is only valid"):
+        PocketFinder(
+            protein=_selection_protein(),
+            mode="from-crystal-ligand",
+            ligand_id="635",
+            pocket_count=2,
+        )
+    with pytest.raises(ValueError, match="selections is only valid"):
+        PocketFinder(
+            protein=_selection_protein(),
+            mode="from-crystal-ligand",
+            ligand_id="635",
+            selections=_ligand_selection(),
+        )
+
+
+def test_pocket_finder_crystal_ligand_rejects_bad_box_geometry() -> None:
+    """An invalid box_geometry raises a clear ValueError."""
+    with pytest.raises(ValueError, match="box_geometry must be one of"):
+        PocketFinder(
+            protein=_selection_protein(),
+            mode="from-crystal-ligand",
+            ligand_id="635",
+            box_geometry="round",  # type: ignore[arg-type]
+        )
+
+
+def test_pocket_finder_from_dto_crystal_ligand_mode(client) -> None:
+    """from_dto rehydrates from-crystal-ligand inputs from userInputs."""
+    fixture_path = (
+        Path(__file__).parent / "fixtures/executions/pocket-finder-test-execution.json"
+    )
+    dto = json.loads(fixture_path.read_text())
+    dto = json.loads(json.dumps(dto))
+    dto["userInputs"] = {
+        "mode": "from-crystal-ligand",
+        "protein": {"file_path": "entities/proteins/prepared.pdb"},
+        "crystal_ligand": {"ligand_id": "635"},
+        "box_geometry": "fixed-radius",
+        "pocket_radius": 9.0,
+        "sync": False,
+    }
+
+    pf = PocketFinder.from_dto(dto, client=client)
+    assert pf.mode == "from-crystal-ligand"
+    assert pf.ligand_id == "635"
+    assert pf.crystal_ligand is None
+    assert pf.box_geometry == "fixed-radius"
+    assert pf.pocket_radius == 9.0
+    assert pf.protein.remote_path == "entities/proteins/prepared.pdb"
+
+    payload = pf._make_payload(approve_amount=None, sync=True)
+    assert payload["inputs"]["crystal_ligand"] == {"ligand_id": "635"}
 
 
 def test_pocket_finder_from_dto_selection_mode(client) -> None:

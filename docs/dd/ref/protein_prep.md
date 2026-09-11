@@ -1,11 +1,13 @@
 # `deeporigin.drug_discovery.protein_prep`
 
-`ProteinPrep` drives platform tool `deeporigin.protein-prep`. Recommend
-inventories components, returns a `RecommendationView` table, and updates the
-same object with an editable Selection. Prepare applies resolved keep/skip
-decisions and cleans the structure.
-``run()`` is loops-off and blocking; ``start()`` submits asynchronous prepare
-with loop modelling either off or on. There is no quote.
+`ProteinPrep` drives platform tools `deeporigin.protein-prep` and, when
+needed, `deeporigin.target-preparation`. Recommend inventories components,
+returns a `RecommendationView` table, and updates the same object with an
+editable Selection. Prepare applies resolved keep/skip decisions and cleans
+the structure. ``run()`` is loops-off / no-pocket and blocking; ``start()``
+submits asynchronous prepare (composite when loops are on or
+``PocketFinderConfig`` is set). Pocket-bearing runs support ``quote`` /
+``approve_amount`` and ``confirm()``.
 
 ::: src.drug_discovery.protein_prep
     options:
