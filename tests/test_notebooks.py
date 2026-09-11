@@ -1,7 +1,10 @@
 """Tests that execute Jupyter notebooks end-to-end via nbconvert."""
 
+import os
 from pathlib import Path
 import subprocess
+
+from deeporigin.utils.constants import JOB_WATCH_BLOCK_ENV
 
 NOTEBOOKS_DIR = Path(__file__).resolve().parent.parent / "docs" / "notebooks" / "clean"
 
@@ -19,6 +22,12 @@ def _execute_notebook(notebook_path: Path) -> None:
         notebook_path.stem + "_executed" + notebook_path.suffix
     )
 
+    # Notebooks call the non-blocking NotebookWatchMixin.watch() by design
+    # (it's what a real interactive session should do); headless execution
+    # needs JOB_WATCH_BLOCK=1 so the cell waits for the job instead of
+    # racing ahead, same as scripts/build_docs.sh does for the doc build.
+    env = {**os.environ, JOB_WATCH_BLOCK_ENV: "1"}
+
     try:
         result = subprocess.run(
             [
@@ -35,6 +44,7 @@ def _execute_notebook(notebook_path: Path) -> None:
             capture_output=True,
             text=True,
             timeout=600,
+            env=env,
         )
 
         assert result.returncode == 0, (
