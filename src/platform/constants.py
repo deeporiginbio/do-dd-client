@@ -166,4 +166,8 @@ TOOL_KEYS_AND_VERSIONS: dict[str, dict[str, str]] = {
         "tool_key": "deeporigin.import-dataset",
         "tool_version": "latest",
     },
+    "secondary_pharma": {
+        "tool_key": "deeporigin.secondary-pharma",
+        "tool_version": "latest",
+    },
 }

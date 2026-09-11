@@ -116,6 +116,26 @@ MOCK_ADMET_ENDPOINTS: tuple[str, ...] = (
     "LC50FM_regression",
 )
 
+# Panel enum for mock ``deeporigin.secondary-pharma`` (tool definition uniprots
+# enum). Real accessions/gene names/PDB ids from
+# tools/secondary-pharma/panel/manifest.json.
+MOCK_SECONDARY_PHARMA_PANEL: tuple[tuple[str, str, str], ...] = (
+    ("P00533", "EGFR", "1M17"),
+    ("P15056", "BRAF", "2FB8"),
+    ("P12931", "SRC", "1YOM"),
+)
+
+# Baked self_test ligand (gefitinib), matching the real tool's description.
+_MOCK_SECONDARY_PHARMA_SELF_TEST_SMILES = (
+    "COc1cc2ncnc(Nc3ccc(F)c(Cl)c3)c2cc1OCCCN1CCOCC1"
+)
+
+# Fixed remote path for mock panel-pose SDFs. Real content is uploaded by
+# whichever test exercises the docking path's get_poses() download step
+# (tests/test_secondary_pharma.py); every synthesized panel_poses row points
+# here so PoseSet.download() has something real to fetch.
+MOCK_SECONDARY_PHARMA_POSE_SDF_PATH = "testing/mock-secondary-pharma-pose.sdf"
+
 
 def _synthesize_structure_report_row(
     *,
@@ -717,6 +737,70 @@ def _synthesize_admet_prediction_row(
     return row
 
 
+def _synthesize_secondary_pharma_ligand_ml_row(
+    *, smiles: str, ligand_id: str, uniprot_id: str, gene_name: str
+) -> dict[str, Any]:
+    """Build a synthetic ligand-ml prediction row for one ligand x panel member.
+
+    Alternates classification/regression by a stable hash of the pair (rather
+    than always picking one), matching the schema's "exactly one of p_active /
+    p_affinity is set per row" contract.
+    """
+    seed = f"{smiles or ligand_id}:{uniprot_id}"
+    is_classification = int(_stable_unit_float(seed, "kind") * 2) == 0
+    row: dict[str, Any] = {
+        "ligand_id": ligand_id,
+        "uniprot_id": uniprot_id,
+        "gene_name": gene_name,
+        "ligand_smiles": smiles,
+        "type": "Enzyme (kinase)",
+        "p_active": round(_stable_unit_float(seed, "active"), 6)
+        if is_classification
+        else None,
+        "p_affinity": None
+        if is_classification
+        else _stable_log_value(seed, "affinity", low=4.0, high=10.0),
+    }
+    return row
+
+
+def _synthesize_secondary_pharma_panel_pose_row(
+    *,
+    ligand_id: str,
+    smiles: str,
+    uniprot_id: str,
+    gene_name: str,
+    pdb_id: str,
+    effort: int,
+) -> dict[str, Any]:
+    """Build a synthetic panel_poses row for one ligand x panel member (docking path).
+
+    ``file_path`` always points at ``MOCK_SECONDARY_PHARMA_POSE_SDF_PATH`` --
+    real content for that path is uploaded by whichever test needs a real
+    ``get_poses()`` download, not synthesized per row.
+    """
+    seed = f"{smiles or ligand_id}:{uniprot_id}"
+    return {
+        "best_pose": True,
+        "binding_energy": _stable_log_value(
+            seed, "binding_energy", low=-12.0, high=-4.0
+        ),
+        "box_size_x": 27.0,
+        "box_size_y": 27.0,
+        "box_size_z": 27.0,
+        "effort": effort,
+        "file_path": MOCK_SECONDARY_PHARMA_POSE_SDF_PATH,
+        "gene_name": gene_name,
+        "ligand_id": ligand_id,
+        "ligand_smiles": smiles,
+        "pdb_id": pdb_id,
+        "pocket_center": [0.0, 0.0, 0.0],
+        "pose_score": round(_stable_unit_float(seed, "pose_score"), 6),
+        "type": "Enzyme (kinase)",
+        "uniprot_id": uniprot_id,
+    }
+
+
 def _synthesize_metabolism_outputs(
     *, smiles: str, ligand_id: str | None
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
@@ -975,6 +1059,8 @@ def create_tools_router(
                 _inject_patent_tool_execution_results(execution)
             if tool_key == "deeporigin.metabolism":
                 _inject_metabolism_tool_execution_results(execution)
+            if tool_key == "deeporigin.secondary-pharma":
+                _inject_secondary_pharma_docking_tool_execution_results(execution)
             progress_reports = _load_progress_reports(tool_key)
             if progress_reports:
                 final_report = progress_reports[-1]
@@ -1359,6 +1445,199 @@ def create_tools_router(
             ],
         }
         return execution
+
+    def _build_secondary_pharma_ligand_ml_execution(
+        *, org_key: str, tool_key: str, tool_version: str, body: dict[str, Any]
+    ) -> dict[str, Any]:
+        """Build a synchronous ``deeporigin.secondary-pharma`` (ligand-ml) execution DTO."""
+
+        execution = _create_blocking_run_dto(
+            org_key=org_key,
+            tool_key=tool_key,
+            tool_version=tool_version,
+            body=body,
+        )
+
+        inputs = body.get("inputs", {}) or {}
+        if inputs.get("self_test"):
+            ligands_in: list[dict[str, Any]] = [
+                {
+                    "id": "self-test-gefitinib",
+                    "smiles": _MOCK_SECONDARY_PHARMA_SELF_TEST_SMILES,
+                }
+            ]
+        else:
+            ligands_in = inputs.get("ligands") or []
+
+        requested_uniprots = inputs.get("uniprots") or None
+        panel = [
+            (accession, gene, pdb_id)
+            for accession, gene, pdb_id in MOCK_SECONDARY_PHARMA_PANEL
+            if requested_uniprots is None or accession in requested_uniprots
+        ]
+
+        rows: list[dict[str, Any]] = []
+        for i, lig in enumerate(ligands_in):
+            if not isinstance(lig, dict):
+                continue
+            smiles = str(lig.get("smiles") or "")
+            lid = str(lig.get("id") if lig.get("id") is not None else i)
+            for accession, gene, _pdb_id in panel:
+                rows.append(
+                    _synthesize_secondary_pharma_ligand_ml_row(
+                        smiles=smiles,
+                        ligand_id=lid,
+                        uniprot_id=accession,
+                        gene_name=gene,
+                    )
+                )
+
+        execution["jobOutputs"] = {"ligand_ml_predictions": rows}
+        execution["quotationResult"] = {
+            "anyFailed": False,
+            "failedQuotations": [],
+            "successfulQuotations": [
+                {
+                    "status": "OK",
+                    "itemCode": "DO_SECONDARY_PHARMA",
+                    "orgId": org_key,
+                    "qty": max(len(ligands_in), 1),
+                    "priceEach": 1.0,
+                    "priceTotal": float(max(len(ligands_in), 1)),
+                    "pricingRecordType": "regular",
+                    "pricingRecords": [
+                        {
+                            "itemKey": "DO_SECONDARY_PHARMA",
+                            "itemName": "Secondary Pharmacology ligand-ml scoring",
+                            "priceEach": 1.0,
+                            "totalPrice": float(max(len(ligands_in), 1)),
+                            "qty": max(len(ligands_in), 1),
+                            "tierQtyFrom": 0,
+                            "tierQtyTo": 0,
+                        }
+                    ],
+                }
+            ],
+        }
+        return execution
+
+    def _secondary_pharma_docking_ligands_and_panel(
+        inputs: dict[str, Any],
+    ) -> tuple[list[dict[str, Any]], list[tuple[str, str, str]]]:
+        """Resolve ligands (self_test-aware) and the requested panel subset."""
+        if inputs.get("self_test"):
+            ligands_in: list[dict[str, Any]] = [
+                {
+                    "id": None,
+                    "smiles": _MOCK_SECONDARY_PHARMA_SELF_TEST_SMILES,
+                }
+            ]
+        else:
+            ligands_in = [
+                lig for lig in (inputs.get("ligands") or []) if isinstance(lig, dict)
+            ]
+
+        requested_uniprots = inputs.get("uniprots") or None
+        panel = [
+            (accession, gene, pdb_id)
+            for accession, gene, pdb_id in MOCK_SECONDARY_PHARMA_PANEL
+            if requested_uniprots is None or accession in requested_uniprots
+        ]
+        return ligands_in, panel
+
+    def _build_secondary_pharma_docking_execution(
+        *, org_key: str, tool_key: str, tool_version: str, body: dict[str, Any]
+    ) -> dict[str, Any]:
+        """Build a Running async ``deeporigin.secondary-pharma`` (docking) execution DTO."""
+        now = datetime.now(timezone.utc)
+        ts = now.strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z"
+        eid = str(uuid.uuid4())
+        approve_amount = body.get("approveAmount", 0) or 0
+        execution: dict[str, Any] = {
+            "executionId": eid,
+            "createdAt": ts,
+            "updatedAt": ts,
+            "resourceId": _generate_resource_id(),
+            "status": "Running",
+            "userInputs": body.get("inputs", {}),
+            "userOutputs": body.get("outputs", {}),
+            "metadata": body.get("metadata", {}),
+            "approveAmount": approve_amount,
+            "jobOutputs": None,
+            "resourcesUsed": None,
+            "resourcesRequested": None,
+            "progressReport": json.dumps({"complete": 0}),
+            "statusReason": None,
+            "name": body.get("name"),
+            "orgKey": org_key,
+            "tool": {"key": tool_key, "version": tool_version},
+            "type": "ToolExecution",
+            "startedAt": ts,
+            "completedAt": None,
+            "quotationResult": {
+                "anyFailed": False,
+                "failedQuotations": [],
+                "successfulQuotations": [],
+            },
+        }
+        if body.get("projectId") is not None:
+            execution["projectId"] = body["projectId"]
+        return execution
+
+    def _inject_secondary_pharma_docking_tool_execution_results(
+        execution: dict[str, Any],
+    ) -> None:
+        """Index synthesized panel_poses rows in result-explorer for a completed async run.
+
+        Matches production async workflow behavior: panel poses are published
+        to the data platform, not echoed in ``jobOutputs`` (mirrors
+        ``_inject_metabolism_tool_execution_results``).
+        """
+        eid = execution.get("executionId")
+        tool = execution.get("tool") or {}
+        tkey = str(tool.get("key") or "deeporigin.secondary-pharma")
+        tool_version = str(tool.get("version") or "0.0.0")
+        if not eid:
+            return
+
+        user_inputs = execution.get("userInputs") or {}
+        if not isinstance(user_inputs, dict):
+            user_inputs = {}
+        ligands_in, panel = _secondary_pharma_docking_ligands_and_panel(user_inputs)
+        effort = int(user_inputs.get("effort") or 1)
+
+        # Real platform behavior (images/secondary-pharma/src/upload_panel_poses.py):
+        # rows with no ligand_id are filtered out before publishing to
+        # result-explorer -- the baked self_test ligand has no id (run.jl),
+        # so a self_test docking run publishes zero panel_poses rows. No
+        # index fallback here (unlike the ligand-ml builder): a fallback
+        # would mask that real, currently-unsupported combination.
+        rows: list[dict[str, Any]] = []
+        for lig in ligands_in:
+            raw_id = lig.get("id")
+            if raw_id is None:
+                continue
+            smiles = str(lig.get("smiles") or "")
+            lid = str(raw_id)
+            for accession, gene, pdb_id in panel:
+                rows.append(
+                    _synthesize_secondary_pharma_panel_pose_row(
+                        ligand_id=lid,
+                        smiles=smiles,
+                        uniprot_id=accession,
+                        gene_name=gene,
+                        pdb_id=pdb_id,
+                        effort=effort,
+                    )
+                )
+
+        execution["jobOutputs"] = {"panel_poses": []}
+        _inject_result_explorer_records_from_outputs(
+            tool_key=tkey,
+            tool_version=tool_version,
+            execution_id=str(eid),
+            job_outputs={"panel_poses": rows},
+        )
 
     def _metabolism_job_outputs_from_inputs(
         inputs: dict[str, Any],
@@ -1753,6 +2032,7 @@ def create_tools_router(
                 "structure_reports",
                 "structurereport",
             ),
+            "deeporigin.secondary-pharma": ("panel_poses", "panelpose"),
         }
 
         entry = output_key_map.get(tool_key)
@@ -2186,6 +2466,29 @@ def create_tools_router(
                             "minItems": 1,
                             "type": "array",
                             "uniqueItems": True,
+                        }
+                    }
+                },
+            }
+        if tool_key == "deeporigin.secondary-pharma":
+            return {
+                "key": tool_key,
+                "name": "deeporigin-secondary-pharma",
+                "version": tool_version,
+                "enabled": enabled,
+                "toolManifestVersion": "5",
+                "description": "Mock secondary-pharma tool definition",
+                "inputs": {
+                    "properties": {
+                        "uniprots": {
+                            "items": {
+                                "enum": [
+                                    accession
+                                    for accession, _, _ in MOCK_SECONDARY_PHARMA_PANEL
+                                ],
+                                "type": "string",
+                            },
+                            "type": "array",
                         }
                     }
                 },
@@ -2742,6 +3045,37 @@ def create_tools_router(
                 execution["completedAt"] = None
                 execution["progressReport"] = None
             executions[execution["executionId"]] = execution
+            return _normalize_execution(execution)
+        if tool_key == "deeporigin.secondary-pharma" and inputs.get("methods") == [
+            "ligand-ml"
+        ]:
+            execution = _build_secondary_pharma_ligand_ml_execution(
+                org_key=org_key,
+                tool_key=tool_key,
+                tool_version=tool_version,
+                body=body,
+            )
+            if quote_only:
+                execution["status"] = "Quoted"
+                execution["jobOutputs"] = None
+                execution["approveAmount"] = 0
+                execution["startedAt"] = None
+                execution["completedAt"] = None
+                execution["progressReport"] = None
+            executions[execution["executionId"]] = execution
+            return _normalize_execution(execution)
+        if tool_key == "deeporigin.secondary-pharma" and inputs.get("methods") == [
+            "docking"
+        ]:
+            execution = _build_secondary_pharma_docking_execution(
+                org_key=org_key,
+                tool_key=tool_key,
+                tool_version=tool_version,
+                body=body,
+            )
+            eid = execution["executionId"]
+            executions[eid] = execution
+            execution_start_times[eid] = datetime.now(timezone.utc)
             return _normalize_execution(execution)
         if tool_key == "deeporigin.metabolism":
             n_ligands = len((body.get("inputs") or {}).get("ligands") or [])
