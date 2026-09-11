@@ -8,7 +8,7 @@ import os
 from pathlib import Path
 import tempfile
 import time
-from typing import TYPE_CHECKING, Literal, overload
+from typing import IO, TYPE_CHECKING, Literal, overload
 
 import httpx
 from tqdm import tqdm
@@ -442,11 +442,12 @@ class Files:
         """
         last_exc: Exception | None = None
         for attempt in range(max_retries + 1):
-            tmp = tempfile.NamedTemporaryFile(
-                dir=dest.parent, suffix=".tmp", delete=False
-            )
+            tmp: IO[bytes] | None = None
             try:
                 signed_url = self.signed_url(remote_path)
+                tmp = tempfile.NamedTemporaryFile(
+                    dir=dest.parent, suffix=".tmp", delete=False
+                )
                 with tmp:
                     with httpx.Client() as download_client:
                         with download_client.stream(
@@ -462,12 +463,14 @@ class Files:
                 httpx.NetworkError,
                 httpx.TimeoutException,
             ) as exc:
-                os.unlink(tmp.name)
+                if tmp is not None:
+                    os.unlink(tmp.name)
                 last_exc = exc
                 if attempt < max_retries:
                     time.sleep(retry_backoff_factor * (2**attempt))
             except BaseException:
-                os.unlink(tmp.name)
+                if tmp is not None:
+                    os.unlink(tmp.name)
                 raise
 
         raise last_exc  # type: ignore[misc]
@@ -498,10 +501,10 @@ class Files:
         """
         last_exc: Exception | None = None
         for attempt in range(max_retries + 1):
-            signed_url = self.signed_url(remote_path)
             download_client = httpx.Client()
             response: httpx.Response | None = None
             try:
+                signed_url = self.signed_url(remote_path)
                 request = download_client.build_request("GET", signed_url)
                 response = download_client.send(request, stream=True)
                 response.raise_for_status()

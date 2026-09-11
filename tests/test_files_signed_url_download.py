@@ -110,6 +110,39 @@ def test_download_to_path_raises_after_exhausting_retries(
     assert not any(dest.parent.iterdir())
 
 
+def test_download_to_path_retries_when_signed_url_raises(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A transient failure while presigning should be retried, not just the GET."""
+    files = _files_with_mock_client()
+    signed_url_attempts = {"count": 0}
+
+    def flaky_signed_url(_remote_path: str, *, upload: bool = False) -> str:
+        signed_url_attempts["count"] += 1
+        if signed_url_attempts["count"] == 1:
+            raise httpx.TimeoutException("simulated presign timeout")
+        return "https://signed.example/download"
+
+    monkeypatch.setattr(files, "signed_url", flaky_signed_url)
+
+    fake_client = MagicMock()
+    fake_client.stream.side_effect = lambda *_a, **_k: _FakeStreamResponse(b"payload")
+    fake_client.__enter__ = MagicMock(return_value=fake_client)
+    fake_client.__exit__ = MagicMock(return_value=False)
+
+    monkeypatch.setattr(httpx, "Client", MagicMock(return_value=fake_client))
+    monkeypatch.setattr("deeporigin.platform.files.time.sleep", lambda _seconds: None)
+
+    dest = tmp_path / "data.bin"
+    files._download_to_path("/remote/data.bin", dest, max_retries=1)
+
+    assert signed_url_attempts["count"] == 2
+    assert dest.read_bytes() == b"payload"
+    # No stray temp files left behind from the presign failure.
+    assert list(dest.parent.iterdir()) == [dest]
+
+
 def test_open_signed_url_stream_refreshes_signed_url_on_retry(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -151,6 +184,44 @@ def test_open_signed_url_stream_refreshes_signed_url_on_retry(
     assert send_attempts["count"] == 2
     # The first (failed) client should have been closed; the second stays open
     # inside the returned FileStream.
+    closed_clients[0].close.assert_called_once()
+    closed_clients[1].close.assert_not_called()
+
+    stream.close()
+
+
+def test_open_signed_url_stream_retries_when_signed_url_raises(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A transient failure while presigning should be retried, not escape immediately."""
+    files = _files_with_mock_client()
+    signed_url_attempts = {"count": 0}
+
+    def flaky_signed_url(_remote_path: str, *, upload: bool = False) -> str:
+        signed_url_attempts["count"] += 1
+        if signed_url_attempts["count"] == 1:
+            raise httpx.TimeoutException("simulated presign timeout")
+        return "https://signed.example/download"
+
+    monkeypatch.setattr(files, "signed_url", flaky_signed_url)
+
+    closed_clients: list[MagicMock] = []
+
+    def make_client(*_args: object, **_kwargs: object) -> MagicMock:
+        client = MagicMock()
+        closed_clients.append(client)
+        response = MagicMock()
+        response.raise_for_status.return_value = None
+        client.send.return_value = response
+        return client
+
+    monkeypatch.setattr(httpx, "Client", make_client)
+    monkeypatch.setattr("deeporigin.platform.files.time.sleep", lambda _seconds: None)
+
+    stream = files._open_signed_url_stream("/remote/data.bin", max_retries=1)
+
+    assert signed_url_attempts["count"] == 2
+    # The client from the presign-failure attempt should have been closed.
     closed_clients[0].close.assert_called_once()
     closed_clients[1].close.assert_not_called()
 
