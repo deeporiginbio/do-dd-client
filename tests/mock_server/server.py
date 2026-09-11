@@ -368,6 +368,7 @@ class MockServer:
             results=self._results,
             user_logs=self._user_logs,
             file_storage=self._file_storage,
+            proteins=self._proteins,
         )
         self.app.include_router(tools_router)
 

@@ -64,10 +64,10 @@ prep.model_missing_loops = False
 prepared = prep.run()
 ```
 
-`run()` returns an in-memory [`Protein`](../ref/protein.md) whose
-`remote_path` points to the prepared Protein Data Bank (PDB) file. It has no
-platform protein ID until you call `sync()` or `update()`. The original input
-protein is unchanged. The prepared PDB carries a
+`run()` returns a registered [`Protein`](../ref/protein.md) for the prepared
+structure: a new platform row whose `remote_path` points to the prepared
+Protein Data Bank (PDB) file under `entities/proteins/prepared/`. The original
+input protein is unchanged. The prepared PDB carries a
 [`REMARK  99 DO_PREPARED`](../ref/prepared_protein_stamp.md) stamp; pass that
 `Protein` into Pocket Finder or other tools without re-serializing the file so
 the stamp stays intact. To stamp a structure you prepared outside Deep Origin
@@ -139,9 +139,14 @@ mapping. Assignment copies and validates it. Local decisions may contain
 
 `run()` or `start()` binds the object to the durable preparation execution and
 sets `prep.id`. From that point onward, configuration is permanently frozen.
-Displaying the object shows its configuration, a Selection summary,
-recommendation component count, and—after submission—execution status and
-progress. Display `prep.recommendation` to see the component table.
+When you omit `name`, those methods label the execution from the current
+settings—for example `Preparing 1EBY`, `Preparing and loop modelling 1EBY`, or
+`Preparing, loop modelling, and finding pockets 1EBY` (PDB ID when set,
+otherwise the protein name). Displaying the object shows its configuration, a
+Selection summary, recommendation component count, and—after
+submission—execution `id` and `status`. Jupyter HTML omits `progress` (platform
+reports are large nested trees); inspect `prep.progress` when needed. Display
+`prep.recommendation` to see the component table.
 
 Direct loops-off preparation does not require a cost quote. Pocket-bearing
 composite runs are billable: use `start(quote=True)` then `confirm()`, or pass

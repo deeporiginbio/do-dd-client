@@ -129,10 +129,10 @@ PROTEIN_PREP_DISPLAY_NONE = "(none)"
 """Display value for unavailable Protein Prep configuration."""
 
 PROTEIN_PREP_NO_OUTPUT_PATHS_MSG = (
-    "Protein preparation did not return a prepared PDB path. "
+    "Protein preparation did not return a prepared protein id. "
     "The tool execution may have failed or returned an unexpected format."
 )
-"""Used by ``ProteinPrep.get_results`` when the prepared PDB path is missing."""
+"""Used by ``ProteinPrep.get_results`` when the prepared protein id is missing."""
 
 PROTEIN_PREP_PDB_ID_REQUIRED_MSG = (
     "pdb_id is required when preparing with loop modelling. "

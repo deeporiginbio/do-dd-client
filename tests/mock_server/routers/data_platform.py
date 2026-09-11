@@ -13,6 +13,7 @@ from rdkit import Chem
 
 MOCK_CANONICAL_PROTEIN_ID = "brd"
 MOCK_CANONICAL_PROTEIN_FILE_PATH = "testing/brd.pdb"
+PREPARED_PROTEIN_UFA_PREFIX = "entities/proteins/prepared"
 
 # Pocket id aligned with ``tests/fixtures/tool-runs/deeporigin.bulk-docking/quote.json``
 # and PocketFinder-style mocks (``pocket.id`` on tool inputs).
@@ -45,6 +46,74 @@ def _base_default_project_record() -> dict[str, Any]:
         "notes": None,
         "url_token": None,
     }
+
+
+def prepared_protein_remote_path(execution_id: str) -> str:
+    """Return the durable UFA path for a mock prepared protein PDB."""
+    stem = execution_id.strip()
+    if not stem or "/" in stem or "\\" in stem:
+        msg = f"Invalid execution_id for prepared protein path: {execution_id!r}"
+        raise ValueError(msg)
+    return f"{PREPARED_PROTEIN_UFA_PREFIX}/{stem}.pdb"
+
+
+def mock_prepared_protein_id(execution_id: str) -> str:
+    """Return a deterministic mock protein id for a prepare execution."""
+    compact = execution_id.replace("-", "")
+    return f"prep-{compact[:12]}"
+
+
+def register_mock_prepared_protein(
+    proteins: dict[str, dict[str, Any]],
+    *,
+    execution_id: str,
+    pdb_id: str | None = None,
+) -> dict[str, str]:
+    """Register a prepared protein entity for mock protein-prep outputs.
+
+    Args:
+        proteins: In-memory proteins store.
+        execution_id: Tool execution id (path stem + entity suffix).
+        pdb_id: Optional PDB ID copied from prepare inputs.
+
+    Returns:
+        Dict with ``protein_id`` and ``file_path``.
+    """
+    remote_path = prepared_protein_remote_path(execution_id)
+    protein_id = mock_prepared_protein_id(execution_id)
+    now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z"
+    record = {
+        "id": protein_id,
+        "version": 1,
+        "valid_from": now,
+        "valid_to": None,
+        "modified_by": "mock-server",
+        "deleted": False,
+        "project_id": None,
+        "subtable_name": "proteins",
+        "uniprot_accession": None,
+        "file_path": remote_path,
+        "gene_symbol": None,
+        "pdb_id": str(pdb_id).strip() if pdb_id else None,
+        "refseq_protein_id": None,
+        "ensembl_protein_id": None,
+        "alpha_fold_id": None,
+        "fasta_sequence": None,
+        "protein_name": f"prepared-{execution_id}",
+        "kegg_gene_id": None,
+        "chembl_target_id": None,
+        "binding_db_target_id": None,
+        "drugbank_target_id": None,
+        "pfam_id": None,
+        "interpro_id": None,
+        "ec_number": None,
+        "ncbi_taxonomy_id": None,
+        "protein_family": None,
+        "ligandability_score": None,
+        "protein_length": None,
+    }
+    proteins[protein_id] = record
+    return {"protein_id": protein_id, "file_path": remote_path}
 
 
 def _base_canonical_protein_record() -> dict[str, Any]:
@@ -804,6 +873,22 @@ def create_data_platform_router(
         limit = body.get("limit", 100)
         offset = body.get("offset", 0)
         store = _entity_stores.get(entity, {})
+
+        if entity == "proteins" and "file_path" in filter_dict:
+            raw_path = filter_dict["file_path"]
+            file_path = raw_path.get("eq") if isinstance(raw_path, dict) else raw_path
+            if isinstance(file_path, str) and file_path.startswith(
+                f"{PREPARED_PROTEIN_UFA_PREFIX}/"
+            ):
+                matches = [
+                    copy.deepcopy(row)
+                    for row in proteins.values()
+                    if row.get("file_path") == file_path and not row.get("deleted")
+                ]
+                return {
+                    "data": matches[offset : offset + limit],
+                    "count": len(matches),
+                }
 
         # Protein.sync() searches by uploaded file_path (hash-based or custom).
         # Always resolve to the canonical BRD fixture + stable ID when unscoped.

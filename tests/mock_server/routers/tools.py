@@ -24,6 +24,7 @@ from fastapi import APIRouter, HTTPException, Request
 from deeporigin.utils.constants import METABOLISM_WORKFLOW_LIGAND_THRESHOLD
 
 from ..constants import MOCK_BULK_DOCKING_EXECUTION_ID
+from .data_platform import register_mock_prepared_protein
 
 _MOCK_METABOLISM_ENZYMES: tuple[str, ...] = (
     "CYP1A2",
@@ -757,6 +758,7 @@ def create_tools_router(
     results: list[dict[str, Any]],
     user_logs: dict[str, dict[str, Any]],
     file_storage: dict[str, bytes],
+    proteins: dict[str, dict[str, Any]],
 ) -> APIRouter:
     """Create a router for tools-related endpoints.
 
@@ -772,6 +774,7 @@ def create_tools_router(
             via the result-explorer search endpoint.
         user_logs: Shared user_logs store keyed by row id.
         file_storage: In-memory file bytes keyed by remote path.
+        proteins: Shared proteins store for registering prepared outputs.
 
     Returns:
         APIRouter instance with tools-related routes.
@@ -2052,15 +2055,15 @@ def create_tools_router(
         if not isinstance(outputs, dict):
             return
 
-        protein = (
-            user_inputs.get("protein", {}) if isinstance(user_inputs, dict) else {}
-        )
-        protein_id = protein.get("id") if isinstance(protein, dict) else None
         pdb_id = user_inputs.get("pdb_id") if isinstance(user_inputs, dict) else None
         protein_out = outputs.get("protein")
         if isinstance(protein_out, dict):
-            if protein_id is not None:
-                protein_out["protein_id"] = protein_id
+            registered = register_mock_prepared_protein(
+                proteins,
+                execution_id=str(eid),
+                pdb_id=str(pdb_id) if pdb_id is not None else None,
+            )
+            protein_out["protein_id"] = registered["protein_id"]
             if pdb_id is not None:
                 protein_out["pdb_id"] = pdb_id
         execution["jobOutputs"] = outputs
@@ -2087,7 +2090,7 @@ def create_tools_router(
         )
         inputs = body.get("inputs") or {}
         protein_input = inputs.get("protein") or {}
-        protein_id = (
+        input_protein_id = (
             str(protein_input.get("id"))
             if isinstance(protein_input, dict) and protein_input.get("id")
             else None
@@ -2098,7 +2101,7 @@ def create_tools_router(
         )
         report = _synthesize_structure_report_row(
             pdb_id=str(pdb_id).upper() if pdb_id else None,
-            protein_id=protein_id,
+            protein_id=input_protein_id,
             has_file=has_file,
         )
 
@@ -2107,8 +2110,13 @@ def create_tools_router(
         )
         outputs = _legacy_outputs_to_job_outputs(prep_fixture) or {}
         protein_output = outputs.get("protein")
-        if isinstance(protein_output, dict) and protein_id is not None:
-            protein_output["protein_id"] = protein_id
+        if isinstance(protein_output, dict):
+            registered = register_mock_prepared_protein(
+                proteins,
+                execution_id=str(execution["executionId"]),
+                pdb_id=str(pdb_id) if pdb_id is not None else None,
+            )
+            protein_output["protein_id"] = registered["protein_id"]
         report["report_role"] = "prepared"
         outputs.update(
             {
@@ -2131,9 +2139,14 @@ def create_tools_router(
             )
             pocket_outputs = _legacy_outputs_to_job_outputs(pocket_fixture) or {}
             pockets = pocket_outputs.get("pockets") or []
+            prepared_protein_id = (
+                protein_output.get("protein_id")
+                if isinstance(protein_output, dict)
+                else None
+            )
             for pocket in pockets:
-                if isinstance(pocket, dict):
-                    pocket["protein_id"] = protein_id
+                if isinstance(pocket, dict) and prepared_protein_id is not None:
+                    pocket["protein_id"] = prepared_protein_id
             outputs["pockets"] = pockets
 
         execution["jobOutputs"] = outputs

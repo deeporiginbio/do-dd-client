@@ -424,6 +424,43 @@ def _protein_display_value(protein: Protein) -> str:
     return name
 
 
+def _protein_prep_default_name(
+    *,
+    protein: Protein,
+    pdb_id: str | None,
+    model_missing_loops: bool,
+    include_pocket: bool,
+) -> str:
+    """Build a short human-readable label for a prepare execution.
+
+    Prefers ``pdb_id``, then ``protein.name``, then ``"protein"``.
+
+    Args:
+        protein: Input protein (``name`` used when ``pdb_id`` is absent).
+        pdb_id: Optional 4-character PDB ID for the run.
+        model_missing_loops: Whether loop modelling is enabled.
+        include_pocket: Whether Pocket Finder is configured.
+
+    Returns:
+        Labels such as ``Preparing 1EBY``,
+        ``Preparing and loop modelling 1EBY``,
+        ``Preparing and finding pockets brd``, or
+        ``Preparing, loop modelling, and finding pockets 1EBY``.
+    """
+    raw_label = pdb_id or protein.name or "protein"
+    label = str(raw_label).strip() or "protein"
+    extras: list[str] = []
+    if model_missing_loops:
+        extras.append("loop modelling")
+    if include_pocket:
+        extras.append("finding pockets")
+    if not extras:
+        return f"Preparing {label}"
+    if len(extras) == 1:
+        return f"Preparing and {extras[0]} {label}"
+    return f"Preparing, {extras[0]}, and {extras[1]} {label}"
+
+
 def _normalize_pdb_id(raw: str) -> str:
     """Return a validated 4-character PDB identifier.
 
@@ -547,34 +584,39 @@ def _protein_tool_input(protein: Protein) -> dict[str, Any]:
 def _protein_from_prepared_data(
     data: dict[str, Any],
     *,
+    client: DeepOriginClient,
     fallback_pdb_id: str | None,
     fallback_name: str | None,
 ) -> Protein:
-    """Build an in-memory Protein from a prepared-protein output dict.
+    """Build a :class:`Protein` from a prepared-protein output dict.
 
     Args:
         data: ``jobOutputs.protein`` or result-explorer ``data`` payload.
+        client: Platform client used to resolve ``protein_id``.
         fallback_pdb_id: PDB ID used when the payload omits ``pdb_id``.
-        fallback_name: Input protein name used to label the result.
+        fallback_name: Input protein name used when the entity name is generic.
 
     Returns:
-        Protein with ``id`` unset and ``remote_path`` set to the prepared PDB.
+        Registered prepared protein resolved from ``protein_id``.
 
     Raises:
-        ValueError: If ``protein_pdb_file_path`` is missing or empty.
+        ValueError: If ``protein_id`` is missing or empty.
     """
-    path = data.get("protein_pdb_file_path")
-    if not path or not str(path).strip():
+    raw_protein_id = data.get("protein_id")
+    if not raw_protein_id or not str(raw_protein_id).strip():
         raise ValueError(PROTEIN_PREP_NO_OUTPUT_PATHS_MSG)
-    pdb_id = data.get("pdb_id") or fallback_pdb_id
-    base_name = fallback_name.strip() if isinstance(fallback_name, str) else ""
-    name = f"{base_name} (prepared)" if base_name else "prepared protein"
-    return Protein(
-        name=name,
-        pdb_id=str(pdb_id) if pdb_id else None,
-        structure=None,
-        remote_path=str(path),
+    prepared = Protein.from_id(
+        str(raw_protein_id).strip(),
+        client=client,
+        download=False,
     )
+    pdb_id = data.get("pdb_id") or fallback_pdb_id
+    if pdb_id and not prepared.pdb_id:
+        prepared.pdb_id = str(pdb_id)
+    base_name = fallback_name.strip() if isinstance(fallback_name, str) else ""
+    if base_name and prepared.name in {str(raw_protein_id), "protein"}:
+        prepared.name = f"{base_name} (prepared)"
+    return prepared
 
 
 def _selection_from_recommendation(
@@ -963,7 +1005,9 @@ class ProteinPrep(
             tool_version: Platform tool version pin for the direct protein-prep
                 route. Composite runs use the pinned Target Preparation major.
             client: Optional API client. Uses the default if not provided.
-            name: Optional execution label for prepare submissions.
+            name: Optional execution label for prepare submissions. When
+                omitted, :meth:`run` and :meth:`start` choose a label from the
+                loops / pocket settings and ``pdb_id`` (or protein name).
 
         Raises:
             ValueError: If ``pdb_id``, ``selection``, or ``pocket`` is invalid.
@@ -1060,6 +1104,21 @@ class ProteinPrep(
     def _uses_composite_route(self) -> bool:
         """Return whether prepare must use Target Preparation."""
         return bool(self._model_missing_loops) or self._pocket is not None
+
+    def _ensure_prepare_name(self) -> None:
+        """Set a descriptive prepare name when the caller did not provide one.
+
+        Reflects the current loops / pocket configuration and prefers
+        :attr:`pdb_id` over ``protein.name``.
+        """
+        if self.name is not None:
+            return
+        self.name = _protein_prep_default_name(
+            protein=self._protein,
+            pdb_id=self._pdb_id,
+            model_missing_loops=self._model_missing_loops,
+            include_pocket=self._pocket is not None,
+        )
 
     def _apply_runtime_route(self, *, composite: bool) -> None:
         """Set instance ``tool_key`` / ``tool_version`` for the next create.
@@ -1340,6 +1399,9 @@ class ProteinPrep(
     def _repr_html_(self) -> str:
         """Return an HTML table of parameters for Jupyter display.
 
+        Omits ``progress``: platform progress reports are nested trees that
+        overwhelm a Parameter/Value table. Use ``prep.progress`` directly.
+
         Returns:
             HTML fragment with a Parameter/Value table. Values are escaped.
         """
@@ -1351,6 +1413,8 @@ class ProteinPrep(
         )
         body_parts: list[str] = []
         for name, value in self._parameter_rows():
+            if name == "progress":
+                continue
             body_parts.append(
                 "<tr>"
                 "<td style='padding:4px 16px 4px 0;font-family:ui-monospace,"
@@ -1516,6 +1580,7 @@ class ProteinPrep(
         if self.id is not None:
             raise ValueError("Cannot start: this ProteinPrep is already bound.")
         self._validate_for_submit()
+        self._ensure_prepare_name()
         self._ensure_protein_remote()
         composite = self._uses_composite_route()
         self._apply_runtime_route(composite=composite)
@@ -1568,6 +1633,7 @@ class ProteinPrep(
             raise ValueError("Cannot run: this ProteinPrep is already bound.")
         self._require_direct_blocking_prepare()
         self._validate_for_submit()
+        self._ensure_prepare_name()
         self._ensure_protein_remote()
         self._apply_runtime_route(composite=False)
         resolved_amount = 0 if quote else approve_amount
@@ -1850,17 +1916,18 @@ class ProteinPrep(
         return cls.from_dto(candidates[0], client=client)
 
     def _protein_from_outputs(self, data: dict[str, Any]) -> Protein:
-        """Build the in-memory result Protein from an output dict.
+        """Build the result Protein from an output dict.
 
         Args:
             data: Prepared-protein payload (``jobOutputs.protein`` or explorer
                 ``data``).
 
         Returns:
-            In-memory Protein wrapping the prepared PDB path.
+            Prepared :class:`Protein`, usually registered via ``protein_id``.
         """
         return _protein_from_prepared_data(
             data,
+            client=self.client,
             fallback_pdb_id=self._pdb_id,
             fallback_name=self._protein.name,
         )
@@ -1945,7 +2012,7 @@ class ProteinPrep(
         Raises:
             ValueError: If :attr:`id` is unset.
             DeepOriginException: If this was a recommend run, or no prepared
-                PDB path could be loaded.
+                protein could be loaded.
         """
         exec_id = self._ensure_id()
         if self._operation_kind == "recommend":
@@ -1964,7 +2031,7 @@ class ProteinPrep(
             records = response.get("data") or []
             if records:
                 data = records[0].get("data") or {}
-                if isinstance(data, dict) and data.get("protein_pdb_file_path"):
+                if isinstance(data, dict) and data.get("protein_id"):
                     return self._protein_from_outputs(data)
         except Exception:
             pass

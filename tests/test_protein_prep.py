@@ -10,10 +10,15 @@ import pandas as pd
 import pytest
 
 from deeporigin.drug_discovery import Protein, ProteinPrep, RecommendationView
+from deeporigin.drug_discovery.protein_prep import (
+    _protein_from_prepared_data,
+    _protein_prep_default_name,
+)
 from deeporigin.exceptions import DeepOriginException
 from deeporigin.platform import DeepOriginClient
 from deeporigin.platform.constants import TOOL_KEYS_AND_VERSIONS, is_success_status
 from tests.conftest import check_tool_exists
+from tests.mock_server.routers.data_platform import prepared_protein_remote_path
 
 _SHA256 = "a" * 64
 _SAMPLE_SELECTION = {
@@ -432,6 +437,77 @@ def test_skip_decision_review_resolves_reviews() -> None:
     assert decisions["chain:A"] == "keep"
 
 
+def test_protein_prep_default_name_helper() -> None:
+    """Default prepare names reflect loops, pocket, and pdb_id / protein name."""
+    protein = Protein(name="brd", pdb_id="1EBY")
+
+    assert (
+        _protein_prep_default_name(
+            protein=protein,
+            pdb_id="1EBY",
+            model_missing_loops=False,
+            include_pocket=False,
+        )
+        == "Preparing 1EBY"
+    )
+    assert (
+        _protein_prep_default_name(
+            protein=protein,
+            pdb_id="1EBY",
+            model_missing_loops=True,
+            include_pocket=False,
+        )
+        == "Preparing and loop modelling 1EBY"
+    )
+    assert (
+        _protein_prep_default_name(
+            protein=protein,
+            pdb_id=None,
+            model_missing_loops=False,
+            include_pocket=True,
+        )
+        == "Preparing and finding pockets brd"
+    )
+    assert (
+        _protein_prep_default_name(
+            protein=protein,
+            pdb_id="1EBY",
+            model_missing_loops=True,
+            include_pocket=True,
+        )
+        == "Preparing, loop modelling, and finding pockets 1EBY"
+    )
+    assert (
+        _protein_prep_default_name(
+            protein=Protein(name=""),
+            pdb_id=None,
+            model_missing_loops=False,
+            include_pocket=False,
+        )
+        == "Preparing protein"
+    )
+
+
+def test_ensure_prepare_name_respects_explicit_name() -> None:
+    """Caller-provided names are kept; otherwise config drives the label."""
+    prep = ProteinPrep(
+        protein=Protein(name="brd", pdb_id="1EBY"),
+        selection=_SAMPLE_SELECTION,
+        model_missing_loops=False,
+    )
+    prep._ensure_prepare_name()
+    assert prep.name == "Preparing 1EBY"
+
+    named = ProteinPrep(
+        protein=Protein(name="brd", pdb_id="1EBY"),
+        selection=_SAMPLE_SELECTION,
+        model_missing_loops=True,
+        name="custom prep",
+    )
+    named._ensure_prepare_name()
+    assert named.name == "custom prep"
+
+
 def test_prepare_requires_selection_before_upload() -> None:
     """Prepare cannot begin until recommendation or assignment provides Selection."""
     prep = ProteinPrep(
@@ -617,6 +693,28 @@ def test_repr_adds_durable_execution_state() -> None:
     assert "25" in text
 
 
+def test_repr_html_omits_progress() -> None:
+    """Jupyter HTML skips progress so large reports do not dominate the table."""
+    prep = ProteinPrep(
+        protein=Protein(name="brd", pdb_id="1EBY"),
+        selection=_SAMPLE_SELECTION,
+    )
+    prep._id = "exec-abc"
+    prep.status = "Running"
+    prep.progress = {
+        "id": "workflow-huge",
+        "status": "Running",
+        "children": [{"id": f"step-{i}", "status": "Succeeded"} for i in range(50)],
+    }
+
+    html = prep._repr_html_()
+
+    assert "exec-abc" in html
+    assert "Running" in html
+    assert "progress" not in html
+    assert "workflow-huge" not in html
+
+
 def test_from_dto_rehydrates_prepare_without_public_action(
     client: DeepOriginClient,
 ) -> None:
@@ -663,7 +761,10 @@ def test_from_dto_v1_prepare_still_gets_results(
 
     assert prep._operation_kind == "prepare"
     assert isinstance(prepared, Protein)
-    assert prepared.remote_path == "testing/brd.pdb"
+    assert prepared.id == "prep-a1b2c3d4e5f6"
+    assert prepared.remote_path == prepared_protein_remote_path(
+        "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+    )
 
 
 def test_get_results_requires_durable_id() -> None:
@@ -672,6 +773,35 @@ def test_get_results_requires_durable_id() -> None:
 
     with pytest.raises(ValueError, match="no execution"):
         prep.get_results()
+
+
+def test_protein_from_prepared_data_uses_registered_protein_id(
+    client: DeepOriginClient,
+) -> None:
+    """Prepare outputs resolve the registered prepared protein entity."""
+    prepared = _protein_from_prepared_data(
+        {"protein_id": "prep-a1b2c3d4e5f6", "pdb_id": "1EBY"},
+        client=client,
+        fallback_pdb_id=None,
+        fallback_name="brd",
+    )
+
+    assert prepared.id == "prep-a1b2c3d4e5f6"
+    assert prepared.pdb_id == "1EBY"
+    assert prepared.remote_path == prepared_protein_remote_path(
+        "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+    )
+
+
+def test_protein_from_prepared_data_requires_protein_id() -> None:
+    """Prepare outputs without ``protein_id`` are rejected."""
+    with pytest.raises(ValueError, match="prepared protein id"):
+        _protein_from_prepared_data(
+            {"pdb_id": "1EBY"},
+            client=DeepOriginClient(),
+            fallback_pdb_id=None,
+            fallback_name="brd",
+        )
 
 
 def test_recommend_updates_same_object_without_id(
@@ -713,8 +843,10 @@ def test_recommend_then_run_loops_off_returns_protein(
     prepared = prep.run()
 
     assert isinstance(prepared, Protein)
-    assert prepared.id is None
-    assert prepared.remote_path == "testing/brd.pdb"
+    assert prepared.id is not None
+    assert prepared.id != registered_protein.id
+    assert prepared.remote_path.startswith("entities/proteins/prepared/")
+    assert prepared.remote_path.endswith(".pdb")
     assert prep.id is not None
     if client.env == "local":
         assert is_success_status(prep.status)
@@ -847,6 +979,7 @@ def test_composite_start_uses_target_preparation_tool_key(
     prep.start()
 
     assert prep.id is not None
+    assert prep.name == "Preparing and loop modelling 1EBY"
     assert prep.tool_key == TOOL_KEYS_AND_VERSIONS["target_prep"]["tool_key"]
     assert prep.tool_version == "2"
     prepared = prep.get_results()
