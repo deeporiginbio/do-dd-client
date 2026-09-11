@@ -87,7 +87,9 @@ def test_download_to_path_raises_after_exhausting_retries(
 ) -> None:
     """A persistently failing GET should surface the last exception."""
     files = _files_with_mock_client()
-    monkeypatch.setattr(files, "signed_url", lambda *_a, **_k: "https://signed.example/x")
+    monkeypatch.setattr(
+        files, "signed_url", lambda *_a, **_k: "https://signed.example/x"
+    )
 
     def always_fail(*_args: object, **_kwargs: object):
         raise httpx.TimeoutException("simulated timeout")
