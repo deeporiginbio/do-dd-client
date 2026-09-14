@@ -109,6 +109,6 @@ df = job.get_results()
 ```
 
 `from_dto`/`from_id`/`from_last_run` restore `method`, `ligands`, `uniprots`,
-`effort`, and `self_test` from the stored execution inputs. A rehydrated
-instance's `uniprots` is read-only until `duplicate()`, which re-fetches the
-live tool definition.
+`effort`, and `self_test` from the stored execution inputs. `uniprots` of a
+loaded run cannot be changed — call `duplicate()` first to get an editable
+copy, validated against the current panel.
