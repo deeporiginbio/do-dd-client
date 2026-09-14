@@ -168,6 +168,6 @@ TOOL_KEYS_AND_VERSIONS: dict[str, dict[str, str]] = {
     },
     "secondary_pharma": {
         "tool_key": "deeporigin.secondary-pharma",
-        "tool_version": "latest",
+        "tool_version": "2",
     },
 }

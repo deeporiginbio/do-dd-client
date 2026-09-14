@@ -62,13 +62,13 @@ def _definition_enum(client: DeepOriginClient) -> list[str]:
 def test_secondary_pharma_construct_copies_definition_enum(
     client: DeepOriginClient,
 ) -> None:
-    """Construction fetches the live tool definition; ``tool_version`` stays latest."""
+    """Construction fetches the live tool definition; ``tool_version`` stays pinned."""
     _assert_tool_available(client)
     ligand = Ligand.from_smiles("CCO")
     job = SecondaryPharmacology(ligands=[ligand], client=client)
 
     assert _definition_enum(client) == _PANEL_ACCESSIONS
-    assert job.tool_version == "latest"
+    assert job.tool_version == "2"
     assert job.method == "docking"
     assert job.uniprots is None
 

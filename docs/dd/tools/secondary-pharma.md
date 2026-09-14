@@ -9,10 +9,11 @@ EGFR, BRAF, and SRC — the panel is expected to grow) with
 `SecondaryPharmacology` wraps two mutually-exclusive scoring paths, selected
 by `method` at construction:
 
-- `method="ligand-ml"` — served, synchronous XGBoost booster scoring. Use
-  [`run()`](../ref/secondary_pharma.md).
-- `method="docking"` (the default) — an async workflow. Use
-  [`start()`](../ref/secondary_pharma.md).
+- `method="ligand-ml"` — fast ML-based activity predictions across the panel,
+  returned immediately. Use [`run()`](../ref/secondary_pharma.md).
+- `method="docking"` (the default) — physically docks each ligand against the
+  panel and scores the poses. Submitted as a background job — use
+  [`start()`](../ref/secondary_pharma.md), then wait for it to finish.
 
 `run()`, `start()`, and `watch()` are all available on every instance, but
 only the one matching `method` works — the others raise immediately, telling
@@ -21,8 +22,8 @@ you which to call instead:
 ```mermaid
 flowchart TD
     ctor["SecondaryPharmacology(method=...)"] --> choose{"Choose method"}
-    choose -->|"&nbsp;method='ligand-ml'&nbsp;"| ml_run["run()<br/>served, synchronous scoring"]
-    choose -->|"&nbsp;method='docking'&nbsp;"| dock_start["start()<br/>async Argo workflow"]
+    choose -->|"&nbsp;method='ligand-ml'&nbsp;"| ml_run["run()<br/>fast ML prediction"]
+    choose -->|"&nbsp;method='docking'&nbsp;"| dock_start["start()<br/>docking job"]
 
     ml_run -->|"&nbsp;completes&nbsp;"| ml_results["get_results()<br/>DataFrame, returned immediately"]
     ml_run -.->|"&nbsp;start() raises&nbsp;"| blocked(("ValueError"))
@@ -95,8 +96,8 @@ job = SecondaryPharmacology(self_test=True, method="ligand-ml")
 df = job.run()
 ```
 
-On the ligand-ml path, this exercises the real mounted model volume, not a
-stub — useful as a quick end-to-end health check of the tool itself.
+On the ligand-ml path, this uses the real model, not a placeholder — useful
+as a quick check that scoring is working end to end.
 
 !!! warning "Self-test has no results on the docking path"
     The baked test ligand has no ligand id, so no panel poses are ever
@@ -121,6 +122,6 @@ definition.
 - The panel is small (3 kinases today) and only grows by tool version bump —
   `uniprots` validation is against whatever panel the pinned `tool_version`
   shipped with.
-- The docking workflow has no ligand batching (unlike `deeporigin.docking`'s
-  `batchSize`): it is a single Argo task with no fan-out, so a very large
-  ligand list runs as one job against a fixed resource/time budget.
+- The docking path has no ligand batching (unlike `deeporigin.docking`'s
+  `batchSize`): it runs as a single job with a fixed resource/time budget, so
+  a very large ligand list all runs together rather than in smaller chunks.
