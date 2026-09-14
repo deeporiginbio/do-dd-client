@@ -2489,6 +2489,10 @@ def create_tools_router(
                                 "type": "string",
                             },
                             "type": "array",
+                            "x-enum-display-names": {
+                                accession: gene
+                                for accession, gene, _ in MOCK_SECONDARY_PHARMA_PANEL
+                            },
                         }
                     }
                 },

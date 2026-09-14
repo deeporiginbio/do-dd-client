@@ -73,6 +73,16 @@ def test_secondary_pharma_construct_copies_definition_enum(
     assert job.uniprots is None
 
 
+def test_secondary_pharma_panel_lists_accessions_and_gene_names(
+    client: DeepOriginClient,
+) -> None:
+    """``panel()`` needs no ligand or instance and returns accession/gene_name rows."""
+    _assert_tool_available(client)
+    df = SecondaryPharmacology.panel(client=client)
+    assert list(df["uniprot_id"]) == _PANEL_ACCESSIONS
+    assert list(df["gene_name"]) == [gene for _, gene, _ in MOCK_SECONDARY_PHARMA_PANEL]
+
+
 def test_secondary_pharma_requires_ligands_unless_self_test(
     client: DeepOriginClient,
 ) -> None:

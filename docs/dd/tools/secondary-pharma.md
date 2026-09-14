@@ -1,6 +1,6 @@
 # Secondary Pharmacology
 
-Score ligands against a baked secondary-pharmacology kinase panel (currently
+Score ligands against a secondary-pharmacology kinase panel (currently
 EGFR, BRAF, and SRC — the panel is expected to grow) with
 [`SecondaryPharmacology`](../ref/secondary_pharma.md).
 
@@ -53,8 +53,13 @@ df = job.run()
 and exactly one of `p_active` (classification) or `p_affinity` (regression,
 -log10 M) set per row.
 
-Restrict to a subset of the panel with `uniprots` (validated against the live
-tool definition's panel enum at construction):
+See what's currently in the panel with `SecondaryPharmacology.panel()`:
+
+```{.python notest}
+SecondaryPharmacology.panel()
+```
+
+Restrict to a subset of the panel with `uniprots`:
 
 ```{.python notest}
 job = SecondaryPharmacology(
@@ -63,6 +68,9 @@ job = SecondaryPharmacology(
     uniprots=["P00533"],  # EGFR only
 )
 ```
+
+Passing `self_test=True` instead of `ligands` scores a test ligand
+against the full panel using the real model, for checking scoring end to end.
 
 ## Docking
 
@@ -82,46 +90,25 @@ feeding into a downstream tool like `ABFE`:
 poses = job.get_poses()
 ```
 
-`effort` (1–5) is validated on both methods before submission, even though
-the tool only uses it for docking.
-
-## Self-test
-
-Both methods accept `self_test=True` (mutually exclusive with `ligands` —
-passing both raises), which scores a baked test ligand (gefitinib) against
-the full panel:
-
-```{.python notest}
-job = SecondaryPharmacology(self_test=True, method="ligand-ml")
-df = job.run()
-```
-
-On the ligand-ml path, this uses the real model, not a placeholder — useful
-as a quick check that scoring is working end to end.
-
-!!! warning "Self-test has no results on the docking path"
-    The baked test ligand has no ligand id, so no panel poses are ever
-    published for it. Both `get_results()` and `get_poses()` raise —
-    use the ligand-ml path above for a self-test health check instead.
+Currently no batching is supported for the docking path (unlike `deeporigin.docking`'s `batchSize`)
+and it runs as a single job with a fixed resource/time budget for the entire ligand set.
 
 ## Working with existing runs
 
 ```{.python notest}
+from deeporigin.drug_discovery import SecondaryPharmacology
+
+# By execution id:
 job = SecondaryPharmacology.from_id("<executionId>")
+
+# Or the most recently created SecondaryPharmacology run:
+job = SecondaryPharmacology.from_last_run()
+
 job.sync()
 df = job.get_results()
 ```
 
-`from_dto`/`from_id` restore `method`, `ligands`, `uniprots`, `effort`, and
-`self_test` from the stored execution inputs. A rehydrated instance's
-`uniprots` is read-only until `duplicate()`, which re-fetches the live tool
-definition.
-
-## Current limitations
-
-- The panel is small (3 kinases today) and only grows by tool version bump —
-  `uniprots` validation is against whatever panel the pinned `tool_version`
-  shipped with.
-- The docking path has no ligand batching (unlike `deeporigin.docking`'s
-  `batchSize`): it runs as a single job with a fixed resource/time budget, so
-  a very large ligand list all runs together rather than in smaller chunks.
+`from_dto`/`from_id`/`from_last_run` restore `method`, `ligands`, `uniprots`,
+`effort`, and `self_test` from the stored execution inputs. A rehydrated
+instance's `uniprots` is read-only until `duplicate()`, which re-fetches the
+live tool definition.

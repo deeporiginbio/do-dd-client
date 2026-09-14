@@ -96,6 +96,24 @@ def _uniprots_from_definition(definition: dict[str, Any]) -> list[str]:
     return list(names)
 
 
+def _panel_from_definition(definition: dict[str, Any]) -> list[dict[str, str]]:
+    """Return ``{"uniprot_id", "gene_name"}`` rows for the panel in a tool definition.
+
+    Gene names come from ``inputs.properties.uniprots.items.x-enum-display-names``
+    (optional metadata); an accession missing from that mapping falls back to
+    itself so a display-name gap can't turn into a missing panel member.
+    """
+    accessions = _uniprots_from_definition(definition)
+    display_names = (
+        definition["inputs"]["properties"]["uniprots"].get("x-enum-display-names")
+        or {}
+    )
+    return [
+        {"uniprot_id": accession, "gene_name": display_names.get(accession, accession)}
+        for accession in accessions
+    ]
+
+
 def _validate_uniprots(
     uniprots: list[str],
     *,
@@ -314,7 +332,8 @@ class SecondaryPharmacology(
             self_test: When ``True``, ``ligands`` is not required; the platform
                 runs the selected method against the full panel with a baked
                 test ligand.
-            tool_version: Platform tool version. Defaults to ``"latest"``.
+            tool_version: Platform tool version. Defaults to the pinned major
+                version in :data:`TOOL_KEYS_AND_VERSIONS`.
             client: Optional API client.
             name: Optional execution label. When omitted, generated from
                 ``method``, ligand count (or ``self_test``), and ``uniprots``.
@@ -428,6 +447,36 @@ class SecondaryPharmacology(
         )
         parts.append(f")  # {hint}")
         return "\n".join(parts)
+
+    @classmethod
+    def panel(
+        cls,
+        *,
+        tool_version: str = TOOL_KEYS_AND_VERSIONS["secondary_pharma"]["tool_version"],
+        client: DeepOriginClient | None = None,
+    ) -> pd.DataFrame:
+        """Return the current scoring panel, no ligand or instance required.
+
+        Both methods validate ``uniprots`` against this same panel today --
+        docking and ligand-ml are expected to grow independent, differently
+        sized catalogs later, which this method will need to account for then.
+
+        Args:
+            tool_version: Platform tool version to look up. Defaults to the
+                pinned major version in :data:`TOOL_KEYS_AND_VERSIONS`.
+            client: Optional API client. Uses the default if not provided.
+
+        Returns:
+            A :class:`pandas.DataFrame` with one row per panel member
+            (``uniprot_id``, ``gene_name``).
+        """
+        if client is None:
+            client = DeepOriginClient()
+        if client.tools is None:
+            raise RuntimeError("DeepOriginClient has no tools API")
+        definition = client.tools.get(tool_key=cls.tool_key, tool_version=tool_version)
+        members = _panel_from_definition(definition)
+        return pd.DataFrame(members, columns=["uniprot_id", "gene_name"])
 
     def _fetch_definition_uniprots(self) -> list[str]:
         """Return panel accessions from the live secondary-pharma tool definition."""
