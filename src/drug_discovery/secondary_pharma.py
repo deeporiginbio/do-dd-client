@@ -105,8 +105,7 @@ def _panel_from_definition(definition: dict[str, Any]) -> list[dict[str, str]]:
     """
     accessions = _uniprots_from_definition(definition)
     display_names = (
-        definition["inputs"]["properties"]["uniprots"].get("x-enum-display-names")
-        or {}
+        definition["inputs"]["properties"]["uniprots"].get("x-enum-display-names") or {}
     )
     return [
         {"uniprot_id": accession, "gene_name": display_names.get(accession, accession)}
