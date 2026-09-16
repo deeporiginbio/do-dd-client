@@ -31,6 +31,7 @@ from typing import TYPE_CHECKING, Any, ClassVar, Literal, Self
 
 from deeporigin.platform.constants import (
     ALLOWED_STATUS_TRANSITIONS,
+    ExecutionVisibility,
     is_success_status,
     normalize_platform_status,
 )
@@ -160,8 +161,16 @@ class Execution:
         self,
         *,
         data: dict[str, Any],
+        visibility: ExecutionVisibility | None = None,
     ) -> dict[str, Any]:
-        """Submit ``data`` via :meth:`~deeporigin.platform.executions.Executions.create`."""
+        """Submit ``data`` via :meth:`~deeporigin.platform.executions.Executions.create`.
+
+        Args:
+            data: Execution payload (inputs, outputs, metadata).
+            visibility: Optional activity-history visibility, ``"visible"`` or
+                ``"hidden"``. ``"hidden"`` marks the run internal so it does not
+                appear in user-facing activity views. Omitted when ``None``.
+        """
         resolved_key = self.tool_key
         resolved_version = getattr(self, "tool_version", None)
         if not resolved_key or not resolved_version:
@@ -172,6 +181,7 @@ class Execution:
             tool_key=resolved_key,
             tool_version=resolved_version,
             data=data,
+            visibility=visibility,
         )
 
     @property

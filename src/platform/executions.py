@@ -12,7 +12,11 @@ from beartype import beartype
 if TYPE_CHECKING:
     from deeporigin.platform.client import DeepOriginClient
 
-from deeporigin.platform.constants import TERMINAL_STATES
+from deeporigin.platform.constants import (
+    EXECUTION_VISIBILITY_VALUES,
+    TERMINAL_STATES,
+    ExecutionVisibility,
+)
 from deeporigin.utils.constants import (
     TOOL_EXECUTION_GET_ACCEPT_HEADER,
     TOOL_EXECUTION_POST_TIMEOUT_SECONDS,
@@ -60,6 +64,7 @@ class Executions:
         tool_version: str,
         data: dict,
         timeout: float | None = None,
+        visibility: ExecutionVisibility | None = None,
     ) -> dict:
         """Create (run) an execution of a tool with a specific version.
 
@@ -79,11 +84,17 @@ class Executions:
                 the caller already included ``billing`` in ``data``.
                 Uses ``retry=False`` so a failed create (including gateway 504)
                 is not retried; retries can otherwise duplicate long sync jobs.
+            visibility: Optional activity-history visibility, ``"visible"`` or
+                ``"hidden"``. ``"hidden"`` opts the run out of user-facing activity
+                views (it still exists, and stays visible to admin/audit/billing).
+                Sent unless the caller already included ``visibility`` in ``data``.
+                When ``None`` the key is omitted entirely and the server decides.
 
         Returns:
             Dictionary containing the execution response from the API.
 
         Raises:
+            ValueError: If ``visibility`` is not ``"visible"`` or ``"hidden"``.
             Exception: If the tool execution fails, with error details printed.
         """
         payload = data.copy()
@@ -102,6 +113,17 @@ class Executions:
             and "billing" not in payload
         ):
             payload["billing"] = self._c.billing_tag
+        if visibility is not None:
+            # Validated rather than passed through: this is a control flag, and a
+            # typo would fail open (the run silently stays visible) instead of
+            # erroring. The free-form `app`/`session` tags carry no such risk.
+            if visibility not in EXECUTION_VISIBILITY_VALUES:
+                raise ValueError(
+                    f"visibility must be one of "
+                    f"{sorted(EXECUTION_VISIBILITY_VALUES)}, got {visibility!r}"
+                )
+            if "visibility" not in payload:
+                payload["visibility"] = visibility
 
         req_timeout = (
             timeout if timeout is not None else TOOL_EXECUTION_POST_TIMEOUT_SECONDS

@@ -475,3 +475,92 @@ def test_from_headers_still_raises_when_required_missing():
     msg = str(exc_info.value)
     assert "X-Do-Org-Key" in msg
     assert "X-Do-Base-Url" in msg
+
+
+def test_executions_create_omits_visibility_by_default():
+    """No ``visibility`` key is sent when the caller does not ask for one."""
+    DeepOriginClient.close_all()
+
+    client = DeepOriginClient.from_local()
+    captured = _stub_post_json_capturing_body(client)
+
+    client.clusters.get_default_cluster_id = (  # type: ignore[method-assign]
+        lambda: "test-cluster-id"
+    )
+
+    client.executions.create(
+        tool_key="test.tool",
+        tool_version="1.0.0",
+        data={"inputs": {}, "outputs": {}, "metadata": {}},
+    )
+
+    assert "visibility" not in captured
+
+
+def test_executions_create_sends_visibility():
+    """``visibility='hidden'`` marks the run internal on the execution payload."""
+    DeepOriginClient.close_all()
+
+    client = DeepOriginClient.from_local()
+    captured = _stub_post_json_capturing_body(client)
+
+    client.clusters.get_default_cluster_id = (  # type: ignore[method-assign]
+        lambda: "test-cluster-id"
+    )
+
+    client.executions.create(
+        tool_key="test.tool",
+        tool_version="1.0.0",
+        data={"inputs": {}, "outputs": {}, "metadata": {}},
+        visibility="hidden",
+    )
+
+    assert captured["visibility"] == "hidden"
+
+
+def test_executions_create_data_visibility_overrides_argument():
+    """An explicit ``visibility`` in ``data`` wins over the argument (caller wins)."""
+    DeepOriginClient.close_all()
+
+    client = DeepOriginClient.from_local()
+    captured = _stub_post_json_capturing_body(client)
+
+    client.clusters.get_default_cluster_id = (  # type: ignore[method-assign]
+        lambda: "test-cluster-id"
+    )
+
+    client.executions.create(
+        tool_key="test.tool",
+        tool_version="1.0.0",
+        data={
+            "inputs": {},
+            "outputs": {},
+            "metadata": {},
+            "visibility": "visible",
+        },
+        visibility="hidden",
+    )
+
+    assert captured["visibility"] == "visible"
+
+
+def test_executions_create_rejects_unknown_visibility():
+    """A typo must raise rather than silently fail open (run stays visible)."""
+    DeepOriginClient.close_all()
+
+    client = DeepOriginClient.from_local()
+    _stub_post_json_capturing_body(client)
+
+    client.clusters.get_default_cluster_id = (  # type: ignore[method-assign]
+        lambda: "test-cluster-id"
+    )
+
+    with pytest.raises(ValueError) as exc_info:
+        client.executions.create(
+            tool_key="test.tool",
+            tool_version="1.0.0",
+            data={"inputs": {}, "outputs": {}, "metadata": {}},
+            visibility="hiden",  # ty:ignore[invalid-argument-type]
+        )
+
+    assert "visibility" in str(exc_info.value)

@@ -94,6 +94,15 @@ def display_platform_status(status: str | None) -> str:
 # Possible providers for files that work with the tools API
 PROVIDER = Literal["ufa", "s3"]
 
+# Activity-history visibility for a tool execution. `hidden` opts a run out of
+# user-facing activity views; the run, its results and its billing still exist
+# and stay visible to admin/audit. Mirrors the platform `ExecutionVisibility`
+# enum (tools-service) -- an implicit cross-service contract, so these strings
+# must stay equal to the server's.
+ExecutionVisibility = Literal["visible", "hidden"]
+
+EXECUTION_VISIBILITY_VALUES: frozenset[str] = frozenset({"visible", "hidden"})
+
 # Single registry for platform tools: iterate ``TOOL_KEYS_AND_VERSIONS``
 # to verify tools are registered (see keys per entry below).
 # Optional fields are omitted when not applicable.
