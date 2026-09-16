@@ -4,8 +4,16 @@
       "force_field": "amber14",
       "pdb_id": "1EBY",
       "ph": 7.4,
-      "protein_id": "placeholder",
-      "protonate_protein": true
+      "id": "placeholder",
+      "protonate_protein": true,
+      "model_missing_loops": true,
+      "analyzer_version": "1.0.0",
+      "source_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "keep_chain_ids": ["A"],
+      "keep_cofactor_ids": [],
+      "keep_water_residue_names": [],
+      "extract_ligand_ids": [],
+      "skip_ligand_ids": []
     }
   }
 }

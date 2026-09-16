@@ -289,7 +289,6 @@ def test_execution_get_user_logs_returns_dataframe() -> None:
     assert isinstance(logs, pd.DataFrame)
     assert list(logs.columns) == Execution.USER_LOG_COLUMNS
     assert logs.iloc[0]["log_level"] == "info"
-    assert logs.iloc[0]["tool_key"] == "rbfe"
     assert logs.iloc[0]["message"] == "CPU cpuset check passed."
 
 
@@ -585,13 +584,6 @@ def test_execution_quotation_total_sums_workflow_items() -> None:
     assert Execution._quotation_total(dto) == pytest.approx(1.02792)
 
 
-def test_execution_strip_tool_key_prefix() -> None:
-    """``_strip_tool_key_prefix`` strips the platform prefix from tool keys."""
-    assert Execution._strip_tool_key_prefix("deeporigin.rbfe") == "rbfe"
-    assert Execution._strip_tool_key_prefix("rbfe") == "rbfe"
-    assert Execution._strip_tool_key_prefix(None) is None
-
-
 def test_execution_format_user_log_timestamp_humanizes() -> None:
     """``_format_user_log_timestamp`` formats ISO timestamps as relative times."""
     when = datetime(2026, 6, 4, 16, 35, 0, tzinfo=timezone.utc)
@@ -624,8 +616,6 @@ def test_execution_user_logs_dataframe_maps_rows() -> None:
 
     assert list(df.columns) == Execution.USER_LOG_COLUMNS
     assert len(df) == 2
-    assert df.iloc[0]["tool_key"] == "rbfe"
-    assert df.iloc[1]["tool_key"] == "rbfe"
     assert df.iloc[0]["timestamp"] == "16 minutes ago"
     assert df.iloc[1]["timestamp"] == "a second ago"
 

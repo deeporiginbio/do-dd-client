@@ -40,7 +40,6 @@ __all__ = [
     "Enumerator",
     "ProteinPrep",
     "PocketFinderConfig",
-    "RecommendationView",
     "StructureReport",
     "StructureReportResult",
     "UniprotDiscovery",
@@ -89,10 +88,6 @@ _LAZY_IMPORTS = {
     "PocketFinderConfig": (
         "deeporigin.drug_discovery.protein_prep",
         "PocketFinderConfig",
-    ),
-    "RecommendationView": (
-        "deeporigin.drug_discovery.protein_prep",
-        "RecommendationView",
     ),
     "StructureReport": (
         "deeporigin.drug_discovery.structure_report",

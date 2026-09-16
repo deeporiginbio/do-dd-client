@@ -248,7 +248,7 @@ prep = ProteinPrep(
     pocket=PocketFinderConfig(pocket_count=3, pocket_min_size=80),
 )
 prep.recommend()
-prep.recommendation(decision="review")
+prep.recommendation[prep.recommendation["decision"] == "review"]
 prep.skip(decision="review")
 prep.start()
 prep.wait()

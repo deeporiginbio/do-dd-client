@@ -9,11 +9,14 @@ from pathlib import Path
 import pandas as pd
 import pytest
 
-from deeporigin.drug_discovery import Protein, ProteinPrep, RecommendationView
+from deeporigin.drug_discovery import Protein, ProteinPrep
 from deeporigin.drug_discovery.protein_prep import (
+    _ligands_from_extracted_output_rows,
     _protein_from_prepared_data,
     _protein_prep_default_name,
+    _selection_from_recommendation,
 )
+from deeporigin.drug_discovery.structures.ligand import Ligand, LigandSet
 from deeporigin.exceptions import DeepOriginException
 from deeporigin.platform import DeepOriginClient
 from deeporigin.platform.constants import TOOL_KEYS_AND_VERSIONS, is_success_status
@@ -23,7 +26,7 @@ from tests.mock_server.routers.data_platform import prepared_protein_remote_path
 _SHA256 = "a" * 64
 _SAMPLE_SELECTION = {
     "analyzer_version": "1.0.0",
-    "decisions": {"chain:A": "keep", "ligand:LIG:A:100": "skip"},
+    "decisions": {"chain:A": "keep", "ligand:LIG:A:100": "extract"},
     "source_sha256": _SHA256,
 }
 _DRAFT_SELECTION = {
@@ -194,15 +197,14 @@ def test_selection_getter_returns_defensive_copy() -> None:
     assert prep.selection == _DRAFT_SELECTION
 
 
-def test_recommendation_view_raw_is_defensive_copy() -> None:
-    """Mutating RecommendationView.raw does not change stored analyzer evidence."""
+def test_recommendation_payload_is_defensive_copy() -> None:
+    """Mutating recommendation_payload does not change stored analyzer evidence."""
     prep = _prep_with_inventory()
 
-    recommendation = prep.recommendation
-    assert isinstance(recommendation, RecommendationView)
-    raw = recommendation.raw
-    raw["components"][0]["label"] = "changed"
-    assert recommendation.raw["components"][0]["label"] == "Chain A"
+    payload = prep.recommendation_payload
+    assert payload is not None
+    payload["components"][0]["label"] = "changed"
+    assert prep.recommendation_payload["components"][0]["label"] == "Chain A"
 
 
 def test_keep_and_skip_change_only_named_components() -> None:
@@ -250,11 +252,12 @@ def test_keep_requires_selection() -> None:
         prep.keep(["chain:A"])
 
 
-def test_recommendation_view_table_columns_and_live_decision() -> None:
-    """The view exposes the locked columns and current Selection Decisions."""
+def test_recommendation_table_columns_and_live_decision() -> None:
+    """The table exposes the locked columns and current Selection Decisions."""
     prep = _prep_with_inventory()
 
-    df = prep.recommendation()
+    df = prep.recommendation
+    assert df is not None
 
     assert list(df.columns) == [
         "id",
@@ -270,46 +273,34 @@ def test_recommendation_view_table_columns_and_live_decision() -> None:
     assert ligand["recommendation"] == "review"
     assert ligand["decision"] == "review"
     prep.keep("ligand:LIG:A:100")
-    updated = prep.recommendation().set_index("id").loc["ligand:LIG:A:100"]
+    updated = prep.recommendation.set_index("id").loc["ligand:LIG:A:100"]
     assert updated["recommendation"] == "review"
     assert updated["decision"] == "keep"
 
 
-def test_recommendation_view_filters_by_decision() -> None:
-    """pp.recommendation(decision='review') returns unresolved rows."""
+def test_recommendation_table_filters_by_decision() -> None:
+    """Boolean indexing on decision returns unresolved rows."""
     prep = _prep_with_inventory()
 
-    df = prep.recommendation(decision="review")
+    df = prep.recommendation
+    assert df is not None
+    review = df[df["decision"] == "review"]
 
-    assert list(df["id"]) == ["ligand:LIG:A:100"]
+    assert list(review["id"]) == ["ligand:LIG:A:100"]
 
 
-def test_recommendation_view_and_filters() -> None:
-    """View kwargs AND together."""
+def test_recommendation_table_and_filters() -> None:
+    """Pandas masks AND together."""
     prep = _prep_with_inventory(
         recommendation=_WATER_RECOMMENDATION,
         selection=_WATER_SELECTION,
     )
 
-    df = prep.recommendation(kind="water", decision="review")
+    df = prep.recommendation
+    assert df is not None
+    filtered = df[(df["kind"] == "water") & (df["decision"] == "review")]
 
-    assert list(df["id"]) == ["water:A:HOH:310:"]
-
-
-def test_recommendation_view_rejects_invalid_kind() -> None:
-    """Unknown kind values error instead of matching nothing."""
-    prep = _prep_with_inventory()
-
-    with pytest.raises(ValueError, match="kind must be one of"):
-        prep.recommendation(kind="waters")
-
-
-def test_recommendation_view_has_no_keep() -> None:
-    """keep/skip stay on ProteinPrep; recommend().keep() is not supported."""
-    prep = _prep_with_inventory()
-
-    assert not hasattr(prep.recommendation, "keep")
-    assert not hasattr(prep.recommendation, "skip")
+    assert list(filtered["id"]) == ["water:A:HOH:310:"]
 
 
 def test_keep_kind_is_sugar_for_matching_ids() -> None:
@@ -335,7 +326,9 @@ def test_keep_accepts_filtered_dataframe() -> None:
         selection=_WATER_SELECTION,
     )
 
-    prep.keep(prep.recommendation(decision="review"))
+    df = prep.recommendation
+    assert df is not None
+    prep.keep(df[df["decision"] == "review"])
 
     decisions = prep.selection["decisions"]
     assert decisions["ligand:LIG:A:100"] == "keep"
@@ -395,23 +388,28 @@ def test_keep_subtype_without_recommendation_errors() -> None:
         prep.keep(subtype="crystal")
 
 
-def test_recommendation_view_filters_by_analyzer_tag() -> None:
-    """recommendation= filters frozen analyzer tags, not live Decisions."""
+def test_recommendation_table_filters_by_analyzer_tag() -> None:
+    """The recommendation column holds frozen analyzer tags, not live Decisions."""
     prep = _prep_with_inventory()
     prep.keep("ligand:LIG:A:100")
 
-    df = prep.recommendation(recommendation="review")
+    df = prep.recommendation
+    assert df is not None
+    review = df[df["recommendation"] == "review"]
 
-    assert list(df["id"]) == ["ligand:LIG:A:100"]
-    assert list(df["decision"]) == ["keep"]
+    assert list(review["id"]) == ["ligand:LIG:A:100"]
+    assert list(review["decision"]) == ["keep"]
 
 
-def test_keep_rejects_uncalled_view() -> None:
-    """The uncalled view is not a DataFrame of ids."""
+def test_keep_accepts_full_recommendation_table() -> None:
+    """keep() accepts the full recommendation DataFrame."""
     prep = _prep_with_inventory()
 
-    with pytest.raises(TypeError, match="not the recommendation view"):
-        prep.keep(prep.recommendation)
+    df = prep.recommendation
+    assert df is not None
+    prep.keep(df)
+
+    assert all(value == "keep" for value in prep.selection["decisions"].values())
 
 
 def test_keep_dataframe_requires_id_column() -> None:
@@ -432,9 +430,51 @@ def test_skip_decision_review_resolves_reviews() -> None:
     prep.skip(decision="review")
 
     decisions = prep.selection["decisions"]
-    assert decisions["ligand:LIG:A:100"] == "skip"
+    assert decisions["ligand:LIG:A:100"] == "extract"
     assert decisions["water:A:HOH:310:"] == "skip"
     assert decisions["chain:A"] == "keep"
+
+
+def test_selection_from_recommendation_accepts_extract_tag() -> None:
+    """Analyzer extract recommendations seed the Selection unchanged."""
+    recommendation = {
+        **_SAMPLE_RECOMMENDATION,
+        "components": [
+            _SAMPLE_RECOMMENDATION["components"][0],
+            {
+                **_SAMPLE_RECOMMENDATION["components"][1],
+                "recommendation": "extract",
+            },
+        ],
+    }
+
+    selection = _selection_from_recommendation(recommendation)
+
+    assert selection["decisions"]["ligand:LIG:A:100"] == "extract"
+
+
+def test_skip_ligand_stores_extract_decision() -> None:
+    """skip() on ligand ids maps to extract for platform compatibility."""
+    prep = ProteinPrep(
+        protein=Protein(name="test"),
+        selection=_DRAFT_SELECTION,
+    )
+
+    prep.skip("ligand:LIG:A:100")
+
+    assert prep.selection["decisions"]["ligand:LIG:A:100"] == "extract"
+
+
+def test_extract_sets_ligand_decision() -> None:
+    """extract() marks ligand components for SDF extraction on prepare."""
+    prep = ProteinPrep(
+        protein=Protein(name="test"),
+        selection=_DRAFT_SELECTION,
+    )
+
+    prep.extract("ligand:LIG:A:100")
+
+    assert prep.selection["decisions"]["ligand:LIG:A:100"] == "extract"
 
 
 def test_protein_prep_default_name_helper() -> None:
@@ -671,7 +711,7 @@ def test_repr_uses_user_concepts_not_action() -> None:
     text = repr(prep)
 
     assert "action" not in text
-    assert "1 keep, 1 review, 0 skip" in text
+    assert "1 keep, 1 review, 0 skip, 0 extract" in text
     assert "recommendation" in text
     assert "2 components" in text
 
@@ -739,7 +779,7 @@ def test_from_dto_rehydrates_recommendation(
     prep = ProteinPrep.from_dto(dto, client=client)
 
     assert prep._operation_kind == "recommend"
-    assert isinstance(prep.recommendation, RecommendationView)
+    assert isinstance(prep.recommendation, pd.DataFrame)
     assert prep.selection == _DRAFT_SELECTION
     with pytest.raises(DeepOriginException, match="did not produce"):
         prep.get_results(dto)
@@ -780,7 +820,7 @@ def test_protein_from_prepared_data_uses_registered_protein_id(
 ) -> None:
     """Prepare outputs resolve the registered prepared protein entity."""
     prepared = _protein_from_prepared_data(
-        {"protein_id": "prep-a1b2c3d4e5f6", "pdb_id": "1EBY"},
+        {"id": "prep-a1b2c3d4e5f6", "pdb_id": "1EBY"},
         client=client,
         fallback_pdb_id=None,
         fallback_name="brd",
@@ -794,7 +834,7 @@ def test_protein_from_prepared_data_uses_registered_protein_id(
 
 
 def test_protein_from_prepared_data_requires_protein_id() -> None:
-    """Prepare outputs without ``protein_id`` are rejected."""
+    """Prepare outputs without ``id`` are rejected."""
     with pytest.raises(ValueError, match="prepared protein id"):
         _protein_from_prepared_data(
             {"pdb_id": "1EBY"},
@@ -818,7 +858,7 @@ def test_recommend_updates_same_object_without_id(
 
     result = prep.recommend()
 
-    assert isinstance(result, RecommendationView)
+    assert isinstance(result, pd.DataFrame)
     assert prep.id is None
     assert prep.status is None
     assert prep.recommendation is not None
@@ -981,7 +1021,7 @@ def test_composite_start_uses_target_preparation_tool_key(
     assert prep.id is not None
     assert prep.name == "Preparing and loop modelling 1EBY"
     assert prep.tool_key == TOOL_KEYS_AND_VERSIONS["target_prep"]["tool_key"]
-    assert prep.tool_version == "2"
+    assert prep.tool_version == TOOL_KEYS_AND_VERSIONS["target_prep"]["tool_version"]
     prepared = prep.get_results()
     assert isinstance(prepared, Protein)
     report = prep.get_report()
@@ -1075,6 +1115,88 @@ def test_get_pockets_returns_empty_list_for_zero_pocket_result() -> None:
     prep.tool_key = TOOL_KEYS_AND_VERSIONS["target_prep"]["tool_key"]
 
     assert prep.get_pockets({"jobOutputs": {"pockets": []}}) == []
+
+
+def test_get_extracted_ligands_returns_none_when_not_published(
+    client: DeepOriginClient,
+) -> None:
+    """Extracted ligands that have not been published yet return None."""
+    prep = ProteinPrep(
+        protein=Protein(name="test"),
+        selection=_SAMPLE_SELECTION,
+        model_missing_loops=False,
+        client=client,
+    )
+    prep._id = "pending-extract"
+    prep._operation_kind = "prepare"
+    prep.tool_key = TOOL_KEYS_AND_VERSIONS["protein_prep"]["tool_key"]
+
+    assert prep.get_extracted_ligands({"jobOutputs": {}}) is None
+
+
+def test_get_extracted_ligands_returns_empty_set_when_none_extracted(
+    client: DeepOriginClient,
+) -> None:
+    """A completed prepare with no extractions returns an empty LigandSet."""
+    prep = ProteinPrep(
+        protein=Protein(name="test"),
+        selection=_SAMPLE_SELECTION,
+        model_missing_loops=False,
+        client=client,
+    )
+    prep._id = "no-extract"
+    prep._operation_kind = "prepare"
+    prep.tool_key = TOOL_KEYS_AND_VERSIONS["protein_prep"]["tool_key"]
+
+    extracted = prep.get_extracted_ligands({"jobOutputs": {"extracted_ligands": []}})
+    assert isinstance(extracted, LigandSet)
+    assert len(extracted) == 0
+
+
+def test_ligands_from_extracted_output_rows_hydrates_metadata(
+    client: DeepOriginClient,
+    registered_ligand: Ligand,
+) -> None:
+    """Extracted-ligand rows map ids, paths, and source protein onto Ligand."""
+    source_protein_id = "09SOURCEPROTEIN0"
+    rows = [
+        {
+            "component_id": "ligand:LIG:A:100",
+            "file_path": "entities/ligands/extracted/exec/lig.sdf",
+            "ligand_id": registered_ligand.id,
+        }
+    ]
+    ligands = _ligands_from_extracted_output_rows(
+        rows,
+        client=client,
+        extracted_from_protein_id=source_protein_id,
+        download=False,
+    )
+    assert len(ligands) == 1
+    assert ligands[0].id == registered_ligand.id
+    assert ligands[0].component_id == "ligand:LIG:A:100"
+    assert ligands[0].extracted_from_protein_id == source_protein_id
+    assert ligands[0].remote_path == "entities/ligands/extracted/exec/lig.sdf"
+
+
+def test_run_with_extract_populates_get_extracted_ligands(
+    client: DeepOriginClient,
+    registered_protein: Protein,
+) -> None:
+    """Prepare with extract decisions returns ligands via get_extracted_ligands."""
+    prep = ProteinPrep(
+        protein=registered_protein,
+        selection=_SAMPLE_SELECTION,
+        model_missing_loops=False,
+        client=client,
+    )
+    prep.run()
+    extracted = prep.get_extracted_ligands()
+    assert isinstance(extracted, LigandSet)
+    assert len(extracted) == 1
+    assert extracted[0].component_id == "ligand:LIG:A:100"
+    assert extracted[0].extracted_from_protein_id == registered_protein.id
+    assert extracted[0].id is not None
 
 
 def test_configuration_freezes_pocket_after_id() -> None:

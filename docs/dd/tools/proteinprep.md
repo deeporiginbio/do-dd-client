@@ -25,21 +25,23 @@ prep = ProteinPrep(protein=protein)
 prep.recommend()
 ```
 
-`prep.recommendation` is a table of inventoried components. Columns include
-the analyzer's frozen `recommendation` tag and your live `decision`. Filter
-with keyword arguments; the call returns a
-[pandas :octicons-link-external-16:](https://pandas.pydata.org/) DataFrame:
+`prep.recommendation` is a
+[pandas :octicons-link-external-16:](https://pandas.pydata.org/) DataFrame of
+inventoried components. Columns include the analyzer's frozen `recommendation`
+tag and your live `decision`. Each read reflects the current Selection:
 
 ```{.python notest}
-prep.recommendation(decision="review")
+prep.recommendation[prep.recommendation["decision"] == "review"]
 ```
 
-The analyzer payload is `prep.recommendation.raw`. `prep.selection` is the
+The analyzer JSON is `prep.recommendation_payload`. `prep.selection` is the
 editable decision map and returns a defensive copy.
 
-Resolve every `review` decision before preparation. `keep()` and `skip()`
-accept component IDs, a filtered DataFrame, or keyword matchers (`kind`,
-`subtype`, `decision`). Matchers are equivalent to passing the matching IDs:
+Resolve every `review` decision before preparation. `keep()`, `skip()`, and
+`extract()` accept component IDs, a filtered DataFrame, or keyword matchers
+(`kind`, `subtype`, `decision`). Matchers are equivalent to passing the
+matching IDs. Ligands use `keep` or `extract` (not `skip`); calling `skip()`
+on a ligand id stores `extract`:
 
 ```{.python notest}
 prep.keep(kind="water")
@@ -103,6 +105,7 @@ prep.wait()
 prepared = prep.get_results()
 report = prep.get_report()
 pockets = prep.get_pockets()
+extracted = prep.get_extracted_ligands()
 ```
 
 Loop modelling requires a four-character
@@ -112,7 +115,13 @@ ID. `ProteinPrep` initially uses `protein.pdb_id` when available; otherwise set
 
 `get_report()` and `get_pockets()` raise when that artifact was not part of the
 run, return `None` while still pending, and `get_pockets()` returns `[]` for a
-valid zero-pocket result.
+valid zero-pocket result. After prepare, ligands marked ``extract`` in the
+Selection are available from ``get_extracted_ligands()`` as a
+:class:`~deeporigin.drug_discovery.structures.ligand.LigandSet` (each
+:class:`~deeporigin.drug_discovery.structures.ligand.Ligand` has
+``component_id`` and ``extracted_from_protein_id`` set). That method returns an
+empty set when prepare finished with no extractions and ``None`` while outputs
+are still pending.
 
 ## Use a saved Selection
 

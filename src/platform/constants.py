@@ -140,7 +140,7 @@ TOOL_KEYS_AND_VERSIONS: dict[str, dict[str, str]] = {
     },
     "target_prep": {
         "tool_key": "deeporigin.target-preparation",
-        "tool_version": "2",
+        "tool_version": "5",
     },
     "patent": {
         "tool_key": "deeporigin.draco",

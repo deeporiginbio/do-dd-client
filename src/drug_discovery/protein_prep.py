@@ -11,7 +11,8 @@ via direct ``deeporigin.protein-prep``. Preparation routes by configuration:
 Optional nested :class:`PocketFinderConfig` selects Pocket Finder on the
 composite route. :meth:`get_results` always returns the prepared
 :class:`~deeporigin.drug_discovery.structures.protein.Protein`; use
-:meth:`get_report` and :meth:`get_pockets` for composite artifacts.
+:meth:`get_report`, :meth:`get_pockets`, and :meth:`get_extracted_ligands`
+for other prepare artifacts.
 
 Usage::
 
@@ -30,7 +31,7 @@ from copy import deepcopy
 from dataclasses import dataclass, field
 from html import escape
 import re
-from typing import TYPE_CHECKING, Any, Literal, NamedTuple, Protocol, Self
+from typing import TYPE_CHECKING, Any, Literal, NamedTuple, Self
 
 from beartype import beartype
 import pandas as pd
@@ -44,7 +45,7 @@ from deeporigin.drug_discovery.execution_mixins import (
     SyncExecutableMixin,
 )
 from deeporigin.drug_discovery.notebook_watch_mixin import NotebookWatchMixin
-from deeporigin.drug_discovery.structures.ligand import Ligand
+from deeporigin.drug_discovery.structures.ligand import Ligand, LigandSet
 from deeporigin.drug_discovery.structures.pocket import Pocket
 from deeporigin.drug_discovery.structures.protein import Protein
 from deeporigin.exceptions import DeepOriginException
@@ -61,7 +62,6 @@ from deeporigin.utils.constants import (
     PROTEIN_PREP_DISPLAY_NONE,  # ty:ignore[unresolved-import]
     PROTEIN_PREP_KEEP_SKIP_EMPTY_MSG,  # ty:ignore[unresolved-import]
     PROTEIN_PREP_KEEP_SKIP_MIXED_MSG,  # ty:ignore[unresolved-import]
-    PROTEIN_PREP_KEEP_SKIP_VIEW_MSG,  # ty:ignore[unresolved-import]
     PROTEIN_PREP_NO_OUTPUT_PATHS_MSG,
     PROTEIN_PREP_NO_RECOMMENDATION_MSG,  # ty:ignore[unresolved-import]
     PROTEIN_PREP_PDB_ID_PATTERN,
@@ -82,9 +82,11 @@ _PDB_ID_RE = re.compile(PROTEIN_PREP_PDB_ID_PATTERN)
 _RESULT_TYPE_PREPARED_PROTEIN = "preparedprotein"
 _RESULT_TYPE_STRUCTURE_REPORT = "structurereport"
 _RESULT_TYPE_POCKET = "pocket"
+_RESULT_TYPE_EXTRACTED_LIGAND = "extractedligand"
 _VALID_ACTIONS = frozenset({"recommend", "prepare"})
-_VALID_DECISIONS = frozenset({"keep", "review", "skip"})
-_RESOLVED_DECISIONS = frozenset({"keep", "skip"})
+_VALID_ANALYZER_RECOMMENDATIONS = frozenset({"keep", "review", "skip", "extract"})
+_VALID_DECISIONS = frozenset({"keep", "review", "skip", "extract"})
+_RESOLVED_DECISIONS = frozenset({"keep", "skip", "extract"})
 _PROTEIN_PREP_TOOL_KEY = TOOL_KEYS_AND_VERSIONS["protein_prep"]["tool_key"]
 _TARGET_PREP_TOOL_KEY = TOOL_KEYS_AND_VERSIONS["target_prep"]["tool_key"]
 _ALLOWED_TOOL_KEYS = frozenset({_PROTEIN_PREP_TOOL_KEY, _TARGET_PREP_TOOL_KEY})
@@ -99,13 +101,6 @@ _VALID_BOX_GEOMETRIES = frozenset({"ligand-extents", "fixed-radius"})
 ProteinPrepAction = Literal["recommend", "prepare"]
 PocketFinderMode = Literal["auto-find", "define-by-selection", "from-crystal-ligand"]
 BoxGeometry = Literal["ligand-extents", "fixed-radius"]
-
-
-class _RecommendationOwner(Protocol):
-    """Structural state required by :class:`RecommendationView`."""
-
-    _recommendation: dict[str, Any] | None
-    _selection: dict[str, Any] | None
 
 
 class _ParsedInputs(NamedTuple):
@@ -502,6 +497,58 @@ def _optional_pdb_id(*, protein: Protein, pdb_id: str | None) -> str | None:
     return _normalize_pdb_id(str(raw))
 
 
+def _is_ligand_component_id(component_id: str) -> bool:
+    """Return whether *component_id* refers to a ligand Component."""
+    return str(component_id).startswith("ligand:")
+
+
+def _validate_decision_for_component(component_id: str, decision: str) -> None:
+    """Raise if *decision* is invalid for a Selection component id.
+
+    Args:
+        component_id: Selection / recommendation component id.
+        decision: Draft or resolved decision string.
+
+    Raises:
+        ValueError: If the decision is not allowed for this component kind.
+    """
+    if decision == "review":
+        return
+    if _is_ligand_component_id(component_id):
+        if decision not in {"keep", "extract"}:
+            raise ValueError(
+                f"selection.decisions[{component_id!r}] must be 'keep', "
+                f"'extract', or 'review' for ligands, got {decision!r}."
+            )
+        return
+    if decision not in {"keep", "skip"}:
+        raise ValueError(
+            f"selection.decisions[{component_id!r}] must be 'keep', 'skip', "
+            f"or 'review', got {decision!r}."
+        )
+
+
+def _normalize_decision_for_component(component_id: str, decision: str) -> str:
+    """Return a platform-valid decision, mapping ligand skip to extract.
+
+    Args:
+        component_id: Selection component id.
+        decision: Requested decision (``keep``, ``skip``, ``extract``, or
+            ``review``).
+
+    Returns:
+        Normalized decision stored on the Selection.
+
+    Raises:
+        ValueError: If the decision is invalid for this component.
+    """
+    resolved = str(decision)
+    if resolved == "skip" and _is_ligand_component_id(component_id):
+        resolved = "extract"
+    _validate_decision_for_component(component_id, resolved)
+    return resolved
+
+
 def _copy_selection(selection: dict[str, Any]) -> dict[str, Any]:
     """Return a validated JSON-shape copy of a Selection.
 
@@ -510,11 +557,11 @@ def _copy_selection(selection: dict[str, Any]) -> dict[str, Any]:
             and ``decisions``.
 
     Returns:
-        Copy with string keys and ``keep``/``review``/``skip`` decisions.
+        Copy with string keys and validated per-component decisions.
 
     Raises:
         ValueError: If required keys are missing, ``decisions`` is not an
-            object, or a decision is not ``keep``, ``review``, or ``skip``.
+            object, or a decision is invalid for its component id.
     """
     for key in ("source_sha256", "analyzer_version", "decisions"):
         if key not in selection:
@@ -526,13 +573,9 @@ def _copy_selection(selection: dict[str, Any]) -> dict[str, Any]:
         raise ValueError("selection.decisions must not be empty.")
     decisions: dict[str, str] = {}
     for component_id, raw_decision in decisions_raw.items():
-        decision = str(raw_decision)
-        if decision not in _VALID_DECISIONS:
-            raise ValueError(
-                f"selection.decisions[{component_id!r}] must be 'keep', "
-                f"'review', or 'skip', got {raw_decision!r}."
-            )
-        decisions[str(component_id)] = decision
+        component_key = str(component_id)
+        decision = _normalize_decision_for_component(component_key, str(raw_decision))
+        decisions[component_key] = decision
     return {
         "source_sha256": str(selection["source_sha256"]),
         "analyzer_version": str(selection["analyzer_version"]),
@@ -557,7 +600,8 @@ def _format_selection_display(selection: dict[str, Any] | None) -> str:
     keep_n = sum(1 for value in decisions.values() if value == "keep")
     review_n = sum(1 for value in decisions.values() if value == "review")
     skip_n = sum(1 for value in decisions.values() if value == "skip")
-    return f"{keep_n} keep, {review_n} review, {skip_n} skip"
+    extract_n = sum(1 for value in decisions.values() if value == "extract")
+    return f"{keep_n} keep, {review_n} review, {skip_n} skip, {extract_n} extract"
 
 
 def _protein_tool_input(protein: Protein) -> dict[str, Any]:
@@ -592,17 +636,17 @@ def _protein_from_prepared_data(
 
     Args:
         data: ``jobOutputs.protein`` or result-explorer ``data`` payload.
-        client: Platform client used to resolve ``protein_id``.
+        client: Platform client used to resolve ``id``.
         fallback_pdb_id: PDB ID used when the payload omits ``pdb_id``.
         fallback_name: Input protein name used when the entity name is generic.
 
     Returns:
-        Registered prepared protein resolved from ``protein_id``.
+        Registered prepared protein resolved from ``id``.
 
     Raises:
-        ValueError: If ``protein_id`` is missing or empty.
+        ValueError: If ``id`` is missing or empty.
     """
-    raw_protein_id = data.get("protein_id")
+    raw_protein_id = data.get("id")
     if not raw_protein_id or not str(raw_protein_id).strip():
         raise ValueError(PROTEIN_PREP_NO_OUTPUT_PATHS_MSG)
     prepared = Protein.from_id(
@@ -617,6 +661,58 @@ def _protein_from_prepared_data(
     if base_name and prepared.name in {str(raw_protein_id), "protein"}:
         prepared.name = f"{base_name} (prepared)"
     return prepared
+
+
+def _ligands_from_extracted_output_rows(
+    rows: list[dict[str, Any]],
+    *,
+    client: DeepOriginClient,
+    extracted_from_protein_id: str | None,
+    download: bool = True,
+) -> list[Ligand]:
+    """Build :class:`Ligand` instances from prepare ``extracted_ligands`` rows.
+
+    Args:
+        rows: Output objects with ``ligand_id``, ``file_path``, and
+            ``component_id``.
+        client: Platform client used to resolve registered ligands.
+        extracted_from_protein_id: Input protein entity id for the prepare run.
+        download: When True, download mol files when hydrating by id.
+
+    Returns:
+        One ligand per row; rows without ``ligand_id`` or ``file_path`` are
+        skipped.
+    """
+    ligands: list[Ligand] = []
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        ligand_id = row.get("ligand_id")
+        file_path = row.get("file_path")
+        component_id = row.get("component_id")
+        if ligand_id and str(ligand_id).strip():
+            ligand = Ligand.from_id(
+                str(ligand_id),
+                client=client,
+                download=download,
+            )
+        elif file_path and str(file_path).strip():
+            ligand = Ligand.from_remote_file(
+                str(file_path),
+                client=client,
+                lazy=not download,
+            )
+        else:
+            continue
+        if component_id and str(component_id).strip():
+            ligand.component_id = str(component_id)
+        if extracted_from_protein_id and str(extracted_from_protein_id).strip():
+            ligand.extracted_from_protein_id = str(extracted_from_protein_id)
+        remote = row.get("file_path")
+        if remote and str(remote).strip():
+            ligand.remote_path = str(remote)
+        ligands.append(ligand)
+    return ligands
 
 
 def _selection_from_recommendation(
@@ -652,10 +748,10 @@ def _selection_from_recommendation(
         if not component_id or not str(component_id).strip():
             raise ValueError(f"recommendation.components[{index}] must include id.")
         rec = str(raw.get("recommendation") or "")
-        if rec not in _VALID_DECISIONS:
+        if rec not in _VALID_ANALYZER_RECOMMENDATIONS:
             raise ValueError(
                 f"recommendation.components[{index}] recommendation must be "
-                f"keep, skip, or review, got {raw.get('recommendation')!r}."
+                f"keep, skip, extract, or review, got {raw.get('recommendation')!r}."
             )
         decisions[str(component_id)] = rec
     return {
@@ -704,14 +800,18 @@ def _validate_component_matchers(
     if kind is not None and kind not in PROTEIN_PREP_COMPONENT_KINDS:
         allowed = ", ".join(sorted(PROTEIN_PREP_COMPONENT_KINDS))
         raise ValueError(f"kind must be one of {allowed}, got {kind!r}.")
-    if recommendation is not None and recommendation not in _VALID_DECISIONS:
+    if (
+        recommendation is not None
+        and recommendation not in _VALID_ANALYZER_RECOMMENDATIONS
+    ):
         raise ValueError(
-            "recommendation must be 'keep', 'review', or 'skip', "
+            "recommendation must be 'keep', 'review', 'skip', or 'extract', "
             f"got {recommendation!r}."
         )
     if decision is not None and decision not in _VALID_DECISIONS:
         raise ValueError(
-            f"decision must be 'keep', 'review', or 'skip', got {decision!r}."
+            "decision must be 'keep', 'review', 'skip', or 'extract', "
+            f"got {decision!r}."
         )
 
 
@@ -854,11 +954,9 @@ def _ids_from_positional(
         Component ids as strings, preserving order.
 
     Raises:
-        TypeError: If *component_ids* is a Recommendation view or a mapping.
+        TypeError: If *component_ids* is a mapping.
         ValueError: If a DataFrame has no ``id`` column.
     """
-    if isinstance(component_ids, RecommendationView):
-        raise TypeError(PROTEIN_PREP_KEEP_SKIP_VIEW_MSG.format(method=method))
     if isinstance(component_ids, pd.DataFrame):
         if "id" not in component_ids.columns:
             raise ValueError(PROTEIN_PREP_DATAFRAME_ID_COLUMN_MSG)
@@ -868,82 +966,6 @@ def _ids_from_positional(
     if isinstance(component_ids, str):
         return [component_ids]
     return [str(component_id) for component_id in component_ids]
-
-
-class RecommendationView:
-    """Callable notebook table of Protein Prep Components.
-
-    Uncalled, Jupyter displays the full inventory. Calling AND-filters rows
-    and returns a :class:`~pandas.DataFrame`. Live Selection Decisions are
-    read from the parent preparation session on each access.
-
-    Attributes:
-        raw: Deep copy of the analyzer recommendation payload.
-    """
-
-    def __init__(self, prep: _RecommendationOwner) -> None:
-        """Bind this view to a preparation session with analyzer evidence.
-
-        Args:
-            prep: Parent ProteinPrep session.
-        """
-        self._prep = prep
-
-    @property
-    def raw(self) -> dict[str, Any]:
-        """Deep copy of the analyzer recommendation payload."""
-        payload = self._prep._recommendation
-        if payload is None:
-            return {}
-        return deepcopy(payload)
-
-    def _dataframe(self) -> pd.DataFrame:
-        """Return the unfiltered Component table with live Decisions."""
-        payload = self._prep._recommendation
-        if not isinstance(payload, dict):
-            return _empty_recommendation_dataframe()
-        decisions: dict[str, str] = {}
-        if self._prep._selection is not None:
-            decisions = dict(self._prep._selection["decisions"])
-        return _rows_to_recommendation_dataframe(
-            _recommendation_rows(payload, decisions)
-        )
-
-    def __call__(
-        self,
-        *,
-        kind: str | None = None,
-        subtype: str | None = None,
-        recommendation: str | None = None,
-        decision: str | None = None,
-    ) -> pd.DataFrame:
-        """Return a DataFrame of Components matching all provided filters.
-
-        Args:
-            kind: Component kind (``chain``, ``ligand``, ``cofactor``,
-                ``water``).
-            subtype: Analyzer subtype string.
-            recommendation: Frozen analyzer keep/review/skip tag.
-            decision: Live Selection Decision.
-
-        Returns:
-            Filtered Component table. Unfiltered when no kwargs are set.
-        """
-        return _filter_recommendation_dataframe(
-            self._dataframe(),
-            kind=kind,
-            subtype=subtype,
-            recommendation=recommendation,
-            decision=decision,
-        )
-
-    def __repr__(self) -> str:
-        """Return the Component table as text."""
-        return self._dataframe().to_string()
-
-    def _repr_html_(self) -> str:
-        """Return the Component table as HTML for Jupyter."""
-        return self._dataframe()._repr_html_()
 
 
 class ProteinPrep(
@@ -964,9 +986,11 @@ class ProteinPrep(
     Attributes:
         protein: Constructor-only input protein structure.
         pdb_id: Mutable 4-character PDB ID for loop-modelling templates.
-        selection: Editable keep/review/skip map. Reads return a copy.
-        recommendation: Callable Component table, or ``None`` before
-            recommend. Analyzer payload is :attr:`RecommendationView.raw`.
+        selection: Editable keep/review/skip/extract map. Reads return a copy.
+        recommendation: Component table as a :class:`~pandas.DataFrame`, or
+            ``None`` before recommend. Refreshes live ``decision`` values on
+            each read.
+        recommendation_payload: Deep copy of analyzer JSON, or ``None``.
         model_missing_loops: Whether prepare models missing loops.
         pocket: Optional nested Pocket Finder settings for the composite route.
     """
@@ -1071,11 +1095,18 @@ class ProteinPrep(
         self._selection = _copy_selection(value) if value is not None else None
 
     @property
-    def recommendation(self) -> RecommendationView | None:
-        """Callable Component table, or ``None`` when analyzer evidence is missing."""
+    def recommendation(self) -> pd.DataFrame | None:
+        """Component table, or ``None`` when analyzer evidence is missing."""
         if self._recommendation is None:
             return None
-        return RecommendationView(self)
+        return self._component_dataframe()
+
+    @property
+    def recommendation_payload(self) -> dict[str, Any] | None:
+        """Deep copy of the analyzer recommendation payload."""
+        if self._recommendation is None:
+            return None
+        return deepcopy(self._recommendation)
 
     @property
     def model_missing_loops(self) -> bool:
@@ -1154,7 +1185,7 @@ class ProteinPrep(
             joined = ", ".join(unresolved)
             raise ValueError(
                 f"Resolve review decisions before preparation: {joined}. "
-                "Use keep() or skip()."
+                "Use keep(), skip(), or extract()."
             )
         if self._model_missing_loops and not self._pdb_id:
             raise ValueError(PROTEIN_PREP_PDB_ID_REQUIRED_MSG)
@@ -1277,7 +1308,10 @@ class ProteinPrep(
             joined = ", ".join(unknown_ids)
             raise ValueError(f"Unknown Selection component IDs: {joined}.")
         for component_id in resolved_ids:
-            known_ids[component_id] = decision
+            known_ids[component_id] = _normalize_decision_for_component(
+                component_id,
+                decision,
+            )
 
     def keep(
         self,
@@ -1335,6 +1369,38 @@ class ProteinPrep(
         self._apply_decisions(
             component_ids,
             decision_value="skip",
+            kind=kind,
+            subtype=subtype,
+            decision=decision,
+        )
+        return self
+
+    def extract(
+        self,
+        component_ids: str | Iterable[str] | pd.DataFrame | None = None,
+        *,
+        kind: str | None = None,
+        subtype: str | None = None,
+        decision: str | None = None,
+    ) -> Self:
+        """Mark matching ligand Selection components to extract.
+
+        Same calling styles as :meth:`keep`. Non-ligand ids raise
+        :class:`ValueError`.
+
+        Args:
+            component_ids: Component ids to extract.
+            kind: Extract every ligand Component of this kind (typically
+                ``ligand``).
+            subtype: Extract every Component of this subtype.
+            decision: Extract every Component with this live Decision.
+
+        Returns:
+            This :class:`ProteinPrep` (for chaining).
+        """
+        self._apply_decisions(
+            component_ids,
+            decision_value="extract",
             kind=kind,
             subtype=subtype,
             decision=decision,
@@ -1524,7 +1590,7 @@ class ProteinPrep(
             payload["name"] = self.name
         return payload
 
-    def recommend(self) -> RecommendationView:
+    def recommend(self) -> pd.DataFrame:
         """Recommend settings into this object without binding an execution ID.
 
         Always uses direct ``deeporigin.protein-prep``. The platform operation
@@ -1534,7 +1600,7 @@ class ProteinPrep(
         complete recommendation is available.
 
         Returns:
-            The :class:`RecommendationView` table for this inventory.
+            Component inventory table for this structure.
 
         Raises:
             AttributeError: If this object is already bound to prepare.
@@ -1564,9 +1630,9 @@ class ProteinPrep(
         selection = _selection_from_recommendation(recommendation)
         self._recommendation = deepcopy(recommendation)
         self._selection = selection
-        view = self.recommendation
-        assert view is not None
-        return view
+        table = self.recommendation
+        assert table is not None
+        return table
 
     def _start_impl(self, *, approve_amount: int | None = None, **kwargs: Any) -> None:
         """Submit preparation asynchronously and bind this object to it.
@@ -1923,7 +1989,7 @@ class ProteinPrep(
                 ``data``).
 
         Returns:
-            Prepared :class:`Protein`, usually registered via ``protein_id``.
+            Prepared :class:`Protein`, usually registered via ``id``.
         """
         return _protein_from_prepared_data(
             data,
@@ -1947,19 +2013,28 @@ class ProteinPrep(
             return recommendation
         return None
 
-    def _result_rows(self, result_type: str) -> list[dict[str, Any]]:
+    def _result_rows(
+        self,
+        result_type: str,
+        *,
+        filter_by_tool_key: bool = True,
+    ) -> list[dict[str, Any]]:
         """Return result-explorer data payloads for one child result type.
 
         Args:
             result_type: Indexed result type string.
+            filter_by_tool_key: When False, match only ``compute_job_id``.
 
         Returns:
             Data dicts for this execution id, or an empty list on failure.
         """
         exec_id = self._ensure_id()
+        filter_dict: dict[str, Any] | None = None
+        if filter_by_tool_key:
+            filter_dict = {"tool_key": {"eq": self.tool_key}}
         try:
             response = self.client.results.get(
-                filter_dict={"tool_key": {"eq": self.tool_key}},
+                filter_dict=filter_dict,
                 result_type=result_type,
                 compute_job_id=exec_id,
             )
@@ -2031,7 +2106,7 @@ class ProteinPrep(
             records = response.get("data") or []
             if records:
                 data = records[0].get("data") or {}
-                if isinstance(data, dict) and data.get("protein_id"):
+                if isinstance(data, dict) and data.get("id"):
                     return self._protein_from_outputs(data)
         except Exception:
             pass
@@ -2048,6 +2123,60 @@ class ProteinPrep(
             title="Could not load prepared protein",
             message=PROTEIN_PREP_NO_OUTPUT_PATHS_MSG,
         )
+
+    def get_extracted_ligands(
+        self,
+        dto: dict[str, Any] | None = None,
+        *,
+        download: bool = True,
+    ) -> LigandSet | None:
+        """Return ligands extracted during prepare when ``extract`` was selected.
+
+        Tries result-explorer rows (``result_type=extractedligand``), then
+        ``jobOutputs.extracted_ligands``. Each :class:`Ligand` includes
+        :attr:`~deeporigin.drug_discovery.structures.ligand.Ligand.component_id`
+        and :attr:`~deeporigin.drug_discovery.structures.ligand.Ligand.extracted_from_protein_id`
+        (the input protein entity id for this session).
+
+        Args:
+            dto: Optional execution payload used as a job-output fallback.
+            download: When True, download mol files when hydrating by id.
+
+        Returns:
+            A :class:`~deeporigin.drug_discovery.structures.ligand.LigandSet` of
+            extracted ligands, an empty set when prepare completed with none, or
+            ``None`` when outputs are not published yet.
+
+        Raises:
+            ValueError: If :attr:`id` is unset.
+            DeepOriginException: If this was a recommend-only run.
+        """
+        self._ensure_id()
+        if self._operation_kind == "recommend":
+            raise DeepOriginException(
+                title="Could not load extracted ligands",
+                message=PROTEIN_PREP_RECOMMEND_NOT_PREPARE_MSG,
+            )
+
+        indexed = self._result_rows(
+            _RESULT_TYPE_EXTRACTED_LIGAND,
+            filter_by_tool_key=False,
+        )
+        outputs = self._execution_outputs(dto)
+        raw: Any = indexed if indexed else outputs.get("extracted_ligands")
+        if raw is None:
+            return None
+        if not isinstance(raw, list):
+            return None
+
+        source_protein_id = self._protein.id
+        ligands = _ligands_from_extracted_output_rows(
+            raw,
+            client=self.client,
+            extracted_from_protein_id=source_protein_id,
+            download=download,
+        )
+        return LigandSet(ligands=ligands)
 
     def get_report(
         self,

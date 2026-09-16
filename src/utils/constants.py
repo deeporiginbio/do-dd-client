@@ -197,12 +197,6 @@ PROTEIN_PREP_KEEP_SKIP_EMPTY_MSG = (
 PROTEIN_PREP_KEEP_SKIP_MIXED_MSG = "Pass component IDs or keyword filters, not both."
 """Used when ``keep()`` / ``skip()`` receive both positional ids and matchers."""
 
-PROTEIN_PREP_KEEP_SKIP_VIEW_MSG = (
-    "{method}() accepts a DataFrame from recommendation(...), "
-    "not the recommendation view itself."
-)
-"""Used when ``keep()`` / ``skip()`` are passed the uncalled Recommendation view."""
-
 PROTEIN_PREP_DATAFRAME_ID_COLUMN_MSG = "DataFrame must include an 'id' column."
 """Used when ``keep()`` / ``skip()`` receive a DataFrame without ``id``."""
 

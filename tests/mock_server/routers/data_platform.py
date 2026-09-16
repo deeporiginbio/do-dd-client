@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import Callable
 import copy
 from datetime import datetime, timezone
+import hashlib
 from typing import Any
 import uuid
 
@@ -14,6 +15,8 @@ from rdkit import Chem
 MOCK_CANONICAL_PROTEIN_ID = "brd"
 MOCK_CANONICAL_PROTEIN_FILE_PATH = "testing/brd.pdb"
 PREPARED_PROTEIN_UFA_PREFIX = "entities/proteins/prepared"
+EXTRACTED_LIGAND_UFA_PREFIX = "entities/ligands/extracted"
+_MOCK_EXTRACTED_LIGAND_SMILES = "CC(=O)Oc1ccccc1C(=O)O"
 
 # Pocket id aligned with ``tests/fixtures/tool-runs/deeporigin.bulk-docking/quote.json``
 # and PocketFinder-style mocks (``pocket.id`` on tool inputs).
@@ -114,6 +117,79 @@ def register_mock_prepared_protein(
     }
     proteins[protein_id] = record
     return {"protein_id": protein_id, "file_path": remote_path}
+
+
+def mock_extracted_ligand_id(execution_id: str, component_id: str) -> str:
+    """Return a deterministic mock ligand id for a prepare extraction row."""
+    digest = hashlib.sha256(f"{execution_id}:{component_id}".encode()).hexdigest()
+    return "08" + digest[:11].upper()
+
+
+def extracted_ligand_remote_path(execution_id: str, ligand_id: str) -> str:
+    """Return the durable UFA path for a mock extracted ligand SDF."""
+    stem = execution_id.strip()
+    if not stem or "/" in stem or "\\" in stem:
+        msg = f"Invalid execution_id for extracted ligand path: {execution_id!r}"
+        raise ValueError(msg)
+    return f"{EXTRACTED_LIGAND_UFA_PREFIX}/{stem}/{ligand_id}.sdf"
+
+
+def register_mock_extracted_ligand(
+    ligands: dict[str, dict[str, Any]],
+    *,
+    execution_id: str,
+    component_id: str,
+    smiles: str = _MOCK_EXTRACTED_LIGAND_SMILES,
+) -> dict[str, str]:
+    """Register a ligand entity for mock protein-prep ``extracted_ligands`` rows.
+
+    Args:
+        ligands: In-memory ligands store.
+        execution_id: Tool execution id (path segment + id suffix).
+        component_id: Protein Prep selection component id.
+        smiles: SMILES stored on the ligand record.
+
+    Returns:
+        Dict with ``component_id``, ``file_path``, and ``ligand_id``.
+    """
+    ligand_id = mock_extracted_ligand_id(execution_id, component_id)
+    remote_path = extracted_ligand_remote_path(execution_id, ligand_id)
+    record = _make_ligand_record(smiles, {"id": ligand_id, "name": ligand_id})
+    ligands[ligand_id] = record
+    return {
+        "component_id": component_id,
+        "file_path": remote_path,
+        "ligand_id": ligand_id,
+    }
+
+
+def mock_extracted_ligands_from_selection(
+    ligands: dict[str, dict[str, Any]],
+    *,
+    execution_id: str,
+    selection: object,
+) -> list[dict[str, str]]:
+    """Build ``extracted_ligands`` job output rows from prepare selection decisions."""
+    if not isinstance(selection, dict):
+        return []
+    decisions = selection.get("decisions")
+    if not isinstance(decisions, dict):
+        return []
+    rows: list[dict[str, str]] = []
+    for component_id, decision in decisions.items():
+        if decision != "extract":
+            continue
+        component_key = str(component_id)
+        if not component_key.startswith("ligand:"):
+            continue
+        rows.append(
+            register_mock_extracted_ligand(
+                ligands,
+                execution_id=execution_id,
+                component_id=component_key,
+            )
+        )
+    return rows
 
 
 def _base_canonical_protein_record() -> dict[str, Any]:

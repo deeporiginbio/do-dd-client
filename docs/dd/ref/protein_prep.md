@@ -2,7 +2,7 @@
 
 `ProteinPrep` drives platform tools `deeporigin.protein-prep` and, when
 needed, `deeporigin.target-preparation`. Recommend inventories components,
-returns a `RecommendationView` table, and updates the same object with an
+returns a component table (`pandas.DataFrame`), and updates the same object with an
 editable Selection. Prepare applies resolved keep/skip decisions and cleans
 the structure. ``run()`` is loops-off / no-pocket and blocking; ``start()``
 submits asynchronous prepare (composite when loops are on or

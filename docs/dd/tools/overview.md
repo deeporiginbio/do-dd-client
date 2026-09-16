@@ -88,4 +88,4 @@ Skip loop modelling with no pocket (`model_missing_loops=False`) and call
 `pocket=PocketFinderConfig(...)` uses `start()` (and `quote` / `confirm` when
 pockets are billable). Use standalone [`StructureReport`](structure-report.md)
 for source assessment. Prepared reports and pockets from composite runs are
-available via `get_report()` and `get_pockets()`.
+available via `get_report()`, `get_pockets()`, and `get_extracted_ligands()`.

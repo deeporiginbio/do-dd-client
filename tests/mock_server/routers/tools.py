@@ -24,7 +24,11 @@ from fastapi import APIRouter, HTTPException, Request
 from deeporigin.utils.constants import METABOLISM_WORKFLOW_LIGAND_THRESHOLD
 
 from ..constants import MOCK_BULK_DOCKING_EXECUTION_ID
-from .data_platform import register_mock_prepared_protein
+from .data_platform import (
+    mock_extracted_ligands_from_selection,
+    register_mock_extracted_ligand,
+    register_mock_prepared_protein,
+)
 
 _MOCK_METABOLISM_ENZYMES: tuple[str, ...] = (
     "CYP1A2",
@@ -759,6 +763,7 @@ def create_tools_router(
     user_logs: dict[str, dict[str, Any]],
     file_storage: dict[str, bytes],
     proteins: dict[str, dict[str, Any]],
+    ligands: dict[str, dict[str, Any]],
 ) -> APIRouter:
     """Create a router for tools-related endpoints.
 
@@ -1771,6 +1776,41 @@ def create_tools_router(
                     )
             return
 
+        if tool_key == "deeporigin.protein-prep":
+            protein_prep_output_types = {
+                "protein": "preparedprotein",
+                "extracted_ligands": "extractedligand",
+            }
+            for output_key, result_type in protein_prep_output_types.items():
+                output_value = job_outputs.get(output_key)
+                if output_value is None:
+                    continue
+                items = (
+                    output_value if isinstance(output_value, list) else [output_value]
+                )
+                for item in items:
+                    if not isinstance(item, dict):
+                        continue
+                    data = dict(item)
+                    results.append(
+                        {
+                            "id": str(
+                                data.get("id")
+                                or data.get("ligand_id")
+                                or (
+                                    "08"
+                                    + str(uuid.uuid4()).replace("-", "").upper()[:11]
+                                )
+                            ),
+                            "tool_key": tool_key,
+                            "tool_version": tool_version,
+                            "result_type": result_type,
+                            "data": data,
+                            "compute_job_id": execution_id,
+                        }
+                    )
+            return
+
         output_key_map: dict[str, tuple[str, str]] = {
             "deeporigin.pocketfinder": ("pockets", "pocket"),
             "deeporigin.pocket-finder": ("pockets", "pocket"),
@@ -1778,7 +1818,6 @@ def create_tools_router(
             "deeporigin.constrained-docking": ("poses", "pose"),
             "deeporigin.import-dataset": ("poses", "pose"),
             "deeporigin.system-prep": ("system", "preparedsystem"),
-            "deeporigin.protein-prep": ("protein", "preparedprotein"),
             "deeporigin.draco": ("do_patent_molecules", "dopatentmolecule"),
             "deeporigin.structure-report": (
                 "structure_reports",
@@ -2063,9 +2102,28 @@ def create_tools_router(
                 execution_id=str(eid),
                 pdb_id=str(pdb_id) if pdb_id is not None else None,
             )
-            protein_out["protein_id"] = registered["protein_id"]
+            protein_out["id"] = registered["protein_id"]
+            protein_out.pop("protein_id", None)
+            parent_id = (
+                user_inputs.get("protein", {}).get("id")
+                if isinstance(user_inputs, dict)
+                and isinstance(user_inputs.get("protein"), dict)
+                else None
+            )
+            if parent_id:
+                protein_out["parent_id"] = str(parent_id)
             if pdb_id is not None:
                 protein_out["pdb_id"] = pdb_id
+            protein_out.setdefault("model_missing_loops", True)
+        extracted = mock_extracted_ligands_from_selection(
+            ligands,
+            execution_id=str(eid),
+            selection=user_inputs.get("selection")
+            if isinstance(user_inputs, dict)
+            else None,
+        )
+        if extracted:
+            outputs["extracted_ligands"] = extracted
         execution["jobOutputs"] = outputs
         _inject_result_explorer_records_from_outputs(
             tool_key=tkey,
@@ -2116,17 +2174,29 @@ def create_tools_router(
                 execution_id=str(execution["executionId"]),
                 pdb_id=str(pdb_id) if pdb_id is not None else None,
             )
-            protein_output["protein_id"] = registered["protein_id"]
+            protein_output["id"] = registered["protein_id"]
+            protein_output.pop("protein_id", None)
+            if input_protein_id:
+                protein_output["parent_id"] = input_protein_id
+            protein_output.setdefault("model_missing_loops", True)
         report["report_role"] = "prepared"
+        extracted_rows = mock_extracted_ligands_from_selection(
+            ligands,
+            execution_id=str(execution["executionId"]),
+            selection=inputs.get("selection"),
+        )
+        if not extracted_rows:
+            extracted_rows = [
+                register_mock_extracted_ligand(
+                    ligands,
+                    execution_id=str(execution["executionId"]),
+                    component_id="ligand:LIG:A:100",
+                )
+            ]
         outputs.update(
             {
                 "audit_file_path": (f"tool-runs/{execution['executionId']}/audit.json"),
-                "extracted_ligands": [
-                    {
-                        "component_id": "ligand:LIG:A:100",
-                        "file_path": (f"tool-runs/{execution['executionId']}/LIG.pdb"),
-                    }
-                ],
+                "extracted_ligands": extracted_rows,
                 "selection_file_path": (
                     f"tool-runs/{execution['executionId']}/selection.json"
                 ),
@@ -2140,9 +2210,7 @@ def create_tools_router(
             pocket_outputs = _legacy_outputs_to_job_outputs(pocket_fixture) or {}
             pockets = pocket_outputs.get("pockets") or []
             prepared_protein_id = (
-                protein_output.get("protein_id")
-                if isinstance(protein_output, dict)
-                else None
+                protein_output.get("id") if isinstance(protein_output, dict) else None
             )
             for pocket in pockets:
                 if isinstance(pocket, dict) and prepared_protein_id is not None:
