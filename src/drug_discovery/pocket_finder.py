@@ -43,6 +43,7 @@ from deeporigin.drug_discovery.structures.protein import Protein
 from deeporigin.exceptions import DeepOriginException
 from deeporigin.platform.client import DeepOriginClient
 from deeporigin.platform.constants import TOOL_KEYS_AND_VERSIONS, is_success_status
+from deeporigin.utils.constants import QUOTE_APPROVE_AMOUNT
 
 PocketFinderMode = Literal["auto-find", "define-by-selection"]
 PocketSelectionKind = Literal["residue", "ligand", "cofactor"]
@@ -586,13 +587,13 @@ class PocketFinder(
         detected pockets via :meth:`get_results`. The server blocks until the
         run completes; use :meth:`start` for async, persisted execution.
 
-        Pass ``quote=True`` (or ``approve_amount=0``) to request a cost estimate
+        Pass ``quote=True`` (or ``approve_amount=-1``) to request a cost estimate
         only. In that case the platform returns a ``Quoted`` DTO, the instance
         is updated with ``estimate`` and ``status="Quoted"``, and ``None`` is
         returned.
 
         Args:
-            quote: Shorthand for ``approve_amount=0``.
+            quote: Shorthand for ``approve_amount=-1``.
             approve_amount: Spend cap forwarded to the platform as ``approveAmount``.
 
         Returns:
@@ -604,7 +605,7 @@ class PocketFinder(
                 platform or ``jobOutputs``.
         """
         self._ensure_protein_remote()
-        resolved_amount = 0 if quote else approve_amount
+        resolved_amount = QUOTE_APPROVE_AMOUNT if quote else approve_amount
         dto = self._create_execution(
             data=self._make_payload(approve_amount=resolved_amount, sync=True),
         )

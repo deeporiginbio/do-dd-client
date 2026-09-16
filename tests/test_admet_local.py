@@ -9,7 +9,7 @@ import pytest
 
 from deeporigin.drug_discovery import Admet, Ligand
 from deeporigin.platform.constants import TOOL_KEYS_AND_VERSIONS
-from tests.conftest import check_tool_exists
+from tests.conftest import assert_quote_only_execution, check_tool_exists
 from tests.mock_server.routers.tools import (
     MOCK_ADMET_ENDPOINTS,
     _synthesize_admet_prediction_row,
@@ -147,8 +147,7 @@ def test_admet_run_quote_true(client: DeepOriginClient) -> None:
 
     assert result is job
     assert ligand.id is None
-    assert job.estimate is not None
-    assert job.status == "Quoted"
+    assert_quote_only_execution(job)
     assert isinstance(job.properties, tuple)
 
 

@@ -1011,7 +1011,9 @@ def create_tools_router(
         if approve_amount is None:
             approve_amount = 0
 
-        if approve_amount == 0:
+        # Negative (SDK quote=True → -1) or 0: park as Quoted. Positive
+        # approveAmount is not implemented in the mock.
+        if approve_amount <= 0:
             status = "Quoted"
         else:
             raise NotImplementedError(
@@ -2504,8 +2506,13 @@ def create_tools_router(
 
         inputs = body.get("inputs", {}) or {}
         n_lig = len(inputs.get("ligands") or [])
-        # Explicit approveAmount 0 means quote-only; do not return a completed run DTO.
-        quote_only = "approveAmount" in body and body.get("approveAmount") == 0
+        # Explicit approveAmount <= 0 means quote-only (SDK uses -1 after
+        # DDOS-7765; 0 kept for older callers/fixtures).
+        quote_only = (
+            "approveAmount" in body
+            and body.get("approveAmount") is not None
+            and body.get("approveAmount") <= 0
+        )
         # docking and pocket-finder declare ``sync`` inside ``inputs`` (matches
         # the toolbox tool-definitions and how the platform estimator reads it).
         if (
@@ -2737,7 +2744,7 @@ def create_tools_router(
             if quote_only:
                 execution["status"] = "Quoted"
                 execution["jobOutputs"] = None
-                execution["approveAmount"] = 0
+                execution["approveAmount"] = body.get("approveAmount")
                 execution["startedAt"] = None
                 execution["completedAt"] = None
                 execution["progressReport"] = None
@@ -2778,7 +2785,7 @@ def create_tools_router(
             if quote_only:
                 execution["status"] = "Quoted"
                 execution["jobOutputs"] = None
-                execution["approveAmount"] = 0
+                execution["approveAmount"] = body.get("approveAmount")
                 execution["startedAt"] = None
                 execution["completedAt"] = None
                 execution["progressReport"] = None
@@ -2793,7 +2800,7 @@ def create_tools_router(
             )
             executions[execution["executionId"]] = execution
             return _normalize_execution(execution)
-        if tool_key == "deeporigin.bulk-docking" and approve_amount == 0:
+        if tool_key == "deeporigin.bulk-docking" and approve_amount <= 0:
             execution = _create_bulk_docking_quote(
                 org_key=org_key,
                 tool_key=tool_key,

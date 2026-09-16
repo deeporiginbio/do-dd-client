@@ -41,6 +41,7 @@ from deeporigin.drug_discovery.structures.protein import Protein
 from deeporigin.exceptions import DeepOriginException
 from deeporigin.platform.client import DeepOriginClient
 from deeporigin.platform.constants import TOOL_KEYS_AND_VERSIONS, is_success_status
+from deeporigin.utils.constants import QUOTE_APPROVE_AMOUNT
 
 StructureReportGrade = Literal["A", "B", "C", "D"]
 MetadataSource = Literal["rcsb", "file_header", "file_header+rcsb"]
@@ -306,7 +307,7 @@ class StructureReport(Execution, SyncExecutableMixin):
         """Run Structure Report synchronously and return graded rows.
 
         Args:
-            quote: Shorthand for ``approve_amount=0``. Returns ``None`` when the
+            quote: Shorthand for ``approve_amount=-1``. Returns ``None`` when the
                 platform returns a quotation.
             approve_amount: Spend cap forwarded as ``approveAmount``.
 
@@ -319,7 +320,7 @@ class StructureReport(Execution, SyncExecutableMixin):
                 ``jobOutputs.structure_reports`` is missing/invalid.
         """
         self._ensure_protein_remote()
-        resolved_amount = 0 if quote else approve_amount
+        resolved_amount = QUOTE_APPROVE_AMOUNT if quote else approve_amount
         response = self._create_execution(
             data=self._make_payload(
                 approve_amount=resolved_amount,
