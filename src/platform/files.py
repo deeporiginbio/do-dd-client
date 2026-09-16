@@ -8,7 +8,7 @@ import os
 from pathlib import Path
 import tempfile
 import time
-from typing import TYPE_CHECKING, Literal, overload
+from typing import IO, TYPE_CHECKING, Literal, overload
 
 import httpx
 from tqdm import tqdm
@@ -412,6 +412,119 @@ class Files:
                 last_exc = exc
                 if attempt < max_retries:
                     time.sleep(retry_backoff_factor * (2**attempt))
+
+        raise last_exc  # type: ignore[misc]
+
+    def _download_to_path(
+        self,
+        remote_path: str,
+        dest: Path,
+        *,
+        max_retries: int = 3,
+        retry_backoff_factor: float = 1.0,
+    ) -> None:
+        """Stream a remote file to ``dest`` via signed URL, with retries.
+
+        On each attempt, requests a fresh download signed URL for
+        ``remote_path`` and streams the response body to a new temporary
+        file, retrying on transient failures.  Mirrors
+        :meth:`_put_to_signed_url`'s retry loop.
+
+        Args:
+            remote_path: Remote path to request the signed URL for.
+            dest: Local destination path.
+            max_retries: Maximum retry attempts on transient failures.
+            retry_backoff_factor: Multiplier for exponential back-off between
+                retries.  Delay = retry_backoff_factor * 2^attempt.
+
+        Raises:
+            httpx.HTTPStatusError: If the GET fails after all retries.
+        """
+        last_exc: Exception | None = None
+        for attempt in range(max_retries + 1):
+            tmp: IO[bytes] | None = None
+            try:
+                signed_url = self.signed_url(remote_path)
+                tmp = tempfile.NamedTemporaryFile(
+                    dir=dest.parent, suffix=".tmp", delete=False
+                )
+                with tmp:
+                    with httpx.Client() as download_client:
+                        with download_client.stream(
+                            "GET", signed_url
+                        ) as download_response:
+                            download_response.raise_for_status()
+                            for chunk in download_response.iter_bytes():
+                                tmp.write(chunk)
+                os.replace(tmp.name, dest)
+                return
+            except (
+                httpx.HTTPStatusError,
+                httpx.NetworkError,
+                httpx.TimeoutException,
+            ) as exc:
+                if tmp is not None:
+                    os.unlink(tmp.name)
+                last_exc = exc
+                if attempt < max_retries:
+                    time.sleep(retry_backoff_factor * (2**attempt))
+            except BaseException:
+                if tmp is not None:
+                    os.unlink(tmp.name)
+                raise
+
+        raise last_exc  # type: ignore[misc]
+
+    def _open_signed_url_stream(
+        self,
+        remote_path: str,
+        *,
+        max_retries: int = 3,
+        retry_backoff_factor: float = 1.0,
+    ) -> FileStream:
+        """Open a streaming GET to a fresh download signed URL, with retries.
+
+        Mirrors :meth:`_put_to_signed_url`'s retry loop: each attempt gets a
+        fresh signed URL and retries on the same transient-failure classes.
+
+        Args:
+            remote_path: Remote path to request the signed URL for.
+            max_retries: Maximum retry attempts on transient failures.
+            retry_backoff_factor: Multiplier for exponential back-off between
+                retries.  Delay = retry_backoff_factor * 2^attempt.
+
+        Returns:
+            A :class:`FileStream` wrapping the in-flight HTTP response.
+
+        Raises:
+            httpx.HTTPStatusError: If the GET fails after all retries.
+        """
+        last_exc: Exception | None = None
+        for attempt in range(max_retries + 1):
+            download_client = httpx.Client()
+            response: httpx.Response | None = None
+            try:
+                signed_url = self.signed_url(remote_path)
+                request = download_client.build_request("GET", signed_url)
+                response = download_client.send(request, stream=True)
+                response.raise_for_status()
+                return FileStream(response, _owning_client=download_client)
+            except (
+                httpx.HTTPStatusError,
+                httpx.NetworkError,
+                httpx.TimeoutException,
+            ) as exc:
+                if response is not None:
+                    response.close()
+                download_client.close()
+                last_exc = exc
+                if attempt < max_retries:
+                    time.sleep(retry_backoff_factor * (2**attempt))
+            except BaseException:
+                if response is not None:
+                    response.close()
+                download_client.close()
+                raise
 
         raise last_exc  # type: ignore[misc]
 
@@ -826,27 +939,7 @@ class Files:
                 raise
             return str(dest)
 
-        signed_url_response = self._c.get_json(
-            f"/files/{self._c.org_key}/signedUrl/{remote_path}",
-        )
-
-        if "url" not in signed_url_response:
-            raise ValueError(_MISSING_URL_FIELD)
-
-        signed_url = signed_url_response["url"]
-
-        tmp = tempfile.NamedTemporaryFile(dir=dest.parent, suffix=".tmp", delete=False)
-        try:
-            with tmp:
-                with httpx.Client() as download_client:
-                    with download_client.stream("GET", signed_url) as download_response:
-                        download_response.raise_for_status()
-                        for chunk in download_response.iter_bytes():
-                            tmp.write(chunk)
-            os.replace(tmp.name, dest)
-        except BaseException:
-            os.unlink(tmp.name)
-            raise
+        self._download_to_path(remote_path, dest)
 
         return str(dest)
 
@@ -904,27 +997,7 @@ class Files:
                 raise
             return FileStream(response)
 
-        signed_url_response = self._c.get_json(
-            f"/files/{self._c.org_key}/signedUrl/{remote_path}",
-        )
-
-        if "url" not in signed_url_response:
-            raise ValueError(_MISSING_URL_FIELD)
-
-        signed_url = signed_url_response["url"]
-        download_client = httpx.Client()
-        response: httpx.Response | None = None
-        try:
-            request = download_client.build_request("GET", signed_url)
-            response = download_client.send(request, stream=True)
-            response.raise_for_status()
-        except Exception:
-            if response is not None:
-                response.close()
-            download_client.close()
-            raise
-
-        return FileStream(response, _owning_client=download_client)
+        return self._open_signed_url_stream(remote_path)
 
     def download_many(
         self,
