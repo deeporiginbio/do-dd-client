@@ -11,7 +11,7 @@ These mixins are combined with ``Execution`` to build concrete types:
   ``deeporigin.drug_discovery.notebook_watch_mixin``)
 
 Both ``run()`` and ``start()`` accept ``quote=True`` (sugar for
-``approve_amount=0``) and an explicit ``approve_amount``. If the platform returns
+``approve_amount=-1``) and an explicit ``approve_amount``. If the platform returns
 a ``Quoted`` DTO the instance is left in that state with no automatic
 confirmation. ``confirm()``, :meth:`~deeporigin.drug_discovery.execution.Execution.sync`,
 and :attr:`~deeporigin.drug_discovery.execution.Execution.runtime` live on
@@ -22,6 +22,7 @@ from __future__ import annotations
 
 from deeporigin.platform.client import DeepOriginClient
 from deeporigin.platform.constants import PlatformStatus
+from deeporigin.utils.constants import QUOTE_APPROVE_AMOUNT
 
 
 class SyncExecutableMixin:
@@ -101,17 +102,17 @@ class AsyncExecutableMixin:
         Only valid when ``status`` is ``None`` (no execution exists yet).
         All other statuses raise immediately to prevent re-submission.
 
-        Pass ``quote=True`` or ``approve_amount=0`` to request a cost estimate
+        Pass ``quote=True`` or ``approve_amount=-1`` to request a cost estimate
         without running. If the platform returns a ``Quoted`` DTO the instance
         is left in that state — call :meth:`~deeporigin.drug_discovery.execution.Execution.confirm`
         explicitly to proceed.
 
         Args:
-            quote: Shorthand for ``approve_amount=0``. Takes precedence when both
+            quote: Shorthand for ``approve_amount=-1``. Takes precedence when both
                 ``quote`` and ``approve_amount`` are provided.
             approve_amount: Spend cap passed to the platform as ``approveAmount``.
-                ``0`` requests a quote only. ``None`` omits the field (platform
-                runs immediately).
+                ``-1`` (or any negative value) forces a quote-only create.
+                ``None`` omits the field (platform may auto-confirm).
             **kwargs: Forwarded verbatim to ``_start_impl``.
 
         Raises:
@@ -122,14 +123,14 @@ class AsyncExecutableMixin:
                 f"Cannot start: execution is already in {self.status!r} state. "
                 "start() is only allowed when status is None."
             )
-        resolved_amount = 0 if quote else approve_amount
+        resolved_amount = QUOTE_APPROVE_AMOUNT if quote else approve_amount
         self._start_impl(approve_amount=resolved_amount, **kwargs)
 
     def _start_impl(self, *, approve_amount: int | None = None, **kwargs) -> None:
         """Perform the actual async submission. Must be overridden by subclasses.
 
         Args:
-            approve_amount: Resolved spend cap (``0`` for quote-only, ``None``
+            approve_amount: Resolved spend cap (``-1`` for quote-only, ``None``
                 to run immediately, or a positive value for a spend cap).
             **kwargs: Additional tool-specific keyword arguments.
 

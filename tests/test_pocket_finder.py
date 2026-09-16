@@ -13,14 +13,14 @@ from deeporigin.platform.constants import (
     TOOL_KEYS_AND_VERSIONS,
     is_success_status,
 )
-from tests.conftest import check_tool_exists
+from tests.conftest import assert_quote_only_execution, check_tool_exists
 
 
 def test_pocket_finder_run_quote_true_lv1(
     client: DeepOriginClient,
     registered_protein: Protein,
 ) -> None:
-    """PocketFinder.run(quote=True) returns None and populates estimate."""
+    """PocketFinder.run(quote=True) returns None, parks as Quoted, does not complete."""
     assert check_tool_exists(
         client,
         TOOL_KEYS_AND_VERSIONS["pocket_finder"]["tool_key"],
@@ -34,11 +34,7 @@ def test_pocket_finder_run_quote_true_lv1(
             "PocketFinder quote returned FailedQuotation; platform tool may be unavailable."
         )
     assert result is None, "run(quote=True) should return None"
-    assert pf.estimate is not None, "Estimate should be set"
-    assert pf.status == "Quoted"
-    assert pf.cost is None, (
-        "Cost should be None because the pocket finder is not run yet"
-    )
+    assert_quote_only_execution(pf)
 
 
 def test_pocket_finder_from_dto_maps_async_execution_fields_from_fixture(

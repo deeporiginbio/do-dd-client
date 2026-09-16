@@ -228,6 +228,14 @@ TOOL_EXECUTION_POST_TIMEOUT_SECONDS = 600.0
 as molprops and protonation, where synchronous executions can take longer than
 the client's default short timeout."""
 
+QUOTE_APPROVE_AMOUNT = -1
+"""``approveAmount`` value sent when ``quote=True``.
+
+Must be negative: tools-service auto-confirm is inclusive
+(``priceTotal <= threshold``), so ``0`` still dispatches free quotes. Matches
+MCP/pipeline after DDOS-7765 / platform PR #6769.
+"""
+
 EXECUTION_LIST_ORDER_CREATED_DESC = "createdAt desc"
 """Tools-service ``order`` query value for most-recently-created executions first."""
 
