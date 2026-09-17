@@ -1,50 +1,56 @@
-"""Tests that execute Jupyter notebooks end-to-end via nbconvert."""
+"""Tests that execute Jupyter notebooks end-to-end."""
 
 from pathlib import Path
-import subprocess
+import sys
+
+from jupyter_client import KernelManager
+from jupyter_client.kernelspec import KernelSpec
+from nbclient import NotebookClient
+import nbformat
 
 NOTEBOOKS_DIR = Path(__file__).resolve().parent.parent / "docs" / "notebooks" / "clean"
 
 
-def _execute_notebook(notebook_path: Path) -> None:
-    """Execute a notebook with nbconvert and delete the output on success.
+def _notebook_kernel_manager() -> KernelManager:
+    """Kernel manager that always uses the active test interpreter.
 
-    Runs ``jupyter nbconvert --execute`` to produce an executed copy, asserts
-    a zero exit code, then removes the output file.
+    User-installed ``python3`` kernelspecs often pin an absolute venv path from
+    another checkout (e.g. after moving ``~/code/cli`` → ``do-dd-client``).
+    """
+    km = KernelManager()
+    km.kernel_name = ""
+    km._kernel_spec = KernelSpec(
+        argv=[
+            sys.executable,
+            "-m",
+            "ipykernel_launcher",
+            "-f",
+            "{connection_file}",
+        ],
+        display_name="do-dd-client-pytest",
+        language="python",
+    )
+    return km
+
+
+def _execute_notebook(notebook_path: Path) -> None:
+    """Execute a notebook using a kernel tied to the active test interpreter.
+
+    Avoids relying on a user-installed ``python3`` kernelspec, which may point
+    at another checkout's virtualenv.
 
     Args:
         notebook_path: Absolute path to the ``.ipynb`` file to execute.
     """
-    output_path = notebook_path.with_name(
-        notebook_path.stem + "_executed" + notebook_path.suffix
+    notebook_path = notebook_path.resolve()
+    nb = nbformat.read(notebook_path, as_version=4)
+    client = NotebookClient(
+        nb,
+        timeout=600,
+        km=_notebook_kernel_manager(),
+        resources={"metadata": {"path": str(notebook_path.parent)}},
     )
-
-    try:
-        result = subprocess.run(
-            [
-                "jupyter",
-                "nbconvert",
-                "--to",
-                "notebook",
-                "--execute",
-                str(notebook_path),
-                "--output",
-                str(output_path.name),
-            ],
-            cwd=str(notebook_path.parent),
-            capture_output=True,
-            text=True,
-            timeout=600,
-        )
-
-        assert result.returncode == 0, (
-            f"Notebook {notebook_path.name} failed with exit code {result.returncode}.\n"
-            f"--- stdout ---\n{result.stdout}\n"
-            f"--- stderr ---\n{result.stderr}"
-        )
-    finally:
-        if output_path.exists():
-            output_path.unlink()
+    client.execute()
 
 
 def test_pocketfinder_notebook():

@@ -199,6 +199,35 @@ def test_pose_from_json_local_sdf(tmp_path: Path) -> None:
     assert pose.mol is not None
 
 
+def test_pose_show_draw_and_repr_delegate_to_ligand(monkeypatch) -> None:
+    """Pose visualization methods delegate through to_ligand()."""
+    stub_lig = Ligand.from_smiles("CCO")
+    calls: list[str] = []
+
+    def fake_show(self) -> str:
+        calls.append("show")
+        return "shown"
+
+    def fake_draw(self) -> str:
+        calls.append("draw")
+        return "drawn"
+
+    def fake_repr_html(self) -> str:
+        calls.append("repr_html")
+        return "<pose/>"
+
+    monkeypatch.setattr(Ligand, "show", fake_show)
+    monkeypatch.setattr(Ligand, "draw", fake_draw)
+    monkeypatch.setattr(Ligand, "_repr_html_", fake_repr_html)
+    monkeypatch.setattr(Pose, "to_ligand", lambda self: stub_lig)
+
+    pose = Pose(ligand_id="L", smiles="CCO", remote_path="entities/poses/x.sdf")
+    assert pose.show() == "shown"
+    assert pose.draw() == "drawn"
+    assert pose._repr_html_() == "<pose/>"
+    assert calls == ["show", "draw", "repr_html"]
+
+
 def test_pose_to_ligand_legacy_shape() -> None:
     """Pose.to_ligand preserves pose id in properties for legacy callers."""
     pose = Pose(

@@ -151,7 +151,6 @@ def _optional_bool(value: Any) -> bool | None:
 
 
 @dataclass
-@beartype
 class Pose(Entity):
     """A 3D ligand conformation backed by an SDF in the platform pose result table.
 
@@ -593,6 +592,18 @@ class Pose(Entity):
         lig = _ligand_from_pose_structure(self)
         _copy_pose_metadata_onto_ligand(self, lig)
         return lig
+
+    def draw(self):
+        """Draw this pose's 3D structure using RDKit (same as :meth:`Ligand.draw`)."""
+        return self.to_ligand().draw()
+
+    def show(self):
+        """Visualize this pose in a notebook (Mol* viewer via :meth:`Ligand.show`)."""
+        return self.to_ligand().show()
+
+    def _repr_html_(self) -> str | None:
+        """Return HTML for Jupyter when the pose structure can be loaded."""
+        return self.to_ligand()._repr_html_()
 
 
 def _rehydrate_pose_from_local_sdf(
