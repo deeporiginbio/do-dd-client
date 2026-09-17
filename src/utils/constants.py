@@ -154,8 +154,8 @@ PROTEIN_PREP_RECOMMEND_NOT_PREPARE_MSG = (
 """Used by ``ProteinPrep.get_results`` on a recommend execution."""
 
 PROTEIN_PREP_RUN_REQUIRES_LOOPS_OFF_MSG = (
-    "run() requires model_missing_loops=False and no pocket. Use start() when "
-    "loop modelling is enabled or pocket is configured."
+    "run() requires model_missing_loops=False and no novel pocket finding. "
+    "Use start() when loop modelling or novel pocket finding is enabled."
 )
 """Used by ``ProteinPrep.run`` for composite (loops-on or pocket) routes."""
 

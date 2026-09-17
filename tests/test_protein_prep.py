@@ -11,12 +11,13 @@ import pytest
 
 from deeporigin.drug_discovery import Protein, ProteinPrep
 from deeporigin.drug_discovery.protein_prep import (
-    _ligands_from_extracted_output_rows,
+    _crystal_poses_from_output_rows,
     _protein_from_prepared_data,
     _protein_prep_default_name,
     _selection_from_recommendation,
 )
-from deeporigin.drug_discovery.structures.ligand import Ligand, LigandSet
+from deeporigin.drug_discovery.structures.ligand import Ligand
+from deeporigin.drug_discovery.structures.pose import PoseSet
 from deeporigin.exceptions import DeepOriginException
 from deeporigin.platform import DeepOriginClient
 from deeporigin.platform.constants import TOOL_KEYS_AND_VERSIONS, is_success_status
@@ -916,28 +917,14 @@ def test_start_accepts_resolved_loops_off_prepare(
 
 
 def test_pocket_finder_config_to_tool_input_modes() -> None:
-    """Nested pocket config serializes each mode to the Target Preparation shape."""
+    """Pocket config serializes to flat preparation-tool fields."""
     from deeporigin.drug_discovery import PocketFinderConfig
 
     auto = PocketFinderConfig(pocket_count=2, pocket_min_size=40)
     assert auto.to_tool_input() == {
-        "mode": "auto-find",
+        "find_pockets": "novel",
         "pocket_count": 2,
         "pocket_min_size": 40.0,
-    }
-
-    selections = [{"kind": "ligand", "author": {"chain_id": "A", "resname": "LIG"}}]
-    defined = PocketFinderConfig(
-        mode="define-by-selection",
-        selections=selections,
-        pocket_radius=12.0,
-        align_to_pocket=True,
-    )
-    assert defined.to_tool_input() == {
-        "mode": "define-by-selection",
-        "selections": selections,
-        "pocket_radius": 12.0,
-        "align_to_pocket": True,
     }
 
     crystal = PocketFinderConfig(
@@ -946,14 +933,37 @@ def test_pocket_finder_config_to_tool_input_modes() -> None:
         box_padding=4.0,
     )
     assert crystal.to_tool_input() == {
-        "mode": "from-crystal-ligand",
+        "find_pockets": "from-crystal-ligand",
         "crystal_ligand": {"component_id": "ligand:LIG:A:100"},
         "box_padding": 4.0,
     }
 
 
+def test_define_by_selection_is_rejected_on_protein_prep() -> None:
+    """Selection-defined pockets require the standalone PocketFinder tool."""
+    from deeporigin.drug_discovery import PocketFinderConfig
+
+    config = PocketFinderConfig(
+        mode="define-by-selection",
+        selections=[
+            {
+                "kind": "ligand",
+                "author": {"chain_id": "A", "resname": "LIG"},
+            }
+        ],
+    )
+    protein = _protein_with_remote()
+    with pytest.raises(ValueError, match="standalone PocketFinder"):
+        ProteinPrep(
+            protein=protein,
+            selection=_SAMPLE_SELECTION,
+            model_missing_loops=False,
+            pocket=config,
+        )
+
+
 def test_loops_off_no_pocket_payload_uses_protein_prep() -> None:
-    """Direct route keeps protein-prep action prepare and omits pocket."""
+    """Direct route explicitly disables flat pocket finding."""
     prep = ProteinPrep(
         protein=_protein_with_remote(),
         selection=_SAMPLE_SELECTION,
@@ -963,6 +973,7 @@ def test_loops_off_no_pocket_payload_uses_protein_prep() -> None:
     assert prep._uses_composite_route() is False
     payload = prep._make_protein_prep_payload(action="prepare", sync=True)
     assert payload["inputs"]["action"] == "prepare"
+    assert payload["inputs"]["find_pockets"] == "no"
     assert "pocket" not in payload["inputs"]
 
 
@@ -979,12 +990,13 @@ def test_loops_on_routes_to_target_prep_payload() -> None:
     payload = prep._make_target_prep_payload(approve_amount=None)
     assert "action" not in payload["inputs"]
     assert payload["inputs"]["model_missing_loops"] is True
+    assert payload["inputs"]["find_pockets"] == "no"
     assert "pocket" not in payload["inputs"]
     assert "sync" not in payload
 
 
-def test_pocket_routes_to_target_prep_with_nested_pocket() -> None:
-    """Any pocket config nests under inputs.pocket on the composite payload."""
+def test_novel_pockets_route_to_target_prep_with_flat_fields() -> None:
+    """Novel pockets use Target Preparation's flat find_pockets contract."""
     from deeporigin.drug_discovery import PocketFinderConfig
 
     prep = ProteinPrep(
@@ -996,11 +1008,57 @@ def test_pocket_routes_to_target_prep_with_nested_pocket() -> None:
 
     payload = prep._make_target_prep_payload(approve_amount=12)
     assert payload["approveAmount"] == 12
-    assert payload["inputs"]["pocket"] == {
-        "mode": "auto-find",
-        "pocket_count": 1,
-        "pocket_min_size": 30.0,
-    }
+    assert payload["inputs"]["find_pockets"] == "novel"
+    assert payload["inputs"]["pocket_count"] == 1
+    assert payload["inputs"]["pocket_min_size"] == 30.0
+    assert "pocket" not in payload["inputs"]
+
+
+def test_loops_off_crystal_pockets_use_direct_protein_prep() -> None:
+    """Crystal-ligand pockets stay on standalone Protein Prep when loops are off."""
+    from deeporigin.drug_discovery import PocketFinderConfig
+
+    prep = ProteinPrep(
+        protein=_protein_with_remote(pdb_id=None),
+        selection=_SAMPLE_SELECTION,
+        model_missing_loops=False,
+        pocket=PocketFinderConfig(
+            mode="from-crystal-ligand",
+            component_id="ligand:LIG:A:100",
+            box_geometry="fixed-radius",
+            pocket_radius=12,
+        ),
+    )
+
+    assert prep._uses_composite_route() is False
+    payload = prep._make_protein_prep_payload(action="prepare", sync=True)
+    assert payload["inputs"]["find_pockets"] == "from-crystal-ligand"
+    assert payload["inputs"]["crystal_ligand"] == {"component_id": "ligand:LIG:A:100"}
+    assert payload["inputs"]["box_geometry"] == "fixed-radius"
+    assert payload["inputs"]["pocket_radius"] == 12.0
+    assert "pocket" not in payload["inputs"]
+
+
+def test_loops_on_crystal_pockets_use_target_prep_flat_fields() -> None:
+    """Loops force crystal-ligand pocket finding through Target Preparation."""
+    from deeporigin.drug_discovery import PocketFinderConfig
+
+    prep = ProteinPrep(
+        protein=_protein_with_remote(),
+        selection=_SAMPLE_SELECTION,
+        model_missing_loops=True,
+        pdb_id="1EBY",
+        pocket=PocketFinderConfig(
+            mode="from-crystal-ligand",
+            ligand_id="LIG",
+        ),
+    )
+
+    assert prep._uses_composite_route() is True
+    payload = prep._make_target_prep_payload(approve_amount=None)
+    assert payload["inputs"]["find_pockets"] == "from-crystal-ligand"
+    assert payload["inputs"]["crystal_ligand"] == {"ligand_id": "LIG"}
+    assert "pocket" not in payload["inputs"]
 
 
 def test_composite_start_uses_target_preparation_tool_key(
@@ -1117,10 +1175,10 @@ def test_get_pockets_returns_empty_list_for_zero_pocket_result() -> None:
     assert prep.get_pockets({"jobOutputs": {"pockets": []}}) == []
 
 
-def test_get_extracted_ligands_returns_none_when_not_published(
+def test_get_crystal_poses_returns_none_when_not_published(
     client: DeepOriginClient,
 ) -> None:
-    """Extracted ligands that have not been published yet return None."""
+    """Crystal poses that have not been published yet return None."""
     prep = ProteinPrep(
         protein=Protein(name="test"),
         selection=_SAMPLE_SELECTION,
@@ -1131,13 +1189,13 @@ def test_get_extracted_ligands_returns_none_when_not_published(
     prep._operation_kind = "prepare"
     prep.tool_key = TOOL_KEYS_AND_VERSIONS["protein_prep"]["tool_key"]
 
-    assert prep.get_extracted_ligands({"jobOutputs": {}}) is None
+    assert prep.get_crystal_poses({"jobOutputs": {}}) is None
 
 
-def test_get_extracted_ligands_returns_empty_set_when_none_extracted(
+def test_get_crystal_poses_returns_empty_set_when_none_extracted(
     client: DeepOriginClient,
 ) -> None:
-    """A completed prepare with no extractions returns an empty LigandSet."""
+    """A completed prepare with no extractions returns an empty PoseSet."""
     prep = ProteinPrep(
         protein=Protein(name="test"),
         selection=_SAMPLE_SELECTION,
@@ -1148,42 +1206,40 @@ def test_get_extracted_ligands_returns_empty_set_when_none_extracted(
     prep._operation_kind = "prepare"
     prep.tool_key = TOOL_KEYS_AND_VERSIONS["protein_prep"]["tool_key"]
 
-    extracted = prep.get_extracted_ligands({"jobOutputs": {"extracted_ligands": []}})
-    assert isinstance(extracted, LigandSet)
+    extracted = prep.get_crystal_poses({"jobOutputs": {"poses": []}})
+    assert isinstance(extracted, PoseSet)
     assert len(extracted) == 0
 
 
-def test_ligands_from_extracted_output_rows_hydrates_metadata(
+def test_crystal_poses_from_output_rows_hydrates_metadata(
     client: DeepOriginClient,
     registered_ligand: Ligand,
 ) -> None:
-    """Extracted-ligand rows map ids, paths, and source protein onto Ligand."""
-    source_protein_id = "09SOURCEPROTEIN0"
+    """Prepare pose rows map ids, paths, and protein onto Pose."""
+    prepared_protein_id = "09PREPAREDPROTEIN"
     rows = [
         {
             "component_id": "ligand:LIG:A:100",
             "file_path": "entities/ligands/extracted/exec/lig.sdf",
             "ligand_id": registered_ligand.id,
+            "origin": "crystal_extract",
+            "protein_id": prepared_protein_id,
         }
     ]
-    ligands = _ligands_from_extracted_output_rows(
-        rows,
-        client=client,
-        extracted_from_protein_id=source_protein_id,
-        download=False,
-    )
-    assert len(ligands) == 1
-    assert ligands[0].id == registered_ligand.id
-    assert ligands[0].component_id == "ligand:LIG:A:100"
-    assert ligands[0].extracted_from_protein_id == source_protein_id
-    assert ligands[0].remote_path == "entities/ligands/extracted/exec/lig.sdf"
+    poses = _crystal_poses_from_output_rows(rows, client=client)
+    assert len(poses) == 1
+    assert poses[0].ligand_id == registered_ligand.id
+    assert poses[0].props.get("component_id") == "ligand:LIG:A:100"
+    assert poses[0].protein_id == prepared_protein_id
+    assert poses[0].origin == "crystal_extract"
+    assert poses[0].remote_path == "entities/ligands/extracted/exec/lig.sdf"
 
 
-def test_run_with_extract_populates_get_extracted_ligands(
+def test_run_with_extract_populates_get_crystal_poses(
     client: DeepOriginClient,
     registered_protein: Protein,
 ) -> None:
-    """Prepare with extract decisions returns ligands via get_extracted_ligands."""
+    """Prepare with extract decisions returns poses via get_crystal_poses."""
     prep = ProteinPrep(
         protein=registered_protein,
         selection=_SAMPLE_SELECTION,
@@ -1191,12 +1247,13 @@ def test_run_with_extract_populates_get_extracted_ligands(
         client=client,
     )
     prep.run()
-    extracted = prep.get_extracted_ligands()
-    assert isinstance(extracted, LigandSet)
-    assert len(extracted) == 1
-    assert extracted[0].component_id == "ligand:LIG:A:100"
-    assert extracted[0].extracted_from_protein_id == registered_protein.id
-    assert extracted[0].id is not None
+    poses = prep.get_crystal_poses()
+    assert isinstance(poses, PoseSet)
+    assert len(poses) == 1
+    assert poses[0].props.get("component_id") == "ligand:LIG:A:100"
+    assert poses[0].ligand_id is not None
+    assert poses[0].origin == "crystal_extract"
+    assert poses[0].protein_id is not None
 
 
 def test_configuration_freezes_pocket_after_id() -> None:
