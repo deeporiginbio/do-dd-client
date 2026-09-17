@@ -1,10 +1,18 @@
 """Recommend settings and prepare a protein with one mutable configuration.
 
-Protein Prep uses two platform operations behind one user-facing object:
+``ProteinPrep`` is the sole public preparation session. It always recommends
+via direct ``deeporigin.protein-prep``. Preparation routes by configuration:
 
-1. ``action="recommend"`` inventories chains, ligands, cofactors, and waters.
-2. ``action="prepare"`` applies a digest-bound Selection, then runs
-   loop modelling (unless ``model_missing_loops=False``) and protonation.
+- loops off with no pockets or crystal-ligand pockets → direct
+  ``deeporigin.protein-prep`` (``run`` / ``start``);
+- loops on, or novel pocket finding → workflow
+  ``deeporigin.target-preparation`` (``start`` only).
+
+Optional :class:`PocketFinderConfig` selects Pocket Finder. :meth:`get_results`
+always returns the prepared
+:class:`~deeporigin.drug_discovery.structures.protein.Protein`; use
+:meth:`get_report`, :meth:`get_pockets`, and :meth:`get_crystal_poses`
+for other prepare artifacts.
 
 Usage::
 
@@ -20,47 +28,85 @@ from __future__ import annotations
 
 from collections.abc import Iterable, Mapping
 from copy import deepcopy
+from dataclasses import dataclass, field
 from html import escape
 import re
-from typing import Any, Literal, NamedTuple, Self
+from typing import TYPE_CHECKING, Any, Literal, NamedTuple, Self
 
 from beartype import beartype
 import pandas as pd
 
-from deeporigin.drug_discovery.execution import Execution
+from deeporigin.drug_discovery.execution import (
+    Execution,
+    _execution_outputs_dict,
+)
 from deeporigin.drug_discovery.execution_mixins import (
     AsyncExecutableMixin,
     SyncExecutableMixin,
 )
 from deeporigin.drug_discovery.notebook_watch_mixin import NotebookWatchMixin
+from deeporigin.drug_discovery.structures.ligand import Ligand
+from deeporigin.drug_discovery.structures.pocket import Pocket
+from deeporigin.drug_discovery.structures.pose import Pose, PoseSet
 from deeporigin.drug_discovery.structures.protein import Protein
 from deeporigin.exceptions import DeepOriginException
 from deeporigin.platform.client import DeepOriginClient
-from deeporigin.platform.constants import TOOL_KEYS_AND_VERSIONS
+from deeporigin.platform.constants import (
+    TOOL_KEYS_AND_VERSIONS,
+    is_success_status,
+    normalize_platform_status,
+)
 from deeporigin.utils.constants import (
+    EXECUTION_LIST_ORDER_CREATED_DESC,
     PROTEIN_PREP_COMPONENT_KINDS,  # ty:ignore[unresolved-import]
     PROTEIN_PREP_DATAFRAME_ID_COLUMN_MSG,  # ty:ignore[unresolved-import]
     PROTEIN_PREP_DISPLAY_NONE,  # ty:ignore[unresolved-import]
     PROTEIN_PREP_KEEP_SKIP_EMPTY_MSG,  # ty:ignore[unresolved-import]
     PROTEIN_PREP_KEEP_SKIP_MIXED_MSG,  # ty:ignore[unresolved-import]
-    PROTEIN_PREP_KEEP_SKIP_VIEW_MSG,  # ty:ignore[unresolved-import]
     PROTEIN_PREP_NO_OUTPUT_PATHS_MSG,
     PROTEIN_PREP_NO_RECOMMENDATION_MSG,  # ty:ignore[unresolved-import]
     PROTEIN_PREP_PDB_ID_PATTERN,
     PROTEIN_PREP_PDB_ID_REQUIRED_MSG,  # ty:ignore[unresolved-import]
+    PROTEIN_PREP_POCKETS_EXCLUDED_MSG,  # ty:ignore[unresolved-import]
     PROTEIN_PREP_RECOMMEND_NOT_PREPARE_MSG,  # ty:ignore[unresolved-import]
     PROTEIN_PREP_RECOMMENDATION_COLUMNS,  # ty:ignore[unresolved-import]
+    PROTEIN_PREP_REPORT_EXCLUDED_MSG,  # ty:ignore[unresolved-import]
     PROTEIN_PREP_RUN_REQUIRES_LOOPS_OFF_MSG,  # ty:ignore[unresolved-import]
     PROTEIN_PREP_SUBTYPE_REQUIRES_RECOMMENDATION_MSG,  # ty:ignore[unresolved-import]
 )
 
+if TYPE_CHECKING:
+    from deeporigin.drug_discovery.structure_report import StructureReportResult
+
+
 _PDB_ID_RE = re.compile(PROTEIN_PREP_PDB_ID_PATTERN)
 _RESULT_TYPE_PREPARED_PROTEIN = "preparedprotein"
+_RESULT_TYPE_STRUCTURE_REPORT = "structurereport"
+_RESULT_TYPE_POCKET = "pocket"
+_RESULT_TYPE_POSE = "pose"
+_CRYSTAL_EXTRACT_ORIGIN = "crystal_extract"
 _VALID_ACTIONS = frozenset({"recommend", "prepare"})
-_VALID_DECISIONS = frozenset({"keep", "review", "skip"})
-_RESOLVED_DECISIONS = frozenset({"keep", "skip"})
+_VALID_ANALYZER_RECOMMENDATIONS = frozenset({"keep", "review", "skip", "extract"})
+_VALID_DECISIONS = frozenset({"keep", "review", "skip", "extract"})
+_RESOLVED_DECISIONS = frozenset({"keep", "skip", "extract"})
+_PROTEIN_PREP_TOOL_KEY = TOOL_KEYS_AND_VERSIONS["protein_prep"]["tool_key"]
+_TARGET_PREP_TOOL_KEY = TOOL_KEYS_AND_VERSIONS["target_prep"]["tool_key"]
+_ALLOWED_TOOL_KEYS = frozenset({_PROTEIN_PREP_TOOL_KEY, _TARGET_PREP_TOOL_KEY})
+_DEFAULT_POCKET_COUNT = 1
+_DEFAULT_POCKET_MIN_SIZE = 30
+_DEFAULT_POCKET_RADIUS = 10.0
+_VALID_POCKET_MODES = frozenset(
+    {"auto-find", "define-by-selection", "from-crystal-ligand"}
+)
+_VALID_BOX_GEOMETRIES = frozenset({"ligand-extents", "fixed-radius"})
+_DEFINE_BY_SELECTION_COMPOSITE_MSG = (
+    "ProteinPrep.pocket does not support mode='define-by-selection'. "
+    "Use the standalone PocketFinder tool for expert selection-defined pockets."
+)
 
 ProteinPrepAction = Literal["recommend", "prepare"]
+PocketFinderMode = Literal["auto-find", "define-by-selection", "from-crystal-ligand"]
+BoxGeometry = Literal["ligand-extents", "fixed-radius"]
 
 
 class _ParsedInputs(NamedTuple):
@@ -71,6 +117,312 @@ class _ParsedInputs(NamedTuple):
     pdb_id: str | None
     selection: dict[str, Any] | None
     model_missing_loops: bool
+    pocket: dict[str, Any] | None
+
+
+def _pocket_input_from_inputs(inputs: dict[str, Any]) -> dict[str, Any] | None:
+    """Extract current flat or legacy nested pocket fields from tool inputs."""
+    raw_pocket = inputs.get("pocket")
+    if raw_pocket is not None:
+        if not isinstance(raw_pocket, dict):
+            raise ValueError("Invalid pocket in execution inputs.")
+        return dict(raw_pocket)
+
+    find_pockets = inputs.get("find_pockets")
+    if find_pockets not in {"novel", "from-crystal-ligand"}:
+        return None
+    pocket = {"find_pockets": find_pockets}
+    for key in (
+        "pocket_count",
+        "pocket_min_size",
+        "crystal_ligand",
+        "box_geometry",
+        "box_padding",
+        "pocket_radius",
+    ):
+        if key in inputs:
+            pocket[key] = inputs[key]
+    return pocket
+
+
+@dataclass
+class PocketFinderConfig:
+    """Pocket Finder settings for :class:`ProteinPrep` runs.
+
+    ``auto-find`` maps to platform ``find_pockets='novel'``.
+    ``from-crystal-ligand`` maps to ``find_pockets='from-crystal-ligand'``.
+    Selection-defined pockets remain representable for SDK compatibility, but
+    :class:`ProteinPrep` rejects them in favor of standalone ``PocketFinder``.
+
+    Attributes:
+        mode: Pocket Finder mode.
+        pocket_count: Max pockets for ``auto-find`` (default 1).
+        pocket_min_size: Minimum pocket size for ``auto-find`` (default 30).
+        selections: Component selectors for ``define-by-selection``.
+        pocket_radius: Half-edge of a fixed-radius pocket box.
+        align_to_pocket: PCA-align define-by-selection boxes.
+        crystal_ligand: External ligand file for ``from-crystal-ligand``.
+        ligand_id: In-structure ligand code for ``from-crystal-ligand``.
+        component_id: Protein Prep Component id resolved after extraction.
+        box_geometry: Crystal-ligand box geometry.
+        box_padding: Padding for ``ligand-extents`` geometry.
+    """
+
+    mode: PocketFinderMode = "auto-find"
+    pocket_count: int | None = None
+    pocket_min_size: int | float | None = None
+    selections: list[Any] | None = None
+    pocket_radius: float | None = None
+    align_to_pocket: bool | None = None
+    crystal_ligand: Ligand | None = None
+    ligand_id: str | None = None
+    component_id: str | None = None
+    box_geometry: BoxGeometry | None = None
+    box_padding: float | None = None
+    _crystal_ligand_remote_path: str | None = field(default=None, repr=False)
+
+    def __post_init__(self) -> None:
+        """Validate mode-specific fields after construction."""
+        self.validate()
+
+    def validate(self) -> None:
+        """Raise if mode and fields are inconsistent.
+
+        Raises:
+            ValueError: If mode/kwargs mixing or structural checks fail.
+        """
+        if self.mode not in _VALID_POCKET_MODES:
+            raise ValueError(
+                f"mode must be one of {sorted(_VALID_POCKET_MODES)}, got {self.mode!r}."
+            )
+        if self.mode == "auto-find":
+            self._validate_auto_find()
+        elif self.mode == "define-by-selection":
+            self._validate_define_by_selection()
+        else:
+            self._validate_crystal_ligand()
+
+    def _reject_auto_only(self) -> None:
+        """Reject auto-find-only fields outside auto-find mode."""
+        if self.pocket_count is not None or self.pocket_min_size is not None:
+            raise ValueError(
+                "pocket_count and pocket_min_size are only valid when mode is "
+                "'auto-find'."
+            )
+
+    def _reject_selection_only(self) -> None:
+        """Reject define-by-selection-only fields outside that mode."""
+        if self.selections is not None or self.align_to_pocket is not None:
+            raise ValueError(
+                "selections and align_to_pocket are only valid when mode is "
+                "'define-by-selection'."
+            )
+
+    def _reject_crystal_only(self) -> None:
+        """Reject crystal-ligand-only fields outside that mode."""
+        if any(
+            value is not None
+            for value in (
+                self.crystal_ligand,
+                self.ligand_id,
+                self.component_id,
+                self._crystal_ligand_remote_path,
+            )
+        ):
+            raise ValueError(
+                "crystal_ligand, ligand_id, and component_id are only valid "
+                "when mode is 'from-crystal-ligand'."
+            )
+        if self.box_geometry is not None or self.box_padding is not None:
+            raise ValueError(
+                "box_geometry and box_padding are only valid when mode is "
+                "'from-crystal-ligand'."
+            )
+
+    def _validate_auto_find(self) -> None:
+        """Normalize and validate auto-find fields."""
+        self._reject_selection_only()
+        self._reject_crystal_only()
+        if self.pocket_radius is not None:
+            raise ValueError("pocket_radius is not valid when mode is 'auto-find'.")
+        count = (
+            _DEFAULT_POCKET_COUNT
+            if self.pocket_count is None
+            else int(self.pocket_count)
+        )
+        min_size = (
+            _DEFAULT_POCKET_MIN_SIZE
+            if self.pocket_min_size is None
+            else float(self.pocket_min_size)
+        )
+        if count < 1 or min_size < 1:
+            raise ValueError(
+                "pocket_count and pocket_min_size must both be at least 1."
+            )
+        self.pocket_count = count
+        self.pocket_min_size = min_size
+
+    def _validate_define_by_selection(self) -> None:
+        """Normalize and validate define-by-selection fields."""
+        self._reject_auto_only()
+        self._reject_crystal_only()
+        from deeporigin.drug_discovery.pocket_finder import _normalize_selections
+
+        if not isinstance(self.selections, list) or not self.selections:
+            raise ValueError(
+                "selections must be a non-empty list when mode is "
+                "'define-by-selection'."
+            )
+        self.selections = _normalize_selections(self.selections)
+        radius = (
+            _DEFAULT_POCKET_RADIUS
+            if self.pocket_radius is None
+            else float(self.pocket_radius)
+        )
+        if radius <= 0:
+            raise ValueError("pocket_radius must be greater than 0.")
+        self.pocket_radius = radius
+        self.align_to_pocket = (
+            False if self.align_to_pocket is None else bool(self.align_to_pocket)
+        )
+
+    def _validate_crystal_ligand(self) -> None:
+        """Validate from-crystal-ligand source and geometry fields."""
+        self._reject_auto_only()
+        self._reject_selection_only()
+        sources = [
+            self.crystal_ligand is not None,
+            bool(self.ligand_id and str(self.ligand_id).strip()),
+            bool(self.component_id and str(self.component_id).strip()),
+            bool(self._crystal_ligand_remote_path),
+        ]
+        if sum(1 for value in sources if value) != 1:
+            raise ValueError(
+                "Provide exactly one of crystal_ligand, ligand_id, or component_id."
+            )
+        if (
+            self.box_geometry is not None
+            and self.box_geometry not in _VALID_BOX_GEOMETRIES
+        ):
+            raise ValueError(
+                f"box_geometry must be one of {sorted(_VALID_BOX_GEOMETRIES)}."
+            )
+        if self.box_padding is not None and float(self.box_padding) < 0:
+            raise ValueError("box_padding must be non-negative.")
+        if self.pocket_radius is not None and float(self.pocket_radius) <= 0:
+            raise ValueError("pocket_radius must be greater than 0.")
+
+    def ensure_remote(self, *, client: DeepOriginClient) -> None:
+        """Upload an external crystal ligand when present.
+
+        Args:
+            client: API client used for sync/upload.
+        """
+        if self.crystal_ligand is None:
+            return
+        self.crystal_ligand.sync(lazy=True, client=client)
+        self.crystal_ligand.ensure_remote_path(
+            client=client,
+            label="Crystal ligand",
+        )
+
+    def to_tool_input(self) -> dict[str, Any]:
+        """Return flat ``find_pockets`` fields for preparation tool inputs.
+
+        Returns:
+            Fields to merge into the preparation tool's ``inputs`` object.
+
+        Raises:
+            ValueError: If settings are invalid or a crystal ligand path is
+                missing.
+        """
+        self.validate()
+        if self.mode == "auto-find":
+            return {
+                "find_pockets": "novel",
+                "pocket_count": int(self.pocket_count or _DEFAULT_POCKET_COUNT),
+                "pocket_min_size": (
+                    self.pocket_min_size
+                    if self.pocket_min_size is not None
+                    else _DEFAULT_POCKET_MIN_SIZE
+                ),
+            }
+        if self.mode == "define-by-selection":
+            raise ValueError(_DEFINE_BY_SELECTION_COMPOSITE_MSG)
+        if self.crystal_ligand is not None:
+            path = self.crystal_ligand.remote_path
+            if not path or not str(path).strip():
+                raise ValueError(
+                    "crystal_ligand remote_path is required; sync the crystal "
+                    "ligand first."
+                )
+            crystal: dict[str, str] = {"file_path": str(path)}
+        elif self._crystal_ligand_remote_path:
+            crystal = {"file_path": str(self._crystal_ligand_remote_path)}
+        elif self.ligand_id:
+            crystal = {"ligand_id": str(self.ligand_id)}
+        else:
+            crystal = {"component_id": str(self.component_id)}
+        pocket: dict[str, Any] = {
+            "find_pockets": "from-crystal-ligand",
+            "crystal_ligand": crystal,
+        }
+        if self.pocket_radius is not None:
+            pocket["pocket_radius"] = float(self.pocket_radius)
+        if self.box_geometry is not None:
+            pocket["box_geometry"] = self.box_geometry
+        if self.box_padding is not None:
+            pocket["box_padding"] = float(self.box_padding)
+        return pocket
+
+    @classmethod
+    def from_tool_input(cls, data: dict[str, Any]) -> PocketFinderConfig:
+        """Rebuild config from stored flat or legacy nested pocket inputs.
+
+        Args:
+            data: Pocket-related fields from execution ``userInputs``.
+
+        Returns:
+            Rehydrated config (``crystal_ligand`` Ligand is not restored).
+
+        Raises:
+            ValueError: If ``data`` is not a valid pocket object.
+        """
+        if not isinstance(data, dict):
+            raise ValueError("pocket input must be an object.")
+        mode = data.get("find_pockets") or data.get("mode") or "auto-find"
+        if mode in {"novel", "auto-find"}:
+            return cls(
+                mode="auto-find",
+                pocket_count=data.get("pocket_count"),
+                pocket_min_size=data.get("pocket_min_size"),
+            )
+        if mode == "define-by-selection":
+            return cls(
+                mode="define-by-selection",
+                selections=data.get("selections"),
+                pocket_radius=data.get("pocket_radius"),
+                align_to_pocket=data.get("align_to_pocket"),
+            )
+        crystal = data.get("crystal_ligand") or {}
+        if not isinstance(crystal, dict):
+            raise ValueError("pocket.crystal_ligand must be an object.")
+        remote = crystal.get("file_path")
+        return cls(
+            mode="from-crystal-ligand",
+            ligand_id=crystal.get("ligand_id"),
+            component_id=crystal.get("component_id"),
+            pocket_radius=data.get("pocket_radius"),
+            box_geometry=data.get("box_geometry"),
+            box_padding=data.get("box_padding"),
+            _crystal_ligand_remote_path=str(remote) if remote else None,
+        )
+
+
+def _dto_created_at(dto: dict[str, Any]) -> str:
+    """Return a sortable ``createdAt`` string from an execution DTO."""
+    value = dto.get("createdAt") or ""
+    return str(value)
 
 
 def _protein_display_value(protein: Protein) -> str:
@@ -91,6 +443,43 @@ def _protein_display_value(protein: Protein) -> str:
     if extras:
         return f"{name} ({', '.join(extras)})"
     return name
+
+
+def _protein_prep_default_name(
+    *,
+    protein: Protein,
+    pdb_id: str | None,
+    model_missing_loops: bool,
+    include_pocket: bool,
+) -> str:
+    """Build a short human-readable label for a prepare execution.
+
+    Prefers ``pdb_id``, then ``protein.name``, then ``"protein"``.
+
+    Args:
+        protein: Input protein (``name`` used when ``pdb_id`` is absent).
+        pdb_id: Optional 4-character PDB ID for the run.
+        model_missing_loops: Whether loop modelling is enabled.
+        include_pocket: Whether Pocket Finder is configured.
+
+    Returns:
+        Labels such as ``Preparing 1EBY``,
+        ``Preparing and loop modelling 1EBY``,
+        ``Preparing and finding pockets brd``, or
+        ``Preparing, loop modelling, and finding pockets 1EBY``.
+    """
+    raw_label = pdb_id or protein.name or "protein"
+    label = str(raw_label).strip() or "protein"
+    extras: list[str] = []
+    if model_missing_loops:
+        extras.append("loop modelling")
+    if include_pocket:
+        extras.append("finding pockets")
+    if not extras:
+        return f"Preparing {label}"
+    if len(extras) == 1:
+        return f"Preparing and {extras[0]} {label}"
+    return f"Preparing, {extras[0]}, and {extras[1]} {label}"
 
 
 def _normalize_pdb_id(raw: str) -> str:
@@ -134,6 +523,58 @@ def _optional_pdb_id(*, protein: Protein, pdb_id: str | None) -> str | None:
     return _normalize_pdb_id(str(raw))
 
 
+def _is_ligand_component_id(component_id: str) -> bool:
+    """Return whether *component_id* refers to a ligand Component."""
+    return str(component_id).startswith("ligand:")
+
+
+def _validate_decision_for_component(component_id: str, decision: str) -> None:
+    """Raise if *decision* is invalid for a Selection component id.
+
+    Args:
+        component_id: Selection / recommendation component id.
+        decision: Draft or resolved decision string.
+
+    Raises:
+        ValueError: If the decision is not allowed for this component kind.
+    """
+    if decision == "review":
+        return
+    if _is_ligand_component_id(component_id):
+        if decision not in {"keep", "extract"}:
+            raise ValueError(
+                f"selection.decisions[{component_id!r}] must be 'keep', "
+                f"'extract', or 'review' for ligands, got {decision!r}."
+            )
+        return
+    if decision not in {"keep", "skip"}:
+        raise ValueError(
+            f"selection.decisions[{component_id!r}] must be 'keep', 'skip', "
+            f"or 'review', got {decision!r}."
+        )
+
+
+def _normalize_decision_for_component(component_id: str, decision: str) -> str:
+    """Return a platform-valid decision, mapping ligand skip to extract.
+
+    Args:
+        component_id: Selection component id.
+        decision: Requested decision (``keep``, ``skip``, ``extract``, or
+            ``review``).
+
+    Returns:
+        Normalized decision stored on the Selection.
+
+    Raises:
+        ValueError: If the decision is invalid for this component.
+    """
+    resolved = str(decision)
+    if resolved == "skip" and _is_ligand_component_id(component_id):
+        resolved = "extract"
+    _validate_decision_for_component(component_id, resolved)
+    return resolved
+
+
 def _copy_selection(selection: dict[str, Any]) -> dict[str, Any]:
     """Return a validated JSON-shape copy of a Selection.
 
@@ -142,11 +583,11 @@ def _copy_selection(selection: dict[str, Any]) -> dict[str, Any]:
             and ``decisions``.
 
     Returns:
-        Copy with string keys and ``keep``/``review``/``skip`` decisions.
+        Copy with string keys and validated per-component decisions.
 
     Raises:
         ValueError: If required keys are missing, ``decisions`` is not an
-            object, or a decision is not ``keep``, ``review``, or ``skip``.
+            object, or a decision is invalid for its component id.
     """
     for key in ("source_sha256", "analyzer_version", "decisions"):
         if key not in selection:
@@ -158,13 +599,9 @@ def _copy_selection(selection: dict[str, Any]) -> dict[str, Any]:
         raise ValueError("selection.decisions must not be empty.")
     decisions: dict[str, str] = {}
     for component_id, raw_decision in decisions_raw.items():
-        decision = str(raw_decision)
-        if decision not in _VALID_DECISIONS:
-            raise ValueError(
-                f"selection.decisions[{component_id!r}] must be 'keep', "
-                f"'review', or 'skip', got {raw_decision!r}."
-            )
-        decisions[str(component_id)] = decision
+        component_key = str(component_id)
+        decision = _normalize_decision_for_component(component_key, str(raw_decision))
+        decisions[component_key] = decision
     return {
         "source_sha256": str(selection["source_sha256"]),
         "analyzer_version": str(selection["analyzer_version"]),
@@ -189,7 +626,8 @@ def _format_selection_display(selection: dict[str, Any] | None) -> str:
     keep_n = sum(1 for value in decisions.values() if value == "keep")
     review_n = sum(1 for value in decisions.values() if value == "review")
     skip_n = sum(1 for value in decisions.values() if value == "skip")
-    return f"{keep_n} keep, {review_n} review, {skip_n} skip"
+    extract_n = sum(1 for value in decisions.values() if value == "extract")
+    return f"{keep_n} keep, {review_n} review, {skip_n} skip, {extract_n} extract"
 
 
 def _protein_tool_input(protein: Protein) -> dict[str, Any]:
@@ -216,34 +654,67 @@ def _protein_tool_input(protein: Protein) -> dict[str, Any]:
 def _protein_from_prepared_data(
     data: dict[str, Any],
     *,
+    client: DeepOriginClient,
     fallback_pdb_id: str | None,
     fallback_name: str | None,
 ) -> Protein:
-    """Build an in-memory Protein from a prepared-protein output dict.
+    """Build a :class:`Protein` from a prepared-protein output dict.
 
     Args:
         data: ``jobOutputs.protein`` or result-explorer ``data`` payload.
+        client: Platform client used to resolve ``id``.
         fallback_pdb_id: PDB ID used when the payload omits ``pdb_id``.
-        fallback_name: Input protein name used to label the result.
+        fallback_name: Input protein name used when the entity name is generic.
 
     Returns:
-        Protein with ``id`` unset and ``remote_path`` set to the prepared PDB.
+        Registered prepared protein resolved from ``id``.
 
     Raises:
-        ValueError: If ``protein_pdb_file_path`` is missing or empty.
+        ValueError: If ``id`` is missing or empty.
     """
-    path = data.get("protein_pdb_file_path")
-    if not path or not str(path).strip():
+    raw_protein_id = data.get("id")
+    if not raw_protein_id or not str(raw_protein_id).strip():
         raise ValueError(PROTEIN_PREP_NO_OUTPUT_PATHS_MSG)
-    pdb_id = data.get("pdb_id") or fallback_pdb_id
-    base_name = fallback_name.strip() if isinstance(fallback_name, str) else ""
-    name = f"{base_name} (prepared)" if base_name else "prepared protein"
-    return Protein(
-        name=name,
-        pdb_id=str(pdb_id) if pdb_id else None,
-        structure=None,
-        remote_path=str(path),
+    prepared = Protein.from_id(
+        str(raw_protein_id).strip(),
+        client=client,
+        download=False,
     )
+    pdb_id = data.get("pdb_id") or fallback_pdb_id
+    if pdb_id and not prepared.pdb_id:
+        prepared.pdb_id = str(pdb_id)
+    base_name = fallback_name.strip() if isinstance(fallback_name, str) else ""
+    if base_name and prepared.name in {str(raw_protein_id), "protein"}:
+        prepared.name = f"{base_name} (prepared)"
+    return prepared
+
+
+def _crystal_pose_output_rows(rows: list[Any]) -> list[dict[str, Any]]:
+    """Return prepare ``poses[]`` dict rows, excluding non-crystal origins."""
+
+    filtered: list[dict[str, Any]] = []
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        origin = row.get("origin")
+        if origin is not None and str(origin).strip():
+            if str(origin).strip() != _CRYSTAL_EXTRACT_ORIGIN:
+                continue
+        filtered.append(row)
+    return filtered
+
+
+def _crystal_poses_from_output_rows(
+    rows: list[dict[str, Any]],
+    *,
+    client: DeepOriginClient,
+) -> list[Pose]:
+    """Build :class:`Pose` instances from prepare ``poses[]`` job-output rows."""
+
+    pose_rows = _crystal_pose_output_rows(rows)
+    if not pose_rows:
+        return []
+    return PoseSet.from_json(pose_rows, client=client).poses
 
 
 def _selection_from_recommendation(
@@ -279,10 +750,10 @@ def _selection_from_recommendation(
         if not component_id or not str(component_id).strip():
             raise ValueError(f"recommendation.components[{index}] must include id.")
         rec = str(raw.get("recommendation") or "")
-        if rec not in _VALID_DECISIONS:
+        if rec not in _VALID_ANALYZER_RECOMMENDATIONS:
             raise ValueError(
                 f"recommendation.components[{index}] recommendation must be "
-                f"keep, skip, or review, got {raw.get('recommendation')!r}."
+                f"keep, skip, extract, or review, got {raw.get('recommendation')!r}."
             )
         decisions[str(component_id)] = rec
     return {
@@ -331,14 +802,18 @@ def _validate_component_matchers(
     if kind is not None and kind not in PROTEIN_PREP_COMPONENT_KINDS:
         allowed = ", ".join(sorted(PROTEIN_PREP_COMPONENT_KINDS))
         raise ValueError(f"kind must be one of {allowed}, got {kind!r}.")
-    if recommendation is not None and recommendation not in _VALID_DECISIONS:
+    if (
+        recommendation is not None
+        and recommendation not in _VALID_ANALYZER_RECOMMENDATIONS
+    ):
         raise ValueError(
-            "recommendation must be 'keep', 'review', or 'skip', "
+            "recommendation must be 'keep', 'review', 'skip', or 'extract', "
             f"got {recommendation!r}."
         )
     if decision is not None and decision not in _VALID_DECISIONS:
         raise ValueError(
-            f"decision must be 'keep', 'review', or 'skip', got {decision!r}."
+            "decision must be 'keep', 'review', 'skip', or 'extract', "
+            f"got {decision!r}."
         )
 
 
@@ -481,11 +956,9 @@ def _ids_from_positional(
         Component ids as strings, preserving order.
 
     Raises:
-        TypeError: If *component_ids* is a Recommendation view or a mapping.
+        TypeError: If *component_ids* is a mapping.
         ValueError: If a DataFrame has no ``id`` column.
     """
-    if isinstance(component_ids, RecommendationView):
-        raise TypeError(PROTEIN_PREP_KEEP_SKIP_VIEW_MSG.format(method=method))
     if isinstance(component_ids, pd.DataFrame):
         if "id" not in component_ids.columns:
             raise ValueError(PROTEIN_PREP_DATAFRAME_ID_COLUMN_MSG)
@@ -497,82 +970,6 @@ def _ids_from_positional(
     return [str(component_id) for component_id in component_ids]
 
 
-class RecommendationView:
-    """Callable notebook table of Protein Prep Components.
-
-    Uncalled, Jupyter displays the full inventory. Calling AND-filters rows
-    and returns a :class:`~pandas.DataFrame`. Live Selection Decisions are
-    read from the parent :class:`ProteinPrep` on each access.
-
-    Attributes:
-        raw: Deep copy of the analyzer recommendation payload.
-    """
-
-    def __init__(self, prep: ProteinPrep) -> None:
-        """Bind this view to a ProteinPrep that has analyzer evidence.
-
-        Args:
-            prep: Parent session whose ``_recommendation`` is set.
-        """
-        self._prep = prep
-
-    @property
-    def raw(self) -> dict[str, Any]:
-        """Deep copy of the analyzer recommendation payload."""
-        payload = self._prep._recommendation
-        if payload is None:
-            return {}
-        return deepcopy(payload)
-
-    def _dataframe(self) -> pd.DataFrame:
-        """Return the unfiltered Component table with live Decisions."""
-        payload = self._prep._recommendation
-        if not isinstance(payload, dict):
-            return _empty_recommendation_dataframe()
-        decisions: dict[str, str] = {}
-        if self._prep._selection is not None:
-            decisions = dict(self._prep._selection["decisions"])
-        return _rows_to_recommendation_dataframe(
-            _recommendation_rows(payload, decisions)
-        )
-
-    def __call__(
-        self,
-        *,
-        kind: str | None = None,
-        subtype: str | None = None,
-        recommendation: str | None = None,
-        decision: str | None = None,
-    ) -> pd.DataFrame:
-        """Return a DataFrame of Components matching all provided filters.
-
-        Args:
-            kind: Component kind (``chain``, ``ligand``, ``cofactor``,
-                ``water``).
-            subtype: Analyzer subtype string.
-            recommendation: Frozen analyzer keep/review/skip tag.
-            decision: Live Selection Decision.
-
-        Returns:
-            Filtered Component table. Unfiltered when no kwargs are set.
-        """
-        return _filter_recommendation_dataframe(
-            self._dataframe(),
-            kind=kind,
-            subtype=subtype,
-            recommendation=recommendation,
-            decision=decision,
-        )
-
-    def __repr__(self) -> str:
-        """Return the Component table as text."""
-        return self._dataframe().to_string()
-
-    def _repr_html_(self) -> str:
-        """Return the Component table as HTML for Jupyter."""
-        return self._dataframe()._repr_html_()
-
-
 class ProteinPrep(
     Execution,
     SyncExecutableMixin,
@@ -581,25 +978,27 @@ class ProteinPrep(
 ):
     """Recommend settings and prepare a protein.
 
-    :meth:`recommend` blocks, updates :attr:`recommendation` and
-    :attr:`selection`, and deliberately leaves :attr:`id` unset. Resolve
-    ``review`` decisions with :meth:`keep` and :meth:`skip`, then call
-    :meth:`run` for blocking loops-off preparation or :meth:`start` for
-    asynchronous preparation.
-
-    A prepare submission binds the object to its durable execution. Once
-    :attr:`id` is set, configuration is permanently frozen.
+    :meth:`recommend` always uses direct ``deeporigin.protein-prep``.
+    Preparation routes to the same tool when loops are off and ``pocket`` is
+    unset or uses ``from-crystal-ligand``. Loop modelling and novel pocket
+    finding use workflow ``deeporigin.target-preparation``.
+    Blocking :meth:`run` is available for the direct loops-off path. Composite
+    callers use :meth:`start` (with ``quote`` / ``approve_amount`` when
+    pockets are billable).
 
     Attributes:
         protein: Constructor-only input protein structure.
         pdb_id: Mutable 4-character PDB ID for loop-modelling templates.
-        selection: Editable keep/review/skip map. Reads return a copy.
-        recommendation: Callable Component table, or ``None`` before
-            recommend. Analyzer payload is :attr:`RecommendationView.raw`.
+        selection: Editable keep/review/skip/extract map. Reads return a copy.
+        recommendation: Component table as a :class:`~pandas.DataFrame`, or
+            ``None`` before recommend. Refreshes live ``decision`` values on
+            each read.
+        recommendation_payload: Deep copy of analyzer JSON, or ``None``.
         model_missing_loops: Whether prepare models missing loops.
+        pocket: Optional Pocket Finder settings.
     """
 
-    tool_key: str = TOOL_KEYS_AND_VERSIONS["protein_prep"]["tool_key"]
+    tool_key: str = _PROTEIN_PREP_TOOL_KEY
 
     @beartype
     def __init__(
@@ -609,8 +1008,10 @@ class ProteinPrep(
         pdb_id: str | None = None,
         selection: dict[str, Any] | None = None,
         model_missing_loops: bool = True,
+        pocket: PocketFinderConfig | None = None,
         tool_version: str = TOOL_KEYS_AND_VERSIONS["protein_prep"]["tool_version"],
         client: DeepOriginClient | None = None,
+        name: str | None = None,
     ) -> None:
         """Create a ProteinPrep for the given protein.
 
@@ -625,21 +1026,32 @@ class ProteinPrep(
             selection: Optional digest-bound Selection with ``source_sha256``,
                 ``analyzer_version``, and ``decisions``.
             model_missing_loops: When ``False``, skip loop modelling and do
-                not require ``pdb_id``.
-            tool_version: Platform tool version pin.
+                not require ``pdb_id`` on the direct path.
+            pocket: Optional Pocket Finder config. Crystal-ligand pockets can
+                run directly when loops are off; novel pockets use Target
+                Preparation. Selection-defined pockets are unsupported here.
+            tool_version: Platform tool version pin for the direct protein-prep
+                route. Composite runs use the pinned Target Preparation major.
             client: Optional API client. Uses the default if not provided.
+            name: Optional execution label for prepare submissions. When
+                omitted, :meth:`run` and :meth:`start` choose a label from the
+                loops / pocket settings and ``pdb_id`` (or protein name).
 
         Raises:
-            ValueError: If ``pdb_id`` or ``selection`` is invalid.
+            ValueError: If ``pdb_id``, ``selection``, or ``pocket`` is invalid.
         """
         super().__init__(client=client)
         self.tool_version = tool_version
+        self._direct_tool_version = tool_version
+        self.name = name
         self._protein = protein
         self._operation_kind: ProteinPrepAction | None = None
         self._pdb_id = _optional_pdb_id(protein=protein, pdb_id=pdb_id)
         self._selection = _copy_selection(selection) if selection is not None else None
         self._recommendation: dict[str, Any] | None = None
         self._model_missing_loops = model_missing_loops
+        self._pocket: PocketFinderConfig | None = None
+        self.pocket = pocket
 
     @property
     def protein(self) -> Protein:
@@ -688,11 +1100,18 @@ class ProteinPrep(
         self._selection = _copy_selection(value) if value is not None else None
 
     @property
-    def recommendation(self) -> RecommendationView | None:
-        """Callable Component table, or ``None`` when analyzer evidence is missing."""
+    def recommendation(self) -> pd.DataFrame | None:
+        """Component table, or ``None`` when analyzer evidence is missing."""
         if self._recommendation is None:
             return None
-        return RecommendationView(self)
+        return self._component_dataframe()
+
+    @property
+    def recommendation_payload(self) -> dict[str, Any] | None:
+        """Deep copy of the analyzer recommendation payload."""
+        if self._recommendation is None:
+            return None
+        return deepcopy(self._recommendation)
 
     @property
     def model_missing_loops(self) -> bool:
@@ -704,6 +1123,55 @@ class ProteinPrep(
         """Set the loop-modelling flag before this execution is submitted."""
         self._require_unbound("model_missing_loops")
         self._model_missing_loops = bool(value)
+
+    @property
+    def pocket(self) -> PocketFinderConfig | None:
+        """Optional Pocket Finder settings for preparation."""
+        return self._pocket
+
+    @pocket.setter
+    def pocket(self, value: PocketFinderConfig | None) -> None:
+        """Set or clear Pocket Finder settings before submission."""
+        self._require_unbound("pocket")
+        if value is not None:
+            value.validate()
+            if value.mode == "define-by-selection":
+                raise ValueError(_DEFINE_BY_SELECTION_COMPOSITE_MSG)
+        self._pocket = value
+
+    def _uses_composite_route(self) -> bool:
+        """Return whether prepare must use Target Preparation."""
+        return bool(self._model_missing_loops) or (
+            self._pocket is not None and self._pocket.mode == "auto-find"
+        )
+
+    def _ensure_prepare_name(self) -> None:
+        """Set a descriptive prepare name when the caller did not provide one.
+
+        Reflects the current loops / pocket configuration and prefers
+        :attr:`pdb_id` over ``protein.name``.
+        """
+        if self.name is not None:
+            return
+        self.name = _protein_prep_default_name(
+            protein=self._protein,
+            pdb_id=self._pdb_id,
+            model_missing_loops=self._model_missing_loops,
+            include_pocket=self._pocket is not None,
+        )
+
+    def _apply_runtime_route(self, *, composite: bool) -> None:
+        """Set instance ``tool_key`` / ``tool_version`` for the next create.
+
+        Args:
+            composite: When ``True``, route to Target Preparation.
+        """
+        if composite:
+            self.tool_key = _TARGET_PREP_TOOL_KEY
+            self.tool_version = TOOL_KEYS_AND_VERSIONS["target_prep"]["tool_version"]
+        else:
+            self.tool_key = _PROTEIN_PREP_TOOL_KEY
+            self.tool_version = self._direct_tool_version
 
     def _validate_for_submit(self) -> None:
         """Raise if current settings cannot prepare the protein.
@@ -726,10 +1194,12 @@ class ProteinPrep(
             joined = ", ".join(unresolved)
             raise ValueError(
                 f"Resolve review decisions before preparation: {joined}. "
-                "Use keep() or skip()."
+                "Use keep(), skip(), or extract()."
             )
         if self._model_missing_loops and not self._pdb_id:
             raise ValueError(PROTEIN_PREP_PDB_ID_REQUIRED_MSG)
+        if self._pocket is not None:
+            self._pocket.validate()
 
     def _component_dataframe(self) -> pd.DataFrame:
         """Return the Component table used by keep/skip matchers.
@@ -847,7 +1317,10 @@ class ProteinPrep(
             joined = ", ".join(unknown_ids)
             raise ValueError(f"Unknown Selection component IDs: {joined}.")
         for component_id in resolved_ids:
-            known_ids[component_id] = decision
+            known_ids[component_id] = _normalize_decision_for_component(
+                component_id,
+                decision,
+            )
 
     def keep(
         self,
@@ -911,12 +1384,47 @@ class ProteinPrep(
         )
         return self
 
+    def extract(
+        self,
+        component_ids: str | Iterable[str] | pd.DataFrame | None = None,
+        *,
+        kind: str | None = None,
+        subtype: str | None = None,
+        decision: str | None = None,
+    ) -> Self:
+        """Mark matching ligand Selection components to extract.
+
+        Same calling styles as :meth:`keep`. Non-ligand ids raise
+        :class:`ValueError`.
+
+        Args:
+            component_ids: Component ids to extract.
+            kind: Extract every ligand Component of this kind (typically
+                ``ligand``).
+            subtype: Extract every Component of this subtype.
+            decision: Extract every Component with this live Decision.
+
+        Returns:
+            This :class:`ProteinPrep` (for chaining).
+        """
+        self._apply_decisions(
+            component_ids,
+            decision_value="extract",
+            kind=kind,
+            subtype=subtype,
+            decision=decision,
+        )
+        return self
+
     def _parameter_rows(self) -> list[tuple[str, str]]:
         """Return ``(name, value)`` rows for text and HTML display.
 
         Includes constructor parameters and, when set, execution ``name``,
         ``id``, and ``status``.
         """
+        pocket_display = PROTEIN_PREP_DISPLAY_NONE
+        if self._pocket is not None:
+            pocket_display = f"mode={self._pocket.mode}"
         rows: list[tuple[str, str]] = [
             ("protein", _protein_display_value(self.protein)),
             (
@@ -936,6 +1444,7 @@ class ProteinPrep(
                     else PROTEIN_PREP_DISPLAY_NONE
                 ),
             ),
+            ("pocket", pocket_display),
             ("tool_version", str(self.tool_version)),
         ]
         if self.name:
@@ -965,6 +1474,9 @@ class ProteinPrep(
     def _repr_html_(self) -> str:
         """Return an HTML table of parameters for Jupyter display.
 
+        Omits ``progress``: platform progress reports are nested trees that
+        overwhelm a Parameter/Value table. Use ``prep.progress`` directly.
+
         Returns:
             HTML fragment with a Parameter/Value table. Values are escaped.
         """
@@ -976,6 +1488,8 @@ class ProteinPrep(
         )
         body_parts: list[str] = []
         for name, value in self._parameter_rows():
+            if name == "progress":
+                continue
             body_parts.append(
                 "<tr>"
                 "<td style='padding:4px 16px 4px 0;font-family:ui-monospace,"
@@ -995,25 +1509,25 @@ class ProteinPrep(
         )
 
     def _ensure_protein_remote(self) -> None:
-        """Upload/sync the protein and ensure ``remote_path`` is set."""
+        """Upload/sync the protein and optional crystal ligand."""
         self._protein.sync(lazy=True, client=self.client)
         self._protein.ensure_remote_path(client=self.client, label="Protein")
+        if self._pocket is not None:
+            self._pocket.ensure_remote(client=self.client)
 
     def _make_protein_prep_payload(
         self,
         *,
         action: ProteinPrepAction,
         sync: bool,
+        approve_amount: int | None = None,
     ) -> dict[str, Any]:
-        """Build the POST body for ``executions.create``.
-
-        Top-level ``sync`` asks the platform to block on create (SystemPrep
-        style). It is not an input field: the protein-prep schema has no
-        ``sync`` property.
+        """Build the POST body for direct ``deeporigin.protein-prep``.
 
         Args:
             action: Internal platform operation.
             sync: Whether create blocks until completion.
+            approve_amount: Optional spend cap (usually omitted).
 
         Returns:
             Payload for ``client.executions.create``.
@@ -1034,23 +1548,72 @@ class ProteinPrep(
                 inputs["model_missing_loops"] = False
             if self._pdb_id:
                 inputs["pdb_id"] = self._pdb_id
-        return {
+            inputs["find_pockets"] = "no"
+            if self._pocket is not None:
+                inputs.update(self._pocket.to_tool_input())
+        payload: dict[str, Any] = {
             "inputs": inputs,
             "outputs": {},
             "metadata": {},
             "sync": sync,
         }
+        if approve_amount is not None:
+            payload["approveAmount"] = approve_amount
+        if self.name is not None and action == "prepare":
+            payload["name"] = self.name
+        return payload
 
-    def recommend(self) -> RecommendationView:
-        """Recommend settings into this object without binding an execution ID.
+    def _make_target_prep_payload(
+        self,
+        *,
+        approve_amount: int | None,
+    ) -> dict[str, Any]:
+        """Build the POST body for action-less Target Preparation.
 
-        The platform operation is synchronous and persisted by the backend, but
-        its execution ID is deliberately not copied onto this object. Repeated
-        calls atomically replace :attr:`recommendation` and :attr:`selection`
-        only after a complete recommendation is available.
+        Args:
+            approve_amount: Optional spend cap (``0`` for quote-only).
 
         Returns:
-            The :class:`RecommendationView` table for this inventory.
+            Payload for ``client.executions.create``.
+        """
+        self._validate_for_submit()
+        assert self._selection is not None
+        inputs: dict[str, Any] = {
+            "protein": _protein_tool_input(self._protein),
+            "selection": {
+                "source_sha256": self._selection["source_sha256"],
+                "analyzer_version": self._selection["analyzer_version"],
+                "decisions": dict(self._selection["decisions"]),
+            },
+            "model_missing_loops": self._model_missing_loops,
+        }
+        if self._pdb_id:
+            inputs["pdb_id"] = self._pdb_id
+        inputs["find_pockets"] = "no"
+        if self._pocket is not None:
+            inputs.update(self._pocket.to_tool_input())
+        payload: dict[str, Any] = {
+            "inputs": inputs,
+            "outputs": {},
+            "metadata": {},
+        }
+        if approve_amount is not None:
+            payload["approveAmount"] = approve_amount
+        if self.name is not None:
+            payload["name"] = self.name
+        return payload
+
+    def recommend(self) -> pd.DataFrame:
+        """Recommend settings into this object without binding an execution ID.
+
+        Always uses direct ``deeporigin.protein-prep``. The platform operation
+        is synchronous and persisted by the backend, but its execution ID is
+        deliberately not copied onto this object. Repeated calls atomically
+        replace :attr:`recommendation` and :attr:`selection` only after a
+        complete recommendation is available.
+
+        Returns:
+            Component inventory table for this structure.
 
         Raises:
             AttributeError: If this object is already bound to prepare.
@@ -1058,6 +1621,7 @@ class ProteinPrep(
         """
         self._require_unbound("recommend")
         self._ensure_protein_remote()
+        self._apply_runtime_route(composite=False)
         dto = self._create_execution(
             data=self._make_protein_prep_payload(action="recommend", sync=True),
         )
@@ -1079,76 +1643,145 @@ class ProteinPrep(
         selection = _selection_from_recommendation(recommendation)
         self._recommendation = deepcopy(recommendation)
         self._selection = selection
-        view = self.recommendation
-        assert view is not None
-        return view
+        table = self.recommendation
+        assert table is not None
+        return table
 
-    def start(self) -> None:  # ty: ignore[invalid-method-override]
+    def _start_impl(self, *, approve_amount: int | None = None, **kwargs: Any) -> None:
         """Submit preparation asynchronously and bind this object to it.
 
-        Raises:
-            ValueError: If already submitted or settings cannot prepare.
+        Args:
+            approve_amount: Spend cap (``0`` for quote-only on billable pocket
+                runs).
+            **kwargs: Unused; accepted for mixin compatibility.
         """
-        if self.id is not None or self.status is not None:
+        del kwargs
+        if self.id is not None:
             raise ValueError("Cannot start: this ProteinPrep is already bound.")
         self._validate_for_submit()
+        self._ensure_prepare_name()
         self._ensure_protein_remote()
-        execution_dto = self._create_execution(
-            data=self._make_protein_prep_payload(action="prepare", sync=False),
-        )
+        composite = self._uses_composite_route()
+        self._apply_runtime_route(composite=composite)
+        if composite:
+            data = self._make_target_prep_payload(approve_amount=approve_amount)
+        else:
+            data = self._make_protein_prep_payload(
+                action="prepare",
+                sync=False,
+                approve_amount=approve_amount,
+            )
+        execution_dto = self._create_execution(data=data)
         if execution_dto.get("executionId") is None:
             raise ValueError("Execution response must contain 'executionId'") from None
         self._operation_kind = "prepare"
         self.update_from_dto(execution_dto)
 
-    def _require_loops_off_prepare(self) -> None:
+    def _require_direct_blocking_prepare(self) -> None:
         """Raise unless this instance may ``run()``.
 
-        ``run()`` is only legal with ``model_missing_loops=False``.
-
         Raises:
-            ValueError: If loop modelling is enabled.
+            ValueError: If loop modelling or novel pocket finding is enabled.
         """
-        if self._model_missing_loops:
+        if self._uses_composite_route():
             raise ValueError(PROTEIN_PREP_RUN_REQUIRES_LOOPS_OFF_MSG)
 
-    def run(self) -> Protein:
-        """Execute loops-off prepare synchronously (blocking).
+    def run(
+        self,
+        *,
+        quote: bool = False,
+        approve_amount: int | None = None,
+    ) -> Protein | None:
+        """Execute loops-off direct preparation synchronously (blocking).
 
-        Only valid when :attr:`model_missing_loops` is ``False``.
+        Only valid when :attr:`model_missing_loops` is ``False`` and
+        :attr:`pocket` is unset or uses ``from-crystal-ligand``.
+
+        Args:
+            quote: Shorthand for ``approve_amount=0``.
+            approve_amount: Optional spend cap (usually omitted on this path).
 
         Returns:
-            An in-memory prepared :class:`Protein`.
+            An in-memory prepared :class:`Protein`, or ``None`` when Quoted.
 
         Raises:
-            ValueError: If already submitted or this is not loops-off prepare.
+            ValueError: If already submitted or this is not the direct path.
             DeepOriginException: If no prepared PDB path could be loaded.
         """
         if self.id is not None or self.status is not None:
             raise ValueError("Cannot run: this ProteinPrep is already bound.")
-        self._require_loops_off_prepare()
+        self._require_direct_blocking_prepare()
         self._validate_for_submit()
+        self._ensure_prepare_name()
         self._ensure_protein_remote()
+        self._apply_runtime_route(composite=False)
+        resolved_amount = 0 if quote else approve_amount
         dto = self._create_execution(
-            data=self._make_protein_prep_payload(action="prepare", sync=True),
+            data=self._make_protein_prep_payload(
+                action="prepare",
+                sync=True,
+                approve_amount=resolved_amount,
+            ),
         )
         self._operation_kind = "prepare"
         self.update_from_dto(dto)
+        if self.status == "Quoted":
+            return None
         return self.get_results(dto)
+
+    def update_from_dto(self, dto: dict[str, Any]) -> None:
+        """Apply tools execution fields, accepting either routed tool key.
+
+        Args:
+            dto: Execution payload (same shape as ``client.executions.get``).
+
+        Raises:
+            ValueError: If the DTO tool key is not protein-prep or
+                target-preparation.
+        """
+        tool_info = dto["tool"]
+        dto_tool_key = tool_info["key"]
+        if dto_tool_key not in _ALLOWED_TOOL_KEYS:
+            raise ValueError(
+                "Cannot apply execution DTO: "
+                f"tool key mismatch (dto={dto_tool_key!r}, "
+                f"allowed={sorted(_ALLOWED_TOOL_KEYS)!r})."
+            )
+        self.tool_key = dto_tool_key
+        self._id = dto["executionId"]
+        self._estimate = None
+        self._cost = None
+        self.tool_version = tool_info["version"]
+        self.status = normalize_platform_status(dto.get("status"))
+        self.progress = dto.get("progressReport")
+        self.app = dto.get("app")
+        self.approve_amount = dto.get("approveAmount")
+        self.created_at = dto.get("createdAt")
+        self.created_by = dto.get("createdBy")
+        self.started_at = dto.get("startedAt")
+        self.completed_at = dto.get("completedAt")
+        self.session = dto.get("session")
+        self._dto = dto
+        self._name = dto.get("name")
+        price = self._quotation_total(dto)
+        if price is not None:
+            self._estimate = price
+            if is_success_status(self.status):
+                self._cost = price
 
     @staticmethod
     def _parse_inputs_dict(inputs: dict[str, Any]) -> _ParsedInputs:
         """Parse stored userInputs into protein, action, and prepare fields.
 
-        Accepts Protein Prep v2 (``action`` + optional ``selection``) and v1
-        (keep/remove lists, treated as prepare with no selection).
+        Accepts current flat ``find_pockets`` fields, legacy nested ``pocket``
+        fields, and v1 keep/remove lists (treated as prepare with no selection).
 
         Args:
             inputs: Execution ``userInputs`` (or ``inputs``) dict.
 
         Returns:
             Parsed protein dict, action, optional ``pdb_id``, optional
-            selection, and ``model_missing_loops``.
+            selection, ``model_missing_loops``, and optional pocket dict.
 
         Raises:
             ValueError: If ``protein`` is not an object, ``action`` is
@@ -1184,12 +1817,15 @@ class ProteinPrep(
         raw_loops = inputs.get("model_missing_loops")
         model_missing_loops = True if raw_loops is None else bool(raw_loops)
 
+        pocket = _pocket_input_from_inputs(inputs)
+
         return _ParsedInputs(
             protein=protein_input,
             action=action,
             pdb_id=pdb_id,
             selection=selection,
             model_missing_loops=model_missing_loops,
+            pocket=pocket,
         )
 
     @classmethod
@@ -1201,8 +1837,8 @@ class ProteinPrep(
     ) -> Self:
         """Construct a ``ProteinPrep`` from a tools execution DTO.
 
-        Rehydrates historical recommendation and preparation executions while
-        keeping their operation kind private.
+        Rehydrates historical recommendation and preparation executions from
+        either routed tool key.
 
         Args:
             dto: Execution payload (same shape as ``client.executions.get``).
@@ -1251,20 +1887,120 @@ class ProteinPrep(
                 instance._recommendation
             )
         instance._model_missing_loops = parsed.model_missing_loops
+        instance._pocket = (
+            PocketFinderConfig.from_tool_input(parsed.pocket)
+            if parsed.pocket is not None
+            else None
+        )
+        instance._direct_tool_version = TOOL_KEYS_AND_VERSIONS["protein_prep"][
+            "tool_version"
+        ]
         return instance
 
+    @classmethod
+    def from_id(cls, id: str, *, client: DeepOriginClient | None = None) -> Self:
+        """Construct from either protein-prep or target-preparation execution id.
+
+        Args:
+            id: Platform execution ID.
+            client: Optional API client.
+
+        Returns:
+            Rehydrated :class:`ProteinPrep`.
+        """
+        if client is None:
+            from deeporigin.platform.client import DeepOriginClient as _Client
+
+            client = _Client()
+        dto = client.executions.get(id)  # ty:ignore[unresolved-attribute]
+        return cls.from_dto(dto, client=client)
+
+    @classmethod
+    def list(
+        cls,
+        *,
+        client: DeepOriginClient | None = None,
+        status: list[str] | None = None,
+    ) -> list[Self]:
+        """List executions across both ProteinPrep tool keys.
+
+        Args:
+            client: Optional API client.
+            status: Optional status filter on hydrated instances.
+
+        Returns:
+            Instances for both tool keys, newest ``createdAt`` first.
+        """
+        if client is None:
+            from deeporigin.platform.client import DeepOriginClient as _Client
+
+            client = _Client()
+        all_dtos: list[dict[str, Any]] = []
+        for tool_key in (_PROTEIN_PREP_TOOL_KEY, _TARGET_PREP_TOOL_KEY):
+            page = client.executions.list(  # ty:ignore[unresolved-attribute]
+                fetch_all_pages=True,
+                tool_key=tool_key,
+            ).get("data", [])
+            all_dtos.extend(
+                dto
+                for dto in page
+                if isinstance(dto, dict) and dto.get("tool", {}).get("key") == tool_key
+            )
+        all_dtos.sort(key=_dto_created_at, reverse=True)
+        instances = [cls.from_dto(dto, client=client) for dto in all_dtos]
+        if status is not None:
+            instances = [item for item in instances if item.status in status]
+        return instances
+
+    @classmethod
+    def from_last_run(cls, *, client: DeepOriginClient | None = None) -> Self:
+        """Return the newest execution across both routed tool keys.
+
+        Args:
+            client: Optional API client.
+
+        Returns:
+            Rehydrated :class:`ProteinPrep` for the newest matching execution.
+
+        Raises:
+            ValueError: If no executions exist for either tool key.
+        """
+        if client is None:
+            from deeporigin.platform.client import DeepOriginClient as _Client
+
+            client = _Client()
+        candidates: list[dict[str, Any]] = []
+        for tool_key in (_PROTEIN_PREP_TOOL_KEY, _TARGET_PREP_TOOL_KEY):
+            response = client.executions.list(  # ty:ignore[unresolved-attribute]
+                tool_key=tool_key,
+                order=EXECUTION_LIST_ORDER_CREATED_DESC,
+                page=0,
+                page_size=1,
+            )
+            dtos = response.get("data") or []
+            if dtos and isinstance(dtos[0], dict):
+                candidates.append(dtos[0])
+        if not candidates:
+            raise ValueError(
+                "No executions found for ProteinPrep "
+                f"(tool_keys={sorted(_ALLOWED_TOOL_KEYS)!r})."
+            )
+        candidates.sort(key=_dto_created_at, reverse=True)
+        return cls.from_dto(candidates[0], client=client)
+
     def _protein_from_outputs(self, data: dict[str, Any]) -> Protein:
-        """Build the in-memory result Protein from an output dict.
+        """Build the result Protein from an output dict.
 
         Args:
             data: Prepared-protein payload (``jobOutputs.protein`` or explorer
                 ``data``).
 
         Returns:
-            In-memory Protein wrapping the prepared PDB path.
+            Prepared :class:`Protein`, usually registered via ``id``.
         """
         return _protein_from_prepared_data(
             data,
+            client=self.client,
             fallback_pdb_id=self._pdb_id,
             fallback_name=self._protein.name,
         )
@@ -1284,14 +2020,68 @@ class ProteinPrep(
             return recommendation
         return None
 
+    def _result_rows(
+        self,
+        result_type: str,
+        *,
+        filter_by_tool_key: bool = True,
+    ) -> list[dict[str, Any]]:
+        """Return result-explorer data payloads for one child result type.
+
+        Args:
+            result_type: Indexed result type string.
+            filter_by_tool_key: When False, match only ``compute_job_id``.
+
+        Returns:
+            Data dicts for this execution id, or an empty list on failure.
+        """
+        exec_id = self._ensure_id()
+        filter_dict: dict[str, Any] | None = None
+        if filter_by_tool_key:
+            filter_dict = {"tool_key": {"eq": self.tool_key}}
+        try:
+            response = self.client.results.get(
+                filter_dict=filter_dict,
+                result_type=result_type,
+                compute_job_id=exec_id,
+            )
+        except Exception:
+            return []
+        rows: list[dict[str, Any]] = []
+        for record in response.get("data") or []:
+            if not isinstance(record, dict) or record.get("compute_job_id") != exec_id:
+                continue
+            data = record.get("data")
+            if isinstance(data, dict):
+                rows.append(data)
+        return rows
+
+    def _execution_outputs(
+        self,
+        dto: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        """Return jobOutputs for this execution, fetching when needed.
+
+        Args:
+            dto: Optional execution payload already in hand.
+
+        Returns:
+            ``jobOutputs`` dict, or ``{}`` when unavailable.
+        """
+        exec_id = self._ensure_id()
+        if dto is None:
+            try:
+                dto = self.client.executions.get(exec_id)  # ty:ignore[unresolved-attribute]
+            except Exception:
+                dto = {}
+        return _execution_outputs_dict(dto if isinstance(dto, dict) else {})
+
     @beartype
     def get_results(self, dto: dict[str, Any] | None = None) -> Protein:
         """Load the prepared protein as an in-memory :class:`Protein`.
 
-        Tries result-explorer rows for this execution
-        (``result_type=preparedprotein``), then ``jobOutputs.protein``. Does not
-        PATCH or create a proteins-table record; the returned Protein has
-        ``id is None`` and ``remote_path`` set to the prepared PDB.
+        Works for either routed tool key. Tries result-explorer rows
+        (``result_type=preparedprotein``), then ``jobOutputs.protein``.
 
         Args:
             dto: Optional execution payload. Passing it avoids an extra GET
@@ -1304,7 +2094,7 @@ class ProteinPrep(
         Raises:
             ValueError: If :attr:`id` is unset.
             DeepOriginException: If this was a recommend run, or no prepared
-                PDB path could be loaded.
+                protein could be loaded.
         """
         exec_id = self._ensure_id()
         if self._operation_kind == "recommend":
@@ -1315,6 +2105,7 @@ class ProteinPrep(
 
         try:
             response = self.client.results.get(
+                filter_dict={"tool_key": {"eq": self.tool_key}},
                 result_type=_RESULT_TYPE_PREPARED_PROTEIN,
                 compute_job_id=exec_id,
                 limit=1,
@@ -1322,17 +2113,14 @@ class ProteinPrep(
             records = response.get("data") or []
             if records:
                 data = records[0].get("data") or {}
-                if isinstance(data, dict) and data.get("protein_pdb_file_path"):
+                if isinstance(data, dict) and data.get("id"):
                     return self._protein_from_outputs(data)
         except Exception:
             pass
 
         try:
-            exec_dto = dto
-            if exec_dto is None:
-                exec_dto = self.client.executions.get(exec_id)  # ty:ignore[unresolved-attribute]
-            jo = exec_dto.get("jobOutputs") if isinstance(exec_dto, dict) else None
-            protein_out = jo.get("protein") if isinstance(jo, dict) else None
+            outputs = self._execution_outputs(dto)
+            protein_out = outputs.get("protein")
             if isinstance(protein_out, dict):
                 return self._protein_from_outputs(protein_out)
         except ValueError:
@@ -1342,3 +2130,126 @@ class ProteinPrep(
             title="Could not load prepared protein",
             message=PROTEIN_PREP_NO_OUTPUT_PATHS_MSG,
         )
+
+    def get_crystal_poses(
+        self,
+        dto: dict[str, Any] | None = None,
+    ) -> PoseSet | None:
+        """Return crystal poses extracted during prepare when ``extract`` was selected.
+
+        Tries result-explorer rows (``result_type=pose``), then
+        ``jobOutputs.poses``. Rows use the Protein Prep Pose shape
+        (``origin: crystal_extract``, prepared ``protein_id``, ``ligand_id``,
+        ``file_path``, ``component_id``). Coordinates are not downloaded;
+        call :meth:`~deeporigin.drug_discovery.structures.pose.Pose.download`
+        on individual poses when needed.
+
+        Args:
+            dto: Optional execution payload used as a job-output fallback.
+
+        Returns:
+            A :class:`~deeporigin.drug_discovery.structures.pose.PoseSet` of
+            crystal poses, an empty set when prepare completed with none, or
+            ``None`` when outputs are not published yet.
+
+        Raises:
+            ValueError: If :attr:`id` is unset.
+            DeepOriginException: If this was a recommend-only run.
+        """
+        self._ensure_id()
+        if self._operation_kind == "recommend":
+            raise DeepOriginException(
+                title="Could not load crystal poses",
+                message=PROTEIN_PREP_RECOMMEND_NOT_PREPARE_MSG,
+            )
+
+        indexed = self._result_rows(
+            _RESULT_TYPE_POSE,
+            filter_by_tool_key=False,
+        )
+        outputs = self._execution_outputs(dto)
+        raw: Any = indexed if indexed else outputs.get("poses")
+        if raw is None:
+            return None
+        if not isinstance(raw, list):
+            return None
+
+        poses = _crystal_poses_from_output_rows(
+            raw,
+            client=self.client,
+        )
+        return PoseSet(poses=poses)
+
+    def get_report(
+        self,
+        dto: dict[str, Any] | None = None,
+    ) -> StructureReportResult | None:
+        """Return the prepared Structure Report when this run requested one.
+
+        Args:
+            dto: Optional execution payload used as a job-output fallback.
+
+        Returns:
+            Prepared report, or ``None`` when requested but not yet published.
+
+        Raises:
+            ValueError: If :attr:`id` is unset, or the direct protein-prep path
+                ran (report excluded).
+        """
+        from deeporigin.drug_discovery.structure_report import StructureReportResult
+
+        self._ensure_id()
+        if self.tool_key != _TARGET_PREP_TOOL_KEY:
+            raise ValueError(PROTEIN_PREP_REPORT_EXCLUDED_MSG)
+        indexed = self._result_rows(_RESULT_TYPE_STRUCTURE_REPORT)
+        for row in indexed:
+            if row.get("report_role") == "prepared":
+                return StructureReportResult.from_json(row)
+        outputs = self._execution_outputs(dto)
+        rows = outputs.get("structure_reports")
+        if not isinstance(rows, list):
+            return None
+        for row in rows:
+            if (
+                isinstance(row, dict)
+                and row.get("report_role", "prepared") == "prepared"
+            ):
+                return StructureReportResult.from_json(row)
+        return None
+
+    def get_pockets(
+        self,
+        dto: dict[str, Any] | None = None,
+    ) -> list[Pocket] | None:
+        """Return Pocket Finder results when this run requested pockets.
+
+        Args:
+            dto: Optional execution payload used as a job-output fallback.
+
+        Returns:
+            Pocket list (possibly empty for a valid zero-pocket result), or
+            ``None`` when requested but not yet published.
+
+        Raises:
+            ValueError: If :attr:`id` is unset, or ``pocket`` was not configured.
+        """
+        self._ensure_id()
+        if self._pocket is None:
+            raise ValueError(PROTEIN_PREP_POCKETS_EXCLUDED_MSG)
+        indexed = self._result_rows(_RESULT_TYPE_POCKET)
+        outputs = self._execution_outputs(dto)
+        raw: Any = indexed if indexed else outputs.get("pockets")
+        if not isinstance(raw, list):
+            return None
+        try:
+            pockets = Pocket.from_json(raw, client=self.client)
+        except Exception:
+            return None
+        prepared: Protein | None = None
+        try:
+            prepared = self.get_results(dto)
+        except Exception:
+            prepared = None
+        for pocket in pockets:
+            pocket.protein = prepared or self._protein
+        return pockets

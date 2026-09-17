@@ -447,6 +447,47 @@ class Pocket(Entity):
         self._ensure_local_file()
         return parent.show(pockets=[self])
 
+    def show_box(self) -> Any:
+        """Visualize the docking search box for this pocket on its parent protein.
+
+        Static preview of the same wireframe geometry docking submits (center,
+        box sizes, and inferred orientation from :attr:`box` when present).
+        Does not support interactive editing or pose overlays — use
+        :meth:`~deeporigin.drug_discovery.docking.Docking.show_box` for those.
+
+        Parent resolution matches :meth:`show`: attached :attr:`protein`, else
+        :meth:`~deeporigin.drug_discovery.structures.protein.Protein.from_id`
+        via :attr:`protein_id`. Unlike :meth:`show`, this does not require a
+        local pocket structure file (the box uses center and extents only).
+
+        Returns:
+            Result of the notebook HTML renderer for the protein + box.
+
+        Raises:
+            DeepOriginException: If no parent protein can be resolved, or if
+                loading the protein fails.
+        """
+        parent = self._resolve_parent_protein()
+
+        from deeporigin.drug_discovery.docking_common import (
+            effective_docking_rotation_deg,
+            resolve_pocket_docking_box,
+            show_docking_box_in_notebook,
+        )
+
+        _, _, inferred = resolve_pocket_docking_box(self)
+        return show_docking_box_in_notebook(
+            protein=parent,
+            pocket=self,
+            client=self._client,
+            interactive=False,
+            on_commit=None,
+            rotation_deg=effective_docking_rotation_deg(
+                session=None,
+                inferred=inferred,
+            ),
+        )
+
     def _ensure_local_file(self) -> None:
         """Make sure this pocket has a local file for the viewer to load.
 
@@ -478,12 +519,13 @@ class Pocket(Entity):
             raise DeepOriginException(
                 title="Cannot visualize pocket",
                 message=(
-                    "This pocket has no parent protein. Pocket.show() overlays "
-                    "the pocket on its parent protein."
+                    "This pocket has no parent protein. Pocket.show() and "
+                    "Pocket.show_box() need a parent to overlay on."
                 ),
                 fix=(
-                    "Call protein.show(pockets=[pocket]) with the protein, or "
-                    "run PocketFinder so the pocket keeps a parent."
+                    "Attach pocket.protein or pocket.protein_id, call "
+                    "protein.show(pockets=[pocket]) for the cavity surface, "
+                    "or run PocketFinder so the pocket keeps a parent."
                 ),
             )
 

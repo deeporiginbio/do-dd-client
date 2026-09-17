@@ -63,7 +63,8 @@ This uses the ligand coordinates as the pocket definition. For loading ligands f
 
 ## Visualization
 
-Pockets from PocketFinder keep a parent protein. Show one pocket in that protein:
+Pockets from PocketFinder keep a parent protein. Show one pocket (cavity surface)
+in that protein:
 
 ```{.python notest}
 pocket.show()
@@ -75,4 +76,16 @@ That is the same as `protein.show(pockets=[pocket])`. To overlay several pockets
 protein.show(pockets=pockets)
 ```
 
-Pockets created from a ligand, residue number, or PDB file have no parent until you assign `pocket.protein` or `pocket.protein_id`. Without a resolvable parent, `pocket.show()` raises; pass the protein explicitly with `protein.show(pockets=[pocket])`.
+Preview the docking search box (protein plus wireframe from the pocket's center,
+sizes, and inferred orientation when pocket-finder emitted a nested `box`):
+
+```{.python notest}
+pocket.show_box()
+```
+
+This is a static preview of the same geometry docking uses. For interactive box
+editing or overlaying docked poses, use
+[`Docking.show_box()`](../tutorial/docking.md#preview-the-docking-search-box)
+after you build a `Docking` instance.
+
+Pockets created from a ligand, residue number, or PDB file have no parent until you assign `pocket.protein` or `pocket.protein_id`. Without a resolvable parent, `pocket.show()` and `pocket.show_box()` raise; for the cavity surface, pass the protein explicitly with `protein.show(pockets=[pocket])`.

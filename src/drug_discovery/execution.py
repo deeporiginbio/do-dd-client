@@ -37,7 +37,6 @@ from deeporigin.platform.constants import (
 from deeporigin.utils.constants import (
     EXECUTION_LIST_ORDER_CREATED_DESC,
     TOOL_EXECUTION_POST_TIMEOUT_SECONDS,
-    TOOL_KEY_PREFIX,
 )
 from deeporigin.utils.iso8601 import parse_iso_timestamp_utc
 
@@ -136,7 +135,6 @@ class Execution:
 
     USER_LOG_COLUMNS: ClassVar[list[str]] = [
         "log_level",
-        "tool_key",
         "timestamp",
         "message",
     ]
@@ -386,13 +384,6 @@ class Execution:
         return total if found else None
 
     @staticmethod
-    def _strip_tool_key_prefix(tool_key: str | None) -> str | None:
-        """Return ``tool_key`` without the platform ``deeporigin.`` prefix."""
-        if tool_key is None:
-            return None
-        return tool_key.removeprefix(TOOL_KEY_PREFIX)
-
-    @staticmethod
     def _format_user_log_timestamp(
         raw: str | None,
         *,
@@ -438,9 +429,6 @@ class Execution:
             rows.append(
                 {
                     "log_level": record.get("log_level"),
-                    "tool_key": Execution._strip_tool_key_prefix(
-                        record.get("tool_key")
-                    ),
                     "timestamp": Execution._format_user_log_timestamp(
                         record.get("date") or record.get("created_at"),
                         when=when,
@@ -783,7 +771,12 @@ class Execution:
             raise ValueError(
                 "Cannot get results: no execution has been started (id is None)."
             )
-        return self.client.results.get(compute_job_id=exec_id, **kwargs)
+        request_kwargs = dict(kwargs)
+        if self.tool_key:
+            filter_dict = dict(request_kwargs.get("filter_dict") or {})
+            filter_dict.setdefault("tool_key", {"eq": self.tool_key})
+            request_kwargs["filter_dict"] = filter_dict
+        return self.client.results.get(compute_job_id=exec_id, **request_kwargs)
 
     def get_user_logs(
         self,

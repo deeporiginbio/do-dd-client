@@ -601,3 +601,100 @@ def test_pocket_show_materializes_coordinate_only_pocket_lv0(
     assert pocket.local_path is not None
     assert Path(pocket.local_path).exists()
     assert captured["pocket_paths"] == [str(pocket.local_path)]
+
+
+def _stub_docking_box_viewer(monkeypatch: pytest.MonkeyPatch) -> dict[str, object]:
+    """Replace the shared docking-box notebook helper for Pocket.show_box()."""
+    captured: dict[str, object] = {}
+
+    def fake_show_docking_box_in_notebook(**kwargs: object) -> str:
+        captured.update(kwargs)
+        return "<box/>"
+
+    monkeypatch.setattr(
+        "deeporigin.drug_discovery.docking_common.show_docking_box_in_notebook",
+        fake_show_docking_box_in_notebook,
+    )
+    return captured
+
+
+def test_pocket_show_box_uses_attached_protein_lv0(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """pocket.show_box() previews the docking search box on the parent protein."""
+    protein = Protein.from_file(_BRD_PDB)
+    pocket = Pocket.from_pdb_file(_BRD_PDB)
+    pocket.protein = protein
+    pocket.center = [1.0, 2.0, 3.0]
+    pocket.box_size_x = 10.0
+    pocket.box_size_y = 12.0
+    pocket.box_size_z = 14.0
+    captured = _stub_docking_box_viewer(monkeypatch)
+
+    result = pocket.show_box()
+
+    assert result == "<box/>"
+    assert captured["protein"] is protein
+    assert captured["pocket"] is pocket
+    assert captured["interactive"] is False
+    assert captured["on_commit"] is None
+    assert "poses" not in captured
+    assert captured["rotation_deg"] is None
+
+
+def test_pocket_show_box_passes_inferred_rotation_lv0(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """When pocket.box is set, show_box() passes inferred rotation_deg."""
+    protein = Protein.from_file(_BRD_PDB)
+    pocket = Pocket.from_json(
+        [
+            {
+                "file_path": str(_BRD_PDB),
+                "protein_id": "prot_1",
+                "volume": 300.0,
+                "pocket_center": [1.0, 2.0, 3.0],
+                "box_size_x": 25.0,
+                "box_size_y": 24.0,
+                "box_size_z": 25.0,
+                "box": {
+                    "box_size_x": 22.0,
+                    "box_size_y": 20.0,
+                    "box_size_z": 21.0,
+                    "rotation_deg": [5.0, 10.0, 15.0],
+                },
+            }
+        ]
+    )[0]
+    pocket.protein = protein
+    captured = _stub_docking_box_viewer(monkeypatch)
+
+    pocket.show_box()
+
+    assert captured["rotation_deg"] == [5.0, 10.0, 15.0]
+
+
+def test_pocket_show_box_raises_without_parent_lv0() -> None:
+    """pocket.show_box() fails loudly when no parent can be resolved."""
+    pocket = Pocket.from_pdb_file(_BRD_PDB)
+
+    assert pocket.protein is None
+    assert pocket.protein_id is None
+    with pytest.raises(DeepOriginException, match="no parent protein"):
+        pocket.show_box()
+
+
+def test_pocket_show_box_does_not_require_local_pocket_file_lv0(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """show_box() uses center/extents only; no pocket structure file needed."""
+    protein = Protein.from_file(_BRD_PDB)
+    pocket = Pocket.from_residue_number(protein, residue_number=100, cutoff=5.0)
+    pocket.protein = protein
+    _stub_docking_box_viewer(monkeypatch)
+
+    assert pocket.local_path is None
+
+    pocket.show_box()
+
+    assert pocket.local_path is None

@@ -133,17 +133,28 @@ _Avoid_: "system" alone when meaning the prepared molecular system artifact
 **Protein Prep**:
 Platform tool `deeporigin.protein-prep` that inventories a caller-supplied
 protein, records editable keep/review/skip Decisions, then applies resolved
-keep/skip Decisions and protonation. CLI class `ProteinPrep` is one preparation
-session: `.recommend()` updates its Selection without binding its execution id
-and returns the Recommendation view; `.run()` or `.start()` submits durable
-preparation and permanently binds the object. `protein` is constructor-only.
-Loop modelling runs unless the caller sets loops-off prepare.
-_Avoid_: SystemPrep / FEP assembly; quoting this tool (billing is skipped);
-public `action`; a separate recommend object; silently converting `review` to
-`skip`; v1 keep/remove lists (`keep_chain_ids`, …); treating loops-off as
-skipping Protein Prep; `watch()` on a `.run()` / sync execution; `inputs.sync`
-on protein-prep (not in the tool schema); treating `.recommendation` as a raw
-dict or a pandas DataFrame type
+keep/skip Decisions and protonation. CLI class `ProteinPrep` is the sole public
+preparation session: `.recommend()` always uses protein-prep; loops-off with no
+`pocket` also uses protein-prep (`run()` / `start()`); loops-on or any
+`pocket=PocketFinderConfig(...)` routes to Target Preparation (`start()` only).
+`.get_results()` returns the prepared `Protein`; `.get_report()` /
+`.get_pockets()` expose composite artifacts. `protein` is constructor-only.
+_Avoid_: SystemPrep / FEP assembly; a public `TargetPrep` class; public
+`action`; a separate recommend object; silently converting `review` to `skip`;
+v1 keep/remove lists (`keep_chain_ids`, …); treating loops-off as skipping
+Protein Prep; `watch()` on a `.run()` / sync execution; `inputs.sync` on
+protein-prep (not in the tool schema); treating `.recommendation` as a raw
+dict or a pandas DataFrame type; bundling report/pockets into `get_results()`
+
+**Target Preparation**:
+Platform workflow tool `deeporigin.target-preparation` used by `ProteinPrep`
+when loop modelling is enabled or `pocket` is set. Always produces a prepared
+Structure Report; optionally runs Pocket Finder. Not a separate public Python
+class — callers use `ProteinPrep` and `get_report()` / `get_pockets()`.
+_Avoid_: a public `TargetPrep` session class; treating source Structure Report
+as part of this workflow (use standalone `StructureReport`); implying that
+target preparation selects the final Pocket for a downstream screening
+invocation
 
 **Protein Prep Selection**:
 Digest-bound component Decision map produced by `ProteinPrep.recommend()` or
@@ -218,9 +229,10 @@ _Avoid_: Docking search box; pocket box when meaning the cavity surface
 
 **Parent protein**:
 The Protein a Pocket was found in. Durable identity is `protein_id`. The
-in-process parent is `Pocket.protein` when attached. A Pocket can be shown in
-the Structure viewer when the parent is resolvable (attached Protein or
-`protein_id`). Other constructors may leave both unset.
+in-process parent is `Pocket.protein` when attached. A Pocket's cavity
+(`show()`) and Docking search box (`show_box()`) can be shown in the Structure
+viewer when the parent is resolvable (attached Protein or `protein_id`). Other
+constructors may leave both unset.
 _Avoid_: `pdb_id` (RCSB code); Docking's protein input when you mean the Pocket's parent
 
 **PocketFinder**:
@@ -375,12 +387,16 @@ Wireframe of the docking tool's search extents, derived from pocket center and
 box sizes (same geometry submitted with docking). When pocket-finder emitted a
 nested `box`, default sizes and orientation come from **Inferred box orientation**
 ; otherwise from parent lab-frame `box_size_{x,y,z}` (axis-aligned). **Session
-rotation** overrides inferred orientation in the notebook and on subsequent
-`run()` / `start()` when set. Shown via `Docking.show_box()` /
-`ConstrainedDocking.show_box()`.
+rotation** overrides inferred orientation when a `Docking` / `ConstrainedDocking`
+holds it. Preview entry points: `Pocket.show_box()` (static, pocket geometry
+only — no session rotation), `Docking.show_box()` /
+`ConstrainedDocking.show_box()` (static or interactive; session rotation when
+set). Distinct from the pocket cavity surface (`Pocket.show()` /
+`Protein.show(pockets=...)`).
 _Avoid_: pocket box; docking pocket (when meaning pocket surfaces); conflating
 with `Protein.show(pockets=...)` gaussian surfaces; treating the box as
-always axis-aligned on new pocket-finder runs
+always axis-aligned on new pocket-finder runs; assuming `Pocket.show_box()`
+picks up session rotation from a Docking instance
 
 **Inferred box orientation**:
 PCA-aligned docking box rotation and OBB sizes from pocket-finder's nested
