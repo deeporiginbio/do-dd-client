@@ -270,8 +270,8 @@ user-facing Activity views; the run, its results and billing still exist. For
 SDK-internal plumbing runs and internal automation -- no end user wants to hide
 their own runs, so it is underscore-prefixed like ``_app`` / ``_session`` and is
 not exposed on ``run()`` / ``start()``. Part of the singleton cache key.
-_Avoid_: a ``visibility`` kwarg on tool classes; the platform ``metadata.internal``
-field DDOS-6754 originally proposed (superseded by the ``visibility`` column)
+_Avoid_: a ``visibility`` kwarg on tool classes; conflating with the billing tag or
+entity provenance tags
 
 **Entity provenance tags**:
 Flat ``app`` and ``session`` keys on an entity row's jsonb ``tags`` column.
