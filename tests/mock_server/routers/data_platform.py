@@ -134,23 +134,26 @@ def extracted_ligand_remote_path(execution_id: str, ligand_id: str) -> str:
     return f"{EXTRACTED_LIGAND_UFA_PREFIX}/{stem}/{ligand_id}.sdf"
 
 
-def register_mock_extracted_ligand(
+def register_mock_crystal_pose(
     ligands: dict[str, dict[str, Any]],
     *,
     execution_id: str,
     component_id: str,
+    prepared_protein_id: str,
     smiles: str = _MOCK_EXTRACTED_LIGAND_SMILES,
 ) -> dict[str, str]:
-    """Register a ligand entity for mock protein-prep ``extracted_ligands`` rows.
+    """Register entities and return one mock Protein Prep ``poses[]`` row.
 
     Args:
         ligands: In-memory ligands store.
         execution_id: Tool execution id (path segment + id suffix).
         component_id: Protein Prep selection component id.
+        prepared_protein_id: Prepared protein entity id for the pose row.
         smiles: SMILES stored on the ligand record.
 
     Returns:
-        Dict with ``component_id``, ``file_path``, and ``ligand_id``.
+        Dict with ``component_id``, ``file_path``, ``ligand_id``, ``origin``,
+        and ``protein_id``.
     """
     ligand_id = mock_extracted_ligand_id(execution_id, component_id)
     remote_path = extracted_ligand_remote_path(execution_id, ligand_id)
@@ -160,16 +163,19 @@ def register_mock_extracted_ligand(
         "component_id": component_id,
         "file_path": remote_path,
         "ligand_id": ligand_id,
+        "origin": "crystal_extract",
+        "protein_id": prepared_protein_id,
     }
 
 
-def mock_extracted_ligands_from_selection(
+def mock_crystal_poses_from_selection(
     ligands: dict[str, dict[str, Any]],
     *,
     execution_id: str,
+    prepared_protein_id: str,
     selection: object,
 ) -> list[dict[str, str]]:
-    """Build ``extracted_ligands`` job output rows from prepare selection decisions."""
+    """Build ``poses`` job output rows from prepare selection decisions."""
     if not isinstance(selection, dict):
         return []
     decisions = selection.get("decisions")
@@ -183,10 +189,11 @@ def mock_extracted_ligands_from_selection(
         if not component_key.startswith("ligand:"):
             continue
         rows.append(
-            register_mock_extracted_ligand(
+            register_mock_crystal_pose(
                 ligands,
                 execution_id=execution_id,
                 component_id=component_key,
+                prepared_protein_id=prepared_protein_id,
             )
         )
     return rows

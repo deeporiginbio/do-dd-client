@@ -3,13 +3,15 @@
 Inventory and prepare a [`Protein`](../ref/protein.md) with one configurable
 `ProteinPrep` object. Recommendation identifies chains, ligands, cofactors, and
 waters. Preparation applies your keep/skip decisions, protonates the structure,
-and optionally models missing loops. Optional nested
+and optionally models missing loops. Optional
 [`PocketFinderConfig`](../ref/protein_prep.md) finds pockets on the prepared
-structure via Target Preparation.
+structure. Its SDK modes map to the platform's flat `find_pockets` contract:
+`auto-find` becomes `novel`, while `from-crystal-ligand` keeps that name.
+Selection-defined pockets require the standalone Pocket Finder tool.
 
 Use standalone [`StructureReport`](structure-report.md) for source-structure
-assessment. Composite preparation (loop modelling or pocket finding) always
-produces a prepared Structure Report; retrieve it with `get_report()`.
+assessment. Composite preparation (loop modelling or novel pocket finding)
+always produces a prepared Structure Report; retrieve it with `get_report()`.
 
 ## Recommend and review
 
@@ -59,7 +61,7 @@ successful settings remain intact.
 
 ## Prepare without loop modelling
 
-Disable loop modelling and leave `pocket` unset to use blocking preparation:
+Disable loop modelling to use blocking preparation:
 
 ```{.python notest}
 prep.model_missing_loops = False
@@ -75,7 +77,7 @@ input protein is unchanged. The prepared PDB carries a
 the stamp stays intact. To stamp a structure you prepared outside Deep Origin
 (PDB or mmCIF), use [`Protein.mark_as_prepared()`](../ref/prepared_protein_stamp.md).
 
-Loops-off preparation without a pocket may also run asynchronously:
+Loops-off preparation may also run asynchronously:
 
 ```{.python notest}
 prep.start()
@@ -85,9 +87,9 @@ prepared = prep.get_results()
 
 ## Prepare with loop modelling or pockets
 
-Loop modelling is enabled by default. When loops are on, or when you set
-`pocket=PocketFinderConfig(...)`, preparation uses the composite Target
-Preparation workflow. Use `start()` (blocking `run()` is not available):
+Loop modelling is enabled by default. Loops on or `auto-find` pockets use the
+composite Target Preparation workflow. Use `start()` for that route (blocking
+`run()` is not available):
 
 ```{.python notest}
 from deeporigin.drug_discovery import PocketFinderConfig, ProteinPrep
@@ -105,7 +107,24 @@ prep.wait()
 prepared = prep.get_results()
 report = prep.get_report()
 pockets = prep.get_pockets()
-extracted = prep.get_extracted_ligands()
+extracted = prep.get_crystal_poses()
+```
+
+With loops off, `from-crystal-ligand` stays on standalone Protein Prep and can
+use either `run()` or `start()`:
+
+```{.python notest}
+prep = ProteinPrep(
+    protein=protein,
+    selection=saved_selection,
+    model_missing_loops=False,
+    pocket=PocketFinderConfig(
+        mode="from-crystal-ligand",
+        component_id="ligand:LIG:A:100",
+    ),
+)
+prepared = prep.run()
+pockets = prep.get_pockets()
 ```
 
 Loop modelling requires a four-character
@@ -116,12 +135,12 @@ ID. `ProteinPrep` initially uses `protein.pdb_id` when available; otherwise set
 `get_report()` and `get_pockets()` raise when that artifact was not part of the
 run, return `None` while still pending, and `get_pockets()` returns `[]` for a
 valid zero-pocket result. After prepare, ligands marked ``extract`` in the
-Selection are available from ``get_extracted_ligands()`` as a
-:class:`~deeporigin.drug_discovery.structures.ligand.LigandSet` (each
-:class:`~deeporigin.drug_discovery.structures.ligand.Ligand` has
-``component_id`` and ``extracted_from_protein_id`` set). That method returns an
-empty set when prepare finished with no extractions and ``None`` while outputs
-are still pending.
+Selection are available from ``get_crystal_poses()`` as a
+:class:`~deeporigin.drug_discovery.structures.pose.PoseSet` (each
+:class:`~deeporigin.drug_discovery.structures.pose.Pose` carries prepared
+``protein_id``, ``ligand_id``, ``origin: crystal_extract``, and
+``component_id`` in ``props``). That method returns an empty set when prepare
+finished with no extractions and ``None`` while outputs are still pending.
 
 ## Use a saved Selection
 
@@ -157,7 +176,7 @@ submission—execution `id` and `status`. Jupyter HTML omits `progress` (platfor
 reports are large nested trees); inspect `prep.progress` when needed. Display
 `prep.recommendation` to see the component table.
 
-Direct loops-off preparation does not require a cost quote. Pocket-bearing
+Direct loops-off preparation does not require a cost quote. Novel pocket
 composite runs are billable: use `start(quote=True)` then `confirm()`, or pass
 `approve_amount`.
 

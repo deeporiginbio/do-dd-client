@@ -83,9 +83,10 @@ The commonly available methods are:
 Not every method is available on every tool. The tool-specific pages document
 the supported execution modes, inputs, outputs, and examples.
 [`ProteinPrep`](proteinprep.md) inventories with `recommend()`, then prepares.
-Skip loop modelling with no pocket (`model_missing_loops=False`) and call
-`run()` to block until the prepared protein is ready. Loop modelling or nested
-`pocket=PocketFinderConfig(...)` uses `start()` (and `quote` / `confirm` when
-pockets are billable). Use standalone [`StructureReport`](structure-report.md)
-for source assessment. Prepared reports and pockets from composite runs are
-available via `get_report()`, `get_pockets()`, and `get_extracted_ligands()`.
+Skip loop modelling (`model_missing_loops=False`) and call `run()` to block
+until the prepared protein is ready; crystal-ligand pocket finding can use this
+route too. Loop modelling or novel pockets use `start()` (and `quote` /
+`confirm` when pockets are billable). Use standalone
+[`StructureReport`](structure-report.md) for source assessment. Prepared
+reports, pockets, and extracted crystal poses are available via `get_report()`,
+`get_pockets()`, and `get_crystal_poses()` when requested.
