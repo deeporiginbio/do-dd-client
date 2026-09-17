@@ -2,9 +2,18 @@
 
 from datetime import datetime, timezone
 import json
+from types import SimpleNamespace
 
 import pytest
 
+from deeporigin.drug_discovery.admet import (
+    ADMET_EXECUTION_TIMEOUT_SECONDS,
+    Admet,
+)
+from deeporigin.drug_discovery.metabolism import (
+    METABOLISM_EXECUTION_TIMEOUT_SECONDS,
+    Metabolism,
+)
 from deeporigin.platform.client import DeepOriginClient
 from deeporigin.utils.constants import TOOL_EXECUTION_POST_TIMEOUT_SECONDS
 
@@ -564,3 +573,178 @@ def test_executions_create_rejects_unknown_visibility():
         )
 
     assert "visibility" in str(exc_info.value)
+
+
+def _visibility_test_client() -> tuple[DeepOriginClient, dict]:
+    """Return a local client whose POST body is captured, with clusters stubbed."""
+    DeepOriginClient.close_all()
+
+    client = DeepOriginClient.from_local()
+    captured = _stub_post_json_capturing_body(client)
+
+    client.clusters.get_default_cluster_id = (  # type: ignore[method-assign]
+        lambda: "test-cluster-id"
+    )
+    return client, captured
+
+
+def _payload() -> dict:
+    return {"inputs": {}, "outputs": {}, "metadata": {}}
+
+
+def test_admet_create_execution_forwards_visibility():
+    """``Admet`` overrides ``_create_execution``; it must accept the base parameter.
+
+    Regression: the override kept the ``(*, data)`` signature, so ``visibility=``
+    raised ``TypeError`` for this tool alone while working everywhere else.
+    """
+    client, captured = _visibility_test_client()
+
+    stub = SimpleNamespace(tool_key="test.admet", tool_version="1.0.0", client=client)
+    Admet._create_execution(stub, data=_payload(), visibility="hidden")
+
+    assert captured["visibility"] == "hidden"
+    # The override exists to widen the POST timeout -- that must survive too.
+    assert captured["__timeout__"] == ADMET_EXECUTION_TIMEOUT_SECONDS
+
+
+def test_metabolism_create_execution_forwards_visibility():
+    """``Metabolism`` overrides ``_create_execution``; same regression as ADMET."""
+    client, captured = _visibility_test_client()
+
+    stub = SimpleNamespace(
+        tool_key="test.metabolism", tool_version="1.0.0", client=client
+    )
+    Metabolism._create_execution(stub, data=_payload(), visibility="hidden")
+
+    assert captured["visibility"] == "hidden"
+    assert captured["__timeout__"] == METABOLISM_EXECUTION_TIMEOUT_SECONDS
+
+
+def test_executions_create_uses_client_visibility_default():
+    """A client-level ``_visibility`` is stamped without per-call plumbing.
+
+    This is what covers the sites that call ``executions.create`` directly rather
+    than going through ``Execution._create_execution``.
+    """
+    DeepOriginClient.close_all()
+
+    client = DeepOriginClient.from_local(_visibility="hidden")
+    captured = _stub_post_json_capturing_body(client)
+    client.clusters.get_default_cluster_id = (  # type: ignore[method-assign]
+        lambda: "test-cluster-id"
+    )
+
+    client.executions.create(
+        tool_key="test.tool", tool_version="1.0.0", data=_payload()
+    )
+
+    assert captured["visibility"] == "hidden"
+
+
+def test_executions_create_argument_overrides_client_default():
+    """An explicit argument beats the client-level default."""
+    DeepOriginClient.close_all()
+
+    client = DeepOriginClient.from_local(_visibility="hidden")
+    captured = _stub_post_json_capturing_body(client)
+    client.clusters.get_default_cluster_id = (  # type: ignore[method-assign]
+        lambda: "test-cluster-id"
+    )
+
+    client.executions.create(
+        tool_key="test.tool",
+        tool_version="1.0.0",
+        data=_payload(),
+        visibility="visible",
+    )
+
+    assert captured["visibility"] == "visible"
+
+
+def test_client_visibility_separates_singletons():
+    """Two clients differing only in ``_visibility`` must not share an instance.
+
+    Without this, a client built for hidden runs would silently hand its default
+    to an unrelated caller that asked for none.
+    """
+    DeepOriginClient.close_all()
+
+    client1 = DeepOriginClient.from_local()
+    client2 = DeepOriginClient.from_local(_visibility="hidden")
+
+    assert client2 is not client1
+    assert client1._visibility is None
+    assert client2._visibility == "hidden"
+
+
+def test_executions_create_drops_explicit_none_visibility_in_data():
+    """``data={"visibility": None}`` omits the key rather than sending JSON null.
+
+    The server schema marks the field optional, which accepts an absent key but
+    rejects a null.
+    """
+    _client, captured = _visibility_test_client()
+    client = _client
+
+    data = _payload()
+    data["visibility"] = None
+    client.executions.create(tool_key="test.tool", tool_version="1.0.0", data=data)
+
+    assert "visibility" not in captured
+
+
+def test_executions_create_rejects_invalid_visibility_in_data():
+    """A typo in ``data`` is rejected too -- it is the source that wins."""
+    client, _captured = _visibility_test_client()
+
+    data = _payload()
+    data["visibility"] = "hiden"
+    with pytest.raises(ValueError) as exc_info:
+        client.executions.create(tool_key="test.tool", tool_version="1.0.0", data=data)
+
+    assert "visibility" in str(exc_info.value)
+
+
+def test_executions_create_rejects_invalid_client_default():
+    """A typo in the client-level default is rejected at the seam that sends it."""
+    DeepOriginClient.close_all()
+
+    client = DeepOriginClient.from_local(_visibility="hiden")  # ty:ignore[invalid-argument-type]
+    _stub_post_json_capturing_body(client)
+    client.clusters.get_default_cluster_id = (  # type: ignore[method-assign]
+        lambda: "test-cluster-id"
+    )
+
+    with pytest.raises(ValueError) as exc_info:
+        client.executions.create(
+            tool_key="test.tool", tool_version="1.0.0", data=_payload()
+        )
+
+    assert "visibility" in str(exc_info.value)
+
+
+def test_executions_create_validates_before_any_side_effect():
+    """A bad value raises before the cluster lookup, so it fails offline."""
+    DeepOriginClient.close_all()
+
+    client = DeepOriginClient.from_local()
+    _stub_post_json_capturing_body(client)
+
+    calls: list[int] = []
+
+    def _boom() -> str:
+        calls.append(1)
+        return "test-cluster-id"
+
+    client.clusters.get_default_cluster_id = _boom  # type: ignore[method-assign]
+
+    with pytest.raises(ValueError):
+        client.executions.create(
+            tool_key="test.tool",
+            tool_version="1.0.0",
+            data=_payload(),
+            visibility="hiden",  # ty:ignore[invalid-argument-type]
+        )
+
+    assert calls == []

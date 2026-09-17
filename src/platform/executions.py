@@ -88,16 +88,56 @@ class Executions:
                 ``"hidden"``. ``"hidden"`` opts the run out of user-facing activity
                 views (it still exists, and stays visible to admin/audit/billing).
                 Sent unless the caller already included ``visibility`` in ``data``.
-                When ``None`` the key is omitted entirely and the server decides.
+                Falls back to the client-level ``_visibility`` default when both
+                are unset; when every source is ``None`` the key is omitted and
+                the server decides. Validated whichever source supplies it.
 
         Returns:
             Dictionary containing the execution response from the API.
 
         Raises:
-            ValueError: If ``visibility`` is not ``"visible"`` or ``"hidden"``.
+            ValueError: If the resolved ``visibility`` -- from ``data``, the
+                argument, or the client default -- is not ``"visible"`` or
+                ``"hidden"``.
             Exception: If the tool execution fails, with error details printed.
         """
         payload = data.copy()
+
+        # Resolved and validated before any side effect (the clusterId lookup below
+        # can issue a request), so a bad value fails instantly and offline.
+        #
+        # Precedence, highest first: an explicit value already in `data`, the
+        # `visibility` argument, then the client-level default. This matches how
+        # `tag` / `billing` treat a caller-supplied payload as authoritative.
+        # Every source is validated, so no path can fail open -- validating only
+        # the argument would leave the winning one unchecked.
+        resolved_visibility = next(
+            (
+                candidate
+                for candidate in (
+                    payload.get("visibility"),
+                    visibility,
+                    getattr(self._c, "_visibility", None),
+                )
+                if candidate is not None
+            ),
+            None,
+        )
+        if (
+            resolved_visibility is not None
+            and resolved_visibility not in EXECUTION_VISIBILITY_VALUES
+        ):
+            raise ValueError(
+                f"visibility must be one of "
+                f"{sorted(EXECUTION_VISIBILITY_VALUES)}, got {resolved_visibility!r}"
+            )
+        if resolved_visibility is None:
+            # Drops an explicit `{"visibility": None}` from `data`; the server's
+            # schema marks the field optional, which accepts an absent key but
+            # rejects a JSON null.
+            payload.pop("visibility", None)
+        else:
+            payload["visibility"] = resolved_visibility
 
         if "clusterId" not in payload:
             payload["clusterId"] = self._c.clusters.get_default_cluster_id()
@@ -113,17 +153,6 @@ class Executions:
             and "billing" not in payload
         ):
             payload["billing"] = self._c.billing_tag
-        if visibility is not None:
-            # Validated rather than passed through: this is a control flag, and a
-            # typo would fail open (the run silently stays visible) instead of
-            # erroring. The free-form `app`/`session` tags carry no such risk.
-            if visibility not in EXECUTION_VISIBILITY_VALUES:
-                raise ValueError(
-                    f"visibility must be one of "
-                    f"{sorted(EXECUTION_VISIBILITY_VALUES)}, got {visibility!r}"
-                )
-            if "visibility" not in payload:
-                payload["visibility"] = visibility
 
         req_timeout = (
             timeout if timeout is not None else TOOL_EXECUTION_POST_TIMEOUT_SECONDS

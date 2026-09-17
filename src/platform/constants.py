@@ -1,6 +1,6 @@
 """Constants for platform API operations."""
 
-from typing import Literal
+from typing import Literal, get_args
 
 LEGACY_SUCCEEDED_STATUS = "Succeeded"
 CANONICAL_SUCCESS_STATUS = "Completed"
@@ -101,7 +101,11 @@ PROVIDER = Literal["ufa", "s3"]
 # must stay equal to the server's.
 ExecutionVisibility = Literal["visible", "hidden"]
 
-EXECUTION_VISIBILITY_VALUES: frozenset[str] = frozenset({"visible", "hidden"})
+# Derived from the Literal rather than restated, so the contract has exactly one
+# source of truth: adding a state to `ExecutionVisibility` cannot leave the
+# runtime check behind (which would accept a value statically and then reject it
+# with a misleading ValueError).
+EXECUTION_VISIBILITY_VALUES: frozenset[str] = frozenset(get_args(ExecutionVisibility))
 
 # Single registry for platform tools: iterate ``TOOL_KEYS_AND_VERSIONS``
 # to verify tools are registered (see keys per entry below).

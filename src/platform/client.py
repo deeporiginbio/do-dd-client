@@ -52,6 +52,7 @@ from deeporigin.utils.env import _ensure_do_folder
 if TYPE_CHECKING:
     from deeporigin.platform.billing import Billing
     from deeporigin.platform.clusters import Clusters
+    from deeporigin.platform.constants import ExecutionVisibility
     from deeporigin.platform.entities import Entities
     from deeporigin.platform.executions import Executions
     from deeporigin.platform.files import Files
@@ -183,6 +184,7 @@ class _DeepOriginMeta(type):
         project_id: str | None = None,
         _app: str = "python-client",
         _session: str | None = None,
+        _visibility: "ExecutionVisibility | None" = None,
         **kwargs: Any,
     ) -> "DeepOriginClient":
         """Intercept construction to handle caching and the no-arg priority chain.
@@ -200,6 +202,10 @@ class _DeepOriginMeta(type):
             project_id: Data platform project id.
             _app: Internal app identifier; part of the cache key.
             _session: Internal session identifier; part of the cache key.
+            _visibility: Internal default activity-history visibility stamped
+                on every execution this client creates; part of the cache key,
+                so a client asking for hidden runs never shares an instance
+                with one that does not.
             **kwargs: Forwarded to ``__init__`` for new instances.
 
         Returns:
@@ -235,7 +241,7 @@ class _DeepOriginMeta(type):
         # project_id is intentionally excluded from the cache key: it is a
         # mutable field updated by projects.load() and must not create duplicate
         # singletons.
-        key = (normalized_base_url, token, org_key, _app, _session)
+        key = (normalized_base_url, token, org_key, _app, _session, _visibility)
 
         if key in cls._instances:
             return cls._instances[key]
@@ -248,6 +254,7 @@ class _DeepOriginMeta(type):
             project_id=project_id,
             _app=_app,
             _session=_session,
+            _visibility=_visibility,
             **kwargs,
         )
         instance._cache_key = key
@@ -321,11 +328,11 @@ class DeepOriginClient(metaclass=_DeepOriginMeta):
     projects: Projects | None
 
     # Singleton registry — managed by _DeepOriginMeta.__call__.
-    # Key: (base_url, token, org_key, _app, _session)
+    # Key: (base_url, token, org_key, _app, _session, _visibility)
     # project_id is NOT part of the key because it is mutable (updated by
     # projects.load()) — including it would create duplicate singletons.
     _instances: Dict[
-        Tuple[str, str | None, str | None, str, str | None],
+        Tuple[str, str | None, str | None, str, str | None, str | None],
         "DeepOriginClient",
     ] = {}
 
@@ -361,6 +368,7 @@ class DeepOriginClient(metaclass=_DeepOriginMeta):
         billing_tag: str | None = None,
         _app: str = "python-client",
         _session: str | None = None,
+        _visibility: "ExecutionVisibility | None" = None,
     ) -> None: ...
 
     @overload
@@ -380,6 +388,7 @@ class DeepOriginClient(metaclass=_DeepOriginMeta):
         billing_tag: str | None = None,
         _app: str = "python-client",
         _session: str | None = None,
+        _visibility: "ExecutionVisibility | None" = None,
     ) -> None: ...
 
     def __init__(
@@ -398,13 +407,14 @@ class DeepOriginClient(metaclass=_DeepOriginMeta):
         billing_tag: str | None = None,
         _app: str = "python-client",
         _session: str | None = None,
+        _visibility: "ExecutionVisibility | None" = None,
     ) -> None:
         """Initialize a new ``DeepOriginClient`` instance.
 
         Called exactly once per unique ``(base_url, token, org_key, project_id,
-        _app, _session)`` tuple.  Caching and the no-arg priority chain are
-        handled by ``_DeepOriginMeta.__call__`` before this method is ever
-        reached.
+        _app, _session, _visibility)`` tuple.  Caching and the no-arg priority
+        chain are handled by ``_DeepOriginMeta.__call__`` before this method is
+        ever reached.
 
         Prefer ``DeepOriginClient()`` or a factory class method over calling
         this method directly.
@@ -426,6 +436,10 @@ class DeepOriginClient(metaclass=_DeepOriginMeta):
             _app: Internal app identifier. Part of the singleton cache key.
             _session: Internal session identifier. Part of the singleton cache key.
                 A UUID v4 is generated when ``None``.
+            _visibility: Internal default activity-history visibility (``"hidden"``
+                marks runs internal). Stamped by ``executions.create`` on every
+                run this client launches unless overridden per call. Part of the
+                singleton cache key.
         """
         if base_url is None:
             raise RuntimeError(
@@ -520,6 +534,14 @@ class DeepOriginClient(metaclass=_DeepOriginMeta):
         self.billing_tag = billing_tag
         self._app = _app
         self._session = str(uuid.uuid4()) if _session is None else _session
+        # Client-level default activity-history visibility, stamped by
+        # `executions.create` the way `tag` / `billing_tag` are: an internal
+        # automation sets it once instead of threading it through every run,
+        # which also covers the paths that call `executions.create` directly
+        # rather than via `Execution._create_execution`.
+        # Validated at the seam that sends it, so client.py keeps no runtime
+        # dependency on platform.constants (see the TYPE_CHECKING import).
+        self._visibility = _visibility
 
         self._client = httpx.Client(
             base_url=self._base_url,
@@ -677,6 +699,7 @@ class DeepOriginClient(metaclass=_DeepOriginMeta):
         *,
         _app: str = "python-client",
         _session: str | None = None,
+        _visibility: "ExecutionVisibility | None" = None,
     ) -> Self:
         """Create a client from HTTP request headers.
 
@@ -693,6 +716,7 @@ class DeepOriginClient(metaclass=_DeepOriginMeta):
             headers: HTTP request headers object (must support ``.get()``).
             _app: Internal app identifier.
             _session: Internal session identifier.
+            _visibility: Internal default activity-history visibility.
 
         Returns:
             A configured ``DeepOriginClient`` instance.
@@ -720,6 +744,7 @@ class DeepOriginClient(metaclass=_DeepOriginMeta):
             project_id=project_id,
             _app=_app,
             _session=_session,
+            _visibility=_visibility,
         )
 
     @classmethod
@@ -733,6 +758,7 @@ class DeepOriginClient(metaclass=_DeepOriginMeta):
         record: bool = False,
         _app: str = "python-client",
         _session: str | None = None,
+        _visibility: "ExecutionVisibility | None" = None,
     ) -> Self:
         """Create a client strictly from OS environment variables.
 
@@ -753,6 +779,7 @@ class DeepOriginClient(metaclass=_DeepOriginMeta):
             record: Whether to record tool execution responses for testing.
             _app: Internal app identifier.
             _session: Internal session identifier.
+            _visibility: Internal default activity-history visibility.
 
         Returns:
             A configured ``DeepOriginClient`` instance.
@@ -792,6 +819,7 @@ class DeepOriginClient(metaclass=_DeepOriginMeta):
             record=record,
             _app=_app,
             _session=_session,
+            _visibility=_visibility,
         )
 
     @classmethod
@@ -806,6 +834,7 @@ class DeepOriginClient(metaclass=_DeepOriginMeta):
         record: bool = False,
         _app: str = "python-client",
         _session: str | None = None,
+        _visibility: "ExecutionVisibility | None" = None,
     ) -> Self:
         """Create a client from ``~/.deeporigin/`` config files.
 
@@ -828,6 +857,7 @@ class DeepOriginClient(metaclass=_DeepOriginMeta):
             record: Whether to record tool execution responses for testing.
             _app: Internal app identifier.
             _session: Internal session identifier.
+            _visibility: Internal default activity-history visibility.
 
         Returns:
             A configured ``DeepOriginClient`` instance.
@@ -861,6 +891,7 @@ class DeepOriginClient(metaclass=_DeepOriginMeta):
             record=record,
             _app=_app,
             _session=_session,
+            _visibility=_visibility,
         )
 
     @classmethod
@@ -874,6 +905,7 @@ class DeepOriginClient(metaclass=_DeepOriginMeta):
         record: bool = False,
         _app: str = "python-client",
         _session: str | None = None,
+        _visibility: "ExecutionVisibility | None" = None,
     ) -> Self:
         """Create a client for local development.
 
@@ -889,6 +921,7 @@ class DeepOriginClient(metaclass=_DeepOriginMeta):
             record: Whether to record tool execution responses for testing.
             _app: Internal app identifier.
             _session: Internal session identifier.
+            _visibility: Internal default activity-history visibility.
 
         Returns:
             A configured ``DeepOriginClient`` instance pointed at the local mock server.
@@ -905,6 +938,7 @@ class DeepOriginClient(metaclass=_DeepOriginMeta):
             record=record,
             _app=_app,
             _session=_session,
+            _visibility=_visibility,
         )
 
     # -------- Singleton helpers --------
