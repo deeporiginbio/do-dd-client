@@ -2,18 +2,9 @@
 
 from datetime import datetime, timezone
 import json
-from types import SimpleNamespace
 
 import pytest
 
-from deeporigin.drug_discovery.admet import (
-    ADMET_EXECUTION_TIMEOUT_SECONDS,
-    Admet,
-)
-from deeporigin.drug_discovery.metabolism import (
-    METABOLISM_EXECUTION_TIMEOUT_SECONDS,
-    Metabolism,
-)
 from deeporigin.platform.client import DeepOriginClient
 from deeporigin.utils.constants import TOOL_EXECUTION_POST_TIMEOUT_SECONDS
 
@@ -590,35 +581,6 @@ def _visibility_test_client() -> tuple[DeepOriginClient, dict]:
 
 def _payload() -> dict:
     return {"inputs": {}, "outputs": {}, "metadata": {}}
-
-
-def test_admet_create_execution_forwards_visibility():
-    """``Admet`` overrides ``_create_execution``; it must accept the base parameter.
-
-    Regression: the override kept the ``(*, data)`` signature, so ``visibility=``
-    raised ``TypeError`` for this tool alone while working everywhere else.
-    """
-    client, captured = _visibility_test_client()
-
-    stub = SimpleNamespace(tool_key="test.admet", tool_version="1.0.0", client=client)
-    Admet._create_execution(stub, data=_payload(), visibility="hidden")
-
-    assert captured["visibility"] == "hidden"
-    # The override exists to widen the POST timeout -- that must survive too.
-    assert captured["__timeout__"] == ADMET_EXECUTION_TIMEOUT_SECONDS
-
-
-def test_metabolism_create_execution_forwards_visibility():
-    """``Metabolism`` overrides ``_create_execution``; same regression as ADMET."""
-    client, captured = _visibility_test_client()
-
-    stub = SimpleNamespace(
-        tool_key="test.metabolism", tool_version="1.0.0", client=client
-    )
-    Metabolism._create_execution(stub, data=_payload(), visibility="hidden")
-
-    assert captured["visibility"] == "hidden"
-    assert captured["__timeout__"] == METABOLISM_EXECUTION_TIMEOUT_SECONDS
 
 
 def test_executions_create_uses_client_visibility_default():

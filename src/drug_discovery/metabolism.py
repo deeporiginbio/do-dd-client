@@ -68,11 +68,7 @@ from deeporigin.drug_discovery.notebook_watch_mixin import NotebookWatchMixin
 from deeporigin.drug_discovery.structures.ligand import Ligand, LigandSet
 from deeporigin.exceptions import DeepOriginException
 from deeporigin.platform.client import DeepOriginClient
-from deeporigin.platform.constants import (
-    TOOL_KEYS_AND_VERSIONS,
-    ExecutionVisibility,
-    is_success_status,
-)
+from deeporigin.platform.constants import TOOL_KEYS_AND_VERSIONS, is_success_status
 from deeporigin.utils.constants import (
     METABOLISM_EXECUTION_TIMEOUT_SECONDS,
     METABOLISM_INLINE_LIGAND_CAP,
@@ -829,19 +825,8 @@ class Metabolism(
         self,
         *,
         data: dict[str, Any],
-        visibility: ExecutionVisibility | None = None,
     ) -> dict[str, Any]:
-        """Submit ``data`` with the extended Metabolism POST timeout.
-
-        Args:
-            data: Execution payload (inputs, outputs, metadata).
-            visibility: Optional activity-history visibility, forwarded
-                unchanged. Kept in step with
-                :meth:`~deeporigin.drug_discovery.execution.Execution._create_execution`
-                -- this override exists only to widen the POST timeout,
-                so dropping a base parameter here would make the flag
-                raise ``TypeError`` for this tool alone.
-        """
+        """Submit ``data`` with the extended Metabolism POST timeout."""
         resolved_key = self.tool_key
         resolved_version = getattr(self, "tool_version", None)
         if not resolved_key or not resolved_version:
@@ -852,7 +837,6 @@ class Metabolism(
             tool_key=resolved_key,
             tool_version=resolved_version,
             data=data,
-            visibility=visibility,
             timeout=METABOLISM_EXECUTION_TIMEOUT_SECONDS,
         )
 

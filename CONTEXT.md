@@ -262,6 +262,17 @@ applied to every tool execution for billing attribution. Configured once on the
 client; not overridable per ``run()`` or ``start()``.
 _Avoid_: conflating with entity jsonb ``tags`` or UUI source-filter provenance
 
+**Execution visibility default**:
+Optional ``_visibility`` on ``DeepOriginClient`` (``"visible"`` / ``"hidden"``),
+stamped by ``executions.create`` on every run the client launches, including
+paths that call ``executions.create`` directly. ``"hidden"`` opts a run out of
+user-facing Activity views; the run, its results and billing still exist. For
+SDK-internal plumbing runs and internal automation -- no end user wants to hide
+their own runs, so it is underscore-prefixed like ``_app`` / ``_session`` and is
+not exposed on ``run()`` / ``start()``. Part of the singleton cache key.
+_Avoid_: a ``visibility`` kwarg on tool classes; the platform ``metadata.internal``
+field DDOS-6754 originally proposed (superseded by the ``visibility`` column)
+
 **Entity provenance tags**:
 Flat ``app`` and ``session`` keys on an entity row's jsonb ``tags`` column.
 Stamped automatically on entity/project writes from ``client._app`` and
