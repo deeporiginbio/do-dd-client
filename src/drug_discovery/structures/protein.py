@@ -1753,6 +1753,10 @@ class Protein(Entity):
         served ``deeporigin.import-dataset`` ``register_protein`` path, which
         canonicalizes the file and create-or-reuses a Protein entity.
 
+        Requires a resolvable project id (:attr:`project_id` or
+        ``client.project_id``). The execution is created with
+        ``visibility="hidden"`` so plumbing runs do not clutter Activity.
+
         Args:
             lazy: If True, skip syncing when the protein already has an ID.
                 Defaults to False.
@@ -1763,8 +1767,11 @@ class Protein(Entity):
         Returns:
             None. As a side effect, uploads the protein (if necessary) and updates
             ``self.id`` with the ID of the existing or newly created protein record,
-            and sets :attr:`project_id` when a project scope applies or the platform
-            row includes ``project_id``.
+            and sets :attr:`project_id` to the resolved project scope.
+
+        Raises:
+            DeepOriginException: If no project id can be resolved, or registration
+                fails.
         """
         if lazy and self.id is not None:
             if client is None:
@@ -1776,6 +1783,17 @@ class Protein(Entity):
 
         if client is None:
             client = DeepOriginClient()
+
+        proj_id = self.resolved_project_id(client=client)
+        if proj_id is None or not str(proj_id).strip():
+            raise DeepOriginException(
+                title="Project required for protein sync",
+                message=(
+                    "Protein.sync requires protein.project_id or client.project_id "
+                    "(served import-dataset register_protein is project-scoped)."
+                ),
+            )
+        proj_id = str(proj_id).strip()
 
         if self._should_upload_local_bytes(remote_path=remote_path):
             self.upload(client=client, remote_path=remote_path)
@@ -1814,6 +1832,8 @@ class Protein(Entity):
                 "outputs": {},
                 "metadata": {},
                 "sync": True,
+                "projectId": proj_id,
+                "visibility": "hidden",
             },
         )
         dto = raw if isinstance(raw, dict) else {}
@@ -1835,9 +1855,7 @@ class Protein(Entity):
         if isinstance(file_path, str) and file_path:
             self.remote_path = file_path
 
-        proj_id = self.resolved_project_id(client=client)
-        if proj_id is not None:
-            self.project_id = proj_id
+        self.project_id = proj_id
 
     @beartype
     def update(

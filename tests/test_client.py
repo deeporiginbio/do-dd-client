@@ -197,6 +197,32 @@ def test_executions_create_includes_client_project_id():
     assert captured["projectId"] == "test-project-uuid"
 
 
+def test_executions_create_preserves_explicit_project_id():
+    """An explicit ``projectId`` in *data* is not overwritten by the client default."""
+    DeepOriginClient.close_all()
+
+    client = DeepOriginClient.from_local()
+    client.project_id = "client-project"
+    captured = _stub_post_json_capturing_body(client)
+
+    client.clusters.get_default_cluster_id = (  # type: ignore[method-assign]
+        lambda: "test-cluster-id"
+    )
+
+    client.executions.create(
+        tool_key="test.tool",
+        tool_version="1.0.0",
+        data={
+            "inputs": {"test": "param"},
+            "outputs": {},
+            "metadata": {},
+            "projectId": "explicit-project",
+        },
+    )
+
+    assert captured["projectId"] == "explicit-project"
+
+
 def test_executions_create_includes_client_tag():
     """``executions.create`` sends ``client.tag`` as ``tag`` when set."""
     DeepOriginClient.close_all()

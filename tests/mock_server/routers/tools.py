@@ -1237,6 +1237,7 @@ def create_tools_router(
                 tool_version=tool_version,
                 execution_id=eid,
                 job_outputs={"poses": [pose_row]},
+                project_id=body.get("projectId") or execution.get("projectId"),
             )
         return execution
 
@@ -1769,6 +1770,7 @@ def create_tools_router(
         tool_version: str,
         execution_id: str,
         job_outputs: object,
+        project_id: str | None = None,
     ) -> None:
         """Mirror tool ``jobOutputs`` into ``results`` (the result-explorer pool)."""
         if not isinstance(job_outputs, dict):
@@ -1792,22 +1794,23 @@ def create_tools_router(
                     if not isinstance(item, dict):
                         continue
                     data = dict(item)
-                    results.append(
-                        {
-                            "id": str(
-                                data.get("id")
-                                or (
-                                    "08"
-                                    + str(uuid.uuid4()).replace("-", "").upper()[:11]
-                                )
-                            ),
-                            "tool_key": tool_key,
-                            "tool_version": tool_version,
-                            "result_type": result_type,
-                            "data": data,
-                            "compute_job_id": execution_id,
-                        }
-                    )
+                    record = {
+                        "id": str(
+                            data.get("id")
+                            or (
+                                "08"
+                                + str(uuid.uuid4()).replace("-", "").upper()[:11]
+                            )
+                        ),
+                        "tool_key": tool_key,
+                        "tool_version": tool_version,
+                        "result_type": result_type,
+                        "data": data,
+                        "compute_job_id": execution_id,
+                    }
+                    if project_id is not None:
+                        record["project_id"] = project_id
+                    results.append(record)
             return
 
         if tool_key == "deeporigin.protein-prep":
@@ -1826,22 +1829,23 @@ def create_tools_router(
                     if not isinstance(item, dict):
                         continue
                     data = dict(item)
-                    results.append(
-                        {
-                            "id": str(
-                                data.get("id")
-                                or (
-                                    "08"
-                                    + str(uuid.uuid4()).replace("-", "").upper()[:11]
-                                )
-                            ),
-                            "tool_key": tool_key,
-                            "tool_version": tool_version,
-                            "result_type": result_type,
-                            "data": data,
-                            "compute_job_id": execution_id,
-                        }
-                    )
+                    record = {
+                        "id": str(
+                            data.get("id")
+                            or (
+                                "08"
+                                + str(uuid.uuid4()).replace("-", "").upper()[:11]
+                            )
+                        ),
+                        "tool_key": tool_key,
+                        "tool_version": tool_version,
+                        "result_type": result_type,
+                        "data": data,
+                        "compute_job_id": execution_id,
+                    }
+                    if project_id is not None:
+                        record["project_id"] = project_id
+                    results.append(record)
             return
 
         output_key_map: dict[str, tuple[str, str]] = {
@@ -1893,21 +1897,24 @@ def create_tools_router(
                 "compute_job_id": execution_id,
                 **extra,
             }
+            if project_id is not None:
+                record["project_id"] = project_id
             results.append(record)
 
         if tool_key == "deeporigin.constrained-docking":
             reference_pose = job_outputs.get("reference_pose")
             if isinstance(reference_pose, dict):
-                results.append(
-                    {
-                        "id": "08" + str(uuid.uuid4()).replace("-", "").upper()[:11],
-                        "tool_key": tool_key,
-                        "tool_version": tool_version,
-                        "result_type": result_type,
-                        "data": dict(reference_pose),
-                        "compute_job_id": execution_id,
-                    }
-                )
+                ref_record: dict[str, Any] = {
+                    "id": "08" + str(uuid.uuid4()).replace("-", "").upper()[:11],
+                    "tool_key": tool_key,
+                    "tool_version": tool_version,
+                    "result_type": result_type,
+                    "data": dict(reference_pose),
+                    "compute_job_id": execution_id,
+                }
+                if project_id is not None:
+                    ref_record["project_id"] = project_id
+                results.append(ref_record)
 
     def _inject_docking_tool_execution_results(execution: dict[str, Any]) -> None:
         """Mirror docking fixture poses into ``results`` when an execution completes."""

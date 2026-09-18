@@ -8,6 +8,7 @@ import pytest
 
 from deeporigin.drug_discovery import BRD_DATA_DIR, Ligand, Pocket, Protein
 from deeporigin.platform import DeepOriginClient
+from tests.mock_server.routers.data_platform import MOCK_DEFAULT_PROJECT_ID
 
 FIXTURES_DIR = Path(__file__).parent / "fixtures"
 
@@ -88,8 +89,10 @@ def check_tool_exists(
 
 @pytest.fixture()
 def client() -> DeepOriginClient:
-    """Return a DeepOriginClient instance."""
-    return DeepOriginClient()
+    """Return a DeepOriginClient instance scoped to the mock default project."""
+    instance = DeepOriginClient()
+    instance.project_id = MOCK_DEFAULT_PROJECT_ID
+    return instance
 
 
 @pytest.fixture()

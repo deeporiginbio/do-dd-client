@@ -191,6 +191,7 @@ def test_uniprot_discovery_from_dto_restores_accession(
 
 def test_import_proteins_requires_project(client: DeepOriginClient) -> None:
     """Import fails closed when no project id can be resolved."""
+    client.project_id = None
     assert client.project_id is None
     job = UniprotDiscovery(uniprot_accession="P00533", client=client)
     job.run()
@@ -290,9 +291,10 @@ def test_protein_sync_updates_uniprot_accession_on_existing(
     client: DeepOriginClient,
 ) -> None:
     """``sync`` updates accession when reusing an existing file_path row."""
+    client.project_id = MOCK_DEFAULT_PROJECT_ID
     protein = Protein.from_file(BRD_DATA_DIR / "brd.pdb")
     protein.pdb_id = "1M17"
-    # Unscoped sync so the mock remaps any uploaded path to the canonical row.
+    protein.project_id = MOCK_DEFAULT_PROJECT_ID
     protein.sync(client=client)
     assert protein.id is not None
 

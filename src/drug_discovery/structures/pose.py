@@ -450,6 +450,10 @@ class Pose(Entity):
         Syncs the parent :class:`Ligand` (unless ``ligand`` is supplied), uploads
         the SDF, and invokes the ImportTool pose-registration path.
 
+        Requires a resolvable project id (``ligand.project_id`` or
+        ``client.project_id``). The execution is created with
+        ``visibility="hidden"``.
+
         Args:
             path: Local SDF file path.
             ligand: Optional explicit parent ligand (skips auto-sync by SMILES).
@@ -463,7 +467,8 @@ class Pose(Entity):
             Registered :class:`Pose` with platform id populated.
 
         Raises:
-            DeepOriginException: If registration fails or returns no pose row.
+            DeepOriginException: If no project id can be resolved, registration
+                fails, or returns no pose row.
         """
 
         if client is None:
@@ -483,6 +488,17 @@ class Pose(Entity):
                 message="Parent ligand must have a platform id before pose registration.",
             )
 
+        proj_id = parent.resolved_project_id(client=client)
+        if proj_id is None or not str(proj_id).strip():
+            raise DeepOriginException(
+                title="Project required for pose registration",
+                message=(
+                    "Pose.from_sdf requires ligand.project_id or client.project_id "
+                    "(served import-dataset register_pose is project-scoped)."
+                ),
+            )
+        proj_id = str(proj_id).strip()
+
         staging = cls(
             ligand_id=parent.id,
             local_path=local_path,
@@ -490,6 +506,7 @@ class Pose(Entity):
             name=parent.name,
             protein_id=protein_id,
             origin=origin,
+            project_id=proj_id,
         )
         staging.upload(client=client)
         pose_remote = staging.remote_path
@@ -517,6 +534,8 @@ class Pose(Entity):
                 "outputs": {},
                 "metadata": {},
                 "sync": True,
+                "projectId": proj_id,
+                "visibility": "hidden",
             },
         )
         dto = raw if isinstance(raw, dict) else {}

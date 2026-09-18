@@ -599,6 +599,20 @@ def _apply_eq_filters(
             )
 
         _validate_filter_condition(key, condition)
+        # Fixture / legacy result-explorer rows often omit ``project_id``. When
+        # the client scopes searches to a concrete project, still match those
+        # rows (same tolerance as entity search).
+        if key == "project_id" and "eq" in condition:
+            target = condition["eq"]
+            results = [
+                r
+                for r in results
+                if _matches_condition(r, key, condition)
+                or r.get("project_id") is None
+                or (isinstance(r.get("data"), dict) and r["data"].get("project_id") is None)
+                or r.get("project_id") == MOCK_DEFAULT_PROJECT_ID
+            ]
+            continue
         results = [r for r in results if _matches_condition(r, key, condition)]
 
     return results
