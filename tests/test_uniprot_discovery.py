@@ -271,16 +271,16 @@ def test_protein_from_uniprot_sugar(
     assert protein.id is not None
 
 
-def test_protein_register_persists_uniprot_accession(
+def test_protein_sync_persists_uniprot_accession(
     client: DeepOriginClient,
 ) -> None:
-    """``register`` writes ``uniprot_accession`` through create_protein."""
+    """``sync`` writes ``uniprot_accession`` through import-dataset register_protein."""
     client.project_id = MOCK_DEFAULT_PROJECT_ID
     protein = Protein.from_file(BRD_DATA_DIR / "brd.pdb")
     protein.pdb_id = "1M17"
     protein.uniprot_accession = "P00533"
     protein.project_id = MOCK_DEFAULT_PROJECT_ID
-    protein.register(client=client)
+    protein.sync(client=client)
 
     fetched = client.entities.get_protein(id=protein.id)
     assert fetched.get("uniprot_accession") == "P00533"
@@ -311,7 +311,7 @@ def test_protein_from_id_hydrates_uniprot_accession(
     protein = Protein.from_file(BRD_DATA_DIR / "brd.pdb")
     protein.uniprot_accession = "P00533"
     protein.project_id = MOCK_DEFAULT_PROJECT_ID
-    protein.register(client=client)
+    protein.sync(client=client)
 
     restored = Protein.from_id(protein.id, client=client, download=False)
     assert restored.uniprot_accession == "P00533"

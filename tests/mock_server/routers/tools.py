@@ -25,6 +25,9 @@ from deeporigin.utils.constants import METABOLISM_WORKFLOW_LIGAND_THRESHOLD
 
 from ..constants import MOCK_BULK_DOCKING_EXECUTION_ID
 from .data_platform import (
+    MOCK_CANONICAL_PROTEIN_FILE_PATH,
+    MOCK_CANONICAL_PROTEIN_ID,
+    _base_canonical_protein_record,
     mock_crystal_poses_from_selection,
     register_mock_crystal_pose,
     register_mock_prepared_protein,
@@ -1179,6 +1182,37 @@ def create_tools_router(
             body=body,
         )
         inputs = body.get("inputs", {}) or {}
+        if inputs.get("register_protein"):
+            # Mirror create_protein: every sync maps to the canonical mock row
+            # so local tests keep stable IDs while still exercising the tool path.
+            base = proteins.get(
+                MOCK_CANONICAL_PROTEIN_ID, _base_canonical_protein_record()
+            )
+            record = copy.deepcopy(base)
+            record["id"] = MOCK_CANONICAL_PROTEIN_ID
+            record["file_path"] = MOCK_CANONICAL_PROTEIN_FILE_PATH
+            record["deleted"] = False
+            if inputs.get("protein_name"):
+                record["protein_name"] = str(inputs["protein_name"])
+            if inputs.get("pdb_id"):
+                record["pdb_id"] = str(inputs["pdb_id"])
+            if inputs.get("uniprot_accession"):
+                record["uniprot_accession"] = str(inputs["uniprot_accession"])
+            if inputs.get("tags") is not None:
+                record["tags"] = inputs["tags"]
+            proteins[MOCK_CANONICAL_PROTEIN_ID] = record
+            protein_row: dict[str, Any] = {
+                "id": MOCK_CANONICAL_PROTEIN_ID,
+                "protein_id": MOCK_CANONICAL_PROTEIN_ID,
+                "file_path": MOCK_CANONICAL_PROTEIN_FILE_PATH,
+            }
+            if inputs.get("protein_name"):
+                protein_row["name"] = str(inputs["protein_name"])
+            if inputs.get("pdb_id"):
+                protein_row["pdb_id"] = str(inputs["pdb_id"])
+            execution["jobOutputs"] = {"proteins": [protein_row]}
+            return execution
+
         if not inputs.get("register_pose"):
             execution["jobOutputs"] = {"poses": []}
             return execution

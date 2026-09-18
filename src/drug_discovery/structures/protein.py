@@ -10,6 +10,7 @@ from various sources, preprocess structures, handle ligands, and visualize prote
 from collections import defaultdict
 from dataclasses import dataclass, field
 import hashlib
+import uuid
 import io
 import os
 from pathlib import Path
@@ -30,6 +31,7 @@ from deeporigin.drug_discovery.constants import (
 from deeporigin.drug_discovery.utils.structure_qc import _any_ligand_protein_clashes
 from deeporigin.exceptions import DeepOriginException
 from deeporigin.platform.client import DeepOriginClient
+from deeporigin.platform.constants import TOOL_KEYS_AND_VERSIONS
 from deeporigin.utils.env import _ensure_do_folder
 
 from .entity import Entity
@@ -1702,9 +1704,9 @@ class Protein(Entity):
         Args:
             client: DeepOriginClient instance. If None, uses DeepOriginClient().
             remote_path: Destination remote path. When provided, sets
-                :attr:`remote_path` before uploading. If still unset, uses a
-                hash-based path whose extension matches the local file when
-                present.
+                :attr:`remote_path` before uploading. If still unset, stages
+                under ``imports/staging/`` (canonical content-hash placement is
+                owned by import-dataset ``register_protein``).
         """
         if client is None:
             client = DeepOriginClient()
@@ -1716,7 +1718,7 @@ class Protein(Entity):
             local_file = str(self.local_path)
             if self.remote_path is None:
                 ext = Path(local_file).suffix or self._preferred_ext
-                self.remote_path = f"{self._remote_path_base}{self.to_hash()}{ext}"
+                self.remote_path = f"imports/staging/{uuid.uuid4().hex}{ext}"
             client.files.upload(
                 local_file,
                 remote_path=self.remote_path,
@@ -1726,7 +1728,7 @@ class Protein(Entity):
         super().upload(client=client, remote_path=remote_path)
 
     def _should_upload_local_bytes(self, *, remote_path: Optional[str]) -> bool:
-        """Return True when sync/register should upload from :attr:`local_path`.
+        """Return True when sync should upload from :attr:`local_path`.
 
         Uploads when an explicit ``remote_path`` is passed, when no remote path
         is set yet, or when a local file exists (so stamped bytes overwrite UFA).
@@ -1738,60 +1740,6 @@ class Protein(Entity):
         return self.remote_path is None
 
     @beartype
-    def register(
-        self,
-        *,
-        client: Optional[DeepOriginClient] = None,
-        remote_path: Optional[str] = None,
-    ) -> None:
-        """Register the protein as a new record in the data platform.
-
-        Uploads the protein file when needed, then creates a new protein
-        record, regardless of whether one already exists for this file path.
-        When :attr:`local_path` is a readable file, uploads those bytes (create
-        or overwrite :attr:`remote_path`) without a biotite rewrite. When there
-        is no local file and :attr:`remote_path` is already set, skips upload.
-
-        Args:
-            client: DeepOriginClient instance. If None, uses DeepOriginClient().
-            remote_path: Custom remote path to upload to. Overrides the
-                default hash-based path.
-
-        Returns:
-            None. As a side effect, uploads the protein when needed and sets
-            ``self.id`` to the newly created record's ID.
-        """
-        if client is None:
-            client = DeepOriginClient()
-
-        if self._should_upload_local_bytes(remote_path=remote_path):
-            self.upload(client=client, remote_path=remote_path)
-
-        kwargs: dict[str, Any] = {
-            "file_path": self.remote_path,
-        }
-
-        if self.pdb_id is not None:
-            kwargs["pdb_id"] = self.pdb_id
-
-        if self.uniprot_accession is not None:
-            kwargs["uniprot_accession"] = self.uniprot_accession
-
-        if self.local_path is not None:
-            kwargs["protein_length"] = self.length
-        kwargs["protein_name"] = self.name
-
-        proj_id = self.resolved_project_id(client=client)
-        if proj_id is not None:
-            kwargs["project_id"] = proj_id
-        if self.tags is not None:
-            kwargs["tags"] = self.tags
-
-        result = client.entities.create_protein(**kwargs)
-
-        if "data" in result and "id" in result["data"]:
-            self.id = result["data"]["id"]
-
     def sync(
         self,
         *,
@@ -1799,23 +1747,18 @@ class Protein(Entity):
         client: Optional[DeepOriginClient] = None,
         remote_path: Optional[str] = None,
     ) -> None:
-        """Sync the protein to the data platform.
+        """Sync the protein to the data platform via import-dataset.
 
-        Uploads the protein file when needed and links to an existing record if
-        one with the same file path already exists, otherwise creates a new
-        record via :meth:`register`.
-
-        When :attr:`local_path` is a readable file, always uploads those bytes
-        to :attr:`remote_path` (creating or overwriting the UFA object) without
-        converting CIF→PDB. When there is no local file and
-        :attr:`remote_path` is already set, skips upload.
+        Uploads local bytes to a staging UFA path when needed, then invokes the
+        served ``deeporigin.import-dataset`` ``register_protein`` path, which
+        canonicalizes the file and create-or-reuses a Protein entity.
 
         Args:
             lazy: If True, skip syncing when the protein already has an ID.
                 Defaults to False.
             client: DeepOriginClient instance. If None, uses DeepOriginClient().
             remote_path: Custom remote path to upload to. Overrides the
-                default hash-based path.
+                default staging path.
 
         Returns:
             None. As a side effect, uploads the protein (if necessary) and updates
@@ -1836,40 +1779,65 @@ class Protein(Entity):
 
         if self._should_upload_local_bytes(remote_path=remote_path):
             self.upload(client=client, remote_path=remote_path)
+        elif self.remote_path is None:
+            raise DeepOriginException(
+                title="Protein sync failed",
+                message="Cannot sync without a local file or remote_path.",
+            )
+
+        source_path = remote_path or self.remote_path
+        if source_path is None:
+            raise DeepOriginException(
+                title="Protein sync failed",
+                message="No UFA path available for import-dataset registration.",
+            )
+
+        inputs: dict[str, Any] = {
+            "register_protein": True,
+            "file_path": source_path,
+        }
+        if self.name:
+            inputs["protein_name"] = self.name
+        if self.pdb_id is not None:
+            inputs["pdb_id"] = self.pdb_id
+        if self.uniprot_accession is not None:
+            inputs["uniprot_accession"] = self.uniprot_accession
+        if self.tags is not None:
+            inputs["tags"] = self.tags
+
+        tool_meta = TOOL_KEYS_AND_VERSIONS["import_dataset"]
+        raw = client.executions.create(  # ty:ignore[unresolved-attribute]
+            tool_key=tool_meta["tool_key"],
+            tool_version=tool_meta["tool_version"],
+            data={
+                "inputs": inputs,
+                "outputs": {},
+                "metadata": {},
+                "sync": True,
+            },
+        )
+        dto = raw if isinstance(raw, dict) else {}
+        protein_row = _protein_row_from_import_execution(dto)
+        if protein_row is None:
+            raise DeepOriginException(
+                title="Protein sync failed",
+                message="import-dataset did not return a protein row in jobOutputs.proteins.",
+            )
+
+        protein_id = protein_row.get("protein_id") or protein_row.get("id")
+        if protein_id is None:
+            raise DeepOriginException(
+                title="Protein sync failed",
+                message="import-dataset returned a protein row without an id.",
+            )
+        self.id = str(protein_id)
+        file_path = protein_row.get("file_path")
+        if isinstance(file_path, str) and file_path:
+            self.remote_path = file_path
 
         proj_id = self.resolved_project_id(client=client)
         if proj_id is not None:
             self.project_id = proj_id
-
-        if proj_id is not None:
-            response = client.entities.search_proteins(
-                file_path=self.remote_path,
-                project_id=proj_id,
-            )
-        else:
-            response = client.entities.search_proteins(file_path=self.remote_path)
-        data = response["data"]
-
-        if data:
-            existing_protein = data[0]
-            if "id" in existing_protein:
-                self.id = existing_protein["id"]
-            ep = existing_protein.get("project_id")
-            if ep is not None:
-                self.project_id = str(ep)
-            update_kwargs: dict[str, Any] = {}
-            if self.tags is not None:
-                update_kwargs["tags"] = self.tags
-            if (
-                self.uniprot_accession is not None
-                and existing_protein.get("uniprot_accession") != self.uniprot_accession
-            ):
-                update_kwargs["uniprot_accession"] = self.uniprot_accession
-            if update_kwargs and self.id is not None:
-                client.entities.update_protein(self.id, **update_kwargs)
-            return
-
-        self.register(client=client)
 
     @beartype
     def update(
@@ -1899,7 +1867,7 @@ class Protein(Entity):
         if self.id is None:
             raise ValueError(
                 "Cannot update a protein without a platform id; "
-                "call sync() or register() first."
+                "call sync() first."
             )
 
         if client is None:
@@ -1964,3 +1932,15 @@ def validate_pdb_file(file_path: str | Path) -> None:
             message="The PDB file is invalid. It could not be parsed by RDKit.",
             fix="Please check the PDB file and try again.",
         )
+
+
+def _protein_row_from_import_execution(dto: dict[str, Any]) -> dict[str, Any] | None:
+    """Extract the first protein dict from an import-dataset registration execution."""
+    jo = dto.get("jobOutputs")
+    if isinstance(jo, dict):
+        proteins = jo.get("proteins")
+        if isinstance(proteins, list) and proteins:
+            first = proteins[0]
+            if isinstance(first, dict):
+                return dict(first)
+    return None
