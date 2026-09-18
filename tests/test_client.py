@@ -6,7 +6,10 @@ import json
 import pytest
 
 from deeporigin.platform.client import DeepOriginClient
-from deeporigin.utils.constants import TOOL_EXECUTION_POST_TIMEOUT_SECONDS
+from deeporigin.utils.constants import (
+    ENV_VARIABLES,
+    TOOL_EXECUTION_POST_TIMEOUT_SECONDS,
+)
 
 
 def test_client_tag_set_on_creation():
@@ -475,3 +478,280 @@ def test_from_headers_still_raises_when_required_missing():
     msg = str(exc_info.value)
     assert "X-Do-Org-Key" in msg
     assert "X-Do-Base-Url" in msg
+
+
+def test_executions_create_omits_visibility_by_default():
+    """No ``visibility`` key is sent when the caller does not ask for one."""
+    DeepOriginClient.close_all()
+
+    client = DeepOriginClient.from_local()
+    captured = _stub_post_json_capturing_body(client)
+
+    client.clusters.get_default_cluster_id = (  # type: ignore[method-assign]
+        lambda: "test-cluster-id"
+    )
+
+    client.executions.create(
+        tool_key="test.tool",
+        tool_version="1.0.0",
+        data={"inputs": {}, "outputs": {}, "metadata": {}},
+    )
+
+    assert "visibility" not in captured
+
+
+def test_executions_create_sends_visibility():
+    """``visibility='hidden'`` marks the run internal on the execution payload."""
+    DeepOriginClient.close_all()
+
+    client = DeepOriginClient.from_local()
+    captured = _stub_post_json_capturing_body(client)
+
+    client.clusters.get_default_cluster_id = (  # type: ignore[method-assign]
+        lambda: "test-cluster-id"
+    )
+
+    client.executions.create(
+        tool_key="test.tool",
+        tool_version="1.0.0",
+        data={"inputs": {}, "outputs": {}, "metadata": {}},
+        visibility="hidden",
+    )
+
+    assert captured["visibility"] == "hidden"
+
+
+def test_executions_create_data_visibility_overrides_argument():
+    """An explicit ``visibility`` in ``data`` wins over the argument (caller wins)."""
+    DeepOriginClient.close_all()
+
+    client = DeepOriginClient.from_local()
+    captured = _stub_post_json_capturing_body(client)
+
+    client.clusters.get_default_cluster_id = (  # type: ignore[method-assign]
+        lambda: "test-cluster-id"
+    )
+
+    client.executions.create(
+        tool_key="test.tool",
+        tool_version="1.0.0",
+        data={
+            "inputs": {},
+            "outputs": {},
+            "metadata": {},
+            "visibility": "visible",
+        },
+        visibility="hidden",
+    )
+
+    assert captured["visibility"] == "visible"
+
+
+def test_executions_create_rejects_unknown_visibility():
+    """A typo must raise rather than silently fail open (run stays visible)."""
+    DeepOriginClient.close_all()
+
+    client = DeepOriginClient.from_local()
+    _stub_post_json_capturing_body(client)
+
+    client.clusters.get_default_cluster_id = (  # type: ignore[method-assign]
+        lambda: "test-cluster-id"
+    )
+
+    with pytest.raises(ValueError) as exc_info:
+        client.executions.create(
+            tool_key="test.tool",
+            tool_version="1.0.0",
+            data={"inputs": {}, "outputs": {}, "metadata": {}},
+            visibility="hiden",  # ty:ignore[invalid-argument-type]
+        )
+
+    assert "visibility" in str(exc_info.value)
+
+
+def _visibility_test_client() -> tuple[DeepOriginClient, dict]:
+    """Return a local client whose POST body is captured, with clusters stubbed."""
+    DeepOriginClient.close_all()
+
+    client = DeepOriginClient.from_local()
+    captured = _stub_post_json_capturing_body(client)
+
+    client.clusters.get_default_cluster_id = (  # type: ignore[method-assign]
+        lambda: "test-cluster-id"
+    )
+    return client, captured
+
+
+def _payload() -> dict:
+    return {"inputs": {}, "outputs": {}, "metadata": {}}
+
+
+def test_executions_create_uses_client_visibility_default():
+    """A client-level ``_visibility`` is stamped without per-call plumbing.
+
+    This is what covers the sites that call ``executions.create`` directly rather
+    than going through ``Execution._create_execution``.
+    """
+    DeepOriginClient.close_all()
+
+    client = DeepOriginClient.from_local(_visibility="hidden")
+    captured = _stub_post_json_capturing_body(client)
+    client.clusters.get_default_cluster_id = (  # type: ignore[method-assign]
+        lambda: "test-cluster-id"
+    )
+
+    client.executions.create(
+        tool_key="test.tool", tool_version="1.0.0", data=_payload()
+    )
+
+    assert captured["visibility"] == "hidden"
+
+
+def test_executions_create_argument_overrides_client_default():
+    """An explicit argument beats the client-level default."""
+    DeepOriginClient.close_all()
+
+    client = DeepOriginClient.from_local(_visibility="hidden")
+    captured = _stub_post_json_capturing_body(client)
+    client.clusters.get_default_cluster_id = (  # type: ignore[method-assign]
+        lambda: "test-cluster-id"
+    )
+
+    client.executions.create(
+        tool_key="test.tool",
+        tool_version="1.0.0",
+        data=_payload(),
+        visibility="visible",
+    )
+
+    assert captured["visibility"] == "visible"
+
+
+def test_client_visibility_separates_singletons():
+    """Two clients differing only in ``_visibility`` must not share an instance.
+
+    Without this, a client built for hidden runs would silently hand its default
+    to an unrelated caller that asked for none.
+    """
+    DeepOriginClient.close_all()
+
+    client1 = DeepOriginClient.from_local()
+    client2 = DeepOriginClient.from_local(_visibility="hidden")
+
+    assert client2 is not client1
+    assert client1._visibility is None
+    assert client2._visibility == "hidden"
+
+
+def test_executions_create_drops_explicit_none_visibility_in_data():
+    """``data={"visibility": None}`` omits the key rather than sending JSON null.
+
+    The server schema marks the field optional, which accepts an absent key but
+    rejects a null.
+    """
+    _client, captured = _visibility_test_client()
+    client = _client
+
+    data = _payload()
+    data["visibility"] = None
+    client.executions.create(tool_key="test.tool", tool_version="1.0.0", data=data)
+
+    assert "visibility" not in captured
+
+
+def test_executions_create_rejects_invalid_visibility_in_data():
+    """A typo in ``data`` is rejected too -- it is the source that wins."""
+    client, _captured = _visibility_test_client()
+
+    data = _payload()
+    data["visibility"] = "hiden"
+    with pytest.raises(ValueError) as exc_info:
+        client.executions.create(tool_key="test.tool", tool_version="1.0.0", data=data)
+
+    assert "visibility" in str(exc_info.value)
+
+
+def test_executions_create_rejects_invalid_client_default():
+    """A typo in the client-level default is rejected at the seam that sends it."""
+    DeepOriginClient.close_all()
+
+    client = DeepOriginClient.from_local(_visibility="hiden")  # ty:ignore[invalid-argument-type]
+    _stub_post_json_capturing_body(client)
+    client.clusters.get_default_cluster_id = (  # type: ignore[method-assign]
+        lambda: "test-cluster-id"
+    )
+
+    with pytest.raises(ValueError) as exc_info:
+        client.executions.create(
+            tool_key="test.tool", tool_version="1.0.0", data=_payload()
+        )
+
+    assert "visibility" in str(exc_info.value)
+
+
+def test_executions_create_validates_before_any_side_effect():
+    """A bad value raises before the cluster lookup, so it fails offline."""
+    DeepOriginClient.close_all()
+
+    client = DeepOriginClient.from_local()
+    _stub_post_json_capturing_body(client)
+
+    calls: list[int] = []
+
+    def _boom() -> str:
+        calls.append(1)
+        return "test-cluster-id"
+
+    client.clusters.get_default_cluster_id = _boom  # type: ignore[method-assign]
+
+    with pytest.raises(ValueError):
+        client.executions.create(
+            tool_key="test.tool",
+            tool_version="1.0.0",
+            data=_payload(),
+            visibility="hiden",  # ty:ignore[invalid-argument-type]
+        )
+
+    assert calls == []
+
+
+def test_no_arg_construction_honours_visibility_local_branch(monkeypatch):
+    """``DeepOriginClient(_visibility=...)`` must not drop the flag.
+
+    The no-arg priority chain dispatches to a factory and returns before the
+    cache-key line, so `_visibility` was previously discarded here: a client
+    asked for hidden runs silently produced visible ones. That is the fail-open
+    this flag is validated to prevent, so the preferred call shape must honour it.
+    """
+    monkeypatch.delenv(ENV_VARIABLES["access_token"], raising=False)
+    monkeypatch.delenv(ENV_VARIABLES["org_key"], raising=False)
+    monkeypatch.setenv(ENV_VARIABLES["env"], "local")
+    DeepOriginClient.close_all()
+
+    client = DeepOriginClient(_visibility="hidden")
+
+    assert client._visibility == "hidden"
+
+
+def test_no_arg_construction_honours_visibility_env_branch(monkeypatch):
+    """The env-variables branch of the no-arg chain honours ``_visibility`` too."""
+    token = DeepOriginClient.from_local().token
+    monkeypatch.setenv(ENV_VARIABLES["access_token"], token)
+    monkeypatch.setenv(ENV_VARIABLES["org_key"], "test-org")
+    DeepOriginClient.close_all()
+
+    client = DeepOriginClient(_visibility="hidden")
+
+    assert client._visibility == "hidden"
+
+
+def test_no_arg_construction_defaults_visibility_to_none(monkeypatch):
+    """Omitting ``_visibility`` on the no-arg path still yields no default."""
+    monkeypatch.delenv(ENV_VARIABLES["access_token"], raising=False)
+    monkeypatch.delenv(ENV_VARIABLES["org_key"], raising=False)
+    monkeypatch.setenv(ENV_VARIABLES["env"], "local")
+    DeepOriginClient.close_all()
+
+    client = DeepOriginClient()
+
+    assert client._visibility is None
