@@ -215,16 +215,23 @@ class _DeepOriginMeta(type):
         if base_url is None and token is None and org_key is None:
             env_token = os.environ.get(ENV_VARIABLES["access_token"])
             env_org = os.environ.get(ENV_VARIABLES["org_key"])
+            # `_visibility` is forwarded so the no-arg shape -- the one the class
+            # docstring calls preferred -- honours it too. Without this it was
+            # dropped here, and a client asked for hidden runs silently produced
+            # visible ones: the exact fail-open this flag is validated to prevent.
+            # `_app` / `_session` are deliberately not forwarded; that gap predates
+            # this flag and changing it would move existing clients between cache
+            # keys.
             if env_token and env_org:
-                instance = cls.from_env_variables()
+                instance = cls.from_env_variables(_visibility=_visibility)
             else:
                 # Route to from_local when DO_ENV=local; pass hint to from_disk otherwise
                 # (from_disk itself never reads environment variables)
                 env_hint = os.environ.get(ENV_VARIABLES["env"]) or None
                 if env_hint == "local":
-                    instance = cls.from_local()
+                    instance = cls.from_local(_visibility=_visibility)
                 else:
-                    instance = cls.from_disk(env_hint)
+                    instance = cls.from_disk(env_hint, _visibility=_visibility)
             if project_id is not None:
                 instance.project_id = project_id
             return instance
@@ -294,7 +301,8 @@ class DeepOriginClient(metaclass=_DeepOriginMeta):
     persist a default organization. Other mutable attributes (``tag``,
     ``record``, ``max_retries``, etc.) can also be changed after construction.
 
-    The singleton cache keys on ``(base_url, token, org_key, _app, _session)``.
+    The singleton cache keys on
+    ``(base_url, token, org_key, _app, _session, _visibility)``.
     Calling the constructor multiple times with the same resolved values returns
     the same cached instance and reuses the underlying connection pool.
     Changing ``org_key`` or ``project_id`` on an instance does not change the

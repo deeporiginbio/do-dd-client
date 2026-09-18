@@ -91,6 +91,10 @@ class Executions:
                 Falls back to the client-level ``_visibility`` default when both
                 are unset; when every source is ``None`` the key is omitted and
                 the server decides. Validated whichever source supplies it.
+                Note ``data={"visibility": None}`` does not suppress a client-level
+                default -- ``None`` reads as "unset" at every level, so resolution
+                falls through to it. To force one run visible on a client that
+                defaults to hidden, pass ``visibility="visible"`` explicitly.
 
         Returns:
             Dictionary containing the execution response from the API.

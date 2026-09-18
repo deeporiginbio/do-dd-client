@@ -6,7 +6,10 @@ import json
 import pytest
 
 from deeporigin.platform.client import DeepOriginClient
-from deeporigin.utils.constants import TOOL_EXECUTION_POST_TIMEOUT_SECONDS
+from deeporigin.utils.constants import (
+    ENV_VARIABLES,
+    TOOL_EXECUTION_POST_TIMEOUT_SECONDS,
+)
 
 
 def test_client_tag_set_on_creation():
@@ -710,3 +713,45 @@ def test_executions_create_validates_before_any_side_effect():
         )
 
     assert calls == []
+
+
+def test_no_arg_construction_honours_visibility_local_branch(monkeypatch):
+    """``DeepOriginClient(_visibility=...)`` must not drop the flag.
+
+    The no-arg priority chain dispatches to a factory and returns before the
+    cache-key line, so `_visibility` was previously discarded here: a client
+    asked for hidden runs silently produced visible ones. That is the fail-open
+    this flag is validated to prevent, so the preferred call shape must honour it.
+    """
+    monkeypatch.delenv(ENV_VARIABLES["access_token"], raising=False)
+    monkeypatch.delenv(ENV_VARIABLES["org_key"], raising=False)
+    monkeypatch.setenv(ENV_VARIABLES["env"], "local")
+    DeepOriginClient.close_all()
+
+    client = DeepOriginClient(_visibility="hidden")
+
+    assert client._visibility == "hidden"
+
+
+def test_no_arg_construction_honours_visibility_env_branch(monkeypatch):
+    """The env-variables branch of the no-arg chain honours ``_visibility`` too."""
+    token = DeepOriginClient.from_local().token
+    monkeypatch.setenv(ENV_VARIABLES["access_token"], token)
+    monkeypatch.setenv(ENV_VARIABLES["org_key"], "test-org")
+    DeepOriginClient.close_all()
+
+    client = DeepOriginClient(_visibility="hidden")
+
+    assert client._visibility == "hidden"
+
+
+def test_no_arg_construction_defaults_visibility_to_none(monkeypatch):
+    """Omitting ``_visibility`` on the no-arg path still yields no default."""
+    monkeypatch.delenv(ENV_VARIABLES["access_token"], raising=False)
+    monkeypatch.delenv(ENV_VARIABLES["org_key"], raising=False)
+    monkeypatch.setenv(ENV_VARIABLES["env"], "local")
+    DeepOriginClient.close_all()
+
+    client = DeepOriginClient()
+
+    assert client._visibility is None
