@@ -13,12 +13,12 @@ Behavior:
 import json
 import os
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Literal
+from typing import TYPE_CHECKING, Any, Literal, get_args
 
 if TYPE_CHECKING:
     import pandas as pd
 
-from deeporigin.utils.constants import ENV_VARIABLES
+from deeporigin.utils.constants import ENV_VARIABLES, ENVS
 from deeporigin.utils.display import _supports_unicode_output
 
 CONFIG_JSON_LOCATION = Path.home() / ".deeporigin" / "config.json"
@@ -97,8 +97,22 @@ def set_env(value: str) -> None:
     """Set the environment.
 
     Args:
-        value: The environment to set (e.g., 'prod', 'staging', 'edge', 'dev', 'local').
+        value: The environment to set (e.g., 'prod', 'staging', 'dev', 'local').
+
+    Raises:
+        DeepOriginException: If ``value`` is not a known environment name.
     """
+    from deeporigin.exceptions import DeepOriginException
+
+    valid = get_args(ENVS)
+    if value not in valid:
+        raise DeepOriginException(
+            title="Invalid environment",
+            message=f"Environment '{value}' is not supported.",
+            fix=f"Use one of: {', '.join(valid)}",
+            level="danger",
+        )
+
     _set_value("env", value)
 
 

@@ -962,8 +962,8 @@ def test_define_by_selection_is_rejected_on_protein_prep() -> None:
         )
 
 
-def test_loops_off_no_pocket_payload_uses_protein_prep() -> None:
-    """Direct route explicitly disables flat pocket finding."""
+def test_loops_off_extract_infers_crystal_pockets() -> None:
+    """Ligand extract on the fast path requests one crystal pocket per pose."""
     prep = ProteinPrep(
         protein=_protein_with_remote(),
         selection=_SAMPLE_SELECTION,
@@ -973,8 +973,26 @@ def test_loops_off_no_pocket_payload_uses_protein_prep() -> None:
     assert prep._uses_composite_route() is False
     payload = prep._make_protein_prep_payload(action="prepare", sync=True)
     assert payload["inputs"]["action"] == "prepare"
-    assert payload["inputs"]["find_pockets"] == "no"
+    assert payload["inputs"]["find_pockets"] == "from-crystal-ligand"
+    assert "crystal_ligand" not in payload["inputs"]
     assert "pocket" not in payload["inputs"]
+
+
+def test_loops_off_keep_ligand_sets_find_pockets_no() -> None:
+    """A Selection with no ligand extract does not request crystal pockets."""
+    selection = {
+        "analyzer_version": "1.0.0",
+        "decisions": {"chain:A": "keep", "ligand:LIG:A:100": "keep"},
+        "source_sha256": _SHA256,
+    }
+    prep = ProteinPrep(
+        protein=_protein_with_remote(),
+        selection=selection,
+        model_missing_loops=False,
+    )
+
+    payload = prep._make_protein_prep_payload(action="prepare", sync=True)
+    assert payload["inputs"]["find_pockets"] == "no"
 
 
 def test_loops_on_routes_to_target_prep_payload() -> None:
@@ -1124,11 +1142,11 @@ def test_pocket_start_exposes_pockets_and_supports_quote(
     assert prep.get_report() is not None
 
 
-def test_direct_get_report_and_get_pockets_raise(
+def test_direct_get_report_raises_and_extract_exposes_pockets(
     client: DeepOriginClient,
     registered_protein: Protein,
 ) -> None:
-    """Direct protein-prep prepare excludes report and pocket getters."""
+    """Fast-path extract publishes pockets and still skips Structure Report."""
     prep = ProteinPrep(
         protein=registered_protein,
         selection=_SAMPLE_SELECTION,
@@ -1139,8 +1157,9 @@ def test_direct_get_report_and_get_pockets_raise(
 
     with pytest.raises(ValueError, match="did not request a prepared Structure Report"):
         prep.get_report()
-    with pytest.raises(ValueError, match="did not request pockets"):
-        prep.get_pockets()
+    pockets = prep.get_pockets()
+    assert pockets is not None
+    assert len(pockets) >= 1
 
 
 def test_get_pockets_returns_none_when_not_published() -> None:
@@ -1173,6 +1192,36 @@ def test_get_pockets_returns_empty_list_for_zero_pocket_result() -> None:
     prep.tool_key = TOOL_KEYS_AND_VERSIONS["target_prep"]["tool_key"]
 
     assert prep.get_pockets({"jobOutputs": {"pockets": []}}) == []
+
+
+def test_get_pockets_returns_none_when_extract_not_yet_published() -> None:
+    """Fast-path extract requests pockets even without PocketFinderConfig."""
+    prep = ProteinPrep(
+        protein=Protein(name="test"),
+        selection=_SAMPLE_SELECTION,
+        model_missing_loops=False,
+    )
+    prep._id = "pending-crystal-pockets"
+
+    assert prep.get_pockets({"jobOutputs": {}}) is None
+
+
+def test_get_pockets_raises_when_run_did_not_request_them() -> None:
+    """A keep-only loops-off run has no pocket results to read."""
+    selection = {
+        "analyzer_version": "1.0.0",
+        "decisions": {"chain:A": "keep", "ligand:LIG:A:100": "keep"},
+        "source_sha256": _SHA256,
+    }
+    prep = ProteinPrep(
+        protein=Protein(name="test"),
+        selection=selection,
+        model_missing_loops=False,
+    )
+    prep._id = "no-pockets"
+
+    with pytest.raises(ValueError, match="did not request pockets"):
+        prep.get_pockets({"jobOutputs": {}})
 
 
 def test_get_crystal_poses_returns_none_when_not_published(

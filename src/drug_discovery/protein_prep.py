@@ -3,8 +3,9 @@
 ``ProteinPrep`` is the sole public preparation session. It always recommends
 via direct ``deeporigin.protein-prep``. Preparation routes by configuration:
 
-- loops off with no pockets or crystal-ligand pockets → direct
-  ``deeporigin.protein-prep`` (``run`` / ``start``);
+- loops off with no novel pockets → direct ``deeporigin.protein-prep``
+  (``run`` / ``start``). Extracting a ligand also requests one crystal-ligand
+  Pocket per extract (``find_pockets=from-crystal-ligand``);
 - loops on, or novel pocket finding → workflow
   ``deeporigin.target-preparation`` (``start`` only).
 
@@ -118,6 +119,19 @@ class _ParsedInputs(NamedTuple):
     selection: dict[str, Any] | None
     model_missing_loops: bool
     pocket: dict[str, Any] | None
+
+
+def _selection_has_ligand_extract(selection: Mapping[str, Any] | None) -> bool:
+    """Return whether a Selection extracts at least one ligand component."""
+    if not isinstance(selection, Mapping):
+        return False
+    decisions = selection.get("decisions")
+    if not isinstance(decisions, Mapping):
+        return False
+    return any(
+        str(component_id).startswith("ligand:") and decision == "extract"
+        for component_id, decision in decisions.items()
+    )
 
 
 def _pocket_input_from_inputs(inputs: dict[str, Any]) -> dict[str, Any] | None:
@@ -979,9 +993,10 @@ class ProteinPrep(
     """Recommend settings and prepare a protein.
 
     :meth:`recommend` always uses direct ``deeporigin.protein-prep``.
-    Preparation routes to the same tool when loops are off and ``pocket`` is
-    unset or uses ``from-crystal-ligand``. Loop modelling and novel pocket
-    finding use workflow ``deeporigin.target-preparation``.
+    Preparation routes to the same tool when loops are off and pocket finding
+    is unset, crystal-ligand, or inferred from ligand ``extract`` decisions.
+    Loop modelling and novel pocket finding use workflow
+    ``deeporigin.target-preparation``.
     Blocking :meth:`run` is available for the direct loops-off path. Composite
     callers use :meth:`start` (with ``quote`` / ``approve_amount`` when
     pockets are billable).
@@ -1551,6 +1566,8 @@ class ProteinPrep(
             inputs["find_pockets"] = "no"
             if self._pocket is not None:
                 inputs.update(self._pocket.to_tool_input())
+            elif _selection_has_ligand_extract(self._selection):
+                inputs["find_pockets"] = "from-crystal-ligand"
         payload: dict[str, Any] = {
             "inputs": inputs,
             "outputs": {},
@@ -2231,15 +2248,18 @@ class ProteinPrep(
             ``None`` when requested but not yet published.
 
         Raises:
-            ValueError: If :attr:`id` is unset, or ``pocket`` was not configured.
+            ValueError: If :attr:`id` is unset, or this run did not request pockets.
         """
         self._ensure_id()
-        if self._pocket is None:
-            raise ValueError(PROTEIN_PREP_POCKETS_EXCLUDED_MSG)
+        requested = self._pocket is not None or _selection_has_ligand_extract(
+            self._selection
+        )
         indexed = self._result_rows(_RESULT_TYPE_POCKET)
         outputs = self._execution_outputs(dto)
         raw: Any = indexed if indexed else outputs.get("pockets")
         if not isinstance(raw, list):
+            if not requested:
+                raise ValueError(PROTEIN_PREP_POCKETS_EXCLUDED_MSG)
             return None
         try:
             pockets = Pocket.from_json(raw, client=self.client)

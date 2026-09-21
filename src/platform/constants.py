@@ -136,7 +136,7 @@ TOOL_KEYS_AND_VERSIONS: dict[str, dict[str, str]] = {
     },
     "protein_prep": {
         "tool_key": "deeporigin.protein-prep",
-        "tool_version": "8.0.0",
+        "tool_version": "8.0.4",
     },
     "target_prep": {
         "tool_key": "deeporigin.target-preparation",

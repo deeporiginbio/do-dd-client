@@ -131,11 +131,14 @@ _Avoid_: "system" alone when meaning the prepared molecular system artifact
 Platform tool `deeporigin.protein-prep` that inventories a caller-supplied
 protein, records editable keep/review/skip Decisions, then applies resolved
 keep/skip Decisions and protonation. CLI class `ProteinPrep` is the sole public
-preparation session: `.recommend()` always uses protein-prep; loops-off with no
-`pocket` also uses protein-prep (`run()` / `start()`); loops-on or any
-`pocket=PocketFinderConfig(...)` routes to Target Preparation (`start()` only).
-`.get_results()` returns the prepared `Protein`; `.get_report()` /
-`.get_pockets()` expose composite artifacts. `protein` is constructor-only.
+preparation session: `.recommend()` always uses protein-prep; loops-off
+(including crystal-ligand pockets inferred from ligand `extract`) uses
+protein-prep (`run()` / `start()`); loops-on or novel
+`pocket=PocketFinderConfig(mode="auto-find")` routes to Target Preparation
+(`start()` only). `.get_results()` returns the prepared `Protein`;
+`.get_report()` is the composite Structure Report; `.get_pockets()` returns
+pockets when the run requested them (explicit pocket config or ligand extract
+on the fast path). `protein` is constructor-only.
 _Avoid_: SystemPrep / FEP assembly; a public `TargetPrep` class; public
 `action`; a separate recommend object; silently converting `review` to `skip`;
 v1 keep/remove lists (`keep_chain_ids`, …); treating loops-off as skipping

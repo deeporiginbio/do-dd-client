@@ -68,6 +68,7 @@ def test_client_repr_is_multiline():
         f"  base_url: {client.base_url}"
     )
 
+    client.project_id = "proj-abc"
     client.tag = "experiment-1"
     client.billing_tag = "billing-1"
     assert repr(client) == (
@@ -75,6 +76,7 @@ def test_client_repr_is_multiline():
         "  name: Local User\n"
         "  org_key: deeporigin\n"
         f"  base_url: {client.base_url}\n"
+        "  project_id: proj-abc\n"
         "  tag: experiment-1\n"
         "  billing_tag: billing-1"
     )
