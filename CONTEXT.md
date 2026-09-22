@@ -148,7 +148,7 @@ _Avoid_: SystemPrep / FEP assembly; a public `TargetPrep` class; public
 v1 keep/remove lists (`keep_chain_ids`, …); treating loops-off as skipping
 Protein Prep; `watch()` on a `.run()` / sync execution; `inputs.sync` on
 protein-prep (not in the tool schema); treating `.recommendation` as a raw
-dict (the property is a callable view; calling it returns a DataFrame);
+dict (it is a ``pandas.DataFrame`` after recommend, or ``None``);
 bundling report/pockets into `get_results()`
 
 **Target Preparation**:
@@ -192,14 +192,16 @@ to be keep or skip.
 _Avoid_: `recommendation` when you mean the live Selection value; Component
 recommendation
 
-**Recommendation view**:
-Callable notebook table of Components on `ProteinPrep.recommendation` after
+**Recommendation table**:
+`ProteinPrep.recommendation` is a ``pandas.DataFrame`` of Components after
 recommend (also returned by `.recommend()`). Columns include frozen Component
-recommendation and live Decision. Calling it AND-filters (`kind`, `subtype`,
-`recommendation`, `decision`) and returns a DataFrame. Unset is `None`. `.raw`
-is the analyzer payload. Not mapping-like (`["components"]` is gone).
-_Avoid_: returning a DataFrame from the property itself; dict access on the view;
-`keep` / `skip` on the view (`pp.recommend().keep()` is not supported)
+recommendation and live Decision. Filter with pandas (e.g. boolean masks on
+`kind` / `subtype` / `recommendation` / `decision`). Unset is `None`.
+`recommendation_payload` is the analyzer dict. Not mapping-like
+(`["components"]` is gone).
+_Avoid_: treating the property as a callable view; dict access on the
+DataFrame; `keep` / `skip` on the table (`pp.recommend().keep()` is not
+supported)
 
 **Loops-off prepare**:
 Protein Prep `action=prepare` with `model_missing_loops=false`: apply the

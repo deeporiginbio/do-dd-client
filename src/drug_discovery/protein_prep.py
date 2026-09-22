@@ -390,14 +390,16 @@ class PocketFinderConfig:
         return pocket
 
     @classmethod
-    def from_tool_input(cls, data: dict[str, Any]) -> PocketFinderConfig:
+    def from_tool_input(cls, data: dict[str, Any]) -> PocketFinderConfig | None:
         """Rebuild config from stored flat or legacy nested pocket inputs.
 
         Args:
             data: Pocket-related fields from execution ``userInputs``.
 
         Returns:
-            Rehydrated config (``crystal_ligand`` Ligand is not restored).
+            Rehydrated config (``crystal_ligand`` Ligand is not restored), or
+            ``None`` when ``find_pockets='from-crystal-ligand'`` was inferred
+            from a Selection extract with no explicit crystal source.
 
         Raises:
             ValueError: If ``data`` is not a valid pocket object.
@@ -422,10 +424,17 @@ class PocketFinderConfig:
         if not isinstance(crystal, dict):
             raise ValueError("pocket.crystal_ligand must be an object.")
         remote = crystal.get("file_path")
+        ligand_id = crystal.get("ligand_id") or data.get("ligand_id")
+        component_id = crystal.get("component_id") or data.get("component_id")
+        # Loops-off extract-via-Selection serializes find_pockets alone (no
+        # crystal_ligand object); rehydrate as unset pocket — get_pockets()
+        # still detects the Selection extract flag.
+        if not remote and not ligand_id and not component_id:
+            return None
         return cls(
             mode="from-crystal-ligand",
-            ligand_id=crystal.get("ligand_id"),
-            component_id=crystal.get("component_id"),
+            ligand_id=ligand_id,
+            component_id=component_id,
             pocket_radius=data.get("pocket_radius"),
             box_geometry=data.get("box_geometry"),
             box_padding=data.get("box_padding"),

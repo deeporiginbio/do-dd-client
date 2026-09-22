@@ -939,6 +939,16 @@ def test_pocket_finder_config_to_tool_input_modes() -> None:
     }
 
 
+def test_pocket_from_tool_input_selection_inferred_extract_returns_none() -> None:
+    """Selection-inferred extract has find_pockets alone; rehydrate as no pocket."""
+    from deeporigin.drug_discovery.protein_prep import PocketFinderConfig
+
+    assert (
+        PocketFinderConfig.from_tool_input({"find_pockets": "from-crystal-ligand"})
+        is None
+    )
+
+
 def test_define_by_selection_is_rejected_on_protein_prep() -> None:
     """Selection-defined pockets require the standalone PocketFinder tool."""
     from deeporigin.drug_discovery import PocketFinderConfig
