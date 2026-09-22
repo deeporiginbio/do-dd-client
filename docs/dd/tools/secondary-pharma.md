@@ -1,8 +1,8 @@
 # Secondary Pharmacology
 
-Score ligands against a secondary-pharmacology kinase panel (currently
-EGFR, BRAF, and SRC — the panel is expected to grow) with
-[`SecondaryPharmacology`](../ref/secondary_pharma.md).
+Score ligands against a secondary-pharmacology kinase panel with
+[`SecondaryPharmacology`](../ref/secondary_pharma.md). See what's currently
+in the panel with `SecondaryPharmacology.panel()`.
 
 ## Two execution modes on one class
 
@@ -52,11 +52,10 @@ job = SecondaryPharmacology(ligands=[ligand], method="ligand-ml")
 df = job.run()
 ```
 
-`df` has one row per ligand × panel member, with `uniprot_id`, `gene_name`,
-and exactly one of `p_active` (classification) or `p_affinity` (regression,
--log10 M) set per row. `ligand_id` is always a real platform id -- `run()`
-registers each ligand after scoring (a no-op if already registered), so
-results are referable even when `ligand` itself was never explicitly synced.
+`df` has one row per ligand × panel member: `uniprot_id`, `gene_name`, and
+either `p_active` (classification) or `p_affinity` (regression, -log10 M).
+`ligand_id` should always be populated, even if `ligand` wasn't registered with the
+platform beforehand.
 
 See what's currently in the panel with `SecondaryPharmacology.panel()`:
 
@@ -89,12 +88,9 @@ job.wait()               # or `await job.watch()` in a notebook
 df = job.get_results()
 ```
 
-`df` has one row per docked pose, including `pose_score`, `binding_energy`,
-and `file_path` -- `pose_score`/`binding_energy` are the way to consume
-docking results today. Pose *visualization* isn't available yet: `pdb_id` is
-a provenance label, not a fetchable, coordinate-matching key -- the panel's
-actual receptor structure is pocket-aligned and doesn't match what
-`Protein.from_pdb_id(pdb_id)` downloads from RCSB. Blocked on DDOS-7481.
+`df` has one row per docked pose: `pose_score`, `binding_energy`, and
+`file_path`. Use `pose_score`/`binding_energy` to read results -- viewing
+the docked structure itself isn't supported yet.
 
 `job.plot()` renders a heatmap colored by `binding_energy` (default) or
 `metric="pose_score"`.
@@ -129,5 +125,20 @@ df = job.get_results()
 loaded run cannot be changed — call `duplicate()` first to get an editable
 copy, validated against the current panel.
 
-Don't know the execution id? `SecondaryPharmacology.list(status=["Completed"],
-project_id=client.project_id)` lists every past run, newest first.
+Don't know the execution id? List every past run, newest first:
+
+```{.python notest}
+runs = SecondaryPharmacology.list(status=["Completed"], project_id=client.project_id)
+ml_runs = [r for r in runs if r.method == "ligand-ml"]
+dock_runs = [r for r in runs if r.method == "docking"]
+```
+
+`project_id` restricts the list to your own project.
+
+Reload a ligand-ml run and a docking run by id to compare them:
+
+```{.python notest}
+ml_job = SecondaryPharmacology.from_id(ml_runs[0].id)
+dock_job = SecondaryPharmacology.from_id(dock_runs[0].id)
+SecondaryPharmacology.plot_ml_vs_docking(ml_job, dock_job)
+```
