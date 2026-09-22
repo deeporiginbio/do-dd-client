@@ -829,7 +829,11 @@ class SecondaryPharmacology(
             # ligand-ml's p_active. binding_energy (kcal/mol) has no fixed
             # range -- auto-scaled Viridis instead.
             if metric == "pose_score":
-                palette, clim, label = WHITE_RED_HAZARD_PALETTE, (0.0, 1.0), "pose score"
+                palette, clim, label = (
+                    WHITE_RED_HAZARD_PALETTE,
+                    (0.0, 1.0),
+                    "pose score",
+                )
             else:
                 palette, clim, label = Viridis256, None, "binding energy (kcal/mol)"
             plot_grid_heatmap(

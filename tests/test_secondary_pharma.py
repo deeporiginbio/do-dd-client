@@ -89,7 +89,9 @@ def test_secondary_pharma_panel_lists_accessions_and_gene_names(
 
 
 def test_secondary_pharma_panel_default_truncates_full_does_not(
-    client: DeepOriginClient, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    client: DeepOriginClient,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
 ) -> None:
     """A panel larger than the preview size is truncated by default, not with ``full=True``.
 
@@ -98,7 +100,9 @@ def test_secondary_pharma_panel_default_truncates_full_does_not(
     simulated platform behavior. `client.tools.get()` is never replaced.
     """
     _assert_tool_available(client)
-    monkeypatch.setattr("deeporigin.drug_discovery.secondary_pharma._PANEL_PREVIEW_ROWS", 2)
+    monkeypatch.setattr(
+        "deeporigin.drug_discovery.secondary_pharma._PANEL_PREVIEW_ROWS", 2
+    )
 
     preview = SecondaryPharmacology.panel(client=client)
     assert len(preview) == 2
@@ -788,8 +792,12 @@ def test_plot_ml_vs_docking_unions_targets_and_sorts_by_agreement(
     ligand_labels = set(figure.yaxis[0].major_label_overrides.values())
     assert ligand_labels == {"ethanol"}
 
-    patch_renderers = [r for r in figure.renderers if r.glyph.__class__.__name__ == "Patches"]
+    patch_renderers = [
+        r for r in figure.renderers if r.glyph.__class__.__name__ == "Patches"
+    ]
     assert len(patch_renderers) == 2
     ml_values, dock_values = (r.data_source.data["value"] for r in patch_renderers)
-    assert len(ml_values) == len(_PANEL_ACCESSIONS), "ligand-ml half covers every target"
+    assert len(ml_values) == len(_PANEL_ACCESSIONS), (
+        "ligand-ml half covers every target"
+    )
     assert len(dock_values) == 1, "docking half covers only the one target it ran"
