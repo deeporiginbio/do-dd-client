@@ -169,7 +169,7 @@ PROTEIN_PREP_RUN_REQUIRES_LOOPS_OFF_MSG = (
 PROTEIN_PREP_REPORT_EXCLUDED_MSG = (
     "This ProteinPrep execution did not request a prepared Structure Report. "
     "Reports are only produced on the target-preparation route (loops on or "
-    "pocket configured)."
+    "novel pocket finding)."
 )
 """Used by ``ProteinPrep.get_report`` when the direct protein-prep path ran."""
 

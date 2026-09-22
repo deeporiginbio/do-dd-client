@@ -905,6 +905,7 @@ class DeepOriginClient(metaclass=_DeepOriginMeta):
                 record=record,
                 _app=_app,
                 _session=_session,
+                _visibility=_visibility,
             )
 
         token = get_token(env=env)

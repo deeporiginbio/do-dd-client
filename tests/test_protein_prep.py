@@ -1083,7 +1083,7 @@ def test_composite_start_uses_target_preparation_tool_key(
     client: DeepOriginClient,
     registered_protein: Protein,
 ) -> None:
-    """Loops-on start binds to target-preparation major 2."""
+    """Loops-on start binds to target-preparation (pinned major 7)."""
     prep = ProteinPrep(
         protein=registered_protein,
         selection=_SAMPLE_SELECTION,

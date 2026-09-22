@@ -29,7 +29,6 @@ from .data_platform import (
     MOCK_CANONICAL_PROTEIN_ID,
     _base_canonical_protein_record,
     mock_crystal_poses_from_selection,
-    register_mock_crystal_pose,
     register_mock_prepared_protein,
 )
 
@@ -2256,15 +2255,6 @@ def create_tools_router(
             prepared_protein_id=prepared_protein_id,
             selection=inputs.get("selection"),
         )
-        if not pose_rows:
-            pose_rows = [
-                register_mock_crystal_pose(
-                    ligands,
-                    execution_id=str(execution["executionId"]),
-                    component_id="ligand:LIG:A:100",
-                    prepared_protein_id=prepared_protein_id,
-                )
-            ]
         outputs.update(
             {
                 "audit_file_path": (f"tool-runs/{execution['executionId']}/audit.json"),
@@ -2295,6 +2285,7 @@ def create_tools_router(
             tool_version=tool_version,
             execution_id=execution["executionId"],
             job_outputs=outputs,
+            project_id=execution.get("projectId") or body.get("projectId"),
         )
         return execution
 
