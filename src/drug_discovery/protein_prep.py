@@ -59,7 +59,6 @@ from deeporigin.platform.constants import (
 )
 from deeporigin.utils.constants import (
     EXECUTION_LIST_ORDER_CREATED_DESC,
-    QUOTE_APPROVE_AMOUNT,
     PROTEIN_PREP_COMPONENT_KINDS,  # ty:ignore[unresolved-import]
     PROTEIN_PREP_DATAFRAME_ID_COLUMN_MSG,  # ty:ignore[unresolved-import]
     PROTEIN_PREP_DISPLAY_NONE,  # ty:ignore[unresolved-import]
@@ -75,6 +74,7 @@ from deeporigin.utils.constants import (
     PROTEIN_PREP_REPORT_EXCLUDED_MSG,  # ty:ignore[unresolved-import]
     PROTEIN_PREP_RUN_REQUIRES_LOOPS_OFF_MSG,  # ty:ignore[unresolved-import]
     PROTEIN_PREP_SUBTYPE_REQUIRES_RECOMMENDATION_MSG,  # ty:ignore[unresolved-import]
+    QUOTE_APPROVE_AMOUNT,
 )
 
 if TYPE_CHECKING:
@@ -86,7 +86,7 @@ _RESULT_TYPE_PREPARED_PROTEIN = "preparedprotein"
 _RESULT_TYPE_STRUCTURE_REPORT = "structurereport"
 _RESULT_TYPE_POCKET = "pocket"
 _RESULT_TYPE_POSE = "pose"
-_CRYSTAL_EXTRACT_ORIGIN = "crystal_extract"
+_PROTEIN_PREP_CRYSTAL_POSE_ORIGIN = "cocrystal"
 _VALID_ACTIONS = frozenset({"recommend", "prepare"})
 _VALID_ANALYZER_RECOMMENDATIONS = frozenset({"keep", "review", "skip", "extract"})
 _VALID_DECISIONS = frozenset({"keep", "review", "skip", "extract"})
@@ -716,10 +716,9 @@ def _crystal_pose_output_rows(rows: list[Any]) -> list[dict[str, Any]]:
     for row in rows:
         if not isinstance(row, dict):
             continue
-        origin = row.get("origin")
-        if origin is not None and str(origin).strip():
-            if str(origin).strip() != _CRYSTAL_EXTRACT_ORIGIN:
-                continue
+        origin = str(row.get("origin") or "").strip()
+        if origin != _PROTEIN_PREP_CRYSTAL_POSE_ORIGIN:
+            continue
         filtered.append(row)
     return filtered
 
@@ -2186,7 +2185,7 @@ class ProteinPrep(
 
         Tries result-explorer rows (``result_type=pose``), then
         ``jobOutputs.poses``. Rows use the Protein Prep Pose shape
-        (``origin: crystal_extract``, prepared ``protein_id``, ``ligand_id``,
+        (``origin: cocrystal``, prepared ``protein_id``, ``ligand_id``,
         ``file_path``, ``component_id``). Coordinates are not downloaded;
         call :meth:`~deeporigin.drug_discovery.structures.pose.Pose.download`
         on individual poses when needed.

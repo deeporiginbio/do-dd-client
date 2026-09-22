@@ -1193,6 +1193,7 @@ def test_direct_get_report_raises_and_extract_exposes_pockets(
     pockets = prep.get_pockets()
     assert pockets is not None
     assert len(pockets) >= 1
+    assert pockets[0].origin == "from-crystal-ligand"
 
 
 def test_get_pockets_returns_none_when_not_published() -> None:
@@ -1304,17 +1305,33 @@ def test_crystal_poses_from_output_rows_hydrates_metadata(
             "component_id": "ligand:LIG:A:100",
             "file_path": "entities/ligands/extracted/exec/lig.sdf",
             "ligand_id": registered_ligand.id,
-            "origin": "crystal_extract",
+            "origin": "cocrystal",
             "protein_id": prepared_protein_id,
         }
     ]
     poses = _crystal_poses_from_output_rows(rows, client=client)
     assert len(poses) == 1
     assert poses[0].ligand_id == registered_ligand.id
-    assert poses[0].props.get("component_id") == "ligand:LIG:A:100"
+    assert poses[0].component_id == "ligand:LIG:A:100"
     assert poses[0].protein_id == prepared_protein_id
-    assert poses[0].origin == "crystal_extract"
+    assert poses[0].origin == "cocrystal"
     assert poses[0].remote_path == "entities/ligands/extracted/exec/lig.sdf"
+
+
+def test_crystal_poses_from_output_rows_rejects_non_cocrystal_origin(
+    client: DeepOriginClient,
+) -> None:
+    """Only Protein Prep cocrystal pose rows are surfaced."""
+    rows = [
+        {
+            "component_id": "ligand:LIG:A:100",
+            "file_path": "entities/ligands/extracted/exec/lig.sdf",
+            "ligand_id": "08LIGAND0001",
+            "origin": "crystal_extract",
+            "protein_id": "09PREPAREDPROTEIN",
+        }
+    ]
+    assert _crystal_poses_from_output_rows(rows, client=client) == []
 
 
 def test_run_with_extract_populates_get_crystal_poses(
@@ -1332,9 +1349,9 @@ def test_run_with_extract_populates_get_crystal_poses(
     poses = prep.get_crystal_poses()
     assert isinstance(poses, PoseSet)
     assert len(poses) == 1
-    assert poses[0].props.get("component_id") == "ligand:LIG:A:100"
+    assert poses[0].component_id == "ligand:LIG:A:100"
     assert poses[0].ligand_id is not None
-    assert poses[0].origin == "crystal_extract"
+    assert poses[0].origin == "cocrystal"
     assert poses[0].protein_id is not None
 
 

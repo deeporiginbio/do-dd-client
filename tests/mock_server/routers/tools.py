@@ -2115,6 +2115,38 @@ def create_tools_router(
             job_outputs=outputs,
         )
 
+    def _apply_mock_pocket_metadata(
+        pockets: list[Any],
+        *,
+        find_pockets: str | None,
+        prepared_protein_id: str,
+        selection: object,
+    ) -> None:
+        """Attach toolbox Pocket.origin metadata on mocked prepare pockets."""
+        extract_component_id: str | None = None
+        if isinstance(selection, dict):
+            decisions = selection.get("decisions")
+            if isinstance(decisions, dict):
+                for component_id, decision in decisions.items():
+                    if (
+                        str(component_id).startswith("ligand:")
+                        and str(decision) == "extract"
+                    ):
+                        extract_component_id = str(component_id)
+                        break
+        for pocket in pockets:
+            if not isinstance(pocket, dict):
+                continue
+            if prepared_protein_id:
+                pocket["protein_id"] = prepared_protein_id
+            if find_pockets == "novel":
+                pocket.setdefault("origin", "novel")
+            elif find_pockets == "from-crystal-ligand":
+                pocket["origin"] = "from-crystal-ligand"
+                if extract_component_id:
+                    pocket.setdefault("component_id", extract_component_id)
+                    pocket.setdefault("ligand_name", extract_component_id)
+
     def _inject_protein_prep_tool_execution_results(
         execution: dict[str, Any],
     ) -> None:
@@ -2185,9 +2217,14 @@ def create_tools_router(
             )
             pocket_outputs = _legacy_outputs_to_job_outputs(pocket_fixture) or {}
             pockets = pocket_outputs.get("pockets") or []
-            for pocket in pockets:
-                if isinstance(pocket, dict) and prepared_protein_id:
-                    pocket["protein_id"] = prepared_protein_id
+            _apply_mock_pocket_metadata(
+                pockets,
+                find_pockets=find_pockets,
+                prepared_protein_id=prepared_protein_id,
+                selection=user_inputs.get("selection")
+                if isinstance(user_inputs, dict)
+                else None,
+            )
             outputs["pockets"] = pockets
         execution["jobOutputs"] = outputs
         _inject_result_explorer_records_from_outputs(
@@ -2271,9 +2308,12 @@ def create_tools_router(
             )
             pocket_outputs = _legacy_outputs_to_job_outputs(pocket_fixture) or {}
             pockets = pocket_outputs.get("pockets") or []
-            for pocket in pockets:
-                if isinstance(pocket, dict) and prepared_protein_id:
-                    pocket["protein_id"] = prepared_protein_id
+            _apply_mock_pocket_metadata(
+                pockets,
+                find_pockets=inputs.get("find_pockets"),
+                prepared_protein_id=prepared_protein_id,
+                selection=inputs.get("selection"),
+            )
             outputs["pockets"] = pockets
 
         execution["jobOutputs"] = outputs

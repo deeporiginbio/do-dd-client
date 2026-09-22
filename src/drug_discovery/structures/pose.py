@@ -3,8 +3,11 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from html import escape
 from pathlib import Path
-from typing import Any, ClassVar, Optional, Self
+from typing import Any, ClassVar, Literal, Optional, Self
+
+PoseOrigin = Literal["cocrystal", "docked", "registered"]
 
 from beartype import beartype
 import pandas as pd
@@ -38,6 +41,7 @@ _POSE_JSON_RESERVED: frozenset[str] = frozenset(
         "binding_energy",
         "best_pose",
         "origin",
+        "component_id",
     }
 )
 
@@ -167,7 +171,8 @@ class Pose(Entity):
         pose_score: Docking pose score when present.
         binding_energy: Docking binding energy when present.
         best_pose: Whether this row is the best pose for its ligand in a run.
-        origin: Provenance string (for example ``registered`` or ``docking``).
+        origin: Platform pose provenance (``cocrystal``, ``docked``, ``registered``).
+        component_id: Protein Prep Selection component id for cocrystal poses.
         props: Additional metadata from the platform row.
     """
 
@@ -179,7 +184,8 @@ class Pose(Entity):
     pose_score: float | None = None
     binding_energy: float | None = None
     best_pose: bool | None = None
-    origin: str | None = None
+    origin: PoseOrigin | str | None = None
+    component_id: str | None = None
     props: dict[str, Any] = field(default_factory=dict)
     _mol: Chem.Mol | None = field(default=None, repr=False, compare=False)
 
@@ -388,6 +394,7 @@ class Pose(Entity):
             binding_energy=_optional_float(entry.get("binding_energy")),
             best_pose=_optional_bool(entry.get("best_pose")),
             origin=_strip_nonempty_str(entry.get("origin")),
+            component_id=_strip_nonempty_str(entry.get("component_id")),
             props=props,
             _mol=mol,
         )
@@ -440,7 +447,7 @@ class Pose(Entity):
         *,
         ligand: Ligand | None = None,
         protein_id: str | None = None,
-        origin: str = "registered",
+        origin: PoseOrigin | str = "registered",
         client: Optional[DeepOriginClient] = None,
         sanitize: bool = True,
         remove_hydrogens: bool = False,
@@ -620,9 +627,81 @@ class Pose(Entity):
         """Visualize this pose in a notebook (Mol* viewer via :meth:`Ligand.show`)."""
         return self.to_ligand().show()
 
-    def _repr_html_(self) -> str | None:
-        """Return HTML for Jupyter when the pose structure can be loaded."""
-        return self.to_ligand()._repr_html_()
+    def _repr_rows(self) -> list[tuple[str, str]]:
+        """Return ``(label, value)`` rows for text and HTML display."""
+
+        rows: list[tuple[str, str]] = []
+
+        def add(label: str, value: Any) -> None:
+            if value is None:
+                return
+            if isinstance(value, str) and not value.strip():
+                return
+            rows.append((label, str(value)))
+
+        add("id", self.id)
+        add("ligand_id", self.ligand_id)
+        add("protein_id", self.protein_id)
+        add("origin", self.origin)
+        add("component_id", self.component_id)
+        add("name", self.name)
+        if self.smiles:
+            smiles = str(self.smiles)
+            if len(smiles) > 96:
+                smiles = f"{smiles[:93]}..."
+            add("smiles", smiles)
+        add("compute_job_id", self.compute_job_id)
+        if self.pose_score is not None:
+            add("pose_score", self.pose_score)
+        if self.binding_energy is not None:
+            add("binding_energy", self.binding_energy)
+        if self.best_pose is not None:
+            add("best_pose", self.best_pose)
+        add("project_id", self.project_id)
+        if self.props:
+            for key in sorted(self.props):
+                add(f"props.{key}", self.props[key])
+        return rows
+
+    def __repr__(self) -> str:
+        """Return a table of pose metadata (no structure viewer)."""
+        from tabulate import tabulate
+
+        return "Pose\n" + tabulate(
+            self._repr_rows(),
+            headers=["Field", "Value"],
+            tablefmt="rounded_grid",
+        )
+
+    __str__ = __repr__
+
+    def _repr_html_(self) -> str:
+        """Return an HTML metadata table for Jupyter (no Mol* viewer)."""
+        header = (
+            "<tr>"
+            "<th style='text-align:left;padding:4px 16px 4px 0'>Field</th>"
+            "<th style='text-align:left;padding:4px 0'>Value</th>"
+            "</tr>"
+        )
+        body_parts: list[str] = []
+        for name, value in self._repr_rows():
+            body_parts.append(
+                "<tr>"
+                "<td style='padding:4px 16px 4px 0;font-family:ui-monospace,"
+                "SFMono-Regular,Menlo,monospace;white-space:nowrap'>"
+                f"{escape(name, quote=False)}</td>"
+                "<td style='padding:4px 0;font-family:ui-monospace,"
+                "SFMono-Regular,Menlo,monospace'>"
+                f"{escape(value, quote=False)}</td>"
+                "</tr>"
+            )
+        return (
+            "<div>"
+            "<div style='font-weight:600;margin-bottom:4px'>Pose</div>"
+            "<table style='border-collapse:collapse'>"
+            f"<thead>{header}</thead><tbody>{''.join(body_parts)}</tbody>"
+            "</table></div>"
+        )
 
 
 def _rehydrate_pose_from_local_sdf(

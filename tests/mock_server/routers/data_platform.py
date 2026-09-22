@@ -163,7 +163,7 @@ def register_mock_crystal_pose(
         "component_id": component_id,
         "file_path": remote_path,
         "ligand_id": ligand_id,
-        "origin": "crystal_extract",
+        "origin": "cocrystal",
         "protein_id": prepared_protein_id,
     }
 

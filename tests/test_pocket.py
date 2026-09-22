@@ -250,6 +250,71 @@ def test_from_json_entry_project_id_overrides_client_lv0(client: DeepOriginClien
     assert pocket.project_id == "entry-proj"
 
 
+def test_from_json_maps_origin_metadata_lv0():
+    """Protein Prep / Pocket Finder origin fields hydrate as first-class attrs."""
+    data = [
+        {
+            "file_path": str(_BRD_PDB),
+            "origin": "from-crystal-ligand",
+            "ligand_id": "08LIGAND0001",
+            "ligand_name": "LIG:A:100",
+            "component_id": "ligand:LIG:A:100",
+        }
+    ]
+
+    pocket = Pocket.from_json(data)[0]
+
+    assert pocket.origin == "from-crystal-ligand"
+    assert pocket.ligand_id == "08LIGAND0001"
+    assert pocket.ligand_name == "LIG:A:100"
+    assert pocket.component_id == "ligand:LIG:A:100"
+    assert pocket.name == "Pocket from crystal ligand LIG"
+    assert "origin" not in (pocket.props or {})
+
+
+def test_from_json_crystal_ligand_name_from_component_id_lv0():
+    """Component-style ligand_name yields a readable pocket display name."""
+    data = [
+        {
+            "file_path": "tool-runs/exec/pocket_1.pdb",
+            "origin": "from-crystal-ligand",
+            "ligand_name": "ligand:B:BEB:501:",
+        }
+    ]
+
+    pocket = Pocket.from_json(data)[0]
+
+    assert pocket.name == "Pocket from crystal ligand BEB"
+    assert pocket.remote_path == "tool-runs/exec/pocket_1.pdb"
+
+
+@pytest.mark.parametrize(
+    ("ligand_name", "expected_short"),
+    [
+        ("ligand:B:BEB:501:", "BEB"),
+        ("A:BEB401", "BEB"),
+        ("BEB", "BEB"),
+    ],
+)
+def test_short_ligand_label_lv0(ligand_name: str, expected_short: str) -> None:
+    assert Pocket._short_ligand_label(ligand_name) == expected_short
+
+
+def test_from_json_maps_define_by_selection_metadata_lv0():
+    data = [
+        {
+            "file_path": str(_BRD_PDB),
+            "origin": "define-by-selection",
+            "selection_names": ["A:TYR123", "A:LEU124"],
+        }
+    ]
+
+    pocket = Pocket.from_json(data)[0]
+
+    assert pocket.origin == "define-by-selection"
+    assert pocket.selection_names == ["A:TYR123", "A:LEU124"]
+
+
 def test_from_json_extra_keys_go_to_props_lv0():
     """Known property keys become attributes; file_path/protein_id are excluded from props."""
     data = [

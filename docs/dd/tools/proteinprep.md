@@ -138,8 +138,11 @@ valid zero-pocket result. After prepare, ligands marked ``extract`` in the
 Selection are available from ``get_crystal_poses()`` as a
 :class:`~deeporigin.drug_discovery.structures.pose.PoseSet` (each
 :class:`~deeporigin.drug_discovery.structures.pose.Pose` carries prepared
-``protein_id``, ``ligand_id``, ``origin: crystal_extract``, and
-``component_id`` in ``props``). That method returns an empty set when prepare
+``protein_id``, ``ligand_id``, ``origin: cocrystal``, and
+``component_id``). Crystal pockets from the same run expose
+``Pocket.origin`` (``from-crystal-ligand``), ``component_id``, ``ligand_id``,
+and ``ligand_name`` on :class:`~deeporigin.drug_discovery.Pocket`. That method
+returns an empty set when prepare
 finished with no extractions and ``None`` while outputs are still pending.
 
 ## Use a saved Selection
