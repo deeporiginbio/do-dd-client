@@ -5,7 +5,12 @@ from unittest.mock import patch
 import numpy as np
 import pytest
 
-from deeporigin.plots import _create_hover_tooltip, plot_heatmap, scatter
+from deeporigin.plots import (
+    _create_hover_tooltip,
+    plot_grid_heatmap,
+    plot_heatmap,
+    scatter,
+)
 
 
 def test_scatter_basic_functionality():
@@ -622,3 +627,118 @@ def test_plot_heatmap_degenerate_color_scale():
         plot_heatmap(values)
 
         mock_show.assert_called_once()
+
+
+def test_plot_grid_heatmap_rectangular():
+    """plot_grid_heatmap renders an NxM matrix with independent row/col labels."""
+    values = np.array([[0.1, 0.2, 0.3], [0.4, 0.5, 0.6]])
+
+    with patch("deeporigin.plots.show") as mock_show:
+        plot_grid_heatmap(values, row_labels=["r1", "r2"], col_labels=["c1", "c2", "c3"])
+
+        mock_show.assert_called_once()
+        figure = mock_show.call_args[0][0]
+        assert list(figure.x_range.factors) == ["c1", "c2", "c3"]
+        assert list(figure.y_range.factors) == ["r2", "r1"]
+
+
+def test_plot_grid_heatmap_default_labels():
+    """plot_grid_heatmap defaults to 0..N-1 / 0..M-1 when labels are omitted."""
+    values = np.array([[1.0, 2.0]])
+
+    with patch("deeporigin.plots.show") as mock_show:
+        plot_grid_heatmap(values)
+
+        figure = mock_show.call_args[0][0]
+        assert list(figure.x_range.factors) == ["0", "1"]
+        assert list(figure.y_range.factors) == ["0"]
+
+
+def test_plot_grid_heatmap_label_length_mismatch():
+    """plot_grid_heatmap validates row/col label lengths independently."""
+    values = np.array([[1.0, 2.0], [3.0, 4.0]])
+
+    with pytest.raises(ValueError, match="row_labels"):
+        plot_grid_heatmap(values, row_labels=["only-one"])
+
+    with pytest.raises(ValueError, match="col_labels"):
+        plot_grid_heatmap(values, col_labels=["only-one"])
+
+
+def test_plot_grid_heatmap_non_2d_raises():
+    """plot_grid_heatmap rejects non-2D input."""
+    with pytest.raises(ValueError, match="2D matrix"):
+        plot_grid_heatmap(np.array([1.0, 2.0, 3.0]))
+
+
+def test_plot_grid_heatmap_x_axis_at_bottom():
+    """Column labels render at the bottom, not the top (matches platform-ui)."""
+    values = np.array([[1.0, 2.0]])
+
+    with patch("deeporigin.plots.show") as mock_show:
+        plot_grid_heatmap(values)
+
+        figure = mock_show.call_args[0][0]
+        assert figure.xaxis[0] in figure.below
+        assert figure.xaxis[0] not in figure.above
+
+
+def test_white_red_hazard_palette_matches_platform_ui_stops():
+    """The hazard palette's endpoints/midpoint match platform-ui's WhiteRed scale exactly."""
+    from deeporigin.plots import WHITE_RED_HAZARD_PALETTE
+
+    assert len(WHITE_RED_HAZARD_PALETTE) == 256
+    assert WHITE_RED_HAZARD_PALETTE[0] == "#FFFFFF"
+    assert WHITE_RED_HAZARD_PALETTE[-1] == "#641D1A"
+    assert WHITE_RED_HAZARD_PALETTE[128] == "#D93E39"
+
+
+def test_plot_split_heatmap_skips_nan_per_triangle_independently():
+    """Each triangle's NaN cells are skipped without affecting the other triangle."""
+    from deeporigin.plots import plot_split_heatmap
+
+    values_a = np.array([[0.9, 0.1], [np.nan, 0.5]])
+    values_b = np.array([[0.8, np.nan], [0.3, 0.4]])
+
+    with patch("deeporigin.plots.show") as mock_show:
+        plot_split_heatmap(
+            values_a,
+            values_b,
+            row_labels=["lig1", "lig2"],
+            col_labels=["EGFR", "BRAF"],
+            label_a="p_active",
+            label_b="pose_score",
+        )
+        mock_show.assert_called_once()
+        figure = mock_show.call_args[0][0]
+
+    patch_renderers = [r for r in figure.renderers if r.glyph.__class__.__name__ == "Patches"]
+    assert len(patch_renderers) == 2
+    values = [sorted(r.data_source.data["value"]) for r in patch_renderers]
+    assert sorted(values) == [[0.1, 0.5, 0.9], [0.3, 0.4, 0.8]]
+
+
+def test_plot_split_heatmap_shape_mismatch_raises():
+    """plot_split_heatmap requires both matrices to be the same shape."""
+    from deeporigin.plots import plot_split_heatmap
+
+    with pytest.raises(ValueError, match="same shape"):
+        plot_split_heatmap(np.zeros((2, 2)), np.zeros((2, 3)))
+
+
+def test_plot_split_heatmap_fixed_clim_not_auto_scaled():
+    """clim is fixed, not derived from the data -- the two halves stay comparable."""
+    from deeporigin.plots import plot_split_heatmap
+
+    values_a = np.array([[0.9]])
+    values_b = np.array([[0.9]])
+
+    with patch("deeporigin.plots.show") as mock_show:
+        plot_split_heatmap(values_a, values_b, clim=(0.0, 1.0))
+        figure = mock_show.call_args[0][0]
+
+    from bokeh.models import LinearColorMapper
+
+    mapper = figure.select_one({"type": LinearColorMapper})
+    assert mapper.low == 0.0
+    assert mapper.high == 1.0
