@@ -634,7 +634,9 @@ def test_plot_grid_heatmap_rectangular():
     values = np.array([[0.1, 0.2, 0.3], [0.4, 0.5, 0.6]])
 
     with patch("deeporigin.plots.show") as mock_show:
-        plot_grid_heatmap(values, row_labels=["r1", "r2"], col_labels=["c1", "c2", "c3"])
+        plot_grid_heatmap(
+            values, row_labels=["r1", "r2"], col_labels=["c1", "c2", "c3"]
+        )
 
         mock_show.assert_called_once()
         figure = mock_show.call_args[0][0]
@@ -712,7 +714,9 @@ def test_plot_split_heatmap_skips_nan_per_triangle_independently():
         mock_show.assert_called_once()
         figure = mock_show.call_args[0][0]
 
-    patch_renderers = [r for r in figure.renderers if r.glyph.__class__.__name__ == "Patches"]
+    patch_renderers = [
+        r for r in figure.renderers if r.glyph.__class__.__name__ == "Patches"
+    ]
     assert len(patch_renderers) == 2
     values = [sorted(r.data_source.data["value"]) for r in patch_renderers]
     assert sorted(values) == [[0.1, 0.5, 0.9], [0.3, 0.4, 0.8]]

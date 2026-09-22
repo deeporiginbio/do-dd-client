@@ -28,7 +28,9 @@ def _interpolated_palette(stops: list[tuple[float, str]], n: int = 256) -> list[
     palette = []
     for x in np.linspace(0, 1, n):
         (x0, c0), (x1, c1) = next(
-            (a, b) for a, b in zip(rgb_stops, rgb_stops[1:], strict=False) if a[0] <= x <= b[0]
+            (a, b)
+            for a, b in zip(rgb_stops, rgb_stops[1:], strict=False)
+            if a[0] <= x <= b[0]
         )
         t = 0.0 if x1 == x0 else (x - x0) / (x1 - x0)
         rgb = tuple(round(c0[k] + t * (c1[k] - c0[k])) for k in range(3))
@@ -41,6 +43,80 @@ def _interpolated_palette(stops: list[tuple[float, str]], n: int = 256) -> list[
 WHITE_RED_HAZARD_PALETTE = _interpolated_palette(
     [(0.0, "#FFFFFF"), (0.5, "#D93E39"), (1.0, "#641D1A")]
 )
+
+_HEATMAP_TOOLS = "pan,wheel_zoom,box_zoom,reset,save"
+_VALUE_STR_FIELD = "@value_str"
+
+
+def _resolve_labels(
+    n: int,
+    labels: Optional[Sequence[str]],
+    *,
+    param_name: str,
+    shape_desc: str,
+) -> list[str]:
+    """Default to "0..n-1", or validate that provided labels have length n."""
+    if labels is None:
+        return [str(i) for i in range(n)]
+    labels = list(map(str, labels))
+    if len(labels) != n:
+        raise ValueError(f"Length of `{param_name}` must match {shape_desc}.")
+    return labels
+
+
+def _auto_color_range(
+    mat: np.ndarray, clim: Optional[tuple[float, float]]
+) -> tuple[float, float]:
+    """Fixed *clim*, or (vmin, vmax) from *mat*'s finite values."""
+    if clim is not None:
+        return clim
+    finite_vals = mat[np.isfinite(mat)]
+    if finite_vals.size == 0:
+        return 0.0, 1.0
+    vmin, vmax = float(np.nanmin(finite_vals)), float(np.nanmax(finite_vals))
+    if math.isclose(vmin, vmax):
+        delta = 1e-6 if vmin == 0 else abs(vmin) * 1e-6
+        vmin, vmax = vmin - delta, vmax + delta
+    return vmin, vmax
+
+
+def _triangle_grid_source(
+    mat: np.ndarray,
+    row_labels: Sequence[str],
+    col_labels: Sequence[str],
+    *,
+    upper_left: bool,
+) -> ColumnDataSource:
+    """Triangle-vertex geometry for one half (upper-left or lower-right) of a split-heatmap grid."""
+    n_rows, n_cols = mat.shape
+    xs, ys, vals, rows, cols = [], [], [], [], []
+    for i in range(n_rows):
+        y1 = n_rows - i  # top edge of this row's band
+        y0 = y1 - 1
+        for j in range(n_cols):
+            v = mat[i, j]
+            if not np.isfinite(v):
+                continue
+            x0, x1 = j, j + 1
+            if upper_left:
+                xs.append([x0, x1, x0])
+                ys.append([y1, y1, y0])
+            else:
+                xs.append([x1, x1, x0])
+                ys.append([y1, y0, y0])
+            vals.append(v)
+            rows.append(row_labels[i])
+            cols.append(col_labels[j])
+    return ColumnDataSource(
+        {
+            "xs": xs,
+            "ys": ys,
+            "value": vals,
+            "value_str": [f"{v:.4f}" for v in vals],
+            "row": rows,
+            "col": cols,
+        }
+    )
 
 
 def plot_heatmap(
@@ -141,7 +217,7 @@ def plot_heatmap(
         x_range=labels,
         y_range=list(reversed(labels)),
         x_axis_location="above",
-        tools="pan,wheel_zoom,box_zoom,reset,save",
+        tools=_HEATMAP_TOOLS,
         toolbar_location="right",
         width=size,
         height=size,
@@ -167,7 +243,7 @@ def plot_heatmap(
                 ("col (j)", "@j"),
                 ("label row", "@y"),
                 ("label col", "@x"),
-                ("RMSD", "@value_str"),
+                ("RMSD", _VALUE_STR_FIELD),
             ]
         )
         p.add_tools(hover)
@@ -240,34 +316,21 @@ def plot_grid_heatmap(
         raise ValueError("values must be a 2D matrix.")
     n_rows, n_cols = mat.shape
 
-    row_labels = (
-        [str(i) for i in range(n_rows)] if row_labels is None else list(map(str, row_labels))
+    row_labels = _resolve_labels(
+        n_rows, row_labels, param_name="row_labels", shape_desc="values.shape[0]"
     )
-    col_labels = (
-        [str(i) for i in range(n_cols)] if col_labels is None else list(map(str, col_labels))
+    col_labels = _resolve_labels(
+        n_cols, col_labels, param_name="col_labels", shape_desc="values.shape[1]"
     )
-    if len(row_labels) != n_rows:
-        raise ValueError("Length of `row_labels` must match values.shape[0].")
-    if len(col_labels) != n_cols:
-        raise ValueError("Length of `col_labels` must match values.shape[1].")
-
-    if clim is not None:
-        vmin, vmax = clim
-    else:
-        finite_vals = mat[np.isfinite(mat)]
-        if finite_vals.size == 0:
-            vmin, vmax = 0.0, 1.0
-        else:
-            vmin, vmax = float(np.nanmin(finite_vals)), float(np.nanmax(finite_vals))
-            if math.isclose(vmin, vmax):
-                delta = 1e-6 if vmin == 0 else abs(vmin) * 1e-6
-                vmin, vmax = vmin - delta, vmax + delta
+    vmin, vmax = _auto_color_range(mat, clim)
 
     xs, ys, vals, ii, jj = [], [], [], [], []
     for i in range(n_rows):
         for j in range(n_cols):
             xs.append(col_labels[j])
-            ys.append(row_labels[n_rows - 1 - i])  # reversed so (0,0) is top-left visually
+            ys.append(
+                row_labels[n_rows - 1 - i]
+            )  # reversed so (0,0) is top-left visually
             vals.append(mat[i, j])
             ii.append(i)
             jj.append(j)
@@ -283,13 +346,15 @@ def plot_grid_heatmap(
         }
     )
 
-    mapper = LinearColorMapper(palette=palette, low=vmin, high=vmax, nan_color="#dddddd")
+    mapper = LinearColorMapper(
+        palette=palette, low=vmin, high=vmax, nan_color="#dddddd"
+    )
 
     p = figure(
         title=title,
         x_range=col_labels,
         y_range=list(reversed(row_labels)),
-        tools="pan,wheel_zoom,box_zoom,reset,save",
+        tools=_HEATMAP_TOOLS,
         toolbar_location="right",
         width=width,
         height=height,
@@ -312,7 +377,7 @@ def plot_grid_heatmap(
                 ("col (j)", "@j"),
                 ("label row", "@y"),
                 ("label col", "@x"),
-                (value_label, "@value_str"),
+                (value_label, _VALUE_STR_FIELD),
             ]
         )
         p.add_tools(hover)
@@ -389,58 +454,24 @@ def plot_split_heatmap(
         raise ValueError("values_a and values_b must have the same shape.")
     n_rows, n_cols = mat_a.shape
 
-    row_labels = (
-        [str(i) for i in range(n_rows)] if row_labels is None else list(map(str, row_labels))
+    row_labels = _resolve_labels(
+        n_rows, row_labels, param_name="row_labels", shape_desc="values.shape[0]"
     )
-    col_labels = (
-        [str(i) for i in range(n_cols)] if col_labels is None else list(map(str, col_labels))
+    col_labels = _resolve_labels(
+        n_cols, col_labels, param_name="col_labels", shape_desc="values.shape[1]"
     )
-    if len(row_labels) != n_rows:
-        raise ValueError("Length of `row_labels` must match values.shape[0].")
-    if len(col_labels) != n_cols:
-        raise ValueError("Length of `col_labels` must match values.shape[1].")
 
     vmin, vmax = clim
     mapper = LinearColorMapper(palette=palette, low=vmin, high=vmax)
 
-    def triangle_source(mat, upper_left: bool) -> ColumnDataSource:
-        xs, ys, vals, rows, cols = [], [], [], [], []
-        for i in range(n_rows):
-            y1 = n_rows - i  # top edge of this row's band
-            y0 = y1 - 1
-            for j in range(n_cols):
-                v = mat[i, j]
-                if not np.isfinite(v):
-                    continue
-                x0, x1 = j, j + 1
-                if upper_left:
-                    xs.append([x0, x1, x0])
-                    ys.append([y1, y1, y0])
-                else:
-                    xs.append([x1, x1, x0])
-                    ys.append([y1, y0, y0])
-                vals.append(v)
-                rows.append(row_labels[i])
-                cols.append(col_labels[j])
-        return ColumnDataSource(
-            {
-                "xs": xs,
-                "ys": ys,
-                "value": vals,
-                "value_str": [f"{v:.4f}" for v in vals],
-                "row": rows,
-                "col": cols,
-            }
-        )
-
-    source_a = triangle_source(mat_a, upper_left=True)
-    source_b = triangle_source(mat_b, upper_left=False)
+    source_a = _triangle_grid_source(mat_a, row_labels, col_labels, upper_left=True)
+    source_b = _triangle_grid_source(mat_b, row_labels, col_labels, upper_left=False)
 
     p = figure(
         title=title,
         x_range=(0, n_cols),
         y_range=(0, n_rows),
-        tools="pan,wheel_zoom,box_zoom,reset,save",
+        tools=_HEATMAP_TOOLS,
         toolbar_location="right",
         width=width,
         height=height,
@@ -458,19 +489,41 @@ def plot_split_heatmap(
     )
 
     fill = {"field": "value", "transform": mapper}
-    renderer_a = p.patches(xs="xs", ys="ys", source=source_a, fill_color=fill, line_color="white", line_width=1)
-    renderer_b = p.patches(xs="xs", ys="ys", source=source_b, fill_color=fill, line_color="white", line_width=1)
+    renderer_a = p.patches(
+        xs="xs",
+        ys="ys",
+        source=source_a,
+        fill_color=fill,
+        line_color="white",
+        line_width=1,
+    )
+    renderer_b = p.patches(
+        xs="xs",
+        ys="ys",
+        source=source_b,
+        fill_color=fill,
+        line_color="white",
+        line_width=1,
+    )
 
     p.add_tools(
         HoverTool(
             renderers=[renderer_a],
-            tooltips=[("ligand", "@row"), ("target", "@col"), (label_a, "@value_str")],
+            tooltips=[
+                ("ligand", "@row"),
+                ("target", "@col"),
+                (label_a, _VALUE_STR_FIELD),
+            ],
         )
     )
     p.add_tools(
         HoverTool(
             renderers=[renderer_b],
-            tooltips=[("ligand", "@row"), ("target", "@col"), (label_b, "@value_str")],
+            tooltips=[
+                ("ligand", "@row"),
+                ("target", "@col"),
+                (label_b, _VALUE_STR_FIELD),
+            ],
         )
     )
 
@@ -484,7 +537,9 @@ def plot_split_heatmap(
     p.add_layout(color_bar, "right")
 
     p.xaxis.ticker = [j + 0.5 for j in range(n_cols)]
-    p.xaxis.major_label_overrides = {j + 0.5: label for j, label in enumerate(col_labels)}
+    p.xaxis.major_label_overrides = {
+        j + 0.5: label for j, label in enumerate(col_labels)
+    }
     p.yaxis.ticker = [n_rows - i - 0.5 for i in range(n_rows)]
     p.yaxis.major_label_overrides = {
         n_rows - i - 0.5: label for i, label in enumerate(row_labels)
