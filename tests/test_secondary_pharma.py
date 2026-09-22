@@ -4,7 +4,7 @@ Both execution paths run against the local mock: the ligand-ml path is
 served/sync (mirrors Admet); the docking path is a minimal async completion
 (mirrors Metabolism's async path) that indexes real result-explorer rows via
 ``_inject_secondary_pharma_docking_tool_execution_results``, so
-``get_results()``/``get_poses()``'s result-explorer branch gets real coverage
+``get_results()``/``_get_poses()``'s result-explorer branch gets real coverage
 here, not just the ``jobOutputs``-fallback branch exercised by the hand-built
 DTO tests below. The full Argo submit/poll/complete *timing* is still
 integration-only (dev/staging) -- this mock completes near-instantly, it
@@ -16,11 +16,16 @@ from __future__ import annotations
 import asyncio
 import time
 from typing import TYPE_CHECKING
+from unittest.mock import patch
 
 import pandas as pd
 import pytest
 
-from deeporigin.drug_discovery import BRD_DATA_DIR, Ligand, SecondaryPharmacology
+from deeporigin.drug_discovery import (
+    BRD_DATA_DIR,
+    Ligand,
+    SecondaryPharmacology,
+)
 from deeporigin.drug_discovery.structures.pose import Pose, PoseSet
 from deeporigin.exceptions import DeepOriginException
 from deeporigin.platform.constants import (
@@ -65,7 +70,7 @@ def test_secondary_pharma_construct_copies_definition_enum(
     """Construction fetches the live tool definition; ``tool_version`` stays pinned."""
     _assert_tool_available(client)
     ligand = Ligand.from_smiles("CCO")
-    job = SecondaryPharmacology(ligands=[ligand], client=client)
+    job = SecondaryPharmacology(ligands=[ligand], method="docking", client=client)
 
     assert _definition_enum(client) == _PANEL_ACCESSIONS
     assert job.tool_version == "2"
@@ -83,15 +88,45 @@ def test_secondary_pharma_panel_lists_accessions_and_gene_names(
     assert list(df["gene_name"]) == [gene for _, gene, _ in MOCK_SECONDARY_PHARMA_PANEL]
 
 
+def test_secondary_pharma_panel_default_truncates_full_does_not(
+    client: DeepOriginClient, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A panel larger than the preview size is truncated by default, not with ``full=True``.
+
+    Runs against the mock server's real (3-member) panel -- the only patch is
+    the module's own preview-size constant, an internal tuning knob, not
+    simulated platform behavior. `client.tools.get()` is never replaced.
+    """
+    _assert_tool_available(client)
+    monkeypatch.setattr("deeporigin.drug_discovery.secondary_pharma._PANEL_PREVIEW_ROWS", 2)
+
+    preview = SecondaryPharmacology.panel(client=client)
+    assert len(preview) == 2
+    assert list(preview["uniprot_id"]) == _PANEL_ACCESSIONS[:2]
+    assert "2 of 3" in capsys.readouterr().out
+
+    full = SecondaryPharmacology.panel(full=True, client=client)
+    assert len(full) == len(_PANEL_ACCESSIONS)
+    assert list(full["uniprot_id"]) == _PANEL_ACCESSIONS
+
+
+def test_secondary_pharma_requires_method(client: DeepOriginClient) -> None:
+    """``method`` is required; omitting it names both valid values."""
+    _assert_tool_available(client)
+    ligand = Ligand.from_smiles("CCO")
+    with pytest.raises(ValueError, match="docking.*ligand-ml"):
+        SecondaryPharmacology(ligands=[ligand], client=client)
+
+
 def test_secondary_pharma_requires_ligands_unless_self_test(
     client: DeepOriginClient,
 ) -> None:
     """``ligands`` is required unless ``self_test=True``."""
     _assert_tool_available(client)
     with pytest.raises(ValueError, match="self_test"):
-        SecondaryPharmacology(client=client)
+        SecondaryPharmacology(method="docking", client=client)
 
-    job = SecondaryPharmacology(self_test=True, client=client)
+    job = SecondaryPharmacology(self_test=True, method="docking", client=client)
     assert job.ligands == []
     assert job.self_test is True
 
@@ -106,7 +141,9 @@ def test_secondary_pharma_self_test_rejects_ligands(client: DeepOriginClient) ->
     _assert_tool_available(client)
     ligand = Ligand.from_smiles("CCO")
     with pytest.raises(ValueError, match="ignored when self_test"):
-        SecondaryPharmacology(ligands=[ligand], self_test=True, client=client)
+        SecondaryPharmacology(
+            ligands=[ligand], self_test=True, method="docking", client=client
+        )
 
 
 def test_secondary_pharma_uniprots_constructor_rejects_unknown(
@@ -116,14 +153,16 @@ def test_secondary_pharma_uniprots_constructor_rejects_unknown(
     _assert_tool_available(client)
     ligand = Ligand.from_smiles("CCO")
     with pytest.raises(ValueError, match="Unknown"):
-        SecondaryPharmacology(ligands=[ligand], uniprots=["Q99999"], client=client)
+        SecondaryPharmacology(
+            ligands=[ligand], uniprots=["Q99999"], method="docking", client=client
+        )
 
 
 def test_secondary_pharma_uniprots_setter_validation(client: DeepOriginClient) -> None:
     """Draft ``uniprots`` can be replaced, cleared, or rejected."""
     _assert_tool_available(client)
     ligand = Ligand.from_smiles("CCO")
-    job = SecondaryPharmacology(ligands=[ligand], client=client)
+    job = SecondaryPharmacology(ligands=[ligand], method="docking", client=client)
 
     job.uniprots = [_PANEL_ACCESSIONS[0]]
     assert job.uniprots == [_PANEL_ACCESSIONS[0]]
@@ -152,6 +191,7 @@ def test_secondary_pharma_default_name(client: DeepOriginClient) -> None:
 
     job3 = SecondaryPharmacology(
         ligands=[ligand],
+        method="docking",
         uniprots=_PANEL_ACCESSIONS[:2],
         client=client,
     )
@@ -199,26 +239,26 @@ def test_secondary_pharma_watch_rejects_ligand_ml_method(
 def test_secondary_pharma_get_poses_rejects_ligand_ml_method(
     client: DeepOriginClient,
 ) -> None:
-    """``get_poses()`` is docking only."""
+    """``_get_poses()`` is docking only."""
     _assert_tool_available(client)
     ligand = Ligand.from_smiles("CCO")
     job = SecondaryPharmacology(ligands=[ligand], method="ligand-ml", client=client)
     with pytest.raises(ValueError, match="get_results\\("):
-        job.get_poses()
+        job._get_poses()
 
 
 def test_secondary_pharma_get_poses_rejects_self_test(client: DeepOriginClient) -> None:
-    """``get_poses()`` refuses a self_test docking run.
+    """``_get_poses()`` refuses a self_test docking run.
 
     The platform's baked test ligand has no ligand id, so no panel_poses
-    rows are ever published for it -- get_poses() would otherwise either
+    rows are ever published for it -- _get_poses() would otherwise either
     raise an opaque "no results" error or (if jobOutputs happened to carry
     the rows) fail inside Pose.from_json on the missing ligand_id.
     """
     _assert_tool_available(client)
     job = SecondaryPharmacology(self_test=True, method="docking", client=client)
     with pytest.raises(ValueError, match="self_test"):
-        job.get_poses()
+        job._get_poses()
 
 
 def test_secondary_pharma_run_revalidates_mutated_uniprots(
@@ -309,16 +349,20 @@ def test_secondary_pharma_make_inputs_omits_ligands_for_self_test(
     assert inputs["methods"] == ["docking"]
 
 
-def test_secondary_pharma_make_inputs_ligand_ml_falls_back_to_index_id(
+def test_secondary_pharma_make_inputs_ligand_ml_omits_id_when_unsynced(
     client: DeepOriginClient,
 ) -> None:
-    """Ligand-ml rows use the list index as ``id`` when a ligand has none (never synced)."""
+    """Ligand-ml rows omit ``id`` for a ligand with none (never synced).
+
+    Not sent as ``id=None`` -- ``id`` must be a string when present, but
+    isn't required at all, so omitting it is the schema-valid option.
+    """
     _assert_tool_available(client)
     ligand = Ligand.from_smiles("CCO")
     assert ligand.id is None
     job = SecondaryPharmacology(ligands=[ligand], method="ligand-ml", client=client)
     inputs = job._make_inputs()
-    assert inputs["ligands"] == [{"smiles": "CCO", "id": "0"}]
+    assert inputs["ligands"] == [{"smiles": "CCO"}]
     assert ligand.id is None, "ligand-ml path must not sync/mutate ligands"
 
 
@@ -352,7 +396,7 @@ def test_secondary_pharma_make_inputs_includes_uniprots_only_when_set(
     """``uniprots`` is included when restricted, omitted for the whole panel."""
     _assert_tool_available(client)
     ligand = Ligand.from_smiles("CCO")
-    job = SecondaryPharmacology(ligands=[ligand], client=client)
+    job = SecondaryPharmacology(ligands=[ligand], method="docking", client=client)
     assert "uniprots" not in job._make_inputs()
 
     job.uniprots = [_PANEL_ACCESSIONS[0]]
@@ -386,15 +430,21 @@ def test_secondary_pharma_run_ligand_ml_returns_dataframe(
         "p_affinity",
     ):
         assert col in df.columns
+    assert set(df["method"]) == {"ligand-ml"}
 
+    # Ligands started unsynced, but get_results() backfills a real id once
+    # they're synced post-hoc -- not a fabricated placeholder.
+    assert lig1.id is not None
+    assert lig2.id is not None
+    assert set(df["ligand_id"]) == {lig1.id, lig2.id}
     expected = _synthesize_secondary_pharma_ligand_ml_row(
         smiles="CCO",
-        ligand_id="0",
+        ligand_id=None,
         uniprot_id=_PANEL_ACCESSIONS[0],
         gene_name=MOCK_SECONDARY_PHARMA_PANEL[0][1],
     )
     row = df[
-        (df["ligand_id"] == "0") & (df["uniprot_id"] == _PANEL_ACCESSIONS[0])
+        (df["ligand_smiles"] == "CCO") & (df["uniprot_id"] == _PANEL_ACCESSIONS[0])
     ].iloc[0]
     # exactly one of p_active/p_affinity is set per row; the other is None,
     # which pandas stores as NaN once the column is a float64 dtype.
@@ -600,12 +650,146 @@ def test_secondary_pharma_docking_start_sync_get_results_and_poses(
     assert set(df["ligand_id"]) == {synced_ligand_id}
     for col in ("pose_score", "binding_energy", "file_path", "gene_name", "pdb_id"):
         assert col in df.columns
+    assert set(df["method"]) == {"docking"}
 
-    poses = job.get_poses()
+    poses = job._get_poses()
     assert isinstance(poses, PoseSet)
     assert len(poses) == len(_PANEL_ACCESSIONS)
     for pose in poses:
         assert isinstance(pose, Pose)
         assert pose.ligand_id == synced_ligand_id
-        assert pose.local_path is not None, "get_poses() downloads the SDF"
+        assert pose.local_path is not None, "_get_poses() downloads the SDF"
         assert pose.smiles is not None
+
+
+# --- plot() -----------------------------------------------------------------
+
+
+def test_secondary_pharma_plot_ligand_ml_labels_by_ligand_name(
+    client: DeepOriginClient,
+) -> None:
+    """Heatmap rows are labeled by ligand name, not the raw SMILES, and dedupe."""
+    _assert_tool_available(client)
+    named = Ligand.from_smiles("CCO", name="ethanol")
+    unnamed = Ligand.from_smiles("CCN")
+    job = SecondaryPharmacology(
+        ligands=[named, unnamed], method="ligand-ml", client=client
+    )
+    job.run()
+
+    # run() backfills a real id for the unnamed ligand too -- plot() falls
+    # back to a short id suffix for it, not a bare "ligand 1" placeholder.
+    assert unnamed.id is not None
+
+    with patch("deeporigin.plots.show") as mock_show:
+        job.plot()
+        mock_show.assert_called_once()
+        figure = mock_show.call_args[0][0]
+        row_labels = set(figure.y_range.factors)
+        assert row_labels == {"ethanol", f"...{unnamed.id[-6:]}"}
+        assert not any(label.startswith("CC") for label in row_labels), (
+            "row labels must not be raw SMILES"
+        )
+
+
+def test_secondary_pharma_plot_docking_heatmap_metric_choice(
+    client: DeepOriginClient,
+) -> None:
+    """Docking's plot() defaults to a binding_energy heatmap; metric= switches it."""
+    _assert_tool_available(client)
+    client.files.upload(
+        local_path=BRD_DATA_DIR / "brd-2.sdf",
+        remote_path=MOCK_SECONDARY_PHARMA_POSE_SDF_PATH,
+    )
+    ligand = Ligand.from_smiles("CCO")
+    job = SecondaryPharmacology(ligands=[ligand], method="docking", client=client)
+    job.start()
+
+    elapsed = 0.0
+    while elapsed < 5.0:
+        job.sync()
+        if job.status in TERMINAL_STATES:
+            break
+        time.sleep(0.05)
+        elapsed += 0.05
+    assert is_success_status(job.status)
+
+    with patch("deeporigin.plots.show") as mock_show:
+        job.plot()
+        mock_show.assert_called_once()
+        assert "binding energy" in mock_show.call_args[0][0].title.text
+
+    with patch("deeporigin.plots.show") as mock_show:
+        job.plot(metric="pose_score")
+        mock_show.assert_called_once()
+        assert "pose score" in mock_show.call_args[0][0].title.text
+
+
+# --- SecondaryPharmacology.plot_ml_vs_docking() ------------------------------
+
+
+def test_plot_ml_vs_docking_rejects_wrong_methods(client: DeepOriginClient) -> None:
+    """plot_ml_vs_docking() requires (ligand-ml run, docking run) in that order."""
+    _assert_tool_available(client)
+    ligand = Ligand.from_smiles("CCO")
+    ml_job = SecondaryPharmacology(ligands=[ligand], method="ligand-ml", client=client)
+    dock_job = SecondaryPharmacology(ligands=[ligand], method="docking", client=client)
+
+    with pytest.raises(ValueError, match="ligand-ml"):
+        SecondaryPharmacology.plot_ml_vs_docking(dock_job, dock_job)
+    with pytest.raises(ValueError, match="docking"):
+        SecondaryPharmacology.plot_ml_vs_docking(ml_job, ml_job)
+
+
+def test_plot_ml_vs_docking_unions_targets_and_sorts_by_agreement(
+    client: DeepOriginClient,
+) -> None:
+    """The heatmap covers every target either run scored, and the top-left
+    cell is the strongest ligand/target pair both methods agree on."""
+    _assert_tool_available(client)
+    client.files.upload(
+        local_path=BRD_DATA_DIR / "brd-2.sdf",
+        remote_path=MOCK_SECONDARY_PHARMA_POSE_SDF_PATH,
+    )
+    ligand = Ligand.from_smiles("CCO", name="ethanol")
+
+    ml_job = SecondaryPharmacology(ligands=[ligand], method="ligand-ml", client=client)
+    ml_job.run()
+
+    # Docking only against one target -- a strict subset of ligand-ml's full panel.
+    dock_job = SecondaryPharmacology(
+        ligands=[ligand],
+        method="docking",
+        uniprots=[_PANEL_ACCESSIONS[0]],
+        client=client,
+    )
+    dock_job.start()
+    elapsed = 0.0
+    while elapsed < 5.0:
+        dock_job.sync()
+        if dock_job.status in TERMINAL_STATES:
+            break
+        time.sleep(0.05)
+        elapsed += 0.05
+    assert is_success_status(dock_job.status)
+
+    with patch("deeporigin.plots.show") as mock_show:
+        SecondaryPharmacology.plot_ml_vs_docking(ml_job, dock_job)
+        mock_show.assert_called_once()
+        figure = mock_show.call_args[0][0]
+
+    # Every panel target ligand-ml scored shows up, even the ones docking never touched.
+    target_labels = set(figure.xaxis[0].major_label_overrides.values())
+    assert len(target_labels) == len(_PANEL_ACCESSIONS)
+
+    # The same Ligand is shared by both jobs (the common case -- comparing ml vs.
+    # docking only makes sense against the same ligands). It must not collide
+    # with itself and get mislabeled "ethanol (2)".
+    ligand_labels = set(figure.yaxis[0].major_label_overrides.values())
+    assert ligand_labels == {"ethanol"}
+
+    patch_renderers = [r for r in figure.renderers if r.glyph.__class__.__name__ == "Patches"]
+    assert len(patch_renderers) == 2
+    ml_values, dock_values = (r.data_source.data["value"] for r in patch_renderers)
+    assert len(ml_values) == len(_PANEL_ACCESSIONS), "ligand-ml half covers every target"
+    assert len(dock_values) == 1, "docking half covers only the one target it ran"

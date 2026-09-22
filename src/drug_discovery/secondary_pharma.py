@@ -15,9 +15,9 @@ two paths load from different places: ``ligand-ml`` is served/sync, so results
 come back in the same response's ``jobOutputs``; ``docking`` is an async Argo
 workflow, so results are only ever persisted to result-explorer (``jobOutputs``
 on a polled execution is empty) -- same reason ``Docking.get_results()`` tries
-result-explorer before ``jobOutputs``. On the docking path, :meth:`get_poses`
-is a convenience that turns the same rows into a downloaded
-:class:`~deeporigin.drug_discovery.structures.pose.PoseSet`.
+result-explorer before ``jobOutputs``. Use ``get_results()``'s ``pose_score``/
+``binding_energy`` columns for docking results -- pose visualization isn't
+available yet (DDOS-7481).
 
 Usage::
 
@@ -31,8 +31,7 @@ Usage::
     dock = SecondaryPharmacology(ligands=[ligand], method="docking", effort=2)
     dock.start()
     dock.wait()
-    df = dock.get_results()
-    poses = dock.get_poses()
+    df = dock.get_results()  # pose_score, binding_energy, etc.
 """
 
 from __future__ import annotations
@@ -41,6 +40,7 @@ from asyncio import Task
 from typing import Any, Literal, Self
 
 from beartype import beartype
+import numpy as np
 import pandas as pd
 
 from deeporigin.drug_discovery.execution import Execution, _execution_outputs_dict
@@ -59,6 +59,9 @@ _UNIPROTS_ENUM_MISSING = (
     "SecondaryPharmacology tool definition is missing a non-empty uniprots enum "
     "(inputs.properties.uniprots.items.enum)."
 )
+
+#: Row count for :meth:`SecondaryPharmacology.panel`'s default preview.
+_PANEL_PREVIEW_ROWS = 10
 
 
 def _uniprots_from_definition(definition: dict[str, Any]) -> list[str]:
@@ -144,13 +147,15 @@ def _docking_ligand_row(lig: Ligand) -> dict[str, Any]:
 def _ligand_ml_ligand_rows(ligands: list[Ligand]) -> list[dict[str, Any]]:
     """Build ligand entries for the ligand-ml path (served, never synced).
 
-    Falls back to the list index as ``id`` when a ligand has none yet -- ligands
-    are not synced/mutated for this path, mirroring ``Admet._make_inputs``.
+    ``id`` is omitted when unset, not fabricated -- a fake id would publish
+    to the platform keyed to a nonexistent Ligand. Use ``ligand_smiles`` to
+    join results for an unsynced ligand.
     """
     rows: list[dict[str, Any]] = []
-    for idx, lig in enumerate(ligands):
+    for lig in ligands:
         row: dict[str, Any] = {"smiles": lig.smiles or ""}
-        row["id"] = lig.id if lig.id is not None else str(idx)
+        if lig.id is not None:
+            row["id"] = lig.id
         rows.append(row)
     return rows
 
@@ -264,6 +269,29 @@ def _load_panel_pose_rows(
     )
 
 
+def _ligand_plot_labels(ligands: list[Ligand]) -> dict[str, str]:
+    """Map each ligand's smiles to a short, unique plot label.
+
+    Shared by :meth:`SecondaryPharmacology._ligand_plot_labels` and
+    :meth:`SecondaryPharmacology.plot_ml_vs_docking`. Dedupes by smiles
+    first so a ligand reused across both runs doesn't collide with itself.
+    """
+    labels: dict[str, str] = {}
+    seen_labels: set[str] = set()
+    for i, lig in enumerate(ligands):
+        if lig.smiles in labels:
+            continue
+        base = lig.name or (f"...{lig.id[-6:]}" if lig.id else f"ligand {i}")
+        label = base
+        n = 2
+        while label in seen_labels:
+            label = f"{base} ({n})"
+            n += 1
+        seen_labels.add(label)
+        labels[lig.smiles] = label
+    return labels
+
+
 def _secondary_pharma_default_name(
     *,
     method: str,
@@ -310,7 +338,7 @@ class SecondaryPharmacology(
         self,
         *,
         ligands: list[Ligand] | LigandSet | None = None,
-        method: Literal["docking", "ligand-ml"] = "docking",
+        method: Literal["docking", "ligand-ml"] | None = None,
         uniprots: list[str] | None = None,
         effort: int = 1,
         self_test: bool = False,
@@ -322,9 +350,8 @@ class SecondaryPharmacology(
 
         Args:
             ligands: Ligands to score. Required unless ``self_test=True``.
-            method: ``"docking"`` (async workflow) or ``"ligand-ml"`` (served,
-                synchronous). Determines whether :meth:`run` or :meth:`start`
-                is valid for this instance.
+            method: ``"docking"`` (async, use :meth:`start`) or ``"ligand-ml"``
+                (served, use :meth:`run`). No default -- pick deliberately.
             uniprots: Panel accessions to restrict to. Validated against the
                 live tool definition. ``None`` or empty scores the whole panel.
             effort: Docking effort level (1-5). Ignored on the ligand-ml path.
@@ -338,11 +365,14 @@ class SecondaryPharmacology(
                 ``method``, ligand count (or ``self_test``), and ``uniprots``.
 
         Raises:
-            ValueError: If ``ligands`` is empty/omitted and ``self_test`` is
-                ``False``, if ``self_test`` is ``True`` and ``ligands`` is
-                also given, or if ``uniprots`` names accessions outside the
-                live panel.
+            ValueError: If ``method`` is omitted, if ``ligands`` is
+                empty/omitted and ``self_test`` is ``False``, if
+                ``self_test`` is ``True`` and ``ligands`` is also given, or
+                if ``uniprots`` names accessions outside the live panel.
         """
+        if method is None:
+            raise ValueError("method is required: 'docking' or 'ligand-ml'.")
+
         if isinstance(ligands, LigandSet):
             resolved_ligands: list[Ligand] = list(ligands.ligands)
         elif ligands is not None:
@@ -451,6 +481,7 @@ class SecondaryPharmacology(
     def panel(
         cls,
         *,
+        full: bool = False,
         tool_version: str = TOOL_KEYS_AND_VERSIONS["secondary_pharma"]["tool_version"],
         client: DeepOriginClient | None = None,
     ) -> pd.DataFrame:
@@ -461,6 +492,7 @@ class SecondaryPharmacology(
         sized catalogs later, which this method will need to account for then.
 
         Args:
+            full: Return every member instead of just a preview.
             tool_version: Platform tool version to look up. Defaults to the
                 pinned major version in :data:`TOOL_KEYS_AND_VERSIONS`.
             client: Optional API client. Uses the default if not provided.
@@ -475,7 +507,14 @@ class SecondaryPharmacology(
             raise RuntimeError("DeepOriginClient has no tools API")
         definition = client.tools.get(tool_key=cls.tool_key, tool_version=tool_version)
         members = _panel_from_definition(definition)
-        return pd.DataFrame(members, columns=["uniprot_id", "gene_name"])
+        df = pd.DataFrame(members, columns=["uniprot_id", "gene_name"])
+        if full or len(df) <= _PANEL_PREVIEW_ROWS:
+            return df
+        print(
+            f"Showing {_PANEL_PREVIEW_ROWS} of {len(df)} panel members -- "
+            "call panel(full=True) for the complete table."
+        )
+        return df.head(_PANEL_PREVIEW_ROWS)
 
     def _fetch_definition_uniprots(self) -> list[str]:
         """Return panel accessions from the live secondary-pharma tool definition."""
@@ -684,9 +723,9 @@ class SecondaryPharmacology(
           :func:`~deeporigin.drug_discovery.docking_common.load_docking_poses_from_execution`'s
           result-explorer-first, ``jobOutputs``-fallback shape.
 
-        The docking-path DataFrame includes ``file_path`` for each pose's SDF;
-        use :meth:`get_poses` to load them as a downloaded
-        :class:`~deeporigin.drug_discovery.structures.pose.PoseSet` instead.
+        The docking-path DataFrame includes ``pose_score``, ``binding_energy``,
+        and ``file_path`` per pose. Every row also carries a ``method``
+        column (``"ligand-ml"`` or ``"docking"``).
 
         Args:
             dto: Optional execution payload (``executions.create`` /
@@ -715,14 +754,101 @@ class SecondaryPharmacology(
                         "'ligand_ml_predictions' rows in jobOutputs."
                     ),
                 )
-            return pd.DataFrame([row for row in rows if isinstance(row, dict)])
+            df = pd.DataFrame([row for row in rows if isinstance(row, dict)])
+            df = self._backfill_ligand_ids(df)
+            df.insert(0, "method", self._method)
+            return df
 
         exec_id = self._ensure_id()
         rows = _load_panel_pose_rows(exec_id, client=self.client, dto=dto)
-        return pd.DataFrame(rows)
+        df = pd.DataFrame(rows)
+        df.insert(0, "method", self._method)
+        return df
 
-    def get_poses(self, *, dto: dict[str, Any] | None = None) -> PoseSet:
+    def _backfill_ligand_ids(self, df: pd.DataFrame) -> pd.DataFrame:
+        """Sync unregistered ligands (a no-op if already synced) so results
+        carry a real ``ligand_id`` instead of ``None``."""
+        if not self._ligands:
+            return df
+        LigandSet(ligands=self._ligands).sync(lazy=True, client=self.client)
+        by_smiles = {lig.smiles: lig.id for lig in self._ligands}
+        df["ligand_id"] = df["ligand_smiles"].map(by_smiles)
+        return df
+
+    def _ligand_plot_labels(self) -> dict[str, str]:
+        """Map each ligand's smiles to a short, unique plot label."""
+        return _ligand_plot_labels(self._ligands)
+
+    def plot(
+        self,
+        *,
+        dto: dict[str, Any] | None = None,
+        metric: Literal["binding_energy", "pose_score"] = "binding_energy",
+    ) -> None:
+        """Visualize this run's results -- method-aware.
+
+        ``ligand-ml``: heatmap colored by ``p_active`` (or ``p_affinity``).
+        ``docking``: heatmap colored by ``metric``. No combined
+        pose_score-vs-binding_energy view -- different scales, not directly
+        comparable.
+
+        Args:
+            dto: Optional execution payload, forwarded to :meth:`get_results`.
+            metric: Docking only. Which column to color the heatmap by.
+        """
+        df = self.get_results(dto)
+        if self._method == "ligand-ml":
+            from deeporigin.plots import WHITE_RED_HAZARD_PALETTE, plot_grid_heatmap
+
+            labels = self._ligand_plot_labels()
+            score = df["p_active"].fillna(df["p_affinity"])
+            ligand_label = df["ligand_smiles"].map(lambda s: labels.get(s, s))
+            pivot = df.assign(score=score, ligand_label=ligand_label).pivot_table(
+                index="ligand_label", columns="gene_name", values="score"
+            )
+            plot_grid_heatmap(
+                pivot.to_numpy(),
+                row_labels=list(pivot.index),
+                col_labels=list(pivot.columns),
+                title="Secondary pharmacology: P(active/affinity)",
+                value_label="score",
+                palette=WHITE_RED_HAZARD_PALETTE,
+                clim=(0.0, 1.0),
+            )
+        else:
+            from bokeh.palettes import Viridis256
+
+            from deeporigin.plots import WHITE_RED_HAZARD_PALETTE, plot_grid_heatmap
+
+            labels = self._ligand_plot_labels()
+            ligand_label = df["ligand_smiles"].map(lambda s: labels.get(s, s))
+            pivot = df.assign(ligand_label=ligand_label).pivot_table(
+                index="ligand_label", columns="gene_name", values=metric
+            )
+            # pose_score is a ~0-1 confidence score, same hazard scale as
+            # ligand-ml's p_active. binding_energy (kcal/mol) has no fixed
+            # range -- auto-scaled Viridis instead.
+            if metric == "pose_score":
+                palette, clim, label = WHITE_RED_HAZARD_PALETTE, (0.0, 1.0), "pose score"
+            else:
+                palette, clim, label = Viridis256, None, "binding energy (kcal/mol)"
+            plot_grid_heatmap(
+                pivot.to_numpy(),
+                row_labels=list(pivot.index),
+                col_labels=list(pivot.columns),
+                title=f"Secondary pharmacology docking: {label}",
+                value_label=metric,
+                palette=palette,
+                clim=clim,
+            )
+
+    def _get_poses(self, *, dto: dict[str, Any] | None = None) -> PoseSet:
         """Load and download docking-path panel poses as a :class:`PoseSet`.
+
+        Underscore-prefixed: no receptor structure in the same coordinate
+        frame as these poses is available yet to visualize them against
+        (DDOS-7481). Use ``pose_score``/``binding_energy`` from
+        :meth:`get_results` instead.
 
         Valid only when :attr:`method` is ``"docking"``. Loads the same
         ``panel_poses`` rows as :meth:`get_results` (result-explorer first,
@@ -755,7 +881,7 @@ class SecondaryPharmacology(
         self._ensure_method("docking", alternative_call="get_results")
         if self._self_test:
             raise ValueError(
-                "get_poses() is not available for self_test runs: the "
+                "_get_poses() is not available for self_test runs: the "
                 "platform's baked test ligand has no ligand id, so no panel "
                 "poses are published for it (get_results() has nothing to "
                 "return either, for the same reason)."
@@ -765,6 +891,45 @@ class SecondaryPharmacology(
         poses = PoseSet.from_json(rows, client=self.client)
         poses.download(client=self.client, lazy=True)
         return poses
+
+    def _expected_panel_pairs(self) -> set[tuple[str, str]]:
+        """Every (ligand id, uniprot) pair this run should have docked."""
+        uniprots = self.uniprots or self._allowed_uniprots or ()
+        return {
+            (lig.id, uniprot)
+            for lig in self._ligands
+            for uniprot in uniprots
+            if lig.id is not None
+        }
+
+    def get_undocked_ligands(self) -> LigandSet | None:
+        """Ligands with zero docked poses, or ``None`` if none. Docking only.
+
+        A ligand docked against *some* targets can still appear here --
+        use :meth:`get_missing_pairs` for the full gap.
+        """
+        self._ensure_method("docking", alternative_call="get_results")
+        rows = _load_panel_pose_rows(self._ensure_id(), client=self.client)
+        docked_ids = {row.get("ligand_id") for row in rows}
+        missing = [lig for lig in self._ligands if lig.id not in docked_ids]
+        return LigandSet(ligands=missing) if missing else None
+
+    def get_missing_pairs(self) -> list[tuple[Ligand, str]] | None:
+        """(ligand, uniprot) pairs with no docked pose, or ``None`` if complete.
+
+        Valid only when :attr:`method` is ``"docking"``.
+        """
+        self._ensure_method("docking", alternative_call="get_results")
+        rows = _load_panel_pose_rows(self._ensure_id(), client=self.client)
+        docked_pairs = {(row.get("ligand_id"), row.get("uniprot_id")) for row in rows}
+        missing_keys = self._expected_panel_pairs() - docked_pairs
+        by_id = {lig.id: lig for lig in self._ligands}
+        missing = [
+            (by_id[lig_id], uniprot)
+            for lig_id, uniprot in missing_keys
+            if lig_id in by_id
+        ]
+        return missing or None
 
     @classmethod
     def from_dto(
@@ -821,3 +986,88 @@ class SecondaryPharmacology(
             allowed = new._fetch_definition_uniprots()
             new._allowed_uniprots = frozenset(allowed)
         return new
+
+    @staticmethod
+    def plot_ml_vs_docking(
+        ml_job: SecondaryPharmacology,
+        dock_job: SecondaryPharmacology,
+        *,
+        ml_dto: dict[str, Any] | None = None,
+        dock_dto: dict[str, Any] | None = None,
+    ) -> None:
+        """Compare a ligand-ml run against a docking run on one heatmap.
+
+        Each cell splits diagonally: upper-left = ``p_active`` (or
+        ``p_affinity``), lower-right = ``pose_score``. Grey where a run has
+        no data for that cell.
+
+        Rows/columns are the union of both runs' ligands/targets, sorted so
+        the strongest dual-agreement cells (``min(p_active, pose_score)``)
+        land top-left.
+
+        Args:
+            ml_job: A completed ``method="ligand-ml"`` run.
+            dock_job: A completed ``method="docking"`` run.
+            ml_dto: Optional execution payload for ``ml_job.get_results()``.
+            dock_dto: Optional execution payload for ``dock_job.get_results()``.
+
+        Raises:
+            ValueError: If either job isn't the expected method.
+        """
+        if ml_job.method != "ligand-ml":
+            raise ValueError(
+                "plot_ml_vs_docking()'s first argument must be a method='ligand-ml' run."
+            )
+        if dock_job.method != "docking":
+            raise ValueError(
+                "plot_ml_vs_docking()'s second argument must be a method='docking' run."
+            )
+
+        ml_df = ml_job.get_results(ml_dto)
+        dock_df = dock_job.get_results(dock_dto)
+
+        labels = _ligand_plot_labels(list(ml_job.ligands) + list(dock_job.ligands))
+        ml_label = ml_df["ligand_smiles"].map(lambda s: labels.get(s, s))
+        dock_label = dock_df["ligand_smiles"].map(lambda s: labels.get(s, s))
+
+        ml_score = ml_df["p_active"].fillna(ml_df["p_affinity"])
+        ml_pivot = ml_df.assign(score=ml_score, ligand_label=ml_label).pivot_table(
+            index="ligand_label", columns="gene_name", values="score"
+        )
+        dock_pivot = dock_df.assign(ligand_label=dock_label).pivot_table(
+            index="ligand_label", columns="gene_name", values="pose_score"
+        )
+
+        row_labels = list(dict.fromkeys([*ml_pivot.index, *dock_pivot.index]))
+        col_labels = list(dict.fromkeys([*ml_pivot.columns, *dock_pivot.columns]))
+
+        matrix_a = ml_pivot.reindex(index=row_labels, columns=col_labels).to_numpy()
+        matrix_b = dock_pivot.reindex(index=row_labels, columns=col_labels).to_numpy()
+
+        # Sort so the strongest dual-agreement cells land top-left. -inf (not
+        # 0) for a missing half: a cell docking never touched shouldn't rank
+        # as a confirmed non-hit, it should just not compete for the corner.
+        agreement = np.where(
+            np.isnan(matrix_a) | np.isnan(matrix_b),
+            -np.inf,
+            np.minimum(matrix_a, matrix_b),
+        )
+        row_order = np.argsort(-agreement.max(axis=1), kind="stable")
+        col_order = np.argsort(-agreement.max(axis=0), kind="stable")
+
+        matrix_a = matrix_a[row_order][:, col_order]
+        matrix_b = matrix_b[row_order][:, col_order]
+        row_labels = [row_labels[i] for i in row_order]
+        col_labels = [col_labels[j] for j in col_order]
+
+        from deeporigin.plots import plot_split_heatmap
+
+        plot_split_heatmap(
+            matrix_a,
+            matrix_b,
+            row_labels=row_labels,
+            col_labels=col_labels,
+            title="Secondary pharmacology: ligand-ML vs docking",
+            label_a="p_active",
+            label_b="pose_score",
+        )

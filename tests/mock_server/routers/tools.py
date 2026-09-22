@@ -738,7 +738,7 @@ def _synthesize_admet_prediction_row(
 
 
 def _synthesize_secondary_pharma_ligand_ml_row(
-    *, smiles: str, ligand_id: str, uniprot_id: str, gene_name: str
+    *, smiles: str, ligand_id: str | None, uniprot_id: str, gene_name: str
 ) -> dict[str, Any]:
     """Build a synthetic ligand-ml prediction row for one ligand x panel member.
 
@@ -1477,11 +1477,11 @@ def create_tools_router(
         ]
 
         rows: list[dict[str, Any]] = []
-        for i, lig in enumerate(ligands_in):
+        for lig in ligands_in:
             if not isinstance(lig, dict):
                 continue
             smiles = str(lig.get("smiles") or "")
-            lid = str(lig.get("id") if lig.get("id") is not None else i)
+            lid = lig.get("id")
             for accession, gene, _pdb_id in panel:
                 rows.append(
                     _synthesize_secondary_pharma_ligand_ml_row(
