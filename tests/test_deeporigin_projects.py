@@ -38,9 +38,7 @@ def test_load_lv1(client: DeepOriginClient) -> None:
     assert pid is not None
     cur = projects.current()
     assert cur is not None
-    assert cur[1] == project_name, (
-        f"Expected project name {project_name}, got {cur[1]}"
-    )
+    assert cur[1] == project_name, f"Expected project name {project_name}, got {cur[1]}"
     assert cur[0] == str(pid)
 
     projects.load(str(pid))
@@ -170,7 +168,9 @@ def test_create_load_false_lv1(client: DeepOriginClient) -> None:
     """projects.create(..., load=False) returns an id without selecting the project."""
 
     client.project_id = None
-    pid = projects.create(integration_project_name(client.env), load=False, client=client)
+    pid = projects.create(
+        integration_project_name(client.env), load=False, client=client
+    )
     assert pid
     assert client.project_id is None
     assert projects.current() is None
