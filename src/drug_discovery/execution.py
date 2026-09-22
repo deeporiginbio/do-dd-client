@@ -699,19 +699,18 @@ class Execution:
         *,
         client: DeepOriginClient | None = None,
         status: builtins.list[str] | None = None,
+        project_id: str | None = None,
     ) -> builtins.list[Self]:
-        """List executions of this tool type from the platform.
-
-        Calls ``client.executions.list(fetch_all_pages=True, tool_key=...)``,
-        then builds instances via :meth:`from_dto`. Optional ``status`` filters
-        hydrated instances by ``instance.status``.
+        """List executions of this tool, newest first.
 
         Args:
             client: Optional API client. Uses the default if not provided.
-            status: Optional list of statuses to keep (membership test).
+            status: Optional list of statuses to keep.
+            project_id: Restrict to this project; omit to see every
+                execution the caller can access, across all projects.
 
         Returns:
-            Instances of this class, one per matching execution.
+            Instances of this class, newest first.
 
         Raises:
             NotImplementedError: If ``cls`` has no ``tool_key`` (bare
@@ -729,6 +728,8 @@ class Execution:
         all_dtos = client.executions.list(  # ty:ignore[unresolved-attribute]
             fetch_all_pages=True,
             tool_key=cls.tool_key,
+            order=EXECUTION_LIST_ORDER_CREATED_DESC,
+            project_id=project_id,
         ).get("data", [])
         all_dtos = [
             dto for dto in all_dtos if dto.get("tool", {}).get("key") == cls.tool_key

@@ -215,6 +215,27 @@ def test_execution_from_last_run_hydrates_latest() -> None:
     assert instance.status == "Completed"
 
 
+def test_execution_list_orders_newest_first_and_scopes_by_project() -> None:
+    """``list()`` requests createdAt desc and forwards project_id, like from_last_run.
+
+    Regression: list() previously called client.executions.list() with no
+    order/project_id at all, so results came back in whatever order the
+    platform happened to return them -- a stale, unrelated, or long-dead
+    execution could land at index 0. See DDOS-7332 notebook.
+    """
+    client = MagicMock()
+    client.executions.list.return_value = {"data": []}
+
+    _TestToolExecution.list(client=client, project_id="proj-123")
+
+    client.executions.list.assert_called_once_with(
+        fetch_all_pages=True,
+        tool_key="deeporigin.test-sync-tool",
+        order="createdAt desc",
+        project_id="proj-123",
+    )
+
+
 def test_execution_get_user_logs_no_id_noop() -> None:
     """``get_user_logs`` returns ``None`` when the execution has no platform id yet."""
 
