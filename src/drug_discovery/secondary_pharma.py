@@ -1001,9 +1001,9 @@ class SecondaryPharmacology(
     ) -> None:
         """Compare a ligand-ml run against a docking run on one heatmap.
 
-        Each cell splits diagonally: upper-left = ``p_active`` (or
-        ``p_affinity``), lower-right = ``pose_score``. Grey where a run has
-        no data for that cell.
+        Each cell splits diagonally (top-left to bottom-right): upper =
+        ``p_active`` (or ``p_affinity``), lower = ``pose_score``. Grey
+        where a run has no data for that cell.
 
         Rows/columns are the union of both runs' ligands/targets, sorted so
         the strongest dual-agreement cells (``min(p_active, pose_score)``)

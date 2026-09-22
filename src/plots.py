@@ -85,9 +85,9 @@ def _triangle_grid_source(
     row_labels: Sequence[str],
     col_labels: Sequence[str],
     *,
-    upper_left: bool,
+    upper: bool,
 ) -> ColumnDataSource:
-    """Triangle-vertex geometry for one half (upper-left or lower-right) of a split-heatmap grid."""
+    """Triangle-vertex geometry for one half (upper or lower) of a split-heatmap grid, split top-left to bottom-right."""
     n_rows, n_cols = mat.shape
     xs, ys, vals, rows, cols = [], [], [], [], []
     for i in range(n_rows):
@@ -98,11 +98,11 @@ def _triangle_grid_source(
             if not np.isfinite(v):
                 continue
             x0, x1 = j, j + 1
-            if upper_left:
-                xs.append([x0, x1, x0])
+            if upper:
+                xs.append([x0, x1, x1])
                 ys.append([y1, y1, y0])
             else:
-                xs.append([x1, x1, x0])
+                xs.append([x0, x0, x1])
                 ys.append([y1, y0, y0])
             vals.append(v)
             rows.append(row_labels[i])
@@ -414,8 +414,9 @@ def plot_split_heatmap(
 ):
     """
     Visualize two same-shaped NxM matrices as one heatmap, each cell split
-    diagonally: upper-left from *values_a*, lower-right from *values_b*. A
-    missing half (NaN) renders grey.
+    diagonally (top-left to bottom-right): the upper triangle is
+    *values_a*, the lower triangle is *values_b*. A missing half (NaN)
+    renders grey.
 
     Parameters
     ----------
@@ -464,8 +465,8 @@ def plot_split_heatmap(
     vmin, vmax = clim
     mapper = LinearColorMapper(palette=palette, low=vmin, high=vmax)
 
-    source_a = _triangle_grid_source(mat_a, row_labels, col_labels, upper_left=True)
-    source_b = _triangle_grid_source(mat_b, row_labels, col_labels, upper_left=False)
+    source_a = _triangle_grid_source(mat_a, row_labels, col_labels, upper=True)
+    source_b = _triangle_grid_source(mat_b, row_labels, col_labels, upper=False)
 
     p = figure(
         title=title,
