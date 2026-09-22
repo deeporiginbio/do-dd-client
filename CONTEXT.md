@@ -7,12 +7,15 @@ system preparation, and free-energy calculations.
 
 **Molprops**:
 Combined platform tool ``deeporigin.mol-props-combined`` for physicochemical
-properties (logP, logD, logS, PAINS). As of tool 0.9.3+, toxicity and metabolism
-endpoints (hERG, CYP, AMES) moved to ``deeporigin.admet-properties``. The CLI class
-``Molprops`` mutates dedicated :class:`~deeporigin.drug_discovery.structures.ligand.Ligand`
-attributes in place.
+properties (logP, logD, logS, PAINS, RDKit descriptors including ``sa_score``).
+As of tool 0.9.3+, toxicity and metabolism endpoints (hERG, CYP, AMES) moved to
+``deeporigin.admet-properties``. The CLI class ``Molprops`` mutates dedicated
+:class:`~deeporigin.drug_discovery.structures.ligand.Ligand` attributes in place
+(attrs-only; not ``properties``). Default ``props`` is the full tool input enum.
+Tool version pin is major ``"1"``.
 _Avoid_: conflating with ``Admet``; calling it "ADMET" when you mean the
-admet-properties tool
+admet-properties tool; storing molprops results only in ``properties``; local
+RDKit ``@property`` methods named like molprops fields
 
 **Admet endpoint**:
 A selectable admet-now task folder name (e.g. ``AMES_classification``) listed on
@@ -273,6 +276,17 @@ Optional string on ``DeepOriginClient`` (``client.tag`` / ``client.billing_tag``
 applied to every tool execution for billing attribution. Configured once on the
 client; not overridable per ``run()`` or ``start()``.
 _Avoid_: conflating with entity jsonb ``tags`` or UUI source-filter provenance
+
+**Execution visibility default**:
+Optional ``_visibility`` on ``DeepOriginClient`` (``"visible"`` / ``"hidden"``),
+stamped by ``executions.create`` on every run the client launches, including
+paths that call ``executions.create`` directly. ``"hidden"`` opts a run out of
+user-facing Activity views; the run, its results and billing still exist. For
+SDK-internal plumbing runs and internal automation -- no end user wants to hide
+their own runs, so it is underscore-prefixed like ``_app`` / ``_session`` and is
+not exposed on ``run()`` / ``start()``. Part of the singleton cache key.
+_Avoid_: a ``visibility`` kwarg on tool classes; conflating with the billing tag or
+entity provenance tags
 
 **Entity provenance tags**:
 Flat ``app`` and ``session`` keys on an entity row's jsonb ``tags`` column.

@@ -8,7 +8,7 @@ import pytest
 from deeporigin.drug_discovery import Ligand, Molprops
 from deeporigin.platform.client import DeepOriginClient
 from deeporigin.platform.constants import TOOL_KEYS_AND_VERSIONS
-from tests.conftest import check_tool_exists
+from tests.conftest import assert_quote_only_execution, check_tool_exists
 
 
 def test_molprops_lv1(client: DeepOriginClient) -> None:
@@ -25,15 +25,16 @@ def test_molprops_lv1(client: DeepOriginClient) -> None:
     mp = Molprops(
         ligands=[ligand],
         client=client,
-        properties={"logs", "logd", "logp"},
+        properties={"logs", "logd", "logp", "sa_score"},
     )
     mp.run()
 
-    if ligand.log_p is None and ligand.get_property("logP") is None:
+    if ligand.log_p is None:
         pytest.skip("Molprops returned no results; platform tool may be unavailable.")
-    assert ligand.get_property("logP") is not None or ligand.log_p is not None
-    assert ligand.get_property("logD") is not None or ligand.log_d is not None
-    assert ligand.get_property("logS") is not None or ligand.log_s is not None
+    assert ligand.log_p is not None
+    assert ligand.log_d is not None
+    assert ligand.log_s is not None
+    assert ligand.sa_score is not None
 
 
 def test_molprops_run_quote_true_full_payload(
@@ -64,7 +65,5 @@ def test_molprops_run_quote_true_full_payload(
             "mol-props-combined on this env/version did not return a quotation "
             f"(status={job.status!r}); quote-only may not be supported on latest."
         )
-    assert job.estimate is not None
-    assert job.status == "Quoted"
-    assert job.cost is None
+    assert_quote_only_execution(job)
     assert lig1.log_p is None and lig2.log_p is None

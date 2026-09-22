@@ -21,6 +21,7 @@ cp src/platform/__init__.py platform-sdk/src/platform/
 cp src/platform/client.py platform-sdk/src/platform/
 cp src/platform/files.py platform-sdk/src/platform/
 cp src/platform/entities.py platform-sdk/src/platform/
+cp src/platform/tags.py platform-sdk/src/platform/
 cp src/platform/tools.py platform-sdk/src/platform/
 cp src/platform/results.py platform-sdk/src/platform/
 cp src/__init__.py platform-sdk/src/__init__.py

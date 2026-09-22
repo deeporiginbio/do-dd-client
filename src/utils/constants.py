@@ -42,6 +42,13 @@ LIGAND_MOLPROPS_SET_FIELDS: frozenset[str] = frozenset(
         "hbond_acceptor_count",
         "rotatable_bond_count",
         "tpsa",
+        "rule_of_5_violations",
+        "sa_score",
+        "log_p",
+        "log_d",
+        "log_s",
+        "has_pains",
+        "pains_fragments",
     )
 )
 """Ligand ``set`` fields computed by molprops; not writable on create/update."""
@@ -228,6 +235,14 @@ TOOL_EXECUTION_POST_TIMEOUT_SECONDS = 600.0
 as molprops and protonation, where synchronous executions can take longer than
 the client's default short timeout."""
 
+QUOTE_APPROVE_AMOUNT = -1
+"""``approveAmount`` value sent when ``quote=True``.
+
+Must be negative: tools-service auto-confirm is inclusive
+(``priceTotal <= threshold``), so ``0`` still dispatches free quotes. Matches
+MCP/pipeline after DDOS-7765 / platform PR #6769.
+"""
+
 EXECUTION_LIST_ORDER_CREATED_DESC = "createdAt desc"
 """Tools-service ``order`` query value for most-recently-created executions first."""
 
@@ -238,12 +253,24 @@ TOOL_KEY_PREFIX = "deeporigin."
 """Platform tool-key prefix omitted in compact display (e.g. user log tables)."""
 
 MOLPROPS_PROPERTY_KEYS: frozenset[str] = frozenset(
-    ("logd", "logp", "logs", "pains"),
+    (
+        "hbond_acceptor_count",
+        "hbond_donor_count",
+        "logd",
+        "logp",
+        "logs",
+        "molecular_weight",
+        "pains",
+        "rotatable_bond_count",
+        "rule_of_5_violations",
+        "sa_score",
+        "tpsa",
+    ),
 )
-"""Allowed molprops tool suffix keys (``deeporigin.mol-props-<key>``)."""
+"""Allowed ``inputs.molprops`` keys for ``deeporigin.mol-props-combined``."""
 
 MOLPROPS_DEFAULT_PROPERTIES: frozenset[str] = MOLPROPS_PROPERTY_KEYS
-"""Default full ADMET bundle for :class:`~deeporigin.drug_discovery.molprops.Molprops`."""
+"""Default property set for :class:`~deeporigin.drug_discovery.molprops.Molprops` (full tool enum)."""
 
 ADMET_EXECUTION_TIMEOUT_SECONDS = 900.0
 """HTTP timeout (seconds) for ``deeporigin.admet-properties`` sync runs.

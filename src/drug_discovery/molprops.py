@@ -1,4 +1,4 @@
-"""Molprops -- synchronous ADMET / molprops runs on one or more ligands.
+"""Molprops -- synchronous molprops runs on one or more ligands.
 
 Backed by the single combined platform tool ``deeporigin.mol-props-combined``,
 which accepts a list of ``ligands`` and a ``molprops`` array selecting which
@@ -7,7 +7,7 @@ properties to compute, and returns one row per input ligand keyed by
 
 Usage::
 
-    mp = Molprops(ligands=[ligand], props=["logp", "logd"])
+    mp = Molprops(ligands=[ligand], props=["logp", "logd", "sa_score"])
     mp.run(quote=True)  # one quote for all ligands + props (ignores ``batch_size``)
     mp.run()  # mutates ligands in place; sets ``cost`` on success
 
@@ -30,6 +30,7 @@ from deeporigin.platform.constants import TOOL_KEYS_AND_VERSIONS
 from deeporigin.utils.constants import (
     MOLPROPS_DEFAULT_PROPERTIES,
     MOLPROPS_PROPERTY_KEYS,
+    QUOTE_APPROVE_AMOUNT,
 )
 
 # Merged molprops rows are keyed by ligand id (combined molprops output schema).
@@ -104,7 +105,7 @@ def run_molprops_combined(
     """Issue one combined-tool execution and return ``(rows, raw_dto)``.
 
     When ``quote`` is true, the call requests a cost estimate without
-    executing (``approveAmount=0``, ``sync=False``) and ``rows`` is empty.
+    executing (``approveAmount=-1``, ``sync=False``) and ``rows`` is empty.
     """
     body: dict[str, Any] = {
         "inputs": _molprops_payload(ligand_set=ligand_set, properties=properties),
@@ -113,7 +114,7 @@ def run_molprops_combined(
         "sync": True,
     }
     if quote:
-        body["approveAmount"] = 0
+        body["approveAmount"] = QUOTE_APPROVE_AMOUNT
         body["sync"] = False
 
     raw = client.executions.create(  # ty:ignore[unresolved-attribute]
@@ -145,13 +146,13 @@ def molprops_quote_total(
 
 
 class Molprops(Execution, SyncExecutableMixin):
-    """Predict molprops / ADMET for ligands via the combined platform tool.
+    """Predict molprops for ligands via the combined platform tool.
 
     Issues one ``client.executions.create`` per batch against
     ``deeporigin.mol-props-combined`` on a normal :meth:`run`, or a single
     quotation request for all ligands when :meth:`run` is called with
     ``quote=True``. Each request carries all selected property keys
-    (e.g. ``logp``, ``logd``). A normal ``run()`` mutates each
+    (e.g. ``logp``, ``sa_score``). A normal ``run()`` mutates each
     passed-in :class:`~deeporigin.drug_discovery.structures.ligand.Ligand`
     in place via
     :meth:`~deeporigin.drug_discovery.structures.ligand.Ligand._apply_molprops_result`.
@@ -223,7 +224,7 @@ class Molprops(Execution, SyncExecutableMixin):
 
         With ``quote=True``, sends **one** ``client.executions.create`` with every
         ligand and every selected property (``batch_size`` is ignored), requests a
-        quotation only (``approveAmount=0``), and applies the response with
+        quotation only (``approveAmount=-1``), and applies the response with
         :meth:`~deeporigin.drug_discovery.execution.Execution.update_from_dto`
         (``estimate``, ``id``, ``status``, etc.). Ligands are **not** updated with
         molprops outputs.

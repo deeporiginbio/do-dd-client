@@ -598,7 +598,7 @@ def test_ligand_property_management():
 
 
 def test_ligand_from_platform_record_hydrates_molprops():
-    """Pinned platform molprops columns map to tool row keys and ADMET attrs."""
+    """Pinned platform molprops columns map to tool row keys and Ligand attrs."""
     from deeporigin.drug_discovery.structures.ligand import (
         _molprops_row_from_platform_record,
     )
@@ -610,17 +610,25 @@ def test_ligand_from_platform_record_hydrates_molprops():
         "logs_predicted": -3.0474026203155518,
         "logd_predicted": 0.9802079200744629,
         "pains_flag": True,
+        "molecular_weight": 351.4,
+        "hbond_donor_count": 1,
+        "hbond_acceptor_count": 5,
+        "rotatable_bond_count": 6,
+        "tpsa": 67.2,
+        "rule_of5_violations": 0,
         "ames_probability": 0.0012685793917626143,
         "herg_probability": 0.17195460200309753,
         "cyp2d6": 0.012631930410861969,
-        "cyp3a4": 0.1912640929222107,
     }
     row = _molprops_row_from_platform_record(data)
     assert row["logP"] == pytest.approx(1.377760887145996)
     assert row["logS"] == pytest.approx(-3.0474026203155518)
     assert row["logD"] == pytest.approx(0.9802079200744629)
     assert row["has_pains"] is True
-    assert row["herg_inhibition_probability"] == pytest.approx(0.17195460200309753)
+    assert row["molecular_weight"] == pytest.approx(351.4)
+    assert row["rule_of_5_violations"] == 0
+    assert "ames_probability" not in row
+    assert "cyp2d6" not in row
 
     ligand = Ligand.from_smiles(data["smiles"])
     ligand._apply_molprops_result(row)
@@ -629,13 +637,11 @@ def test_ligand_from_platform_record_hydrates_molprops():
     assert ligand.log_s == pytest.approx(-3.0474026203155518)
     assert ligand.log_d == pytest.approx(0.9802079200744629)
     assert ligand.has_pains is True
-    assert ligand.ames_probability == pytest.approx(0.0012685793917626143)
-    assert ligand.herg_inhibition_probability == pytest.approx(0.17195460200309753)
-    assert ligand.cyp_2d6 == pytest.approx(0.012631930410861969)
-    assert ligand.cyp_3a4 == pytest.approx(0.1912640929222107)
-    assert ligand.properties["cyp2d6"] == pytest.approx(0.012631930410861969)
-    assert ligand.properties["logS"] == pytest.approx(-3.0474026203155518)
-    assert ligand.properties["logP"] == pytest.approx(1.377760887145996)
+    assert ligand.molecular_weight == pytest.approx(351.4)
+    assert ligand.hbond_donor_count == 1
+    assert ligand.rule_of_5_violations == 0
+    assert "logP" not in ligand.properties
+    assert "molecular_weight" not in ligand.properties
 
 
 def test_to_sdf_requires_rehydration_when_remote_path_only():

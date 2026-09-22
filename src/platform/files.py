@@ -394,8 +394,7 @@ class Files:
                 headers = {"Content-Type": "application/octet-stream"}
                 if file_size is None:
                     file_size = self._local_file_size(local_path)
-                if file_size > 0:
-                    headers["Content-Length"] = str(file_size)
+                headers["Content-Length"] = str(file_size)
 
                 with httpx.Client(timeout=_SIGNED_URL_UPLOAD_TIMEOUT) as upload_client:
                     resp = upload_client.put(

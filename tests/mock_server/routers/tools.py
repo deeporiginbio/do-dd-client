@@ -675,19 +675,11 @@ def _synthesize_molprops_row(
 ) -> dict[str, Any]:
     """Build a synthetic combined-molprops output row for one ligand.
 
-    Includes only the output keys for properties named in ``requested`` (see
-    the combined tool's input schema for valid property keys: ``ames``,
-    ``cyp``, ``herg``, ``logd``, ``logp``, ``logs``, ``pains``).
+    Includes only the output keys for properties named in ``requested``
+    (``deeporigin.mol-props-combined`` input enum).
     """
     row: dict[str, Any] = {"ligand_id": ligand_id}
     seed = smiles or ligand_id
-    if "ames" in requested:
-        row["ames_probability"] = round(_stable_unit_float(seed, "ames"), 6)
-    if "herg" in requested:
-        row["herg_inhibition_probability"] = round(_stable_unit_float(seed, "herg"), 6)
-    if "cyp" in requested:
-        for iso in ("cyp1a2", "cyp2c9", "cyp2c19", "cyp2d6", "cyp3a4"):
-            row[iso] = round(_stable_unit_float(seed, iso), 6)
     if "logd" in requested:
         row["logD"] = _stable_log_value(seed, "logd", low=-2.0, high=6.0)
     if "logp" in requested:
@@ -697,6 +689,22 @@ def _synthesize_molprops_row(
     if "pains" in requested:
         row["has_pains"] = False
         row["pains_fragments"] = []
+    if "molecular_weight" in requested:
+        row["molecular_weight"] = round(
+            50.0 + 200.0 * _stable_unit_float(seed, "mw"), 3
+        )
+    if "hbond_donor_count" in requested:
+        row["hbond_donor_count"] = int(_stable_unit_float(seed, "hbd") * 5)
+    if "hbond_acceptor_count" in requested:
+        row["hbond_acceptor_count"] = int(_stable_unit_float(seed, "hba") * 8)
+    if "rotatable_bond_count" in requested:
+        row["rotatable_bond_count"] = int(_stable_unit_float(seed, "rot") * 10)
+    if "tpsa" in requested:
+        row["tpsa"] = round(10.0 + 140.0 * _stable_unit_float(seed, "tpsa"), 3)
+    if "rule_of_5_violations" in requested:
+        row["rule_of_5_violations"] = int(_stable_unit_float(seed, "ro5") * 5) % 5
+    if "sa_score" in requested:
+        row["sa_score"] = round(1.0 + 9.0 * _stable_unit_float(seed, "sa"), 4)
     return row
 
 
@@ -1014,7 +1022,9 @@ def create_tools_router(
         if approve_amount is None:
             approve_amount = 0
 
-        if approve_amount == 0:
+        # Negative (SDK quote=True → -1) or 0: park as Quoted. Positive
+        # approveAmount is not implemented in the mock.
+        if approve_amount <= 0:
             status = "Quoted"
         else:
             raise NotImplementedError(
@@ -2749,8 +2759,13 @@ def create_tools_router(
 
         inputs = body.get("inputs", {}) or {}
         n_lig = len(inputs.get("ligands") or [])
-        # Explicit approveAmount 0 means quote-only; do not return a completed run DTO.
-        quote_only = "approveAmount" in body and body.get("approveAmount") == 0
+        # Explicit approveAmount <= 0 means quote-only (SDK uses -1 after
+        # DDOS-7765; 0 kept for older callers/fixtures).
+        quote_only = (
+            "approveAmount" in body
+            and body.get("approveAmount") is not None
+            and body.get("approveAmount") <= 0
+        )
         # docking and pocket-finder declare ``sync`` inside ``inputs`` (matches
         # the toolbox tool-definitions and how the platform estimator reads it).
         if (
@@ -3000,7 +3015,7 @@ def create_tools_router(
             if quote_only:
                 execution["status"] = "Quoted"
                 execution["jobOutputs"] = None
-                execution["approveAmount"] = 0
+                execution["approveAmount"] = body.get("approveAmount")
                 execution["startedAt"] = None
                 execution["completedAt"] = None
                 execution["progressReport"] = None
@@ -3041,7 +3056,7 @@ def create_tools_router(
             if quote_only:
                 execution["status"] = "Quoted"
                 execution["jobOutputs"] = None
-                execution["approveAmount"] = 0
+                execution["approveAmount"] = body.get("approveAmount")
                 execution["startedAt"] = None
                 execution["completedAt"] = None
                 execution["progressReport"] = None
@@ -3056,7 +3071,7 @@ def create_tools_router(
             )
             executions[execution["executionId"]] = execution
             return _normalize_execution(execution)
-        if tool_key == "deeporigin.bulk-docking" and approve_amount == 0:
+        if tool_key == "deeporigin.bulk-docking" and approve_amount <= 0:
             execution = _create_bulk_docking_quote(
                 org_key=org_key,
                 tool_key=tool_key,

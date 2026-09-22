@@ -434,13 +434,15 @@ pairs = result.pairs
     title="Visualization of network"
 ></iframe>
 
-### Predicting ADMET Properties
+### Predicting molecular properties (Molprops)
 
-ADMET (Absorption, Distribution, Metabolism, Excretion, and Toxicity) properties can be predicted for Ligands or LigandSets.
+Physicochemical descriptors and ML properties (logP, logD, logS, PAINS, RDKit
+descriptors including synthetic accessibility) are predicted with
+:class:`~deeporigin.drug_discovery.molprops.Molprops`. For toxicity /
+metabolism-style endpoints (AMES, hERG, CYP), use
+:class:`~deeporigin.drug_discovery.admet.Admet` instead.
 
 === "Ligands"
-
-    Use :class:`~deeporigin.drug_discovery.molprops.Molprops` to predict ADMET properties for one or more ligands:
 
     ```{.python notest}
     from deeporigin.drug_discovery import Molprops
@@ -449,8 +451,8 @@ ADMET (Absorption, Distribution, Metabolism, Excretion, and Toxicity) properties
     mp.run(quote=True)  # optional: platform quote for all ligands → mp.estimate
     mp.run()  # mutates ligands; total USD in mp.cost when available
 
-    # Or request only some models (keys match platform suffixes: ames, logp, logd, …):
-    mp = Molprops(ligands=[ligand], props=["ames", "logp"])
+    # Or request a subset (keys match the combined tool enum):
+    mp = Molprops(ligands=[ligand], props=["logp", "sa_score", "tpsa"])
     mp.run()
     ```
 
@@ -459,50 +461,48 @@ ADMET (Absorption, Distribution, Metabolism, Excretion, and Toxicity) properties
     ``run(quote=True)`` requests a single platform quotation for **every** ligand and every selected property in one call (``batch_size`` is ignored). It populates ``estimate`` (and execution ``id`` / ``status`` via the tools DTO) and does **not** mutate ligands with predictions.
 
     !!! note "Mutation Behavior"
-        `Molprops.run()` mutates each ligand by filling dedicated ADMET attributes (see below), storing values in `ligand.properties`, and setting RDKit molecule properties.
+        `Molprops.run()` mutates each ligand by filling dedicated attributes (see below). Values are not copied into `ligand.properties`.
 
-    The return value is a single flat dict (one row per ligand), for example:
+    Example tool row (one ligand):
 
     ```python
     {
         'ligand_id': '0',
-        'logS': -4.004,                       # Aqueous solubility
-        'logP': 3.686,                        # Partition coefficient
-        'logD': 2.528,                        # Distribution coefficient
-        'ames_probability': 0.213,            # Ames mutagenicity probability
-        'herg_inhibition_probability': 0.264, # hERG inhibition probability
-        'cyp1a2': 0.134,                      # CYP450 inhibition probabilities
-        'cyp2c9': 0.744,
-        'cyp2c19': 0.853,
-        'cyp2d6': 0.0252,
-        'cyp3a4': 0.4718,
-        'has_pains': False,                   # PAINS (Pan Assay Interference Compounds)
+        'logS': -4.004,
+        'logP': 3.686,
+        'logD': 2.528,
+        'has_pains': False,
         'pains_fragments': [],
+        'molecular_weight': 351.4,
+        'hbond_donor_count': 1,
+        'hbond_acceptor_count': 5,
+        'rotatable_bond_count': 6,
+        'tpsa': 67.2,
+        'rule_of_5_violations': 0,
+        'sa_score': 2.81,
     }
     ```
 
-    The same values are exposed as first-class attributes (Python `snake_case` names):
+    The same values are exposed as first-class attributes:
 
-    | API key (in dict / `get_property`) | Ligand attribute |
+    | API key | Ligand attribute |
     |-----------------------------------|------------------|
     | `logS` | `ligand.log_s` |
     | `logD` | `ligand.log_d` |
     | `logP` | `ligand.log_p` |
-    | `ames_probability` | `ligand.ames_probability` |
-    | `herg_inhibition_probability` | `ligand.herg_inhibition_probability` |
-    | `cyp1a2` | `ligand.cyp_1a2` |
-    | `cyp2c9` | `ligand.cyp_2c9` |
-    | `cyp2c19` | `ligand.cyp_2c19` |
-    | `cyp2d6` | `ligand.cyp_2d6` |
-    | `cyp3a4` | `ligand.cyp_3a4` |
     | `has_pains` | `ligand.has_pains` |
     | `pains_fragments` | `ligand.pains_fragments` |
-
-    You can read predictions from attributes or from the properties bag:
+    | `molecular_weight` | `ligand.molecular_weight` |
+    | `hbond_donor_count` | `ligand.hbond_donor_count` |
+    | `hbond_acceptor_count` | `ligand.hbond_acceptor_count` |
+    | `rotatable_bond_count` | `ligand.rotatable_bond_count` |
+    | `tpsa` | `ligand.tpsa` |
+    | `rule_of_5_violations` | `ligand.rule_of_5_violations` |
+    | `sa_score` | `ligand.sa_score` |
 
     ```{.python notest}
     log_p = ligand.log_p
-    log_p = ligand.get_property('logP')
+    sa = ligand.sa_score
     ```
 
 === "LigandSets"
@@ -523,11 +523,11 @@ ADMET (Absorption, Distribution, Metabolism, Excretion, and Toxicity) properties
     The same ``batch_size`` and ``run(quote=True)`` behavior as in the single-ligand tab applies.
 
     !!! note "Mutation Behavior"
-        `Molprops.run()` mutates each ligand by filling the same dedicated ADMET attributes and `.properties` as the single-ligand case.
+        `Molprops.run()` mutates each ligand by filling the same dedicated attributes as the single-ligand case.
 
-    The properties are stored on each ligand (attributes and `.properties`) for later access.
+    Values are stored on each ligand's named attributes for later access.
 
-    To view ADMET properties of all ligands in the ligand set, simply view the ligandset as a dataframe using:
+    To view molprops of all ligands in the ligand set, simply view the ligandset as a dataframe using:
 
     ```{.python notest}
     ligands

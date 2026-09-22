@@ -17,7 +17,7 @@ properties and compose with mixins (``SyncExecutableMixin``,
 ``PocketFinder``, ``Docking``, and ``ABFE``.
 
 Quoting is handled directly by ``run()`` and ``start()`` via ``quote=True``
-(sugar for ``approve_amount=0``) or an explicit ``approve_amount``. When the
+(sugar for ``approve_amount=-1``) or an explicit ``approve_amount``. When the
 platform returns a ``Quoted`` DTO the instance is left in that state -- no
 automatic confirmation is performed.
 """
@@ -209,7 +209,7 @@ class Execution:
         """Cost estimate in dollars, populated when the platform returns a quotation.
 
         Set after ``run(quote=True)``, ``start(quote=True)``, or any call with
-        ``approve_amount=0``. ``None`` until a quotation result is received.
+        ``approve_amount=-1``. ``None`` until a quotation result is received.
         This property cannot be set manually."""
         return self._estimate
 
@@ -260,9 +260,9 @@ class Execution:
         """Build the body dict for ``client.executions.create``.
 
         Args:
-            approve_amount: ``0`` to request a quote only; ``None`` to omit the
-                field (platform runs immediately); any positive value sets a
-                spend cap.
+            approve_amount: ``-1`` (or any negative value) to request a quote
+                only; ``None`` to omit the field (platform may auto-confirm);
+                any positive value sets a spend cap.
             sync: ``True`` for blocking (sync) execution; ``False`` for async.
 
         Returns:
@@ -756,9 +756,12 @@ class Execution:
         directly rather than teaching this base method about those filters.
 
         Args:
-            **kwargs: Forwarded verbatim to
+            **kwargs: Forwarded to
                 :meth:`~deeporigin.platform.results.Results.get` (typically
-                ``filter_dict``, ``limit``, ``select``).
+                ``filter_dict``, ``limit``, ``select``). When
+                :attr:`tool_key` is set, a ``tool_key`` equality filter is
+                injected into ``filter_dict`` via ``setdefault`` so callers can
+                override it by passing ``tool_key`` themselves.
 
         Returns:
             Result-explorer response dict with ``data`` and ``meta`` keys.

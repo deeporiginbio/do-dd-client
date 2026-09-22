@@ -12,7 +12,11 @@ from beartype import beartype
 if TYPE_CHECKING:
     from deeporigin.platform.client import DeepOriginClient
 
-from deeporigin.platform.constants import TERMINAL_STATES
+from deeporigin.platform.constants import (
+    EXECUTION_VISIBILITY_VALUES,
+    TERMINAL_STATES,
+    ExecutionVisibility,
+)
 from deeporigin.utils.constants import (
     TOOL_EXECUTION_GET_ACCEPT_HEADER,
     TOOL_EXECUTION_POST_TIMEOUT_SECONDS,
@@ -60,6 +64,7 @@ class Executions:
         tool_version: str,
         data: dict,
         timeout: float | None = None,
+        visibility: ExecutionVisibility | None = None,
     ) -> dict:
         """Create (run) an execution of a tool with a specific version.
 
@@ -79,14 +84,64 @@ class Executions:
                 the caller already included ``billing`` in ``data``.
                 Uses ``retry=False`` so a failed create (including gateway 504)
                 is not retried; retries can otherwise duplicate long sync jobs.
+            visibility: Optional activity-history visibility, ``"visible"`` or
+                ``"hidden"``. ``"hidden"`` opts the run out of user-facing activity
+                views (it still exists, and stays visible to admin/audit/billing).
+                Sent unless the caller already included ``visibility`` in ``data``.
+                Falls back to the client-level ``_visibility`` default when both
+                are unset; when every source is ``None`` the key is omitted and
+                the server decides. Validated whichever source supplies it.
+                Note ``data={"visibility": None}`` does not suppress a client-level
+                default -- ``None`` reads as "unset" at every level, so resolution
+                falls through to it. To force one run visible on a client that
+                defaults to hidden, pass ``visibility="visible"`` explicitly.
 
         Returns:
             Dictionary containing the execution response from the API.
 
         Raises:
+            ValueError: If the resolved ``visibility`` -- from ``data``, the
+                argument, or the client default -- is not ``"visible"`` or
+                ``"hidden"``.
             Exception: If the tool execution fails, with error details printed.
         """
         payload = data.copy()
+
+        # Resolved and validated before any side effect (the clusterId lookup below
+        # can issue a request), so a bad value fails instantly and offline.
+        #
+        # Precedence, highest first: an explicit value already in `data`, the
+        # `visibility` argument, then the client-level default. This matches how
+        # `tag` / `billing` treat a caller-supplied payload as authoritative.
+        # Every source is validated, so no path can fail open -- validating only
+        # the argument would leave the winning one unchecked.
+        resolved_visibility = next(
+            (
+                candidate
+                for candidate in (
+                    payload.get("visibility"),
+                    visibility,
+                    getattr(self._c, "_visibility", None),
+                )
+                if candidate is not None
+            ),
+            None,
+        )
+        if (
+            resolved_visibility is not None
+            and resolved_visibility not in EXECUTION_VISIBILITY_VALUES
+        ):
+            raise ValueError(
+                f"visibility must be one of "
+                f"{sorted(EXECUTION_VISIBILITY_VALUES)}, got {resolved_visibility!r}"
+            )
+        if resolved_visibility is None:
+            # Drops an explicit `{"visibility": None}` from `data`; the server's
+            # schema marks the field optional, which accepts an absent key but
+            # rejects a JSON null.
+            payload.pop("visibility", None)
+        else:
+            payload["visibility"] = resolved_visibility
 
         if "clusterId" not in payload:
             payload["clusterId"] = self._c.clusters.get_default_cluster_id()

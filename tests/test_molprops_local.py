@@ -30,3 +30,26 @@ def test_molprops_run_syncs_status_from_execution_dto(
     assert job.status == "Completed"
     assert job.id is not None
     assert job.id != "prior-quote-id"
+    assert ligand.log_p is not None
+    assert ligand.sa_score is None
+
+
+def test_molprops_run_applies_sa_score(client: DeepOriginClient) -> None:
+    """``sa_score`` lands on a named Ligand attribute, not ``properties``."""
+    mp_cfg = TOOL_KEYS_AND_VERSIONS["mol_props"]
+    assert check_tool_exists(client, mp_cfg["tool_key"], mp_cfg["tool_version"])
+
+    ligand = Ligand.from_smiles("CCO")
+    Molprops(ligands=[ligand], props=["sa_score"], client=client).run()
+
+    assert ligand.sa_score is not None
+    assert "sa_score" not in ligand.properties
+
+
+def test_molprops_default_props_are_full_enum() -> None:
+    """Omitting props requests every tool input key."""
+    from deeporigin.utils.constants import MOLPROPS_PROPERTY_KEYS
+
+    ligand = Ligand.from_smiles("CCO")
+    job = Molprops(ligands=[ligand])
+    assert job.properties == MOLPROPS_PROPERTY_KEYS

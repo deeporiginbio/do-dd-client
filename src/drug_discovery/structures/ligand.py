@@ -69,26 +69,24 @@ def choose_parent_mol(mol: Chem.Mol) -> Chem.Mol:
 
 
 # Keys returned by ``deeporigin.mol-props-combined`` rows → Ligand attribute
-# names (snake_case). Mirrors the ``molprops[*]`` items in the combined tool's
-# output schema.
+# names (snake_case). Mirrors the combined tool's output schema.
 _MOLPROPS_RESPONSE_TO_ATTR: dict[str, str] = {
     "logS": "log_s",
     "logD": "log_d",
     "logP": "log_p",
-    "ames_probability": "ames_probability",
-    "herg_inhibition_probability": "herg_inhibition_probability",
-    "cyp1a2": "cyp_1a2",
-    "cyp2c9": "cyp_2c9",
-    "cyp2c19": "cyp_2c19",
-    "cyp2d6": "cyp_2d6",
-    "cyp3a4": "cyp_3a4",
     "has_pains": "has_pains",
     "pains_fragments": "pains_fragments",
+    "molecular_weight": "molecular_weight",
+    "hbond_donor_count": "hbond_donor_count",
+    "hbond_acceptor_count": "hbond_acceptor_count",
+    "rotatable_bond_count": "rotatable_bond_count",
+    "tpsa": "tpsa",
+    "rule_of_5_violations": "rule_of_5_violations",
+    "sa_score": "sa_score",
 }
 
-# Molprops API row keys that must not be copied into ``properties`` (entity fields
-# or merge keys; see :func:`ligands_to_dataframe` column layout).
-_MOLPROPS_ROW_SKIP_PROPERTY_KEYS: frozenset[str] = frozenset(
+# Molprops API row keys that are identity/merge fields, not Ligand attrs.
+_MOLPROPS_ROW_SKIP_KEYS: frozenset[str] = frozenset(
     {
         "id",
         "ligand_id",
@@ -98,19 +96,20 @@ _MOLPROPS_ROW_SKIP_PROPERTY_KEYS: frozenset[str] = frozenset(
 )
 
 # Platform ligand pinned columns → molprops combined-tool row keys.
-# Mirrors ``pinned-columns.registry.ts`` on the data platform.
+# Mirrors ``pinned-columns.registry.ts`` on the data platform (current tool
+# outputs only; ames/herg/cyp pins are legacy and ignored).
 _PLATFORM_PINNED_TO_MOLPROPS_ROW: dict[str, str] = {
     "log_p": "logP",
     "pains_flag": "has_pains",
+    "pains_fragments": "pains_fragments",
     "logd_predicted": "logD",
     "logs_predicted": "logS",
-    "ames_probability": "ames_probability",
-    "herg_probability": "herg_inhibition_probability",
-    "cyp1a2": "cyp1a2",
-    "cyp2c9": "cyp2c9",
-    "cyp2c19": "cyp2c19",
-    "cyp2d6": "cyp2d6",
-    "cyp3a4": "cyp3a4",
+    "molecular_weight": "molecular_weight",
+    "hbond_donor_count": "hbond_donor_count",
+    "hbond_acceptor_count": "hbond_acceptor_count",
+    "rotatable_bond_count": "rotatable_bond_count",
+    "tpsa": "tpsa",
+    "rule_of5_violations": "rule_of_5_violations",
 }
 
 
@@ -211,11 +210,11 @@ class Ligand(Entity):
     (ligands) in computational drug discovery. It supports various input formats and provides
     methods for property prediction, visualization, and file operations.
 
-    After running :class:`~deeporigin.drug_discovery.molprops.Molprops`, predicted ADMET values
-    are available on dedicated attributes (``log_s``, ``log_d``, ``log_p``,
-    ``ames_probability``, ``herg_inhibition_probability``, ``cyp_1a2``,
-    ``cyp_2c9``, ``cyp_2c19``, ``cyp_2d6``, ``cyp_3a4``, ``has_pains``,
-    ``pains_fragments``) as well as in :attr:`properties`.
+    After running :class:`~deeporigin.drug_discovery.molprops.Molprops`, predicted
+    physicochemical values are available on dedicated attributes (``log_s``,
+    ``log_d``, ``log_p``, ``has_pains``, ``pains_fragments``, ``molecular_weight``,
+    ``hbond_donor_count``, ``hbond_acceptor_count``, ``rotatable_bond_count``,
+    ``tpsa``, ``rule_of_5_violations``, ``sa_score``).
 
     The RDKit molecule must be passed as the keyword-only argument ``mol`` (typically via
     :meth:`from_smiles`, :meth:`from_rdkit_mol`, or similar factory methods).
@@ -238,20 +237,19 @@ class Ligand(Entity):
     mol: Chem.Mol = field(kw_only=True)
     protonated_at_ph: float | None = None
     protonation_concentration: float | None = None
-    # Molprops / ADMET (populated by Molprops.run(); see _MOLPROPS_RESPONSE_TO_ATTR
-    # for the API-key → attribute mapping for the combined molprops tool).
+    # Molprops (populated by Molprops.run(); see _MOLPROPS_RESPONSE_TO_ATTR).
     log_s: float | None = None
     log_d: float | None = None
     log_p: float | None = None
-    ames_probability: float | None = None
-    herg_inhibition_probability: float | None = None
-    cyp_1a2: float | None = None
-    cyp_2c9: float | None = None
-    cyp_2c19: float | None = None
-    cyp_2d6: float | None = None
-    cyp_3a4: float | None = None
     has_pains: bool | None = None
     pains_fragments: list[Any] | None = None
+    molecular_weight: float | None = None
+    hbond_donor_count: int | None = None
+    hbond_acceptor_count: int | None = None
+    rotatable_bond_count: int | None = None
+    tpsa: float | None = None
+    rule_of_5_violations: int | None = None
+    sa_score: float | None = None
 
     # Additional attributes that are initialized in __post_init__
     available_for_docking: bool = field(init=False, default=True)
@@ -637,9 +635,9 @@ class Ligand(Entity):
     ) -> Self:
         """Create a Ligand instance from a platform ligand record.
 
-        When the record includes pinned molprops columns (``log_p``, ``cyp2d6``,
-        ``logs_predicted``, etc.), they are applied to ADMET attributes and
-        :attr:`properties` via :meth:`_apply_molprops_result`.
+        When the record includes pinned molprops columns (``log_p``,
+        ``molecular_weight``, ``logs_predicted``, etc.), they are applied to
+        dedicated molprops attributes via :meth:`_apply_molprops_result`.
 
         Args:
             data: Ligand record returned by the platform entities API.
@@ -1071,51 +1069,6 @@ class Ligand(Entity):
             int: The sum of formal charges of all atoms in the molecule.
         """
         return sum(atom.GetFormalCharge() for atom in self.mol.GetAtoms())
-
-    @property
-    def molecular_weight(self) -> float:
-        """Compute the exact molecular weight of the ligand molecule.
-
-        Returns:
-            float: The exact molecular weight in atomic mass units.
-        """
-        return rdMolDescriptors.CalcExactMolWt(self.mol)
-
-    @property
-    def hbond_donor_count(self) -> int:
-        """Compute the number of hydrogen bond donors in the ligand molecule.
-
-        Returns:
-            int: The number of hydrogen bond donors.
-        """
-        return rdMolDescriptors.CalcNumHBD(self.mol)
-
-    @property
-    def hbond_acceptor_count(self) -> int:
-        """Compute the number of hydrogen bond acceptors in the ligand molecule.
-
-        Returns:
-            int: The number of hydrogen bond acceptors.
-        """
-        return rdMolDescriptors.CalcNumHBA(self.mol)
-
-    @property
-    def rotatable_bond_count(self) -> int:
-        """Compute the number of rotatable bonds in the ligand molecule.
-
-        Returns:
-            int: The number of rotatable bonds.
-        """
-        return rdMolDescriptors.CalcNumRotatableBonds(self.mol)
-
-    @property
-    def tpsa(self) -> float:
-        """Compute the Topological Polar Surface Area (TPSA) of the ligand molecule.
-
-        Returns:
-            float: The TPSA value in square Angstroms.
-        """
-        return rdMolDescriptors.CalcTPSA(self.mol)
 
     @property
     def canonical_smiles(self) -> str:
@@ -1717,15 +1670,11 @@ class Ligand(Entity):
 
     @beartype
     def _apply_molprops_result(self, props: dict[str, Any]) -> None:
-        """Apply merged molprops API row to ADMET fields and ``properties``."""
+        """Apply a molprops API row to dedicated Ligand attributes only."""
 
         for api_key, attr_name in _MOLPROPS_RESPONSE_TO_ATTR.items():
             if api_key in props:
                 setattr(self, attr_name, props[api_key])
-        for key, value in props.items():
-            if key in _MOLPROPS_ROW_SKIP_PROPERTY_KEYS:
-                continue
-            self.set_property(key, value)
 
     def update_coordinates(self, coordinates: np.ndarray):
         """update coordinates of the ligand structure"""
@@ -1841,30 +1790,41 @@ def ligands_to_dataframe(ligands: list[Ligand]) -> pd.DataFrame:
 
     Returns:
         DataFrame with columns ``id``, ``SMILES``, known molprops output keys
-        (in schema order when present), then any other property keys sorted.
+        (in schema order when present on any ligand), then any other
+        :attr:`~Ligand.properties` keys sorted.
     """
 
     skip_property_keys = {
         "_Name",
         "_SMILES",
         "initial_smiles",
-    } | _MOLPROPS_ROW_SKIP_PROPERTY_KEYS
+    } | _MOLPROPS_ROW_SKIP_KEYS
+
+    molprops_keys = [
+        api_key
+        for api_key, attr_name in _MOLPROPS_RESPONSE_TO_ATTR.items()
+        if any(getattr(ligand, attr_name, None) is not None for ligand in ligands)
+    ]
 
     all_keys: set[str] = set()
     for ligand in ligands:
         all_keys.update(ligand.properties.keys())
 
-    property_keys = sorted(k for k in all_keys if k not in skip_property_keys)
-    molprops_keys = [k for k in _MOLPROPS_RESPONSE_TO_ATTR if k in property_keys]
-    other_keys = sorted(set(property_keys) - set(molprops_keys))
+    other_keys = sorted(
+        k
+        for k in all_keys
+        if k not in skip_property_keys and k not in _MOLPROPS_RESPONSE_TO_ATTR
+    )
 
-    property_columns: dict[str, list[Any]] = {}
-    for key in molprops_keys + other_keys:
-        property_columns[key] = [ligand.properties.get(key, None) for ligand in ligands]
-
-    data: dict[str, list[Any]] = {"id": [ligand.id for ligand in ligands]}
-    data["SMILES"] = [ligand.smiles for ligand in ligands]
-    data.update(property_columns)
+    data: dict[str, list[Any]] = {
+        "id": [ligand.id for ligand in ligands],
+        "SMILES": [ligand.smiles for ligand in ligands],
+    }
+    for api_key in molprops_keys:
+        attr_name = _MOLPROPS_RESPONSE_TO_ATTR[api_key]
+        data[api_key] = [getattr(ligand, attr_name, None) for ligand in ligands]
+    for key in other_keys:
+        data[key] = [ligand.properties.get(key, None) for ligand in ligands]
 
     column_order = ["id", "SMILES", *molprops_keys, *other_keys]
     return pd.DataFrame(data)[column_order]

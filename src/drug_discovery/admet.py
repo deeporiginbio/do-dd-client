@@ -33,7 +33,10 @@ from deeporigin.drug_discovery.structures.ligand import Ligand, LigandSet
 from deeporigin.exceptions import DeepOriginException
 from deeporigin.platform.client import DeepOriginClient
 from deeporigin.platform.constants import TOOL_KEYS_AND_VERSIONS, is_success_status
-from deeporigin.utils.constants import ADMET_EXECUTION_TIMEOUT_SECONDS
+from deeporigin.utils.constants import (
+    ADMET_EXECUTION_TIMEOUT_SECONDS,
+    QUOTE_APPROVE_AMOUNT,
+)
 
 _ADMET_ID_COLUMNS: tuple[str, ...] = ("ligand_id", "smiles")
 _ADMET_ENUM_MISSING = (
@@ -352,12 +355,12 @@ class Admet(Execution, SyncExecutableMixin):
     ) -> pd.DataFrame | Admet:
         """Execute admet-properties synchronously and return predictions.
 
-        With ``quote=True`` (or ``approve_amount=0``), requests a cost estimate
+        With ``quote=True`` (or ``approve_amount=-1``), requests a cost estimate
         only, updates execution fields from the platform DTO, and returns
         ``self`` without running inference.
 
         Args:
-            quote: Shorthand for ``approve_amount=0``.
+            quote: Shorthand for ``approve_amount=-1``.
             approve_amount: Spend cap forwarded as ``approveAmount``.
 
         Returns:
@@ -371,14 +374,14 @@ class Admet(Execution, SyncExecutableMixin):
                 endpoints not on the fetched definition.
         """
         self._ensure_properties_for_run()
-        resolved_amount = 0 if quote else approve_amount
+        resolved_amount = QUOTE_APPROVE_AMOUNT if quote else approve_amount
         sync = resolved_amount is None
         dto = self._create_execution(
             data=self._make_payload(approve_amount=resolved_amount, sync=sync),
         )
         self.update_from_dto(dto)
 
-        if quote or resolved_amount == 0:
+        if quote or resolved_amount == QUOTE_APPROVE_AMOUNT:
             return self
 
         if not is_success_status(self.status):

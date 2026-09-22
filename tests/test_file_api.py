@@ -228,6 +228,46 @@ def test_upload_files_via_signed_url_directory_lv1(client: DeepOriginClient):
     )
 
 
+def test_upload_empty_file_via_signed_url_lv1(client: DeepOriginClient):
+    """test uploading a 0-byte file via signed URL and verifying Size in listing."""
+
+    if client.env == "local":
+        pytest.skip("Requires a real file service (use --env dev/staging/prod)")
+
+    remote_dir = f"/testing-empty-signed-url-upload/{uuid.uuid4()}/"
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        empty_file = os.path.join(tmpdir, "empty.bin")
+        with open(empty_file, "wb"):
+            pass
+
+        results = client.files.upload_tree(
+            local_path=[empty_file],
+            remote_dir=remote_dir,
+        )
+
+        assert results == [f"{remote_dir}empty.bin"]
+
+    file_objects = client.files.list(
+        remote_path=remote_dir,
+        recursive=True,
+        metadata=True,
+    )
+    size_by_name = {
+        os.path.basename(obj["Key"]): obj["Size"]
+        for obj in file_objects
+        if "Size" in obj
+    }
+
+    assert size_by_name == {"empty.bin": 0}
+
+    client.files.delete_many(
+        remote_paths=results,
+        skip_errors=True,
+        timeout=60.0,
+    )
+
+
 def test_delete_file_lv1(client: DeepOriginClient):
     """test the delete_file API."""
     # First upload a file to delete

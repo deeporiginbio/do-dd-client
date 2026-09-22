@@ -16,16 +16,16 @@
       show_if_no_docstring: true
       group_by_category: true
 
-## ADMET (molprops) attributes
+## Molprops attributes
 
-After you run [`Molprops`](../how-to/ligands.md#predicting-admet-properties) on the ligand, or load the ligand with `Ligand.from_id` / `LigandSet.from_ids` when values already exist on the platform record, scalar predictions are stored on dedicated attributes as well as in `properties` (tool row keys such as `logS`, `cyp2d6`):
+After you run [`Molprops`](../how-to/ligands.md#predicting-molecular-properties-molprops) on the ligand, or load the ligand with `Ligand.from_id` / `LigandSet.from_ids` when values already exist on the platform record, scalar predictions are stored on dedicated attributes (tool row keys such as `logS`, `sa_score`):
 
 - `log_s`, `log_d`, `log_p` — map to tool keys `logS`, `logD`, `logP` (platform columns `logs_predicted`, `logd_predicted`, `log_p`)
-- `ames_probability`, `herg_inhibition_probability` — from `ames_probability`, `herg_probability` on the platform record
-- `cyp_1a2`, `cyp_2c9`, `cyp_2c19`, `cyp_2d6`, `cyp_3a4` — from `cyp1a2`, …, `cyp3a4`
 - `has_pains`, `pains_fragments` — PAINS screening (`pains_flag` on the platform record maps to `has_pains`)
+- `molecular_weight`, `hbond_donor_count`, `hbond_acceptor_count`, `rotatable_bond_count`, `tpsa`, `rule_of_5_violations` — RDKit descriptors (platform pin `rule_of5_violations` maps to `rule_of_5_violations`)
+- `sa_score` — synthetic accessibility (from a `Molprops` run; platform pin pending)
 
-Until molprops has been run or the platform record has pinned values, these fields remain `None`. `pains_fragments` is only available from a fresh `Molprops` run, not from `from_id`.
+Until molprops has been run or the platform record has pinned values, these fields remain `None`. `pains_fragments` is only available from a fresh `Molprops` run when the platform pin is absent. Toxicity endpoints (AMES, hERG, CYP) belong on `Admet`, not Molprops.
 
 ## Preparation
 

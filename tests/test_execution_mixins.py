@@ -100,14 +100,14 @@ def test_async_start_calls_start_impl_with_no_approve_amount() -> None:
     assert job._start_impl_calls[0]["approve_amount"] is None
 
 
-def test_async_start_quote_true_forwards_zero_approve_amount() -> None:
-    """``start(quote=True)`` forwards ``approve_amount=0`` to ``_start_impl``."""
+def test_async_start_quote_true_forwards_negative_approve_amount() -> None:
+    """``start(quote=True)`` forwards ``approve_amount=-1`` to ``_start_impl``."""
     job = _AsyncJob()
 
     job.start(quote=True)
 
     assert len(job._start_impl_calls) == 1
-    assert job._start_impl_calls[0]["approve_amount"] == 0
+    assert job._start_impl_calls[0]["approve_amount"] == -1
 
 
 def test_async_start_approve_amount_forwarded() -> None:

@@ -1,5 +1,6 @@
 """Tests that execute Jupyter notebooks end-to-end."""
 
+import os
 from pathlib import Path
 import sys
 
@@ -7,6 +8,8 @@ from jupyter_client import KernelManager
 from jupyter_client.kernelspec import KernelSpec
 from nbclient import NotebookClient
 import nbformat
+
+from deeporigin.utils.constants import JOB_WATCH_BLOCK_ENV
 
 NOTEBOOKS_DIR = Path(__file__).resolve().parent.parent / "docs" / "notebooks" / "clean"
 
@@ -50,7 +53,19 @@ def _execute_notebook(notebook_path: Path) -> None:
         km=_notebook_kernel_manager(),
         resources={"metadata": {"path": str(notebook_path.parent)}},
     )
-    client.execute()
+    # Notebooks call the non-blocking NotebookWatchMixin.watch() by design
+    # (it's what a real interactive session should do); headless execution
+    # needs JOB_WATCH_BLOCK=1 so the cell waits for the job instead of
+    # racing ahead, same as scripts/build_docs.sh does for the doc build.
+    previous = os.environ.get(JOB_WATCH_BLOCK_ENV)
+    os.environ[JOB_WATCH_BLOCK_ENV] = "1"
+    try:
+        client.execute()
+    finally:
+        if previous is None:
+            os.environ.pop(JOB_WATCH_BLOCK_ENV, None)
+        else:
+            os.environ[JOB_WATCH_BLOCK_ENV] = previous
 
 
 def test_pocketfinder_notebook():

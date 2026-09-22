@@ -520,19 +520,21 @@ def test_ligandset_to_dataframe():
 
     ligandset = LigandSet(ligands=[ligand1, ligand2])
 
-    # Add properties
-    ligand1.set_property("logP", 0.32)
-    ligand2.set_property("logP", 0.88)
+    # Add properties. Uses a generic property name rather than "logP" since
+    # molprops keys are now sourced only from dedicated Ligand attributes
+    # (see _MOLPROPS_RESPONSE_TO_ATTR), not from arbitrary set_property calls.
+    ligand1.set_property("custom_score", 0.32)
+    ligand2.set_property("custom_score", 0.88)
 
     df = ligandset.to_dataframe()
     assert len(df) == 2
     assert "SMILES" in df.columns
-    assert "logP" in df.columns
+    assert "custom_score" in df.columns
     assert list(df.columns[:2]) == ["id", "SMILES"]
 
 
 def test_ligandset_to_dataframe_after_molprops():
-    """Molprops rows must not duplicate id/SMILES; columns are id, SMILES, then ADMET."""
+    """Molprops rows must not duplicate id/SMILES; columns are id, SMILES, then attrs."""
     from deeporigin.drug_discovery.structures.ligand import LigandSet
 
     ligand = Ligand.from_smiles("CCO")
@@ -542,17 +544,19 @@ def test_ligandset_to_dataframe_after_molprops():
             "ligand_id": "0",
             "smiles": "CCO",
             "logP": 1.2,
-            "cyp2c19": 0.5,
+            "sa_score": 2.5,
         }
     )
 
     df = LigandSet(ligands=[ligand]).to_dataframe()
 
-    assert list(df.columns) == ["id", "SMILES", "logP", "cyp2c19"]
+    assert list(df.columns) == ["id", "SMILES", "logP", "sa_score"]
     assert "ligand_id" not in df.columns
     assert "smiles" not in df.columns
     assert df.loc[0, "id"] == "0"
     assert df.loc[0, "SMILES"] == "CCO"
+    assert df.loc[0, "logP"] == pytest.approx(1.2)
+    assert df.loc[0, "sa_score"] == pytest.approx(2.5)
 
 
 def test_ligandset_indexing_and_slicing():
