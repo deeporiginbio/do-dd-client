@@ -54,7 +54,10 @@ from deeporigin.drug_discovery.execution_mixins import (
     SyncExecutableMixin,
 )
 from deeporigin.drug_discovery.notebook_watch_mixin import NotebookWatchMixin
-from deeporigin.drug_discovery.protein_prep import _protein_tool_input
+from deeporigin.drug_discovery.protein_prep import (
+    _ensure_crystal_ligand_remote,
+    _protein_tool_input,
+)
 from deeporigin.drug_discovery.structures.ligand import Ligand
 from deeporigin.drug_discovery.structures.pocket import Pocket
 from deeporigin.drug_discovery.structures.protein import Protein
@@ -525,10 +528,7 @@ class PocketFinder(
         self._protein.ensure_remote_path(client=self.client, label="Protein")
 
         if self._mode == "from-crystal-ligand" and self._crystal_ligand is not None:
-            self._crystal_ligand.sync(lazy=True, client=self.client)
-            self._crystal_ligand.ensure_remote_path(
-                client=self.client, label="Crystal ligand"
-            )
+            _ensure_crystal_ligand_remote(self._crystal_ligand, client=self.client)
 
     def _make_payload(
         self,
@@ -554,7 +554,8 @@ class PocketFinder(
             inputs["align_to_pocket"] = self._align_to_pocket
         elif self._mode == "from-crystal-ligand":
             inputs["crystal_ligand"] = self._crystal_ligand_tool_input()
-            inputs["pocket_radius"] = self._pocket_radius
+            if self._box_geometry == "fixed-radius":
+                inputs["pocket_radius"] = self._pocket_radius
             if self._box_geometry is not None:
                 inputs["box_geometry"] = self._box_geometry
             if self._box_padding is not None:

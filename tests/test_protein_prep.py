@@ -454,6 +454,24 @@ def test_selection_from_recommendation_accepts_extract_tag() -> None:
     assert selection["decisions"]["ligand:LIG:A:100"] == "extract"
 
 
+def test_selection_from_recommendation_maps_ligand_skip_to_extract() -> None:
+    """Analyzer skip on ligands becomes extract in the editable Selection."""
+    recommendation = {
+        **_SAMPLE_RECOMMENDATION,
+        "components": [
+            _SAMPLE_RECOMMENDATION["components"][0],
+            {
+                **_SAMPLE_RECOMMENDATION["components"][1],
+                "recommendation": "skip",
+            },
+        ],
+    }
+
+    selection = _selection_from_recommendation(recommendation)
+
+    assert selection["decisions"]["ligand:LIG:A:100"] == "extract"
+
+
 def test_skip_ligand_stores_extract_decision() -> None:
     """skip() on ligand ids maps to extract for platform compatibility."""
     prep = ProteinPrep(
@@ -1134,6 +1152,11 @@ def test_pocket_start_exposes_pockets_and_supports_quote(
     quoted.start(quote=True)
     assert quoted.status == "Quoted"
     assert quoted.id is not None
+    quoted.confirm()
+    prepared = quoted.get_results()
+    assert isinstance(prepared, Protein)
+    assert quoted.get_report() is not None
+    assert quoted.get_report().protein_id == prepared.id
 
     prep = ProteinPrep(
         protein=registered_protein,

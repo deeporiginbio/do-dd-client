@@ -985,6 +985,8 @@ def create_tools_router(
                 _inject_patent_tool_execution_results(execution)
             if tool_key == "deeporigin.metabolism":
                 _inject_metabolism_tool_execution_results(execution)
+            if tool_key == "deeporigin.target-preparation":
+                _inject_target_prep_tool_execution_results(execution)
             progress_reports = _load_progress_reports(tool_key)
             if progress_reports:
                 final_report = progress_reports[-1]
@@ -2196,6 +2198,93 @@ def create_tools_router(
             project_id=execution.get("projectId"),
         )
 
+    def _inject_target_prep_tool_execution_results(
+        execution: dict[str, Any],
+    ) -> None:
+        """Populate Target Preparation jobOutputs and result-explorer rows."""
+        eid = execution.get("executionId")
+        tool = execution.get("tool") or {}
+        tkey = tool.get("key")
+        tool_version = tool.get("version", "0.0.0")
+        if not eid or tkey != "deeporigin.target-preparation":
+            return
+        if any(r.get("compute_job_id") == eid for r in results):
+            return
+
+        inputs = execution.get("userInputs") or {}
+        if not isinstance(inputs, dict):
+            inputs = {}
+        protein_input = inputs.get("protein") or {}
+        input_protein_id = (
+            str(protein_input.get("id"))
+            if isinstance(protein_input, dict) and protein_input.get("id")
+            else None
+        )
+        pdb_id = inputs.get("pdb_id")
+        has_file = isinstance(protein_input, dict) and bool(
+            protein_input.get("file_path")
+        )
+
+        prep_fixture = copy.deepcopy(
+            load_fixture("tool-runs/deeporigin.protein-prep/run")
+        )
+        outputs = _legacy_outputs_to_job_outputs(prep_fixture) or {}
+        protein_output = outputs.get("protein")
+        prepared_protein_id = ""
+        if isinstance(protein_output, dict):
+            registered = register_mock_prepared_protein(
+                proteins,
+                execution_id=str(eid),
+                pdb_id=str(pdb_id) if pdb_id is not None else None,
+            )
+            protein_output["id"] = registered["protein_id"]
+            protein_output.pop("protein_id", None)
+            if input_protein_id:
+                protein_output["parent_id"] = input_protein_id
+            protein_output.setdefault("model_missing_loops", True)
+            prepared_protein_id = str(protein_output.get("id") or "")
+
+        report = _synthesize_structure_report_row(
+            pdb_id=str(pdb_id).upper() if pdb_id else None,
+            protein_id=prepared_protein_id or input_protein_id,
+            has_file=has_file,
+        )
+        report["report_role"] = "prepared"
+
+        pose_rows = mock_crystal_poses_from_selection(
+            ligands,
+            execution_id=str(eid),
+            prepared_protein_id=prepared_protein_id,
+            selection=inputs.get("selection"),
+        )
+        outputs.update(
+            {
+                "audit_file_path": f"tool-runs/{eid}/audit.json",
+                "poses": pose_rows,
+                "selection_file_path": f"tool-runs/{eid}/selection.json",
+                "structure_reports": [report],
+            }
+        )
+        if inputs.get("find_pockets") in {"novel", "from-crystal-ligand"}:
+            pocket_fixture = copy.deepcopy(
+                load_fixture("tool-runs/deeporigin.pocketfinder/run")
+            )
+            pocket_outputs = _legacy_outputs_to_job_outputs(pocket_fixture) or {}
+            pockets = pocket_outputs.get("pockets") or []
+            for pocket in pockets:
+                if isinstance(pocket, dict) and prepared_protein_id:
+                    pocket["protein_id"] = prepared_protein_id
+            outputs["pockets"] = pockets
+
+        execution["jobOutputs"] = outputs
+        _inject_result_explorer_records_from_outputs(
+            tool_key=tkey,
+            tool_version=tool_version,
+            execution_id=eid,
+            job_outputs=outputs,
+            project_id=execution.get("projectId"),
+        )
+
     def _build_target_prep_execution(
         *,
         org_key: str,
@@ -2210,83 +2299,7 @@ def create_tools_router(
             tool_version=tool_version,
             body=body,
         )
-        inputs = body.get("inputs") or {}
-        protein_input = inputs.get("protein") or {}
-        input_protein_id = (
-            str(protein_input.get("id"))
-            if isinstance(protein_input, dict) and protein_input.get("id")
-            else None
-        )
-        pdb_id = inputs.get("pdb_id")
-        has_file = isinstance(protein_input, dict) and bool(
-            protein_input.get("file_path")
-        )
-        report = _synthesize_structure_report_row(
-            pdb_id=str(pdb_id).upper() if pdb_id else None,
-            protein_id=input_protein_id,
-            has_file=has_file,
-        )
-
-        prep_fixture = copy.deepcopy(
-            load_fixture("tool-runs/deeporigin.protein-prep/run")
-        )
-        outputs = _legacy_outputs_to_job_outputs(prep_fixture) or {}
-        protein_output = outputs.get("protein")
-        if isinstance(protein_output, dict):
-            registered = register_mock_prepared_protein(
-                proteins,
-                execution_id=str(execution["executionId"]),
-                pdb_id=str(pdb_id) if pdb_id is not None else None,
-            )
-            protein_output["id"] = registered["protein_id"]
-            protein_output.pop("protein_id", None)
-            if input_protein_id:
-                protein_output["parent_id"] = input_protein_id
-            protein_output.setdefault("model_missing_loops", True)
-        report["report_role"] = "prepared"
-        prepared_protein_id = (
-            str(protein_output.get("id"))
-            if isinstance(protein_output, dict) and protein_output.get("id")
-            else ""
-        )
-        pose_rows = mock_crystal_poses_from_selection(
-            ligands,
-            execution_id=str(execution["executionId"]),
-            prepared_protein_id=prepared_protein_id,
-            selection=inputs.get("selection"),
-        )
-        outputs.update(
-            {
-                "audit_file_path": (f"tool-runs/{execution['executionId']}/audit.json"),
-                "poses": pose_rows,
-                "selection_file_path": (
-                    f"tool-runs/{execution['executionId']}/selection.json"
-                ),
-                "structure_reports": [report],
-            }
-        )
-        if inputs.get("find_pockets") in {"novel", "from-crystal-ligand"}:
-            pocket_fixture = copy.deepcopy(
-                load_fixture("tool-runs/deeporigin.pocketfinder/run")
-            )
-            pocket_outputs = _legacy_outputs_to_job_outputs(pocket_fixture) or {}
-            pockets = pocket_outputs.get("pockets") or []
-            prepared_protein_id = (
-                protein_output.get("id") if isinstance(protein_output, dict) else None
-            )
-            for pocket in pockets:
-                if isinstance(pocket, dict) and prepared_protein_id is not None:
-                    pocket["protein_id"] = prepared_protein_id
-            outputs["pockets"] = pockets
-
-        execution["jobOutputs"] = outputs
-        _inject_result_explorer_records_from_outputs(
-            tool_key=tool_key,
-            tool_version=tool_version,
-            execution_id=execution["executionId"],
-            job_outputs=outputs,
-            project_id=execution.get("projectId") or body.get("projectId"),
-        )
+        _inject_target_prep_tool_execution_results(execution)
         return execution
 
     def _inject_rbfe_user_logs(execution_id: str) -> None:
@@ -2674,6 +2687,12 @@ def create_tools_router(
         execution_start_times[execution_id] = now
         execution["startedAt"] = now.strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z"
         execution["updatedAt"] = now.strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z"
+
+        tool_key = (execution.get("tool") or {}).get("key")
+        if tool_key == "deeporigin.target-preparation":
+            execution["status"] = "Completed"
+            execution["completedAt"] = execution["updatedAt"]
+            _inject_target_prep_tool_execution_results(execution)
 
         executions[execution_id] = execution
 

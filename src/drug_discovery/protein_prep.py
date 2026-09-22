@@ -59,6 +59,7 @@ from deeporigin.platform.constants import (
 )
 from deeporigin.utils.constants import (
     EXECUTION_LIST_ORDER_CREATED_DESC,
+    QUOTE_APPROVE_AMOUNT,
     PROTEIN_PREP_COMPONENT_KINDS,  # ty:ignore[unresolved-import]
     PROTEIN_PREP_DATAFRAME_ID_COLUMN_MSG,  # ty:ignore[unresolved-import]
     PROTEIN_PREP_DISPLAY_NONE,  # ty:ignore[unresolved-import]
@@ -334,11 +335,7 @@ class PocketFinderConfig:
         """
         if self.crystal_ligand is None:
             return
-        self.crystal_ligand.sync(lazy=True, client=client)
-        self.crystal_ligand.ensure_remote_path(
-            client=client,
-            label="Crystal ligand",
-        )
+        _ensure_crystal_ligand_remote(self.crystal_ligand, client=client)
 
     def to_tool_input(self) -> dict[str, Any]:
         """Return flat ``find_pockets`` fields for preparation tool inputs.
@@ -381,7 +378,7 @@ class PocketFinderConfig:
             "find_pockets": "from-crystal-ligand",
             "crystal_ligand": crystal,
         }
-        if self.pocket_radius is not None:
+        if self.box_geometry == "fixed-radius" and self.pocket_radius is not None:
             pocket["pocket_radius"] = float(self.pocket_radius)
         if self.box_geometry is not None:
             pocket["box_geometry"] = self.box_geometry
@@ -778,12 +775,28 @@ def _selection_from_recommendation(
                 f"recommendation.components[{index}] recommendation must be "
                 f"keep, skip, extract, or review, got {raw.get('recommendation')!r}."
             )
-        decisions[str(component_id)] = rec
+        decisions[str(component_id)] = _normalize_decision_for_component(
+            str(component_id),
+            rec,
+        )
     return {
         "source_sha256": str(source_sha256),
         "analyzer_version": str(analyzer_version),
         "decisions": decisions,
     }
+
+
+def _ensure_crystal_ligand_remote(
+    ligand: Ligand,
+    *,
+    client: DeepOriginClient,
+) -> None:
+    """Materialize in-memory crystal ligands and sync before ``file_path`` submit."""
+    if not ligand.remote_path or not str(ligand.remote_path).strip():
+        if ligand.local_path is None:
+            ligand.to_file()
+        ligand.sync(lazy=False, client=client)
+    ligand.ensure_remote_path(client=client, label="Crystal ligand")
 
 
 def _kind_from_component_id(component_id: str) -> str | None:
@@ -1724,7 +1737,7 @@ class ProteinPrep(
         :attr:`pocket` is unset or uses ``from-crystal-ligand``.
 
         Args:
-            quote: Shorthand for ``approve_amount=0``.
+            quote: Shorthand for :data:`~deeporigin.utils.constants.QUOTE_APPROVE_AMOUNT`.
             approve_amount: Optional spend cap (usually omitted on this path).
 
         Returns:
@@ -1741,7 +1754,7 @@ class ProteinPrep(
         self._ensure_prepare_name()
         self._ensure_protein_remote()
         self._apply_runtime_route(composite=False)
-        resolved_amount = 0 if quote else approve_amount
+        resolved_amount = QUOTE_APPROVE_AMOUNT if quote else approve_amount
         dto = self._create_execution(
             data=self._make_protein_prep_payload(
                 action="prepare",
