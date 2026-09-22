@@ -898,7 +898,9 @@ class SecondaryPharmacology(
 
     def _expected_panel_pairs(self) -> set[tuple[str, str]]:
         """Every (ligand id, uniprot) pair this run should have docked."""
-        uniprots = self.uniprots or self._allowed_uniprots or ()
+        uniprots = self.uniprots or self._allowed_uniprots
+        if not uniprots:
+            uniprots = self._fetch_definition_uniprots()
         return {
             (lig.id, uniprot)
             for lig in self._ligands
@@ -909,8 +911,9 @@ class SecondaryPharmacology(
     def get_undocked_ligands(self) -> LigandSet | None:
         """Ligands with zero docked poses, or ``None`` if none. Docking only.
 
-        A ligand docked against *some* targets can still appear here --
-        use :meth:`get_missing_pairs` for the full gap.
+        A ligand with at least one docked pose won't appear here, even if
+        it's missing poses for other targets -- use :meth:`get_missing_pairs`
+        for that.
         """
         self._ensure_method("docking", alternative_call="get_results")
         rows = _load_panel_pose_rows(self._ensure_id(), client=self.client)

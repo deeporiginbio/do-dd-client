@@ -666,6 +666,58 @@ def test_secondary_pharma_docking_start_sync_get_results_and_poses(
         assert pose.smiles is not None
 
 
+# --- get_undocked_ligands() / get_missing_pairs() ---------------------------
+
+
+def test_secondary_pharma_undocked_ligands_and_missing_pairs_after_reload(
+    client: DeepOriginClient,
+) -> None:
+    """Both gap-checks find a ligand added after a real docking run completed.
+
+    Regression: on a reloaded (``from_id``) unrestricted run, ``uniprots`` and
+    ``_allowed_uniprots`` are both unset, so ``_expected_panel_pairs()`` used
+    to collapse to an empty set and ``get_missing_pairs()`` silently reported
+    nothing missing regardless of the actual gap.
+    """
+    _assert_tool_available(client)
+    client.files.upload(
+        local_path=BRD_DATA_DIR / "brd-2.sdf",
+        remote_path=MOCK_SECONDARY_PHARMA_POSE_SDF_PATH,
+    )
+
+    docked_ligand = Ligand.from_smiles("CCO")
+    job = SecondaryPharmacology(
+        ligands=[docked_ligand], method="docking", client=client
+    )
+    job.start()
+    elapsed = 0.0
+    while elapsed < 5.0:
+        job.sync()
+        if job.status in TERMINAL_STATES:
+            break
+        time.sleep(0.05)
+        elapsed += 0.05
+    assert is_success_status(job.status)
+
+    # Nothing missing yet -- the one ligand is fully docked against the panel.
+    assert job.get_undocked_ligands() is None
+    assert job.get_missing_pairs() is None
+
+    reloaded = SecondaryPharmacology.from_id(job.id, client=client)
+    undocked_ligand = Ligand.from_smiles("c1ccccc1", name="benzene")
+    undocked_ligand.id = "not-actually-docked"
+    reloaded._ligands.append(undocked_ligand)
+
+    undocked = reloaded.get_undocked_ligands()
+    assert undocked is not None
+    assert [lig.id for lig in undocked.ligands] == [undocked_ligand.id]
+
+    missing = reloaded.get_missing_pairs()
+    assert missing is not None
+    assert {uniprot for _lig, uniprot in missing} == set(_PANEL_ACCESSIONS)
+    assert {lig.id for lig, _uniprot in missing} == {undocked_ligand.id}
+
+
 # --- plot() -----------------------------------------------------------------
 
 
