@@ -48,6 +48,8 @@ uv run pytest --env dev
 
 When `--env dev` is used, the mock server is **not** started and all requests go to the real platform API. This dual-mode design means the mock server must produce responses that are structurally identical to the real API — it is not a shortcut that skips validation.
 
+**Live test project:** level-1 and integration tests against dev/staging/prod resolve a shared project by display name (`do-dd-client-tests`, see `tests/integration_project.py`). The canonical id is fetched from the platform at session start (create-if-missing via `projects.create`); it is not hard-coded. Set `DO_PROJECT_ID` to pin a different project without renaming. Local tests keep using the mock-only id `09DEFAULTPROJECT00`.
+
 ### Standalone Script
 
 To run the mock server standalone for local development:

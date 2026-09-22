@@ -19,7 +19,6 @@ from deeporigin.drug_discovery.uniprot_discovery import (
 from deeporigin.exceptions import DeepOriginException
 from deeporigin.platform.client import DeepOriginClient
 from deeporigin.platform.constants import TOOL_KEYS_AND_VERSIONS
-from tests.mock_server.routers.data_platform import MOCK_DEFAULT_PROJECT_ID
 
 
 def _stub_from_pdb_id(pdb_id: str, struct_ind: int = 0) -> Protein:
@@ -203,7 +202,6 @@ def test_import_proteins_rejects_unknown_pdb_ids(
     client: DeepOriginClient,
 ) -> None:
     """Selected PDB IDs must appear in this accession's candidates."""
-    client.project_id = MOCK_DEFAULT_PROJECT_ID
     job = UniprotDiscovery(uniprot_accession="P00533", client=client)
     job.run()
     with pytest.raises(DeepOriginException, match="not in UniProt discovery"):
@@ -214,7 +212,6 @@ def test_import_proteins_rejects_empty_candidates(
     client: DeepOriginClient,
 ) -> None:
     """Cannot import when discovery returns no candidates."""
-    client.project_id = MOCK_DEFAULT_PROJECT_ID
     job = UniprotDiscovery(uniprot_accession="P99999", client=client)
     with pytest.raises(DeepOriginException, match="No experimental PDB"):
         job.import_proteins()
@@ -225,7 +222,6 @@ def test_import_proteins_recommended(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Default import syncs the recommended PDB with accession set."""
-    client.project_id = MOCK_DEFAULT_PROJECT_ID
     monkeypatch.setattr(Protein, "from_pdb_id", staticmethod(_stub_from_pdb_id))
 
     job = UniprotDiscovery(uniprot_accession="P00533", client=client)
@@ -235,7 +231,7 @@ def test_import_proteins_recommended(
     protein = proteins[0]
     assert protein.pdb_id == "1M17"
     assert protein.uniprot_accession == "P00533"
-    assert protein.project_id == MOCK_DEFAULT_PROJECT_ID
+    assert protein.project_id == client.project_id
     assert protein.id is not None
 
     fetched = client.entities.get_protein(id=protein.id)
@@ -248,7 +244,6 @@ def test_import_proteins_selected_list(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Explicit ``pdb_ids`` imports multiple candidate rows."""
-    client.project_id = MOCK_DEFAULT_PROJECT_ID
     monkeypatch.setattr(Protein, "from_pdb_id", staticmethod(_stub_from_pdb_id))
 
     job = UniprotDiscovery(uniprot_accession="P00533", client=client)
@@ -263,7 +258,6 @@ def test_protein_from_uniprot_sugar(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """``Protein.from_uniprot`` returns the recommended synced protein."""
-    client.project_id = MOCK_DEFAULT_PROJECT_ID
     monkeypatch.setattr(Protein, "from_pdb_id", staticmethod(_stub_from_pdb_id))
 
     protein = Protein.from_uniprot("P00533", client=client)
@@ -276,11 +270,10 @@ def test_protein_sync_persists_uniprot_accession(
     client: DeepOriginClient,
 ) -> None:
     """``sync`` writes ``uniprot_accession`` through import-dataset register_protein."""
-    client.project_id = MOCK_DEFAULT_PROJECT_ID
     protein = Protein.from_file(BRD_DATA_DIR / "brd.pdb")
     protein.pdb_id = "1M17"
     protein.uniprot_accession = "P00533"
-    protein.project_id = MOCK_DEFAULT_PROJECT_ID
+    protein.project_id = client.project_id
     protein.sync(client=client)
 
     fetched = client.entities.get_protein(id=protein.id)
@@ -291,10 +284,9 @@ def test_protein_sync_updates_uniprot_accession_on_existing(
     client: DeepOriginClient,
 ) -> None:
     """``sync`` updates accession when reusing an existing file_path row."""
-    client.project_id = MOCK_DEFAULT_PROJECT_ID
     protein = Protein.from_file(BRD_DATA_DIR / "brd.pdb")
     protein.pdb_id = "1M17"
-    protein.project_id = MOCK_DEFAULT_PROJECT_ID
+    protein.project_id = client.project_id
     protein.sync(client=client)
     assert protein.id is not None
 
@@ -309,10 +301,9 @@ def test_protein_from_id_hydrates_uniprot_accession(
     client: DeepOriginClient,
 ) -> None:
     """``from_id`` restores ``uniprot_accession`` from the platform row."""
-    client.project_id = MOCK_DEFAULT_PROJECT_ID
     protein = Protein.from_file(BRD_DATA_DIR / "brd.pdb")
     protein.uniprot_accession = "P00533"
-    protein.project_id = MOCK_DEFAULT_PROJECT_ID
+    protein.project_id = client.project_id
     protein.sync(client=client)
 
     restored = Protein.from_id(protein.id, client=client, download=False)

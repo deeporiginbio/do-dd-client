@@ -8,7 +8,7 @@ import pytest
 
 from deeporigin.drug_discovery import BRD_DATA_DIR, Ligand, Pocket, Protein
 from deeporigin.platform import DeepOriginClient
-from tests.mock_server.routers.data_platform import MOCK_DEFAULT_PROJECT_ID
+from tests.integration_project import apply_integration_project
 
 FIXTURES_DIR = Path(__file__).parent / "fixtures"
 
@@ -119,10 +119,11 @@ def assert_quote_only_execution(
 
 
 @pytest.fixture()
-def client() -> DeepOriginClient:
-    """Return a DeepOriginClient instance scoped to the mock default project."""
+def client(pytestconfig, _live_integration_project) -> DeepOriginClient:
+    """Return a DeepOriginClient scoped to the integration test project."""
+    env = pytestconfig.getoption("--env")
     instance = DeepOriginClient()
-    instance.project_id = MOCK_DEFAULT_PROJECT_ID
+    apply_integration_project(instance, env)
     return instance
 
 
