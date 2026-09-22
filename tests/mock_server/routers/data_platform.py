@@ -610,7 +610,6 @@ def _apply_eq_filters(
         # the client scopes searches to a concrete project, still match those
         # rows (same tolerance as entity search).
         if key == "project_id" and "eq" in condition:
-            target = condition["eq"]
             results = [
                 r
                 for r in results
