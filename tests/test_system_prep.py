@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING
 
 import pytest
 
+from deeporigin import projects
 from deeporigin.drug_discovery import BRD_DATA_DIR
 from deeporigin.drug_discovery.structures.ligand import Ligand
 from deeporigin.drug_discovery.structures.pose import Pose
@@ -15,6 +16,7 @@ from deeporigin.drug_discovery.system_prep import SystemPrep
 from deeporigin.platform.constants import TOOL_KEYS_AND_VERSIONS
 from deeporigin.utils.constants import SYSPREP_NO_OUTPUT_PATHS_MSG
 from tests.conftest import check_tool_exists
+from tests.mock_server.routers.data_platform import MOCK_DEFAULT_PROJECT_NAME
 
 if TYPE_CHECKING:
     from deeporigin.platform.client import DeepOriginClient
@@ -143,11 +145,20 @@ def test_sysprep_lv2(
         TOOL_KEYS_AND_VERSIONS["sysprep"]["tool_version"],
     ), "System prep tool not registered on platform (expected key/version)."
 
+    # import-dataset register_pose rejects executions with no projectId.
+    projects.load(MOCK_DEFAULT_PROJECT_NAME, client=client)
+
     protein: Protein = request.getfixturevalue(protein_fixture)
     ligand: Ligand = request.getfixturevalue(ligand_fixture)
     ligand.sync(client=client)
+    protein.sync(client=client)
     sdf = BRD_DATA_DIR / "brd-2.sdf"
-    pose = Pose.from_sdf(sdf, ligand=ligand, client=client)
+    pose = Pose.from_sdf(
+        sdf,
+        ligand=ligand,
+        protein_id=protein.id,
+        client=client,
+    )
 
     sysprep = SystemPrep(
         protein=protein,

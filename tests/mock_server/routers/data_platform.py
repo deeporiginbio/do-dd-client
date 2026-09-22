@@ -307,6 +307,11 @@ def _matches_condition(
 ) -> bool:
     """Return whether *record* satisfies a single-field filter condition."""
     raw_value = _field_value(record, key)
+    # Seeded result-explorer rows omit project_id. A client-scoped search
+    # still sees them, same as entity search of unscoped fixture rows.
+    if key == "project_id" and "eq" in condition:
+        if raw_value is _FIELD_MISSING or raw_value is None:
+            return True
     if raw_value is _FIELD_MISSING:
         return False
 

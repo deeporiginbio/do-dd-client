@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import time
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, ClassVar, Optional, Self
@@ -522,19 +523,24 @@ class Pose(Entity):
         )
         dto = raw if isinstance(raw, dict) else {}
         pose_row = _pose_row_from_registration_execution(dto)
-        if pose_row is None:
-            raise DeepOriginException(
-                title="Pose registration failed",
-                message="ImportTool did not return a pose row in jobOutputs.poses.",
-            )
-
-        if pose_row.get("id") is None:
+        if pose_row is not None and pose_row.get("id") is None:
             pose_row = _resolve_registered_pose_row(
                 client=client,
                 ligand_id=parent.id,
                 file_path=pose_remote,
                 origin=origin,
+                protein_id=protein_id,
                 fallback=pose_row,
+            )
+        if pose_row is None:
+            status = dto.get("status")
+            reason = dto.get("statusReason")
+            detail = "ImportTool did not return a pose row in jobOutputs.poses."
+            if status or reason:
+                detail = f"{detail} status={status}: {str(reason)[:500]}"
+            raise DeepOriginException(
+                title="Pose registration failed",
+                message=detail,
             )
 
         pose_row.setdefault("ligand_id", parent.id)
@@ -724,9 +730,12 @@ def _matches_registered_pose_row(
     *,
     origin: str,
     file_path: str | None,
+    protein_id: str | None = None,
 ) -> bool:
     """Return whether a pose row matches registration lookup filters."""
 
+    if protein_id is not None and str(data.get("protein_id") or "") != str(protein_id):
+        return False
     if file_path is not None:
         return data.get("file_path") == file_path
     if origin:
@@ -741,29 +750,42 @@ def _resolve_registered_pose_row(
     file_path: str | None,
     origin: str,
     fallback: dict[str, Any],
+    protein_id: str | None = None,
 ) -> dict[str, Any]:
-    """Look up a freshly registered pose row in result-explorer when id is missing."""
+    """Look up a freshly registered pose row in result-explorer when id is missing.
 
-    response = client.results.get_poses(ligand_id=ligand_id, limit=None)
-    records = response.get("data", [])
-    for rec in records:
-        data = _pose_record_data(rec)
-        if data is None:
-            continue
-        if _matches_registered_pose_row(
-            data,
-            origin=origin,
-            file_path=file_path,
-        ):
-            return _explorer_record_to_pose_row(rec, fallback)
+    ImportTool returns the pose payload without an id. The id shows up on the
+    result-explorer row after ingestion. When ``protein_id`` is set, a row for
+    the same SDF that belongs to another protein is not a match.
+    """
 
-    if records:
-        last_rec = records[-1]
-        data = _pose_record_data(last_rec)
-        if data is not None:
-            return _explorer_record_to_pose_row(last_rec, fallback)
-
-    return fallback
+    deadline = time.monotonic() + (20 if protein_id is not None else 0)
+    chosen = fallback
+    while True:
+        response = client.results.get_poses(ligand_id=ligand_id, limit=None)
+        records = response.get("data", []) if isinstance(response, dict) else []
+        matches: list[dict[str, Any]] = []
+        for rec in records:
+            data = _pose_record_data(rec)
+            if data is None:
+                continue
+            if _matches_registered_pose_row(
+                data,
+                origin=origin,
+                file_path=file_path,
+                protein_id=protein_id,
+            ):
+                matches.append(rec)
+        if matches:
+            return _explorer_record_to_pose_row(matches[-1], fallback)
+        if protein_id is None and records:
+            last_rec = records[-1]
+            data = _pose_record_data(last_rec)
+            if data is not None:
+                return _explorer_record_to_pose_row(last_rec, fallback)
+        if time.monotonic() >= deadline:
+            return chosen
+        time.sleep(1)
 
 
 @dataclass
