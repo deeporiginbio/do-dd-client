@@ -282,6 +282,30 @@ def test_pocket_finder_crystal_ligand_make_payload_ligand_object() -> None:
     assert inputs["crystal_ligand"] == {"file_path": "entities/ligands/lig.sdf"}
     assert inputs["box_padding"] == 2.5
     assert "box_geometry" not in inputs
+    assert "pocket_radius" not in inputs
+
+
+def test_pocket_finder_crystal_ligand_materializes_extracted_ligand(
+    client: DeepOriginClient,
+) -> None:
+    """extract_ligand() in-memory ligands are staged to SDF before file_path submit."""
+    protein = Protein.from_pdb_id("1EBY")
+    protein.sync(lazy=True, client=client)
+    crystal = protein.extract_ligand()
+    assert crystal.local_path is None
+    assert not crystal.remote_path
+
+    pf = PocketFinder(
+        protein,
+        mode="from-crystal-ligand",
+        crystal_ligand=crystal,
+        client=client,
+    )
+    pf._ensure_protein_remote()
+
+    assert crystal.remote_path
+    payload = pf._make_payload(approve_amount=None, sync=True)
+    assert payload["inputs"]["crystal_ligand"]["file_path"] == crystal.remote_path
 
 
 def test_pocket_finder_crystal_ligand_requires_exactly_one_source() -> None:

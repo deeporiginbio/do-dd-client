@@ -792,10 +792,18 @@ def _ensure_crystal_ligand_remote(
     client: DeepOriginClient,
 ) -> None:
     """Materialize in-memory crystal ligands and sync before ``file_path`` submit."""
-    if not ligand.remote_path or not str(ligand.remote_path).strip():
-        if ligand.local_path is None:
-            ligand.to_file()
-        ligand.sync(lazy=False, client=client)
+    if ligand.remote_path and str(ligand.remote_path).strip():
+        return
+    if ligand.local_path is None:
+        ligand.to_file()
+    ligand.sync(lazy=False, client=client)
+    if ligand.remote_path and str(ligand.remote_path).strip():
+        return
+    ligand.upload(client=client)
+    if ligand.id is not None:
+        ligand.update(client=client, remote_path=ligand.remote_path)
+    else:
+        ligand.register(client=client)
     ligand.ensure_remote_path(client=client, label="Crystal ligand")
 
 
