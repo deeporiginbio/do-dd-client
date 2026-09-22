@@ -265,7 +265,9 @@ def _apply_search_filters(
         # Fixture ligands use ``MOCK_DEFAULT_PROJECT_ID`` (or legacy None).
         # When the client searches with a different concrete project_id, still
         # match those rows so sync() can resolve pre-seeded BRD ligands without
-        # a duplicate insert.
+        # a duplicate insert. Prepared proteins are registered with
+        # ``project_id=None`` for execution outputs and must not leak into
+        # every project-scoped protein listing.
         if key == "project_id":
             if isinstance(value, dict) and "eq" in value:
                 target = value["eq"]
@@ -275,8 +277,13 @@ def _apply_search_filters(
                 r
                 for r in results
                 if r.get("project_id") == target
-                or r.get("project_id") is None
                 or r.get("project_id") == MOCK_DEFAULT_PROJECT_ID
+                or (
+                    r.get("project_id") is None
+                    and not str(r.get("file_path") or "").startswith(
+                        f"{PREPARED_PROTEIN_UFA_PREFIX}/"
+                    )
+                )
             ]
             continue
         if isinstance(value, dict):
@@ -609,7 +616,10 @@ def _apply_eq_filters(
                 for r in results
                 if _matches_condition(r, key, condition)
                 or r.get("project_id") is None
-                or (isinstance(r.get("data"), dict) and r["data"].get("project_id") is None)
+                or (
+                    isinstance(r.get("data"), dict)
+                    and r["data"].get("project_id") is None
+                )
                 or r.get("project_id") == MOCK_DEFAULT_PROJECT_ID
             ]
             continue

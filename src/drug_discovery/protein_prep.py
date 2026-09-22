@@ -2251,8 +2251,9 @@ class ProteinPrep(
             ValueError: If :attr:`id` is unset, or this run did not request pockets.
         """
         self._ensure_id()
-        requested = self._pocket is not None or _selection_has_ligand_extract(
-            self._selection
+        requested = self._pocket is not None or (
+            self.tool_key == _PROTEIN_PREP_TOOL_KEY
+            and _selection_has_ligand_extract(self._selection)
         )
         indexed = self._result_rows(_RESULT_TYPE_POCKET)
         outputs = self._execution_outputs(dto)

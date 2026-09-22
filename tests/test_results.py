@@ -48,6 +48,7 @@ class _RecordingResultsClient:
 
 _POCKET_TOOL_KEYS = {
     TOOL_KEYS_AND_VERSIONS["pocket_finder"]["tool_key"],
+    TOOL_KEYS_AND_VERSIONS["protein_prep"]["tool_key"],
     TOOL_KEYS_AND_VERSIONS["target_prep"]["tool_key"],
     "deeporigin.pocketfinder",
 }

@@ -165,10 +165,11 @@ def test_load_not_found_lv1(client: DeepOriginClient) -> None:
 def test_create_load_false_lv1(client: DeepOriginClient) -> None:
     """projects.create(..., load=False) returns an id without selecting the project."""
 
-    DeepOriginClient.close_all()
-    pid = projects.create(PROJECT_NAME, load=False)
+    client.project_id = None
+    pid = projects.create(PROJECT_NAME, load=False, client=client)
     assert pid
     assert client.project_id is None
+    assert projects.current() is None
 
 
 def test_list_limit_none_lv1(client: DeepOriginClient) -> None:

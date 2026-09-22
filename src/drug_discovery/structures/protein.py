@@ -10,12 +10,12 @@ from various sources, preprocess structures, handle ligands, and visualize prote
 from collections import defaultdict
 from dataclasses import dataclass, field
 import hashlib
-import uuid
 import io
 import os
 from pathlib import Path
 import tempfile
 from typing import Any, Optional, Self
+import uuid
 
 from beartype import beartype
 import Bio.Seq
@@ -1884,8 +1884,7 @@ class Protein(Entity):
         """
         if self.id is None:
             raise ValueError(
-                "Cannot update a protein without a platform id; "
-                "call sync() first."
+                "Cannot update a protein without a platform id; call sync() first."
             )
 
         if client is None:

@@ -1066,7 +1066,7 @@ def create_tools_router(
                     except FileNotFoundError:
                         pass
 
-            execution["cluster"] = {"id": str(uuid.uuid4())}
+        execution["cluster"] = {"id": str(uuid.uuid4())}
 
         execution["startedAt"] = None
         execution["completedAt"] = None
@@ -1123,7 +1123,7 @@ def create_tools_router(
                     )
                 except FileNotFoundError:
                     pass
-            execution["cluster"] = {"id": str(uuid.uuid4())}
+        execution["cluster"] = {"id": str(uuid.uuid4())}
         return execution
 
     def _build_protonation_outputs(
@@ -1797,10 +1797,7 @@ def create_tools_router(
                     record = {
                         "id": str(
                             data.get("id")
-                            or (
-                                "08"
-                                + str(uuid.uuid4()).replace("-", "").upper()[:11]
-                            )
+                            or ("08" + str(uuid.uuid4()).replace("-", "").upper()[:11])
                         ),
                         "tool_key": tool_key,
                         "tool_version": tool_version,
@@ -1817,6 +1814,7 @@ def create_tools_router(
             protein_prep_output_types = {
                 "protein": "preparedprotein",
                 "poses": "pose",
+                "pockets": "pocket",
             }
             for output_key, result_type in protein_prep_output_types.items():
                 output_value = job_outputs.get(output_key)
@@ -1832,10 +1830,7 @@ def create_tools_router(
                     record = {
                         "id": str(
                             data.get("id")
-                            or (
-                                "08"
-                                + str(uuid.uuid4()).replace("-", "").upper()[:11]
-                            )
+                            or ("08" + str(uuid.uuid4()).replace("-", "").upper()[:11])
                         ),
                         "tool_key": tool_key,
                         "tool_version": tool_version,
@@ -2170,12 +2165,26 @@ def create_tools_router(
         )
         if poses:
             outputs["poses"] = poses
+        find_pockets = (
+            user_inputs.get("find_pockets") if isinstance(user_inputs, dict) else None
+        )
+        if find_pockets in {"novel", "from-crystal-ligand"}:
+            pocket_fixture = copy.deepcopy(
+                load_fixture("tool-runs/deeporigin.pocketfinder/run")
+            )
+            pocket_outputs = _legacy_outputs_to_job_outputs(pocket_fixture) or {}
+            pockets = pocket_outputs.get("pockets") or []
+            for pocket in pockets:
+                if isinstance(pocket, dict) and prepared_protein_id:
+                    pocket["protein_id"] = prepared_protein_id
+            outputs["pockets"] = pockets
         execution["jobOutputs"] = outputs
         _inject_result_explorer_records_from_outputs(
             tool_key=tkey,
             tool_version=tool_version,
             execution_id=eid,
             job_outputs=outputs,
+            project_id=execution.get("projectId"),
         )
 
     def _build_target_prep_execution(

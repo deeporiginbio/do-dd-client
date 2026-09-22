@@ -65,7 +65,8 @@ def test_client_repr_is_multiline():
         "DeepOrigin Platform Client\n"
         "  name: Local User\n"
         "  org_key: deeporigin\n"
-        f"  base_url: {client.base_url}"
+        f"  base_url: {client.base_url}\n"
+        " ⚠️ No project set"
     )
 
     client.project_id = "proj-abc"
