@@ -274,7 +274,12 @@ class SystemPrep(Execution, SyncExecutableMixin):
         except ValueError:
             pass
 
-        raise ValueError(SYSPREP_NO_OUTPUT_PATHS_MSG)
+        status = exec_dto.get("status")
+        reason = exec_dto.get("statusReason")
+        detail = SYSPREP_NO_OUTPUT_PATHS_MSG
+        if status or reason:
+            detail = f"{detail} status={status}: {str(reason)[:500]}"
+        raise ValueError(detail)
 
     def run(
         self,
