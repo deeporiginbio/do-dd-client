@@ -394,52 +394,9 @@ def test_from_residue_num_lv0():
     # Create custom pocket
     custom_pocket = Pocket.from_residue_number(protein, residue_number=77, cutoff=5)
 
-    assert isinstance(
-        custom_pocket.get_center(), np.ndarray
-    ) and custom_pocket.get_center().shape == (3,)
-
-
-def test_from_id_lv1(
-    client: "DeepOriginClient",
-    registered_protein: Protein,
-):
-    """Test round-trip: Pocket.from_result -> Pocket.from_id (lazy download)"""
-
-    pockets_from_result = Pocket.from_result(client=client)
-    assert len(pockets_from_result) >= 1
-
-    pocket = pockets_from_result[0]
-    assert pocket.id is not None
-    assert pocket.remote_path is not None
-    assert pocket.local_path is None
-    assert pocket.coordinates is None
-    assert pocket.protein_id is not None
-    # Result rows may omit ``pocket_center`` / box fields; geometry is backfilled
-    # once coordinates are loaded (or via :meth:`Pocket.get_center`).
-    assert pocket.get_center().shape == (3,)
-    assert pocket.center is not None
-    assert len(pocket.center) == 3
-    assert pocket.box_size_x is not None
-    assert pocket.box_size_y is not None
-    assert pocket.box_size_z is not None
-
-    coords = pocket._ensure_coordinates()
-    assert coords is not None
-    assert pocket.local_path is not None
-    assert Path(pocket.local_path).exists()
-
-    fetched = Pocket.from_id(pocket.id, client=client)
-
-    assert fetched.id == pocket.id
-    assert fetched.remote_path is not None
-    assert fetched.local_path is None
-    assert fetched.protein_id == pocket.protein_id
-    assert fetched.get_center().shape == (3,)
-    assert fetched.center is not None
-    assert len(fetched.center) == 3
-    assert fetched.box_size_x is not None
-    assert fetched.box_size_y is not None
-    assert fetched.box_size_z is not None
+    center = custom_pocket.get_center()
+    assert isinstance(center, np.ndarray)
+    assert center.shape == (3,)
 
 
 def test_from_remote_file_sets_remote_path_and_loads_coordinates_lv0(

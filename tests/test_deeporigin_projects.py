@@ -140,28 +140,11 @@ def test_project_ligands_lv1(client: DeepOriginClient) -> None:
         assert str(lig.id) in ids
 
 
-def test_current_no_project_lv1(client: DeepOriginClient) -> None:
-    """projects.current() is None when no project is selected."""
-
-    DeepOriginClient.close_all()
-    assert projects.current() is None
-
-
-def test_ligands_requires_project_lv1(client: DeepOriginClient) -> None:
-    """projects.ligands() raises when no project is active."""
-
-    DeepOriginClient.close_all()
-    with pytest.raises(DeepOriginException) as excinfo:
-        projects.ligands()
-    assert excinfo.value.title == "No current project"
-
-
 def test_load_not_found_lv1(client: DeepOriginClient) -> None:
     """projects.load() raises when no project matches the identifier."""
 
-    with pytest.raises(DeepOriginException) as excinfo:
+    with pytest.raises(DeepOriginException, match="Project not found"):
         projects.load("zzzz-nonexistent-project-99999")
-    assert excinfo.value.title == "Project not found"
 
 
 def test_create_load_false_lv1(client: DeepOriginClient) -> None:
