@@ -522,12 +522,13 @@ def test_load_structure_from_block_invalid_type():
         Protein.load_structure_from_block("test content", "xyz")
 
 
-def test_protein_sync_lv1():
+def test_protein_sync_lv1(client: DeepOriginClient):
     """Test that we can sync a protein"""
     protein = Protein.from_file(BRD_DATA_DIR / "brd.pdb")
     protein.remove_water()
-    protein.sync()
+    protein.sync(client=client)
     assert protein.id is not None
+    assert protein.project_id == client.project_id
 
 
 def test_protein_update_lv1(client: DeepOriginClient):

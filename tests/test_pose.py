@@ -68,6 +68,8 @@ def test_pose_from_json_coerces_metadata_fields() -> None:
                 "pose_score": "-8.5",
                 "binding_energy": "1",
                 "best_pose": "true",
+                "origin": "cocrystal",
+                "component_id": "ligand:LIG:A:100",
                 "custom_field": "x",
             }
         ]
@@ -75,6 +77,8 @@ def test_pose_from_json_coerces_metadata_fields() -> None:
     assert pose.pose_score == -8.5
     assert pose.binding_energy == 1.0
     assert pose.best_pose is True
+    assert pose.origin == "cocrystal"
+    assert pose.component_id == "ligand:LIG:A:100"
     assert pose.props == {"custom_field": "x"}
 
 
@@ -197,6 +201,50 @@ def test_pose_from_json_local_sdf(tmp_path: Path) -> None:
     assert pose.pose_score == -8.5
     assert pose.origin == "docking"
     assert pose.mol is not None
+
+
+def test_pose_show_and_draw_delegate_to_ligand(monkeypatch) -> None:
+    """Pose visualization methods delegate through to_ligand()."""
+    stub_lig = Ligand.from_smiles("CCO")
+    calls: list[str] = []
+
+    def fake_show(self) -> str:
+        calls.append("show")
+        return "shown"
+
+    def fake_draw(self) -> str:
+        calls.append("draw")
+        return "drawn"
+
+    monkeypatch.setattr(Ligand, "show", fake_show)
+    monkeypatch.setattr(Ligand, "draw", fake_draw)
+    monkeypatch.setattr(Pose, "to_ligand", lambda self: stub_lig)
+
+    pose = Pose(ligand_id="L", smiles="CCO", remote_path="entities/poses/x.sdf")
+    assert pose.show() == "shown"
+    assert pose.draw() == "drawn"
+    assert calls == ["show", "draw"]
+
+
+def test_pose_repr_lists_metadata_without_viewer() -> None:
+    """repr and _repr_html_ summarize pose fields instead of opening Mol*."""
+    pose = Pose(
+        id="POSE-1",
+        ligand_id="LIG-1",
+        protein_id="PROT-1",
+        origin="cocrystal",
+        component_id="ligand:LIG:A:100",
+        remote_path="entities/poses/x.sdf",
+    )
+    text = repr(pose)
+    assert "Pose" in text
+    assert "cocrystal" in text
+    assert "ligand:LIG:A:100" in text
+    assert "LIG-1" in text
+    html = pose._repr_html_()
+    assert "Pose</div>" in html
+    assert "cocrystal" in html
+    assert "ligand:LIG:A:100" in html
 
 
 def test_pose_to_ligand_legacy_shape() -> None:

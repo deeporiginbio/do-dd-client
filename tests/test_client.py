@@ -68,9 +68,11 @@ def test_client_repr_is_multiline():
         "DeepOrigin Platform Client\n"
         "  name: Local User\n"
         "  org_key: deeporigin\n"
-        f"  base_url: {client.base_url}"
+        f"  base_url: {client.base_url}\n"
+        " ⚠️ No project set"
     )
 
+    client.project_id = "proj-abc"
     client.tag = "experiment-1"
     client.billing_tag = "billing-1"
     assert repr(client) == (
@@ -78,6 +80,7 @@ def test_client_repr_is_multiline():
         "  name: Local User\n"
         "  org_key: deeporigin\n"
         f"  base_url: {client.base_url}\n"
+        "  project_id: proj-abc\n"
         "  tag: experiment-1\n"
         "  billing_tag: billing-1"
     )
@@ -198,6 +201,32 @@ def test_executions_create_includes_client_project_id():
     )
 
     assert captured["projectId"] == "test-project-uuid"
+
+
+def test_executions_create_preserves_explicit_project_id():
+    """An explicit ``projectId`` in *data* is not overwritten by the client default."""
+    DeepOriginClient.close_all()
+
+    client = DeepOriginClient.from_local()
+    client.project_id = "client-project"
+    captured = _stub_post_json_capturing_body(client)
+
+    client.clusters.get_default_cluster_id = (  # type: ignore[method-assign]
+        lambda: "test-cluster-id"
+    )
+
+    client.executions.create(
+        tool_key="test.tool",
+        tool_version="1.0.0",
+        data={
+            "inputs": {"test": "param"},
+            "outputs": {},
+            "metadata": {},
+            "projectId": "explicit-project",
+        },
+    )
+
+    assert captured["projectId"] == "explicit-project"
 
 
 def test_executions_create_includes_client_tag():

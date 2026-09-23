@@ -4,8 +4,9 @@ from __future__ import annotations
 
 import time
 from dataclasses import dataclass, field
+from html import escape
 from pathlib import Path
-from typing import Any, ClassVar, Optional, Self
+from typing import Any, ClassVar, Literal, Optional, Self
 
 from beartype import beartype
 import pandas as pd
@@ -20,6 +21,8 @@ from deeporigin.drug_discovery.structures.ligand import (
 from deeporigin.exceptions import DeepOriginException
 from deeporigin.platform.client import DeepOriginClient
 from deeporigin.platform.constants import TOOL_KEYS_AND_VERSIONS
+
+PoseOrigin = Literal["cocrystal", "docked", "registered"]
 
 _POSE_JSON_RESERVED: frozenset[str] = frozenset(
     {
@@ -39,6 +42,7 @@ _POSE_JSON_RESERVED: frozenset[str] = frozenset(
         "binding_energy",
         "best_pose",
         "origin",
+        "component_id",
     }
 )
 
@@ -152,7 +156,6 @@ def _optional_bool(value: Any) -> bool | None:
 
 
 @dataclass
-@beartype
 class Pose(Entity):
     """A 3D ligand conformation backed by an SDF in the platform pose result table.
 
@@ -169,7 +172,8 @@ class Pose(Entity):
         pose_score: Docking pose score when present.
         binding_energy: Docking binding energy when present.
         best_pose: Whether this row is the best pose for its ligand in a run.
-        origin: Provenance string (for example ``registered`` or ``docking``).
+        origin: Platform pose provenance (``cocrystal``, ``docked``, ``registered``).
+        component_id: Protein Prep Selection component id for cocrystal poses.
         props: Additional metadata from the platform row.
     """
 
@@ -181,7 +185,8 @@ class Pose(Entity):
     pose_score: float | None = None
     binding_energy: float | None = None
     best_pose: bool | None = None
-    origin: str | None = None
+    origin: PoseOrigin | str | None = None
+    component_id: str | None = None
     props: dict[str, Any] = field(default_factory=dict)
     _mol: Chem.Mol | None = field(default=None, repr=False, compare=False)
 
@@ -390,6 +395,7 @@ class Pose(Entity):
             binding_energy=_optional_float(entry.get("binding_energy")),
             best_pose=_optional_bool(entry.get("best_pose")),
             origin=_strip_nonempty_str(entry.get("origin")),
+            component_id=_strip_nonempty_str(entry.get("component_id")),
             props=props,
             _mol=mol,
         )
@@ -442,7 +448,7 @@ class Pose(Entity):
         *,
         ligand: Ligand | None = None,
         protein_id: str | None = None,
-        origin: str = "registered",
+        origin: PoseOrigin | str = "registered",
         client: Optional[DeepOriginClient] = None,
         sanitize: bool = True,
         remove_hydrogens: bool = False,
@@ -451,6 +457,10 @@ class Pose(Entity):
 
         Syncs the parent :class:`Ligand` (unless ``ligand`` is supplied), uploads
         the SDF, and invokes the ImportTool pose-registration path.
+
+        Requires a resolvable project id (``ligand.project_id`` or
+        ``client.project_id``). The execution is created with
+        ``visibility="hidden"``.
 
         Args:
             path: Local SDF file path.
@@ -465,7 +475,8 @@ class Pose(Entity):
             Registered :class:`Pose` with platform id populated.
 
         Raises:
-            DeepOriginException: If registration fails or returns no pose row.
+            DeepOriginException: If no project id can be resolved, registration
+                fails, or returns no pose row.
         """
 
         if client is None:
@@ -485,6 +496,17 @@ class Pose(Entity):
                 message="Parent ligand must have a platform id before pose registration.",
             )
 
+        proj_id = parent.resolved_project_id(client=client)
+        if proj_id is None or not str(proj_id).strip():
+            raise DeepOriginException(
+                title="Project required for pose registration",
+                message=(
+                    "Pose.from_sdf requires ligand.project_id or client.project_id "
+                    "(served import-dataset register_pose is project-scoped)."
+                ),
+            )
+        proj_id = str(proj_id).strip()
+
         staging = cls(
             ligand_id=parent.id,
             local_path=local_path,
@@ -492,6 +514,7 @@ class Pose(Entity):
             name=parent.name,
             protein_id=protein_id,
             origin=origin,
+            project_id=proj_id,
         )
         staging.upload(client=client)
         pose_remote = staging.remote_path
@@ -519,6 +542,8 @@ class Pose(Entity):
                 "outputs": {},
                 "metadata": {},
                 "sync": True,
+                "projectId": proj_id,
+                "visibility": "hidden",
             },
         )
         dto = raw if isinstance(raw, dict) else {}
@@ -599,6 +624,90 @@ class Pose(Entity):
         lig = _ligand_from_pose_structure(self)
         _copy_pose_metadata_onto_ligand(self, lig)
         return lig
+
+    def draw(self):
+        """Draw this pose's 3D structure using RDKit (same as :meth:`Ligand.draw`)."""
+        return self.to_ligand().draw()
+
+    def show(self):
+        """Visualize this pose in a notebook (Mol* viewer via :meth:`Ligand.show`)."""
+        return self.to_ligand().show()
+
+    def _repr_rows(self) -> list[tuple[str, str]]:
+        """Return ``(label, value)`` rows for text and HTML display."""
+
+        rows: list[tuple[str, str]] = []
+
+        def add(label: str, value: Any) -> None:
+            if value is None:
+                return
+            if isinstance(value, str) and not value.strip():
+                return
+            rows.append((label, str(value)))
+
+        add("id", self.id)
+        add("ligand_id", self.ligand_id)
+        add("protein_id", self.protein_id)
+        add("origin", self.origin)
+        add("component_id", self.component_id)
+        add("name", self.name)
+        if self.smiles:
+            smiles = str(self.smiles)
+            if len(smiles) > 96:
+                smiles = f"{smiles[:93]}..."
+            add("smiles", smiles)
+        add("compute_job_id", self.compute_job_id)
+        if self.pose_score is not None:
+            add("pose_score", self.pose_score)
+        if self.binding_energy is not None:
+            add("binding_energy", self.binding_energy)
+        if self.best_pose is not None:
+            add("best_pose", self.best_pose)
+        add("project_id", self.project_id)
+        if self.props:
+            for key in sorted(self.props):
+                add(f"props.{key}", self.props[key])
+        return rows
+
+    def __repr__(self) -> str:
+        """Return a table of pose metadata (no structure viewer)."""
+        from tabulate import tabulate
+
+        return "Pose\n" + tabulate(
+            self._repr_rows(),
+            headers=["Field", "Value"],
+            tablefmt="rounded_grid",
+        )
+
+    __str__ = __repr__
+
+    def _repr_html_(self) -> str:
+        """Return an HTML metadata table for Jupyter (no Mol* viewer)."""
+        header = (
+            "<tr>"
+            "<th style='text-align:left;padding:4px 16px 4px 0'>Field</th>"
+            "<th style='text-align:left;padding:4px 0'>Value</th>"
+            "</tr>"
+        )
+        body_parts: list[str] = []
+        for name, value in self._repr_rows():
+            body_parts.append(
+                "<tr>"
+                "<td style='padding:4px 16px 4px 0;font-family:ui-monospace,"
+                "SFMono-Regular,Menlo,monospace;white-space:nowrap'>"
+                f"{escape(name, quote=False)}</td>"
+                "<td style='padding:4px 0;font-family:ui-monospace,"
+                "SFMono-Regular,Menlo,monospace'>"
+                f"{escape(value, quote=False)}</td>"
+                "</tr>"
+            )
+        return (
+            "<div>"
+            "<div style='font-weight:600;margin-bottom:4px'>Pose</div>"
+            "<table style='border-collapse:collapse'>"
+            f"<thead>{header}</thead><tbody>{''.join(body_parts)}</tbody>"
+            "</table></div>"
+        )
 
 
 def _rehydrate_pose_from_local_sdf(

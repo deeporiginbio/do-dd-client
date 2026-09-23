@@ -228,25 +228,36 @@ def test_protein_sync_skips_upload_but_registers_when_remote_path_only() -> None
         remote_path="entities/proteins/prepared.pdb",
     )
     client = MagicMock(spec=DeepOriginClient)
-    client.project_id = None
-    client.entities = MagicMock()
-    client.entities.search_proteins.return_value = {"data": []}
-    client.entities.create_protein.return_value = {"data": {"id": "prot-new"}}
+    client.project_id = "proj-1"
+    client.executions = MagicMock()
+    client.executions.create.return_value = {
+        "jobOutputs": {
+            "proteins": [
+                {
+                    "id": "prot-new",
+                    "protein_id": "prot-new",
+                    "file_path": "entities/proteins/prepared.pdb",
+                }
+            ]
+        }
+    }
 
     with patch.object(protein, "upload") as upload:
         protein.sync(lazy=False, client=client)
 
     upload.assert_not_called()
-    client.entities.search_proteins.assert_called_once_with(
-        file_path="entities/proteins/prepared.pdb",
-    )
-    client.entities.create_protein.assert_called_once()
+    client.executions.create.assert_called_once()
+    create_kwargs = client.executions.create.call_args.kwargs
+    assert create_kwargs["data"]["projectId"] == "proj-1"
+    assert create_kwargs["data"]["visibility"] == "hidden"
+    assert create_kwargs["data"]["inputs"]["register_protein"] is True
     assert protein.id == "prot-new"
     assert protein.remote_path == "entities/proteins/prepared.pdb"
+    assert protein.project_id == "proj-1"
 
 
-def test_protein_sync_links_existing_without_upload_when_remote_path_set() -> None:
-    """Non-lazy sync finds an existing row by file_path without uploading."""
+def test_protein_sync_requires_project() -> None:
+    """Non-lazy sync fails closed when no project id can be resolved."""
     from deeporigin.platform.client import DeepOriginClient
 
     protein = Protein(
@@ -256,16 +267,40 @@ def test_protein_sync_links_existing_without_upload_when_remote_path_set() -> No
     )
     client = MagicMock(spec=DeepOriginClient)
     client.project_id = None
-    client.entities = MagicMock()
-    client.entities.search_proteins.return_value = {
-        "data": [{"id": "prot-existing", "project_id": None}],
+
+    with pytest.raises(DeepOriginException, match="[Pp]roject"):
+        protein.sync(lazy=False, client=client)
+
+
+def test_protein_sync_links_existing_without_upload_when_remote_path_set() -> None:
+    """Non-lazy sync registers via import-dataset without uploading when remote_path set."""
+    from deeporigin.platform.client import DeepOriginClient
+
+    protein = Protein(
+        name="prepared",
+        structure=None,
+        remote_path="entities/proteins/prepared.pdb",
+    )
+    client = MagicMock(spec=DeepOriginClient)
+    client.project_id = "proj-1"
+    client.executions = MagicMock()
+    client.executions.create.return_value = {
+        "jobOutputs": {
+            "proteins": [
+                {
+                    "id": "prot-existing",
+                    "protein_id": "prot-existing",
+                    "file_path": "entities/proteins/prepared.pdb",
+                }
+            ]
+        }
     }
 
     with patch.object(protein, "upload") as upload:
         protein.sync(lazy=False, client=client)
 
     upload.assert_not_called()
-    client.entities.create_protein.assert_not_called()
+    client.executions.create.assert_called_once()
     assert protein.id == "prot-existing"
 
 
@@ -282,11 +317,19 @@ def test_protein_sync_uploads_local_bytes_when_remote_path_set(
     protein.remote_path = "entities/proteins/existing.cif"
 
     client = MagicMock(spec=DeepOriginClient)
-    client.project_id = None
+    client.project_id = "proj-1"
     client.files = MagicMock()
-    client.entities = MagicMock()
-    client.entities.search_proteins.return_value = {
-        "data": [{"id": "prot-existing", "project_id": None}],
+    client.executions = MagicMock()
+    client.executions.create.return_value = {
+        "jobOutputs": {
+            "proteins": [
+                {
+                    "id": "prot-existing",
+                    "protein_id": "prot-existing",
+                    "file_path": "entities/proteins/existing.cif",
+                }
+            ]
+        }
     }
 
     protein.sync(lazy=False, client=client)

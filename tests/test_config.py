@@ -91,6 +91,12 @@ def test_get_env_and_get_org(config_path: Path) -> None:
     assert get_org() == "org-1"
 
 
+def test_set_env_invalid_raises(config_path: Path) -> None:
+    """set_env rejects unknown environment names."""
+    with pytest.raises(DeepOriginException, match="Invalid environment"):
+        set_env("edge")
+
+
 def test_set_env_writes_file(
     config_path: Path,
     monkeypatch: pytest.MonkeyPatch,

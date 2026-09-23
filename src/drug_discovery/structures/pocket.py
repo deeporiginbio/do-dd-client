@@ -11,8 +11,9 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 import hashlib
 from pathlib import Path
+import re
 import tempfile
-from typing import TYPE_CHECKING, Any, ClassVar, Optional, Self
+from typing import TYPE_CHECKING, Any, ClassVar, Literal, Optional, Self
 
 import numpy as np
 
@@ -21,6 +22,8 @@ from deeporigin.drug_discovery.structures.entity import Entity
 from deeporigin.drug_discovery.structures.ligand import Ligand
 from deeporigin.exceptions import DeepOriginException
 from deeporigin.platform.client import DeepOriginClient
+
+PocketOrigin = Literal["novel", "define-by-selection", "from-crystal-ligand"]
 
 if TYPE_CHECKING:
     from deeporigin.drug_discovery.structures.protein import Protein
@@ -52,6 +55,11 @@ class Pocket(Entity):
     name: Optional[str] = None
     pdb_id: Optional[str] = None
     protein_id: Optional[str] = None
+    origin: PocketOrigin | str | None = None
+    ligand_id: Optional[str] = None
+    ligand_name: Optional[str] = None
+    selection_names: Optional[list[str]] = None
+    component_id: Optional[str] = None
     index: Optional[int] = 0
     coordinates: Optional[np.ndarray] = None
 
@@ -81,16 +89,13 @@ class Pocket(Entity):
             self._load_coordinates_from_file(self.local_path)
 
         if self.name is None:
-            if self.local_path:
-                self.name = Path(self.local_path).stem
-            elif self.remote_path:
-                self.name = Path(self.remote_path).stem
-            else:
-                self.name = "Unknown_Pocket"
-                directory = Path(POCKETS_BASE_DIR)
-                directory.mkdir(parents=True, exist_ok=True)
-                num = len(list(directory.glob(f"{self.name}*")))
-                self.name = f"{self.name}_{num + 1}"
+            self.name = self._default_display_name(
+                explicit_name=None,
+                local_path=self.local_path,
+                remote_path=self.remote_path,
+                origin=self.origin,
+                ligand_name=self.ligand_name,
+            )
 
         self._sync_protein_id_from_parent()
 
@@ -359,6 +364,16 @@ class Pocket(Entity):
             table_data.append(["PDB ID", self.pdb_id])
         if self.protein_id:
             table_data.append(["Protein ID", self.protein_id])
+        if self.origin:
+            table_data.append(["Origin", self.origin])
+        if self.ligand_id:
+            table_data.append(["Ligand ID", self.ligand_id])
+        if self.ligand_name:
+            table_data.append(["Ligand name", self.ligand_name])
+        if self.component_id:
+            table_data.append(["Component ID", self.component_id])
+        if self.selection_names:
+            table_data.append(["Selection names", ", ".join(self.selection_names)])
         table_data.append(["Color", self.color])
 
         if self.center is not None:
@@ -398,11 +413,9 @@ class Pocket(Entity):
             ("Pocket count", self.pocket_count, ""),
             ("Pocket min size", self.pocket_min_size, " \u00c5\u00b3"),
         ]
-        has_any = any(v is not None for _, v, _ in property_rows)
-        if has_any:
-            table_data.extend(
-                [label, self._fmt(val, unit)] for label, val, unit in property_rows
-            )
+        for label, val, unit in property_rows:
+            if val is not None:
+                table_data.append([label, self._fmt(val, unit)])
 
         return f"Pocket:\n{tabulate(table_data, tablefmt='rounded_grid')}"
 
@@ -447,6 +460,47 @@ class Pocket(Entity):
         self._ensure_local_file()
         return parent.show(pockets=[self])
 
+    def show_box(self) -> Any:
+        """Visualize the docking search box for this pocket on its parent protein.
+
+        Static preview of the same wireframe geometry docking submits (center,
+        box sizes, and inferred orientation from :attr:`box` when present).
+        Does not support interactive editing or pose overlays — use
+        :meth:`~deeporigin.drug_discovery.docking.Docking.show_box` for those.
+
+        Parent resolution matches :meth:`show`: attached :attr:`protein`, else
+        :meth:`~deeporigin.drug_discovery.structures.protein.Protein.from_id`
+        via :attr:`protein_id`. Unlike :meth:`show`, this does not require a
+        local pocket structure file (the box uses center and extents only).
+
+        Returns:
+            Result of the notebook HTML renderer for the protein + box.
+
+        Raises:
+            DeepOriginException: If no parent protein can be resolved, or if
+                loading the protein fails.
+        """
+        parent = self._resolve_parent_protein()
+
+        from deeporigin.drug_discovery.docking_common import (
+            effective_docking_rotation_deg,
+            resolve_pocket_docking_box,
+            show_docking_box_in_notebook,
+        )
+
+        _, _, inferred = resolve_pocket_docking_box(self)
+        return show_docking_box_in_notebook(
+            protein=parent,
+            pocket=self,
+            client=self._client,
+            interactive=False,
+            on_commit=None,
+            rotation_deg=effective_docking_rotation_deg(
+                session=None,
+                inferred=inferred,
+            ),
+        )
+
     def _ensure_local_file(self) -> None:
         """Make sure this pocket has a local file for the viewer to load.
 
@@ -478,12 +532,13 @@ class Pocket(Entity):
             raise DeepOriginException(
                 title="Cannot visualize pocket",
                 message=(
-                    "This pocket has no parent protein. Pocket.show() overlays "
-                    "the pocket on its parent protein."
+                    "This pocket has no parent protein. Pocket.show() and "
+                    "Pocket.show_box() need a parent to overlay on."
                 ),
                 fix=(
-                    "Call protein.show(pockets=[pocket]) with the protein, or "
-                    "run PocketFinder so the pocket keeps a parent."
+                    "Attach pocket.protein or pocket.protein_id, call "
+                    "protein.show(pockets=[pocket]) for the cavity surface, "
+                    "or run PocketFinder so the pocket keeps a parent."
                 ),
             )
 
@@ -649,6 +704,15 @@ class Pocket(Entity):
         "pocket_center": "center",
     }
 
+    _METADATA_ATTRS: ClassVar[frozenset[str]] = frozenset(
+        {
+            "origin",
+            "ligand_id",
+            "ligand_name",
+            "component_id",
+        }
+    )
+
     @classmethod
     def _parse_box(cls, entry: dict[str, Any]) -> PocketBox | None:
         """Parse nested pocket-finder ``box`` output when present.
@@ -743,6 +807,61 @@ class Pocket(Entity):
         return None
 
     @staticmethod
+    def _short_ligand_label(ligand_name: str) -> str:
+        """Derive a short ligand code from a pocket ``ligand_name`` value."""
+        text = ligand_name.strip()
+        if text.startswith("ligand:"):
+            parts = text.split(":")
+            if len(parts) >= 4 and parts[2]:
+                return parts[2]
+        segments = [segment for segment in text.split(":") if segment]
+        if len(segments) == 3:
+            chain, middle, tail = segments
+            if len(chain) <= 2 and tail.isdigit():
+                return middle
+            if len(middle) <= 2 and tail.isdigit():
+                return chain
+        if len(segments) == 2:
+            residue_label = segments[1]
+            match = re.match(r"^([A-Z0-9]{1,3})", residue_label)
+            if match:
+                return match.group(1)
+        if "/" in text or text.endswith((".pdb", ".sdf", ".cif", ".mmcif")):
+            return Path(text).stem
+        return text
+
+    @classmethod
+    def _default_display_name(
+        cls,
+        *,
+        explicit_name: str | None,
+        local_path: str | None,
+        remote_path: str | None,
+        origin: str | PocketOrigin | None,
+        ligand_name: str | None,
+    ) -> str:
+        """Resolve a human-readable pocket name when the caller did not set one."""
+        if explicit_name is not None and str(explicit_name).strip():
+            return str(explicit_name).strip()
+
+        origin_text = cls._strip_nonempty_str(origin)
+        ligand_label = cls._strip_nonempty_str(ligand_name)
+        if origin_text == "from-crystal-ligand" and ligand_label:
+            short = cls._short_ligand_label(ligand_label)
+            return f"Pocket from crystal ligand {short}"
+
+        if local_path:
+            return Path(local_path).stem
+        if remote_path:
+            return Path(remote_path).stem
+
+        base = "Unknown_Pocket"
+        directory = Path(POCKETS_BASE_DIR)
+        directory.mkdir(parents=True, exist_ok=True)
+        num = len(list(directory.glob(f"{base}*")))
+        return f"{base}_{num + 1}"
+
+    @staticmethod
     def _apply_file_path_to_paths(
         *,
         remote_path: str | None,
@@ -769,6 +888,14 @@ class Pocket(Entity):
         elif is_local_file:
             local_path = file_path
         return local_path, out_remote
+
+    @staticmethod
+    def _parse_selection_names(value: Any) -> list[str] | None:
+        """Return a non-empty list of selection labels from a pocket row."""
+        if not isinstance(value, list):
+            return None
+        names = [str(item).strip() for item in value if str(item).strip()]
+        return names or None
 
     @staticmethod
     def _resolve_paths(
@@ -876,20 +1003,16 @@ class Pocket(Entity):
                 "protein_id",
                 "project_id",
                 "box",
+                "selection_names",
             }
             | cls._PROPERTY_ATTRS
+            | cls._METADATA_ATTRS
             | json_mapped_keys
         )
 
         pockets = []
         for idx, entry in enumerate(data):
             local_path, remote_path = cls._resolve_paths(entry, idx)
-            if local_path is not None:
-                name = Path(local_path).stem
-            elif remote_path is not None:
-                name = Path(remote_path).stem
-            else:
-                raise RuntimeError("_resolve_paths returned no path")
 
             attr_kwargs: dict[str, Any] = {}
             for k in cls._PROPERTY_ATTRS:
@@ -898,6 +1021,21 @@ class Pocket(Entity):
             for json_key, attr_name in cls._JSON_KEY_MAP.items():
                 if json_key in entry and attr_name not in attr_kwargs:
                     attr_kwargs[attr_name] = entry[json_key]
+            for meta_key in cls._METADATA_ATTRS:
+                if meta_key in entry:
+                    attr_kwargs[meta_key] = cls._strip_nonempty_str(entry.get(meta_key))
+            if "selection_names" in entry:
+                attr_kwargs["selection_names"] = cls._parse_selection_names(
+                    entry.get("selection_names")
+                )
+
+            display_name = cls._default_display_name(
+                explicit_name=None,
+                local_path=local_path,
+                remote_path=remote_path,
+                origin=attr_kwargs.get("origin"),
+                ligand_name=attr_kwargs.get("ligand_name"),
+            )
 
             parsed_box = cls._parse_box(entry)
 
@@ -912,7 +1050,7 @@ class Pocket(Entity):
                 local_path=local_path,
                 remote_path=remote_path,
                 project_id=project_id,
-                name=name,
+                name=display_name,
                 protein_id=entry.get("protein_id"),
                 props=props,
                 color=colors[idx % len(colors)],

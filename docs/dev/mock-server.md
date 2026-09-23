@@ -20,7 +20,11 @@ The mock server is organized into routers, each handling a group of related endp
 
 All routers share in-memory stores (dicts/lists) that are created in `MockServer.__init__` and passed into the router factory functions. This lets data flow between routers — for example, a tool execution in the tools router can inject records that are later visible via the data-platform router's result-explorer search.
 
-**Proteins (local only):** `Protein.sync()` / `Protein.register()` are wired to a single canonical row (`MOCK_CANONICAL_PROTEIN_ID`, `tests/brd.pdb` fixture) so IDs stay stable under `--env local`. There is no separate test module for the mock server; that behavior is exercised indirectly by any local test that syncs a protein (e.g. the `registered_protein` fixture).
+**Proteins (local only):** `Protein.sync()` is wired through mock import-dataset
+``register_protein`` to a single canonical row (`MOCK_CANONICAL_PROTEIN_ID`,
+`tests/brd.pdb` fixture) so IDs stay stable under `--env local`. There is no
+separate test module for the mock server; that behavior is exercised indirectly
+by any local test that syncs a protein (e.g. the `registered_protein` fixture).
 
 ## Running the Mock Server
 
@@ -43,6 +47,8 @@ uv run pytest --env dev
 ```
 
 When `--env dev` is used, the mock server is **not** started and all requests go to the real platform API. This dual-mode design means the mock server must produce responses that are structurally identical to the real API — it is not a shortcut that skips validation.
+
+**Live test project:** level-1 and integration tests against dev/staging/prod resolve a shared project by display name (`do-dd-client-tests`, see `tests/integration_project.py`). The canonical id is fetched from the platform at session start (create-if-missing via `projects.create`); it is not hard-coded. Set `DO_PROJECT_ID` to pin a different project without renaming. Local tests keep using the mock-only id `09DEFAULTPROJECT00`.
 
 ### Standalone Script
 

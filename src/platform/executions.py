@@ -145,7 +145,8 @@ class Executions:
 
         if "clusterId" not in payload:
             payload["clusterId"] = self._c.clusters.get_default_cluster_id()
-        if self._c.project_id is not None:
+        # Prefer an explicit projectId in *data*; otherwise stamp from the client.
+        if "projectId" not in payload and self._c.project_id is not None:
             payload["projectId"] = self._c.project_id
 
         payload["app"] = self._c._app
