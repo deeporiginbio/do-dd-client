@@ -2,7 +2,7 @@
 
 Score ligands against a secondary-pharmacology kinase panel with
 [`SecondaryPharmacology`](../ref/secondary_pharma.md). See what's currently
-in the panel with `SecondaryPharmacology.panel()`.
+in the panel with `SecondaryPharmacology.get_panel()`.
 
 ## Two execution modes on one class
 
@@ -57,11 +57,11 @@ either `p_active` (classification) or `p_affinity` (regression, -log10 M).
 `ligand_id` should always be populated, even if `ligand` wasn't registered with the
 platform beforehand.
 
-See what's currently in the panel with `SecondaryPharmacology.panel()`:
+See what's currently in the panel with `SecondaryPharmacology.get_panel()`:
 
 ```{.python notest}
-SecondaryPharmacology.panel()          # first 10 members, with a count hint
-SecondaryPharmacology.panel(full=True) # every member
+SecondaryPharmacology.get_panel()          # first 10 members, with a count hint
+SecondaryPharmacology.get_panel(full=True) # every member
 ```
 
 Restrict to a subset of the panel with `uniprots`:
@@ -93,14 +93,18 @@ df = job.get_results()
 the docked structure itself isn't supported yet.
 
 `job.plot()` renders a heatmap colored by `binding_energy` (default) or
-`metric="pose_score"`.
+`metric="pose_score"`. Both use a fixed, opinionated color range you can
+override with `clim=(low, high)` -- a value outside it still renders,
+clipped to the nearest edge color.
 
 Check for gaps with `job.get_undocked_ligands()` (ligands with zero docked
 poses) or `job.get_missing_pairs()` (specific ligand × target cells missing).
 
 Compare a ligand-ml run against a docking run on one heatmap with
 `SecondaryPharmacology.plot_ml_vs_docking(ml_job, dock_job)` -- a
-`staticmethod` since it needs both.
+`staticmethod` since it needs both. `pose_score` is rescaled onto the same
+0-1 scale as `p_active` for this comparison; override the rescaling window
+with `pose_score_clim=(low, high)`.
 
 Currently no batching is supported for the docking path (unlike `deeporigin.docking`'s `batchSize`)
 and it runs as a single job with a fixed resource/time budget for the entire ligand set.

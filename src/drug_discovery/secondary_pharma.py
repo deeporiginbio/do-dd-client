@@ -37,6 +37,7 @@ Usage::
 from __future__ import annotations
 
 from asyncio import Task
+import builtins
 from typing import Any, Literal, Self
 
 from beartype import beartype
@@ -60,8 +61,12 @@ _UNIPROTS_ENUM_MISSING = (
     "(inputs.properties.uniprots.items.enum)."
 )
 
-#: Row count for :meth:`SecondaryPharmacology.panel`'s default preview.
+#: Row count for :meth:`SecondaryPharmacology.get_panel`'s default preview.
 _PANEL_PREVIEW_ROWS = 10
+
+#: pose_score's real dynamic range -- used as a fixed clim on its own, and
+#: as the rescaling window onto 0-1 for plot_ml_vs_docking.
+_POSE_SCORE_CLIM = (0.5, 0.9)
 
 
 def _uniprots_from_definition(definition: dict[str, Any]) -> list[str]:
@@ -478,7 +483,7 @@ class SecondaryPharmacology(
         return "\n".join(parts)
 
     @classmethod
-    def panel(
+    def get_panel(
         cls,
         *,
         full: bool = False,
@@ -512,7 +517,7 @@ class SecondaryPharmacology(
             return df
         print(
             f"Showing {_PANEL_PREVIEW_ROWS} of {len(df)} panel members -- "
-            "call panel(full=True) for the complete table."
+            "call get_panel(full=True) for the complete table."
         )
         return df.head(_PANEL_PREVIEW_ROWS)
 
@@ -784,6 +789,7 @@ class SecondaryPharmacology(
         *,
         dto: dict[str, Any] | None = None,
         metric: Literal["binding_energy", "pose_score"] = "binding_energy",
+        clim: tuple[float, float] | None = None,
     ) -> None:
         """Visualize this run's results -- method-aware.
 
@@ -795,6 +801,11 @@ class SecondaryPharmacology(
         Args:
             dto: Optional execution payload, forwarded to :meth:`get_results`.
             metric: Docking only. Which column to color the heatmap by.
+            clim: Override the default color range (``(0.0, 1.0)`` for
+                ligand-ml, :data:`_POSE_SCORE_CLIM` for ``pose_score``,
+                auto-scaled for ``binding_energy``). A value outside the
+                chosen range still renders, clipped to the nearest edge
+                color -- a console note reports how many, if any.
         """
         df = self.get_results(dto)
         if self._method == "ligand-ml":
@@ -813,11 +824,9 @@ class SecondaryPharmacology(
                 title="Secondary pharmacology: P(active/affinity)",
                 value_label="score",
                 palette=WHITE_RED_HAZARD_PALETTE,
-                clim=(0.0, 1.0),
+                clim=clim if clim is not None else (0.0, 1.0),
             )
         else:
-            from bokeh.palettes import Viridis256
-
             from deeporigin.plots import WHITE_RED_HAZARD_PALETTE, plot_grid_heatmap
 
             labels = self._ligand_plot_labels()
@@ -825,17 +834,22 @@ class SecondaryPharmacology(
             pivot = df.assign(ligand_label=ligand_label).pivot_table(
                 index="ligand_label", columns="gene_name", values=metric
             )
-            # pose_score is a ~0-1 confidence score, same hazard scale as
-            # ligand-ml's p_active. binding_energy (kcal/mol) has no fixed
-            # range -- auto-scaled Viridis instead.
+            # Same white-to-red hazard palette as ligand-ml for both
+            # metrics. pose_score's default fixed range is _POSE_SCORE_CLIM
+            # rather than (0, 1); binding_energy auto-scales unless clim=
+            # overrides it.
             if metric == "pose_score":
-                palette, clim, label = (
+                palette, default_clim, label = (
                     WHITE_RED_HAZARD_PALETTE,
-                    (0.0, 1.0),
+                    _POSE_SCORE_CLIM,
                     "pose score",
                 )
             else:
-                palette, clim, label = Viridis256, None, "binding energy (kcal/mol)"
+                palette, default_clim, label = (
+                    list(reversed(WHITE_RED_HAZARD_PALETTE)),
+                    None,
+                    "binding energy (kcal/mol)",
+                )
             plot_grid_heatmap(
                 pivot.to_numpy(),
                 row_labels=list(pivot.index),
@@ -843,7 +857,7 @@ class SecondaryPharmacology(
                 title=f"Secondary pharmacology docking: {label}",
                 value_label=metric,
                 palette=palette,
-                clim=clim,
+                clim=clim if clim is not None else default_clim,
             )
 
     def _get_poses(self, *, dto: dict[str, Any] | None = None) -> PoseSet:
@@ -979,6 +993,40 @@ class SecondaryPharmacology(
         instance._allowed_uniprots = None
         return instance
 
+    @classmethod
+    def from_id(
+        cls, id: str, *, client: DeepOriginClient | None = None, quiet: bool = True
+    ) -> Self:
+        """Same as :meth:`Execution.from_id`, but ``quiet`` defaults to True.
+
+        Rebuilding ``ligands`` from stored inputs can emit chemistry
+        normalization warnings (naming the raw SMILES) -- not useful noise
+        when you're just reloading a run you already know about. Pass
+        ``quiet=False`` to see them.
+        """
+        return super().from_id(id, client=client, quiet=quiet)
+
+    @classmethod
+    def from_last_run(
+        cls, *, client: DeepOriginClient | None = None, quiet: bool = True
+    ) -> Self:
+        """Same as :meth:`Execution.from_last_run`, but ``quiet`` defaults to True."""
+        return super().from_last_run(client=client, quiet=quiet)
+
+    @classmethod
+    def list(
+        cls,
+        *,
+        client: DeepOriginClient | None = None,
+        status: builtins.list[str] | None = None,
+        project_id: str | None = None,
+        quiet: bool = True,
+    ) -> builtins.list[Self]:
+        """Same as :meth:`Execution.list`, but ``quiet`` defaults to True."""
+        return super().list(
+            client=client, status=status, project_id=project_id, quiet=quiet
+        )
+
     def duplicate(self, *, client: DeepOriginClient | None = None) -> Self:
         """Copy configuration into a new draft with a writable ``uniprots``.
 
@@ -1001,12 +1049,14 @@ class SecondaryPharmacology(
         *,
         ml_dto: dict[str, Any] | None = None,
         dock_dto: dict[str, Any] | None = None,
+        pose_score_clim: tuple[float, float] | None = None,
     ) -> None:
         """Compare a ligand-ml run against a docking run on one heatmap.
 
         Each cell splits diagonally (top-left to bottom-right): upper =
         ``p_active`` (or ``p_affinity``), lower = ``pose_score``. Grey
-        where a run has no data for that cell.
+        where a run has no data for that cell. The colorbar is labeled
+        "No hit"/"Hit" rather than 0/1.
 
         Rows/columns are the union of both runs' ligands/targets, sorted so
         the strongest dual-agreement cells (``min(p_active, pose_score)``)
@@ -1017,6 +1067,10 @@ class SecondaryPharmacology(
             dock_job: A completed ``method="docking"`` run.
             ml_dto: Optional execution payload for ``ml_job.get_results()``.
             dock_dto: Optional execution payload for ``dock_job.get_results()``.
+            pose_score_clim: Override the window :data:`_POSE_SCORE_CLIM`
+                used to rescale ``pose_score`` onto 0-1. A ``pose_score``
+                outside this window still renders, clipped to 0 or 1 -- a
+                console note reports how many, if any.
 
         Raises:
             ValueError: If either job isn't the expected method.
@@ -1041,9 +1095,24 @@ class SecondaryPharmacology(
         ml_pivot = ml_df.assign(score=ml_score, ligand_label=ml_label).pivot_table(
             index="ligand_label", columns="gene_name", values="score"
         )
-        dock_pivot = dock_df.assign(ligand_label=dock_label).pivot_table(
-            index="ligand_label", columns="gene_name", values="pose_score"
+        # Rescale pose_score from its real observed range onto 0-1, so it's
+        # on the same scale as p_active rather than compressed into a
+        # narrow band of it.
+        pose_lo, pose_hi = pose_score_clim or _POSE_SCORE_CLIM
+        dock_score_unclipped = (dock_df["pose_score"] - pose_lo) / (pose_hi - pose_lo)
+        n_clipped = int(
+            ((dock_score_unclipped < 0.0) | (dock_score_unclipped > 1.0)).sum()
         )
+        if n_clipped:
+            print(
+                f"Note: {n_clipped} of {len(dock_score_unclipped)} pose_score "
+                f"value(s) fell outside the ({pose_lo}, {pose_hi}) rescaling "
+                "window and were clipped to 0 or 1."
+            )
+        dock_score = dock_score_unclipped.clip(0.0, 1.0)
+        dock_pivot = dock_df.assign(
+            score=dock_score, ligand_label=dock_label
+        ).pivot_table(index="ligand_label", columns="gene_name", values="score")
 
         row_labels = list(dict.fromkeys([*ml_pivot.index, *dock_pivot.index]))
         col_labels = list(dict.fromkeys([*ml_pivot.columns, *dock_pivot.columns]))
@@ -1076,5 +1145,6 @@ class SecondaryPharmacology(
             col_labels=col_labels,
             title="Secondary pharmacology: ligand-ML vs docking",
             label_a="p_active",
-            label_b="pose_score",
+            label_b="pose_score (rescaled)",
+            clim_labels=("No hit", "Hit"),
         )

@@ -17,7 +17,9 @@ import asyncio
 import time
 from typing import TYPE_CHECKING
 from unittest.mock import patch
+import warnings
 
+from bokeh.models import ColorBar
 import pandas as pd
 import pytest
 
@@ -26,6 +28,7 @@ from deeporigin.drug_discovery import (
     Ligand,
     SecondaryPharmacology,
 )
+from deeporigin.drug_discovery.secondary_pharma import _POSE_SCORE_CLIM
 from deeporigin.drug_discovery.structures.pose import Pose, PoseSet
 from deeporigin.exceptions import DeepOriginException
 from deeporigin.platform.constants import (
@@ -33,6 +36,7 @@ from deeporigin.platform.constants import (
     TOOL_KEYS_AND_VERSIONS,
     is_success_status,
 )
+from deeporigin.plots import WHITE_RED_HAZARD_PALETTE
 from tests.conftest import check_tool_exists
 from tests.mock_server.routers.tools import (
     MOCK_SECONDARY_PHARMA_PANEL,
@@ -81,9 +85,9 @@ def test_secondary_pharma_construct_copies_definition_enum(
 def test_secondary_pharma_panel_lists_accessions_and_gene_names(
     client: DeepOriginClient,
 ) -> None:
-    """``panel()`` needs no ligand or instance and returns accession/gene_name rows."""
+    """``get_panel()`` needs no ligand or instance and returns accession/gene_name rows."""
     _assert_tool_available(client)
-    df = SecondaryPharmacology.panel(client=client)
+    df = SecondaryPharmacology.get_panel(client=client)
     assert list(df["uniprot_id"]) == _PANEL_ACCESSIONS
     assert list(df["gene_name"]) == [gene for _, gene, _ in MOCK_SECONDARY_PHARMA_PANEL]
 
@@ -104,12 +108,12 @@ def test_secondary_pharma_panel_default_truncates_full_does_not(
         "deeporigin.drug_discovery.secondary_pharma._PANEL_PREVIEW_ROWS", 2
     )
 
-    preview = SecondaryPharmacology.panel(client=client)
+    preview = SecondaryPharmacology.get_panel(client=client)
     assert len(preview) == 2
     assert list(preview["uniprot_id"]) == _PANEL_ACCESSIONS[:2]
     assert "2 of 3" in capsys.readouterr().out
 
-    full = SecondaryPharmacology.panel(full=True, client=client)
+    full = SecondaryPharmacology.get_panel(full=True, client=client)
     assert len(full) == len(_PANEL_ACCESSIONS)
     assert list(full["uniprot_id"]) == _PANEL_ACCESSIONS
 
@@ -718,6 +722,94 @@ def test_secondary_pharma_undocked_ligands_and_missing_pairs_after_reload(
     assert {lig.id for lig, _uniprot in missing} == {undocked_ligand.id}
 
 
+# --- list() -------------------------------------------------------------------
+
+
+def _submit_job_with_dirty_smiles(client: DeepOriginClient) -> SecondaryPharmacology:
+    """A completed ligand-ml run whose stored ligand smiles is multi-fragment.
+
+    Ligand.from_smiles() self-normalizes at construction, so a ligand built
+    the normal way never has a dirty smiles left to resubmit -- the payload
+    is built normally, then patched with a raw multi-fragment smiles before
+    submission, to reproduce a record actually stored that way (e.g. from
+    an older client version, or a manual API call).
+    """
+    _assert_tool_available(client)
+    ligand = Ligand.from_smiles("CCO")
+    job = SecondaryPharmacology(ligands=[ligand], method="ligand-ml", client=client)
+    payload = job._make_payload(approve_amount=None, sync=True)
+    payload["inputs"]["ligands"][0]["smiles"] = "CCO.Cl"
+    dto = client.executions.create(
+        tool_key=job.tool_key, tool_version=job.tool_version, data=payload
+    )
+    job.update_from_dto(dto)
+    assert is_success_status(job.status)
+    return job
+
+
+def _assert_no_user_warnings(caught: list) -> None:
+    assert not any(issubclass(w.category, UserWarning) for w in caught), [
+        str(w.message) for w in caught
+    ]
+
+
+def test_secondary_pharma_list_suppresses_ligand_hydration_warnings(
+    client: DeepOriginClient,
+) -> None:
+    """list() doesn't leak from_dto()'s ligand-normalization warnings.
+
+    Regression: Execution.list() rehydrates every returned execution via
+    from_dto(), which reconstructs each stored ligand -- a stored record
+    with a raw multi-fragment SMILES (e.g. a salt form) triggers
+    Ligand.process_mol()'s UserWarning (naming the raw SMILES) as a side
+    effect of just browsing past runs, not something the caller asked to
+    see.
+    """
+    job = _submit_job_with_dirty_smiles(client)
+
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        results = SecondaryPharmacology.list(status=["Completed"], client=client)
+
+    assert any(r.id == job.id for r in results)
+    _assert_no_user_warnings(caught)
+
+
+def test_secondary_pharma_from_id_suppresses_ligand_hydration_warnings(
+    client: DeepOriginClient,
+) -> None:
+    """from_id() doesn't leak the same warning either.
+
+    Regression (review follow-up on the list() fix above): a list() ->
+    pick id -> from_id() flow -- reloading one specific run after finding
+    it by browsing -- rehydrates ligands the same way list() does, so it
+    can leak the same SMILES-bearing warning even with list()'s own
+    hydration silenced.
+    """
+    job = _submit_job_with_dirty_smiles(client)
+
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        reloaded = SecondaryPharmacology.from_id(job.id, client=client)
+
+    assert reloaded.id == job.id
+    _assert_no_user_warnings(caught)
+
+
+def test_secondary_pharma_from_last_run_suppresses_ligand_hydration_warnings(
+    client: DeepOriginClient,
+) -> None:
+    """from_last_run() doesn't leak the same warning either."""
+    job = _submit_job_with_dirty_smiles(client)
+
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        reloaded = SecondaryPharmacology.from_last_run(client=client)
+
+    assert reloaded.id == job.id
+    _assert_no_user_warnings(caught)
+
+
 # --- plot() -----------------------------------------------------------------
 
 
@@ -748,10 +840,21 @@ def test_secondary_pharma_plot_ligand_ml_labels_by_ligand_name(
         )
 
 
+def _rect_color_mapper(figure):
+    """The LinearColorMapper driving a plot_grid_heatmap figure's cell fill."""
+    renderer = next(r for r in figure.renderers if r.glyph.__class__.__name__ == "Rect")
+    return renderer.glyph.fill_color["transform"]
+
+
 def test_secondary_pharma_plot_docking_heatmap_metric_choice(
     client: DeepOriginClient,
+    capsys: pytest.CaptureFixture[str],
 ) -> None:
-    """Docking's plot() defaults to a binding_energy heatmap; metric= switches it."""
+    """Docking's plot() defaults to a binding_energy heatmap; metric= switches it.
+
+    Both metrics use the same white-to-red hazard palette as ligand-ml's
+    plot()
+    """
     _assert_tool_available(client)
     client.files.upload(
         local_path=BRD_DATA_DIR / "brd-2.sdf",
@@ -773,12 +876,36 @@ def test_secondary_pharma_plot_docking_heatmap_metric_choice(
     with patch("deeporigin.plots.show") as mock_show:
         job.plot()
         mock_show.assert_called_once()
-        assert "binding energy" in mock_show.call_args[0][0].title.text
+        figure = mock_show.call_args[0][0]
+        assert "binding energy" in figure.title.text
+        mapper = _rect_color_mapper(figure)
+        assert mapper.palette == list(reversed(WHITE_RED_HAZARD_PALETTE))
+        assert (mapper.low, mapper.high) != (0.0, 1.0), "auto-scaled, not fixed"
 
     with patch("deeporigin.plots.show") as mock_show:
         job.plot(metric="pose_score")
         mock_show.assert_called_once()
-        assert "pose score" in mock_show.call_args[0][0].title.text
+        figure = mock_show.call_args[0][0]
+        mapper = _rect_color_mapper(figure)
+        assert mapper.palette == WHITE_RED_HAZARD_PALETTE
+        assert (mapper.low, mapper.high) == _POSE_SCORE_CLIM
+        assert "pose score" in figure.title.text
+
+    # clim= overrides the built-in default for whichever metric is active,
+    # and out-of-range real values are visibly noted, not silently clipped.
+    real_pose_score = job.get_results()["pose_score"].iloc[0]
+    narrow_clim = (real_pose_score + 0.001, real_pose_score + 0.002)
+    with patch("deeporigin.plots.show") as mock_show:
+        job.plot(metric="pose_score", clim=narrow_clim)
+        figure = mock_show.call_args[0][0]
+        mapper = _rect_color_mapper(figure)
+        assert (mapper.low, mapper.high) == narrow_clim
+        out = capsys.readouterr().out
+        # Every panel target's real pose_score falls outside this
+        # deliberately narrow window -- at least the one it was built
+        # around, guaranteed.
+        assert "pose_score value(s)" in out
+        assert f"({narrow_clim[0]}, {narrow_clim[1]})" in out
 
 
 # --- SecondaryPharmacology.plot_ml_vs_docking() ------------------------------
@@ -853,3 +980,75 @@ def test_plot_ml_vs_docking_unions_targets_and_sorts_by_agreement(
         "ligand-ml half covers every target"
     )
     assert len(dock_values) == 1, "docking half covers only the one target it ran"
+
+    # Both halves share one true 0-1 scale -- pose_score is rescaled onto
+    # it (via _POSE_SCORE_CLIM), not the other way around, so p_active
+    # keeps its full meaningful range.
+    mappers = {r.glyph.fill_color["transform"] for r in patch_renderers}
+    assert len(mappers) == 1, "both halves must share one color mapper"
+    mapper = mappers.pop()
+    assert (mapper.low, mapper.high) == (0.0, 1.0)
+
+    raw_pose_score = dock_job.get_results()["pose_score"].iloc[0]
+    pose_lo, pose_hi = _POSE_SCORE_CLIM
+    expected_rescaled = (raw_pose_score - pose_lo) / (pose_hi - pose_lo)
+    assert dock_values[0] == pytest.approx(expected_rescaled), (
+        "docking half must be the rescaled pose_score, not the raw value"
+    )
+
+    color_bar = next(r for r in figure.right if isinstance(r, ColorBar))
+    assert color_bar.major_label_overrides == {0.0: "No hit", 1.0: "Hit"}
+
+
+def test_plot_ml_vs_docking_pose_score_clim_override_and_clip_note(
+    client: DeepOriginClient,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """pose_score_clim= overrides the default rescaling window, and a
+    pose_score outside it is clipped visibly, not silently."""
+    _assert_tool_available(client)
+    client.files.upload(
+        local_path=BRD_DATA_DIR / "brd-2.sdf",
+        remote_path=MOCK_SECONDARY_PHARMA_POSE_SDF_PATH,
+    )
+    ligand = Ligand.from_smiles("CCO", name="ethanol")
+
+    ml_job = SecondaryPharmacology(ligands=[ligand], method="ligand-ml", client=client)
+    ml_job.run()
+
+    dock_job = SecondaryPharmacology(
+        ligands=[ligand],
+        method="docking",
+        uniprots=[_PANEL_ACCESSIONS[0]],
+        client=client,
+    )
+    dock_job.start()
+    elapsed = 0.0
+    while elapsed < 5.0:
+        dock_job.sync()
+        if dock_job.status in TERMINAL_STATES:
+            break
+        time.sleep(0.05)
+        elapsed += 0.05
+    assert is_success_status(dock_job.status)
+
+    # A window that deliberately excludes the real pose_score, to force a
+    # deterministic clip regardless of the mock's synthesized value.
+    real_pose_score = dock_job.get_results()["pose_score"].iloc[0]
+    narrow_clim = (real_pose_score + 0.01, real_pose_score + 0.02)
+
+    with patch("deeporigin.plots.show") as mock_show:
+        SecondaryPharmacology.plot_ml_vs_docking(
+            ml_job, dock_job, pose_score_clim=narrow_clim
+        )
+        figure = mock_show.call_args[0][0]
+
+    out = capsys.readouterr().out
+    assert "1 of 1 pose_score value(s)" in out
+    assert f"({narrow_clim[0]}, {narrow_clim[1]})" in out
+
+    patch_renderers = [
+        r for r in figure.renderers if r.glyph.__class__.__name__ == "Patches"
+    ]
+    _ml_values, dock_values = (r.data_source.data["value"] for r in patch_renderers)
+    assert dock_values[0] == 0.0, "below the window's low end, clipped to 0"
