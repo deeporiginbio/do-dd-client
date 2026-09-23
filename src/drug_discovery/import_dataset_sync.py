@@ -86,6 +86,7 @@ def sync_process_pdb(
     file_path: str,
     extra_inputs: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
+    """Run blocking import-dataset PDB processing and return jobOutputs."""
     inputs: dict[str, Any] = {"process_pdb": True, "file_path": file_path}
     if extra_inputs:
         inputs.update(extra_inputs)
@@ -104,6 +105,7 @@ def sync_process_sdf(
     origin: str = "registered",
     tags: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
+    """Run blocking import-dataset SDF processing and return jobOutputs."""
     inputs: dict[str, Any] = {
         "process_sdf": True,
         "file_path": file_path,
@@ -125,6 +127,7 @@ def sync_process_csv(
     project_id: str,
     file_path: str,
 ) -> dict[str, Any]:
+    """Run blocking import-dataset CSV processing and return jobOutputs."""
     inputs = {"process_csv": True, "file_path": file_path}
     return job_outputs(
         run_import_dataset_sync(inputs=inputs, project_id=project_id, client=client)

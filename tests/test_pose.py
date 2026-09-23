@@ -20,6 +20,7 @@ from deeporigin.drug_discovery.structures.pose import (
     _optional_float,
     _pose_row_from_registration_execution,
 )
+from deeporigin.platform.client import DeepOriginClient
 from deeporigin.platform.constants import TOOL_KEYS_AND_VERSIONS
 from tests.conftest import check_tool_exists
 
@@ -173,7 +174,7 @@ def test_pose_set_sync_hydrates_id_from_result_explorer(
     """Served import-dataset pose rows omit id; sync loads it from result-explorer."""
     sdf_path = tmp_path / "pose.sdf"
     lig = Ligand.from_sdf(BRD_DATA_DIR / "brd-2.sdf")
-    lig.to_sdf(sdf_path)
+    lig.to_sdf(str(sdf_path))
     pose = Pose(
         ligand_id="L1",
         protein_id="PROT-1",
@@ -235,11 +236,11 @@ def test_pose_to_file_writes_sdf(tmp_path: Path) -> None:
     assert out_path.exists()
 
 
-def test_pose_from_json_local_sdf(tmp_path: Path) -> None:
+def test_pose_from_json_local_sdf(client: DeepOriginClient) -> None:
     """PoseSet.from_json builds Pose objects with distinct pose and ligand ids."""
     sdf_path = BRD_DATA_DIR / "brd-2.sdf"
     ligand = Ligand.from_sdf(sdf_path)
-    ligand.sync()
+    ligand.sync(client=client)
 
     row = {
         "id": "POSE-RESULT-1",

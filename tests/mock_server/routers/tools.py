@@ -27,7 +27,10 @@ from ..constants import MOCK_BULK_DOCKING_EXECUTION_ID
 from .data_platform import (
     MOCK_CANONICAL_PROTEIN_FILE_PATH,
     MOCK_CANONICAL_PROTEIN_ID,
+    MOCK_DEFAULT_PROJECT_ID,
     _base_canonical_protein_record,
+    _canonicalize_smiles,
+    _make_ligand_record,
     mock_crystal_poses_from_selection,
     register_mock_prepared_protein,
 )
@@ -1225,30 +1228,110 @@ def create_tools_router(
             return execution
 
         if inputs.get("process_csv"):
-            ligand_rows = []
-            for idx in range(8):
-                lid = f"lig-csv-record-{idx}"
-                ligand_rows.append(
-                    {
-                        "id": lid,
-                        "smiles": "CCO",
-                        "record_index": idx,
-                    }
-                )
+            import csv
+            import io
+
+            file_path = str(inputs.get("file_path") or "")
+            project_id = body.get("projectId") or execution.get("projectId")
+            ligand_rows: list[dict[str, Any]] = []
+            raw = file_storage.get(file_path)
+            if raw:
+                reader = csv.DictReader(io.StringIO(raw.decode("utf-8")))
+                for idx, row in enumerate(reader):
+                    smiles = str(row.get("smiles") or "")
+                    canonical = _canonicalize_smiles(smiles)
+                    lid: str | None = None
+                    for record in ligands.values():
+                        if record.get("canonical_smiles") == canonical:
+                            lid = str(record["id"])
+                            break
+                    if lid is None:
+                        extra: dict[str, Any] = {
+                            "name": row.get("name") or "",
+                            "project_id": project_id or MOCK_DEFAULT_PROJECT_ID,
+                        }
+                        record = _make_ligand_record(smiles, extra)
+                        ligands[record["id"]] = record
+                        lid = str(record["id"])
+                    ligand_rows.append(
+                        {
+                            "id": lid,
+                            "smiles": smiles,
+                            "record_index": idx,
+                        }
+                    )
+            if not ligand_rows:
+                for idx in range(8):
+                    ligand_rows.append(
+                        {
+                            "id": f"lig-csv-record-{idx}",
+                            "smiles": "CCO",
+                            "record_index": idx,
+                        }
+                    )
             execution["jobOutputs"] = {"ligands": ligand_rows}
             return execution
 
         if inputs.get("process_sdf"):
+            from rdkit import Chem
+
             register_poses = bool(inputs.get("register_poses"))
             file_path = str(inputs.get("file_path") or "")
-            ligand_rows = [
-                {
-                    "id": f"lig-sdf-record-{idx}",
-                    "mol_file": file_path,
-                    "record_index": idx,
-                }
-                for idx in range(8)
-            ]
+            project_id = body.get("projectId") or execution.get("projectId")
+            ligand_rows: list[dict[str, Any]] = []
+            raw = file_storage.get(file_path)
+            if raw:
+                supplier = Chem.SDMolSupplier()
+                supplier.SetData(raw)
+                for idx, mol in enumerate(supplier):
+                    if mol is None:
+                        continue
+                    canonical = Chem.MolToSmiles(mol)
+                    lid: str | None = None
+                    existing: dict[str, Any] | None = None
+                    for record in ligands.values():
+                        if record.get("canonical_smiles") == canonical:
+                            existing = record
+                            lid = str(record["id"])
+                            break
+                    if lid is None:
+                        name = mol.GetProp("_Name") if mol.HasProp("_Name") else ""
+                        extra: dict[str, Any] = {
+                            "name": name,
+                            "project_id": project_id or MOCK_DEFAULT_PROJECT_ID,
+                        }
+                        record = _make_ligand_record(canonical, extra)
+                        ligands[record["id"]] = record
+                        existing = record
+                        lid = str(record["id"])
+                    mol_file = file_path
+                    if existing is not None:
+                        stored = existing.get("mol_file")
+                        if stored:
+                            mol_file = str(stored)
+                    ligand_rows.append(
+                        {
+                            "id": lid,
+                            "mol_file": mol_file,
+                            "record_index": idx,
+                        }
+                    )
+            if not ligand_rows:
+                brd_dir = Path(__file__).resolve().parents[3] / "src" / "data" / "brd"
+                brd_ids = [p.stem for p in sorted(brd_dir.glob("brd-*.sdf"))]
+                if len(brd_ids) < 8:
+                    brd_ids = sorted(k for k in ligands if str(k).startswith("brd-"))
+                for idx in range(8):
+                    lid = (
+                        brd_ids[idx] if idx < len(brd_ids) else f"lig-sdf-record-{idx}"
+                    )
+                    ligand_rows.append(
+                        {
+                            "id": lid,
+                            "mol_file": file_path,
+                            "record_index": idx,
+                        }
+                    )
             job_outputs: dict[str, Any] = {"ligands": ligand_rows}
             if register_poses:
                 pose_rows = []
