@@ -15,8 +15,6 @@ import re
 import tempfile
 from typing import TYPE_CHECKING, Any, ClassVar, Literal, Optional, Self
 
-PocketOrigin = Literal["novel", "define-by-selection", "from-crystal-ligand"]
-
 import numpy as np
 
 from deeporigin.drug_discovery.constants import POCKETS_BASE_DIR
@@ -24,6 +22,8 @@ from deeporigin.drug_discovery.structures.entity import Entity
 from deeporigin.drug_discovery.structures.ligand import Ligand
 from deeporigin.exceptions import DeepOriginException
 from deeporigin.platform.client import DeepOriginClient
+
+PocketOrigin = Literal["novel", "define-by-selection", "from-crystal-ligand"]
 
 if TYPE_CHECKING:
     from deeporigin.drug_discovery.structures.protein import Protein
