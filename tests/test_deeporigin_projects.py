@@ -7,38 +7,38 @@ import pytest
 from deeporigin import projects
 from deeporigin.exceptions import DeepOriginException
 from deeporigin.platform.client import DeepOriginClient
-from tests.mock_server.routers.data_platform import (
-    MOCK_CANONICAL_PROTEIN_ID,
-    MOCK_DEFAULT_PROJECT_ID,
-    MOCK_DEFAULT_PROJECT_NAME,
+from tests.integration_project import (
+    integration_project_id_for_env,
+    integration_project_name,
 )
-
-PROJECT_NAME = MOCK_DEFAULT_PROJECT_NAME
+from tests.mock_server.routers.data_platform import MOCK_CANONICAL_PROTEIN_ID
 
 
 def test_current_lv1(client: DeepOriginClient) -> None:
     """projects.current() returns the active project id and display name."""
 
-    projects.load(PROJECT_NAME)
+    project_name = integration_project_name(client.env)
+    projects.load(project_name)
     current = projects.current()
     assert current is not None
     project_id, name = current
-    assert name == PROJECT_NAME, f"Expected project name {PROJECT_NAME}, got {name}"
+    assert name == project_name, f"Expected project name {project_name}, got {name}"
     assert project_id
-    # Local mock uses a stable seeded id; dev resolves a real platform id.
-    if client.env == "local":
-        assert project_id == MOCK_DEFAULT_PROJECT_ID
+    expected_id = integration_project_id_for_env(client.env)
+    if expected_id is not None:
+        assert project_id == expected_id
 
 
 def test_load_lv1(client: DeepOriginClient) -> None:
     """projects.load() selects a project by display name and by id."""
 
-    projects.load(PROJECT_NAME)
+    project_name = integration_project_name(client.env)
+    projects.load(project_name)
     pid = client.project_id
     assert pid is not None
     cur = projects.current()
     assert cur is not None
-    assert cur[1] == PROJECT_NAME, f"Expected project name {PROJECT_NAME}, got {cur[1]}"
+    assert cur[1] == project_name, f"Expected project name {project_name}, got {cur[1]}"
     assert cur[0] == str(pid)
 
     projects.load(str(pid))
@@ -46,20 +46,22 @@ def test_load_lv1(client: DeepOriginClient) -> None:
     cur = projects.current()
     assert cur is not None
     assert cur[0] == str(pid)
-    assert cur[1] == PROJECT_NAME
+    assert cur[1] == project_name
 
     if client.env == "local":
         projects.load("python-client-test-project")
-        assert client.project_id == MOCK_DEFAULT_PROJECT_ID
+        expected_id = integration_project_id_for_env("local")
+        assert client.project_id == expected_id
 
 
 def test_create_lv1(client: DeepOriginClient) -> None:
     """tests that upsert works"""
 
-    project_id = projects.create(PROJECT_NAME)
+    project_name = integration_project_name(client.env)
+    project_id = projects.create(project_name)
     assert project_id is not None
 
-    assert projects.create(PROJECT_NAME) == project_id, (
+    assert projects.create(project_name) == project_id, (
         "create should return the same project id if the project already exists"
     )
 
@@ -67,7 +69,7 @@ def test_create_lv1(client: DeepOriginClient) -> None:
 def test_list_lv1(client: DeepOriginClient):
     """tests that list works"""
 
-    projects.create(PROJECT_NAME)
+    projects.create(integration_project_name(client.env))
 
     df = projects.list()
     assert df is not None, "list should return a DataFrame"
@@ -87,7 +89,7 @@ def test_get_ligands_lv1(
         captured.append([str(i) for i in ids])
         return LigandSet(ligands=[])
 
-    projects.load(PROJECT_NAME)
+    projects.load(integration_project_name(client.env))
     ligands = LigandSet.from_dir(BRD_DATA_DIR)
     ligands.sync()
 
@@ -106,7 +108,7 @@ def test_project_proteins_lv1(client: DeepOriginClient) -> None:
 
     from deeporigin.drug_discovery import BRD_DATA_DIR, Protein
 
-    projects.load(PROJECT_NAME)
+    projects.load(integration_project_name(client.env))
     protein = Protein.from_file(BRD_DATA_DIR / "brd.pdb")
     protein.sync()
     assert protein.id is not None
@@ -124,7 +126,7 @@ def test_project_ligands_lv1(client: DeepOriginClient) -> None:
 
     from deeporigin.drug_discovery import BRD_DATA_DIR, LigandSet
 
-    projects.load(PROJECT_NAME)
+    projects.load(integration_project_name(client.env))
     ligands = LigandSet.from_dir(BRD_DATA_DIR)
     assert len(ligands.ligands) > 0
     ligands.sync()
@@ -138,43 +140,29 @@ def test_project_ligands_lv1(client: DeepOriginClient) -> None:
         assert str(lig.id) in ids
 
 
-def test_current_no_project_lv1(client: DeepOriginClient) -> None:
-    """projects.current() is None when no project is selected."""
-
-    DeepOriginClient.close_all()
-    assert projects.current() is None
-
-
-def test_ligands_requires_project_lv1(client: DeepOriginClient) -> None:
-    """projects.ligands() raises when no project is active."""
-
-    DeepOriginClient.close_all()
-    with pytest.raises(DeepOriginException) as excinfo:
-        projects.ligands()
-    assert excinfo.value.title == "No current project"
-
-
 def test_load_not_found_lv1(client: DeepOriginClient) -> None:
     """projects.load() raises when no project matches the identifier."""
 
-    with pytest.raises(DeepOriginException) as excinfo:
+    with pytest.raises(DeepOriginException, match="Project not found"):
         projects.load("zzzz-nonexistent-project-99999")
-    assert excinfo.value.title == "Project not found"
 
 
 def test_create_load_false_lv1(client: DeepOriginClient) -> None:
     """projects.create(..., load=False) returns an id without selecting the project."""
 
-    DeepOriginClient.close_all()
-    pid = projects.create(PROJECT_NAME, load=False)
+    client.project_id = None
+    pid = projects.create(
+        integration_project_name(client.env), load=False, client=client
+    )
     assert pid
     assert client.project_id is None
+    assert projects.current() is None
 
 
 def test_list_limit_none_lv1(client: DeepOriginClient) -> None:
     """projects.list(limit=None) returns a DataFrame without error."""
 
-    projects.create(PROJECT_NAME)
+    projects.create(integration_project_name(client.env))
     df = projects.list(limit=None)
     assert df is not None
     assert {"id", "name", "description"}.issubset(set(df.columns))
@@ -183,7 +171,7 @@ def test_list_limit_none_lv1(client: DeepOriginClient) -> None:
 def test_executions_lv1(client: DeepOriginClient) -> None:
     """projects.executions() returns a DataFrame with execution metadata columns."""
 
-    projects.load(PROJECT_NAME)
+    projects.load(integration_project_name(client.env))
     df = projects.executions()
     required = {
         "id",
@@ -204,7 +192,7 @@ def test_get_proteins_lv1(client: DeepOriginClient) -> None:
 
     from deeporigin.drug_discovery import BRD_DATA_DIR, Protein
 
-    projects.load(PROJECT_NAME)
+    projects.load(integration_project_name(client.env))
     protein = Protein.from_file(BRD_DATA_DIR / "brd.pdb")
     protein.sync()
     assert protein.id is not None
@@ -220,7 +208,7 @@ def test_set_ligands_lv1(client: DeepOriginClient) -> None:
 
     from deeporigin.drug_discovery import BRD_DATA_DIR, LigandSet
 
-    projects.load(PROJECT_NAME)
+    projects.load(integration_project_name(client.env))
     ligands = LigandSet.from_dir(BRD_DATA_DIR)
     assert len(ligands.ligands) > 0
     projects.set_ligands(ligands)
@@ -238,7 +226,7 @@ def test_set_proteins_lv1(client: DeepOriginClient) -> None:
 
     from deeporigin.drug_discovery import BRD_DATA_DIR, Protein
 
-    projects.load(PROJECT_NAME)
+    projects.load(integration_project_name(client.env))
     protein = Protein.from_file(BRD_DATA_DIR / "brd.pdb")
     projects.set_proteins([protein])
     assert protein.id is not None

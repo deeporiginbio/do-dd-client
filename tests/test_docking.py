@@ -22,7 +22,7 @@ from deeporigin.platform.constants import (
     TOOL_KEYS_AND_VERSIONS,
     is_success_status,
 )
-from tests.conftest import check_tool_exists
+from tests.conftest import assert_quote_only_execution, check_tool_exists
 
 
 def test_docking_from_dto_maps_async_execution_fields_from_fixture(
@@ -455,7 +455,7 @@ def test_docking_run_quote_true_lv1(
     unregistered_pocket,
     registered_ligand,
 ):
-    """Docking.run(quote=True) returns None and populates estimate."""
+    """Docking.run(quote=True) returns None, parks as Quoted, does not complete."""
     assert check_tool_exists(
         client,
         TOOL_KEYS_AND_VERSIONS["docking"]["tool_key"],
@@ -473,10 +473,8 @@ def test_docking_run_quote_true_lv1(
         pytest.skip(
             "Docking quote returned FailedQuotation; platform tool may be unavailable."
         )
-    assert result is None, "run(quote=True) should return None"
-    assert docking.estimate is not None, "Estimate should be set"
-    assert docking.cost is None, "Cost should be None"
-    assert docking.status == "Quoted"
+    assert result is None, "run(quote=True) should return None (not a PoseSet)"
+    assert_quote_only_execution(docking)
 
 
 def test_docking_start_rejects_single_ligand(

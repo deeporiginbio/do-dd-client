@@ -136,10 +136,10 @@ PROTEIN_PREP_DISPLAY_NONE = "(none)"
 """Display value for unavailable Protein Prep configuration."""
 
 PROTEIN_PREP_NO_OUTPUT_PATHS_MSG = (
-    "Protein preparation did not return a prepared PDB path. "
+    "Protein preparation did not return a prepared protein id. "
     "The tool execution may have failed or returned an unexpected format."
 )
-"""Used by ``ProteinPrep.get_results`` when the prepared PDB path is missing."""
+"""Used by ``ProteinPrep.get_results`` when the prepared protein id is missing."""
 
 PROTEIN_PREP_PDB_ID_REQUIRED_MSG = (
     "pdb_id is required when preparing with loop modelling. "
@@ -161,10 +161,23 @@ PROTEIN_PREP_RECOMMEND_NOT_PREPARE_MSG = (
 """Used by ``ProteinPrep.get_results`` on a recommend execution."""
 
 PROTEIN_PREP_RUN_REQUIRES_LOOPS_OFF_MSG = (
-    "run() requires model_missing_loops=False. Use start() when loop modelling "
-    "is enabled."
+    "run() requires model_missing_loops=False and no novel pocket finding. "
+    "Use start() when loop modelling or novel pocket finding is enabled."
 )
-"""Used by ``ProteinPrep.run`` when loop modelling is enabled."""
+"""Used by ``ProteinPrep.run`` for composite (loops-on or pocket) routes."""
+
+PROTEIN_PREP_REPORT_EXCLUDED_MSG = (
+    "This ProteinPrep execution did not request a prepared Structure Report. "
+    "Reports are only produced on the target-preparation route (loops on or "
+    "novel pocket finding)."
+)
+"""Used by ``ProteinPrep.get_report`` when the direct protein-prep path ran."""
+
+PROTEIN_PREP_POCKETS_EXCLUDED_MSG = (
+    "This ProteinPrep execution did not request pockets. Configure "
+    "pocket=PocketFinderConfig(...) before start() to include Pocket Finder."
+)
+"""Used by ``ProteinPrep.get_pockets`` when ``pocket`` was not configured."""
 
 PROTEIN_PREP_COMPONENT_KINDS: frozenset[str] = frozenset(
     {"chain", "ligand", "cofactor", "water"}
@@ -190,12 +203,6 @@ PROTEIN_PREP_KEEP_SKIP_EMPTY_MSG = (
 
 PROTEIN_PREP_KEEP_SKIP_MIXED_MSG = "Pass component IDs or keyword filters, not both."
 """Used when ``keep()`` / ``skip()`` receive both positional ids and matchers."""
-
-PROTEIN_PREP_KEEP_SKIP_VIEW_MSG = (
-    "{method}() accepts a DataFrame from recommendation(...), "
-    "not the recommendation view itself."
-)
-"""Used when ``keep()`` / ``skip()`` are passed the uncalled Recommendation view."""
 
 PROTEIN_PREP_DATAFRAME_ID_COLUMN_MSG = "DataFrame must include an 'id' column."
 """Used when ``keep()`` / ``skip()`` receive a DataFrame without ``id``."""
@@ -227,6 +234,14 @@ TOOL_EXECUTION_POST_TIMEOUT_SECONDS = 600.0
 600s aligns with typical server-side ``timeoutSeconds`` for tool workloads such
 as molprops and protonation, where synchronous executions can take longer than
 the client's default short timeout."""
+
+QUOTE_APPROVE_AMOUNT = -1
+"""``approveAmount`` value sent when ``quote=True``.
+
+Must be negative: tools-service auto-confirm is inclusive
+(``priceTotal <= threshold``), so ``0`` still dispatches free quotes. Matches
+MCP/pipeline after DDOS-7765 / platform PR #6769.
+"""
 
 EXECUTION_LIST_ORDER_CREATED_DESC = "createdAt desc"
 """Tools-service ``order`` query value for most-recently-created executions first."""

@@ -37,6 +37,7 @@ from deeporigin.drug_discovery.structures.protein import Protein
 from deeporigin.exceptions import DeepOriginException
 from deeporigin.platform.client import DeepOriginClient
 from deeporigin.platform.constants import TOOL_KEYS_AND_VERSIONS, is_success_status
+from deeporigin.utils.constants import QUOTE_APPROVE_AMOUNT
 
 UniprotDiscoveryGrade = Literal["A", "B", "C", "D"]
 FieldStatusValue = Literal["value", "not_applicable", "unknown"]
@@ -359,7 +360,7 @@ class UniprotDiscovery(Execution, SyncExecutableMixin):
         """Run UniProt discovery synchronously and return ranked candidates.
 
         Args:
-            quote: Shorthand for ``approve_amount=0``. Returns ``None`` when the
+            quote: Shorthand for ``approve_amount=-1``. Returns ``None`` when the
                 platform returns a quotation.
             approve_amount: Spend cap forwarded as ``approveAmount``.
 
@@ -371,7 +372,7 @@ class UniprotDiscovery(Execution, SyncExecutableMixin):
             DeepOriginException: If the execution does not succeed or
                 ``jobOutputs.candidates`` is missing/invalid.
         """
-        resolved_amount = 0 if quote else approve_amount
+        resolved_amount = QUOTE_APPROVE_AMOUNT if quote else approve_amount
         response = self._create_execution(
             data=self._make_payload(
                 approve_amount=resolved_amount,

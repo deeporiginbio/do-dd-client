@@ -41,12 +41,26 @@ def clear_env_and_cache() -> Generator[None, None, None]:
 
 
 def test_do_env_local_defaults_to_mock_base_url() -> None:
-    """``DO_ENV=local`` with no auth vars routes DeepOriginClient() through from_disk."""
+    """``DO_ENV=local`` with no auth vars routes ``DeepOriginClient()`` to the toolbox gateway."""
     os.environ["DO_ENV"] = "local"
     client = DeepOriginClient()
 
     assert client.env == "local"
     assert client.base_url.rstrip("/") == "http://127.0.0.1:4931"
+
+
+def test_config_env_local_routes_no_arg_client_to_toolbox_gateway(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """``config.json`` env ``local`` uses the toolbox gateway without ``DO_ENV``."""
+    with patch("deeporigin.platform.client.get_value") as mock_get_value:
+        mock_get_value.return_value = {"env": "local", "org_key": "my-local-org"}
+
+        client = DeepOriginClient()
+
+    assert client.env == "local"
+    assert client.base_url.rstrip("/") == "http://127.0.0.1:4931"
+    assert client.org_key == "my-local-org"
 
 
 def test_do_base_url_env_sets_base_url_and_env() -> None:
@@ -256,3 +270,18 @@ def test_from_disk_reads_token_from_file() -> None:
         client = DeepOriginClient.from_disk(env="prod")
 
         assert client.token == "token_from_file"
+
+
+def test_from_disk_local_uses_toolbox_gateway() -> None:
+    """``from_disk(env='local')`` points at the toolbox gateway and skips api_tokens."""
+    with patch("deeporigin.platform.client.get_value") as mock_get_value:
+        mock_get_value.return_value = {
+            "env": "local",
+            "org_key": "",
+        }
+
+        client = DeepOriginClient.from_disk(env="local")
+
+    assert client.env == "local"
+    assert client.base_url.rstrip("/") == "http://127.0.0.1:4931"
+    assert client.org_key == "deeporigin"

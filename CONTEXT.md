@@ -133,18 +133,35 @@ _Avoid_: "system" alone when meaning the prepared molecular system artifact
 **Protein Prep**:
 Platform tool `deeporigin.protein-prep` that inventories a caller-supplied
 protein, records editable keep/review/skip Decisions, then applies resolved
-keep/skip Decisions and protonation. CLI class `ProteinPrep` is one preparation
-session: `.recommend()` updates its Selection without binding its execution id
-and returns the Recommendation view; `.run()` or `.start()` submits durable
-preparation and permanently binds the object. `protein` is constructor-only.
-Loop modelling runs unless the caller sets loops-off prepare.
-_Avoid_: SystemPrep / FEP assembly; quoting this tool (billing is skipped);
-public `action`; a separate recommend object; silently converting `review` to
-`skip`; v1 keep/remove lists (`keep_chain_ids`, …); treating loops-off as
-skipping Protein Prep; `watch()` on a `.run()` / sync execution; `inputs.sync`
-on protein-prep (not in the tool schema); treating `.recommendation` as a raw
-dict or a pandas DataFrame type
+keep/skip Decisions and protonation. CLI class `ProteinPrep` is the sole public
+preparation session: `.recommend()` always uses protein-prep; loops-off
+(including crystal-ligand pockets inferred from ligand `extract`) uses
+protein-prep (`run()` / `start()`); loops-on or novel
+`pocket=PocketFinderConfig(mode="auto-find")` routes to Target Preparation
+(`start()` only). Crystal-ligand pockets with loops off stay on direct
+protein-prep. `.get_results()` returns the prepared `Protein`;
+`.get_report()` is the composite Structure Report; `.get_pockets()` returns
+pockets when the run requested them (explicit pocket config or ligand extract
+on the fast path). `protein` is constructor-only.
+_Avoid_: SystemPrep / FEP assembly; a public `TargetPrep` class; public
+`action`; a separate recommend object; silently converting `review` to `skip`;
+v1 keep/remove lists (`keep_chain_ids`, …); treating loops-off as skipping
+Protein Prep; `watch()` on a `.run()` / sync execution; `inputs.sync` on
+protein-prep (not in the tool schema); treating `.recommendation` as a raw
+dict (it is a ``pandas.DataFrame`` after recommend, or ``None``);
+bundling report/pockets into `get_results()`
 
+**Target Preparation**:
+Platform workflow tool `deeporigin.target-preparation` (pinned major 7 for the
+flat `find_pockets` contract) used by `ProteinPrep` when loop modelling is
+enabled or novel (`auto-find`) pocket finding is requested. Always produces a
+prepared Structure Report; optionally runs Pocket Finder. Not a separate public
+Python class — callers use `ProteinPrep` and `get_report()` / `get_pockets()`.
+_Avoid_: a public `TargetPrep` session class; treating source Structure Report
+as part of this workflow (use standalone `StructureReport`); implying that
+target preparation selects the final Pocket for a downstream screening
+invocation; routing crystal-ligand-only / loops-off prepares through Target
+Preparation (those stay on protein-prep)
 **Protein Prep Selection**:
 Digest-bound component Decision map produced by `ProteinPrep.recommend()` or
 provided by the caller. Editable SDK state may contain `keep`, `review`, or
@@ -175,14 +192,16 @@ to be keep or skip.
 _Avoid_: `recommendation` when you mean the live Selection value; Component
 recommendation
 
-**Recommendation view**:
-Callable notebook table of Components on `ProteinPrep.recommendation` after
+**Recommendation table**:
+`ProteinPrep.recommendation` is a ``pandas.DataFrame`` of Components after
 recommend (also returned by `.recommend()`). Columns include frozen Component
-recommendation and live Decision. Calling it AND-filters (`kind`, `subtype`,
-`recommendation`, `decision`) and returns a DataFrame. Unset is `None`. `.raw`
-is the analyzer payload. Not mapping-like (`["components"]` is gone).
-_Avoid_: returning a DataFrame from the property itself; dict access on the view;
-`keep` / `skip` on the view (`pp.recommend().keep()` is not supported)
+recommendation and live Decision. Filter with pandas (e.g. boolean masks on
+`kind` / `subtype` / `recommendation` / `decision`). Unset is `None`.
+`recommendation_payload` is the analyzer dict. Not mapping-like
+(`["components"]` is gone).
+_Avoid_: treating the property as a callable view; dict access on the
+DataFrame; `keep` / `skip` on the table (`pp.recommend().keep()` is not
+supported)
 
 **Loops-off prepare**:
 Protein Prep `action=prepare` with `model_missing_loops=false`: apply the
@@ -218,9 +237,10 @@ _Avoid_: Docking search box; pocket box when meaning the cavity surface
 
 **Parent protein**:
 The Protein a Pocket was found in. Durable identity is `protein_id`. The
-in-process parent is `Pocket.protein` when attached. A Pocket can be shown in
-the Structure viewer when the parent is resolvable (attached Protein or
-`protein_id`). Other constructors may leave both unset.
+in-process parent is `Pocket.protein` when attached. A Pocket's cavity
+(`show()`) and Docking search box (`show_box()`) can be shown in the Structure
+viewer when the parent is resolvable (attached Protein or `protein_id`). Other
+constructors may leave both unset.
 _Avoid_: `pdb_id` (RCSB code); Docking's protein input when you mean the Pocket's parent
 
 **PocketFinder**:
@@ -261,6 +281,17 @@ Optional string on ``DeepOriginClient`` (``client.tag`` / ``client.billing_tag``
 applied to every tool execution for billing attribution. Configured once on the
 client; not overridable per ``run()`` or ``start()``.
 _Avoid_: conflating with entity jsonb ``tags`` or UUI source-filter provenance
+
+**Execution visibility default**:
+Optional ``_visibility`` on ``DeepOriginClient`` (``"visible"`` / ``"hidden"``),
+stamped by ``executions.create`` on every run the client launches, including
+paths that call ``executions.create`` directly. ``"hidden"`` opts a run out of
+user-facing Activity views; the run, its results and billing still exist. For
+SDK-internal plumbing runs and internal automation -- no end user wants to hide
+their own runs, so it is underscore-prefixed like ``_app`` / ``_session`` and is
+not exposed on ``run()`` / ``start()``. Part of the singleton cache key.
+_Avoid_: a ``visibility`` kwarg on tool classes; conflating with the billing tag or
+entity provenance tags
 
 **Entity provenance tags**:
 Flat ``app`` and ``session`` keys on an entity row's jsonb ``tags`` column.
@@ -375,12 +406,16 @@ Wireframe of the docking tool's search extents, derived from pocket center and
 box sizes (same geometry submitted with docking). When pocket-finder emitted a
 nested `box`, default sizes and orientation come from **Inferred box orientation**
 ; otherwise from parent lab-frame `box_size_{x,y,z}` (axis-aligned). **Session
-rotation** overrides inferred orientation in the notebook and on subsequent
-`run()` / `start()` when set. Shown via `Docking.show_box()` /
-`ConstrainedDocking.show_box()`.
+rotation** overrides inferred orientation when a `Docking` / `ConstrainedDocking`
+holds it. Preview entry points: `Pocket.show_box()` (static, pocket geometry
+only — no session rotation), `Docking.show_box()` /
+`ConstrainedDocking.show_box()` (static or interactive; session rotation when
+set). Distinct from the pocket cavity surface (`Pocket.show()` /
+`Protein.show(pockets=...)`).
 _Avoid_: pocket box; docking pocket (when meaning pocket surfaces); conflating
 with `Protein.show(pockets=...)` gaussian surfaces; treating the box as
-always axis-aligned on new pocket-finder runs
+always axis-aligned on new pocket-finder runs; assuming `Pocket.show_box()`
+picks up session rotation from a Docking instance
 
 **Inferred box orientation**:
 PCA-aligned docking box rotation and OBB sizes from pocket-finder's nested

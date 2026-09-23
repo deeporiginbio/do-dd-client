@@ -22,7 +22,7 @@ test:
 # Launch JupyterLab from the project .venv (widgets require this server, not Homebrew / uv cache)
 jupyter-lab:
 	uv sync $(foreach e,$(NOTEBOOK_EXTRAS),--extra $(e))
-	$(UV_RUN) jupyter lab \
+	$(UV_RUN) python -m jupyterlab \
 		--ServerApp.root_dir="$(REPO_ROOT)" \
 		--ServerApp.port=$(JUPYTER_PORT) \
 		$(NOTEBOOK)

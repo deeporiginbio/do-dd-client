@@ -1,6 +1,6 @@
 """Constants for platform API operations."""
 
-from typing import Literal
+from typing import Literal, get_args
 
 LEGACY_SUCCEEDED_STATUS = "Succeeded"
 CANONICAL_SUCCESS_STATUS = "Completed"
@@ -94,6 +94,19 @@ def display_platform_status(status: str | None) -> str:
 # Possible providers for files that work with the tools API
 PROVIDER = Literal["ufa", "s3"]
 
+# Activity-history visibility for a tool execution. `hidden` opts a run out of
+# user-facing activity views; the run, its results and its billing still exist
+# and stay visible to admin/audit. Mirrors the platform `ExecutionVisibility`
+# enum (tools-service) -- an implicit cross-service contract, so these strings
+# must stay equal to the server's.
+ExecutionVisibility = Literal["visible", "hidden"]
+
+# Derived from the Literal rather than restated, so the contract has exactly one
+# source of truth: adding a state to `ExecutionVisibility` cannot leave the
+# runtime check behind (which would accept a value statically and then reject it
+# with a misleading ValueError).
+EXECUTION_VISIBILITY_VALUES: frozenset[str] = frozenset(get_args(ExecutionVisibility))
+
 # Single registry for platform tools: iterate ``TOOL_KEYS_AND_VERSIONS``
 # to verify tools are registered (see keys per entry below).
 # Optional fields are omitted when not applicable.
@@ -108,7 +121,7 @@ TOOL_KEYS_AND_VERSIONS: dict[str, dict[str, str]] = {
     },
     "pocket_finder": {
         "tool_key": "deeporigin.pocket-finder",
-        "tool_version": "2",
+        "tool_version": "3",
     },
     "mol_props": {
         "tool_key": "deeporigin.mol-props-combined",
@@ -138,6 +151,10 @@ TOOL_KEYS_AND_VERSIONS: dict[str, dict[str, str]] = {
         "tool_key": "deeporigin.protein-prep",
         "tool_version": "latest",
     },
+    "target_prep": {
+        "tool_key": "deeporigin.target-preparation",
+        "tool_version": "latest",
+    },
     "patent": {
         "tool_key": "deeporigin.draco",
         "tool_version": "latest",
@@ -164,6 +181,6 @@ TOOL_KEYS_AND_VERSIONS: dict[str, dict[str, str]] = {
     },
     "import_dataset": {
         "tool_key": "deeporigin.import-dataset",
-        "tool_version": "latest",
+        "tool_version": "2",
     },
 }

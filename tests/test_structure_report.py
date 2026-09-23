@@ -98,6 +98,7 @@ def test_structure_report_result_from_json_round_trip() -> None:
         "weighted_score": 0.7,
         "grade": "B",
         "pdb_id": "1ABC",
+        "report_role": "source",
         "resolution": 2.0,
     }
     row = StructureReportResultCls.from_json(raw)
@@ -106,6 +107,19 @@ def test_structure_report_result_from_json_round_trip() -> None:
     assert row.pdb_id == "1ABC"
     assert row.coverage is None
     assert row.source_sha256 is None
+    assert row.report_role == "source"
+
+    # Sanity check: interactive-friendly representations.
+    repr_str = repr(row)
+    assert "StructureReportResult(" in repr_str
+    assert "field_status" not in repr_str
+    assert "grade='B'" in repr_str
+    assert "weighted_score=0.700" in repr_str
+
+    html = row._repr_html_()
+    assert "<table" in html
+    assert "Weighted score" in html
+    assert ">B<" in html
 
 
 def test_structure_reports_from_dto_rejects_empty() -> None:
