@@ -19,7 +19,6 @@ from typing import TYPE_CHECKING
 from unittest.mock import patch
 import warnings
 
-from bokeh.models import ColorBar
 import pandas as pd
 import pytest
 
@@ -28,7 +27,6 @@ from deeporigin.drug_discovery import (
     Ligand,
     SecondaryPharmacology,
 )
-from deeporigin.drug_discovery.secondary_pharma import _POSE_SCORE_CLIM
 from deeporigin.drug_discovery.structures.pose import Pose, PoseSet
 from deeporigin.exceptions import DeepOriginException
 from deeporigin.platform.constants import (
@@ -888,10 +886,10 @@ def test_secondary_pharma_plot_docking_heatmap_metric_choice(
         figure = mock_show.call_args[0][0]
         mapper = _rect_color_mapper(figure)
         assert mapper.palette == WHITE_RED_HAZARD_PALETTE
-        assert (mapper.low, mapper.high) == _POSE_SCORE_CLIM
+        assert (mapper.low, mapper.high) != (0.0, 1.0), "auto-scaled, not fixed"
         assert "pose score" in figure.title.text
 
-    # clim= overrides the built-in default for whichever metric is active,
+    # clim= overrides the auto-scaled range for whichever metric is active,
     # and out-of-range real values are visibly noted, not silently clipped.
     real_pose_score = job.get_results()["pose_score"].iloc[0]
     narrow_clim = (real_pose_score + 0.001, real_pose_score + 0.002)
@@ -906,247 +904,3 @@ def test_secondary_pharma_plot_docking_heatmap_metric_choice(
         # around, guaranteed.
         assert "pose_score value(s)" in out
         assert f"({narrow_clim[0]}, {narrow_clim[1]})" in out
-
-
-# --- SecondaryPharmacology.plot_ml_vs_docking() ------------------------------
-
-
-def test_plot_ml_vs_docking_rejects_wrong_methods(client: DeepOriginClient) -> None:
-    """plot_ml_vs_docking() requires (ligand-ml run, docking run) in that order."""
-    _assert_tool_available(client)
-    ligand = Ligand.from_smiles("CCO")
-    ml_job = SecondaryPharmacology(ligands=[ligand], method="ligand-ml", client=client)
-    dock_job = SecondaryPharmacology(ligands=[ligand], method="docking", client=client)
-
-    with pytest.raises(ValueError, match="ligand-ml"):
-        SecondaryPharmacology.plot_ml_vs_docking(dock_job, dock_job)
-    with pytest.raises(ValueError, match="docking"):
-        SecondaryPharmacology.plot_ml_vs_docking(ml_job, ml_job)
-
-
-def test_plot_ml_vs_docking_unions_targets_and_sorts_by_agreement(
-    client: DeepOriginClient,
-) -> None:
-    """The heatmap covers every target either run scored, and the top-left
-    cell is the strongest ligand/target pair both methods agree on."""
-    _assert_tool_available(client)
-    client.files.upload(
-        local_path=BRD_DATA_DIR / "brd-2.sdf",
-        remote_path=MOCK_SECONDARY_PHARMA_POSE_SDF_PATH,
-    )
-    ligand = Ligand.from_smiles("CCO", name="ethanol")
-
-    ml_job = SecondaryPharmacology(ligands=[ligand], method="ligand-ml", client=client)
-    ml_job.run()
-
-    # Docking only against one target -- a strict subset of ligand-ml's full panel.
-    dock_job = SecondaryPharmacology(
-        ligands=[ligand],
-        method="docking",
-        uniprots=[_PANEL_ACCESSIONS[0]],
-        client=client,
-    )
-    dock_job.start()
-    elapsed = 0.0
-    while elapsed < 5.0:
-        dock_job.sync()
-        if dock_job.status in TERMINAL_STATES:
-            break
-        time.sleep(0.05)
-        elapsed += 0.05
-    assert is_success_status(dock_job.status)
-
-    with patch("deeporigin.plots.show") as mock_show:
-        SecondaryPharmacology.plot_ml_vs_docking(ml_job, dock_job)
-        mock_show.assert_called_once()
-        figure = mock_show.call_args[0][0]
-
-    # Every panel target ligand-ml scored shows up, even the ones docking never touched.
-    target_labels = set(figure.xaxis[0].major_label_overrides.values())
-    assert len(target_labels) == len(_PANEL_ACCESSIONS)
-
-    # The same Ligand is shared by both jobs (the common case -- comparing ml vs.
-    # docking only makes sense against the same ligands). It must not collide
-    # with itself and get mislabeled "ethanol (2)".
-    ligand_labels = set(figure.yaxis[0].major_label_overrides.values())
-    assert ligand_labels == {"ethanol"}
-
-    patch_renderers = [
-        r for r in figure.renderers if r.glyph.__class__.__name__ == "Patches"
-    ]
-    assert len(patch_renderers) == 2
-    ml_values, dock_values = (r.data_source.data["value"] for r in patch_renderers)
-    assert len(ml_values) == len(_PANEL_ACCESSIONS), (
-        "ligand-ml half covers every target"
-    )
-    assert len(dock_values) == 1, "docking half covers only the one target it ran"
-
-    # Both halves share one true 0-1 scale -- pose_score is rescaled onto
-    # it (via _POSE_SCORE_CLIM), not the other way around, so p_active
-    # keeps its full meaningful range.
-    mappers = {r.glyph.fill_color["transform"] for r in patch_renderers}
-    assert len(mappers) == 1, "both halves must share one color mapper"
-    mapper = mappers.pop()
-    assert (mapper.low, mapper.high) == (0.0, 1.0)
-
-    raw_pose_score = dock_job.get_results()["pose_score"].iloc[0]
-    pose_lo, pose_hi = _POSE_SCORE_CLIM
-    expected_rescaled = (raw_pose_score - pose_lo) / (pose_hi - pose_lo)
-    assert dock_values[0] == pytest.approx(expected_rescaled), (
-        "docking half must be the rescaled pose_score, not the raw value"
-    )
-
-    color_bar = next(r for r in figure.right if isinstance(r, ColorBar))
-    assert color_bar.major_label_overrides == {0.0: "No hit", 1.0: "Hit"}
-
-
-def test_plot_ml_vs_docking_pose_score_clim_override_and_clip_note(
-    client: DeepOriginClient,
-    capsys: pytest.CaptureFixture[str],
-) -> None:
-    """pose_score_clim= overrides the default rescaling window, and a
-    pose_score outside it is clipped visibly, not silently."""
-    _assert_tool_available(client)
-    client.files.upload(
-        local_path=BRD_DATA_DIR / "brd-2.sdf",
-        remote_path=MOCK_SECONDARY_PHARMA_POSE_SDF_PATH,
-    )
-    ligand = Ligand.from_smiles("CCO", name="ethanol")
-
-    ml_job = SecondaryPharmacology(ligands=[ligand], method="ligand-ml", client=client)
-    ml_job.run()
-
-    dock_job = SecondaryPharmacology(
-        ligands=[ligand],
-        method="docking",
-        uniprots=[_PANEL_ACCESSIONS[0]],
-        client=client,
-    )
-    dock_job.start()
-    elapsed = 0.0
-    while elapsed < 5.0:
-        dock_job.sync()
-        if dock_job.status in TERMINAL_STATES:
-            break
-        time.sleep(0.05)
-        elapsed += 0.05
-    assert is_success_status(dock_job.status)
-
-    # A window that deliberately excludes the real pose_score, to force a
-    # deterministic clip regardless of the mock's synthesized value.
-    real_pose_score = dock_job.get_results()["pose_score"].iloc[0]
-    narrow_clim = (real_pose_score + 0.01, real_pose_score + 0.02)
-
-    with patch("deeporigin.plots.show") as mock_show:
-        SecondaryPharmacology.plot_ml_vs_docking(
-            ml_job, dock_job, pose_score_clim=narrow_clim
-        )
-        figure = mock_show.call_args[0][0]
-
-    out = capsys.readouterr().out
-    assert "1 of 1 pose_score value(s)" in out
-    assert f"({narrow_clim[0]}, {narrow_clim[1]})" in out
-
-    patch_renderers = [
-        r for r in figure.renderers if r.glyph.__class__.__name__ == "Patches"
-    ]
-    _ml_values, dock_values = (r.data_source.data["value"] for r in patch_renderers)
-    assert dock_values[0] == 0.0, "below the window's low end, clipped to 0"
-
-
-def test_plot_ml_vs_docking_coverage_intersection_excludes_uncovered_targets(
-    client: DeepOriginClient,
-) -> None:
-    """coverage="intersection" keeps only targets/ligands both runs covered.
-
-    ml_job scores the full panel; dock_job only one target -- with the
-    default (union), every panel target shows up, grey on the docking
-    half where it never ran. With coverage="intersection", only that one
-    shared target appears at all.
-    """
-    _assert_tool_available(client)
-    client.files.upload(
-        local_path=BRD_DATA_DIR / "brd-2.sdf",
-        remote_path=MOCK_SECONDARY_PHARMA_POSE_SDF_PATH,
-    )
-    ligand = Ligand.from_smiles("CCO", name="ethanol")
-
-    ml_job = SecondaryPharmacology(ligands=[ligand], method="ligand-ml", client=client)
-    ml_job.run()
-
-    dock_job = SecondaryPharmacology(
-        ligands=[ligand],
-        method="docking",
-        uniprots=[_PANEL_ACCESSIONS[0]],
-        client=client,
-    )
-    dock_job.start()
-    elapsed = 0.0
-    while elapsed < 5.0:
-        dock_job.sync()
-        if dock_job.status in TERMINAL_STATES:
-            break
-        time.sleep(0.05)
-        elapsed += 0.05
-    assert is_success_status(dock_job.status)
-
-    with patch("deeporigin.plots.show") as mock_show:
-        SecondaryPharmacology.plot_ml_vs_docking(
-            ml_job, dock_job, coverage="intersection"
-        )
-        figure = mock_show.call_args[0][0]
-
-    expected_gene = next(
-        gene
-        for accession, gene, _ in MOCK_SECONDARY_PHARMA_PANEL
-        if accession == _PANEL_ACCESSIONS[0]
-    )
-    target_labels = set(figure.xaxis[0].major_label_overrides.values())
-    assert target_labels == {expected_gene}
-
-    patch_renderers = [
-        r for r in figure.renderers if r.glyph.__class__.__name__ == "Patches"
-    ]
-    ml_values, dock_values = (r.data_source.data["value"] for r in patch_renderers)
-    assert len(ml_values) == 1, "union's grey cells from other targets are gone"
-    assert len(dock_values) == 1
-
-
-def test_plot_ml_vs_docking_coverage_intersection_raises_when_no_overlap(
-    client: DeepOriginClient,
-) -> None:
-    """coverage="intersection" raises a clear error when the two runs share
-    no ligand at all, rather than plotting an empty grid."""
-    _assert_tool_available(client)
-    client.files.upload(
-        local_path=BRD_DATA_DIR / "brd-2.sdf",
-        remote_path=MOCK_SECONDARY_PHARMA_POSE_SDF_PATH,
-    )
-
-    ml_job = SecondaryPharmacology(
-        ligands=[Ligand.from_smiles("CCO", name="ethanol")],
-        method="ligand-ml",
-        client=client,
-    )
-    ml_job.run()
-
-    dock_job = SecondaryPharmacology(
-        ligands=[Ligand.from_smiles("CCN", name="ethylamine")],
-        method="docking",
-        uniprots=[_PANEL_ACCESSIONS[0]],
-        client=client,
-    )
-    dock_job.start()
-    elapsed = 0.0
-    while elapsed < 5.0:
-        dock_job.sync()
-        if dock_job.status in TERMINAL_STATES:
-            break
-        time.sleep(0.05)
-        elapsed += 0.05
-    assert is_success_status(dock_job.status)
-
-    with pytest.raises(ValueError, match="share no ligand/target"):
-        SecondaryPharmacology.plot_ml_vs_docking(
-            ml_job, dock_job, coverage="intersection"
-        )

@@ -93,20 +93,12 @@ df = job.get_results()
 the docked structure itself isn't supported yet.
 
 `job.plot()` renders a heatmap colored by `binding_energy` (default) or
-`metric="pose_score"`. Both use a fixed, opinionated color range you can
-override with `clim=(low, high)` -- a value outside it still renders,
-clipped to the nearest edge color.
+`metric="pose_score"`, auto-scaled to the run's own values unless you pass
+`clim=(low, high)` -- a value outside it still renders, clipped to the
+nearest edge color.
 
 Check for gaps with `job.get_undocked_ligands()` (ligands with zero docked
 poses) or `job.get_missing_pairs()` (specific ligand × target cells missing).
-
-Compare a ligand-ml run against a docking run on one heatmap with
-`SecondaryPharmacology.plot_ml_vs_docking(ml_job, dock_job)` -- a
-`staticmethod` since it needs both. `pose_score` is rescaled onto the same
-0-1 scale as `p_active` for this comparison; override the rescaling window
-with `pose_score_clim=(low, high)`. By default the heatmap shows every
-ligand/target either run covered (`coverage="union"`, grey where only one
-has data); pass `coverage="intersection"` to show only what both covered.
 
 Currently no batching is supported for the docking path (unlike `deeporigin.docking`'s `batchSize`)
 and it runs as a single job with a fixed resource/time budget for the entire ligand set.
@@ -140,11 +132,3 @@ dock_runs = [r for r in runs if r.method == "docking"]
 ```
 
 `project_id` restricts the list to your own project.
-
-Reload a ligand-ml run and a docking run by id to compare them:
-
-```{.python notest}
-ml_job = SecondaryPharmacology.from_id(ml_runs[0].id)
-dock_job = SecondaryPharmacology.from_id(dock_runs[0].id)
-SecondaryPharmacology.plot_ml_vs_docking(ml_job, dock_job)
-```

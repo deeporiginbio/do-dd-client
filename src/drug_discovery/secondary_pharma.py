@@ -41,7 +41,6 @@ import builtins
 from typing import Any, Literal, Self
 
 from beartype import beartype
-import numpy as np
 import pandas as pd
 
 from deeporigin.drug_discovery.execution import Execution, _execution_outputs_dict
@@ -63,10 +62,6 @@ _UNIPROTS_ENUM_MISSING = (
 
 #: Row count for :meth:`SecondaryPharmacology.get_panel`'s default preview.
 _PANEL_PREVIEW_ROWS = 10
-
-#: pose_score's real dynamic range -- used as a fixed clim on its own, and
-#: as the rescaling window onto 0-1 for plot_ml_vs_docking.
-_POSE_SCORE_CLIM = (0.5, 0.9)
 
 
 def _uniprots_from_definition(definition: dict[str, Any]) -> list[str]:
@@ -277,9 +272,8 @@ def _load_panel_pose_rows(
 def _ligand_plot_labels(ligands: list[Ligand]) -> dict[str, str]:
     """Map each ligand's smiles to a short, unique plot label.
 
-    Shared by :meth:`SecondaryPharmacology._ligand_plot_labels` and
-    :meth:`SecondaryPharmacology.plot_ml_vs_docking`. Dedupes by smiles
-    first so a ligand reused across both runs doesn't collide with itself.
+    Dedupes by smiles first so repeated ligands don't collide with
+    themselves.
     """
     labels: dict[str, str] = {}
     seen_labels: set[str] = set()
@@ -801,11 +795,9 @@ class SecondaryPharmacology(
         Args:
             dto: Optional execution payload, forwarded to :meth:`get_results`.
             metric: Docking only. Which column to color the heatmap by.
-            clim: Override the default color range (``(0.0, 1.0)`` for
-                ligand-ml, :data:`_POSE_SCORE_CLIM` for ``pose_score``,
-                auto-scaled for ``binding_energy``). A value outside the
+            clim: Override the default color range. A value outside the
                 chosen range still renders, clipped to the nearest edge
-                color -- a console note reports how many, if any.
+                color.
         """
         df = self.get_results(dto)
         if self._method == "ligand-ml":
@@ -834,20 +826,13 @@ class SecondaryPharmacology(
             pivot = df.assign(ligand_label=ligand_label).pivot_table(
                 index="ligand_label", columns="gene_name", values=metric
             )
-            # Same white-to-red hazard palette as ligand-ml for both
-            # metrics. pose_score's default fixed range is _POSE_SCORE_CLIM
-            # rather than (0, 1); binding_energy auto-scales unless clim=
-            # overrides it.
+            # Same white-to-red hazard palette as ligand-ml for both metrics;
+            # auto-scales the color range unless clim= overrides it.
             if metric == "pose_score":
-                palette, default_clim, label = (
-                    WHITE_RED_HAZARD_PALETTE,
-                    _POSE_SCORE_CLIM,
-                    "pose score",
-                )
+                palette, label = WHITE_RED_HAZARD_PALETTE, "pose score"
             else:
-                palette, default_clim, label = (
+                palette, label = (
                     list(reversed(WHITE_RED_HAZARD_PALETTE)),
-                    None,
                     "binding energy (kcal/mol)",
                 )
             plot_grid_heatmap(
@@ -857,7 +842,7 @@ class SecondaryPharmacology(
                 title=f"Secondary pharmacology docking: {label}",
                 value_label=metric,
                 palette=palette,
-                clim=clim if clim is not None else default_clim,
+                clim=clim,
             )
 
     def _get_poses(self, *, dto: dict[str, Any] | None = None) -> PoseSet:
@@ -1041,127 +1026,3 @@ class SecondaryPharmacology(
             allowed = new._fetch_definition_uniprots()
             new._allowed_uniprots = frozenset(allowed)
         return new
-
-    @staticmethod
-    def plot_ml_vs_docking(
-        ml_job: SecondaryPharmacology,
-        dock_job: SecondaryPharmacology,
-        *,
-        ml_dto: dict[str, Any] | None = None,
-        dock_dto: dict[str, Any] | None = None,
-        pose_score_clim: tuple[float, float] | None = None,
-        coverage: Literal["union", "intersection"] = "union",
-    ) -> None:
-        """Compare a ligand-ml run against a docking run on one heatmap.
-
-        Each cell splits diagonally (top-left to bottom-right): upper =
-        ``p_active`` (or ``p_affinity``), lower = ``pose_score``. Grey
-        where a run has no data for that cell. The colorbar is labeled
-        "No hit"/"Hit" rather than 0/1.
-
-        Rows/columns are sorted so the strongest dual-agreement cells
-        (``min(p_active, pose_score)``) land top-left.
-
-        Args:
-            ml_job: A completed ``method="ligand-ml"`` run.
-            dock_job: A completed ``method="docking"`` run.
-            ml_dto: Optional execution payload for ``ml_job.get_results()``.
-            dock_dto: Optional execution payload for ``dock_job.get_results()``.
-            pose_score_clim: Override the window :data:`_POSE_SCORE_CLIM`
-                used to rescale ``pose_score`` onto 0-1. A ``pose_score``
-                outside this window still renders, clipped to 0 or 1 -- a
-                console note reports how many, if any.
-            coverage: ``"union"`` (default) shows every ligand and target
-                either run covered, grey where only one has data.
-                ``"intersection"`` shows only ligands and targets both
-                runs covered -- no grey cells from a target/ligand only
-                one method ever looked at.
-
-        Raises:
-            ValueError: If either job isn't the expected method, or
-                ``coverage="intersection"`` leaves nothing to plot.
-        """
-        if ml_job.method != "ligand-ml":
-            raise ValueError(
-                "plot_ml_vs_docking()'s first argument must be a method='ligand-ml' run."
-            )
-        if dock_job.method != "docking":
-            raise ValueError(
-                "plot_ml_vs_docking()'s second argument must be a method='docking' run."
-            )
-
-        ml_df = ml_job.get_results(ml_dto)
-        dock_df = dock_job.get_results(dock_dto)
-
-        labels = _ligand_plot_labels(list(ml_job.ligands) + list(dock_job.ligands))
-        ml_label = ml_df["ligand_smiles"].map(lambda s: labels.get(s, s))
-        dock_label = dock_df["ligand_smiles"].map(lambda s: labels.get(s, s))
-
-        ml_score = ml_df["p_active"].fillna(ml_df["p_affinity"])
-        ml_pivot = ml_df.assign(score=ml_score, ligand_label=ml_label).pivot_table(
-            index="ligand_label", columns="gene_name", values="score"
-        )
-        # Rescale pose_score from its real observed range onto 0-1, so it's
-        # on the same scale as p_active rather than compressed into a
-        # narrow band of it.
-        pose_lo, pose_hi = pose_score_clim or _POSE_SCORE_CLIM
-        dock_score_unclipped = (dock_df["pose_score"] - pose_lo) / (pose_hi - pose_lo)
-        n_clipped = int(
-            ((dock_score_unclipped < 0.0) | (dock_score_unclipped > 1.0)).sum()
-        )
-        if n_clipped:
-            print(
-                f"Note: {n_clipped} of {len(dock_score_unclipped)} pose_score "
-                f"value(s) fell outside the ({pose_lo}, {pose_hi}) rescaling "
-                "window and were clipped to 0 or 1."
-            )
-        dock_score = dock_score_unclipped.clip(0.0, 1.0)
-        dock_pivot = dock_df.assign(
-            score=dock_score, ligand_label=dock_label
-        ).pivot_table(index="ligand_label", columns="gene_name", values="score")
-
-        if coverage == "intersection":
-            dock_rows = set(dock_pivot.index)
-            dock_cols = set(dock_pivot.columns)
-            row_labels = [r for r in ml_pivot.index if r in dock_rows]
-            col_labels = [c for c in ml_pivot.columns if c in dock_cols]
-            if not row_labels or not col_labels:
-                raise ValueError(
-                    "coverage='intersection': ml_job and dock_job share no "
-                    "ligand/target in common -- nothing to plot."
-                )
-        else:
-            row_labels = list(dict.fromkeys([*ml_pivot.index, *dock_pivot.index]))
-            col_labels = list(dict.fromkeys([*ml_pivot.columns, *dock_pivot.columns]))
-
-        matrix_a = ml_pivot.reindex(index=row_labels, columns=col_labels).to_numpy()
-        matrix_b = dock_pivot.reindex(index=row_labels, columns=col_labels).to_numpy()
-
-        # Sort so the strongest dual-agreement cells land top-left. -inf (not
-        # 0) for a missing half: a cell docking never touched shouldn't rank
-        # as a confirmed non-hit, it should just not compete for the corner.
-        agreement = np.where(
-            np.isnan(matrix_a) | np.isnan(matrix_b),
-            -np.inf,
-            np.minimum(matrix_a, matrix_b),
-        )
-        row_order = np.argsort(-agreement.max(axis=1), kind="stable")
-        col_order = np.argsort(-agreement.max(axis=0), kind="stable")
-
-        matrix_a = matrix_a[row_order][:, col_order]
-        matrix_b = matrix_b[row_order][:, col_order]
-        row_labels = [row_labels[i] for i in row_order]
-        col_labels = [col_labels[j] for j in col_order]
-
-        from deeporigin.plots import plot_split_heatmap
-
-        plot_split_heatmap(
-            matrix_a,
-            matrix_b,
-            row_labels=row_labels,
-            col_labels=col_labels,
-            title="Secondary pharmacology: ligand-ML vs docking",
-            label_a="p_active",
-            label_b="pose_score (rescaled)",
-            clim_labels=("No hit", "Hit"),
-        )
