@@ -1,6 +1,7 @@
 from datetime import datetime, timezone
 from typing import Any, cast
 from unittest.mock import MagicMock
+import warnings
 
 import pandas as pd
 import pytest
@@ -213,6 +214,69 @@ def test_execution_from_last_run_hydrates_latest() -> None:
     )
     assert instance.id == "exec-latest"
     assert instance.status == "Completed"
+
+
+class _WarningOnRehydrateExecution(_TestToolExecution):
+    """A from_dto() that always warns, to test the quiet= kwarg's plumbing."""
+
+    @classmethod
+    def from_dto(cls, dto: dict[str, Any], *, client: Any = None) -> Any:
+        warnings.warn("rehydration side effect", UserWarning, stacklevel=2)
+        return super().from_dto(dto, client=client)
+
+
+def _dto_for(exec_id: str) -> dict[str, Any]:
+    return {
+        "executionId": exec_id,
+        "tool": {"key": "deeporigin.test-sync-tool", "version": "1.0.0"},
+        "status": "Succeeded",
+        "createdAt": "2026-06-04T12:00:00.000Z",
+    }
+
+
+def test_execution_quiet_defaults_off_preserving_old_behavior() -> None:
+    """``quiet`` defaults to False on the base class -- from_dto()'s own
+    warnings pass through unless a caller (or a subclass overriding the
+    default) explicitly asks for quiet=True.
+
+    Regression guard for a design correction: rehydration-warning
+    suppression must be opt-in per call/subclass, not silently applied to
+    every Execution subclass by default -- other tools' from_dto()
+    warnings are their own business, not this base class's to hide.
+    """
+    client = MagicMock()
+    client.executions.get.return_value = _dto_for("exec-1")
+    client.executions.list.return_value = {"data": [_dto_for("exec-1")]}
+
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        _WarningOnRehydrateExecution.from_id("exec-1", client=client)
+    assert any(issubclass(w.category, UserWarning) for w in caught)
+
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        _WarningOnRehydrateExecution.from_last_run(client=client)
+    assert any(issubclass(w.category, UserWarning) for w in caught)
+
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        _WarningOnRehydrateExecution.list(client=client)
+    assert any(issubclass(w.category, UserWarning) for w in caught)
+
+
+def test_execution_quiet_true_suppresses_rehydration_warnings() -> None:
+    """``quiet=True`` opts a specific call into warning suppression."""
+    client = MagicMock()
+    client.executions.get.return_value = _dto_for("exec-1")
+    client.executions.list.return_value = {"data": [_dto_for("exec-1")]}
+
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        _WarningOnRehydrateExecution.from_id("exec-1", client=client, quiet=True)
+        _WarningOnRehydrateExecution.from_last_run(client=client, quiet=True)
+        _WarningOnRehydrateExecution.list(client=client, quiet=True)
+
+    assert not any(issubclass(w.category, UserWarning) for w in caught)
 
 
 def test_execution_list_orders_newest_first_and_scopes_by_project() -> None:

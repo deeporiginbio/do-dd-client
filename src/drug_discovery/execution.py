@@ -28,6 +28,7 @@ import builtins
 import copy
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Any, ClassVar, Literal, Self
+import warnings
 
 from deeporigin.platform.constants import (
     ALLOWED_STATUS_TRANSITIONS,
@@ -619,7 +620,26 @@ class Execution:
         return instance
 
     @classmethod
-    def from_id(cls, id: str, *, client: DeepOriginClient | None = None) -> Self:
+    def _from_dto_maybe_quiet(
+        cls, dto: dict[str, Any], *, client: DeepOriginClient, quiet: bool
+    ) -> Self:
+        """``from_dto()``, optionally with UserWarnings suppressed.
+
+        Used by :meth:`from_id`, :meth:`from_last_run`, and :meth:`list`.
+        Rebuilding domain state from stored inputs (e.g. a subclass
+        reconstructing ``Ligand`` objects) can emit warnings as a side
+        effect (chemistry normalization, etc.); ``quiet=True`` hides them.
+        """
+        if not quiet:
+            return cls.from_dto(dto, client=client)
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", UserWarning)
+            return cls.from_dto(dto, client=client)
+
+    @classmethod
+    def from_id(
+        cls, id: str, *, client: DeepOriginClient | None = None, quiet: bool = False
+    ) -> Self:
         """Construct an instance from an existing platform execution ID.
 
         Fetches the execution DTO via ``client.executions.get`` and delegates to
@@ -629,6 +649,9 @@ class Execution:
         Args:
             id: Platform execution ID.
             client: Optional API client. Uses the default if not provided.
+            quiet: Suppress UserWarnings raised while rebuilding domain
+                state (e.g. chemistry normalization notices). Off by
+                default; a subclass known to be noisy can default it on.
 
         Returns:
             A partially-hydrated instance with common fields populated.
@@ -647,10 +670,12 @@ class Execution:
             client = DeepOriginClient()
 
         dto = client.executions.get(id)  # ty:ignore[unresolved-attribute]
-        return cls.from_dto(dto, client=client)
+        return cls._from_dto_maybe_quiet(dto, client=client, quiet=quiet)
 
     @classmethod
-    def from_last_run(cls, *, client: DeepOriginClient | None = None) -> Self:
+    def from_last_run(
+        cls, *, client: DeepOriginClient | None = None, quiet: bool = False
+    ) -> Self:
         """Construct an instance from the most recently created execution of this tool.
 
         Calls ``client.executions.list`` with ``tool_key``, ``order`` set to
@@ -661,6 +686,8 @@ class Execution:
 
         Args:
             client: Optional API client. Uses the default if not provided.
+            quiet: Suppress UserWarnings raised while rebuilding domain
+                state. Off by default; see :meth:`from_id`.
 
         Returns:
             A partially-hydrated instance for the newest execution by
@@ -691,7 +718,7 @@ class Execution:
             raise ValueError(
                 f"No executions found for {cls.__qualname__} (tool_key={cls.tool_key!r})."
             )
-        return cls.from_dto(dtos[0], client=client)
+        return cls._from_dto_maybe_quiet(dtos[0], client=client, quiet=quiet)
 
     @classmethod
     def list(
@@ -700,6 +727,7 @@ class Execution:
         client: DeepOriginClient | None = None,
         status: builtins.list[str] | None = None,
         project_id: str | None = None,
+        quiet: bool = False,
     ) -> builtins.list[Self]:
         """List executions of this tool, newest first.
 
@@ -708,6 +736,8 @@ class Execution:
             status: Optional list of statuses to keep.
             project_id: Restrict to this project; omit to see every
                 execution the caller can access, across all projects.
+            quiet: Suppress UserWarnings raised while rebuilding domain
+                state for each result. Off by default; see :meth:`from_id`.
 
         Returns:
             Instances of this class, newest first.
@@ -735,7 +765,10 @@ class Execution:
             dto for dto in all_dtos if dto.get("tool", {}).get("key") == cls.tool_key
         ]
 
-        instances = [cls.from_dto(dto, client=client) for dto in all_dtos]
+        instances = [
+            cls._from_dto_maybe_quiet(dto, client=client, quiet=quiet)
+            for dto in all_dtos
+        ]
 
         if status is not None:
             instances = [i for i in instances if i.status in status]
