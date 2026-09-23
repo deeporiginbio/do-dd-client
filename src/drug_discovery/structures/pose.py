@@ -7,8 +7,6 @@ from html import escape
 from pathlib import Path
 from typing import Any, ClassVar, Literal, Optional, Self
 
-PoseOrigin = Literal["cocrystal", "docked", "registered"]
-
 from beartype import beartype
 import pandas as pd
 from rdkit import Chem
@@ -22,6 +20,8 @@ from deeporigin.drug_discovery.structures.ligand import (
 from deeporigin.exceptions import DeepOriginException
 from deeporigin.platform.client import DeepOriginClient
 from deeporigin.platform.constants import TOOL_KEYS_AND_VERSIONS
+
+PoseOrigin = Literal["cocrystal", "docked", "registered"]
 
 _POSE_JSON_RESERVED: frozenset[str] = frozenset(
     {
