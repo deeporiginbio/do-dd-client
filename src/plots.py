@@ -8,6 +8,7 @@ from bokeh.models import (
     BasicTicker,
     ColorBar,
     ColumnDataSource,
+    FixedTicker,
     HoverTool,
     LinearColorMapper,
     PrintfTickFormatter,
@@ -78,6 +79,25 @@ def _auto_color_range(
         delta = 1e-6 if vmin == 0 else abs(vmin) * 1e-6
         vmin, vmax = vmin - delta, vmax + delta
     return vmin, vmax
+
+
+def _warn_clipped_values(
+    values: np.ndarray, clim: tuple[float, float], *, label: str = "value"
+) -> None:
+    """Print a note if any finite value falls outside a fixed *clim*.
+
+    A fixed color range clips out-of-range values to the nearest edge
+    color silently -- this makes that visible instead.
+    """
+    vmin, vmax = clim
+    finite = values[np.isfinite(values)]
+    n_out = int(np.sum((finite < vmin) | (finite > vmax)))
+    if n_out:
+        print(
+            f"Note: {n_out} of {finite.size} {label} value(s) fall outside "
+            f"the fixed color range ({vmin}, {vmax}) and render as the "
+            "nearest edge color."
+        )
 
 
 def _triangle_grid_source(
@@ -322,6 +342,8 @@ def plot_grid_heatmap(
     col_labels = _resolve_labels(
         n_cols, col_labels, param_name="col_labels", shape_desc="values.shape[1]"
     )
+    if clim is not None:
+        _warn_clipped_values(mat, clim, label=value_label)
     vmin, vmax = _auto_color_range(mat, clim)
 
     xs, ys, vals, ii, jj = [], [], [], [], []
@@ -409,6 +431,7 @@ def plot_split_heatmap(
     label_b: str = "B",
     palette=WHITE_RED_HAZARD_PALETTE,
     clim: tuple[float, float] = (0.0, 1.0),
+    clim_labels: Optional[tuple[str, str]] = None,
     width: int = 900,
     height: int = 500,
 ):
@@ -433,6 +456,10 @@ def plot_split_heatmap(
     clim : tuple[float, float]
         Fixed color limits (vmin, vmax) -- not auto-scaled, so both halves
         stay comparable.
+    clim_labels : tuple[str, str], optional
+        Replace the colorbar's numeric ticks with these two labels at
+        (vmin, vmax), e.g. ("No hit", "Hit"). Default shows the numeric
+        vmin/vmax.
     width, height : int
         Figure size in pixels.
 
@@ -463,6 +490,8 @@ def plot_split_heatmap(
     )
 
     vmin, vmax = clim
+    _warn_clipped_values(mat_a, clim, label=label_a)
+    _warn_clipped_values(mat_b, clim, label=label_b)
     mapper = LinearColorMapper(palette=palette, low=vmin, high=vmax)
 
     source_a = _triangle_grid_source(mat_a, row_labels, col_labels, upper=True)
@@ -528,13 +557,23 @@ def plot_split_heatmap(
         )
     )
 
-    color_bar = ColorBar(
-        color_mapper=mapper,
-        location=(0, 0),
-        ticker=BasicTicker(desired_num_ticks=8),
-        formatter=PrintfTickFormatter(format="%.3f"),
-        label_standoff=8,
-    )
+    if clim_labels is not None:
+        low_label, high_label = clim_labels
+        color_bar = ColorBar(
+            color_mapper=mapper,
+            location=(0, 0),
+            ticker=FixedTicker(ticks=[vmin, vmax]),
+            major_label_overrides={vmin: low_label, vmax: high_label},
+            label_standoff=8,
+        )
+    else:
+        color_bar = ColorBar(
+            color_mapper=mapper,
+            location=(0, 0),
+            ticker=BasicTicker(desired_num_ticks=8),
+            formatter=PrintfTickFormatter(format="%.3f"),
+            label_standoff=8,
+        )
     p.add_layout(color_bar, "right")
 
     p.xaxis.ticker = [j + 0.5 for j in range(n_cols)]

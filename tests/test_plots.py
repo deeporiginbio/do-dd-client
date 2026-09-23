@@ -685,6 +685,28 @@ def test_plot_grid_heatmap_x_axis_at_bottom():
         assert figure.xaxis[0] not in figure.above
 
 
+def test_plot_grid_heatmap_clim_prints_note_when_values_clipped(capsys):
+    """A fixed clim narrower than the data prints how many values got clipped."""
+    values = np.array([[0.2, 0.6, 0.95]])
+
+    with patch("deeporigin.plots.show"):
+        plot_grid_heatmap(values, clim=(0.5, 0.9), value_label="pose score")
+
+    out = capsys.readouterr().out
+    assert "2 of 3 pose score value(s)" in out
+    assert "(0.5, 0.9)" in out
+
+
+def test_plot_grid_heatmap_auto_clim_prints_no_note(capsys):
+    """Auto-scaled (clim=None) never clips, so no note is printed."""
+    values = np.array([[0.2, 0.6, 0.95]])
+
+    with patch("deeporigin.plots.show"):
+        plot_grid_heatmap(values)
+
+    assert capsys.readouterr().out == ""
+
+
 def test_white_red_hazard_palette_matches_platform_ui_stops():
     """The hazard palette's endpoints/midpoint match platform-ui's WhiteRed scale exactly."""
     from deeporigin.plots import WHITE_RED_HAZARD_PALETTE
@@ -746,3 +768,57 @@ def test_plot_split_heatmap_fixed_clim_not_auto_scaled():
     mapper = figure.select_one({"type": LinearColorMapper})
     assert mapper.low == 0.0
     assert mapper.high == 1.0
+
+
+def test_plot_split_heatmap_clim_labels_override_numeric_ticks():
+    """clim_labels replaces the colorbar's numeric ticks with text at the extremes."""
+    from bokeh.models import ColorBar
+
+    from deeporigin.plots import plot_split_heatmap
+
+    values_a = np.array([[0.9]])
+    values_b = np.array([[0.1]])
+
+    with patch("deeporigin.plots.show") as mock_show:
+        plot_split_heatmap(
+            values_a, values_b, clim=(0.0, 1.0), clim_labels=("No hit", "Hit")
+        )
+        figure = mock_show.call_args[0][0]
+
+    color_bar = next(r for r in figure.right if isinstance(r, ColorBar))
+    assert color_bar.major_label_overrides == {0.0: "No hit", 1.0: "Hit"}
+
+
+def test_plot_split_heatmap_no_clim_labels_keeps_numeric_ticks():
+    """Without clim_labels, the colorbar keeps its default numeric formatter."""
+    from bokeh.models import ColorBar
+
+    from deeporigin.plots import plot_split_heatmap
+
+    with patch("deeporigin.plots.show") as mock_show:
+        plot_split_heatmap(np.array([[0.9]]), np.array([[0.1]]), clim=(0.0, 1.0))
+        figure = mock_show.call_args[0][0]
+
+    color_bar = next(r for r in figure.right if isinstance(r, ColorBar))
+    assert color_bar.major_label_overrides == {}
+
+
+def test_plot_split_heatmap_clim_prints_note_per_half_when_clipped(capsys):
+    """Each half's out-of-range count is reported separately, by its own label."""
+    from deeporigin.plots import plot_split_heatmap
+
+    values_a = np.array([[1.5]])  # out of (0, 1)
+    values_b = np.array([[0.5]])  # in range
+
+    with patch("deeporigin.plots.show"):
+        plot_split_heatmap(
+            values_a,
+            values_b,
+            clim=(0.0, 1.0),
+            label_a="p_active",
+            label_b="pose_score",
+        )
+
+    out = capsys.readouterr().out
+    assert "1 of 1 p_active value(s)" in out
+    assert "pose_score" not in out
