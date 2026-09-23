@@ -104,7 +104,9 @@ Compare a ligand-ml run against a docking run on one heatmap with
 `SecondaryPharmacology.plot_ml_vs_docking(ml_job, dock_job)` -- a
 `staticmethod` since it needs both. `pose_score` is rescaled onto the same
 0-1 scale as `p_active` for this comparison; override the rescaling window
-with `pose_score_clim=(low, high)`.
+with `pose_score_clim=(low, high)`. By default the heatmap shows every
+ligand/target either run covered (`coverage="union"`, grey where only one
+has data); pass `coverage="intersection"` to show only what both covered.
 
 Currently no batching is supported for the docking path (unlike `deeporigin.docking`'s `batchSize`)
 and it runs as a single job with a fixed resource/time budget for the entire ligand set.

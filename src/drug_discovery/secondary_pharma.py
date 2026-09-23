@@ -1050,6 +1050,7 @@ class SecondaryPharmacology(
         ml_dto: dict[str, Any] | None = None,
         dock_dto: dict[str, Any] | None = None,
         pose_score_clim: tuple[float, float] | None = None,
+        coverage: Literal["union", "intersection"] = "union",
     ) -> None:
         """Compare a ligand-ml run against a docking run on one heatmap.
 
@@ -1058,9 +1059,8 @@ class SecondaryPharmacology(
         where a run has no data for that cell. The colorbar is labeled
         "No hit"/"Hit" rather than 0/1.
 
-        Rows/columns are the union of both runs' ligands/targets, sorted so
-        the strongest dual-agreement cells (``min(p_active, pose_score)``)
-        land top-left.
+        Rows/columns are sorted so the strongest dual-agreement cells
+        (``min(p_active, pose_score)``) land top-left.
 
         Args:
             ml_job: A completed ``method="ligand-ml"`` run.
@@ -1071,9 +1071,15 @@ class SecondaryPharmacology(
                 used to rescale ``pose_score`` onto 0-1. A ``pose_score``
                 outside this window still renders, clipped to 0 or 1 -- a
                 console note reports how many, if any.
+            coverage: ``"union"`` (default) shows every ligand and target
+                either run covered, grey where only one has data.
+                ``"intersection"`` shows only ligands and targets both
+                runs covered -- no grey cells from a target/ligand only
+                one method ever looked at.
 
         Raises:
-            ValueError: If either job isn't the expected method.
+            ValueError: If either job isn't the expected method, or
+                ``coverage="intersection"`` leaves nothing to plot.
         """
         if ml_job.method != "ligand-ml":
             raise ValueError(
@@ -1114,8 +1120,19 @@ class SecondaryPharmacology(
             score=dock_score, ligand_label=dock_label
         ).pivot_table(index="ligand_label", columns="gene_name", values="score")
 
-        row_labels = list(dict.fromkeys([*ml_pivot.index, *dock_pivot.index]))
-        col_labels = list(dict.fromkeys([*ml_pivot.columns, *dock_pivot.columns]))
+        if coverage == "intersection":
+            dock_rows = set(dock_pivot.index)
+            dock_cols = set(dock_pivot.columns)
+            row_labels = [r for r in ml_pivot.index if r in dock_rows]
+            col_labels = [c for c in ml_pivot.columns if c in dock_cols]
+            if not row_labels or not col_labels:
+                raise ValueError(
+                    "coverage='intersection': ml_job and dock_job share no "
+                    "ligand/target in common -- nothing to plot."
+                )
+        else:
+            row_labels = list(dict.fromkeys([*ml_pivot.index, *dock_pivot.index]))
+            col_labels = list(dict.fromkeys([*ml_pivot.columns, *dock_pivot.columns]))
 
         matrix_a = ml_pivot.reindex(index=row_labels, columns=col_labels).to_numpy()
         matrix_b = dock_pivot.reindex(index=row_labels, columns=col_labels).to_numpy()

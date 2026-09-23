@@ -1052,3 +1052,101 @@ def test_plot_ml_vs_docking_pose_score_clim_override_and_clip_note(
     ]
     _ml_values, dock_values = (r.data_source.data["value"] for r in patch_renderers)
     assert dock_values[0] == 0.0, "below the window's low end, clipped to 0"
+
+
+def test_plot_ml_vs_docking_coverage_intersection_excludes_uncovered_targets(
+    client: DeepOriginClient,
+) -> None:
+    """coverage="intersection" keeps only targets/ligands both runs covered.
+
+    ml_job scores the full panel; dock_job only one target -- with the
+    default (union), every panel target shows up, grey on the docking
+    half where it never ran. With coverage="intersection", only that one
+    shared target appears at all.
+    """
+    _assert_tool_available(client)
+    client.files.upload(
+        local_path=BRD_DATA_DIR / "brd-2.sdf",
+        remote_path=MOCK_SECONDARY_PHARMA_POSE_SDF_PATH,
+    )
+    ligand = Ligand.from_smiles("CCO", name="ethanol")
+
+    ml_job = SecondaryPharmacology(ligands=[ligand], method="ligand-ml", client=client)
+    ml_job.run()
+
+    dock_job = SecondaryPharmacology(
+        ligands=[ligand],
+        method="docking",
+        uniprots=[_PANEL_ACCESSIONS[0]],
+        client=client,
+    )
+    dock_job.start()
+    elapsed = 0.0
+    while elapsed < 5.0:
+        dock_job.sync()
+        if dock_job.status in TERMINAL_STATES:
+            break
+        time.sleep(0.05)
+        elapsed += 0.05
+    assert is_success_status(dock_job.status)
+
+    with patch("deeporigin.plots.show") as mock_show:
+        SecondaryPharmacology.plot_ml_vs_docking(
+            ml_job, dock_job, coverage="intersection"
+        )
+        figure = mock_show.call_args[0][0]
+
+    expected_gene = next(
+        gene
+        for accession, gene, _ in MOCK_SECONDARY_PHARMA_PANEL
+        if accession == _PANEL_ACCESSIONS[0]
+    )
+    target_labels = set(figure.xaxis[0].major_label_overrides.values())
+    assert target_labels == {expected_gene}
+
+    patch_renderers = [
+        r for r in figure.renderers if r.glyph.__class__.__name__ == "Patches"
+    ]
+    ml_values, dock_values = (r.data_source.data["value"] for r in patch_renderers)
+    assert len(ml_values) == 1, "union's grey cells from other targets are gone"
+    assert len(dock_values) == 1
+
+
+def test_plot_ml_vs_docking_coverage_intersection_raises_when_no_overlap(
+    client: DeepOriginClient,
+) -> None:
+    """coverage="intersection" raises a clear error when the two runs share
+    no ligand at all, rather than plotting an empty grid."""
+    _assert_tool_available(client)
+    client.files.upload(
+        local_path=BRD_DATA_DIR / "brd-2.sdf",
+        remote_path=MOCK_SECONDARY_PHARMA_POSE_SDF_PATH,
+    )
+
+    ml_job = SecondaryPharmacology(
+        ligands=[Ligand.from_smiles("CCO", name="ethanol")],
+        method="ligand-ml",
+        client=client,
+    )
+    ml_job.run()
+
+    dock_job = SecondaryPharmacology(
+        ligands=[Ligand.from_smiles("CCN", name="ethylamine")],
+        method="docking",
+        uniprots=[_PANEL_ACCESSIONS[0]],
+        client=client,
+    )
+    dock_job.start()
+    elapsed = 0.0
+    while elapsed < 5.0:
+        dock_job.sync()
+        if dock_job.status in TERMINAL_STATES:
+            break
+        time.sleep(0.05)
+        elapsed += 0.05
+    assert is_success_status(dock_job.status)
+
+    with pytest.raises(ValueError, match="share no ligand/target"):
+        SecondaryPharmacology.plot_ml_vs_docking(
+            ml_job, dock_job, coverage="intersection"
+        )
