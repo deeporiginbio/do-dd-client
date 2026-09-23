@@ -3,8 +3,8 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from html import escape
 from pathlib import Path
+import time
 from typing import Any, ClassVar, Literal, Optional, Self
 
 from beartype import beartype
@@ -17,11 +17,18 @@ from deeporigin.drug_discovery.structures.ligand import (
     LigandSet,
     _first_valid_mol_from_sdf,
 )
+from deeporigin.drug_discovery.structures.repr_display import (
+    REPR_INNER_INDENT,
+    fetch_project_display_name,
+    metadata_repr_html,
+)
 from deeporigin.exceptions import DeepOriginException
 from deeporigin.platform.client import DeepOriginClient
-from deeporigin.platform.constants import TOOL_KEYS_AND_VERSIONS
 
 PoseOrigin = Literal["cocrystal", "docked", "registered"]
+
+_POSE_RESULT_ID_POLL_SECONDS = 15.0
+_POSE_RESULT_ID_POLL_INTERVAL = 0.5
 
 _POSE_JSON_RESERVED: frozenset[str] = frozenset(
     {
@@ -163,6 +170,8 @@ class Pose(Entity):
     :class:`~deeporigin.drug_discovery.structures.ligand.Ligand` identity.
 
     Attributes:
+        id: Platform pose result id (inherited from :class:`Entity`, keyword-only).
+            Set by :meth:`sync` or when loading via :meth:`from_id` / :meth:`from_json`.
         ligand_id: Parent ligand id in the ligands table.
         smiles: Canonical or input SMILES when known without loading the SDF.
         name: Optional pose or ligand name.
@@ -191,6 +200,7 @@ class Pose(Entity):
 
     _remote_path_base: ClassVar[str] = "entities/poses/"
     _preferred_ext: ClassVar[str] = ".sdf"
+    _project_name: str | None = field(default=None, repr=False, compare=False)
 
     @property
     def mol(self) -> Chem.Mol | None:
@@ -273,6 +283,8 @@ class Pose(Entity):
         """Register this pose via import-dataset ``process_sdf`` (single-record SDF).
 
         Requires :attr:`protein_id`, ``project_id``, and a local or exportable structure.
+        On success, sets :attr:`id` to the platform pose result row id (and may set
+        :attr:`ligand_id` when the tool mints a new ligand).
         """
         PoseSet(poses=[self]).sync(
             lazy=lazy,
@@ -566,10 +578,20 @@ class Pose(Entity):
         """Visualize this pose in a notebook (Mol* viewer via :meth:`Ligand.show`)."""
         return self.to_ligand().show()
 
-    def _repr_rows(self) -> list[tuple[str, str]]:
-        """Return ``(label, value)`` rows for text and HTML display."""
+    def _display_project_name(self) -> str:
+        """Human-readable project name for repr (cached on ``_project_name``)."""
+        display, cached = fetch_project_display_name(
+            self.project_id,
+            self._project_name,
+        )
+        if cached and not self._project_name:
+            self._project_name = cached
+        return display
 
-        rows: list[tuple[str, str]] = []
+    def _metadata_fields(self) -> list[tuple[str, str]]:
+        """``(label, value)`` pairs for text and HTML display (no file paths)."""
+
+        rows: list[tuple[str, str]] = [("id", self.id or "")]
 
         def add(label: str, value: Any) -> None:
             if value is None:
@@ -578,7 +600,6 @@ class Pose(Entity):
                 return
             rows.append((label, str(value)))
 
-        add("id", self.id)
         add("ligand_id", self.ligand_id)
         add("protein_id", self.protein_id)
         add("origin", self.origin)
@@ -596,51 +617,39 @@ class Pose(Entity):
             add("binding_energy", self.binding_energy)
         if self.best_pose is not None:
             add("best_pose", self.best_pose)
-        add("project_id", self.project_id)
+        project = self._display_project_name()
+        if project:
+            add("project", project)
         if self.props:
             for key in sorted(self.props):
                 add(f"props.{key}", self.props[key])
         return rows
 
-    def __repr__(self) -> str:
-        """Return a table of pose metadata (no structure viewer)."""
-        from tabulate import tabulate
+    def _metadata_repr_lines(self) -> list[str]:
+        indent = REPR_INNER_INDENT
+        lines = ["Pose("]
+        for label, value in self._metadata_fields():
+            lines.append(f"{indent}{label}: {value}")
+        lines.append(")")
+        return lines
 
-        return "Pose\n" + tabulate(
-            self._repr_rows(),
-            headers=["Field", "Value"],
-            tablefmt="rounded_grid",
-        )
+    def _metadata_repr_text(self) -> str:
+        """Plain-text summary shared by ``__repr__``, ``__str__``, and ``_repr_html_``."""
+        return "\n".join(self._metadata_repr_lines())
+
+    def _metadata_repr_html(self) -> str:
+        """Notebook HTML for the same plain-text summary."""
+        return metadata_repr_html(self._metadata_repr_text())
+
+    def __repr__(self) -> str:
+        """Return a plain-text pose summary (no structure viewer)."""
+        return self._metadata_repr_text()
 
     __str__ = __repr__
 
     def _repr_html_(self) -> str:
-        """Return an HTML metadata table for Jupyter (no Mol* viewer)."""
-        header = (
-            "<tr>"
-            "<th style='text-align:left;padding:4px 16px 4px 0'>Field</th>"
-            "<th style='text-align:left;padding:4px 0'>Value</th>"
-            "</tr>"
-        )
-        body_parts: list[str] = []
-        for name, value in self._repr_rows():
-            body_parts.append(
-                "<tr>"
-                "<td style='padding:4px 16px 4px 0;font-family:ui-monospace,"
-                "SFMono-Regular,Menlo,monospace;white-space:nowrap'>"
-                f"{escape(name, quote=False)}</td>"
-                "<td style='padding:4px 0;font-family:ui-monospace,"
-                "SFMono-Regular,Menlo,monospace'>"
-                f"{escape(value, quote=False)}</td>"
-                "</tr>"
-            )
-        return (
-            "<div>"
-            "<div style='font-weight:600;margin-bottom:4px'>Pose</div>"
-            "<table style='border-collapse:collapse'>"
-            f"<thead>{header}</thead><tbody>{''.join(body_parts)}</tbody>"
-            "</table></div>"
-        )
+        """Return plain-text pose metadata for Jupyter (no Mol* viewer)."""
+        return self._metadata_repr_html()
 
 
 def _rehydrate_pose_from_local_sdf(
@@ -782,6 +791,26 @@ def _matches_registered_pose_row(
     return False
 
 
+def _apply_platform_pose_row(pose: Pose, row: dict[str, Any]) -> None:
+    """Copy import-dataset / result-explorer pose fields onto a :class:`Pose`."""
+
+    if not row:
+        return
+    rid = row.get("id")
+    if rid:
+        pose.id = str(rid)
+    file_path = row.get("file_path")
+    if file_path:
+        pose.remote_path = str(file_path)
+    lid = row.get("ligand_id")
+    if lid:
+        pose.ligand_id = str(lid)
+    if row.get("protein_id"):
+        pose.protein_id = str(row["protein_id"])
+    if row.get("origin"):
+        pose.origin = str(row["origin"])
+
+
 def _resolve_registered_pose_row(
     *,
     client: DeepOriginClient,
@@ -814,8 +843,34 @@ def _resolve_registered_pose_row(
     return fallback
 
 
+def _resolve_registered_pose_row_with_poll(
+    *,
+    client: DeepOriginClient,
+    ligand_id: str,
+    file_path: str | None,
+    origin: str,
+    fallback: dict[str, Any],
+) -> dict[str, Any]:
+    """Poll result-explorer until a pose id appears (served import-dataset path)."""
+
+    deadline = time.monotonic() + _POSE_RESULT_ID_POLL_SECONDS
+    row = fallback
+    while True:
+        row = _resolve_registered_pose_row(
+            client=client,
+            ligand_id=ligand_id,
+            file_path=file_path,
+            origin=origin,
+            fallback=fallback,
+        )
+        if row.get("id"):
+            return row
+        if time.monotonic() >= deadline:
+            return row
+        time.sleep(_POSE_RESULT_ID_POLL_INTERVAL)
+
+
 @dataclass
-@beartype
 class PoseSet:
     """Collection of :class:`Pose` objects."""
 
@@ -988,9 +1043,7 @@ class PoseSet:
         if not self.poses:
             return
         poses_to_sync = (
-            [p for p in self.poses if p.id is None]
-            if lazy
-            else list(self.poses)
+            [p for p in self.poses if p.id is None] if lazy else list(self.poses)
         )
         if not poses_to_sync:
             return
@@ -1017,7 +1070,6 @@ class PoseSet:
         proj_id = require_project_id(
             entity_project_id=poses_to_sync[0].resolved_project_id(client=client),
             client=client,
-            entity_label="PoseSet",
         )
         for pose in poses_to_sync:
             pose.project_id = proj_id
@@ -1046,6 +1098,7 @@ class PoseSet:
         if not isinstance(pose_rows, list):
             pose_rows = []
 
+        origin = str(poses_to_sync[0].origin or "registered")
         for idx, pose in enumerate(poses_to_sync):
             if idx < len(ligand_rows) and isinstance(ligand_rows[idx], dict):
                 lid = ligand_rows[idx].get("id")
@@ -1054,12 +1107,21 @@ class PoseSet:
                 mol_file = ligand_rows[idx].get("mol_file")
                 if mol_file:
                     pose.remote_path = str(mol_file)
-            if idx < len(pose_rows) and isinstance(pose_rows[idx], dict):
-                prow = pose_rows[idx]
-                if prow.get("id"):
-                    pose.id = str(prow["id"])
-                if prow.get("file_path"):
-                    pose.remote_path = str(prow["file_path"])
+            prow: dict[str, Any] = (
+                dict(pose_rows[idx])
+                if idx < len(pose_rows) and isinstance(pose_rows[idx], dict)
+                else {}
+            )
+            _apply_platform_pose_row(pose, prow)
+            if pose.id is None and pose.ligand_id:
+                resolved = _resolve_registered_pose_row_with_poll(
+                    client=client,
+                    ligand_id=pose.ligand_id,
+                    file_path=prow.get("file_path") or pose.remote_path,
+                    origin=origin,
+                    fallback=prow,
+                )
+                _apply_platform_pose_row(pose, resolved)
 
     def filter_top_poses(self, *, by_pose_score: bool = True) -> Self:
         """Keep the best pose for each unique SMILES.

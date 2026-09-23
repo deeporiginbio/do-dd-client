@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
-import uuid
 from pathlib import Path
 from typing import Any, Optional
+import uuid
 
 from deeporigin.exceptions import DeepOriginException
 from deeporigin.platform.client import DeepOriginClient
@@ -52,7 +52,6 @@ def require_project_id(
     *,
     entity_project_id: str | None,
     client: DeepOriginClient,
-    entity_label: str,
 ) -> str:
     """Resolve and validate project scope for entity sync."""
     proj = entity_project_id
@@ -60,10 +59,8 @@ def require_project_id(
         proj = client.project_id
     if proj is None or not str(proj).strip():
         raise DeepOriginException(
-            title=f"Project required for {entity_label} sync",
-            message=(
-                f"{entity_label}.sync requires entity.project_id or client.project_id."
-            ),
+            title="Project required",
+            message="sync requires entity.project_id or client.project_id.",
         )
     return str(proj).strip()
 

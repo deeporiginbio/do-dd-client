@@ -28,6 +28,11 @@ from deeporigin.utils.env import _ensure_do_folder
 from deeporigin.viz.molstar_html import render_ligand_html
 
 from .entity import Entity
+from .repr_display import (
+    REPR_INNER_INDENT,
+    fetch_project_display_name,
+    metadata_repr_html,
+)
 
 warnings.filterwarnings("ignore", category=UserWarning, module="rdkit")
 RDLogger.DisableLog("rdApp.*")  # ty:ignore[unresolved-attribute]
@@ -250,6 +255,7 @@ class Ligand(Entity):
     tpsa: float | None = None
     rule_of_5_violations: int | None = None
     sa_score: float | None = None
+    project_name: str | None = field(default=None, kw_only=True)
 
     # Additional attributes that are initialized in __post_init__
     available_for_docking: bool = field(init=False, default=True)
@@ -1570,43 +1576,45 @@ class Ligand(Entity):
         except Exception as e:
             raise DeepOriginException(f"Visualization failed: {str(e)}") from e
 
-    def _repr_html_(self) -> str | None:
-        """
-        Return the HTML representation of the object for Jupyter Notebook.
+    def _display_project_name(self) -> str:
+        """Human-readable project name for repr (cached on :attr:`project_name`)."""
+        display, cached = fetch_project_display_name(
+            self.project_id,
+            self.project_name,
+        )
+        if cached and not self.project_name:
+            self.project_name = cached
+        return display
 
-        Returns:
-            str: The HTML content.
-        """
-        try:
-            print(self.mol)
-            html = self._ligand_viewer_html()
-            from deeporigin.utils.notebook import get_notebook_environment, render_html
+    def _metadata_repr_lines(self) -> list[str]:
+        """Metadata lines for text and HTML representations (no file paths)."""
+        indent = REPR_INNER_INDENT
+        return [
+            "Ligand(",
+            f"{indent}name: {self.name or ''}",
+            f"{indent}id: {self.id or ''}",
+            f"{indent}project: {self._display_project_name()}",
+            ")",
+        ]
 
-            if get_notebook_environment() == "marimo":
-                return render_html(html)
-            return render_html(html, return_iframe_string=True)
-        except Exception as e:
-            print(f"Warning: Failed to generate HTML representation: {str(e)}")
-            return self.__str__()
+    def _metadata_repr_text(self) -> str:
+        """Plain-text summary shared by ``__repr__``, ``__str__``, and ``_repr_html_``."""
+        return "\n".join(self._metadata_repr_lines())
+
+    def _metadata_repr_html(self) -> str:
+        """Notebook HTML for the same plain-text summary."""
+        return metadata_repr_html(self._metadata_repr_text())
 
     def __str__(self) -> str:
-        info_str = f"Name: {self.name}\nSMILES: {self.smiles}\nHeavy Atoms: {self.get_heavy_atom_count()}\n"
-        if self.properties:
-            info_str += "Properties:\n"
-            for prop_name, prop_value in self.properties.items():
-                info_str += f"  {prop_name}: {prop_value}\n"
-
-        if self.xref_protein is not None:
-            info_str += (
-                f"Cross-reference Protein Chain ID: {self.xref_protein_chain_id}\n"
-            )
-            info_str += f"Cross-reference Residue ID: {self.xref_residue_id}\n"
-            info_str += f"Cross-reference Insertion Code: {self.xref_ins_code}\n"
-
-        return f"Ligand:\n  {info_str}"
+        """Return a plain-text ligand summary (no structure viewer)."""
+        return self._metadata_repr_text()
 
     def __repr__(self) -> str:
-        return self.__str__()
+        return self._metadata_repr_text()
+
+    def _repr_html_(self) -> str:
+        """Return plain-text ligand metadata for Jupyter (no Mol* viewer)."""
+        return self._metadata_repr_html()
 
     @staticmethod
     def _get_directory() -> str:
@@ -2031,6 +2039,53 @@ class LigandSet:
         """
         return self.__str__()
 
+    @staticmethod
+    def _project_display_label(project_id: str) -> str:
+        """Resolve a human-readable project label for notebook cards."""
+        from html import escape
+
+        label = escape(project_id)
+        try:
+            row = DeepOriginClient().projects.get(project_id=project_id)["data"]
+            name = row.get("name")
+            if name:
+                label = escape(str(name))
+        except DeepOriginException:
+            pass
+        return label
+
+    def _platform_summary_html_parts(self, num_ligands: int) -> list[str]:
+        """HTML fragments for platform registration and project scope."""
+        parts: list[str] = []
+
+        with_platform_id = sum(1 for ligand in self.ligands if ligand.id is not None)
+        if with_platform_id == num_ligands:
+            id_icon = "<span style='color:#198754;font-weight:bold' title='All ligands have platform IDs'>✓</span>"
+            id_detail = "all ligands registered"
+        else:
+            id_icon = "<span title='Not all ligands have platform IDs'>⚠️</span>"
+            if with_platform_id == 0:
+                id_detail = "none registered"
+            else:
+                id_detail = f"{with_platform_id} of {num_ligands} registered"
+        parts.append(
+            f"<p style='margin: 8px 0;'><strong>Platform IDs:</strong> {id_icon} {id_detail}</p>"
+        )
+
+        project_ids = {ligand.project_id for ligand in self.ligands}
+        if len(project_ids) == 1:
+            only = project_ids.pop()
+            if only is None:
+                project_line = "<em>not set</em>"
+            else:
+                project_line = self._project_display_label(only)
+        else:
+            project_line = "<em>mixed</em>"
+        parts.append(
+            f"<p style='margin: 8px 0;'><strong>Project:</strong> {project_line}</p>"
+        )
+        return parts
+
     def _render_view(self) -> str:
         """Render a custom widget view for the LigandSet.
 
@@ -2122,6 +2177,8 @@ class LigandSet:
                     unique_smiles_line += " <span class='badge text-bg-info' style='font-variant: small-caps;'>3D</span>"
                 unique_smiles_line += "</p>"
                 html_parts.append(unique_smiles_line)
+
+            html_parts.extend(self._platform_summary_html_parts(num_ligands))
 
             # Show property summary if available
             if self.ligands and self.ligands[0].properties:
@@ -2830,7 +2887,6 @@ class LigandSet:
         proj_id = require_project_id(
             entity_project_id=ligands_to_sync[0].resolved_project_id(client=client),
             client=client,
-            entity_label="LigandSet",
         )
         for lig in ligands_to_sync:
             lig.project_id = proj_id
@@ -2840,9 +2896,7 @@ class LigandSet:
         if use_sdf:
             subset = LigandSet(ligands=ligands_to_sync)
             local_sdf = subset.to_sdf()
-            remote = stage_local_file(
-                client, local_sdf, remote_path=remote_path
-            )
+            remote = stage_local_file(client, local_sdf, remote_path=remote_path)
             outputs = sync_process_sdf(
                 client=client,
                 project_id=proj_id,

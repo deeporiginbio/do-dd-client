@@ -959,6 +959,53 @@ def test_render_view_no_structure_badge_when_mixed():
     )
 
 
+def test_render_view_shows_platform_id_summary():
+    """_render_view summarizes platform registration without listing ids."""
+    from deeporigin.drug_discovery.structures.ligand import LigandSet
+
+    ligand1 = Ligand.from_smiles("CCO", name="ethanol")
+    ligand2 = Ligand.from_smiles("CCCO", name="propanol")
+    ligand_set = LigandSet(ligands=[ligand1, ligand2])
+    html = ligand_set._render_view()
+    assert "⚠️</span> none registered</p>" in html
+    assert "color:#198754" not in html
+
+    ligand1.id = "ligand-a"
+    html = ligand_set._render_view()
+    assert "⚠️</span> 1 of 2 registered</p>" in html
+
+    ligand2.id = "ligand-b"
+    html = ligand_set._render_view()
+    assert "color:#198754" in html
+    assert "all ligands registered</p>" in html
+    assert "⚠️" not in html
+    assert "ligand-a" not in html
+    assert "ligand-b" not in html
+
+
+def test_render_view_shows_project_summary():
+    """_render_view shows project scope when ligands share one project."""
+    from deeporigin.drug_discovery.structures.ligand import LigandSet
+
+    ligand1 = Ligand.from_smiles("CCO", name="ethanol")
+    ligand2 = Ligand.from_smiles("CCCO", name="propanol")
+    ligand_set = LigandSet(ligands=[ligand1, ligand2])
+    html = ligand_set._render_view()
+    assert "<strong>Project:</strong> <em>not set</em></p>" in html
+
+    ligand1.project_id = "proj-1"
+    html = ligand_set._render_view()
+    assert "<strong>Project:</strong> <em>mixed</em></p>" in html
+
+    ligand2.project_id = "proj-1"
+    html = ligand_set._render_view()
+    assert "<strong>Project:</strong> proj-1</p>" in html
+
+    ligand2.project_id = "proj-2"
+    html = ligand_set._render_view()
+    assert "<strong>Project:</strong> <em>mixed</em></p>" in html
+
+
 def test_ligand_set_sync_lv1(client):
     """Test syncing a LigandSet to the data platform using BRD ligands.
 

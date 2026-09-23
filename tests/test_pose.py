@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -166,6 +167,62 @@ def test_pose_sync_lazy_skips_when_id_set() -> None:
     pose.sync(lazy=True)
 
 
+def test_pose_set_sync_hydrates_id_from_result_explorer(
+    tmp_path: Path,
+) -> None:
+    """Served import-dataset pose rows omit id; sync loads it from result-explorer."""
+    sdf_path = tmp_path / "pose.sdf"
+    lig = Ligand.from_sdf(BRD_DATA_DIR / "brd-2.sdf")
+    lig.to_sdf(sdf_path)
+    pose = Pose(
+        ligand_id="L1",
+        protein_id="PROT-1",
+        local_path=str(sdf_path),
+        project_id="proj-1",
+    )
+    client = MagicMock()
+    client.project_id = "proj-1"
+    pose_remote = "entities/ligands/import/exec-1/record-0.sdf"
+    job_outputs = {
+        "ligands": [{"id": "L1", "mol_file": "entities/ligands/L1.sdf"}],
+        "poses": [
+            {
+                "file_path": pose_remote,
+                "ligand_id": "L1",
+                "origin": "registered",
+                "protein_id": "PROT-1",
+            }
+        ],
+    }
+    client.results.get_poses.return_value = {
+        "data": [
+            {
+                "id": "POSE-RESULT-99",
+                "data": {
+                    "file_path": pose_remote,
+                    "ligand_id": "L1",
+                    "origin": "registered",
+                },
+            }
+        ],
+        "meta": {},
+    }
+    with (
+        patch(
+            "deeporigin.drug_discovery.import_dataset_sync.stage_local_file",
+            return_value="staging/upload.sdf",
+        ),
+        patch(
+            "deeporigin.drug_discovery.import_dataset_sync.sync_process_sdf",
+            return_value=job_outputs,
+        ),
+    ):
+        PoseSet(poses=[pose]).sync(client=client)
+    assert pose.id == "POSE-RESULT-99"
+    assert pose.remote_path == pose_remote
+    client.results.get_poses.assert_called()
+
+
 def test_pose_to_file_writes_sdf(tmp_path: Path) -> None:
     """to_file exports a loaded pose structure to disk."""
     sdf_path = BRD_DATA_DIR / "brd-2.sdf"
@@ -237,12 +294,13 @@ def test_pose_repr_lists_metadata_without_viewer() -> None:
         remote_path="entities/poses/x.sdf",
     )
     text = repr(pose)
-    assert "Pose" in text
+    assert "Pose(" in text
+    assert "POSE-1" in text
     assert "cocrystal" in text
     assert "ligand:LIG:A:100" in text
     assert "LIG-1" in text
     html = pose._repr_html_()
-    assert "Pose</div>" in html
+    assert "Pose(" in html
     assert "cocrystal" in html
     assert "ligand:LIG:A:100" in html
 
