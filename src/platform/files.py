@@ -487,6 +487,12 @@ class Files:
         Mirrors :meth:`_put_to_signed_url`'s retry loop: each attempt gets a
         fresh signed URL and retries on the same transient-failure classes.
 
+        Retries apply only while opening the response (presign + request until
+        a 2xx status is confirmed).  Errors during :class:`FileStream` body
+        reads are not retried here — callers that need end-to-end resilience
+        should use :meth:`download` (which streams to disk inside the retry
+        loop) or implement their own restart semantics.
+
         Args:
             remote_path: Remote path to request the signed URL for.
             max_retries: Maximum retry attempts on transient failures.
@@ -957,6 +963,10 @@ class Files:
         By default uses a signed URL (good for large files, auth embedded in
         the URL).  Set ``direct=True`` to stream through the platform gateway
         instead (no signed-URL round trip; uses bearer auth).
+
+        Signed-URL mode retries transient failures while opening the stream
+        (presign + HTTP status).  Mid-download body errors are not retried;
+        use :meth:`download` when a full-file retry loop is required.
 
         Always use as a context manager::
 
