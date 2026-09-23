@@ -160,9 +160,9 @@ def test_pose_mol_returns_none_for_empty_sdf(tmp_path: Path) -> None:
     assert Pose(ligand_id="L", local_path=str(empty_sdf)).mol is None
 
 
-def test_pose_sync_lazy_skips_when_remote_path_set() -> None:
-    """sync(lazy=True) is a no-op when remote_path is already populated."""
-    pose = Pose(ligand_id="L", remote_path="entities/poses/x.sdf")
+def test_pose_sync_lazy_skips_when_id_set() -> None:
+    """sync(lazy=True) is a no-op when the pose already has a platform id."""
+    pose = Pose(ligand_id="L", id="pose-existing", remote_path="entities/poses/x.sdf")
     pose.sync(lazy=True)
 
 

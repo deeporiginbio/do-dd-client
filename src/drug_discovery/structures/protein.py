@@ -1810,34 +1810,30 @@ class Protein(Entity):
                 message="No UFA path available for import-dataset registration.",
             )
 
-        inputs: dict[str, Any] = {
-            "register_protein": True,
-            "file_path": source_path,
-        }
+        extra: dict[str, Any] = {}
         if self.name:
-            inputs["protein_name"] = self.name
+            extra["protein_name"] = self.name
         if self.pdb_id is not None:
-            inputs["pdb_id"] = self.pdb_id
+            extra["pdb_id"] = self.pdb_id
         if self.uniprot_accession is not None:
-            inputs["uniprot_accession"] = self.uniprot_accession
+            extra["uniprot_accession"] = self.uniprot_accession
         if self.tags is not None:
-            inputs["tags"] = self.tags
+            extra["tags"] = self.tags
 
-        tool_meta = TOOL_KEYS_AND_VERSIONS["import_dataset"]
-        raw = client.executions.create(  # ty:ignore[unresolved-attribute]
-            tool_key=tool_meta["tool_key"],
-            tool_version=tool_meta["tool_version"],
-            data={
-                "inputs": inputs,
-                "outputs": {},
-                "metadata": {},
-                "sync": True,
-                "projectId": proj_id,
-                "visibility": "hidden",
-            },
+        from deeporigin.drug_discovery.import_dataset_sync import sync_process_pdb
+
+        outputs = sync_process_pdb(
+            client=client,
+            project_id=proj_id,
+            file_path=source_path,
+            extra_inputs=extra,
         )
-        dto = raw if isinstance(raw, dict) else {}
-        protein_row = _protein_row_from_import_execution(dto)
+        proteins = outputs.get("proteins")
+        protein_row = (
+            proteins[0]
+            if isinstance(proteins, list) and proteins and isinstance(proteins[0], dict)
+            else None
+        )
         if protein_row is None:
             raise DeepOriginException(
                 title="Protein sync failed",

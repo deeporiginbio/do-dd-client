@@ -1193,7 +1193,7 @@ def create_tools_router(
             body=body,
         )
         inputs = body.get("inputs", {}) or {}
-        if inputs.get("register_protein"):
+        if inputs.get("process_pdb") or inputs.get("register_protein"):
             # Mirror create_protein: every sync maps to the canonical mock row
             # so local tests keep stable IDs while still exercising the tool path.
             base = proteins.get(
@@ -1222,6 +1222,59 @@ def create_tools_router(
             if inputs.get("pdb_id"):
                 protein_row["pdb_id"] = str(inputs["pdb_id"])
             execution["jobOutputs"] = {"proteins": [protein_row]}
+            return execution
+
+        if inputs.get("process_csv"):
+            ligand_rows = []
+            for idx in range(8):
+                lid = f"lig-csv-record-{idx}"
+                ligand_rows.append(
+                    {
+                        "id": lid,
+                        "smiles": "CCO",
+                        "record_index": idx,
+                    }
+                )
+            execution["jobOutputs"] = {"ligands": ligand_rows}
+            return execution
+
+        if inputs.get("process_sdf"):
+            register_poses = bool(inputs.get("register_poses"))
+            file_path = str(inputs.get("file_path") or "")
+            ligand_rows = [
+                {
+                    "id": f"lig-sdf-record-{idx}",
+                    "mol_file": file_path,
+                    "record_index": idx,
+                }
+                for idx in range(8)
+            ]
+            job_outputs: dict[str, Any] = {"ligands": ligand_rows}
+            if register_poses:
+                pose_rows = []
+                protein_id = inputs.get("protein_id")
+                for row in ligand_rows:
+                    pose_row = {
+                        "id": f"pose-{uuid.uuid4().hex[:12]}",
+                        "file_path": file_path,
+                        "ligand_id": row["id"],
+                        "origin": str(inputs.get("origin") or "registered"),
+                        "record_index": row["record_index"],
+                    }
+                    if protein_id is not None:
+                        pose_row["protein_id"] = str(protein_id)
+                    pose_rows.append(pose_row)
+                job_outputs["poses"] = pose_rows
+            execution["jobOutputs"] = job_outputs
+            eid = execution.get("executionId")
+            if eid and register_poses:
+                _inject_result_explorer_records_from_outputs(
+                    tool_key=tool_key,
+                    tool_version=tool_version,
+                    execution_id=eid,
+                    job_outputs=job_outputs,
+                    project_id=body.get("projectId") or execution.get("projectId"),
+                )
             return execution
 
         if not inputs.get("register_pose"):

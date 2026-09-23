@@ -270,22 +270,15 @@ class Pose(Entity):
         client: Optional[DeepOriginClient] = None,
         remote_path: Optional[str] = None,
     ) -> None:
-        """Upload the pose SDF when a local file exists.
+        """Register this pose via import-dataset ``process_sdf`` (single-record SDF).
 
-        Pose registration (platform pose id) is handled by :meth:`from_sdf`.
-        This method only uploads bytes when ``local_path`` is set.
-
-        Args:
-            lazy: Skip upload when :attr:`remote_path` is already set.
-            client: Optional platform client.
-            remote_path: Optional explicit remote key.
+        Requires :attr:`protein_id`, ``project_id``, and a local or exportable structure.
         """
-
-        if lazy and self.remote_path is not None:
-            return
-        if self.local_path is None:
-            return
-        self.upload(client=client, remote_path=remote_path)
+        PoseSet(poses=[self]).sync(
+            lazy=lazy,
+            client=client,
+            remote_path=remote_path,
+        )
 
     @classmethod
     def from_json(
@@ -481,101 +474,47 @@ class Pose(Entity):
         if client is None:
             client = DeepOriginClient()
 
+        if protein_id is None or not str(protein_id).strip():
+            raise DeepOriginException(
+                title="Pose registration failed",
+                message="Pose.from_sdf requires a non-empty protein_id.",
+            )
+
         local_path = str(path)
         parent = ligand or Ligand.from_sdf(
             local_path,
             sanitize=sanitize,
             remove_hydrogens=remove_hydrogens,
         )
-        if ligand is None:
-            parent.sync(client=client)
-        if parent.id is None:
-            raise DeepOriginException(
-                title="Ligand sync failed",
-                message="Parent ligand must have a platform id before pose registration.",
-            )
-
         proj_id = parent.resolved_project_id(client=client)
         if proj_id is None or not str(proj_id).strip():
             raise DeepOriginException(
                 title="Project required for pose registration",
                 message=(
-                    "Pose.from_sdf requires ligand.project_id or client.project_id "
-                    "(served import-dataset register_pose is project-scoped)."
+                    "Pose.from_sdf requires ligand.project_id or client.project_id."
                 ),
             )
-        proj_id = str(proj_id).strip()
 
         staging = cls(
-            ligand_id=parent.id,
+            ligand_id=parent.id or "",
             local_path=local_path,
             smiles=parent.smiles or parent.canonical_smiles,
             name=parent.name,
-            protein_id=protein_id,
+            protein_id=str(protein_id).strip(),
             origin=origin,
-            project_id=proj_id,
+            project_id=str(proj_id).strip(),
         )
-        staging.upload(client=client)
-        pose_remote = staging.remote_path
-        if pose_remote is None:
-            raise DeepOriginException(
-                title="Pose upload failed",
-                message="Could not upload pose SDF to platform storage.",
-            )
-
-        inputs: dict[str, Any] = {
-            "register_pose": True,
-            "file_path": pose_remote,
-            "ligand_id": parent.id,
-            "origin": origin,
-        }
-        if protein_id is not None:
-            inputs["protein_id"] = protein_id
-
-        tool_meta = TOOL_KEYS_AND_VERSIONS["import_dataset"]
-        raw = client.executions.create(  # ty:ignore[unresolved-attribute]
-            tool_key=tool_meta["tool_key"],
-            tool_version=tool_meta["tool_version"],
-            data={
-                "inputs": inputs,
-                "outputs": {},
-                "metadata": {},
-                "sync": True,
-                "projectId": proj_id,
-                "visibility": "hidden",
-            },
-        )
-        dto = raw if isinstance(raw, dict) else {}
-        pose_row = _pose_row_from_registration_execution(dto)
-        if pose_row is None:
+        staging.sync(client=client)
+        if staging.id is None:
             raise DeepOriginException(
                 title="Pose registration failed",
-                message="ImportTool did not return a pose row in jobOutputs.poses.",
+                message="import-dataset did not return a pose id.",
             )
-
-        if pose_row.get("id") is None:
-            pose_row = _resolve_registered_pose_row(
-                client=client,
-                ligand_id=parent.id,
-                file_path=pose_remote,
-                origin=origin,
-                fallback=pose_row,
-            )
-
-        pose_row.setdefault("ligand_id", parent.id)
-        pose_row.setdefault("origin", origin)
-        if protein_id is not None:
-            pose_row.setdefault("protein_id", protein_id)
-        pose_row["local_path"] = local_path
-        pose_row.setdefault("file_path", pose_remote)
-        pose_row.setdefault("remote_path", pose_remote)
-        if parent.smiles:
-            pose_row.setdefault("smiles", parent.smiles)
-
-        pose = cls.from_json([pose_row], client=client)[0]
-        if pose.local_path is None:
-            pose.local_path = local_path
-        return pose
+        if staging.ligand_id in ("", None) and parent.id:
+            staging.ligand_id = parent.id
+        if staging.local_path is None:
+            staging.local_path = local_path
+        return staging
 
     def download(
         self,
@@ -1033,6 +972,94 @@ class PoseSet:
         """
 
         return self.to_ligand_set().to_sdf(output_path)
+
+    def sync(
+        self,
+        *,
+        lazy: bool = False,
+        client: Optional[DeepOriginClient] = None,
+        remote_path: Optional[str] = None,
+    ) -> None:
+        """Sync all poses in one import-dataset ``process_sdf`` execution.
+
+        Each pose must have :attr:`~Pose.protein_id` set. Ligands are created or
+        reused in the tool; pose rows are minted with ``register_poses: true``.
+        """
+        if not self.poses:
+            return
+        poses_to_sync = (
+            [p for p in self.poses if p.id is None]
+            if lazy
+            else list(self.poses)
+        )
+        if not poses_to_sync:
+            return
+
+        missing_protein = [p for p in poses_to_sync if not p.protein_id]
+        if missing_protein:
+            raise DeepOriginException(
+                title="Pose sync failed",
+                message=(
+                    "Every pose must have protein_id set before PoseSet.sync(). "
+                    f"{len(missing_protein)} pose(s) are missing protein_id."
+                ),
+            )
+
+        if client is None:
+            client = DeepOriginClient()
+
+        from deeporigin.drug_discovery.import_dataset_sync import (
+            require_project_id,
+            stage_local_file,
+            sync_process_sdf,
+        )
+
+        proj_id = require_project_id(
+            entity_project_id=poses_to_sync[0].resolved_project_id(client=client),
+            client=client,
+            entity_label="PoseSet",
+        )
+        for pose in poses_to_sync:
+            pose.project_id = proj_id
+
+        subset = PoseSet(poses=poses_to_sync)
+        local_sdf = subset.to_sdf()
+        protein_id = poses_to_sync[0].protein_id
+        if protein_id is None:
+            raise DeepOriginException(
+                title="Pose sync failed",
+                message="protein_id is required for pose registration.",
+            )
+        remote = stage_local_file(client, local_sdf, remote_path=remote_path)
+        outputs = sync_process_sdf(
+            client=client,
+            project_id=proj_id,
+            file_path=remote,
+            register_poses=True,
+            protein_id=str(protein_id),
+            origin=str(poses_to_sync[0].origin or "registered"),
+        )
+        ligand_rows = outputs.get("ligands") or []
+        pose_rows = outputs.get("poses") or []
+        if not isinstance(ligand_rows, list):
+            ligand_rows = []
+        if not isinstance(pose_rows, list):
+            pose_rows = []
+
+        for idx, pose in enumerate(poses_to_sync):
+            if idx < len(ligand_rows) and isinstance(ligand_rows[idx], dict):
+                lid = ligand_rows[idx].get("id")
+                if lid:
+                    pose.ligand_id = str(lid)
+                mol_file = ligand_rows[idx].get("mol_file")
+                if mol_file:
+                    pose.remote_path = str(mol_file)
+            if idx < len(pose_rows) and isinstance(pose_rows[idx], dict):
+                prow = pose_rows[idx]
+                if prow.get("id"):
+                    pose.id = str(prow["id"])
+                if prow.get("file_path"):
+                    pose.remote_path = str(prow["file_path"])
 
     def filter_top_poses(self, *, by_pose_score: bool = True) -> Self:
         """Keep the best pose for each unique SMILES.

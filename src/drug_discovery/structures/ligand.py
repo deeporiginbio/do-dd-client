@@ -1369,65 +1369,18 @@ class Ligand(Entity):
         client: Optional[DeepOriginClient] = None,
         remote_path: Optional[str] = None,
     ) -> None:
-        """Sync the ligand to the data platform.
+        """Sync the ligand via import-dataset (CSV or single-record SDF).
 
-        Uploads the ligand file and links to an existing record if one with
-        the same canonical SMILES already exists (setting ``id`` and
-        ``remote_path`` from the record's ``mol_file`` when present), otherwise
-        creates a new record via :meth:`register`.
-
-        Args:
-            lazy: If True, skip syncing when the ligand already has an ID.
-                Defaults to False.
-            client: DeepOriginClient instance. If None, uses DeepOriginClient().
-            remote_path: Custom remote path to upload to. Overrides the
-                default hash-based path.
-
-        Note:
-            If the ligand was created from a SMILES string without an SDF file, only the SMILES
-            will be used for syncing (no file upload will occur).
+        Delegates to :meth:`LigandSet.sync` for one blocking tool execution.
+        Requires ``project_id`` on the ligand or client.
         """
-
         if lazy and self.id is not None:
             return
-
-        if client is None:
-            client = DeepOriginClient()
-
-        if remote_path is not None:
-            self.remote_path = remote_path
-
-        proj_id = self.resolved_project_id(client=client)
-        scope_filter: dict[str, Any] = {}
-        if proj_id is not None:
-            scope_filter["project_id"] = proj_id
-
-        smiles_value = self.smiles if self.smiles is not None else self.canonical_smiles
-        response = client.entities.search_ligands(  # ty: ignore[unresolved-attribute]
-            smiles=smiles_value,
-            filter_dict=scope_filter if scope_filter else None,
+        LigandSet(ligands=[self]).sync(
+            lazy=False,
+            client=client,
+            remote_path=remote_path,
         )
-        data = response["data"]
-
-        if not data:
-            response = client.entities.search_ligands(  # ty: ignore[unresolved-attribute]
-                canonical_smiles=self.canonical_smiles,
-                filter_dict=scope_filter if scope_filter else None,
-            )
-            data = response["data"]
-
-        if data:
-            existing_ligand = data[0]
-            if "id" in existing_ligand:
-                self.id = existing_ligand["id"]
-            mol_file = existing_ligand.get("mol_file")
-            if mol_file:
-                self.remote_path = mol_file
-            if self.tags is not None and self.id is not None:
-                client.entities.update_ligand(self.id, tags=self.tags)
-            return
-
-        self.register(client=client, remote_path=remote_path)
 
     def get_poses(
         self,
@@ -2824,38 +2777,14 @@ class LigandSet:
         *,
         lazy: bool = False,
         client: Optional[DeepOriginClient] = None,
+        remote_path: Optional[str] = None,
     ) -> None:
-        """Sync the ligand set to the data platform.
+        """Sync all ligands in one import-dataset execution (SDF or SMILES CSV).
 
-        For every ligand in the set this method:
+        Structure-less ligands are written to a temporary CSV; structures use a
+        multi-record SDF. Dedup and create/reuse run in the tool.
 
-        1. Searches the data platform for existing ligands whose
-           ``canonical_smiles`` match (batched into a single request via
-           ``search_ligands(smiles_list=…)``).
-        2. For ligands that already exist remotely, updates the local ``id`` and
-           sets ``remote_path`` from the record's ``mol_file`` when present.
-        3. For ligands that are new, uploads files to remote storage (if a
-           local_path is present) and batch-creates them in a single API call.
-           Ligands sharing a canonical SMILES (e.g. multiple poses of the
-           same molecule in an SDF) are deduplicated before the create call;
-           all duplicates end up pointing at the single platform record.
-        4. Updates the local ``id`` values from the created records.
-
-        .. note::
-            The batch-create step is all-or-nothing: if it fails (e.g.
-            network error, invalid data), none of the new ligands will
-            receive an ``id``.
-
-        Args:
-            lazy: If True, skip syncing ligands that already have an id.
-            client: DeepOriginClient instance. If None, uses
-                DeepOriginClient().
-
-        Raises:
-            DeepOriginException: If any ligand to be synced contains atom types
-                outside :data:`~deeporigin.drug_discovery.constants.SUPPORTED_ATOM_SYMBOLS`.
-                Call :meth:`remove_unsupported` to drop those ligands first.
-            ValueError: If any ligand to be synced has no ``canonical_smiles``.
+        Requires ``project_id`` on ligands or the client.
         """
         if not self.ligands:
             return
@@ -2891,75 +2820,80 @@ class LigandSet:
         if client is None:
             client = DeepOriginClient()
 
-        proj_id = (
-            ligands_to_sync[0].resolved_project_id(client=client)
-            if ligands_to_sync
-            else None
+        from deeporigin.drug_discovery.import_dataset_sync import (
+            require_project_id,
+            stage_local_file,
+            sync_process_csv,
+            sync_process_sdf,
         )
-        scope_filter: dict[str, Any] = {}
-        if proj_id is not None:
-            scope_filter["project_id"] = proj_id
 
-        # De-duplicate the search by canonical SMILES -- ``smiles_list`` maps
-        # to an ``in`` filter, so duplicates add no information but inflate
-        # the request.
-        unique_smiles_list = list({lig.canonical_smiles for lig in ligands_to_sync})
-        response = client.entities.search_ligands(
-            smiles_list=unique_smiles_list,
-            # Do not cap at len(unique_smiles_list): the platform may return
-            # multiple rows per canonical SMILES, and a tight limit can exclude
-            # less-common matches (e.g. CCCO) when duplicates (e.g. CCO) fill the page.
-            limit=None,
-            filter_dict=scope_filter if scope_filter else None,
+        proj_id = require_project_id(
+            entity_project_id=ligands_to_sync[0].resolved_project_id(client=client),
+            client=client,
+            entity_label="LigandSet",
         )
-        existing_by_smiles = self._index_by_canonical_smiles(response.get("data", []))
-
-        to_create: list[Ligand] = []
         for lig in ligands_to_sync:
-            record = existing_by_smiles.get(lig.canonical_smiles)
-            if record is not None:
-                lig.id = record["id"]
-                mol_file = record.get("mol_file")
-                if mol_file:
-                    lig.remote_path = mol_file
-            else:
-                to_create.append(lig)
+            lig.project_id = proj_id
 
-        if not to_create:
-            return
+        use_sdf = any(lig.local_path is not None for lig in ligands_to_sync)
 
-        # The platform enforces a uniqueness constraint on
-        # ``(project_scope_key, canonical_smiles, variant_name_tag)``, so a
-        # batch can contain at most one row per canonical SMILES. A single
-        # input (e.g. a bulk docking SDF) can easily include the same molecule
-        # multiple times as different poses/conformers, which all share the
-        # same canonical SMILES. Pick one representative per canonical SMILES
-        # for the create call, then fan the resulting id/mol_file back out to
-        # every duplicate.
-        representatives: list[Ligand] = []
-        duplicates_by_smiles: dict[str, list[Ligand]] = {}
-        for lig in to_create:
-            cs = lig.canonical_smiles
-            if cs not in duplicates_by_smiles:
-                duplicates_by_smiles[cs] = []
-                representatives.append(lig)
-            duplicates_by_smiles[cs].append(lig)
+        if use_sdf:
+            subset = LigandSet(ligands=ligands_to_sync)
+            local_sdf = subset.to_sdf()
+            remote = stage_local_file(
+                client, local_sdf, remote_path=remote_path
+            )
+            outputs = sync_process_sdf(
+                client=client,
+                project_id=proj_id,
+                file_path=remote,
+                register_poses=False,
+                tags=None,
+            )
+        else:
+            import csv
 
-        LigandSet(ligands=representatives).upload(client=client)
+            fd = tempfile.NamedTemporaryFile(
+                mode="w",
+                delete=False,
+                suffix=".csv",
+                newline="",
+            )
+            writer = csv.DictWriter(fd, fieldnames=["smiles", "name"])
+            writer.writeheader()
+            for lig in ligands_to_sync:
+                smi = lig.smiles or lig.canonical_smiles or ""
+                writer.writerow(
+                    {"smiles": smi, "name": lig.name or ""},
+                )
+            fd.close()
+            remote = stage_local_file(client, fd.name, remote_path=remote_path)
+            Path(fd.name).unlink(missing_ok=True)
+            outputs = sync_process_csv(
+                client=client,
+                project_id=proj_id,
+                file_path=remote,
+            )
 
-        rows = [lig._to_row(client=client) for lig in representatives]
-        result = client.entities.batch_create_ligands(rows=rows)
-        created_by_smiles = self._index_by_canonical_smiles(result.get("data", []))
+        rows = outputs.get("ligands") or []
+        if not isinstance(rows, list):
+            rows = []
+        by_index: dict[int, dict[str, Any]] = {}
+        for row in rows:
+            if isinstance(row, dict) and "record_index" in row:
+                by_index[int(row["record_index"])] = row
 
-        for cs, duplicates in duplicates_by_smiles.items():
-            record = created_by_smiles.get(cs)
+        for idx, lig in enumerate(ligands_to_sync):
+            record = by_index.get(idx)
+            if record is None and idx < len(rows) and isinstance(rows[idx], dict):
+                record = rows[idx]
             if record is None:
                 continue
+            if record.get("id"):
+                lig.id = str(record["id"])
             mol_file = record.get("mol_file")
-            for lig in duplicates:
-                lig.id = record["id"]
-                if mol_file:
-                    lig.remote_path = mol_file
+            if mol_file:
+                lig.remote_path = str(mol_file)
 
     @classmethod
     def from_smiles(cls, smiles: list[str] | set[str]) -> Self:
