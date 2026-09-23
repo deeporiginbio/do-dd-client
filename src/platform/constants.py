@@ -151,6 +151,10 @@ TOOL_KEYS_AND_VERSIONS: dict[str, dict[str, str]] = {
         "tool_key": "deeporigin.protein-prep",
         "tool_version": "latest",
     },
+    "target_prep": {
+        "tool_key": "deeporigin.target-preparation",
+        "tool_version": "latest",
+    },
     "patent": {
         "tool_key": "deeporigin.draco",
         "tool_version": "latest",
@@ -177,6 +181,6 @@ TOOL_KEYS_AND_VERSIONS: dict[str, dict[str, str]] = {
     },
     "import_dataset": {
         "tool_key": "deeporigin.import-dataset",
-        "tool_version": "latest",
+        "tool_version": "2",
     },
 }

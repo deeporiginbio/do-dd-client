@@ -103,6 +103,14 @@ def _generate_local_token() -> str:
     return _LOCAL_TOKEN_CACHE
 
 
+def _local_auth_token() -> str:
+    """Return the token used for toolbox gateway local dev (``DO_AUTH_TOKEN`` or dummy JWT)."""
+    env_token = os.environ.get(ENV_VARIABLES["access_token"])
+    if env_token:
+        return env_token
+    return _generate_local_token()
+
+
 def _base_url_for_token(token: str) -> str:
     """Resolve platform API base URL from a JWT using its issuer claim.
 
@@ -225,13 +233,15 @@ class _DeepOriginMeta(type):
             if env_token and env_org:
                 instance = cls.from_env_variables(_visibility=_visibility)
             else:
-                # Route to from_local when DO_ENV=local; pass hint to from_disk otherwise
-                # (from_disk itself never reads environment variables)
-                env_hint = os.environ.get(ENV_VARIABLES["env"]) or None
-                if env_hint == "local":
-                    instance = cls.from_local(_visibility=_visibility)
+                # Disk path: get_value() applies DO_ENV override over config.json
+                cfg = get_value()
+                if cfg["env"] == "local":
+                    instance = cls.from_local(
+                        org_key=cfg["org_key"] or None,
+                        _visibility=_visibility,
+                    )
                 else:
-                    instance = cls.from_disk(env_hint, _visibility=_visibility)
+                    instance = cls.from_disk(cfg["env"], _visibility=_visibility)
             if project_id is not None:
                 instance.project_id = project_id
             return instance
@@ -674,7 +684,7 @@ class DeepOriginClient(metaclass=_DeepOriginMeta):
 
         Returns:
             A multiline string showing the client's name (from token), org_key,
-            base_url, and optional tag / billing_tag.
+            base_url, optional project_id, and optional tag / billing_tag.
         """
         from deeporigin import auth
 
@@ -692,6 +702,10 @@ class DeepOriginClient(metaclass=_DeepOriginMeta):
             f"  org_key: {self._org_key}",
             f"  base_url: {self._base_url}",
         ]
+        if self._project_id is not None:
+            lines.append(f"  project_id: {self._project_id}")
+        else:
+            lines.append(" ⚠️ No project set")
         if self.tag is not None:
             lines.append(f"  tag: {self.tag}")
         if self.billing_tag is not None:
@@ -849,15 +863,13 @@ class DeepOriginClient(metaclass=_DeepOriginMeta):
         Use this for interactive work in Jupyter notebooks or CLI sessions where
         credentials are stored on disk after running ``deeporigin login``.
 
-        For local development use :meth:`from_local` instead.
-
         Environment selection order: explicit ``env`` parameter → value in
-        ``~/.deeporigin/config.json``.
+        ``~/.deeporigin/config.json``. ``"local"`` uses the toolbox gateway at
+        ``http://127.0.0.1:4931`` (same as :meth:`from_local`).
 
         Args:
-            env: Deployment target (``"prod"``, ``"staging"``, ``"dev"``).
-                When ``None``, reads from disk config. ``"local"`` is not
-                accepted here — use :meth:`from_local`.
+            env: Deployment target (``"prod"``, ``"staging"``, ``"dev"``, ``"local"``).
+                When ``None``, reads from disk config.
             timeout: Request timeout in seconds.
             max_retries: Maximum retry attempts. Set to 0 to disable.
             retry_backoff_factor: Multiplier for exponential backoff between retries.
@@ -876,11 +888,24 @@ class DeepOriginClient(metaclass=_DeepOriginMeta):
         if env is None:
             env = get_value()["env"] or "prod"
 
-        valid = [e for e in get_args(ENVS) if e != "local"]
+        valid = get_args(ENVS)
         if env not in valid:
             raise ValueError(
-                f"Invalid environment: {env!r}. Must be one of: dev, prod, staging. "
-                f"For local development use DeepOriginClient.from_local()."
+                f"Invalid environment: {env!r}. Must be one of: {', '.join(valid)}."
+            )
+
+        if env == "local":
+            org_key = get_value()["org_key"] or "deeporigin"
+            return cls.from_local(
+                org_key=org_key,
+                timeout=timeout,
+                max_retries=max_retries,
+                retry_backoff_factor=retry_backoff_factor,
+                max_retry_delay=max_retry_delay,
+                record=record,
+                _app=_app,
+                _session=_session,
+                _visibility=_visibility,
             )
 
         token = get_token(env=env)
@@ -906,6 +931,7 @@ class DeepOriginClient(metaclass=_DeepOriginMeta):
     def from_local(
         cls,
         *,
+        org_key: str | None = None,
         timeout: float = 10.0,
         max_retries: int = 3,
         retry_backoff_factor: float = 1.0,
@@ -915,13 +941,14 @@ class DeepOriginClient(metaclass=_DeepOriginMeta):
         _session: str | None = None,
         _visibility: "ExecutionVisibility | None" = None,
     ) -> Self:
-        """Create a client for local development.
+        """Create a client for the toolbox gateway on localhost.
 
-        Generates a dummy JWT token and points at the local mock server
-        (``http://127.0.0.1:4931``). No disk reads, no environment variable
-        reads — suitable for unit tests and local stack development.
+        Points at ``http://127.0.0.1:4931``. Uses ``DO_AUTH_TOKEN`` when set;
+        otherwise generates a dummy JWT. Does not read ``api_tokens.json``.
 
         Args:
+            org_key: Organization key. Defaults to ``"deeporigin"`` when omitted
+                or empty.
             timeout: Request timeout in seconds.
             max_retries: Maximum retry attempts. Set to 0 to disable.
             retry_backoff_factor: Multiplier for exponential backoff between retries.
@@ -934,10 +961,11 @@ class DeepOriginClient(metaclass=_DeepOriginMeta):
         Returns:
             A configured ``DeepOriginClient`` instance pointed at the local mock server.
         """
+        resolved_org = org_key if org_key else "deeporigin"
         return cls(
             base_url=API_ENDPOINT["local"],
-            token=_generate_local_token(),
-            org_key="deeporigin",
+            token=_local_auth_token(),
+            org_key=resolved_org,
             project_id=None,
             timeout=timeout,
             max_retries=max_retries,

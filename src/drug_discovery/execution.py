@@ -768,9 +768,12 @@ class Execution:
         directly rather than teaching this base method about those filters.
 
         Args:
-            **kwargs: Forwarded verbatim to
+            **kwargs: Forwarded to
                 :meth:`~deeporigin.platform.results.Results.get` (typically
-                ``filter_dict``, ``limit``, ``select``).
+                ``filter_dict``, ``limit``, ``select``). When
+                :attr:`tool_key` is set, a ``tool_key`` equality filter is
+                injected into ``filter_dict`` via ``setdefault`` so callers can
+                override it by passing ``tool_key`` themselves.
 
         Returns:
             Result-explorer response dict with ``data`` and ``meta`` keys.
@@ -783,7 +786,12 @@ class Execution:
             raise ValueError(
                 "Cannot get results: no execution has been started (id is None)."
             )
-        return self.client.results.get(compute_job_id=exec_id, **kwargs)
+        request_kwargs = dict(kwargs)
+        if self.tool_key:
+            filter_dict = dict(request_kwargs.get("filter_dict") or {})
+            filter_dict.setdefault("tool_key", {"eq": self.tool_key})
+            request_kwargs["filter_dict"] = filter_dict
+        return self.client.results.get(compute_job_id=exec_id, **request_kwargs)
 
     def get_user_logs(
         self,

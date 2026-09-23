@@ -231,6 +231,8 @@ class Ligand(Entity):
     xref_ins_code: str | None = None
     xref_residue_id: str | None = None
     xref_protein_chain_id: str | None = None
+    component_id: str | None = None
+    extracted_from_protein_id: str | None = None
     properties: dict = field(default_factory=dict)
     mol: Chem.Mol = field(kw_only=True)
     protonated_at_ph: float | None = None

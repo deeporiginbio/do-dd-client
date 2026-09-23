@@ -7,7 +7,10 @@ Find pockets in a [`Protein`](../ref/protein.md) using the Deep Origin Pocket Fi
 First, create a protein, for example:
 
 ```{.python continuation}
+from deeporigin import projects
 from deeporigin.drug_discovery import Protein, BRD_DATA_DIR
+
+projects.create("python-client-dev")
 
 protein = Protein.from_file(BRD_DATA_DIR / "brd.pdb")
 protein.remove_water()

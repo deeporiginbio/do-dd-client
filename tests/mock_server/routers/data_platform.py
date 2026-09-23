@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import Callable
 import copy
 from datetime import datetime, timezone
+import hashlib
 from typing import Any
 import uuid
 
@@ -13,6 +14,9 @@ from rdkit import Chem
 
 MOCK_CANONICAL_PROTEIN_ID = "brd"
 MOCK_CANONICAL_PROTEIN_FILE_PATH = "testing/brd.pdb"
+PREPARED_PROTEIN_UFA_PREFIX = "entities/proteins/prepared"
+EXTRACTED_LIGAND_UFA_PREFIX = "entities/ligands/extracted"
+_MOCK_EXTRACTED_LIGAND_SMILES = "CC(=O)Oc1ccccc1C(=O)O"
 
 # Pocket id aligned with ``tests/fixtures/tool-runs/deeporigin.bulk-docking/quote.json``
 # and PocketFinder-style mocks (``pocket.id`` on tool inputs).
@@ -45,6 +49,154 @@ def _base_default_project_record() -> dict[str, Any]:
         "notes": None,
         "url_token": None,
     }
+
+
+def prepared_protein_remote_path(execution_id: str) -> str:
+    """Return the durable UFA path for a mock prepared protein PDB."""
+    stem = execution_id.strip()
+    if not stem or "/" in stem or "\\" in stem:
+        msg = f"Invalid execution_id for prepared protein path: {execution_id!r}"
+        raise ValueError(msg)
+    return f"{PREPARED_PROTEIN_UFA_PREFIX}/{stem}.pdb"
+
+
+def mock_prepared_protein_id(execution_id: str) -> str:
+    """Return a deterministic mock protein id for a prepare execution."""
+    compact = execution_id.replace("-", "")
+    return f"prep-{compact[:12]}"
+
+
+def register_mock_prepared_protein(
+    proteins: dict[str, dict[str, Any]],
+    *,
+    execution_id: str,
+    pdb_id: str | None = None,
+) -> dict[str, str]:
+    """Register a prepared protein entity for mock protein-prep outputs.
+
+    Args:
+        proteins: In-memory proteins store.
+        execution_id: Tool execution id (path stem + entity suffix).
+        pdb_id: Optional PDB ID copied from prepare inputs.
+
+    Returns:
+        Dict with ``protein_id`` and ``file_path``.
+    """
+    remote_path = prepared_protein_remote_path(execution_id)
+    protein_id = mock_prepared_protein_id(execution_id)
+    now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z"
+    record = {
+        "id": protein_id,
+        "version": 1,
+        "valid_from": now,
+        "valid_to": None,
+        "modified_by": "mock-server",
+        "deleted": False,
+        "project_id": None,
+        "subtable_name": "proteins",
+        "uniprot_accession": None,
+        "file_path": remote_path,
+        "gene_symbol": None,
+        "pdb_id": str(pdb_id).strip() if pdb_id else None,
+        "refseq_protein_id": None,
+        "ensembl_protein_id": None,
+        "alpha_fold_id": None,
+        "fasta_sequence": None,
+        "protein_name": f"prepared-{execution_id}",
+        "kegg_gene_id": None,
+        "chembl_target_id": None,
+        "binding_db_target_id": None,
+        "drugbank_target_id": None,
+        "pfam_id": None,
+        "interpro_id": None,
+        "ec_number": None,
+        "ncbi_taxonomy_id": None,
+        "protein_family": None,
+        "ligandability_score": None,
+        "protein_length": None,
+    }
+    proteins[protein_id] = record
+    return {"protein_id": protein_id, "file_path": remote_path}
+
+
+def mock_extracted_ligand_id(execution_id: str, component_id: str) -> str:
+    """Return a deterministic mock ligand id for a prepare extraction row."""
+    digest = hashlib.sha256(f"{execution_id}:{component_id}".encode()).hexdigest()
+    return "08" + digest[:11].upper()
+
+
+def extracted_ligand_remote_path(execution_id: str, ligand_id: str) -> str:
+    """Return the durable UFA path for a mock extracted ligand SDF."""
+    stem = execution_id.strip()
+    if not stem or "/" in stem or "\\" in stem:
+        msg = f"Invalid execution_id for extracted ligand path: {execution_id!r}"
+        raise ValueError(msg)
+    return f"{EXTRACTED_LIGAND_UFA_PREFIX}/{stem}/{ligand_id}.sdf"
+
+
+def register_mock_crystal_pose(
+    ligands: dict[str, dict[str, Any]],
+    *,
+    execution_id: str,
+    component_id: str,
+    prepared_protein_id: str,
+    smiles: str = _MOCK_EXTRACTED_LIGAND_SMILES,
+) -> dict[str, str]:
+    """Register entities and return one mock Protein Prep ``poses[]`` row.
+
+    Args:
+        ligands: In-memory ligands store.
+        execution_id: Tool execution id (path segment + id suffix).
+        component_id: Protein Prep selection component id.
+        prepared_protein_id: Prepared protein entity id for the pose row.
+        smiles: SMILES stored on the ligand record.
+
+    Returns:
+        Dict with ``component_id``, ``file_path``, ``ligand_id``, ``origin``,
+        and ``protein_id``.
+    """
+    ligand_id = mock_extracted_ligand_id(execution_id, component_id)
+    remote_path = extracted_ligand_remote_path(execution_id, ligand_id)
+    record = _make_ligand_record(smiles, {"id": ligand_id, "name": ligand_id})
+    ligands[ligand_id] = record
+    return {
+        "component_id": component_id,
+        "file_path": remote_path,
+        "ligand_id": ligand_id,
+        "origin": "cocrystal",
+        "protein_id": prepared_protein_id,
+    }
+
+
+def mock_crystal_poses_from_selection(
+    ligands: dict[str, dict[str, Any]],
+    *,
+    execution_id: str,
+    prepared_protein_id: str,
+    selection: object,
+) -> list[dict[str, str]]:
+    """Build ``poses`` job output rows from prepare selection decisions."""
+    if not isinstance(selection, dict):
+        return []
+    decisions = selection.get("decisions")
+    if not isinstance(decisions, dict):
+        return []
+    rows: list[dict[str, str]] = []
+    for component_id, decision in decisions.items():
+        if decision != "extract":
+            continue
+        component_key = str(component_id)
+        if not component_key.startswith("ligand:"):
+            continue
+        rows.append(
+            register_mock_crystal_pose(
+                ligands,
+                execution_id=execution_id,
+                component_id=component_key,
+                prepared_protein_id=prepared_protein_id,
+            )
+        )
+    return rows
 
 
 def _base_canonical_protein_record() -> dict[str, Any]:
@@ -113,7 +265,9 @@ def _apply_search_filters(
         # Fixture ligands use ``MOCK_DEFAULT_PROJECT_ID`` (or legacy None).
         # When the client searches with a different concrete project_id, still
         # match those rows so sync() can resolve pre-seeded BRD ligands without
-        # a duplicate insert.
+        # a duplicate insert. Prepared proteins are registered with
+        # ``project_id=None`` for execution outputs and must not leak into
+        # every project-scoped protein listing.
         if key == "project_id":
             if isinstance(value, dict) and "eq" in value:
                 target = value["eq"]
@@ -123,8 +277,13 @@ def _apply_search_filters(
                 r
                 for r in results
                 if r.get("project_id") == target
-                or r.get("project_id") is None
                 or r.get("project_id") == MOCK_DEFAULT_PROJECT_ID
+                or (
+                    r.get("project_id") is None
+                    and not str(r.get("file_path") or "").startswith(
+                        f"{PREPARED_PROTEIN_UFA_PREFIX}/"
+                    )
+                )
             ]
             continue
         if isinstance(value, dict):
@@ -447,6 +606,22 @@ def _apply_eq_filters(
             )
 
         _validate_filter_condition(key, condition)
+        # Fixture / legacy result-explorer rows often omit ``project_id``. When
+        # the client scopes searches to a concrete project, still match those
+        # rows (same tolerance as entity search).
+        if key == "project_id" and "eq" in condition:
+            results = [
+                r
+                for r in results
+                if _matches_condition(r, key, condition)
+                or r.get("project_id") is None
+                or (
+                    isinstance(r.get("data"), dict)
+                    and r["data"].get("project_id") is None
+                )
+                or r.get("project_id") == MOCK_DEFAULT_PROJECT_ID
+            ]
+            continue
         results = [r for r in results if _matches_condition(r, key, condition)]
 
     return results
@@ -804,6 +979,22 @@ def create_data_platform_router(
         limit = body.get("limit", 100)
         offset = body.get("offset", 0)
         store = _entity_stores.get(entity, {})
+
+        if entity == "proteins" and "file_path" in filter_dict:
+            raw_path = filter_dict["file_path"]
+            file_path = raw_path.get("eq") if isinstance(raw_path, dict) else raw_path
+            if isinstance(file_path, str) and file_path.startswith(
+                f"{PREPARED_PROTEIN_UFA_PREFIX}/"
+            ):
+                matches = [
+                    copy.deepcopy(row)
+                    for row in proteins.values()
+                    if row.get("file_path") == file_path and not row.get("deleted")
+                ]
+                return {
+                    "data": matches[offset : offset + limit],
+                    "count": len(matches),
+                }
 
         # Protein.sync() searches by uploaded file_path (hash-based or custom).
         # Always resolve to the canonical BRD fixture + stable ID when unscoped.
