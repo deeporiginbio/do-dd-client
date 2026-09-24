@@ -2,12 +2,11 @@
 
 from __future__ import annotations
 
-import time
 from dataclasses import dataclass, field
 from pathlib import Path
+import time
 from typing import Any, ClassVar, Literal, Optional, Self
 
-from beartype import beartype
 import pandas as pd
 from rdkit import Chem
 
@@ -778,6 +777,7 @@ def _hydrate_poses_from_import_outputs(
         lrow = ligands_by_index.get(idx)
         if (
             lrow is None
+            and not ligands_by_index
             and idx < len(ligand_rows)
             and isinstance(ligand_rows[idx], dict)
         ):
@@ -790,8 +790,15 @@ def _hydrate_poses_from_import_outputs(
             if mol_file:
                 pose.remote_path = str(mol_file)
         prow: dict[str, Any] = poses_by_index.get(idx, {})
-        if not prow and idx < len(pose_rows) and isinstance(pose_rows[idx], dict):
+        if (
+            not prow
+            and not poses_by_index
+            and idx < len(pose_rows)
+            and isinstance(pose_rows[idx], dict)
+        ):
             prow = dict(pose_rows[idx])
+        if prow and "record_index" not in prow:
+            prow = {**prow, "record_index": idx}
         _apply_platform_pose_row(pose, prow)
         if pose.id is None and pose.ligand_id:
             resolved = _resolve_registered_pose_row_with_poll(
@@ -800,6 +807,7 @@ def _hydrate_poses_from_import_outputs(
                 file_path=prow.get("file_path") or pose.remote_path,
                 origin=origin,
                 fallback=prow,
+                record_index=idx,
             )
             _apply_platform_pose_row(pose, resolved)
         if pose.id is None:
@@ -845,10 +853,13 @@ def _matches_registered_pose_row(
     origin: str,
     file_path: str | None,
     protein_id: str | None = None,
+    record_index: int | None = None,
 ) -> bool:
     """Return whether a pose row matches registration lookup filters."""
 
     if protein_id is not None and str(data.get("protein_id") or "") != str(protein_id):
+        return False
+    if record_index is not None and data.get("record_index") != record_index:
         return False
     if file_path is not None:
         return data.get("file_path") == file_path
@@ -885,6 +896,7 @@ def _resolve_registered_pose_row(
     origin: str,
     fallback: dict[str, Any],
     protein_id: str | None = None,
+    record_index: int | None = None,
 ) -> dict[str, Any]:
     """Look up a freshly registered pose row in result-explorer when id is missing.
 
@@ -893,6 +905,8 @@ def _resolve_registered_pose_row(
     the same SDF that belongs to another protein is not a match.
     """
 
+    if record_index is None and fallback.get("record_index") is not None:
+        record_index = int(fallback["record_index"])
     deadline = time.monotonic() + (20 if protein_id is not None else 0)
     chosen = fallback
     while True:
@@ -908,9 +922,15 @@ def _resolve_registered_pose_row(
                 origin=origin,
                 file_path=file_path,
                 protein_id=protein_id,
+                record_index=record_index,
             ):
                 matches.append(rec)
         if matches:
+            if record_index is not None:
+                for rec in reversed(matches):
+                    data = _pose_record_data(rec)
+                    if data is not None and data.get("record_index") == record_index:
+                        return _explorer_record_to_pose_row(rec, fallback)
             return _explorer_record_to_pose_row(matches[-1], fallback)
         if protein_id is None and records and file_path is None:
             last_rec = records[-1]
@@ -929,6 +949,7 @@ def _resolve_registered_pose_row_with_poll(
     file_path: str | None,
     origin: str,
     fallback: dict[str, Any],
+    record_index: int | None = None,
 ) -> dict[str, Any]:
     """Poll result-explorer until a pose id appears (served import-dataset path)."""
 
@@ -941,6 +962,7 @@ def _resolve_registered_pose_row_with_poll(
             file_path=file_path,
             origin=origin,
             fallback=fallback,
+            record_index=record_index,
         )
         if last_row.get("id"):
             return last_row

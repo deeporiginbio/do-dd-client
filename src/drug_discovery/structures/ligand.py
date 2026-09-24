@@ -2894,6 +2894,8 @@ class LigandSet:
         for lig in ligands_to_sync:
             lig.project_id = proj_id
 
+        use_sdf = any(lig.local_path is not None for lig in ligands_to_sync)
+
         tag_payloads = [lig.tags for lig in ligands_to_sync if lig.tags is not None]
         uniform_tags: dict[str, Any] | None = None
         if tag_payloads:
@@ -2901,17 +2903,16 @@ class LigandSet:
 
             unique_tags = {json.dumps(t, sort_keys=True): t for t in tag_payloads}
             if len(unique_tags) > 1:
-                raise DeepOriginException(
-                    title="Ligand sync failed",
-                    message=(
-                        "Mixed ligand tags in one SDF batch are not supported. "
-                        "Use structure-less CSV sync or sync ligands with different "
-                        "tags in separate batches."
-                    ),
-                )
-            uniform_tags = tag_payloads[0]
-
-        use_sdf = any(lig.local_path is not None for lig in ligands_to_sync)
+                if use_sdf:
+                    raise DeepOriginException(
+                        title="Ligand sync failed",
+                        message=(
+                            "Mixed ligand tags in one SDF batch are not supported. "
+                            "Sync ligands with different tags in separate batches."
+                        ),
+                    )
+            elif len(unique_tags) == 1:
+                uniform_tags = tag_payloads[0]
 
         if use_sdf:
             subset = LigandSet(ligands=ligands_to_sync)

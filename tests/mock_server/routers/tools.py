@@ -1310,6 +1310,8 @@ def create_tools_router(
                             "name": name,
                             "project_id": project_id or MOCK_DEFAULT_PROJECT_ID,
                         }
+                        if inputs.get("tags") is not None:
+                            extra["tags"] = inputs["tags"]
                         record = _make_ligand_record(canonical, extra)
                         ligands[record["id"]] = record
                         existing = record
