@@ -82,7 +82,12 @@ against the full panel using the real model, for checking scoring end to end.
 ## Docking
 
 ```{.python notest}
-job = SecondaryPharmacology(ligands=[ligand], method="docking", effort=2)
+job = SecondaryPharmacology(
+    ligands=[ligand],
+    method="docking",
+    effort=2,
+    batch_size=30,
+)
 job.start()
 job.wait()               # or `await job.watch()` in a notebook
 df = job.get_results()
@@ -100,8 +105,11 @@ nearest edge color.
 Check for gaps with `job.get_undocked_ligands()` (ligands with zero docked
 poses) or `job.get_missing_pairs()` (specific ligand × target cells missing).
 
-Currently no batching is supported for the docking path (unlike `deeporigin.docking`'s `batchSize`)
-and it runs as a single job with a fixed resource/time budget for the entire ligand set.
+Docking work is split into parallel batches automatically. `batch_size`
+(default 30) caps how many ligand × target pairs go into each batch --
+lower it for more parallelism, raise it to reduce per-batch overhead. A
+single target's pairs always stay in one batch, even if that pushes it
+over `batch_size`. Ignored on the ligand-ml path.
 
 ## Working with existing runs
 

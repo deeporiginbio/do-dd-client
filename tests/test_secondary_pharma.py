@@ -316,6 +316,28 @@ def test_secondary_pharma_start_validates_effort_before_any_sync(
     assert ligand.id is None, "sync must not have run before the effort check"
 
 
+def test_secondary_pharma_batch_size_rejects_non_positive(
+    client: DeepOriginClient,
+) -> None:
+    """``batch_size`` must be a positive integer, checked at construction.
+
+    Unlike ``effort``, ``batch_size`` has no setter (read-only after
+    construction), so there's no separate "validated again before
+    submission" path to test -- construction is the only place it can go
+    wrong.
+    """
+    _assert_tool_available(client)
+    ligand = Ligand.from_smiles("CCO")
+    with pytest.raises(ValueError, match="batch_size"):
+        SecondaryPharmacology(
+            ligands=[ligand], method="docking", batch_size=0, client=client
+        )
+    with pytest.raises(ValueError, match="batch_size"):
+        SecondaryPharmacology(
+            ligands=[ligand], method="docking", batch_size=-5, client=client
+        )
+
+
 def test_secondary_pharma_repr_names_correct_entry_point(
     client: DeepOriginClient,
 ) -> None:
@@ -407,6 +429,37 @@ def test_secondary_pharma_make_inputs_includes_uniprots_only_when_set(
 
     job.uniprots = [_PANEL_ACCESSIONS[0]]
     assert job._make_inputs()["uniprots"] == [_PANEL_ACCESSIONS[0]]
+
+
+def test_secondary_pharma_make_payload_includes_batch_size(
+    client: DeepOriginClient,
+) -> None:
+    """``batchSize`` is a top-level payload field (like ``Docking``), not
+    nested under ``inputs`` -- defaults to 30, and a custom value round-trips.
+    """
+    _assert_tool_available(client)
+    ligand = Ligand.from_smiles("CCO")
+    job = SecondaryPharmacology(ligands=[ligand], method="docking", client=client)
+    payload = job._make_payload(approve_amount=None, sync=False)
+    assert payload["batchSize"] == 30
+    assert "batchSize" not in payload["inputs"]
+
+    job_custom = SecondaryPharmacology(
+        ligands=[ligand], method="docking", batch_size=10, client=client
+    )
+    assert job_custom._make_payload(approve_amount=None, sync=False)["batchSize"] == 10
+
+
+def test_secondary_pharma_make_payload_sends_batch_size_on_ligand_ml_too(
+    client: DeepOriginClient,
+) -> None:
+    """``batchSize`` is always sent, even on ligand-ml (which never reaches
+    the workflow that reads it) -- matches ``Docking``'s always-send
+    behavior, kept for a predictable ``from_dto`` round trip."""
+    _assert_tool_available(client)
+    ligand = Ligand.from_smiles("CCO")
+    job = SecondaryPharmacology(ligands=[ligand], method="ligand-ml", client=client)
+    assert job._make_payload(approve_amount=None, sync=True)["batchSize"] == 30
 
 
 # --- ligand-ml run() / get_results() -------------------------------------------
@@ -548,7 +601,12 @@ def test_secondary_pharma_from_dto_round_trip_ligand_ml(
         restored.uniprots = [_PANEL_ACCESSIONS[1]]
 
 
-def _hand_built_docking_dto(*, self_test: bool = False) -> dict:
+def _hand_built_docking_dto(
+    *,
+    self_test: bool = False,
+    batch_size: int | None = None,
+    batch_size_in_metadata_only: bool = False,
+) -> dict:
     """A docking-path execution DTO, since local mock never completes one for real."""
     inputs: dict = {
         "methods": ["docking"],
@@ -558,12 +616,18 @@ def _hand_built_docking_dto(*, self_test: bool = False) -> dict:
     }
     if not self_test:
         inputs["ligands"] = [{"id": "lig-1", "smiles": "CCO"}]
-    return {
+    dto: dict = {
         "executionId": "docking-hand-built",
         "status": "Completed",
         "tool": {"key": _CFG["tool_key"], "version": "2.0.2"},
         "userInputs": inputs,
     }
+    if batch_size is not None:
+        if batch_size_in_metadata_only:
+            dto["metadata"] = {"batchSize": batch_size}
+        else:
+            dto["batchSize"] = batch_size
+    return dto
 
 
 def test_secondary_pharma_from_dto_docking(client: DeepOriginClient) -> None:
@@ -574,6 +638,24 @@ def test_secondary_pharma_from_dto_docking(client: DeepOriginClient) -> None:
     assert restored.self_test is False
     assert restored.uniprots == tuple(_PANEL_ACCESSIONS[:2])
     assert restored.ligands[0].smiles == "CCO"
+    assert restored.batch_size == 30, "no batchSize anywhere in the DTO -- defaults"
+
+
+def test_secondary_pharma_from_dto_restores_batch_size(
+    client: DeepOriginClient,
+) -> None:
+    """``batch_size`` is restored from the top-level ``batchSize`` field, or
+    ``metadata.batchSize`` as a fallback for an older execution record."""
+    restored = SecondaryPharmacology.from_dto(
+        _hand_built_docking_dto(batch_size=12), client=client
+    )
+    assert restored.batch_size == 12
+
+    restored_from_meta = SecondaryPharmacology.from_dto(
+        _hand_built_docking_dto(batch_size=7, batch_size_in_metadata_only=True),
+        client=client,
+    )
+    assert restored_from_meta.batch_size == 7
 
 
 def test_secondary_pharma_from_dto_self_test_has_no_ligands(

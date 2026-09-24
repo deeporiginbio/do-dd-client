@@ -325,6 +325,9 @@ class SecondaryPharmacology(
             whole panel. Validated against the live tool definition's enum.
         effort: Docking effort level (1 = fastest, 5 = most thorough). Ignored
             on the ligand-ml path.
+        batch_size: Panel cells (ligand x target) packed per docking leaf --
+            a soft cap; a single target's cells are never split across
+            leaves. Ignored on the ligand-ml path.
         self_test: When ``True``, runs the selected method against the full
             panel with a baked test ligand and ignores :attr:`ligands`.
     """
@@ -340,6 +343,7 @@ class SecondaryPharmacology(
         method: Literal["docking", "ligand-ml"] | None = None,
         uniprots: list[str] | None = None,
         effort: int = 1,
+        batch_size: int = 30,
         self_test: bool = False,
         tool_version: str = TOOL_KEYS_AND_VERSIONS["secondary_pharma"]["tool_version"],
         client: DeepOriginClient | None = None,
@@ -354,6 +358,10 @@ class SecondaryPharmacology(
             uniprots: Panel accessions to restrict to. Validated against the
                 live tool definition. ``None`` or empty scores the whole panel.
             effort: Docking effort level (1-5). Ignored on the ligand-ml path.
+            batch_size: Panel cells (ligand x target) packed per docking leaf
+                (default 30, matching the platform's own default) -- a soft
+                cap, not a hard split: a single target's cells always stay
+                together in one leaf even if that leaf exceeds this.
             self_test: When ``True``, ``ligands`` is not required; the platform
                 runs the selected method against the full panel with a baked
                 test ligand.
@@ -366,9 +374,12 @@ class SecondaryPharmacology(
         Raises:
             ValueError: If ``method`` is omitted, if ``ligands`` is
                 empty/omitted and ``self_test`` is ``False``, if
-                ``self_test`` is ``True`` and ``ligands`` is also given, or
-                if ``uniprots`` names accessions outside the live panel.
+                ``self_test`` is ``True`` and ``ligands`` is also given, if
+                ``batch_size`` is not a positive integer, or if ``uniprots``
+                names accessions outside the live panel.
         """
+        if batch_size <= 0:
+            raise ValueError("batch_size must be a positive integer.")
         if method is None:
             raise ValueError("method is required: 'docking' or 'ligand-ml'.")
 
@@ -390,6 +401,7 @@ class SecondaryPharmacology(
         super().__init__(client=client)
         self.tool_version = tool_version
         self.effort = effort
+        self._batch_size = batch_size
         self._method = method
         self._self_test = self_test
         self._ligands = resolved_ligands
@@ -426,6 +438,14 @@ class SecondaryPharmacology(
     def self_test(self) -> bool:
         """Whether this run scores the baked test ligand against the full panel."""
         return self._self_test
+
+    @property
+    def batch_size(self) -> int:
+        """Panel cells packed per docking leaf (default 30). Read-only.
+
+        Ignored on the ligand-ml path.
+        """
+        return self._batch_size
 
     @property
     def uniprots(self) -> list[str] | tuple[str, ...] | None:
@@ -468,6 +488,7 @@ class SecondaryPharmacology(
             parts.append("  uniprots=full panel,")
         if self._method == "docking":
             parts.append(f"  effort={self.effort},")
+            parts.append(f"  batch_size={self._batch_size},")
         hint = (
             "call start() to execute asynchronously"
             if self._method == "docking"
@@ -605,16 +626,19 @@ class SecondaryPharmacology(
     ) -> dict[str, Any]:
         """Build the body dict for ``client.executions.create``.
 
-        No ``batchSize``: unlike ``deeporigin.docking``, this tool's Argo
-        workflow (``tools/secondary-pharma/workflow/workflow.yaml``) is a
-        single DAG task with no ligand fan-out -- there is nothing on the
-        platform side to batch into today.
+        ``batchSize`` is a top-level field here, like ``deeporigin.docking``
+        -- it controls docking-leaf packing on the platform side, not a
+        schema-declared tool input, so it doesn't belong in ``inputs``.
+        Always sent (including on the ligand-ml path, which never reaches
+        the workflow that reads it) for a predictable round trip through
+        :meth:`from_dto`.
         """
         payload: dict[str, Any] = {
             "inputs": self._make_inputs(),
             "outputs": {},
             "metadata": {},
             "sync": sync,
+            "batchSize": self._batch_size,
         }
         if self.name is not None:
             payload["name"] = self.name
@@ -947,9 +971,12 @@ class SecondaryPharmacology(
         """Construct a ``SecondaryPharmacology`` from a tools execution DTO.
 
         Restores ligands, method, uniprots, effort, and self_test from
-        ``userInputs``. Does not fetch the live tool definition, so a
-        rehydrated instance's ``uniprots`` is read-only until :meth:`duplicate`
-        is called.
+        ``userInputs``, and batch_size from the execution's top-level
+        ``batchSize`` field (or its ``metadata``, for an older execution
+        record) -- like ``batch_size``, ``batchSize`` is not a schema input,
+        so it doesn't live in ``userInputs``. Does not fetch the live tool
+        definition, so a rehydrated instance's ``uniprots`` is read-only
+        until :meth:`duplicate` is called.
 
         Args:
             dto: Execution payload (same shape as ``client.executions.get``).
@@ -960,7 +987,10 @@ class SecondaryPharmacology(
             domain inputs set.
         """
         instance = super().from_dto(dto, client=client)
-        inputs: dict[str, Any] = dto.get("userInputs") or dto.get("inputs") or {}
+        execution = instance._dto
+        inputs: dict[str, Any] = (
+            execution.get("userInputs") or execution.get("inputs") or {}
+        )
         instance._ligands = _ligands_from_inputs(inputs)
         methods = inputs.get("methods")
         instance._method = (
@@ -976,6 +1006,17 @@ class SecondaryPharmacology(
             else None
         )
         instance._allowed_uniprots = None
+
+        meta = execution.get("metadata") or {}
+        raw_batch = execution.get("batchSize")
+        if raw_batch is None:
+            raw_batch = meta.get("batchSize")
+        try:
+            batch_size = int(raw_batch) if raw_batch is not None else 30
+        except (TypeError, ValueError):
+            batch_size = 30
+        instance._batch_size = batch_size if batch_size > 0 else 30
+
         return instance
 
     @classmethod
