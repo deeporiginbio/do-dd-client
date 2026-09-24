@@ -2879,17 +2879,37 @@ class LigandSet:
 
         from deeporigin.drug_discovery.import_dataset_sync import (
             require_project_id,
+            require_uniform_scope,
             stage_local_file,
             sync_process_csv,
             sync_process_sdf,
         )
 
-        proj_id = require_project_id(
-            entity_project_id=ligands_to_sync[0].resolved_project_id(client=client),
-            client=client,
+        proj_id = require_uniform_scope(
+            [lig.resolved_project_id(client=client) for lig in ligands_to_sync],
+            field_label="project_id",
+            title="Ligand sync failed",
         )
+        proj_id = require_project_id(entity_project_id=proj_id, client=client)
         for lig in ligands_to_sync:
             lig.project_id = proj_id
+
+        tag_payloads = [lig.tags for lig in ligands_to_sync if lig.tags is not None]
+        uniform_tags: dict[str, Any] | None = None
+        if tag_payloads:
+            import json
+
+            unique_tags = {json.dumps(t, sort_keys=True): t for t in tag_payloads}
+            if len(unique_tags) > 1:
+                raise DeepOriginException(
+                    title="Ligand sync failed",
+                    message=(
+                        "Mixed ligand tags in one SDF batch are not supported. "
+                        "Use structure-less CSV sync or sync ligands with different "
+                        "tags in separate batches."
+                    ),
+                )
+            uniform_tags = tag_payloads[0]
 
         use_sdf = any(lig.local_path is not None for lig in ligands_to_sync)
 
@@ -2897,29 +2917,40 @@ class LigandSet:
             subset = LigandSet(ligands=ligands_to_sync)
             local_sdf = subset.to_sdf()
             remote = stage_local_file(client, local_sdf, remote_path=remote_path)
+            sdf_kwargs: dict[str, Any] = {}
+            if uniform_tags is not None:
+                sdf_kwargs["tags"] = uniform_tags
             outputs = sync_process_sdf(
                 client=client,
                 project_id=proj_id,
                 file_path=remote,
                 register_poses=False,
-                tags=None,
+                **sdf_kwargs,
             )
         else:
             import csv
+            import json
 
+            fieldnames = ["smiles", "name"]
+            if any(lig.tags is not None for lig in ligands_to_sync):
+                fieldnames.append("tags")
             fd = tempfile.NamedTemporaryFile(
                 mode="w",
                 delete=False,
                 suffix=".csv",
                 newline="",
             )
-            writer = csv.DictWriter(fd, fieldnames=["smiles", "name"])
+            writer = csv.DictWriter(fd, fieldnames=fieldnames)
             writer.writeheader()
             for lig in ligands_to_sync:
                 smi = lig.smiles or lig.canonical_smiles or ""
-                writer.writerow(
-                    {"smiles": smi, "name": lig.name or ""},
-                )
+                row: dict[str, str] = {
+                    "smiles": smi,
+                    "name": lig.name or "",
+                }
+                if lig.tags is not None:
+                    row["tags"] = json.dumps(lig.tags)
+                writer.writerow(row)
             fd.close()
             remote = stage_local_file(client, fd.name, remote_path=remote_path)
             Path(fd.name).unlink(missing_ok=True)

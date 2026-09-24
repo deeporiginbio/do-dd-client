@@ -1250,6 +1250,16 @@ def create_tools_router(
                             "name": row.get("name") or "",
                             "project_id": project_id or MOCK_DEFAULT_PROJECT_ID,
                         }
+                        raw_tags = row.get("tags")
+                        if raw_tags:
+                            import json
+
+                            try:
+                                parsed = json.loads(str(raw_tags))
+                            except json.JSONDecodeError:
+                                parsed = None
+                            if isinstance(parsed, dict):
+                                extra["tags"] = parsed
                         record = _make_ligand_record(smiles, extra)
                         ligands[record["id"]] = record
                         lid = str(record["id"])
@@ -1338,7 +1348,6 @@ def create_tools_router(
                 protein_id = inputs.get("protein_id")
                 for row in ligand_rows:
                     pose_row = {
-                        "id": f"pose-{uuid.uuid4().hex[:12]}",
                         "file_path": file_path,
                         "ligand_id": row["id"],
                         "origin": str(inputs.get("origin") or "registered"),

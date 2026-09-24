@@ -519,6 +519,12 @@ class Entities:
         mol_file: str | None = None,
         variant_name_tag: str = "",
         tags: dict[str, Any] | None = None,
+        molecular_weight: float | None = None,
+        formal_charge: int | None = None,
+        hbond_donor_count: int | None = None,
+        hbond_acceptor_count: int | None = None,
+        rotatable_bond_count: int | None = None,
+        tpsa: float | None = None,
     ) -> dict:
         """Create a new ligand.
 

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import time
 from dataclasses import dataclass, field
 from pathlib import Path
 import time
@@ -469,7 +470,7 @@ class Pose(Entity):
         Args:
             path: Local SDF file path.
             ligand: Optional explicit parent ligand (skips auto-sync by SMILES).
-            protein_id: Optional associated protein id.
+            protein_id: Associated protein id (required).
             origin: Provenance string stored on the pose row.
             client: Optional platform client.
             sanitize: Passed to :meth:`Ligand.from_sdf`.
@@ -781,9 +782,12 @@ def _matches_registered_pose_row(
     *,
     origin: str,
     file_path: str | None,
+    protein_id: str | None = None,
 ) -> bool:
     """Return whether a pose row matches registration lookup filters."""
 
+    if protein_id is not None and str(data.get("protein_id") or "") != str(protein_id):
+        return False
     if file_path is not None:
         return data.get("file_path") == file_path
     if origin:
@@ -818,29 +822,42 @@ def _resolve_registered_pose_row(
     file_path: str | None,
     origin: str,
     fallback: dict[str, Any],
+    protein_id: str | None = None,
 ) -> dict[str, Any]:
-    """Look up a freshly registered pose row in result-explorer when id is missing."""
+    """Look up a freshly registered pose row in result-explorer when id is missing.
 
-    response = client.results.get_poses(ligand_id=ligand_id, limit=None)
-    records = response.get("data", [])
-    for rec in records:
-        data = _pose_record_data(rec)
-        if data is None:
-            continue
-        if _matches_registered_pose_row(
-            data,
-            origin=origin,
-            file_path=file_path,
-        ):
-            return _explorer_record_to_pose_row(rec, fallback)
+    ImportTool returns the pose payload without an id. The id shows up on the
+    result-explorer row after ingestion. When ``protein_id`` is set, a row for
+    the same SDF that belongs to another protein is not a match.
+    """
 
-    if records:
-        last_rec = records[-1]
-        data = _pose_record_data(last_rec)
-        if data is not None:
-            return _explorer_record_to_pose_row(last_rec, fallback)
-
-    return fallback
+    deadline = time.monotonic() + (20 if protein_id is not None else 0)
+    chosen = fallback
+    while True:
+        response = client.results.get_poses(ligand_id=ligand_id, limit=None)
+        records = response.get("data", []) if isinstance(response, dict) else []
+        matches: list[dict[str, Any]] = []
+        for rec in records:
+            data = _pose_record_data(rec)
+            if data is None:
+                continue
+            if _matches_registered_pose_row(
+                data,
+                origin=origin,
+                file_path=file_path,
+                protein_id=protein_id,
+            ):
+                matches.append(rec)
+        if matches:
+            return _explorer_record_to_pose_row(matches[-1], fallback)
+        if protein_id is None and records and file_path is None:
+            last_rec = records[-1]
+            data = _pose_record_data(last_rec)
+            if data is not None:
+                return _explorer_record_to_pose_row(last_rec, fallback)
+        if time.monotonic() >= deadline:
+            return chosen
+        time.sleep(1)
 
 
 def _resolve_registered_pose_row_with_poll(
@@ -1063,25 +1080,32 @@ class PoseSet:
 
         from deeporigin.drug_discovery.import_dataset_sync import (
             require_project_id,
+            require_uniform_scope,
             stage_local_file,
             sync_process_sdf,
         )
 
-        proj_id = require_project_id(
-            entity_project_id=poses_to_sync[0].resolved_project_id(client=client),
-            client=client,
+        proj_id = require_uniform_scope(
+            [p.resolved_project_id(client=client) for p in poses_to_sync],
+            field_label="project_id",
+            title="Pose sync failed",
+        )
+        proj_id = require_project_id(entity_project_id=proj_id, client=client)
+        protein_id = require_uniform_scope(
+            [p.protein_id for p in poses_to_sync],
+            field_label="protein_id",
+            title="Pose sync failed",
+        )
+        origin = require_uniform_scope(
+            [str(p.origin or "registered") for p in poses_to_sync],
+            field_label="origin",
+            title="Pose sync failed",
         )
         for pose in poses_to_sync:
             pose.project_id = proj_id
 
         subset = PoseSet(poses=poses_to_sync)
         local_sdf = subset.to_sdf()
-        protein_id = poses_to_sync[0].protein_id
-        if protein_id is None:
-            raise DeepOriginException(
-                title="Pose sync failed",
-                message="protein_id is required for pose registration.",
-            )
         remote = stage_local_file(client, local_sdf, remote_path=remote_path)
         outputs = sync_process_sdf(
             client=client,
@@ -1089,7 +1113,7 @@ class PoseSet:
             file_path=remote,
             register_poses=True,
             protein_id=str(protein_id),
-            origin=str(poses_to_sync[0].origin or "registered"),
+            origin=origin,
         )
         ligand_rows = outputs.get("ligands") or []
         pose_rows = outputs.get("poses") or []
@@ -1098,20 +1122,31 @@ class PoseSet:
         if not isinstance(pose_rows, list):
             pose_rows = []
 
-        origin = str(poses_to_sync[0].origin or "registered")
+        ligands_by_index: dict[int, dict[str, Any]] = {}
+        for row in ligand_rows:
+            if isinstance(row, dict) and "record_index" in row:
+                ligands_by_index[int(row["record_index"])] = row
+        poses_by_index: dict[int, dict[str, Any]] = {}
+        for row in pose_rows:
+            if isinstance(row, dict) and "record_index" in row:
+                poses_by_index[int(row["record_index"])] = row
+
         for idx, pose in enumerate(poses_to_sync):
-            if idx < len(ligand_rows) and isinstance(ligand_rows[idx], dict):
-                lid = ligand_rows[idx].get("id")
+            lrow = ligands_by_index.get(idx)
+            if lrow is None and idx < len(ligand_rows) and isinstance(
+                ligand_rows[idx], dict
+            ):
+                lrow = ligand_rows[idx]
+            if isinstance(lrow, dict):
+                lid = lrow.get("id")
                 if lid:
                     pose.ligand_id = str(lid)
-                mol_file = ligand_rows[idx].get("mol_file")
+                mol_file = lrow.get("mol_file")
                 if mol_file:
                     pose.remote_path = str(mol_file)
-            prow: dict[str, Any] = (
-                dict(pose_rows[idx])
-                if idx < len(pose_rows) and isinstance(pose_rows[idx], dict)
-                else {}
-            )
+            prow: dict[str, Any] = poses_by_index.get(idx, {})
+            if not prow and idx < len(pose_rows) and isinstance(pose_rows[idx], dict):
+                prow = dict(pose_rows[idx])
             _apply_platform_pose_row(pose, prow)
             if pose.id is None and pose.ligand_id:
                 resolved = _resolve_registered_pose_row_with_poll(
@@ -1122,6 +1157,14 @@ class PoseSet:
                     fallback=prow,
                 )
                 _apply_platform_pose_row(pose, resolved)
+            if pose.id is None:
+                raise DeepOriginException(
+                    title="Pose sync failed",
+                    message=(
+                        "import-dataset did not return a pose id for one or more "
+                        "poses after result-explorer lookup."
+                    ),
+                )
 
     def filter_top_poses(self, *, by_pose_score: bool = True) -> Self:
         """Keep the best pose for each unique SMILES.

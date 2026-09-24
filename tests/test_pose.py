@@ -169,59 +169,26 @@ def test_pose_sync_lazy_skips_when_id_set() -> None:
 
 
 def test_pose_set_sync_hydrates_id_from_result_explorer(
+    client,
+    registered_protein,
     tmp_path: Path,
 ) -> None:
     """Served import-dataset pose rows omit id; sync loads it from result-explorer."""
     sdf_path = tmp_path / "pose.sdf"
     lig = Ligand.from_sdf(BRD_DATA_DIR / "brd-2.sdf")
+    lig.sync(client=client)
     lig.to_sdf(str(sdf_path))
     pose = Pose(
-        ligand_id="L1",
-        protein_id="PROT-1",
+        ligand_id=lig.id,
+        protein_id=registered_protein.id,
         local_path=str(sdf_path),
-        project_id="proj-1",
+        project_id=client.project_id,
     )
-    client = MagicMock()
-    client.project_id = "proj-1"
-    pose_remote = "entities/ligands/import/exec-1/record-0.sdf"
-    job_outputs = {
-        "ligands": [{"id": "L1", "mol_file": "entities/ligands/L1.sdf"}],
-        "poses": [
-            {
-                "file_path": pose_remote,
-                "ligand_id": "L1",
-                "origin": "registered",
-                "protein_id": "PROT-1",
-            }
-        ],
-    }
-    client.results.get_poses.return_value = {
-        "data": [
-            {
-                "id": "POSE-RESULT-99",
-                "data": {
-                    "file_path": pose_remote,
-                    "ligand_id": "L1",
-                    "origin": "registered",
-                },
-            }
-        ],
-        "meta": {},
-    }
-    with (
-        patch(
-            "deeporigin.drug_discovery.import_dataset_sync.stage_local_file",
-            return_value="staging/upload.sdf",
-        ),
-        patch(
-            "deeporigin.drug_discovery.import_dataset_sync.sync_process_sdf",
-            return_value=job_outputs,
-        ),
-    ):
-        PoseSet(poses=[pose]).sync(client=client)
-    assert pose.id == "POSE-RESULT-99"
-    assert pose.remote_path == pose_remote
-    client.results.get_poses.assert_called()
+    PoseSet(poses=[pose]).sync(client=client)
+    assert pose.id is not None
+    assert pose.ligand_id == lig.id
+    found = registered_ligand_poses_for_id(client, lig.id)
+    assert any(p.id == pose.id for p in found)
 
 
 def test_pose_to_file_writes_sdf(tmp_path: Path) -> None:

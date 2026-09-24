@@ -147,6 +147,7 @@ def test_sysprep_lv2(
     protein: Protein = request.getfixturevalue(protein_fixture)
     ligand: Ligand = request.getfixturevalue(ligand_fixture)
     ligand.sync(client=client)
+    protein.sync(client=client)
     sdf = BRD_DATA_DIR / "brd-2.sdf"
     protein_id = protein.id or MOCK_CANONICAL_PROTEIN_ID
     pose = Pose.from_sdf(sdf, ligand=ligand, protein_id=protein_id, client=client)

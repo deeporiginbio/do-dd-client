@@ -14,11 +14,30 @@ from tests.integration_project import (
 from tests.mock_server.routers.data_platform import MOCK_CANONICAL_PROTEIN_ID
 
 
+def _assert_project_lookup_http_200(client: DeepOriginClient, project_id: str) -> None:
+    """Fail on the HTTP status when project lookup does not succeed.
+
+    ``projects.current()`` turns a failed get into ``(id, None)``, so a 409
+    otherwise shows up as a missing display name.
+    """
+
+    response = client._client.post(
+        f"/data-platform/{client.org_key}/projects/search",
+        json={"filter": {"id": str(project_id), "deleted": False}, "limit": 1},
+    )
+    assert response.status_code == 200, (
+        f"Expected HTTP 200 looking up project {project_id}, "
+        f"got {response.status_code}: {response.text[:500]}"
+    )
+
+
 def test_current_lv1(client: DeepOriginClient) -> None:
     """projects.current() returns the active project id and display name."""
 
     project_name = integration_project_name(client.env)
     projects.load(project_name)
+    assert client.project_id is not None
+    _assert_project_lookup_http_200(client, client.project_id)
     current = projects.current()
     assert current is not None
     project_id, name = current
@@ -36,6 +55,7 @@ def test_load_lv1(client: DeepOriginClient) -> None:
     projects.load(project_name)
     pid = client.project_id
     assert pid is not None
+    _assert_project_lookup_http_200(client, pid)
     cur = projects.current()
     assert cur is not None
     assert cur[1] == project_name, f"Expected project name {project_name}, got {cur[1]}"
@@ -43,6 +63,7 @@ def test_load_lv1(client: DeepOriginClient) -> None:
 
     projects.load(str(pid))
     assert client.project_id == str(pid)
+    _assert_project_lookup_http_200(client, pid)
     cur = projects.current()
     assert cur is not None
     assert cur[0] == str(pid)

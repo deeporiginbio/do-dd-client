@@ -31,11 +31,11 @@ def fetch_project_display_name(
     from deeporigin.exceptions import DeepOriginException
     from deeporigin.platform.client import DeepOriginClient as Client
 
-    if client is None:
-        client = Client()
-    if client.projects is None:
-        return "", cached_name
     try:
+        if client is None:
+            client = Client()
+        if client.projects is None:
+            return "", cached_name
         row = client.projects.get(project_id=str(project_id))["data"]
         raw = row.get("name")
         if raw is not None:

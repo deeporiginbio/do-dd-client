@@ -212,9 +212,11 @@ def test_extract_ligand():
     protein = Protein.from_pdb_id("1EBY")
     ligand = protein.extract_ligand()
 
+    # BEB: benzyl ethers, indanols and amide carbonyls, with bond orders
+    # from the Chemical Component Dictionary (CONECT records carry none).
     assert (
         ligand.smiles
-        == "OC(N[C@H]1C2CCCCC2C[C@H]1O)[C@H](OCC1CCCCC1)[C@H](O)[C@@H](O)[C@@H](OCC1CCCCC1)[C@@H](O)N[C@H]1C2CCCCC2C[C@H]1O"
+        == "O=C(N[C@H]1c2ccccc2C[C@H]1O)[C@H](OCc1ccccc1)[C@H](O)[C@@H](O)[C@@H](OCc1ccccc1)C(=O)N[C@H]1c2ccccc2C[C@H]1O"
     )
 
 
@@ -232,7 +234,7 @@ def test_extract_ligand_mutates_protein():
     ligand = protein.extract_ligand()
 
     # Verify the ligand was extracted correctly
-    expected_smiles = "OC(N[C@H]1C2CCCCC2C[C@H]1O)[C@H](OCC1CCCCC1)[C@H](O)[C@@H](O)[C@@H](OCC1CCCCC1)[C@@H](O)N[C@H]1C2CCCCC2C[C@H]1O"
+    expected_smiles = "O=C(N[C@H]1c2ccccc2C[C@H]1O)[C@H](OCc1ccccc1)[C@H](O)[C@@H](O)[C@@H](OCc1ccccc1)C(=O)N[C@H]1c2ccccc2C[C@H]1O"
     assert ligand.smiles == expected_smiles
 
     # Verify the protein structure was mutated (ligand removed)
@@ -293,7 +295,7 @@ def test_extract_ligand_updates_master_record():
     )
 
     # Verify the ligand was extracted correctly
-    expected_smiles = "OC(N[C@H]1C2CCCCC2C[C@H]1O)[C@H](OCC1CCCCC1)[C@H](O)[C@@H](O)[C@@H](OCC1CCCCC1)[C@@H](O)N[C@H]1C2CCCCC2C[C@H]1O"
+    expected_smiles = "O=C(N[C@H]1c2ccccc2C[C@H]1O)[C@H](OCc1ccccc1)[C@H](O)[C@@H](O)[C@@H](OCc1ccccc1)C(=O)N[C@H]1c2ccccc2C[C@H]1O"
     assert ligand.smiles == expected_smiles
 
 
@@ -384,6 +386,101 @@ def test_extract_ligand_with_custom_exclude_resnames():
     ligand = protein.extract_ligand(exclude_resnames={"HOH", "CUSTOM"})
 
     assert ligand is not None
+    assert len(ligand.mol.GetAtoms()) > 0
+
+
+# 3JVS ligand AGY (chain A): a nitro-substituted aromatic acyl semicarbazide.
+_AGY_HETATM_BLOCK = """\
+HETATM 2090  C1  AGY A 900      33.993  -2.124  17.638  1.00 38.11           C
+HETATM 2091  N1  AGY A 900      31.494  -2.422  17.781  1.00 36.13           N
+HETATM 2092  O1  AGY A 900      31.389  -3.621  15.852  1.00 37.96           O
+HETATM 2093  C2  AGY A 900      32.624  -1.631  17.588  1.00 37.29           C
+HETATM 2094  N2  AGY A 900      29.793  -4.018  17.347  1.00 36.24           N
+HETATM 2095  O2  AGY A 900      30.434  -5.459  19.401  1.00 33.94           O
+HETATM 2096  C3  AGY A 900      35.136  -1.187  17.415  1.00 36.67           C
+HETATM 2097  N3  AGY A 900      29.137  -3.804  18.606  1.00 32.73           N
+HETATM 2098  O3  AGY A 900      24.819  -4.761  22.699  1.00 44.05           O
+HETATM 2099  C4  AGY A 900      34.274  -3.517  17.902  1.00 38.08           C
+HETATM 2100  N4  AGY A 900      25.645  -3.809  22.368  1.00 42.51           N
+HETATM 2101  O4  AGY A 900      25.168  -2.548  22.031  1.00 41.99           O
+HETATM 2102  C5  AGY A 900      32.412  -0.211  17.318  1.00 37.27           C
+HETATM 2103  C6  AGY A 900      34.899   0.211  17.150  1.00 38.14           C
+HETATM 2104  C7  AGY A 900      36.476  -1.676  17.465  1.00 38.49           C
+HETATM 2105  C8  AGY A 900      35.637  -3.993  17.949  1.00 39.33           C
+HETATM 2106  C9  AGY A 900      33.526   0.702  17.101  1.00 38.65           C
+HETATM 2107  C10 AGY A 900      30.916  -3.351  16.964  1.00 36.25           C
+HETATM 2108  C11 AGY A 900      36.735  -3.078  17.732  1.00 39.36           C
+HETATM 2109  C12 AGY A 900      29.547  -4.611  19.622  1.00 36.47           C
+HETATM 2110  C13 AGY A 900      28.951  -4.490  20.951  1.00 36.20           C
+HETATM 2111  C14 AGY A 900      27.580  -4.181  21.071  1.00 38.33           C
+HETATM 2112  C15 AGY A 900      29.735  -4.682  22.130  1.00 37.75           C
+HETATM 2113  C16 AGY A 900      26.943  -4.057  22.348  1.00 39.76           C
+HETATM 2114  C17 AGY A 900      29.139  -4.565  23.440  1.00 39.30           C
+HETATM 2115  C18 AGY A 900      27.709  -4.243  23.595  1.00 38.59           C
+HETATM 2116  C19 AGY A 900      27.122  -4.133  25.024  1.00 37.78           C
+HETATM 2117  C20 AGY A 900      28.026  -3.363  26.017  1.00 36.59           C
+HETATM 2118  C21 AGY A 900      25.795  -3.327  25.291  1.00 37.53           C
+HETATM 2119  C22 AGY A 900      26.812  -5.570  25.486  1.00 37.68           C
+END
+"""
+
+
+def test_assign_ccd_bond_orders_restores_orders_and_charges():
+    """PDB CONECT records have no bond orders; the CCD supplies them and the nitro charges."""
+    from rdkit import Chem
+
+    from deeporigin.drug_discovery.structures.protein import _assign_ccd_bond_orders
+
+    mol = Chem.MolFromPDBBlock(_AGY_HETATM_BLOCK, sanitize=False, removeHs=False)
+    assert _assign_ccd_bond_orders(mol) == []
+    Chem.SanitizeMol(mol)
+
+    assert Chem.MolToSmiles(mol) == (
+        "CC(C)(C)c1ccc(C(=O)NNC(=O)Nc2cccc3ccccc23)cc1[N+](=O)[O-]"
+    )
+
+
+def test_assign_ccd_bond_orders_skips_residue_with_mismatched_atom_names():
+    """A reused CCD code (LIG is a real, different component) must not be trusted."""
+    from rdkit import Chem
+
+    from deeporigin.drug_discovery.structures.protein import _assign_ccd_bond_orders
+
+    block = _AGY_HETATM_BLOCK.replace(" AGY ", " LIG ")
+    mol = Chem.MolFromPDBBlock(block, sanitize=False, removeHs=False)
+
+    assert _assign_ccd_bond_orders(mol) == ["LIG"]
+    assert all(b.GetBondType() == Chem.BondType.SINGLE for b in mol.GetBonds())
+
+
+def test_extract_ligand_assigns_bond_orders_offline():
+    """extract_ligand on a local PDB yields aromatic rings and carbonyls, not all-single bonds."""
+    from rdkit.Chem import rdMolDescriptors
+
+    protein = Protein.from_file(Path(__file__).parent / "fixtures" / "1eby.pdb")
+    ligand = protein.extract_ligand()
+
+    assert rdMolDescriptors.CalcNumAromaticRings(ligand.mol) == 4
+    assert any(b.GetBondTypeAsDouble() == 2.0 for b in ligand.mol.GetBonds())
+
+
+def test_extract_ligand_warns_when_bond_orders_unresolved(tmp_path):
+    """An unresolvable ligand residue still extracts, but with a warning."""
+    source = Path(__file__).parent / "fixtures" / "1eby.pdb"
+    renamed = tmp_path / "1eby-renamed-ligand.pdb"
+    renamed.write_text(
+        "".join(
+            line[:17] + "LIG" + line[20:]
+            if line.startswith("HETATM") and line[17:20] == "BEB"
+            else line
+            for line in source.read_text().splitlines(keepends=True)
+        )
+    )
+    protein = Protein.from_file(renamed)
+
+    with pytest.warns(UserWarning, match="Could not assign bond orders.*LIG"):
+        ligand = protein.extract_ligand()
+
     assert len(ligand.mol.GetAtoms()) > 0
 
 

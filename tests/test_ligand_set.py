@@ -1096,9 +1096,7 @@ def test_ligand_set_sync_duplicate_smiles_lv1(client):
 
     ids = [lig.id for lig in ligands]
     assert all(i is not None for i in ids), "Every duplicate should receive an id"
-    # Dedup by canonical SMILES is enforced in import-dataset (toolbox); the mock
-    # gateway returns distinct ids per SDF record index.
-    assert len(set(ids)) >= 1
+    assert len(set(ids)) == 1, "Duplicate canonical SMILES should map to one id"
 
 
 def test_batch_create_ligands_lv1(client: DeepOriginClient):

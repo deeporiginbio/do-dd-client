@@ -48,6 +48,31 @@ def job_outputs(dto: dict[str, Any]) -> dict[str, Any]:
     return jo if isinstance(jo, dict) else {}
 
 
+def require_uniform_scope(
+    values: list[str | None],
+    *,
+    field_label: str,
+    title: str = "Sync failed",
+) -> str:
+    """Require every entity in a batch sync shares the same scope value."""
+    normalized = [str(v).strip() for v in values if v is not None and str(v).strip()]
+    if not normalized:
+        raise DeepOriginException(
+            title=title,
+            message=f"{field_label} is required for batch sync.",
+        )
+    unique = set(normalized)
+    if len(unique) > 1:
+        raise DeepOriginException(
+            title=title,
+            message=(
+                f"Mixed {field_label} values in one batch are not supported "
+                f"({len(unique)} distinct values). Sync each scope separately."
+            ),
+        )
+    return normalized[0]
+
+
 def require_project_id(
     *,
     entity_project_id: str | None,
