@@ -996,10 +996,30 @@ class Protein(Entity):
         # Create PDB block from ligand lines and CONECT records
         ligand_pdb_block = "".join(ligand_lines) + "".join(conect_lines) + "END\n"
 
-        # Parse with RDKit
-        mol = Chem.MolFromPDBBlock(ligand_pdb_block, sanitize=True, removeHs=False)
+        # Parse with RDKit. CONECT records carry no bond orders, so restore
+        # them (and formal charges) from the CCD before sanitizing.
+        mol = Chem.MolFromPDBBlock(ligand_pdb_block, sanitize=False, removeHs=False)
         if mol is None:
             raise ValueError("RDKit could not parse the ligand from the PDB block.")
+        unresolved = _assign_ccd_bond_orders(mol)
+        if unresolved:
+            import warnings
+
+            warnings.warn(
+                "Could not assign bond orders from the Chemical Component "
+                f"Dictionary for ligand residue(s) {', '.join(unresolved)}; their "
+                "bonds are taken from the PDB records as-is, which usually "
+                "makes every bond single. Check the ligand's chemistry or "
+                "build it from SMILES/SDF instead.",
+                stacklevel=2,
+            )
+        try:
+            Chem.SanitizeMol(mol)
+        except Exception as e:
+            raise ValueError(
+                f"RDKit could not sanitize the extracted ligand: {e}"
+            ) from e
+        Chem.AssignStereochemistryFrom3D(mol)
 
         # Now remove the ligand from the protein structure
         self._remove_ligand_from_structure(ligand_atom_serials, ligand_resnames)
@@ -1949,6 +1969,98 @@ def validate_pdb_file(file_path: str | Path) -> None:
             message="The PDB file is invalid. It could not be parsed by RDKit.",
             fix="Please check the PDB file and try again.",
         )
+
+
+def _assign_ccd_bond_orders(mol: Any) -> list[str]:
+    """Set bond orders and formal charges on a PDB-parsed ligand from the CCD.
+
+    PDB CONECT records carry connectivity but not bond orders, so
+    ``Chem.MolFromPDBBlock`` returns every bond as SINGLE: aromatic rings come
+    back as cyclohexanes and carbonyls as alcohols. The wwPDB Chemical
+    Component Dictionary (bundled with biotite) records the order of every
+    bond between named atoms of every component, so each residue's bonds and
+    charges are looked up by atom name. Atoms absent from the crystal
+    structure (unresolved or leaving atoms) do not matter.
+
+    A residue is left untouched unless every one of its atoms matches a CCD
+    atom of the same name and element and every bond within it is a CCD bond,
+    which guards against a custom file reusing a CCD code (e.g. ``LIG``) for a
+    different molecule. Bonds between residues are left as parsed.
+
+    Args:
+        mol: RDKit molecule parsed from a PDB block with ``sanitize=False``.
+            Modified in place; the caller sanitizes it afterwards.
+
+    Returns:
+        Names of residues whose bond orders could not be assigned.
+    """
+    import biotite.structure.info as struc_info
+    from rdkit import Chem
+
+    residues: dict[tuple, list[Any]] = defaultdict(list)
+    for atom in mol.GetAtoms():
+        info = atom.GetPDBResidueInfo()
+        key = (
+            info.GetChainId(),
+            info.GetResidueNumber(),
+            info.GetInsertionCode(),
+            info.GetResidueName().strip().upper(),
+        )
+        residues[key].append(atom)
+
+    unresolved: list[str] = []
+    for (*_, res_name), atoms in residues.items():
+        try:
+            ccd_atoms = struc_info.residue(res_name)
+        except KeyError:
+            unresolved.append(res_name)
+            continue
+        ccd_bonds = struc_info.bonds_in_residue(res_name)
+        ccd_atom_by_name = {
+            str(name): (str(element).upper(), int(charge))
+            for name, element, charge in zip(
+                ccd_atoms.atom_name, ccd_atoms.element, ccd_atoms.charge, strict=True
+            )
+        }
+
+        names = {
+            atom.GetIdx(): atom.GetPDBResidueInfo().GetName().strip() for atom in atoms
+        }
+        atoms_match = all(
+            names[atom.GetIdx()] in ccd_atom_by_name
+            and ccd_atom_by_name[names[atom.GetIdx()]][0] == atom.GetSymbol().upper()
+            for atom in atoms
+        )
+        intra_bonds = [
+            bond
+            for bond in mol.GetBonds()
+            if bond.GetBeginAtomIdx() in names and bond.GetEndAtomIdx() in names
+        ]
+        bond_types = {}
+        for bond in intra_bonds:
+            a = names[bond.GetBeginAtomIdx()]
+            b = names[bond.GetEndAtomIdx()]
+            bond_types[bond.GetIdx()] = ccd_bonds.get((a, b), ccd_bonds.get((b, a)))
+        if not atoms_match or None in bond_types.values():
+            unresolved.append(res_name)
+            continue
+
+        # Kekulé orders; SanitizeMol re-perceives aromaticity afterwards.
+        order_to_rdkit = {
+            1: Chem.BondType.SINGLE,
+            2: Chem.BondType.DOUBLE,
+            3: Chem.BondType.TRIPLE,
+        }
+        for bond in intra_bonds:
+            order = bond_types[bond.GetIdx()].without_aromaticity().value
+            bond.SetBondType(order_to_rdkit.get(order, Chem.BondType.SINGLE))
+            bond.SetIsAromatic(False)
+        for atom in atoms:
+            atom.SetFormalCharge(ccd_atom_by_name[names[atom.GetIdx()]][1])
+            atom.SetIsAromatic(False)
+            atom.SetNoImplicit(False)
+
+    return sorted(set(unresolved))
 
 
 def _protein_row_from_import_execution(dto: dict[str, Any]) -> dict[str, Any] | None:

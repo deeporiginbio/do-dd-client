@@ -335,6 +335,9 @@ records and waters) and ignores hydrogens. Customize this with ``protein_atoms_o
     ligand = protein.extract_ligand(exclude_resnames={"HOH", "CUSTOM_RES"})
     ```
 
+!!! note "Bond orders come from the Chemical Component Dictionary"
+    PDB files record which ligand atoms are bonded but not the bond orders. `extract_ligand()` looks up each ligand residue's bond orders and formal charges in the wwPDB Chemical Component Dictionary by atom name, so aromatic rings, carbonyls and charged groups come out as in the deposited molecule. If a residue can't be matched (an unknown code, or atom names that don't match the dictionary entry), a warning is raised and that residue's bonds are left as parsed, which usually means all single; build such ligands from SMILES or SDF instead.
+
 !!! note "Note about atom counts"
     In this example, the atom count might not change significantly because the ligand atoms are typically a small fraction of the total protein structure. However, the protein's internal structure and `block_content` are updated to exclude the ligand. Additionally, the PDB file's MASTER record is automatically updated to reflect the new atom and CONECT record counts.
 
