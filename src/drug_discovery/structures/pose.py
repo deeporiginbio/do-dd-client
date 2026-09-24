@@ -23,7 +23,6 @@ from deeporigin.drug_discovery.structures.repr_display import (
 )
 from deeporigin.exceptions import DeepOriginException
 from deeporigin.platform.client import DeepOriginClient
-from deeporigin.platform.results import _RESULT_TYPE_POSE, _build_result_filter
 
 PoseOrigin = Literal["cocrystal", "docked", "registered"]
 
@@ -926,14 +925,15 @@ def _resolve_registered_pose_row(
     deadline = time.monotonic() + (20 if protein_id is not None else 0)
     chosen = fallback
     while True:
-        filter_dict = _build_result_filter(
-            ligand_id=ligand_id,
-            compute_job_id=compute_job_id,
-        )
+        filter_dict: dict[str, Any] = {
+            "ligand_id": {"eq": ligand_id},
+        }
+        if compute_job_id:
+            filter_dict["compute_job_id"] = {"eq": compute_job_id}
         if project_id is not None and str(project_id).strip():
             filter_dict["project_id"] = str(project_id).strip()
         response = client.results.get(
-            result_type=_RESULT_TYPE_POSE,
+            result_type="pose",
             filter_dict=filter_dict,
             limit=None,
         )
