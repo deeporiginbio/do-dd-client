@@ -1133,8 +1133,10 @@ class PoseSet:
 
         for idx, pose in enumerate(poses_to_sync):
             lrow = ligands_by_index.get(idx)
-            if lrow is None and idx < len(ligand_rows) and isinstance(
-                ligand_rows[idx], dict
+            if (
+                lrow is None
+                and idx < len(ligand_rows)
+                and isinstance(ligand_rows[idx], dict)
             ):
                 lrow = ligand_rows[idx]
             if isinstance(lrow, dict):
