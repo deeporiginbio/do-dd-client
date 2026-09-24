@@ -5,7 +5,6 @@ from __future__ import annotations
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
-import time
 from typing import Any, ClassVar, Literal, Optional, Self
 
 from beartype import beartype
@@ -30,6 +29,7 @@ PoseOrigin = Literal["cocrystal", "docked", "registered"]
 
 _POSE_RESULT_ID_POLL_SECONDS = 15.0
 _POSE_RESULT_ID_POLL_INTERVAL = 0.5
+_POSE_SYNC_FAILED = "Pose sync failed"
 
 _POSE_JSON_RESERVED: frozenset[str] = frozenset(
     {
@@ -593,37 +593,25 @@ class Pose(Entity):
         """``(label, value)`` pairs for text and HTML display (no file paths)."""
 
         rows: list[tuple[str, str]] = [("id", self.id or "")]
-
-        def add(label: str, value: Any) -> None:
-            if value is None:
-                return
-            if isinstance(value, str) and not value.strip():
-                return
-            rows.append((label, str(value)))
-
-        add("ligand_id", self.ligand_id)
-        add("protein_id", self.protein_id)
-        add("origin", self.origin)
-        add("component_id", self.component_id)
-        add("name", self.name)
+        _append_pose_metadata(rows, "ligand_id", self.ligand_id)
+        _append_pose_metadata(rows, "protein_id", self.protein_id)
+        _append_pose_metadata(rows, "origin", self.origin)
+        _append_pose_metadata(rows, "component_id", self.component_id)
+        _append_pose_metadata(rows, "name", self.name)
         if self.smiles:
             smiles = str(self.smiles)
             if len(smiles) > 96:
                 smiles = f"{smiles[:93]}..."
-            add("smiles", smiles)
-        add("compute_job_id", self.compute_job_id)
-        if self.pose_score is not None:
-            add("pose_score", self.pose_score)
-        if self.binding_energy is not None:
-            add("binding_energy", self.binding_energy)
-        if self.best_pose is not None:
-            add("best_pose", self.best_pose)
+            _append_pose_metadata(rows, "smiles", smiles)
+        _append_pose_metadata(rows, "compute_job_id", self.compute_job_id)
+        _append_pose_metadata(rows, "pose_score", self.pose_score)
+        _append_pose_metadata(rows, "binding_energy", self.binding_energy)
+        _append_pose_metadata(rows, "best_pose", self.best_pose)
         project = self._display_project_name()
-        if project:
-            add("project", project)
+        _append_pose_metadata(rows, "project", project)
         if self.props:
             for key in sorted(self.props):
-                add(f"props.{key}", self.props[key])
+                _append_pose_metadata(rows, f"props.{key}", self.props[key])
         return rows
 
     def _metadata_repr_lines(self) -> list[str]:
@@ -750,6 +738,80 @@ def _pose_row_from_registration_execution(dto: dict[str, Any]) -> dict[str, Any]
     return None
 
 
+def _append_pose_metadata(
+    rows: list[tuple[str, str]],
+    label: str,
+    value: Any,
+) -> None:
+    """Append one metadata row when *value* is present and non-empty."""
+
+    if value is None:
+        return
+    if isinstance(value, str) and not value.strip():
+        return
+    rows.append((label, str(value)))
+
+
+def _indexed_import_rows(rows: list[Any]) -> dict[int, dict[str, Any]]:
+    """Map import-dataset output rows by ``record_index``."""
+
+    by_index: dict[int, dict[str, Any]] = {}
+    for row in rows:
+        if isinstance(row, dict) and "record_index" in row:
+            by_index[int(row["record_index"])] = row
+    return by_index
+
+
+def _hydrate_poses_from_import_outputs(
+    poses_to_sync: list[Pose],
+    *,
+    ligand_rows: list[Any],
+    pose_rows: list[Any],
+    client: DeepOriginClient,
+    origin: str,
+) -> None:
+    """Apply import-dataset ligand/pose job outputs onto in-memory poses."""
+
+    ligands_by_index = _indexed_import_rows(ligand_rows)
+    poses_by_index = _indexed_import_rows(pose_rows)
+    for idx, pose in enumerate(poses_to_sync):
+        lrow = ligands_by_index.get(idx)
+        if (
+            lrow is None
+            and idx < len(ligand_rows)
+            and isinstance(ligand_rows[idx], dict)
+        ):
+            lrow = ligand_rows[idx]
+        if isinstance(lrow, dict):
+            lid = lrow.get("id")
+            if lid:
+                pose.ligand_id = str(lid)
+            mol_file = lrow.get("mol_file")
+            if mol_file:
+                pose.remote_path = str(mol_file)
+        prow: dict[str, Any] = poses_by_index.get(idx, {})
+        if not prow and idx < len(pose_rows) and isinstance(pose_rows[idx], dict):
+            prow = dict(pose_rows[idx])
+        _apply_platform_pose_row(pose, prow)
+        if pose.id is None and pose.ligand_id:
+            resolved = _resolve_registered_pose_row_with_poll(
+                client=client,
+                ligand_id=pose.ligand_id,
+                file_path=prow.get("file_path") or pose.remote_path,
+                origin=origin,
+                fallback=prow,
+            )
+            _apply_platform_pose_row(pose, resolved)
+        if pose.id is None:
+            raise DeepOriginException(
+                title=_POSE_SYNC_FAILED,
+                message=(
+                    "import-dataset did not return a pose id for one or more "
+                    "poses after result-explorer lookup."
+                ),
+            )
+
+
 def _explorer_record_to_pose_row(
     rec: dict[str, Any],
     fallback: dict[str, Any],
@@ -871,20 +933,19 @@ def _resolve_registered_pose_row_with_poll(
     """Poll result-explorer until a pose id appears (served import-dataset path)."""
 
     deadline = time.monotonic() + _POSE_RESULT_ID_POLL_SECONDS
-    row = fallback
-    while True:
-        row = _resolve_registered_pose_row(
+    last_row = fallback
+    while time.monotonic() < deadline:
+        last_row = _resolve_registered_pose_row(
             client=client,
             ligand_id=ligand_id,
             file_path=file_path,
             origin=origin,
             fallback=fallback,
         )
-        if row.get("id"):
-            return row
-        if time.monotonic() >= deadline:
-            return row
+        if last_row.get("id"):
+            return last_row
         time.sleep(_POSE_RESULT_ID_POLL_INTERVAL)
+    return last_row
 
 
 @dataclass
@@ -1068,7 +1129,7 @@ class PoseSet:
         missing_protein = [p for p in poses_to_sync if not p.protein_id]
         if missing_protein:
             raise DeepOriginException(
-                title="Pose sync failed",
+                title=_POSE_SYNC_FAILED,
                 message=(
                     "Every pose must have protein_id set before PoseSet.sync(). "
                     f"{len(missing_protein)} pose(s) are missing protein_id."
@@ -1088,18 +1149,18 @@ class PoseSet:
         proj_id = require_uniform_scope(
             [p.resolved_project_id(client=client) for p in poses_to_sync],
             field_label="project_id",
-            title="Pose sync failed",
+            title=_POSE_SYNC_FAILED,
         )
         proj_id = require_project_id(entity_project_id=proj_id, client=client)
         protein_id = require_uniform_scope(
             [p.protein_id for p in poses_to_sync],
             field_label="protein_id",
-            title="Pose sync failed",
+            title=_POSE_SYNC_FAILED,
         )
         origin = require_uniform_scope(
             [str(p.origin or "registered") for p in poses_to_sync],
             field_label="origin",
-            title="Pose sync failed",
+            title=_POSE_SYNC_FAILED,
         )
         for pose in poses_to_sync:
             pose.project_id = proj_id
@@ -1121,52 +1182,13 @@ class PoseSet:
             ligand_rows = []
         if not isinstance(pose_rows, list):
             pose_rows = []
-
-        ligands_by_index: dict[int, dict[str, Any]] = {}
-        for row in ligand_rows:
-            if isinstance(row, dict) and "record_index" in row:
-                ligands_by_index[int(row["record_index"])] = row
-        poses_by_index: dict[int, dict[str, Any]] = {}
-        for row in pose_rows:
-            if isinstance(row, dict) and "record_index" in row:
-                poses_by_index[int(row["record_index"])] = row
-
-        for idx, pose in enumerate(poses_to_sync):
-            lrow = ligands_by_index.get(idx)
-            if (
-                lrow is None
-                and idx < len(ligand_rows)
-                and isinstance(ligand_rows[idx], dict)
-            ):
-                lrow = ligand_rows[idx]
-            if isinstance(lrow, dict):
-                lid = lrow.get("id")
-                if lid:
-                    pose.ligand_id = str(lid)
-                mol_file = lrow.get("mol_file")
-                if mol_file:
-                    pose.remote_path = str(mol_file)
-            prow: dict[str, Any] = poses_by_index.get(idx, {})
-            if not prow and idx < len(pose_rows) and isinstance(pose_rows[idx], dict):
-                prow = dict(pose_rows[idx])
-            _apply_platform_pose_row(pose, prow)
-            if pose.id is None and pose.ligand_id:
-                resolved = _resolve_registered_pose_row_with_poll(
-                    client=client,
-                    ligand_id=pose.ligand_id,
-                    file_path=prow.get("file_path") or pose.remote_path,
-                    origin=origin,
-                    fallback=prow,
-                )
-                _apply_platform_pose_row(pose, resolved)
-            if pose.id is None:
-                raise DeepOriginException(
-                    title="Pose sync failed",
-                    message=(
-                        "import-dataset did not return a pose id for one or more "
-                        "poses after result-explorer lookup."
-                    ),
-                )
+        _hydrate_poses_from_import_outputs(
+            poses_to_sync,
+            ligand_rows=ligand_rows,
+            pose_rows=pose_rows,
+            client=client,
+            origin=origin,
+        )
 
     def filter_top_poses(self, *, by_pose_score: bool = True) -> Self:
         """Keep the best pose for each unique SMILES.
