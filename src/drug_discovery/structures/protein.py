@@ -46,6 +46,11 @@ from .prepared_protein_stamp import (
     text_has_prepared_protein_cif_stamp,
     text_has_prepared_protein_stamp,
 )
+from .repr_display import (
+    REPR_INNER_INDENT,
+    fetch_project_display_name,
+    metadata_repr_html,
+)
 
 _PROTEIN_STRUCTURE_NOT_LOADED_MSG = "Protein structure is not loaded."
 
@@ -64,9 +69,20 @@ class Protein(Entity):
     atom_types: Optional[np.ndarray] = None
     block_type: str = "pdb"
     block_content: Optional[str] = None
+    project_name: str | None = field(default=None, kw_only=True)
 
     _remote_path_base = "entities/proteins/"
     _preferred_ext = ".pdb"
+
+    def _display_project_name(self) -> str:
+        """Human-readable project name for repr (cached on :attr:`project_name`)."""
+        display, cached = fetch_project_display_name(
+            self.project_id,
+            self.project_name,
+        )
+        if cached and not self.project_name:
+            self.project_name = cached
+        return display
 
     @classmethod
     def from_name(cls, name: str) -> Self:
@@ -174,6 +190,9 @@ class Protein(Entity):
                 or data.get("gene_symbol")
                 or id
             )
+            proj_id = (
+                str(data["project_id"]) if data.get("project_id") is not None else None
+            )
             return cls(
                 name=name,
                 structure=None,
@@ -185,9 +204,10 @@ class Protein(Entity):
                 block_content=None,
                 id=data.get("id"),
                 remote_path=remote_path,
-                project_id=str(data["project_id"])
-                if data.get("project_id") is not None
-                else None,
+                project_id=proj_id,
+                project_name=fetch_project_display_name(proj_id, None, client=client)[
+                    1
+                ],
             )
 
         # Download the file
@@ -216,6 +236,12 @@ class Protein(Entity):
 
         if data.get("project_id") is not None:
             protein.project_id = str(data["project_id"])
+            _, cached = fetch_project_display_name(
+                protein.project_id,
+                None,
+                client=client,
+            )
+            protein.project_name = cached
 
         return protein
 
@@ -1681,31 +1707,51 @@ class Protein(Entity):
             )
         )
 
-    def _repr_html_(self):
+    def _metadata_repr_lines(self) -> list[str]:
+        """Metadata lines for text and HTML representations (no file paths)."""
+        indent = REPR_INNER_INDENT
+        return [
+            "Protein(",
+            f"{indent}name: {self.name}",
+            f"{indent}id: {self.id or ''}",
+            f"{indent}project: {self._display_project_name()}",
+            ")",
+        ]
+
+    def _metadata_repr_text(self) -> str:
+        """Plain-text summary shared by ``__repr__``, ``__str__``, and ``_repr_html_``."""
+        return "\n".join(self._metadata_repr_lines())
+
+    def _metadata_repr_html(self) -> str:
+        """Notebook HTML for the same plain-text summary."""
+        return metadata_repr_html(self._metadata_repr_text())
+
+    def __repr__(self) -> str:
+        """Return a plain-text protein summary (no structure viewer)."""
+        return self._metadata_repr_text()
+
+    __str__ = __repr__
+
+    def _repr_html_(self) -> str:
         """
         Return the HTML representation of the object for Jupyter Notebook.
+
+        When :attr:`info` is set, returns the rich protein-info panel; otherwise
+        the same plain-text summary as :meth:`__repr__` (name, id, project).
 
         Returns:
             str: The HTML content.
         """
-
-        try:
-            if self.info:
+        if self.info:
+            try:
                 from deeporigin.drug_discovery.external_tools.protein_info import (
                     generate_html_output,
                 )
 
-                html_content = generate_html_output(self.info)
-                return html_content
-            return self.visualize()
-        except Exception:
-            return self.__str__()
-
-    def __str__(self):
-        info_str = f"Name: {self.name}\nLocal path: {self.local_path}\nRemote path: {self.remote_path}\n"
-        if self.info:
-            info_str += f"Info: {self.info}\n"
-        return f"Protein:\n  {info_str}"
+                return generate_html_output(self.info)
+            except Exception:
+                return self._metadata_repr_html()
+        return self._metadata_repr_html()
 
     def upload(
         self,
@@ -1830,34 +1876,30 @@ class Protein(Entity):
                 message="No UFA path available for import-dataset registration.",
             )
 
-        inputs: dict[str, Any] = {
-            "register_protein": True,
-            "file_path": source_path,
-        }
+        extra: dict[str, Any] = {}
         if self.name:
-            inputs["protein_name"] = self.name
+            extra["protein_name"] = self.name
         if self.pdb_id is not None:
-            inputs["pdb_id"] = self.pdb_id
+            extra["pdb_id"] = self.pdb_id
         if self.uniprot_accession is not None:
-            inputs["uniprot_accession"] = self.uniprot_accession
+            extra["uniprot_accession"] = self.uniprot_accession
         if self.tags is not None:
-            inputs["tags"] = self.tags
+            extra["tags"] = self.tags
 
-        tool_meta = TOOL_KEYS_AND_VERSIONS["import_dataset"]
-        raw = client.executions.create(  # ty:ignore[unresolved-attribute]
-            tool_key=tool_meta["tool_key"],
-            tool_version=tool_meta["tool_version"],
-            data={
-                "inputs": inputs,
-                "outputs": {},
-                "metadata": {},
-                "sync": True,
-                "projectId": proj_id,
-                "visibility": "hidden",
-            },
+        from deeporigin.drug_discovery.import_dataset_sync import sync_process_pdb
+
+        outputs = sync_process_pdb(
+            client=client,
+            project_id=proj_id,
+            file_path=source_path,
+            extra_inputs=extra,
         )
-        dto = raw if isinstance(raw, dict) else {}
-        protein_row = _protein_row_from_import_execution(dto)
+        proteins = outputs.get("proteins")
+        protein_row = (
+            proteins[0]
+            if isinstance(proteins, list) and proteins and isinstance(proteins[0], dict)
+            else None
+        )
         if protein_row is None:
             raise DeepOriginException(
                 title="Protein sync failed",

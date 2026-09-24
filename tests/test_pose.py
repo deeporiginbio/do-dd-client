@@ -19,6 +19,7 @@ from deeporigin.drug_discovery.structures.pose import (
     _optional_float,
     _pose_row_from_registration_execution,
 )
+from deeporigin.platform.client import DeepOriginClient
 from deeporigin.platform.constants import TOOL_KEYS_AND_VERSIONS
 from tests.conftest import check_tool_exists
 
@@ -160,10 +161,33 @@ def test_pose_mol_returns_none_for_empty_sdf(tmp_path: Path) -> None:
     assert Pose(ligand_id="L", local_path=str(empty_sdf)).mol is None
 
 
-def test_pose_sync_lazy_skips_when_remote_path_set() -> None:
-    """sync(lazy=True) is a no-op when remote_path is already populated."""
-    pose = Pose(ligand_id="L", remote_path="entities/poses/x.sdf")
+def test_pose_sync_lazy_skips_when_id_set() -> None:
+    """sync(lazy=True) is a no-op when the pose already has a platform id."""
+    pose = Pose(ligand_id="L", id="pose-existing", remote_path="entities/poses/x.sdf")
     pose.sync(lazy=True)
+
+
+def test_pose_set_sync_hydrates_id_from_result_explorer(
+    client,
+    registered_protein,
+    tmp_path: Path,
+) -> None:
+    """Served import-dataset pose rows omit id; sync loads it from result-explorer."""
+    sdf_path = tmp_path / "pose.sdf"
+    lig = Ligand.from_sdf(BRD_DATA_DIR / "brd-2.sdf")
+    lig.sync(client=client)
+    lig.to_sdf(str(sdf_path))
+    pose = Pose(
+        ligand_id=lig.id,
+        protein_id=registered_protein.id,
+        local_path=str(sdf_path),
+        project_id=client.project_id,
+    )
+    PoseSet(poses=[pose]).sync(client=client)
+    assert pose.id is not None
+    assert pose.ligand_id == lig.id
+    found = registered_ligand_poses_for_id(client, lig.id)
+    assert any(p.id == pose.id for p in found)
 
 
 def test_pose_to_file_writes_sdf(tmp_path: Path) -> None:
@@ -178,11 +202,11 @@ def test_pose_to_file_writes_sdf(tmp_path: Path) -> None:
     assert out_path.exists()
 
 
-def test_pose_from_json_local_sdf(tmp_path: Path) -> None:
+def test_pose_from_json_local_sdf(client: DeepOriginClient) -> None:
     """PoseSet.from_json builds Pose objects with distinct pose and ligand ids."""
     sdf_path = BRD_DATA_DIR / "brd-2.sdf"
     ligand = Ligand.from_sdf(sdf_path)
-    ligand.sync()
+    ligand.sync(client=client)
 
     row = {
         "id": "POSE-RESULT-1",
@@ -237,12 +261,13 @@ def test_pose_repr_lists_metadata_without_viewer() -> None:
         remote_path="entities/poses/x.sdf",
     )
     text = repr(pose)
-    assert "Pose" in text
+    assert "Pose(" in text
+    assert "POSE-1" in text
     assert "cocrystal" in text
     assert "ligand:LIG:A:100" in text
     assert "LIG-1" in text
     html = pose._repr_html_()
-    assert "Pose</div>" in html
+    assert "Pose(" in html
     assert "cocrystal" in html
     assert "ligand:LIG:A:100" in html
 

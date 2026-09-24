@@ -24,6 +24,7 @@ def test_abfe_sysprep_and_quote_local(
     pose = Pose.from_sdf(
         BRD_DATA_DIR / "brd-2.sdf",
         ligand=registered_ligand,
+        protein_id=registered_protein.id,
         client=client,
     )
     system = SystemPrep(

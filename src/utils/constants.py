@@ -175,7 +175,7 @@ PROTEIN_PREP_REPORT_EXCLUDED_MSG = (
 
 PROTEIN_PREP_POCKETS_EXCLUDED_MSG = (
     "This ProteinPrep execution did not request pockets. Configure "
-    "pocket=PocketFinderConfig(...) before start() to include Pocket Finder."
+    "find_pockets='novel' or 'from-crystal-ligand' before start() to include Pocket Finder."
 )
 """Used by ``ProteinPrep.get_pockets`` when ``pocket`` was not configured."""
 

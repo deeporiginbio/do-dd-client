@@ -959,7 +959,54 @@ def test_render_view_no_structure_badge_when_mixed():
     )
 
 
-def test_ligand_set_sync_lv1():
+def test_render_view_shows_platform_id_summary():
+    """_render_view summarizes platform registration without listing ids."""
+    from deeporigin.drug_discovery.structures.ligand import LigandSet
+
+    ligand1 = Ligand.from_smiles("CCO", name="ethanol")
+    ligand2 = Ligand.from_smiles("CCCO", name="propanol")
+    ligand_set = LigandSet(ligands=[ligand1, ligand2])
+    html = ligand_set._render_view()
+    assert "⚠️</span> none registered</p>" in html
+    assert "color:#198754" not in html
+
+    ligand1.id = "ligand-a"
+    html = ligand_set._render_view()
+    assert "⚠️</span> 1 of 2 registered</p>" in html
+
+    ligand2.id = "ligand-b"
+    html = ligand_set._render_view()
+    assert "color:#198754" in html
+    assert "all ligands registered</p>" in html
+    assert "⚠️" not in html
+    assert "ligand-a" not in html
+    assert "ligand-b" not in html
+
+
+def test_render_view_shows_project_summary():
+    """_render_view shows project scope when ligands share one project."""
+    from deeporigin.drug_discovery.structures.ligand import LigandSet
+
+    ligand1 = Ligand.from_smiles("CCO", name="ethanol")
+    ligand2 = Ligand.from_smiles("CCCO", name="propanol")
+    ligand_set = LigandSet(ligands=[ligand1, ligand2])
+    html = ligand_set._render_view()
+    assert "<strong>Project:</strong> <em>not set</em></p>" in html
+
+    ligand1.project_id = "proj-1"
+    html = ligand_set._render_view()
+    assert "<strong>Project:</strong> <em>mixed</em></p>" in html
+
+    ligand2.project_id = "proj-1"
+    html = ligand_set._render_view()
+    assert "<strong>Project:</strong> proj-1</p>" in html
+
+    ligand2.project_id = "proj-2"
+    html = ligand_set._render_view()
+    assert "<strong>Project:</strong> <em>mixed</em></p>" in html
+
+
+def test_ligand_set_sync_lv1(client):
     """Test syncing a LigandSet to the data platform using BRD ligands.
 
     Loads BRD ligands from BRD_DATA_DIR, syncs them, then syncs again to
@@ -969,7 +1016,7 @@ def test_ligand_set_sync_lv1():
     assert sdf_files, "No SDF files found in BRD_DATA_DIR"
 
     ligands = LigandSet.from_sdf_files([str(p) for p in sdf_files])
-    ligands.sync()
+    ligands.sync(client=client)
 
     for lig in ligands:
         assert lig.id is not None, f"Expected id after sync for {lig.smiles}"
@@ -978,7 +1025,7 @@ def test_ligand_set_sync_lv1():
 
     # Sync again — same canonical SMILES should match existing records, not create new ones.
     ligands2 = LigandSet.from_sdf_files([str(p) for p in sdf_files])
-    ligands2.sync()
+    ligands2.sync(client=client)
 
     for lig in ligands2:
         assert lig.id is not None, f"Expected id after second sync for {lig.smiles}"
@@ -992,18 +1039,18 @@ def test_ligand_set_sync_lv1():
         )
 
 
-def test_ligand_set_sync_lazy_lv1():
+def test_ligand_set_sync_lazy_lv1(client):
     """Test that lazy=True skips ligands that already have an id."""
     smiles_list = ["CCO", "CCCO"]
     ligands = LigandSet.from_smiles(smiles_list)
 
-    ligands.sync()
+    ligands.sync(client=client)
     original_ids = [lig.id for lig in ligands]
     assert all(i is not None for i in original_ids)
 
     # Set one id to None to simulate a "new" ligand
     ligands.ligands[0].id = None
-    ligands.sync(lazy=True)
+    ligands.sync(lazy=True, client=client)
 
     # The first ligand should get an id back; the second should keep its original
     assert ligands.ligands[0].id is not None
@@ -1026,16 +1073,16 @@ def test_ligand_set_sync_rejects_unsupported_atoms():
         ls.sync()
 
 
-def test_ligand_set_sync_after_remove_unsupported():
+def test_ligand_set_sync_after_remove_unsupported(client):
     """sync() succeeds after remove_unsupported drops ligands with bad atoms."""
     ls = LigandSet(ligands=[Ligand.from_smiles("CCO"), Ligand.from_smiles("B")])
     ls.remove_unsupported()
-    ls.sync()
+    ls.sync(client=client)
     assert len(ls) == 1
     assert ls.ligands[0].id is not None
 
 
-def test_ligand_set_sync_duplicate_smiles_lv1():
+def test_ligand_set_sync_duplicate_smiles_lv1(client):
     """Syncing a LigandSet with duplicate canonical SMILES should succeed.
 
     The platform enforces a uniqueness constraint on
@@ -1045,11 +1092,11 @@ def test_ligand_set_sync_duplicate_smiles_lv1():
     """
     smiles = "CCO"
     ligands = LigandSet(ligands=[Ligand.from_smiles(smiles) for _ in range(3)])
-    ligands.sync()
+    ligands.sync(client=client)
 
     ids = [lig.id for lig in ligands]
     assert all(i is not None for i in ids), "Every duplicate should receive an id"
-    assert len(set(ids)) == 1, "All duplicates should share the same platform id"
+    assert len(set(ids)) == 1, "Duplicate canonical SMILES should map to one id"
 
 
 def test_batch_create_ligands_lv1(client: DeepOriginClient):

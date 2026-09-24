@@ -15,6 +15,7 @@ from deeporigin.drug_discovery.system_prep import SystemPrep
 from deeporigin.platform.constants import TOOL_KEYS_AND_VERSIONS
 from deeporigin.utils.constants import SYSPREP_NO_OUTPUT_PATHS_MSG
 from tests.conftest import check_tool_exists
+from tests.mock_server.routers.data_platform import MOCK_CANONICAL_PROTEIN_ID
 
 if TYPE_CHECKING:
     from deeporigin.platform.client import DeepOriginClient
@@ -148,12 +149,8 @@ def test_sysprep_lv2(
     ligand.sync(client=client)
     protein.sync(client=client)
     sdf = BRD_DATA_DIR / "brd-2.sdf"
-    pose = Pose.from_sdf(
-        sdf,
-        ligand=ligand,
-        protein_id=protein.id,
-        client=client,
-    )
+    protein_id = protein.id or MOCK_CANONICAL_PROTEIN_ID
+    pose = Pose.from_sdf(sdf, ligand=ligand, protein_id=protein_id, client=client)
 
     sysprep = SystemPrep(
         protein=protein,

@@ -250,7 +250,7 @@ def test_protein_sync_skips_upload_but_registers_when_remote_path_only() -> None
     create_kwargs = client.executions.create.call_args.kwargs
     assert create_kwargs["data"]["projectId"] == "proj-1"
     assert create_kwargs["data"]["visibility"] == "hidden"
-    assert create_kwargs["data"]["inputs"]["register_protein"] is True
+    assert create_kwargs["data"]["inputs"]["process_pdb"] is True
     assert protein.id == "prot-new"
     assert protein.remote_path == "entities/proteins/prepared.pdb"
     assert protein.project_id == "proj-1"

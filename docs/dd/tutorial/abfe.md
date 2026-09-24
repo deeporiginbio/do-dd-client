@@ -25,7 +25,10 @@ from deeporigin.drug_discovery import (
 protein = Protein.from_file(BRD_DATA_DIR / "brd.pdb")
 protein.sync()
 
-pose = Pose.from_sdf(BRD_DATA_DIR / "brd-2.sdf")
+pose = Pose.from_sdf(
+    BRD_DATA_DIR / "brd-2.sdf",
+    protein_id=protein.id,
+)
 ```
 
 For more details on how to get started, see [:material-page-previous: Getting Started ](./getting-started.md).

@@ -4,9 +4,8 @@ Inventory and prepare a [`Protein`](../ref/protein.md) with one configurable
 `ProteinPrep` object. Recommendation identifies chains, ligands, cofactors, and
 waters. Preparation applies your keep/skip decisions, protonates the structure,
 and optionally models missing loops. Optional
-[`PocketFinderConfig`](../ref/protein_prep.md) finds pockets on the prepared
-structure. Its SDK modes map to the platform's flat `find_pockets` contract:
-`auto-find` becomes `novel`, while `from-crystal-ligand` keeps that name.
+[`find_pockets`](../ref/protein_prep.md) finds pockets on the prepared
+structure via `find_pockets` (`"no"`, `"novel"`, or `"from-crystal-ligand"`).
 Selection-defined pockets require the standalone Pocket Finder tool.
 
 Use standalone [`StructureReport`](structure-report.md) for source-structure
@@ -87,17 +86,17 @@ prepared = prep.get_results()
 
 ## Prepare with loop modelling or pockets
 
-Loop modelling is enabled by default. Loops on or `auto-find` pockets use the
+Loop modelling is enabled by default. Loops on or `find_pockets="novel"` use the
 composite Target Preparation workflow. Use `start()` for that route (blocking
 `run()` is not available):
 
 ```{.python notest}
-from deeporigin.drug_discovery import PocketFinderConfig, ProteinPrep
+from deeporigin.drug_discovery import ProteinPrep
 
-prep = ProteinPrep(
-    protein=protein,
-    pocket=PocketFinderConfig(pocket_count=3, pocket_min_size=80),
-)
+prep = ProteinPrep(protein=protein)
+prep.find_pockets = "novel"
+prep.pocket_count = 3
+prep.pocket_min_size = 80
 prep.recommend()
 prep.skip(decision="review")
 prep.start(quote=True)
@@ -118,10 +117,8 @@ prep = ProteinPrep(
     protein=protein,
     selection=saved_selection,
     model_missing_loops=False,
-    pocket=PocketFinderConfig(
-        mode="from-crystal-ligand",
-        component_id="ligand:LIG:A:100",
-    ),
+    find_pockets="from-crystal-ligand",
+    component_id="ligand:LIG:A:100",
 )
 prepared = prep.run()
 pockets = prep.get_pockets()

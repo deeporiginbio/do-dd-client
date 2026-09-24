@@ -60,7 +60,10 @@ def _execute_notebook(notebook_path: Path) -> None:
     previous = os.environ.get(JOB_WATCH_BLOCK_ENV)
     os.environ[JOB_WATCH_BLOCK_ENV] = "1"
     try:
-        client.execute()
+        # Custom ``km=`` sets ``owns_km=False`` on NotebookClient, so nbclient
+        # skips kernel teardown unless ``cleanup_kc=True`` (leaks FDs under macOS
+        # default ``ulimit -n`` 256 when running all five notebook tests).
+        client.execute(cleanup_kc=True)
     finally:
         if previous is None:
             os.environ.pop(JOB_WATCH_BLOCK_ENV, None)

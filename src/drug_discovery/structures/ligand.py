@@ -28,6 +28,11 @@ from deeporigin.utils.env import _ensure_do_folder
 from deeporigin.viz.molstar_html import render_ligand_html
 
 from .entity import Entity
+from .repr_display import (
+    REPR_INNER_INDENT,
+    fetch_project_display_name,
+    metadata_repr_html,
+)
 
 warnings.filterwarnings("ignore", category=UserWarning, module="rdkit")
 RDLogger.DisableLog("rdApp.*")  # ty:ignore[unresolved-attribute]
@@ -250,6 +255,7 @@ class Ligand(Entity):
     tpsa: float | None = None
     rule_of_5_violations: int | None = None
     sa_score: float | None = None
+    project_name: str | None = field(default=None, kw_only=True)
 
     # Additional attributes that are initialized in __post_init__
     available_for_docking: bool = field(init=False, default=True)
@@ -1369,65 +1375,18 @@ class Ligand(Entity):
         client: Optional[DeepOriginClient] = None,
         remote_path: Optional[str] = None,
     ) -> None:
-        """Sync the ligand to the data platform.
+        """Sync the ligand via import-dataset (CSV or single-record SDF).
 
-        Uploads the ligand file and links to an existing record if one with
-        the same canonical SMILES already exists (setting ``id`` and
-        ``remote_path`` from the record's ``mol_file`` when present), otherwise
-        creates a new record via :meth:`register`.
-
-        Args:
-            lazy: If True, skip syncing when the ligand already has an ID.
-                Defaults to False.
-            client: DeepOriginClient instance. If None, uses DeepOriginClient().
-            remote_path: Custom remote path to upload to. Overrides the
-                default hash-based path.
-
-        Note:
-            If the ligand was created from a SMILES string without an SDF file, only the SMILES
-            will be used for syncing (no file upload will occur).
+        Delegates to :meth:`LigandSet.sync` for one blocking tool execution.
+        Requires ``project_id`` on the ligand or client.
         """
-
         if lazy and self.id is not None:
             return
-
-        if client is None:
-            client = DeepOriginClient()
-
-        if remote_path is not None:
-            self.remote_path = remote_path
-
-        proj_id = self.resolved_project_id(client=client)
-        scope_filter: dict[str, Any] = {}
-        if proj_id is not None:
-            scope_filter["project_id"] = proj_id
-
-        smiles_value = self.smiles if self.smiles is not None else self.canonical_smiles
-        response = client.entities.search_ligands(  # ty: ignore[unresolved-attribute]
-            smiles=smiles_value,
-            filter_dict=scope_filter if scope_filter else None,
+        LigandSet(ligands=[self]).sync(
+            lazy=False,
+            client=client,
+            remote_path=remote_path,
         )
-        data = response["data"]
-
-        if not data:
-            response = client.entities.search_ligands(  # ty: ignore[unresolved-attribute]
-                canonical_smiles=self.canonical_smiles,
-                filter_dict=scope_filter if scope_filter else None,
-            )
-            data = response["data"]
-
-        if data:
-            existing_ligand = data[0]
-            if "id" in existing_ligand:
-                self.id = existing_ligand["id"]
-            mol_file = existing_ligand.get("mol_file")
-            if mol_file:
-                self.remote_path = mol_file
-            if self.tags is not None and self.id is not None:
-                client.entities.update_ligand(self.id, tags=self.tags)
-            return
-
-        self.register(client=client, remote_path=remote_path)
 
     def get_poses(
         self,
@@ -1617,43 +1576,45 @@ class Ligand(Entity):
         except Exception as e:
             raise DeepOriginException(f"Visualization failed: {str(e)}") from e
 
-    def _repr_html_(self) -> str | None:
-        """
-        Return the HTML representation of the object for Jupyter Notebook.
+    def _display_project_name(self) -> str:
+        """Human-readable project name for repr (cached on :attr:`project_name`)."""
+        display, cached = fetch_project_display_name(
+            self.project_id,
+            self.project_name,
+        )
+        if cached and not self.project_name:
+            self.project_name = cached
+        return display
 
-        Returns:
-            str: The HTML content.
-        """
-        try:
-            print(self.mol)
-            html = self._ligand_viewer_html()
-            from deeporigin.utils.notebook import get_notebook_environment, render_html
+    def _metadata_repr_lines(self) -> list[str]:
+        """Metadata lines for text and HTML representations (no file paths)."""
+        indent = REPR_INNER_INDENT
+        return [
+            "Ligand(",
+            f"{indent}name: {self.name or ''}",
+            f"{indent}id: {self.id or ''}",
+            f"{indent}project: {self._display_project_name()}",
+            ")",
+        ]
 
-            if get_notebook_environment() == "marimo":
-                return render_html(html)
-            return render_html(html, return_iframe_string=True)
-        except Exception as e:
-            print(f"Warning: Failed to generate HTML representation: {str(e)}")
-            return self.__str__()
+    def _metadata_repr_text(self) -> str:
+        """Plain-text summary shared by ``__repr__``, ``__str__``, and ``_repr_html_``."""
+        return "\n".join(self._metadata_repr_lines())
+
+    def _metadata_repr_html(self) -> str:
+        """Notebook HTML for the same plain-text summary."""
+        return metadata_repr_html(self._metadata_repr_text())
 
     def __str__(self) -> str:
-        info_str = f"Name: {self.name}\nSMILES: {self.smiles}\nHeavy Atoms: {self.get_heavy_atom_count()}\n"
-        if self.properties:
-            info_str += "Properties:\n"
-            for prop_name, prop_value in self.properties.items():
-                info_str += f"  {prop_name}: {prop_value}\n"
-
-        if self.xref_protein is not None:
-            info_str += (
-                f"Cross-reference Protein Chain ID: {self.xref_protein_chain_id}\n"
-            )
-            info_str += f"Cross-reference Residue ID: {self.xref_residue_id}\n"
-            info_str += f"Cross-reference Insertion Code: {self.xref_ins_code}\n"
-
-        return f"Ligand:\n  {info_str}"
+        """Return a plain-text ligand summary (no structure viewer)."""
+        return self._metadata_repr_text()
 
     def __repr__(self) -> str:
-        return self.__str__()
+        return self._metadata_repr_text()
+
+    def _repr_html_(self) -> str:
+        """Return plain-text ligand metadata for Jupyter (no Mol* viewer)."""
+        return self._metadata_repr_html()
 
     @staticmethod
     def _get_directory() -> str:
@@ -2078,6 +2039,53 @@ class LigandSet:
         """
         return self.__str__()
 
+    @staticmethod
+    def _project_display_label(project_id: str) -> str:
+        """Resolve a human-readable project label for notebook cards."""
+        from html import escape
+
+        label = escape(project_id)
+        try:
+            row = DeepOriginClient().projects.get(project_id=project_id)["data"]
+            name = row.get("name")
+            if name:
+                label = escape(str(name))
+        except DeepOriginException:
+            pass
+        return label
+
+    def _platform_summary_html_parts(self, num_ligands: int) -> list[str]:
+        """HTML fragments for platform registration and project scope."""
+        parts: list[str] = []
+
+        with_platform_id = sum(1 for ligand in self.ligands if ligand.id is not None)
+        if with_platform_id == num_ligands:
+            id_icon = "<span style='color:#198754;font-weight:bold' title='All ligands have platform IDs'>✓</span>"
+            id_detail = "all ligands registered"
+        else:
+            id_icon = "<span title='Not all ligands have platform IDs'>⚠️</span>"
+            if with_platform_id == 0:
+                id_detail = "none registered"
+            else:
+                id_detail = f"{with_platform_id} of {num_ligands} registered"
+        parts.append(
+            f"<p style='margin: 8px 0;'><strong>Platform IDs:</strong> {id_icon} {id_detail}</p>"
+        )
+
+        project_ids = {ligand.project_id for ligand in self.ligands}
+        if len(project_ids) == 1:
+            only = project_ids.pop()
+            if only is None:
+                project_line = "<em>not set</em>"
+            else:
+                project_line = self._project_display_label(only)
+        else:
+            project_line = "<em>mixed</em>"
+        parts.append(
+            f"<p style='margin: 8px 0;'><strong>Project:</strong> {project_line}</p>"
+        )
+        return parts
+
     def _render_view(self) -> str:
         """Render a custom widget view for the LigandSet.
 
@@ -2169,6 +2177,8 @@ class LigandSet:
                     unique_smiles_line += " <span class='badge text-bg-info' style='font-variant: small-caps;'>3D</span>"
                 unique_smiles_line += "</p>"
                 html_parts.append(unique_smiles_line)
+
+            html_parts.extend(self._platform_summary_html_parts(num_ligands))
 
             # Show property summary if available
             if self.ligands and self.ligands[0].properties:
@@ -2824,38 +2834,14 @@ class LigandSet:
         *,
         lazy: bool = False,
         client: Optional[DeepOriginClient] = None,
+        remote_path: Optional[str] = None,
     ) -> None:
-        """Sync the ligand set to the data platform.
+        """Sync all ligands in one import-dataset execution (SDF or SMILES CSV).
 
-        For every ligand in the set this method:
+        Structure-less ligands are written to a temporary CSV; structures use a
+        multi-record SDF. Dedup and create/reuse run in the tool.
 
-        1. Searches the data platform for existing ligands whose
-           ``canonical_smiles`` match (batched into a single request via
-           ``search_ligands(smiles_list=…)``).
-        2. For ligands that already exist remotely, updates the local ``id`` and
-           sets ``remote_path`` from the record's ``mol_file`` when present.
-        3. For ligands that are new, uploads files to remote storage (if a
-           local_path is present) and batch-creates them in a single API call.
-           Ligands sharing a canonical SMILES (e.g. multiple poses of the
-           same molecule in an SDF) are deduplicated before the create call;
-           all duplicates end up pointing at the single platform record.
-        4. Updates the local ``id`` values from the created records.
-
-        .. note::
-            The batch-create step is all-or-nothing: if it fails (e.g.
-            network error, invalid data), none of the new ligands will
-            receive an ``id``.
-
-        Args:
-            lazy: If True, skip syncing ligands that already have an id.
-            client: DeepOriginClient instance. If None, uses
-                DeepOriginClient().
-
-        Raises:
-            DeepOriginException: If any ligand to be synced contains atom types
-                outside :data:`~deeporigin.drug_discovery.constants.SUPPORTED_ATOM_SYMBOLS`.
-                Call :meth:`remove_unsupported` to drop those ligands first.
-            ValueError: If any ligand to be synced has no ``canonical_smiles``.
+        Requires ``project_id`` on ligands or the client.
         """
         if not self.ligands:
             return
@@ -2891,75 +2877,128 @@ class LigandSet:
         if client is None:
             client = DeepOriginClient()
 
-        proj_id = (
-            ligands_to_sync[0].resolved_project_id(client=client)
-            if ligands_to_sync
-            else None
+        from deeporigin.drug_discovery.import_dataset_sync import (
+            require_project_id,
+            require_uniform_scope,
+            stage_local_file,
+            sync_process_csv,
+            sync_process_sdf,
         )
-        scope_filter: dict[str, Any] = {}
-        if proj_id is not None:
-            scope_filter["project_id"] = proj_id
 
-        # De-duplicate the search by canonical SMILES -- ``smiles_list`` maps
-        # to an ``in`` filter, so duplicates add no information but inflate
-        # the request.
-        unique_smiles_list = list({lig.canonical_smiles for lig in ligands_to_sync})
-        response = client.entities.search_ligands(
-            smiles_list=unique_smiles_list,
-            # Do not cap at len(unique_smiles_list): the platform may return
-            # multiple rows per canonical SMILES, and a tight limit can exclude
-            # less-common matches (e.g. CCCO) when duplicates (e.g. CCO) fill the page.
-            limit=None,
-            filter_dict=scope_filter if scope_filter else None,
+        proj_id = require_uniform_scope(
+            [lig.resolved_project_id(client=client) for lig in ligands_to_sync],
+            field_label="project_id",
+            title="Ligand sync failed",
         )
-        existing_by_smiles = self._index_by_canonical_smiles(response.get("data", []))
-
-        to_create: list[Ligand] = []
+        proj_id = require_project_id(entity_project_id=proj_id, client=client)
         for lig in ligands_to_sync:
-            record = existing_by_smiles.get(lig.canonical_smiles)
-            if record is not None:
-                lig.id = record["id"]
-                mol_file = record.get("mol_file")
-                if mol_file:
-                    lig.remote_path = mol_file
-            else:
-                to_create.append(lig)
+            lig.project_id = proj_id
 
-        if not to_create:
-            return
+        use_sdf = any(lig.local_path is not None for lig in ligands_to_sync)
 
-        # The platform enforces a uniqueness constraint on
-        # ``(project_scope_key, canonical_smiles, variant_name_tag)``, so a
-        # batch can contain at most one row per canonical SMILES. A single
-        # input (e.g. a bulk docking SDF) can easily include the same molecule
-        # multiple times as different poses/conformers, which all share the
-        # same canonical SMILES. Pick one representative per canonical SMILES
-        # for the create call, then fan the resulting id/mol_file back out to
-        # every duplicate.
-        representatives: list[Ligand] = []
-        duplicates_by_smiles: dict[str, list[Ligand]] = {}
-        for lig in to_create:
-            cs = lig.canonical_smiles
-            if cs not in duplicates_by_smiles:
-                duplicates_by_smiles[cs] = []
-                representatives.append(lig)
-            duplicates_by_smiles[cs].append(lig)
+        tag_payloads = [lig.tags for lig in ligands_to_sync if lig.tags is not None]
+        uniform_tags: dict[str, Any] | None = None
+        if tag_payloads:
+            import json
 
-        LigandSet(ligands=representatives).upload(client=client)
+            unique_tags = {json.dumps(t, sort_keys=True): t for t in tag_payloads}
+            if len(unique_tags) > 1:
+                if use_sdf:
+                    raise DeepOriginException(
+                        title="Ligand sync failed",
+                        message=(
+                            "Mixed ligand tags in one SDF batch are not supported. "
+                            "Sync ligands with different tags in separate batches."
+                        ),
+                    )
+            elif len(unique_tags) == 1:
+                uniform_tags = tag_payloads[0]
 
-        rows = [lig._to_row(client=client) for lig in representatives]
-        result = client.entities.batch_create_ligands(rows=rows)
-        created_by_smiles = self._index_by_canonical_smiles(result.get("data", []))
+        if use_sdf:
+            subset = LigandSet(ligands=ligands_to_sync)
+            local_sdf = subset.to_sdf()
+            remote = stage_local_file(client, local_sdf, remote_path=remote_path)
+            sdf_kwargs: dict[str, Any] = {}
+            if uniform_tags is not None:
+                sdf_kwargs["tags"] = uniform_tags
+            outputs = sync_process_sdf(
+                client=client,
+                project_id=proj_id,
+                file_path=remote,
+                register_poses=False,
+                **sdf_kwargs,
+            )
+        else:
+            import csv
+            import json
 
-        for cs, duplicates in duplicates_by_smiles.items():
-            record = created_by_smiles.get(cs)
+            fieldnames = ["smiles", "name"]
+            if any(lig.tags is not None for lig in ligands_to_sync):
+                fieldnames.append("tags")
+            fd = tempfile.NamedTemporaryFile(
+                mode="w",
+                delete=False,
+                suffix=".csv",
+                newline="",
+            )
+            writer = csv.DictWriter(fd, fieldnames=fieldnames)
+            writer.writeheader()
+            for lig in ligands_to_sync:
+                smi = lig.smiles or lig.canonical_smiles or ""
+                row: dict[str, str] = {
+                    "smiles": smi,
+                    "name": lig.name or "",
+                }
+                if lig.tags is not None:
+                    row["tags"] = json.dumps(lig.tags)
+                writer.writerow(row)
+            fd.close()
+            remote = stage_local_file(client, fd.name, remote_path=remote_path)
+            Path(fd.name).unlink(missing_ok=True)
+            outputs = sync_process_csv(
+                client=client,
+                project_id=proj_id,
+                file_path=remote,
+            )
+
+        rows = outputs.get("ligands") or []
+        if not isinstance(rows, list):
+            rows = []
+        by_index: dict[int, dict[str, Any]] = {}
+        for row in rows:
+            if isinstance(row, dict) and "record_index" in row:
+                by_index[int(row["record_index"])] = row
+
+        for idx, lig in enumerate(ligands_to_sync):
+            record = by_index.get(idx)
+            if (
+                record is None
+                and not by_index
+                and idx < len(rows)
+                and isinstance(rows[idx], dict)
+            ):
+                record = rows[idx]
             if record is None:
-                continue
+                raise DeepOriginException(
+                    title="Ligand sync failed",
+                    message=(
+                        "import-dataset did not return a ligand row for one or more "
+                        f"input records (missing index {idx})."
+                    ),
+                )
+            lid = record.get("id")
+            if not lid:
+                raise DeepOriginException(
+                    title="Ligand sync failed",
+                    message=(
+                        "import-dataset did not return a ligand id for one or more "
+                        "input records."
+                    ),
+                )
+            lig.id = str(lid)
             mol_file = record.get("mol_file")
-            for lig in duplicates:
-                lig.id = record["id"]
-                if mol_file:
-                    lig.remote_path = mol_file
+            if mol_file:
+                lig.remote_path = str(mol_file)
 
     @classmethod
     def from_smiles(cls, smiles: list[str] | set[str]) -> Self:

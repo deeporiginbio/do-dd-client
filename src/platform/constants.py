@@ -181,6 +181,6 @@ TOOL_KEYS_AND_VERSIONS: dict[str, dict[str, str]] = {
     },
     "import_dataset": {
         "tool_key": "deeporigin.import-dataset",
-        "tool_version": "2",
+        "tool_version": "3",
     },
 }

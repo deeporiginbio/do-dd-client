@@ -30,6 +30,13 @@ class Entity(ABC):
     ``tags`` is optional data-platform metadata (jsonb object on the row).
     When set, :meth:`sync` / :meth:`register` include it on create. Provenance
     ``app`` / ``session`` are merged from the client automatically on writes.
+
+    Attributes:
+        id: Data platform row id when synced or loaded; ``None`` before first sync.
+        remote_path: Remote storage path for the entity file, when known.
+        local_path: Local filesystem path for the entity file, when known.
+        project_id: Data platform project scope for this row.
+        tags: Optional platform metadata (jsonb) included on create/update.
     """
 
     id: str | None = field(default=None, kw_only=True)

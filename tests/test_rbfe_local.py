@@ -130,8 +130,18 @@ def test_rbfe_sysprep_and_fep_local(client: DeepOriginClient) -> None:
     ligand2 = Ligand.from_sdf(BRD_DATA_DIR / "brd-3.sdf")
     ligand1.sync(client=client)
     ligand2.sync(client=client)
-    pose1 = Pose.from_sdf(BRD_DATA_DIR / "brd-2.sdf", ligand=ligand1, client=client)
-    pose2 = Pose.from_sdf(BRD_DATA_DIR / "brd-3.sdf", ligand=ligand2, client=client)
+    pose1 = Pose.from_sdf(
+        BRD_DATA_DIR / "brd-2.sdf",
+        ligand=ligand1,
+        protein_id=protein.id,
+        client=client,
+    )
+    pose2 = Pose.from_sdf(
+        BRD_DATA_DIR / "brd-3.sdf",
+        ligand=ligand2,
+        protein_id=protein.id,
+        client=client,
+    )
 
     sysprep = SystemPrep(
         protein=protein,
@@ -189,8 +199,18 @@ def test_prepared_system_from_result_after_sysprep_local(
     ligand2 = Ligand.from_sdf(BRD_DATA_DIR / "brd-3.sdf")
     ligand1.sync(client=client)
     ligand2.sync(client=client)
-    pose1 = Pose.from_sdf(BRD_DATA_DIR / "brd-2.sdf", ligand=ligand1, client=client)
-    pose2 = Pose.from_sdf(BRD_DATA_DIR / "brd-3.sdf", ligand=ligand2, client=client)
+    pose1 = Pose.from_sdf(
+        BRD_DATA_DIR / "brd-2.sdf",
+        ligand=ligand1,
+        protein_id=protein.id,
+        client=client,
+    )
+    pose2 = Pose.from_sdf(
+        BRD_DATA_DIR / "brd-3.sdf",
+        ligand=ligand2,
+        protein_id=protein.id,
+        client=client,
+    )
 
     system = SystemPrep(
         protein=protein,

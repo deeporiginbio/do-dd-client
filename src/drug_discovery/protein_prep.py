@@ -9,7 +9,8 @@ via direct ``deeporigin.protein-prep``. Preparation routes by configuration:
 - loops on, or novel pocket finding → workflow
   ``deeporigin.target-preparation`` (``start`` only).
 
-Optional :class:`PocketFinderConfig` selects Pocket Finder. :meth:`get_results`
+Set :attr:`find_pockets` to ``"novel"`` or ``"from-crystal-ligand"`` to include
+Pocket Finder in prepare. :meth:`get_results`
 always returns the prepared
 :class:`~deeporigin.drug_discovery.structures.protein.Protein`; use
 :meth:`get_report`, :meth:`get_pockets`, and :meth:`get_crystal_poses`
@@ -102,13 +103,15 @@ _VALID_POCKET_MODES = frozenset(
 )
 _VALID_BOX_GEOMETRIES = frozenset({"ligand-extents", "fixed-radius"})
 _DEFINE_BY_SELECTION_COMPOSITE_MSG = (
-    "ProteinPrep.pocket does not support mode='define-by-selection'. "
+    "ProteinPrep does not support selection-defined pockets. "
     "Use the standalone PocketFinder tool for expert selection-defined pockets."
 )
 
 ProteinPrepAction = Literal["recommend", "prepare"]
-PocketFinderMode = Literal["auto-find", "define-by-selection", "from-crystal-ligand"]
+ProteinPrepFindPockets = Literal["no", "from-crystal-ligand", "novel"]
+_PrepPocketMode = Literal["auto-find", "define-by-selection", "from-crystal-ligand"]
 BoxGeometry = Literal["ligand-extents", "fixed-radius"]
+_VALID_FIND_POCKETS = frozenset({"no", "from-crystal-ligand", "novel"})
 
 
 class _ParsedInputs(NamedTuple):
@@ -161,29 +164,14 @@ def _pocket_input_from_inputs(inputs: dict[str, Any]) -> dict[str, Any] | None:
 
 
 @dataclass
-class PocketFinderConfig:
-    """Pocket Finder settings for :class:`ProteinPrep` runs.
+class _PrepPocketInput:
+    """Internal Pocket Finder payload builder for :class:`ProteinPrep`.
 
     ``auto-find`` maps to platform ``find_pockets='novel'``.
     ``from-crystal-ligand`` maps to ``find_pockets='from-crystal-ligand'``.
-    Selection-defined pockets remain representable for SDK compatibility, but
-    :class:`ProteinPrep` rejects them in favor of standalone ``PocketFinder``.
-
-    Attributes:
-        mode: Pocket Finder mode.
-        pocket_count: Max pockets for ``auto-find`` (default 1).
-        pocket_min_size: Minimum pocket size for ``auto-find`` (default 30).
-        selections: Component selectors for ``define-by-selection``.
-        pocket_radius: Half-edge of a fixed-radius pocket box.
-        align_to_pocket: PCA-align define-by-selection boxes.
-        crystal_ligand: External ligand file for ``from-crystal-ligand``.
-        ligand_id: In-structure ligand code for ``from-crystal-ligand``.
-        component_id: Protein Prep Component id resolved after extraction.
-        box_geometry: Crystal-ligand box geometry.
-        box_padding: Padding for ``ligand-extents`` geometry.
     """
 
-    mode: PocketFinderMode = "auto-find"
+    mode: _PrepPocketMode = "auto-find"
     pocket_count: int | None = None
     pocket_min_size: int | float | None = None
     selections: list[Any] | None = None
@@ -387,7 +375,7 @@ class PocketFinderConfig:
         return pocket
 
     @classmethod
-    def from_tool_input(cls, data: dict[str, Any]) -> PocketFinderConfig | None:
+    def from_tool_input(cls, data: dict[str, Any]) -> _PrepPocketInput | None:
         """Rebuild config from stored flat or legacy nested pocket inputs.
 
         Args:
@@ -1044,7 +1032,6 @@ class ProteinPrep(
 
     tool_key: str = _PROTEIN_PREP_TOOL_KEY
 
-    @beartype
     def __init__(
         self,
         protein: Protein,
@@ -1052,7 +1039,15 @@ class ProteinPrep(
         pdb_id: str | None = None,
         selection: dict[str, Any] | None = None,
         model_missing_loops: bool = True,
-        pocket: PocketFinderConfig | None = None,
+        find_pockets: ProteinPrepFindPockets = "no",
+        pocket_count: int | None = None,
+        pocket_min_size: int | float | None = None,
+        crystal_ligand: Ligand | None = None,
+        ligand_id: str | None = None,
+        component_id: str | None = None,
+        box_geometry: BoxGeometry | None = None,
+        box_padding: float | None = None,
+        pocket_radius: int | float | None = None,
         tool_version: str = TOOL_KEYS_AND_VERSIONS["protein_prep"]["tool_version"],
         client: DeepOriginClient | None = None,
         name: str | None = None,
@@ -1071,9 +1066,17 @@ class ProteinPrep(
                 ``analyzer_version``, and ``decisions``.
             model_missing_loops: When ``False``, skip loop modelling and do
                 not require ``pdb_id`` on the direct path.
-            pocket: Optional Pocket Finder config. Crystal-ligand pockets can
-                run directly when loops are off; novel pockets use Target
-                Preparation. Selection-defined pockets are unsupported here.
+            find_pockets: Whether to find pockets during prepare (``"no"``,
+                ``"from-crystal-ligand"``, or ``"novel"``).
+            pocket_count: Max pockets when ``find_pockets="novel"`` (default 1).
+            pocket_min_size: Minimum pocket volume when ``find_pockets="novel"``
+                (default 30).
+            crystal_ligand: External ligand for ``from-crystal-ligand``.
+            ligand_id: In-structure ligand code for ``from-crystal-ligand``.
+            component_id: Component id for ``from-crystal-ligand``.
+            box_geometry: Crystal-ligand box geometry.
+            box_padding: Padding for ``ligand-extents`` geometry.
+            pocket_radius: Half-edge for ``fixed-radius`` geometry.
             tool_version: Platform tool version pin for the direct protein-prep
                 route. Composite runs use the pinned Target Preparation major.
             client: Optional API client. Uses the default if not provided.
@@ -1082,7 +1085,7 @@ class ProteinPrep(
                 loops / pocket settings and ``pdb_id`` (or protein name).
 
         Raises:
-            ValueError: If ``pdb_id``, ``selection``, or ``pocket`` is invalid.
+            ValueError: If ``pdb_id``, ``selection``, or pocket settings are invalid.
         """
         super().__init__(client=client)
         self.tool_version = tool_version
@@ -1094,8 +1097,29 @@ class ProteinPrep(
         self._selection = _copy_selection(selection) if selection is not None else None
         self._recommendation: dict[str, Any] | None = None
         self._model_missing_loops = model_missing_loops
-        self._pocket: PocketFinderConfig | None = None
-        self.pocket = pocket
+        self._find_pockets: ProteinPrepFindPockets = "no"
+        self._pocket_count = _DEFAULT_POCKET_COUNT
+        self._pocket_min_size = float(_DEFAULT_POCKET_MIN_SIZE)
+        self._crystal_ligand: Ligand | None = None
+        self._ligand_id: str | None = None
+        self._component_id: str | None = None
+        self._box_geometry: BoxGeometry | None = box_geometry
+        self._box_padding: float | None = box_padding
+        self._pocket_radius: float | None = (
+            float(pocket_radius) if pocket_radius is not None else None
+        )
+        self._crystal_ligand_remote_path: str | None = None
+        self.find_pockets = find_pockets
+        if pocket_count is not None:
+            self.pocket_count = pocket_count
+        if pocket_min_size is not None:
+            self.pocket_min_size = pocket_min_size
+        if crystal_ligand is not None:
+            self.crystal_ligand = crystal_ligand
+        if ligand_id is not None:
+            self.ligand_id = ligand_id
+        if component_id is not None:
+            self.component_id = component_id
 
     @property
     def protein(self) -> Protein:
@@ -1169,25 +1193,208 @@ class ProteinPrep(
         self._model_missing_loops = bool(value)
 
     @property
-    def pocket(self) -> PocketFinderConfig | None:
-        """Optional Pocket Finder settings for preparation."""
-        return self._pocket
+    def find_pockets(self) -> ProteinPrepFindPockets:
+        """Whether prepare runs Pocket Finder (``no``, ``from-crystal-ligand``, ``novel``)."""
+        return self._find_pockets
 
-    @pocket.setter
-    def pocket(self, value: PocketFinderConfig | None) -> None:
-        """Set or clear Pocket Finder settings before submission."""
-        self._require_unbound("pocket")
+    @find_pockets.setter
+    def find_pockets(self, value: ProteinPrepFindPockets) -> None:
+        """Set pocket-finding mode before submission."""
+        self._require_unbound("find_pockets")
+        resolved = str(value).strip()
+        if resolved not in _VALID_FIND_POCKETS:
+            raise ValueError(
+                "find_pockets must be 'no', 'from-crystal-ligand', or 'novel', "
+                f"got {value!r}."
+            )
+        self._find_pockets = resolved  # type: ignore[assignment]
+
+    @property
+    def pocket_count(self) -> int:
+        """Max pockets when :attr:`find_pockets` is ``\"novel\"``."""
+        return self._pocket_count
+
+    @pocket_count.setter
+    def pocket_count(self, value: int) -> None:
+        """Set novel pocket count (requires :attr:`find_pockets` ``\"novel\"``)."""
+        self._require_unbound("pocket_count")
+        if self._find_pockets != "novel":
+            raise ValueError("pocket_count is only used when find_pockets='novel'.")
+        count = int(value)
+        if count < 1:
+            raise ValueError("pocket_count must be at least 1.")
+        self._pocket_count = count
+
+    @property
+    def pocket_min_size(self) -> float:
+        """Minimum pocket size when :attr:`find_pockets` is ``\"novel\"``."""
+        return self._pocket_min_size
+
+    @pocket_min_size.setter
+    def pocket_min_size(self, value: int | float) -> None:
+        """Set novel pocket minimum size (requires :attr:`find_pockets` ``\"novel\"``)."""
+        self._require_unbound("pocket_min_size")
+        if self._find_pockets != "novel":
+            raise ValueError("pocket_min_size is only used when find_pockets='novel'.")
+        min_size = float(value)
+        if min_size < 1:
+            raise ValueError("pocket_min_size must be at least 1.")
+        self._pocket_min_size = min_size
+
+    @property
+    def crystal_ligand(self) -> Ligand | None:
+        """External ligand file for ``find_pockets='from-crystal-ligand'``."""
+        return self._crystal_ligand
+
+    @crystal_ligand.setter
+    def crystal_ligand(self, value: Ligand | None) -> None:
+        """Set external crystal ligand (clears ``ligand_id`` / ``component_id``)."""
+        self._require_unbound("crystal_ligand")
+        self._crystal_ligand = value
         if value is not None:
-            value.validate()
-            if value.mode == "define-by-selection":
-                raise ValueError(_DEFINE_BY_SELECTION_COMPOSITE_MSG)
-        self._pocket = value
+            self._ligand_id = None
+            self._component_id = None
+            self._crystal_ligand_remote_path = None
+
+    @property
+    def ligand_id(self) -> str | None:
+        """In-structure ligand code for ``find_pockets='from-crystal-ligand'``."""
+        return self._ligand_id
+
+    @ligand_id.setter
+    def ligand_id(self, value: str | None) -> None:
+        """Set in-structure ligand id (clears other crystal-ligand sources)."""
+        self._require_unbound("ligand_id")
+        self._ligand_id = None if value is None else str(value).strip() or None
+        if self._ligand_id is not None:
+            self._crystal_ligand = None
+            self._component_id = None
+            self._crystal_ligand_remote_path = None
+
+    @property
+    def component_id(self) -> str | None:
+        """Component id for ``find_pockets='from-crystal-ligand'``."""
+        return self._component_id
+
+    @component_id.setter
+    def component_id(self, value: str | None) -> None:
+        """Set component id (clears other crystal-ligand sources)."""
+        self._require_unbound("component_id")
+        self._component_id = None if value is None else str(value).strip() or None
+        if self._component_id is not None:
+            self._crystal_ligand = None
+            self._ligand_id = None
+            self._crystal_ligand_remote_path = None
+
+    @property
+    def box_geometry(self) -> BoxGeometry | None:
+        """Crystal-ligand box geometry when :attr:`find_pockets` is crystal mode."""
+        return self._box_geometry
+
+    @box_geometry.setter
+    def box_geometry(self, value: BoxGeometry | None) -> None:
+        """Set crystal-ligand box geometry before submission."""
+        self._require_unbound("box_geometry")
+        self._box_geometry = value
+
+    @property
+    def box_padding(self) -> float | None:
+        """Padding for ``ligand-extents`` crystal-ligand boxes."""
+        return self._box_padding
+
+    @box_padding.setter
+    def box_padding(self, value: float | None) -> None:
+        """Set crystal-ligand box padding before submission."""
+        self._require_unbound("box_padding")
+        self._box_padding = None if value is None else float(value)
+
+    @property
+    def pocket_radius(self) -> float | None:
+        """Half-edge for ``fixed-radius`` crystal-ligand boxes."""
+        return self._pocket_radius
+
+    @pocket_radius.setter
+    def pocket_radius(self, value: float | None) -> None:
+        """Set crystal-ligand fixed-radius half-edge before submission."""
+        self._require_unbound("pocket_radius")
+        self._pocket_radius = None if value is None else float(value)
+
+    def _prep_pocket_input(self) -> _PrepPocketInput | None:
+        """Build validated pocket input for explicit ``find_pockets`` modes."""
+        if self._find_pockets == "novel":
+            return _PrepPocketInput(
+                mode="auto-find",
+                pocket_count=self._pocket_count,
+                pocket_min_size=self._pocket_min_size,
+            )
+        if self._find_pockets == "from-crystal-ligand":
+            return _PrepPocketInput(
+                mode="from-crystal-ligand",
+                crystal_ligand=self._crystal_ligand,
+                ligand_id=self._ligand_id,
+                component_id=self._component_id,
+                box_geometry=self._box_geometry,
+                box_padding=self._box_padding,
+                pocket_radius=self._pocket_radius,
+                _crystal_ligand_remote_path=self._crystal_ligand_remote_path,
+            )
+        return None
+
+    def _merge_find_pockets_into_inputs(
+        self,
+        inputs: dict[str, Any],
+        *,
+        allow_extract_inference: bool,
+    ) -> None:
+        """Set flat ``find_pockets`` tool fields on a prepare payload."""
+        pocket = self._prep_pocket_input()
+        if pocket is not None:
+            inputs.update(pocket.to_tool_input())
+            return
+        inputs["find_pockets"] = "no"
+        if allow_extract_inference and _selection_has_ligand_extract(self._selection):
+            inputs["find_pockets"] = "from-crystal-ligand"
+
+    def _pockets_explicitly_requested(self) -> bool:
+        """Return whether the caller configured pocket finding on this object."""
+        return self._find_pockets in {"novel", "from-crystal-ligand"}
+
+    def _apply_pocket_from_stored_inputs(self, pocket: dict[str, Any] | None) -> None:
+        """Rehydrate pocket-related attributes from execution inputs."""
+        self._find_pockets = "no"
+        self._crystal_ligand = None
+        self._ligand_id = None
+        self._component_id = None
+        self._box_geometry = None
+        self._box_padding = None
+        self._pocket_radius = None
+        self._crystal_ligand_remote_path = None
+        if pocket is None:
+            return
+        parsed = _PrepPocketInput.from_tool_input(pocket)
+        if parsed is None:
+            return
+        if parsed.mode == "auto-find":
+            self._find_pockets = "novel"
+            self._pocket_count = int(parsed.pocket_count or _DEFAULT_POCKET_COUNT)
+            self._pocket_min_size = float(
+                parsed.pocket_min_size or _DEFAULT_POCKET_MIN_SIZE
+            )
+            return
+        if parsed.mode == "define-by-selection":
+            raise ValueError(_DEFINE_BY_SELECTION_COMPOSITE_MSG)
+        self._find_pockets = "from-crystal-ligand"
+        self._crystal_ligand = parsed.crystal_ligand
+        self._ligand_id = parsed.ligand_id
+        self._component_id = parsed.component_id
+        self._box_geometry = parsed.box_geometry
+        self._box_padding = parsed.box_padding
+        self._pocket_radius = parsed.pocket_radius
+        self._crystal_ligand_remote_path = parsed._crystal_ligand_remote_path
 
     def _uses_composite_route(self) -> bool:
         """Return whether prepare must use Target Preparation."""
-        return bool(self._model_missing_loops) or (
-            self._pocket is not None and self._pocket.mode == "auto-find"
-        )
+        return bool(self._model_missing_loops) or self._find_pockets == "novel"
 
     def _ensure_prepare_name(self) -> None:
         """Set a descriptive prepare name when the caller did not provide one.
@@ -1201,7 +1408,7 @@ class ProteinPrep(
             protein=self._protein,
             pdb_id=self._pdb_id,
             model_missing_loops=self._model_missing_loops,
-            include_pocket=self._pocket is not None,
+            include_pocket=self._pockets_explicitly_requested(),
         )
 
     def _apply_runtime_route(self, *, composite: bool) -> None:
@@ -1242,8 +1449,9 @@ class ProteinPrep(
             )
         if self._model_missing_loops and not self._pdb_id:
             raise ValueError(PROTEIN_PREP_PDB_ID_REQUIRED_MSG)
-        if self._pocket is not None:
-            self._pocket.validate()
+        pocket = self._prep_pocket_input()
+        if pocket is not None:
+            pocket.validate()
 
     def _component_dataframe(self) -> pd.DataFrame:
         """Return the Component table used by keep/skip matchers.
@@ -1466,9 +1674,6 @@ class ProteinPrep(
         Includes constructor parameters and, when set, execution ``name``,
         ``id``, and ``status``.
         """
-        pocket_display = PROTEIN_PREP_DISPLAY_NONE
-        if self._pocket is not None:
-            pocket_display = f"mode={self._pocket.mode}"
         rows: list[tuple[str, str]] = [
             ("protein", _protein_display_value(self.protein)),
             (
@@ -1488,7 +1693,23 @@ class ProteinPrep(
                     else PROTEIN_PREP_DISPLAY_NONE
                 ),
             ),
-            ("pocket", pocket_display),
+            ("find_pockets", self._find_pockets),
+            (
+                "pocket_count",
+                (
+                    str(self._pocket_count)
+                    if self._find_pockets == "novel"
+                    else PROTEIN_PREP_DISPLAY_NONE
+                ),
+            ),
+            (
+                "pocket_min_size",
+                (
+                    str(self._pocket_min_size)
+                    if self._find_pockets == "novel"
+                    else PROTEIN_PREP_DISPLAY_NONE
+                ),
+            ),
             ("tool_version", str(self.tool_version)),
         ]
         if self.name:
@@ -1556,8 +1777,9 @@ class ProteinPrep(
         """Upload/sync the protein and optional crystal ligand."""
         self._protein.sync(lazy=True, client=self.client)
         self._protein.ensure_remote_path(client=self.client, label="Protein")
-        if self._pocket is not None:
-            self._pocket.ensure_remote(client=self.client)
+        pocket = self._prep_pocket_input()
+        if pocket is not None:
+            pocket.ensure_remote(client=self.client)
 
     def _make_protein_prep_payload(
         self,
@@ -1592,11 +1814,10 @@ class ProteinPrep(
                 inputs["model_missing_loops"] = False
             if self._pdb_id:
                 inputs["pdb_id"] = self._pdb_id
-            inputs["find_pockets"] = "no"
-            if self._pocket is not None:
-                inputs.update(self._pocket.to_tool_input())
-            elif _selection_has_ligand_extract(self._selection):
-                inputs["find_pockets"] = "from-crystal-ligand"
+            self._merge_find_pockets_into_inputs(
+                inputs,
+                allow_extract_inference=True,
+            )
         payload: dict[str, Any] = {
             "inputs": inputs,
             "outputs": {},
@@ -1635,9 +1856,10 @@ class ProteinPrep(
         }
         if self._pdb_id:
             inputs["pdb_id"] = self._pdb_id
-        inputs["find_pockets"] = "no"
-        if self._pocket is not None:
-            inputs.update(self._pocket.to_tool_input())
+        self._merge_find_pockets_into_inputs(
+            inputs,
+            allow_extract_inference=False,
+        )
         payload: dict[str, Any] = {
             "inputs": inputs,
             "outputs": {},
@@ -1741,7 +1963,7 @@ class ProteinPrep(
         """Execute loops-off direct preparation synchronously (blocking).
 
         Only valid when :attr:`model_missing_loops` is ``False`` and
-        :attr:`pocket` is unset or uses ``from-crystal-ligand``.
+        :attr:`find_pockets` is ``\"no\"`` or ``\"from-crystal-ligand\"``.
 
         Args:
             quote: Shorthand for :data:`~deeporigin.utils.constants.QUOTE_APPROVE_AMOUNT`.
@@ -1933,11 +2155,7 @@ class ProteinPrep(
                 instance._recommendation
             )
         instance._model_missing_loops = parsed.model_missing_loops
-        instance._pocket = (
-            PocketFinderConfig.from_tool_input(parsed.pocket)
-            if parsed.pocket is not None
-            else None
-        )
+        instance._apply_pocket_from_stored_inputs(parsed.pocket)
         instance._direct_tool_version = TOOL_KEYS_AND_VERSIONS["protein_prep"][
             "tool_version"
         ]
@@ -2280,9 +2498,10 @@ class ProteinPrep(
             ValueError: If :attr:`id` is unset, or this run did not request pockets.
         """
         self._ensure_id()
-        requested = self._pocket is not None or (
+        requested = self._pockets_explicitly_requested() or (
             self.tool_key == _PROTEIN_PREP_TOOL_KEY
             and _selection_has_ligand_extract(self._selection)
+            and self._find_pockets == "no"
         )
         indexed = self._result_rows(_RESULT_TYPE_POCKET)
         outputs = self._execution_outputs(dto)

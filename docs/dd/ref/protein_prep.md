@@ -6,7 +6,7 @@ returns a component table (`pandas.DataFrame`), and updates the same object with
 editable Selection. Prepare applies resolved keep/skip decisions and cleans
 the structure. ``run()`` is loops-off / no-pocket and blocking; ``start()``
 submits asynchronous prepare (composite when loops are on or
-``PocketFinderConfig`` is set). Pocket-bearing runs support ``quote`` /
+``find_pockets`` is not ``no``). Pocket-bearing runs support ``quote`` /
 ``approve_amount`` and ``confirm()``.
 
 ::: src.drug_discovery.protein_prep
