@@ -253,7 +253,6 @@ prep.skip(decision="review")
 prep.start()
 prep.wait()
 prepared = prep.get_results()
-report = prep.get_report()
 pockets = prep.get_pockets()
 ```
 

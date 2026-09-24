@@ -8,9 +8,9 @@ and optionally models missing loops. Optional
 structure via `find_pockets` (`"no"`, `"novel"`, or `"from-crystal-ligand"`).
 Selection-defined pockets require the standalone Pocket Finder tool.
 
-Use standalone [`StructureReport`](structure-report.md) for source-structure
-assessment. Composite preparation (loop modelling or novel pocket finding)
-always produces a prepared Structure Report; retrieve it with `get_report()`.
+Use standalone [`StructureReport`](structure-report.md) for structure assessment
+(source or prepared). Protein Prep v10 does not bundle Structure Reports in tool
+outputs.
 
 ## Recommend and review
 
@@ -86,9 +86,10 @@ prepared = prep.get_results()
 
 ## Prepare with loop modelling or pockets
 
-Loop modelling is enabled by default. Loops on or `find_pockets="novel"` use the
-composite Target Preparation workflow. Use `start()` for that route (blocking
-`run()` is not available):
+Loop modelling is enabled by default. All prepare paths use
+`deeporigin.protein-prep` v10. Blocking `run()` supports served prepare
+(including loops on). `find_pockets="novel"` uses the platform workflow path —
+use `start()` (not `run()`):
 
 ```{.python notest}
 from deeporigin.drug_discovery import ProteinPrep
@@ -104,10 +105,12 @@ prep.start(quote=True)
 prep.confirm()
 prep.wait()
 prepared = prep.get_results()
-report = prep.get_report()
 pockets = prep.get_pockets()
 extracted = prep.get_crystal_poses()
 ```
+
+Register the input protein before prepare (`protein.sync()` or an existing
+`protein.id`). Loop modelling requires a four-character PDB ID.
 
 With loops off, `from-crystal-ligand` stays on standalone Protein Prep and can
 use either `run()` or `start()`:
@@ -129,9 +132,8 @@ Loop modelling requires a four-character
 ID. `ProteinPrep` initially uses `protein.pdb_id` when available; otherwise set
 `prep.pdb_id` before submission.
 
-`get_report()` and `get_pockets()` raise when that artifact was not part of the
-run, return `None` while still pending, and `get_pockets()` returns `[]` for a
-valid zero-pocket result. After prepare, ligands marked ``extract`` in the
+`get_pockets()` raises when pockets were not part of the run, returns `None`
+while still pending, and returns `[]` for a valid zero-pocket result. After prepare, ligands marked ``extract`` in the
 Selection are available from ``get_crystal_poses()`` as a
 :class:`~deeporigin.drug_discovery.structures.pose.PoseSet` (each
 :class:`~deeporigin.drug_discovery.structures.pose.Pose` carries prepared

@@ -1,20 +1,16 @@
 """Recommend settings and prepare a protein with one mutable configuration.
 
-``ProteinPrep`` is the sole public preparation session. It always recommends
-via direct ``deeporigin.protein-prep``. Preparation routes by configuration:
-
-- loops off with no novel pockets → direct ``deeporigin.protein-prep``
-  (``run`` / ``start``). Extracting a ligand also requests one crystal-ligand
-  Pocket per extract (``find_pockets=from-crystal-ligand``);
-- loops on, or novel pocket finding → workflow
-  ``deeporigin.target-preparation`` (``start`` only).
+``ProteinPrep`` is the sole public preparation session. It uses
+``deeporigin.protein-prep`` v10 for :meth:`recommend` and all :meth:`run` /
+:meth:`start` prepare paths. Extracting a ligand also requests one crystal-ligand
+Pocket per extract (``find_pockets=from-crystal-ligand``). Novel pockets use the
+platform workflow path; use :meth:`start` (not blocking :meth:`run`) for those.
 
 Set :attr:`find_pockets` to ``"novel"`` or ``"from-crystal-ligand"`` to include
-Pocket Finder in prepare. :meth:`get_results`
-always returns the prepared
+pockets in prepare. :meth:`get_results` returns the prepared
 :class:`~deeporigin.drug_discovery.structures.protein.Protein`; use
-:meth:`get_report`, :meth:`get_pockets`, and :meth:`get_crystal_poses`
-for other prepare artifacts.
+:meth:`get_pockets` and :meth:`get_crystal_poses` for other prepare artifacts.
+Structure reports are out of band — use :class:`~deeporigin.drug_discovery.structure_report.StructureReport`.
 
 Usage::
 
@@ -72,19 +68,14 @@ from deeporigin.utils.constants import (
     PROTEIN_PREP_POCKETS_EXCLUDED_MSG,  # ty:ignore[unresolved-import]
     PROTEIN_PREP_RECOMMEND_NOT_PREPARE_MSG,  # ty:ignore[unresolved-import]
     PROTEIN_PREP_RECOMMENDATION_COLUMNS,  # ty:ignore[unresolved-import]
-    PROTEIN_PREP_REPORT_EXCLUDED_MSG,  # ty:ignore[unresolved-import]
-    PROTEIN_PREP_RUN_REQUIRES_LOOPS_OFF_MSG,  # ty:ignore[unresolved-import]
+    PROTEIN_PREP_REGISTERED_PROTEIN_REQUIRED_MSG,  # ty:ignore[unresolved-import]
+    PROTEIN_PREP_RUN_REQUIRES_NOVEL_START_MSG,  # ty:ignore[unresolved-import]
     PROTEIN_PREP_SUBTYPE_REQUIRES_RECOMMENDATION_MSG,  # ty:ignore[unresolved-import]
     QUOTE_APPROVE_AMOUNT,
 )
 
-if TYPE_CHECKING:
-    from deeporigin.drug_discovery.structure_report import StructureReportResult
-
-
 _PDB_ID_RE = re.compile(PROTEIN_PREP_PDB_ID_PATTERN)
 _RESULT_TYPE_PREPARED_PROTEIN = "preparedprotein"
-_RESULT_TYPE_STRUCTURE_REPORT = "structurereport"
 _RESULT_TYPE_POCKET = "pocket"
 _RESULT_TYPE_POSE = "pose"
 _PROTEIN_PREP_CRYSTAL_POSE_ORIGIN = "cocrystal"
@@ -93,8 +84,6 @@ _VALID_ANALYZER_RECOMMENDATIONS = frozenset({"keep", "review", "skip", "extract"
 _VALID_DECISIONS = frozenset({"keep", "review", "skip", "extract"})
 _RESOLVED_DECISIONS = frozenset({"keep", "skip", "extract"})
 _PROTEIN_PREP_TOOL_KEY = TOOL_KEYS_AND_VERSIONS["protein_prep"]["tool_key"]
-_TARGET_PREP_TOOL_KEY = TOOL_KEYS_AND_VERSIONS["target_prep"]["tool_key"]
-_ALLOWED_TOOL_KEYS = frozenset({_PROTEIN_PREP_TOOL_KEY, _TARGET_PREP_TOOL_KEY})
 _DEFAULT_POCKET_COUNT = 1
 _DEFAULT_POCKET_MIN_SIZE = 30
 _DEFAULT_POCKET_RADIUS = 10.0
@@ -1009,14 +998,11 @@ class ProteinPrep(
 ):
     """Recommend settings and prepare a protein.
 
-    :meth:`recommend` always uses direct ``deeporigin.protein-prep``.
-    Preparation routes to the same tool when loops are off and pocket finding
-    is unset, crystal-ligand, or inferred from ligand ``extract`` decisions.
-    Loop modelling and novel pocket finding use workflow
-    ``deeporigin.target-preparation``.
-    Blocking :meth:`run` is available for the direct loops-off path. Composite
-    callers use :meth:`start` (with ``quote`` / ``approve_amount`` when
-    pockets are billable).
+    All operations use ``deeporigin.protein-prep`` (v10). Blocking :meth:`run`
+    supports served prepare including loop modelling. Novel pocket finding uses
+    the platform workflow path — use :meth:`start` (with ``quote`` /
+    ``approve_amount`` when pockets are billable). Structure reports are not
+    produced by this tool; use :class:`~deeporigin.drug_discovery.structure_report.StructureReport`.
 
     Attributes:
         protein: Constructor-only input protein structure.
@@ -1077,8 +1063,8 @@ class ProteinPrep(
             box_geometry: Crystal-ligand box geometry.
             box_padding: Padding for ``ligand-extents`` geometry.
             pocket_radius: Half-edge for ``fixed-radius`` geometry.
-            tool_version: Platform tool version pin for the direct protein-prep
-                route. Composite runs use the pinned Target Preparation major.
+            tool_version: Platform ``deeporigin.protein-prep`` version pin
+                (default from :data:`~deeporigin.platform.constants.TOOL_KEYS_AND_VERSIONS`).
             client: Optional API client. Uses the default if not provided.
             name: Optional execution label for prepare submissions. When
                 omitted, :meth:`run` and :meth:`start` choose a label from the
@@ -1392,10 +1378,6 @@ class ProteinPrep(
         self._pocket_radius = parsed.pocket_radius
         self._crystal_ligand_remote_path = parsed._crystal_ligand_remote_path
 
-    def _uses_composite_route(self) -> bool:
-        """Return whether prepare must use Target Preparation."""
-        return bool(self._model_missing_loops) or self._find_pockets == "novel"
-
     def _ensure_prepare_name(self) -> None:
         """Set a descriptive prepare name when the caller did not provide one.
 
@@ -1411,18 +1393,10 @@ class ProteinPrep(
             include_pocket=self._pockets_explicitly_requested(),
         )
 
-    def _apply_runtime_route(self, *, composite: bool) -> None:
-        """Set instance ``tool_key`` / ``tool_version`` for the next create.
-
-        Args:
-            composite: When ``True``, route to Target Preparation.
-        """
-        if composite:
-            self.tool_key = _TARGET_PREP_TOOL_KEY
-            self.tool_version = TOOL_KEYS_AND_VERSIONS["target_prep"]["tool_version"]
-        else:
-            self.tool_key = _PROTEIN_PREP_TOOL_KEY
-            self.tool_version = self._direct_tool_version
+    def _apply_protein_prep_tool(self) -> None:
+        """Pin ``tool_key`` / ``tool_version`` for the next execution create."""
+        self.tool_key = _PROTEIN_PREP_TOOL_KEY
+        self.tool_version = self._direct_tool_version
 
     def _validate_for_submit(self) -> None:
         """Raise if current settings cannot prepare the protein.
@@ -1447,6 +1421,8 @@ class ProteinPrep(
                 f"Resolve review decisions before preparation: {joined}. "
                 "Use keep(), skip(), or extract()."
             )
+        if not self._protein.id:
+            raise ValueError(PROTEIN_PREP_REGISTERED_PROTEIN_REQUIRED_MSG)
         if self._model_missing_loops and not self._pdb_id:
             raise ValueError(PROTEIN_PREP_PDB_ID_REQUIRED_MSG)
         pocket = self._prep_pocket_input()
@@ -1810,8 +1786,7 @@ class ProteinPrep(
                 "analyzer_version": self._selection["analyzer_version"],
                 "decisions": dict(self._selection["decisions"]),
             }
-            if not self._model_missing_loops:
-                inputs["model_missing_loops"] = False
+            inputs["model_missing_loops"] = bool(self._model_missing_loops)
             if self._pdb_id:
                 inputs["pdb_id"] = self._pdb_id
             self._merge_find_pockets_into_inputs(
@@ -1827,47 +1802,6 @@ class ProteinPrep(
         if approve_amount is not None:
             payload["approveAmount"] = approve_amount
         if self.name is not None and action == "prepare":
-            payload["name"] = self.name
-        return payload
-
-    def _make_target_prep_payload(
-        self,
-        *,
-        approve_amount: int | None,
-    ) -> dict[str, Any]:
-        """Build the POST body for action-less Target Preparation.
-
-        Args:
-            approve_amount: Optional spend cap (``0`` for quote-only).
-
-        Returns:
-            Payload for ``client.executions.create``.
-        """
-        self._validate_for_submit()
-        assert self._selection is not None
-        inputs: dict[str, Any] = {
-            "protein": _protein_tool_input(self._protein),
-            "selection": {
-                "source_sha256": self._selection["source_sha256"],
-                "analyzer_version": self._selection["analyzer_version"],
-                "decisions": dict(self._selection["decisions"]),
-            },
-            "model_missing_loops": self._model_missing_loops,
-        }
-        if self._pdb_id:
-            inputs["pdb_id"] = self._pdb_id
-        self._merge_find_pockets_into_inputs(
-            inputs,
-            allow_extract_inference=False,
-        )
-        payload: dict[str, Any] = {
-            "inputs": inputs,
-            "outputs": {},
-            "metadata": {},
-        }
-        if approve_amount is not None:
-            payload["approveAmount"] = approve_amount
-        if self.name is not None:
             payload["name"] = self.name
         return payload
 
@@ -1889,7 +1823,7 @@ class ProteinPrep(
         """
         self._require_unbound("recommend")
         self._ensure_protein_remote()
-        self._apply_runtime_route(composite=False)
+        self._apply_protein_prep_tool()
         dto = self._create_execution(
             data=self._make_protein_prep_payload(action="recommend", sync=True),
         )
@@ -1929,16 +1863,12 @@ class ProteinPrep(
         self._validate_for_submit()
         self._ensure_prepare_name()
         self._ensure_protein_remote()
-        composite = self._uses_composite_route()
-        self._apply_runtime_route(composite=composite)
-        if composite:
-            data = self._make_target_prep_payload(approve_amount=approve_amount)
-        else:
-            data = self._make_protein_prep_payload(
-                action="prepare",
-                sync=False,
-                approve_amount=approve_amount,
-            )
+        self._apply_protein_prep_tool()
+        data = self._make_protein_prep_payload(
+            action="prepare",
+            sync=False,
+            approve_amount=approve_amount,
+        )
         execution_dto = self._create_execution(data=data)
         if execution_dto.get("executionId") is None:
             raise ValueError("Execution response must contain 'executionId'") from None
@@ -1949,10 +1879,10 @@ class ProteinPrep(
         """Raise unless this instance may ``run()``.
 
         Raises:
-            ValueError: If loop modelling or novel pocket finding is enabled.
+            ValueError: If novel pocket finding is enabled (workflow path).
         """
-        if self._uses_composite_route():
-            raise ValueError(PROTEIN_PREP_RUN_REQUIRES_LOOPS_OFF_MSG)
+        if self._find_pockets == "novel":
+            raise ValueError(PROTEIN_PREP_RUN_REQUIRES_NOVEL_START_MSG)
 
     def run(
         self,
@@ -1962,8 +1892,8 @@ class ProteinPrep(
     ) -> Protein | None:
         """Execute loops-off direct preparation synchronously (blocking).
 
-        Only valid when :attr:`model_missing_loops` is ``False`` and
-        :attr:`find_pockets` is ``\"no\"`` or ``\"from-crystal-ligand\"``.
+        Valid for served prepare (loops on or off) when :attr:`find_pockets` is
+        not ``\"novel\"``.
 
         Args:
             quote: Shorthand for :data:`~deeporigin.utils.constants.QUOTE_APPROVE_AMOUNT`.
@@ -1982,7 +1912,7 @@ class ProteinPrep(
         self._validate_for_submit()
         self._ensure_prepare_name()
         self._ensure_protein_remote()
-        self._apply_runtime_route(composite=False)
+        self._apply_protein_prep_tool()
         resolved_amount = QUOTE_APPROVE_AMOUNT if quote else approve_amount
         dto = self._create_execution(
             data=self._make_protein_prep_payload(
@@ -1998,22 +1928,21 @@ class ProteinPrep(
         return self.get_results(dto)
 
     def update_from_dto(self, dto: dict[str, Any]) -> None:
-        """Apply tools execution fields, accepting either routed tool key.
+        """Apply tools execution fields from a protein-prep execution DTO.
 
         Args:
             dto: Execution payload (same shape as ``client.executions.get``).
 
         Raises:
-            ValueError: If the DTO tool key is not protein-prep or
-                target-preparation.
+            ValueError: If the DTO tool key is not ``deeporigin.protein-prep``.
         """
         tool_info = dto["tool"]
         dto_tool_key = tool_info["key"]
-        if dto_tool_key not in _ALLOWED_TOOL_KEYS:
+        if dto_tool_key != _PROTEIN_PREP_TOOL_KEY:
             raise ValueError(
                 "Cannot apply execution DTO: "
                 f"tool key mismatch (dto={dto_tool_key!r}, "
-                f"allowed={sorted(_ALLOWED_TOOL_KEYS)!r})."
+                f"expected={_PROTEIN_PREP_TOOL_KEY!r})."
             )
         self.tool_key = dto_tool_key
         self._id = dto["executionId"]
@@ -2105,8 +2034,7 @@ class ProteinPrep(
     ) -> Self:
         """Construct a ``ProteinPrep`` from a tools execution DTO.
 
-        Rehydrates historical recommendation and preparation executions from
-        either routed tool key.
+        Rehydrates protein-prep recommendation and preparation executions.
 
         Args:
             dto: Execution payload (same shape as ``client.executions.get``).
@@ -2163,7 +2091,7 @@ class ProteinPrep(
 
     @classmethod
     def from_id(cls, id: str, *, client: DeepOriginClient | None = None) -> Self:
-        """Construct from either protein-prep or target-preparation execution id.
+        """Construct from a protein-prep execution id.
 
         Args:
             id: Platform execution ID.
@@ -2186,30 +2114,29 @@ class ProteinPrep(
         client: DeepOriginClient | None = None,
         status: list[str] | None = None,
     ) -> list[Self]:
-        """List executions across both ProteinPrep tool keys.
+        """List protein-prep executions for this session type.
 
         Args:
             client: Optional API client.
             status: Optional status filter on hydrated instances.
 
         Returns:
-            Instances for both tool keys, newest ``createdAt`` first.
+            Instances for ``deeporigin.protein-prep``, newest ``createdAt`` first.
         """
         if client is None:
             from deeporigin.platform.client import DeepOriginClient as _Client
 
             client = _Client()
-        all_dtos: list[dict[str, Any]] = []
-        for tool_key in (_PROTEIN_PREP_TOOL_KEY, _TARGET_PREP_TOOL_KEY):
-            page = client.executions.list(  # ty:ignore[unresolved-attribute]
-                fetch_all_pages=True,
-                tool_key=tool_key,
-            ).get("data", [])
-            all_dtos.extend(
-                dto
-                for dto in page
-                if isinstance(dto, dict) and dto.get("tool", {}).get("key") == tool_key
-            )
+        page = client.executions.list(  # ty:ignore[unresolved-attribute]
+            fetch_all_pages=True,
+            tool_key=_PROTEIN_PREP_TOOL_KEY,
+        ).get("data", [])
+        all_dtos = [
+            dto
+            for dto in page
+            if isinstance(dto, dict)
+            and dto.get("tool", {}).get("key") == _PROTEIN_PREP_TOOL_KEY
+        ]
         all_dtos.sort(key=_dto_created_at, reverse=True)
         instances = [cls.from_dto(dto, client=client) for dto in all_dtos]
         if status is not None:
@@ -2218,7 +2145,7 @@ class ProteinPrep(
 
     @classmethod
     def from_last_run(cls, *, client: DeepOriginClient | None = None) -> Self:
-        """Return the newest execution across both routed tool keys.
+        """Return the newest protein-prep execution.
 
         Args:
             client: Optional API client.
@@ -2227,30 +2154,25 @@ class ProteinPrep(
             Rehydrated :class:`ProteinPrep` for the newest matching execution.
 
         Raises:
-            ValueError: If no executions exist for either tool key.
+            ValueError: If no protein-prep executions exist.
         """
         if client is None:
             from deeporigin.platform.client import DeepOriginClient as _Client
 
             client = _Client()
-        candidates: list[dict[str, Any]] = []
-        for tool_key in (_PROTEIN_PREP_TOOL_KEY, _TARGET_PREP_TOOL_KEY):
-            response = client.executions.list(  # ty:ignore[unresolved-attribute]
-                tool_key=tool_key,
-                order=EXECUTION_LIST_ORDER_CREATED_DESC,
-                page=0,
-                page_size=1,
-            )
-            dtos = response.get("data") or []
-            if dtos and isinstance(dtos[0], dict):
-                candidates.append(dtos[0])
-        if not candidates:
+        response = client.executions.list(  # ty:ignore[unresolved-attribute]
+            tool_key=_PROTEIN_PREP_TOOL_KEY,
+            order=EXECUTION_LIST_ORDER_CREATED_DESC,
+            page=0,
+            page_size=1,
+        )
+        dtos = response.get("data") or []
+        if not dtos or not isinstance(dtos[0], dict):
             raise ValueError(
                 "No executions found for ProteinPrep "
-                f"(tool_keys={sorted(_ALLOWED_TOOL_KEYS)!r})."
+                f"(tool_key={_PROTEIN_PREP_TOOL_KEY!r})."
             )
-        candidates.sort(key=_dto_created_at, reverse=True)
-        return cls.from_dto(candidates[0], client=client)
+        return cls.from_dto(dtos[0], client=client)
 
     def _protein_from_outputs(self, data: dict[str, Any]) -> Protein:
         """Build the result Protein from an output dict.
@@ -2443,43 +2365,6 @@ class ProteinPrep(
             client=self.client,
         )
         return PoseSet(poses=poses)
-
-    def get_report(
-        self,
-        dto: dict[str, Any] | None = None,
-    ) -> StructureReportResult | None:
-        """Return the prepared Structure Report when this run requested one.
-
-        Args:
-            dto: Optional execution payload used as a job-output fallback.
-
-        Returns:
-            Prepared report, or ``None`` when requested but not yet published.
-
-        Raises:
-            ValueError: If :attr:`id` is unset, or the direct protein-prep path
-                ran (report excluded).
-        """
-        from deeporigin.drug_discovery.structure_report import StructureReportResult
-
-        self._ensure_id()
-        if self.tool_key != _TARGET_PREP_TOOL_KEY:
-            raise ValueError(PROTEIN_PREP_REPORT_EXCLUDED_MSG)
-        indexed = self._result_rows(_RESULT_TYPE_STRUCTURE_REPORT)
-        for row in indexed:
-            if row.get("report_role") == "prepared":
-                return StructureReportResult.from_json(row)
-        outputs = self._execution_outputs(dto)
-        rows = outputs.get("structure_reports")
-        if not isinstance(rows, list):
-            return None
-        for row in rows:
-            if (
-                isinstance(row, dict)
-                and row.get("report_role", "prepared") == "prepared"
-            ):
-                return StructureReportResult.from_json(row)
-        return None
 
     def get_pockets(
         self,

@@ -88,5 +88,6 @@ until the prepared protein is ready; crystal-ligand pocket finding can use this
 route too. Loop modelling or novel pockets use `start()` (and `quote` /
 `confirm` when pockets are billable). Use standalone
 [`StructureReport`](structure-report.md) for source assessment. Prepared
-reports, pockets, and extracted crystal poses are available via `get_report()`,
-`get_pockets()`, and `get_crystal_poses()` when requested.
+pockets and extracted crystal poses are available via `get_pockets()` and
+`get_crystal_poses()` when requested. Use standalone `StructureReport` for
+structure reports.

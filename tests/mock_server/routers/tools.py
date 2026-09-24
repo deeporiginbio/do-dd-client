@@ -988,8 +988,6 @@ def create_tools_router(
                 _inject_patent_tool_execution_results(execution)
             if tool_key == "deeporigin.metabolism":
                 _inject_metabolism_tool_execution_results(execution)
-            if tool_key == "deeporigin.target-preparation":
-                _inject_target_prep_tool_execution_results(execution)
             progress_reports = _load_progress_reports(tool_key)
             if progress_reports:
                 final_report = progress_reports[-1]
@@ -1926,40 +1924,6 @@ def create_tools_router(
         if not isinstance(job_outputs, dict):
             return
 
-        if tool_key == "deeporigin.target-preparation":
-            target_output_types = {
-                "poses": "pose",
-                "pockets": "pocket",
-                "protein": "preparedprotein",
-                "structure_reports": "structurereport",
-            }
-            for output_key, result_type in target_output_types.items():
-                output_value = job_outputs.get(output_key)
-                if output_value is None:
-                    continue
-                items = (
-                    output_value if isinstance(output_value, list) else [output_value]
-                )
-                for item in items:
-                    if not isinstance(item, dict):
-                        continue
-                    data = dict(item)
-                    record = {
-                        "id": str(
-                            data.get("id")
-                            or ("08" + str(uuid.uuid4()).replace("-", "").upper()[:11])
-                        ),
-                        "tool_key": tool_key,
-                        "tool_version": tool_version,
-                        "result_type": result_type,
-                        "data": data,
-                        "compute_job_id": execution_id,
-                    }
-                    if project_id is not None:
-                        record["project_id"] = project_id
-                    results.append(record)
-            return
-
         if tool_key == "deeporigin.protein-prep":
             protein_prep_output_types = {
                 "protein": "preparedprotein",
@@ -2331,7 +2295,13 @@ def create_tools_router(
                 protein_out["parent_id"] = str(parent_id)
             if pdb_id is not None:
                 protein_out["pdb_id"] = pdb_id
-            protein_out.setdefault("model_missing_loops", True)
+            loops = user_inputs.get("model_missing_loops") if isinstance(
+                user_inputs, dict
+            ) else None
+            protein_out.setdefault(
+                "model_missing_loops",
+                True if loops is None else bool(loops),
+            )
         prepared_protein_id = (
             str(protein_out.get("id"))
             if isinstance(protein_out, dict) and protein_out.get("id")
@@ -2373,113 +2343,6 @@ def create_tools_router(
             job_outputs=outputs,
             project_id=execution.get("projectId"),
         )
-
-    def _inject_target_prep_tool_execution_results(
-        execution: dict[str, Any],
-    ) -> None:
-        """Populate Target Preparation jobOutputs and result-explorer rows."""
-        eid = execution.get("executionId")
-        tool = execution.get("tool") or {}
-        tkey = tool.get("key")
-        tool_version = tool.get("version", "0.0.0")
-        if not eid or tkey != "deeporigin.target-preparation":
-            return
-        if any(r.get("compute_job_id") == eid for r in results):
-            return
-
-        inputs = execution.get("userInputs") or {}
-        if not isinstance(inputs, dict):
-            inputs = {}
-        protein_input = inputs.get("protein") or {}
-        input_protein_id = (
-            str(protein_input.get("id"))
-            if isinstance(protein_input, dict) and protein_input.get("id")
-            else None
-        )
-        pdb_id = inputs.get("pdb_id")
-        has_file = isinstance(protein_input, dict) and bool(
-            protein_input.get("file_path")
-        )
-
-        prep_fixture = copy.deepcopy(
-            load_fixture("tool-runs/deeporigin.protein-prep/run")
-        )
-        outputs = _legacy_outputs_to_job_outputs(prep_fixture) or {}
-        protein_output = outputs.get("protein")
-        prepared_protein_id = ""
-        if isinstance(protein_output, dict):
-            registered = register_mock_prepared_protein(
-                proteins,
-                execution_id=str(eid),
-                pdb_id=str(pdb_id) if pdb_id is not None else None,
-            )
-            protein_output["id"] = registered["protein_id"]
-            protein_output.pop("protein_id", None)
-            if input_protein_id:
-                protein_output["parent_id"] = input_protein_id
-            protein_output.setdefault("model_missing_loops", True)
-            prepared_protein_id = str(protein_output.get("id") or "")
-
-        report = _synthesize_structure_report_row(
-            pdb_id=str(pdb_id).upper() if pdb_id else None,
-            protein_id=prepared_protein_id or input_protein_id,
-            has_file=has_file,
-        )
-        report["report_role"] = "prepared"
-
-        pose_rows = mock_crystal_poses_from_selection(
-            ligands,
-            execution_id=str(eid),
-            prepared_protein_id=prepared_protein_id,
-            selection=inputs.get("selection"),
-        )
-        outputs.update(
-            {
-                "audit_file_path": f"tool-runs/{eid}/audit.json",
-                "poses": pose_rows,
-                "selection_file_path": f"tool-runs/{eid}/selection.json",
-                "structure_reports": [report],
-            }
-        )
-        if inputs.get("find_pockets") in {"novel", "from-crystal-ligand"}:
-            pocket_fixture = copy.deepcopy(
-                load_fixture("tool-runs/deeporigin.pocketfinder/run")
-            )
-            pocket_outputs = _legacy_outputs_to_job_outputs(pocket_fixture) or {}
-            pockets = pocket_outputs.get("pockets") or []
-            _apply_mock_pocket_metadata(
-                pockets,
-                find_pockets=inputs.get("find_pockets"),
-                prepared_protein_id=prepared_protein_id,
-                selection=inputs.get("selection"),
-            )
-            outputs["pockets"] = pockets
-
-        execution["jobOutputs"] = outputs
-        _inject_result_explorer_records_from_outputs(
-            tool_key=tkey,
-            tool_version=tool_version,
-            execution_id=eid,
-            job_outputs=outputs,
-            project_id=execution.get("projectId"),
-        )
-
-    def _build_target_prep_execution(
-        *,
-        org_key: str,
-        tool_key: str,
-        tool_version: str,
-        body: dict[str, Any],
-    ) -> dict[str, Any]:
-        """Build a completed Target Preparation 2.0 execution for local tests."""
-        execution = _create_blocking_run_dto(
-            org_key=org_key,
-            tool_key=tool_key,
-            tool_version=tool_version,
-            body=body,
-        )
-        _inject_target_prep_tool_execution_results(execution)
-        return execution
 
     def _inject_rbfe_user_logs(execution_id: str) -> None:
         """Append captured RBFE user_logs rows scoped to *execution_id*."""
@@ -2868,10 +2731,10 @@ def create_tools_router(
         execution["updatedAt"] = now.strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z"
 
         tool_key = (execution.get("tool") or {}).get("key")
-        if tool_key == "deeporigin.target-preparation":
+        if tool_key == "deeporigin.protein-prep":
             execution["status"] = "Completed"
             execution["completedAt"] = execution["updatedAt"]
-            _inject_target_prep_tool_execution_results(execution)
+            _inject_protein_prep_tool_execution_results(execution)
 
         executions[execution_id] = execution
 
@@ -3014,24 +2877,6 @@ def create_tools_router(
             eid = execution["executionId"]
             executions[eid] = execution
             _inject_sysprep_tool_execution_results(execution)
-            return _normalize_execution(execution)
-        if tool_key == "deeporigin.target-preparation":
-            if quote_only:
-                execution = _create_execution_dto(
-                    tool_key=tool_key,
-                    tool_version=tool_version,
-                    org_key=org_key,
-                    body=body,
-                )
-                execution["cluster"] = {"id": str(uuid.uuid4())}
-            else:
-                execution = _build_target_prep_execution(
-                    org_key=org_key,
-                    tool_key=tool_key,
-                    tool_version=tool_version,
-                    body=body,
-                )
-            executions[execution["executionId"]] = execution
             return _normalize_execution(execution)
         if tool_key == "deeporigin.protein-prep" and not quote_only:
             execution = _create_blocking_run_dto(

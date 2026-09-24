@@ -1,13 +1,12 @@
 # `deeporigin.drug_discovery.protein_prep`
 
-`ProteinPrep` drives platform tools `deeporigin.protein-prep` and, when
-needed, `deeporigin.target-preparation`. Recommend inventories components,
-returns a component table (`pandas.DataFrame`), and updates the same object with an
-editable Selection. Prepare applies resolved keep/skip decisions and cleans
-the structure. ``run()`` is loops-off / no-pocket and blocking; ``start()``
-submits asynchronous prepare (composite when loops are on or
-``find_pockets`` is not ``no``). Pocket-bearing runs support ``quote`` /
-``approve_amount`` and ``confirm()``.
+`ProteinPrep` drives `deeporigin.protein-prep` v10. Recommend inventories
+components, returns a component table (`pandas.DataFrame`), and updates the same
+object with an editable Selection. Prepare applies resolved keep/skip decisions
+and cleans the structure. ``run()`` blocks on served prepare (including loop
+modelling); ``find_pockets="novel"`` requires ``start()`` (workflow path).
+Pocket-bearing runs support ``quote`` / ``approve_amount`` and ``confirm()``.
+Structure reports are not part of this tool — use ``StructureReport``.
 
 ::: src.drug_discovery.protein_prep
     options:
