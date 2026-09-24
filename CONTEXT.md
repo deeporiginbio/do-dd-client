@@ -137,7 +137,7 @@ keep/skip Decisions and protonation. CLI class `ProteinPrep` is the sole public
 preparation session: `.recommend()` always uses protein-prep; loops-off
 (including crystal-ligand pockets inferred from ligand `extract`) uses
 protein-prep (`run()` / `start()`); loops-on or novel
-`pocket=PocketFinderConfig(mode="auto-find")` routes to Target Preparation
+`find_pockets="novel"` routes to Target Preparation
 (`start()` only). Crystal-ligand pockets with loops off stay on direct
 protein-prep. `.get_results()` returns the prepared `Protein`;
 `.get_report()` is the composite Structure Report; `.get_pockets()` returns

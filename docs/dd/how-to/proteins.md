@@ -236,17 +236,17 @@ Resolve any review decisions, then either:
 
 - disable loop modelling and omit pocket config, then call `run()` for a
   blocking prepared protein; or
-- enable loop modelling and/or set `pocket=PocketFinderConfig(...)`, then call
+- enable loop modelling and/or set `find_pockets`, then call
   `start()` (use `quote=True` / `confirm()` when pockets are billable).
 
 ```{.python notest}
-from deeporigin.drug_discovery import PocketFinderConfig, Protein, ProteinPrep
+from deeporigin.drug_discovery import Protein, ProteinPrep
 
 protein = Protein.from_pdb_id("1EBY")
-prep = ProteinPrep(
-    protein=protein,
-    pocket=PocketFinderConfig(pocket_count=3, pocket_min_size=80),
-)
+prep = ProteinPrep(protein=protein)
+prep.find_pockets = "novel"
+prep.pocket_count = 3
+prep.pocket_min_size = 80
 prep.recommend()
 prep.recommendation[prep.recommendation["decision"] == "review"]
 prep.skip(decision="review")

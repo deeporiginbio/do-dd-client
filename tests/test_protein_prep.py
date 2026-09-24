@@ -608,15 +608,15 @@ def test_run_requires_loops_off() -> None:
         prep.run()
 
 
-def test_run_rejects_pocket_config() -> None:
-    """Blocking prepare is unavailable when pocket is configured."""
-    from deeporigin.drug_discovery import PocketFinderConfig
-
+def test_run_rejects_novel_pockets() -> None:
+    """Blocking prepare is unavailable when novel pocket finding is enabled."""
     prep = ProteinPrep(
         protein=Protein(name="test"),
         selection=_SAMPLE_SELECTION,
         model_missing_loops=False,
-        pocket=PocketFinderConfig(pocket_count=1, pocket_min_size=30),
+        find_pockets="novel",
+        pocket_count=1,
+        pocket_min_size=30,
     )
 
     with pytest.raises(ValueError, match=r"Use start\(\)"):
@@ -934,60 +934,43 @@ def test_start_accepts_resolved_loops_off_prepare(
         assert is_success_status(prep.status)
 
 
-def test_pocket_finder_config_to_tool_input_modes() -> None:
-    """Pocket config serializes to flat preparation-tool fields."""
-    from deeporigin.drug_discovery import PocketFinderConfig
+def test_novel_find_pockets_serializes_flat_fields() -> None:
+    """Novel pocket mode serializes to flat preparation-tool fields."""
+    prep = ProteinPrep(
+        protein=_protein_with_remote(),
+        selection=_SAMPLE_SELECTION,
+        model_missing_loops=False,
+        find_pockets="novel",
+        pocket_count=2,
+        pocket_min_size=40,
+    )
+    payload = prep._make_target_prep_payload(approve_amount=None)
+    assert payload["inputs"]["find_pockets"] == "novel"
+    assert payload["inputs"]["pocket_count"] == 2
+    assert payload["inputs"]["pocket_min_size"] == 40.0
 
-    auto = PocketFinderConfig(pocket_count=2, pocket_min_size=40)
-    assert auto.to_tool_input() == {
-        "find_pockets": "novel",
-        "pocket_count": 2,
-        "pocket_min_size": 40.0,
-    }
 
-    crystal = PocketFinderConfig(
-        mode="from-crystal-ligand",
+def test_crystal_find_pockets_serializes_flat_fields() -> None:
+    """Crystal-ligand mode serializes to flat preparation-tool fields."""
+    prep = ProteinPrep(
+        protein=_protein_with_remote(),
+        selection=_SAMPLE_SELECTION,
+        model_missing_loops=False,
+        find_pockets="from-crystal-ligand",
         component_id="ligand:LIG:A:100",
         box_padding=4.0,
     )
-    assert crystal.to_tool_input() == {
-        "find_pockets": "from-crystal-ligand",
-        "crystal_ligand": {"component_id": "ligand:LIG:A:100"},
-        "box_padding": 4.0,
-    }
+    payload = prep._make_protein_prep_payload(action="prepare", sync=True)
+    assert payload["inputs"]["find_pockets"] == "from-crystal-ligand"
+    assert payload["inputs"]["crystal_ligand"] == {"component_id": "ligand:LIG:A:100"}
+    assert payload["inputs"]["box_padding"] == 4.0
 
 
-def test_pocket_from_tool_input_selection_inferred_extract_returns_none() -> None:
-    """Selection-inferred extract has find_pockets alone; rehydrate as no pocket."""
-    from deeporigin.drug_discovery.protein_prep import PocketFinderConfig
-
-    assert (
-        PocketFinderConfig.from_tool_input({"find_pockets": "from-crystal-ligand"})
-        is None
-    )
-
-
-def test_define_by_selection_is_rejected_on_protein_prep() -> None:
-    """Selection-defined pockets require the standalone PocketFinder tool."""
-    from deeporigin.drug_discovery import PocketFinderConfig
-
-    config = PocketFinderConfig(
-        mode="define-by-selection",
-        selections=[
-            {
-                "kind": "ligand",
-                "author": {"chain_id": "A", "resname": "LIG"},
-            }
-        ],
-    )
-    protein = _protein_with_remote()
-    with pytest.raises(ValueError, match="standalone PocketFinder"):
-        ProteinPrep(
-            protein=protein,
-            selection=_SAMPLE_SELECTION,
-            model_missing_loops=False,
-            pocket=config,
-        )
+def test_pocket_count_requires_novel_mode() -> None:
+    """Novel-only tuning knobs reject other find_pockets modes."""
+    prep = ProteinPrep(protein=Protein(name="test"), selection=_SAMPLE_SELECTION)
+    with pytest.raises(ValueError, match="find_pockets='novel'"):
+        prep.pocket_count = 2
 
 
 def test_loops_off_extract_infers_crystal_pockets() -> None:
@@ -1043,13 +1026,13 @@ def test_loops_on_routes_to_target_prep_payload() -> None:
 
 def test_novel_pockets_route_to_target_prep_with_flat_fields() -> None:
     """Novel pockets use Target Preparation's flat find_pockets contract."""
-    from deeporigin.drug_discovery import PocketFinderConfig
-
     prep = ProteinPrep(
         protein=_protein_with_remote(pdb_id=None),
         selection=_SAMPLE_SELECTION,
         model_missing_loops=False,
-        pocket=PocketFinderConfig(pocket_count=1, pocket_min_size=30),
+        find_pockets="novel",
+        pocket_count=1,
+        pocket_min_size=30,
     )
 
     payload = prep._make_target_prep_payload(approve_amount=12)
@@ -1062,18 +1045,14 @@ def test_novel_pockets_route_to_target_prep_with_flat_fields() -> None:
 
 def test_loops_off_crystal_pockets_use_direct_protein_prep() -> None:
     """Crystal-ligand pockets stay on standalone Protein Prep when loops are off."""
-    from deeporigin.drug_discovery import PocketFinderConfig
-
     prep = ProteinPrep(
         protein=_protein_with_remote(pdb_id=None),
         selection=_SAMPLE_SELECTION,
         model_missing_loops=False,
-        pocket=PocketFinderConfig(
-            mode="from-crystal-ligand",
-            component_id="ligand:LIG:A:100",
-            box_geometry="fixed-radius",
-            pocket_radius=12,
-        ),
+        find_pockets="from-crystal-ligand",
+        component_id="ligand:LIG:A:100",
+        box_geometry="fixed-radius",
+        pocket_radius=12,
     )
 
     assert prep._uses_composite_route() is False
@@ -1087,17 +1066,13 @@ def test_loops_off_crystal_pockets_use_direct_protein_prep() -> None:
 
 def test_loops_on_crystal_pockets_use_target_prep_flat_fields() -> None:
     """Loops force crystal-ligand pocket finding through Target Preparation."""
-    from deeporigin.drug_discovery import PocketFinderConfig
-
     prep = ProteinPrep(
         protein=_protein_with_remote(),
         selection=_SAMPLE_SELECTION,
         model_missing_loops=True,
         pdb_id="1EBY",
-        pocket=PocketFinderConfig(
-            mode="from-crystal-ligand",
-            ligand_id="LIG",
-        ),
+        find_pockets="from-crystal-ligand",
+        ligand_id="LIG",
     )
 
     assert prep._uses_composite_route() is True
@@ -1140,13 +1115,13 @@ def test_pocket_start_exposes_pockets_and_supports_quote(
     registered_protein: Protein,
 ) -> None:
     """Pocket-bearing start returns pockets and can quote first."""
-    from deeporigin.drug_discovery import PocketFinderConfig
-
     quoted = ProteinPrep(
         protein=registered_protein,
         selection=_SAMPLE_SELECTION,
         model_missing_loops=False,
-        pocket=PocketFinderConfig(pocket_count=1, pocket_min_size=30),
+        find_pockets="novel",
+        pocket_count=1,
+        pocket_min_size=30,
         client=client,
     )
     quoted.start(quote=True)
@@ -1162,7 +1137,9 @@ def test_pocket_start_exposes_pockets_and_supports_quote(
         protein=registered_protein,
         selection=_SAMPLE_SELECTION,
         model_missing_loops=False,
-        pocket=PocketFinderConfig(pocket_count=1, pocket_min_size=30),
+        find_pockets="novel",
+        pocket_count=1,
+        pocket_min_size=30,
         client=client,
     )
     prep.start()
@@ -1198,13 +1175,13 @@ def test_direct_get_report_raises_and_extract_exposes_pockets(
 
 def test_get_pockets_returns_none_when_not_published() -> None:
     """Requested pockets that have not been published yet return None."""
-    from deeporigin.drug_discovery import PocketFinderConfig
-
     prep = ProteinPrep(
         protein=Protein(name="test"),
         selection=_SAMPLE_SELECTION,
         model_missing_loops=False,
-        pocket=PocketFinderConfig(pocket_count=1, pocket_min_size=30),
+        find_pockets="novel",
+        pocket_count=1,
+        pocket_min_size=30,
     )
     prep._id = "pending-pockets"
     prep.tool_key = TOOL_KEYS_AND_VERSIONS["target_prep"]["tool_key"]
@@ -1214,13 +1191,13 @@ def test_get_pockets_returns_none_when_not_published() -> None:
 
 def test_get_pockets_returns_empty_list_for_zero_pocket_result() -> None:
     """A completed valid zero-pocket payload returns []."""
-    from deeporigin.drug_discovery import PocketFinderConfig
-
     prep = ProteinPrep(
         protein=Protein(name="test"),
         selection=_SAMPLE_SELECTION,
         model_missing_loops=False,
-        pocket=PocketFinderConfig(pocket_count=1, pocket_min_size=30),
+        find_pockets="novel",
+        pocket_count=1,
+        pocket_min_size=30,
     )
     prep._id = "zero-pockets"
     prep.tool_key = TOOL_KEYS_AND_VERSIONS["target_prep"]["tool_key"]
@@ -1229,7 +1206,7 @@ def test_get_pockets_returns_empty_list_for_zero_pocket_result() -> None:
 
 
 def test_get_pockets_returns_none_when_extract_not_yet_published() -> None:
-    """Fast-path extract requests pockets even without PocketFinderConfig."""
+    """Fast-path extract requests pockets when find_pockets stays at default."""
     prep = ProteinPrep(
         protein=Protein(name="test"),
         selection=_SAMPLE_SELECTION,
@@ -1355,10 +1332,8 @@ def test_run_with_extract_populates_get_crystal_poses(
     assert poses[0].protein_id is not None
 
 
-def test_configuration_freezes_pocket_after_id() -> None:
-    """Pocket mutation fails once an execution id is present."""
-    from deeporigin.drug_discovery import PocketFinderConfig
-
+def test_configuration_freezes_find_pockets_after_id() -> None:
+    """Pocket-finding mutation fails once an execution id is present."""
     prep = ProteinPrep(
         protein=Protein(name="test"),
         selection=_SAMPLE_SELECTION,
@@ -1367,4 +1342,4 @@ def test_configuration_freezes_pocket_after_id() -> None:
     prep._id = "exec-locked"
 
     with pytest.raises(AttributeError, match="execution id is already set"):
-        prep.pocket = PocketFinderConfig(pocket_count=1, pocket_min_size=30)
+        prep.find_pockets = "novel"
