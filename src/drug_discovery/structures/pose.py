@@ -493,11 +493,17 @@ class Pose(Entity):
             )
 
         local_path = str(path)
-        parent = ligand or Ligand.from_sdf(
-            local_path,
-            sanitize=sanitize,
-            remove_hydrogens=remove_hydrogens,
-        )
+        explicit_parent = ligand is not None
+        if ligand is not None:
+            parent = ligand
+            if parent.id is None:
+                parent.sync(client=client)
+        else:
+            parent = Ligand.from_sdf(
+                local_path,
+                sanitize=sanitize,
+                remove_hydrogens=remove_hydrogens,
+            )
         proj_id = parent.resolved_project_id(client=client)
         if proj_id is None or not str(proj_id).strip():
             raise DeepOriginException(
@@ -522,7 +528,9 @@ class Pose(Entity):
                 title="Pose registration failed",
                 message="import-dataset did not return a pose id.",
             )
-        if staging.ligand_id in ("", None) and parent.id:
+        if explicit_parent and parent.id:
+            staging.ligand_id = parent.id
+        elif staging.ligand_id in ("", None) and parent.id:
             staging.ligand_id = parent.id
         if staging.local_path is None:
             staging.local_path = local_path
@@ -808,6 +816,7 @@ def _hydrate_poses_from_import_outputs(
                 origin=origin,
                 fallback=prow,
                 record_index=idx,
+                protein_id=str(pose.protein_id) if pose.protein_id else None,
             )
             _apply_platform_pose_row(pose, resolved)
         if pose.id is None:
@@ -950,6 +959,7 @@ def _resolve_registered_pose_row_with_poll(
     origin: str,
     fallback: dict[str, Any],
     record_index: int | None = None,
+    protein_id: str | None = None,
 ) -> dict[str, Any]:
     """Poll result-explorer until a pose id appears (served import-dataset path)."""
 
@@ -963,6 +973,7 @@ def _resolve_registered_pose_row_with_poll(
             origin=origin,
             fallback=fallback,
             record_index=record_index,
+            protein_id=protein_id,
         )
         if last_row.get("id"):
             return last_row

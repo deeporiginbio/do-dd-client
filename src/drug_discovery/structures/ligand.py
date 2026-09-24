@@ -2971,7 +2971,12 @@ class LigandSet:
 
         for idx, lig in enumerate(ligands_to_sync):
             record = by_index.get(idx)
-            if record is None and idx < len(rows) and isinstance(rows[idx], dict):
+            if (
+                record is None
+                and not by_index
+                and idx < len(rows)
+                and isinstance(rows[idx], dict)
+            ):
                 record = rows[idx]
             if record is None:
                 continue
