@@ -1349,26 +1349,18 @@ def create_tools_router(
                 pose_rows = []
                 protein_id = inputs.get("protein_id")
                 for row in ligand_rows:
+                    record_index = row["record_index"]
                     pose_row = {
-                        "file_path": file_path,
+                        "file_path": f"{file_path}#record-{record_index}",
                         "ligand_id": row["id"],
                         "origin": str(inputs.get("origin") or "registered"),
-                        "record_index": row["record_index"],
+                        "record_index": record_index,
                     }
                     if protein_id is not None:
                         pose_row["protein_id"] = str(protein_id)
                     pose_rows.append(pose_row)
                 job_outputs["poses"] = pose_rows
             execution["jobOutputs"] = job_outputs
-            eid = execution.get("executionId")
-            if eid and register_poses:
-                _inject_result_explorer_records_from_outputs(
-                    tool_key=tool_key,
-                    tool_version=tool_version,
-                    execution_id=eid,
-                    job_outputs=job_outputs,
-                    project_id=body.get("projectId") or execution.get("projectId"),
-                )
             return execution
 
         if not inputs.get("register_pose"):

@@ -23,6 +23,7 @@ from deeporigin.drug_discovery.structures.repr_display import (
 )
 from deeporigin.exceptions import DeepOriginException
 from deeporigin.platform.client import DeepOriginClient
+from deeporigin.platform.results import _RESULT_TYPE_POSE, _build_result_filter
 
 PoseOrigin = Literal["cocrystal", "docked", "registered"]
 
@@ -924,49 +925,47 @@ def _resolve_registered_pose_row(
         record_index = int(fallback["record_index"])
     deadline = time.monotonic() + (20 if protein_id is not None else 0)
     chosen = fallback
-    stashed_project_id = client.project_id
-    if project_id is not None and str(project_id).strip():
-        client.project_id = str(project_id).strip()
-    try:
-        while True:
-            get_kwargs: dict[str, Any] = {"ligand_id": ligand_id, "limit": None}
-            if compute_job_id:
-                get_kwargs["compute_job_id"] = compute_job_id
-            response = client.results.get_poses(**get_kwargs)
-            records = response.get("data", []) if isinstance(response, dict) else []
-            matches: list[dict[str, Any]] = []
-            for rec in records:
-                data = _pose_record_data(rec)
-                if data is None:
-                    continue
-                if _matches_registered_pose_row(
-                    data,
-                    origin=origin,
-                    file_path=file_path,
-                    protein_id=protein_id,
-                    record_index=record_index,
-                ):
-                    matches.append(rec)
-            if matches:
-                if record_index is not None:
-                    for rec in reversed(matches):
-                        data = _pose_record_data(rec)
-                        if (
-                            data is not None
-                            and data.get("record_index") == record_index
-                        ):
-                            return _explorer_record_to_pose_row(rec, fallback)
-                return _explorer_record_to_pose_row(matches[-1], fallback)
-            if protein_id is None and records and file_path is None:
-                last_rec = records[-1]
-                data = _pose_record_data(last_rec)
-                if data is not None:
-                    return _explorer_record_to_pose_row(last_rec, fallback)
-            if time.monotonic() >= deadline:
-                return chosen
-            time.sleep(1)
-    finally:
-        client.project_id = stashed_project_id
+    while True:
+        filter_dict = _build_result_filter(
+            ligand_id=ligand_id,
+            compute_job_id=compute_job_id,
+        )
+        if project_id is not None and str(project_id).strip():
+            filter_dict["project_id"] = str(project_id).strip()
+        response = client.results.get(
+            result_type=_RESULT_TYPE_POSE,
+            filter_dict=filter_dict,
+            limit=None,
+        )
+        records = response.get("data", []) if isinstance(response, dict) else []
+        matches: list[dict[str, Any]] = []
+        for rec in records:
+            data = _pose_record_data(rec)
+            if data is None:
+                continue
+            if _matches_registered_pose_row(
+                data,
+                origin=origin,
+                file_path=file_path,
+                protein_id=protein_id,
+                record_index=record_index,
+            ):
+                matches.append(rec)
+        if matches:
+            if record_index is not None:
+                for rec in reversed(matches):
+                    data = _pose_record_data(rec)
+                    if data is not None and data.get("record_index") == record_index:
+                        return _explorer_record_to_pose_row(rec, fallback)
+            return _explorer_record_to_pose_row(matches[-1], fallback)
+        if protein_id is None and records and file_path is None:
+            last_rec = records[-1]
+            data = _pose_record_data(last_rec)
+            if data is not None:
+                return _explorer_record_to_pose_row(last_rec, fallback)
+        if time.monotonic() >= deadline:
+            return chosen
+        time.sleep(1)
 
 
 def _resolve_registered_pose_row_with_poll(

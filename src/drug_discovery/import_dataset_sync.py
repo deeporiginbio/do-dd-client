@@ -96,7 +96,19 @@ def require_project_id(
             title="Project required",
             message="sync requires entity.project_id or client.project_id.",
         )
-    return str(proj).strip()
+    resolved = str(proj).strip()
+    client_proj = client.project_id
+    if client_proj is not None and str(client_proj).strip():
+        if resolved != str(client_proj).strip():
+            raise DeepOriginException(
+                title="Project scope conflict",
+                message=(
+                    "entity project_id does not match client.project_id; "
+                    "use a client scoped to the entity project instead of "
+                    "mutating client.project_id."
+                ),
+            )
+    return resolved
 
 
 def stage_local_file(
