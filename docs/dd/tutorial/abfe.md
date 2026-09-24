@@ -29,7 +29,6 @@ pose = Pose.from_sdf(
     BRD_DATA_DIR / "brd-2.sdf",
     protein_id=protein.id,
 )
-pose.sync()
 ```
 
 For more details on how to get started, see [:material-page-previous: Getting Started ](./getting-started.md).

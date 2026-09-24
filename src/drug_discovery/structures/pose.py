@@ -776,6 +776,7 @@ def _hydrate_poses_from_import_outputs(
     pose_rows: list[Any],
     client: DeepOriginClient,
     origin: str,
+    project_id: str | None = None,
 ) -> None:
     """Apply import-dataset ligand/pose job outputs onto in-memory poses."""
 
@@ -817,6 +818,7 @@ def _hydrate_poses_from_import_outputs(
                 fallback=prow,
                 record_index=idx,
                 protein_id=str(pose.protein_id) if pose.protein_id else None,
+                project_id=project_id or pose.project_id,
             )
             _apply_platform_pose_row(pose, resolved)
         if pose.id is None:
@@ -906,6 +908,7 @@ def _resolve_registered_pose_row(
     fallback: dict[str, Any],
     protein_id: str | None = None,
     record_index: int | None = None,
+    project_id: str | None = None,
 ) -> dict[str, Any]:
     """Look up a freshly registered pose row in result-explorer when id is missing.
 
@@ -918,37 +921,46 @@ def _resolve_registered_pose_row(
         record_index = int(fallback["record_index"])
     deadline = time.monotonic() + (20 if protein_id is not None else 0)
     chosen = fallback
-    while True:
-        response = client.results.get_poses(ligand_id=ligand_id, limit=None)
-        records = response.get("data", []) if isinstance(response, dict) else []
-        matches: list[dict[str, Any]] = []
-        for rec in records:
-            data = _pose_record_data(rec)
-            if data is None:
-                continue
-            if _matches_registered_pose_row(
-                data,
-                origin=origin,
-                file_path=file_path,
-                protein_id=protein_id,
-                record_index=record_index,
-            ):
-                matches.append(rec)
-        if matches:
-            if record_index is not None:
-                for rec in reversed(matches):
-                    data = _pose_record_data(rec)
-                    if data is not None and data.get("record_index") == record_index:
-                        return _explorer_record_to_pose_row(rec, fallback)
-            return _explorer_record_to_pose_row(matches[-1], fallback)
-        if protein_id is None and records and file_path is None:
-            last_rec = records[-1]
-            data = _pose_record_data(last_rec)
-            if data is not None:
-                return _explorer_record_to_pose_row(last_rec, fallback)
-        if time.monotonic() >= deadline:
-            return chosen
-        time.sleep(1)
+    stashed_project_id = client.project_id
+    if project_id is not None and str(project_id).strip():
+        client.project_id = str(project_id).strip()
+    try:
+        while True:
+            response = client.results.get_poses(ligand_id=ligand_id, limit=None)
+            records = response.get("data", []) if isinstance(response, dict) else []
+            matches: list[dict[str, Any]] = []
+            for rec in records:
+                data = _pose_record_data(rec)
+                if data is None:
+                    continue
+                if _matches_registered_pose_row(
+                    data,
+                    origin=origin,
+                    file_path=file_path,
+                    protein_id=protein_id,
+                    record_index=record_index,
+                ):
+                    matches.append(rec)
+            if matches:
+                if record_index is not None:
+                    for rec in reversed(matches):
+                        data = _pose_record_data(rec)
+                        if (
+                            data is not None
+                            and data.get("record_index") == record_index
+                        ):
+                            return _explorer_record_to_pose_row(rec, fallback)
+                return _explorer_record_to_pose_row(matches[-1], fallback)
+            if protein_id is None and records and file_path is None:
+                last_rec = records[-1]
+                data = _pose_record_data(last_rec)
+                if data is not None:
+                    return _explorer_record_to_pose_row(last_rec, fallback)
+            if time.monotonic() >= deadline:
+                return chosen
+            time.sleep(1)
+    finally:
+        client.project_id = stashed_project_id
 
 
 def _resolve_registered_pose_row_with_poll(
@@ -960,6 +972,7 @@ def _resolve_registered_pose_row_with_poll(
     fallback: dict[str, Any],
     record_index: int | None = None,
     protein_id: str | None = None,
+    project_id: str | None = None,
 ) -> dict[str, Any]:
     """Poll result-explorer until a pose id appears (served import-dataset path)."""
 
@@ -974,6 +987,7 @@ def _resolve_registered_pose_row_with_poll(
             fallback=fallback,
             record_index=record_index,
             protein_id=protein_id,
+            project_id=project_id,
         )
         if last_row.get("id"):
             return last_row
@@ -1221,6 +1235,7 @@ class PoseSet:
             pose_rows=pose_rows,
             client=client,
             origin=origin,
+            project_id=proj_id,
         )
 
     def filter_top_poses(self, *, by_pose_score: bool = True) -> Self:
