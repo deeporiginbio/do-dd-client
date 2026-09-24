@@ -777,6 +777,7 @@ def _hydrate_poses_from_import_outputs(
     client: DeepOriginClient,
     origin: str,
     project_id: str | None = None,
+    compute_job_id: str | None = None,
 ) -> None:
     """Apply import-dataset ligand/pose job outputs onto in-memory poses."""
 
@@ -819,6 +820,7 @@ def _hydrate_poses_from_import_outputs(
                 record_index=idx,
                 protein_id=str(pose.protein_id) if pose.protein_id else None,
                 project_id=project_id or pose.project_id,
+                compute_job_id=compute_job_id,
             )
             _apply_platform_pose_row(pose, resolved)
         if pose.id is None:
@@ -909,6 +911,7 @@ def _resolve_registered_pose_row(
     protein_id: str | None = None,
     record_index: int | None = None,
     project_id: str | None = None,
+    compute_job_id: str | None = None,
 ) -> dict[str, Any]:
     """Look up a freshly registered pose row in result-explorer when id is missing.
 
@@ -926,7 +929,10 @@ def _resolve_registered_pose_row(
         client.project_id = str(project_id).strip()
     try:
         while True:
-            response = client.results.get_poses(ligand_id=ligand_id, limit=None)
+            get_kwargs: dict[str, Any] = {"ligand_id": ligand_id, "limit": None}
+            if compute_job_id:
+                get_kwargs["compute_job_id"] = compute_job_id
+            response = client.results.get_poses(**get_kwargs)
             records = response.get("data", []) if isinstance(response, dict) else []
             matches: list[dict[str, Any]] = []
             for rec in records:
@@ -973,6 +979,7 @@ def _resolve_registered_pose_row_with_poll(
     record_index: int | None = None,
     protein_id: str | None = None,
     project_id: str | None = None,
+    compute_job_id: str | None = None,
 ) -> dict[str, Any]:
     """Poll result-explorer until a pose id appears (served import-dataset path)."""
 
@@ -988,6 +995,7 @@ def _resolve_registered_pose_row_with_poll(
             record_index=record_index,
             protein_id=protein_id,
             project_id=project_id,
+            compute_job_id=compute_job_id,
         )
         if last_row.get("id"):
             return last_row
@@ -1223,6 +1231,11 @@ class PoseSet:
             protein_id=str(protein_id),
             origin=origin,
         )
+        import_execution_id = outputs.get("import_execution_id")
+        if isinstance(import_execution_id, str):
+            import_execution_id = import_execution_id.strip() or None
+        else:
+            import_execution_id = None
         ligand_rows = outputs.get("ligands") or []
         pose_rows = outputs.get("poses") or []
         if not isinstance(ligand_rows, list):
@@ -1236,6 +1249,7 @@ class PoseSet:
             client=client,
             origin=origin,
             project_id=proj_id,
+            compute_job_id=import_execution_id,
         )
 
     def filter_top_poses(self, *, by_pose_score: bool = True) -> Self:

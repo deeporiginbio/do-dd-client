@@ -48,6 +48,15 @@ def job_outputs(dto: dict[str, Any]) -> dict[str, Any]:
     return jo if isinstance(jo, dict) else {}
 
 
+def job_outputs_with_execution_id(dto: dict[str, Any]) -> dict[str, Any]:
+    """Return jobOutputs plus ``import_execution_id`` when the DTO has one."""
+    outputs = job_outputs(dto)
+    eid = dto.get("executionId")
+    if eid:
+        outputs = {**outputs, "import_execution_id": str(eid)}
+    return outputs
+
+
 def require_uniform_scope(
     values: list[str | None],
     *,
@@ -141,7 +150,7 @@ def sync_process_sdf(
         inputs["protein_id"] = protein_id
     if tags is not None:
         inputs["tags"] = tags
-    return job_outputs(
+    return job_outputs_with_execution_id(
         run_import_dataset_sync(inputs=inputs, project_id=project_id, client=client)
     )
 
