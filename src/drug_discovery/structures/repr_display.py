@@ -30,12 +30,14 @@ def fetch_project_display_name(
 
     from deeporigin.exceptions import DeepOriginException
 
+    pid_display = str(project_id).strip()
+
     if client is None:
-        return "", cached_name
+        return pid_display, cached_name
 
     try:
         if client.projects is None:
-            return "", cached_name
+            return pid_display, cached_name
         row = client.projects.get(project_id=str(project_id))["data"]
         raw = row.get("name")
         if raw is not None:
@@ -43,7 +45,7 @@ def fetch_project_display_name(
             return name, name
     except DeepOriginException:
         pass
-    return "", cached_name
+    return pid_display, cached_name
 
 
 def metadata_repr_html(text: str) -> str:

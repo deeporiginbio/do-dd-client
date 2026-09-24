@@ -610,6 +610,12 @@ class Entities:
         mol_file: str | None = None,
         variant_name_tag: str | None = None,
         tags: dict[str, Any] | None = None,
+        molecular_weight: float | None = None,
+        formal_charge: int | None = None,
+        hbond_donor_count: int | None = None,
+        hbond_acceptor_count: int | None = None,
+        rotatable_bond_count: int | None = None,
+        tpsa: float | None = None,
     ) -> dict:
         """Update an existing ligand by ID.
 
@@ -625,7 +631,12 @@ class Entities:
             variant_name_tag: Variant name tag.
             tags: Data-platform metadata tags (jsonb object). When provided,
                 provenance ``app`` / ``session`` are merged from the client.
-
+            molecular_weight: Deprecated. Server-computed; ignored.
+            formal_charge: Deprecated. Server-computed; ignored.
+            hbond_donor_count: Deprecated. Server-computed; ignored.
+            hbond_acceptor_count: Deprecated. Server-computed; ignored.
+            rotatable_bond_count: Deprecated. Server-computed; ignored.
+            tpsa: Deprecated. Server-computed; ignored.
 
         Returns:
             Dictionary containing the updated ligand data.
