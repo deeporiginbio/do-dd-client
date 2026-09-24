@@ -75,7 +75,7 @@ job = SecondaryPharmacology(
 ```
 
 Passing `self_test=True` instead of `ligands` scores a test ligand
-against the full panel using the real model, for checking scoring end to end.
+against the full panel using ML method, for checking scoring end to end.
 
 `job.plot()` renders a heatmap of ligand × target, colored by score.
 

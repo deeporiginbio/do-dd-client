@@ -328,8 +328,9 @@ class SecondaryPharmacology(
         batch_size: Panel cells (ligand x target) packed per docking leaf --
             a soft cap; a single target's cells are never split across
             leaves. Ignored on the ligand-ml path.
-        self_test: When ``True``, runs the selected method against the full
-            panel with a baked test ligand and ignores :attr:`ligands`.
+        self_test: When ``True``, runs a served ligand-ml health-check
+            against the full panel with a baked test ligand and ignores
+            :attr:`ligands`. Not supported with ``method="docking"``.
     """
 
     tool_key: str = TOOL_KEYS_AND_VERSIONS["secondary_pharma"]["tool_key"]
@@ -363,8 +364,11 @@ class SecondaryPharmacology(
                 cap, not a hard split: a single target's cells always stay
                 together in one leaf even if that leaf exceeds this.
             self_test: When ``True``, ``ligands`` is not required; the platform
-                runs the selected method against the full panel with a baked
-                test ligand.
+                runs a served ligand-ml health-check against the full panel
+                with a baked test ligand. Not supported with
+                ``method="docking"`` -- the platform always routes a
+                self_test run through the served path regardless of
+                ``method``.
             tool_version: Platform tool version. Defaults to the pinned major
                 version in :data:`TOOL_KEYS_AND_VERSIONS`.
             client: Optional API client.
@@ -375,6 +379,7 @@ class SecondaryPharmacology(
             ValueError: If ``method`` is omitted, if ``ligands`` is
                 empty/omitted and ``self_test`` is ``False``, if
                 ``self_test`` is ``True`` and ``ligands`` is also given, if
+                ``self_test`` is ``True`` and ``method="docking"``, if
                 ``batch_size`` is not a positive integer, or if ``uniprots``
                 names accessions outside the live panel.
         """
@@ -396,6 +401,13 @@ class SecondaryPharmacology(
             raise ValueError(
                 "ligands is ignored when self_test=True (the platform scores "
                 "a baked test ligand instead) -- pass one or the other, not both."
+            )
+        if self_test and method == "docking":
+            raise ValueError(
+                "self_test=True is not supported with method='docking': the "
+                "platform always routes a self_test run through the served "
+                "ligand-ml path regardless of method, so no docking-shaped "
+                "result is ever produced -- use method='ligand-ml' instead."
             )
 
         super().__init__(client=client)

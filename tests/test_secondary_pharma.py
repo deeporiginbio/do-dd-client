@@ -132,7 +132,7 @@ def test_secondary_pharma_requires_ligands_unless_self_test(
     with pytest.raises(ValueError, match="self_test"):
         SecondaryPharmacology(method="docking", client=client)
 
-    job = SecondaryPharmacology(self_test=True, method="docking", client=client)
+    job = SecondaryPharmacology(self_test=True, method="ligand-ml", client=client)
     assert job.ligands == []
     assert job.self_test is True
 
@@ -148,8 +148,22 @@ def test_secondary_pharma_self_test_rejects_ligands(client: DeepOriginClient) ->
     ligand = Ligand.from_smiles("CCO")
     with pytest.raises(ValueError, match="ignored when self_test"):
         SecondaryPharmacology(
-            ligands=[ligand], self_test=True, method="docking", client=client
+            ligands=[ligand], self_test=True, method="ligand-ml", client=client
         )
+
+
+def test_secondary_pharma_self_test_rejects_docking(client: DeepOriginClient) -> None:
+    """``self_test=True`` with ``method="docking"`` is rejected at construction.
+
+    The platform always routes a self_test run through the served
+    ligand-ml path regardless of ``method`` -- a docking-shaped result
+    never materializes, so this combination would otherwise silently
+    misbehave downstream in ``get_results()``/``watch()`` instead of
+    failing clearly up front.
+    """
+    _assert_tool_available(client)
+    with pytest.raises(ValueError, match="self_test=True is not supported"):
+        SecondaryPharmacology(self_test=True, method="docking", client=client)
 
 
 def test_secondary_pharma_uniprots_constructor_rejects_unknown(
@@ -256,13 +270,19 @@ def test_secondary_pharma_get_poses_rejects_ligand_ml_method(
 def test_secondary_pharma_get_poses_rejects_self_test(client: DeepOriginClient) -> None:
     """``_get_poses()`` refuses a self_test docking run.
 
-    The platform's baked test ligand has no ligand id, so no panel_poses
-    rows are ever published for it -- _get_poses() would otherwise either
-    raise an opaque "no results" error or (if jobOutputs happened to carry
-    the rows) fail inside Pose.from_json on the missing ligand_id.
+    The constructor rejects ``self_test=True`` with ``method="docking"``
+    outright (see ``test_secondary_pharma_self_test_rejects_docking``), but
+    a legacy execution created before that guard existed can still
+    rehydrate via ``from_dto`` into this exact shape -- this test covers
+    that path via a hand-built DTO, not the constructor. The platform's
+    baked test ligand has no ligand id, so no panel_poses rows are ever
+    published for it -- _get_poses() would otherwise either raise an opaque
+    "no results" error or (if jobOutputs happened to carry the rows) fail
+    inside Pose.from_json on the missing ligand_id.
     """
-    _assert_tool_available(client)
-    job = SecondaryPharmacology(self_test=True, method="docking", client=client)
+    job = SecondaryPharmacology.from_dto(
+        _hand_built_docking_dto(self_test=True), client=client
+    )
     with pytest.raises(ValueError, match="self_test"):
         job._get_poses()
 
@@ -370,11 +390,11 @@ def test_secondary_pharma_make_inputs_omits_ligands_for_self_test(
     requiring ``self_test`` whenever ``ligands`` is empty.)
     """
     _assert_tool_available(client)
-    job = SecondaryPharmacology(self_test=True, method="docking", client=client)
+    job = SecondaryPharmacology(self_test=True, method="ligand-ml", client=client)
     inputs = job._make_inputs()
     assert "ligands" not in inputs
     assert inputs["self_test"] is True
-    assert inputs["methods"] == ["docking"]
+    assert inputs["methods"] == ["ligand-ml"]
 
 
 def test_secondary_pharma_make_inputs_ligand_ml_omits_id_when_unsynced(
