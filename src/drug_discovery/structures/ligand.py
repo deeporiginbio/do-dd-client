@@ -2979,9 +2979,23 @@ class LigandSet:
             ):
                 record = rows[idx]
             if record is None:
-                continue
-            if record.get("id"):
-                lig.id = str(record["id"])
+                raise DeepOriginException(
+                    title="Ligand sync failed",
+                    message=(
+                        "import-dataset did not return a ligand row for one or more "
+                        f"input records (missing index {idx})."
+                    ),
+                )
+            lid = record.get("id")
+            if not lid:
+                raise DeepOriginException(
+                    title="Ligand sync failed",
+                    message=(
+                        "import-dataset did not return a ligand id for one or more "
+                        "input records."
+                    ),
+                )
+            lig.id = str(lid)
             mol_file = record.get("mol_file")
             if mol_file:
                 lig.remote_path = str(mol_file)
