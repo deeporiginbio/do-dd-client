@@ -85,7 +85,7 @@ class Docking(Execution, SyncExecutableMixin, AsyncExecutableMixin, NotebookWatc
         effort: Docking effort level (1 = fastest, 5 = most thorough).
         name: Execution label, set automatically from protein and ligands unless overridden.
         batch_size: For async :meth:`start`, workflow batch size (ligands per workflow
-            batch), a positive multiple of 4. Defaults to 16. Sent as ``batchSize`` on
+            batch), a positive integer. Defaults to 16. Sent as ``batchSize`` on
             the execution create payload.
     """
 
@@ -126,7 +126,7 @@ class Docking(Execution, SyncExecutableMixin, AsyncExecutableMixin, NotebookWatc
                 and the ligands (e.g. ``Docking kras to 5 ligands.`` or
                 ``Docking kras to <SMILES or ligand name>`` for a single ligand).
             batch_size: Passed to the platform as ``batchSize`` on :meth:`start` so the
-                docking workflow can batch ligands. Must be a positive multiple of 4.
+                docking workflow can batch ligands. Must be a positive integer.
                 Defaults to 16.
         """
         provided = sum(x is not None for x in (ligand, ligands, smiles_list))
@@ -146,8 +146,6 @@ class Docking(Execution, SyncExecutableMixin, AsyncExecutableMixin, NotebookWatc
 
         if batch_size <= 0:
             raise ValueError("batch_size must be a positive integer.")
-        if batch_size % 4 != 0:
-            raise ValueError("batch_size must be a multiple of 4.")
         super().__init__(client=client)
         self.tool_version = tool_version
         self.effort = effort

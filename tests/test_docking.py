@@ -16,6 +16,7 @@ from deeporigin.drug_discovery.docking import (
 from deeporigin.drug_discovery.structures.ligand import Ligand, LigandSet
 from deeporigin.drug_discovery.structures.pocket import Pocket
 from deeporigin.drug_discovery.structures.pose import Pose, PoseSet
+from deeporigin.drug_discovery.structures.protein import Protein
 from deeporigin.exceptions import DeepOriginException
 from deeporigin.platform.constants import (
     TERMINAL_STATES,
@@ -428,6 +429,37 @@ def test_docking_rejects_both_ligand_and_ligands(
             pocket=unregistered_pocket,
             ligand=registered_ligand,
             ligands=ligands,
+        )
+
+
+@pytest.mark.parametrize("batch_size", [1, 10, 16])
+def test_docking_accepts_any_positive_batch_size(unregistered_pocket, batch_size):
+    """Any positive ``batch_size`` is accepted and sent as ``batchSize``."""
+    protein = Protein.from_file(BRD_DATA_DIR / "brd.pdb")
+    protein.id = "protein-id"
+    docking = Docking(
+        protein=protein,
+        pocket=unregistered_pocket,
+        smiles_list=["CCO"] * batch_size,
+        batch_size=batch_size,
+        client=MagicMock(),
+    )
+    assert docking.batch_size == batch_size
+    assert docking._build_docking_create_payload()["batchSize"] == batch_size
+
+
+@pytest.mark.parametrize("batch_size", [0, -4])
+def test_docking_rejects_non_positive_batch_size(unregistered_pocket, batch_size):
+    """``batch_size`` must be a positive integer."""
+    protein = Protein.from_file(BRD_DATA_DIR / "brd.pdb")
+    protein.id = "protein-id"
+    with pytest.raises(ValueError, match="batch_size must be a positive integer"):
+        Docking(
+            protein=protein,
+            pocket=unregistered_pocket,
+            smiles_list=["CCO", "CCN"],
+            batch_size=batch_size,
+            client=MagicMock(),
         )
 
 
