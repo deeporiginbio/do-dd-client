@@ -318,6 +318,176 @@ def _load_panel_pose_rows(
     )
 
 
+def _resolve_panel_pose_ligand_id(
+    *,
+    ligand_id: str | None,
+    ligand: Ligand | None,
+) -> str:
+    """Resolve the platform ligand id for a panel-pose lookup.
+
+    Args:
+        ligand_id: Explicit ligand id from results.
+        ligand: Optional synced ligand (alternative to ``ligand_id``).
+
+    Returns:
+        The ligand id to match on pose rows.
+
+    Raises:
+        ValueError: If ids are missing or disagree.
+    """
+    if ligand_id is not None:
+        if ligand is not None and ligand.id is not None and ligand.id != ligand_id:
+            raise ValueError("ligand_id does not match ligand.id.")
+        return ligand_id
+    if ligand is None or ligand.id is None:
+        raise ValueError("Provide ligand_id or a synced ligand with an id.")
+    return ligand.id
+
+
+def _resolve_panel_pose_uniprot_id(
+    client: DeepOriginClient,
+    *,
+    uniprot_id: str | None,
+    gene_name: str | None,
+) -> str:
+    """Resolve panel target accession from UniProt id or gene symbol.
+
+    Args:
+        client: API client for panel catalog lookup.
+        uniprot_id: Panel member accession.
+        gene_name: Panel gene symbol (mutually exclusive with ``uniprot_id``).
+
+    Returns:
+        UniProt accession for the panel target.
+
+    Raises:
+        ValueError: If arguments are missing, combined, or ambiguous.
+    """
+    if uniprot_id is not None and gene_name is not None:
+        raise ValueError("Provide exactly one of uniprot_id or gene_name.")
+    if uniprot_id is not None:
+        return uniprot_id
+    if gene_name is None:
+        raise ValueError("Provide uniprot_id or gene_name for the panel target.")
+    panel = SecondaryPharmacology.get_panel(full=True, client=client)
+    hits = panel.loc[panel["gene_name"] == gene_name, "uniprot_id"]
+    if len(hits) != 1:
+        raise ValueError(
+            f"gene_name={gene_name!r} matched {len(hits)} panel members; "
+            "use uniprot_id instead."
+        )
+    return str(hits.iloc[0])
+
+
+def _require_panel_receptor_remote(row: dict[str, Any]) -> str:
+    """Return ``receptor_file_path`` from a panel pose row.
+
+    Args:
+        row: One flattened panel-pose result row.
+
+    Returns:
+        Non-empty remote path to the panel receptor structure.
+
+    Raises:
+        DeepOriginException: If the row has no receptor path.
+    """
+    receptor_remote = row.get("receptor_file_path")
+    if not isinstance(receptor_remote, str) or not receptor_remote.strip():
+        raise DeepOriginException(
+            title="Panel receptor path missing",
+            message=(
+                "This pose row has no receptor_file_path. Re-run docking on "
+                "an environment with secondary-pharma 2.1.8+ and a published "
+                "panel catalog, then try again."
+            ),
+        )
+    return receptor_remote.strip()
+
+
+def _verify_panel_receptor_digest(
+    receptor_local: str,
+    row: dict[str, Any],
+    *,
+    verify: bool,
+) -> None:
+    """Verify downloaded receptor bytes against ``structure_sha256`` when requested.
+
+    Args:
+        receptor_local: Path to the downloaded receptor file.
+        row: Panel pose row that may carry ``structure_sha256``.
+        verify: When ``False``, skip verification.
+
+    Raises:
+        DeepOriginException: If digest on the row does not match file bytes.
+    """
+    if not verify:
+        return
+    expected_digest = row.get("structure_sha256")
+    if not isinstance(expected_digest, str) or not expected_digest.strip():
+        return
+    actual_digest = hashlib.sha256(Path(receptor_local).read_bytes()).hexdigest()
+    if actual_digest != expected_digest.strip():
+        raise DeepOriginException(
+            title="Panel receptor digest mismatch",
+            message=(
+                f"Downloaded receptor has sha256 {actual_digest}, "
+                f"expected {expected_digest}."
+            ),
+        )
+
+
+def _apply_panel_pose_display_name(
+    pose: Pose,
+    row: dict[str, Any],
+    *,
+    resolved_uniprot: str,
+) -> None:
+    """Set ``pose.name`` from gene symbol and binding energy when available.
+
+    Args:
+        pose: Docked pose to label for the viewer.
+        row: Panel pose result row.
+        resolved_uniprot: Target accession used for lookup.
+    """
+    gene = row.get("gene_name") or resolved_uniprot
+    binding_energy = row.get("binding_energy")
+    if binding_energy is not None:
+        try:
+            pose.name = f"{gene} ({float(binding_energy):.2f} kcal/mol)"
+        except (TypeError, ValueError):
+            pose.name = str(gene)
+    elif gene:
+        pose.name = str(gene)
+
+
+def _render_panel_pose_molstar_html(
+    *,
+    receptor_local: str,
+    pose: Pose,
+    height: int,
+):
+    """Build Mol* HTML for one panel receptor with a docked pose overlay.
+
+    Args:
+        receptor_local: Local path to the panel receptor PDB.
+        pose: Downloaded docked pose.
+        height: Iframe height in pixels.
+
+    Returns:
+        Result of :func:`~deeporigin.utils.notebook.render_html`.
+    """
+    from deeporigin.drug_discovery.docking_common import ligand_payloads_for_viewer
+    from deeporigin.utils.notebook import render_html
+    from deeporigin.viz.molstar_html import render_protein_with_poses_html
+
+    ligand_payloads = ligand_payloads_for_viewer(pose)
+    html = render_protein_with_poses_html(
+        pdb_path=receptor_local,
+        ligand_payloads=ligand_payloads,
+    )
+    return render_html(html, height=height)
+
+
 def _ligand_plot_labels(ligands: list[Ligand]) -> dict[str, str]:
     """Map each ligand's smiles to a short, unique plot label.
 
@@ -1068,49 +1238,21 @@ class SecondaryPharmacology(
                 "panel poses are published for the baked test ligand."
             )
 
-        resolved_ligand_id = ligand_id
-        if resolved_ligand_id is None:
-            if ligand is None or ligand.id is None:
-                raise ValueError("Provide ligand_id or a synced ligand with an id.")
-            resolved_ligand_id = ligand.id
-        elif (
-            ligand is not None
-            and ligand.id is not None
-            and ligand.id != resolved_ligand_id
-        ):
-            raise ValueError("ligand_id does not match ligand.id.")
-
-        if uniprot_id is not None and gene_name is not None:
-            raise ValueError("Provide exactly one of uniprot_id or gene_name.")
-        if uniprot_id is None and gene_name is None:
-            raise ValueError("Provide uniprot_id or gene_name for the panel target.")
-
-        resolved_uniprot = uniprot_id
-        if resolved_uniprot is None and gene_name is not None:
-            panel = SecondaryPharmacology.get_panel(full=True, client=self.client)
-            hits = panel.loc[panel["gene_name"] == gene_name, "uniprot_id"]
-            if len(hits) != 1:
-                raise ValueError(
-                    f"gene_name={gene_name!r} matched {len(hits)} panel members; "
-                    "use uniprot_id instead."
-                )
-            resolved_uniprot = str(hits.iloc[0])
-
+        resolved_ligand_id = _resolve_panel_pose_ligand_id(
+            ligand_id=ligand_id,
+            ligand=ligand,
+        )
+        resolved_uniprot = _resolve_panel_pose_uniprot_id(
+            self.client,
+            uniprot_id=uniprot_id,
+            gene_name=gene_name,
+        )
         row = self._panel_pose_row(
             ligand_id=resolved_ligand_id,
             uniprot_id=resolved_uniprot,
             dto=dto,
         )
-        receptor_remote = row.get("receptor_file_path")
-        if not isinstance(receptor_remote, str) or not receptor_remote.strip():
-            raise DeepOriginException(
-                title="Panel receptor path missing",
-                message=(
-                    "This pose row has no receptor_file_path. Re-run docking on "
-                    "an environment with secondary-pharma 2.1.8+ and a published "
-                    "panel catalog, then try again."
-                ),
-            )
+        receptor_remote = _require_panel_receptor_remote(row)
 
         pose = Pose.from_json([row], client=self.client)[0]
         pose.download(client=self.client, lazy=False)
@@ -1120,41 +1262,21 @@ class SecondaryPharmacology(
             receptor_remote,
             lazy=False,
         )
-        if verify_receptor_digest:
-            expected_digest = row.get("structure_sha256")
-            if isinstance(expected_digest, str) and expected_digest.strip():
-                actual_digest = hashlib.sha256(
-                    Path(receptor_local).read_bytes()
-                ).hexdigest()
-                if actual_digest != expected_digest.strip():
-                    raise DeepOriginException(
-                        title="Panel receptor digest mismatch",
-                        message=(
-                            f"Downloaded receptor at {receptor_remote!r} has "
-                            f"sha256 {actual_digest}, expected {expected_digest}."
-                        ),
-                    )
-
-        from deeporigin.drug_discovery.docking_common import ligand_payloads_for_viewer
-        from deeporigin.utils.notebook import render_html
-        from deeporigin.viz.molstar_html import render_protein_with_poses_html
-
-        gene = row.get("gene_name") or resolved_uniprot
-        binding_energy = row.get("binding_energy")
-        if binding_energy is not None:
-            try:
-                pose.name = f"{gene} ({float(binding_energy):.2f} kcal/mol)"
-            except (TypeError, ValueError):
-                pose.name = str(gene)
-        elif gene:
-            pose.name = str(gene)
-
-        ligand_payloads = ligand_payloads_for_viewer(pose)
-        html = render_protein_with_poses_html(
-            pdb_path=receptor_local,
-            ligand_payloads=ligand_payloads,
+        _verify_panel_receptor_digest(
+            receptor_local,
+            row,
+            verify=verify_receptor_digest,
         )
-        return render_html(html, height=height)
+        _apply_panel_pose_display_name(
+            pose,
+            row,
+            resolved_uniprot=resolved_uniprot,
+        )
+        return _render_panel_pose_molstar_html(
+            receptor_local=receptor_local,
+            pose=pose,
+            height=height,
+        )
 
     def _expected_panel_pairs(self) -> set[tuple[str, str]]:
         """Every (ligand id, uniprot) pair this run should have docked."""
