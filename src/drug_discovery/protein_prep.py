@@ -29,7 +29,7 @@ from copy import deepcopy
 from dataclasses import dataclass, field
 from html import escape
 import re
-from typing import TYPE_CHECKING, Any, Literal, NamedTuple, Self
+from typing import Any, Literal, NamedTuple, Self
 
 from beartype import beartype
 import pandas as pd
@@ -111,6 +111,7 @@ class _ParsedInputs(NamedTuple):
     pdb_id: str | None
     selection: dict[str, Any] | None
     model_missing_loops: bool
+    model_missing_loops_explicit: bool
     pocket: dict[str, Any] | None
 
 
@@ -1070,8 +1071,8 @@ class ProteinPrep(
         *,
         pdb_id: str | None = None,
         selection: dict[str, Any] | None = None,
-        model_missing_loops: bool = True,
-        find_pockets: ProteinPrepFindPockets = "no",
+        model_missing_loops: bool | None = None,
+        find_pockets: ProteinPrepFindPockets | None = None,
         pocket_count: int | None = None,
         pocket_min_size: int | float | None = None,
         crystal_ligand: Ligand | None = None,
@@ -1128,7 +1129,12 @@ class ProteinPrep(
         self._pdb_id = _optional_pdb_id(protein=protein, pdb_id=pdb_id)
         self._selection = _copy_selection(selection) if selection is not None else None
         self._recommendation: dict[str, Any] | None = None
-        self._model_missing_loops = model_missing_loops
+        if model_missing_loops is None:
+            self._model_missing_loops = True
+            self._model_missing_loops_user_configured = False
+        else:
+            self._model_missing_loops = bool(model_missing_loops)
+            self._model_missing_loops_user_configured = True
         self._find_pockets: ProteinPrepFindPockets = "no"
         self._pocket_count = _DEFAULT_POCKET_COUNT
         self._pocket_min_size = float(_DEFAULT_POCKET_MIN_SIZE)
@@ -1142,10 +1148,12 @@ class ProteinPrep(
         )
         self._crystal_ligand_remote_path: str | None = None
         self._find_pockets_user_configured = False
-        if find_pockets == "no":
-            self._find_pockets = "no"
-        else:
-            self.find_pockets = find_pockets
+        if find_pockets is not None:
+            if find_pockets == "no":
+                self._find_pockets = "no"
+                self._find_pockets_user_configured = True
+            else:
+                self.find_pockets = find_pockets
         if pocket_count is not None:
             self.pocket_count = pocket_count
         if pocket_min_size is not None:
@@ -1227,6 +1235,7 @@ class ProteinPrep(
         """Set the loop-modelling flag before this execution is submitted."""
         self._require_unbound("model_missing_loops")
         self._model_missing_loops = bool(value)
+        self._model_missing_loops_user_configured = True
 
     def _resolved_find_pockets(self) -> ProteinPrepFindPockets:
         """Pocket mode for display and prepare payloads."""
@@ -1234,6 +1243,8 @@ class ProteinPrep(
             return "novel"
         if self._find_pockets == "from-crystal-ligand":
             return "from-crystal-ligand"
+        if self._find_pockets_user_configured and self._find_pockets == "no":
+            return "no"
         if not self._find_pockets_user_configured and _selection_has_ligand_extract(
             self._selection
         ):
@@ -1245,7 +1256,7 @@ class ProteinPrep(
         """Whether prepare runs Pocket Finder (``no``, ``from-crystal-ligand``, ``novel``).
 
         Infers ``from-crystal-ligand`` when the Selection extracts a ligand and
-        pocket mode has not been set explicitly (including ``find_pockets='no'``).
+        pocket mode has not been set explicitly.
         """
         return self._resolved_find_pockets()
 
@@ -1775,6 +1786,8 @@ class ProteinPrep(
         """Align loop modelling with analyzer Chain Break facts when unbound."""
         if self.id is not None:
             return
+        if self._model_missing_loops_user_configured:
+            return
         self._model_missing_loops = _loop_modelling_from_recommendation(recommendation)
 
     def _summary_repr_text(self) -> str:
@@ -2072,10 +2085,9 @@ class ProteinPrep(
         quote: bool = False,
         approve_amount: int | None = None,
     ) -> Protein | None:
-        """Execute loops-off direct preparation synchronously (blocking).
+        """Execute served prepare synchronously (blocking).
 
-        Valid for served prepare (loops on or off) when :attr:`find_pockets` is
-        not ``\"novel\"``.
+        Valid for loops on or off when :attr:`find_pockets` is not ``\"novel\"``.
 
         Args:
             quote: Shorthand for :data:`~deeporigin.utils.constants.QUOTE_APPROVE_AMOUNT`.
@@ -2194,6 +2206,7 @@ class ProteinPrep(
             selection = _copy_selection(raw_selection)
 
         raw_loops = inputs.get("model_missing_loops")
+        model_missing_loops_explicit = raw_loops is not None
         model_missing_loops = True if raw_loops is None else bool(raw_loops)
 
         pocket = _pocket_input_from_inputs(inputs)
@@ -2204,6 +2217,7 @@ class ProteinPrep(
             pdb_id=pdb_id,
             selection=selection,
             model_missing_loops=model_missing_loops,
+            model_missing_loops_explicit=model_missing_loops_explicit,
             pocket=pocket,
         )
 
@@ -2264,9 +2278,16 @@ class ProteinPrep(
             instance._selection = _selection_from_recommendation(
                 instance._recommendation
             )
+        instance._model_missing_loops_user_configured = (
+            parsed.model_missing_loops_explicit
+        )
         instance._model_missing_loops = parsed.model_missing_loops
-        if instance._recommendation is not None and parsed.action == "recommend":
-            instance._sync_model_missing_loops_from_recommendation(
+        if (
+            instance._recommendation is not None
+            and parsed.action == "recommend"
+            and not parsed.model_missing_loops_explicit
+        ):
+            instance._model_missing_loops = _loop_modelling_from_recommendation(
                 instance._recommendation
             )
         instance._apply_pocket_from_stored_inputs(parsed.pocket)

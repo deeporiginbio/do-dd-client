@@ -58,9 +58,10 @@ You may call `recommend()` again before preparation. A successful refresh
 replaces the recommendation and Selection. If refresh fails, the previous
 successful settings remain intact.
 
-## Prepare without loop modelling
+## Blocking prepare (`run()`)
 
-Disable loop modelling to use blocking preparation:
+`run()` blocks until served prepare completes (loops on or off). Disable loop
+modelling when you want a faster loops-off path:
 
 ```{.python notest}
 prep.model_missing_loops = False
@@ -76,7 +77,7 @@ input protein is unchanged. The prepared PDB carries a
 the stamp stays intact. To stamp a structure you prepared outside Deep Origin
 (PDB or mmCIF), use [`Protein.mark_as_prepared()`](../ref/prepared_protein_stamp.md).
 
-Loops-off preparation may also run asynchronously:
+Blocking or asynchronous preparation may also use `start()`:
 
 ```{.python notest}
 prep.start()

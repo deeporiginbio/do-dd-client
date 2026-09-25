@@ -519,6 +519,18 @@ def test_explicit_find_pockets_no_overrides_ligand_extract() -> None:
     assert payload["inputs"]["find_pockets"] == "no"
 
 
+def test_constructor_find_pockets_no_overrides_ligand_extract() -> None:
+    """Constructor find_pockets='no' opts out of selection-based inference."""
+    prep = ProteinPrep(
+        protein=_protein_with_remote(),
+        selection=_SAMPLE_SELECTION,
+        find_pockets="no",
+    )
+    assert prep.find_pockets == "no"
+    payload = prep._make_protein_prep_payload(action="prepare", sync=True)
+    assert payload["inputs"]["find_pockets"] == "no"
+
+
 def test_find_pockets_reflects_ligand_extract_after_water_triage() -> None:
     """Ligand extract in the Selection surfaces as from-crystal-ligand pockets."""
     prep = _prep_with_inventory(
@@ -922,8 +934,21 @@ def test_from_dto_rehydrates_recommendation(
     assert prep._operation_kind == "recommend"
     assert isinstance(prep.recommendation, pd.DataFrame)
     assert prep.selection == _DRAFT_SELECTION
+    assert prep.model_missing_loops is False
     with pytest.raises(DeepOriginException, match="did not produce"):
         prep.get_results(dto)
+
+
+def test_recommend_preserves_explicit_model_missing_loops() -> None:
+    """Explicit loop settings survive recommend() when chain breaks are present."""
+    prep = ProteinPrep(
+        protein=_protein_with_remote(),
+        model_missing_loops=False,
+    )
+    prep._sync_model_missing_loops_from_recommendation(
+        {"chain_breaks": ["A:10–A:12"]},
+    )
+    assert prep.model_missing_loops is False
 
 
 def test_from_dto_v1_prepare_still_gets_results(
