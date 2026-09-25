@@ -1458,7 +1458,7 @@ class ProteinPrep(
             protein=self._protein,
             pdb_id=self._pdb_id,
             model_missing_loops=self._model_missing_loops,
-            include_pocket=self._pockets_explicitly_requested(),
+            include_pocket=self._find_pockets in {"novel", "from-crystal-ligand"},
         )
 
     def _apply_protein_prep_tool(self) -> None:

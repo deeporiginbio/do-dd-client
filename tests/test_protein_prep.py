@@ -797,7 +797,7 @@ def test_repr_uses_user_concepts_not_action() -> None:
 
 
 def test_repr_adds_durable_execution_state() -> None:
-    """Text display adds ID, status, and progress for a bound object."""
+    """Text display adds ID and status; progress stays on the attribute."""
     prep = ProteinPrep(
         protein=Protein(name="brd", pdb_id="1EBY"),
         selection=_SAMPLE_SELECTION,
@@ -810,7 +810,8 @@ def test_repr_adds_durable_execution_state() -> None:
 
     assert "exec-abc" in text
     assert "Running" in text
-    assert "25" in text
+    assert "progress" not in text
+    assert prep.progress == {"percent": 25}
 
 
 def test_loop_modelling_from_recommendation_follows_chain_breaks() -> None:
