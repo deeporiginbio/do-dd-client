@@ -1234,9 +1234,8 @@ class ProteinPrep(
             return "novel"
         if self._find_pockets == "from-crystal-ligand":
             return "from-crystal-ligand"
-        if (
-            not self._find_pockets_user_configured
-            and _selection_has_ligand_extract(self._selection)
+        if not self._find_pockets_user_configured and _selection_has_ligand_extract(
+            self._selection
         ):
             return "from-crystal-ligand"
         return "no"
@@ -1776,9 +1775,7 @@ class ProteinPrep(
         """Align loop modelling with analyzer Chain Break facts when unbound."""
         if self.id is not None:
             return
-        self._model_missing_loops = _loop_modelling_from_recommendation(
-            recommendation
-        )
+        self._model_missing_loops = _loop_modelling_from_recommendation(recommendation)
 
     def _summary_repr_text(self) -> str:
         """Plain-text summary for ``__repr__``, ``__str__``, and fallback HTML."""
@@ -1805,11 +1802,7 @@ class ProteinPrep(
             return f"{len(chain_breaks)} chain break(s): {preview}"
         has_breaks = self._recommendation.get("has_chain_breaks")
         if isinstance(has_breaks, bool):
-            return (
-                "chain breaks detected"
-                if has_breaks
-                else "no chain breaks detected"
-            )
+            return "chain breaks detected" if has_breaks else "no chain breaks detected"
         return None
 
     def _render_view(self) -> str:
@@ -1901,9 +1894,7 @@ class ProteinPrep(
         if self.id is not None or self.selection is None:
             return None
         if self.find_pockets == "novel":
-            return (
-                "Call <code>.start()</code> to prepare and find pockets"
-            )
+            return "Call <code>.start()</code> to prepare and find pockets"
         return "Call <code>.run()</code> to prepare"
 
     def _notebook_action_hints(self) -> list[str]:
@@ -1916,9 +1907,7 @@ class ProteinPrep(
                 "Use <code>.keep()</code>, <code>.skip()</code>, or "
                 "<code>.extract()</code> to edit the selection"
             )
-            hints.append(
-                "View <code>.recommendation</code> for the component table"
-            )
+            hints.append("View <code>.recommendation</code> for the component table")
         submit_hint = self._prepare_submit_action_hint()
         if submit_hint is not None:
             hints.append(submit_hint)

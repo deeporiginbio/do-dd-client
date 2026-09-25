@@ -816,9 +816,7 @@ def test_repr_adds_durable_execution_state() -> None:
 def test_loop_modelling_from_recommendation_follows_chain_breaks() -> None:
     """Chain Break facts drive the default loop-modelling flag after recommend."""
     assert _loop_modelling_from_recommendation({"chain_breaks": []}) is False
-    assert _loop_modelling_from_recommendation(
-        {"chain_breaks": ["A:10–A:12"]}
-    ) is True
+    assert _loop_modelling_from_recommendation({"chain_breaks": ["A:10–A:12"]}) is True
     assert _loop_modelling_from_recommendation({"has_chain_breaks": False}) is False
     assert _loop_modelling_from_recommendation({}) is True
 
@@ -861,7 +859,9 @@ def test_notebook_prepare_hint_follows_find_pockets() -> None:
         component_id="ligand:LIG:A:100",
     )
     crystal._recommendation = _SAMPLE_RECOMMENDATION
-    assert crystal._prepare_submit_action_hint() == "Call <code>.run()</code> to prepare"
+    assert (
+        crystal._prepare_submit_action_hint() == "Call <code>.run()</code> to prepare"
+    )
 
     novel = ProteinPrep(
         protein=Protein(name="brd", pdb_id="1EBY"),

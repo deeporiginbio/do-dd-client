@@ -2295,9 +2295,11 @@ def create_tools_router(
                 protein_out["parent_id"] = str(parent_id)
             if pdb_id is not None:
                 protein_out["pdb_id"] = pdb_id
-            loops = user_inputs.get("model_missing_loops") if isinstance(
-                user_inputs, dict
-            ) else None
+            loops = (
+                user_inputs.get("model_missing_loops")
+                if isinstance(user_inputs, dict)
+                else None
+            )
             protein_out.setdefault(
                 "model_missing_loops",
                 True if loops is None else bool(loops),
