@@ -131,37 +131,25 @@ Simulation-ready binding and solvation XML files (and metadata) produced by syst
 _Avoid_: "system" alone when meaning the prepared molecular system artifact
 
 **Protein Prep**:
-Platform tool `deeporigin.protein-prep` that inventories a caller-supplied
+Platform tool `deeporigin.protein-prep` (v10) that inventories a caller-supplied
 protein, records editable keep/review/skip Decisions, then applies resolved
-keep/skip Decisions and protonation. CLI class `ProteinPrep` is the sole public
-preparation session: `.recommend()` always uses protein-prep; loops-off
-(including crystal-ligand pockets inferred from ligand `extract`) uses
-protein-prep (`run()` / `start()`); loops-on or novel
-`find_pockets="novel"` routes to Target Preparation
-(`start()` only). Crystal-ligand pockets with loops off stay on direct
-protein-prep. `.get_results()` returns the prepared `Protein`;
-`.get_report()` is the composite Structure Report; `.get_pockets()` returns
-pockets when the run requested them (explicit pocket config or ligand extract
-on the fast path). `protein` is constructor-only.
-_Avoid_: SystemPrep / FEP assembly; a public `TargetPrep` class; public
-`action`; a separate recommend object; silently converting `review` to `skip`;
-v1 keep/remove lists (`keep_chain_ids`, …); treating loops-off as skipping
-Protein Prep; `watch()` on a `.run()` / sync execution; `inputs.sync` on
-protein-prep (not in the tool schema); treating `.recommendation` as a raw
-dict (it is a ``pandas.DataFrame`` after recommend, or ``None``);
-bundling report/pockets into `get_results()`
-
-**Target Preparation**:
-Platform workflow tool `deeporigin.target-preparation` (pinned major 7 for the
-flat `find_pockets` contract) used by `ProteinPrep` when loop modelling is
-enabled or novel (`auto-find`) pocket finding is requested. Always produces a
-prepared Structure Report; optionally runs Pocket Finder. Not a separate public
-Python class — callers use `ProteinPrep` and `get_report()` / `get_pockets()`.
-_Avoid_: a public `TargetPrep` session class; treating source Structure Report
-as part of this workflow (use standalone `StructureReport`); implying that
-target preparation selects the final Pocket for a downstream screening
-invocation; routing crystal-ligand-only / loops-off prepares through Target
-Preparation (those stay on protein-prep)
+keep/skip Decisions and protonation (including loop modelling on the served
+path). CLI class `ProteinPrep` is the sole public preparation session: all
+`.recommend()` / `.run()` / `.start()` traffic uses protein-prep; novel
+`find_pockets="novel"` uses the platform workflow method inside that tool
+(`start()` only — blocking `run()` is rejected). Prepare requires a registered
+`protein.id`. Crystal-ligand pockets may be explicit or inferred from ligand
+`extract`. `.get_results()` returns the prepared `Protein`; `.get_pockets()` and
+`.get_crystal_poses()` return other prepare artifacts. Structure reports are
+out of band — use standalone `StructureReport`. `protein` is constructor-only.
+_Avoid_: SystemPrep / FEP assembly; routing prepare through
+`deeporigin.target-preparation`; `ProteinPrep.get_report()`; a public
+`TargetPrep` class; public `action`; a separate recommend object; silently
+converting `review` to `skip`; v1 keep/remove lists (`keep_chain_ids`, …);
+treating loops-off as skipping Protein Prep; `watch()` on a `.run()` / sync
+execution; `inputs.sync` on protein-prep (not in the tool schema); treating
+`.recommendation` as a raw dict (it is a ``pandas.DataFrame`` after recommend,
+or ``None``); bundling report/pockets into `get_results()`
 **Protein Prep Selection**:
 Digest-bound component Decision map produced by `ProteinPrep.recommend()` or
 provided by the caller. Editable SDK state may contain `keep`, `review`, or

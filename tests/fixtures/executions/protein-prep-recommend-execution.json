@@ -41,6 +41,8 @@
     "jobOutputs": {
         "recommendation": {
             "analyzer_version": "1.0.0",
+            "chain_breaks": [],
+            "has_chain_breaks": false,
             "chain_id_mapping": {},
             "components": [
                 {

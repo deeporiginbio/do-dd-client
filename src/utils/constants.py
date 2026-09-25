@@ -160,18 +160,17 @@ PROTEIN_PREP_RECOMMEND_NOT_PREPARE_MSG = (
 )
 """Used by ``ProteinPrep.get_results`` on a recommend execution."""
 
-PROTEIN_PREP_RUN_REQUIRES_LOOPS_OFF_MSG = (
-    "run() requires model_missing_loops=False and no novel pocket finding. "
-    "Use start() when loop modelling or novel pocket finding is enabled."
+PROTEIN_PREP_RUN_REQUIRES_NOVEL_START_MSG = (
+    "run() cannot block on novel pocket finding (workflow path). "
+    "Use start() when find_pockets='novel'."
 )
-"""Used by ``ProteinPrep.run`` for composite (loops-on or pocket) routes."""
+"""Used by ``ProteinPrep.run`` when ``find_pockets`` is ``novel``."""
 
-PROTEIN_PREP_REPORT_EXCLUDED_MSG = (
-    "This ProteinPrep execution did not request a prepared Structure Report. "
-    "Reports are only produced on the target-preparation route (loops on or "
-    "novel pocket finding)."
+PROTEIN_PREP_REGISTERED_PROTEIN_REQUIRED_MSG = (
+    "Prepare requires a registered protein. Call Protein.sync() or assign "
+    "protein.id before run() or start()."
 )
-"""Used by ``ProteinPrep.get_report`` when the direct protein-prep path ran."""
+"""Used when prepare is submitted without ``protein.id`` (protein-prep v10)."""
 
 PROTEIN_PREP_POCKETS_EXCLUDED_MSG = (
     "This ProteinPrep execution did not request pockets. Configure "
