@@ -38,6 +38,10 @@ from __future__ import annotations
 
 from asyncio import Task
 import builtins
+import hashlib
+import os
+from pathlib import Path
+import tempfile
 from typing import Any, Literal, Self
 
 from beartype import beartype
@@ -50,7 +54,7 @@ from deeporigin.drug_discovery.execution_mixins import (
 )
 from deeporigin.drug_discovery.notebook_watch_mixin import NotebookWatchMixin
 from deeporigin.drug_discovery.structures.ligand import Ligand, LigandSet
-from deeporigin.drug_discovery.structures.pose import PoseSet
+from deeporigin.drug_discovery.structures.pose import Pose, PoseSet
 from deeporigin.exceptions import DeepOriginException
 from deeporigin.platform.client import DeepOriginClient
 from deeporigin.platform.constants import TOOL_KEYS_AND_VERSIONS, is_success_status
@@ -193,6 +197,51 @@ def _ligands_from_inputs(inputs: dict[str, Any]) -> list[Ligand]:
 # for PreparedSystem, "abferesult" for ABFEResult, "metabolismsite" for
 # MetabolismSite) -- confirmed there rather than assumed here.
 _PANEL_POSE_RESULT_TYPE = "panelpose"
+
+
+def _download_protected_panel_receptor(
+    client: DeepOriginClient,
+    receptor_remote: str,
+    *,
+    lazy: bool = False,
+) -> str:
+    """Download a panel receptor PDB from the platform ``protected`` org namespace.
+
+    Catalog publish uses ``PUT /files/protected/panels/<volume_key>/...`` (see
+    ``sync_secondary_pharma_catalog.py``). PanelPose ``receptor_file_path`` values
+    use that same string. They are **not** under the caller's org — ``Files.download``
+    would request ``/files/<caller>/protected/panels/...`` and return 404.
+
+    Args:
+        client: API client (auth must allow read on the protected org).
+        receptor_remote: ``receptor_file_path`` from a panel-pose row.
+        lazy: Skip download when the file is already cached locally.
+
+    Returns:
+        Local path to the receptor PDB.
+    """
+    from deeporigin.platform.files import _normalize_remote_path
+    from deeporigin.utils.env import _ensure_do_folder
+
+    remote = _normalize_remote_path(receptor_remote.strip())
+    if not remote.startswith("protected/"):
+        return client.files.download(remote_path=remote, lazy=lazy, direct=True)
+
+    dest = _ensure_do_folder() / remote
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    if lazy and dest.is_file():
+        return str(dest)
+
+    response = client._get(f"/files/{remote}")
+    tmp = tempfile.NamedTemporaryFile(dir=dest.parent, suffix=".tmp", delete=False)
+    try:
+        with tmp:
+            tmp.write(response.content)
+        os.replace(tmp.name, dest)
+    except BaseException:
+        os.unlink(tmp.name)
+        raise
+    return str(dest)
 
 
 def _load_panel_pose_rows(
@@ -931,6 +980,182 @@ class SecondaryPharmacology(
         poses.download(client=self.client, lazy=True)
         return poses
 
+    def _panel_pose_row(
+        self,
+        *,
+        ligand_id: str,
+        uniprot_id: str,
+        dto: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        """Return the single ``panel_poses`` row for a ligand and panel target.
+
+        Args:
+            ligand_id: Platform ligand id from this execution's results.
+            uniprot_id: Panel member accession.
+            dto: Optional execution payload for :func:`_load_panel_pose_rows`.
+
+        Returns:
+            One flattened panel-pose row dict.
+
+        Raises:
+            ValueError: If zero or multiple rows match.
+        """
+        exec_id = self._ensure_id()
+        rows = _load_panel_pose_rows(exec_id, client=self.client, dto=dto)
+        matches = [
+            row
+            for row in rows
+            if row.get("ligand_id") == ligand_id and row.get("uniprot_id") == uniprot_id
+        ]
+        if len(matches) == 1:
+            return matches[0]
+        if not matches:
+            msg = (
+                f"No panel pose for ligand_id={ligand_id!r} and "
+                f"uniprot_id={uniprot_id!r}. Inspect get_results() for available pairs."
+            )
+            raise ValueError(msg)
+        msg = (
+            f"Expected one panel pose for ligand_id={ligand_id!r} and "
+            f"uniprot_id={uniprot_id!r}, found {len(matches)}."
+        )
+        raise ValueError(msg)
+
+    def _show_panel_pose(
+        self,
+        *,
+        ligand_id: str | None = None,
+        ligand: Ligand | None = None,
+        uniprot_id: str | None = None,
+        gene_name: str | None = None,
+        verify_receptor_digest: bool = True,
+        height: int = 620,
+        dto: dict[str, Any] | None = None,
+    ):
+        """Visualize one docked pose against its panel receptor (dev-only API).
+
+        Underscore-prefixed experimental helper: downloads the published panel
+        receptor PDB named on the pose row (``receptor_file_path``) and overlays
+        the docked ligand SDF in a Jupyter Mol* iframe. Requires a completed
+        docking run on an environment where the tool emits receptor metadata
+        (platform secondary-pharma 2.1.8+ with a published panel catalog).
+
+        Args:
+            ligand_id: Platform ligand id (from ``get_results()``).
+            ligand: Alternative to ``ligand_id`` when the ligand is already synced.
+            uniprot_id: Panel target accession.
+            gene_name: Panel target gene symbol (mutually exclusive with
+                ``uniprot_id``).
+            verify_receptor_digest: When ``True`` and the row includes
+                ``structure_sha256``, verify downloaded receptor bytes match.
+            height: Iframe height in pixels.
+            dto: Optional execution payload for loading pose rows.
+
+        Returns:
+            Result of :func:`~deeporigin.utils.notebook.render_html` for the
+            Mol* viewer iframe.
+
+        Raises:
+            ValueError: If :attr:`method` is not ``"docking"``, arguments are
+                missing or ambiguous, or this is a ``self_test`` run.
+            DeepOriginException: If ``receptor_file_path`` is missing, digest
+                verification fails, or downloads fail.
+        """
+        self._ensure_method("docking", alternative_call="get_results")
+        if self._self_test:
+            raise ValueError(
+                "_show_panel_pose() is not available for self_test runs: no "
+                "panel poses are published for the baked test ligand."
+            )
+
+        resolved_ligand_id = ligand_id
+        if resolved_ligand_id is None:
+            if ligand is None or ligand.id is None:
+                raise ValueError("Provide ligand_id or a synced ligand with an id.")
+            resolved_ligand_id = ligand.id
+        elif (
+            ligand is not None
+            and ligand.id is not None
+            and ligand.id != resolved_ligand_id
+        ):
+            raise ValueError("ligand_id does not match ligand.id.")
+
+        if uniprot_id is not None and gene_name is not None:
+            raise ValueError("Provide exactly one of uniprot_id or gene_name.")
+        if uniprot_id is None and gene_name is None:
+            raise ValueError("Provide uniprot_id or gene_name for the panel target.")
+
+        resolved_uniprot = uniprot_id
+        if resolved_uniprot is None and gene_name is not None:
+            panel = SecondaryPharmacology.get_panel(full=True, client=self.client)
+            hits = panel.loc[panel["gene_name"] == gene_name, "uniprot_id"]
+            if len(hits) != 1:
+                raise ValueError(
+                    f"gene_name={gene_name!r} matched {len(hits)} panel members; "
+                    "use uniprot_id instead."
+                )
+            resolved_uniprot = str(hits.iloc[0])
+
+        row = self._panel_pose_row(
+            ligand_id=resolved_ligand_id,
+            uniprot_id=resolved_uniprot,
+            dto=dto,
+        )
+        receptor_remote = row.get("receptor_file_path")
+        if not isinstance(receptor_remote, str) or not receptor_remote.strip():
+            raise DeepOriginException(
+                title="Panel receptor path missing",
+                message=(
+                    "This pose row has no receptor_file_path. Re-run docking on "
+                    "an environment with secondary-pharma 2.1.8+ and a published "
+                    "panel catalog, then try again."
+                ),
+            )
+
+        pose = Pose.from_json([row], client=self.client)[0]
+        pose.download(client=self.client, lazy=False)
+
+        receptor_local = _download_protected_panel_receptor(
+            self.client,
+            receptor_remote,
+            lazy=False,
+        )
+        if verify_receptor_digest:
+            expected_digest = row.get("structure_sha256")
+            if isinstance(expected_digest, str) and expected_digest.strip():
+                actual_digest = hashlib.sha256(
+                    Path(receptor_local).read_bytes()
+                ).hexdigest()
+                if actual_digest != expected_digest.strip():
+                    raise DeepOriginException(
+                        title="Panel receptor digest mismatch",
+                        message=(
+                            f"Downloaded receptor at {receptor_remote!r} has "
+                            f"sha256 {actual_digest}, expected {expected_digest}."
+                        ),
+                    )
+
+        from deeporigin.drug_discovery.docking_common import ligand_payloads_for_viewer
+        from deeporigin.utils.notebook import render_html
+        from deeporigin.viz.molstar_html import render_protein_with_poses_html
+
+        gene = row.get("gene_name") or resolved_uniprot
+        binding_energy = row.get("binding_energy")
+        if binding_energy is not None:
+            try:
+                pose.name = f"{gene} ({float(binding_energy):.2f} kcal/mol)"
+            except (TypeError, ValueError):
+                pose.name = str(gene)
+        elif gene:
+            pose.name = str(gene)
+
+        ligand_payloads = ligand_payloads_for_viewer(pose)
+        html = render_protein_with_poses_html(
+            pdb_path=receptor_local,
+            ligand_payloads=ligand_payloads,
+        )
+        return render_html(html, height=height)
+
     def _expected_panel_pairs(self) -> set[tuple[str, str]]:
         """Every (ligand id, uniprot) pair this run should have docked."""
         uniprots = self.uniprots or self._allowed_uniprots
@@ -1006,7 +1231,7 @@ class SecondaryPharmacology(
         instance._ligands = _ligands_from_inputs(inputs)
         methods = inputs.get("methods")
         instance._method = (
-            methods[0] if isinstance(methods, list) and methods else "docking"
+            methods[0] if isinstance(methods, list) and methods else "ligand-ml"
         )
         instance._self_test = bool(inputs.get("self_test", False))
         raw_effort = inputs.get("effort")

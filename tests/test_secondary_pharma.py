@@ -14,9 +14,10 @@ doesn't simulate a real multi-minute workflow.
 from __future__ import annotations
 
 import asyncio
+from pathlib import Path
 import time
 from typing import TYPE_CHECKING
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 import warnings
 
 import pandas as pd
@@ -39,6 +40,7 @@ from tests.conftest import check_tool_exists
 from tests.mock_server.routers.tools import (
     MOCK_SECONDARY_PHARMA_PANEL,
     MOCK_SECONDARY_PHARMA_POSE_SDF_PATH,
+    MOCK_SECONDARY_PHARMA_RECEPTOR_PDB_PATH,
     _synthesize_secondary_pharma_ligand_ml_row,
 )
 
@@ -52,6 +54,16 @@ _PANEL_ACCESSIONS = [accession for accession, _, _ in MOCK_SECONDARY_PHARMA_PANE
 def _assert_tool_available(client: DeepOriginClient) -> None:
     """Require the mock secondary-pharma definition."""
     assert check_tool_exists(client, _CFG["tool_key"], _CFG["tool_version"])
+
+
+def _upload_mock_panel_receptor(client: DeepOriginClient) -> None:
+    """Stage a panel receptor PDB under the mock ``protected`` org namespace."""
+    fixture = Path(__file__).parent / "fixtures" / "1eby.pdb"
+    content = fixture.read_bytes()
+    files = {
+        "file": (fixture.name, content, "application/octet-stream"),
+    }
+    client._put(f"/files/{MOCK_SECONDARY_PHARMA_RECEPTOR_PDB_PATH}", files=files)
 
 
 def _definition_enum(client: DeepOriginClient) -> list[str]:
@@ -726,6 +738,7 @@ def test_secondary_pharma_docking_start_sync_get_results_and_poses(
         local_path=BRD_DATA_DIR / "brd-2.sdf",
         remote_path=MOCK_SECONDARY_PHARMA_POSE_SDF_PATH,
     )
+    _upload_mock_panel_receptor(client)
 
     ligand = Ligand.from_smiles("CCO")
     job = SecondaryPharmacology(ligands=[ligand], method="docking", client=client)
@@ -756,7 +769,16 @@ def test_secondary_pharma_docking_start_sync_get_results_and_poses(
     assert len(df) == len(_PANEL_ACCESSIONS)
     assert set(df["uniprot_id"]) == set(_PANEL_ACCESSIONS)
     assert set(df["ligand_id"]) == {synced_ligand_id}
-    for col in ("pose_score", "binding_energy", "file_path", "gene_name", "pdb_id"):
+    for col in (
+        "pose_score",
+        "binding_energy",
+        "file_path",
+        "gene_name",
+        "pdb_id",
+        "receptor_file_path",
+        "structure_sha256",
+        "panel_version",
+    ):
         assert col in df.columns
     assert set(df["method"]) == {"docking"}
 
@@ -768,6 +790,78 @@ def test_secondary_pharma_docking_start_sync_get_results_and_poses(
         assert pose.ligand_id == synced_ligand_id
         assert pose.local_path is not None, "_get_poses() downloads the SDF"
         assert pose.smiles is not None
+
+
+def test_secondary_pharma__show_panel_pose_renders(
+    client: DeepOriginClient,
+) -> None:
+    """``_show_panel_pose()`` downloads receptor + pose and builds Mol* HTML."""
+    _assert_tool_available(client)
+    client.files.upload(
+        local_path=BRD_DATA_DIR / "brd-2.sdf",
+        remote_path=MOCK_SECONDARY_PHARMA_POSE_SDF_PATH,
+    )
+    _upload_mock_panel_receptor(client)
+
+    ligand = Ligand.from_smiles("CCO")
+    job = SecondaryPharmacology(ligands=[ligand], method="docking", client=client)
+    job.start()
+    assert ligand.id is not None
+    synced_ligand_id = ligand.id
+    elapsed = 0.0
+    while elapsed < 5.0:
+        job.sync()
+        if job.status in TERMINAL_STATES:
+            break
+        time.sleep(0.05)
+        elapsed += 0.05
+    assert is_success_status(job.status)
+
+    target_uniprot = _PANEL_ACCESSIONS[0]
+    mock_builder = MagicMock(return_value="<html>panel-pose</html>")
+    with (
+        patch(
+            "deeporigin.viz.molstar_html.render_protein_with_poses_html",
+            mock_builder,
+        ),
+        patch(
+            "deeporigin.utils.notebook.render_html",
+            side_effect=lambda html, **kwargs: html,
+        ),
+    ):
+        html = job._show_panel_pose(
+            ligand_id=synced_ligand_id,
+            uniprot_id=target_uniprot,
+        )
+
+    assert html == "<html>panel-pose</html>"
+    mock_builder.assert_called_once()
+    call_kwargs = mock_builder.call_args.kwargs
+    assert call_kwargs["ligand_payloads"]
+    assert Path(call_kwargs["pdb_path"]).is_file()
+
+
+def test_secondary_pharma__show_panel_pose_requires_receptor_file_path(
+    client: DeepOriginClient,
+) -> None:
+    """``_show_panel_pose()`` fails clearly when receptor metadata is absent."""
+    _assert_tool_available(client)
+    ligand = Ligand.from_smiles("CCO")
+    job = SecondaryPharmacology(ligands=[ligand], method="docking", client=client)
+    row = {
+        "ligand_id": "L1",
+        "uniprot_id": _PANEL_ACCESSIONS[0],
+        "file_path": MOCK_SECONDARY_PHARMA_POSE_SDF_PATH,
+    }
+    with (
+        patch.object(
+            job,
+            "_panel_pose_row",
+            return_value=row,
+        ),
+        pytest.raises(DeepOriginException, match="receptor_file_path"),
+    ):
+        job._show_panel_pose(ligand_id="L1", uniprot_id=_PANEL_ACCESSIONS[0])
 
 
 # --- get_undocked_ligands() / get_missing_pairs() ---------------------------

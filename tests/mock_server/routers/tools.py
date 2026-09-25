@@ -135,6 +135,16 @@ _MOCK_SECONDARY_PHARMA_SELF_TEST_SMILES = (
 # (tests/test_secondary_pharma.py); every synthesized panel_poses row points
 # here so PoseSet.download() has something real to fetch.
 MOCK_SECONDARY_PHARMA_POSE_SDF_PATH = "testing/mock-secondary-pharma-pose.sdf"
+MOCK_SECONDARY_PHARMA_PANEL_VERSION = "secondary-pharma-docking-panel-v1"
+MOCK_SECONDARY_PHARMA_RECEPTOR_PDB_PATH = (
+    f"protected/panels/{MOCK_SECONDARY_PHARMA_PANEL_VERSION}/mock/mock-receptor.pdb"
+)
+_MOCK_SECONDARY_PHARMA_RECEPTOR_FIXTURE = (
+    Path(__file__).resolve().parents[2] / "fixtures" / "1eby.pdb"
+)
+MOCK_SECONDARY_PHARMA_RECEPTOR_SHA256 = hashlib.sha256(
+    _MOCK_SECONDARY_PHARMA_RECEPTOR_FIXTURE.read_bytes()
+).hexdigest()
 
 
 def _synthesize_structure_report_row(
@@ -796,6 +806,9 @@ def _synthesize_secondary_pharma_panel_pose_row(
         "pdb_id": pdb_id,
         "pocket_center": [0.0, 0.0, 0.0],
         "pose_score": round(_stable_unit_float(seed, "pose_score"), 6),
+        "panel_version": MOCK_SECONDARY_PHARMA_PANEL_VERSION,
+        "receptor_file_path": MOCK_SECONDARY_PHARMA_RECEPTOR_PDB_PATH,
+        "structure_sha256": MOCK_SECONDARY_PHARMA_RECEPTOR_SHA256,
         "type": "Enzyme (kinase)",
         "uniprot_id": uniprot_id,
     }
