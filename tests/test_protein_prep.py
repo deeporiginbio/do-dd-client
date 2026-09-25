@@ -12,6 +12,7 @@ import pytest
 from deeporigin.drug_discovery import Protein, ProteinPrep
 from deeporigin.drug_discovery.protein_prep import (
     _crystal_poses_from_output_rows,
+    _loop_modelling_from_recommendation,
     _protein_from_prepared_data,
     _protein_prep_default_name,
     _selection_from_recommendation,
@@ -60,6 +61,8 @@ _SAMPLE_RECOMMENDATION = {
             "subtype": "small_molecule",
         },
     ],
+    "chain_breaks": [],
+    "has_chain_breaks": False,
     "source_sha256": _SHA256,
 }
 _WATER_RECOMMENDATION = {
@@ -90,6 +93,8 @@ _WATER_RECOMMENDATION = {
             "subtype": "coordinating",
         },
     ],
+    "chain_breaks": [],
+    "has_chain_breaks": False,
     "source_sha256": _SHA256,
 }
 _WATER_SELECTION = {
@@ -495,6 +500,40 @@ def test_extract_sets_ligand_decision() -> None:
     prep.extract("ligand:LIG:A:100")
 
     assert prep.selection["decisions"]["ligand:LIG:A:100"] == "extract"
+    assert prep.find_pockets == "from-crystal-ligand"
+
+
+def test_explicit_find_pockets_no_overrides_ligand_extract() -> None:
+    """Assigning find_pockets='no' opts out of selection-based pocket inference."""
+    prep = ProteinPrep(
+        protein=_protein_with_remote(),
+        selection=_SAMPLE_SELECTION,
+        model_missing_loops=False,
+    )
+    assert prep.find_pockets == "from-crystal-ligand"
+
+    prep.find_pockets = "no"
+
+    assert prep.find_pockets == "no"
+    payload = prep._make_protein_prep_payload(action="prepare", sync=True)
+    assert payload["inputs"]["find_pockets"] == "no"
+
+
+def test_find_pockets_reflects_ligand_extract_after_water_triage() -> None:
+    """Ligand extract in the Selection surfaces as from-crystal-ligand pockets."""
+    prep = _prep_with_inventory(
+        recommendation=_WATER_RECOMMENDATION,
+        selection=_WATER_SELECTION,
+    )
+    assert prep.find_pockets == "no"
+
+    (
+        prep.keep(kind="water", subtype="coordinating")
+        .skip(kind="water", subtype="crystal")
+        .extract(kind="ligand")
+    )
+
+    assert prep.find_pockets == "from-crystal-ligand"
 
 
 def test_protein_prep_default_name_helper() -> None:
@@ -774,6 +813,66 @@ def test_repr_adds_durable_execution_state() -> None:
     assert "25" in text
 
 
+def test_loop_modelling_from_recommendation_follows_chain_breaks() -> None:
+    """Chain Break facts drive the default loop-modelling flag after recommend."""
+    assert _loop_modelling_from_recommendation({"chain_breaks": []}) is False
+    assert _loop_modelling_from_recommendation(
+        {"chain_breaks": ["A:10–A:12"]}
+    ) is True
+    assert _loop_modelling_from_recommendation({"has_chain_breaks": False}) is False
+    assert _loop_modelling_from_recommendation({}) is True
+
+
+def test_repr_html_uses_summary_card() -> None:
+    """Jupyter HTML uses the summary card instead of a parameter table."""
+    prep = ProteinPrep(
+        protein=Protein(name="brd", pdb_id="1EBY"),
+        selection=_DRAFT_SELECTION,
+    )
+    prep._recommendation = _SAMPLE_RECOMMENDATION
+
+    html = prep._repr_html_()
+
+    assert "border-radius: 6px" in html
+    assert "<table" not in html
+    assert "Prepare Protein brd" in html
+    assert "<strong>Protein:</strong>" not in html
+    assert "Loop modelling:" in html
+    assert "Find pockets:" in html
+    assert "find_pockets:" not in html
+    assert ".recommend()" in html or ".run()" in html
+
+
+def test_notebook_prepare_hint_follows_find_pockets() -> None:
+    """Prepare footer hints match whether blocking run() is allowed."""
+    base = ProteinPrep(
+        protein=Protein(name="brd", pdb_id="1EBY"),
+        selection=_DRAFT_SELECTION,
+    )
+    base._recommendation = _SAMPLE_RECOMMENDATION
+
+    no_pockets = base._prepare_submit_action_hint()
+    assert no_pockets == "Call <code>.run()</code> to prepare"
+
+    crystal = ProteinPrep(
+        protein=Protein(name="brd", pdb_id="1EBY"),
+        selection=_DRAFT_SELECTION,
+        find_pockets="from-crystal-ligand",
+        component_id="ligand:LIG:A:100",
+    )
+    crystal._recommendation = _SAMPLE_RECOMMENDATION
+    assert crystal._prepare_submit_action_hint() == "Call <code>.run()</code> to prepare"
+
+    novel = ProteinPrep(
+        protein=Protein(name="brd", pdb_id="1EBY"),
+        selection=_DRAFT_SELECTION,
+        find_pockets="novel",
+    )
+    novel._recommendation = _SAMPLE_RECOMMENDATION
+    novel_hint = novel._prepare_submit_action_hint()
+    assert novel_hint == "Call <code>.start()</code> to prepare and find pockets"
+
+
 def test_repr_html_omits_progress() -> None:
     """Jupyter HTML skips progress so large reports do not dominate the table."""
     prep = ProteinPrep(
@@ -905,6 +1004,7 @@ def test_recommend_updates_same_object_without_id(
     assert prep.selection is not None
     assert prep.selection["decisions"]["chain:A"] == "keep"
     assert prep.selection["decisions"]["ligand:LIG:A:100"] == "review"
+    assert prep.model_missing_loops is False
 
 
 def test_recommend_then_run_loops_off_returns_protein(
