@@ -1378,7 +1378,7 @@ class Ligand(Entity):
         """Sync the ligand via import-dataset (CSV or single-record SDF).
 
         Delegates to :meth:`LigandSet.sync` for one blocking tool execution.
-        Requires ``project_id`` on the ligand or client.
+        Requires ``client.project_id`` (see :meth:`LigandSet.sync`).
         """
         if lazy and self.id is not None:
             return
@@ -2841,7 +2841,14 @@ class LigandSet:
         Structure-less ligands are written to a temporary CSV; structures use a
         multi-record SDF. Dedup and create/reuse run in the tool.
 
-        Requires ``project_id`` on ligands or the client.
+        Requires ``client.project_id``. Entity ``project_id`` values must match
+        the client when set.
+
+        .. note::
+
+            This path will align with :meth:`~deeporigin.drug_discovery.structures.protein.Protein.sync`
+            (served import-dataset register flow). Large refactors here are deferred
+            until that migration lands; tool execution still requires a scoped client.
         """
         if not self.ligands:
             return

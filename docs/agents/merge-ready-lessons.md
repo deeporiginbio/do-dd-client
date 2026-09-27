@@ -2,6 +2,10 @@
 
 Notes from past merge-ready cycles. Read before starting; append after success.
 
+## 2026-09-27 — PR #641 — DDOS-7941 client.project_id required
+
+When tightening project scope on sync/execution paths, update public method docstrings in the same PR — Copilot flagged `Pose.from_sdf` still documenting entity-or-client fallback after the code moved to client-only validation. Required CI is only formatting + ubuntu functionality; `level-1-tests` staging/prod still fail on unrelated platform registration flakes.
+
 ## 2026-09-22 — PR #626 — ProteinPrep / Target Preparation unify
 
 After `Protein.sync` became project-scoped, every demo notebook that calls `sync()` without `projects.create`/`load` fails build-docs and Ubuntu notebook CI — fix all sync notebooks in one pass, not just the first failure. Merging `main` can silently drop `USER_LOG_COLUMNS`/`tool_key` mapping from `execution.py`; re-check that surface after conflict resolution. Watch required checks only (`formatting` + Ubuntu functionality): staging/prod level-1 often fail on missing `import-dataset` registration and are not branch-protection required. Copilot can leave a review request pending for >10m with no `latestReviews` entry on the current head — re-request helps sometimes, but treat repeated timeouts as a stop condition rather than infinite polling. Also: `(_VALID_FROZENSET)` without a trailing comma is membership in the frozenset, not a one-element tuple — decline that false positive with a passing test.

@@ -305,7 +305,7 @@ class Pose(Entity):
 
         Args:
             data: Pose rows (for example result-explorer ``data`` payloads).
-            client: Optional client for ``project_id`` fallback.
+            client: Platform client; must have ``project_id`` set for registration.
             sanitize: Passed to :meth:`Ligand.from_sdf` for local SDF paths.
             remove_hydrogens: Passed to :meth:`Ligand.from_sdf` for local paths.
 
@@ -462,8 +462,9 @@ class Pose(Entity):
         Syncs the parent :class:`Ligand` (unless ``ligand`` is supplied), uploads
         the SDF, and invokes the ImportTool pose-registration path.
 
-        Requires a resolvable project id (``ligand.project_id`` or
-        ``client.project_id``). The execution is created with
+        Requires ``client.project_id``. When the parent ligand has
+        :attr:`~deeporigin.drug_discovery.structures.ligand.Ligand.project_id`
+        set, it must match the client. The execution is created with
         ``visibility="hidden"``.
 
         Args:
@@ -504,14 +505,9 @@ class Pose(Entity):
                 sanitize=sanitize,
                 remove_hydrogens=remove_hydrogens,
             )
-        proj_id = parent.resolved_project_id(client=client)
-        if proj_id is None or not str(proj_id).strip():
-            raise DeepOriginException(
-                title="Project required for pose registration",
-                message=(
-                    "Pose.from_sdf requires ligand.project_id or client.project_id."
-                ),
-            )
+        from deeporigin.platform.project_scope import require_client_project_id
+
+        proj_id = require_client_project_id(client, entity_project_id=parent.project_id)
 
         staging = cls(
             ligand_id=parent.id or "",

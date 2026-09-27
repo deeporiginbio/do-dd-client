@@ -17,6 +17,7 @@ from deeporigin.platform.constants import (
     TERMINAL_STATES,
     ExecutionVisibility,
 )
+from deeporigin.platform.project_scope import stamp_execution_project_id
 from deeporigin.utils.constants import (
     TOOL_EXECUTION_GET_ACCEPT_HEADER,
     TOOL_EXECUTION_POST_TIMEOUT_SECONDS,
@@ -143,11 +144,10 @@ class Executions:
         else:
             payload["visibility"] = resolved_visibility
 
+        stamp_execution_project_id(self._c, payload)
+
         if "clusterId" not in payload:
             payload["clusterId"] = self._c.clusters.get_default_cluster_id()
-        # Prefer an explicit projectId in *data*; otherwise stamp from the client.
-        if "projectId" not in payload and self._c.project_id is not None:
-            payload["projectId"] = self._c.project_id
 
         payload["app"] = self._c._app
         payload["session"] = self._c._session

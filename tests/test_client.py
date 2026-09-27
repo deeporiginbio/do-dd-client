@@ -5,6 +5,7 @@ import json
 
 import pytest
 
+from deeporigin.exceptions import DeepOriginException
 from deeporigin.platform.client import DeepOriginClient
 from deeporigin.utils.constants import (
     ENV_VARIABLES,
@@ -86,12 +87,17 @@ def test_client_repr_is_multiline():
     )
 
 
+_TEST_PROJECT_ID = "test-project-uuid"
+
+
 def _stub_post_json_capturing_body(client: DeepOriginClient) -> dict:
     """Replace ``client.post_json`` with a stub that records the request body.
 
     Returns the captured-body dict (mutated in place by the stub) so tests can
     assert on the JSON sent to ``executions.create``.
     """
+    if client.project_id is None:
+        client.project_id = _TEST_PROJECT_ID
     captured: dict = {}
 
     def mock_post_json(
@@ -203,30 +209,73 @@ def test_executions_create_includes_client_project_id():
     assert captured["projectId"] == "test-project-uuid"
 
 
-def test_executions_create_preserves_explicit_project_id():
-    """An explicit ``projectId`` in *data* is not overwritten by the client default."""
+def test_executions_create_rejects_project_id_mismatch_with_client():
+    """``projectId`` in *data* must match ``client.project_id`` when both are set."""
     DeepOriginClient.close_all()
 
     client = DeepOriginClient.from_local()
     client.project_id = "client-project"
-    captured = _stub_post_json_capturing_body(client)
+    _stub_post_json_capturing_body(client)
 
     client.clusters.get_default_cluster_id = (  # type: ignore[method-assign]
         lambda: "test-cluster-id"
     )
 
-    client.executions.create(
-        tool_key="test.tool",
-        tool_version="1.0.0",
-        data={
-            "inputs": {"test": "param"},
-            "outputs": {},
-            "metadata": {},
-            "projectId": "explicit-project",
-        },
+    with pytest.raises(DeepOriginException, match="does not match client.project_id"):
+        client.executions.create(
+            tool_key="test.tool",
+            tool_version="1.0.0",
+            data={
+                "inputs": {"test": "param"},
+                "outputs": {},
+                "metadata": {},
+                "projectId": "explicit-project",
+            },
+        )
+
+
+def test_executions_create_requires_client_project_id():
+    """Tool creates fail when ``client.project_id`` is unset."""
+    DeepOriginClient.close_all()
+
+    client = DeepOriginClient.from_local()
+    client.project_id = None
+
+    client.clusters.get_default_cluster_id = (  # type: ignore[method-assign]
+        lambda: "test-cluster-id"
     )
 
-    assert captured["projectId"] == "explicit-project"
+    with pytest.raises(DeepOriginException, match="client.project_id"):
+        client.executions.create(
+            tool_key="test.tool",
+            tool_version="1.0.0",
+            data={"inputs": {"test": "param"}, "outputs": {}, "metadata": {}},
+        )
+
+
+def test_executions_create_validates_project_before_cluster_lookup():
+    """Missing project raises before ``get_default_cluster_id`` runs."""
+    DeepOriginClient.close_all()
+
+    client = DeepOriginClient.from_local()
+    client.project_id = None
+
+    calls: list[int] = []
+
+    def _boom() -> str:
+        calls.append(1)
+        return "test-cluster-id"
+
+    client.clusters.get_default_cluster_id = _boom  # type: ignore[method-assign]
+
+    with pytest.raises(DeepOriginException):
+        client.executions.create(
+            tool_key="test.tool",
+            tool_version="1.0.0",
+            data={"inputs": {}, "outputs": {}, "metadata": {}},
+        )
+
+    assert calls == []
 
 
 def test_executions_create_includes_client_tag():
