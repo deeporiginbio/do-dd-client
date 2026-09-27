@@ -117,7 +117,8 @@ class Protein(Entity):
 
         Args:
             uniprot_accession: UniProtKB accession (6 or 10 characters).
-            project_id: Project to sync into. Falls back to ``client.project_id``.
+            project_id: Deprecated for scope; use ``client.project_id``. When set on
+                the protein it must match the client during sync.
             client: Optional API client.
 
         Returns:
@@ -1819,8 +1820,8 @@ class Protein(Entity):
         served ``deeporigin.import-dataset`` ``register_protein`` path, which
         canonicalizes the file and create-or-reuses a Protein entity.
 
-        Requires a resolvable project id (:attr:`project_id` or
-        ``client.project_id``). The execution is created with
+        Requires ``client.project_id``. If :attr:`project_id` is set on the
+        protein, it must match the client. The execution is created with
         ``visibility="hidden"`` so plumbing runs do not clutter Activity.
 
         Args:
@@ -1842,24 +1843,21 @@ class Protein(Entity):
         if lazy and self.id is not None:
             if client is None:
                 client = DeepOriginClient()
-            proj_id = self.resolved_project_id(client=client)
-            if proj_id is not None:
-                self.project_id = proj_id
+            client_proj = client.project_id
+            if client_proj is not None and str(client_proj).strip():
+                from deeporigin.platform.project_scope import require_client_project_id
+
+                self.project_id = require_client_project_id(
+                    client, entity_project_id=self.project_id
+                )
             return
 
         if client is None:
             client = DeepOriginClient()
 
-        proj_id = self.resolved_project_id(client=client)
-        if proj_id is None or not str(proj_id).strip():
-            raise DeepOriginException(
-                title="Project required for protein sync",
-                message=(
-                    "Protein.sync requires protein.project_id or client.project_id "
-                    "(served import-dataset register_protein is project-scoped)."
-                ),
-            )
-        proj_id = str(proj_id).strip()
+        from deeporigin.platform.project_scope import require_client_project_id
+
+        proj_id = require_client_project_id(client, entity_project_id=self.project_id)
 
         if self._should_upload_local_bytes(remote_path=remote_path):
             self.upload(client=client, remote_path=remote_path)

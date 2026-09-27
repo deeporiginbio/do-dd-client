@@ -9,6 +9,7 @@ import uuid
 from deeporigin.exceptions import DeepOriginException
 from deeporigin.platform.client import DeepOriginClient
 from deeporigin.platform.constants import TOOL_KEYS_AND_VERSIONS
+from deeporigin.platform.project_scope import require_client_project_id
 
 
 def run_import_dataset_sync(
@@ -20,12 +21,16 @@ def run_import_dataset_sync(
     """Run a blocking served import-dataset execution and return the execution DTO."""
     if client is None:
         client = DeepOriginClient()
-    proj = str(project_id).strip()
-    if not proj:
-        raise DeepOriginException(
-            title="Project required",
-            message="import-dataset file processing requires project_id on the execution.",
-        )
+    proj = require_client_project_id(client)
+    if project_id is not None and str(project_id).strip():
+        if str(project_id).strip() != proj:
+            raise DeepOriginException(
+                title="Project scope conflict",
+                message=(
+                    "import-dataset project_id does not match client.project_id; "
+                    "scope is taken from the client only."
+                ),
+            )
     tool_meta = TOOL_KEYS_AND_VERSIONS["import_dataset"]
     raw = client.executions.create(  # ty: ignore[unresolved-attribute]
         tool_key=tool_meta["tool_key"],
@@ -35,7 +40,6 @@ def run_import_dataset_sync(
             "outputs": {},
             "metadata": {},
             "sync": True,
-            "projectId": proj,
             "visibility": "hidden",
         },
     )
@@ -87,28 +91,8 @@ def require_project_id(
     entity_project_id: str | None,
     client: DeepOriginClient,
 ) -> str:
-    """Resolve and validate project scope for entity sync."""
-    proj = entity_project_id
-    if proj is None or not str(proj).strip():
-        proj = client.project_id
-    if proj is None or not str(proj).strip():
-        raise DeepOriginException(
-            title="Project required",
-            message="sync requires entity.project_id or client.project_id.",
-        )
-    resolved = str(proj).strip()
-    client_proj = client.project_id
-    if client_proj is not None and str(client_proj).strip():
-        if resolved != str(client_proj).strip():
-            raise DeepOriginException(
-                title="Project scope conflict",
-                message=(
-                    "entity project_id does not match client.project_id; "
-                    "use a client scoped to the entity project instead of "
-                    "mutating client.project_id."
-                ),
-            )
-    return resolved
+    """Resolve and validate project scope for entity sync (client is authoritative)."""
+    return require_client_project_id(client, entity_project_id=entity_project_id)
 
 
 def stage_local_file(

@@ -504,14 +504,9 @@ class Pose(Entity):
                 sanitize=sanitize,
                 remove_hydrogens=remove_hydrogens,
             )
-        proj_id = parent.resolved_project_id(client=client)
-        if proj_id is None or not str(proj_id).strip():
-            raise DeepOriginException(
-                title="Project required for pose registration",
-                message=(
-                    "Pose.from_sdf requires ligand.project_id or client.project_id."
-                ),
-            )
+        from deeporigin.platform.project_scope import require_client_project_id
+
+        proj_id = require_client_project_id(client, entity_project_id=parent.project_id)
 
         staging = cls(
             ligand_id=parent.id or "",

@@ -189,13 +189,12 @@ def test_uniprot_discovery_from_dto_restores_accession(
 
 
 def test_import_proteins_requires_project(client: DeepOriginClient) -> None:
-    """Import fails closed when no project id can be resolved."""
+    """Discovery and import fail closed when ``client.project_id`` is unset."""
     client.project_id = None
     assert client.project_id is None
     job = UniprotDiscovery(uniprot_accession="P00533", client=client)
-    job.run()
-    with pytest.raises(DeepOriginException, match="[Pp]roject"):
-        job.import_proteins()
+    with pytest.raises(DeepOriginException, match="client.project_id"):
+        job.run()
 
 
 def test_import_proteins_rejects_unknown_pdb_ids(

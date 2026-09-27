@@ -34,6 +34,7 @@ from deeporigin.platform.constants import (
     is_success_status,
     normalize_platform_status,
 )
+from deeporigin.platform.project_scope import require_client_project_id
 from deeporigin.utils.constants import (
     EXECUTION_LIST_ORDER_CREATED_DESC,
     TOOL_EXECUTION_POST_TIMEOUT_SECONDS,
@@ -168,6 +169,7 @@ class Execution:
             raise ValueError(
                 "tool_key and tool_version are required for execution create"
             )
+        require_client_project_id(self.client)
         return self.client.executions.create(  # ty:ignore[unresolved-attribute]
             tool_key=resolved_key,
             tool_version=resolved_version,
