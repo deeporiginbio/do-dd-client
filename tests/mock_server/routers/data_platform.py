@@ -639,6 +639,7 @@ def create_data_platform_router(
     projects: dict[str, dict[str, Any]],
     results: list[dict[str, Any]],
     executions: dict[str, dict[str, Any]] | None = None,
+    execution_subjects: dict[str, dict[str, Any]] | None = None,
     user_logs: dict[str, dict[str, Any]] | None = None,
     load_fixture: Callable[[str], dict[str, Any]],
 ) -> APIRouter:
@@ -660,11 +661,17 @@ def create_data_platform_router(
 
     _user_logs_store = user_logs if user_logs is not None else {}
 
+    _execution_subjects_store = (
+        execution_subjects if execution_subjects is not None else {}
+    )
+    _dp_ingestion_polls: dict[str, int] = {}
+
     _entity_stores: dict[str, dict[str, dict[str, Any]]] = {
         "ligands": ligands,
         "proteins": proteins,
         "projects": projects,
         "user_logs": _user_logs_store,
+        "execution_subjects": _execution_subjects_store,
     }
 
     # Reverse index: (canonical_smiles, variant_name_tag) → ligand_id.
@@ -967,7 +974,33 @@ def create_data_platform_router(
             target_id = compute_job_id_filter["eq"]
             records = [r for r in records if r.get("executionId") == target_id]
 
-        response: dict[str, Any] = {"data": records, "count": len(records)}
+        normalized: list[dict[str, Any]] = []
+        for raw in records:
+            eid = raw.get("executionId")
+            polls = 0
+            if isinstance(eid, str):
+                polls = _dp_ingestion_polls.get(eid, 0)
+                _dp_ingestion_polls[eid] = polls + 1
+            dp_status = raw.get("dataPlatformStatus")
+            if dp_status == "Completed":
+                row_status = "Completed"
+            elif dp_status == "DataIngesting" and polls < 1:
+                row_status = "DataIngesting"
+            elif dp_status == "DataIngesting":
+                row_status = "Completed"
+            else:
+                row_status = raw.get("status") or "Running"
+            normalized.append(
+                {
+                    "id": raw.get("dataPlatformRowId") or eid,
+                    "status": row_status,
+                    "compute_job_id": eid,
+                    "project_id": raw.get("projectId"),
+                    "deleted": False,
+                }
+            )
+
+        response: dict[str, Any] = {"data": normalized, "count": len(normalized)}
         if with_history:
             response["with_history"] = True
         return response

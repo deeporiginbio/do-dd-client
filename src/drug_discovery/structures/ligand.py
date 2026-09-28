@@ -2885,11 +2885,14 @@ class LigandSet:
             client = DeepOriginClient()
 
         from deeporigin.drug_discovery.import_dataset_sync import (
+            MAX_SERVED_FILE_LIGAND_RECORDS,
+            hydrate_ligand_ids_after_import,
             require_project_id,
             require_uniform_scope,
             stage_local_file,
             sync_process_csv,
             sync_process_sdf,
+            workflow_import_smiles_csv,
         )
 
         proj_id = require_uniform_scope(
@@ -2962,6 +2965,20 @@ class LigandSet:
             fd.close()
             remote = stage_local_file(client, fd.name, remote_path=remote_path)
             Path(fd.name).unlink(missing_ok=True)
+            if len(ligands_to_sync) > MAX_SERVED_FILE_LIGAND_RECORDS:
+                exec_id, dp_row = workflow_import_smiles_csv(
+                    client=client,
+                    project_id=proj_id,
+                    csv_path=remote,
+                )
+                hydrate_ligand_ids_after_import(
+                    client,
+                    ligands_to_sync,
+                    compute_job_id=exec_id,
+                    project_id=proj_id,
+                    dp_execution_row=dp_row,
+                )
+                return
             outputs = sync_process_csv(
                 client=client,
                 project_id=proj_id,

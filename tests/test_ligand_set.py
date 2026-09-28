@@ -1087,7 +1087,7 @@ def test_ligand_set_sync_duplicate_smiles_lv1(client):
 
     The platform enforces a uniqueness constraint on
     ``(project_scope_key, canonical_smiles, variant_name_tag)``, so sync()
-    must dedupe before calling ``batch_create_ligands``. All duplicates
+    dedupes via import-dataset (duplicate SMILES share one platform id). All duplicates
     should end up pointing at the same platform record.
     """
     smiles = "CCO"
@@ -1100,7 +1100,7 @@ def test_ligand_set_sync_duplicate_smiles_lv1(client):
 
 
 def test_batch_create_ligands_lv1(client: DeepOriginClient):
-    """Test batch creating ligands via LigandSet.sync()."""
+    """Test registering multiple ligands via LigandSet.sync()."""
     ligands = LigandSet.from_smiles(["CCO", "CCCO"])
     ligands.sync(client=client)
 
