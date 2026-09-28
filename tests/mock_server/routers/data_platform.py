@@ -965,17 +965,12 @@ def create_data_platform_router(
         body = await request.json()
         filter_dict = body.get("filter", {})
         with_history = body.get("with_history", False)
+        limit = body.get("limit", 100)
+        offset = body.get("offset", 0)
 
         store = executions or {}
-        records = list(store.values())
-
-        compute_job_id_filter = filter_dict.get("compute_job_id", {})
-        if "eq" in compute_job_id_filter:
-            target_id = compute_job_id_filter["eq"]
-            records = [r for r in records if r.get("executionId") == target_id]
-
         normalized: list[dict[str, Any]] = []
-        for raw in records:
+        for raw in store.values():
             eid = raw.get("executionId")
             polls = 0
             if isinstance(eid, str):
@@ -990,9 +985,10 @@ def create_data_platform_router(
                 row_status = "Completed"
             else:
                 row_status = raw.get("status") or "Running"
+            row_id = raw.get("dataPlatformRowId") or eid
             normalized.append(
                 {
-                    "id": raw.get("dataPlatformRowId") or eid,
+                    "id": row_id,
                     "status": row_status,
                     "compute_job_id": eid,
                     "project_id": raw.get("projectId"),
@@ -1000,7 +996,15 @@ def create_data_platform_router(
                 }
             )
 
-        response: dict[str, Any] = {"data": normalized, "count": len(normalized)}
+        dp_rows = {str(row["id"]): row for row in normalized if row.get("id") is not None}
+        filtered = _apply_search_filters(
+            dp_rows, filter_dict, limit=limit, offset=offset
+        )
+
+        response: dict[str, Any] = {
+            "data": filtered["data"],
+            "count": filtered["count"],
+        }
         if with_history:
             response["with_history"] = True
         return response

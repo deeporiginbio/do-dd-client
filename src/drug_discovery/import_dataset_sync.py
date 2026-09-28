@@ -23,6 +23,8 @@ IMPORT_DATASET_LIGANDS_DATABASE_KEY = "deeporigin.attributes_catalog"
 IMPORT_DATASET_LIGANDS_DATABASE_VERSION = "1.0.0"
 LIGANDS_CSV_MAPPER: list[dict[str, str]] = [
     {"field": "smiles", "json-path": "ligands.smiles"},
+    {"field": "name", "json-path": "ligands.name"},
+    {"field": "tags", "json-path": "ligands.tags"},
 ]
 
 DATA_PLATFORM_DATA_INGESTING_STATUS = "DataIngesting"
