@@ -66,6 +66,27 @@ def test_wait_for_data_platform_ingestion_times_out() -> None:
         )
 
 
+def test_wait_for_data_platform_ingestion_failed_status() -> None:
+    client = MagicMock()
+    client.executions.search.return_value = {
+        "data": [{"status": "Failed", "id": "dp-1", "compute_job_id": "exec-1"}]
+    }
+    with pytest.raises(DeepOriginException, match="Data platform ingestion failed"):
+        wait_for_data_platform_ingestion(
+            client,
+            "exec-1",
+            poll_interval=0.01,
+            timeout=1.0,
+        )
+
+
+def test_poll_tools_execution_terminal_rejects_unexpected_status() -> None:
+    client = MagicMock()
+    client.executions.wait.return_value = [{"status": "Running"}]
+    with pytest.raises(DeepOriginException, match="unexpected status"):
+        poll_tools_execution_terminal(client, "exec-1", poll_interval=0.01, timeout=1.0)
+
+
 def test_sync_process_csv_on_mock_server(client: DeepOriginClient) -> None:
     with tempfile.NamedTemporaryFile("w", suffix=".csv", delete=False) as handle:
         writer = csv.DictWriter(handle, fieldnames=["smiles", "name"])
