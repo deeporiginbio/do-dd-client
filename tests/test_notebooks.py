@@ -70,3 +70,8 @@ def test_bulk_docking_notebook():
 def test_projects_notebook():
     """Execute the docking notebook end-to-end."""
     _execute_notebook(NOTEBOOKS_DIR / "projects.ipynb")
+
+
+def test_secondary_pharma_notebook():
+    """Execute the secondary-pharma notebook end-to-end (ligand-ml and docking)."""
+    _execute_notebook(NOTEBOOKS_DIR / "secondary-pharma.ipynb")

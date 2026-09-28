@@ -782,15 +782,21 @@ def _synthesize_secondary_pharma_panel_pose_row(
     gene_name: str,
     pdb_id: str,
     effort: int,
+    project_id: str | None = None,
 ) -> dict[str, Any]:
     """Build a synthetic panel_poses row for one ligand x panel member (docking path).
 
     ``file_path`` always points at ``MOCK_SECONDARY_PHARMA_POSE_SDF_PATH`` --
     real content for that path is uploaded by whichever test needs a real
-    ``get_poses()`` download, not synthesized per row.
+    ``get_poses()`` download, not synthesized per row. ``project_id`` mirrors
+    the owning execution's ``projectId`` so a project-scoped
+    ``client.results.get()`` (every real notebook creates a project first)
+    can actually find these rows -- the real upload pipeline attributes
+    published rows to a project the same way every other tool's results do.
     """
     seed = f"{smiles or ligand_id}:{uniprot_id}"
     return {
+        "project_id": project_id,
         "best_pose": True,
         "binding_energy": _stable_log_value(
             seed, "binding_energy", low=-12.0, high=-4.0
@@ -1618,6 +1624,7 @@ def create_tools_router(
             user_inputs = {}
         ligands_in, panel = _secondary_pharma_docking_ligands_and_panel(user_inputs)
         effort = int(user_inputs.get("effort") or 1)
+        project_id = execution.get("projectId")
 
         # Real platform behavior (images/secondary-pharma/src/upload_panel_poses.py):
         # rows with no ligand_id are filtered out before publishing to
@@ -1641,6 +1648,7 @@ def create_tools_router(
                         gene_name=gene,
                         pdb_id=pdb_id,
                         effort=effort,
+                        project_id=project_id,
                     )
                 )
 

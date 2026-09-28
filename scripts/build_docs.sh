@@ -16,6 +16,7 @@ DOC_NOTEBOOKS=(
   docs/notebooks/clean/pocket-finder-selection.ipynb
   docs/notebooks/clean/docking-single-ligand.ipynb
   docs/notebooks/clean/projects.ipynb
+  docs/notebooks/clean/secondary-pharma.ipynb
 )
 doc_notebooks_all_present=true
 for _nb in "${DOC_NOTEBOOKS[@]}"; do
