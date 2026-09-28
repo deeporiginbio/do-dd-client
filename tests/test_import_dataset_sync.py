@@ -2,17 +2,106 @@
 
 from __future__ import annotations
 
+from unittest.mock import MagicMock
+
 import pytest
 
-from deeporigin.drug_discovery import BRD_DATA_DIR
+from deeporigin.drug_discovery import BRD_DATA_DIR, DATA_DIR
 from deeporigin.drug_discovery.import_dataset_sync import (
+    DATA_PLATFORM_DATA_INGESTING_STATUS,
+    job_outputs,
+    job_outputs_with_execution_id,
+    poll_tools_execution_terminal,
+    require_project_id,
     require_uniform_scope,
     stage_local_file,
+    sync_process_csv,
     sync_process_pdb,
+    sync_process_sdf,
+    wait_for_data_platform_ingestion,
+    workflow_import_smiles_csv,
 )
 from deeporigin.exceptions import DeepOriginException
 from deeporigin.platform.client import DeepOriginClient
 from deeporigin.platform.constants import TOOL_KEYS_AND_VERSIONS
+
+
+def test_job_outputs_helpers() -> None:
+    assert job_outputs({}) == {}
+    assert job_outputs({"jobOutputs": "nope"}) == {}
+    merged = job_outputs_with_execution_id(
+        {"executionId": "exec-1", "jobOutputs": {"ligands": []}}
+    )
+    assert merged["import_execution_id"] == "exec-1"
+    assert merged["ligands"] == []
+
+
+def test_require_project_id_uses_client_scope(client: DeepOriginClient) -> None:
+    assert require_project_id(entity_project_id=None, client=client) == str(
+        client.project_id
+    )
+
+
+def test_poll_tools_execution_terminal_rejects_failed_status() -> None:
+    client = MagicMock()
+    client.executions.wait.return_value = [{"status": "Failed"}]
+    with pytest.raises(DeepOriginException, match="import-dataset execution ended"):
+        poll_tools_execution_terminal(client, "exec-1", poll_interval=0.01, timeout=1.0)
+
+
+def test_wait_for_data_platform_ingestion_times_out() -> None:
+    client = MagicMock()
+    client.executions.search.return_value = {
+        "data": [{"status": DATA_PLATFORM_DATA_INGESTING_STATUS, "id": "dp-1"}]
+    }
+    with pytest.raises(TimeoutError, match="Timed out waiting"):
+        wait_for_data_platform_ingestion(
+            client,
+            "exec-1",
+            poll_interval=0.01,
+            timeout=0.05,
+        )
+
+
+def test_sync_process_csv_on_mock_server(client: DeepOriginClient) -> None:
+    remote = stage_local_file(
+        client,
+        DATA_DIR / "ligands" / "ligands.csv",
+    )
+    outputs = sync_process_csv(
+        client=client,
+        project_id=str(client.project_id),
+        file_path=remote,
+    )
+    assert isinstance(outputs.get("ligands"), list)
+
+
+def test_sync_process_sdf_on_mock_server(client: DeepOriginClient) -> None:
+    remote = stage_local_file(client, BRD_DATA_DIR / "brd-2.sdf")
+    outputs = sync_process_sdf(
+        client=client,
+        project_id=str(client.project_id),
+        file_path=remote,
+    )
+    assert isinstance(outputs.get("ligands"), list)
+
+
+def test_workflow_import_smiles_csv_end_to_end(client: DeepOriginClient) -> None:
+    remote = stage_local_file(
+        client,
+        DATA_DIR / "ligands" / "ligands.csv",
+    )
+    exec_id, row = workflow_import_smiles_csv(
+        client=client,
+        project_id=str(client.project_id),
+        csv_path=remote,
+        poll_interval=0.01,
+        tools_timeout=30.0,
+        ingestion_poll_interval=0.01,
+        ingestion_timeout=30.0,
+    )
+    assert exec_id
+    assert row["status"] == "Completed"
 
 
 def test_require_uniform_scope_accepts_single_value() -> None:
