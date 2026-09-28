@@ -2,11 +2,14 @@
 
 from __future__ import annotations
 
+import csv
+import tempfile
+from pathlib import Path
 from unittest.mock import MagicMock
 
 import pytest
 
-from deeporigin.drug_discovery import BRD_DATA_DIR, DATA_DIR
+from deeporigin.drug_discovery import BRD_DATA_DIR
 from deeporigin.drug_discovery.import_dataset_sync import (
     DATA_PLATFORM_DATA_INGESTING_STATUS,
     job_outputs,
@@ -64,16 +67,20 @@ def test_wait_for_data_platform_ingestion_times_out() -> None:
 
 
 def test_sync_process_csv_on_mock_server(client: DeepOriginClient) -> None:
-    remote = stage_local_file(
-        client,
-        DATA_DIR / "ligands" / "ligands.csv",
-    )
+    with tempfile.NamedTemporaryFile("w", suffix=".csv", delete=False) as handle:
+        writer = csv.DictWriter(handle, fieldnames=["smiles", "name"])
+        writer.writeheader()
+        writer.writerow({"smiles": "CCO", "name": "ethanol"})
+        csv_local = handle.name
+    remote = stage_local_file(client, csv_local)
+    Path(csv_local).unlink(missing_ok=True)
     outputs = sync_process_csv(
         client=client,
         project_id=str(client.project_id),
         file_path=remote,
     )
     assert isinstance(outputs.get("ligands"), list)
+    assert outputs["ligands"]
 
 
 def test_sync_process_sdf_on_mock_server(client: DeepOriginClient) -> None:
@@ -87,10 +94,13 @@ def test_sync_process_sdf_on_mock_server(client: DeepOriginClient) -> None:
 
 
 def test_workflow_import_smiles_csv_end_to_end(client: DeepOriginClient) -> None:
-    remote = stage_local_file(
-        client,
-        DATA_DIR / "ligands" / "ligands.csv",
-    )
+    with tempfile.NamedTemporaryFile("w", suffix=".csv", delete=False) as handle:
+        writer = csv.DictWriter(handle, fieldnames=["smiles", "name"])
+        writer.writeheader()
+        writer.writerow({"smiles": "CCO", "name": "ethanol"})
+        csv_local = handle.name
+    remote = stage_local_file(client, csv_local)
+    Path(csv_local).unlink(missing_ok=True)
     exec_id, row = workflow_import_smiles_csv(
         client=client,
         project_id=str(client.project_id),
