@@ -518,9 +518,9 @@ def test_secondary_pharma_run_ligand_ml_returns_dataframe(
         "gene_name",
         "ligand_smiles",
         "p_active",
-        "p_affinity",
     ):
         assert col in df.columns
+    assert "p_affinity" not in df.columns
     assert set(df["method"]) == {"ligand-ml"}
 
     # Ligands started unsynced, but get_results() backfills a real id once
@@ -537,13 +537,12 @@ def test_secondary_pharma_run_ligand_ml_returns_dataframe(
     row = df[
         (df["ligand_smiles"] == "CCO") & (df["uniprot_id"] == _PANEL_ACCESSIONS[0])
     ].iloc[0]
-    # exactly one of p_active/p_affinity is set per row; the other is None,
-    # which pandas stores as NaN once the column is a float64 dtype.
-    for key in ("p_active", "p_affinity"):
-        if expected[key] is None:
-            assert pd.isna(row[key])
-        else:
-            assert row[key] == expected[key]
+    # p_affinity is hidden regardless of which the platform set; when the
+    # platform set p_affinity (not p_active), p_active is NaN here.
+    if expected["p_active"] is None:
+        assert pd.isna(row["p_active"])
+    else:
+        assert row["p_active"] == expected["p_active"]
 
 
 def test_secondary_pharma_run_ligand_ml_filters_uniprots(

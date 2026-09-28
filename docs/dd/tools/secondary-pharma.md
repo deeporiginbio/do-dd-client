@@ -53,9 +53,8 @@ df = job.run()
 ```
 
 `df` has one row per ligand × panel member: `uniprot_id`, `gene_name`, and
-either `p_active` (classification) or `p_affinity` (regression, -log10 M).
-`ligand_id` should always be populated, even if `ligand` wasn't registered with the
-platform beforehand.
+`p_active`. `ligand_id` should always be populated, even if `ligand` wasn't
+registered with the platform beforehand.
 
 See what's currently in the panel with `SecondaryPharmacology.get_panel()`:
 

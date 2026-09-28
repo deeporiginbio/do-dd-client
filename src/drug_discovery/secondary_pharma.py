@@ -1009,6 +1009,7 @@ class SecondaryPharmacology(
                     ),
                 )
             df = pd.DataFrame([row for row in rows if isinstance(row, dict)])
+            df = df.drop(columns=["p_affinity"], errors="ignore")
             df = self._backfill_ligand_ids(df)
             df.insert(0, "method", self._method)
             return df
@@ -1042,10 +1043,8 @@ class SecondaryPharmacology(
     ) -> None:
         """Visualize this run's results -- method-aware.
 
-        ``ligand-ml``: heatmap colored by ``p_active`` (or ``p_affinity``).
-        ``docking``: heatmap colored by ``metric``. No combined
-        pose_score-vs-binding_energy view -- different scales, not directly
-        comparable.
+        ``ligand-ml``: heatmap colored by ``p_active``.
+        ``docking``: heatmap colored by ``metric``.
 
         Args:
             dto: Optional execution payload, forwarded to :meth:`get_results`.
@@ -1059,16 +1058,15 @@ class SecondaryPharmacology(
             from deeporigin.plots import WHITE_RED_HAZARD_PALETTE, plot_grid_heatmap
 
             labels = self._ligand_plot_labels()
-            score = df["p_active"].fillna(df["p_affinity"])
             ligand_label = df["ligand_smiles"].map(lambda s: labels.get(s, s))
-            pivot = df.assign(score=score, ligand_label=ligand_label).pivot_table(
-                index="ligand_label", columns="gene_name", values="score"
+            pivot = df.assign(ligand_label=ligand_label).pivot_table(
+                index="ligand_label", columns="gene_name", values="p_active"
             )
             plot_grid_heatmap(
                 pivot.to_numpy(),
                 row_labels=list(pivot.index),
                 col_labels=list(pivot.columns),
-                title="Secondary pharmacology: P(active/affinity)",
+                title="Secondary pharmacology: P(active)",
                 value_label="score",
                 palette=WHITE_RED_HAZARD_PALETTE,
                 clim=clim if clim is not None else (0.0, 1.0),
