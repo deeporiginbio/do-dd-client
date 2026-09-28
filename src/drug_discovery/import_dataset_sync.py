@@ -217,18 +217,14 @@ def wait_for_data_platform_ingestion(
             elif status in _FAILED_DP_STATUSES:
                 raise DeepOriginException(
                     title="Ligand import failed",
-                    message=(
-                        f"Data platform ingestion failed with status {status!r}."
-                    ),
+                    message=(f"Data platform ingestion failed with status {status!r}."),
                 )
             elif is_success_status(status):
                 return last_row
             elif status in TERMINAL_STATES:
                 raise DeepOriginException(
                     title="Ligand import failed",
-                    message=(
-                        f"Data platform execution ended with status {status!r}."
-                    ),
+                    message=(f"Data platform execution ended with status {status!r}."),
                 )
 
         if deadline is not None and time.monotonic() >= deadline:

@@ -1726,7 +1726,11 @@ def create_tools_router(
         execution["workflowCsvIngestApplied"] = True
         execution["jobOutputs"] = {
             "records_imported": len(
-                [s for s in execution_subjects.values() if s.get("execution_id") == dp_row_id]
+                [
+                    s
+                    for s in execution_subjects.values()
+                    if s.get("execution_id") == dp_row_id
+                ]
             ),
             "batches": 1,
         }
