@@ -133,9 +133,8 @@ copy, validated against the current panel.
 Don't know the execution id? List every past run, newest first:
 
 ```{.python notest}
-runs = SecondaryPharmacology.list(status=["Completed"], project_id=client.project_id)
+runs = SecondaryPharmacology.list(status=["Completed"])
 ml_runs = [r for r in runs if r.method == "ligand-ml"]
 dock_runs = [r for r in runs if r.method == "docking"]
 ```
 
-`project_id` restricts the list to your own project.

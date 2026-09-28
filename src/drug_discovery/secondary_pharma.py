@@ -1402,13 +1402,10 @@ class SecondaryPharmacology(
         *,
         client: DeepOriginClient | None = None,
         status: builtins.list[str] | None = None,
-        project_id: str | None = None,
         quiet: bool = True,
     ) -> builtins.list[Self]:
         """Same as :meth:`Execution.list`, but ``quiet`` defaults to True."""
-        return super().list(
-            client=client, status=status, project_id=project_id, quiet=quiet
-        )
+        return super().list(client=client, status=status, quiet=quiet)
 
     def duplicate(self, *, client: DeepOriginClient | None = None) -> Self:
         """Copy configuration into a new draft with a writable ``uniprots``.

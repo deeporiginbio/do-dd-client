@@ -726,16 +726,13 @@ class Execution:
         *,
         client: DeepOriginClient | None = None,
         status: builtins.list[str] | None = None,
-        project_id: str | None = None,
         quiet: bool = False,
     ) -> builtins.list[Self]:
-        """List executions of this tool, newest first.
+        """List executions of this tool, newest first, scoped to the client's project.
 
         Args:
             client: Optional API client. Uses the default if not provided.
             status: Optional list of statuses to keep.
-            project_id: Restrict to this project; omit to see every
-                execution the caller can access, across all projects.
             quiet: Suppress UserWarnings raised while rebuilding domain
                 state for each result. Off by default; see :meth:`from_id`.
 
@@ -759,7 +756,7 @@ class Execution:
             fetch_all_pages=True,
             tool_key=cls.tool_key,
             order=EXECUTION_LIST_ORDER_CREATED_DESC,
-            project_id=project_id,
+            project_id=client.project_id,
         ).get("data", [])
         all_dtos = [
             dto for dto in all_dtos if dto.get("tool", {}).get("key") == cls.tool_key
