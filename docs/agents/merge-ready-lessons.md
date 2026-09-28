@@ -2,6 +2,10 @@
 
 Notes from past merge-ready cycles. Read before starting; append after success.
 
+## 2026-09-28 — PR #642 — DDOS-7979 large LigandSet workflow sync
+
+Normalizing mock `executions/search` rows for ingestion polling broke `test_progress_reports` (`executionId` → `compute_job_id`). Sonar wanted helper extraction on the poll loop plus ≥80% new-code coverage on `import_dataset_sync.py`. Copilot caught real gaps: mock search must honor `filter.props` (not only legacy `compute_job_id`), workflow CSV mapper must include `name`/`tags`, and accidental `protein-prep.ipynb` edits (typo + removed `prep.skip(decision="review")`) should be reverted wholesale from `main`.
+
 ## 2026-09-27 — PR #641 — DDOS-7941 client.project_id required
 
 When tightening project scope on sync/execution paths, update public method docstrings in the same PR — Copilot flagged `Pose.from_sdf` still documenting entity-or-client fallback after the code moved to client-only validation. Required CI is only formatting + ubuntu functionality; `level-1-tests` staging/prod still fail on unrelated platform registration flakes.
