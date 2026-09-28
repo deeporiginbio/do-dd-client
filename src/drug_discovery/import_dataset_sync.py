@@ -28,11 +28,42 @@ LIGANDS_CSV_MAPPER: list[dict[str, str]] = [
 DATA_PLATFORM_DATA_INGESTING_STATUS = "DataIngesting"
 
 _FAILED_DP_STATUSES = frozenset({"Failed", "Cancelled"})
+_IMPORT_FAILED_TITLE = "Ligand import failed"
 _SMILES_LIST_SEARCH_CHUNK = 500
 _DEFAULT_TOOLS_POLL_INTERVAL_S = 2.0
 _DEFAULT_TOOLS_WAIT_TIMEOUT_S = 3600.0
 _DEFAULT_INGESTION_POLL_INTERVAL_S = 2.0
 _DEFAULT_INGESTION_WAIT_TIMEOUT_S = 3600.0
+
+
+def _import_failed(message: str) -> DeepOriginException:
+    return DeepOriginException(title=_IMPORT_FAILED_TITLE, message=message)
+
+
+def _tools_execution_terminal_dto(dto: dict[str, Any]) -> dict[str, Any]:
+    """Validate tools execution DTO is terminal success; raise otherwise."""
+    status = normalize_platform_status(dto.get("status"))
+    if status in _FAILED_DP_STATUSES:
+        raise _import_failed(f"import-dataset execution ended with status {status!r}.")
+    if not is_success_status(status):
+        raise _import_failed(
+            f"import-dataset execution ended with unexpected status {status!r}."
+        )
+    return dto
+
+
+def _ingestion_poll_outcome(last_row: dict[str, Any]) -> dict[str, Any] | None:
+    """Return the row when ingestion is done, or ``None`` to keep polling."""
+    status = normalize_platform_status(last_row.get("status"))
+    if status == DATA_PLATFORM_DATA_INGESTING_STATUS:
+        return None
+    if status in _FAILED_DP_STATUSES:
+        raise _import_failed(f"Data platform ingestion failed with status {status!r}.")
+    if is_success_status(status):
+        return last_row
+    if status in TERMINAL_STATES:
+        raise _import_failed(f"Data platform execution ended with status {status!r}.")
+    return None
 
 
 def run_import_dataset_sync(
@@ -176,20 +207,7 @@ def poll_tools_execution_terminal(
         timeout=timeout,
     )
     dto = dtos[0]
-    status = normalize_platform_status(dto.get("status"))
-    if status in _FAILED_DP_STATUSES:
-        raise DeepOriginException(
-            title="Ligand import failed",
-            message=f"import-dataset execution ended with status {status!r}.",
-        )
-    if not is_success_status(status):
-        raise DeepOriginException(
-            title="Ligand import failed",
-            message=(
-                f"import-dataset execution ended with unexpected status {status!r}."
-            ),
-        )
-    return dto
+    return _tools_execution_terminal_dto(dto)
 
 
 def wait_for_data_platform_ingestion(
@@ -211,21 +229,9 @@ def wait_for_data_platform_ingestion(
         if rows:
             last_row = rows[0] if isinstance(rows[0], dict) else None
         if last_row is not None:
-            status = normalize_platform_status(last_row.get("status"))
-            if status == DATA_PLATFORM_DATA_INGESTING_STATUS:
-                pass
-            elif status in _FAILED_DP_STATUSES:
-                raise DeepOriginException(
-                    title="Ligand import failed",
-                    message=(f"Data platform ingestion failed with status {status!r}."),
-                )
-            elif is_success_status(status):
-                return last_row
-            elif status in TERMINAL_STATES:
-                raise DeepOriginException(
-                    title="Ligand import failed",
-                    message=(f"Data platform execution ended with status {status!r}."),
-                )
+            done = _ingestion_poll_outcome(last_row)
+            if done is not None:
+                return done
 
         if deadline is not None and time.monotonic() >= deadline:
             raise TimeoutError(
@@ -295,6 +301,54 @@ def _ligand_records_by_canonical_smiles(
     return by_canonical
 
 
+def _canonical_smiles_index_from_subjects(
+    client: DeepOriginClient,
+    *,
+    execution_row_id: str | None,
+) -> dict[str, dict[str, Any]]:
+    if not execution_row_id:
+        return {}
+    subject_ids = _ligand_ids_from_execution_subjects(
+        client, execution_row_id=execution_row_id
+    )
+    if not subject_ids:
+        return {}
+    by_canonical: dict[str, dict[str, Any]] = {}
+    records = client.entities.get_ligands(ids=subject_ids)  # ty: ignore[unresolved-attribute]
+    for row in records:
+        if not isinstance(row, dict):
+            continue
+        canon = row.get("canonical_smiles")
+        if canon:
+            by_canonical[str(canon)] = row
+    return by_canonical
+
+
+def _apply_hydrated_records(
+    ligands: list[Any],
+    by_canonical: dict[str, dict[str, Any]],
+    *,
+    compute_job_id: str,
+) -> None:
+    for lig in ligands:
+        canon = lig.canonical_smiles
+        if canon is None:
+            continue
+        record = by_canonical.get(str(canon))
+        if record is None or not record.get("id"):
+            raise DeepOriginException(
+                title="Ligand sync failed",
+                message=(
+                    f"import-dataset (compute_job_id={compute_job_id!r}) did not "
+                    f"return a ligand id for canonical_smiles {canon!r}."
+                ),
+            )
+        lig.id = str(record["id"])
+        mol_file = record.get("mol_file")
+        if mol_file:
+            lig.remote_path = str(mol_file)
+
+
 def hydrate_ligand_ids_after_import(
     client: DeepOriginClient,
     ligands: list[Any],
@@ -304,22 +358,12 @@ def hydrate_ligand_ids_after_import(
     dp_execution_row: dict[str, Any] | None = None,
 ) -> None:
     """Set ``id`` on in-memory ligands after a workflow import completes."""
-    by_canonical: dict[str, dict[str, Any]] = {}
     execution_row_id = (
         _dp_execution_row_id(dp_execution_row) if dp_execution_row else None
     )
-    if execution_row_id:
-        subject_ids = _ligand_ids_from_execution_subjects(
-            client, execution_row_id=execution_row_id
-        )
-        if subject_ids:
-            records = client.entities.get_ligands(ids=subject_ids)  # ty: ignore[unresolved-attribute]
-            for row in records:
-                if not isinstance(row, dict):
-                    continue
-                canon = row.get("canonical_smiles")
-                if canon:
-                    by_canonical[str(canon)] = row
+    by_canonical = _canonical_smiles_index_from_subjects(
+        client, execution_row_id=execution_row_id
+    )
 
     needed = [
         str(lig.canonical_smiles)
@@ -336,23 +380,7 @@ def hydrate_ligand_ids_after_import(
             )
         )
 
-    for lig in ligands:
-        canon = lig.canonical_smiles
-        if canon is None:
-            continue
-        record = by_canonical.get(str(canon))
-        if record is None or not record.get("id"):
-            raise DeepOriginException(
-                title="Ligand sync failed",
-                message=(
-                    f"import-dataset did not return a ligand id for canonical_smiles "
-                    f"{canon!r}."
-                ),
-            )
-        lig.id = str(record["id"])
-        mol_file = record.get("mol_file")
-        if mol_file:
-            lig.remote_path = str(mol_file)
+    _apply_hydrated_records(ligands, by_canonical, compute_job_id=compute_job_id)
 
 
 def workflow_import_smiles_csv(
@@ -384,10 +412,7 @@ def workflow_import_smiles_csv(
     )
     execution_id = dto.get("executionId")
     if not execution_id:
-        raise DeepOriginException(
-            title="Ligand import failed",
-            message="import-dataset workflow did not return an execution id.",
-        )
+        raise _import_failed("import-dataset workflow did not return an execution id.")
     execution_id = str(execution_id)
     poll_tools_execution_terminal(
         client,
