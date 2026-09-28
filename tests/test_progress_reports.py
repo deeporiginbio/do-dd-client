@@ -25,7 +25,7 @@ def test_get_progress_reports(client: DeepOriginClient):
     assert len(response["data"]) > 0, "Expected at least one execution record"
 
     record = response["data"][0]
-    assert record["executionId"] == execution_id
+    assert record["compute_job_id"] == execution_id
 
 
 def test_get_progress_reports_not_found(client: DeepOriginClient):
