@@ -210,6 +210,20 @@ def poll_tools_execution_terminal(
     return _tools_execution_terminal_dto(dto)
 
 
+def _latest_data_platform_execution_row(
+    client: DeepOriginClient,
+    compute_job_id: str,
+) -> dict[str, Any] | None:
+    resp = client.executions.search(  # ty: ignore[unresolved-attribute]
+        compute_job_id=compute_job_id,
+        limit=1,
+    )
+    rows = resp.get("data") or []
+    if not rows or not isinstance(rows[0], dict):
+        return None
+    return rows[0]
+
+
 def wait_for_data_platform_ingestion(
     client: DeepOriginClient,
     compute_job_id: str,
@@ -219,15 +233,8 @@ def wait_for_data_platform_ingestion(
 ) -> dict[str, Any]:
     """Poll data-platform execution until ingestion leaves ``DataIngesting``."""
     deadline = time.monotonic() + timeout if timeout is not None else None
-    last_row: dict[str, Any] | None = None
     while True:
-        resp = client.executions.search(  # ty: ignore[unresolved-attribute]
-            compute_job_id=compute_job_id,
-            limit=1,
-        )
-        rows = resp.get("data") or []
-        if rows:
-            last_row = rows[0] if isinstance(rows[0], dict) else None
+        last_row = _latest_data_platform_execution_row(client, compute_job_id)
         if last_row is not None:
             done = _ingestion_poll_outcome(last_row)
             if done is not None:
