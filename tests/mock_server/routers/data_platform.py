@@ -996,7 +996,9 @@ def create_data_platform_router(
                 }
             )
 
-        dp_rows = {str(row["id"]): row for row in normalized if row.get("id") is not None}
+        dp_rows = {
+            str(row["id"]): row for row in normalized if row.get("id") is not None
+        }
         filtered = _apply_search_filters(
             dp_rows, filter_dict, limit=limit, offset=offset
         )
