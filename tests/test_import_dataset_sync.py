@@ -12,6 +12,7 @@ import pytest
 from deeporigin.drug_discovery import BRD_DATA_DIR
 from deeporigin.drug_discovery.import_dataset_sync import (
     DATA_PLATFORM_DATA_INGESTING_STATUS,
+    hydrate_ligand_ids_after_import,
     job_outputs,
     job_outputs_with_execution_id,
     poll_tools_execution_terminal,
@@ -24,6 +25,7 @@ from deeporigin.drug_discovery.import_dataset_sync import (
     wait_for_data_platform_ingestion,
     workflow_import_smiles_csv,
 )
+from deeporigin.drug_discovery.structures.ligand import Ligand
 from deeporigin.exceptions import DeepOriginException
 from deeporigin.platform.client import DeepOriginClient
 from deeporigin.platform.constants import TOOL_KEYS_AND_VERSIONS
@@ -85,6 +87,21 @@ def test_poll_tools_execution_terminal_rejects_unexpected_status() -> None:
     client.executions.wait.return_value = [{"status": "Running"}]
     with pytest.raises(DeepOriginException, match="unexpected status"):
         poll_tools_execution_terminal(client, "exec-1", poll_interval=0.01, timeout=1.0)
+
+
+def test_hydrate_ligand_ids_raises_when_platform_row_missing() -> None:
+    lig = Ligand.from_smiles("CCO")
+    client = MagicMock()
+    client.entities.search.return_value = {"data": []}
+    client.entities.search_ligands.return_value = {"data": []}
+    with pytest.raises(DeepOriginException, match="did not return a ligand id"):
+        hydrate_ligand_ids_after_import(
+            client,
+            [lig],
+            compute_job_id="exec-1",
+            project_id="proj-1",
+            dp_execution_row={"id": "dp-row"},
+        )
 
 
 def test_sync_process_csv_on_mock_server(client: DeepOriginClient) -> None:
