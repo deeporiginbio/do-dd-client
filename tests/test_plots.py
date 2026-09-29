@@ -822,3 +822,22 @@ def test_plot_split_heatmap_clim_prints_note_per_half_when_clipped(capsys):
     out = capsys.readouterr().out
     assert "1 of 1 p_active value(s)" in out
     assert "pose_score" not in out
+
+
+def _heatmap_hover_labels(**kwargs) -> list[str]:
+    """Return the hover tooltip field names ``plot_heatmap`` builds."""
+    with patch("deeporigin.plots.show") as mock_show:
+        figure = plot_heatmap(np.eye(2), **kwargs)
+        if figure is None:
+            figure = mock_show.call_args[0][0]
+    hover = [t for t in figure.tools if t.__class__.__name__ == "HoverTool"][0]
+    return [label for label, _ in hover.tooltips]
+
+
+def test_plot_heatmap_hover_label():
+    """The value tooltip is labeled "RMSD" by default and renamed by ``value_label``."""
+    assert "RMSD" in _heatmap_hover_labels()
+
+    labels = _heatmap_hover_labels(value_label="Similarity")
+    assert "Similarity" in labels
+    assert "RMSD" not in labels

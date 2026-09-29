@@ -148,6 +148,7 @@ def plot_heatmap(
     size: int = 700,
     show_values_on_hover: bool = True,
     clim: Optional[tuple[float, float]] = None,
+    value_label: str = "RMSD",
 ):
     """
     Visualize a square matrix (NxN) as a Bokeh heatmap.
@@ -169,6 +170,9 @@ def plot_heatmap(
     clim : tuple[float, float], optional
         Color limits as (vmin, vmax). If None, automatically computed from data.
         Useful for consistent color scaling across multiple plots.
+    value_label : str
+        Name shown for the cell value in the hover tooltip. Defaults to
+        "RMSD".
 
     Returns
     -------
@@ -263,7 +267,7 @@ def plot_heatmap(
                 ("col (j)", "@j"),
                 ("label row", "@y"),
                 ("label col", "@x"),
-                ("RMSD", _VALUE_STR_FIELD),
+                (value_label, _VALUE_STR_FIELD),
             ]
         )
         p.add_tools(hover)
