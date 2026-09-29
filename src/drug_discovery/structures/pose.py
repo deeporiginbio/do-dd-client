@@ -1708,11 +1708,15 @@ class PoseSet:
         lazy: bool = False,
         client: Optional[DeepOriginClient] = None,
         remote_path: Optional[str] = None,
+        show_progress: bool | None = None,
     ) -> None:
         """Sync all poses in one import-dataset ``process_sdf`` execution.
 
         Each pose must have :attr:`~Pose.protein_id` set. Ligands are created or
         reused in the tool; pose rows are minted with ``register_poses: true``.
+
+        In Jupyter, a step checklist is shown by default (upload → import-dataset
+        → ingestion → ID resolution). Pass ``show_progress=False`` to disable.
         """
         if not self.poses:
             return
@@ -1742,6 +1746,14 @@ class PoseSet:
             sync_process_sdf,
             wait_for_data_platform_ingestion,
         )
+        from deeporigin.drug_discovery.import_dataset_sync_display import (
+            import_dataset_sync_progress_for_pose_registration,
+        )
+
+        progress = import_dataset_sync_progress_for_pose_registration(
+            show_progress=show_progress,
+        )
+        step = 0
 
         proj_id = require_uniform_scope(
             [p.resolved_project_id(client=client) for p in poses_to_sync],
@@ -1763,50 +1775,86 @@ class PoseSet:
             pose.project_id = proj_id
 
         subset = PoseSet(poses=poses_to_sync)
-        local_sdf = subset.to_sdf()
-        remote = stage_local_file(client, local_sdf, remote_path=remote_path)
-        outputs = sync_process_sdf(
-            client=client,
-            project_id=proj_id,
-            file_path=remote,
-            register_poses=True,
-            protein_id=str(protein_id),
-            origin=origin,
-        )
-        import_execution_id = outputs.get("import_execution_id")
-        if isinstance(import_execution_id, str):
-            import_execution_id = import_execution_id.strip() or None
-        else:
-            import_execution_id = None
-        if not import_execution_id:
-            raise DeepOriginException(
-                title=_POSE_SYNC_FAILED,
-                message=(
-                    "import-dataset did not return an execution id; cannot wait "
-                    "for data-platform ingestion before resolving pose ids."
-                ),
+        try:
+            progress.start_step(
+                step,
+                detail=f"{len(poses_to_sync)} pose(s)",
             )
-        wait_for_data_platform_ingestion(
-            client,
-            import_execution_id,
-            # Hidden served import-dataset often has no executions/search row.
-            no_row_timeout=30.0,
-        )
-        ligand_rows = outputs.get("ligands") or []
-        pose_rows = outputs.get("poses") or []
-        if not isinstance(ligand_rows, list):
-            ligand_rows = []
-        if not isinstance(pose_rows, list):
-            pose_rows = []
-        _hydrate_poses_from_import_outputs(
-            poses_to_sync,
-            ligand_rows=ligand_rows,
-            pose_rows=pose_rows,
-            client=client,
-            origin=origin,
-            project_id=proj_id,
-            compute_job_id=import_execution_id,
-        )
+            local_sdf = subset.to_sdf()
+            progress.finish_step(step, detail=Path(local_sdf).name)
+            step += 1
+
+            progress.start_step(step)
+            remote = stage_local_file(client, local_sdf, remote_path=remote_path)
+            progress.finish_step(step, detail=remote)
+            step += 1
+
+            progress.start_step(step, detail="import-dataset · process_sdf")
+            outputs = sync_process_sdf(
+                client=client,
+                project_id=proj_id,
+                file_path=remote,
+                register_poses=True,
+                protein_id=str(protein_id),
+                origin=origin,
+            )
+            import_execution_id = outputs.get("import_execution_id")
+            if isinstance(import_execution_id, str):
+                import_execution_id = import_execution_id.strip() or None
+            else:
+                import_execution_id = None
+            if not import_execution_id:
+                progress.fail_step(
+                    step,
+                    message="No execution id in tool response",
+                )
+                raise DeepOriginException(
+                    title=_POSE_SYNC_FAILED,
+                    message=(
+                        "import-dataset did not return an execution id; cannot wait "
+                        "for data-platform ingestion before resolving pose ids."
+                    ),
+                )
+            progress.set_execution_id(import_execution_id)
+            progress.finish_step(step)
+            step += 1
+
+            progress.start_step(step)
+            wait_for_data_platform_ingestion(
+                client,
+                import_execution_id,
+                # Hidden served import-dataset often has no executions/search row.
+                no_row_timeout=30.0,
+            )
+            progress.finish_step(step)
+            step += 1
+
+            progress.start_step(step)
+            ligand_rows = outputs.get("ligands") or []
+            pose_rows = outputs.get("poses") or []
+            if not isinstance(ligand_rows, list):
+                ligand_rows = []
+            if not isinstance(pose_rows, list):
+                pose_rows = []
+            _hydrate_poses_from_import_outputs(
+                poses_to_sync,
+                ligand_rows=ligand_rows,
+                pose_rows=pose_rows,
+                client=client,
+                origin=origin,
+                project_id=proj_id,
+                compute_job_id=import_execution_id,
+            )
+            progress.finish_step(
+                step,
+                detail=f"{len(poses_to_sync)} pose id(s) assigned",
+            )
+        except Exception as exc:
+            if step >= 0:
+                progress.fail_step(step, message=str(exc))
+            raise
+        finally:
+            progress.close()
 
     def filter_top_poses(self, *, by_pose_score: bool = True) -> Self:
         """Keep the best pose for each unique SMILES.
