@@ -68,9 +68,9 @@ docs = [
     "ipykernel",
 ]
 plots = ["bokeh"]
+visualization = ["deeporigin-molstar==0.1.1"]
 tools = [
     "rdkit==2025.9.1",
-    "deeporigin-molstar==0.1.1",
     "biotite",
     "biopython",
     "rcsb-api>=1.1.4",

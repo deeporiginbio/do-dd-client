@@ -4,7 +4,6 @@ This module provides decorators and utilities for visualizing molecular structur
 and other drug discovery related data in Jupyter notebooks using the DeepOrigin Molstar viewer.
 """
 
-from deeporigin_molstar import JupyterViewer
 import pandas as pd
 
 
@@ -14,6 +13,8 @@ def jupyter_visualization(func):
     This decorator wraps functions that generate HTML visualizations and converts
     their output to be properly displayed in Jupyter notebooks using the DeepOrigin
     Molstar viewer.
+
+    Requires the optional ``deeporigin[visualization]`` dependencies when called.
 
     Args:
         func (callable): A function that returns HTML visualization content.
@@ -29,6 +30,8 @@ def jupyter_visualization(func):
     """
 
     def wrapper(*args, **kwargs):
+        from deeporigin_molstar import JupyterViewer
+
         html_visualization = func(*args, **kwargs)
         return JupyterViewer.visualize(html_visualization)
 

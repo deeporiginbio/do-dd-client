@@ -1,5 +1,15 @@
 This document describes how to visualize proteins and ligands constructed using the Protein and Ligand classes, and tools to visualize SDF files.
 
+`LigandSet.show()`, `ABFE.show_trajectory()`, and the `jupyter_visualization`
+decorator still use the legacy notebook viewer. Install its optional dependencies
+to use these methods:
+
+```sh
+pip install 'deeporigin[visualization]'
+```
+
+Scientific operations and the newer hosted Mol* viewers do not require this extra.
+
 ## Visualizing a protein
 
 ??? warning "Browser support"
@@ -70,5 +80,4 @@ A visualization such as this will be shown:
 If a ligand is not backed by a SDF file, a 2D visualization will be shown:
 
 ![](../../images/ligand.png)
-
 

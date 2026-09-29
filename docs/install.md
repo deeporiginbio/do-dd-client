@@ -100,4 +100,8 @@ If you want to install this yourself, in your own virtual env, use:
     uv add deeporigin --extra core --extra plots --extra tools
     ```
 
-You'll have to install Jupyter Lab and configure the kernel and environment yourself. 
+You'll have to install Jupyter Lab and configure the kernel and environment yourself.
+
+For legacy notebook viewers (`LigandSet.show()` and `ABFE.show_trajectory()`),
+also install `pip install 'deeporigin[visualization]'`. This dependency is optional
+and is no longer included in the `tools` extra.
