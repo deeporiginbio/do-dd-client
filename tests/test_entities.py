@@ -421,6 +421,46 @@ def test_update_protein_lv1(client: DeepOriginClient):
         client.entities.update_protein(protein_id, file_path=_BRD_PDB_REMOTE)
 
 
+def test_create_protein_uniprot_accession_lv1(client: DeepOriginClient):
+    """create_protein accepts uniprot_accession and returns it (DDOS-7559)."""
+    remote = f"testing/uniprot-create-{uuid.uuid4().hex[:12]}.pdb"
+    client.files.upload(_BRD_PDB_LOCAL, remote)
+
+    response = client.entities.create_protein(
+        file_path=remote,
+        uniprot_accession="P00533",
+    )
+    protein_id = response["data"]["id"]
+    assert response["data"]["uniprot_accession"] == "P00533"
+
+    fetched = client.entities.get_protein(id=protein_id)
+    assert fetched["uniprot_accession"] == "P00533"
+
+
+def test_update_protein_uniprot_accession_lv1(client: DeepOriginClient):
+    """update_protein patches uniprot_accession and bumps version (DDOS-7559)."""
+    remote = f"testing/uniprot-upd-{uuid.uuid4().hex[:12]}.pdb"
+    client.files.upload(_BRD_PDB_LOCAL, remote)
+    create = client.entities.create_protein(file_path=remote)
+    protein_id = create["data"]["id"]
+    version_before = create["data"]["version"]
+
+    response = client.entities.update_protein(protein_id, uniprot_accession="P04637")
+
+    row = response["data"][0]
+    assert row["uniprot_accession"] == "P04637"
+    assert row["version"] == version_before + 1
+
+    fetched = client.entities.get_protein(id=protein_id)
+    assert fetched["uniprot_accession"] == "P04637"
+
+
+def test_update_protein_requires_at_least_one_field(client: DeepOriginClient):
+    """update_protein rejects empty field sets before calling the platform."""
+    with pytest.raises(ValueError, match="at least one field"):
+        client.entities.update_protein("protein-id-placeholder")
+
+
 def test_batch_update_ligands_lv1(client: DeepOriginClient):
     """Test batch updating multiple ligands."""
     ids: list[str] = []
