@@ -68,6 +68,36 @@ def test_wait_for_data_platform_ingestion_times_out() -> None:
         )
 
 
+def test_wait_for_data_platform_ingestion_returns_when_no_execution_row() -> None:
+    client = MagicMock()
+    client.executions.search.return_value = {"data": []}
+    row = wait_for_data_platform_ingestion(
+        client,
+        "exec-1",
+        poll_interval=0.01,
+        no_row_timeout=0.05,
+        timeout=3600.0,
+    )
+    assert row == {}
+
+
+def test_wait_for_data_platform_ingestion_uses_result_explorer_without_dp_row() -> None:
+    client = MagicMock()
+    client.executions.search.return_value = {"data": []}
+    client.results.get.return_value = {
+        "data": [{"id": "pose-1", "compute_job_id": "exec-1"}]
+    }
+    row = wait_for_data_platform_ingestion(
+        client,
+        "exec-1",
+        poll_interval=0.01,
+        no_row_timeout=3600.0,
+        timeout=3600.0,
+    )
+    assert row == {}
+    client.results.get.assert_called()
+
+
 def test_wait_for_data_platform_ingestion_failed_status() -> None:
     client = MagicMock()
     client.executions.search.return_value = {

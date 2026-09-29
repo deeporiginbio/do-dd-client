@@ -341,9 +341,58 @@ def test_pose_repr_lists_metadata_without_viewer() -> None:
     assert "ligand:LIG:A:100" in text
     assert "LIG-1" in text
     html = pose._repr_html_()
-    assert "Pose(" in html
-    assert "cocrystal" in html
+    assert "Pose POSE-1" in html
+    assert "COCRYSTAL" in html
     assert "ligand:LIG:A:100" in html
+    assert ".show()" in html
+    assert "download()" in html
+
+
+def test_pose_set_render_view_card() -> None:
+    """PoseSet _repr_html_ shows a summary card with stats and action hints."""
+    poses = PoseSet(
+        poses=[
+            Pose(
+                id="P1",
+                ligand_id="L1",
+                smiles="CCO",
+                protein_id="PROT-1",
+                project_id="PROJ-1",
+                origin="docked",
+                pose_score=8.5,
+                binding_energy=-7.2,
+                best_pose=True,
+                local_path="tests/fixtures/docked-poses.sdf",
+            ),
+            Pose(
+                id="P2",
+                ligand_id="L1",
+                smiles="CCO",
+                protein_id="PROT-1",
+                project_id="PROJ-1",
+                origin="docked",
+                pose_score=7.0,
+                binding_energy=-6.5,
+                best_pose=False,
+                remote_path="entities/poses/p2.sdf",
+            ),
+        ]
+    )
+    html = poses._repr_html_()
+    assert "PoseSet with 2 poses" in html
+    assert "CCO" in html
+    assert "CONFORMERS" in html
+    assert "DOCKED" in html
+    assert "Pose score:" in html
+    assert "Binding energy:" in html
+    assert "all poses registered" in html
+    assert "filter_top_poses" in html
+    assert "download()" in html
+    assert "to_ligand_set().show()" in html
+
+    empty = PoseSet(poses=[])
+    assert "Empty PoseSet" in empty._repr_html_()
+    assert repr(empty) == "PoseSet(0 poses)"
 
 
 def test_pose_to_ligand_legacy_shape() -> None:
@@ -529,33 +578,56 @@ def test_pose_set_filter_top_poses() -> None:
         missing.filter_top_poses(by_pose_score=True)
 
 
-def test_pose_set_filter_top_poses_from_docked_sdf() -> None:
-    """filter_top_poses collapses multi-pose SDF fixtures to one pose per molecule."""
-    ligands = LigandSet.from_sdf("tests/fixtures/docked-poses.sdf")
-    assert len(ligands) == 16
+def test_pose_set_from_sdf_docked_fixture() -> None:
+    """from_sdf loads multi-record docking SDFs with score metadata."""
+    poses = PoseSet.from_sdf("tests/fixtures/docked-poses.sdf")
+    assert len(poses) == 16
+    assert poses[0].pose_score is not None
+    assert poses[0].binding_energy is not None
+    assert poses[0].smiles is not None
+    assert poses[0].mol is not None
+    assert poses[0].ligand_id is None
+    assert poses[0].id is None
+
+
+def test_pose_set_set_protein_id() -> None:
+    """set_protein_id updates every pose and supports chaining."""
+    from deeporigin.exceptions import DeepOriginException
+
     poses = PoseSet(
         poses=[
-            Pose(
-                ligand_id=f"L{i}",
-                id=f"P{i}",
-                smiles=str(
-                    lig.properties.get("SMILES")
-                    or lig.properties.get("initial_smiles")
-                    or lig.smiles
-                ),
-                local_path=lig.local_path,
-                pose_score=_optional_float(
-                    lig.properties.get("pose_score") or lig.properties.get("POSE SCORE")
-                ),
-                binding_energy=_optional_float(
-                    lig.properties.get("Binding Energy")
-                    or lig.properties.get("binding_energy")
-                ),
-                _mol=lig.mol,
-            )
-            for i, lig in enumerate(ligands)
+            Pose(ligand_id="L1", smiles="C"),
+            Pose(ligand_id="L2", smiles="CC"),
         ]
     )
+    assert poses[0].protein_id is None
+    same = poses.set_protein_id("prot-abc")
+    assert same is poses
+    assert poses[0].protein_id == "prot-abc"
+    assert poses[1].protein_id == "prot-abc"
+    with pytest.raises(DeepOriginException, match="non-empty protein_id"):
+        poses.set_protein_id("  ")
+
+
+def test_pose_set_set_protein() -> None:
+    """set_protein copies id from a synced Protein."""
+    from deeporigin.drug_discovery.structures.protein import Protein
+    from deeporigin.exceptions import DeepOriginException
+
+    poses = PoseSet(poses=[Pose(ligand_id="L1", smiles="C")])
+    protein = Protein(name="test", id="prot-synced")
+    poses.set_protein(protein)
+    assert poses[0].protein_id == "prot-synced"
+
+    unsynced = Protein(name="test")
+    with pytest.raises(DeepOriginException, match="synced"):
+        poses.set_protein(unsynced)
+
+
+def test_pose_set_filter_top_poses_from_docked_sdf() -> None:
+    """filter_top_poses collapses multi-pose SDF fixtures to one pose per molecule."""
+    poses = PoseSet.from_sdf("tests/fixtures/docked-poses.sdf")
+    assert len(poses) == 16
     filtered = poses.filter_top_poses(by_pose_score=False)
     assert len(filtered) == 1
 

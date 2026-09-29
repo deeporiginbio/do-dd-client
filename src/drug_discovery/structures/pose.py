@@ -3,9 +3,13 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from html import escape
 from pathlib import Path
 import time
-from typing import Any, ClassVar, Literal, Optional, Self
+from typing import TYPE_CHECKING, Any, ClassVar, Literal, Optional, Self
+
+if TYPE_CHECKING:
+    from deeporigin.drug_discovery.structures.protein import Protein
 
 import pandas as pd
 from rdkit import Chem
@@ -49,6 +53,33 @@ _POSE_JSON_RESERVED: frozenset[str] = frozenset(
         "best_pose",
         "origin",
         "component_id",
+    }
+)
+
+# SDF field names hoisted onto :class:`Pose` attributes in :func:`_pose_from_local_sdf_ligand`.
+_SDF_POSE_EXTRACTED_LOWER: frozenset[str] = frozenset(
+    {
+        "pose_score",
+        "pose score",
+        "binding_energy",
+        "binding energy",
+        "best_pose",
+        "smiles",
+        "canonical_smiles",
+        "ligand_smiles",
+        "initial_smiles",
+        "ligand_id",
+        "ligand id",
+        "id",
+        "pose_result_id",
+        "pose_id",
+        "name",
+        "_name",
+        "protein_id",
+        "origin",
+        "component_id",
+        "compute_job_id",
+        "project_id",
     }
 )
 
@@ -161,6 +192,83 @@ def _optional_bool(value: Any) -> bool | None:
     return None
 
 
+def _ligand_property(props: dict[str, Any], *names: str) -> Any:
+    """Return the first matching value from an SDF props dict (case-insensitive)."""
+
+    if not props:
+        return None
+    lowered = {str(key).lower(): val for key, val in props.items()}
+    for name in names:
+        if name in props and props[name] is not None:
+            return props[name]
+        hit = lowered.get(name.lower())
+        if hit is not None:
+            return hit
+    return None
+
+
+def _pose_from_local_sdf_ligand(
+    ligand: Ligand,
+    *,
+    protein_id: str | None,
+    origin: PoseOrigin | str | None,
+) -> Pose:
+    """Build an in-memory :class:`Pose` from one SDF record loaded as a :class:`Ligand`."""
+
+    props = dict(ligand.properties)
+    smiles_raw = _ligand_property(
+        props,
+        "SMILES",
+        "smiles",
+        "canonical_smiles",
+        "initial_smiles",
+        "ligand_smiles",
+    )
+    smiles = _strip_nonempty_str(smiles_raw)
+    if smiles is None:
+        smiles = ligand.smiles or ligand.canonical_smiles
+
+    ligand_id_raw = _ligand_property(props, "ligand_id", "Ligand ID")
+    ligand_id = _strip_nonempty_str(ligand_id_raw)
+
+    pose_id_raw = _ligand_property(props, "pose_result_id", "pose_id", "id")
+    pose_id = _strip_nonempty_str(str(pose_id_raw)) if pose_id_raw is not None else None
+
+    pose_score = _optional_float(
+        _ligand_property(props, "pose_score", "POSE SCORE", "POSE_SCORE")
+    )
+    binding_energy = _optional_float(
+        _ligand_property(props, "binding_energy", "Binding Energy", "BINDING ENERGY")
+    )
+    best_pose = _optional_bool(_ligand_property(props, "best_pose", "BEST_POSE"))
+
+    pose_props = {
+        str(key): val
+        for key, val in props.items()
+        if str(key).lower() not in _SDF_POSE_EXTRACTED_LOWER
+    }
+
+    return Pose(
+        id=pose_id,
+        ligand_id=ligand_id,
+        local_path=ligand.local_path,
+        remote_path=ligand.remote_path,
+        project_id=ligand.project_id,
+        smiles=smiles,
+        name=ligand.name,
+        protein_id=_strip_nonempty_str(protein_id)
+        or _strip_nonempty_str(_ligand_property(props, "protein_id")),
+        origin=origin or _strip_nonempty_str(_ligand_property(props, "origin")),
+        component_id=_strip_nonempty_str(_ligand_property(props, "component_id")),
+        compute_job_id=_strip_nonempty_str(_ligand_property(props, "compute_job_id")),
+        pose_score=pose_score,
+        binding_energy=binding_energy,
+        best_pose=best_pose,
+        props=pose_props,
+        _mol=ligand.mol,
+    )
+
+
 @dataclass
 class Pose(Entity):
     """A 3D ligand conformation backed by an SDF in the platform pose result table.
@@ -172,7 +280,8 @@ class Pose(Entity):
     Attributes:
         id: Platform pose result id (inherited from :class:`Entity`, keyword-only).
             Set by :meth:`sync` or when loading via :meth:`from_id` / :meth:`from_json`.
-        ligand_id: Parent ligand id in the ligands table.
+        ligand_id: Parent ligand id in the ligands table (set by :meth:`sync` or
+            when loading platform metadata / exported SDF fields).
         smiles: Canonical or input SMILES when known without loading the SDF.
         name: Optional pose or ligand name.
         protein_id: Optional protein the pose is associated with.
@@ -185,7 +294,7 @@ class Pose(Entity):
         props: Additional metadata from the platform row.
     """
 
-    ligand_id: str
+    ligand_id: str | None = None
     smiles: str | None = None
     name: str | None = None
     protein_id: str | None = None
@@ -633,6 +742,127 @@ class Pose(Entity):
         """Notebook HTML for the same plain-text summary."""
         return metadata_repr_html(self._metadata_repr_text())
 
+    def _render_view(self) -> str:
+        """Render a notebook card summarizing this :class:`Pose`."""
+        if self.name:
+            heading = f"Pose: {escape(self.name)}"
+        elif self.id:
+            heading = f"Pose {escape(self.id)}"
+        else:
+            heading = "Pose"
+
+        html_parts = [
+            "<div style='width: 500px; padding: 15px; border: 1px solid #ddd; "
+            "border-radius: 6px; background-color: #f9f9f9;'>",
+            f"<h3 style='margin-top: 0; color: #333;'>{heading}</h3>",
+        ]
+
+        if self.ligand_id:
+            html_parts.append(
+                f"<p style='margin: 8px 0;'><strong>Ligand id:</strong> "
+                f"{escape(self.ligand_id)}</p>"
+            )
+
+        if self.smiles:
+            smiles_line = (
+                f"<p style='margin: 8px 0;'><strong>SMILES:</strong> "
+                f"{escape(self.smiles)}</p>"
+            )
+            html_parts.append(smiles_line)
+
+        if self.origin:
+            origin_label = escape(str(self.origin))
+            html_parts.append(
+                f"<p style='margin: 8px 0;'><strong>Origin:</strong> "
+                f"<span class='badge text-bg-secondary' "
+                f"style='font-variant: small-caps;'>{origin_label.upper()}</span></p>"
+            )
+
+        score_bits: list[str] = []
+        if self.pose_score is not None:
+            score_bits.append(f"score {float(self.pose_score):.3g}")
+        if self.binding_energy is not None:
+            score_bits.append(
+                f"binding energy {float(self.binding_energy):.3g} kcal/mol"
+            )
+        if score_bits:
+            html_parts.append(
+                f"<p style='margin: 8px 0;'><strong>Docking:</strong> "
+                f"{', '.join(score_bits)}</p>"
+            )
+
+        if self.best_pose is True:
+            html_parts.append(
+                "<p style='margin: 8px 0;'><span class='badge text-bg-primary' "
+                "style='font-variant: small-caps;'>BEST POSE</span></p>"
+            )
+
+        if self.compute_job_id:
+            html_parts.append(
+                f"<p style='margin: 8px 0;'><strong>Compute job:</strong> "
+                f"{escape(self.compute_job_id)}</p>"
+            )
+
+        if self.component_id:
+            html_parts.append(
+                f"<p style='margin: 8px 0;'><strong>Component:</strong> "
+                f"{escape(self.component_id)}</p>"
+            )
+
+        has_local = bool(
+            self.local_path and Path(self.local_path).expanduser().is_file()
+        )
+        pending_download = bool(self.remote_path and not has_local)
+        if has_local:
+            html_parts.append(
+                "<p style='margin: 8px 0;'><strong>Structure:</strong> "
+                "<span class='badge text-bg-success' "
+                "style='font-variant: small-caps;'>LOCAL SDF</span></p>"
+            )
+        elif pending_download:
+            html_parts.append(
+                "<p style='margin: 8px 0;'><strong>Structure:</strong> "
+                "<span class='badge text-bg-warning' "
+                "style='font-variant: small-caps;'>REMOTE ONLY</span></p>"
+            )
+        elif self.mol is not None:
+            html_parts.append(
+                "<p style='margin: 8px 0;'><strong>Structure:</strong> "
+                "<span class='badge text-bg-info' "
+                "style='font-variant: small-caps;'>IN MEMORY</span></p>"
+            )
+
+        html_parts.extend(PoseSet(poses=[self])._platform_summary_html_parts(1))
+
+        if self.props:
+            sorted_props = sorted(self.props)
+            props_display = ", ".join(escape(str(key)) for key in sorted_props[:10])
+            if len(sorted_props) > 10:
+                props_display += f" and {len(sorted_props) - 10} more..."
+            html_parts.append(f"<p style='margin: 8px 0;'>Props: {props_display}</p>")
+
+        action_hints = [
+            "Use <code>.show()</code> for 3D visualization or "
+            "<code>.draw()</code> for 2D",
+        ]
+        if pending_download:
+            action_hints.append("<code>.download()</code> to fetch the pose SDF")
+        if self.id is None:
+            action_hints.append("<code>.sync()</code> to register on the platform")
+        action_hints.append(
+            "<code>.to_ligand()</code> for legacy Ligand-based workflows"
+        )
+
+        html_parts.append(
+            "<div style='margin-top: 12px; padding-top: 12px; border-top: 1px solid #ddd;'>"
+            "<p style='margin: 4px 0; font-size: 0.9em; color: #666;'>"
+            f"<em>{', '.join(action_hints)}</em>"
+            "</p>"
+            "</div>"
+        )
+        html_parts.append("</div>")
+        return "".join(html_parts)
+
     def __repr__(self) -> str:
         """Return a plain-text pose summary (no structure viewer)."""
         return self._metadata_repr_text()
@@ -640,8 +870,8 @@ class Pose(Entity):
     __str__ = __repr__
 
     def _repr_html_(self) -> str:
-        """Return plain-text pose metadata for Jupyter (no Mol* viewer)."""
-        return self._metadata_repr_html()
+        """Return an HTML summary card for Jupyter (no Mol* viewer)."""
+        return self._render_view()
 
 
 def _rehydrate_pose_from_local_sdf(
@@ -1016,6 +1246,55 @@ class PoseSet:
             return PoseSet(poses=result)
         return result
 
+    def set_protein_id(self, protein_id: str) -> Self:
+        """Set :attr:`~Pose.protein_id` on every pose in this set.
+
+        Args:
+            protein_id: Platform protein row id.
+
+        Returns:
+            This :class:`PoseSet` (for chaining).
+
+        Raises:
+            DeepOriginException: If ``protein_id`` is empty.
+        """
+
+        pid = str(protein_id).strip()
+        if not pid:
+            raise DeepOriginException(
+                title="Pose assignment failed",
+                message="PoseSet.set_protein_id requires a non-empty protein_id.",
+            )
+        for pose in self.poses:
+            pose.protein_id = pid
+        return self
+
+    def set_protein(self, protein: Protein) -> Self:
+        """Set :attr:`~Pose.protein_id` from a synced :class:`~deeporigin.drug_discovery.structures.protein.Protein`.
+
+        Args:
+            protein: Protein with :attr:`~deeporigin.drug_discovery.structures.entity.Entity.id`
+                set (call :meth:`~deeporigin.drug_discovery.structures.protein.Protein.sync`
+                first).
+
+        Returns:
+            This :class:`PoseSet` (for chaining).
+
+        Raises:
+            DeepOriginException: If the protein has no platform id.
+        """
+
+        protein_id = getattr(protein, "id", None)
+        if protein_id is None or not str(protein_id).strip():
+            raise DeepOriginException(
+                title="Pose assignment failed",
+                message=(
+                    "Protein must be synced before PoseSet.set_protein(); "
+                    "protein.id is missing."
+                ),
+            )
+        return self.set_protein_id(str(protein_id).strip())
+
     @classmethod
     def from_json(
         cls,
@@ -1035,6 +1314,51 @@ class PoseSet:
                 remove_hydrogens=remove_hydrogens,
             )
         )
+
+    @classmethod
+    def from_sdf(
+        cls,
+        file_path: str | Path,
+        *,
+        protein_id: str | None = None,
+        origin: PoseOrigin | str | None = None,
+        sanitize: bool = True,
+        remove_hydrogens: bool = False,
+    ) -> Self:
+        """Load a multi-record SDF into local :class:`Pose` objects.
+
+        Typical for docking output files with one conformer per record. This does
+        not register poses on the platform; call :meth:`sync` when ids are needed.
+
+        Docking scores in the SDF (for example ``POSE SCORE``, ``Binding Energy``)
+        are mapped to :attr:`~Pose.pose_score` and :attr:`~Pose.binding_energy`.
+
+        Args:
+            file_path: Path to a multi-molecule SDF file.
+            protein_id: Optional protein id applied to every pose (overrides SDF
+                fields when set).
+            origin: Optional provenance string for every pose.
+            sanitize: Passed to :meth:`LigandSet.from_sdf`.
+            remove_hydrogens: Passed to :meth:`LigandSet.from_sdf`.
+
+        Returns:
+            A :class:`PoseSet` with one pose per successfully parsed SDF record.
+        """
+
+        ligands = LigandSet.from_sdf(
+            file_path,
+            sanitize=sanitize,
+            remove_hydrogens=remove_hydrogens,
+        )
+        poses = [
+            _pose_from_local_sdf_ligand(
+                lig,
+                protein_id=protein_id,
+                origin=origin,
+            )
+            for lig in ligands
+        ]
+        return cls(poses=poses)
 
     @classmethod
     def from_result(
@@ -1144,6 +1468,228 @@ class PoseSet:
 
         return self.to_ligand_set().show_df()
 
+    def __str__(self) -> str:
+        """Return a one-line summary of this pose collection."""
+        num_poses = len(self.poses)
+        if num_poses == 0:
+            return "PoseSet(0 poses)"
+        unique_smiles = len({pose.smiles for pose in self.poses if pose.smiles})
+        return f"PoseSet({num_poses} poses, {unique_smiles} unique SMILES)"
+
+    __repr__ = __str__
+
+    def _platform_summary_html_parts(self, num_poses: int) -> list[str]:
+        """HTML fragments for platform registration, protein, and project scope."""
+        parts: list[str] = []
+
+        with_platform_id = sum(1 for pose in self.poses if pose.id is not None)
+        if with_platform_id == num_poses:
+            id_icon = (
+                "<span style='color:#198754;font-weight:bold' "
+                "title='All poses have platform pose result IDs'>✓</span>"
+            )
+            id_detail = "all poses registered"
+        else:
+            id_icon = (
+                "<span title='Not all poses have platform pose result IDs'>⚠️</span>"
+            )
+            if with_platform_id == 0:
+                id_detail = "none registered"
+            else:
+                id_detail = f"{with_platform_id} of {num_poses} registered"
+        parts.append(
+            f"<p style='margin: 8px 0;'><strong>Platform IDs:</strong> "
+            f"{id_icon} {id_detail}</p>"
+        )
+
+        protein_ids = {pose.protein_id for pose in self.poses}
+        if len(protein_ids) == 1:
+            only = protein_ids.pop()
+            if only is None:
+                protein_line = "<em>not set</em>"
+            else:
+                protein_line = escape(str(only))
+        else:
+            protein_line = "<em>mixed</em>"
+        parts.append(
+            f"<p style='margin: 8px 0;'><strong>Protein:</strong> {protein_line}</p>"
+        )
+
+        project_ids = {pose.project_id for pose in self.poses}
+        if len(project_ids) == 1:
+            only = project_ids.pop()
+            if only is None:
+                project_line = "<em>not set</em>"
+            else:
+                project_line = LigandSet._project_display_label(str(only))
+        else:
+            project_line = "<em>mixed</em>"
+        parts.append(
+            f"<p style='margin: 8px 0;'><strong>Project:</strong> {project_line}</p>"
+        )
+        return parts
+
+    def _render_view(self) -> str:
+        """Render a notebook card summarizing this :class:`PoseSet`."""
+        num_poses = len(self.poses)
+        pose_word = "pose" if num_poses == 1 else "poses"
+        html_parts = [
+            "<div style='width: 500px; padding: 15px; border: 1px solid #ddd; "
+            "border-radius: 6px; background-color: #f9f9f9;'>",
+            f"<h3 style='margin-top: 0; color: #333;'>PoseSet with {num_poses} "
+            f"{pose_word}</h3>",
+        ]
+
+        if num_poses == 0:
+            html_parts.append(
+                "<p style='margin: 8px 0; color: #999;'><em>Empty PoseSet</em></p>"
+            )
+            html_parts.append("</div>")
+            return "".join(html_parts)
+
+        unique_smiles = len({pose.smiles for pose in self.poses if pose.smiles})
+        unique_ligands = len({pose.ligand_id for pose in self.poses if pose.ligand_id})
+
+        if unique_smiles == 1:
+            smiles_str = next(
+                (pose.smiles for pose in self.poses if pose.smiles),
+                None,
+            )
+            if smiles_str:
+                smiles_line = (
+                    f"<p style='margin: 8px 0;'><strong>SMILES:</strong> "
+                    f"{escape(smiles_str)}"
+                )
+                if num_poses > 1:
+                    smiles_line += (
+                        f" <span class='badge text-bg-info' "
+                        f"style='font-variant: small-caps;'>{num_poses} CONFORMERS</span>"
+                    )
+                smiles_line += "</p>"
+                html_parts.append(smiles_line)
+        elif unique_smiles > 0:
+            html_parts.append(
+                f"<p style='margin: 8px 0;'><strong>{unique_smiles}</strong> unique "
+                f"SMILES"
+                + (
+                    f", <strong>{unique_ligands}</strong> ligand ids"
+                    if unique_ligands
+                    else ""
+                )
+                + "</p>"
+            )
+
+        origins = {str(pose.origin) for pose in self.poses if pose.origin}
+        if len(origins) == 1:
+            origin_label = escape(origins.pop())
+            html_parts.append(
+                f"<p style='margin: 8px 0;'><strong>Origin:</strong> "
+                f"<span class='badge text-bg-secondary' "
+                f"style='font-variant: small-caps;'>{origin_label.upper()}</span></p>"
+            )
+        elif len(origins) > 1:
+            origin_list = ", ".join(escape(o) for o in sorted(origins))
+            html_parts.append(
+                f"<p style='margin: 8px 0;'><strong>Origins:</strong> {origin_list}</p>"
+            )
+
+        best_count = sum(1 for pose in self.poses if pose.best_pose is True)
+        if best_count:
+            html_parts.append(
+                f"<p style='margin: 8px 0;'><strong>Best poses:</strong> "
+                f"{best_count} marked as best</p>"
+            )
+
+        scored_pose = [pose for pose in self.poses if pose.pose_score is not None]
+        if scored_pose:
+            scores = [float(pose.pose_score) for pose in scored_pose]
+            html_parts.append(
+                f"<p style='margin: 8px 0;'><strong>Pose score:</strong> "
+                f"{min(scores):.3g} – {max(scores):.3g} "
+                f"({len(scored_pose)} of {num_poses} scored)</p>"
+            )
+
+        scored_energy = [pose for pose in self.poses if pose.binding_energy is not None]
+        if scored_energy:
+            energies = [float(pose.binding_energy) for pose in scored_energy]
+            html_parts.append(
+                f"<p style='margin: 8px 0;'><strong>Binding energy:</strong> "
+                f"{min(energies):.3g} – {max(energies):.3g} kcal/mol "
+                f"({len(scored_energy)} of {num_poses} scored)</p>"
+            )
+
+        with_local = sum(
+            1
+            for pose in self.poses
+            if pose.local_path and Path(pose.local_path).is_file()
+        )
+        pending_download = sum(
+            1 for pose in self.poses if pose.remote_path and pose.local_path is None
+        )
+        if with_local == num_poses:
+            html_parts.append(
+                "<p style='margin: 8px 0;'><strong>Structures:</strong> "
+                "<span class='badge text-bg-success' "
+                "style='font-variant: small-caps;'>LOCAL SDF</span> all loaded</p>"
+            )
+        elif with_local > 0 or pending_download > 0:
+            structure_bits = []
+            if with_local:
+                structure_bits.append(f"{with_local} local")
+            if pending_download:
+                structure_bits.append(f"{pending_download} remote only")
+            html_parts.append(
+                f"<p style='margin: 8px 0;'><strong>Structures:</strong> "
+                f"{', '.join(structure_bits)}</p>"
+            )
+
+        html_parts.extend(self._platform_summary_html_parts(num_poses))
+
+        all_props: set[str] = set()
+        for pose in self.poses:
+            all_props.update(pose.props.keys())
+        if all_props:
+            sorted_props = sorted(all_props)
+            props_display = ", ".join(escape(key) for key in sorted_props[:10])
+            if len(sorted_props) > 10:
+                props_display += f" and {len(sorted_props) - 10} more..."
+            html_parts.append(f"<p style='margin: 8px 0;'>Props: {props_display}</p>")
+
+        action_hints = [
+            "Use <code>.to_dataframe()</code> or <code>.show_df()</code> to tabulate "
+            "poses, or <code>.to_ligand_set().show()</code> for 3D visualization",
+        ]
+        if pending_download:
+            action_hints.append("<code>.download()</code> to fetch pose SDF files")
+        registered = sum(1 for pose in self.poses if pose.id is not None)
+        if registered < num_poses:
+            if registered == 0:
+                action_hints.append(
+                    "<code>.sync()</code> to register poses on the platform"
+                )
+            else:
+                action_hints.append(
+                    "<code>.sync()</code> to register unregistered poses"
+                )
+        if unique_smiles > 0 and num_poses > unique_smiles:
+            action_hints.append(
+                "<code>.filter_top_poses()</code> to keep the best pose per SMILES"
+            )
+
+        html_parts.append(
+            "<div style='margin-top: 12px; padding-top: 12px; border-top: 1px solid #ddd;'>"
+            "<p style='margin: 4px 0; font-size: 0.9em; color: #666;'>"
+            f"<em>{', '.join(action_hints)}</em>"
+            "</p>"
+            "</div>"
+        )
+        html_parts.append("</div>")
+        return "".join(html_parts)
+
+    def _repr_html_(self) -> str:
+        """Return an HTML summary card for Jupyter notebooks."""
+        return self._render_view()
+
     def to_sdf(self, output_path: str | Path | None = None) -> str:
         """Write all poses with local structures to a multi-record SDF.
 
@@ -1240,7 +1786,12 @@ class PoseSet:
                     "for data-platform ingestion before resolving pose ids."
                 ),
             )
-        wait_for_data_platform_ingestion(client, import_execution_id)
+        wait_for_data_platform_ingestion(
+            client,
+            import_execution_id,
+            # Hidden served import-dataset often has no executions/search row.
+            no_row_timeout=30.0,
+        )
         ligand_rows = outputs.get("ligands") or []
         pose_rows = outputs.get("poses") or []
         if not isinstance(ligand_rows, list):
