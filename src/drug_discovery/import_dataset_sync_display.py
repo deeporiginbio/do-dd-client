@@ -45,22 +45,18 @@ def render_import_dataset_sync_progress_html(
     detail_bit = f" · {esc_detail}" if esc_detail else ""
 
     if failed:
-        status_line = (
-            f'<span class="text-danger">{esc_label}{detail_bit}</span>'
-        )
+        status_line = f'<span class="text-danger">{esc_label}{detail_bit}</span>'
         bar_inner = (
             f'<div class="progress-bar bg-danger" style="width: {pct_s}%;"></div>'
         )
     elif completed >= total:
         status_line = f'<span class="text-success">Done</span>'
-        bar_inner = (
-            f'<div class="progress-bar bg-success" style="width: 100%;"></div>'
-        )
+        bar_inner = f'<div class="progress-bar bg-success" style="width: 100%;"></div>'
     else:
         status_line = (
             f'<span class="spinner-border spinner-border-sm text-primary" '
             f'role="status" aria-hidden="true"></span>'
-            f'<span>{esc_label}{detail_bit}</span>'
+            f"<span>{esc_label}{detail_bit}</span>"
         )
         bar_inner = (
             '<div class="progress-bar progress-bar-striped progress-bar-animated" '
@@ -85,15 +81,25 @@ aria-valuenow="{pct_s}" aria-valuemin="0" aria-valuemax="100">
 class ImportDatasetSyncProgressReporter(Protocol):
     """Hook for import-dataset sync phases (no-op or live notebook UI)."""
 
-    def start_step(self, index: int, *, detail: str = "") -> None: ...
+    def start_step(self, index: int, *, detail: str = "") -> None:
+        """Mark a step as in progress."""
+        ...
 
-    def finish_step(self, index: int, *, detail: str = "") -> None: ...
+    def finish_step(self, index: int, *, detail: str = "") -> None:
+        """Mark a step as completed."""
+        ...
 
-    def set_execution_id(self, execution_id: str) -> None: ...
+    def set_execution_id(self, execution_id: str) -> None:
+        """Record the platform workflow execution id (optional)."""
+        ...
 
-    def fail_step(self, index: int, *, message: str = "") -> None: ...
+    def fail_step(self, index: int, *, message: str = "") -> None:
+        """Mark a step as failed."""
+        ...
 
-    def close(self) -> None: ...
+    def close(self) -> None:
+        """Finalize the progress UI."""
+        ...
 
 
 @dataclass
@@ -101,19 +107,19 @@ class NullImportDatasetSyncProgress:
     """No-op reporter for scripts and non-notebook environments."""
 
     def start_step(self, index: int, *, detail: str = "") -> None:
-        return None
+        """No-op."""
 
     def finish_step(self, index: int, *, detail: str = "") -> None:
-        return None
+        """No-op."""
 
     def set_execution_id(self, execution_id: str) -> None:
-        return None
+        """No-op."""
 
     def fail_step(self, index: int, *, message: str = "") -> None:
-        return None
+        """No-op."""
 
     def close(self) -> None:
-        return None
+        """No-op."""
 
 
 @dataclass
@@ -152,6 +158,7 @@ class NotebookImportDatasetSyncProgress:
             update_display(HTML(html_out), display_id=self._display_id)
 
     def start_step(self, index: int, *, detail: str = "") -> None:
+        """Show the given step as in progress."""
         if self._failed or index < 0 or index >= len(self.step_labels):
             return
         self._status_label = self.step_labels[index]
@@ -159,6 +166,7 @@ class NotebookImportDatasetSyncProgress:
         self._refresh()
 
     def finish_step(self, index: int, *, detail: str = "") -> None:
+        """Advance completed count and refresh the bar."""
         if self._failed or index < 0 or index >= len(self.step_labels):
             return
         self._completed = max(self._completed, index + 1)
@@ -167,9 +175,10 @@ class NotebookImportDatasetSyncProgress:
         self._refresh()
 
     def set_execution_id(self, execution_id: str) -> None:
-        return None
+        """Execution id is not shown in the compact UI."""
 
     def fail_step(self, index: int, *, message: str = "") -> None:
+        """Show failure state for the given step."""
         self._failed = True
         if 0 <= index < len(self.step_labels):
             self._status_label = self.step_labels[index]
@@ -178,6 +187,7 @@ class NotebookImportDatasetSyncProgress:
         self._refresh()
 
     def close(self) -> None:
+        """Mark all steps complete unless already failed."""
         if self._failed:
             return
         self._completed = self._total
@@ -185,9 +195,29 @@ class NotebookImportDatasetSyncProgress:
         self._refresh()
 
 
-def import_dataset_sync_progress_for_pose_registration(
+# Served import-dataset (``LigandSet.sync`` SDF or small CSV).
+LIGAND_SERVED_SYNC_STEPS: tuple[str, ...] = (
+    "Prepare staging file",
+    "Upload to workspace",
+    "Run import-dataset",
+    "Apply ligand IDs",
+)
+
+# Large SMILES CSV via workflow (``LigandSet.sync`` above served cap).
+LIGAND_WORKFLOW_SYNC_STEPS: tuple[str, ...] = (
+    "Prepare staging CSV",
+    "Upload to workspace",
+    "Start import-dataset workflow",
+    "Wait for workflow",
+    "Wait for data ingestion",
+    "Resolve platform IDs",
+)
+
+
+def import_dataset_sync_progress(
     *,
     show_progress: bool | None,
+    step_labels: tuple[str, ...],
 ) -> ImportDatasetSyncProgressReporter:
     """Return a notebook step UI when ``show_progress`` is true (default: Jupyter only)."""
     if show_progress is False:
@@ -197,4 +227,29 @@ def import_dataset_sync_progress_for_pose_registration(
 
         if get_notebook_environment() != "jupyter":
             return NullImportDatasetSyncProgress()
-    return NotebookImportDatasetSyncProgress(step_labels=POSE_REGISTRATION_STEPS)
+    return NotebookImportDatasetSyncProgress(step_labels=step_labels)
+
+
+def import_dataset_sync_progress_for_pose_registration(
+    *,
+    show_progress: bool | None,
+) -> ImportDatasetSyncProgressReporter:
+    """Compact progress for :meth:`~deeporigin.drug_discovery.structures.pose.PoseSet.sync`."""
+    return import_dataset_sync_progress(
+        show_progress=show_progress,
+        step_labels=POSE_REGISTRATION_STEPS,
+    )
+
+
+def import_dataset_sync_progress_for_ligand(
+    *,
+    show_progress: bool | None,
+    workflow: bool,
+) -> ImportDatasetSyncProgressReporter:
+    """Compact progress for :meth:`~deeporigin.drug_discovery.structures.ligand.LigandSet.sync`."""
+    return import_dataset_sync_progress(
+        show_progress=show_progress,
+        step_labels=(
+            LIGAND_WORKFLOW_SYNC_STEPS if workflow else LIGAND_SERVED_SYNC_STEPS
+        ),
+    )

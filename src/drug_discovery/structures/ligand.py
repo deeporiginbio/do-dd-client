@@ -2835,6 +2835,7 @@ class LigandSet:
         lazy: bool = False,
         client: Optional[DeepOriginClient] = None,
         remote_path: Optional[str] = None,
+        show_progress: bool | None = None,
     ) -> None:
         """Sync all ligands in one import-dataset execution (SDF or SMILES CSV).
 
@@ -2843,6 +2844,13 @@ class LigandSet:
 
         Requires ``client.project_id``. Entity ``project_id`` values must match
         the client when set.
+
+        Large SMILES CSV batches use the import-dataset **workflow** (async start,
+        poll until complete, then data-platform ingestion). Smaller CSV and all SDF
+        batches use a single blocking served execution.
+
+        In Jupyter, a compact progress bar is shown by default. Pass
+        ``show_progress=False`` to disable.
 
         .. note::
 
@@ -2894,6 +2902,9 @@ class LigandSet:
             sync_process_sdf,
             workflow_import_smiles_csv,
         )
+        from deeporigin.drug_discovery.import_dataset_sync_display import (
+            import_dataset_sync_progress_for_ligand,
+        )
 
         proj_id = require_uniform_scope(
             [lig.resolved_project_id(client=client) for lig in ligands_to_sync],
@@ -2924,105 +2935,172 @@ class LigandSet:
             elif len(unique_tags) == 1:
                 uniform_tags = tag_payloads[0]
 
-        if use_sdf:
-            subset = LigandSet(ligands=ligands_to_sync)
-            local_sdf = subset.to_sdf()
-            remote = stage_local_file(client, local_sdf, remote_path=remote_path)
-            sdf_kwargs: dict[str, Any] = {}
-            if uniform_tags is not None:
-                sdf_kwargs["tags"] = uniform_tags
-            outputs = sync_process_sdf(
-                client=client,
-                project_id=proj_id,
-                file_path=remote,
-                register_poses=False,
-                **sdf_kwargs,
-            )
-        else:
-            import csv
-            import json
+        use_workflow_csv = (
+            not use_sdf and len(ligands_to_sync) > MAX_SERVED_FILE_LIGAND_RECORDS
+        )
+        progress = import_dataset_sync_progress_for_ligand(
+            show_progress=show_progress,
+            workflow=use_workflow_csv,
+        )
+        step = 0
 
-            fieldnames = ["smiles", "name"]
-            if any(lig.tags is not None for lig in ligands_to_sync):
-                fieldnames.append("tags")
-            fd = tempfile.NamedTemporaryFile(
-                mode="w",
-                delete=False,
-                suffix=".csv",
-                newline="",
-            )
-            writer = csv.DictWriter(fd, fieldnames=fieldnames)
-            writer.writeheader()
-            for lig in ligands_to_sync:
-                smi = lig.smiles or lig.canonical_smiles or ""
-                row: dict[str, str] = {
-                    "smiles": smi,
-                    "name": lig.name or "",
-                }
-                if lig.tags is not None:
-                    row["tags"] = json.dumps(lig.tags)
-                writer.writerow(row)
-            fd.close()
-            remote = stage_local_file(client, fd.name, remote_path=remote_path)
-            Path(fd.name).unlink(missing_ok=True)
-            if len(ligands_to_sync) > MAX_SERVED_FILE_LIGAND_RECORDS:
-                exec_id, dp_row = workflow_import_smiles_csv(
+        def _apply_ligand_job_outputs(outputs: dict[str, Any]) -> None:
+            rows = outputs.get("ligands") or []
+            if not isinstance(rows, list):
+                rows = []
+            by_index: dict[int, dict[str, Any]] = {}
+            for row in rows:
+                if isinstance(row, dict) and "record_index" in row:
+                    by_index[int(row["record_index"])] = row
+
+            for idx, lig in enumerate(ligands_to_sync):
+                record = by_index.get(idx)
+                if (
+                    record is None
+                    and not by_index
+                    and idx < len(rows)
+                    and isinstance(rows[idx], dict)
+                ):
+                    record = rows[idx]
+                if record is None:
+                    raise DeepOriginException(
+                        title="Ligand sync failed",
+                        message=(
+                            "import-dataset did not return a ligand row for one or more "
+                            f"input records (missing index {idx})."
+                        ),
+                    )
+                lid = record.get("id")
+                if not lid:
+                    raise DeepOriginException(
+                        title="Ligand sync failed",
+                        message=(
+                            "import-dataset did not return a ligand id for one or more "
+                            "input records."
+                        ),
+                    )
+                lig.id = str(lid)
+                mol_file = record.get("mol_file")
+                if mol_file:
+                    lig.remote_path = str(mol_file)
+
+        try:
+            if use_sdf:
+                subset = LigandSet(ligands=ligands_to_sync)
+                progress.start_step(
+                    step,
+                    detail=f"{len(ligands_to_sync)} ligand(s)",
+                )
+                local_sdf = subset.to_sdf()
+                progress.finish_step(step, detail=Path(local_sdf).name)
+                step += 1
+
+                progress.start_step(step)
+                remote = stage_local_file(client, local_sdf, remote_path=remote_path)
+                progress.finish_step(step, detail=remote)
+                step += 1
+
+                progress.start_step(step, detail="process_sdf")
+                sdf_kwargs: dict[str, Any] = {}
+                if uniform_tags is not None:
+                    sdf_kwargs["tags"] = uniform_tags
+                outputs = sync_process_sdf(
                     client=client,
                     project_id=proj_id,
-                    csv_path=remote,
+                    file_path=remote,
+                    register_poses=False,
+                    **sdf_kwargs,
                 )
-                hydrate_ligand_ids_after_import(
-                    client,
-                    ligands_to_sync,
-                    compute_job_id=exec_id,
-                    project_id=proj_id,
-                    dp_execution_row=dp_row,
-                )
-                return
-            outputs = sync_process_csv(
-                client=client,
-                project_id=proj_id,
-                file_path=remote,
-            )
+                progress.finish_step(step)
+                step += 1
 
-        rows = outputs.get("ligands") or []
-        if not isinstance(rows, list):
-            rows = []
-        by_index: dict[int, dict[str, Any]] = {}
-        for row in rows:
-            if isinstance(row, dict) and "record_index" in row:
-                by_index[int(row["record_index"])] = row
+                progress.start_step(step)
+                _apply_ligand_job_outputs(outputs)
+                progress.finish_step(
+                    step,
+                    detail=f"{len(ligands_to_sync)} ligand id(s) assigned",
+                )
+            else:
+                import csv
+                import json
 
-        for idx, lig in enumerate(ligands_to_sync):
-            record = by_index.get(idx)
-            if (
-                record is None
-                and not by_index
-                and idx < len(rows)
-                and isinstance(rows[idx], dict)
-            ):
-                record = rows[idx]
-            if record is None:
-                raise DeepOriginException(
-                    title="Ligand sync failed",
-                    message=(
-                        "import-dataset did not return a ligand row for one or more "
-                        f"input records (missing index {idx})."
-                    ),
+                fieldnames = ["smiles", "name"]
+                if any(lig.tags is not None for lig in ligands_to_sync):
+                    fieldnames.append("tags")
+                progress.start_step(
+                    step,
+                    detail=f"{len(ligands_to_sync)} ligand(s)",
                 )
-            lid = record.get("id")
-            if not lid:
-                raise DeepOriginException(
-                    title="Ligand sync failed",
-                    message=(
-                        "import-dataset did not return a ligand id for one or more "
-                        "input records."
-                    ),
+                fd = tempfile.NamedTemporaryFile(
+                    mode="w",
+                    delete=False,
+                    suffix=".csv",
+                    newline="",
                 )
-            lig.id = str(lid)
-            mol_file = record.get("mol_file")
-            if mol_file:
-                lig.remote_path = str(mol_file)
+                writer = csv.DictWriter(fd, fieldnames=fieldnames)
+                writer.writeheader()
+                for lig in ligands_to_sync:
+                    smi = lig.smiles or lig.canonical_smiles or ""
+                    row: dict[str, str] = {
+                        "smiles": smi,
+                        "name": lig.name or "",
+                    }
+                    if lig.tags is not None:
+                        row["tags"] = json.dumps(lig.tags)
+                    writer.writerow(row)
+                fd.close()
+                progress.finish_step(step, detail=Path(fd.name).name)
+                step += 1
+
+                progress.start_step(step)
+                remote = stage_local_file(client, fd.name, remote_path=remote_path)
+                Path(fd.name).unlink(missing_ok=True)
+                progress.finish_step(step, detail=remote)
+                step += 1
+
+                if use_workflow_csv:
+                    exec_id, dp_row = workflow_import_smiles_csv(
+                        client=client,
+                        project_id=proj_id,
+                        csv_path=remote,
+                        progress=progress,
+                        progress_step_start=step,
+                    )
+                    step += 3
+                    progress.start_step(step)
+                    hydrate_ligand_ids_after_import(
+                        client,
+                        ligands_to_sync,
+                        compute_job_id=exec_id,
+                        project_id=proj_id,
+                        dp_execution_row=dp_row,
+                    )
+                    progress.finish_step(
+                        step,
+                        detail=f"{len(ligands_to_sync)} ligand id(s) assigned",
+                    )
+                else:
+                    progress.start_step(step, detail="process_csv")
+                    outputs = sync_process_csv(
+                        client=client,
+                        project_id=proj_id,
+                        file_path=remote,
+                    )
+                    progress.finish_step(step)
+                    step += 1
+
+                    progress.start_step(step)
+                    _apply_ligand_job_outputs(outputs)
+                    progress.finish_step(
+                        step,
+                        detail=f"{len(ligands_to_sync)} ligand id(s) assigned",
+                    )
+        except Exception as exc:
+            if step >= 0:
+                progress.fail_step(step, message=str(exc))
+            raise
+        finally:
+            progress.close()
 
     @classmethod
     def from_smiles(cls, smiles: list[str] | set[str]) -> Self:

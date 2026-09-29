@@ -45,3 +45,18 @@ def test_null_progress_reporter_is_no_op() -> None:
 def test_progress_disabled_when_show_progress_false() -> None:
     reporter = import_dataset_sync_progress_for_pose_registration(show_progress=False)
     assert isinstance(reporter, NullImportDatasetSyncProgress)
+
+
+def test_ligand_workflow_progress_uses_six_steps() -> None:
+    from deeporigin.drug_discovery.import_dataset_sync_display import (
+        LIGAND_WORKFLOW_SYNC_STEPS,
+        import_dataset_sync_progress_for_ligand,
+    )
+
+    reporter = import_dataset_sync_progress_for_ligand(
+        show_progress=False,
+        workflow=True,
+    )
+    assert isinstance(reporter, NullImportDatasetSyncProgress)
+    assert len(LIGAND_WORKFLOW_SYNC_STEPS) == 6
+    assert "Wait for workflow" in LIGAND_WORKFLOW_SYNC_STEPS

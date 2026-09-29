@@ -431,6 +431,8 @@ def workflow_import_smiles_csv(
     tools_timeout: float | None = _DEFAULT_TOOLS_WAIT_TIMEOUT_S,
     ingestion_poll_interval: float = _DEFAULT_INGESTION_POLL_INTERVAL_S,
     ingestion_timeout: float | None = _DEFAULT_INGESTION_WAIT_TIMEOUT_S,
+    progress: Any | None = None,
+    progress_step_start: int = 2,
 ) -> tuple[str, dict[str, Any]]:
     """Run large SMILES CSV import via workflow and block until ingestion completes.
 
@@ -444,6 +446,11 @@ def workflow_import_smiles_csv(
         "database_key": IMPORT_DATASET_LIGANDS_DATABASE_KEY,
         "database_version": IMPORT_DATASET_LIGANDS_DATABASE_VERSION,
     }
+    step_run = progress_step_start
+    step_tools = progress_step_start + 1
+    step_ingest = progress_step_start + 2
+    if progress is not None:
+        progress.start_step(step_run, detail="workflow")
     dto = run_import_dataset_workflow(
         inputs=inputs,
         project_id=project_id,
@@ -451,20 +458,30 @@ def workflow_import_smiles_csv(
     )
     execution_id = dto.get("executionId")
     if not execution_id:
+        if progress is not None:
+            progress.fail_step(step_run, message="No execution id returned")
         raise _import_failed("import-dataset workflow did not return an execution id.")
     execution_id = str(execution_id)
+    if progress is not None:
+        progress.finish_step(step_run)
+        progress.start_step(step_tools)
     poll_tools_execution_terminal(
         client,
         execution_id,
         poll_interval=poll_interval,
         timeout=tools_timeout,
     )
+    if progress is not None:
+        progress.finish_step(step_tools)
+        progress.start_step(step_ingest)
     dp_row = wait_for_data_platform_ingestion(
         client,
         execution_id,
         poll_interval=ingestion_poll_interval,
         timeout=ingestion_timeout,
     )
+    if progress is not None:
+        progress.finish_step(step_ingest)
     return execution_id, dp_row
 
 

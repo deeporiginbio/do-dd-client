@@ -3,8 +3,8 @@
 from __future__ import annotations
 
 import csv
-import tempfile
 from pathlib import Path
+import tempfile
 from unittest.mock import MagicMock
 
 import pytest
