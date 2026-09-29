@@ -1,7 +1,9 @@
 import os
 from pathlib import Path
 import shutil
+import sys
 import tempfile
+from types import SimpleNamespace
 
 import pytest
 from rdkit import Chem
@@ -325,9 +327,10 @@ def test_show(monkeypatch):
             captured["ligand_config"] = ligand_config
             return "<div id='legacy-ligand-set'>ok</div>"
 
-    monkeypatch.setattr(
-        "deeporigin_molstar.MoleculeViewer",
-        FakeViewer,
+    monkeypatch.setitem(
+        sys.modules,
+        "deeporigin_molstar",
+        SimpleNamespace(MoleculeViewer=FakeViewer),
     )
     monkeypatch.setattr(
         "deeporigin.utils.notebook.render_html",
