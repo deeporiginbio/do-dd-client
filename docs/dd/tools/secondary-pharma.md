@@ -109,12 +109,16 @@ If a downloaded protein file doesn't match the one the run used, `get_poses()`
 raises an error instead of handing you the wrong structure.
 
 To look at a docked pose in its target's pocket, use `job.show_panel_pose()` in
-a notebook. Name the ligand and the target, either by gene name or by UniProt
-accession, and it opens an interactive 3D view:
+a notebook. Name the target by gene name or UniProt accession, and the ligand
+with `ligand=` or `ligand_id=`. It opens an interactive 3D view:
 
 ```{.python notest}
 job.show_panel_pose(ligand=ligand, gene_name="EGFR")
 ```
+
+A ligand you ran live has its platform id once it has synced, so `ligand=` works.
+For a reloaded run, pass a ligand from `job.ligands`, or a `ligand_id` from
+`get_results()`.
 
 `job.plot()` renders a heatmap colored by `binding_energy` (default) or
 `metric="pose_score"`, auto-scaled to the run's own values unless you pass
