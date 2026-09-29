@@ -36,6 +36,21 @@ new run; calling definition-fill “hydration” (that word is ``from_dto`` /
 structure files); conflating with ``Molprops`` (``herg`` vs
 ``hERG_classification``); conflating with ``Metabolism`` (site of metabolism)
 
+**Project scope**:
+The project a client is working in. Listing a tool's executions (`list()`,
+`from_last_run()`) is limited to it; with no project set nothing is filtered.
+Lookups by an id are never filtered.
+_Avoid_: org-wide listing as the default for tool executions
+
+**Panel**:
+The fixed set of off-target proteins (UniProt accessions) a Secondary
+Pharmacology run scores against. The tool definition owns it; a run may restrict
+itself to a subset but never adds members. A Panel version is immutable, and a
+docking run's results name the version they were produced against, so a run's
+history survives later changes to the Panel.
+_Avoid_: "kinase panel" (members are not all kinases); a target list baked into
+the client
+
 **Metabolism**:
 Dual-mode platform tool ``deeporigin.metabolism`` and CLI class ``Metabolism``.
 Constructor ``ligands=`` accepts a ``Ligand``, a list of ligands, or a
@@ -331,6 +346,15 @@ table (`results__*`, `result_type=pose`). Has platform pose `id` and parent
 ligands) registered via **Pose registration**.
 _Avoid_: using `Ligand` when you mean a pose result with pose-scoped identity;
 conflating with docking-only outputs
+
+**Panel pose**:
+A docked pose of one ligand into one member of the Secondary Pharmacology
+**Panel**, stored under `result_type=panelpose` rather than `pose`. Names the
+panel receptor it was docked into and that receptor's checksum. Handled as a
+**Pose** for loading and download, but it is not registered in the pose result
+table and has no **Pose result ID**.
+_Avoid_: treating it as a registered **Pose**; passing it to a **Pose-consuming
+tool input**
 
 **Pose-consuming tool input**:
 Downstream tools that need 3D coordinates (SystemPrep ABFE/RBFE, ABFE, RBFE)

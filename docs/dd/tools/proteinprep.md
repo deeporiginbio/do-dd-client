@@ -185,8 +185,7 @@ composite runs are billable: use `start(quote=True)` then `confirm()`, or pass
 
 ## Reconnect to an execution
 
-Reconnect to a durable preparation or historical recommendation execution from
-either routed tool:
+Reconnect to a durable preparation or historical recommendation execution:
 
 ```{.python notest}
 prep = ProteinPrep.from_id("<executionId>")

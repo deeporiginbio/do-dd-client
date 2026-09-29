@@ -78,7 +78,9 @@ The commonly available methods are:
 - `get_results()` retrieves outputs after completion.
 - `from_id()` reconstructs a tool object from an execution ID.
 - `from_last_run()` reconstructs a tool object from the most recently created
-  execution of that tool type.
+  execution of that tool type in your current project.
+- `list()` returns your current project's executions of that tool type, newest
+  first. With no current project set, both look across all projects.
 
 Not every method is available on every tool. The tool-specific pages document
 the supported execution modes, inputs, outputs, and examples.
