@@ -20,7 +20,6 @@ import uvicorn
 
 from .constants import (
     MOCK_BULK_DOCKING_EXECUTION_ID,
-    MOCK_BULK_DOCKING_POSES_SDF_PATH,
 )
 from .routers import billing, data_platform, entities, files, tools
 from .routers.data_platform import (
@@ -78,6 +77,7 @@ class MockServer:
             "deeporigin.docking": 0.1,  # short poll for local Docking.run (tools API)
             "deeporigin.draco": 3.0,
             "deeporigin.metabolism": 0.1,  # short poll for local Metabolism.start
+            "deeporigin.secondary-pharma": 0.1,  # short poll for local docking start
             "deeporigin.import-dataset": 0.05,
         }
         self.docking_speed = docking_speed

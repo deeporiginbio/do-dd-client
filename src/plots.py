@@ -8,6 +8,7 @@ from bokeh.models import (
     BasicTicker,
     ColorBar,
     ColumnDataSource,
+    FixedTicker,
     HoverTool,
     LinearColorMapper,
     PrintfTickFormatter,
@@ -15,6 +16,127 @@ from bokeh.models import (
 from bokeh.palettes import Viridis256
 from bokeh.plotting import figure
 import numpy as np
+
+
+def _interpolated_palette(stops: list[tuple[float, str]], n: int = 256) -> list[str]:
+    """Linearly interpolate hex color ``stops`` (fraction, "#RRGGBB") into an n-color palette."""
+
+    def hex_to_rgb(h: str) -> tuple[int, int, int]:
+        h = h.lstrip("#")
+        return int(h[0:2], 16), int(h[2:4], 16), int(h[4:6], 16)
+
+    rgb_stops = [(frac, hex_to_rgb(color)) for frac, color in stops]
+    palette = []
+    for x in np.linspace(0, 1, n):
+        (x0, c0), (x1, c1) = next(
+            (a, b)
+            for a, b in zip(rgb_stops, rgb_stops[1:], strict=False)
+            if a[0] <= x <= b[0]
+        )
+        t = 0.0 if x1 == x0 else (x - x0) / (x1 - x0)
+        rgb = tuple(round(c0[k] + t * (c1[k] - c0[k])) for k in range(3))
+        palette.append("#{:02X}{:02X}{:02X}".format(*rgb))
+    return palette
+
+
+#: White (inactive) -> vivid red -> dark red (active), fixed to a 0-1 range.
+#: Matches platform-ui's "WhiteRed" panel-heatmap scale exactly.
+WHITE_RED_HAZARD_PALETTE = _interpolated_palette(
+    [(0.0, "#FFFFFF"), (0.5, "#D93E39"), (1.0, "#641D1A")]
+)
+
+_HEATMAP_TOOLS = "pan,wheel_zoom,box_zoom,reset,save"
+_VALUE_STR_FIELD = "@value_str"
+
+
+def _resolve_labels(
+    n: int,
+    labels: Optional[Sequence[str]],
+    *,
+    param_name: str,
+    shape_desc: str,
+) -> list[str]:
+    """Default to "0..n-1", or validate that provided labels have length n."""
+    if labels is None:
+        return [str(i) for i in range(n)]
+    labels = list(map(str, labels))
+    if len(labels) != n:
+        raise ValueError(f"Length of `{param_name}` must match {shape_desc}.")
+    return labels
+
+
+def _auto_color_range(
+    mat: np.ndarray, clim: Optional[tuple[float, float]]
+) -> tuple[float, float]:
+    """Fixed *clim*, or (vmin, vmax) from *mat*'s finite values."""
+    if clim is not None:
+        return clim
+    finite_vals = mat[np.isfinite(mat)]
+    if finite_vals.size == 0:
+        return 0.0, 1.0
+    vmin, vmax = float(np.nanmin(finite_vals)), float(np.nanmax(finite_vals))
+    if math.isclose(vmin, vmax):
+        delta = 1e-6 if vmin == 0 else abs(vmin) * 1e-6
+        vmin, vmax = vmin - delta, vmax + delta
+    return vmin, vmax
+
+
+def _warn_clipped_values(
+    values: np.ndarray, clim: tuple[float, float], *, label: str = "value"
+) -> None:
+    """Print a note if any finite value falls outside a fixed *clim*.
+
+    A fixed color range clips out-of-range values to the nearest edge
+    color silently -- this makes that visible instead.
+    """
+    vmin, vmax = clim
+    finite = values[np.isfinite(values)]
+    n_out = int(np.sum((finite < vmin) | (finite > vmax)))
+    if n_out:
+        print(
+            f"Note: {n_out} of {finite.size} {label} value(s) fall outside "
+            f"the fixed color range ({vmin}, {vmax}) and render as the "
+            "nearest edge color."
+        )
+
+
+def _triangle_grid_source(
+    mat: np.ndarray,
+    row_labels: Sequence[str],
+    col_labels: Sequence[str],
+    *,
+    upper: bool,
+) -> ColumnDataSource:
+    """Triangle-vertex geometry for one half (upper or lower) of a split-heatmap grid, split top-left to bottom-right."""
+    n_rows, n_cols = mat.shape
+    xs, ys, vals, rows, cols = [], [], [], [], []
+    for i in range(n_rows):
+        y1 = n_rows - i  # top edge of this row's band
+        y0 = y1 - 1
+        for j in range(n_cols):
+            v = mat[i, j]
+            if not np.isfinite(v):
+                continue
+            x0, x1 = j, j + 1
+            if upper:
+                xs.append([x0, x1, x1])
+                ys.append([y1, y1, y0])
+            else:
+                xs.append([x0, x0, x1])
+                ys.append([y1, y0, y0])
+            vals.append(v)
+            rows.append(row_labels[i])
+            cols.append(col_labels[j])
+    return ColumnDataSource(
+        {
+            "xs": xs,
+            "ys": ys,
+            "value": vals,
+            "value_str": [f"{v:.4f}" for v in vals],
+            "row": rows,
+            "col": cols,
+        }
+    )
 
 
 def plot_heatmap(
@@ -115,7 +237,7 @@ def plot_heatmap(
         x_range=labels,
         y_range=list(reversed(labels)),
         x_axis_location="above",
-        tools="pan,wheel_zoom,box_zoom,reset,save",
+        tools=_HEATMAP_TOOLS,
         toolbar_location="right",
         width=size,
         height=size,
@@ -141,7 +263,7 @@ def plot_heatmap(
                 ("col (j)", "@j"),
                 ("label row", "@y"),
                 ("label col", "@x"),
-                ("RMSD", "@value_str"),
+                ("RMSD", _VALUE_STR_FIELD),
             ]
         )
         p.add_tools(hover)
@@ -160,6 +282,313 @@ def plot_heatmap(
     p.grid.visible = False
 
     show(p)
+
+
+def plot_grid_heatmap(
+    values: np.ndarray,
+    *,
+    row_labels: Optional[Sequence[str]] = None,
+    col_labels: Optional[Sequence[str]] = None,
+    title: str = "",
+    value_label: str = "value",
+    palette=Viridis256,
+    width: int = 900,
+    height: int = 500,
+    show_values_on_hover: bool = True,
+    clim: Optional[tuple[float, float]] = None,
+):
+    """
+    Visualize a rectangular (NxM) matrix as a Bokeh heatmap, with independent
+    row and column labels.
+
+    Parameters
+    ----------
+    values : np.ndarray
+        NxM matrix. NaNs are allowed.
+    row_labels, col_labels : list[str], optional
+        Labels for each axis. Default to "0..N-1" / "0..M-1".
+    title : str
+        Plot title.
+    value_label : str
+        Name for the cell value in the hover tooltip.
+    palette : sequence of colors
+        Bokeh palette for the heatmap.
+    width, height : int
+        Figure size in pixels.
+    show_values_on_hover : bool
+        If True, shows (row, col, value) tooltips when hovering cells.
+    clim : tuple[float, float], optional
+        Color limits as (vmin, vmax). If None, computed from data.
+
+    Returns
+    -------
+    bokeh.plotting.Figure
+    """
+    from deeporigin.utils.notebook import get_notebook_environment
+
+    if get_notebook_environment() in ["marimo", "jupyter"]:
+        from bokeh.io import output_notebook
+
+        output_notebook(hide_banner=True)
+
+    mat = np.asarray(values, dtype=float)
+    if mat.ndim != 2:
+        raise ValueError("values must be a 2D matrix.")
+    n_rows, n_cols = mat.shape
+
+    row_labels = _resolve_labels(
+        n_rows, row_labels, param_name="row_labels", shape_desc="values.shape[0]"
+    )
+    col_labels = _resolve_labels(
+        n_cols, col_labels, param_name="col_labels", shape_desc="values.shape[1]"
+    )
+    if clim is not None:
+        _warn_clipped_values(mat, clim, label=value_label)
+    vmin, vmax = _auto_color_range(mat, clim)
+
+    xs, ys, vals, ii, jj = [], [], [], [], []
+    for i in range(n_rows):
+        for j in range(n_cols):
+            xs.append(col_labels[j])
+            ys.append(
+                row_labels[n_rows - 1 - i]
+            )  # reversed so (0,0) is top-left visually
+            vals.append(mat[i, j])
+            ii.append(i)
+            jj.append(j)
+
+    source = ColumnDataSource(
+        {
+            "x": xs,
+            "y": ys,
+            "value": vals,
+            "i": ii,
+            "j": jj,
+            "value_str": [("NA" if not np.isfinite(v) else f"{v:.4f}") for v in vals],
+        }
+    )
+
+    mapper = LinearColorMapper(
+        palette=palette, low=vmin, high=vmax, nan_color="#dddddd"
+    )
+
+    p = figure(
+        title=title,
+        x_range=col_labels,
+        y_range=list(reversed(row_labels)),
+        tools=_HEATMAP_TOOLS,
+        toolbar_location="right",
+        width=width,
+        height=height,
+        tooltips=None,
+    )
+    p.rect(
+        x="x",
+        y="y",
+        width=1,
+        height=1,
+        source=source,
+        line_color=None,
+        fill_color={"field": "value", "transform": mapper},
+    )
+
+    if show_values_on_hover:
+        hover = HoverTool(
+            tooltips=[
+                ("row (i)", "@i"),
+                ("col (j)", "@j"),
+                ("label row", "@y"),
+                ("label col", "@x"),
+                (value_label, _VALUE_STR_FIELD),
+            ]
+        )
+        p.add_tools(hover)
+
+    color_bar = ColorBar(
+        color_mapper=mapper,
+        location=(0, 0),
+        ticker=BasicTicker(desired_num_ticks=8),
+        formatter=PrintfTickFormatter(format="%.3f"),
+        label_standoff=8,
+    )
+    p.add_layout(color_bar, "right")
+
+    p.axis.major_label_text_font_size = "9pt"
+    p.xaxis.major_label_orientation = 0.9
+    p.grid.visible = False
+
+    show(p, notebook_handle=True)
+
+
+def plot_split_heatmap(
+    values_a: np.ndarray,
+    values_b: np.ndarray,
+    *,
+    row_labels: Optional[Sequence[str]] = None,
+    col_labels: Optional[Sequence[str]] = None,
+    title: str = "",
+    label_a: str = "A",
+    label_b: str = "B",
+    palette=WHITE_RED_HAZARD_PALETTE,
+    clim: tuple[float, float] = (0.0, 1.0),
+    clim_labels: Optional[tuple[str, str]] = None,
+    width: int = 900,
+    height: int = 500,
+):
+    """
+    Visualize two same-shaped NxM matrices as one heatmap, each cell split
+    diagonally (top-left to bottom-right): the upper triangle is
+    *values_a*, the lower triangle is *values_b*. A missing half (NaN)
+    renders grey.
+
+    Parameters
+    ----------
+    values_a, values_b : np.ndarray
+        Two NxM matrices, same shape. NaN cells render grey for that half.
+    row_labels, col_labels : list[str], optional
+        Labels for each axis. Default to "0..N-1" / "0..M-1".
+    title : str
+        Plot title.
+    label_a, label_b : str
+        Names for *values_a* / *values_b* in hover tooltips.
+    palette : sequence of colors
+        Bokeh palette for both halves.
+    clim : tuple[float, float]
+        Fixed color limits (vmin, vmax) -- not auto-scaled, so both halves
+        stay comparable.
+    clim_labels : tuple[str, str], optional
+        Replace the colorbar's numeric ticks with these two labels at
+        (vmin, vmax), e.g. ("No hit", "Hit"). Default shows the numeric
+        vmin/vmax.
+    width, height : int
+        Figure size in pixels.
+
+    Returns
+    -------
+    bokeh.plotting.Figure
+    """
+    from deeporigin.utils.notebook import get_notebook_environment
+
+    if get_notebook_environment() in ["marimo", "jupyter"]:
+        from bokeh.io import output_notebook
+
+        output_notebook(hide_banner=True)
+
+    mat_a = np.asarray(values_a, dtype=float)
+    mat_b = np.asarray(values_b, dtype=float)
+    if mat_a.ndim != 2 or mat_b.ndim != 2:
+        raise ValueError("values_a and values_b must be 2D matrices.")
+    if mat_a.shape != mat_b.shape:
+        raise ValueError("values_a and values_b must have the same shape.")
+    n_rows, n_cols = mat_a.shape
+
+    row_labels = _resolve_labels(
+        n_rows, row_labels, param_name="row_labels", shape_desc="values.shape[0]"
+    )
+    col_labels = _resolve_labels(
+        n_cols, col_labels, param_name="col_labels", shape_desc="values.shape[1]"
+    )
+
+    vmin, vmax = clim
+    _warn_clipped_values(mat_a, clim, label=label_a)
+    _warn_clipped_values(mat_b, clim, label=label_b)
+    mapper = LinearColorMapper(palette=palette, low=vmin, high=vmax)
+
+    source_a = _triangle_grid_source(mat_a, row_labels, col_labels, upper=True)
+    source_b = _triangle_grid_source(mat_b, row_labels, col_labels, upper=False)
+
+    p = figure(
+        title=title,
+        x_range=(0, n_cols),
+        y_range=(0, n_rows),
+        tools=_HEATMAP_TOOLS,
+        toolbar_location="right",
+        width=width,
+        height=height,
+        tooltips=None,
+    )
+
+    # Grey background -- shows through wherever a triangle isn't drawn (no data).
+    p.rect(
+        x=[j + 0.5 for j in range(n_cols) for _ in range(n_rows)],
+        y=[n_rows - i - 0.5 for _ in range(n_cols) for i in range(n_rows)],
+        width=1,
+        height=1,
+        line_color=None,
+        fill_color="#dddddd",
+    )
+
+    fill = {"field": "value", "transform": mapper}
+    renderer_a = p.patches(
+        xs="xs",
+        ys="ys",
+        source=source_a,
+        fill_color=fill,
+        line_color="white",
+        line_width=1,
+    )
+    renderer_b = p.patches(
+        xs="xs",
+        ys="ys",
+        source=source_b,
+        fill_color=fill,
+        line_color="white",
+        line_width=1,
+    )
+
+    p.add_tools(
+        HoverTool(
+            renderers=[renderer_a],
+            tooltips=[
+                ("ligand", "@row"),
+                ("target", "@col"),
+                (label_a, _VALUE_STR_FIELD),
+            ],
+        )
+    )
+    p.add_tools(
+        HoverTool(
+            renderers=[renderer_b],
+            tooltips=[
+                ("ligand", "@row"),
+                ("target", "@col"),
+                (label_b, _VALUE_STR_FIELD),
+            ],
+        )
+    )
+
+    if clim_labels is not None:
+        low_label, high_label = clim_labels
+        color_bar = ColorBar(
+            color_mapper=mapper,
+            location=(0, 0),
+            ticker=FixedTicker(ticks=[vmin, vmax]),
+            major_label_overrides={vmin: low_label, vmax: high_label},
+            label_standoff=8,
+        )
+    else:
+        color_bar = ColorBar(
+            color_mapper=mapper,
+            location=(0, 0),
+            ticker=BasicTicker(desired_num_ticks=8),
+            formatter=PrintfTickFormatter(format="%.3f"),
+            label_standoff=8,
+        )
+    p.add_layout(color_bar, "right")
+
+    p.xaxis.ticker = [j + 0.5 for j in range(n_cols)]
+    p.xaxis.major_label_overrides = {
+        j + 0.5: label for j, label in enumerate(col_labels)
+    }
+    p.yaxis.ticker = [n_rows - i - 0.5 for i in range(n_rows)]
+    p.yaxis.major_label_overrides = {
+        n_rows - i - 0.5: label for i, label in enumerate(row_labels)
+    }
+    p.xaxis.major_label_orientation = 0.9
+    p.axis.major_label_text_font_size = "9pt"
+    p.grid.visible = False
+
+    show(p, notebook_handle=True)
 
 
 def _generate_molecule_image(smiles: str) -> str | None:

@@ -44,6 +44,7 @@ __all__ = [
     "StructureReportResult",
     "UniprotDiscovery",
     "UniprotDiscoveryCandidate",
+    "SecondaryPharmacology",
 ]
 
 DATA_DIR = files("deeporigin.data")
@@ -79,6 +80,10 @@ _LAZY_IMPORTS = {
     "Molprops": ("deeporigin.drug_discovery.molprops", "Molprops"),
     "Admet": ("deeporigin.drug_discovery.admet", "Admet"),
     "Metabolism": ("deeporigin.drug_discovery.metabolism", "Metabolism"),
+    "SecondaryPharmacology": (
+        "deeporigin.drug_discovery.secondary_pharma",
+        "SecondaryPharmacology",
+    ),
     "Protonation": ("deeporigin.drug_discovery.protonation", "Protonation"),
     "Konnektor": ("deeporigin.drug_discovery.konnektor", "Konnektor"),
     "KonnektorResult": ("deeporigin.drug_discovery.konnektor", "KonnektorResult"),

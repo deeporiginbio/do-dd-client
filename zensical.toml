@@ -36,6 +36,7 @@ nav = [
       {"SystemPrep" = "dd/tools/systemprep.md"},
       {"Molprops" = "dd/tools/molprops.md"},
       {"Metabolism" = "dd/tools/metabolism.md"},
+      {"Secondary Pharmacology" = "dd/tools/secondary-pharma.md"},
       {"Enumerator" = "dd/tools/enumerator.md"},
       {"Structure Report" = "dd/tools/structure-report.md"},
       {"ABFE" = "dd/tools/abfe.md"},
@@ -76,6 +77,7 @@ nav = [
       {"RBFE" = "dd/ref/rbfe.md"},
       {"Patent" = "dd/ref/patent.md"},
       {"Metabolism" = "dd/ref/metabolism.md"},
+      {"SecondaryPharmacology" = "dd/ref/secondary_pharma.md"},
     ]},
     {"Results" = [
       {"PreparedSystem" = "dd/ref/prepared_system.md"},
