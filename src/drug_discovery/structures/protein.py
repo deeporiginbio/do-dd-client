@@ -15,6 +15,7 @@ import os
 from pathlib import Path
 import tempfile
 from typing import Any, Optional, Self
+import uuid
 
 from beartype import beartype
 import Bio.Seq
@@ -30,6 +31,7 @@ from deeporigin.drug_discovery.constants import (
 from deeporigin.drug_discovery.utils.structure_qc import _any_ligand_protein_clashes
 from deeporigin.exceptions import DeepOriginException
 from deeporigin.platform.client import DeepOriginClient
+from deeporigin.platform.constants import TOOL_KEYS_AND_VERSIONS
 from deeporigin.utils.env import _ensure_do_folder
 
 from .entity import Entity
@@ -43,6 +45,11 @@ from .prepared_protein_stamp import (
     stamp_prepared_protein_pdb,
     text_has_prepared_protein_cif_stamp,
     text_has_prepared_protein_stamp,
+)
+from .repr_display import (
+    REPR_INNER_INDENT,
+    fetch_project_display_name,
+    metadata_repr_html,
 )
 
 _PROTEIN_STRUCTURE_NOT_LOADED_MSG = "Protein structure is not loaded."
@@ -62,9 +69,20 @@ class Protein(Entity):
     atom_types: Optional[np.ndarray] = None
     block_type: str = "pdb"
     block_content: Optional[str] = None
+    project_name: str | None = field(default=None, kw_only=True)
 
     _remote_path_base = "entities/proteins/"
     _preferred_ext = ".pdb"
+
+    def _display_project_name(self) -> str:
+        """Human-readable project name for repr (cached on :attr:`project_name`)."""
+        display, cached = fetch_project_display_name(
+            self.project_id,
+            self.project_name,
+        )
+        if cached and not self.project_name:
+            self.project_name = cached
+        return display
 
     @classmethod
     def from_name(cls, name: str) -> Self:
@@ -99,7 +117,8 @@ class Protein(Entity):
 
         Args:
             uniprot_accession: UniProtKB accession (6 or 10 characters).
-            project_id: Project to sync into. Falls back to ``client.project_id``.
+            project_id: Deprecated for scope; use ``client.project_id``. When set on
+                the protein it must match the client during sync.
             client: Optional API client.
 
         Returns:
@@ -172,6 +191,9 @@ class Protein(Entity):
                 or data.get("gene_symbol")
                 or id
             )
+            proj_id = (
+                str(data["project_id"]) if data.get("project_id") is not None else None
+            )
             return cls(
                 name=name,
                 structure=None,
@@ -183,9 +205,10 @@ class Protein(Entity):
                 block_content=None,
                 id=data.get("id"),
                 remote_path=remote_path,
-                project_id=str(data["project_id"])
-                if data.get("project_id") is not None
-                else None,
+                project_id=proj_id,
+                project_name=fetch_project_display_name(proj_id, None, client=client)[
+                    1
+                ],
             )
 
         # Download the file
@@ -214,6 +237,12 @@ class Protein(Entity):
 
         if data.get("project_id") is not None:
             protein.project_id = str(data["project_id"])
+            _, cached = fetch_project_display_name(
+                protein.project_id,
+                None,
+                client=client,
+            )
+            protein.project_name = cached
 
         return protein
 
@@ -994,10 +1023,30 @@ class Protein(Entity):
         # Create PDB block from ligand lines and CONECT records
         ligand_pdb_block = "".join(ligand_lines) + "".join(conect_lines) + "END\n"
 
-        # Parse with RDKit
-        mol = Chem.MolFromPDBBlock(ligand_pdb_block, sanitize=True, removeHs=False)
+        # Parse with RDKit. CONECT records carry no bond orders, so restore
+        # them (and formal charges) from the CCD before sanitizing.
+        mol = Chem.MolFromPDBBlock(ligand_pdb_block, sanitize=False, removeHs=False)
         if mol is None:
             raise ValueError("RDKit could not parse the ligand from the PDB block.")
+        unresolved = _assign_ccd_bond_orders(mol)
+        if unresolved:
+            import warnings
+
+            warnings.warn(
+                "Could not assign bond orders from the Chemical Component "
+                f"Dictionary for ligand residue(s) {', '.join(unresolved)}; their "
+                "bonds are taken from the PDB records as-is, which usually "
+                "makes every bond single. Check the ligand's chemistry or "
+                "build it from SMILES/SDF instead.",
+                stacklevel=2,
+            )
+        try:
+            Chem.SanitizeMol(mol)
+        except Exception as e:
+            raise ValueError(
+                f"RDKit could not sanitize the extracted ligand: {e}"
+            ) from e
+        Chem.AssignStereochemistryFrom3D(mol)
 
         # Now remove the ligand from the protein structure
         self._remove_ligand_from_structure(ligand_atom_serials, ligand_resnames)
@@ -1659,31 +1708,51 @@ class Protein(Entity):
             )
         )
 
-    def _repr_html_(self):
+    def _metadata_repr_lines(self) -> list[str]:
+        """Metadata lines for text and HTML representations (no file paths)."""
+        indent = REPR_INNER_INDENT
+        return [
+            "Protein(",
+            f"{indent}name: {self.name}",
+            f"{indent}id: {self.id or ''}",
+            f"{indent}project: {self._display_project_name()}",
+            ")",
+        ]
+
+    def _metadata_repr_text(self) -> str:
+        """Plain-text summary shared by ``__repr__``, ``__str__``, and ``_repr_html_``."""
+        return "\n".join(self._metadata_repr_lines())
+
+    def _metadata_repr_html(self) -> str:
+        """Notebook HTML for the same plain-text summary."""
+        return metadata_repr_html(self._metadata_repr_text())
+
+    def __repr__(self) -> str:
+        """Return a plain-text protein summary (no structure viewer)."""
+        return self._metadata_repr_text()
+
+    __str__ = __repr__
+
+    def _repr_html_(self) -> str:
         """
         Return the HTML representation of the object for Jupyter Notebook.
+
+        When :attr:`info` is set, returns the rich protein-info panel; otherwise
+        the same plain-text summary as :meth:`__repr__` (name, id, project).
 
         Returns:
             str: The HTML content.
         """
-
-        try:
-            if self.info:
+        if self.info:
+            try:
                 from deeporigin.drug_discovery.external_tools.protein_info import (
                     generate_html_output,
                 )
 
-                html_content = generate_html_output(self.info)
-                return html_content
-            return self.visualize()
-        except Exception:
-            return self.__str__()
-
-    def __str__(self):
-        info_str = f"Name: {self.name}\nLocal path: {self.local_path}\nRemote path: {self.remote_path}\n"
-        if self.info:
-            info_str += f"Info: {self.info}\n"
-        return f"Protein:\n  {info_str}"
+                return generate_html_output(self.info)
+            except Exception:
+                return self._metadata_repr_html()
+        return self._metadata_repr_html()
 
     def upload(
         self,
@@ -1702,9 +1771,9 @@ class Protein(Entity):
         Args:
             client: DeepOriginClient instance. If None, uses DeepOriginClient().
             remote_path: Destination remote path. When provided, sets
-                :attr:`remote_path` before uploading. If still unset, uses a
-                hash-based path whose extension matches the local file when
-                present.
+                :attr:`remote_path` before uploading. If still unset, stages
+                under ``imports/staging/`` (canonical content-hash placement is
+                owned by import-dataset ``register_protein``).
         """
         if client is None:
             client = DeepOriginClient()
@@ -1716,7 +1785,7 @@ class Protein(Entity):
             local_file = str(self.local_path)
             if self.remote_path is None:
                 ext = Path(local_file).suffix or self._preferred_ext
-                self.remote_path = f"{self._remote_path_base}{self.to_hash()}{ext}"
+                self.remote_path = f"imports/staging/{uuid.uuid4().hex}{ext}"
             client.files.upload(
                 local_file,
                 remote_path=self.remote_path,
@@ -1726,7 +1795,7 @@ class Protein(Entity):
         super().upload(client=client, remote_path=remote_path)
 
     def _should_upload_local_bytes(self, *, remote_path: Optional[str]) -> bool:
-        """Return True when sync/register should upload from :attr:`local_path`.
+        """Return True when sync should upload from :attr:`local_path`.
 
         Uploads when an explicit ``remote_path`` is passed, when no remote path
         is set yet, or when a local file exists (so stamped bytes overwrite UFA).
@@ -1738,60 +1807,6 @@ class Protein(Entity):
         return self.remote_path is None
 
     @beartype
-    def register(
-        self,
-        *,
-        client: Optional[DeepOriginClient] = None,
-        remote_path: Optional[str] = None,
-    ) -> None:
-        """Register the protein as a new record in the data platform.
-
-        Uploads the protein file when needed, then creates a new protein
-        record, regardless of whether one already exists for this file path.
-        When :attr:`local_path` is a readable file, uploads those bytes (create
-        or overwrite :attr:`remote_path`) without a biotite rewrite. When there
-        is no local file and :attr:`remote_path` is already set, skips upload.
-
-        Args:
-            client: DeepOriginClient instance. If None, uses DeepOriginClient().
-            remote_path: Custom remote path to upload to. Overrides the
-                default hash-based path.
-
-        Returns:
-            None. As a side effect, uploads the protein when needed and sets
-            ``self.id`` to the newly created record's ID.
-        """
-        if client is None:
-            client = DeepOriginClient()
-
-        if self._should_upload_local_bytes(remote_path=remote_path):
-            self.upload(client=client, remote_path=remote_path)
-
-        kwargs: dict[str, Any] = {
-            "file_path": self.remote_path,
-        }
-
-        if self.pdb_id is not None:
-            kwargs["pdb_id"] = self.pdb_id
-
-        if self.uniprot_accession is not None:
-            kwargs["uniprot_accession"] = self.uniprot_accession
-
-        if self.local_path is not None:
-            kwargs["protein_length"] = self.length
-        kwargs["protein_name"] = self.name
-
-        proj_id = self.resolved_project_id(client=client)
-        if proj_id is not None:
-            kwargs["project_id"] = proj_id
-        if self.tags is not None:
-            kwargs["tags"] = self.tags
-
-        result = client.entities.create_protein(**kwargs)
-
-        if "data" in result and "id" in result["data"]:
-            self.id = result["data"]["id"]
-
     def sync(
         self,
         *,
@@ -1799,77 +1814,108 @@ class Protein(Entity):
         client: Optional[DeepOriginClient] = None,
         remote_path: Optional[str] = None,
     ) -> None:
-        """Sync the protein to the data platform.
+        """Sync the protein to the data platform via import-dataset.
 
-        Uploads the protein file when needed and links to an existing record if
-        one with the same file path already exists, otherwise creates a new
-        record via :meth:`register`.
+        Uploads local bytes to a staging UFA path when needed, then invokes the
+        served ``deeporigin.import-dataset`` ``register_protein`` path, which
+        canonicalizes the file and create-or-reuses a Protein entity.
 
-        When :attr:`local_path` is a readable file, always uploads those bytes
-        to :attr:`remote_path` (creating or overwriting the UFA object) without
-        converting CIF→PDB. When there is no local file and
-        :attr:`remote_path` is already set, skips upload.
+        Requires ``client.project_id``. If :attr:`project_id` is set on the
+        protein, it must match the client. The execution is created with
+        ``visibility="hidden"`` so plumbing runs do not clutter Activity.
 
         Args:
             lazy: If True, skip syncing when the protein already has an ID.
                 Defaults to False.
             client: DeepOriginClient instance. If None, uses DeepOriginClient().
             remote_path: Custom remote path to upload to. Overrides the
-                default hash-based path.
+                default staging path.
 
         Returns:
             None. As a side effect, uploads the protein (if necessary) and updates
             ``self.id`` with the ID of the existing or newly created protein record,
-            and sets :attr:`project_id` when a project scope applies or the platform
-            row includes ``project_id``.
+            and sets :attr:`project_id` to the resolved project scope.
+
+        Raises:
+            DeepOriginException: If no project id can be resolved, or registration
+                fails.
         """
         if lazy and self.id is not None:
             if client is None:
                 client = DeepOriginClient()
-            proj_id = self.resolved_project_id(client=client)
-            if proj_id is not None:
-                self.project_id = proj_id
+            client_proj = client.project_id
+            if client_proj is not None and str(client_proj).strip():
+                from deeporigin.platform.project_scope import require_client_project_id
+
+                self.project_id = require_client_project_id(
+                    client, entity_project_id=self.project_id
+                )
             return
 
         if client is None:
             client = DeepOriginClient()
 
+        from deeporigin.platform.project_scope import require_client_project_id
+
+        proj_id = require_client_project_id(client, entity_project_id=self.project_id)
+
         if self._should_upload_local_bytes(remote_path=remote_path):
             self.upload(client=client, remote_path=remote_path)
-
-        proj_id = self.resolved_project_id(client=client)
-        if proj_id is not None:
-            self.project_id = proj_id
-
-        if proj_id is not None:
-            response = client.entities.search_proteins(
-                file_path=self.remote_path,
-                project_id=proj_id,
+        elif self.remote_path is None:
+            raise DeepOriginException(
+                title="Protein sync failed",
+                message="Cannot sync without a local file or remote_path.",
             )
-        else:
-            response = client.entities.search_proteins(file_path=self.remote_path)
-        data = response["data"]
 
-        if data:
-            existing_protein = data[0]
-            if "id" in existing_protein:
-                self.id = existing_protein["id"]
-            ep = existing_protein.get("project_id")
-            if ep is not None:
-                self.project_id = str(ep)
-            update_kwargs: dict[str, Any] = {}
-            if self.tags is not None:
-                update_kwargs["tags"] = self.tags
-            if (
-                self.uniprot_accession is not None
-                and existing_protein.get("uniprot_accession") != self.uniprot_accession
-            ):
-                update_kwargs["uniprot_accession"] = self.uniprot_accession
-            if update_kwargs and self.id is not None:
-                client.entities.update_protein(self.id, **update_kwargs)
-            return
+        source_path = remote_path or self.remote_path
+        if source_path is None:
+            raise DeepOriginException(
+                title="Protein sync failed",
+                message="No UFA path available for import-dataset registration.",
+            )
 
-        self.register(client=client)
+        extra: dict[str, Any] = {}
+        if self.name:
+            extra["protein_name"] = self.name
+        if self.pdb_id is not None:
+            extra["pdb_id"] = self.pdb_id
+        if self.uniprot_accession is not None:
+            extra["uniprot_accession"] = self.uniprot_accession
+        if self.tags is not None:
+            extra["tags"] = self.tags
+
+        from deeporigin.drug_discovery.import_dataset_sync import sync_process_pdb
+
+        outputs = sync_process_pdb(
+            client=client,
+            project_id=proj_id,
+            file_path=source_path,
+            extra_inputs=extra,
+        )
+        proteins = outputs.get("proteins")
+        protein_row = (
+            proteins[0]
+            if isinstance(proteins, list) and proteins and isinstance(proteins[0], dict)
+            else None
+        )
+        if protein_row is None:
+            raise DeepOriginException(
+                title="Protein sync failed",
+                message="import-dataset did not return a protein row in jobOutputs.proteins.",
+            )
+
+        protein_id = protein_row.get("protein_id") or protein_row.get("id")
+        if protein_id is None:
+            raise DeepOriginException(
+                title="Protein sync failed",
+                message="import-dataset returned a protein row without an id.",
+            )
+        self.id = str(protein_id)
+        file_path = protein_row.get("file_path")
+        if isinstance(file_path, str) and file_path:
+            self.remote_path = file_path
+
+        self.project_id = proj_id
 
     @beartype
     def update(
@@ -1898,8 +1944,7 @@ class Protein(Entity):
         """
         if self.id is None:
             raise ValueError(
-                "Cannot update a protein without a platform id; "
-                "call sync() or register() first."
+                "Cannot update a protein without a platform id; call sync() first."
             )
 
         if client is None:
@@ -1964,3 +2009,107 @@ def validate_pdb_file(file_path: str | Path) -> None:
             message="The PDB file is invalid. It could not be parsed by RDKit.",
             fix="Please check the PDB file and try again.",
         )
+
+
+def _assign_ccd_bond_orders(mol: Any) -> list[str]:
+    """Set bond orders and formal charges on a PDB-parsed ligand from the CCD.
+
+    PDB CONECT records carry connectivity but not bond orders, so
+    ``Chem.MolFromPDBBlock`` returns every bond as SINGLE: aromatic rings come
+    back as cyclohexanes and carbonyls as alcohols. The wwPDB Chemical
+    Component Dictionary (bundled with biotite) records the order of every
+    bond between named atoms of every component, so each residue's bonds and
+    charges are looked up by atom name. Atoms absent from the crystal
+    structure (unresolved or leaving atoms) do not matter.
+
+    A residue is left untouched unless every one of its atoms matches a CCD
+    atom of the same name and element and every bond within it is a CCD bond,
+    which guards against a custom file reusing a CCD code (e.g. ``LIG``) for a
+    different molecule. Bonds between residues are left as parsed.
+
+    Args:
+        mol: RDKit molecule parsed from a PDB block with ``sanitize=False``.
+            Modified in place; the caller sanitizes it afterwards.
+
+    Returns:
+        Names of residues whose bond orders could not be assigned.
+    """
+    import biotite.structure.info as struc_info
+    from rdkit import Chem
+
+    residues: dict[tuple, list[Any]] = defaultdict(list)
+    for atom in mol.GetAtoms():
+        info = atom.GetPDBResidueInfo()
+        key = (
+            info.GetChainId(),
+            info.GetResidueNumber(),
+            info.GetInsertionCode(),
+            info.GetResidueName().strip().upper(),
+        )
+        residues[key].append(atom)
+
+    unresolved: list[str] = []
+    for (*_, res_name), atoms in residues.items():
+        try:
+            ccd_atoms = struc_info.residue(res_name)
+        except KeyError:
+            unresolved.append(res_name)
+            continue
+        ccd_bonds = struc_info.bonds_in_residue(res_name)
+        ccd_atom_by_name = {
+            str(name): (str(element).upper(), int(charge))
+            for name, element, charge in zip(
+                ccd_atoms.atom_name, ccd_atoms.element, ccd_atoms.charge, strict=True
+            )
+        }
+
+        names = {
+            atom.GetIdx(): atom.GetPDBResidueInfo().GetName().strip() for atom in atoms
+        }
+        atoms_match = all(
+            names[atom.GetIdx()] in ccd_atom_by_name
+            and ccd_atom_by_name[names[atom.GetIdx()]][0] == atom.GetSymbol().upper()
+            for atom in atoms
+        )
+        intra_bonds = [
+            bond
+            for bond in mol.GetBonds()
+            if bond.GetBeginAtomIdx() in names and bond.GetEndAtomIdx() in names
+        ]
+        bond_types = {}
+        for bond in intra_bonds:
+            a = names[bond.GetBeginAtomIdx()]
+            b = names[bond.GetEndAtomIdx()]
+            bond_types[bond.GetIdx()] = ccd_bonds.get((a, b), ccd_bonds.get((b, a)))
+        if not atoms_match or None in bond_types.values():
+            unresolved.append(res_name)
+            continue
+
+        # Kekulé orders; SanitizeMol re-perceives aromaticity afterwards.
+        order_to_rdkit = {
+            1: Chem.BondType.SINGLE,
+            2: Chem.BondType.DOUBLE,
+            3: Chem.BondType.TRIPLE,
+        }
+        for bond in intra_bonds:
+            order = bond_types[bond.GetIdx()].without_aromaticity().value
+            bond.SetBondType(order_to_rdkit.get(order, Chem.BondType.SINGLE))
+            bond.SetIsAromatic(False)
+        for atom in atoms:
+            atom.SetFormalCharge(ccd_atom_by_name[names[atom.GetIdx()]][1])
+            atom.SetIsAromatic(False)
+            atom.SetNoImplicit(False)
+
+    return sorted(set(unresolved))
+
+
+def _protein_row_from_import_execution(dto: dict[str, Any]) -> dict[str, Any] | None:
+    """Extract the first protein dict from an import-dataset registration execution."""
+    jo = dto.get("jobOutputs")
+    if isinstance(jo, dict):
+        proteins = jo.get("proteins")
+        if isinstance(proteins, list) and proteins:
+            first = proteins[0]
+            if isinstance(first, dict):
+                return dict(first)
+    return None

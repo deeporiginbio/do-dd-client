@@ -83,6 +83,8 @@ The commonly available methods are:
 Not every method is available on every tool. The tool-specific pages document
 the supported execution modes, inputs, outputs, and examples.
 [`ProteinPrep`](proteinprep.md) inventories with `recommend()`, then prepares.
-Skip loop modelling (`model_missing_loops=False`) and call `run()` to block until
-the prepared protein is ready; loop modelling uses `start()`. This tool
-does not produce a cost quote.
+Blocking `run()` serves prepare with loops on or off (and crystal-ligand
+pockets when configured). Novel pockets use `start()` (and `quote` / `confirm`
+when pockets are billable). Use standalone [`StructureReport`](structure-report.md)
+for source assessment. Prepared pockets and extracted crystal poses are available
+via `get_pockets()` and `get_crystal_poses()` when requested.

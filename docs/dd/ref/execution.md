@@ -7,7 +7,9 @@ execution id (including sync-only tools and objects built from ``from_dto``).
 
 ## Quote mode (sync vs async)
 
-``quote()`` creates a persisted tools execution with ``approveAmount=0``. The
+``quote=True`` / ``start(quote=True)`` creates a tools execution with
+``approveAmount=-1`` (forces ``Quoted``; ``0`` would still auto-confirm free
+quotes). The
 payload is built by :meth:`Execution._make_payload` and must match the
 path you will use after :meth:`Execution.confirm`:
 

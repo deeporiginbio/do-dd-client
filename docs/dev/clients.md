@@ -23,11 +23,15 @@ The no-arg constructor uses a priority chain:
 
 1. If `DO_AUTH_TOKEN` and `DO_ORG_KEY` are set → uses `from_env_variables()` (if
    `DO_BASE_URL` is unset, the API URL is inferred from the JWT issuer)
-2. Else if `DO_ENV=local` → uses `from_local()` (points to a locally running mock server)
-3. Otherwise → uses `from_disk()`
+2. Else if `DO_ENV=local` **or** `~/.deeporigin/config.json` has `"env": "local"` →
+   uses `from_local()` (toolbox gateway at `http://127.0.0.1:4931`)
+3. Otherwise → uses `from_disk()` for the configured cloud environment
+
+`DO_ENV` overrides `config.json` when both are set. After `config.set_env(...)`, call
+`DeepOriginClient.close_all()` in long-lived notebooks so cached clients pick up the change.
 
 This means code that calls `DeepOriginClient()` works correctly in all contexts:
-- **Tests (local mock)**: `DO_ENV=local` routes to `from_local()` automatically
+- **Local toolbox gateway**: `config.set_env("local")` or `DO_ENV=local`
 - **CI / containers**: token and org set, so `from_env_variables()` is used (`DO_BASE_URL` optional)
 - **Interactive use**: no env vars set, so disk config is used transparently
 

@@ -59,6 +59,7 @@ class MockServer:
         self._executions: dict[str, dict[str, Any]] = {}
         self._execution_start_times: dict[str, datetime] = {}
         self._ligands: dict[str, dict[str, Any]] = {}
+        self._execution_subjects: dict[str, dict[str, Any]] = {}
         self._proteins: dict[str, dict[str, Any]] = {}
         self._projects: dict[str, dict[str, Any]] = {}
         self._user_logs: dict[str, dict[str, Any]] = {
@@ -77,6 +78,7 @@ class MockServer:
             "deeporigin.draco": 3.0,
             "deeporigin.metabolism": 0.1,  # short poll for local Metabolism.start
             "deeporigin.secondary-pharma": 0.1,  # short poll for local docking start
+            "deeporigin.import-dataset": 0.05,
         }
         self.docking_speed = docking_speed
         self._load_execution_fixtures()
@@ -352,6 +354,7 @@ class MockServer:
             projects=self._projects,
             results=self._results,
             executions=self._executions,
+            execution_subjects=self._execution_subjects,
             user_logs=self._user_logs,
             load_fixture=self._load_fixture,
         )
@@ -368,6 +371,9 @@ class MockServer:
             results=self._results,
             user_logs=self._user_logs,
             file_storage=self._file_storage,
+            proteins=self._proteins,
+            ligands=self._ligands,
+            execution_subjects=self._execution_subjects,
         )
         self.app.include_router(tools_router)
 

@@ -101,7 +101,15 @@ We can see that the protein is shown together with the identified pocket in red.
 !!! tip "The Pocket Finder Function"
     For more details on how to use the Pocket Finder, look at [PocketFinder](../tools/pocketfinder.md).
 
-Preview the docking search box (protein plus wireframe box from pocket center and box size) before running:
+### Preview the docking search box
+
+Preview the docking search box (protein plus wireframe box from pocket center and box size) before running. From the pocket alone (static preview, no session rotation):
+
+```{.python notest}
+pocket.show_box()
+```
+
+Or from a `Docking` instance (same geometry; supports interactive editing and pose overlays):
 
 ```{.python notest}
 docking = Docking(protein=protein, pocket=pocket, ligand=ligand)
@@ -110,6 +118,8 @@ docking.show_box()
 
 When the pocket row includes nested `box` from pocket-finder, the wireframe
 defaults to that inferred orientation (PCA-aligned sizes and `rotation_deg`).
+See [Work with Pockets](../how-to/pockets.md#visualization) for cavity-surface
+viz (`pocket.show()`) versus this search-box preview.
 
 To overlay docked poses with the search box (e.g. after `run()` / `get_poses()`):
 

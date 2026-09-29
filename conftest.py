@@ -85,6 +85,18 @@ def set_test_env_vars(pytestconfig):
 
 
 @pytest.fixture(scope="session", autouse=True)
+def _live_integration_project(set_test_env_vars, pytestconfig):
+    """Ensure a real test project exists on dev/staging/prod before lv1 tests run."""
+
+    env = pytestconfig.getoption("--env")
+    if env == "local":
+        return
+    from tests.integration_project import ensure_live_integration_project_id
+
+    ensure_live_integration_project_id()
+
+
+@pytest.fixture(scope="session", autouse=True)
 def test_server(pytestconfig):
     """Start a local test server for the duration of the test session.
 

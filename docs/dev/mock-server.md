@@ -20,7 +20,11 @@ The mock server is organized into routers, each handling a group of related endp
 
 All routers share in-memory stores (dicts/lists) that are created in `MockServer.__init__` and passed into the router factory functions. This lets data flow between routers — for example, a tool execution in the tools router can inject records that are later visible via the data-platform router's result-explorer search.
 
-**Proteins (local only):** `Protein.sync()` / `Protein.register()` are wired to a single canonical row (`MOCK_CANONICAL_PROTEIN_ID`, `tests/brd.pdb` fixture) so IDs stay stable under `--env local`. There is no separate test module for the mock server; that behavior is exercised indirectly by any local test that syncs a protein (e.g. the `registered_protein` fixture).
+**Proteins (local only):** `Protein.sync()` is wired through mock import-dataset
+``register_protein`` to a single canonical row (`MOCK_CANONICAL_PROTEIN_ID`,
+`tests/brd.pdb` fixture) so IDs stay stable under `--env local`. There is no
+separate test module for the mock server; that behavior is exercised indirectly
+by any local test that syncs a protein (e.g. the `registered_protein` fixture).
 
 ## Running the Mock Server
 
@@ -43,6 +47,8 @@ uv run pytest --env dev
 ```
 
 When `--env dev` is used, the mock server is **not** started and all requests go to the real platform API. This dual-mode design means the mock server must produce responses that are structurally identical to the real API — it is not a shortcut that skips validation.
+
+**Live test project:** level-1 and integration tests against dev/staging/prod resolve a shared project by display name (`do-dd-client-tests`, see `tests/integration_project.py`). The canonical id is fetched from the platform at session start (create-if-missing via `projects.create`); it is not hard-coded. Set `DO_PROJECT_ID` to pin a different project without renaming. Local tests keep using the mock-only id `09DEFAULTPROJECT00`.
 
 ### Standalone Script
 
@@ -115,8 +121,8 @@ This is the most complex part of the mock server. When client code runs a tool (
 - `deeporigin.docking` (single ligand, `sync=True`), `deeporigin.pocket-finder`, `deeporigin.system-prep`, `deeporigin.protein-prep` complete in one POST via `_create_blocking_run_dto` and inject their fixture-backed `jobOutputs` into the result-explorer pool. Protein Prep v2 branches on `inputs.action`: `recommend` loads `tool-runs/deeporigin.protein-prep/recommend.json`; `prepare` (or omitted action) loads `run.json`.
 - `deeporigin.mol-props-protonation` returns deterministic `protonation_states` from the request inputs (`_build_protonation_execution`).
 - `deeporigin.mol-props-*` (logd, logp, ames, …) hash the normalized request body and look up the recorded outputs at `tests/fixtures/tool-runs/{tool_key}/{body_hash}.json` (`_build_molprops_execution`). The fixture's per-ligand `jobOutputs` rows are re-keyed by the request's ligand IDs.
-- `deeporigin.mol-props-combined` (`Molprops`) synthesizes per-ligand rows and a matching `quotationResult` (`_build_combined_molprops_execution`). When the request body includes `approveAmount: 0` (quote-only), the mock clears `jobOutputs` and sets `status` to `Quoted`.
-- `deeporigin.bulk-docking` (`approveAmount=0`) loads `tests/fixtures/tool-runs/deeporigin.bulk-docking/quote.json` and scales the quotation by ligand count.
+- `deeporigin.mol-props-combined` (`Molprops`) synthesizes per-ligand rows and a matching `quotationResult` (`_build_combined_molprops_execution`). When the request body includes `approveAmount: -1` (quote-only; `<= 0` also accepted), the mock clears `jobOutputs` and sets `status` to `Quoted`.
+- `deeporigin.bulk-docking` (`approveAmount<=0`) loads `tests/fixtures/tool-runs/deeporigin.bulk-docking/quote.json` and scales the quotation by ligand count.
 - All other tool keys fall back to a generic `Quoted` execution DTO via `_create_execution_dto`.
 
 ### 2. Request hashing for molprops fixtures

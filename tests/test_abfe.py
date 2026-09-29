@@ -509,6 +509,7 @@ def test_abfe_combined_auto_names(
     pose = Pose.from_sdf(
         BRD_DATA_DIR / "brd-2.sdf",
         ligand=registered_ligand,
+        protein_id=registered_protein.id,
         client=client,
     )
     abfe = ABFE(protein=registered_protein, pose=pose, client=client)

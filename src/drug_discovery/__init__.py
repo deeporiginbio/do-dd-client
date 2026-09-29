@@ -39,7 +39,7 @@ __all__ = [
     "Patent",
     "Enumerator",
     "ProteinPrep",
-    "RecommendationView",
+    "ProteinPrepFindPockets",
     "StructureReport",
     "StructureReportResult",
     "UniprotDiscovery",
@@ -90,9 +90,9 @@ _LAZY_IMPORTS = {
     "Patent": ("deeporigin.drug_discovery.patent", "Patent"),
     "Enumerator": ("deeporigin.drug_discovery.enumerator", "Enumerator"),
     "ProteinPrep": ("deeporigin.drug_discovery.protein_prep", "ProteinPrep"),
-    "RecommendationView": (
+    "ProteinPrepFindPockets": (
         "deeporigin.drug_discovery.protein_prep",
-        "RecommendationView",
+        "ProteinPrepFindPockets",
     ),
     "StructureReport": (
         "deeporigin.drug_discovery.structure_report",

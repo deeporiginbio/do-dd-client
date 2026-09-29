@@ -23,13 +23,20 @@ class Entity(ABC):
     after :meth:`upload`. Call :meth:`upload` before passing paths to remote tools;
     call :meth:`download` when you need a local file for display or analysis.
 
-    ``project_id`` optionally pins the data platform project for this row. When
-    unset, pass the :class:`~deeporigin.platform.client.DeepOriginClient` into
-    :meth:`resolved_project_id` so the id comes from the client.
+    ``project_id`` optionally pins the data platform project for this row after
+    sync. Tool runs and sync require ``client.project_id``; when this attribute
+    is set it must match the client (see :mod:`deeporigin.platform.project_scope`).
 
     ``tags`` is optional data-platform metadata (jsonb object on the row).
     When set, :meth:`sync` / :meth:`register` include it on create. Provenance
     ``app`` / ``session`` are merged from the client automatically on writes.
+
+    Attributes:
+        id: Data platform row id when synced or loaded; ``None`` before first sync.
+        remote_path: Remote storage path for the entity file, when known.
+        local_path: Local filesystem path for the entity file, when known.
+        project_id: Data platform project scope for this row.
+        tags: Optional platform metadata (jsonb) included on create/update.
     """
 
     id: str | None = field(default=None, kw_only=True)

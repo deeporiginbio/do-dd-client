@@ -9,16 +9,26 @@ from pathlib import Path
 import pandas as pd
 import pytest
 
-from deeporigin.drug_discovery import Protein, ProteinPrep, RecommendationView
+from deeporigin.drug_discovery import Protein, ProteinPrep
+from deeporigin.drug_discovery.protein_prep import (
+    _crystal_poses_from_output_rows,
+    _loop_modelling_from_recommendation,
+    _protein_from_prepared_data,
+    _protein_prep_default_name,
+    _selection_from_recommendation,
+)
+from deeporigin.drug_discovery.structures.ligand import Ligand
+from deeporigin.drug_discovery.structures.pose import PoseSet
 from deeporigin.exceptions import DeepOriginException
 from deeporigin.platform import DeepOriginClient
 from deeporigin.platform.constants import TOOL_KEYS_AND_VERSIONS, is_success_status
 from tests.conftest import check_tool_exists
+from tests.mock_server.routers.data_platform import prepared_protein_remote_path
 
 _SHA256 = "a" * 64
 _SAMPLE_SELECTION = {
     "analyzer_version": "1.0.0",
-    "decisions": {"chain:A": "keep", "ligand:LIG:A:100": "skip"},
+    "decisions": {"chain:A": "keep", "ligand:LIG:A:100": "extract"},
     "source_sha256": _SHA256,
 }
 _DRAFT_SELECTION = {
@@ -51,6 +61,8 @@ _SAMPLE_RECOMMENDATION = {
             "subtype": "small_molecule",
         },
     ],
+    "chain_breaks": [],
+    "has_chain_breaks": False,
     "source_sha256": _SHA256,
 }
 _WATER_RECOMMENDATION = {
@@ -81,6 +93,8 @@ _WATER_RECOMMENDATION = {
             "subtype": "coordinating",
         },
     ],
+    "chain_breaks": [],
+    "has_chain_breaks": False,
     "source_sha256": _SHA256,
 }
 _WATER_SELECTION = {
@@ -107,12 +121,9 @@ def _prep_with_inventory(
 
 
 def _protein_with_remote(*, pdb_id: str | None = "1EBY") -> Protein:
-    """Return a protein whose remote path avoids upload in payload tests."""
+    """Return a registered protein whose remote path avoids upload in payload tests."""
     protein = Protein(name="test", pdb_id=pdb_id)
-    protein.remote_path = "testing/brd.pdb"
-    return protein
-    """Return a protein whose remote path avoids upload in payload tests."""
-    protein = Protein(name="test", pdb_id=pdb_id)
+    protein.id = "prot-mock"
     protein.remote_path = "testing/brd.pdb"
     return protein
 
@@ -193,15 +204,14 @@ def test_selection_getter_returns_defensive_copy() -> None:
     assert prep.selection == _DRAFT_SELECTION
 
 
-def test_recommendation_view_raw_is_defensive_copy() -> None:
-    """Mutating RecommendationView.raw does not change stored analyzer evidence."""
+def test_recommendation_payload_is_defensive_copy() -> None:
+    """Mutating recommendation_payload does not change stored analyzer evidence."""
     prep = _prep_with_inventory()
 
-    recommendation = prep.recommendation
-    assert isinstance(recommendation, RecommendationView)
-    raw = recommendation.raw
-    raw["components"][0]["label"] = "changed"
-    assert recommendation.raw["components"][0]["label"] == "Chain A"
+    payload = prep.recommendation_payload
+    assert payload is not None
+    payload["components"][0]["label"] = "changed"
+    assert prep.recommendation_payload["components"][0]["label"] == "Chain A"
 
 
 def test_keep_and_skip_change_only_named_components() -> None:
@@ -249,11 +259,12 @@ def test_keep_requires_selection() -> None:
         prep.keep(["chain:A"])
 
 
-def test_recommendation_view_table_columns_and_live_decision() -> None:
-    """The view exposes the locked columns and current Selection Decisions."""
+def test_recommendation_table_columns_and_live_decision() -> None:
+    """The table exposes the locked columns and current Selection Decisions."""
     prep = _prep_with_inventory()
 
-    df = prep.recommendation()
+    df = prep.recommendation
+    assert df is not None
 
     assert list(df.columns) == [
         "id",
@@ -269,46 +280,34 @@ def test_recommendation_view_table_columns_and_live_decision() -> None:
     assert ligand["recommendation"] == "review"
     assert ligand["decision"] == "review"
     prep.keep("ligand:LIG:A:100")
-    updated = prep.recommendation().set_index("id").loc["ligand:LIG:A:100"]
+    updated = prep.recommendation.set_index("id").loc["ligand:LIG:A:100"]
     assert updated["recommendation"] == "review"
     assert updated["decision"] == "keep"
 
 
-def test_recommendation_view_filters_by_decision() -> None:
-    """pp.recommendation(decision='review') returns unresolved rows."""
+def test_recommendation_table_filters_by_decision() -> None:
+    """Boolean indexing on decision returns unresolved rows."""
     prep = _prep_with_inventory()
 
-    df = prep.recommendation(decision="review")
+    df = prep.recommendation
+    assert df is not None
+    review = df[df["decision"] == "review"]
 
-    assert list(df["id"]) == ["ligand:LIG:A:100"]
+    assert list(review["id"]) == ["ligand:LIG:A:100"]
 
 
-def test_recommendation_view_and_filters() -> None:
-    """View kwargs AND together."""
+def test_recommendation_table_and_filters() -> None:
+    """Pandas masks AND together."""
     prep = _prep_with_inventory(
         recommendation=_WATER_RECOMMENDATION,
         selection=_WATER_SELECTION,
     )
 
-    df = prep.recommendation(kind="water", decision="review")
+    df = prep.recommendation
+    assert df is not None
+    filtered = df[(df["kind"] == "water") & (df["decision"] == "review")]
 
-    assert list(df["id"]) == ["water:A:HOH:310:"]
-
-
-def test_recommendation_view_rejects_invalid_kind() -> None:
-    """Unknown kind values error instead of matching nothing."""
-    prep = _prep_with_inventory()
-
-    with pytest.raises(ValueError, match="kind must be one of"):
-        prep.recommendation(kind="waters")
-
-
-def test_recommendation_view_has_no_keep() -> None:
-    """keep/skip stay on ProteinPrep; recommend().keep() is not supported."""
-    prep = _prep_with_inventory()
-
-    assert not hasattr(prep.recommendation, "keep")
-    assert not hasattr(prep.recommendation, "skip")
+    assert list(filtered["id"]) == ["water:A:HOH:310:"]
 
 
 def test_keep_kind_is_sugar_for_matching_ids() -> None:
@@ -334,7 +333,9 @@ def test_keep_accepts_filtered_dataframe() -> None:
         selection=_WATER_SELECTION,
     )
 
-    prep.keep(prep.recommendation(decision="review"))
+    df = prep.recommendation
+    assert df is not None
+    prep.keep(df[df["decision"] == "review"])
 
     decisions = prep.selection["decisions"]
     assert decisions["ligand:LIG:A:100"] == "keep"
@@ -394,23 +395,28 @@ def test_keep_subtype_without_recommendation_errors() -> None:
         prep.keep(subtype="crystal")
 
 
-def test_recommendation_view_filters_by_analyzer_tag() -> None:
-    """recommendation= filters frozen analyzer tags, not live Decisions."""
+def test_recommendation_table_filters_by_analyzer_tag() -> None:
+    """The recommendation column holds frozen analyzer tags, not live Decisions."""
     prep = _prep_with_inventory()
     prep.keep("ligand:LIG:A:100")
 
-    df = prep.recommendation(recommendation="review")
+    df = prep.recommendation
+    assert df is not None
+    review = df[df["recommendation"] == "review"]
 
-    assert list(df["id"]) == ["ligand:LIG:A:100"]
-    assert list(df["decision"]) == ["keep"]
+    assert list(review["id"]) == ["ligand:LIG:A:100"]
+    assert list(review["decision"]) == ["keep"]
 
 
-def test_keep_rejects_uncalled_view() -> None:
-    """The uncalled view is not a DataFrame of ids."""
+def test_keep_accepts_full_recommendation_table() -> None:
+    """keep() accepts the full recommendation DataFrame."""
     prep = _prep_with_inventory()
 
-    with pytest.raises(TypeError, match="not the recommendation view"):
-        prep.keep(prep.recommendation)
+    df = prep.recommendation
+    assert df is not None
+    prep.keep(df)
+
+    assert all(value == "keep" for value in prep.selection["decisions"].values())
 
 
 def test_keep_dataframe_requires_id_column() -> None:
@@ -431,9 +437,186 @@ def test_skip_decision_review_resolves_reviews() -> None:
     prep.skip(decision="review")
 
     decisions = prep.selection["decisions"]
-    assert decisions["ligand:LIG:A:100"] == "skip"
+    assert decisions["ligand:LIG:A:100"] == "extract"
     assert decisions["water:A:HOH:310:"] == "skip"
     assert decisions["chain:A"] == "keep"
+
+
+def test_selection_from_recommendation_accepts_extract_tag() -> None:
+    """Analyzer extract recommendations seed the Selection unchanged."""
+    recommendation = {
+        **_SAMPLE_RECOMMENDATION,
+        "components": [
+            _SAMPLE_RECOMMENDATION["components"][0],
+            {
+                **_SAMPLE_RECOMMENDATION["components"][1],
+                "recommendation": "extract",
+            },
+        ],
+    }
+
+    selection = _selection_from_recommendation(recommendation)
+
+    assert selection["decisions"]["ligand:LIG:A:100"] == "extract"
+
+
+def test_selection_from_recommendation_maps_ligand_skip_to_extract() -> None:
+    """Analyzer skip on ligands becomes extract in the editable Selection."""
+    recommendation = {
+        **_SAMPLE_RECOMMENDATION,
+        "components": [
+            _SAMPLE_RECOMMENDATION["components"][0],
+            {
+                **_SAMPLE_RECOMMENDATION["components"][1],
+                "recommendation": "skip",
+            },
+        ],
+    }
+
+    selection = _selection_from_recommendation(recommendation)
+
+    assert selection["decisions"]["ligand:LIG:A:100"] == "extract"
+
+
+def test_skip_ligand_stores_extract_decision() -> None:
+    """skip() on ligand ids maps to extract for platform compatibility."""
+    prep = ProteinPrep(
+        protein=Protein(name="test"),
+        selection=_DRAFT_SELECTION,
+    )
+
+    prep.skip("ligand:LIG:A:100")
+
+    assert prep.selection["decisions"]["ligand:LIG:A:100"] == "extract"
+
+
+def test_extract_sets_ligand_decision() -> None:
+    """extract() marks ligand components for SDF extraction on prepare."""
+    prep = ProteinPrep(
+        protein=Protein(name="test"),
+        selection=_DRAFT_SELECTION,
+    )
+
+    prep.extract("ligand:LIG:A:100")
+
+    assert prep.selection["decisions"]["ligand:LIG:A:100"] == "extract"
+    assert prep.find_pockets == "from-crystal-ligand"
+
+
+def test_explicit_find_pockets_no_overrides_ligand_extract() -> None:
+    """Assigning find_pockets='no' opts out of selection-based pocket inference."""
+    prep = ProteinPrep(
+        protein=_protein_with_remote(),
+        selection=_SAMPLE_SELECTION,
+        model_missing_loops=False,
+    )
+    assert prep.find_pockets == "from-crystal-ligand"
+
+    prep.find_pockets = "no"
+
+    assert prep.find_pockets == "no"
+    payload = prep._make_protein_prep_payload(action="prepare", sync=True)
+    assert payload["inputs"]["find_pockets"] == "no"
+
+
+def test_constructor_find_pockets_no_overrides_ligand_extract() -> None:
+    """Constructor find_pockets='no' opts out of selection-based inference."""
+    prep = ProteinPrep(
+        protein=_protein_with_remote(),
+        selection=_SAMPLE_SELECTION,
+        find_pockets="no",
+    )
+    assert prep.find_pockets == "no"
+    payload = prep._make_protein_prep_payload(action="prepare", sync=True)
+    assert payload["inputs"]["find_pockets"] == "no"
+
+
+def test_find_pockets_reflects_ligand_extract_after_water_triage() -> None:
+    """Ligand extract in the Selection surfaces as from-crystal-ligand pockets."""
+    prep = _prep_with_inventory(
+        recommendation=_WATER_RECOMMENDATION,
+        selection=_WATER_SELECTION,
+    )
+    assert prep.find_pockets == "no"
+
+    (
+        prep.keep(kind="water", subtype="coordinating")
+        .skip(kind="water", subtype="crystal")
+        .extract(kind="ligand")
+    )
+
+    assert prep.find_pockets == "from-crystal-ligand"
+
+
+def test_protein_prep_default_name_helper() -> None:
+    """Default prepare names reflect loops, pocket, and pdb_id / protein name."""
+    protein = Protein(name="brd", pdb_id="1EBY")
+
+    assert (
+        _protein_prep_default_name(
+            protein=protein,
+            pdb_id="1EBY",
+            model_missing_loops=False,
+            include_pocket=False,
+        )
+        == "Preparing 1EBY"
+    )
+    assert (
+        _protein_prep_default_name(
+            protein=protein,
+            pdb_id="1EBY",
+            model_missing_loops=True,
+            include_pocket=False,
+        )
+        == "Preparing and loop modelling 1EBY"
+    )
+    assert (
+        _protein_prep_default_name(
+            protein=protein,
+            pdb_id=None,
+            model_missing_loops=False,
+            include_pocket=True,
+        )
+        == "Preparing and finding pockets brd"
+    )
+    assert (
+        _protein_prep_default_name(
+            protein=protein,
+            pdb_id="1EBY",
+            model_missing_loops=True,
+            include_pocket=True,
+        )
+        == "Preparing, loop modelling, and finding pockets 1EBY"
+    )
+    assert (
+        _protein_prep_default_name(
+            protein=Protein(name=""),
+            pdb_id=None,
+            model_missing_loops=False,
+            include_pocket=False,
+        )
+        == "Preparing protein"
+    )
+
+
+def test_ensure_prepare_name_respects_explicit_name() -> None:
+    """Caller-provided names are kept; otherwise config drives the label."""
+    prep = ProteinPrep(
+        protein=Protein(name="brd", pdb_id="1EBY"),
+        selection=_SAMPLE_SELECTION,
+        model_missing_loops=False,
+    )
+    prep._ensure_prepare_name()
+    assert prep.name == "Preparing 1EBY"
+
+    named = ProteinPrep(
+        protein=Protein(name="brd", pdb_id="1EBY"),
+        selection=_SAMPLE_SELECTION,
+        model_missing_loops=True,
+        name="custom prep",
+    )
+    named._ensure_prepare_name()
+    assert named.name == "custom prep"
 
 
 def test_prepare_requires_selection_before_upload() -> None:
@@ -466,21 +649,56 @@ def test_prepare_lists_unresolved_reviews() -> None:
         prep.run()
 
 
-def test_run_requires_loops_off() -> None:
-    """Blocking prepare directs loops-on callers to start."""
+def test_run_allows_loops_on(
+    client: DeepOriginClient,
+    registered_protein: Protein,
+) -> None:
+    """Blocking prepare supports served loop modelling on protein-prep v10."""
     prep = ProteinPrep(
-        protein=Protein(name="test", pdb_id="1EBY"),
+        protein=registered_protein,
         selection=_SAMPLE_SELECTION,
+        pdb_id="1EBY",
+        client=client,
     )
 
-    with pytest.raises(ValueError, match=r"Use start\(\)"):
+    prepared = prep.run()
+
+    assert isinstance(prepared, Protein)
+    assert prep.tool_key == TOOL_KEYS_AND_VERSIONS["protein_prep"]["tool_key"]
+
+
+def test_run_rejects_novel_pockets() -> None:
+    """Blocking prepare is unavailable when novel pocket finding is enabled."""
+    prep = ProteinPrep(
+        protein=Protein(name="test"),
+        selection=_SAMPLE_SELECTION,
+        model_missing_loops=False,
+        find_pockets="novel",
+        pocket_count=1,
+        pocket_min_size=30,
+    )
+
+    with pytest.raises(ValueError, match="novel pocket finding"):
         prep.run()
+
+
+def test_prepare_requires_registered_protein_id() -> None:
+    """Prepare rejects unregistered proteins (protein-prep v10 contract)."""
+    prep = ProteinPrep(
+        protein=_protein_with_remote(),
+        selection=_SAMPLE_SELECTION,
+        model_missing_loops=False,
+    )
+    prep._protein.id = None
+
+    with pytest.raises(ValueError, match="registered protein"):
+        prep._make_protein_prep_payload(action="prepare", sync=True)
 
 
 def test_start_requires_pdb_id_when_loops_enabled() -> None:
     """Asynchronous loops-on prepare requires a PDB ID."""
     prep = ProteinPrep(
-        protein=Protein(name="test"),
+        protein=_protein_with_remote(pdb_id=None),
         selection=_SAMPLE_SELECTION,
     )
 
@@ -509,15 +727,17 @@ def test_configuration_freezes_permanently_after_id() -> None:
 
 
 def test_removed_api_is_absent() -> None:
-    """The old two-object and quote-oriented surface is removed."""
+    """The old two-object surface is removed; quote kwargs remain on start/run."""
     prep = ProteinPrep(protein=Protein(name="test"))
 
     assert not hasattr(prep, "as_prepare")
     assert not hasattr(prep, "from_recommendation")
     assert not hasattr(prep, "get_recommendation")
     assert not hasattr(prep, "selection_from_recommendation")
-    assert list(inspect.signature(prep.run).parameters) == []
-    assert list(inspect.signature(prep.start).parameters) == []
+    assert "quote" in inspect.signature(prep.run).parameters
+    assert "approve_amount" in inspect.signature(prep.run).parameters
+    assert "quote" in inspect.signature(prep.start).parameters
+    assert "approve_amount" in inspect.signature(prep.start).parameters
 
 
 def test_recommend_payload_is_blocking_and_minimal() -> None:
@@ -553,7 +773,8 @@ def test_prepare_payload_contains_resolved_selection() -> None:
     assert payload["inputs"]["action"] == "prepare"
     assert payload["inputs"]["selection"] == _SAMPLE_SELECTION
     assert payload["inputs"]["pdb_id"] == "1EBY"
-    assert "model_missing_loops" not in payload["inputs"]
+    assert payload["inputs"]["model_missing_loops"] is True
+    assert payload["inputs"]["find_pockets"] == "from-crystal-ligand"
     assert "approveAmount" not in payload
 
 
@@ -582,13 +803,13 @@ def test_repr_uses_user_concepts_not_action() -> None:
     text = repr(prep)
 
     assert "action" not in text
-    assert "1 keep, 1 review, 0 skip" in text
+    assert "1 keep, 1 review, 0 skip, 0 extract" in text
     assert "recommendation" in text
     assert "2 components" in text
 
 
 def test_repr_adds_durable_execution_state() -> None:
-    """Text display adds ID, status, and progress for a bound object."""
+    """Text display adds ID and status; progress stays on the attribute."""
     prep = ProteinPrep(
         protein=Protein(name="brd", pdb_id="1EBY"),
         selection=_SAMPLE_SELECTION,
@@ -601,7 +822,90 @@ def test_repr_adds_durable_execution_state() -> None:
 
     assert "exec-abc" in text
     assert "Running" in text
-    assert "25" in text
+    assert "progress" not in text
+    assert prep.progress == {"percent": 25}
+
+
+def test_loop_modelling_from_recommendation_follows_chain_breaks() -> None:
+    """Chain Break facts drive the default loop-modelling flag after recommend."""
+    assert _loop_modelling_from_recommendation({"chain_breaks": []}) is False
+    assert _loop_modelling_from_recommendation({"chain_breaks": ["A:10–A:12"]}) is True
+    assert _loop_modelling_from_recommendation({"has_chain_breaks": False}) is False
+    assert _loop_modelling_from_recommendation({}) is True
+
+
+def test_repr_html_uses_summary_card() -> None:
+    """Jupyter HTML uses the summary card instead of a parameter table."""
+    prep = ProteinPrep(
+        protein=Protein(name="brd", pdb_id="1EBY"),
+        selection=_DRAFT_SELECTION,
+    )
+    prep._recommendation = _SAMPLE_RECOMMENDATION
+
+    html = prep._repr_html_()
+
+    assert "border-radius: 6px" in html
+    assert "<table" not in html
+    assert "Prepare Protein brd" in html
+    assert "<strong>Protein:</strong>" not in html
+    assert "Loop modelling:" in html
+    assert "Find pockets:" in html
+    assert "find_pockets:" not in html
+    assert ".recommend()" in html or ".run()" in html
+
+
+def test_notebook_prepare_hint_follows_find_pockets() -> None:
+    """Prepare footer hints match whether blocking run() is allowed."""
+    base = ProteinPrep(
+        protein=Protein(name="brd", pdb_id="1EBY"),
+        selection=_DRAFT_SELECTION,
+    )
+    base._recommendation = _SAMPLE_RECOMMENDATION
+
+    no_pockets = base._prepare_submit_action_hint()
+    assert no_pockets == "Call <code>.run()</code> to prepare"
+
+    crystal = ProteinPrep(
+        protein=Protein(name="brd", pdb_id="1EBY"),
+        selection=_DRAFT_SELECTION,
+        find_pockets="from-crystal-ligand",
+        component_id="ligand:LIG:A:100",
+    )
+    crystal._recommendation = _SAMPLE_RECOMMENDATION
+    assert (
+        crystal._prepare_submit_action_hint() == "Call <code>.run()</code> to prepare"
+    )
+
+    novel = ProteinPrep(
+        protein=Protein(name="brd", pdb_id="1EBY"),
+        selection=_DRAFT_SELECTION,
+        find_pockets="novel",
+    )
+    novel._recommendation = _SAMPLE_RECOMMENDATION
+    novel_hint = novel._prepare_submit_action_hint()
+    assert novel_hint == "Call <code>.start()</code> to prepare and find pockets"
+
+
+def test_repr_html_omits_progress() -> None:
+    """Jupyter HTML skips progress so large reports do not dominate the table."""
+    prep = ProteinPrep(
+        protein=Protein(name="brd", pdb_id="1EBY"),
+        selection=_SAMPLE_SELECTION,
+    )
+    prep._id = "exec-abc"
+    prep.status = "Running"
+    prep.progress = {
+        "id": "workflow-huge",
+        "status": "Running",
+        "children": [{"id": f"step-{i}", "status": "Succeeded"} for i in range(50)],
+    }
+
+    html = prep._repr_html_()
+
+    assert "exec-abc" in html
+    assert "Running" in html
+    assert "progress" not in html
+    assert "workflow-huge" not in html
 
 
 def test_from_dto_rehydrates_prepare_without_public_action(
@@ -628,10 +932,23 @@ def test_from_dto_rehydrates_recommendation(
     prep = ProteinPrep.from_dto(dto, client=client)
 
     assert prep._operation_kind == "recommend"
-    assert isinstance(prep.recommendation, RecommendationView)
+    assert isinstance(prep.recommendation, pd.DataFrame)
     assert prep.selection == _DRAFT_SELECTION
+    assert prep.model_missing_loops is False
     with pytest.raises(DeepOriginException, match="did not produce"):
         prep.get_results(dto)
+
+
+def test_recommend_preserves_explicit_model_missing_loops() -> None:
+    """Explicit loop settings survive recommend() when chain breaks are present."""
+    prep = ProteinPrep(
+        protein=_protein_with_remote(),
+        model_missing_loops=False,
+    )
+    prep._sync_model_missing_loops_from_recommendation(
+        {"chain_breaks": ["A:10–A:12"]},
+    )
+    assert prep.model_missing_loops is False
 
 
 def test_from_dto_v1_prepare_still_gets_results(
@@ -650,7 +967,9 @@ def test_from_dto_v1_prepare_still_gets_results(
 
     assert prep._operation_kind == "prepare"
     assert isinstance(prepared, Protein)
-    assert prepared.remote_path == "testing/brd.pdb"
+    assert prepared.id is not None
+    assert prepared.remote_path is not None
+    assert str(prepared.remote_path).endswith(".pdb")
 
 
 def test_get_results_requires_durable_id() -> None:
@@ -659,6 +978,35 @@ def test_get_results_requires_durable_id() -> None:
 
     with pytest.raises(ValueError, match="no execution"):
         prep.get_results()
+
+
+def test_protein_from_prepared_data_uses_registered_protein_id(
+    client: DeepOriginClient,
+) -> None:
+    """Prepare outputs resolve the registered prepared protein entity."""
+    prepared = _protein_from_prepared_data(
+        {"id": "prep-a1b2c3d4e5f6", "pdb_id": "1EBY"},
+        client=client,
+        fallback_pdb_id=None,
+        fallback_name="brd",
+    )
+
+    assert prepared.id == "prep-a1b2c3d4e5f6"
+    assert prepared.pdb_id == "1EBY"
+    assert prepared.remote_path == prepared_protein_remote_path(
+        "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+    )
+
+
+def test_protein_from_prepared_data_requires_protein_id() -> None:
+    """Prepare outputs without ``id`` are rejected."""
+    with pytest.raises(ValueError, match="prepared protein id"):
+        _protein_from_prepared_data(
+            {"pdb_id": "1EBY"},
+            client=DeepOriginClient(),
+            fallback_pdb_id=None,
+            fallback_name="brd",
+        )
 
 
 def test_recommend_updates_same_object_without_id(
@@ -675,13 +1023,14 @@ def test_recommend_updates_same_object_without_id(
 
     result = prep.recommend()
 
-    assert isinstance(result, RecommendationView)
+    assert isinstance(result, pd.DataFrame)
     assert prep.id is None
     assert prep.status is None
     assert prep.recommendation is not None
     assert prep.selection is not None
     assert prep.selection["decisions"]["chain:A"] == "keep"
     assert prep.selection["decisions"]["ligand:LIG:A:100"] == "review"
+    assert prep.model_missing_loops is False
 
 
 def test_recommend_then_run_loops_off_returns_protein(
@@ -700,8 +1049,10 @@ def test_recommend_then_run_loops_off_returns_protein(
     prepared = prep.run()
 
     assert isinstance(prepared, Protein)
-    assert prepared.id is None
-    assert prepared.remote_path == "testing/brd.pdb"
+    assert prepared.id is not None
+    assert prepared.id != registered_protein.id
+    assert prepared.remote_path.startswith("entities/proteins/prepared/")
+    assert prepared.remote_path.endswith(".pdb")
     assert prep.id is not None
     if client.env == "local":
         assert is_success_status(prep.status)
@@ -728,3 +1079,418 @@ def test_start_accepts_resolved_loops_off_prepare(
     assert prep.id is not None
     if client.env == "local":
         assert is_success_status(prep.status)
+
+
+def test_novel_find_pockets_serializes_flat_fields() -> None:
+    """Novel pocket mode serializes to flat preparation-tool fields."""
+    prep = ProteinPrep(
+        protein=_protein_with_remote(),
+        selection=_SAMPLE_SELECTION,
+        model_missing_loops=False,
+        find_pockets="novel",
+        pocket_count=2,
+        pocket_min_size=40,
+    )
+    payload = prep._make_protein_prep_payload(action="prepare", sync=False)
+    assert payload["inputs"]["find_pockets"] == "novel"
+    assert payload["inputs"]["pocket_count"] == 2
+    assert payload["inputs"]["pocket_min_size"] == 40.0
+
+
+def test_crystal_find_pockets_serializes_flat_fields() -> None:
+    """Crystal-ligand mode serializes to flat preparation-tool fields."""
+    prep = ProteinPrep(
+        protein=_protein_with_remote(),
+        selection=_SAMPLE_SELECTION,
+        model_missing_loops=False,
+        find_pockets="from-crystal-ligand",
+        component_id="ligand:LIG:A:100",
+        box_padding=4.0,
+    )
+    payload = prep._make_protein_prep_payload(action="prepare", sync=True)
+    assert payload["inputs"]["find_pockets"] == "from-crystal-ligand"
+    assert payload["inputs"]["crystal_ligand"] == {"component_id": "ligand:LIG:A:100"}
+    assert payload["inputs"]["box_padding"] == 4.0
+
+
+def test_pocket_count_requires_novel_mode() -> None:
+    """Novel-only tuning knobs reject other find_pockets modes."""
+    prep = ProteinPrep(protein=Protein(name="test"), selection=_SAMPLE_SELECTION)
+    with pytest.raises(ValueError, match="find_pockets='novel'"):
+        prep.pocket_count = 2
+
+
+def test_loops_off_extract_infers_crystal_pockets() -> None:
+    """Ligand extract on the fast path requests one crystal pocket per pose."""
+    prep = ProteinPrep(
+        protein=_protein_with_remote(),
+        selection=_SAMPLE_SELECTION,
+        model_missing_loops=False,
+    )
+
+    payload = prep._make_protein_prep_payload(action="prepare", sync=True)
+    assert payload["inputs"]["action"] == "prepare"
+    assert payload["inputs"]["find_pockets"] == "from-crystal-ligand"
+    assert "crystal_ligand" not in payload["inputs"]
+    assert "pocket" not in payload["inputs"]
+
+
+def test_loops_off_keep_ligand_sets_find_pockets_no() -> None:
+    """A Selection with no ligand extract does not request crystal pockets."""
+    selection = {
+        "analyzer_version": "1.0.0",
+        "decisions": {"chain:A": "keep", "ligand:LIG:A:100": "keep"},
+        "source_sha256": _SHA256,
+    }
+    prep = ProteinPrep(
+        protein=_protein_with_remote(),
+        selection=selection,
+        model_missing_loops=False,
+    )
+
+    payload = prep._make_protein_prep_payload(action="prepare", sync=True)
+    assert payload["inputs"]["find_pockets"] == "no"
+
+
+def test_loops_on_prepare_uses_protein_prep_payload() -> None:
+    """Loops-on prepare stays on protein-prep with explicit v10 fields."""
+    selection = {
+        "analyzer_version": "1.0.0",
+        "decisions": {"chain:A": "keep"},
+        "source_sha256": _SHA256,
+    }
+    prep = ProteinPrep(
+        protein=_protein_with_remote(),
+        selection=selection,
+        model_missing_loops=True,
+        pdb_id="1EBY",
+        find_pockets="no",
+    )
+
+    payload = prep._make_protein_prep_payload(action="prepare", sync=True)
+    assert payload["inputs"]["action"] == "prepare"
+    assert payload["inputs"]["model_missing_loops"] is True
+    assert payload["inputs"]["find_pockets"] == "no"
+    assert "pocket" not in payload["inputs"]
+    assert payload["sync"] is True
+
+
+def test_novel_pockets_prepare_payload_includes_flat_fields() -> None:
+    """Novel pockets serialize on protein-prep prepare inputs."""
+    prep = ProteinPrep(
+        protein=_protein_with_remote(pdb_id=None),
+        selection=_SAMPLE_SELECTION,
+        model_missing_loops=False,
+        find_pockets="novel",
+        pocket_count=1,
+        pocket_min_size=30,
+    )
+
+    payload = prep._make_protein_prep_payload(
+        action="prepare",
+        sync=False,
+        approve_amount=12,
+    )
+    assert payload["approveAmount"] == 12
+    assert payload["inputs"]["find_pockets"] == "novel"
+    assert payload["inputs"]["pocket_count"] == 1
+    assert payload["inputs"]["pocket_min_size"] == 30.0
+    assert "pocket" not in payload["inputs"]
+
+
+def test_loops_off_crystal_pockets_use_direct_protein_prep() -> None:
+    """Crystal-ligand pockets stay on standalone Protein Prep when loops are off."""
+    prep = ProteinPrep(
+        protein=_protein_with_remote(pdb_id=None),
+        selection=_SAMPLE_SELECTION,
+        model_missing_loops=False,
+        find_pockets="from-crystal-ligand",
+        component_id="ligand:LIG:A:100",
+        box_geometry="fixed-radius",
+        pocket_radius=12,
+    )
+
+    payload = prep._make_protein_prep_payload(action="prepare", sync=True)
+    assert payload["inputs"]["find_pockets"] == "from-crystal-ligand"
+    assert payload["inputs"]["crystal_ligand"] == {"component_id": "ligand:LIG:A:100"}
+    assert payload["inputs"]["box_geometry"] == "fixed-radius"
+    assert payload["inputs"]["pocket_radius"] == 12.0
+    assert "pocket" not in payload["inputs"]
+
+
+def test_loops_on_crystal_pockets_use_protein_prep_flat_fields() -> None:
+    """Loops-on crystal-ligand pockets stay on protein-prep."""
+    prep = ProteinPrep(
+        protein=_protein_with_remote(),
+        selection=_SAMPLE_SELECTION,
+        model_missing_loops=True,
+        pdb_id="1EBY",
+        find_pockets="from-crystal-ligand",
+        ligand_id="LIG",
+    )
+
+    payload = prep._make_protein_prep_payload(action="prepare", sync=False)
+    assert payload["inputs"]["find_pockets"] == "from-crystal-ligand"
+    assert payload["inputs"]["crystal_ligand"] == {"ligand_id": "LIG"}
+    assert "pocket" not in payload["inputs"]
+
+
+def test_loops_on_start_uses_protein_prep_tool_key(
+    client: DeepOriginClient,
+    registered_protein: Protein,
+) -> None:
+    """Loops-on start binds to protein-prep v10."""
+    selection = {
+        "analyzer_version": "1.0.0",
+        "decisions": {"chain:A": "keep"},
+        "source_sha256": _SHA256,
+    }
+    prep = ProteinPrep(
+        protein=registered_protein,
+        selection=selection,
+        model_missing_loops=True,
+        pdb_id="1EBY",
+        find_pockets="no",
+        client=client,
+    )
+
+    prep.start()
+
+    assert prep.id is not None
+    assert prep.name == "Preparing and loop modelling 1EBY"
+    assert prep.tool_key == TOOL_KEYS_AND_VERSIONS["protein_prep"]["tool_key"]
+    assert prep.tool_version == "10"
+    prepared = prep.get_results()
+    assert isinstance(prepared, Protein)
+    with pytest.raises(ValueError, match="did not request pockets"):
+        prep.get_pockets()
+
+
+def test_pocket_start_exposes_pockets_and_supports_quote(
+    client: DeepOriginClient,
+    registered_protein: Protein,
+) -> None:
+    """Pocket-bearing start returns pockets and can quote first."""
+    quoted = ProteinPrep(
+        protein=registered_protein,
+        selection=_SAMPLE_SELECTION,
+        model_missing_loops=False,
+        find_pockets="novel",
+        pocket_count=1,
+        pocket_min_size=30,
+        client=client,
+    )
+    quoted.start(quote=True)
+    assert quoted.status == "Quoted"
+    assert quoted.id is not None
+    quoted.confirm()
+    prepared = quoted.get_results()
+    assert isinstance(prepared, Protein)
+
+    prep = ProteinPrep(
+        protein=registered_protein,
+        selection=_SAMPLE_SELECTION,
+        model_missing_loops=False,
+        find_pockets="novel",
+        pocket_count=1,
+        pocket_min_size=30,
+        client=client,
+    )
+    prep.start()
+    assert prep.tool_key == "deeporigin.protein-prep"
+    prepared = prep.get_results()
+    assert isinstance(prepared, Protein)
+    pockets = prep.get_pockets()
+    assert pockets is not None
+    assert len(pockets) >= 1
+
+
+def test_extract_start_exposes_crystal_pockets(
+    client: DeepOriginClient,
+    registered_protein: Protein,
+) -> None:
+    """Fast-path extract publishes crystal-ligand pockets."""
+    prep = ProteinPrep(
+        protein=registered_protein,
+        selection=_SAMPLE_SELECTION,
+        model_missing_loops=False,
+        client=client,
+    )
+    prep.start()
+
+    pockets = prep.get_pockets()
+    assert pockets is not None
+    assert len(pockets) >= 1
+    assert pockets[0].origin == "from-crystal-ligand"
+
+
+def test_get_pockets_returns_none_when_not_published() -> None:
+    """Requested pockets that have not been published yet return None."""
+    prep = ProteinPrep(
+        protein=Protein(name="test"),
+        selection=_SAMPLE_SELECTION,
+        model_missing_loops=False,
+        find_pockets="novel",
+        pocket_count=1,
+        pocket_min_size=30,
+    )
+    prep._id = "pending-pockets"
+    prep.tool_key = TOOL_KEYS_AND_VERSIONS["protein_prep"]["tool_key"]
+
+    assert prep.get_pockets({"jobOutputs": {}}) is None
+
+
+def test_get_pockets_returns_empty_list_for_zero_pocket_result() -> None:
+    """A completed valid zero-pocket payload returns []."""
+    prep = ProteinPrep(
+        protein=Protein(name="test"),
+        selection=_SAMPLE_SELECTION,
+        model_missing_loops=False,
+        find_pockets="novel",
+        pocket_count=1,
+        pocket_min_size=30,
+    )
+    prep._id = "zero-pockets"
+    prep.tool_key = TOOL_KEYS_AND_VERSIONS["protein_prep"]["tool_key"]
+
+    assert prep.get_pockets({"jobOutputs": {"pockets": []}}) == []
+
+
+def test_get_pockets_returns_none_when_extract_not_yet_published() -> None:
+    """Fast-path extract requests pockets when find_pockets stays at default."""
+    prep = ProteinPrep(
+        protein=Protein(name="test"),
+        selection=_SAMPLE_SELECTION,
+        model_missing_loops=False,
+    )
+    prep._id = "pending-crystal-pockets"
+
+    assert prep.get_pockets({"jobOutputs": {}}) is None
+
+
+def test_get_pockets_raises_when_run_did_not_request_them() -> None:
+    """A keep-only loops-off run has no pocket results to read."""
+    selection = {
+        "analyzer_version": "1.0.0",
+        "decisions": {"chain:A": "keep", "ligand:LIG:A:100": "keep"},
+        "source_sha256": _SHA256,
+    }
+    prep = ProteinPrep(
+        protein=Protein(name="test"),
+        selection=selection,
+        model_missing_loops=False,
+    )
+    prep._id = "no-pockets"
+
+    with pytest.raises(ValueError, match="did not request pockets"):
+        prep.get_pockets({"jobOutputs": {}})
+
+
+def test_get_crystal_poses_returns_none_when_not_published(
+    client: DeepOriginClient,
+) -> None:
+    """Crystal poses that have not been published yet return None."""
+    prep = ProteinPrep(
+        protein=Protein(name="test"),
+        selection=_SAMPLE_SELECTION,
+        model_missing_loops=False,
+        client=client,
+    )
+    prep._id = "pending-extract"
+    prep._operation_kind = "prepare"
+    prep.tool_key = TOOL_KEYS_AND_VERSIONS["protein_prep"]["tool_key"]
+
+    assert prep.get_crystal_poses({"jobOutputs": {}}) is None
+
+
+def test_get_crystal_poses_returns_empty_set_when_none_extracted(
+    client: DeepOriginClient,
+) -> None:
+    """A completed prepare with no extractions returns an empty PoseSet."""
+    prep = ProteinPrep(
+        protein=Protein(name="test"),
+        selection=_SAMPLE_SELECTION,
+        model_missing_loops=False,
+        client=client,
+    )
+    prep._id = "no-extract"
+    prep._operation_kind = "prepare"
+    prep.tool_key = TOOL_KEYS_AND_VERSIONS["protein_prep"]["tool_key"]
+
+    extracted = prep.get_crystal_poses({"jobOutputs": {"poses": []}})
+    assert isinstance(extracted, PoseSet)
+    assert len(extracted) == 0
+
+
+def test_crystal_poses_from_output_rows_hydrates_metadata(
+    client: DeepOriginClient,
+    registered_ligand: Ligand,
+) -> None:
+    """Prepare pose rows map ids, paths, and protein onto Pose."""
+    prepared_protein_id = "09PREPAREDPROTEIN"
+    rows = [
+        {
+            "component_id": "ligand:LIG:A:100",
+            "file_path": "entities/ligands/extracted/exec/lig.sdf",
+            "ligand_id": registered_ligand.id,
+            "origin": "cocrystal",
+            "protein_id": prepared_protein_id,
+        }
+    ]
+    poses = _crystal_poses_from_output_rows(rows, client=client)
+    assert len(poses) == 1
+    assert poses[0].ligand_id == registered_ligand.id
+    assert poses[0].component_id == "ligand:LIG:A:100"
+    assert poses[0].protein_id == prepared_protein_id
+    assert poses[0].origin == "cocrystal"
+    assert poses[0].remote_path == "entities/ligands/extracted/exec/lig.sdf"
+
+
+def test_crystal_poses_from_output_rows_rejects_non_cocrystal_origin(
+    client: DeepOriginClient,
+) -> None:
+    """Only Protein Prep cocrystal pose rows are surfaced."""
+    rows = [
+        {
+            "component_id": "ligand:LIG:A:100",
+            "file_path": "entities/ligands/extracted/exec/lig.sdf",
+            "ligand_id": "08LIGAND0001",
+            "origin": "crystal_extract",
+            "protein_id": "09PREPAREDPROTEIN",
+        }
+    ]
+    assert _crystal_poses_from_output_rows(rows, client=client) == []
+
+
+def test_run_with_extract_populates_get_crystal_poses(
+    client: DeepOriginClient,
+    registered_protein: Protein,
+) -> None:
+    """Prepare with extract decisions returns poses via get_crystal_poses."""
+    prep = ProteinPrep(
+        protein=registered_protein,
+        selection=_SAMPLE_SELECTION,
+        model_missing_loops=False,
+        client=client,
+    )
+    prep.run()
+    poses = prep.get_crystal_poses()
+    assert isinstance(poses, PoseSet)
+    assert len(poses) == 1
+    assert poses[0].component_id == "ligand:LIG:A:100"
+    assert poses[0].ligand_id is not None
+    assert poses[0].origin == "cocrystal"
+    assert poses[0].protein_id is not None
+
+
+def test_configuration_freezes_find_pockets_after_id() -> None:
+    """Pocket-finding mutation fails once an execution id is present."""
+    prep = ProteinPrep(
+        protein=Protein(name="test"),
+        selection=_SAMPLE_SELECTION,
+        model_missing_loops=False,
+    )
+    prep._id = "exec-locked"
+
+    with pytest.raises(AttributeError, match="execution id is already set"):
+        prep.find_pockets = "novel"

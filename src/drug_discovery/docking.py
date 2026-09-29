@@ -27,6 +27,7 @@ from deeporigin.drug_discovery.structures.protein import Protein
 from deeporigin.exceptions import DeepOriginException
 from deeporigin.platform.client import DeepOriginClient
 from deeporigin.platform.constants import TOOL_KEYS_AND_VERSIONS, is_success_status
+from deeporigin.utils.constants import QUOTE_APPROVE_AMOUNT
 
 Number = float | int
 
@@ -84,7 +85,7 @@ class Docking(Execution, SyncExecutableMixin, AsyncExecutableMixin, NotebookWatc
         effort: Docking effort level (1 = fastest, 5 = most thorough).
         name: Execution label, set automatically from protein and ligands unless overridden.
         batch_size: For async :meth:`start`, workflow batch size (ligands per workflow
-            batch), a positive multiple of 4. Defaults to 16. Sent as ``batchSize`` on
+            batch), a positive integer. Defaults to 16. Sent as ``batchSize`` on
             the execution create payload.
     """
 
@@ -125,7 +126,7 @@ class Docking(Execution, SyncExecutableMixin, AsyncExecutableMixin, NotebookWatc
                 and the ligands (e.g. ``Docking kras to 5 ligands.`` or
                 ``Docking kras to <SMILES or ligand name>`` for a single ligand).
             batch_size: Passed to the platform as ``batchSize`` on :meth:`start` so the
-                docking workflow can batch ligands. Must be a positive multiple of 4.
+                docking workflow can batch ligands. Must be a positive integer.
                 Defaults to 16.
         """
         provided = sum(x is not None for x in (ligand, ligands, smiles_list))
@@ -145,8 +146,6 @@ class Docking(Execution, SyncExecutableMixin, AsyncExecutableMixin, NotebookWatc
 
         if batch_size <= 0:
             raise ValueError("batch_size must be a positive integer.")
-        if batch_size % 4 != 0:
-            raise ValueError("batch_size must be a multiple of 4.")
         super().__init__(client=client)
         self.tool_version = tool_version
         self.effort = effort
@@ -276,7 +275,7 @@ class Docking(Execution, SyncExecutableMixin, AsyncExecutableMixin, NotebookWatc
         For a single ligand, use :meth:`run` instead.
 
         Args:
-            quote: Shorthand for ``approve_amount=0``.
+            quote: Shorthand for ``approve_amount=-1``.
             approve_amount: Spend cap forwarded to the platform.
             **kwargs: Forwarded to ``_start_impl``.
         """
@@ -314,13 +313,13 @@ class Docking(Execution, SyncExecutableMixin, AsyncExecutableMixin, NotebookWatc
         data platform. Requires exactly one ligand in :attr:`ligands`; use
         :meth:`start` for multiple ligands.
 
-        Pass ``quote=True`` (or ``approve_amount=0``) to request a cost estimate
+        Pass ``quote=True`` (or ``approve_amount=-1``) to request a cost estimate
         only. In that case the platform returns a ``Quoted`` DTO, the instance
         is updated with ``estimate`` and ``status="Quoted"``, and ``None`` is
         returned.
 
         Args:
-            quote: Shorthand for ``approve_amount=0``.
+            quote: Shorthand for ``approve_amount=-1``.
             approve_amount: Spend cap forwarded to the platform as ``approveAmount``.
 
         Returns:
@@ -333,7 +332,7 @@ class Docking(Execution, SyncExecutableMixin, AsyncExecutableMixin, NotebookWatc
                 succeed, or poses could not be loaded.
         """
         self._ensure_inputs_for_sync_run()
-        resolved_amount = 0 if quote else approve_amount
+        resolved_amount = QUOTE_APPROVE_AMOUNT if quote else approve_amount
         dto = self._create_execution(
             data=self._build_docking_create_payload(
                 sync=True, approve_amount=resolved_amount
@@ -346,7 +345,7 @@ class Docking(Execution, SyncExecutableMixin, AsyncExecutableMixin, NotebookWatc
 
         final_status = dto.get("status")
         if not is_success_status(final_status):
-            if resolved_amount == 0:
+            if resolved_amount == QUOTE_APPROVE_AMOUNT:
                 return None
             eid = dto.get("executionId")
             reason = dto.get("statusReason") or final_status

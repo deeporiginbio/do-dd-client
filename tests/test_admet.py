@@ -10,7 +10,7 @@ import pytest
 from deeporigin.drug_discovery import Admet, Ligand
 from deeporigin.platform.client import DeepOriginClient
 from deeporigin.platform.constants import TOOL_KEYS_AND_VERSIONS
-from tests.conftest import check_tool_exists
+from tests.conftest import assert_quote_only_execution, check_tool_exists
 
 _ADMET_PROPERTIES = [
     "hERG_classification",
@@ -65,5 +65,4 @@ def test_admet_run_quote_true(client: DeepOriginClient) -> None:
 
     assert result is job
     assert ligand.id is None
-    assert job.estimate is not None
-    assert getattr(job, "status", None) == "Quoted"
+    assert_quote_only_execution(job)

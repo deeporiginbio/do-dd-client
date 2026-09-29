@@ -17,7 +17,7 @@ properties and compose with mixins (``SyncExecutableMixin``,
 ``PocketFinder``, ``Docking``, and ``ABFE``.
 
 Quoting is handled directly by ``run()`` and ``start()`` via ``quote=True``
-(sugar for ``approve_amount=0``) or an explicit ``approve_amount``. When the
+(sugar for ``approve_amount=-1``) or an explicit ``approve_amount``. When the
 platform returns a ``Quoted`` DTO the instance is left in that state -- no
 automatic confirmation is performed.
 """
@@ -35,6 +35,7 @@ from deeporigin.platform.constants import (
     is_success_status,
     normalize_platform_status,
 )
+from deeporigin.platform.project_scope import require_client_project_id
 from deeporigin.utils.constants import (
     EXECUTION_LIST_ORDER_CREATED_DESC,
     TOOL_EXECUTION_POST_TIMEOUT_SECONDS,
@@ -169,6 +170,7 @@ class Execution:
             raise ValueError(
                 "tool_key and tool_version are required for execution create"
             )
+        require_client_project_id(self.client)
         return self.client.executions.create(  # ty:ignore[unresolved-attribute]
             tool_key=resolved_key,
             tool_version=resolved_version,
@@ -212,7 +214,7 @@ class Execution:
         """Cost estimate in dollars, populated when the platform returns a quotation.
 
         Set after ``run(quote=True)``, ``start(quote=True)``, or any call with
-        ``approve_amount=0``. ``None`` until a quotation result is received.
+        ``approve_amount=-1``. ``None`` until a quotation result is received.
         This property cannot be set manually."""
         return self._estimate
 
@@ -263,9 +265,9 @@ class Execution:
         """Build the body dict for ``client.executions.create``.
 
         Args:
-            approve_amount: ``0`` to request a quote only; ``None`` to omit the
-                field (platform runs immediately); any positive value sets a
-                spend cap.
+            approve_amount: ``-1`` (or any negative value) to request a quote
+                only; ``None`` to omit the field (platform may auto-confirm);
+                any positive value sets a spend cap.
             sync: ``True`` for blocking (sync) execution; ``False`` for async.
 
         Returns:
@@ -799,9 +801,12 @@ class Execution:
         directly rather than teaching this base method about those filters.
 
         Args:
-            **kwargs: Forwarded verbatim to
+            **kwargs: Forwarded to
                 :meth:`~deeporigin.platform.results.Results.get` (typically
-                ``filter_dict``, ``limit``, ``select``).
+                ``filter_dict``, ``limit``, ``select``). When
+                :attr:`tool_key` is set, a ``tool_key`` equality filter is
+                injected into ``filter_dict`` via ``setdefault`` so callers can
+                override it by passing ``tool_key`` themselves.
 
         Returns:
             Result-explorer response dict with ``data`` and ``meta`` keys.
@@ -814,7 +819,12 @@ class Execution:
             raise ValueError(
                 "Cannot get results: no execution has been started (id is None)."
             )
-        return self.client.results.get(compute_job_id=exec_id, **kwargs)
+        request_kwargs = dict(kwargs)
+        if self.tool_key:
+            filter_dict = dict(request_kwargs.get("filter_dict") or {})
+            filter_dict.setdefault("tool_key", {"eq": self.tool_key})
+            request_kwargs["filter_dict"] = filter_dict
+        return self.client.results.get(compute_job_id=exec_id, **request_kwargs)
 
     def get_user_logs(
         self,

@@ -24,6 +24,17 @@ from deeporigin import config
 config.set_org("polaris-bio")
 ```
 
+To target the toolbox gateway on your machine (`http://127.0.0.1:4931`):
+
+```{.python notest}
+from deeporigin import config
+from deeporigin.platform.client import DeepOriginClient
+
+config.set_env("local")
+DeepOriginClient.close_all()
+client = DeepOriginClient()
+```
+
 
 ## View configuration
 

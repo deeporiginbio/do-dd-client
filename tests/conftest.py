@@ -8,6 +8,7 @@ import pytest
 
 from deeporigin.drug_discovery import BRD_DATA_DIR, Ligand, Pocket, Protein
 from deeporigin.platform import DeepOriginClient
+from tests.integration_project import apply_integration_project
 
 FIXTURES_DIR = Path(__file__).parent / "fixtures"
 
@@ -86,10 +87,44 @@ def check_tool_exists(
     return any(d.get("enabled") is not False for d in definitions)
 
 
+def assert_quote_only_execution(
+    job,
+    *,
+    require_estimate: bool = True,
+) -> None:
+    """Assert ``quote=True`` parked as Quoted and did not run to completion.
+
+    Guards the approveAmount=-1 contract (DDOS-7765 / DDOS-7808): a quote must
+    not land in Completed/Succeeded or any other success status.
+    """
+    from deeporigin.platform.constants import is_success_status
+    from deeporigin.utils.constants import QUOTE_APPROVE_AMOUNT
+
+    status = job.status
+    assert status == "Quoted", (
+        f"expected Quoted after quote=True, got {status!r}; "
+        "Completed/Succeeded means the tool ran instead of quoting"
+    )
+    assert not is_success_status(status), (
+        f"quote must not be a success status, got {status!r}"
+    )
+    assert job.cost is None, f"quote should not set cost, got {job.cost!r}"
+    if require_estimate:
+        assert job.estimate is not None, "Estimate should be set after quote"
+    assert job.approve_amount is not None
+    assert float(job.approve_amount) == float(QUOTE_APPROVE_AMOUNT), (
+        f"expected approveAmount={QUOTE_APPROVE_AMOUNT} (quote sentinel), "
+        f"got {job.approve_amount!r}"
+    )
+
+
 @pytest.fixture()
-def client() -> DeepOriginClient:
-    """Return a DeepOriginClient instance."""
-    return DeepOriginClient()
+def client(pytestconfig, _live_integration_project) -> DeepOriginClient:
+    """Return a DeepOriginClient scoped to the integration test project."""
+    env = pytestconfig.getoption("--env")
+    instance = DeepOriginClient()
+    apply_integration_project(instance, env)
+    return instance
 
 
 @pytest.fixture()

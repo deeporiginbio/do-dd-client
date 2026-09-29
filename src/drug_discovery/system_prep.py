@@ -28,7 +28,7 @@ from deeporigin.drug_discovery.structures.prepared_system import PreparedSystem
 from deeporigin.drug_discovery.structures.protein import Protein
 from deeporigin.platform.client import DeepOriginClient
 from deeporigin.platform.constants import TOOL_KEYS_AND_VERSIONS
-from deeporigin.utils.constants import SYSPREP_NO_OUTPUT_PATHS_MSG
+from deeporigin.utils.constants import QUOTE_APPROVE_AMOUNT, SYSPREP_NO_OUTPUT_PATHS_MSG
 
 
 class SystemPrep(Execution, SyncExecutableMixin):
@@ -274,7 +274,12 @@ class SystemPrep(Execution, SyncExecutableMixin):
         except ValueError:
             pass
 
-        raise ValueError(SYSPREP_NO_OUTPUT_PATHS_MSG)
+        status = exec_dto.get("status")
+        reason = exec_dto.get("statusReason")
+        detail = SYSPREP_NO_OUTPUT_PATHS_MSG
+        if status or reason:
+            detail = f"{detail} status={status}: {str(reason)[:500]}"
+        raise ValueError(detail)
 
     def run(
         self,
@@ -288,13 +293,13 @@ class SystemPrep(Execution, SyncExecutableMixin):
         path), refreshes instance state from the DTO, then returns a
         ``PreparedSystem`` via :meth:`get_results`.
 
-        Pass ``quote=True`` (or ``approve_amount=0``) to request a cost
+        Pass ``quote=True`` (or ``approve_amount=-1``) to request a cost
         estimate only. In that case the platform returns a ``Quoted`` DTO, the
         instance is updated with ``estimate`` and ``status="Quoted"``, and
         ``None`` is returned.
 
         Args:
-            quote: Shorthand for ``approve_amount=0``.
+            quote: Shorthand for ``approve_amount=-1``.
             approve_amount: Spend cap forwarded to the platform as ``approveAmount``.
 
         Returns:
@@ -304,7 +309,7 @@ class SystemPrep(Execution, SyncExecutableMixin):
         Raises:
             ValueError: If the execution did not return usable output paths.
         """
-        resolved_amount = 0 if quote else approve_amount
+        resolved_amount = QUOTE_APPROVE_AMOUNT if quote else approve_amount
         dto = self._create_execution(
             data=self._build_system_prep_body(
                 sync=True, approve_amount=resolved_amount

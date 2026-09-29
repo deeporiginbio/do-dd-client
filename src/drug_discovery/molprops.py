@@ -30,6 +30,7 @@ from deeporigin.platform.constants import TOOL_KEYS_AND_VERSIONS
 from deeporigin.utils.constants import (
     MOLPROPS_DEFAULT_PROPERTIES,
     MOLPROPS_PROPERTY_KEYS,
+    QUOTE_APPROVE_AMOUNT,
 )
 
 # Merged molprops rows are keyed by ligand id (combined molprops output schema).
@@ -104,7 +105,7 @@ def run_molprops_combined(
     """Issue one combined-tool execution and return ``(rows, raw_dto)``.
 
     When ``quote`` is true, the call requests a cost estimate without
-    executing (``approveAmount=0``, ``sync=False``) and ``rows`` is empty.
+    executing (``approveAmount=-1``, ``sync=False``) and ``rows`` is empty.
     """
     body: dict[str, Any] = {
         "inputs": _molprops_payload(ligand_set=ligand_set, properties=properties),
@@ -113,7 +114,7 @@ def run_molprops_combined(
         "sync": True,
     }
     if quote:
-        body["approveAmount"] = 0
+        body["approveAmount"] = QUOTE_APPROVE_AMOUNT
         body["sync"] = False
 
     raw = client.executions.create(  # ty:ignore[unresolved-attribute]
@@ -223,7 +224,7 @@ class Molprops(Execution, SyncExecutableMixin):
 
         With ``quote=True``, sends **one** ``client.executions.create`` with every
         ligand and every selected property (``batch_size`` is ignored), requests a
-        quotation only (``approveAmount=0``), and applies the response with
+        quotation only (``approveAmount=-1``), and applies the response with
         :meth:`~deeporigin.drug_discovery.execution.Execution.update_from_dto`
         (``estimate``, ``id``, ``status``, etc.). Ligands are **not** updated with
         molprops outputs.

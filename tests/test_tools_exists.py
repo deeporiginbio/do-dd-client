@@ -18,7 +18,7 @@ def test_tools_exists_exact_pin_enabled(client: DeepOriginClient) -> None:
 def test_tools_exists_major_pin_resolves(client: DeepOriginClient) -> None:
     """A major-only pin resolved by the platform returns True."""
     assert (
-        client.tools.exists(tool_key="deeporigin.system-prep", tool_version="1") is True
+        client.tools.exists(tool_key="deeporigin.system-prep", tool_version="2") is True
     )
 
 

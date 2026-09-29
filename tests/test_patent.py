@@ -17,7 +17,7 @@ from deeporigin.drug_discovery.patent import (
 )
 from deeporigin.platform.client import DeepOriginClient
 from deeporigin.platform.constants import TOOL_KEYS_AND_VERSIONS
-from tests.conftest import FIXTURES_DIR, check_tool_exists
+from tests.conftest import FIXTURES_DIR, assert_quote_only_execution, check_tool_exists
 
 PATENT_PDF_PATH = FIXTURES_DIR / "patent" / "one-page.pdf"
 
@@ -40,7 +40,7 @@ def test_patent_start_quote_populates_estimate(client: DeepOriginClient) -> None
     quoted_dto = {
         "executionId": "exec-quoted",
         "status": "Quoted",
-        "approveAmount": 0,
+        "approveAmount": -1,
         "tool": {
             "key": TOOL_KEYS_AND_VERSIONS["patent"]["tool_key"],
             "version": "1.3.5",
@@ -269,7 +269,7 @@ def test_patent_cancel_while_running(client: DeepOriginClient) -> None:
 
 
 def test_patent_start_quote_true_lv1(client: DeepOriginClient) -> None:
-    """Patent.start(quote=True) returns Quoted status and sets estimate."""
+    """Patent.start(quote=True) parks as Quoted and does not complete a run."""
     assert check_tool_exists(
         client,
         TOOL_KEYS_AND_VERSIONS["patent"]["tool_key"],
@@ -283,14 +283,12 @@ def test_patent_start_quote_true_lv1(client: DeepOriginClient) -> None:
         pytest.skip(
             f"Patent quote returned FailedQuotation on {client.env}; platform tool may be unavailable."
         )
-    assert patent.status == "Quoted"
-    assert patent.estimate is not None
+    assert_quote_only_execution(patent)
     if patent.estimate <= 0:
         pytest.skip(
             f"Patent quote on {client.env} returned non-positive estimate "
             f"({patent.estimate!r}); skipping price assertion."
         )
-    assert patent.cost is None
 
 
 def test_patent_cancel_lv1(client: DeepOriginClient) -> None:

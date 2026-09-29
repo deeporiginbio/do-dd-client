@@ -16,13 +16,14 @@ from deeporigin.drug_discovery.docking import (
 from deeporigin.drug_discovery.structures.ligand import Ligand, LigandSet
 from deeporigin.drug_discovery.structures.pocket import Pocket
 from deeporigin.drug_discovery.structures.pose import Pose, PoseSet
+from deeporigin.drug_discovery.structures.protein import Protein
 from deeporigin.exceptions import DeepOriginException
 from deeporigin.platform.constants import (
     TERMINAL_STATES,
     TOOL_KEYS_AND_VERSIONS,
     is_success_status,
 )
-from tests.conftest import check_tool_exists
+from tests.conftest import assert_quote_only_execution, check_tool_exists
 
 
 def test_docking_from_dto_maps_async_execution_fields_from_fixture(
@@ -431,6 +432,37 @@ def test_docking_rejects_both_ligand_and_ligands(
         )
 
 
+@pytest.mark.parametrize("batch_size", [1, 10, 16])
+def test_docking_accepts_any_positive_batch_size(unregistered_pocket, batch_size):
+    """Any positive ``batch_size`` is accepted and sent as ``batchSize``."""
+    protein = Protein.from_file(BRD_DATA_DIR / "brd.pdb")
+    protein.id = "protein-id"
+    docking = Docking(
+        protein=protein,
+        pocket=unregistered_pocket,
+        smiles_list=["CCO"] * batch_size,
+        batch_size=batch_size,
+        client=MagicMock(),
+    )
+    assert docking.batch_size == batch_size
+    assert docking._build_docking_create_payload()["batchSize"] == batch_size
+
+
+@pytest.mark.parametrize("batch_size", [0, -4])
+def test_docking_rejects_non_positive_batch_size(unregistered_pocket, batch_size):
+    """``batch_size`` must be a positive integer."""
+    protein = Protein.from_file(BRD_DATA_DIR / "brd.pdb")
+    protein.id = "protein-id"
+    with pytest.raises(ValueError, match="batch_size must be a positive integer"):
+        Docking(
+            protein=protein,
+            pocket=unregistered_pocket,
+            smiles_list=["CCO", "CCN"],
+            batch_size=batch_size,
+            client=MagicMock(),
+        )
+
+
 def test_docking_start_rejects_non_none_status_lv0(
     registered_protein, unregistered_pocket, registered_ligand
 ):
@@ -455,7 +487,7 @@ def test_docking_run_quote_true_lv1(
     unregistered_pocket,
     registered_ligand,
 ):
-    """Docking.run(quote=True) returns None and populates estimate."""
+    """Docking.run(quote=True) returns None, parks as Quoted, does not complete."""
     assert check_tool_exists(
         client,
         TOOL_KEYS_AND_VERSIONS["docking"]["tool_key"],
@@ -473,10 +505,8 @@ def test_docking_run_quote_true_lv1(
         pytest.skip(
             "Docking quote returned FailedQuotation; platform tool may be unavailable."
         )
-    assert result is None, "run(quote=True) should return None"
-    assert docking.estimate is not None, "Estimate should be set"
-    assert docking.cost is None, "Cost should be None"
-    assert docking.status == "Quoted"
+    assert result is None, "run(quote=True) should return None (not a PoseSet)"
+    assert_quote_only_execution(docking)
 
 
 def test_docking_start_rejects_single_ligand(

@@ -52,9 +52,17 @@
             "force_field": "amber14",
             "pdb_id": "1EBY",
             "ph": 7.4,
-            "protein_id": "brd",
-            "protein_pdb_file_path": "testing/brd.pdb",
-            "protonate_protein": true
+            "id": "prep-a1b2c3d4e5f6",
+            "parent_id": "brd",
+            "protonate_protein": true,
+            "model_missing_loops": true,
+            "analyzer_version": "1.0.0",
+            "source_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "keep_chain_ids": ["A"],
+            "keep_cofactor_ids": [],
+            "keep_water_residue_names": [],
+            "extract_ligand_ids": [],
+            "skip_ligand_ids": ["ligand:LIG:A:100"]
         }
     }
 }

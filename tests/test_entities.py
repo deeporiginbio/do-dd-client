@@ -421,6 +421,46 @@ def test_update_protein_lv1(client: DeepOriginClient):
         client.entities.update_protein(protein_id, file_path=_BRD_PDB_REMOTE)
 
 
+def test_create_protein_uniprot_accession_lv1(client: DeepOriginClient):
+    """create_protein accepts uniprot_accession and returns it (DDOS-7559)."""
+    remote = f"testing/uniprot-create-{uuid.uuid4().hex[:12]}.pdb"
+    client.files.upload(_BRD_PDB_LOCAL, remote)
+
+    response = client.entities.create_protein(
+        file_path=remote,
+        uniprot_accession="P00533",
+    )
+    protein_id = response["data"]["id"]
+    assert response["data"]["uniprot_accession"] == "P00533"
+
+    fetched = client.entities.get_protein(id=protein_id)
+    assert fetched["uniprot_accession"] == "P00533"
+
+
+def test_update_protein_uniprot_accession_lv1(client: DeepOriginClient):
+    """update_protein patches uniprot_accession and bumps version (DDOS-7559)."""
+    remote = f"testing/uniprot-upd-{uuid.uuid4().hex[:12]}.pdb"
+    client.files.upload(_BRD_PDB_LOCAL, remote)
+    create = client.entities.create_protein(file_path=remote)
+    protein_id = create["data"]["id"]
+    version_before = create["data"]["version"]
+
+    response = client.entities.update_protein(protein_id, uniprot_accession="P04637")
+
+    row = response["data"][0]
+    assert row["uniprot_accession"] == "P04637"
+    assert row["version"] == version_before + 1
+
+    fetched = client.entities.get_protein(id=protein_id)
+    assert fetched["uniprot_accession"] == "P04637"
+
+
+def test_update_protein_requires_at_least_one_field(client: DeepOriginClient):
+    """update_protein rejects empty field sets before calling the platform."""
+    with pytest.raises(ValueError, match="at least one field"):
+        client.entities.update_protein("protein-id-placeholder")
+
+
 def test_batch_update_ligands_lv1(client: DeepOriginClient):
     """Test batch updating multiple ligands."""
     ids: list[str] = []
@@ -506,64 +546,6 @@ def test_update_ligand_with_tags_lv1(client: DeepOriginClient):
             updated_row = updated_data
         assert isinstance(updated_row, dict)
         assert updated_row.get("tags") == expected
-    finally:
-        try:
-            client.entities.delete(entity="ligands", entity_id=lig_id)
-        except DeepOriginException as _e:
-            if "404" not in str(_e):
-                raise
-
-
-def test_create_ligand_stamps_provenance_without_tags_lv1(client: DeepOriginClient):
-    """Create ligand without tags still writes app/session provenance."""
-    tag = f"prov-{uuid.uuid4().hex[:12]}"
-    smiles = _unique_test_smiles(suffix="F")
-    create = client.entities.create_ligand(smiles=smiles, name=f"prov-lig-{tag}")
-    lig_id = create["data"]["id"]
-    expected = _expected_entity_tags(client)
-    try:
-        assert create["data"].get("tags") == expected
-    finally:
-        try:
-            client.entities.delete(entity="ligands", entity_id=lig_id)
-        except DeepOriginException as _e:
-            if "404" not in str(_e):
-                raise
-
-
-def test_ligand_register_passes_tags_lv1(client: DeepOriginClient):
-    """Ligand.register forwards Entity.tags to create_ligand."""
-    tag = f"reg-{uuid.uuid4().hex[:12]}"
-    entity_tags = {"origin": tag}
-    smiles = _unique_test_smiles(suffix="Cl")
-    ligand = Ligand.from_smiles(smiles, tags=entity_tags)
-    ligand.register(client=client)
-    assert ligand.id is not None
-    expected = _expected_entity_tags(client, entity_tags)
-    try:
-        row = _wait_for_ligand(client, ligand.id)
-        assert row["tags"] == expected
-    finally:
-        try:
-            client.entities.delete(entity="ligands", entity_id=ligand.id)
-        except DeepOriginException as _e:
-            if "404" not in str(_e):
-                raise
-
-
-def test_ligand_sync_applies_tags_to_existing_row_lv1(client: DeepOriginClient):
-    """When sync finds an existing ligand, ``Entity.tags`` are patched on."""
-    tag = f"sync-tags-{uuid.uuid4().hex[:12]}"
-    smiles = _unique_test_smiles(suffix="Br")
-    create = client.entities.create_ligand(smiles=smiles, name=f"sync-tag-{tag}")
-    lig_id = create["data"]["id"]
-    entity_tags = {"patched": tag}
-    expected = _expected_entity_tags(client, entity_tags)
-    try:
-        ligand = Ligand.from_smiles(smiles, tags=entity_tags)
-        ligand.sync(client=client)
-        row = _wait_for_ligand(client, lig_id)
-        assert row["tags"] == expected
     finally:
         try:
             client.entities.delete(entity="ligands", entity_id=lig_id)

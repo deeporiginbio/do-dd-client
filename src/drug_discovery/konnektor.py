@@ -14,6 +14,7 @@ from deeporigin.drug_discovery.structures.ligand import Ligand, LigandSet
 from deeporigin.exceptions import DeepOriginException
 from deeporigin.platform.client import DeepOriginClient
 from deeporigin.platform.constants import TOOL_KEYS_AND_VERSIONS, is_success_status
+from deeporigin.utils.constants import QUOTE_APPROVE_AMOUNT
 
 KonnektorNetworkType = Literal["star", "mst", "cyclic"]
 
@@ -296,7 +297,7 @@ class Konnektor(Execution, SyncExecutableMixin):
         """Run Konnektor synchronously and return the network result.
 
         Args:
-            quote: Shorthand for ``approve_amount=0``. Returns ``None`` when the
+            quote: Shorthand for ``approve_amount=-1``. Returns ``None`` when the
                 platform returns a quotation.
             approve_amount: Spend cap forwarded to the platform as ``approveAmount``.
 
@@ -308,7 +309,7 @@ class Konnektor(Execution, SyncExecutableMixin):
                 does not contain a valid v0.5 ``ligand_network`` output.
         """
         self._ensure_platform_inputs()
-        resolved_amount = 0 if quote else approve_amount
+        resolved_amount = QUOTE_APPROVE_AMOUNT if quote else approve_amount
         response = self._create_execution(
             data=self._make_payload(approve_amount=resolved_amount, sync=not quote),
         )

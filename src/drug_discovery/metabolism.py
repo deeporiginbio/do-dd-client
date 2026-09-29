@@ -477,7 +477,10 @@ def _rows_for_ligand_ids(
     for start in range(0, len(unique_ids), batch_size):
         batch = unique_ids[start : start + batch_size]
         response = client.results.get(
-            filter_dict={"ligand_id": {"in": batch}},
+            filter_dict={
+                "ligand_id": {"in": batch},
+                "tool_key": {"eq": TOOL_KEYS_AND_VERSIONS["metabolism"]["tool_key"]},
+            },
             result_type=result_type,
             limit=None,
             page_size=METABOLISM_RESULT_EXPLORER_PAGE_SIZE,

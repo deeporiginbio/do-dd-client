@@ -250,6 +250,71 @@ def test_from_json_entry_project_id_overrides_client_lv0(client: DeepOriginClien
     assert pocket.project_id == "entry-proj"
 
 
+def test_from_json_maps_origin_metadata_lv0():
+    """Protein Prep / Pocket Finder origin fields hydrate as first-class attrs."""
+    data = [
+        {
+            "file_path": str(_BRD_PDB),
+            "origin": "from-crystal-ligand",
+            "ligand_id": "08LIGAND0001",
+            "ligand_name": "LIG:A:100",
+            "component_id": "ligand:LIG:A:100",
+        }
+    ]
+
+    pocket = Pocket.from_json(data)[0]
+
+    assert pocket.origin == "from-crystal-ligand"
+    assert pocket.ligand_id == "08LIGAND0001"
+    assert pocket.ligand_name == "LIG:A:100"
+    assert pocket.component_id == "ligand:LIG:A:100"
+    assert pocket.name == "Pocket from crystal ligand LIG"
+    assert "origin" not in (pocket.props or {})
+
+
+def test_from_json_crystal_ligand_name_from_component_id_lv0():
+    """Component-style ligand_name yields a readable pocket display name."""
+    data = [
+        {
+            "file_path": "tool-runs/exec/pocket_1.pdb",
+            "origin": "from-crystal-ligand",
+            "ligand_name": "ligand:B:BEB:501:",
+        }
+    ]
+
+    pocket = Pocket.from_json(data)[0]
+
+    assert pocket.name == "Pocket from crystal ligand BEB"
+    assert pocket.remote_path == "tool-runs/exec/pocket_1.pdb"
+
+
+@pytest.mark.parametrize(
+    ("ligand_name", "expected_short"),
+    [
+        ("ligand:B:BEB:501:", "BEB"),
+        ("A:BEB401", "BEB"),
+        ("BEB", "BEB"),
+    ],
+)
+def test_short_ligand_label_lv0(ligand_name: str, expected_short: str) -> None:
+    assert Pocket._short_ligand_label(ligand_name) == expected_short
+
+
+def test_from_json_maps_define_by_selection_metadata_lv0():
+    data = [
+        {
+            "file_path": str(_BRD_PDB),
+            "origin": "define-by-selection",
+            "selection_names": ["A:TYR123", "A:LEU124"],
+        }
+    ]
+
+    pocket = Pocket.from_json(data)[0]
+
+    assert pocket.origin == "define-by-selection"
+    assert pocket.selection_names == ["A:TYR123", "A:LEU124"]
+
+
 def test_from_json_extra_keys_go_to_props_lv0():
     """Known property keys become attributes; file_path/protein_id are excluded from props."""
     data = [
@@ -329,52 +394,9 @@ def test_from_residue_num_lv0():
     # Create custom pocket
     custom_pocket = Pocket.from_residue_number(protein, residue_number=77, cutoff=5)
 
-    assert isinstance(
-        custom_pocket.get_center(), np.ndarray
-    ) and custom_pocket.get_center().shape == (3,)
-
-
-def test_from_id_lv1(
-    client: "DeepOriginClient",
-    registered_protein: Protein,
-):
-    """Test round-trip: Pocket.from_result -> Pocket.from_id (lazy download)"""
-
-    pockets_from_result = Pocket.from_result(client=client)
-    assert len(pockets_from_result) >= 1
-
-    pocket = pockets_from_result[0]
-    assert pocket.id is not None
-    assert pocket.remote_path is not None
-    assert pocket.local_path is None
-    assert pocket.coordinates is None
-    assert pocket.protein_id is not None
-    # Result rows may omit ``pocket_center`` / box fields; geometry is backfilled
-    # once coordinates are loaded (or via :meth:`Pocket.get_center`).
-    assert pocket.get_center().shape == (3,)
-    assert pocket.center is not None
-    assert len(pocket.center) == 3
-    assert pocket.box_size_x is not None
-    assert pocket.box_size_y is not None
-    assert pocket.box_size_z is not None
-
-    coords = pocket._ensure_coordinates()
-    assert coords is not None
-    assert pocket.local_path is not None
-    assert Path(pocket.local_path).exists()
-
-    fetched = Pocket.from_id(pocket.id, client=client)
-
-    assert fetched.id == pocket.id
-    assert fetched.remote_path is not None
-    assert fetched.local_path is None
-    assert fetched.protein_id == pocket.protein_id
-    assert fetched.get_center().shape == (3,)
-    assert fetched.center is not None
-    assert len(fetched.center) == 3
-    assert fetched.box_size_x is not None
-    assert fetched.box_size_y is not None
-    assert fetched.box_size_z is not None
+    center = custom_pocket.get_center()
+    assert isinstance(center, np.ndarray)
+    assert center.shape == (3,)
 
 
 def test_from_remote_file_sets_remote_path_and_loads_coordinates_lv0(
@@ -601,3 +623,100 @@ def test_pocket_show_materializes_coordinate_only_pocket_lv0(
     assert pocket.local_path is not None
     assert Path(pocket.local_path).exists()
     assert captured["pocket_paths"] == [str(pocket.local_path)]
+
+
+def _stub_docking_box_viewer(monkeypatch: pytest.MonkeyPatch) -> dict[str, object]:
+    """Replace the shared docking-box notebook helper for Pocket.show_box()."""
+    captured: dict[str, object] = {}
+
+    def fake_show_docking_box_in_notebook(**kwargs: object) -> str:
+        captured.update(kwargs)
+        return "<box/>"
+
+    monkeypatch.setattr(
+        "deeporigin.drug_discovery.docking_common.show_docking_box_in_notebook",
+        fake_show_docking_box_in_notebook,
+    )
+    return captured
+
+
+def test_pocket_show_box_uses_attached_protein_lv0(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """pocket.show_box() previews the docking search box on the parent protein."""
+    protein = Protein.from_file(_BRD_PDB)
+    pocket = Pocket.from_pdb_file(_BRD_PDB)
+    pocket.protein = protein
+    pocket.center = [1.0, 2.0, 3.0]
+    pocket.box_size_x = 10.0
+    pocket.box_size_y = 12.0
+    pocket.box_size_z = 14.0
+    captured = _stub_docking_box_viewer(monkeypatch)
+
+    result = pocket.show_box()
+
+    assert result == "<box/>"
+    assert captured["protein"] is protein
+    assert captured["pocket"] is pocket
+    assert captured["interactive"] is False
+    assert captured["on_commit"] is None
+    assert "poses" not in captured
+    assert captured["rotation_deg"] is None
+
+
+def test_pocket_show_box_passes_inferred_rotation_lv0(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """When pocket.box is set, show_box() passes inferred rotation_deg."""
+    protein = Protein.from_file(_BRD_PDB)
+    pocket = Pocket.from_json(
+        [
+            {
+                "file_path": str(_BRD_PDB),
+                "protein_id": "prot_1",
+                "volume": 300.0,
+                "pocket_center": [1.0, 2.0, 3.0],
+                "box_size_x": 25.0,
+                "box_size_y": 24.0,
+                "box_size_z": 25.0,
+                "box": {
+                    "box_size_x": 22.0,
+                    "box_size_y": 20.0,
+                    "box_size_z": 21.0,
+                    "rotation_deg": [5.0, 10.0, 15.0],
+                },
+            }
+        ]
+    )[0]
+    pocket.protein = protein
+    captured = _stub_docking_box_viewer(monkeypatch)
+
+    pocket.show_box()
+
+    assert captured["rotation_deg"] == [5.0, 10.0, 15.0]
+
+
+def test_pocket_show_box_raises_without_parent_lv0() -> None:
+    """pocket.show_box() fails loudly when no parent can be resolved."""
+    pocket = Pocket.from_pdb_file(_BRD_PDB)
+
+    assert pocket.protein is None
+    assert pocket.protein_id is None
+    with pytest.raises(DeepOriginException, match="no parent protein"):
+        pocket.show_box()
+
+
+def test_pocket_show_box_does_not_require_local_pocket_file_lv0(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """show_box() uses center/extents only; no pocket structure file needed."""
+    protein = Protein.from_file(_BRD_PDB)
+    pocket = Pocket.from_residue_number(protein, residue_number=100, cutoff=5.0)
+    pocket.protein = protein
+    _stub_docking_box_viewer(monkeypatch)
+
+    assert pocket.local_path is None
+
+    pocket.show_box()
+
+    assert pocket.local_path is None

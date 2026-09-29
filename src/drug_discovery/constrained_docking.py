@@ -29,6 +29,7 @@ from deeporigin.drug_discovery.structures.protein import Protein
 from deeporigin.exceptions import DeepOriginException
 from deeporigin.platform.client import DeepOriginClient
 from deeporigin.platform.constants import TOOL_KEYS_AND_VERSIONS, is_success_status
+from deeporigin.utils.constants import QUOTE_APPROVE_AMOUNT
 
 
 def _constrained_ligand_tool_input_row(lig: Ligand) -> dict[str, Any]:
@@ -565,7 +566,7 @@ class ConstrainedDocking(
         For a single-ligand docking run, use :meth:`run` instead.
 
         Args:
-            quote: Shorthand for ``approve_amount=0``.
+            quote: Shorthand for ``approve_amount=-1``.
             approve_amount: Spend cap forwarded to the platform.
             **kwargs: Forwarded to ``_start_impl``.
         """
@@ -679,7 +680,7 @@ class ConstrainedDocking(
         """Execute constrained docking synchronously (blocking).
 
         Args:
-            quote: Shorthand for ``approve_amount=0``.
+            quote: Shorthand for ``approve_amount=-1``.
             approve_amount: Spend cap forwarded to the platform as ``approveAmount``.
 
         Returns:
@@ -691,7 +692,7 @@ class ConstrainedDocking(
         """
         self._validate_sync_run_params()
         self._ensure_platform_inputs()
-        resolved_amount = 0 if quote else approve_amount
+        resolved_amount = QUOTE_APPROVE_AMOUNT if quote else approve_amount
         dto = self._create_execution(
             data=self._build_create_payload(
                 approve_amount=resolved_amount,

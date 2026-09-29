@@ -892,15 +892,15 @@ def test_protonation_concentration_on_merged_primary(client: DeepOriginClient):
 @pytest.mark.parametrize(
     "sdf_file", sorted(BRD_DATA_DIR.glob("*.sdf")), ids=lambda p: p.stem
 )
-def test_ligand_sync(sdf_file):
+def test_ligand_sync(sdf_file, client: DeepOriginClient):
     """Test that we can sync a ligand from each BRD SDF file"""
     ligand = Ligand.from_sdf(sdf_file)
-    ligand.sync()
+    ligand.sync(client=client)
     assert ligand.id is not None
     assert ligand.remote_path is not None
 
     ligand2 = Ligand.from_sdf(sdf_file)
-    ligand2.sync()
+    ligand2.sync(client=client)
     assert ligand2.id == ligand.id
     assert ligand2.remote_path == ligand.remote_path
 

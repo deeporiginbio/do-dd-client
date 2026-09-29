@@ -24,6 +24,16 @@ from fastapi import APIRouter, HTTPException, Request
 from deeporigin.utils.constants import METABOLISM_WORKFLOW_LIGAND_THRESHOLD
 
 from ..constants import MOCK_BULK_DOCKING_EXECUTION_ID
+from .data_platform import (
+    MOCK_CANONICAL_PROTEIN_FILE_PATH,
+    MOCK_CANONICAL_PROTEIN_ID,
+    MOCK_DEFAULT_PROJECT_ID,
+    _base_canonical_protein_record,
+    _canonicalize_smiles,
+    _make_ligand_record,
+    mock_crystal_poses_from_selection,
+    register_mock_prepared_protein,
+)
 
 _MOCK_METABOLISM_ENZYMES: tuple[str, ...] = (
     "CYP1A2",
@@ -868,6 +878,9 @@ def create_tools_router(
     results: list[dict[str, Any]],
     user_logs: dict[str, dict[str, Any]],
     file_storage: dict[str, bytes],
+    proteins: dict[str, dict[str, Any]],
+    ligands: dict[str, dict[str, Any]],
+    execution_subjects: dict[str, dict[str, Any]],
 ) -> APIRouter:
     """Create a router for tools-related endpoints.
 
@@ -883,6 +896,7 @@ def create_tools_router(
             via the result-explorer search endpoint.
         user_logs: Shared user_logs store keyed by row id.
         file_storage: In-memory file bytes keyed by remote path.
+        proteins: Shared proteins store for registering prepared outputs.
 
     Returns:
         APIRouter instance with tools-related routes.
@@ -1069,6 +1083,8 @@ def create_tools_router(
             execution["status"] = "Completed"
             execution["completedAt"] = now.strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z"
             execution["updatedAt"] = now.strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z"
+            if tool_key == "deeporigin.import-dataset":
+                _finalize_import_dataset_csv_workflow(execution)
             if tool_key in (
                 "deeporigin.docking",
                 "deeporigin.constrained-docking",
@@ -1116,7 +1132,9 @@ def create_tools_router(
         if approve_amount is None:
             approve_amount = 0
 
-        if approve_amount == 0:
+        # Negative (SDK quote=True → -1) or 0: park as Quoted. Positive
+        # approveAmount is not implemented in the mock.
+        if approve_amount <= 0:
             status = "Quoted"
         else:
             raise NotImplementedError(
@@ -1168,7 +1186,7 @@ def create_tools_router(
                     except FileNotFoundError:
                         pass
 
-            execution["cluster"] = {"id": str(uuid.uuid4())}
+        execution["cluster"] = {"id": str(uuid.uuid4())}
 
         execution["startedAt"] = None
         execution["completedAt"] = None
@@ -1225,7 +1243,7 @@ def create_tools_router(
                     )
                 except FileNotFoundError:
                     pass
-            execution["cluster"] = {"id": str(uuid.uuid4())}
+        execution["cluster"] = {"id": str(uuid.uuid4())}
         return execution
 
     def _build_protonation_outputs(
@@ -1284,6 +1302,173 @@ def create_tools_router(
             body=body,
         )
         inputs = body.get("inputs", {}) or {}
+        if inputs.get("process_pdb") or inputs.get("register_protein"):
+            # Mirror create_protein: every sync maps to the canonical mock row
+            # so local tests keep stable IDs while still exercising the tool path.
+            base = proteins.get(
+                MOCK_CANONICAL_PROTEIN_ID, _base_canonical_protein_record()
+            )
+            record = copy.deepcopy(base)
+            record["id"] = MOCK_CANONICAL_PROTEIN_ID
+            record["file_path"] = MOCK_CANONICAL_PROTEIN_FILE_PATH
+            record["deleted"] = False
+            if inputs.get("protein_name"):
+                record["protein_name"] = str(inputs["protein_name"])
+            if inputs.get("pdb_id"):
+                record["pdb_id"] = str(inputs["pdb_id"])
+            if inputs.get("uniprot_accession"):
+                record["uniprot_accession"] = str(inputs["uniprot_accession"])
+            if inputs.get("tags") is not None:
+                record["tags"] = inputs["tags"]
+            proteins[MOCK_CANONICAL_PROTEIN_ID] = record
+            protein_row: dict[str, Any] = {
+                "id": MOCK_CANONICAL_PROTEIN_ID,
+                "protein_id": MOCK_CANONICAL_PROTEIN_ID,
+                "file_path": MOCK_CANONICAL_PROTEIN_FILE_PATH,
+            }
+            if inputs.get("protein_name"):
+                protein_row["name"] = str(inputs["protein_name"])
+            if inputs.get("pdb_id"):
+                protein_row["pdb_id"] = str(inputs["pdb_id"])
+            execution["jobOutputs"] = {"proteins": [protein_row]}
+            return execution
+
+        if inputs.get("process_csv"):
+            import csv
+            import io
+
+            file_path = str(inputs.get("file_path") or "")
+            project_id = body.get("projectId") or execution.get("projectId")
+            ligand_rows: list[dict[str, Any]] = []
+            raw = file_storage.get(file_path)
+            if raw:
+                reader = csv.DictReader(io.StringIO(raw.decode("utf-8")))
+                for idx, row in enumerate(reader):
+                    smiles = str(row.get("smiles") or "")
+                    canonical = _canonicalize_smiles(smiles)
+                    lid: str | None = None
+                    for record in ligands.values():
+                        if record.get("canonical_smiles") == canonical:
+                            lid = str(record["id"])
+                            break
+                    if lid is None:
+                        extra: dict[str, Any] = {
+                            "name": row.get("name") or "",
+                            "project_id": project_id or MOCK_DEFAULT_PROJECT_ID,
+                        }
+                        raw_tags = row.get("tags")
+                        if raw_tags:
+                            import json
+
+                            try:
+                                parsed = json.loads(str(raw_tags))
+                            except json.JSONDecodeError:
+                                parsed = None
+                            if isinstance(parsed, dict):
+                                extra["tags"] = parsed
+                        record = _make_ligand_record(smiles, extra)
+                        ligands[record["id"]] = record
+                        lid = str(record["id"])
+                    ligand_rows.append(
+                        {
+                            "id": lid,
+                            "smiles": smiles,
+                            "record_index": idx,
+                        }
+                    )
+            if not ligand_rows:
+                for idx in range(8):
+                    ligand_rows.append(
+                        {
+                            "id": f"lig-csv-record-{idx}",
+                            "smiles": "CCO",
+                            "record_index": idx,
+                        }
+                    )
+            execution["jobOutputs"] = {"ligands": ligand_rows}
+            return execution
+
+        if inputs.get("process_sdf"):
+            from rdkit import Chem
+
+            register_poses = bool(inputs.get("register_poses"))
+            file_path = str(inputs.get("file_path") or "")
+            project_id = body.get("projectId") or execution.get("projectId")
+            ligand_rows: list[dict[str, Any]] = []
+            raw = file_storage.get(file_path)
+            if raw:
+                supplier = Chem.SDMolSupplier()
+                supplier.SetData(raw)
+                for idx, mol in enumerate(supplier):
+                    if mol is None:
+                        continue
+                    canonical = Chem.MolToSmiles(mol)
+                    lid: str | None = None
+                    existing: dict[str, Any] | None = None
+                    for record in ligands.values():
+                        if record.get("canonical_smiles") == canonical:
+                            existing = record
+                            lid = str(record["id"])
+                            break
+                    if lid is None:
+                        name = mol.GetProp("_Name") if mol.HasProp("_Name") else ""
+                        extra: dict[str, Any] = {
+                            "name": name,
+                            "project_id": project_id or MOCK_DEFAULT_PROJECT_ID,
+                        }
+                        if inputs.get("tags") is not None:
+                            extra["tags"] = inputs["tags"]
+                        record = _make_ligand_record(canonical, extra)
+                        ligands[record["id"]] = record
+                        existing = record
+                        lid = str(record["id"])
+                    mol_file = file_path
+                    if existing is not None:
+                        stored = existing.get("mol_file")
+                        if stored:
+                            mol_file = str(stored)
+                    ligand_rows.append(
+                        {
+                            "id": lid,
+                            "mol_file": mol_file,
+                            "record_index": idx,
+                        }
+                    )
+            if not ligand_rows:
+                brd_dir = Path(__file__).resolve().parents[3] / "src" / "data" / "brd"
+                brd_ids = [p.stem for p in sorted(brd_dir.glob("brd-*.sdf"))]
+                if len(brd_ids) < 8:
+                    brd_ids = sorted(k for k in ligands if str(k).startswith("brd-"))
+                for idx in range(8):
+                    lid = (
+                        brd_ids[idx] if idx < len(brd_ids) else f"lig-sdf-record-{idx}"
+                    )
+                    ligand_rows.append(
+                        {
+                            "id": lid,
+                            "mol_file": file_path,
+                            "record_index": idx,
+                        }
+                    )
+            job_outputs: dict[str, Any] = {"ligands": ligand_rows}
+            if register_poses:
+                pose_rows = []
+                protein_id = inputs.get("protein_id")
+                for row in ligand_rows:
+                    record_index = row["record_index"]
+                    pose_row = {
+                        "file_path": f"{file_path}#record-{record_index}",
+                        "ligand_id": row["id"],
+                        "origin": str(inputs.get("origin") or "registered"),
+                        "record_index": record_index,
+                    }
+                    if protein_id is not None:
+                        pose_row["protein_id"] = str(protein_id)
+                    pose_rows.append(pose_row)
+                job_outputs["poses"] = pose_rows
+            execution["jobOutputs"] = job_outputs
+            return execution
+
         if not inputs.get("register_pose"):
             execution["jobOutputs"] = {"poses": []}
             return execution
@@ -1308,6 +1493,7 @@ def create_tools_router(
                 tool_version=tool_version,
                 execution_id=eid,
                 job_outputs={"poses": [pose_row]},
+                project_id=body.get("projectId") or execution.get("projectId"),
             )
         return execution
 
@@ -1788,6 +1974,109 @@ def create_tools_router(
         }
         return execution
 
+    def _finalize_import_dataset_csv_workflow(execution: dict[str, Any]) -> None:
+        """Simulate MQ ingest for workflow ``csv_path`` import-dataset runs."""
+        if execution.get("workflowCsvIngestApplied"):
+            return
+        inputs = execution.get("userInputs") or {}
+        csv_path = inputs.get("csv_path")
+        if not csv_path:
+            return
+        execution_id = str(execution.get("executionId") or "")
+        if not execution_id:
+            return
+        project_id = execution.get("projectId") or MOCK_DEFAULT_PROJECT_ID
+        dp_row_id = str(uuid.uuid4())
+        execution["dataPlatformRowId"] = dp_row_id
+        execution["dataPlatformStatus"] = "DataIngesting"
+
+        import csv
+        import io
+
+        raw = file_storage.get(str(csv_path))
+        if raw:
+            reader = csv.DictReader(io.StringIO(raw.decode("utf-8")))
+            for row in reader:
+                smiles = str(row.get("smiles") or "")
+                if not smiles.strip():
+                    continue
+                canonical = _canonicalize_smiles(smiles)
+                lid: str | None = None
+                for record in ligands.values():
+                    if record.get("canonical_smiles") == canonical:
+                        lid = str(record["id"])
+                        break
+                if lid is None:
+                    extra: dict[str, Any] = {
+                        "name": row.get("name") or "",
+                        "project_id": project_id,
+                    }
+                    record = _make_ligand_record(smiles, extra)
+                    ligands[record["id"]] = record
+                    lid = str(record["id"])
+                subject_id = str(uuid.uuid4())
+                execution_subjects[subject_id] = {
+                    "id": subject_id,
+                    "execution_id": dp_row_id,
+                    "entity_type": "ligand",
+                    "entity_canonical_id": lid,
+                    "deleted": False,
+                    "project_id": project_id,
+                }
+        execution["workflowCsvIngestApplied"] = True
+        execution["jobOutputs"] = {
+            "records_imported": len(
+                [
+                    s
+                    for s in execution_subjects.values()
+                    if s.get("execution_id") == dp_row_id
+                ]
+            ),
+            "batches": 1,
+        }
+
+    def _build_import_dataset_workflow_csv_execution(
+        *,
+        org_key: str,
+        tool_key: str,
+        tool_version: str,
+        body: dict[str, Any],
+    ) -> dict[str, Any]:
+        """Async import-dataset execution for large ``csv_path`` workflow imports."""
+        ts = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z"
+        eid = str(uuid.uuid4())
+        approve_amount = body.get("approveAmount", 0) or 0
+        execution: dict[str, Any] = {
+            "executionId": eid,
+            "createdAt": ts,
+            "updatedAt": ts,
+            "resourceId": _generate_resource_id(),
+            "status": "Running",
+            "userInputs": body.get("inputs", {}),
+            "userOutputs": body.get("outputs", {}),
+            "metadata": body.get("metadata", {}),
+            "approveAmount": approve_amount,
+            "jobOutputs": None,
+            "resourcesUsed": None,
+            "resourcesRequested": None,
+            "progressReport": json.dumps({"complete": 0}),
+            "statusReason": None,
+            "name": body.get("name"),
+            "orgKey": org_key,
+            "tool": {"key": tool_key, "version": tool_version},
+            "type": "ToolExecution",
+            "startedAt": ts,
+            "completedAt": None,
+            "quotationResult": {
+                "anyFailed": False,
+                "failedQuotations": [],
+                "successfulQuotations": [],
+            },
+        }
+        if body.get("projectId") is not None:
+            execution["projectId"] = body["projectId"]
+        return execution
+
     def _build_metabolism_async_execution(
         *, org_key: str, tool_key: str, tool_version: str, body: dict[str, Any]
     ) -> dict[str, Any]:
@@ -2035,9 +2324,43 @@ def create_tools_router(
         tool_version: str,
         execution_id: str,
         job_outputs: object,
+        project_id: str | None = None,
     ) -> None:
         """Mirror tool ``jobOutputs`` into ``results`` (the result-explorer pool)."""
         if not isinstance(job_outputs, dict):
+            return
+
+        if tool_key == "deeporigin.protein-prep":
+            protein_prep_output_types = {
+                "protein": "preparedprotein",
+                "poses": "pose",
+                "pockets": "pocket",
+            }
+            for output_key, result_type in protein_prep_output_types.items():
+                output_value = job_outputs.get(output_key)
+                if output_value is None:
+                    continue
+                items = (
+                    output_value if isinstance(output_value, list) else [output_value]
+                )
+                for item in items:
+                    if not isinstance(item, dict):
+                        continue
+                    data = dict(item)
+                    record = {
+                        "id": str(
+                            data.get("id")
+                            or ("08" + str(uuid.uuid4()).replace("-", "").upper()[:11])
+                        ),
+                        "tool_key": tool_key,
+                        "tool_version": tool_version,
+                        "result_type": result_type,
+                        "data": data,
+                        "compute_job_id": execution_id,
+                    }
+                    if project_id is not None:
+                        record["project_id"] = project_id
+                    results.append(record)
             return
 
         output_key_map: dict[str, tuple[str, str]] = {
@@ -2047,7 +2370,6 @@ def create_tools_router(
             "deeporigin.constrained-docking": ("poses", "pose"),
             "deeporigin.import-dataset": ("poses", "pose"),
             "deeporigin.system-prep": ("system", "preparedsystem"),
-            "deeporigin.protein-prep": ("protein", "preparedprotein"),
             "deeporigin.draco": ("do_patent_molecules", "dopatentmolecule"),
             "deeporigin.structure-report": (
                 "structure_reports",
@@ -2091,21 +2413,24 @@ def create_tools_router(
                 "compute_job_id": execution_id,
                 **extra,
             }
+            if project_id is not None:
+                record["project_id"] = project_id
             results.append(record)
 
         if tool_key == "deeporigin.constrained-docking":
             reference_pose = job_outputs.get("reference_pose")
             if isinstance(reference_pose, dict):
-                results.append(
-                    {
-                        "id": "08" + str(uuid.uuid4()).replace("-", "").upper()[:11],
-                        "tool_key": tool_key,
-                        "tool_version": tool_version,
-                        "result_type": result_type,
-                        "data": dict(reference_pose),
-                        "compute_job_id": execution_id,
-                    }
-                )
+                ref_record: dict[str, Any] = {
+                    "id": "08" + str(uuid.uuid4()).replace("-", "").upper()[:11],
+                    "tool_key": tool_key,
+                    "tool_version": tool_version,
+                    "result_type": result_type,
+                    "data": dict(reference_pose),
+                    "compute_job_id": execution_id,
+                }
+                if project_id is not None:
+                    ref_record["project_id"] = project_id
+                results.append(ref_record)
 
     def _inject_docking_tool_execution_results(execution: dict[str, Any]) -> None:
         """Mirror docking fixture poses into ``results`` when an execution completes."""
@@ -2300,6 +2625,38 @@ def create_tools_router(
             job_outputs=outputs,
         )
 
+    def _apply_mock_pocket_metadata(
+        pockets: list[Any],
+        *,
+        find_pockets: str | None,
+        prepared_protein_id: str,
+        selection: object,
+    ) -> None:
+        """Attach toolbox Pocket.origin metadata on mocked prepare pockets."""
+        extract_component_id: str | None = None
+        if isinstance(selection, dict):
+            decisions = selection.get("decisions")
+            if isinstance(decisions, dict):
+                for component_id, decision in decisions.items():
+                    if (
+                        str(component_id).startswith("ligand:")
+                        and str(decision) == "extract"
+                    ):
+                        extract_component_id = str(component_id)
+                        break
+        for pocket in pockets:
+            if not isinstance(pocket, dict):
+                continue
+            if prepared_protein_id:
+                pocket["protein_id"] = prepared_protein_id
+            if find_pockets == "novel":
+                pocket.setdefault("origin", "novel")
+            elif find_pockets == "from-crystal-ligand":
+                pocket["origin"] = "from-crystal-ligand"
+                if extract_component_id:
+                    pocket.setdefault("component_id", extract_component_id)
+                    pocket.setdefault("ligand_name", extract_component_id)
+
     def _inject_protein_prep_tool_execution_results(
         execution: dict[str, Any],
     ) -> None:
@@ -2325,23 +2682,75 @@ def create_tools_router(
         if not isinstance(outputs, dict):
             return
 
-        protein = (
-            user_inputs.get("protein", {}) if isinstance(user_inputs, dict) else {}
-        )
-        protein_id = protein.get("id") if isinstance(protein, dict) else None
         pdb_id = user_inputs.get("pdb_id") if isinstance(user_inputs, dict) else None
         protein_out = outputs.get("protein")
         if isinstance(protein_out, dict):
-            if protein_id is not None:
-                protein_out["protein_id"] = protein_id
+            registered = register_mock_prepared_protein(
+                proteins,
+                execution_id=str(eid),
+                pdb_id=str(pdb_id) if pdb_id is not None else None,
+            )
+            protein_out["id"] = registered["protein_id"]
+            protein_out.pop("protein_id", None)
+            parent_id = (
+                user_inputs.get("protein", {}).get("id")
+                if isinstance(user_inputs, dict)
+                and isinstance(user_inputs.get("protein"), dict)
+                else None
+            )
+            if parent_id:
+                protein_out["parent_id"] = str(parent_id)
             if pdb_id is not None:
                 protein_out["pdb_id"] = pdb_id
+            loops = (
+                user_inputs.get("model_missing_loops")
+                if isinstance(user_inputs, dict)
+                else None
+            )
+            protein_out.setdefault(
+                "model_missing_loops",
+                True if loops is None else bool(loops),
+            )
+        prepared_protein_id = (
+            str(protein_out.get("id"))
+            if isinstance(protein_out, dict) and protein_out.get("id")
+            else ""
+        )
+        poses = mock_crystal_poses_from_selection(
+            ligands,
+            execution_id=str(eid),
+            prepared_protein_id=prepared_protein_id,
+            selection=user_inputs.get("selection")
+            if isinstance(user_inputs, dict)
+            else None,
+        )
+        if poses:
+            outputs["poses"] = poses
+        find_pockets = (
+            user_inputs.get("find_pockets") if isinstance(user_inputs, dict) else None
+        )
+        if find_pockets in {"novel", "from-crystal-ligand"}:
+            pocket_fixture = copy.deepcopy(
+                load_fixture("tool-runs/deeporigin.pocketfinder/run")
+            )
+            pocket_outputs = _legacy_outputs_to_job_outputs(pocket_fixture) or {}
+            pockets = pocket_outputs.get("pockets") or []
+            _apply_mock_pocket_metadata(
+                pockets,
+                find_pockets=find_pockets,
+                prepared_protein_id=prepared_protein_id,
+                selection=user_inputs.get("selection")
+                if isinstance(user_inputs, dict)
+                else None,
+            )
+            outputs["pockets"] = pockets
         execution["jobOutputs"] = outputs
         _inject_result_explorer_records_from_outputs(
             tool_key=tkey,
             tool_version=tool_version,
             execution_id=eid,
             job_outputs=outputs,
+            project_id=execution.get("projectId"),
         )
 
     def _inject_rbfe_user_logs(execution_id: str) -> None:
@@ -2757,6 +3166,12 @@ def create_tools_router(
         execution["startedAt"] = now.strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z"
         execution["updatedAt"] = now.strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z"
 
+        tool_key = (execution.get("tool") or {}).get("key")
+        if tool_key == "deeporigin.protein-prep":
+            execution["status"] = "Completed"
+            execution["completedAt"] = execution["updatedAt"]
+            _inject_protein_prep_tool_execution_results(execution)
+
         executions[execution_id] = execution
 
         return _normalize_execution(execution.copy())
@@ -2832,8 +3247,13 @@ def create_tools_router(
 
         inputs = body.get("inputs", {}) or {}
         n_lig = len(inputs.get("ligands") or [])
-        # Explicit approveAmount 0 means quote-only; do not return a completed run DTO.
-        quote_only = "approveAmount" in body and body.get("approveAmount") == 0
+        # Explicit approveAmount <= 0 means quote-only (SDK uses -1 after
+        # DDOS-7765; 0 kept for older callers/fixtures).
+        quote_only = (
+            "approveAmount" in body
+            and body.get("approveAmount") is not None
+            and body.get("approveAmount") <= 0
+        )
         # docking and pocket-finder declare ``sync`` inside ``inputs`` (matches
         # the toolbox tool-definitions and how the platform estimator reads it).
         if (
@@ -3046,6 +3466,19 @@ def create_tools_router(
                 job_outputs=execution.get("jobOutputs"),
             )
             return _normalize_execution(execution)
+        if tool_key == "deeporigin.import-dataset" and body.get("sync") is not True:
+            inputs = body.get("inputs") or {}
+            if inputs.get("csv_path"):
+                execution = _build_import_dataset_workflow_csv_execution(
+                    org_key=org_key,
+                    tool_key=tool_key,
+                    tool_version=tool_version,
+                    body=body,
+                )
+                eid = execution["executionId"]
+                executions[eid] = execution
+                execution_start_times[eid] = datetime.now(timezone.utc)
+                return _normalize_execution(execution)
         if tool_key == "deeporigin.mol-props-protonation":
             execution = _build_protonation_execution(
                 org_key=org_key,
@@ -3065,7 +3498,7 @@ def create_tools_router(
             if quote_only:
                 execution["status"] = "Quoted"
                 execution["jobOutputs"] = None
-                execution["approveAmount"] = 0
+                execution["approveAmount"] = body.get("approveAmount")
                 execution["startedAt"] = None
                 execution["completedAt"] = None
                 execution["progressReport"] = None
@@ -3137,7 +3570,7 @@ def create_tools_router(
             if quote_only:
                 execution["status"] = "Quoted"
                 execution["jobOutputs"] = None
-                execution["approveAmount"] = 0
+                execution["approveAmount"] = body.get("approveAmount")
                 execution["startedAt"] = None
                 execution["completedAt"] = None
                 execution["progressReport"] = None
@@ -3152,7 +3585,7 @@ def create_tools_router(
             )
             executions[execution["executionId"]] = execution
             return _normalize_execution(execution)
-        if tool_key == "deeporigin.bulk-docking" and approve_amount == 0:
+        if tool_key == "deeporigin.bulk-docking" and approve_amount <= 0:
             execution = _create_bulk_docking_quote(
                 org_key=org_key,
                 tool_key=tool_key,

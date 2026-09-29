@@ -19,7 +19,7 @@ from deeporigin.drug_discovery.structures.ligand import (
 from deeporigin.drug_discovery.structures.pose import Pose, PoseSet
 from deeporigin.exceptions import DeepOriginException
 from deeporigin.platform.constants import TOOL_KEYS_AND_VERSIONS
-from tests.conftest import check_tool_exists
+from tests.conftest import assert_quote_only_execution, check_tool_exists
 from tests.test_entities import _unique_test_smiles
 
 
@@ -192,9 +192,8 @@ def test_constrained_docking_run_quote_true_smiles_only_test_ligand(
 
     result = cd.run(quote=True)
 
-    assert result is None
-    assert cd.estimate is not None
-    assert cd.status == "Quoted"
+    assert result is None, "run(quote=True) should return None (not a PoseSet)"
+    assert_quote_only_execution(cd)
 
 
 def test_reference_pose_tool_input_row_uses_pose_result_id() -> None:
@@ -536,9 +535,8 @@ def test_constrained_docking_run_quote_true(
     )
     result = cd.run(quote=True)
 
-    assert result is None
-    assert cd.estimate is not None
-    assert cd.status == "Quoted"
+    assert result is None, "run(quote=True) should return None (not a PoseSet)"
+    assert_quote_only_execution(cd)
 
 
 @pytest.mark.expects_results

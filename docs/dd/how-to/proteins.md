@@ -228,22 +228,32 @@ pockets[0].show()
 
 ### Preparing a protein
 
-Inventory components, then clean the structure (optional loop modelling,
-protonation) with [ProteinPrep](../tools/proteinprep.md). `recommend()` updates
-the same object with an editable Selection and returns a component table.
-Resolve any review decisions, then disable loop modelling and call `run()`,
-which blocks until the prepared protein is ready.
+Inventory components and prepare the structure with
+[ProteinPrep](../tools/proteinprep.md). Use standalone
+[StructureReport](../tools/structure-report.md) when you want a source-structure
+grade. `recommend()` updates the same object with an editable Selection.
+Resolve any review decisions, then either:
+
+- disable loop modelling and omit pocket config, then call `run()` for a
+  blocking prepared protein; or
+- enable loop modelling and/or set `find_pockets`, then call
+  `start()` (use `quote=True` / `confirm()` when pockets are billable).
 
 ```{.python notest}
 from deeporigin.drug_discovery import Protein, ProteinPrep
 
 protein = Protein.from_pdb_id("1EBY")
 prep = ProteinPrep(protein=protein)
+prep.find_pockets = "novel"
+prep.pocket_count = 3
+prep.pocket_min_size = 80
 prep.recommend()
-prep.recommendation(decision="review")
+prep.recommendation[prep.recommendation["decision"] == "review"]
 prep.skip(decision="review")
-prep.model_missing_loops = False
-prepared = prep.run()
+prep.start()
+prep.wait()
+prepared = prep.get_results()
+pockets = prep.get_pockets()
 ```
 
 ### Visualizing a protein
@@ -323,6 +333,9 @@ records and waters) and ignores hydrogens. Customize this with ``protein_atoms_o
     # Exclude custom residue names
     ligand = protein.extract_ligand(exclude_resnames={"HOH", "CUSTOM_RES"})
     ```
+
+!!! note "Bond orders come from the Chemical Component Dictionary"
+    PDB files record which ligand atoms are bonded but not the bond orders. `extract_ligand()` looks up each ligand residue's bond orders and formal charges in the wwPDB Chemical Component Dictionary by atom name, so aromatic rings, carbonyls and charged groups come out as in the deposited molecule. If a residue can't be matched (an unknown code, or atom names that don't match the dictionary entry), a warning is raised and that residue's bonds are left as parsed, which usually means all single; build such ligands from SMILES or SDF instead.
 
 !!! note "Note about atom counts"
     In this example, the atom count might not change significantly because the ligand atoms are typically a small fraction of the total protein structure. However, the protein's internal structure and `block_content` are updated to exclude the ligand. Additionally, the PDB file's MASTER record is automatically updated to reflect the new atom and CONECT record counts.
