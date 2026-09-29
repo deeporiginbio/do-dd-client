@@ -13,6 +13,22 @@ from tests.integration_project import apply_integration_project
 FIXTURES_DIR = Path(__file__).parent / "fixtures"
 
 
+@pytest.fixture(scope="session", autouse=True)
+def _isolated_home(tmp_path_factory: pytest.TempPathFactory):
+    """Point the home directory at a temp folder for the whole test session.
+
+    The SDK caches downloads under ``~/.deeporigin``; without this, tests that
+    fetch from the mock server would write mock files into (and read stale ones
+    from) the real cache.
+    """
+    home = tmp_path_factory.mktemp("home")
+    patch = pytest.MonkeyPatch()
+    patch.setenv("HOME", str(home))
+    patch.setenv("USERPROFILE", str(home))
+    yield home
+    patch.undo()
+
+
 @pytest.fixture(autouse=True)
 def _reset_deeporigin_client_cache() -> None:
     """Drop cached clients so each test gets a fresh client.

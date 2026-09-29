@@ -55,7 +55,6 @@ from deeporigin.platform.constants import (
     normalize_platform_status,
 )
 from deeporigin.utils.constants import (
-    EXECUTION_LIST_ORDER_CREATED_DESC,
     PROTEIN_PREP_COMPONENT_KINDS,  # ty:ignore[unresolved-import]
     PROTEIN_PREP_DATAFRAME_ID_COLUMN_MSG,  # ty:ignore[unresolved-import]
     PROTEIN_PREP_DISPLAY_NONE,  # ty:ignore[unresolved-import]
@@ -415,12 +414,6 @@ class _PrepPocketInput:
             box_padding=data.get("box_padding"),
             _crystal_ligand_remote_path=str(remote) if remote else None,
         )
-
-
-def _dto_created_at(dto: dict[str, Any]) -> str:
-    """Return a sortable ``createdAt`` string from an execution DTO."""
-    value = dto.get("createdAt") or ""
-    return str(value)
 
 
 def _protein_display_value(protein: Protein) -> str:
@@ -2317,74 +2310,6 @@ class ProteinPrep(
             client = _Client()
         dto = client.executions.get(id)  # ty:ignore[unresolved-attribute]
         return cls.from_dto(dto, client=client)
-
-    @classmethod
-    def list(
-        cls,
-        *,
-        client: DeepOriginClient | None = None,
-        status: list[str] | None = None,
-    ) -> list[Self]:
-        """List protein-prep executions for this session type.
-
-        Args:
-            client: Optional API client.
-            status: Optional status filter on hydrated instances.
-
-        Returns:
-            Instances for ``deeporigin.protein-prep``, newest ``createdAt`` first.
-        """
-        if client is None:
-            from deeporigin.platform.client import DeepOriginClient as _Client
-
-            client = _Client()
-        page = client.executions.list(  # ty:ignore[unresolved-attribute]
-            fetch_all_pages=True,
-            tool_key=_PROTEIN_PREP_TOOL_KEY,
-        ).get("data", [])
-        all_dtos = [
-            dto
-            for dto in page
-            if isinstance(dto, dict)
-            and dto.get("tool", {}).get("key") == _PROTEIN_PREP_TOOL_KEY
-        ]
-        all_dtos.sort(key=_dto_created_at, reverse=True)
-        instances = [cls.from_dto(dto, client=client) for dto in all_dtos]
-        if status is not None:
-            instances = [item for item in instances if item.status in status]
-        return instances
-
-    @classmethod
-    def from_last_run(cls, *, client: DeepOriginClient | None = None) -> Self:
-        """Return the newest protein-prep execution.
-
-        Args:
-            client: Optional API client.
-
-        Returns:
-            Rehydrated :class:`ProteinPrep` for the newest matching execution.
-
-        Raises:
-            ValueError: If no protein-prep executions exist.
-        """
-        if client is None:
-            from deeporigin.platform.client import DeepOriginClient as _Client
-
-            client = _Client()
-        response = client.executions.list(  # ty:ignore[unresolved-attribute]
-            tool_key=_PROTEIN_PREP_TOOL_KEY,
-            order=EXECUTION_LIST_ORDER_CREATED_DESC,
-            page=0,
-            page_size=1,
-            project_id=client.project_id,
-        )
-        dtos = response.get("data") or []
-        if not dtos or not isinstance(dtos[0], dict):
-            raise ValueError(
-                "No executions found for ProteinPrep "
-                f"(tool_key={_PROTEIN_PREP_TOOL_KEY!r})."
-            )
-        return cls.from_dto(dtos[0], client=client)
 
     def _protein_from_outputs(self, data: dict[str, Any]) -> Protein:
         """Build the result Protein from an output dict.

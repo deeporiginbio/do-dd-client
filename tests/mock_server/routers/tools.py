@@ -145,7 +145,7 @@ _MOCK_SECONDARY_PHARMA_SELF_TEST_SMILES = (
 # (tests/test_secondary_pharma.py); every synthesized panel_poses row points
 # here so PoseSet.download() has something real to fetch.
 MOCK_SECONDARY_PHARMA_POSE_SDF_PATH = "testing/mock-secondary-pharma-pose.sdf"
-MOCK_SECONDARY_PHARMA_PANEL_VERSION = "secondary-pharma-docking-panel-v1"
+MOCK_SECONDARY_PHARMA_PANEL_VERSION = "mock-panel-v1"
 MOCK_SECONDARY_PHARMA_RECEPTOR_PDB_PATH = (
     f"protected/panels/{MOCK_SECONDARY_PHARMA_PANEL_VERSION}/mock/mock-receptor.pdb"
 )

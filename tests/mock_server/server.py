@@ -86,6 +86,7 @@ class MockServer:
         self._load_result_explorer_fixtures()
         self._seed_canonical_mock_protein()
         self._seed_default_project()
+        self._seed_secondary_pharma_panel_catalog()
         self._setup_routes()
 
     def _load_fixture(self, fixture_name: str) -> dict[str, Any]:
@@ -333,6 +334,43 @@ class MockServer:
             self._proteins[MOCK_CANONICAL_PROTEIN_ID] = copy.deepcopy(
                 _base_canonical_protein_record()
             )
+
+    def _seed_secondary_pharma_panel_catalog(self) -> None:
+        """Publish the mock panel and the files its completed docking runs point at.
+
+        Like the real panel publisher, this puts ``members.json`` at
+        ``protected/panels/<panel_version>/`` (the file store keys paths after the
+        org segment, so the ``protected`` org shows up as the leading segment
+        of the request path, not of the key). It also stores the pose file and
+        the panel receptor that the mock's docking results name, so those runs'
+        poses can be downloaded without any test staging them first.
+        """
+        from deeporigin.drug_discovery import BRD_DATA_DIR
+
+        version = tools.MOCK_SECONDARY_PHARMA_PANEL_VERSION
+        members = [
+            {
+                "chains": ["A"],
+                "gene_name": gene,
+                "path": f"protected/panels/{version}/{pdb_id}.pdb",
+                "pdb_id": pdb_id,
+                "sha256": hashlib.sha256(pdb_id.encode()).hexdigest(),
+                "uniprot_id": accession,
+            }
+            for accession, gene, pdb_id in tools.MOCK_SECONDARY_PHARMA_PANEL
+        ]
+        self._file_storage[f"panels/{version}/members.json"] = json.dumps(
+            {"members": members}, indent=4
+        ).encode()
+        self._file_storage[tools.MOCK_SECONDARY_PHARMA_POSE_SDF_PATH] = (
+            BRD_DATA_DIR / "brd-2.sdf"
+        ).read_bytes()
+        receptor_key = tools.MOCK_SECONDARY_PHARMA_RECEPTOR_PDB_PATH.removeprefix(
+            "protected/"
+        )
+        self._file_storage[receptor_key] = (
+            self._fixtures_dir / "1eby.pdb"
+        ).read_bytes()
 
     def _seed_default_project(self) -> None:
         """Ensure one stable project row exists so projects.current() resolves it."""

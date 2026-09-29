@@ -25,11 +25,10 @@ automatic confirmation is performed.
 from __future__ import annotations
 
 import builtins
-import copy
 from contextvars import ContextVar
+import copy
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Any, ClassVar, Literal, Self
-import warnings
 
 from deeporigin.platform.constants import (
     ALLOWED_STATUS_TRANSITIONS,
@@ -635,35 +634,26 @@ class Execution:
         return instance
 
     @classmethod
-    def _from_dto_maybe_quiet(
+    def _from_dto_controlling_adopt(
         cls,
         dto: dict[str, Any],
         *,
         client: DeepOriginClient,
-        quiet: bool,
         adopt_client_project: bool = True,
     ) -> Self:
-        """``from_dto()``, optionally with UserWarnings suppressed.
+        """``from_dto()`` with optional suppression of client project adoption.
 
-        Used by :meth:`from_id`, :meth:`from_last_run`, and :meth:`list`.
-        Rebuilding domain state from stored inputs (e.g. a subclass
-        reconstructing ``Ligand`` objects) can emit warnings as a side
-        effect (chemistry normalization, etc.); ``quiet=True`` hides them.
+        Used by :meth:`list` so listing executions does not rewrite
+        ``client.project_id`` from each DTO.
         """
         token = _ADOPT_CLIENT_PROJECT_AFTER_FROM_DTO.set(adopt_client_project)
         try:
-            if not quiet:
-                return cls.from_dto(dto, client=client)
-            with warnings.catch_warnings():
-                warnings.simplefilter("ignore", UserWarning)
-                return cls.from_dto(dto, client=client)
+            return cls.from_dto(dto, client=client)
         finally:
             _ADOPT_CLIENT_PROJECT_AFTER_FROM_DTO.reset(token)
 
     @classmethod
-    def from_id(
-        cls, id: str, *, client: DeepOriginClient | None = None, quiet: bool = False
-    ) -> Self:
+    def from_id(cls, id: str, *, client: DeepOriginClient | None = None) -> Self:
         """Construct an instance from an existing platform execution ID.
 
         Fetches the execution DTO via ``client.executions.get`` and delegates to
@@ -673,9 +663,6 @@ class Execution:
         Args:
             id: Platform execution ID.
             client: Optional API client. Uses the default if not provided.
-            quiet: Suppress UserWarnings raised while rebuilding domain
-                state (e.g. chemistry normalization notices). Off by
-                default; a subclass known to be noisy can default it on.
 
         Returns:
             A partially-hydrated instance with common fields populated.
@@ -694,25 +681,21 @@ class Execution:
             client = DeepOriginClient()
 
         dto = client.executions.get(id)  # ty:ignore[unresolved-attribute]
-        return cls._from_dto_maybe_quiet(dto, client=client, quiet=quiet)
+        return cls.from_dto(dto, client=client)
 
     @classmethod
-    def from_last_run(
-        cls, *, client: DeepOriginClient | None = None, quiet: bool = False
-    ) -> Self:
+    def from_last_run(cls, *, client: DeepOriginClient | None = None) -> Self:
         """Construct an instance from the most recently created execution of this tool.
 
-        Calls ``client.executions.list`` with ``tool_key``, ``order`` set to
+        Scoped to the client's project, like :meth:`list`. Calls
+        ``client.executions.list`` with ``tool_key``, ``order`` set to
         :data:`~deeporigin.utils.constants.EXECUTION_LIST_ORDER_CREATED_DESC`,
-        ``page_size=1``, and the client's ``project_id`` when set, then
-        delegates to :meth:`from_dto`. Concrete
-        subclasses inherit this method; domain state is restored via their
-        ``from_dto`` overrides.
+        the client's ``project_id``, and ``page_size=1``, then delegates to
+        :meth:`from_dto`. Concrete subclasses inherit this method; domain
+        state is restored via their ``from_dto`` overrides.
 
         Args:
             client: Optional API client. Uses the default if not provided.
-            quiet: Suppress UserWarnings raised while rebuilding domain
-                state. Off by default; see :meth:`from_id`.
 
         Returns:
             A partially-hydrated instance for the newest execution by
@@ -735,16 +718,16 @@ class Execution:
         response = client.executions.list(  # ty:ignore[unresolved-attribute]
             tool_key=cls.tool_key,
             order=EXECUTION_LIST_ORDER_CREATED_DESC,
+            project_id=client.project_id,
             page=0,
             page_size=1,
-            project_id=client.project_id,
         )
         dtos = response.get("data") or []
         if not dtos:
             raise ValueError(
                 f"No executions found for {cls.__qualname__} (tool_key={cls.tool_key!r})."
             )
-        return cls._from_dto_maybe_quiet(dtos[0], client=client, quiet=quiet)
+        return cls.from_dto(dtos[0], client=client)
 
     @classmethod
     def list(
@@ -752,15 +735,12 @@ class Execution:
         *,
         client: DeepOriginClient | None = None,
         status: builtins.list[str] | None = None,
-        quiet: bool = False,
     ) -> builtins.list[Self]:
         """List executions of this tool, newest first, scoped to the client's project.
 
         Args:
             client: Optional API client. Uses the default if not provided.
             status: Optional list of statuses to keep.
-            quiet: Suppress UserWarnings raised while rebuilding domain
-                state for each result. Off by default; see :meth:`from_id`.
 
         Returns:
             Instances of this class, newest first.
@@ -792,10 +772,9 @@ class Execution:
         for dto in all_dtos:
             with execution_project_scope(client, dto):
                 instances.append(
-                    cls._from_dto_maybe_quiet(
+                    cls._from_dto_controlling_adopt(
                         dto,
                         client=client,
-                        quiet=quiet,
                         adopt_client_project=False,
                     )
                 )

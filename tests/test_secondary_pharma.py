@@ -4,7 +4,7 @@ Both execution paths run against the local mock: the ligand-ml path is
 served/sync (mirrors Admet); the docking path is a minimal async completion
 (mirrors Metabolism's async path) that indexes real result-explorer rows via
 ``_inject_secondary_pharma_docking_tool_execution_results``, so
-``get_results()``/``_get_poses()``'s result-explorer branch gets real coverage
+``get_results()``/``get_poses()``'s result-explorer branch gets real coverage
 here, not just the ``jobOutputs``-fallback branch exercised by the hand-built
 DTO tests below. The full Argo submit/poll/complete *timing* is still
 integration-only (dev/staging) -- this mock completes near-instantly, it
@@ -14,11 +14,13 @@ doesn't simulate a real multi-minute workflow.
 from __future__ import annotations
 
 import asyncio
+import base64
+import json
 from pathlib import Path
 import time
 from typing import TYPE_CHECKING
-from unittest.mock import MagicMock, patch
-import warnings
+from unittest.mock import patch
+import uuid
 
 import pandas as pd
 import pytest
@@ -39,6 +41,7 @@ from deeporigin.plots import WHITE_RED_HAZARD_PALETTE
 from tests.conftest import check_tool_exists
 from tests.mock_server.routers.tools import (
     MOCK_SECONDARY_PHARMA_PANEL,
+    MOCK_SECONDARY_PHARMA_PANEL_VERSION,
     MOCK_SECONDARY_PHARMA_POSE_SDF_PATH,
     MOCK_SECONDARY_PHARMA_RECEPTOR_PDB_PATH,
     _synthesize_secondary_pharma_ligand_ml_row,
@@ -271,16 +274,16 @@ def test_secondary_pharma_watch_rejects_ligand_ml_method(
 def test_secondary_pharma_get_poses_rejects_ligand_ml_method(
     client: DeepOriginClient,
 ) -> None:
-    """``_get_poses()`` is docking only."""
+    """``get_poses()`` is docking only."""
     _assert_tool_available(client)
     ligand = Ligand.from_smiles("CCO")
     job = SecondaryPharmacology(ligands=[ligand], method="ligand-ml", client=client)
     with pytest.raises(ValueError, match="get_results\\("):
-        job._get_poses()
+        job.get_poses()
 
 
 def test_secondary_pharma_get_poses_rejects_self_test(client: DeepOriginClient) -> None:
-    """``_get_poses()`` refuses a self_test docking run.
+    """``get_poses()`` refuses a self_test docking run.
 
     The constructor rejects ``self_test=True`` with ``method="docking"``
     outright (see ``test_secondary_pharma_self_test_rejects_docking``), but
@@ -288,7 +291,7 @@ def test_secondary_pharma_get_poses_rejects_self_test(client: DeepOriginClient) 
     rehydrate via ``from_dto`` into this exact shape -- this test covers
     that path via a hand-built DTO, not the constructor. The platform's
     baked test ligand has no ligand id, so no panel_poses rows are ever
-    published for it -- _get_poses() would otherwise either raise an opaque
+    published for it -- get_poses() would otherwise either raise an opaque
     "no results" error or (if jobOutputs happened to carry the rows) fail
     inside Pose.from_json on the missing ligand_id.
     """
@@ -296,7 +299,7 @@ def test_secondary_pharma_get_poses_rejects_self_test(client: DeepOriginClient) 
         _hand_built_docking_dto(self_test=True), client=client
     )
     with pytest.raises(ValueError, match="self_test"):
-        job._get_poses()
+        job.get_poses()
 
 
 def test_secondary_pharma_run_revalidates_mutated_uniprots(
@@ -781,69 +784,84 @@ def test_secondary_pharma_docking_start_sync_get_results_and_poses(
         assert col in df.columns
     assert set(df["method"]) == {"docking"}
 
-    poses = job._get_poses()
+    poses = job.get_poses()
     assert isinstance(poses, PoseSet)
     assert len(poses) == len(_PANEL_ACCESSIONS)
     for pose in poses:
         assert isinstance(pose, Pose)
         assert pose.ligand_id == synced_ligand_id
-        assert pose.local_path is not None, "_get_poses() downloads the SDF"
+        assert pose.local_path is not None, "get_poses() downloads the SDF"
         assert pose.smiles is not None
+        receptor = pose.props.get("receptor_local_path")
+        assert receptor is not None, "get_poses() downloads the panel receptor"
+        assert Path(receptor).is_file()
 
 
-def test_secondary_pharma__show_panel_pose_renders(
-    client: DeepOriginClient,
-) -> None:
-    """``_show_panel_pose()`` downloads receptor + pose and builds Mol* HTML."""
-    _assert_tool_available(client)
-    client.files.upload(
-        local_path=BRD_DATA_DIR / "brd-2.sdf",
-        remote_path=MOCK_SECONDARY_PHARMA_POSE_SDF_PATH,
+def test_secondary_pharma_show_panel_pose_renders(client: DeepOriginClient) -> None:
+    """``show_panel_pose()`` builds a viewer holding the panel receptor and the labeled pose.
+
+    Only the notebook display is replaced; the viewer HTML is the real thing.
+    """
+    job = _completed_docking_job(client)
+    ligand = job.ligands[0]
+    accession, gene, _pdb = MOCK_SECONDARY_PHARMA_PANEL[0]
+    receptor_text = (Path(__file__).parent / "fixtures" / "1eby.pdb").read_text(
+        encoding="utf-8"
     )
-    _upload_mock_panel_receptor(client)
+    receptor_b64 = base64.b64encode(receptor_text.encode("utf-8")).decode("ascii")
 
-    ligand = Ligand.from_smiles("CCO")
-    job = SecondaryPharmacology(ligands=[ligand], method="docking", client=client)
-    job.start()
-    assert ligand.id is not None
-    synced_ligand_id = ligand.id
-    elapsed = 0.0
-    while elapsed < 5.0:
-        job.sync()
-        if job.status in TERMINAL_STATES:
-            break
-        time.sleep(0.05)
-        elapsed += 0.05
-    assert is_success_status(job.status)
-
-    target_uniprot = _PANEL_ACCESSIONS[0]
-    mock_builder = MagicMock(return_value="<html>panel-pose</html>")
-    with (
-        patch(
-            "deeporigin.viz.molstar_html.render_protein_with_poses_html",
-            mock_builder,
-        ),
-        patch(
-            "deeporigin.utils.notebook.render_html",
-            side_effect=lambda html, **kwargs: html,
-        ),
+    with patch(
+        "deeporigin.utils.notebook.render_html",
+        side_effect=lambda html, **kwargs: html,
     ):
-        html = job._show_panel_pose(
-            ligand_id=synced_ligand_id,
-            uniprot_id=target_uniprot,
-        )
+        by_accession = job.show_panel_pose(ligand_id=ligand.id, uniprot_id=accession)
+        by_gene = job.show_panel_pose(ligand=ligand, gene_name=gene)
 
-    assert html == "<html>panel-pose</html>"
-    mock_builder.assert_called_once()
-    call_kwargs = mock_builder.call_args.kwargs
-    assert call_kwargs["ligand_payloads"]
-    assert Path(call_kwargs["pdb_path"]).is_file()
+    for html in (by_accession, by_gene):
+        assert "visualizeDockedLigands" in html
+        assert receptor_b64 in html, "the panel receptor is in the viewer"
+    assert f"{gene} (" in by_gene, "the pose is labeled with its target"
 
 
-def test_secondary_pharma__show_panel_pose_requires_receptor_file_path(
+def test_secondary_pharma_show_panel_pose_matches_unsynced_ligand_by_smiles(
     client: DeepOriginClient,
 ) -> None:
-    """``_show_panel_pose()`` fails clearly when receptor metadata is absent."""
+    """A ligand rebuilt from SMILES (no id), as after reloading a run, still finds its pose."""
+    job = _completed_docking_job(client)
+    rebuilt = Ligand.from_smiles(job.ligands[0].smiles)
+    assert rebuilt.id is None
+    _accession, gene, _pdb = MOCK_SECONDARY_PHARMA_PANEL[0]
+
+    with patch(
+        "deeporigin.utils.notebook.render_html",
+        side_effect=lambda html, **kwargs: html,
+    ):
+        html = job.show_panel_pose(ligand=rebuilt, gene_name=gene)
+        assert "visualizeDockedLigands" in html
+        with pytest.raises(ValueError, match="No panel poses"):
+            job.show_panel_pose(ligand=Ligand.from_smiles("CCCCN"), gene_name=gene)
+
+
+def test_secondary_pharma_show_panel_pose_needs_exactly_one_matching_pose(
+    client: DeepOriginClient,
+) -> None:
+    """The target is named once, and must match a pose from this run."""
+    job = _completed_docking_job(client)
+    ligand_id = job.ligands[0].id
+    accession, gene, _pdb = MOCK_SECONDARY_PHARMA_PANEL[0]
+
+    with pytest.raises(ValueError, match="exactly one of uniprot_id or gene_name"):
+        job.show_panel_pose(ligand_id=ligand_id)
+    with pytest.raises(ValueError, match="exactly one of uniprot_id or gene_name"):
+        job.show_panel_pose(ligand_id=ligand_id, uniprot_id=accession, gene_name=gene)
+    with pytest.raises(ValueError, match="No panel poses"):
+        job.show_panel_pose(ligand_id=ligand_id, gene_name="NOT-A-GENE")
+
+
+def test_secondary_pharma_show_panel_pose_requires_receptor_file_path(
+    client: DeepOriginClient,
+) -> None:
+    """``show_panel_pose()`` fails clearly when receptor metadata is absent."""
     _assert_tool_available(client)
     ligand = Ligand.from_smiles("CCO")
     job = SecondaryPharmacology(ligands=[ligand], method="docking", client=client)
@@ -860,7 +878,211 @@ def test_secondary_pharma__show_panel_pose_requires_receptor_file_path(
         ),
         pytest.raises(DeepOriginException, match="receptor_file_path"),
     ):
-        job._show_panel_pose(ligand_id="L1", uniprot_id=_PANEL_ACCESSIONS[0])
+        job.show_panel_pose(ligand_id="L1", uniprot_id=_PANEL_ACCESSIONS[0])
+
+
+def _completed_docking_job(client: DeepOriginClient) -> SecondaryPharmacology:
+    """Run a docking job to completion on the local mock, receptor and SDF staged."""
+    _assert_tool_available(client)
+    client.files.upload(
+        local_path=BRD_DATA_DIR / "brd-2.sdf",
+        remote_path=MOCK_SECONDARY_PHARMA_POSE_SDF_PATH,
+    )
+    _upload_mock_panel_receptor(client)
+    job = SecondaryPharmacology(
+        ligands=[Ligand.from_smiles("CCO")], method="docking", client=client
+    )
+    job.start()
+    elapsed = 0.0
+    while elapsed < 5.0:
+        job.sync()
+        if job.status in TERMINAL_STATES:
+            break
+        time.sleep(0.05)
+        elapsed += 0.05
+    assert is_success_status(job.status)
+    return job
+
+
+def _with_mutated_rows(mutate):
+    """Patch ``_load_panel_pose_rows`` so its real rows pass through ``mutate``."""
+    from deeporigin.drug_discovery import secondary_pharma
+
+    real = secondary_pharma._load_panel_pose_rows
+
+    def _wrapped(*args, **kwargs):
+        rows = real(*args, **kwargs)
+        mutate(rows)
+        return rows
+
+    return patch.object(secondary_pharma, "_load_panel_pose_rows", _wrapped)
+
+
+def test_secondary_pharma_get_poses_row_without_receptor_still_returns_pose(
+    client: DeepOriginClient,
+) -> None:
+    """A row with an absent or null ``receptor_file_path`` yields a pose without one."""
+    job = _completed_docking_job(client)
+
+    def _strip(rows: list[dict]) -> None:
+        for i, row in enumerate(rows):
+            if i % 2:
+                row["receptor_file_path"] = None
+            else:
+                row.pop("receptor_file_path", None)
+
+    with _with_mutated_rows(_strip):
+        poses = job.get_poses()
+
+    assert len(poses) == len(_PANEL_ACCESSIONS)
+    assert all("receptor_local_path" not in pose.props for pose in poses)
+
+
+def test_secondary_pharma_get_poses_rejects_receptor_digest_mismatch(
+    client: DeepOriginClient,
+) -> None:
+    """Receptor bytes that don't match ``structure_sha256`` are rejected clearly."""
+    job = _completed_docking_job(client)
+
+    def _bad_digest(rows: list[dict]) -> None:
+        for row in rows:
+            row["structure_sha256"] = "0" * 64
+
+    with _with_mutated_rows(_bad_digest):
+        with pytest.raises(DeepOriginException, match="digest mismatch"):
+            job.get_poses()
+        # Opt-out still hands back the pose and receptor.
+        poses = job.get_poses(verify_receptor_digest=False)
+    assert all(Path(p.props["receptor_local_path"]).is_file() for p in poses)
+
+
+@pytest.mark.parametrize(
+    "bad_path",
+    [
+        "protected/../secrets/x.pdb",
+        "protected\\..\\x.pdb",
+        "someorg/panels/v1/x.pdb",
+        "protected/%2e%2e/x.pdb",
+        "protected/a\x00b.pdb",
+    ],
+)
+def test_secondary_pharma_get_poses_rejects_unsafe_receptor_path(
+    client: DeepOriginClient, bad_path: str
+) -> None:
+    """A receptor path outside ``protected/`` or with ``..`` is refused, not fetched."""
+    job = _completed_docking_job(client)
+
+    def _bad_path(rows: list[dict]) -> None:
+        for row in rows:
+            row["receptor_file_path"] = bad_path
+
+    with (
+        _with_mutated_rows(_bad_path),
+        patch.object(PoseSet, "download", side_effect=AssertionError("downloaded")),
+    ):
+        # Refused before any pose file is downloaded.
+        with pytest.raises(DeepOriginException, match="Invalid panel file path"):
+            job.get_poses()
+
+
+def test_secondary_pharma_get_poses_redownloads_corrupted_cached_receptor(
+    client: DeepOriginClient,
+) -> None:
+    """A cached receptor that fails its digest check is re-downloaded once."""
+    job = _completed_docking_job(client)
+    first = job.get_poses()
+    cached = Path(first[0].props["receptor_local_path"])
+    good_bytes = (Path(__file__).parent / "fixtures" / "1eby.pdb").read_bytes()
+    assert cached.read_bytes() == good_bytes
+
+    cached.write_bytes(b"corrupted")
+    second = job.get_poses()
+
+    assert Path(second[0].props["receptor_local_path"]) == cached
+    assert cached.read_bytes() == good_bytes
+
+
+def test_secondary_pharma_get_results_rejects_self_test_docking(
+    client: DeepOriginClient,
+) -> None:
+    """A rehydrated self_test docking run gets a clear error from ``get_results()``."""
+    job = SecondaryPharmacology.from_dto(
+        _hand_built_docking_dto(self_test=True), client=client
+    )
+    with pytest.raises(ValueError, match="self_test"):
+        job.get_results()
+
+
+def test_secondary_pharma_backfill_keeps_api_supplied_ligand_ids(
+    client: DeepOriginClient,
+) -> None:
+    """Backfill fills missing ids from SMILES but never overwrites an existing one."""
+    _assert_tool_available(client)
+    ligand = Ligand.from_smiles("CCO")
+    ligand.id = "local-id"  # already synced, so backfill's sync is a no-op
+    job = SecondaryPharmacology(ligands=[ligand], method="ligand-ml", client=client)
+
+    with_ids = pd.DataFrame(
+        {
+            "ligand_smiles": [ligand.smiles, ligand.smiles, "C"],
+            "ligand_id": ["api-id", None, None],
+        }
+    )
+    out = job._backfill_ligand_ids(with_ids)
+    assert out["ligand_id"].tolist()[:2] == ["api-id", "local-id"]
+    assert pd.isna(out["ligand_id"].iloc[2]), "unmatched SMILES stays missing"
+
+    no_ids = pd.DataFrame({"ligand_smiles": [ligand.smiles]})
+    assert job._backfill_ligand_ids(no_ids)["ligand_id"].tolist() == ["local-id"]
+
+
+# --- list(): project scoping through a real tool subclass ------------------------
+
+
+def test_secondary_pharma_list_and_from_last_run_are_scoped_to_the_client_project(
+    client: DeepOriginClient,
+) -> None:
+    """``list()`` and ``from_last_run()`` return only this project's runs, newest first.
+
+    Runs real ligand-ml executions through the local mock server under two
+    projects (``client.project_id`` is mutable) and lists them back, covering
+    ``Execution.list()``'s project scoping through a real tool subclass.
+    """
+    _assert_tool_available(client)
+    project_a = f"scope-a-{uuid.uuid4().hex}"
+    project_b = f"scope-b-{uuid.uuid4().hex}"
+
+    def run_in(project_id: str) -> str:
+        client.project_id = project_id
+        job = SecondaryPharmacology(
+            ligands=[Ligand.from_smiles("CCO")], method="ligand-ml", client=client
+        )
+        job.run()
+        assert job.id is not None
+        return job.id
+
+    first_in_a, second_in_a, only_in_b = (
+        run_in(project_a),
+        run_in(project_a),
+        run_in(project_b),
+    )
+
+    client.project_id = project_a
+    listed = SecondaryPharmacology.list(client=client)
+    assert [job.id for job in listed] == [second_in_a, first_in_a]
+    assert all(job.method == "ligand-ml" for job in listed)
+    # The newest run overall is in the other project; this project's newest wins.
+    assert SecondaryPharmacology.from_last_run(client=client).id == second_in_a
+
+    client.project_id = project_b
+    assert [job.id for job in SecondaryPharmacology.list(client=client)] == [only_in_b]
+    assert SecondaryPharmacology.from_last_run(client=client).id == only_in_b
+
+    # With no project set there is nothing to scope to, so everything is listed.
+    client.project_id = None
+    everything = {job.id for job in SecondaryPharmacology.list(client=client)}
+    assert {first_in_a, second_in_a, only_in_b} <= everything
+    assert SecondaryPharmacology.from_last_run(client=client).id == only_in_b
 
 
 # --- get_undocked_ligands() / get_missing_pairs() ---------------------------
@@ -915,92 +1137,135 @@ def test_secondary_pharma_undocked_ligands_and_missing_pairs_after_reload(
     assert {lig.id for lig, _uniprot in missing} == {undocked_ligand.id}
 
 
-# --- list() -------------------------------------------------------------------
+# --- run history: the panel a run actually used ----------------------------------
 
 
-def _submit_job_with_dirty_smiles(client: DeepOriginClient) -> SecondaryPharmacology:
-    """A completed ligand-ml run whose stored ligand smiles is multi-fragment.
+def test_secondary_pharma_results_stamp_the_panel_version(
+    client: DeepOriginClient,
+) -> None:
+    """Loading a run's results notes the panel it ran against; the request is untouched."""
+    job = _completed_docking_job(client)
+    reloaded = SecondaryPharmacology.from_id(job.id, client=client)
 
-    Ligand.from_smiles() self-normalizes at construction, so a ligand built
-    the normal way never has a dirty smiles left to resubmit -- the payload
-    is built normally, then patched with a raw multi-fragment smiles before
-    submission, to reproduce a record actually stored that way (e.g. from
-    an older client version, or a manual API call).
-    """
+    assert reloaded.panel_version is None, "not known until results are loaded"
+    reloaded.get_results()
+    assert reloaded.panel_version == MOCK_SECONDARY_PHARMA_PANEL_VERSION
+    assert reloaded.uniprots is None, "what was asked for is left as asked"
+
+
+def test_secondary_pharma_ligand_ml_runs_have_no_panel_version(
+    client: DeepOriginClient,
+) -> None:
+    """Ligand-ml results don't name a panel version, so there is nothing to stamp."""
     _assert_tool_available(client)
-    ligand = Ligand.from_smiles("CCO")
-    job = SecondaryPharmacology(ligands=[ligand], method="ligand-ml", client=client)
-    payload = job._make_payload(approve_amount=None, sync=True)
-    payload["inputs"]["ligands"][0]["smiles"] = "CCO.Cl"
-    dto = client.executions.create(
-        tool_key=job.tool_key, tool_version=job.tool_version, data=payload
+    job = SecondaryPharmacology(
+        ligands=[Ligand.from_smiles("CCO")], method="ligand-ml", client=client
     )
-    job.update_from_dto(dto)
-    assert is_success_status(job.status)
-    return job
+    job.run()
+    assert job.panel_version is None
 
 
-def _assert_no_user_warnings(caught: list) -> None:
-    assert not any(issubclass(w.category, UserWarning) for w in caught), [
-        str(w.message) for w in caught
+def test_secondary_pharma_gap_checks_use_the_panel_the_run_used(
+    client: DeepOriginClient,
+) -> None:
+    """A panel that grew later isn't a gap, because the run's own version is used.
+
+    Runs whose results don't name a version can only fall back to the live
+    panel, so they do see the new target as missing.
+    """
+    job = _completed_docking_job(client)
+    reloaded = SecondaryPharmacology.from_id(job.id, client=client)
+    added_later = "Q99999"
+    grown_panel = [*_definition_enum(client), added_later]
+
+    with patch.object(
+        SecondaryPharmacology, "_fetch_definition_uniprots", return_value=grown_panel
+    ):
+        assert reloaded.get_missing_pairs() is None
+
+        def _unversioned(rows: list[dict]) -> None:
+            for row in rows:
+                row.pop("panel_version", None)
+
+        legacy = SecondaryPharmacology.from_id(job.id, client=client)
+        with _with_mutated_rows(_unversioned):
+            legacy_missing = legacy.get_missing_pairs()
+
+    assert legacy.panel_version is None
+    assert legacy_missing is not None
+    assert {uniprot for _ligand, uniprot in legacy_missing} == {added_later}
+
+
+def test_secondary_pharma_rows_from_two_panel_versions_are_an_error(
+    client: DeepOriginClient,
+) -> None:
+    """Rows from two panel versions can't belong to one run, so reading them is an error."""
+    job = _completed_docking_job(client)
+
+    def _mix(rows: list[dict]) -> None:
+        rows[0]["panel_version"] = "mock-panel-v2"
+
+    with _with_mutated_rows(_mix):
+        reloaded = SecondaryPharmacology.from_id(job.id, client=client)
+        with pytest.raises(DeepOriginException, match="more than one panel version"):
+            reloaded.get_results()
+
+
+def test_secondary_pharma_get_panel_by_version(client: DeepOriginClient) -> None:
+    """``get_panel(panel_version=...)`` returns exactly that version's members."""
+    panel = SecondaryPharmacology.get_panel(
+        panel_version=MOCK_SECONDARY_PHARMA_PANEL_VERSION, full=True, client=client
+    )
+    assert list(panel["uniprot_id"]) == _PANEL_ACCESSIONS
+    assert list(panel["gene_name"]) == [
+        gene for _, gene, _ in MOCK_SECONDARY_PHARMA_PANEL
     ]
 
 
-def test_secondary_pharma_list_suppresses_ligand_hydration_warnings(
+def test_secondary_pharma_get_panel_by_version_rejects_bad_and_unknown_versions(
     client: DeepOriginClient,
 ) -> None:
-    """list() doesn't leak from_dto()'s ligand-normalization warnings.
+    """An unsafe or oversized version is a clean error; an unknown one leaves no cache behind."""
+    from deeporigin.utils.env import _ensure_do_folder
 
-    Regression: Execution.list() rehydrates every returned execution via
-    from_dto(), which reconstructs each stored ligand -- a stored record
-    with a raw multi-fragment SMILES (e.g. a salt form) triggers
-    Ligand.process_mol()'s UserWarning (naming the raw SMILES) as a side
-    effect of just browsing past runs, not something the caller asked to
-    see.
-    """
-    job = _submit_job_with_dirty_smiles(client)
+    with pytest.raises(DeepOriginException, match="Invalid panel file path"):
+        SecondaryPharmacology.get_panel(panel_version="../secrets", client=client)
+    with pytest.raises(DeepOriginException):
+        SecondaryPharmacology.get_panel(panel_version="a" * 400, client=client)
 
-    with warnings.catch_warnings(record=True) as caught:
-        warnings.simplefilter("always")
-        results = SecondaryPharmacology.list(status=["Completed"], client=client)
-
-    assert any(r.id == job.id for r in results)
-    _assert_no_user_warnings(caught)
+    with pytest.raises(DeepOriginException, match="Panel catalog unavailable"):
+        SecondaryPharmacology.get_panel(panel_version="mock-panel-v404", client=client)
+    assert not (
+        _ensure_do_folder() / "protected" / "panels" / "mock-panel-v404"
+    ).exists()
 
 
-def test_secondary_pharma_from_id_suppresses_ligand_hydration_warnings(
+def test_secondary_pharma_get_panel_recovers_from_a_corrupt_cached_catalog(
     client: DeepOriginClient,
 ) -> None:
-    """from_id() doesn't leak the same warning either.
+    """A truncated cached catalog is fetched again instead of failing forever."""
+    from deeporigin.utils.env import _ensure_do_folder
 
-    Regression (review follow-up on the list() fix above): a list() ->
-    pick id -> from_id() flow -- reloading one specific run after finding
-    it by browsing -- rehydrates ligands the same way list() does, so it
-    can leak the same SMILES-bearing warning even with list()'s own
-    hydration silenced.
-    """
-    job = _submit_job_with_dirty_smiles(client)
+    version = MOCK_SECONDARY_PHARMA_PANEL_VERSION
+    SecondaryPharmacology.get_panel(panel_version=version, full=True, client=client)
+    cached = _ensure_do_folder() / "protected" / "panels" / version / "members.json"
+    cached.write_text('{"members": [{"uniprot')
 
-    with warnings.catch_warnings(record=True) as caught:
-        warnings.simplefilter("always")
-        reloaded = SecondaryPharmacology.from_id(job.id, client=client)
-
-    assert reloaded.id == job.id
-    _assert_no_user_warnings(caught)
+    panel = SecondaryPharmacology.get_panel(
+        panel_version=version, full=True, client=client
+    )
+    assert list(panel["uniprot_id"]) == _PANEL_ACCESSIONS
+    assert json.loads(cached.read_text())["members"], "the cache was repaired"
 
 
-def test_secondary_pharma_from_last_run_suppresses_ligand_hydration_warnings(
+def test_secondary_pharma_duplicate_forgets_the_panel_version(
     client: DeepOriginClient,
 ) -> None:
-    """from_last_run() doesn't leak the same warning either."""
-    job = _submit_job_with_dirty_smiles(client)
-
-    with warnings.catch_warnings(record=True) as caught:
-        warnings.simplefilter("always")
-        reloaded = SecondaryPharmacology.from_last_run(client=client)
-
-    assert reloaded.id == job.id
-    _assert_no_user_warnings(caught)
+    """A duplicated draft hasn't run yet, so it carries no panel version."""
+    job = _completed_docking_job(client)
+    job.get_results()
+    assert job.panel_version == MOCK_SECONDARY_PHARMA_PANEL_VERSION
+    assert job.duplicate().panel_version is None
 
 
 # --- plot() -----------------------------------------------------------------

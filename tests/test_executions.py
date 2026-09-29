@@ -1,7 +1,6 @@
 from datetime import datetime, timezone
 from typing import Any, cast
 from unittest.mock import MagicMock
-import warnings
 
 import pandas as pd
 import pytest
@@ -197,7 +196,7 @@ def test_execution_from_last_run_raises_when_empty() -> None:
 def test_execution_from_last_run_hydrates_latest() -> None:
     """``from_last_run`` lists by createdAt desc and hydrates the first DTO."""
     client = MagicMock()
-    client.project_id = None
+    client.project_id = "proj-123"
     dto: dict[str, Any] = {
         "executionId": "exec-latest",
         "tool": {"key": "deeporigin.test-sync-tool", "version": "1.0.0"},
@@ -211,102 +210,12 @@ def test_execution_from_last_run_hydrates_latest() -> None:
     client.executions.list.assert_called_once_with(
         tool_key="deeporigin.test-sync-tool",
         order="createdAt desc",
+        project_id="proj-123",
         page=0,
         page_size=1,
-        project_id=None,
     )
     assert instance.id == "exec-latest"
     assert instance.status == "Completed"
-
-
-def test_execution_from_last_run_scopes_by_project() -> None:
-    """``from_last_run()`` passes the client's ``project_id`` to the list API."""
-    client = MagicMock()
-    client.project_id = "proj-123"
-    client.executions.list.return_value = {
-        "data": [
-            {
-                "executionId": "exec-in-project",
-                "tool": {"key": "deeporigin.test-sync-tool", "version": "1.0.0"},
-                "status": "Succeeded",
-            }
-        ]
-    }
-
-    _TestToolExecution.from_last_run(client=client)
-
-    client.executions.list.assert_called_once_with(
-        tool_key="deeporigin.test-sync-tool",
-        order="createdAt desc",
-        page=0,
-        page_size=1,
-        project_id="proj-123",
-    )
-
-
-class _WarningOnRehydrateExecution(_TestToolExecution):
-    """A from_dto() that always warns, to test the quiet= kwarg's plumbing."""
-
-    @classmethod
-    def from_dto(cls, dto: dict[str, Any], *, client: Any = None) -> Any:
-        warnings.warn("rehydration side effect", UserWarning, stacklevel=2)
-        return super().from_dto(dto, client=client)
-
-
-def _dto_for(exec_id: str) -> dict[str, Any]:
-    return {
-        "executionId": exec_id,
-        "tool": {"key": "deeporigin.test-sync-tool", "version": "1.0.0"},
-        "status": "Succeeded",
-        "createdAt": "2026-06-04T12:00:00.000Z",
-    }
-
-
-def test_execution_quiet_defaults_off_preserving_old_behavior() -> None:
-    """``quiet`` defaults to False on the base class -- from_dto()'s own
-    warnings pass through unless a caller (or a subclass overriding the
-    default) explicitly asks for quiet=True.
-
-    Regression guard for a design correction: rehydration-warning
-    suppression must be opt-in per call/subclass, not silently applied to
-    every Execution subclass by default -- other tools' from_dto()
-    warnings are their own business, not this base class's to hide.
-    """
-    client = MagicMock()
-    client.project_id = None
-    client.executions.get.return_value = _dto_for("exec-1")
-    client.executions.list.return_value = {"data": [_dto_for("exec-1")]}
-
-    with warnings.catch_warnings(record=True) as caught:
-        warnings.simplefilter("always")
-        _WarningOnRehydrateExecution.from_id("exec-1", client=client)
-    assert any(issubclass(w.category, UserWarning) for w in caught)
-
-    with warnings.catch_warnings(record=True) as caught:
-        warnings.simplefilter("always")
-        _WarningOnRehydrateExecution.from_last_run(client=client)
-    assert any(issubclass(w.category, UserWarning) for w in caught)
-
-    with warnings.catch_warnings(record=True) as caught:
-        warnings.simplefilter("always")
-        _WarningOnRehydrateExecution.list(client=client)
-    assert any(issubclass(w.category, UserWarning) for w in caught)
-
-
-def test_execution_quiet_true_suppresses_rehydration_warnings() -> None:
-    """``quiet=True`` opts a specific call into warning suppression."""
-    client = MagicMock()
-    client.project_id = None
-    client.executions.get.return_value = _dto_for("exec-1")
-    client.executions.list.return_value = {"data": [_dto_for("exec-1")]}
-
-    with warnings.catch_warnings(record=True) as caught:
-        warnings.simplefilter("always")
-        _WarningOnRehydrateExecution.from_id("exec-1", client=client, quiet=True)
-        _WarningOnRehydrateExecution.from_last_run(client=client, quiet=True)
-        _WarningOnRehydrateExecution.list(client=client, quiet=True)
-
-    assert not any(issubclass(w.category, UserWarning) for w in caught)
 
 
 def test_execution_list_orders_newest_first_and_scopes_by_project() -> None:
@@ -356,6 +265,95 @@ def test_execution_list_does_not_mutate_client_project_id() -> None:
 
     assert client.project_id == "proj-notebook"
     assert {r.id for r in results} == {"exec-a", "exec-b"}
+
+
+def _discover_execution_subclasses() -> list[type[Execution]]:
+    """Every concrete tool ``Execution`` subclass shipped in the package.
+
+    Touches each public ``deeporigin.drug_discovery`` name so lazily imported
+    tools register, then walks ``Execution``'s subclass tree, keeping only
+    package classes (not test doubles) that name a ``tool_key``.
+    """
+    import deeporigin.drug_discovery as dd
+
+    for name in dd.__all__:
+        try:
+            getattr(dd, name)
+        except ImportError:  # optional dependency missing; skip that tool
+            continue
+
+    found: dict[str, type[Execution]] = {}
+    pending: list[type[Execution]] = [Execution]
+    while pending:
+        for sub in pending.pop().__subclasses__():
+            pending.append(sub)
+            if sub.tool_key and sub.__module__.startswith("deeporigin."):
+                found[sub.__qualname__] = sub
+    return [found[name] for name in sorted(found)]
+
+
+# Every tool must scope ``list``/``from_last_run`` to the client's project, so a
+# tool that overrides either method without doing so fails these tests.
+_EXECUTION_TOOLS = _discover_execution_subclasses()
+
+
+def test_execution_subclass_discovery_finds_the_known_tools() -> None:
+    """Discovery is only a useful guard if it actually sees the tools."""
+    names = {cls.__qualname__ for cls in _EXECUTION_TOOLS}
+    assert {
+        "Docking",
+        "Admet",
+        "Metabolism",
+        "ProteinPrep",
+        "SecondaryPharmacology",
+    } <= names
+
+
+@pytest.mark.parametrize("project_id", ["proj-123", None])
+@pytest.mark.parametrize("cls", _EXECUTION_TOOLS, ids=lambda cls: cls.__qualname__)
+def test_execution_list_sends_the_client_project_for_every_tool(
+    cls: type[Execution], project_id: str | None
+) -> None:
+    """Every tool's ``list()`` sends the client's project.
+
+    A client with no project sends none, so ``list()`` is unfiltered
+    (org-wide). The behavioral check is
+    ``test_secondary_pharma_list_and_from_last_run_are_scoped_to_the_client_project``.
+    """
+    client = MagicMock()
+    client.project_id = project_id
+    client.executions.list.return_value = {"data": []}
+
+    assert cls.list(client=client) == []
+
+    request = client.executions.list.call_args.kwargs
+    assert request["project_id"] == project_id
+    assert request["tool_key"] == cls.tool_key
+    assert request["fetch_all_pages"] is True
+    assert request["order"] == "createdAt desc"
+
+
+@pytest.mark.parametrize("project_id", ["proj-123", None])
+@pytest.mark.parametrize("cls", _EXECUTION_TOOLS, ids=lambda cls: cls.__qualname__)
+def test_execution_from_last_run_sends_the_client_project_for_every_tool(
+    cls: type[Execution], project_id: str | None
+) -> None:
+    """Every tool's ``from_last_run()`` sends the client's project and asks for one row.
+
+    With nothing found it raises ``ValueError``, whichever project is set.
+    """
+    client = MagicMock()
+    client.project_id = project_id
+    client.executions.list.return_value = {"data": []}
+
+    with pytest.raises(ValueError, match="No executions found"):
+        cls.from_last_run(client=client)
+
+    request = client.executions.list.call_args.kwargs
+    assert request["project_id"] == project_id
+    assert request["tool_key"] == cls.tool_key
+    assert request["order"] == "createdAt desc"
+    assert (request["page"], request["page_size"]) == (0, 1)
 
 
 def test_execution_get_user_logs_no_id_noop() -> None:

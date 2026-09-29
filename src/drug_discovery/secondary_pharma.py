@@ -1,23 +1,20 @@
-"""SecondaryPharmacology -- score ligands against a baked kinase panel.
+"""SecondaryPharmacology -- score ligands against a baked off-target panel.
 
-Backed by the platform tool ``deeporigin.secondary-pharma``, which supports two
-mutually exclusive scoring methods selected at construction:
+Backed by the platform tool ``deeporigin.secondary-pharma``, which offers two
+mutually exclusive scoring methods, chosen at construction:
 
 - ``"ligand-ml"`` -- served, synchronous XGBoost booster scoring. Use :meth:`run`.
-- ``"docking"`` -- Argo workflow, asynchronous only. Use :meth:`start` (and
+- ``"docking"`` -- asynchronous Argo workflow. Use :meth:`start` (and
   :meth:`watch` in Jupyter).
 
 The tool schema has no ``inputs.sync`` field (unlike ``deeporigin.docking``), so
-``method`` alone determines execution modality -- there is no unified blocking/
-non-blocking call across both paths. :meth:`get_results` always returns a
-:class:`pandas.DataFrame` regardless of method (method-aware columns), but the
-two paths load from different places: ``ligand-ml`` is served/sync, so results
-come back in the same response's ``jobOutputs``; ``docking`` is an async Argo
-workflow, so results are only ever persisted to result-explorer (``jobOutputs``
-on a polled execution is empty) -- same reason ``Docking.get_results()`` tries
-result-explorer before ``jobOutputs``. Use ``get_results()``'s ``pose_score``/
-``binding_energy`` columns for docking results -- pose visualization isn't
-available yet (DDOS-7481).
+``method`` alone decides the execution mode. :meth:`get_results` returns a
+:class:`pandas.DataFrame` either way, but reads from different places: ligand-ml
+results come back in the run's ``jobOutputs``, while docking results are only in
+result-explorer (``jobOutputs`` is empty for an async run). For the docked poses
+themselves, use :meth:`get_poses`; each pose carries the path of its verified
+panel receptor in ``pose.props["receptor_local_path"]`` when the run recorded
+one. :meth:`show_panel_pose` shows one in its pocket.
 
 Usage::
 
@@ -37,8 +34,8 @@ Usage::
 from __future__ import annotations
 
 from asyncio import Task
-import builtins
 import hashlib
+import json
 import os
 from pathlib import Path
 import tempfile
@@ -149,7 +146,7 @@ def _docking_ligand_row(lig: Ligand) -> dict[str, Any]:
 
 
 def _ligand_ml_ligand_rows(ligands: list[Ligand]) -> list[dict[str, Any]]:
-    """Build ligand entries for the ligand-ml path (served, never synced).
+    """Build ligand entries for the ligand-ml path (served straight from SMILES).
 
     ``id`` is omitted when unset, not fabricated -- a fake id would publish
     to the platform keyed to a nonexistent Ligand. Use ``ligand_smiles`` to
@@ -199,48 +196,95 @@ def _ligands_from_inputs(inputs: dict[str, Any]) -> list[Ligand]:
 _PANEL_POSE_RESULT_TYPE = "panelpose"
 
 
-def _download_protected_panel_receptor(
+def _validate_panel_file_path(panel_file: str) -> str:
+    """Return a normalized panel file path, or raise if it isn't safe to fetch.
+
+    Panel files (receptors, catalogs) live under ``protected/``, and the path builds
+    both a request URL and a local cache path, so anything outside ``protected/`` or
+    containing ``..``, ``%`` or NUL is refused.
+
+    Args:
+        panel_file: A ``receptor_file_path`` from a panel-pose row, or a catalog path.
+
+    Returns:
+        The path with backslashes and repeated or leading slashes normalized away.
+
+    Raises:
+        DeepOriginException: If the path isn't safe to fetch.
+    """
+    from deeporigin.platform.files import _normalize_remote_path
+
+    remote = _normalize_remote_path(panel_file.strip())
+    if (
+        not remote.startswith("protected/")
+        or ".." in remote.split("/")
+        or "%" in remote
+        or "\x00" in remote
+    ):
+        raise DeepOriginException(
+            title="Invalid panel file path",
+            message=(
+                f"Panel file path {panel_file!r} must be under 'protected/' and "
+                "must not contain '..', '%' or NUL."
+            ),
+        )
+    return remote
+
+
+def _download_protected_panel_file(
     client: DeepOriginClient,
-    receptor_remote: str,
+    remote_path: str,
     *,
     lazy: bool = False,
 ) -> str:
-    """Download a panel receptor PDB from the platform ``protected`` org namespace.
+    """Download a panel file (receptor, catalog) from the ``protected`` org namespace.
 
-    Catalog publish uses ``PUT /files/protected/panels/<volume_key>/...`` (see
-    ``sync_secondary_pharma_catalog.py``). PanelPose ``receptor_file_path`` values
-    use that same string. They are **not** under the caller's org — ``Files.download``
-    would request ``/files/<caller>/protected/panels/...`` and return 404.
+    Panel files are published to ``/files/protected/panels/<volume_key>/...``, and
+    ``receptor_file_path`` uses that same string. They are not under the caller's
+    org, so ``Files.download`` would request ``/files/<caller>/protected/...`` and
+    404.
 
     Args:
-        client: API client (auth must allow read on the protected org).
-        receptor_remote: ``receptor_file_path`` from a panel-pose row.
-        lazy: Skip download when the file is already cached locally.
+        client: API client (needs read access to the protected org).
+        remote_path: Path of the file under ``protected/``.
+        lazy: Skip the download when the file is already cached locally.
 
     Returns:
-        Local path to the receptor PDB.
+        Local path to the cached file.
+
+    Raises:
+        DeepOriginException: If ``remote_path`` fails
+            :func:`_validate_panel_file_path`, or the file can't be cached.
     """
-    from deeporigin.platform.files import _normalize_remote_path
     from deeporigin.utils.env import _ensure_do_folder
 
-    remote = _normalize_remote_path(receptor_remote.strip())
-    if not remote.startswith("protected/"):
-        return client.files.download(remote_path=remote, lazy=lazy, direct=True)
-
+    remote = _validate_panel_file_path(remote_path)
     dest = _ensure_do_folder() / remote
-    dest.parent.mkdir(parents=True, exist_ok=True)
-    if lazy and dest.is_file():
-        return str(dest)
+    try:
+        if lazy and dest.is_file():
+            return str(dest)
+    except (OSError, ValueError) as exc:
+        raise DeepOriginException(
+            title="Panel file could not be cached",
+            message=f"Could not check the local copy of {remote}: {exc}",
+        ) from exc
 
     response = client._get(f"/files/{remote}")
-    tmp = tempfile.NamedTemporaryFile(dir=dest.parent, suffix=".tmp", delete=False)
     try:
-        with tmp:
-            tmp.write(response.content)
-        os.replace(tmp.name, dest)
-    except BaseException:
-        os.unlink(tmp.name)
-        raise
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        tmp = tempfile.NamedTemporaryFile(dir=dest.parent, suffix=".tmp", delete=False)
+        try:
+            with tmp:
+                tmp.write(response.content)
+            os.replace(tmp.name, dest)
+        except BaseException:
+            os.unlink(tmp.name)
+            raise
+    except (OSError, ValueError) as exc:
+        raise DeepOriginException(
+            title="Panel file could not be cached",
+            message=f"Could not store {remote} locally: {exc}",
+        ) from exc
     return str(dest)
 
 
@@ -322,7 +366,7 @@ def _resolve_panel_pose_ligand_id(
     *,
     ligand_id: str | None,
     ligand: Ligand | None,
-) -> str:
+) -> str | None:
     """Resolve the platform ligand id for a panel-pose lookup.
 
     Args:
@@ -330,53 +374,20 @@ def _resolve_panel_pose_ligand_id(
         ligand: Optional synced ligand (alternative to ``ligand_id``).
 
     Returns:
-        The ligand id to match on pose rows.
+        The ligand id to match on pose rows, or ``None`` for an unsynced ``ligand``
+        (rows are then matched on its SMILES).
 
     Raises:
-        ValueError: If ids are missing or disagree.
+        ValueError: If neither an id nor a ligand with a SMILES is given, or ids
+            disagree.
     """
     if ligand_id is not None:
         if ligand is not None and ligand.id is not None and ligand.id != ligand_id:
             raise ValueError("ligand_id does not match ligand.id.")
         return ligand_id
-    if ligand is None or ligand.id is None:
-        raise ValueError("Provide ligand_id or a synced ligand with an id.")
-    return ligand.id
-
-
-def _resolve_panel_pose_uniprot_id(
-    client: DeepOriginClient,
-    *,
-    uniprot_id: str | None,
-    gene_name: str | None,
-) -> str:
-    """Resolve panel target accession from UniProt id or gene symbol.
-
-    Args:
-        client: API client for panel catalog lookup.
-        uniprot_id: Panel member accession.
-        gene_name: Panel gene symbol (mutually exclusive with ``uniprot_id``).
-
-    Returns:
-        UniProt accession for the panel target.
-
-    Raises:
-        ValueError: If arguments are missing, combined, or ambiguous.
-    """
-    if uniprot_id is not None and gene_name is not None:
-        raise ValueError("Provide exactly one of uniprot_id or gene_name.")
-    if uniprot_id is not None:
-        return uniprot_id
-    if gene_name is None:
-        raise ValueError("Provide uniprot_id or gene_name for the panel target.")
-    panel = SecondaryPharmacology.get_panel(full=True, client=client)
-    hits = panel.loc[panel["gene_name"] == gene_name, "uniprot_id"]
-    if len(hits) != 1:
-        raise ValueError(
-            f"gene_name={gene_name!r} matched {len(hits)} panel members; "
-            "use uniprot_id instead."
-        )
-    return str(hits.iloc[0])
+    if ligand is None or not (ligand.id or ligand.smiles):
+        raise ValueError("Provide ligand_id or a ligand with an id or SMILES.")
+    return ligand.id or None
 
 
 def _require_panel_receptor_remote(row: dict[str, Any]) -> str:
@@ -396,9 +407,9 @@ def _require_panel_receptor_remote(row: dict[str, Any]) -> str:
         raise DeepOriginException(
             title="Panel receptor path missing",
             message=(
-                "This pose row has no receptor_file_path. Re-run docking on "
-                "an environment with secondary-pharma 2.1.8+ and a published "
-                "panel catalog, then try again."
+                "This pose row has no receptor_file_path, so its receptor can't "
+                "be shown. It was probably produced before receptors were "
+                "recorded; re-run docking with a current tool version."
             ),
         )
     return receptor_remote.strip()
@@ -436,20 +447,124 @@ def _verify_panel_receptor_digest(
         )
 
 
-def _apply_panel_pose_display_name(
-    pose: Pose,
+def _fetch_verified_receptor(
+    client: DeepOriginClient,
+    receptor_remote: str,
     row: dict[str, Any],
     *,
-    resolved_uniprot: str,
-) -> None:
+    verify: bool,
+) -> str:
+    """Download a panel receptor (cache-first) and verify it against its row digest.
+
+    A cached copy that fails the check is fetched once more before the mismatch is
+    raised, so a corrupt cache file can't wedge later calls.
+
+    Args:
+        client: API client.
+        receptor_remote: ``receptor_file_path`` from a panel-pose row.
+        row: Panel pose row that may carry ``structure_sha256``.
+        verify: When ``False``, skip digest verification.
+
+    Returns:
+        Local path to the verified receptor PDB.
+
+    Raises:
+        DeepOriginException: If the path is invalid, or the fresh download doesn't
+            match ``structure_sha256``.
+    """
+    local = _download_protected_panel_file(client, receptor_remote, lazy=True)
+    try:
+        _verify_panel_receptor_digest(local, row, verify=verify)
+    except DeepOriginException:
+        local = _download_protected_panel_file(client, receptor_remote, lazy=False)
+        _verify_panel_receptor_digest(local, row, verify=verify)
+    return local
+
+
+def _panel_version_from_rows(rows: list[dict[str, Any]]) -> str | None:
+    """The panel version a run's result rows were docked against, if they name one.
+
+    Docking rows carry the ``volume_key`` of the panel the pod mounted
+    (``panel_version``); volumes are immutable, so it identifies the exact targets.
+    Rows from before it was recorded carry none.
+
+    Args:
+        rows: Flattened panel-pose result rows.
+
+    Returns:
+        The single version the rows name, or ``None``.
+
+    Raises:
+        DeepOriginException: If the rows name more than one version.
+    """
+    versions = {
+        str(row["panel_version"]).strip()
+        for row in rows
+        if isinstance(row.get("panel_version"), str) and row["panel_version"].strip()
+    }
+    if len(versions) > 1:
+        raise DeepOriginException(
+            title="Mixed panel versions",
+            message=f"Result rows name more than one panel version: {sorted(versions)}.",
+        )
+    return next(iter(versions), None)
+
+
+def _panel_members_for_version(
+    client: DeepOriginClient, panel_version: str
+) -> list[dict[str, str]]:
+    """Load an immutable panel version's members from the protected catalog.
+
+    Reads ``protected/panels/<panel_version>/members.json``. Versions never change,
+    so it is cached locally; an unreadable cached copy is fetched once more.
+
+    Args:
+        client: API client (needs read access to the protected org).
+        panel_version: The panel's ``volume_key``.
+
+    Returns:
+        One ``{"uniprot_id", "gene_name"}`` record per member.
+
+    Raises:
+        DeepOriginException: If the catalog can't be loaded or isn't a non-empty
+            list of members with accessions.
+    """
+    remote = f"protected/panels/{panel_version}/members.json"
+    for lazy in (True, False):
+        try:
+            local = _download_protected_panel_file(client, remote, lazy=lazy)
+        except DeepOriginException as exc:
+            raise DeepOriginException(
+                title="Panel catalog unavailable",
+                message=f"Could not load {remote}: {exc}",
+            ) from exc
+        try:
+            members = json.loads(Path(local).read_text())["members"]
+            if not members:
+                raise ValueError("the catalog lists no members")
+            return [
+                {
+                    "uniprot_id": member["uniprot_id"],
+                    "gene_name": member.get("gene_name") or member["uniprot_id"],
+                }
+                for member in members
+            ]
+        except (OSError, ValueError, KeyError, TypeError, AttributeError) as exc:
+            error = exc
+    raise DeepOriginException(
+        title="Panel catalog unreadable",
+        message=f"{remote} is not a valid panel catalog: {error}",
+    ) from error
+
+
+def _apply_panel_pose_display_name(pose: Pose, row: dict[str, Any]) -> None:
     """Set ``pose.name`` from gene symbol and binding energy when available.
 
     Args:
         pose: Docked pose to label for the viewer.
         row: Panel pose result row.
-        resolved_uniprot: Target accession used for lookup.
     """
-    gene = row.get("gene_name") or resolved_uniprot
+    gene = row.get("gene_name") or row.get("uniprot_id")
     binding_energy = row.get("binding_energy")
     if binding_energy is not None:
         try:
@@ -534,7 +649,7 @@ def _secondary_pharma_default_name(
 class SecondaryPharmacology(
     Execution, SyncExecutableMixin, AsyncExecutableMixin, NotebookWatchMixin
 ):
-    """Score ligands against a baked secondary-pharmacology kinase panel.
+    """Score ligands against a baked secondary-pharmacology panel.
 
     Attributes:
         ligands: Ligands to score. Empty only when :attr:`self_test` is ``True``.
@@ -639,6 +754,7 @@ class SecondaryPharmacology(
 
         allowed = self._fetch_definition_uniprots()
         self._allowed_uniprots: frozenset[str] | None = frozenset(allowed)
+        self._panel_version: str | None = None
         self._uniprots: list[str] | tuple[str, ...] | None = (
             _validate_uniprots(uniprots, allowed=self._allowed_uniprots)
             if uniprots
@@ -705,6 +821,17 @@ class SecondaryPharmacology(
             )
         self._uniprots = _validate_uniprots(value, allowed=allowed)
 
+    @property
+    def panel_version(self) -> str | None:
+        """The panel version this run's results were produced against (docking only).
+
+        Read from the run's own results, so it is set once they're loaded
+        (:meth:`get_results`, :meth:`get_poses` or a gap check) and ``None`` before
+        that, for ligand-ml runs, and for runs from before results named their panel.
+        What you asked for (:attr:`uniprots`) is left as requested.
+        """
+        return self._panel_version
+
     def __repr__(self) -> str:
         """Return a concise summary of this secondary-pharma execution's configuration."""
         parts = ["SecondaryPharmacology("]
@@ -733,31 +860,45 @@ class SecondaryPharmacology(
         cls,
         *,
         full: bool = False,
+        panel_version: str | None = None,
         tool_version: str = TOOL_KEYS_AND_VERSIONS["secondary_pharma"]["tool_version"],
         client: DeepOriginClient | None = None,
     ) -> pd.DataFrame:
-        """Return the current scoring panel, no ligand or instance required.
+        """Return the current scoring panel, or an earlier version of it.
 
-        Both methods validate ``uniprots`` against this same panel today --
-        docking and ligand-ml are expected to grow independent, differently
-        sized catalogs later, which this method will need to account for then.
+        No ligand or instance needed. Pass ``panel_version`` (e.g. a run's
+        :attr:`panel_version`) to get exactly the panel that run used, even if the panel
+        has changed since. Both methods validate ``uniprots`` against this same panel
+        today; they may grow separate catalogs later.
 
         Args:
-            full: Return every member instead of just a preview.
-            tool_version: Platform tool version to look up. Defaults to the
-                pinned major version in :data:`TOOL_KEYS_AND_VERSIONS`.
+            full: Return every member instead of a preview.
+            panel_version: An immutable panel version to look up instead of the current
+                panel.
+            tool_version: Platform tool version to look up (ignored when
+                ``panel_version`` is given). Defaults to the pinned major version in
+                :data:`TOOL_KEYS_AND_VERSIONS`.
             client: Optional API client. Uses the default if not provided.
 
         Returns:
-            A :class:`pandas.DataFrame` with one row per panel member
-            (``uniprot_id``, ``gene_name``).
+            A :class:`pandas.DataFrame` with one row per member (``uniprot_id``,
+            ``gene_name``).
+
+        Raises:
+            DeepOriginException: If ``panel_version`` is malformed or its catalog can't
+                be loaded.
         """
         if client is None:
             client = DeepOriginClient()
-        if client.tools is None:
-            raise RuntimeError("DeepOriginClient has no tools API")
-        definition = client.tools.get(tool_key=cls.tool_key, tool_version=tool_version)
-        members = _panel_from_definition(definition)
+        if panel_version is not None:
+            members = _panel_members_for_version(client, panel_version)
+        else:
+            if client.tools is None:
+                raise RuntimeError("DeepOriginClient has no tools API")
+            definition = client.tools.get(
+                tool_key=cls.tool_key, tool_version=tool_version
+            )
+            members = _panel_from_definition(definition)
         df = pd.DataFrame(members, columns=["uniprot_id", "gene_name"])
         if full or len(df) <= _PANEL_PREVIEW_ROWS:
             return df
@@ -784,6 +925,25 @@ class SecondaryPharmacology(
         if self._id is not None and isinstance(uniprots, list):
             self._uniprots = tuple(uniprots)
 
+    def _load_rows(self, dto: dict[str, Any] | None = None) -> list[dict[str, Any]]:
+        """Load this docking run's result rows and note which panel they used.
+
+        Args:
+            dto: Optional execution payload, forwarded to :func:`_load_panel_pose_rows`.
+
+        Returns:
+            The flattened panel-pose rows; sets :attr:`panel_version` from them.
+
+        Raises:
+            DeepOriginException: If no rows load, or the rows name several panel
+                versions.
+        """
+        rows = _load_panel_pose_rows(self._ensure_id(), client=self.client, dto=dto)
+        version = _panel_version_from_rows(rows)
+        if version is not None:
+            self._panel_version = version
+        return rows
+
     def _ensure_method(self, expected: str, *, alternative_call: str) -> None:
         """Raise if this instance's :attr:`method` does not match *expected*."""
         if self._method != expected:
@@ -794,9 +954,9 @@ class SecondaryPharmacology(
     def _ensure_platform_inputs(self) -> None:
         """Sync ligands to the data platform for the docking path.
 
-        Only the docking path is a workflow that needs persisted ligand ids
-        (mirrors ``Docking._ensure_platform_inputs``); the ligand-ml path is
-        served directly from SMILES like ``Admet`` and is never synced.
+        Only docking is a workflow that needs persisted ligand ids (as in
+        ``Docking._ensure_platform_inputs``). Ligand-ml scores straight from SMILES and
+        backfills ids afterwards; see :meth:`_backfill_ligand_ids`.
         """
         LigandSet(ligands=self._ligands).sync(lazy=True, client=self.client)
 
@@ -965,33 +1125,27 @@ class SecondaryPharmacology(
     def get_results(self, dto: dict[str, Any] | None = None) -> pd.DataFrame:
         """Return this execution's results as a :class:`pandas.DataFrame`.
 
-        Method-aware, and the two paths load from different places:
+        Ligand-ml results are read from the run's ``jobOutputs`` (like
+        :meth:`Admet.get_results <deeporigin.drug_discovery.admet.Admet.get_results>`).
+        Docking is an async workflow, so its rows are read from result-explorer, falling
+        back to ``jobOutputs`` (see :func:`_load_panel_pose_rows`). Docking rows include
+        ``pose_score``, ``binding_energy`` and ``file_path``; every row has a ``method``
+        column.
 
-        - ``ligand-ml`` is served/sync, so ``jobOutputs`` is populated in the
-          same response that completed the run -- read directly, like
-          :meth:`Admet.get_results <deeporigin.drug_discovery.admet.Admet.get_results>`.
-        - ``docking`` is an async Argo workflow with no synchronous response
-          to embed results into, so it only ever persists rows to
-          result-explorer; ``jobOutputs`` on a polled execution is empty.
-          Loaded via :func:`_load_panel_pose_rows`, mirroring
-          :func:`~deeporigin.drug_discovery.docking_common.load_docking_poses_from_execution`'s
-          result-explorer-first, ``jobOutputs``-fallback shape.
-
-        The docking-path DataFrame includes ``pose_score``, ``binding_energy``,
-        and ``file_path`` per pose. Every row also carries a ``method``
-        column (``"ligand-ml"`` or ``"docking"``).
+        The ligand-ml path drops the platform's unused ``p_affinity`` column. Each row
+        sets exactly one of ``p_active`` / ``p_affinity``, so a ``NaN`` ``p_active`` is
+        that omission, not missing data.
 
         Args:
-            dto: Optional execution payload (``executions.create`` /
-                ``executions.get``). On the ligand-ml path, used directly
-                instead of an extra GET. On the docking path, only consulted
-                as a fallback if result-explorer has no rows yet.
+            dto: Optional execution payload. Ligand-ml reads it instead of making an
+                extra GET; docking consults it only if result-explorer has no rows yet.
 
         Returns:
             A DataFrame of ``ligand_ml_predictions`` or ``panel_poses`` rows.
 
         Raises:
-            ValueError: If :attr:`id` is unset and ``dto`` is omitted.
+            ValueError: If :attr:`id` is unset and ``dto`` is omitted, or for a
+                ``self_test`` docking run (only a legacy rehydrated run can be one).
             DeepOriginException: If no rows could be loaded.
         """
         if self._method == "ligand-ml":
@@ -1014,20 +1168,36 @@ class SecondaryPharmacology(
             df.insert(0, "method", self._method)
             return df
 
-        exec_id = self._ensure_id()
-        rows = _load_panel_pose_rows(exec_id, client=self.client, dto=dto)
+        if self._self_test:
+            raise ValueError(
+                "get_results() is not available for self_test docking runs: "
+                "the platform's baked test ligand has no ligand id, so no "
+                "panel poses are published for it."
+            )
+        rows = self._load_rows(dto)
         df = pd.DataFrame(rows)
         df.insert(0, "method", self._method)
         return df
 
     def _backfill_ligand_ids(self, df: pd.DataFrame) -> pd.DataFrame:
-        """Sync unregistered ligands (a no-op if already synced) so results
-        carry a real ``ligand_id`` instead of ``None``."""
+        """Fill missing ``ligand_id`` values in ligand-ml results.
+
+        Syncs any unregistered ligands (a no-op if already synced), then fills
+        ``ligand_id`` from the SMILES the platform echoed back. An id the platform
+        supplied is never overwritten; a row whose SMILES matches no local ligand keeps
+        what it has.
+        """
         if not self._ligands:
             return df
         LigandSet(ligands=self._ligands).sync(lazy=True, client=self.client)
         by_smiles = {lig.smiles: lig.id for lig in self._ligands}
-        df["ligand_id"] = df["ligand_smiles"].map(by_smiles)
+        from_smiles = df["ligand_smiles"].map(by_smiles)
+        if "ligand_id" in df.columns:
+            df["ligand_id"] = df["ligand_id"].where(
+                df["ligand_id"].notna(), from_smiles
+            )
+        else:
+            df["ligand_id"] = from_smiles
         return df
 
     def _ligand_plot_labels(self) -> dict[str, str]:
@@ -1053,34 +1223,20 @@ class SecondaryPharmacology(
                 chosen range still renders, clipped to the nearest edge
                 color.
         """
+        from deeporigin.plots import WHITE_RED_HAZARD_PALETTE, plot_grid_heatmap
+
         df = self.get_results(dto)
         if self._method == "ligand-ml":
-            from deeporigin.plots import WHITE_RED_HAZARD_PALETTE, plot_grid_heatmap
-
-            labels = self._ligand_plot_labels()
-            ligand_label = df["ligand_smiles"].map(lambda s: labels.get(s, s))
-            pivot = df.assign(ligand_label=ligand_label).pivot_table(
-                index="ligand_label", columns="gene_name", values="p_active"
-            )
-            plot_grid_heatmap(
-                pivot.to_numpy(),
-                row_labels=list(pivot.index),
-                col_labels=list(pivot.columns),
-                title="Secondary pharmacology: P(active)",
-                value_label="score",
-                palette=WHITE_RED_HAZARD_PALETTE,
-                clim=clim if clim is not None else (0.0, 1.0),
-            )
+            values = "p_active"
+            title = "Secondary pharmacology: P(active)"
+            value_label = "score"
+            palette = WHITE_RED_HAZARD_PALETTE
+            clim = clim if clim is not None else (0.0, 1.0)
         else:
-            from deeporigin.plots import WHITE_RED_HAZARD_PALETTE, plot_grid_heatmap
-
-            labels = self._ligand_plot_labels()
-            ligand_label = df["ligand_smiles"].map(lambda s: labels.get(s, s))
-            pivot = df.assign(ligand_label=ligand_label).pivot_table(
-                index="ligand_label", columns="gene_name", values=metric
-            )
             # Same white-to-red hazard palette as ligand-ml for both metrics;
             # auto-scales the color range unless clim= overrides it.
+            values = metric
+            value_label = metric
             if metric == "pose_score":
                 palette, label = WHITE_RED_HAZARD_PALETTE, "pose score"
             else:
@@ -1088,108 +1244,164 @@ class SecondaryPharmacology(
                     list(reversed(WHITE_RED_HAZARD_PALETTE)),
                     "binding energy (kcal/mol)",
                 )
-            plot_grid_heatmap(
-                pivot.to_numpy(),
-                row_labels=list(pivot.index),
-                col_labels=list(pivot.columns),
-                title=f"Secondary pharmacology docking: {label}",
-                value_label=metric,
-                palette=palette,
-                clim=clim,
-            )
+            title = f"Secondary pharmacology docking: {label}"
 
-    def _get_poses(self, *, dto: dict[str, Any] | None = None) -> PoseSet:
-        """Load and download docking-path panel poses as a :class:`PoseSet`.
+        labels = self._ligand_plot_labels()
+        ligand_label = df["ligand_smiles"].map(lambda s: labels.get(s, s))
+        pivot = df.assign(ligand_label=ligand_label).pivot_table(
+            index="ligand_label", columns="gene_name", values=values
+        )
+        plot_grid_heatmap(
+            pivot.to_numpy(),
+            row_labels=list(pivot.index),
+            col_labels=list(pivot.columns),
+            title=title,
+            value_label=value_label,
+            palette=palette,
+            clim=clim,
+        )
 
-        Underscore-prefixed: no receptor structure in the same coordinate
-        frame as these poses is available yet to visualize them against
-        (DDOS-7481). Use ``pose_score``/``binding_energy`` from
-        :meth:`get_results` instead.
+    def get_poses(
+        self,
+        *,
+        verify_receptor_digest: bool = True,
+        dto: dict[str, Any] | None = None,
+    ) -> PoseSet:
+        """Download this docking run's poses, each with its panel receptor.
 
-        Valid only when :attr:`method` is ``"docking"``. Loads the same
-        ``panel_poses`` rows as :meth:`get_results` (result-explorer first,
-        ``jobOutputs`` fallback -- see :func:`_load_panel_pose_rows`) and
-        builds poses via
-        :meth:`Pose.from_json <deeporigin.drug_discovery.structures.pose.Pose.from_json>`,
-        which is generic over row dicts and not tied to the platform's
-        ``result_type="pose"`` result group that ``panel_poses`` rows do not
-        belong to (they are ``result_type="panelpose"``), then downloads the
-        SDFs -- matching
-        :meth:`Docking.get_poses <deeporigin.drug_discovery.docking.Docking.get_poses>`'s
-        behavior exactly.
+        Docking only. Loads the run's ``panel_poses`` rows (as :meth:`get_results`
+        does), builds a :class:`PoseSet` and downloads the pose files, like
+        :meth:`Docking.get_poses <deeporigin.drug_discovery.docking.Docking.get_poses>`.
+        Each pose whose row names a ``receptor_file_path`` also gets the receptor it was
+        docked into, downloaded once per distinct receptor (cached) and checked against
+        the row's ``structure_sha256``; its local path is in
+        ``pose.props["receptor_local_path"]``. Rows without a receptor path (runs from
+        before receptors were recorded) still yield a pose, just without that key.
 
-        Not available for a ``self_test`` run: the platform's baked test
-        ligand has no ligand id, so the platform publishes no panel-pose
-        rows for it at all (unidentified rows are filtered before
-        publishing) -- there is nothing for :meth:`get_results` to return
-        either in this case, so it isn't a usable fallback here.
+        These are panel poses, not registered poses, so they have no pose result id and
+        can't be passed to tools that take a registered ``Pose`` (e.g. ABFE, RBFE). Not
+        available for ``self_test`` runs, which publish no panel poses. To view one pose
+        in its pocket, use :meth:`show_panel_pose`.
 
         Args:
+            verify_receptor_digest: Reject a receptor whose bytes don't match the row's
+                ``structure_sha256`` (default ``True``).
             dto: Optional execution payload, forwarded to :func:`_load_panel_pose_rows`.
 
         Returns:
-            A :class:`PoseSet` of downloaded docked panel poses.
+            A :class:`PoseSet` of the downloaded panel poses.
 
         Raises:
-            ValueError: If :attr:`method` is not ``"docking"``, or if this is
-                a ``self_test`` run.
+            ValueError: If :attr:`method` is not ``"docking"``, or this is a
+                ``self_test`` run.
+            DeepOriginException: If a row's ``receptor_file_path`` is outside
+                ``protected/`` or contains ``..``, or a receptor fails digest
+                verification.
         """
         self._ensure_method("docking", alternative_call="get_results")
         if self._self_test:
             raise ValueError(
-                "_get_poses() is not available for self_test runs: the "
+                "get_poses() is not available for self_test runs: the "
                 "platform's baked test ligand has no ligand id, so no panel "
                 "poses are published for it (get_results() has nothing to "
                 "return either, for the same reason)."
             )
-        exec_id = self._ensure_id()
-        rows = _load_panel_pose_rows(exec_id, client=self.client, dto=dto)
+        rows = self._load_rows(dto)
+        # Refuse an unsafe receptor path before downloading anything.
+        receptor_remotes: list[str | None] = []
+        for row in rows:
+            raw = row.get("receptor_file_path")
+            has_receptor = isinstance(raw, str) and raw.strip()
+            receptor_remotes.append(
+                _validate_panel_file_path(raw) if has_receptor else None
+            )
         poses = PoseSet.from_json(rows, client=self.client)
         poses.download(client=self.client, lazy=True)
+
+        # Pose.from_json returns one pose per row, in row order.
+        receptors: dict[tuple[str, str | None], str] = {}
+        for pose, row, receptor_remote in zip(
+            poses, rows, receptor_remotes, strict=True
+        ):
+            if receptor_remote is None:
+                continue
+            digest = row.get("structure_sha256")
+            key = (receptor_remote, digest if isinstance(digest, str) else None)
+            if key not in receptors:
+                receptors[key] = _fetch_verified_receptor(
+                    self.client,
+                    receptor_remote,
+                    row,
+                    verify=verify_receptor_digest,
+                )
+            pose.props["receptor_local_path"] = receptors[key]
         return poses
 
     def _panel_pose_row(
         self,
         *,
-        ligand_id: str,
-        uniprot_id: str,
+        ligand_id: str | None,
+        ligand_smiles: str | None = None,
+        uniprot_id: str | None = None,
+        gene_name: str | None = None,
         dto: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         """Return the single ``panel_poses`` row for a ligand and panel target.
 
+        The target is matched against this run's own rows, so a gene name works whether
+        or not the tool definition lists display names.
+
         Args:
-            ligand_id: Platform ligand id from this execution's results.
+            ligand_id: Platform ligand id from this execution's results. When
+                ``None``, rows are matched on ``ligand_smiles`` instead.
+            ligand_smiles: SMILES to match when ``ligand_id`` is ``None``.
             uniprot_id: Panel member accession.
+            gene_name: Panel gene symbol (instead of ``uniprot_id``).
             dto: Optional execution payload for :func:`_load_panel_pose_rows`.
 
         Returns:
             One flattened panel-pose row dict.
 
         Raises:
-            ValueError: If zero or multiple rows match.
+            ValueError: If not exactly one of ``uniprot_id`` and ``gene_name`` is given,
+                or zero or several rows match.
         """
-        exec_id = self._ensure_id()
-        rows = _load_panel_pose_rows(exec_id, client=self.client, dto=dto)
+        if (uniprot_id is None) == (gene_name is None):
+            raise ValueError("Provide exactly one of uniprot_id or gene_name.")
+        column, wanted = (
+            ("uniprot_id", uniprot_id)
+            if uniprot_id is not None
+            else ("gene_name", gene_name)
+        )
         matches = [
             row
-            for row in rows
-            if row.get("ligand_id") == ligand_id and row.get("uniprot_id") == uniprot_id
+            for row in self._load_rows(dto)
+            if (
+                row.get("ligand_id") == ligand_id
+                if ligand_id is not None
+                else row.get("ligand_smiles") == ligand_smiles
+            )
+            and row.get(column) == wanted
         ]
         if len(matches) == 1:
             return matches[0]
-        if not matches:
-            msg = (
-                f"No panel pose for ligand_id={ligand_id!r} and "
-                f"uniprot_id={uniprot_id!r}. Inspect get_results() for available pairs."
+        found = "No" if not matches else f"{len(matches)}"
+        raise ValueError(
+            f"{found} panel poses for "
+            + (
+                f"ligand_id={ligand_id!r}"
+                if ligand_id is not None
+                else f"ligand_smiles={ligand_smiles!r}"
             )
-            raise ValueError(msg)
-        msg = (
-            f"Expected one panel pose for ligand_id={ligand_id!r} and "
-            f"uniprot_id={uniprot_id!r}, found {len(matches)}."
+            + f" and {column}={wanted!r}"
+            + (
+                ". Inspect get_results() for available pairs."
+                if not matches
+                else "; use uniprot_id to pick one."
+            )
         )
-        raise ValueError(msg)
 
-    def _show_panel_pose(
+    def show_panel_pose(
         self,
         *,
         ligand_id: str | None = None,
@@ -1200,54 +1412,47 @@ class SecondaryPharmacology(
         height: int = 620,
         dto: dict[str, Any] | None = None,
     ):
-        """Visualize one docked pose against its panel receptor (dev-only API).
+        """Show one docked pose in its target's pocket, in a Jupyter notebook.
 
-        Underscore-prefixed experimental helper: downloads the published panel
-        receptor PDB named on the pose row (``receptor_file_path``) and overlays
-        the docked ligand SDF in a Jupyter Mol* iframe. Requires a completed
-        docking run on an environment where the tool emits receptor metadata
-        (platform secondary-pharma 2.1.8+ with a published panel catalog).
+        Downloads the pose's panel receptor (checked against its recorded checksum) and
+        overlays the docked ligand on it in an interactive Mol* viewer. Choose the pose
+        by ligand and by target. Needs a completed docking run whose results record
+        their receptor; use :meth:`get_poses` to work with poses in code.
 
         Args:
             ligand_id: Platform ligand id (from ``get_results()``).
-            ligand: Alternative to ``ligand_id`` when the ligand is already synced.
+            ligand: A ligand, instead of ``ligand_id``. One without an id (for
+                example rebuilt from SMILES after reloading a run) is matched on
+                its SMILES.
             uniprot_id: Panel target accession.
-            gene_name: Panel target gene symbol (mutually exclusive with
-                ``uniprot_id``).
-            verify_receptor_digest: When ``True`` and the row includes
-                ``structure_sha256``, verify downloaded receptor bytes match.
+            gene_name: Panel target gene symbol, matched against this run's results
+                (instead of ``uniprot_id``).
+            verify_receptor_digest: Verify the downloaded receptor against the row's
+                ``structure_sha256`` when it has one.
             height: Iframe height in pixels.
             dto: Optional execution payload for loading pose rows.
 
         Returns:
-            Result of :func:`~deeporigin.utils.notebook.render_html` for the
-            Mol* viewer iframe.
+            The :func:`~deeporigin.utils.notebook.render_html` result for the viewer.
 
         Raises:
-            ValueError: If :attr:`method` is not ``"docking"``, arguments are
-                missing or ambiguous, or this is a ``self_test`` run.
-            DeepOriginException: If ``receptor_file_path`` is missing, digest
-                verification fails, or downloads fail.
+            ValueError: If :attr:`method` is not ``"docking"``, the target isn't named
+                exactly once, no single pose matches, or this is a ``self_test`` run.
+            DeepOriginException: If the row has no ``receptor_file_path``, digest
+                verification fails, or a download fails.
         """
         self._ensure_method("docking", alternative_call="get_results")
         if self._self_test:
             raise ValueError(
-                "_show_panel_pose() is not available for self_test runs: no "
+                "show_panel_pose() is not available for self_test runs: no "
                 "panel poses are published for the baked test ligand."
             )
 
-        resolved_ligand_id = _resolve_panel_pose_ligand_id(
-            ligand_id=ligand_id,
-            ligand=ligand,
-        )
-        resolved_uniprot = _resolve_panel_pose_uniprot_id(
-            self.client,
+        row = self._panel_pose_row(
+            ligand_id=_resolve_panel_pose_ligand_id(ligand_id=ligand_id, ligand=ligand),
+            ligand_smiles=ligand.smiles if ligand is not None else None,
             uniprot_id=uniprot_id,
             gene_name=gene_name,
-        )
-        row = self._panel_pose_row(
-            ligand_id=resolved_ligand_id,
-            uniprot_id=resolved_uniprot,
             dto=dto,
         )
         receptor_remote = _require_panel_receptor_remote(row)
@@ -1255,32 +1460,41 @@ class SecondaryPharmacology(
         pose = Pose.from_json([row], client=self.client)[0]
         pose.download(client=self.client, lazy=False)
 
-        receptor_local = _download_protected_panel_receptor(
+        receptor_local = _fetch_verified_receptor(
             self.client,
             receptor_remote,
-            lazy=False,
-        )
-        _verify_panel_receptor_digest(
-            receptor_local,
             row,
             verify=verify_receptor_digest,
         )
-        _apply_panel_pose_display_name(
-            pose,
-            row,
-            resolved_uniprot=resolved_uniprot,
-        )
+        _apply_panel_pose_display_name(pose, row)
         return _render_panel_pose_molstar_html(
             receptor_local=receptor_local,
             pose=pose,
             height=height,
         )
 
-    def _expected_panel_pairs(self) -> set[tuple[str, str]]:
-        """Every (ligand id, uniprot) pair this run should have docked."""
-        uniprots = self.uniprots or self._allowed_uniprots
+    def _expected_panel_pairs(self, rows: list[dict[str, Any]]) -> set[tuple[str, str]]:
+        """Every (ligand id, uniprot) pair this run should have docked.
+
+        Targets come from, in order: the subset the run asked for; the panel version
+        named by its own results (immutable, so a later panel change can't cause false
+        gaps); else the panel listed when this object was configured, or the live one.
+
+        Args:
+            rows: The run's result rows.
+
+        Raises:
+            DeepOriginException: If the rows name several versions, or a named
+                version's catalog can't be loaded.
+        """
+        uniprots = self.uniprots
         if not uniprots:
-            uniprots = self._fetch_definition_uniprots()
+            version = _panel_version_from_rows(rows)
+            if version is not None:
+                members = _panel_members_for_version(self.client, version)
+                uniprots = [member["uniprot_id"] for member in members]
+        if not uniprots:
+            uniprots = self._allowed_uniprots or self._fetch_definition_uniprots()
         return {
             (lig.id, uniprot)
             for lig in self._ligands
@@ -1296,7 +1510,7 @@ class SecondaryPharmacology(
         for that.
         """
         self._ensure_method("docking", alternative_call="get_results")
-        rows = _load_panel_pose_rows(self._ensure_id(), client=self.client)
+        rows = self._load_rows()
         docked_ids = {row.get("ligand_id") for row in rows}
         missing = [lig for lig in self._ligands if lig.id not in docked_ids]
         return LigandSet(ligands=missing) if missing else None
@@ -1307,9 +1521,9 @@ class SecondaryPharmacology(
         Valid only when :attr:`method` is ``"docking"``.
         """
         self._ensure_method("docking", alternative_call="get_results")
-        rows = _load_panel_pose_rows(self._ensure_id(), client=self.client)
+        rows = self._load_rows()
         docked_pairs = {(row.get("ligand_id"), row.get("uniprot_id")) for row in rows}
-        missing_keys = self._expected_panel_pairs() - docked_pairs
+        missing_keys = self._expected_panel_pairs(rows) - docked_pairs
         by_id = {lig.id: lig for lig in self._ligands}
         missing = [
             (by_id[lig_id], uniprot)
@@ -1363,6 +1577,7 @@ class SecondaryPharmacology(
             else None
         )
         instance._allowed_uniprots = None
+        instance._panel_version = None
 
         meta = execution.get("metadata") or {}
         raw_batch = execution.get("batchSize")
@@ -1376,37 +1591,6 @@ class SecondaryPharmacology(
 
         return instance
 
-    @classmethod
-    def from_id(
-        cls, id: str, *, client: DeepOriginClient | None = None, quiet: bool = True
-    ) -> Self:
-        """Same as :meth:`Execution.from_id`, but ``quiet`` defaults to True.
-
-        Rebuilding ``ligands`` from stored inputs can emit chemistry
-        normalization warnings (naming the raw SMILES) -- not useful noise
-        when you're just reloading a run you already know about. Pass
-        ``quiet=False`` to see them.
-        """
-        return super().from_id(id, client=client, quiet=quiet)
-
-    @classmethod
-    def from_last_run(
-        cls, *, client: DeepOriginClient | None = None, quiet: bool = True
-    ) -> Self:
-        """Same as :meth:`Execution.from_last_run`, but ``quiet`` defaults to True."""
-        return super().from_last_run(client=client, quiet=quiet)
-
-    @classmethod
-    def list(
-        cls,
-        *,
-        client: DeepOriginClient | None = None,
-        status: builtins.list[str] | None = None,
-        quiet: bool = True,
-    ) -> builtins.list[Self]:
-        """Same as :meth:`Execution.list`, but ``quiet`` defaults to True."""
-        return super().list(client=client, status=status, quiet=quiet)
-
     def duplicate(self, *, client: DeepOriginClient | None = None) -> Self:
         """Copy configuration into a new draft with a writable ``uniprots``.
 
@@ -1415,6 +1599,7 @@ class SecondaryPharmacology(
         ``uniprots`` like a constructor-built instance.
         """
         new = super().duplicate(client=client)
+        new._panel_version = None
         if isinstance(getattr(new, "_uniprots", None), tuple):
             new._uniprots = list(new._uniprots)
         if getattr(new, "_allowed_uniprots", None) is None:
