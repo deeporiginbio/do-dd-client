@@ -26,7 +26,7 @@ from deeporigin.platform.client import DeepOriginClient
 
 PoseOrigin = Literal["cocrystal", "docked", "registered"]
 
-_POSE_RESULT_ID_POLL_SECONDS = 15.0
+_POSE_RESULT_ID_POLL_SECONDS = 3.0
 _POSE_RESULT_ID_POLL_INTERVAL = 0.5
 _POSE_SYNC_FAILED = "Pose sync failed"
 
@@ -1194,6 +1194,7 @@ class PoseSet:
             require_uniform_scope,
             stage_local_file,
             sync_process_sdf,
+            wait_for_data_platform_ingestion,
         )
 
         proj_id = require_uniform_scope(
@@ -1231,6 +1232,15 @@ class PoseSet:
             import_execution_id = import_execution_id.strip() or None
         else:
             import_execution_id = None
+        if not import_execution_id:
+            raise DeepOriginException(
+                title=_POSE_SYNC_FAILED,
+                message=(
+                    "import-dataset did not return an execution id; cannot wait "
+                    "for data-platform ingestion before resolving pose ids."
+                ),
+            )
+        wait_for_data_platform_ingestion(client, import_execution_id)
         ligand_rows = outputs.get("ligands") or []
         pose_rows = outputs.get("poses") or []
         if not isinstance(ligand_rows, list):

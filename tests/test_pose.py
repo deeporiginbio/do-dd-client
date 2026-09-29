@@ -167,6 +167,80 @@ def test_pose_sync_lazy_skips_when_id_set() -> None:
     pose.sync(lazy=True)
 
 
+def test_pose_set_sync_waits_for_data_platform_ingestion(
+    client,
+    registered_protein,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """PoseSet.sync blocks on data-platform ingestion before result-explorer hydrate."""
+    from deeporigin.drug_discovery import import_dataset_sync
+
+    calls: list[str] = []
+    real_wait = import_dataset_sync.wait_for_data_platform_ingestion
+
+    def _spy_wait(
+        bound_client: DeepOriginClient,
+        compute_job_id: str,
+        **kwargs: object,
+    ) -> dict:
+        calls.append(compute_job_id)
+        return real_wait(bound_client, compute_job_id, **kwargs)
+
+    monkeypatch.setattr(
+        import_dataset_sync,
+        "wait_for_data_platform_ingestion",
+        _spy_wait,
+    )
+
+    sdf_path = tmp_path / "pose.sdf"
+    lig = Ligand.from_sdf(BRD_DATA_DIR / "brd-2.sdf")
+    lig.sync(client=client)
+    lig.to_sdf(str(sdf_path))
+    pose = Pose(
+        ligand_id=lig.id,
+        protein_id=registered_protein.id,
+        local_path=str(sdf_path),
+        project_id=client.project_id,
+    )
+    PoseSet(poses=[pose]).sync(client=client)
+    assert len(calls) == 1
+    assert calls[0]
+    assert pose.id is not None
+
+
+def test_pose_set_sync_requires_import_execution_id(
+    client,
+    registered_protein,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Missing import_execution_id fails before hydration."""
+    from deeporigin.drug_discovery import import_dataset_sync
+    from deeporigin.exceptions import DeepOriginException
+
+    def _outputs_without_execution_id(**kwargs: object) -> dict:
+        return {"ligands": [], "poses": []}
+
+    monkeypatch.setattr(
+        import_dataset_sync,
+        "sync_process_sdf",
+        _outputs_without_execution_id,
+    )
+
+    sdf_path = tmp_path / "pose.sdf"
+    lig = Ligand.from_sdf(BRD_DATA_DIR / "brd-2.sdf")
+    lig.to_sdf(str(sdf_path))
+    pose = Pose(
+        ligand_id="lig-1",
+        protein_id=registered_protein.id,
+        local_path=str(sdf_path),
+        project_id=client.project_id,
+    )
+    with pytest.raises(DeepOriginException, match="execution id"):
+        PoseSet(poses=[pose]).sync(client=client)
+
+
 def test_pose_set_sync_hydrates_id_from_result_explorer(
     client,
     registered_protein,

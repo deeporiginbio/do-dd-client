@@ -1467,6 +1467,11 @@ def create_tools_router(
                     pose_rows.append(pose_row)
                 job_outputs["poses"] = pose_rows
             execution["jobOutputs"] = job_outputs
+            if register_poses:
+                eid = execution.get("executionId")
+                if eid:
+                    execution["dataPlatformRowId"] = str(uuid.uuid4())
+                    execution["dataPlatformStatus"] = "DataIngesting"
             return execution
 
         if not inputs.get("register_pose"):
