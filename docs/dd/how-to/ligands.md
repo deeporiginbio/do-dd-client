@@ -292,7 +292,8 @@ ligands.show_df()
 
 #### Individual view (3D)
 
-To view 3D structures of all ligands in a LigandSet, use:
+To view 3D structures of all ligands in a LigandSet, install the optional
+viewer with `pip install 'deeporigin[visualization]'`, then use:
 
 
 ```python
