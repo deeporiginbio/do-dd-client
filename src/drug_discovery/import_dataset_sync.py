@@ -36,6 +36,10 @@ _DEFAULT_TOOLS_POLL_INTERVAL_S = 2.0
 _DEFAULT_TOOLS_WAIT_TIMEOUT_S = 3600.0
 _DEFAULT_INGESTION_POLL_INTERVAL_S = 2.0
 _DEFAULT_INGESTION_WAIT_TIMEOUT_S = 3600.0
+# Served hidden import-dataset runs often ingest result-explorer rows without
+# projecting an `executions` row keyed by compute_job_id. Do not spin for the
+# full ingestion timeout when search never returns a row.
+_DEFAULT_NO_DP_EXECUTION_ROW_TIMEOUT_S = 120.0
 
 
 def _import_failed(message: str) -> DeepOriginException:
@@ -226,21 +230,47 @@ def _latest_data_platform_execution_row(
     return rows[0]
 
 
+def _result_explorer_has_compute_job_rows(
+    client: DeepOriginClient,
+    compute_job_id: str,
+) -> bool:
+    """True when result-explorer already has rows for this tools execution id."""
+    resp = client.results.get(  # ty: ignore[unresolved-attribute]
+        compute_job_id=compute_job_id,
+        limit=1,
+    )
+    rows = resp.get("data") if isinstance(resp, dict) else None
+    return bool(rows)
+
+
 def wait_for_data_platform_ingestion(
     client: DeepOriginClient,
     compute_job_id: str,
     *,
     poll_interval: float = _DEFAULT_INGESTION_POLL_INTERVAL_S,
     timeout: float | None = _DEFAULT_INGESTION_WAIT_TIMEOUT_S,
+    no_row_timeout: float = _DEFAULT_NO_DP_EXECUTION_ROW_TIMEOUT_S,
 ) -> dict[str, Any]:
-    """Poll data-platform execution until ingestion leaves ``DataIngesting``."""
+    """Poll data-platform execution until ingestion leaves ``DataIngesting``.
+
+    When no ``executions`` row appears for ``compute_job_id`` (common for
+    hidden served import-dataset plumbing), treats result-explorer rows for
+    that id as ingestion complete; otherwise returns ``{}`` after
+    ``no_row_timeout`` so callers can hydrate without blocking for the full
+    ``timeout``.
+    """
     deadline = time.monotonic() + timeout if timeout is not None else None
+    started = time.monotonic()
     while True:
         last_row = _latest_data_platform_execution_row(client, compute_job_id)
         if last_row is not None:
             done = _ingestion_poll_outcome(last_row)
             if done is not None:
                 return done
+        elif _result_explorer_has_compute_job_rows(client, compute_job_id):
+            return {}
+        elif time.monotonic() - started >= no_row_timeout:
+            return {}
 
         if deadline is not None and time.monotonic() >= deadline:
             raise TimeoutError(
@@ -401,6 +431,8 @@ def workflow_import_smiles_csv(
     tools_timeout: float | None = _DEFAULT_TOOLS_WAIT_TIMEOUT_S,
     ingestion_poll_interval: float = _DEFAULT_INGESTION_POLL_INTERVAL_S,
     ingestion_timeout: float | None = _DEFAULT_INGESTION_WAIT_TIMEOUT_S,
+    progress: Any | None = None,
+    progress_step_start: int = 2,
 ) -> tuple[str, dict[str, Any]]:
     """Run large SMILES CSV import via workflow and block until ingestion completes.
 
@@ -414,6 +446,11 @@ def workflow_import_smiles_csv(
         "database_key": IMPORT_DATASET_LIGANDS_DATABASE_KEY,
         "database_version": IMPORT_DATASET_LIGANDS_DATABASE_VERSION,
     }
+    step_run = progress_step_start
+    step_tools = progress_step_start + 1
+    step_ingest = progress_step_start + 2
+    if progress is not None:
+        progress.start_step(step_run, detail="workflow")
     dto = run_import_dataset_workflow(
         inputs=inputs,
         project_id=project_id,
@@ -421,20 +458,30 @@ def workflow_import_smiles_csv(
     )
     execution_id = dto.get("executionId")
     if not execution_id:
+        if progress is not None:
+            progress.fail_step(step_run, message="No execution id returned")
         raise _import_failed("import-dataset workflow did not return an execution id.")
     execution_id = str(execution_id)
+    if progress is not None:
+        progress.finish_step(step_run)
+        progress.start_step(step_tools)
     poll_tools_execution_terminal(
         client,
         execution_id,
         poll_interval=poll_interval,
         timeout=tools_timeout,
     )
+    if progress is not None:
+        progress.finish_step(step_tools)
+        progress.start_step(step_ingest)
     dp_row = wait_for_data_platform_ingestion(
         client,
         execution_id,
         poll_interval=ingestion_poll_interval,
         timeout=ingestion_timeout,
     )
+    if progress is not None:
+        progress.finish_step(step_ingest)
     return execution_id, dp_row
 
 
