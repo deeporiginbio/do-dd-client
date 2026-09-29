@@ -381,6 +381,17 @@ ligands.sync()
 To keep the original set unchanged, use `filter_unsupported()`, which returns a new
 `LigandSet` without the unsupported ligands.
 
+### Syncing large SMILES sets
+
+`LigandSet.sync()` registers structure-less ligands through
+`deeporigin.import-dataset`. **Up to 500** SMILES per call use the served
+`process_csv` path (blocking, ids returned in `jobOutputs`). **More than 500**
+SMILES-only ligands in one sync are staged as a CSV and imported via the
+workflow `csv_path` + mapper path; the client blocks until data-platform
+ingestion completes and then hydrates `lig.id` on every ligand. Requires
+`client.project_id`. Large multi-record SDF sync remains on the served path
+(500-record cap per execution).
+
 ### Generating 3D Coordinates
 
 You can generate 3D coordinates for a single ligand or all ligands in a LigandSet using the `embed()` method. This is useful for preparing ligands for docking or other modeling tasks that require 3D structures.

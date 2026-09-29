@@ -777,6 +777,7 @@ def create_tools_router(
     file_storage: dict[str, bytes],
     proteins: dict[str, dict[str, Any]],
     ligands: dict[str, dict[str, Any]],
+    execution_subjects: dict[str, dict[str, Any]],
 ) -> APIRouter:
     """Create a router for tools-related endpoints.
 
@@ -979,6 +980,8 @@ def create_tools_router(
             execution["status"] = "Completed"
             execution["completedAt"] = now.strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z"
             execution["updatedAt"] = now.strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z"
+            if tool_key == "deeporigin.import-dataset":
+                _finalize_import_dataset_csv_workflow(execution)
             if tool_key in (
                 "deeporigin.docking",
                 "deeporigin.constrained-docking",
@@ -1669,6 +1672,109 @@ def create_tools_router(
             "failedQuotations": [],
             "successfulQuotations": [],
         }
+        return execution
+
+    def _finalize_import_dataset_csv_workflow(execution: dict[str, Any]) -> None:
+        """Simulate MQ ingest for workflow ``csv_path`` import-dataset runs."""
+        if execution.get("workflowCsvIngestApplied"):
+            return
+        inputs = execution.get("userInputs") or {}
+        csv_path = inputs.get("csv_path")
+        if not csv_path:
+            return
+        execution_id = str(execution.get("executionId") or "")
+        if not execution_id:
+            return
+        project_id = execution.get("projectId") or MOCK_DEFAULT_PROJECT_ID
+        dp_row_id = str(uuid.uuid4())
+        execution["dataPlatformRowId"] = dp_row_id
+        execution["dataPlatformStatus"] = "DataIngesting"
+
+        import csv
+        import io
+
+        raw = file_storage.get(str(csv_path))
+        if raw:
+            reader = csv.DictReader(io.StringIO(raw.decode("utf-8")))
+            for row in reader:
+                smiles = str(row.get("smiles") or "")
+                if not smiles.strip():
+                    continue
+                canonical = _canonicalize_smiles(smiles)
+                lid: str | None = None
+                for record in ligands.values():
+                    if record.get("canonical_smiles") == canonical:
+                        lid = str(record["id"])
+                        break
+                if lid is None:
+                    extra: dict[str, Any] = {
+                        "name": row.get("name") or "",
+                        "project_id": project_id,
+                    }
+                    record = _make_ligand_record(smiles, extra)
+                    ligands[record["id"]] = record
+                    lid = str(record["id"])
+                subject_id = str(uuid.uuid4())
+                execution_subjects[subject_id] = {
+                    "id": subject_id,
+                    "execution_id": dp_row_id,
+                    "entity_type": "ligand",
+                    "entity_canonical_id": lid,
+                    "deleted": False,
+                    "project_id": project_id,
+                }
+        execution["workflowCsvIngestApplied"] = True
+        execution["jobOutputs"] = {
+            "records_imported": len(
+                [
+                    s
+                    for s in execution_subjects.values()
+                    if s.get("execution_id") == dp_row_id
+                ]
+            ),
+            "batches": 1,
+        }
+
+    def _build_import_dataset_workflow_csv_execution(
+        *,
+        org_key: str,
+        tool_key: str,
+        tool_version: str,
+        body: dict[str, Any],
+    ) -> dict[str, Any]:
+        """Async import-dataset execution for large ``csv_path`` workflow imports."""
+        ts = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z"
+        eid = str(uuid.uuid4())
+        approve_amount = body.get("approveAmount", 0) or 0
+        execution: dict[str, Any] = {
+            "executionId": eid,
+            "createdAt": ts,
+            "updatedAt": ts,
+            "resourceId": _generate_resource_id(),
+            "status": "Running",
+            "userInputs": body.get("inputs", {}),
+            "userOutputs": body.get("outputs", {}),
+            "metadata": body.get("metadata", {}),
+            "approveAmount": approve_amount,
+            "jobOutputs": None,
+            "resourcesUsed": None,
+            "resourcesRequested": None,
+            "progressReport": json.dumps({"complete": 0}),
+            "statusReason": None,
+            "name": body.get("name"),
+            "orgKey": org_key,
+            "tool": {"key": tool_key, "version": tool_version},
+            "type": "ToolExecution",
+            "startedAt": ts,
+            "completedAt": None,
+            "quotationResult": {
+                "anyFailed": False,
+                "failedQuotations": [],
+                "successfulQuotations": [],
+            },
+        }
+        if body.get("projectId") is not None:
+            execution["projectId"] = body["projectId"]
         return execution
 
     def _build_metabolism_async_execution(
@@ -3032,6 +3138,19 @@ def create_tools_router(
                 job_outputs=execution.get("jobOutputs"),
             )
             return _normalize_execution(execution)
+        if tool_key == "deeporigin.import-dataset" and body.get("sync") is not True:
+            inputs = body.get("inputs") or {}
+            if inputs.get("csv_path"):
+                execution = _build_import_dataset_workflow_csv_execution(
+                    org_key=org_key,
+                    tool_key=tool_key,
+                    tool_version=tool_version,
+                    body=body,
+                )
+                eid = execution["executionId"]
+                executions[eid] = execution
+                execution_start_times[eid] = datetime.now(timezone.utc)
+                return _normalize_execution(execution)
         if tool_key == "deeporigin.mol-props-protonation":
             execution = _build_protonation_execution(
                 org_key=org_key,
