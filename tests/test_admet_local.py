@@ -2,13 +2,12 @@
 
 from __future__ import annotations
 
+import json
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 import pandas as pd
 import pytest
-
-import json
-from pathlib import Path
 
 from deeporigin.drug_discovery import Admet, Ligand
 from deeporigin.platform.constants import TOOL_KEYS_AND_VERSIONS
