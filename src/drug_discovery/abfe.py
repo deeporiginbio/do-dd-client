@@ -251,6 +251,19 @@ def _abfe_element_symbol(atomic_number: int) -> str:
 _NM_TO_ANGSTROM = 10.0
 
 
+def _systemprep_xml_root(path: Path) -> ET.Element:
+    """Parse a SystemPrep XML file without resolving external entities."""
+    parser = ET.XMLParser()
+    if hasattr(parser, "resolve_entities"):
+        parser.resolve_entities = False
+    return ET.parse(path, parser=parser).getroot()
+
+
+def _systemprep_pdb_chain_id(chain_index: int) -> str:
+    """Map a 1-based SystemPrep chain index to a single-character PDB chain id."""
+    return chr(ord("A") + min(max(chain_index, 1) - 1, 25))
+
+
 @beartype
 def _abfe_systemprep_xml_to_pdb(
     xml_path: str,
@@ -265,12 +278,15 @@ def _abfe_systemprep_xml_to_pdb(
     to match those trajectories. Binding trajectories use ``solute.pdb`` instead.
     """
     path = Path(xml_path)
-    root = ET.parse(path).getroot()
-    entries: list[tuple[int, str, str, int, float, float, float, str]] = []
+    root = _systemprep_xml_root(path)
+    entries: list[tuple[int, str, str, str, int, float, float, float, str]] = []
     for chain in root.findall("./Chains/Chain"):
         chain_type = (chain.get("chain_type") or "").strip()
         if chain_types is not None and chain_type not in chain_types:
             continue
+        chain_index_raw = (chain.get("chain_index") or "1").strip()
+        chain_index = int(chain_index_raw) if chain_index_raw.isdigit() else 1
+        chain_id = _systemprep_pdb_chain_id(chain_index)
         residue_serial = 0
         for residue in chain.findall("Residues/Residue"):
             residue_name = (residue.get("residue_name") or "UNK").strip()
@@ -292,6 +308,7 @@ def _abfe_systemprep_xml_to_pdb(
                         int(index_raw),
                         atom_name,
                         residue_name,
+                        chain_id,
                         residue_serial,
                         x,
                         y,
@@ -312,6 +329,7 @@ def _abfe_systemprep_xml_to_pdb(
         _index,
         atom_name,
         residue_name,
+        chain_id,
         residue_serial,
         x,
         y,
@@ -321,7 +339,7 @@ def _abfe_systemprep_xml_to_pdb(
         record = "HETATM"
         resname = residue_name[:3].rjust(3)
         lines.append(
-            f"{record}{serial:5d} {atom_name:>4s} {resname:>3s} A{residue_serial:4d}    "
+            f"{record}{serial:5d} {atom_name:>4s} {resname:>3s} {chain_id}{residue_serial:4d}    "
             f"{x:8.3f}{y:8.3f}{z:8.3f}  1.00  0.00          {element:>2s}\n"
         )
     lines.append("END\n")
