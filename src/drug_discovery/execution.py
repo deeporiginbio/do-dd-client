@@ -725,7 +725,8 @@ class Execution:
         dtos = response.get("data") or []
         if not dtos:
             raise ValueError(
-                f"No executions found for {cls.__qualname__} (tool_key={cls.tool_key!r})."
+                f"No executions found for {cls.__qualname__} "
+                f"(tool_key={cls.tool_key!r}, project_id={client.project_id!r})."
             )
         return cls.from_dto(dtos[0], client=client)
 

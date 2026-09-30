@@ -140,10 +140,10 @@ _MOCK_SECONDARY_PHARMA_SELF_TEST_SMILES = (
     "COc1cc2ncnc(Nc3ccc(F)c(Cl)c3)c2cc1OCCCN1CCOCC1"
 )
 
-# Fixed remote path for mock panel-pose SDFs. Real content is uploaded by
-# whichever test exercises the docking path's get_poses() download step
-# (tests/test_secondary_pharma.py); every synthesized panel_poses row points
-# here so PoseSet.download() has something real to fetch.
+# Fixed remote path for mock panel-pose SDFs. The mock server seeds the file at
+# startup (_seed_secondary_pharma_panel_catalog in tests/mock_server/server.py);
+# every synthesized panel_poses row points here so PoseSet.download() has
+# something real to fetch.
 MOCK_SECONDARY_PHARMA_POSE_SDF_PATH = "testing/mock-secondary-pharma-pose.sdf"
 MOCK_SECONDARY_PHARMA_PANEL_VERSION = "mock-panel-v1"
 MOCK_SECONDARY_PHARMA_RECEPTOR_PDB_PATH = (

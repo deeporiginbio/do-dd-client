@@ -36,7 +36,10 @@ from __future__ import annotations
 from asyncio import Task
 import hashlib
 import json
+import os
 from pathlib import Path
+import re
+import tempfile
 from typing import Any, Literal, Self
 
 from beartype import beartype
@@ -270,7 +273,16 @@ def _download_protected_panel_file(
     response = client._get(f"/files/{remote}")
     try:
         dest.parent.mkdir(parents=True, exist_ok=True)
-        dest.write_bytes(response.content)
+        # Write beside the target and swap in, so an interrupted or concurrent
+        # download never leaves (or exposes) a partial cache file.
+        tmp = tempfile.NamedTemporaryFile(dir=dest.parent, suffix=".tmp", delete=False)
+        try:
+            with tmp:
+                tmp.write(response.content)
+            os.replace(tmp.name, dest)
+        except BaseException:
+            os.unlink(tmp.name)
+            raise
     except (OSError, ValueError) as exc:
         raise DeepOriginException(
             title="Panel file could not be cached",
@@ -443,6 +455,14 @@ def _panel_members_for_version(
         DeepOriginException: If the catalog can't be loaded or isn't a non-empty
             list of members with accessions.
     """
+    if not re.fullmatch(r"[A-Za-z0-9_-][A-Za-z0-9._-]*", panel_version):
+        raise DeepOriginException(
+            title="Invalid panel version",
+            message=(
+                f"Panel version {panel_version!r} must be a single name of letters, "
+                "digits, '.', '_' or '-'."
+            ),
+        )
     remote = f"protected/panels/{panel_version}/members.json"
     for lazy in (True, False):
         try:

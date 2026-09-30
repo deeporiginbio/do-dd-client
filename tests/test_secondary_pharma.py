@@ -1265,14 +1265,40 @@ def test_secondary_pharma_get_panel_by_version(client: DeepOriginClient) -> None
     ]
 
 
+@pytest.mark.parametrize("failure", [OSError("disk full"), KeyboardInterrupt()])
+def test_panel_file_cache_write_leaves_no_partial_file(
+    client: DeepOriginClient, failure: BaseException
+) -> None:
+    """A failed or interrupted cache write leaves neither the target nor a temp file."""
+    from deeporigin.drug_discovery import secondary_pharma
+    from deeporigin.utils.env import _ensure_do_folder
+
+    remote = f"protected/panels/{MOCK_SECONDARY_PHARMA_PANEL_VERSION}/members.json"
+    dest = _ensure_do_folder() / remote
+    dest.unlink(missing_ok=True)
+
+    with patch.object(secondary_pharma.os, "replace", side_effect=failure):
+        expected = (
+            KeyboardInterrupt
+            if isinstance(failure, KeyboardInterrupt)
+            else DeepOriginException
+        )
+        with pytest.raises(expected):
+            secondary_pharma._download_protected_panel_file(client, remote)
+
+    assert not dest.exists()
+    assert not list(dest.parent.glob("*.tmp"))
+
+
 def test_secondary_pharma_get_panel_by_version_rejects_bad_and_unknown_versions(
     client: DeepOriginClient,
 ) -> None:
     """An unsafe or oversized version is a clean error; an unknown one leaves no cache behind."""
     from deeporigin.utils.env import _ensure_do_folder
 
-    with pytest.raises(DeepOriginException, match="Invalid panel file path"):
-        SecondaryPharmacology.get_panel(panel_version="../secrets", client=client)
+    for bad in ("../secrets", "", "a/b", "x?y#z", ".hidden"):
+        with pytest.raises(DeepOriginException, match="Invalid panel"):
+            SecondaryPharmacology.get_panel(panel_version=bad, client=client)
     with pytest.raises(DeepOriginException):
         SecondaryPharmacology.get_panel(panel_version="a" * 400, client=client)
 

@@ -346,8 +346,9 @@ def test_execution_from_last_run_sends_the_client_project_for_every_tool(
     client.project_id = project_id
     client.executions.list.return_value = {"data": []}
 
-    with pytest.raises(ValueError, match="No executions found"):
+    with pytest.raises(ValueError, match="No executions found") as excinfo:
         cls.from_last_run(client=client)
+    assert f"project_id={project_id!r}" in str(excinfo.value)
 
     request = client.executions.list.call_args.kwargs
     assert request["project_id"] == project_id
