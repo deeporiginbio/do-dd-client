@@ -58,6 +58,8 @@ class MockServer:
         # In-memory storage for executions
         self._executions: dict[str, dict[str, Any]] = {}
         self._execution_start_times: dict[str, datetime] = {}
+        # Optional billing rejection reasons by org, applied only on confirmation.
+        self._confirmation_rejections: dict[str, dict[str, Any]] = {}
         self._ligands: dict[str, dict[str, Any]] = {}
         self._execution_subjects: dict[str, dict[str, Any]] = {}
         self._proteins: dict[str, dict[str, Any]] = {}
@@ -402,6 +404,7 @@ class MockServer:
         tools_router = tools.create_tools_router(
             executions=self._executions,
             execution_start_times=self._execution_start_times,
+            confirmation_rejections=self._confirmation_rejections,
             mock_execution_durations=self._mock_execution_durations,
             docking_speed=self.docking_speed,
             fixtures_dir=self._fixtures_dir,

@@ -226,6 +226,51 @@ def test_non_restricted_execution_response_retains_existing_behavior(api, status
     assert api.create(tool_key="deeporigin.test", tool_version="1", data={}) == dto
 
 
+def test_quote_remains_available_when_confirmation_rejects_insufficient_funds(
+    client, test_server
+):
+    from deeporigin.drug_discovery import Admet, Ligand
+    from tests.conftest import assert_quote_only_execution
+
+    if test_server is None:
+        pytest.skip("Requires a controlled billing rejection on the local mock server")
+
+    reason = {
+        "code": "FailedQuotation",
+        "message": "Insufficient purchasing power",
+        "items": [{"actionRequest": "Add funds"}],
+    }
+    test_server._confirmation_rejections[client.org_key] = reason
+    try:
+        job = Admet(ligands=[Ligand.from_smiles("CCO")], client=client)
+        assert job.run(quote=True) is job
+        assert_quote_only_execution(job)
+        estimate = job.estimate
+        assert estimate > 0
+        quoted = client.executions.get(job.id)
+        assert quoted["status"] == "Quoted"
+        assert quoted["approveAmount"] == -1
+        assert job.id not in test_server._execution_start_times
+
+        with pytest.raises(PlatformRestrictionError) as caught:
+            job.confirm()
+
+        assert caught.value.body == "Insufficient purchasing power"
+        assert caught.value.action == "Add funds"
+        assert caught.value.response_data == job.dto
+        assert job.status == "InsufficientFunds"
+        assert job.estimate == estimate
+        assert job.cost is None
+        rejected = client.executions.get(job.id)
+        assert rejected["status"] == "InsufficientFunds"
+        assert rejected["statusReason"] == reason
+        assert rejected["startedAt"] is None
+        assert rejected["jobOutputs"] is None
+        assert job.id not in test_server._execution_start_times
+    finally:
+        test_server._confirmation_rejections.pop(client.org_key)
+
+
 @pytest.mark.parametrize("stage", ["result", "execution", "fallback"])
 def test_pocket_results_preserve_restrictions_before_fallback(stage):
     from deeporigin.drug_discovery.pocket_finder import PocketFinder
