@@ -21,7 +21,10 @@ import uuid
 
 from fastapi import APIRouter, HTTPException, Request
 
-from deeporigin.utils.constants import METABOLISM_WORKFLOW_LIGAND_THRESHOLD
+from deeporigin.utils.constants import (
+    ADMET_INLINE_LIGAND_CAP,
+    METABOLISM_WORKFLOW_LIGAND_THRESHOLD,
+)
 
 from ..constants import MOCK_BULK_DOCKING_EXECUTION_ID
 from .data_platform import (
@@ -1096,6 +1099,8 @@ def create_tools_router(
                 _inject_patent_tool_execution_results(execution)
             if tool_key == "deeporigin.metabolism":
                 _inject_metabolism_tool_execution_results(execution)
+            if tool_key == "deeporigin.admet-properties":
+                _inject_admet_tool_execution_results(execution)
             if tool_key == "deeporigin.secondary-pharma":
                 _inject_secondary_pharma_docking_tool_execution_results(execution)
             progress_reports = _load_progress_reports(tool_key)
@@ -1595,6 +1600,150 @@ def create_tools_router(
             execution["quotationResult"] = quotation
         return execution
 
+    def _admet_ligands_from_inputs(inputs: dict[str, Any]) -> list[dict[str, Any]]:
+        """Resolve ligand dict rows from inline ``ligands`` or ``ligands_file``."""
+
+        ligands_in = inputs.get("ligands") or []
+        if not ligands_in:
+            remote = inputs.get("ligands_file")
+            if isinstance(remote, str) and remote.strip():
+                key = remote.strip().lstrip("/")
+                raw = file_storage.get(key) or file_storage.get(remote.strip())
+                if raw is not None:
+                    try:
+                        parsed = json.loads(raw.decode("utf-8"))
+                    except (UnicodeDecodeError, json.JSONDecodeError):
+                        parsed = []
+                    if isinstance(parsed, list):
+                        ligands_in = parsed
+        return [lig for lig in ligands_in if isinstance(lig, dict)]
+
+    def _admet_prediction_rows_from_inputs(
+        inputs: dict[str, Any],
+    ) -> list[dict[str, Any]]:
+        """Synthesize ADMET prediction rows for resolved tool inputs."""
+
+        requested_raw = inputs.get("properties")
+        if isinstance(requested_raw, list) and requested_raw:
+            requested = [p for p in requested_raw if isinstance(p, str)]
+        else:
+            requested = list(MOCK_ADMET_ENDPOINTS)
+
+        rows: list[dict[str, Any]] = []
+        ligands_in = _admet_ligands_from_inputs(inputs)
+        for i, lig in enumerate(ligands_in):
+            smiles = str(lig.get("smiles") or "")
+            lid = str(lig.get("id") if lig.get("id") is not None else i)
+            rows.append(
+                _synthesize_admet_prediction_row(
+                    smiles=smiles,
+                    ligand_id=lid,
+                    requested=requested,
+                )
+            )
+        return rows
+
+    def _inject_admet_result_explorer_records(
+        *,
+        tool_key: str,
+        tool_version: str,
+        execution_id: str,
+        job_outputs: dict[str, Any],
+    ) -> None:
+        """Mirror ADMET ``admet_properties`` rows into result-explorer."""
+
+        if any(
+            r.get("compute_job_id") == execution_id
+            and r.get("result_type") == "admetproperty"
+            for r in results
+        ):
+            return
+
+        items = job_outputs.get("admet_properties")
+        if not isinstance(items, list):
+            return
+        for item in items:
+            if not isinstance(item, dict):
+                continue
+            ligand_id = item.get("ligand_id")
+            results.append(
+                {
+                    "id": "08" + str(uuid.uuid4()).replace("-", "").upper()[:11],
+                    "tool_key": tool_key,
+                    "tool_version": tool_version,
+                    "result_type": "admetproperty",
+                    "data": {
+                        "ligand_id": ligand_id,
+                        "admetproperties": [dict(item)],
+                    },
+                    "compute_job_id": execution_id,
+                    "ligand_id": ligand_id,
+                }
+            )
+
+    def _inject_admet_tool_execution_results(execution: dict[str, Any]) -> None:
+        """Index ADMET rows in result-explorer for a completed async run."""
+
+        eid = execution.get("executionId")
+        tool = execution.get("tool") or {}
+        tkey = str(tool.get("key") or "deeporigin.admet-properties")
+        tool_version = str(tool.get("version") or "0.0.0")
+        if not eid:
+            return
+
+        user_inputs = execution.get("userInputs") or {}
+        if not isinstance(user_inputs, dict):
+            user_inputs = {}
+        rows = _admet_prediction_rows_from_inputs(user_inputs)
+        job_outputs = {"admet_properties": rows}
+        execution["jobOutputs"] = {"admet_properties": []}
+        _inject_admet_result_explorer_records(
+            tool_key=tkey,
+            tool_version=tool_version,
+            execution_id=str(eid),
+            job_outputs=job_outputs,
+        )
+
+    def _build_admet_async_execution(
+        *, org_key: str, tool_key: str, tool_version: str, body: dict[str, Any]
+    ) -> dict[str, Any]:
+        """Build a Running async ``deeporigin.admet-properties`` execution DTO."""
+
+        now = datetime.now(timezone.utc)
+        ts = now.strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z"
+        eid = str(uuid.uuid4())
+        approve_amount = body.get("approveAmount", 0) or 0
+        execution: dict[str, Any] = {
+            "executionId": eid,
+            "createdAt": ts,
+            "updatedAt": ts,
+            "resourceId": _generate_resource_id(),
+            "status": "Running",
+            "userInputs": body.get("inputs", {}),
+            "userOutputs": body.get("outputs", {}),
+            "metadata": body.get("metadata", {}),
+            "approveAmount": approve_amount,
+            "jobOutputs": None,
+            "resourcesUsed": None,
+            "resourcesRequested": None,
+            "progressReport": json.dumps({"complete": 0}),
+            "statusReason": None,
+            "name": body.get("name"),
+            "orgKey": org_key,
+            "tool": {"key": tool_key, "version": tool_version},
+            "type": "ToolExecution",
+            "startedAt": ts,
+            "completedAt": None,
+            "quotationResult": {
+                "anyFailed": False,
+                "failedQuotations": [],
+                "successfulQuotations": [],
+            },
+        }
+        if body.get("projectId") is not None:
+            execution["projectId"] = body["projectId"]
+        return execution
+
     def _build_admet_properties_execution(
         *, org_key: str, tool_key: str, tool_version: str, body: dict[str, Any]
     ) -> dict[str, Any]:
@@ -1608,28 +1757,12 @@ def create_tools_router(
         )
 
         inputs = body.get("inputs", {}) or {}
-        ligands_in = inputs.get("ligands") or []
-        requested_raw = inputs.get("properties")
-        if isinstance(requested_raw, list) and requested_raw:
-            requested = [p for p in requested_raw if isinstance(p, str)]
-        else:
-            requested = list(MOCK_ADMET_ENDPOINTS)
-
-        rows: list[dict[str, Any]] = []
-        for i, lig in enumerate(ligands_in):
-            if not isinstance(lig, dict):
-                continue
-            smiles = str(lig.get("smiles") or "")
-            lid = str(lig.get("id") if lig.get("id") is not None else i)
-            rows.append(
-                _synthesize_admet_prediction_row(
-                    smiles=smiles,
-                    ligand_id=lid,
-                    requested=requested,
-                )
-            )
+        rows = _admet_prediction_rows_from_inputs(inputs)
 
         execution["jobOutputs"] = {"admet_properties": rows}
+        n_billable = max(len(rows), 1)
+        price_each = 1.0
+        price_total = float(n_billable) * price_each
         execution["quotationResult"] = {
             "anyFailed": False,
             "failedQuotations": [],
@@ -1638,17 +1771,17 @@ def create_tools_router(
                     "status": "OK",
                     "itemCode": "DO_TOGO",
                     "orgId": org_key,
-                    "qty": 1,
-                    "priceEach": 1.0,
-                    "priceTotal": 1.0,
+                    "qty": n_billable,
+                    "priceEach": price_each,
+                    "priceTotal": price_total,
                     "pricingRecordType": "regular",
                     "pricingRecords": [
                         {
                             "itemKey": "DO_TOGO",
                             "itemName": "ADMET Properties prediction",
-                            "priceEach": 1.0,
-                            "totalPrice": 1.0,
-                            "qty": 1,
+                            "priceEach": price_each,
+                            "totalPrice": price_total,
+                            "qty": n_billable,
                             "tierQtyFrom": 0,
                             "tierQtyTo": 0,
                         }
@@ -3501,7 +3634,42 @@ def create_tools_router(
             executions[execution["executionId"]] = execution
             return _normalize_execution(execution)
         if tool_key == "deeporigin.admet-properties":
-            execution = _build_admet_properties_execution(
+            inputs = body.get("inputs") or {}
+            n_ligands = len(inputs.get("ligands") or [])
+            has_file = bool(inputs.get("ligands_file"))
+            has_project = isinstance(inputs.get("project"), dict) and (
+                inputs.get("project") or {}
+            ).get("id")
+            sync_inline = (
+                body.get("sync") is True
+                and not has_file
+                and not has_project
+                and n_ligands <= ADMET_INLINE_LIGAND_CAP
+            )
+            if sync_inline:
+                execution = _build_admet_properties_execution(
+                    org_key=org_key,
+                    tool_key=tool_key,
+                    tool_version=tool_version,
+                    body=body,
+                )
+                if quote_only:
+                    execution["status"] = "Quoted"
+                    execution["jobOutputs"] = None
+                    execution["approveAmount"] = body.get("approveAmount")
+                    execution["startedAt"] = None
+                    execution["completedAt"] = None
+                    execution["progressReport"] = None
+                    quoted = _build_admet_properties_execution(
+                        org_key=org_key,
+                        tool_key=tool_key,
+                        tool_version=tool_version,
+                        body=body,
+                    )
+                    execution["quotationResult"] = quoted.get("quotationResult")
+                executions[execution["executionId"]] = execution
+                return _normalize_execution(execution)
+            execution = _build_admet_async_execution(
                 org_key=org_key,
                 tool_key=tool_key,
                 tool_version=tool_version,
@@ -3514,7 +3682,17 @@ def create_tools_router(
                 execution["startedAt"] = None
                 execution["completedAt"] = None
                 execution["progressReport"] = None
-            executions[execution["executionId"]] = execution
+                quoted = _build_admet_properties_execution(
+                    org_key=org_key,
+                    tool_key=tool_key,
+                    tool_version=tool_version,
+                    body={**body, "sync": True},
+                )
+                execution["quotationResult"] = quoted.get("quotationResult")
+            eid = execution["executionId"]
+            executions[eid] = execution
+            if not quote_only:
+                execution_start_times[eid] = datetime.now(timezone.utc)
             return _normalize_execution(execution)
         if tool_key == "deeporigin.secondary-pharma" and inputs.get("methods") == [
             "ligand-ml"

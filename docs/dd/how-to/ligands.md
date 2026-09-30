@@ -587,7 +587,8 @@ df = admet.run()
 ``run(quote=True)``; the job's ``estimate`` and execution ``status`` are updated
 from the platform response.
 
-For several ligands, pass a list or :class:`~deeporigin.drug_discovery.structures.ligand.LigandSet`:
+For several ligands (up to **100** inline), pass a list or
+:class:`~deeporigin.drug_discovery.structures.ligand.LigandSet`:
 
 ```{.python notest}
 from deeporigin.drug_discovery import Admet, LigandSet
@@ -597,9 +598,23 @@ admet.properties = ["hERG_classification"]
 df = admet.run()
 ```
 
+For **101 or more** ligands, use the async path (the client uploads a Ligand
+list file automatically):
+
+```{.python notest}
+admet = Admet(ligands=ligands)
+admet.properties = ["hERG_classification"]
+admet.start()
+admet.wait()
+df = admet.get_results()
+```
+
+ADMET is billed per molecule. When ``run()`` returns ``None`` and
+``status`` is ``Quoted``, call ``confirm()`` then ``get_results()``.
+
 The DataFrame includes ``ligand_id``, ``smiles``, and one column per requested
 property. Classification endpoints are probabilities in ``[0, 1]``; regression
-endpoints use the model's native units.
+endpoints use the model's native units. See also :doc:`../tools/admet`.
 
 ### Predicting sites of metabolism (Metabolism)
 

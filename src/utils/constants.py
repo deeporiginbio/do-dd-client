@@ -264,6 +264,7 @@ MOLPROPS_PROPERTY_KEYS: frozenset[str] = frozenset(
         "rule_of_5_violations",
         "sa_score",
         "tpsa",
+        "fraction_csp3",
     ),
 )
 """Allowed ``inputs.molprops`` keys for ``deeporigin.mol-props-combined``."""
@@ -276,6 +277,25 @@ ADMET_EXECUTION_TIMEOUT_SECONDS = 900.0
 
 Cold-start model loading in the admet-now served image can exceed the default
 600s POST timeout."""
+
+ADMET_INLINE_LIGAND_CAP = 100
+"""Max ligands sent inline in Admet ``inputs.ligands``.
+
+Matches the platform Inline ligand cap on ``deeporigin.admet-properties`` 2.x.
+Larger batches upload a Ligand list file and pass ``ligands_file`` and
+``ligands_count``."""
+
+ADMET_WORKFLOW_LIGAND_THRESHOLD = 101
+"""Ligand count at which ``Admet.run()`` must use ``start()`` instead.
+
+``run()`` supports at most :data:`ADMET_INLINE_LIGAND_CAP` ligands (sync served).
+At or above this threshold (101+), use ``start()`` then ``wait()`` / ``watch()``."""
+
+ADMET_LIGAND_LIST_UPLOAD_PREFIX = "admet-properties/ligand-lists/"
+"""UFA prefix for Admet bulk Ligand list JSON uploads."""
+
+ADMET_RESULT_EXPLORER_PAGE_SIZE = 1000
+"""Page size when paging Admet ``admetproperty`` rows from result-explorer."""
 
 METABOLISM_WORKFLOW_LIGAND_THRESHOLD = 30
 """Ligand count at which ``Metabolism.run()`` must use ``start()`` instead.

@@ -161,7 +161,7 @@ TOOL_KEYS_AND_VERSIONS: dict[str, dict[str, str]] = {
     },
     "admet": {
         "tool_key": "deeporigin.admet-properties",
-        "tool_version": "latest",
+        "tool_version": "2",
     },
     "metabolism": {
         "tool_key": "deeporigin.metabolism",
