@@ -1,6 +1,6 @@
 # Secondary Pharmacology
 
-Score ligands against a secondary-pharmacology kinase panel with
+Score ligands against a secondary-pharmacology panel with
 [`SecondaryPharmacology`](../ref/secondary_pharma.md). See what's currently
 in the panel with `SecondaryPharmacology.get_panel()`.
 
@@ -93,8 +93,36 @@ df = job.get_results()
 ```
 
 `df` has one row per docked pose: `pose_score`, `binding_energy`, and
-`file_path`. Use `pose_score`/`binding_energy` to read results -- viewing
-the docked structure itself isn't supported yet.
+`file_path`.
+
+To get the docked structures themselves, use `job.get_poses()`. It downloads
+every docked pose. When a result row records a panel receptor
+(`receptor_file_path`), `get_poses()` also downloads that target protein once
+per distinct receptor, verifies it against the row's `structure_sha256`, and
+stores the local path on the pose as `pose.props["receptor_local_path"]`. Rows
+from older runs without a receptor path still return a pose, but without that
+property.
+
+```{.python notest}
+poses = job.get_poses()
+if "receptor_local_path" in poses[0].props:
+    protein_path = poses[0].props["receptor_local_path"]
+```
+
+If a downloaded protein file doesn't match the one the run used, `get_poses()`
+raises an error instead of handing you the wrong structure.
+
+To look at a docked pose in its target's pocket, use `job.show_panel_pose()` in
+a notebook. Name the target by gene name or UniProt accession, and the ligand
+with `ligand=` or `ligand_id=`. It opens an interactive 3D view:
+
+```{.python notest}
+job.show_panel_pose(ligand=ligand, gene_name="EGFR")
+```
+
+A ligand you ran live has its platform id once it has synced, so `ligand=` works.
+For a reloaded run, pass a ligand from `job.ligands`, or a `ligand_id` from
+`get_results()`.
 
 `job.plot()` renders a heatmap colored by `binding_energy` (default) or
 `metric="pose_score"`, auto-scaled to the run's own values unless you pass
@@ -103,6 +131,8 @@ nearest edge color.
 
 Check for gaps with `job.get_undocked_ligands()` (ligands with zero docked
 poses) or `job.get_missing_pairs()` (specific ligand × target cells missing).
+Once a docking run's results are loaded, `job.panel_version` names the exact
+panel it ran against, and these checks use that panel.
 
 Docking work is split into parallel batches automatically. `batch_size`
 (default 30) caps how many ligand × target pairs go into each batch --

@@ -154,9 +154,9 @@ docking.sync()               # refresh status from the platform
 poses = docking.get_results()
 ```
 
-`from_last_run()` returns the newest execution of that tool type, so call it on
-the class you submitted with — `ConstrainedDocking.from_last_run()` for a
-constrained run.
+`from_last_run()` returns the newest execution of that tool type in your
+current project, so call it on the class you submitted with —
+`ConstrainedDocking.from_last_run()` for a constrained run.
 
 ## Constrained docking
 

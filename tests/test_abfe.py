@@ -692,6 +692,31 @@ def test_abfe_from_id_adopts_execution_project_id(client: DeepOriginClient) -> N
     assert client.project_id == "proj-from-exec"
 
 
+def test_abfe_from_id_hydrates_from_fetched_dto(
+    client: DeepOriginClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """``ABFE.from_id`` fetches the DTO and hydrates through ``from_dto``."""
+    fake_dto = {
+        "executionId": "exec-from-id",
+        "status": "Completed",
+        "tool": {"key": TOOL_KEYS_AND_VERSIONS["abfe"]["tool_key"], "version": "0.1.0"},
+        "userInputs": {
+            "steps": ["abfe"],
+            "prepared_system": {
+                "binding_xml_file_path": "remote/binding.xml",
+                "solvation_xml_ligand_file_path": "remote/solvation.xml",
+                "protein_id": "prot-1",
+                "ligand1_id": "lig-1",
+            },
+            "binding": {"steps": 1, "repeats": 1, "n_windows": 2},
+            "solvation": {"steps": 1, "repeats": 1, "n_windows": 2},
+        },
+    }
+    monkeypatch.setattr(client.executions, "get", lambda _id: fake_dto)
+
+    assert ABFE.from_id("exec-from-id", client=client).id == "exec-from-id"
+
+
 def test_abfe_show_trajectory_from_dto_uses_merged_results(
     client: DeepOriginClient,
     monkeypatch: pytest.MonkeyPatch,

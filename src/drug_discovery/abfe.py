@@ -857,7 +857,7 @@ class ABFE(Execution, AsyncExecutableMixin, NotebookWatchMixin):
             client = DeepOriginClient()
         dto = client.executions.get(id)  # ty:ignore[unresolved-attribute]
         dto = _abfe_normalize_execution_dto_tool_key(dto)
-        return cls._from_dto_maybe_quiet(dto, client=client, quiet=False)
+        return cls.from_dto(dto, client=client)
 
     def _validate_step_inputs(self) -> None:
         """Validate constructor arguments for the selected workflow steps."""

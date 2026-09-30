@@ -1,7 +1,7 @@
 # `deeporigin.drug_discovery.secondary_pharma`
 
 `SecondaryPharmacology` drives platform tool `deeporigin.secondary-pharma`. It
-scores ligands against a baked kinase panel, using either a served ligand-ML
+scores ligands against a baked off-target panel, using either a served ligand-ML
 path (`method="ligand-ml"`, use `run()`) or an async docking workflow
 (`method="docking"`, use `start()`). See the
 [tool guide](../tools/secondary-pharma.md) for the full explanation of why
