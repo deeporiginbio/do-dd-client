@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import asyncio
 import base64
+import hashlib
 import json
 from pathlib import Path
 import time
@@ -842,6 +843,32 @@ def test_secondary_pharma_show_panel_pose_matches_unsynced_ligand_by_smiles(
             job.show_panel_pose(ligand=Ligand.from_smiles("CCCCN"), gene_name=gene)
 
 
+def test_secondary_pharma_show_panel_pose_ligand_lookup_errors(
+    client: DeepOriginClient,
+) -> None:
+    """Ligand arguments must agree, and an ambiguous SMILES points at ``ligand_id``."""
+    job = _completed_docking_job(client)
+    synced = job.ligands[0]
+    _accession, gene, _pdb = MOCK_SECONDARY_PHARMA_PANEL[0]
+
+    with pytest.raises(ValueError, match="does not match ligand.id"):
+        job.show_panel_pose(ligand_id="OTHER", ligand=synced, gene_name=gene)
+    with pytest.raises(ValueError, match="Provide ligand_id or a ligand"):
+        job.show_panel_pose(gene_name=gene)
+    with pytest.raises(ValueError, match="Pass ligand_id from get_results"):
+        job.show_panel_pose(ligand=Ligand.from_smiles("CCCCN"), gene_name=gene)
+
+    def _twin(rows: list[dict]) -> None:
+        source = next(row for row in rows if row["gene_name"] == gene)
+        rows.append({**source, "ligand_id": "TWIN"})
+
+    with _with_mutated_rows(_twin):
+        with pytest.raises(ValueError, match="Several ligands share this SMILES"):
+            job.show_panel_pose(
+                ligand=Ligand.from_smiles(synced.smiles), gene_name=gene
+            )
+
+
 def test_secondary_pharma_show_panel_pose_needs_exactly_one_matching_pose(
     client: DeepOriginClient,
 ) -> None:
@@ -953,6 +980,22 @@ def test_secondary_pharma_get_poses_rejects_receptor_digest_mismatch(
             job.get_poses()
         # Opt-out still hands back the pose and receptor.
         poses = job.get_poses(verify_receptor_digest=False)
+    assert all(Path(p.props["receptor_local_path"]).is_file() for p in poses)
+
+
+def test_secondary_pharma_get_poses_digest_check_ignores_case(
+    client: DeepOriginClient,
+) -> None:
+    """A correct ``structure_sha256`` written in uppercase is not a mismatch."""
+    job = _completed_docking_job(client)
+    receptor = (Path(__file__).parent / "fixtures" / "1eby.pdb").read_bytes()
+
+    def _upper_digest(rows: list[dict]) -> None:
+        for row in rows:
+            row["structure_sha256"] = hashlib.sha256(receptor).hexdigest().upper()
+
+    with _with_mutated_rows(_upper_digest):
+        poses = job.get_poses()
     assert all(Path(p.props["receptor_local_path"]).is_file() for p in poses)
 
 
@@ -1266,6 +1309,21 @@ def test_secondary_pharma_duplicate_forgets_the_panel_version(
     job.get_results()
     assert job.panel_version == MOCK_SECONDARY_PHARMA_PANEL_VERSION
     assert job.duplicate().panel_version is None
+
+
+def test_secondary_pharma_new_execution_id_forgets_the_panel_version(
+    client: DeepOriginClient,
+) -> None:
+    """Re-syncing the same execution keeps its panel version; a new execution drops it."""
+    job = _completed_docking_job(client)
+    job.get_results()
+    assert job.panel_version == MOCK_SECONDARY_PHARMA_PANEL_VERSION
+
+    job.update_from_dto(dict(job._dto))
+    assert job.panel_version == MOCK_SECONDARY_PHARMA_PANEL_VERSION
+
+    job.update_from_dto({**job._dto, "executionId": "another-execution"})
+    assert job.panel_version is None
 
 
 # --- plot() -----------------------------------------------------------------

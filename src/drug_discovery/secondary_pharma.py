@@ -36,9 +36,7 @@ from __future__ import annotations
 from asyncio import Task
 import hashlib
 import json
-import os
 from pathlib import Path
-import tempfile
 from typing import Any, Literal, Self
 
 from beartype import beartype
@@ -272,14 +270,7 @@ def _download_protected_panel_file(
     response = client._get(f"/files/{remote}")
     try:
         dest.parent.mkdir(parents=True, exist_ok=True)
-        tmp = tempfile.NamedTemporaryFile(dir=dest.parent, suffix=".tmp", delete=False)
-        try:
-            with tmp:
-                tmp.write(response.content)
-            os.replace(tmp.name, dest)
-        except BaseException:
-            os.unlink(tmp.name)
-            raise
+        dest.write_bytes(response.content)
     except (OSError, ValueError) as exc:
         raise DeepOriginException(
             title="Panel file could not be cached",
@@ -362,91 +353,6 @@ def _load_panel_pose_rows(
     )
 
 
-def _resolve_panel_pose_ligand_id(
-    *,
-    ligand_id: str | None,
-    ligand: Ligand | None,
-) -> str | None:
-    """Resolve the platform ligand id for a panel-pose lookup.
-
-    Args:
-        ligand_id: Explicit ligand id from results.
-        ligand: Optional synced ligand (alternative to ``ligand_id``).
-
-    Returns:
-        The ligand id to match on pose rows, or ``None`` for an unsynced ``ligand``
-        (rows are then matched on its SMILES).
-
-    Raises:
-        ValueError: If neither an id nor a ligand with a SMILES is given, or ids
-            disagree.
-    """
-    if ligand_id is not None:
-        if ligand is not None and ligand.id is not None and ligand.id != ligand_id:
-            raise ValueError("ligand_id does not match ligand.id.")
-        return ligand_id
-    if ligand is None or not (ligand.id or ligand.smiles):
-        raise ValueError("Provide ligand_id or a ligand with an id or SMILES.")
-    return ligand.id or None
-
-
-def _require_panel_receptor_remote(row: dict[str, Any]) -> str:
-    """Return ``receptor_file_path`` from a panel pose row.
-
-    Args:
-        row: One flattened panel-pose result row.
-
-    Returns:
-        Non-empty remote path to the panel receptor structure.
-
-    Raises:
-        DeepOriginException: If the row has no receptor path.
-    """
-    receptor_remote = row.get("receptor_file_path")
-    if not isinstance(receptor_remote, str) or not receptor_remote.strip():
-        raise DeepOriginException(
-            title="Panel receptor path missing",
-            message=(
-                "This pose row has no receptor_file_path, so its receptor can't "
-                "be shown. It was probably produced before receptors were "
-                "recorded; re-run docking with a current tool version."
-            ),
-        )
-    return receptor_remote.strip()
-
-
-def _verify_panel_receptor_digest(
-    receptor_local: str,
-    row: dict[str, Any],
-    *,
-    verify: bool,
-) -> None:
-    """Verify downloaded receptor bytes against ``structure_sha256`` when requested.
-
-    Args:
-        receptor_local: Path to the downloaded receptor file.
-        row: Panel pose row that may carry ``structure_sha256``.
-        verify: When ``False``, skip verification.
-
-    Raises:
-        DeepOriginException: If digest on the row does not match file bytes.
-    """
-    if not verify:
-        return
-    expected_digest = row.get("structure_sha256")
-    if not isinstance(expected_digest, str) or not expected_digest.strip():
-        return
-    actual_digest = hashlib.sha256(Path(receptor_local).read_bytes()).hexdigest()
-    if actual_digest != expected_digest.strip():
-        raise DeepOriginException(
-            title="Panel receptor digest mismatch",
-            message=(
-                f"Downloaded receptor has sha256 {actual_digest}, "
-                f"expected {expected_digest}."
-            ),
-        )
-
-
 def _fetch_verified_receptor(
     client: DeepOriginClient,
     receptor_remote: str,
@@ -472,12 +378,20 @@ def _fetch_verified_receptor(
         DeepOriginException: If the path is invalid, or the fresh download doesn't
             match ``structure_sha256``.
     """
+    expected = row.get("structure_sha256")
+    expected = expected.strip().lower() if verify and isinstance(expected, str) else ""
+
+    def sha256_of(path: str) -> str:
+        return hashlib.sha256(Path(path).read_bytes()).hexdigest()
+
     local = _download_protected_panel_file(client, receptor_remote, lazy=True)
-    try:
-        _verify_panel_receptor_digest(local, row, verify=verify)
-    except DeepOriginException:
+    if expected and sha256_of(local) != expected:
         local = _download_protected_panel_file(client, receptor_remote, lazy=False)
-        _verify_panel_receptor_digest(local, row, verify=verify)
+        if (actual := sha256_of(local)) != expected:
+            raise DeepOriginException(
+                title="Panel receptor digest mismatch",
+                message=f"Downloaded receptor has sha256 {actual}, expected {expected}.",
+            )
     return local
 
 
@@ -919,8 +833,11 @@ class SecondaryPharmacology(
         return _uniprots_from_definition(definition)
 
     def update_from_dto(self, dto: dict[str, Any]) -> None:
-        """Apply execution fields from ``dto`` and freeze ``uniprots``."""
+        """Apply execution fields from ``dto``, freeze ``uniprots``, drop a stale panel version."""
+        previous_id = getattr(self, "_id", None)
         super().update_from_dto(dto)
+        if self._id != previous_id:
+            self._panel_version = None
         uniprots = getattr(self, "_uniprots", None)
         if self._id is not None and isinstance(uniprots, list):
             self._uniprots = tuple(uniprots)
@@ -1340,8 +1257,8 @@ class SecondaryPharmacology(
     def _panel_pose_row(
         self,
         *,
-        ligand_id: str | None,
-        ligand_smiles: str | None = None,
+        ligand_id: str | None = None,
+        ligand: Ligand | None = None,
         uniprot_id: str | None = None,
         gene_name: str | None = None,
         dto: dict[str, Any] | None = None,
@@ -1349,12 +1266,12 @@ class SecondaryPharmacology(
         """Return the single ``panel_poses`` row for a ligand and panel target.
 
         The target is matched against this run's own rows, so a gene name works whether
-        or not the tool definition lists display names.
+        or not the tool definition lists display names. The ligand is matched by id,
+        or by SMILES when only an unsynced ``ligand`` is given.
 
         Args:
-            ligand_id: Platform ligand id from this execution's results. When
-                ``None``, rows are matched on ``ligand_smiles`` instead.
-            ligand_smiles: SMILES to match when ``ligand_id`` is ``None``.
+            ligand_id: Platform ligand id from this execution's results.
+            ligand: A ligand, instead of ``ligand_id``.
             uniprot_id: Panel member accession.
             gene_name: Panel gene symbol (instead of ``uniprot_id``).
             dto: Optional execution payload for :func:`_load_panel_pose_rows`.
@@ -1363,11 +1280,28 @@ class SecondaryPharmacology(
             One flattened panel-pose row dict.
 
         Raises:
-            ValueError: If not exactly one of ``uniprot_id`` and ``gene_name`` is given,
-                or zero or several rows match.
+            ValueError: If the ligand or target isn't given exactly once, ``ligand_id``
+                and ``ligand.id`` disagree, or zero or several rows match.
         """
         if (uniprot_id is None) == (gene_name is None):
             raise ValueError("Provide exactly one of uniprot_id or gene_name.")
+        if (
+            ligand is not None
+            and ligand_id is not None
+            and ligand.id
+            not in (
+                None,
+                ligand_id,
+            )
+        ):
+            raise ValueError("ligand_id does not match ligand.id.")
+        ligand_id = ligand_id or (ligand.id if ligand is not None else None)
+        if ligand_id is not None:
+            who_key, who = "ligand_id", ligand_id
+        elif ligand is not None and ligand.smiles:
+            who_key, who = "ligand_smiles", ligand.smiles
+        else:
+            raise ValueError("Provide ligand_id or a ligand with an id or SMILES.")
         column, wanted = (
             ("uniprot_id", uniprot_id)
             if uniprot_id is not None
@@ -1376,29 +1310,22 @@ class SecondaryPharmacology(
         matches = [
             row
             for row in self._load_rows(dto)
-            if (
-                row.get("ligand_id") == ligand_id
-                if ligand_id is not None
-                else row.get("ligand_smiles") == ligand_smiles
-            )
-            and row.get(column) == wanted
+            if row.get(who_key) == who and row.get(column) == wanted
         ]
         if len(matches) == 1:
             return matches[0]
-        found = "No" if not matches else f"{len(matches)}"
+        hint = (
+            "Inspect get_results() for available pairs."
+            if not matches
+            else "Several ligands share this SMILES."
+            if who_key == "ligand_smiles"
+            else "Use uniprot_id to pick one."
+        )
+        if who_key == "ligand_smiles":
+            hint += " Pass ligand_id from get_results() instead."
         raise ValueError(
-            f"{found} panel poses for "
-            + (
-                f"ligand_id={ligand_id!r}"
-                if ligand_id is not None
-                else f"ligand_smiles={ligand_smiles!r}"
-            )
-            + f" and {column}={wanted!r}"
-            + (
-                ". Inspect get_results() for available pairs."
-                if not matches
-                else "; use uniprot_id to pick one."
-            )
+            f"{len(matches) or 'No'} panel poses for {who_key}={who!r} and "
+            f"{column}={wanted!r}. {hint}"
         )
 
     def show_panel_pose(
@@ -1449,13 +1376,22 @@ class SecondaryPharmacology(
             )
 
         row = self._panel_pose_row(
-            ligand_id=_resolve_panel_pose_ligand_id(ligand_id=ligand_id, ligand=ligand),
-            ligand_smiles=ligand.smiles if ligand is not None else None,
+            ligand_id=ligand_id,
+            ligand=ligand,
             uniprot_id=uniprot_id,
             gene_name=gene_name,
             dto=dto,
         )
-        receptor_remote = _require_panel_receptor_remote(row)
+        receptor_remote = row.get("receptor_file_path")
+        if not isinstance(receptor_remote, str) or not receptor_remote.strip():
+            raise DeepOriginException(
+                title="Panel receptor path missing",
+                message=(
+                    "This pose row has no receptor_file_path, so its receptor can't "
+                    "be shown. It was probably produced before receptors were "
+                    "recorded; re-run docking with a current tool version."
+                ),
+            )
 
         pose = Pose.from_json([row], client=self.client)[0]
         pose.download(client=self.client, lazy=False)
