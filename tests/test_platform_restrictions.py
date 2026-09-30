@@ -444,12 +444,21 @@ def test_rejected_abfe_results_remain_inspectable(rejected_abfe):
     rejected_abfe.client.results.get.assert_not_called()
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize("blocking", [False, True])
-async def test_watch_displays_rejected_history_without_background_error(
+def test_watch_displays_rejected_history_without_background_error(
     rejected_abfe, blocking
 ):
     job = rejected_abfe
+
+    async def watch():
+        task = await job.watch(blocking=blocking)
+        if not blocking:
+            assert isinstance(task, asyncio.Task)
+            await task
+            assert task.exception() is None
+        else:
+            assert task is None
+
     with (
         patch.object(
             job, "_render_execution_html", return_value="<div>Rejected</div>"
@@ -460,13 +469,7 @@ async def test_watch_displays_rejected_history_without_background_error(
             return_value=False,
         ),
     ):
-        task = await job.watch(blocking=blocking)
-        if not blocking:
-            assert isinstance(task, asyncio.Task)
-            await task
-            assert task.exception() is None
-        else:
-            assert task is None
+        asyncio.run(watch())
     render.assert_called_once_with(will_auto_update=False)
     assert display.call_count == 2
     assert "Rejected" in display.call_args.args[0].data

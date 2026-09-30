@@ -75,20 +75,21 @@ def _parse_platform_rejection(response_data: object) -> _PlatformRejection | Non
             return _reason(reason)
 
     errors = response_data.get("errors")
-    if isinstance(errors, list):
-        rejections = [
-            _reason(error)
-            for error in errors
-            if isinstance(error, dict)
-            and isinstance(error.get("code"), str)
-            and error["code"] in _RESTRICTION_CODES
-        ]
-        if rejections:
-            return _PlatformRejection(
-                _join(r.message for r in rejections),
-                _join(r.action for r in rejections),
-            )
-    return None
+    if not isinstance(errors, list):
+        return None
+    rejections = [
+        _reason(error)
+        for error in errors
+        if isinstance(error, dict)
+        and isinstance(error.get("code"), str)
+        and error["code"] in _RESTRICTION_CODES
+    ]
+    if not rejections:
+        return None
+    return _PlatformRejection(
+        _join(r.message for r in rejections),
+        _join(r.action for r in rejections),
+    )
 
 
 def raise_for_platform_restriction(

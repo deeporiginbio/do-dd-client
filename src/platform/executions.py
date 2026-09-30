@@ -571,13 +571,7 @@ class Executions:
         latest: dict[str, dict] = {}
         deadline = time.monotonic() + timeout if timeout is not None else None
 
-        while True:
-            pending = self._poll_pending(ids, latest)
-            if not pending:
-                if isinstance(executions, str):
-                    raise_for_platform_restriction(latest[executions])
-                return [latest[exec_id] for exec_id in ids]
-
+        while pending := self._poll_pending(ids, latest):
             sleep_for = poll_interval
             if deadline is not None:
                 remaining = deadline - time.monotonic()
@@ -589,6 +583,10 @@ class Executions:
                     )
                 sleep_for = min(poll_interval, remaining)
             time.sleep(sleep_for)
+
+        if isinstance(executions, str):
+            raise_for_platform_restriction(latest[executions])
+        return [latest[exec_id] for exec_id in ids]
 
     def _poll_pending(
         self,
