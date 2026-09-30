@@ -385,7 +385,8 @@ class Admet(Execution, SyncExecutableMixin):
             return self
 
         if not is_success_status(self.status):
-            raise DeepOriginException(
+            raise DeepOriginException.from_execution(
+                dto,
                 title="ADMET prediction did not complete",
                 message=(
                     f"Admet execution ended in {self.status!r} state "

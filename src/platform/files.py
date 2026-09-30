@@ -16,6 +16,8 @@ from tqdm import tqdm
 if TYPE_CHECKING:
     from deeporigin.platform.client import DeepOriginClient
 
+from deeporigin.exceptions import PlatformRestrictionError
+from deeporigin.platform.errors import raise_for_platform_restriction
 from deeporigin.utils.env import _ensure_do_folder
 
 _FILES_BASE = "/files"
@@ -633,6 +635,8 @@ class Files:
             List of remote paths that were successfully uploaded.
 
         Raises:
+            PlatformRestrictionError: If the platform blocks the operation, even
+                when ordinary file errors may be skipped. Pending work is cancelled.
             RuntimeError: If any upload fails and ``skip_errors`` is False.
             ValueError: If ``local_path`` is not a file, directory, or list.
         """
@@ -667,6 +671,10 @@ class Files:
                 local = future_to_local[future]
                 try:
                     results.append(future.result())
+                except PlatformRestrictionError:
+                    for pending in future_to_local:
+                        pending.cancel()
+                    raise
                 except Exception as exc:
                     errors.append((str(local), exc))
 
@@ -854,6 +862,8 @@ class Files:
             List of upload response dictionaries.
 
         Raises:
+            PlatformRestrictionError: If the platform blocks the operation, even
+                when ordinary file errors may be skipped. Pending work is cancelled.
             RuntimeError: If any upload fails, with details about all failures.
         """
         results: list[dict] = []
@@ -874,6 +884,10 @@ class Files:
                 try:
                     result = future.result()
                     results.append(result)
+                except PlatformRestrictionError:
+                    for pending in future_to_pair:
+                        pending.cancel()
+                    raise
                 except Exception as e:
                     errors.append((local_path, remote_path, e))
 
@@ -1012,8 +1026,18 @@ class Files:
             response = self._c._client.send(request, stream=True)
             try:
                 response.raise_for_status()
-            except Exception:
-                response.close()
+            except httpx.HTTPStatusError:
+                try:
+                    response.read()
+                    try:
+                        data = response.json()
+                    except ValueError:
+                        data = None
+                    raise_for_platform_restriction(
+                        data, http_status=response.status_code
+                    )
+                finally:
+                    response.close()
                 raise
             return FileStream(response)
 
@@ -1041,6 +1065,8 @@ class Files:
             saved. Failed downloads are omitted when ``skip_errors`` is True.
 
         Raises:
+            PlatformRestrictionError: If the platform blocks the operation, even
+                when ordinary file errors may be skipped. Pending work is cancelled.
             RuntimeError: If any download fails and ``skip_errors`` is False.
         """
         if isinstance(files, list):
@@ -1070,6 +1096,10 @@ class Files:
                 try:
                     result = future.result()
                     results[remote_path] = result
+                except PlatformRestrictionError:
+                    for pending in future_to_pair:
+                        pending.cancel()
+                    raise
                 except Exception as e:
                     errors.append((remote_path, local_path, e))
 
@@ -1141,6 +1171,8 @@ class Files:
             timeout: Per-request timeout in seconds.
 
         Raises:
+            PlatformRestrictionError: If the platform blocks the operation, even
+                when ordinary file errors may be skipped. Pending work is cancelled.
             RuntimeError: If any deletion fails and ``skip_errors`` is False.
         """
         errors: list[tuple[str, Exception]] = []
@@ -1159,6 +1191,10 @@ class Files:
                 remote_path = future_to_path[future]
                 try:
                     future.result()
+                except PlatformRestrictionError:
+                    for pending in future_to_path:
+                        pending.cancel()
+                    raise
                 except Exception as e:
                     errors.append((remote_path, e))
 

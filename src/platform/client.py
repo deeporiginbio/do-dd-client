@@ -41,6 +41,7 @@ import httpx
 from deeporigin.auth import get_token, token_to_env
 from deeporigin.config import get_value
 from deeporigin.exceptions import DeepOriginException
+from deeporigin.platform.errors import raise_for_platform_restriction
 from deeporigin.utils.constants import (
     API_ENDPOINT,
     ENV_VARIABLES,
@@ -1110,6 +1111,13 @@ class DeepOriginClient(metaclass=_DeepOriginMeta):
                 response.raise_for_status()
                 return response
             except httpx.HTTPStatusError as e:
+                try:
+                    response_data = e.response.json()
+                except ValueError:
+                    response_data = None
+                raise_for_platform_restriction(
+                    response_data, http_status=e.response.status_code
+                )
                 if self._should_retry(e) and attempt < self.max_retries:
                     delay = min(
                         self.retry_backoff_factor * (2**attempt), self.max_retry_delay
@@ -1146,6 +1154,7 @@ class DeepOriginClient(metaclass=_DeepOriginMeta):
         """
         error_message = None
         error_details = None
+        error_data = None
         try:
             error_data = error.response.json()
 
@@ -1166,6 +1175,10 @@ class DeepOriginClient(metaclass=_DeepOriginMeta):
                 error_message = f"HTTP {error.response.status_code}"
 
         full_url = self._base_url.rstrip("/") + "/" + path.lstrip("/")
+
+        raise_for_platform_restriction(
+            error_data, http_status=error.response.status_code
+        )
 
         curl_parts = ["curl", "-X", method.upper()]
 
@@ -1218,6 +1231,8 @@ class DeepOriginClient(metaclass=_DeepOriginMeta):
             message=" ".join(message_parts),
             fix="Please contact support at https://help.deeporigin.com and provide this text file.",
             level="danger",
+            http_status=error.response.status_code,
+            response_data=error_data,
         ) from None
 
     def _get(self, path: str, **kwargs: Any) -> httpx.Response:

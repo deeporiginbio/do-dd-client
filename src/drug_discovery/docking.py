@@ -349,7 +349,8 @@ class Docking(Execution, SyncExecutableMixin, AsyncExecutableMixin, NotebookWatc
                 return None
             eid = dto.get("executionId")
             reason = dto.get("statusReason") or final_status
-            raise DeepOriginException(
+            raise DeepOriginException.from_execution(
+                dto,
                 title="Docking run did not succeed",
                 message=(
                     f"Execution {eid!r} ended with status {final_status!r}: {reason!r}."

@@ -708,7 +708,8 @@ class ConstrainedDocking(
         if not is_success_status(final_status):
             eid = dto.get("executionId")
             reason = dto.get("statusReason") or final_status
-            raise DeepOriginException(
+            raise DeepOriginException.from_execution(
+                dto,
                 title="Constrained docking run did not succeed",
                 message=(
                     f"Execution {eid!r} ended with status {final_status!r}: {reason!r}."

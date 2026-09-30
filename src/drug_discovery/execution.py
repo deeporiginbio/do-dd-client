@@ -30,11 +30,13 @@ import copy
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Any, ClassVar, Literal, Self
 
+from deeporigin.exceptions import PlatformRestrictionError
 from deeporigin.platform.constants import (
     ALLOWED_STATUS_TRANSITIONS,
     is_success_status,
     normalize_platform_status,
 )
+from deeporigin.platform.errors import raise_for_platform_restriction
 from deeporigin.platform.project_scope import (
     adopt_client_project_from_execution_dto,
     execution_project_scope,
@@ -180,11 +182,33 @@ class Execution:
                 "tool_key and tool_version are required for execution create"
             )
         require_client_project_id(self.client)
-        return self.client.executions.create(  # ty:ignore[unresolved-attribute]
-            tool_key=resolved_key,
-            tool_version=resolved_version,
-            data=data,
-        )
+        try:
+            return self.client.executions.create(  # ty:ignore[unresolved-attribute]
+                tool_key=resolved_key,
+                tool_version=resolved_version,
+                data=data,
+            )
+        except PlatformRestrictionError as exc:
+            self._retain_rejected_execution(exc)
+            raise
+
+    def _retain_rejected_execution(self, error: PlatformRestrictionError) -> None:
+        """Keep lifecycle evidence when a create, confirm, or wait returns a rejected DTO."""
+        dto = error.response_data
+        if not isinstance(dto, dict) or not dto.get("executionId"):
+            return
+        tool = dto.get("tool")
+        if (
+            isinstance(tool, dict)
+            and tool.get("key") == self.tool_key
+            and tool.get("version")
+        ):
+            self.update_from_dto(dto)
+        else:
+            # Some rejection DTOs contain only the execution identity and reason.
+            self._id = dto["executionId"]
+            self._dto = dto
+            self.status = normalize_platform_status(dto.get("status"))
 
     @property
     def id(self) -> str | None:
@@ -315,11 +339,16 @@ class Execution:
             raise ValueError(
                 f"Cannot confirm: execution is in {status!r} state, not 'Quoted'."
             )
-        dto = self.client.executions.confirm(  # ty:ignore[unresolved-attribute]
-            self._id,
-            timeout=TOOL_EXECUTION_POST_TIMEOUT_SECONDS,
-            retry=False,
-        )
+        try:
+            dto = self.client.executions.confirm(  # ty:ignore[unresolved-attribute]
+                self._id,
+                timeout=TOOL_EXECUTION_POST_TIMEOUT_SECONDS,
+                retry=False,
+            )
+        except PlatformRestrictionError as exc:
+            self._retain_rejected_execution(exc)
+            raise
+
         if dto:
             self.update_from_dto(dto)
         else:
@@ -537,6 +566,8 @@ class Execution:
                 :class:`Execution`).
             ValueError: If the returned DTO ``tool.key`` does not match this
                 class (see :meth:`update_from_dto`).
+            PlatformRestrictionError: If licensing or billing rejected the
+                execution. The instance retains its updated state.
         """
         exec_id = self._id
         if exec_id is None:
@@ -549,6 +580,7 @@ class Execution:
         result = self.client.executions.get(exec_id)  # ty:ignore[unresolved-attribute]
         if result:
             self.update_from_dto(result)
+            raise_for_platform_restriction(result)
 
     def wait(
         self,
@@ -571,11 +603,16 @@ class Execution:
         """
         exec_id = self._ensure_id()
         executions_client: Any = self.client.executions
-        results = executions_client.wait(
-            exec_id,
-            poll_interval=poll_interval,
-            timeout=timeout,
-        )
+        try:
+            results = executions_client.wait(
+                exec_id,
+                poll_interval=poll_interval,
+                timeout=timeout,
+            )
+        except PlatformRestrictionError as exc:
+            self._retain_rejected_execution(exc)
+            raise
+
         dto = results[0] if results else None
         if dto is not None:
             self.update_from_dto(dto)
