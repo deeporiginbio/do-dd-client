@@ -2,6 +2,10 @@
 
 Notes from past merge-ready cycles. Read before starting; append after success.
 
+## 2026-10-01 — PR #650 — DDOS-8122 ADMET 2.x SDK
+
+`make test` failed because `run(quote=True)` called `_ensure_platform_inputs()` and assigned `ligand.id` while `test_admet.py` expects quote-only runs to leave SMILES-only ligands unregistered (match `SecondaryPharmacology`). Keep `sync=True` on `run()` even when `approve_amount` is set; Copilot’s second pass also needed mock project-scoped ADMET rows and `update_from_dto` on `start()`.
+
 ## 2026-09-28 — PR #642 — DDOS-7979 large LigandSet workflow sync
 
 Normalizing mock `executions/search` rows for ingestion polling broke `test_progress_reports` (`executionId` → `compute_job_id`). Sonar wanted helper extraction on the poll loop plus ≥80% new-code coverage on `import_dataset_sync.py`. Copilot caught real gaps: mock search must honor `filter.props` (not only legacy `compute_job_id`), workflow CSV mapper must include `name`/`tags`, and accidental `protein-prep.ipynb` edits (typo + removed `prep.skip(decision="review")`) should be reverted wholesale from `main`.
