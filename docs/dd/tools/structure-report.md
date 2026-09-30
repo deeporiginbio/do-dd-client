@@ -6,7 +6,7 @@ Grade a protein structure for target preparation. Provide a local
 ID, or both. Call `run()` to get letter grades and component scores from the
 platform — the client does not recompute grades.
 
-You must be logged in (`deeporigin login`) before calling `run()`. The call
+You must be [authenticated](../../how-to/auth.md) before calling `run()`. The call
 blocks until the job finishes.
 
 ## Local structure

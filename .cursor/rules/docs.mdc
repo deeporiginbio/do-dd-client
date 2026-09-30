@@ -14,7 +14,7 @@ knows nothing about our internal architecture.
 
 - Lead with what the user needs to provide (inputs), what they call, and what
   they get back. A reader should be able to run the thing from the intro alone.
-- State prerequisites explicitly (e.g. must be logged in with `deeporigin login`,
+- State prerequisites explicitly (e.g. must be authenticated — link `docs/how-to/auth.md`,
   whether a call blocks, what type is returned).
 
 # Do NOT use internal jargon

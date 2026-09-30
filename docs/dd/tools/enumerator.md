@@ -11,8 +11,8 @@ To run it you need:
   ([MMP :octicons-link-external-16:](https://en.wikipedia.org/wiki/Matched_molecular_pair_analysis)) modes)
 
 Create an `Enumerator`, call `run()`, and get a `pandas.DataFrame` of results
-back. `run()` blocks until the job finishes, so you must be logged in
-(`deeporigin login`) before calling it.
+back. `run()` blocks until the job finishes, so you must be
+[authenticated](../../how-to/auth.md) before calling it.
 
 ## Modes
 

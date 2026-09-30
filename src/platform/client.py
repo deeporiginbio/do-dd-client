@@ -861,7 +861,7 @@ class DeepOriginClient(metaclass=_DeepOriginMeta):
         """Create a client from ``~/.deeporigin/`` config files.
 
         Use this for interactive work in Jupyter notebooks or CLI sessions where
-        credentials are stored on disk after running ``deeporigin login``.
+        credentials are stored on disk after authenticating.
 
         Environment selection order: explicit ``env`` parameter → value in
         ``~/.deeporigin/config.json``. ``"local"`` uses the toolbox gateway at

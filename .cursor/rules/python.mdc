@@ -61,7 +61,7 @@ When shipping a new user-facing SDK capability in the cli repo, include all of t
 1. Implementation following code style
 2. Tests in `tests/` that verify the behavior (mock server routes when needed)
 3. Documentation in `docs/` (API reference and/or how-to as appropriate)
-4. **Demo notebook** — never create or edit notebooks in `docs/notebooks/clean/` directly. Write `docs/notebooks/dirty/{feature}.ipynb` (gitignored; agents can still create it). After it runs against a live org (`deeporigin login`, `DeepOriginClient.from_disk()`), promote with `./scripts/notebooks.sh` (dirty → clean, strip outputs). The committed artifact is `docs/notebooks/clean/{feature}.ipynb`.
+4. **Demo notebook** — never create or edit notebooks in `docs/notebooks/clean/` directly. Write `docs/notebooks/dirty/{feature}.ipynb` (gitignored; agents can still create it). After it runs against a live org (authenticated per `docs/how-to/auth.md`, `DeepOriginClient.from_disk()`), promote with `./scripts/notebooks.sh` (dirty → clean, strip outputs). The committed artifact is `docs/notebooks/clean/{feature}.ipynb`.
 
 # Common mistakes
 
