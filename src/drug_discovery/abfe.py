@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 import struct
+import xml.etree.ElementTree as ET
 from typing import Any, Literal, Self
 
 from beartype import beartype
@@ -190,10 +191,14 @@ def _abfe_remote_trajectory_topology_path(
     step: Literal["md", "binding", "solvation"],
 ) -> str | None:
     """Return a topology whose atom count matches the selected trajectory."""
-    if step in ("binding", "solvation"):
+    if step == "binding":
         solute = data.get("solute_pdb_file_path")
         if isinstance(solute, str) and solute.strip():
             return solute.strip()
+    if step == "solvation":
+        solvation_xml = data.get("solvation_xml_ligand_file_path")
+        if isinstance(solvation_xml, str) and solvation_xml.strip():
+            return solvation_xml.strip()
     return _abfe_remote_system_pdb_path(data)
 
 
@@ -204,17 +209,137 @@ def _abfe_remote_trajectory_topology_path_from_prepared_system(
     step: Literal["md", "binding", "solvation"],
 ) -> str | None:
     """Return a matching trajectory topology from prepared-system metadata."""
-    if (
-        step in ("binding", "solvation")
-        and prepared.solute_pdb_path
-        and prepared.solute_pdb_path.strip()
-    ):
+    if step == "binding" and prepared.solute_pdb_path and prepared.solute_pdb_path.strip():
         return prepared.solute_pdb_path.strip()
+    if (
+        step == "solvation"
+        and prepared.solvation_xml_path
+        and prepared.solvation_xml_path.strip()
+    ):
+        return prepared.solvation_xml_path.strip()
     return _abfe_remote_system_pdb_path_from_prepared_system(prepared)
 
 
 _PDB_SOLVENT_RESIDUE_NAMES = frozenset({"HOH", "SOL", "TIP3", "TIP3P", "WAT"})
 _PDB_COORDINATE_RECORD_PREFIXES = ("ATOM  ", "HETATM")
+
+_ELEMENT_SYMBOL_BY_ATOMIC_NUMBER: dict[int, str] = {
+    1: "H",
+    6: "C",
+    7: "N",
+    8: "O",
+    9: "F",
+    11: "Na",
+    12: "Mg",
+    15: "P",
+    16: "S",
+    17: "Cl",
+    35: "Br",
+    53: "I",
+}
+
+
+@beartype
+def _abfe_element_symbol(atomic_number: int) -> str:
+    return _ELEMENT_SYMBOL_BY_ATOMIC_NUMBER.get(atomic_number, "X")
+
+
+@beartype
+def _abfe_systemprep_xml_to_pdb(
+    xml_path: str,
+    *,
+    exclude_solvent: bool = True,
+    chain_types: frozenset[str] | None = None,
+) -> str:
+    """Write a PDB from a SystemPrep ``solvation_ligand`` / BSM XML file.
+
+    Solvation FEP ``solute_trajectory`` files contain ligand atoms only (no
+    counterions or explicit solvent). Pass ``chain_types=frozenset({"Ligand"})``
+    to match those trajectories. Binding trajectories use ``solute.pdb`` instead.
+    """
+    path = Path(xml_path)
+    root = ET.parse(path).getroot()
+    entries: list[tuple[int, str, str, int, float, float, float, str]] = []
+    for chain in root.findall("./Chains/Chain"):
+        chain_type = (chain.get("chain_type") or "").strip()
+        if chain_types is not None and chain_type not in chain_types:
+            continue
+        residue_serial = 0
+        for residue in chain.findall("Residues/Residue"):
+            residue_name = (residue.get("residue_name") or "UNK").strip()
+            if exclude_solvent and residue_name.upper() in _PDB_SOLVENT_RESIDUE_NAMES:
+                continue
+            residue_serial += 1
+            for atom in residue.findall("Atoms/Atom"):
+                index_raw = atom.get("atom_index")
+                if index_raw is None or not index_raw.isdigit():
+                    continue
+                atom_name = (atom.get("atom_name") or "X").strip()[:4]
+                element_number = int(atom.get("atom_element_number") or "0")
+                element = _abfe_element_symbol(element_number)
+                x = float(atom.get("atom_position_x") or "0")
+                y = float(atom.get("atom_position_y") or "0")
+                z = float(atom.get("atom_position_z") or "0")
+                entries.append(
+                    (
+                        int(index_raw),
+                        atom_name,
+                        residue_name,
+                        residue_serial,
+                        x,
+                        y,
+                        z,
+                        element,
+                    )
+                )
+
+    if not entries:
+        raise DeepOriginException(
+            title="Empty solvation topology",
+            message=f"No atoms found in SystemPrep XML {xml_path!r}.",
+        ) from None
+
+    entries.sort(key=lambda item: item[0])
+    lines: list[str] = []
+    for serial, (
+        _index,
+        atom_name,
+        residue_name,
+        residue_serial,
+        x,
+        y,
+        z,
+        element,
+    ) in enumerate(entries, start=1):
+        record = "HETATM"
+        resname = residue_name[:3].rjust(3)
+        lines.append(
+            f"{record}{serial:5d} {atom_name:>4s} {resname:>3s} A{residue_serial:4d}    "
+            f"{x:8.3f}{y:8.3f}{z:8.3f}  1.00  0.00          {element:>2s}\n"
+        )
+    lines.append("END\n")
+    suffix = "ligand" if chain_types == frozenset({"Ligand"}) else "solute"
+    out_path = path.with_name(f"{path.stem}.{suffix}.pdb")
+    out_path.write_text("".join(lines), encoding="utf-8")
+    return str(out_path)
+
+
+@beartype
+def _abfe_local_trajectory_topology_path(
+    local_path: str,
+    *,
+    step: Literal["md", "binding", "solvation"],
+) -> str:
+    """Return a local PDB path for Mol*, converting SystemPrep XML when needed."""
+    path = Path(local_path)
+    if path.suffix.lower() == ".xml":
+        chain_types = frozenset({"Ligand"}) if step == "solvation" else None
+        return _abfe_systemprep_xml_to_pdb(
+            str(path),
+            exclude_solvent=True,
+            chain_types=chain_types,
+        )
+    return local_path
 
 
 @beartype
@@ -1054,6 +1179,7 @@ class ABFE(Execution, AsyncExecutableMixin, NotebookWatchMixin):
 
             progress.start_step(step_index, detail=Path(remote_pdb).name)
             local_pdb = self.client.files.download(remote_pdb, lazy=True)
+            local_pdb = _abfe_local_trajectory_topology_path(local_pdb, step=step)
             progress.finish_step(step_index)
             step_index += 1
 

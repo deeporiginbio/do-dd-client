@@ -18,6 +18,7 @@ from deeporigin.drug_discovery.abfe import (
     _abfe_remote_system_pdb_path,
     _abfe_remote_system_pdb_path_from_prepared_system,
     _abfe_remote_trajectory_topology_path,
+    _abfe_systemprep_xml_to_pdb,
     _abfe_results_dataframe,
     _ligand_display_label_from_entity,
     _pose_from_tool_input,
@@ -598,6 +599,7 @@ def test_abfe_trajectory_topology_uses_solute_pdb_for_fep_windows() -> None:
     data = {
         "system_pdb_file_path": "tool-runs/uuid/system.pdb",
         "solute_pdb_file_path": "tool-runs/uuid/solute.pdb",
+        "solvation_xml_ligand_file_path": "tool-runs/uuid/solvation_ligand.xml",
     }
     assert (
         _abfe_remote_trajectory_topology_path(data, step="binding")
@@ -605,12 +607,30 @@ def test_abfe_trajectory_topology_uses_solute_pdb_for_fep_windows() -> None:
     )
     assert (
         _abfe_remote_trajectory_topology_path(data, step="solvation")
-        == "tool-runs/uuid/solute.pdb"
+        == "tool-runs/uuid/solvation_ligand.xml"
     )
     assert (
         _abfe_remote_trajectory_topology_path(data, step="md")
         == "tool-runs/uuid/system.pdb"
     )
+
+
+def test_abfe_systemprep_xml_to_pdb_ligand_chain_only_for_solvation() -> None:
+    """Solvation solute trajectories contain ligand atoms only (no ions or water)."""
+    xml_path = (
+        Path(__file__).resolve().parent
+        / "fixtures/files/tool-runs/d037ce61-c52e-49bc-9507-1f300993d9fe/solvation_ligand.xml"
+    )
+    pdb_path = _abfe_systemprep_xml_to_pdb(
+        str(xml_path),
+        exclude_solvent=True,
+        chain_types=frozenset({"Ligand"}),
+    )
+    pdb_text = Path(pdb_path).read_text(encoding="utf-8")
+    atom_lines = [line for line in pdb_text.splitlines() if line.startswith("HETATM")]
+    assert len(atom_lines) == 82
+    assert "HOH" not in pdb_text
+    assert "Cl-" not in pdb_text
 
 
 def test_abfe_prepare_trajectory_topology_removes_retained_water(

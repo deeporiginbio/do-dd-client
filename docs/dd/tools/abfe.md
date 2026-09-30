@@ -14,8 +14,10 @@ Use :meth:`ABFE.show_trajectory <deeporigin.drug_discovery.abfe.ABFE.show_trajec
 ### Prerequisites
 
 - A completed ABFE simulation run (`status` is `Completed`)
-- Results should include `solute_pdb_file_path` for binding/solvation trajectories
-  and `system_pdb_file_path` for the post-prep MD trajectory.
+- Results should include `solute_pdb_file_path` for **binding** trajectories,
+  `solvation_xml_ligand_file_path` for **solvation** trajectories (ligand atoms
+  only in the XTC; ions and solvent are omitted), and `system_pdb_file_path` for
+  the post-prep MD trajectory.
 - The Deep Origin Python package properly installed and configured
 
 ### `show_trajectory`
@@ -42,8 +44,8 @@ The method loads the data-platform result row for this job (the same shape as ``
 1. Sync execution status and require `Completed`.
 2. Fetch results with `compute_job_id` set to the execution id.
 3. Resolve the XTC path from the result `data` (per step/window/repeat as above).
-4. Resolve the matching topology: solute PDB for binding/solvation, full system
-   PDB for MD.
+4. Resolve the matching topology: solute PDB for binding, solvation XML (converted
+   to PDB) for solvation, full system PDB for MD.
 5. Download PDB and XTC (lazy skip if already cached under `~/.deeporigin/`).
    Historical solute PDBs containing retained waters are filtered only when the
    resulting atom count exactly matches the XTC.
