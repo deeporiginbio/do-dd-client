@@ -141,7 +141,11 @@ def test_iframe_markup_allows_scripts() -> None:
 
 def test_iframe_markup_srcdoc_allows_scripts_without_same_origin() -> None:
     """Large documents use srcdoc; same-origin would expose the notebook page."""
-    html = "<!DOCTYPE html><html><body>" + ("x" * (_LARGE_IFRAME_HTML_BYTES + 1)) + "</body></html>"
+    html = (
+        "<!DOCTYPE html><html><body>"
+        + ("x" * (_LARGE_IFRAME_HTML_BYTES + 1))
+        + "</body></html>"
+    )
     markup = _iframe_markup_for_html_document(html, height=400)
 
     assert 'sandbox="allow-scripts"' in markup
