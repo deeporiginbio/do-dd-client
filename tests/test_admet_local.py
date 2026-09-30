@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import json
-from pathlib import Path
 from typing import TYPE_CHECKING
 
 import pandas as pd
@@ -331,11 +329,19 @@ def test_admet_start_above_inline_cap_uses_ligands_file(
     remote = inputs["ligands_file"]
     assert remote.startswith("admet-properties/ligand-lists/")
 
+    job.properties = list(_ADMET_PROPERTIES)
     job.start()
     dto = job._dto or {}
     stored = dto.get("userInputs") or {}
     assert stored.get("ligands_file") == remote
     assert stored.get("ligands_count") == n
+
+    job.wait(timeout=30.0, poll_interval=0.1)
+    assert job.status == "Completed"
+    df = job.get_results()
+    assert len(df) == n
+    for prop in _ADMET_PROPERTIES:
+        assert prop in df.columns
 
 
 def test_admet_run_rejects_workflow_scale_batch(client: DeepOriginClient) -> None:

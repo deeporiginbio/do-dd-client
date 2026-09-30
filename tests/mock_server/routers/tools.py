@@ -740,6 +740,8 @@ def _synthesize_molprops_row(
         row["rule_of_5_violations"] = int(_stable_unit_float(seed, "ro5") * 5) % 5
     if "sa_score" in requested:
         row["sa_score"] = round(1.0 + 9.0 * _stable_unit_float(seed, "sa"), 4)
+    if "fraction_csp3" in requested:
+        row["fraction_csp3"] = round(_stable_unit_float(seed, "fcsp3"), 4)
     return row
 
 

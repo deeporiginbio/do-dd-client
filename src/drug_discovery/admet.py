@@ -282,8 +282,11 @@ class Admet(
 ):
     """Predict admet-now ADMET endpoints via ``deeporigin.admet-properties``.
 
-    Ligands are **not** mutated (contrast with
-    :class:`~deeporigin.drug_discovery.molprops.Molprops`).
+    ADMET prediction fields are **not** written onto ligands (contrast with
+    :class:`~deeporigin.drug_discovery.molprops.Molprops`). ``run()`` and
+    ``start()`` may register ligands on the platform (assigning ``id`` /
+    ``project``) via :meth:`_ensure_platform_inputs`, except quote-only
+    ``run(quote=True)`` which sends SMILES without syncing first.
 
     Use :meth:`run` for at most
     :data:`~deeporigin.utils.constants.ADMET_INLINE_LIGAND_CAP` ligands
@@ -388,6 +391,8 @@ class Admet(
             if new._properties is None:
                 new._properties = list(endpoints)
         new._remote_ligands_file = None
+        if not hasattr(new, "status"):
+            new.status = None
         return new
 
     def _ensure_properties_for_run(self) -> None:
@@ -587,9 +592,8 @@ class Admet(
         resolved_amount = QUOTE_APPROVE_AMOUNT if quote else approve_amount
         if resolved_amount != QUOTE_APPROVE_AMOUNT:
             self._ensure_platform_inputs()
-        sync = resolved_amount is None
         dto = self._create_execution(
-            data=self._make_payload(approve_amount=resolved_amount, sync=sync),
+            data=self._make_payload(approve_amount=resolved_amount, sync=True),
         )
         self.update_from_dto(dto)
 
@@ -626,13 +630,10 @@ class Admet(
         execution_dto = self._create_execution(
             data=self._make_payload(approve_amount=approve_amount, sync=False),
         )
-        execution_id = execution_dto.get("executionId")
-        if execution_id is None:
+        if execution_dto.get("executionId") is None:
             raise ValueError("Execution response must contain 'executionId'") from None
 
-        self._dto = execution_dto
-        self._id = execution_id
-        self.status = execution_dto.get("status")
+        self.update_from_dto(execution_dto)
 
     @beartype
     def get_results(self, dto: dict[str, Any] | None = None) -> pd.DataFrame:
