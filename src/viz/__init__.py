@@ -13,6 +13,7 @@ from deeporigin.viz.molstar_html import (
     render_protein_with_pockets_and_poses_html,
     render_protein_with_pockets_html,
     render_protein_with_poses_html,
+    render_trajectory_html,
 )
 
 __all__ = [
@@ -28,4 +29,5 @@ __all__ = [
     "render_protein_with_pockets_and_poses_html",
     "render_protein_with_pockets_html",
     "render_protein_with_poses_html",
+    "render_trajectory_html",
 ]

@@ -42,7 +42,7 @@ The method loads the data-platform result row for this job (the same shape as ``
 3. Resolve the XTC path from the result `data` (per step/window/repeat as above).
 4. Resolve the system PDB from `PreparedSystem` (`system_pdb_path`, or `dirname(binding_xml_path)/system.pdb`).
 5. Download PDB and XTC (lazy skip if already cached under `~/.deeporigin/`).
-6. Render with `deeporigin_molstar.ProteinViewer.render_trajectory` and display in the notebook.
+6. Build hosted molstarLib HTML via :func:`deeporigin.viz.molstar_html.render_trajectory_html` and display with :func:`deeporigin.utils.notebook.render_html`.
 
 ### Examples
 

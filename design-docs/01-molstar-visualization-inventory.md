@@ -32,7 +32,7 @@ spec sandboxes srcdoc documents without `allow-scripts`, which blocks Mol*.
 | 6 | Protein + pockets + poses | `Protein.show(pockets=..., poses=...)` | *(not supported)* | `renderStructureWithPocketsAndLigands` | **5 Done** |
 | 7 | Docking search box | `Docking.show_box()`, `ConstrainedDocking.show_box()` | `DockingViewer.render_bounding_box()` | `loadFromRawContent` + `renderBoundingBox` | **6 Done** |
 | 8 | Protein + box + poses | `Docking.show_box(poses=...)`, `ConstrainedDocking.show_box(poses=...)` | *(not supported)* | `visualizeDockedLigands` + `renderBoundingBox` | **6b Done** |
-| 9 | MD trajectory | `ABFE.show_trajectory()` | `ProteinViewer.render_trajectory()` | `loadWithTrajectory` | 7 |
+| 9 | MD trajectory | `ABFE.show_trajectory()` | `ProteinViewer.render_trajectory()` | `loadWithTrajectory` | **7 Done** |
 | 10 | Notebook HTML wrapper | `@jupyter_visualization`, ABFE direct call | `JupyterViewer.visualize()` | Reuse `render_html()` only | 8 |
 
 **Out of scope:** `render_smiles_in_dataframe()` in

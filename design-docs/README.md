@@ -24,7 +24,7 @@ Strangler-fig migration from the legacy `deeporigin-molstar` Python package
 | 5 | Protein + pockets + poses | `Protein.show(pockets=..., poses=...)` | **Done** |
 | 6 | Docking search box | `Docking.show_box()`, `ConstrainedDocking.show_box()` | **Done** |
 | 6b | Protein + box + poses | `Docking.show_box(poses=...)`, `ConstrainedDocking.show_box(poses=...)` | **Done** |
-| 7 | MD trajectory | `ABFE.show_trajectory()` | Pending |
+| 7 | MD trajectory | `ABFE.show_trajectory()` | **Done** (molstarLib) |
 | 8 | Remove `deeporigin-molstar` dep | `visualize.py`, static doc embeds | Pending |
 
 ## Bundle delivery

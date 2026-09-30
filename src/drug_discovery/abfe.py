@@ -785,12 +785,15 @@ class ABFE(Execution, AsyncExecutableMixin, NotebookWatchMixin):
         local_pdb = self.client.files.download(remote_pdb, lazy=True)
         local_xtc = self.client.files.download(remote_xtc, lazy=True)
 
-        from deeporigin_molstar import JupyterViewer, ProteinViewer
+        from deeporigin.utils.notebook import render_html
+        from deeporigin.viz.molstar_html import render_trajectory_html
 
-        protein_viewer = ProteinViewer(data=local_pdb, format="pdb")
-        html_content = protein_viewer.render_trajectory(local_xtc)
-
-        JupyterViewer.visualize(html_content)
+        return render_html(
+            render_trajectory_html(
+                pdb_path=local_pdb,
+                trajectory_path=local_xtc,
+            )
+        )
 
     @beartype
     def show_overlap_matrix(
