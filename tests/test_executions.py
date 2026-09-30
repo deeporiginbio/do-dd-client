@@ -187,6 +187,7 @@ def test_execution_from_last_run_requires_tool_key() -> None:
 def test_execution_from_last_run_raises_when_empty() -> None:
     """``from_last_run`` raises when the platform returns no executions."""
     client = MagicMock()
+    client.project_id = None
     client.executions.list.return_value = {"data": []}
 
     with pytest.raises(ValueError, match="No executions found"):
@@ -196,6 +197,7 @@ def test_execution_from_last_run_raises_when_empty() -> None:
 def test_execution_from_last_run_hydrates_latest() -> None:
     """``from_last_run`` lists by createdAt desc and hydrates the first DTO."""
     client = MagicMock()
+    client.project_id = None
     dto: dict[str, Any] = {
         "executionId": "exec-latest",
         "tool": {"key": "deeporigin.test-sync-tool", "version": "1.0.0"},
@@ -211,9 +213,35 @@ def test_execution_from_last_run_hydrates_latest() -> None:
         order="createdAt desc",
         page=0,
         page_size=1,
+        project_id=None,
     )
     assert instance.id == "exec-latest"
     assert instance.status == "Completed"
+
+
+def test_execution_from_last_run_scopes_by_project() -> None:
+    """``from_last_run()`` passes the client's ``project_id`` to the list API."""
+    client = MagicMock()
+    client.project_id = "proj-123"
+    client.executions.list.return_value = {
+        "data": [
+            {
+                "executionId": "exec-in-project",
+                "tool": {"key": "deeporigin.test-sync-tool", "version": "1.0.0"},
+                "status": "Succeeded",
+            }
+        ]
+    }
+
+    _TestToolExecution.from_last_run(client=client)
+
+    client.executions.list.assert_called_once_with(
+        tool_key="deeporigin.test-sync-tool",
+        order="createdAt desc",
+        page=0,
+        page_size=1,
+        project_id="proj-123",
+    )
 
 
 class _WarningOnRehydrateExecution(_TestToolExecution):
@@ -245,6 +273,7 @@ def test_execution_quiet_defaults_off_preserving_old_behavior() -> None:
     warnings are their own business, not this base class's to hide.
     """
     client = MagicMock()
+    client.project_id = None
     client.executions.get.return_value = _dto_for("exec-1")
     client.executions.list.return_value = {"data": [_dto_for("exec-1")]}
 
@@ -267,6 +296,7 @@ def test_execution_quiet_defaults_off_preserving_old_behavior() -> None:
 def test_execution_quiet_true_suppresses_rehydration_warnings() -> None:
     """``quiet=True`` opts a specific call into warning suppression."""
     client = MagicMock()
+    client.project_id = None
     client.executions.get.return_value = _dto_for("exec-1")
     client.executions.list.return_value = {"data": [_dto_for("exec-1")]}
 
@@ -299,6 +329,33 @@ def test_execution_list_orders_newest_first_and_scopes_by_project() -> None:
         order="createdAt desc",
         project_id="proj-123",
     )
+
+
+def test_execution_list_does_not_mutate_client_project_id() -> None:
+    """``list()`` must not adopt the last execution's project on the shared client."""
+    client = MagicMock()
+    client.project_id = "proj-notebook"
+    client.executions.list.return_value = {
+        "data": [
+            {
+                "executionId": "exec-a",
+                "projectId": "proj-a",
+                "tool": {"key": "deeporigin.test-sync-tool", "version": "1.0.0"},
+                "status": "Succeeded",
+            },
+            {
+                "executionId": "exec-b",
+                "projectId": "proj-b",
+                "tool": {"key": "deeporigin.test-sync-tool", "version": "1.0.0"},
+                "status": "Succeeded",
+            },
+        ]
+    }
+
+    results = _TestToolExecution.list(client=client)
+
+    assert client.project_id == "proj-notebook"
+    assert {r.id for r in results} == {"exec-a", "exec-b"}
 
 
 def test_execution_get_user_logs_no_id_noop() -> None:

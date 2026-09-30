@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+from contextlib import contextmanager
+from typing import Any, Iterator
+
 from deeporigin.exceptions import DeepOriginException
 from deeporigin.platform.client import DeepOriginClient
 
@@ -76,3 +79,46 @@ def stamp_execution_project_id(
                 ),
             )
     payload["projectId"] = resolved
+
+
+@contextmanager
+def execution_project_scope(
+    client: DeepOriginClient,
+    dto: dict[str, Any],
+) -> Iterator[None]:
+    """Temporarily align ``client.project_id`` with an execution DTO.
+
+    Tool executions may omit ``projectId`` (org-wide runs) or use a different
+    project than the notebook's current ``projects.load()`` selection. Entity
+    lookups during :meth:`~deeporigin.drug_discovery.execution.Execution.from_dto`
+    should use the execution's scope, not the caller's session project.
+
+    When ``projectId`` is absent from *dto*, the client's project is left unchanged.
+    """
+    if "projectId" not in dto:
+        yield
+        return
+    saved = client.project_id
+    raw = dto.get("projectId")
+    client.project_id = str(raw).strip() if raw else None
+    try:
+        yield
+    finally:
+        client.project_id = saved
+
+
+def adopt_client_project_from_execution_dto(
+    client: DeepOriginClient,
+    dto: dict[str, Any],
+) -> None:
+    """Set ``client.project_id`` from an execution DTO after :meth:`from_dto`.
+
+    Rehydration uses :func:`execution_project_scope` only while inputs are
+    parsed; follow-up ``results.get`` / entity calls need the execution's
+    project (or explicit org-wide ``None``) on the client. When ``projectId``
+    is absent from *dto*, the client's project is left unchanged.
+    """
+    if "projectId" not in dto:
+        return
+    raw = dto.get("projectId")
+    client.project_id = str(raw).strip() if raw else None

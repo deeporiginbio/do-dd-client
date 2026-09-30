@@ -31,7 +31,6 @@ from deeporigin.drug_discovery.constants import (
 from deeporigin.drug_discovery.utils.structure_qc import _any_ligand_protein_clashes
 from deeporigin.exceptions import DeepOriginException
 from deeporigin.platform.client import DeepOriginClient
-from deeporigin.platform.constants import TOOL_KEYS_AND_VERSIONS
 from deeporigin.utils.env import _ensure_do_folder
 
 from .entity import Entity

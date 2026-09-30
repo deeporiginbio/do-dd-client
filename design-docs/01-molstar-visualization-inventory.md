@@ -27,13 +27,13 @@ spec sandboxes srcdoc documents without `allow-scripts`, which blocks Mol*.
 | 1 | Protein structure | `Protein.show()`, `PreparedSystem.show()` | `ProteinViewer.render_protein()` | `initViewer` + `loadFromRawContent` | **1 Done** |
 | 2 | Protein + binding pockets | `Protein.show(pockets=...)` | `ProteinViewer.render_protein_with_pockets()` | `renderStructureAndPockets` | **2 Done** |
 | 3 | Single ligand 3D | `Ligand.show()`, `Ligand._repr_html_()` | `MoleculeViewer.render_ligand()` | `loadFromRawContent` (sdf) | **3 Done** |
-| 4 | Ligand set 3D | `LigandSet.show()` | `MoleculeViewer.render_ligand()` (combined SDF) | `loadFromRawContent` (combined sdf) | **Rolled back** — multi-mol SDF not yet supported in molstarLib; keep legacy viewer |
+| 4 | Ligand set 3D | `LigandSet.show()` | `MoleculeViewer.render_ligand()` (combined SDF) | `render_ligand_set_html` (per-ligand SDF + carousel) | **Done** |
 | 5 | Protein + docked poses | `Protein.show(poses=...)` | `DockingViewer.render_with_separate_crystal()` | `visualizeDockedLigands` | **4 Done** |
 | 6 | Protein + pockets + poses | `Protein.show(pockets=..., poses=...)` | *(not supported)* | `renderStructureWithPocketsAndLigands` | **5 Done** |
 | 7 | Docking search box | `Docking.show_box()`, `ConstrainedDocking.show_box()` | `DockingViewer.render_bounding_box()` | `loadFromRawContent` + `renderBoundingBox` | **6 Done** |
 | 8 | Protein + box + poses | `Docking.show_box(poses=...)`, `ConstrainedDocking.show_box(poses=...)` | *(not supported)* | `visualizeDockedLigands` + `renderBoundingBox` | **6b Done** |
-| 9 | MD trajectory | `ABFE.show_trajectory()` | `ProteinViewer.render_trajectory()` | `loadWithTrajectory` | 7 |
-| 10 | Notebook HTML wrapper | `@jupyter_visualization`, ABFE direct call | `JupyterViewer.visualize()` | Reuse `render_html()` only | 8 |
+| 9 | MD trajectory | `ABFE.show_trajectory()` | `ProteinViewer.render_trajectory()` | `loadWithTrajectory` | **7 Done** |
+| 10 | Notebook HTML wrapper | `@jupyter_visualization` (removed), ABFE direct call | `JupyterViewer.visualize()` | `render_html()` only | **8 Done** |
 
 **Out of scope:** `render_smiles_in_dataframe()` in
 `src/drug_discovery/utils/visualize.py` — RDKit 2D only.
@@ -48,7 +48,7 @@ spec sandboxes srcdoc documents without `allow-scripts`, which blocks Mol*.
 | `src/drug_discovery/docking.py` | `Docking.show_box()` |
 | `src/drug_discovery/constrained_docking.py` | `ConstrainedDocking.show_box()` |
 | `src/drug_discovery/abfe.py` | `ABFE.show_trajectory()` |
-| `src/drug_discovery/utils/visualize.py` | `@jupyter_visualization` → `JupyterViewer.visualize()` |
+| `src/drug_discovery/utils/visualize.py` | RDKit `render_smiles_in_dataframe` only (legacy decorator removed) |
 | `src/viz/molstar_html.py` | Hosted molstarLib HTML builders |
 
 ## Legacy → new API mapping
@@ -83,8 +83,7 @@ spec sandboxes srcdoc documents without `allow-scripts`, which blocks Mol*.
 
 - `render_ligand_html()` → `loadFromRawContent` (sdf)
 - Wire: `Ligand.show()` (single-mol SDF)
-- `LigandSet.show()` remains on legacy `MoleculeViewer` until molstarLib
-  correctly splits multi-molecule SDF files
+- `LigandSet.show()` uses per-ligand SDF payloads and the hosted bundle carousel
 
 ### Phase 4 — protein + docked poses
 
@@ -118,11 +117,11 @@ spec sandboxes srcdoc documents without `allow-scripts`, which blocks Mol*.
 XTC is binary; embed as base64 in HTML (legacy package does this today).
 `loadWithTrajectory` is available in `platform-ui/packages/molstar`.
 
-### Phase 8 — cleanup
+### Phase 8 — cleanup (**Done**)
 
-- Remove `deeporigin-molstar` from `tools` extra in `pyproject.toml`
-- Simplify `visualize.py` to use `render_html` only (drop `JupyterViewer`)
-- Refresh static embeds in `docs/images/*.html`
+- Removed `deeporigin-molstar` from `tools` extra in `pyproject.toml`
+- Removed unused `@jupyter_visualization` / `JupyterViewer` from `visualize.py`
+- Regenerated static embeds in `docs/images/*.html` via `skills/make-viz/scripts/build_docs_viz.py`
 
 ## Tests
 
@@ -133,5 +132,5 @@ XTC is binary; embed as base64 in HTML (legacy package does this today).
 
 ## Static doc embeds
 
-Pre-rendered HTML in `docs/images/` still reference legacy `gallery.js`.
-Update in phase 8 when all renderers are ported.
+Pre-rendered HTML in `docs/images/` is generated from `molstar_html` builders
+(`build_docs_viz.py --all`). Re-run after changing visualization HTML.

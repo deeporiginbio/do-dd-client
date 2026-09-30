@@ -7,6 +7,7 @@ from IPython.display import IFrame
 import pytest
 
 from deeporigin.utils.notebook import (
+    _LARGE_IFRAME_HTML_BYTES,
     _iframe_markup_for_html_document,
     _iframe_src_for_html_document,
     render_html,
@@ -136,6 +137,20 @@ def test_iframe_markup_allows_scripts() -> None:
     assert 'sandbox="allow-scripts allow-same-origin"' in markup
     assert "srcdoc=" not in markup
     assert "data:text/html;charset=utf-8;base64," in markup
+
+
+def test_iframe_markup_srcdoc_allows_scripts_without_same_origin() -> None:
+    """Large documents use srcdoc; same-origin would expose the notebook page."""
+    html = (
+        "<!DOCTYPE html><html><body>"
+        + ("x" * (_LARGE_IFRAME_HTML_BYTES + 1))
+        + "</body></html>"
+    )
+    markup = _iframe_markup_for_html_document(html, height=400)
+
+    assert 'sandbox="allow-scripts"' in markup
+    assert "allow-same-origin" not in markup
+    assert "srcdoc=" in markup
 
 
 def test_iframe_markup_includes_bridge_id() -> None:

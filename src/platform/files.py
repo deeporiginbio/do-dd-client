@@ -52,6 +52,14 @@ _SIGNED_URL_UPLOAD_TIMEOUT = httpx.Timeout(
     pool=10.0,
 )
 
+# Large trajectory / artifact downloads stream for a long time from object storage.
+_SIGNED_URL_DOWNLOAD_TIMEOUT = httpx.Timeout(
+    connect=10.0,
+    read=300.0,
+    write=10.0,
+    pool=10.0,
+)
+
 # Platform GET for presigned URLs can queue under many concurrent upload_tree workers.
 _SIGNED_URL_API_TIMEOUT = httpx.Timeout(
     connect=10.0,
@@ -449,7 +457,9 @@ class Files:
                     dir=dest.parent, suffix=".tmp", delete=False
                 )
                 with tmp:
-                    with httpx.Client() as download_client:
+                    with httpx.Client(
+                        timeout=_SIGNED_URL_DOWNLOAD_TIMEOUT
+                    ) as download_client:
                         with download_client.stream(
                             "GET", signed_url
                         ) as download_response:
@@ -507,7 +517,7 @@ class Files:
         """
         last_exc: Exception | None = None
         for attempt in range(max_retries + 1):
-            download_client = httpx.Client()
+            download_client = httpx.Client(timeout=_SIGNED_URL_DOWNLOAD_TIMEOUT)
             response: httpx.Response | None = None
             try:
                 signed_url = self.signed_url(remote_path)

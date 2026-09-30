@@ -79,6 +79,30 @@ def _encode_text_base64(text: str) -> str:
     return base64.b64encode(text.encode("utf-8")).decode("ascii")
 
 
+def _encode_bytes_base64(data: bytes) -> str:
+    """Return base64 encoding of raw bytes (e.g. XTC trajectory)."""
+    return base64.b64encode(data).decode("ascii")
+
+
+def _read_binary_file(path: str) -> bytes:
+    """Read a file and return its raw bytes."""
+    file_path = Path(path)
+    if not file_path.is_file():
+        raise FileNotFoundError(f"File not found: {path}")
+    return file_path.read_bytes()
+
+
+def _molstar_trajectory_format(path: str) -> str:
+    """Return the Mol* trajectory format string for a file path."""
+    suffix = Path(path).suffix.lstrip(".").lower()
+    if suffix in {"xtc", "trr", "dcd", "nctraj"}:
+        return suffix
+    raise ValueError(
+        f"Unsupported trajectory format {suffix!r} for {path!r}; "
+        "expected .xtc, .trr, .dcd, or .nctraj"
+    )
+
+
 def _json_for_script_tag(value: str) -> str:
     """JSON-encode a string for safe embedding inside a ``<script>`` tag."""
     return json.dumps(value).replace("<", "\\u003c")
@@ -259,6 +283,59 @@ def render_protein_html(*, pdb_path: str, style: str = "cartoon") -> str:
     return _render_viewer_html(script_body=script_body)
 
 
+def render_trajectory_html(
+    *,
+    pdb_path: str,
+    trajectory_path: str,
+) -> str:
+    """Build iframe-ready HTML for protein topology with MD trajectory (XTC, etc.).
+
+    Uses ``viewer.api.loadWithTrajectory`` on the hosted molstarLib bundle.
+
+    Args:
+        pdb_path: Path to the system topology file (PDB or mmCIF).
+        trajectory_path: Path to trajectory coordinates (``.xtc``, ``.trr``, …).
+
+    Returns:
+        A complete HTML document suitable for ``render_html()`` iframe embedding.
+    """
+    pdb_b64 = _encode_text_base64(_read_structure_file(pdb_path))
+    traj_b64 = _encode_bytes_base64(_read_binary_file(trajectory_path))
+    protein_format_json = _json_for_script_tag(_molstar_structure_format(pdb_path))
+    trajectory_format_json = _json_for_script_tag(
+        _molstar_trajectory_format(trajectory_path)
+    )
+    traj_b64_json = _json_for_script_tag(traj_b64)
+
+    script_body = f"""const initViewer = async () => {{
+      if (typeof molstarLib === "undefined" || typeof molstarLib.initViewer !== "function") {{
+        throw new Error("molstarLib bundle did not load from {MOLSTAR_JS_URL}");
+      }}
+      const viewer = await molstarLib.initViewer("{_VIEWER_CONTAINER_ID}");
+      const proteinData = atob("{pdb_b64}");
+      const trajResponse = await fetch(
+        "data:application/octet-stream;base64," + {traj_b64_json},
+      );
+      const trajectoryBytes = new Uint8Array(await trajResponse.arrayBuffer());
+      await viewer.api.loadWithTrajectory(
+        {{
+          rawData: proteinData,
+          label: "protein",
+          format: {protein_format_json},
+          isBinary: false,
+        }},
+        {{
+          rawData: trajectoryBytes.buffer,
+          label: "trajectory",
+          format: {trajectory_format_json},
+          isBinary: true,
+        }},
+      );
+    }};"""
+
+    return _render_viewer_html(script_body=script_body)
+
+
 def render_protein_with_pockets_html(
     *,
     pdb_path: str,
@@ -371,9 +448,6 @@ def _decode_ligand_payloads_js(variable_name: str = "ligandPayloads") -> str:
 def render_ligand_html(*, sdf_path: str, style: str = "ball-and-stick") -> str:
     """Build iframe-ready HTML for a single-ligand SDF.
 
-    For multi-ligand sets, prefer :meth:`LigandSet.show` (legacy viewer): the hosted
-    molstarLib bundle does not yet split multi-molecule SDF files correctly.
-
     Args:
         sdf_path: Path to a single-molecule SDF file on disk.
         style: Mol* representation type for the ligand (default ``ball-and-stick``).
@@ -382,6 +456,7 @@ def render_ligand_html(*, sdf_path: str, style: str = "ball-and-stick") -> str:
         A complete HTML document suitable for ``render_html()`` iframe embedding.
     """
     sdf_b64 = _encode_text_base64(_read_structure_file(sdf_path))
+    sdf_b64_json = _json_for_script_tag(sdf_b64)
     style_json = _json_for_script_tag(style)
 
     script_body = f"""const initViewer = async () => {{
@@ -389,13 +464,107 @@ def render_ligand_html(*, sdf_path: str, style: str = "ball-and-stick") -> str:
         throw new Error("molstarLib bundle did not load from {MOLSTAR_JS_URL}");
       }}
       const viewer = await molstarLib.initViewer("{_VIEWER_CONTAINER_ID}");
-      const ligandData = atob("{sdf_b64}");
+      const ligandData = atob({sdf_b64_json});
       await viewer.api.loadFromRawContent(
         ligandData,
         "sdf",
         "ligand",
         {style_json},
       );
+    }};"""
+
+    return _render_viewer_html(script_body=script_body)
+
+
+def render_ligand_set_html(
+    *,
+    ligand_payloads: list[dict[str, object]],
+    style: str = "ball-and-stick",
+) -> str:
+    """Build iframe-ready HTML for a multi-ligand set (ligand-only, no protein).
+
+    Each payload is a dict from :func:`ligand_data_for_js`. Loads structures with
+    ``loadFromRawContent`` and ``ligand-N`` tags so the hosted bundle's
+    ``LigandCarousel`` can step through ligands one at a time.
+
+    Args:
+        ligand_payloads: Non-empty list of per-ligand SDF payloads.
+        style: Mol* representation type for ligands (default ``ball-and-stick``).
+
+    Returns:
+        A complete HTML document suitable for ``render_html()`` iframe embedding.
+
+    Raises:
+        ValueError: If ``ligand_payloads`` is empty.
+    """
+    if not ligand_payloads:
+        raise ValueError("ligand_payloads must be non-empty")
+
+    if len(ligand_payloads) == 1:
+        payload = ligand_payloads[0]
+        sdf_b64 = payload["dataB64"]
+        if not isinstance(sdf_b64, str):
+            raise TypeError("ligand payload dataB64 must be a string")
+        label = payload.get("label", "ligand")
+        sdf_b64_json = _json_for_script_tag(sdf_b64)
+        label_json = _json_for_script_tag(str(label))
+        style_json = _json_for_script_tag(style)
+        script_body = f"""const initViewer = async () => {{
+      if (typeof molstarLib === "undefined" || typeof molstarLib.initViewer !== "function") {{
+        throw new Error("molstarLib bundle did not load from {MOLSTAR_JS_URL}");
+      }}
+      const viewer = await molstarLib.initViewer("{_VIEWER_CONTAINER_ID}");
+      const ligandData = atob({sdf_b64_json});
+      await viewer.api.loadFromRawContent(
+        ligandData,
+        "sdf",
+        {label_json},
+        {style_json},
+      );
+    }};"""
+        return _render_viewer_html(script_body=script_body)
+
+    ligands_json = _json_value_for_script_tag(ligand_payloads)
+    style_json = _json_for_script_tag(style)
+
+    script_body = f"""const initViewer = async () => {{
+      if (typeof molstarLib === "undefined" || typeof molstarLib.initViewer !== "function") {{
+        throw new Error("molstarLib bundle did not load from {MOLSTAR_JS_URL}");
+      }}
+      const viewer = await molstarLib.initViewer("{_VIEWER_CONTAINER_ID}");
+      const ligandPayloads = {ligands_json};
+      const colors = molstarLib.DEFAULT_LIGAND_COLORS;
+      for (let i = 0; i < ligandPayloads.length; i++) {{
+        const payload = ligandPayloads[i];
+        const data = atob(payload.dataB64);
+        const label =
+          payload.label !== undefined ? payload.label : `ligand-${{i + 1}}`;
+        const color = colors[i % colors.length];
+        await viewer.api.loadFromRawContent(
+          data,
+          "sdf",
+          label,
+          {style_json},
+          0,
+          false,
+          false,
+          {style_json},
+          `ligand-${{i}}`,
+          color,
+        );
+      }}
+      const startLigandSetBrowse = async () => {{
+        await viewer.api.showLigandAtIndex(0);
+        const manager = viewer.getPlugin?.()?.ligandManager;
+        if (manager) {{
+          manager.setActiveLigand("ligand-0");
+        }}
+      }};
+      // LigandCarousel defaults to "show all" and re-applies it ~200ms after the
+      // last structure loads; run browse after that stabilizes.
+      setTimeout(() => {{
+        void startLigandSetBrowse();
+      }}, 300);
     }};"""
 
     return _render_viewer_html(script_body=script_body)

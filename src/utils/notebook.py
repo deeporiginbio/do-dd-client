@@ -172,6 +172,51 @@ def get_notebook_environment() -> str:
     return "other"
 
 
+# Trajectory and other binary-heavy Mol* HTML exceeds practical ``data:`` iframe
+# limits in VS Code / Jupyter; embed via ``srcdoc`` with an explicit sandbox instead.
+_LARGE_IFRAME_HTML_BYTES = 512 * 1024
+
+
+def _html_document_exceeds_data_uri_embed_limit(html: str) -> bool:
+    """Return True when the document should not be wrapped in a base64 data URI."""
+    return len(html.encode("utf-8")) > _LARGE_IFRAME_HTML_BYTES
+
+
+def _escape_srcdoc_attribute(html: str) -> str:
+    """Escape HTML for use in an iframe ``srcdoc`` attribute value."""
+    return html.replace("&", "&amp;").replace('"', "&quot;")
+
+
+def _iframe_sandbox_attribute(*, use_srcdoc: bool) -> str:
+    """Return iframe sandbox tokens for trusted SDK-generated HTML.
+
+    ``srcdoc`` inherits the notebook page origin; ``allow-same-origin`` there
+    would let embedded scripts reach the parent document. Opaque ``data:`` URIs
+    need ``allow-same-origin`` so Mol* can load bundled assets.
+    """
+    if use_srcdoc:
+        return 'sandbox="allow-scripts"'
+    return 'sandbox="allow-scripts allow-same-origin"'
+
+
+def _iframe_extras_for_html_document(
+    *,
+    height: int,
+    bridge_id: str | None,
+    use_srcdoc: bool = False,
+) -> list[str]:
+    extras = [
+        _iframe_sandbox_attribute(use_srcdoc=use_srcdoc),
+        f'style="width:100%;height:{height}px;border:0"',
+        'loading="lazy"',
+        'referrerpolicy="no-referrer"',
+    ]
+    if bridge_id:
+        extras.append(f'id="do-bridge-{bridge_id}"')
+        extras.append(f'data-bridge-id="{bridge_id}"')
+    return extras
+
+
 def _iframe_src_for_html_document(html: str) -> str:
     """Return a data-URI ``src`` for embedding a full HTML document in an iframe.
 
@@ -189,26 +234,35 @@ def _iframe_for_html_document(
     *,
     height: int,
     bridge_id: str | None = None,
-) -> IFrame:
-    """Return an :class:`~IPython.display.IFrame` for a self-contained HTML document.
+) -> IFrame | HTML:
+    """Return a display object for a self-contained HTML document in an iframe.
 
     The HTML is embedded with ``allow-scripts`` and ``allow-same-origin`` so
     Mol* and similar viewers can run. Only pass trusted, SDK-generated HTML.
+
+    Small documents use a base64 ``data:`` ``src`` (via :class:`~IPython.display.IFrame`).
+    Larger documents (typical for MD trajectories) use ``srcdoc`` to avoid blank
+    iframes when notebook frontends truncate long ``data:`` URLs.
 
     Args:
         html: Full HTML document to embed.
         height: Iframe height in pixels.
         bridge_id: When set, adds a stable ``id`` for the comm bridge script.
     """
-    extras = [
-        'sandbox="allow-scripts allow-same-origin"',
-        f'style="width:100%;height:{height}px;border:0"',
-        'loading="lazy"',
-        'referrerpolicy="no-referrer"',
-    ]
-    if bridge_id:
-        extras.append(f'id="do-bridge-{bridge_id}"')
-        extras.append(f'data-bridge-id="{bridge_id}"')
+    if _html_document_exceeds_data_uri_embed_limit(html):
+        return HTML(
+            _iframe_markup_for_html_document(
+                html,
+                height=height,
+                bridge_id=bridge_id,
+            )
+        )
+
+    extras = _iframe_extras_for_html_document(
+        height=height,
+        bridge_id=bridge_id,
+        use_srcdoc=False,
+    )
     return IFrame(
         _iframe_src_for_html_document(html),
         width="100%",
@@ -230,11 +284,19 @@ def _iframe_markup_for_html_document(
         height: Iframe height in pixels.
         bridge_id: When set, adds a stable ``id`` for the comm bridge script.
     """
-    return _iframe_for_html_document(
-        html,
-        height=height,
-        bridge_id=bridge_id,
-    )._repr_html_()
+    use_srcdoc = _html_document_exceeds_data_uri_embed_limit(html)
+    extras = " ".join(
+        _iframe_extras_for_html_document(
+            height=height,
+            bridge_id=bridge_id,
+            use_srcdoc=use_srcdoc,
+        )
+    )
+    if use_srcdoc:
+        srcdoc = _escape_srcdoc_attribute(html)
+        return f'<iframe srcdoc="{srcdoc}" {extras} width="100%" height="{height}"></iframe>'
+    src = _iframe_src_for_html_document(html)
+    return f'<iframe src="{src}" {extras} width="100%" height="{height}"></iframe>'
 
 
 def render_html(
@@ -270,7 +332,6 @@ def render_html(
 
         return mo.Html(_iframe_markup_for_html_document(html, height=height))
     else:
-        iframe = _iframe_for_html_document(html, height=height)
         if return_iframe_string:
-            return iframe._repr_html_()
-        return display(iframe)
+            return _iframe_markup_for_html_document(html, height=height)
+        return display(_iframe_for_html_document(html, height=height))

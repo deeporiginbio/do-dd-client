@@ -8,7 +8,7 @@ from unittest.mock import MagicMock
 import httpx
 import pytest
 
-from deeporigin.platform.files import Files
+from deeporigin.platform.files import _SIGNED_URL_DOWNLOAD_TIMEOUT, Files
 
 
 def _files_with_mock_client() -> Files:
@@ -36,6 +36,35 @@ class _FakeStreamResponse:
 
     def __exit__(self, *args: object) -> None:
         return None
+
+
+def test_download_to_path_uses_extended_read_timeout(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Large artifact downloads must not use httpx's default 5s read timeout."""
+    files = _files_with_mock_client()
+    monkeypatch.setattr(
+        files, "signed_url", lambda *_a, **_k: "https://signed.example/download"
+    )
+
+    client_kwargs: list[dict[str, object]] = []
+
+    def capture_client(**kwargs: object) -> MagicMock:
+        client_kwargs.append(kwargs)
+        fake_client = MagicMock()
+        fake_client.stream.side_effect = lambda *_a, **_k: _FakeStreamResponse(b"x")
+        fake_client.__enter__ = MagicMock(return_value=fake_client)
+        fake_client.__exit__ = MagicMock(return_value=False)
+        return fake_client
+
+    monkeypatch.setattr(httpx, "Client", capture_client)
+
+    dest = tmp_path / "data.bin"
+    files._download_to_path("/remote/data.bin", dest)
+
+    assert client_kwargs
+    assert client_kwargs[0]["timeout"] == _SIGNED_URL_DOWNLOAD_TIMEOUT
 
 
 def test_download_to_path_refreshes_signed_url_on_retry(
@@ -158,9 +187,11 @@ def test_open_signed_url_stream_refreshes_signed_url_on_retry(
     monkeypatch.setattr(files, "signed_url", track_signed_url)
 
     closed_clients: list[MagicMock] = []
+    client_kwargs: list[dict[str, object]] = []
     send_attempts = {"count": 0}
 
-    def make_client(*_args: object, **_kwargs: object) -> MagicMock:
+    def make_client(*_args: object, **kwargs: object) -> MagicMock:
+        client_kwargs.append(kwargs)
         client = MagicMock()
         closed_clients.append(client)
 
@@ -179,6 +210,9 @@ def test_open_signed_url_stream_refreshes_signed_url_on_retry(
     monkeypatch.setattr("deeporigin.platform.files.time.sleep", lambda _seconds: None)
 
     stream = files._open_signed_url_stream("/remote/data.bin", max_retries=1)
+
+    assert client_kwargs
+    assert client_kwargs[0]["timeout"] == _SIGNED_URL_DOWNLOAD_TIMEOUT
 
     assert signed_url_calls == 2
     assert send_attempts["count"] == 2

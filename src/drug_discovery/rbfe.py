@@ -14,6 +14,7 @@ from deeporigin.drug_discovery.fep_common import (
     _fep_params_from_inputs,
     _pose_tool_ref,
     _prepared_system_tool_ref,
+    _protein_from_tool_input,
     _simulation_blocks,
 )
 from deeporigin.drug_discovery.notebook_watch_mixin import NotebookWatchMixin
@@ -370,19 +371,10 @@ class RBFE(Execution, AsyncExecutableMixin, NotebookWatchMixin):
 
         if "system-prep" in instance.steps:
             protein_input = inputs.get("protein", {})
-            protein_id = protein_input.get("id")
-            if protein_id is not None:
-                instance.protein = Protein.from_id(
-                    str(protein_id),
+            if isinstance(protein_input, dict) and protein_input:
+                instance.protein = _protein_from_tool_input(
+                    protein_input,
                     client=instance.client,
-                    download=False,
-                    remote_path_override=protein_input.get("file_path"),
-                )
-            elif protein_input.get("file_path"):
-                instance.protein = Protein(
-                    name="rehydrated",
-                    id=None,
-                    remote_path=str(protein_input["file_path"]),
                 )
 
             if "konnektor" not in instance.steps:

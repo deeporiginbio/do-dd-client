@@ -383,11 +383,11 @@ that ligand runs as standard docking with `constrained: false` on outputs.
 _Avoid_: unconstrained docking (informal); MCS failure (ambiguous with override
 errors on the reference)
 
-**Legacy structure viewer**:
-`deeporigin-molstar` Python package plus `balto.biosim.ai/molstar/gallery.js`.
-Being replaced by the in-client `deeporigin.viz` HTML builder and hosted
-`molstarLib` at `os.dev.deeporigin.io`.
-_Avoid_: `biosim_molstar` when referring to the pip package name (`deeporigin-molstar`)
+**Structure viewer (Mol\*)**:
+In-client `deeporigin.viz.molstar_html` HTML builders plus hosted `molstarLib`
+IIFE at `os.dev.deeporigin.io/molstar/latest/`. Notebook display via
+`deeporigin.utils.notebook.render_html()`.
+_Avoid_: `deeporigin-molstar`, `balto.biosim.ai/molstar/gallery.js` (removed from CLI)
 
 **Docking search box**:
 Wireframe of the docking tool's search extents, derived from pocket center and

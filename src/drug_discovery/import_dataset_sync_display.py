@@ -50,8 +50,8 @@ def render_import_dataset_sync_progress_html(
             f'<div class="progress-bar bg-danger" style="width: {pct_s}%;"></div>'
         )
     elif completed >= total:
-        status_line = f'<span class="text-success">Done</span>'
-        bar_inner = f'<div class="progress-bar bg-success" style="width: 100%;"></div>'
+        status_line = '<span class="text-success">Done</span>'
+        bar_inner = '<div class="progress-bar bg-success" style="width: 100%;"></div>'
     else:
         status_line = (
             f'<span class="spinner-border spinner-border-sm text-primary" '
@@ -252,4 +252,23 @@ def import_dataset_sync_progress_for_ligand(
         step_labels=(
             LIGAND_WORKFLOW_SYNC_STEPS if workflow else LIGAND_SERVED_SYNC_STEPS
         ),
+    )
+
+
+ABFE_SHOW_TRAJECTORY_STEPS: tuple[str, ...] = (
+    "Load ABFE result metadata",
+    "Download trajectory topology",
+    "Download trajectory",
+    "Prepare Mol* viewer",
+)
+
+
+def import_dataset_sync_progress_for_abfe_trajectory(
+    *,
+    show_progress: bool | None,
+) -> ImportDatasetSyncProgressReporter:
+    """Compact progress for :meth:`~deeporigin.drug_discovery.abfe.ABFE.show_trajectory`."""
+    return import_dataset_sync_progress(
+        show_progress=show_progress,
+        step_labels=ABFE_SHOW_TRAJECTORY_STEPS,
     )

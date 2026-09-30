@@ -26,6 +26,7 @@ from __future__ import annotations
 
 import builtins
 import copy
+from contextvars import ContextVar
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Any, ClassVar, Literal, Self
 import warnings
@@ -35,7 +36,11 @@ from deeporigin.platform.constants import (
     is_success_status,
     normalize_platform_status,
 )
-from deeporigin.platform.project_scope import require_client_project_id
+from deeporigin.platform.project_scope import (
+    adopt_client_project_from_execution_dto,
+    execution_project_scope,
+    require_client_project_id,
+)
 from deeporigin.utils.constants import (
     EXECUTION_LIST_ORDER_CREATED_DESC,
     TOOL_EXECUTION_POST_TIMEOUT_SECONDS,
@@ -51,6 +56,11 @@ if TYPE_CHECKING:
 QuoteMode = Literal["sync", "async"]
 
 __all__ = ["Execution", "QuoteMode"]
+
+_ADOPT_CLIENT_PROJECT_AFTER_FROM_DTO: ContextVar[bool] = ContextVar(
+    "adopt_client_project_after_from_dto",
+    default=True,
+)
 
 
 def _default_execution_payload(
@@ -611,19 +621,27 @@ class Execution:
 
             client = DeepOriginClient()
 
-        instance = object.__new__(cls)
-        instance.client = client
-        instance.update_from_dto(dto)
+        with execution_project_scope(client, dto):
+            instance = object.__new__(cls)
+            instance.client = client
+            instance.update_from_dto(dto)
 
-        post_init = getattr(instance, "_init_after_from_dto", None)
-        if post_init is not None:
-            post_init()
+            post_init = getattr(instance, "_init_after_from_dto", None)
+            if post_init is not None:
+                post_init()
 
+        if _ADOPT_CLIENT_PROJECT_AFTER_FROM_DTO.get():
+            adopt_client_project_from_execution_dto(client, dto)
         return instance
 
     @classmethod
     def _from_dto_maybe_quiet(
-        cls, dto: dict[str, Any], *, client: DeepOriginClient, quiet: bool
+        cls,
+        dto: dict[str, Any],
+        *,
+        client: DeepOriginClient,
+        quiet: bool,
+        adopt_client_project: bool = True,
     ) -> Self:
         """``from_dto()``, optionally with UserWarnings suppressed.
 
@@ -632,11 +650,15 @@ class Execution:
         reconstructing ``Ligand`` objects) can emit warnings as a side
         effect (chemistry normalization, etc.); ``quiet=True`` hides them.
         """
-        if not quiet:
-            return cls.from_dto(dto, client=client)
-        with warnings.catch_warnings():
-            warnings.simplefilter("ignore", UserWarning)
-            return cls.from_dto(dto, client=client)
+        token = _ADOPT_CLIENT_PROJECT_AFTER_FROM_DTO.set(adopt_client_project)
+        try:
+            if not quiet:
+                return cls.from_dto(dto, client=client)
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore", UserWarning)
+                return cls.from_dto(dto, client=client)
+        finally:
+            _ADOPT_CLIENT_PROJECT_AFTER_FROM_DTO.reset(token)
 
     @classmethod
     def from_id(
@@ -682,7 +704,8 @@ class Execution:
 
         Calls ``client.executions.list`` with ``tool_key``, ``order`` set to
         :data:`~deeporigin.utils.constants.EXECUTION_LIST_ORDER_CREATED_DESC`,
-        and ``page_size=1``, then delegates to :meth:`from_dto`. Concrete
+        ``page_size=1``, and the client's ``project_id`` when set, then
+        delegates to :meth:`from_dto`. Concrete
         subclasses inherit this method; domain state is restored via their
         ``from_dto`` overrides.
 
@@ -714,6 +737,7 @@ class Execution:
             order=EXECUTION_LIST_ORDER_CREATED_DESC,
             page=0,
             page_size=1,
+            project_id=client.project_id,
         )
         dtos = response.get("data") or []
         if not dtos:
@@ -764,10 +788,17 @@ class Execution:
             dto for dto in all_dtos if dto.get("tool", {}).get("key") == cls.tool_key
         ]
 
-        instances = [
-            cls._from_dto_maybe_quiet(dto, client=client, quiet=quiet)
-            for dto in all_dtos
-        ]
+        instances = []
+        for dto in all_dtos:
+            with execution_project_scope(client, dto):
+                instances.append(
+                    cls._from_dto_maybe_quiet(
+                        dto,
+                        client=client,
+                        quiet=quiet,
+                        adopt_client_project=False,
+                    )
+                )
 
         if status is not None:
             instances = [i for i in instances if i.status in status]

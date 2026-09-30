@@ -60,3 +60,16 @@ def test_ligand_workflow_progress_uses_six_steps() -> None:
     assert isinstance(reporter, NullImportDatasetSyncProgress)
     assert len(LIGAND_WORKFLOW_SYNC_STEPS) == 6
     assert "Wait for workflow" in LIGAND_WORKFLOW_SYNC_STEPS
+
+
+def test_abfe_trajectory_progress_has_four_steps() -> None:
+    from deeporigin.drug_discovery.import_dataset_sync_display import (
+        ABFE_SHOW_TRAJECTORY_STEPS,
+        import_dataset_sync_progress_for_abfe_trajectory,
+    )
+
+    reporter = import_dataset_sync_progress_for_abfe_trajectory(show_progress=False)
+    assert isinstance(reporter, NullImportDatasetSyncProgress)
+    assert len(ABFE_SHOW_TRAJECTORY_STEPS) == 4
+    assert ABFE_SHOW_TRAJECTORY_STEPS[0] == "Load ABFE result metadata"
+    assert ABFE_SHOW_TRAJECTORY_STEPS[2] == "Download trajectory"

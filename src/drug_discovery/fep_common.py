@@ -10,7 +10,9 @@ from beartype import beartype
 from deeporigin.drug_discovery.structures.ligand import Ligand
 from deeporigin.drug_discovery.structures.pose import Pose
 from deeporigin.drug_discovery.structures.prepared_system import PreparedSystem
+from deeporigin.drug_discovery.structures.protein import Protein
 from deeporigin.exceptions import DeepOriginException
+from deeporigin.platform.client import DeepOriginClient
 
 
 @dataclass(frozen=True)
@@ -75,6 +77,46 @@ class RBFEParams(ABFEParams):
 
     binding_n_windows: int = 24
     solvation_n_windows: int = 24
+
+
+@beartype
+def _protein_from_tool_input(
+    ref: dict[str, Any],
+    *,
+    client: DeepOriginClient,
+) -> Protein:
+    """Rehydrate a protein from stored workflow ``protein`` input.
+
+    When both ``id`` and ``file_path`` are present (typical for submitted runs),
+    builds a metadata-only :class:`Protein` without calling the entities API.
+    """
+    protein_id = ref.get("id")
+    file_path = ref.get("file_path")
+    if protein_id is not None and file_path:
+        name = str(file_path).rsplit("/", 1)[-1]
+        return Protein(
+            name=name,
+            structure=None,
+            id=str(protein_id),
+            remote_path=str(file_path),
+        )
+    if protein_id is not None:
+        return Protein.from_id(
+            str(protein_id),
+            client=client,
+            download=False,
+            remote_path_override=file_path,
+        )
+    if file_path:
+        name = str(file_path).rsplit("/", 1)[-1]
+        return Protein(
+            name=name,
+            structure=None,
+            id=None,
+            remote_path=str(file_path),
+        )
+    msg = "Protein input must include 'id' or 'file_path'."
+    raise ValueError(msg)
 
 
 @beartype

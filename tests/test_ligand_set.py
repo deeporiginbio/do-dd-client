@@ -2,6 +2,7 @@ import os
 from pathlib import Path
 import shutil
 import tempfile
+from unittest.mock import MagicMock, patch
 
 import pytest
 from rdkit import Chem
@@ -309,38 +310,32 @@ def test_embed():
     ligands.embed()
 
 
-def test_show(monkeypatch):
-    """Test that LigandSet.show uses legacy MoleculeViewer (multi-mol SDF)."""
-    captured: dict[str, object] = {}
-
-    class FakeViewer:
-        def __init__(self, path: str, format: str = "sdf") -> None:
-            captured["path"] = path
-            captured["format"] = format
-
-        def get_ligand_visualization_config(self) -> dict:
-            return {"fake": True}
-
-        def render_ligand(self, *, ligand_config: dict) -> str:
-            captured["ligand_config"] = ligand_config
-            return "<div id='legacy-ligand-set'>ok</div>"
-
-    monkeypatch.setattr(
-        "deeporigin_molstar.MoleculeViewer",
-        FakeViewer,
-    )
-    monkeypatch.setattr(
-        "deeporigin.utils.notebook.render_html",
-        lambda html, **_kwargs: html,
-    )
-
+def test_show():
+    """Test that LigandSet.show uses render_ligand_set_html with viewer payloads."""
+    mock_builder = MagicMock(return_value="<div id='ligand-set-viewer'>ok</div>")
     ligands = LigandSet.from_smiles(BRD_SMILES)
-    result = ligands.show()
 
-    assert result == "<div id='legacy-ligand-set'>ok</div>"
-    assert captured["format"] == "sdf"
-    assert Path(str(captured["path"])).suffix == ".sdf"
-    assert captured["ligand_config"] == {"fake": True}
+    with (
+        patch(
+            "deeporigin.drug_discovery.docking_common.ligand_payloads_for_viewer",
+        ) as mock_payloads,
+        patch(
+            "deeporigin.viz.molstar_html.render_ligand_set_html",
+            mock_builder,
+        ),
+        patch(
+            "deeporigin.utils.notebook.render_html",
+            side_effect=lambda html, **kwargs: html,
+        ),
+    ):
+        result = ligands.show()
+
+    assert result == "<div id='ligand-set-viewer'>ok</div>"
+    mock_payloads.assert_called_once_with(ligands)
+    mock_builder.assert_called_once()
+    assert (
+        mock_builder.call_args.kwargs["ligand_payloads"] == mock_payloads.return_value
+    )
 
 
 def test_from_dir():

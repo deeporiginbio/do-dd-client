@@ -18,6 +18,8 @@ from deeporigin.viz.molstar_html import (
     render_protein_with_pockets_and_poses_html,
     render_protein_with_pockets_html,
     render_protein_with_poses_html,
+    render_trajectory_html,
+    render_ligand_set_html,
 )
 
 _FIXTURE_PDB = (
@@ -31,6 +33,22 @@ _FIXTURE_POCKET = (
     Path(__file__).parent / "fixtures" / "files" / "pocketfinder" / "pocket_1.pdb"
 )
 _FIXTURE_SDF = Path(__file__).parent / "fixtures" / "files" / "testing" / "brd-2.sdf"
+
+
+def test_render_trajectory_html_uses_fetch_for_binary_decode(tmp_path: Path) -> None:
+    """Trajectory bytes are decoded via fetch(data:...) instead of a per-byte loop."""
+    pdb_path = tmp_path / "system.pdb"
+    pdb_path.write_text(
+        "ATOM      1  N   ALA A   1       0.000   0.000   0.000\n", encoding="utf-8"
+    )
+    xtc_path = tmp_path / "traj.xtc"
+    xtc_path.write_bytes(b"\x00\x05\x08\x00TRAJ")
+
+    html = render_trajectory_html(pdb_path=str(pdb_path), trajectory_path=str(xtc_path))
+
+    assert "loadWithTrajectory" in html
+    assert "data:application/octet-stream;base64," in html
+    assert "charCodeAt" not in html
 
 
 def test_render_protein_html_includes_molstar_bundle_and_api() -> None:
@@ -413,3 +431,27 @@ def test_render_protein_with_box_and_poses_empty_raises() -> None:
             box_size=[10.0, 10.0, 10.0],
             ligand_payloads=[],
         )
+
+
+def test_render_ligand_set_html_empty_raises() -> None:
+    with pytest.raises(ValueError, match="non-empty"):
+        render_ligand_set_html(ligand_payloads=[])
+
+
+def test_render_ligand_set_html_single_ligand_embeds_json_safe_b64() -> None:
+    payload = ligand_data_for_js(path=str(_FIXTURE_SDF), label='lig"and')
+    html = render_ligand_set_html(ligand_payloads=[payload])
+
+    assert "loadFromRawContent" in html
+    assert '\\"and' in html or "\\u0022" in html
+
+
+def test_render_ligand_set_html_multi_ligand_uses_carousel_payloads() -> None:
+    payloads = [
+        ligand_data_for_js(path=str(_FIXTURE_SDF), label="a"),
+        ligand_data_for_js(path=str(_FIXTURE_SDF), label="b"),
+    ]
+    html = render_ligand_set_html(ligand_payloads=payloads)
+
+    assert "ligandPayloads" in html
+    assert '"a"' in html
