@@ -1618,6 +1618,28 @@ def create_tools_router(
                         parsed = []
                     if isinstance(parsed, list):
                         ligands_in = parsed
+        if not ligands_in:
+            project = inputs.get("project")
+            if isinstance(project, dict):
+                target_id = project.get("id")
+                if target_id is not None:
+                    target = str(target_id)
+                    for record in ligands.values():
+                        if not isinstance(record, dict) or record.get("deleted"):
+                            continue
+                        pid = record.get("project_id")
+                        if pid is not None and str(pid) != target:
+                            continue
+                        if pid is None and target != MOCK_DEFAULT_PROJECT_ID:
+                            continue
+                        smiles = record.get("smiles") or record.get("canonical_smiles")
+                        if not smiles:
+                            continue
+                        row: dict[str, Any] = {"smiles": str(smiles)}
+                        lid = record.get("id")
+                        if lid is not None:
+                            row["id"] = str(lid)
+                        ligands_in.append(row)
         return [lig for lig in ligands_in if isinstance(lig, dict)]
 
     def _admet_prediction_rows_from_inputs(

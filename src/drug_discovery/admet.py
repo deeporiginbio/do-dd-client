@@ -516,8 +516,6 @@ class Admet(
                 f"run() supports at most {ADMET_INLINE_LIGAND_CAP} ligands "
                 f"(got {n}). Use start() then wait() or watch()."
             )
-        if n == 0:
-            raise ValueError("Admet requires at least one ligand for run().")
 
     def _ensure_start_preconditions(self) -> None:
         """Raise if :meth:`start` is not valid for this configuration."""

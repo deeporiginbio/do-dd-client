@@ -364,3 +364,9 @@ def test_admet_project_wide_start(client: DeepOriginClient) -> None:
     assert "ligands" not in inputs
     job.start()
     assert job.id is not None
+    job.wait(timeout=30.0, poll_interval=0.1)
+    assert job.status == "Completed"
+    df = job.get_results()
+    assert len(df) >= 1
+    for prop in _ADMET_PROPERTIES:
+        assert prop in df.columns
