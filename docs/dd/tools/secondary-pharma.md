@@ -96,13 +96,17 @@ df = job.get_results()
 `file_path`.
 
 To get the docked structures themselves, use `job.get_poses()`. It downloads
-every docked pose together with the target protein each one was docked into.
-The protein file is saved on your machine, and its location is available as
-`pose.props["receptor_local_path"]`:
+every docked pose. When a result row records a panel receptor
+(`receptor_file_path`), `get_poses()` also downloads that target protein once
+per distinct receptor, verifies it against the row's `structure_sha256`, and
+stores the local path on the pose as `pose.props["receptor_local_path"]`. Rows
+from older runs without a receptor path still return a pose, but without that
+property.
 
 ```{.python notest}
 poses = job.get_poses()
-protein_path = poses[0].props["receptor_local_path"]
+if "receptor_local_path" in poses[0].props:
+    protein_path = poses[0].props["receptor_local_path"]
 ```
 
 If a downloaded protein file doesn't match the one the run used, `get_poses()`

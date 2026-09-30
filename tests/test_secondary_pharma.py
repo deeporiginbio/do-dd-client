@@ -1006,6 +1006,8 @@ def test_secondary_pharma_get_poses_digest_check_ignores_case(
         "protected\\..\\x.pdb",
         "someorg/panels/v1/x.pdb",
         "protected/%2e%2e/x.pdb",
+        "protected/panels/v1/x?y",
+        "protected/panels/v1/x#frag",
         "protected/a\x00b.pdb",
     ],
 )

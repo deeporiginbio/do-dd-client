@@ -202,7 +202,7 @@ def _validate_panel_file_path(panel_file: str) -> str:
 
     Panel files (receptors, catalogs) live under ``protected/``, and the path builds
     both a request URL and a local cache path, so anything outside ``protected/`` or
-    containing ``..``, ``%`` or NUL is refused.
+    containing ``..``, ``%``, ``?``, ``#``, or NUL is refused.
 
     Args:
         panel_file: A ``receptor_file_path`` from a panel-pose row, or a catalog path.
@@ -220,13 +220,15 @@ def _validate_panel_file_path(panel_file: str) -> str:
         not remote.startswith("protected/")
         or ".." in remote.split("/")
         or "%" in remote
+        or "?" in remote
+        or "#" in remote
         or "\x00" in remote
     ):
         raise DeepOriginException(
             title="Invalid panel file path",
             message=(
                 f"Panel file path {panel_file!r} must be under 'protected/' and "
-                "must not contain '..', '%' or NUL."
+                "must not contain '..', '%', '?', '#', or NUL."
             ),
         )
     return remote
@@ -405,6 +407,19 @@ def _fetch_verified_receptor(
                 message=f"Downloaded receptor has sha256 {actual}, expected {expected}.",
             )
     return local
+
+
+def _panel_pose_lookup_hint(*, match_count: int, who_key: str) -> str:
+    """Return a user-facing hint when a panel pose row lookup fails or is ambiguous."""
+    if match_count == 0:
+        hint = "Inspect get_results() for available pairs."
+    elif who_key == "ligand_smiles":
+        hint = "Several ligands share this SMILES."
+    else:
+        hint = "Use uniprot_id to pick one."
+    if who_key == "ligand_smiles":
+        hint += " Pass ligand_id from get_results() instead."
+    return hint
 
 
 def _panel_version_from_rows(rows: list[dict[str, Any]]) -> str | None:
@@ -1334,15 +1349,7 @@ class SecondaryPharmacology(
         ]
         if len(matches) == 1:
             return matches[0]
-        hint = (
-            "Inspect get_results() for available pairs."
-            if not matches
-            else "Several ligands share this SMILES."
-            if who_key == "ligand_smiles"
-            else "Use uniprot_id to pick one."
-        )
-        if who_key == "ligand_smiles":
-            hint += " Pass ligand_id from get_results() instead."
+        hint = _panel_pose_lookup_hint(match_count=len(matches), who_key=who_key)
         raise ValueError(
             f"{len(matches) or 'No'} panel poses for {who_key}={who!r} and "
             f"{column}={wanted!r}. {hint}"
