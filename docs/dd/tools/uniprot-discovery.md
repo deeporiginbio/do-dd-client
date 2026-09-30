@@ -7,7 +7,7 @@ structures. Call `run()` to browse candidates (letter grades and scores from the
 platform). Call `import_proteins()` to download selected (or recommended) PDBs
 and sync them into a project with `uniprot_accession` set.
 
-You must be logged in (`deeporigin login`) before calling `run()` or
+You must be [authenticated](../../how-to/auth.md) before calling `run()` or
 `import_proteins()`. Those calls block until the job finishes. Import requires a
 project id (pass `project_id=...` or set it on the client).
 
