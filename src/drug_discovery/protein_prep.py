@@ -2376,6 +2376,7 @@ class ProteinPrep(
             order=EXECUTION_LIST_ORDER_CREATED_DESC,
             page=0,
             page_size=1,
+            project_id=client.project_id,
         )
         dtos = response.get("data") or []
         if not dtos or not isinstance(dtos[0], dict):

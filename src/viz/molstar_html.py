@@ -103,30 +103,6 @@ def _molstar_trajectory_format(path: str) -> str:
     )
 
 
-def _encode_bytes_base64(data: bytes) -> str:
-    """Return base64 encoding of raw bytes (e.g. XTC trajectory)."""
-    return base64.b64encode(data).decode("ascii")
-
-
-def _read_binary_file(path: str) -> bytes:
-    """Read a file and return its raw bytes."""
-    file_path = Path(path)
-    if not file_path.is_file():
-        raise FileNotFoundError(f"File not found: {path}")
-    return file_path.read_bytes()
-
-
-def _molstar_trajectory_format(path: str) -> str:
-    """Return the Mol* trajectory format string for a file path."""
-    suffix = Path(path).suffix.lstrip(".").lower()
-    if suffix in {"xtc", "trr", "dcd", "nctraj"}:
-        return suffix
-    raise ValueError(
-        f"Unsupported trajectory format {suffix!r} for {path!r}; "
-        "expected .xtc, .trr, .dcd, or .nctraj"
-    )
-
-
 def _json_for_script_tag(value: str) -> str:
     """JSON-encode a string for safe embedding inside a ``<script>`` tag."""
     return json.dumps(value).replace("<", "\\u003c")
@@ -329,6 +305,7 @@ def render_trajectory_html(
     trajectory_format_json = _json_for_script_tag(
         _molstar_trajectory_format(trajectory_path)
     )
+    traj_b64_json = _json_for_script_tag(traj_b64)
 
     script_body = f"""const initViewer = async () => {{
       if (typeof molstarLib === "undefined" || typeof molstarLib.initViewer !== "function") {{
@@ -336,64 +313,10 @@ def render_trajectory_html(
       }}
       const viewer = await molstarLib.initViewer("{_VIEWER_CONTAINER_ID}");
       const proteinData = atob("{pdb_b64}");
-      const trajBin = atob("{traj_b64}");
-      const trajectoryBytes = new Uint8Array(trajBin.length);
-      for (let i = 0; i < trajBin.length; i++) {{
-        trajectoryBytes[i] = trajBin.charCodeAt(i);
-      }}
-      await viewer.api.loadWithTrajectory(
-        {{
-          rawData: proteinData,
-          label: "protein",
-          format: {protein_format_json},
-          isBinary: false,
-        }},
-        {{
-          rawData: trajectoryBytes,
-          label: "trajectory",
-          format: {trajectory_format_json},
-          isBinary: true,
-        }},
+      const trajResponse = await fetch(
+        "data:application/octet-stream;base64," + {traj_b64_json},
       );
-    }};"""
-
-    return _render_viewer_html(script_body=script_body)
-
-
-def render_trajectory_html(
-    *,
-    pdb_path: str,
-    trajectory_path: str,
-) -> str:
-    """Build iframe-ready HTML for protein topology with MD trajectory (XTC, etc.).
-
-    Uses ``viewer.api.loadWithTrajectory`` on the hosted molstarLib bundle.
-
-    Args:
-        pdb_path: Path to the system topology file (PDB or mmCIF).
-        trajectory_path: Path to trajectory coordinates (``.xtc``, ``.trr``, …).
-
-    Returns:
-        A complete HTML document suitable for ``render_html()`` iframe embedding.
-    """
-    pdb_b64 = _encode_text_base64(_read_structure_file(pdb_path))
-    traj_b64 = _encode_bytes_base64(_read_binary_file(trajectory_path))
-    protein_format_json = _json_for_script_tag(_molstar_structure_format(pdb_path))
-    trajectory_format_json = _json_for_script_tag(
-        _molstar_trajectory_format(trajectory_path)
-    )
-
-    script_body = f"""const initViewer = async () => {{
-      if (typeof molstarLib === "undefined" || typeof molstarLib.initViewer !== "function") {{
-        throw new Error("molstarLib bundle did not load from {MOLSTAR_JS_URL}");
-      }}
-      const viewer = await molstarLib.initViewer("{_VIEWER_CONTAINER_ID}");
-      const proteinData = atob("{pdb_b64}");
-      const trajBin = atob("{traj_b64}");
-      const trajectoryBytes = new Uint8Array(trajBin.length);
-      for (let i = 0; i < trajBin.length; i++) {{
-        trajectoryBytes[i] = trajBin.charCodeAt(i);
-      }}
+      const trajectoryBytes = new Uint8Array(await trajResponse.arrayBuffer());
       await viewer.api.loadWithTrajectory(
         {{
           rawData: proteinData,
@@ -402,7 +325,7 @@ def render_trajectory_html(
           isBinary: false,
         }},
         {{
-          rawData: trajectoryBytes,
+          rawData: trajectoryBytes.buffer,
           label: "trajectory",
           format: {trajectory_format_json},
           isBinary: true,

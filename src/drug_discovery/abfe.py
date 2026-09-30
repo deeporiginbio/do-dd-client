@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+import struct
 from typing import Any, Literal, Self
 
 from beartype import beartype
@@ -15,6 +16,7 @@ from deeporigin.drug_discovery.fep_common import (
     _fep_params_from_inputs,
     _pose_tool_ref,
     _prepared_system_tool_ref,
+    _protein_from_tool_input,
     _simulation_blocks,
 )
 from deeporigin.drug_discovery.notebook_watch_mixin import NotebookWatchMixin
@@ -158,6 +160,211 @@ def _abfe_tool_run_root(*, remote_trajectory_path: str) -> str:
 
 
 @beartype
+def _abfe_remote_system_pdb_path(data: dict[str, Any]) -> str | None:
+    """Return the remote system PDB path from merged ABFE / system-prep result ``data``."""
+    pdb = data.get("system_pdb_file_path")
+    if isinstance(pdb, str) and pdb.strip():
+        return pdb.strip()
+    binding_xml = data.get("binding_xml_file_path")
+    if isinstance(binding_xml, str) and binding_xml.strip():
+        return str(Path(binding_xml.strip()).parent / "system.pdb")
+    return None
+
+
+@beartype
+def _abfe_remote_system_pdb_path_from_prepared_system(
+    prepared: PreparedSystem,
+) -> str | None:
+    """Return system PDB remote path from a :class:`PreparedSystem` (no API calls)."""
+    if prepared.system_pdb_path and prepared.system_pdb_path.strip():
+        return prepared.system_pdb_path.strip()
+    if prepared.binding_xml_path and prepared.binding_xml_path.strip():
+        return str(Path(prepared.binding_xml_path.strip()).parent / "system.pdb")
+    return None
+
+
+@beartype
+def _abfe_remote_trajectory_topology_path(
+    data: dict[str, Any],
+    *,
+    step: Literal["md", "binding", "solvation"],
+) -> str | None:
+    """Return a topology whose atom count matches the selected trajectory."""
+    if step in ("binding", "solvation"):
+        solute = data.get("solute_pdb_file_path")
+        if isinstance(solute, str) and solute.strip():
+            return solute.strip()
+    return _abfe_remote_system_pdb_path(data)
+
+
+@beartype
+def _abfe_remote_trajectory_topology_path_from_prepared_system(
+    prepared: PreparedSystem,
+    *,
+    step: Literal["md", "binding", "solvation"],
+) -> str | None:
+    """Return a matching trajectory topology from prepared-system metadata."""
+    if (
+        step in ("binding", "solvation")
+        and prepared.solute_pdb_path
+        and prepared.solute_pdb_path.strip()
+    ):
+        return prepared.solute_pdb_path.strip()
+    return _abfe_remote_system_pdb_path_from_prepared_system(prepared)
+
+
+_PDB_SOLVENT_RESIDUE_NAMES = frozenset({"HOH", "SOL", "TIP3", "TIP3P", "WAT"})
+_PDB_COORDINATE_RECORD_PREFIXES = ("ATOM  ", "HETATM")
+
+
+@beartype
+def _abfe_xtc_atom_count(trajectory_path: str) -> int:
+    """Read the atom count from an XTC file header."""
+    with Path(trajectory_path).open("rb") as handle:
+        header = handle.read(8)
+    if len(header) != 8:
+        raise DeepOriginException(
+            title="Invalid XTC trajectory",
+            message=f"Trajectory file is too short: {trajectory_path}",
+        ) from None
+    magic, trajectory_atoms = struct.unpack(">ii", header)
+    if magic != 1995 or trajectory_atoms <= 0:
+        raise DeepOriginException(
+            title="Invalid XTC trajectory",
+            message=f"Cannot read atom count from trajectory: {trajectory_path}",
+        ) from None
+    return trajectory_atoms
+
+
+def _abfe_pdb_without_solvent(
+    lines: list[str],
+) -> tuple[list[str], set[int]]:
+    """Remove solvent coordinates and their CONECT records from PDB lines."""
+    removed_serials: set[int] = set()
+    filtered: list[str] = []
+    for line in lines:
+        if line.startswith(_PDB_COORDINATE_RECORD_PREFIXES):
+            residue_name = line[17:20].strip().upper()
+            if residue_name in _PDB_SOLVENT_RESIDUE_NAMES:
+                try:
+                    removed_serials.add(int(line[6:11]))
+                except ValueError:
+                    pass
+                continue
+        filtered.append(line)
+
+    if not removed_serials:
+        return filtered, removed_serials
+    filtered = [
+        line
+        for line in filtered
+        if not (
+            line.startswith("CONECT")
+            and any(
+                token.isdigit() and int(token) in removed_serials
+                for token in line[6:].split()
+            )
+        )
+    ]
+    return filtered, removed_serials
+
+
+@beartype
+def _abfe_prepare_trajectory_topology(
+    *,
+    pdb_path: str,
+    trajectory_path: str,
+    step: Literal["md", "binding", "solvation"],
+) -> str:
+    """Return a PDB whose coordinate count matches an ABFE XTC trajectory.
+
+    FEP ``solute_trajectory`` files omit retained crystallographic waters, while
+    historical ``solute.pdb`` outputs can still contain those waters. Mol*
+    requires topology and frame atom counts to match exactly.
+    """
+    if step == "md" or Path(trajectory_path).suffix.lower() != ".xtc":
+        return pdb_path
+
+    trajectory_atoms = _abfe_xtc_atom_count(trajectory_path)
+    pdb = Path(pdb_path)
+    lines = pdb.read_text(encoding="utf-8").splitlines(keepends=True)
+    coordinate_lines = [
+        line for line in lines if line.startswith(_PDB_COORDINATE_RECORD_PREFIXES)
+    ]
+    if len(coordinate_lines) == trajectory_atoms:
+        return pdb_path
+
+    filtered, _ = _abfe_pdb_without_solvent(lines)
+    filtered_atom_count = sum(
+        line.startswith(_PDB_COORDINATE_RECORD_PREFIXES) for line in filtered
+    )
+    if filtered_atom_count != trajectory_atoms:
+        raise DeepOriginException(
+            title="Trajectory topology mismatch",
+            message=(
+                f"Trajectory contains {trajectory_atoms} atoms, but topology "
+                f"contains {len(coordinate_lines)} ({filtered_atom_count} after "
+                "removing solvent)."
+            ),
+            fix="Use the solute topology generated by the same ABFE run.",
+        ) from None
+
+    prepared_path = pdb.with_name(f"{pdb.stem}.trajectory-{trajectory_atoms}.pdb")
+    prepared_path.write_text("".join(filtered), encoding="utf-8")
+    return str(prepared_path)
+
+
+_LEGACY_ABFE_RESULT_TOOL_KEYS: frozenset[str] = frozenset(
+    {"deeporigin.abfe-e2e-workflow"},
+)
+
+
+@beartype
+def _abfe_normalize_execution_dto_tool_key(dto: dict[str, Any]) -> dict[str, Any]:
+    """Map legacy ABFE workflow tool keys to the current catalog key for ``from_dto``."""
+    tool = dto.get("tool")
+    if not isinstance(tool, dict):
+        return dto
+    key = tool.get("key")
+    if key not in _LEGACY_ABFE_RESULT_TOOL_KEYS:
+        return dto
+    canonical = TOOL_KEYS_AND_VERSIONS["abfe"]["tool_key"]
+    return {**dto, "tool": {**tool, "key": canonical}}
+
+
+@beartype
+def _abfe_merged_result_data_for_execution(
+    response: dict[str, Any],
+    *,
+    execution_tool_key: str,
+) -> dict[str, Any] | None:
+    """Merge result ``data`` payloads for one ABFE execution (all related tool keys).
+
+    Combined runs may store paths on system-prep rows and trajectories on ABFE rows.
+    ``from_id`` executions use the DTO tool key, which may differ from the catalog
+    ``deeporigin.abfe-end-to-end`` constant.
+    """
+    sysprep_key = TOOL_KEYS_AND_VERSIONS["sysprep"]["tool_key"]
+    abfe_key = TOOL_KEYS_AND_VERSIONS["abfe"]["tool_key"]
+    allowed = {
+        execution_tool_key,
+        sysprep_key,
+        abfe_key,
+    } | _LEGACY_ABFE_RESULT_TOOL_KEYS
+    merged: dict[str, Any] = {}
+    for record in response.get("data") or []:
+        if not isinstance(record, dict):
+            continue
+        tool_key = record.get("tool_key")
+        if tool_key not in allowed:
+            continue
+        data = record.get("data")
+        if isinstance(data, dict) and data:
+            merged.update(data)
+    return merged if merged else None
+
+
+@beartype
 def _abfe_pick_analysis_block(
     *,
     blocks: list[Any],
@@ -212,17 +419,23 @@ def _abfe_filtered_records(
 
 
 @beartype
-def _abfe_first_result_data(
+def _abfe_merged_result_data(
     response: dict[str, Any],
     *,
     tool_key: str,
 ) -> dict[str, Any] | None:
-    """Return the ``data`` payload from the first ABFE result record."""
+    """Merge ``data`` payloads from all ABFE result records in page order.
+
+    Combined ``system-prep`` + ``abfe`` workflows may emit multiple rows under
+    the same ``tool_key`` (for example prepared-system paths in an early row
+    and FEP energies / ``binding_analysis`` in a later row).
+    """
+    merged: dict[str, Any] = {}
     for record in _abfe_filtered_records(response, tool_key=tool_key):
         data = record.get("data")
         if isinstance(data, dict) and data:
-            return data
-    return None
+            merged.update(data)
+    return merged if merged else None
 
 
 @beartype
@@ -233,9 +446,9 @@ def _abfe_results_dataframe(
 ) -> pd.DataFrame | None:
     """Build a one-row summary table from ABFE result records.
 
-    Combined workflow executions also store system-prep rows; those are excluded.
+    Combined workflow executions may store multiple ABFE rows; payloads are merged.
     """
-    data = _abfe_first_result_data(response, tool_key=tool_key)
+    data = _abfe_merged_result_data(response, tool_key=tool_key)
     if data is None:
         return None
     df = pd.json_normalize([data])
@@ -435,19 +648,10 @@ class ABFE(Execution, AsyncExecutableMixin, NotebookWatchMixin):
 
         if "system-prep" in instance.steps:
             protein_input = inputs.get("protein", {})
-            protein_id = protein_input.get("id")
-            if protein_id is not None:
-                instance.protein = Protein.from_id(
-                    str(protein_id),
+            if isinstance(protein_input, dict) and protein_input:
+                instance.protein = _protein_from_tool_input(
+                    protein_input,
                     client=instance.client,
-                    download=False,
-                    remote_path_override=protein_input.get("file_path"),
-                )
-            elif protein_input.get("file_path"):
-                instance.protein = Protein(
-                    name="rehydrated",
-                    id=None,
-                    remote_path=str(protein_input["file_path"]),
                 )
 
             pose_input = inputs.get("pose1") or inputs.get("ligand1") or {}
@@ -480,6 +684,10 @@ class ABFE(Execution, AsyncExecutableMixin, NotebookWatchMixin):
         """Construct an ABFE instance from an existing platform execution ID.
 
         Fetches the execution record via the API and delegates to :meth:`from_dto`.
+        When the execution DTO includes ``projectId``, :attr:`client.project_id`
+        is updated to match so result and file lookups use the same scope as the
+        run (set ``client.project_id = None`` before calling when the notebook
+        project should not filter results).
 
         Args:
             id: Platform execution ID.
@@ -488,7 +696,11 @@ class ABFE(Execution, AsyncExecutableMixin, NotebookWatchMixin):
         Returns:
             A fully-hydrated ABFE instance with status synced from the platform.
         """
-        return super().from_id(id, client=client)
+        if client is None:
+            client = DeepOriginClient()
+        dto = client.executions.get(id)  # ty:ignore[unresolved-attribute]
+        dto = _abfe_normalize_execution_dto_tool_key(dto)
+        return cls._from_dto_maybe_quiet(dto, client=client, quiet=False)
 
     def _validate_step_inputs(self) -> None:
         """Validate constructor arguments for the selected workflow steps."""
@@ -598,6 +810,7 @@ class ABFE(Execution, AsyncExecutableMixin, NotebookWatchMixin):
         self,
         *,
         ligand1_id: str | None = None,
+        sync: bool = True,
     ) -> PreparedSystem:
         """Load a :class:`PreparedSystem` from system-prep results for this execution.
 
@@ -607,6 +820,9 @@ class ABFE(Execution, AsyncExecutableMixin, NotebookWatchMixin):
 
         Args:
             ligand1_id: Optional ligand ID to filter by.
+            sync: When ``True`` (default), refresh execution status from the
+                platform before loading prepared-system rows. Pass ``False`` when
+                the caller already synced or only needs paths from results.
 
         Returns:
             A :class:`PreparedSystem` with paths and metadata from the result row.
@@ -620,7 +836,8 @@ class ABFE(Execution, AsyncExecutableMixin, NotebookWatchMixin):
                 "Cannot get prepared system: no execution has been started (id is None)."
             )
 
-        self.sync()
+        if sync:
+            self.sync()
 
         try:
             systems = PreparedSystem.from_result(
@@ -656,6 +873,34 @@ class ABFE(Execution, AsyncExecutableMixin, NotebookWatchMixin):
             return self.prepared_system
         return self.get_prepared_system()
 
+    def _fetch_merged_abfe_result_data(self) -> dict[str, Any]:
+        """Load merged ABFE + system-prep result payloads for this execution id."""
+        if self.id is None:
+            raise ValueError(
+                "Cannot fetch ABFE results: no execution has been started (id is None)."
+            )
+        response = self.client.results.get(compute_job_id=self.id)
+        data = _abfe_merged_result_data_for_execution(
+            response,
+            execution_tool_key=self.tool_key,
+        )
+        if data is not None:
+            return data
+        response = self.client.results.get(
+            compute_job_id=self.id,
+            filter_dict={"tool_key": {"eq": self.tool_key}},
+        )
+        data = _abfe_merged_result_data(response, tool_key=self.tool_key)
+        if data is None:
+            raise DeepOriginException(
+                title="No ABFE results for this execution",
+                message=(
+                    "The data platform returned no ABFE or system-prep result rows "
+                    "for this job."
+                ),
+            ) from None
+        return data
+
     @beartype
     def show_trajectory(
         self,
@@ -663,6 +908,7 @@ class ABFE(Execution, AsyncExecutableMixin, NotebookWatchMixin):
         step: Literal["md", "binding", "solvation"],
         window: int = 1,
         repeat: int = 1,
+        show_progress: bool | None = None,
     ) -> Any:
         """Visualize an ABFE trajectory in a notebook using Mol*.
 
@@ -682,6 +928,9 @@ class ABFE(Execution, AsyncExecutableMixin, NotebookWatchMixin):
             repeat: Repeat index from the tool results (matched to the
                 ``repeat`` field when present, otherwise 1-based index into the
                 analysis list).
+            show_progress: In Jupyter, show a compact step progress bar while
+                paths are resolved and files are downloaded. ``None`` enables
+                progress only in notebook environments; pass ``False`` to disable.
 
         Returns:
             Notebook display output from :func:`deeporigin.utils.notebook.render_html`.
@@ -703,97 +952,137 @@ class ABFE(Execution, AsyncExecutableMixin, NotebookWatchMixin):
                 fix="Please specify a window number greater than 0",
             ) from None
 
-        self.sync()
-        if not is_success_status(self.status):
-            raise DeepOriginException(
-                title="Job not complete",
-                message=(
-                    "Trajectory is only available after a successful run. "
-                    f"Current status is {self.status!r}."
-                ),
-                fix="Wait until the execution status is Completed, then try again.",
-            ) from None
-
-        response = self.client.results.get(
-            compute_job_id=self.id,
-            filter_dict={"tool_key": {"eq": self.tool_key}},
+        from deeporigin.drug_discovery.import_dataset_sync_display import (
+            import_dataset_sync_progress_for_abfe_trajectory,
         )
-        data = _abfe_first_result_data(response, tool_key=self.tool_key)
-        if data is None:
-            raise DeepOriginException(
-                title="No ABFE results for this execution",
-                message=(
-                    "The data platform returned no ABFE result rows for this job. "
-                    "System-prep-only rows are ignored."
-                ),
-            ) from None
 
-        prepared = self._resolved_prepared_system()
-        if prepared.system_pdb_path:
-            remote_pdb = prepared.system_pdb_path
-        elif prepared.binding_xml_path:
-            remote_pdb = str(Path(prepared.binding_xml_path).parent / "system.pdb")
-        else:
-            raise DeepOriginException(
-                title="No system structure path",
-                message="Cannot locate system.pdb: set prepared_system.system_pdb_path "
-                "or binding_xml_path.",
-            ) from None
+        progress = import_dataset_sync_progress_for_abfe_trajectory(
+            show_progress=show_progress,
+        )
+        step_index = 0
 
-        if step in ("binding", "solvation"):
-            analysis_key = (
-                "binding_analysis" if step == "binding" else "solvation_analysis"
+        try:
+            progress.start_step(
+                step_index,
+                detail=f"{step} · window {window}" if step != "md" else step,
             )
-            blocks = data.get(analysis_key)
-            if not isinstance(blocks, list):
+            if not is_success_status(self.status):
+                self.sync()
+            if not is_success_status(self.status):
                 raise DeepOriginException(
-                    title="Missing analysis in results",
-                    message=f"Results do not contain a list at {analysis_key!r}.",
+                    title="Job not complete",
+                    message=(
+                        "Trajectory is only available after a successful run. "
+                        f"Current status is {self.status!r}."
+                    ),
+                    fix="Wait until the execution status is Completed, then try again.",
                 ) from None
 
-            block = _abfe_pick_analysis_block(blocks=blocks, repeat=repeat)
-            traj = block.get("trajectories")
-            if not isinstance(traj, dict):
+            data = self._fetch_merged_abfe_result_data()
+
+            remote_pdb = _abfe_remote_trajectory_topology_path(data, step=step)
+            if remote_pdb is None and self.prepared_system is not None:
+                remote_pdb = _abfe_remote_trajectory_topology_path_from_prepared_system(
+                    self.prepared_system,
+                    step=step,
+                )
+            if remote_pdb is None:
+                prepared = self.get_prepared_system(sync=False)
+                remote_pdb = _abfe_remote_trajectory_topology_path_from_prepared_system(
+                    prepared,
+                    step=step,
+                )
+            if not remote_pdb:
                 raise DeepOriginException(
-                    title="Missing trajectories",
-                    message=f"No trajectories map in results for {analysis_key!r}.",
+                    title="No trajectory topology path",
+                    message=(
+                        "Cannot locate a PDB topology matching this trajectory in "
+                        "ABFE results or prepared-system metadata."
+                    ),
+                    fix=(
+                        "Ensure the run recorded solute_pdb_file_path for binding/"
+                        "solvation trajectories or system_pdb_file_path for MD."
+                    ),
                 ) from None
 
-            window_key = f"window_{window}"
-            if window_key not in traj:
-                valid = _abfe_sorted_window_numbers(trajectories=traj)
-                raise DeepOriginException(
-                    title="Invalid window number",
-                    message=f"Valid windows are: {valid}",
-                ) from None
+            if step in ("binding", "solvation"):
+                analysis_key = (
+                    "binding_analysis" if step == "binding" else "solvation_analysis"
+                )
+                blocks = data.get(analysis_key)
+                if not isinstance(blocks, list):
+                    raise DeepOriginException(
+                        title="Missing analysis in results",
+                        message=f"Results do not contain a list at {analysis_key!r}.",
+                    ) from None
 
-            remote_xtc = traj[window_key]
-            if not isinstance(remote_xtc, str) or not remote_xtc.strip():
-                raise DeepOriginException(
-                    title="Invalid trajectory path",
-                    message=f"Results entry {window_key!r} is missing or not a path string.",
-                ) from None
-            remote_xtc = remote_xtc.strip()
-        else:
-            sample_path = _abfe_first_remote_trajectory_path(data=data)
-            root = _abfe_tool_run_root(remote_trajectory_path=sample_path)
-            remote_xtc = (
-                f"{root}/protein/ligand/simple_md/simple_md/prod/"
-                "_allatom_trajectory_40ps.xtc"
+                block = _abfe_pick_analysis_block(blocks=blocks, repeat=repeat)
+                traj = block.get("trajectories")
+                if not isinstance(traj, dict):
+                    raise DeepOriginException(
+                        title="Missing trajectories",
+                        message=f"No trajectories map in results for {analysis_key!r}.",
+                    ) from None
+
+                window_key = f"window_{window}"
+                if window_key not in traj:
+                    valid = _abfe_sorted_window_numbers(trajectories=traj)
+                    raise DeepOriginException(
+                        title="Invalid window number",
+                        message=f"Valid windows are: {valid}",
+                    ) from None
+
+                remote_xtc = traj[window_key]
+                if not isinstance(remote_xtc, str) or not remote_xtc.strip():
+                    raise DeepOriginException(
+                        title="Invalid trajectory path",
+                        message=(
+                            f"Results entry {window_key!r} is missing or not a path string."
+                        ),
+                    ) from None
+                remote_xtc = remote_xtc.strip()
+            else:
+                sample_path = _abfe_first_remote_trajectory_path(data=data)
+                root = _abfe_tool_run_root(remote_trajectory_path=sample_path)
+                remote_xtc = (
+                    f"{root}/protein/ligand/simple_md/simple_md/prod/"
+                    "_allatom_trajectory_40ps.xtc"
+                )
+
+            progress.finish_step(step_index, detail=Path(remote_xtc).name)
+            step_index += 1
+
+            progress.start_step(step_index, detail=Path(remote_pdb).name)
+            local_pdb = self.client.files.download(remote_pdb, lazy=True)
+            progress.finish_step(step_index)
+            step_index += 1
+
+            progress.start_step(step_index, detail=Path(remote_xtc).name)
+            local_xtc = self.client.files.download(remote_xtc, lazy=True)
+            progress.finish_step(step_index)
+            step_index += 1
+
+            from deeporigin.utils.notebook import render_html
+            from deeporigin.viz.molstar_html import render_trajectory_html
+
+            progress.start_step(step_index)
+            local_pdb = _abfe_prepare_trajectory_topology(
+                pdb_path=local_pdb,
+                trajectory_path=local_xtc,
+                step=step,
             )
-
-        local_pdb = self.client.files.download(remote_pdb, lazy=True)
-        local_xtc = self.client.files.download(remote_xtc, lazy=True)
-
-        from deeporigin.utils.notebook import render_html
-        from deeporigin.viz.molstar_html import render_trajectory_html
-
-        return render_html(
-            render_trajectory_html(
+            viewer_html = render_trajectory_html(
                 pdb_path=local_pdb,
                 trajectory_path=local_xtc,
             )
-        )
+            progress.finish_step(step_index)
+
+            return render_html(viewer_html)
+        except Exception as exc:
+            progress.fail_step(step_index, message=str(exc))
+            raise
+        finally:
+            progress.close()
 
     @beartype
     def show_overlap_matrix(
@@ -804,7 +1093,7 @@ class ABFE(Execution, AsyncExecutableMixin, NotebookWatchMixin):
     ) -> None:
         """Display the overlap-matrix PNG for this execution in Jupyter.
 
-        Reads the first data-platform result row for this job (same payload as
+        Reads merged data-platform result rows for this job (same payload as
         ``client.results.get(compute_job_id=abfe.id)``), takes
         ``overlap_matrix_plot`` from ``binding_analysis`` or
         ``solvation_analysis`` for the chosen repeat, downloads via
@@ -842,7 +1131,7 @@ class ABFE(Execution, AsyncExecutableMixin, NotebookWatchMixin):
             compute_job_id=self.id,
             filter_dict={"tool_key": {"eq": self.tool_key}},
         )
-        data = _abfe_first_result_data(response, tool_key=self.tool_key)
+        data = _abfe_merged_result_data(response, tool_key=self.tool_key)
         if data is None:
             raise DeepOriginException(
                 title="No overlap matrix found for this run",
@@ -887,7 +1176,7 @@ class ABFE(Execution, AsyncExecutableMixin, NotebookWatchMixin):
     ) -> None:
         """Display the time-convergence PNG for this execution in Jupyter.
 
-        Reads the first data-platform result row for this job (same payload as
+        Reads merged data-platform result rows for this job (same payload as
         ``client.results.get(compute_job_id=abfe.id)``), takes ``convergence_plot``
         from ``binding_analysis`` or ``solvation_analysis`` for the chosen
         repeat, downloads via :meth:`deeporigin.platform.files.Files.download`,
@@ -924,7 +1213,7 @@ class ABFE(Execution, AsyncExecutableMixin, NotebookWatchMixin):
             compute_job_id=self.id,
             filter_dict={"tool_key": {"eq": self.tool_key}},
         )
-        data = _abfe_first_result_data(response, tool_key=self.tool_key)
+        data = _abfe_merged_result_data(response, tool_key=self.tool_key)
         if data is None:
             raise DeepOriginException(
                 title="No convergence plot found for this run",

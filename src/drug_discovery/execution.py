@@ -35,7 +35,11 @@ from deeporigin.platform.constants import (
     is_success_status,
     normalize_platform_status,
 )
-from deeporigin.platform.project_scope import require_client_project_id
+from deeporigin.platform.project_scope import (
+    adopt_client_project_from_execution_dto,
+    execution_project_scope,
+    require_client_project_id,
+)
 from deeporigin.utils.constants import (
     EXECUTION_LIST_ORDER_CREATED_DESC,
     TOOL_EXECUTION_POST_TIMEOUT_SECONDS,
@@ -611,14 +615,16 @@ class Execution:
 
             client = DeepOriginClient()
 
-        instance = object.__new__(cls)
-        instance.client = client
-        instance.update_from_dto(dto)
+        with execution_project_scope(client, dto):
+            instance = object.__new__(cls)
+            instance.client = client
+            instance.update_from_dto(dto)
 
-        post_init = getattr(instance, "_init_after_from_dto", None)
-        if post_init is not None:
-            post_init()
+            post_init = getattr(instance, "_init_after_from_dto", None)
+            if post_init is not None:
+                post_init()
 
+        adopt_client_project_from_execution_dto(client, dto)
         return instance
 
     @classmethod
@@ -682,7 +688,8 @@ class Execution:
 
         Calls ``client.executions.list`` with ``tool_key``, ``order`` set to
         :data:`~deeporigin.utils.constants.EXECUTION_LIST_ORDER_CREATED_DESC`,
-        and ``page_size=1``, then delegates to :meth:`from_dto`. Concrete
+        ``page_size=1``, and the client's ``project_id`` when set, then
+        delegates to :meth:`from_dto`. Concrete
         subclasses inherit this method; domain state is restored via their
         ``from_dto`` overrides.
 
@@ -714,6 +721,7 @@ class Execution:
             order=EXECUTION_LIST_ORDER_CREATED_DESC,
             page=0,
             page_size=1,
+            project_id=client.project_id,
         )
         dtos = response.get("data") or []
         if not dtos:

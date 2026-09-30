@@ -18,6 +18,7 @@ from deeporigin.viz.molstar_html import (
     render_protein_with_pockets_and_poses_html,
     render_protein_with_pockets_html,
     render_protein_with_poses_html,
+    render_trajectory_html,
 )
 
 _FIXTURE_PDB = (
@@ -31,6 +32,22 @@ _FIXTURE_POCKET = (
     Path(__file__).parent / "fixtures" / "files" / "pocketfinder" / "pocket_1.pdb"
 )
 _FIXTURE_SDF = Path(__file__).parent / "fixtures" / "files" / "testing" / "brd-2.sdf"
+
+
+def test_render_trajectory_html_uses_fetch_for_binary_decode(tmp_path: Path) -> None:
+    """Trajectory bytes are decoded via fetch(data:...) instead of a per-byte loop."""
+    pdb_path = tmp_path / "system.pdb"
+    pdb_path.write_text(
+        "ATOM      1  N   ALA A   1       0.000   0.000   0.000\n", encoding="utf-8"
+    )
+    xtc_path = tmp_path / "traj.xtc"
+    xtc_path.write_bytes(b"\x00\x05\x08\x00TRAJ")
+
+    html = render_trajectory_html(pdb_path=str(pdb_path), trajectory_path=str(xtc_path))
+
+    assert "loadWithTrajectory" in html
+    assert "data:application/octet-stream;base64," in html
+    assert "charCodeAt" not in html
 
 
 def test_render_protein_html_includes_molstar_bundle_and_api() -> None:

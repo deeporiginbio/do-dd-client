@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+import struct
 from unittest.mock import MagicMock, patch
 
 import pandas as pd
@@ -10,6 +12,12 @@ import pytest
 from deeporigin.drug_discovery.abfe import (
     ABFE,
     _abfe_default_name_from_entities,
+    _abfe_merged_result_data,
+    _abfe_merged_result_data_for_execution,
+    _abfe_prepare_trajectory_topology,
+    _abfe_remote_system_pdb_path,
+    _abfe_remote_system_pdb_path_from_prepared_system,
+    _abfe_remote_trajectory_topology_path,
     _abfe_results_dataframe,
     _ligand_display_label_from_entity,
     _pose_from_tool_input,
@@ -240,7 +248,9 @@ def test_abfe_from_dto_rehydrates_combined_pose(client: DeepOriginClient) -> Non
             "padding": 1.25,
         },
     }
-    abfe = ABFE.from_dto(fake_dto, client=client)
+    with patch.object(client.entities, "get_protein") as get_protein:
+        abfe = ABFE.from_dto(fake_dto, client=client)
+    get_protein.assert_not_called()
     assert abfe.steps == ["system-prep", "abfe"]
     assert abfe.protein is not None
     assert abfe.protein.id == "prot-1"
@@ -529,6 +539,247 @@ def test_abfe_accepts_explicit_name_override_lv0():
     )
     abfe = ABFE(prepared_system=prepared_system, name="Custom ABFE label")
     assert abfe.name == "Custom ABFE label"
+
+
+def test_abfe_merged_result_data_for_execution_includes_sysprep_rows() -> None:
+    """Trajectory paths may live on system-prep rows under a different tool_key."""
+    abfe_tool_key = TOOL_KEYS_AND_VERSIONS["abfe"]["tool_key"]
+    sysprep_tool_key = TOOL_KEYS_AND_VERSIONS["sysprep"]["tool_key"]
+    response = {
+        "data": [
+            {
+                "tool_key": sysprep_tool_key,
+                "data": {
+                    "system_pdb_file_path": "tool-runs/job/workflow/system.pdb",
+                },
+            },
+            {
+                "tool_key": abfe_tool_key,
+                "data": {
+                    "binding_analysis": [
+                        {
+                            "repeat": 1,
+                            "trajectories": {"window_1": "tool-runs/job/window_1.xtc"},
+                        }
+                    ],
+                },
+            },
+        ]
+    }
+    merged = _abfe_merged_result_data_for_execution(
+        response,
+        execution_tool_key=abfe_tool_key,
+    )
+    assert merged is not None
+    assert merged["system_pdb_file_path"] == "tool-runs/job/workflow/system.pdb"
+    assert merged["binding_analysis"][0]["trajectories"]["window_1"].endswith(
+        "window_1.xtc"
+    )
+
+
+def test_abfe_remote_system_pdb_path_from_prepared_system_binding_xml() -> None:
+    ps = PreparedSystem(
+        binding_xml_path="tool-runs/uuid/bsm_system.xml",
+        solvation_xml_path="tool-runs/uuid/solv.xml",
+        system_pdb_path="",
+    )
+    assert _abfe_remote_system_pdb_path_from_prepared_system(ps) == (
+        "tool-runs/uuid/system.pdb"
+    )
+    assert (
+        _abfe_remote_system_pdb_path(
+            {"binding_xml_file_path": "tool-runs/uuid/bsm_system.xml"}
+        )
+        == "tool-runs/uuid/system.pdb"
+    )
+
+
+def test_abfe_trajectory_topology_uses_solute_pdb_for_fep_windows() -> None:
+    data = {
+        "system_pdb_file_path": "tool-runs/uuid/system.pdb",
+        "solute_pdb_file_path": "tool-runs/uuid/solute.pdb",
+    }
+    assert (
+        _abfe_remote_trajectory_topology_path(data, step="binding")
+        == "tool-runs/uuid/solute.pdb"
+    )
+    assert (
+        _abfe_remote_trajectory_topology_path(data, step="solvation")
+        == "tool-runs/uuid/solute.pdb"
+    )
+    assert (
+        _abfe_remote_trajectory_topology_path(data, step="md")
+        == "tool-runs/uuid/system.pdb"
+    )
+
+
+def test_abfe_prepare_trajectory_topology_removes_retained_water(
+    tmp_path: Path,
+) -> None:
+    pdb = tmp_path / "solute.pdb"
+    pdb.write_text(
+        "ATOM      1  N   ALA A   1       0.000   0.000   0.000  1.00  0.00           N\n"
+        "ATOM      2  CA  ALA A   1       1.000   0.000   0.000  1.00  0.00           C\n"
+        "HETATM    3  O   WAT A   2       2.000   0.000   0.000  1.00  0.00           O\n"
+        "CONECT    1    2\n"
+        "CONECT    3    1\n"
+        "END\n",
+        encoding="utf-8",
+    )
+    xtc = tmp_path / "trajectory.xtc"
+    xtc.write_bytes(struct.pack(">ii", 1995, 2))
+
+    prepared = Path(
+        _abfe_prepare_trajectory_topology(
+            pdb_path=str(pdb),
+            trajectory_path=str(xtc),
+            step="binding",
+        )
+    )
+
+    assert prepared != pdb
+    text = prepared.read_text(encoding="utf-8")
+    assert " WAT " not in text
+    assert "CONECT    1    2" in text
+    assert "CONECT    3    1" not in text
+
+
+def test_abfe_from_id_adopts_execution_project_id(client: DeepOriginClient) -> None:
+    """from_id leaves client.project_id aligned with the execution DTO."""
+    abfe_tool_key = TOOL_KEYS_AND_VERSIONS["abfe"]["tool_key"]
+    fake_dto = {
+        "executionId": "exec-adopt-proj",
+        "status": "Completed",
+        "projectId": "proj-from-exec",
+        "tool": {"key": abfe_tool_key, "version": "0.1.0"},
+        "userInputs": {
+            "steps": ["abfe"],
+            "prepared_system": {
+                "binding_xml_file_path": "remote/binding.xml",
+                "solvation_xml_ligand_file_path": "remote/solvation.xml",
+                "protein_id": "prot-1",
+                "ligand1_id": "lig-1",
+            },
+            "binding": {"steps": 1, "repeats": 1, "n_windows": 2},
+            "solvation": {"steps": 1, "repeats": 1, "n_windows": 2},
+        },
+    }
+    client.project_id = "proj-notebook"
+    abfe = ABFE.from_dto(fake_dto, client=client)
+    assert abfe.id == "exec-adopt-proj"
+    assert client.project_id == "proj-from-exec"
+
+
+def test_abfe_show_trajectory_from_dto_uses_merged_results(
+    client: DeepOriginClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """from_id-style ABFE (no system_pdb in inputs) resolves paths from results only."""
+    abfe_tool_key = TOOL_KEYS_AND_VERSIONS["abfe"]["tool_key"]
+    fake_dto = {
+        "executionId": "exec-traj",
+        "status": "Completed",
+        "tool": {"key": abfe_tool_key, "version": "0.1.0"},
+        "userInputs": {
+            "steps": ["abfe"],
+            "prepared_system": {
+                "binding_xml_file_path": "tool-runs/prep/bsm_system.xml",
+                "solvation_xml_ligand_file_path": "tool-runs/prep/solvation.xml",
+                "protein_id": "prot-1",
+                "ligand1_id": "lig-1",
+            },
+            "binding": {"steps": 1, "repeats": 1, "n_windows": 2},
+            "solvation": {"steps": 1, "repeats": 1, "n_windows": 2},
+        },
+    }
+    abfe = ABFE.from_dto(fake_dto, client=client)
+    result_response = {
+        "data": [
+            {
+                "tool_key": abfe_tool_key,
+                "data": {
+                    "system_pdb_file_path": "tool-runs/prep/system.pdb",
+                    "solute_pdb_file_path": "tool-runs/prep/solute.pdb",
+                    "binding_analysis": [
+                        {
+                            "repeat": 1,
+                            "trajectories": {
+                                "window_1": "tool-runs/prep/window_1.xtc",
+                            },
+                        }
+                    ],
+                },
+            }
+        ]
+    }
+
+    def fake_results_get(**_kwargs: object) -> dict:
+        return result_response
+
+    downloads: list[str] = []
+
+    def fake_download(remote_path: str, **kwargs: object) -> str:
+        downloads.append(remote_path)
+        return f"/tmp/{Path(remote_path).name}"
+
+    monkeypatch.setattr(client.results, "get", fake_results_get)
+    monkeypatch.setattr(client.files, "download", fake_download)
+    monkeypatch.setattr(
+        "deeporigin.drug_discovery.abfe._abfe_prepare_trajectory_topology",
+        lambda *, pdb_path, **_kwargs: pdb_path,
+    )
+    monkeypatch.setattr(
+        "deeporigin.viz.molstar_html.render_trajectory_html",
+        lambda **kw: "<html/>",
+    )
+    monkeypatch.setattr(
+        "deeporigin.utils.notebook.render_html",
+        lambda html: html,
+    )
+
+    out = abfe.show_trajectory(step="binding", window=1, show_progress=False)
+    assert out == "<html/>"
+    assert "tool-runs/prep/solute.pdb" in downloads
+    assert "tool-runs/prep/system.pdb" not in downloads
+    assert "tool-runs/prep/window_1.xtc" in downloads
+
+
+def test_abfe_merged_result_data_combines_multiple_abfe_rows() -> None:
+    """Prep and FEP payloads may both use the ABFE tool_key in one execution."""
+    abfe_tool_key = TOOL_KEYS_AND_VERSIONS["abfe"]["tool_key"]
+    response = {
+        "data": [
+            {
+                "tool_key": abfe_tool_key,
+                "data": {
+                    "protein_id": "0CP278VTT8WJQ",
+                    "ligand1_id": "0CPN2KTJT8S0D",
+                    "system_pdb_file_path": "tool-runs/job/workflow/system.pdb",
+                },
+            },
+            {
+                "tool_key": abfe_tool_key,
+                "data": {
+                    "total": -12.37,
+                    "unit": "kcal/mol",
+                    "binding_analysis": [
+                        {
+                            "repeat": 1,
+                            "trajectories": {"window_1": "tool-runs/job/window_1.xtc"},
+                        }
+                    ],
+                },
+            },
+        ]
+    }
+    merged = _abfe_merged_result_data(response, tool_key=abfe_tool_key)
+    assert merged is not None
+    assert merged["system_pdb_file_path"] == "tool-runs/job/workflow/system.pdb"
+    assert merged["total"] == pytest.approx(-12.37)
+    assert isinstance(merged["binding_analysis"], list)
+    assert merged["binding_analysis"][0]["trajectories"]["window_1"].endswith(
+        "window_1.xtc"
+    )
 
 
 def test_abfe_results_dataframe_filters_non_abfe_tool_key() -> None:
