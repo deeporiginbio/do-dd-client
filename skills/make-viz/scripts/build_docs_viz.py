@@ -236,20 +236,6 @@ def _build_prepared_system() -> str:
     return render_protein_html(pdb_path=_prepared_system_pdb())
 
 
-def _build_traj() -> str:
-    """MD trajectory viewer shell (mirrors ``ABFE.show_trajectory()`` HTML)."""
-    import tempfile
-
-    from deeporigin.viz.molstar_html import render_trajectory_html
-
-    pdb_path = _prepared_system_pdb()
-    with tempfile.NamedTemporaryFile(suffix=".xtc", delete=False) as tmp:
-        # Minimal placeholder bytes; molstarLib loads frames when trajectory is valid.
-        tmp.write(b"\x00\x05\x08\x00TRAJ")
-        xtc_path = tmp.name
-    return render_trajectory_html(pdb_path=pdb_path, trajectory_path=xtc_path)
-
-
 def _build_serotonin() -> str:
     """Single serotonin ligand (mirrors ``Ligand.from_identifier(...).show()``).
 
@@ -280,7 +266,6 @@ VIZ_REGISTRY: dict[str, VizSpec] = {
     "ligand": VizSpec(build=_build_ligand, height=600),
     "prepared-system": VizSpec(build=_build_prepared_system, height=630),
     "serotonin": VizSpec(build=_build_serotonin, height=600),
-    "traj": VizSpec(build=_build_traj, height=800),
 }
 
 

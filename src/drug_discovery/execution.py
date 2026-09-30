@@ -788,15 +788,17 @@ class Execution:
             dto for dto in all_dtos if dto.get("tool", {}).get("key") == cls.tool_key
         ]
 
-        instances = [
-            cls._from_dto_maybe_quiet(
-                dto,
-                client=client,
-                quiet=quiet,
-                adopt_client_project=False,
-            )
-            for dto in all_dtos
-        ]
+        instances = []
+        for dto in all_dtos:
+            with execution_project_scope(client, dto):
+                instances.append(
+                    cls._from_dto_maybe_quiet(
+                        dto,
+                        client=client,
+                        quiet=quiet,
+                        adopt_client_project=False,
+                    )
+                )
 
         if status is not None:
             instances = [i for i in instances if i.status in status]

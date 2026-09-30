@@ -248,6 +248,9 @@ def _abfe_element_symbol(atomic_number: int) -> str:
     return _ELEMENT_SYMBOL_BY_ATOMIC_NUMBER.get(atomic_number, "X")
 
 
+_NM_TO_ANGSTROM = 10.0
+
+
 @beartype
 def _abfe_systemprep_xml_to_pdb(
     xml_path: str,
@@ -281,9 +284,9 @@ def _abfe_systemprep_xml_to_pdb(
                 atom_name = (atom.get("atom_name") or "X").strip()[:4]
                 element_number = int(atom.get("atom_element_number") or "0")
                 element = _abfe_element_symbol(element_number)
-                x = float(atom.get("atom_position_x") or "0")
-                y = float(atom.get("atom_position_y") or "0")
-                z = float(atom.get("atom_position_z") or "0")
+                x = float(atom.get("atom_position_x") or "0") * _NM_TO_ANGSTROM
+                y = float(atom.get("atom_position_y") or "0") * _NM_TO_ANGSTROM
+                z = float(atom.get("atom_position_z") or "0") * _NM_TO_ANGSTROM
                 entries.append(
                     (
                         int(index_raw),

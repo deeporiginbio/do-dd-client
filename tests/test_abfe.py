@@ -631,6 +631,7 @@ def test_abfe_systemprep_xml_to_pdb_ligand_chain_only_for_solvation() -> None:
     assert len(atom_lines) == 82
     assert "HOH" not in pdb_text
     assert "Cl-" not in pdb_text
+    assert atom_lines[0][30:54].strip().startswith("14.547")
 
 
 def test_abfe_prepare_trajectory_topology_removes_retained_water(

@@ -19,6 +19,7 @@ from deeporigin.viz.molstar_html import (
     render_protein_with_pockets_html,
     render_protein_with_poses_html,
     render_trajectory_html,
+    render_ligand_set_html,
 )
 
 _FIXTURE_PDB = (
@@ -430,3 +431,27 @@ def test_render_protein_with_box_and_poses_empty_raises() -> None:
             box_size=[10.0, 10.0, 10.0],
             ligand_payloads=[],
         )
+
+
+def test_render_ligand_set_html_empty_raises() -> None:
+    with pytest.raises(ValueError, match="non-empty"):
+        render_ligand_set_html(ligand_payloads=[])
+
+
+def test_render_ligand_set_html_single_ligand_embeds_json_safe_b64() -> None:
+    payload = ligand_data_for_js(path=str(_FIXTURE_SDF), label='lig"and')
+    html = render_ligand_set_html(ligand_payloads=[payload])
+
+    assert "loadFromRawContent" in html
+    assert '\\"and' in html or "\\u0022" in html
+
+
+def test_render_ligand_set_html_multi_ligand_uses_carousel_payloads() -> None:
+    payloads = [
+        ligand_data_for_js(path=str(_FIXTURE_SDF), label="a"),
+        ligand_data_for_js(path=str(_FIXTURE_SDF), label="b"),
+    ]
+    html = render_ligand_set_html(ligand_payloads=payloads)
+
+    assert "ligandPayloads" in html
+    assert '"a"' in html

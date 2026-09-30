@@ -88,7 +88,7 @@ abfe.show_trajectory(step="solvation", window=3, repeat=2)
 If `window` is not present in the results `trajectories` map, the error lists the valid window indices.
 
 <iframe
-    src="../../images/traj.html"
+    src="../../images/prepared-system.html"
     width="100%"
     height="600"
     style="border:none;"
