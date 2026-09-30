@@ -26,6 +26,7 @@ from __future__ import annotations
 
 import builtins
 import copy
+from contextvars import ContextVar
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Any, ClassVar, Literal, Self
 import warnings
@@ -55,6 +56,11 @@ if TYPE_CHECKING:
 QuoteMode = Literal["sync", "async"]
 
 __all__ = ["Execution", "QuoteMode"]
+
+_ADOPT_CLIENT_PROJECT_AFTER_FROM_DTO: ContextVar[bool] = ContextVar(
+    "adopt_client_project_after_from_dto",
+    default=True,
+)
 
 
 def _default_execution_payload(
@@ -582,7 +588,6 @@ class Execution:
         dto: dict[str, Any],
         *,
         client: DeepOriginClient | None = None,
-        adopt_client_project: bool = True,
     ) -> Self:
         """Construct an instance from an execution DTO returned by the platform API.
 
@@ -625,7 +630,7 @@ class Execution:
             if post_init is not None:
                 post_init()
 
-        if adopt_client_project:
+        if _ADOPT_CLIENT_PROJECT_AFTER_FROM_DTO.get():
             adopt_client_project_from_execution_dto(client, dto)
         return instance
 
@@ -645,19 +650,15 @@ class Execution:
         reconstructing ``Ligand`` objects) can emit warnings as a side
         effect (chemistry normalization, etc.); ``quiet=True`` hides them.
         """
-        if not quiet:
-            return cls.from_dto(
-                dto,
-                client=client,
-                adopt_client_project=adopt_client_project,
-            )
-        with warnings.catch_warnings():
-            warnings.simplefilter("ignore", UserWarning)
-            return cls.from_dto(
-                dto,
-                client=client,
-                adopt_client_project=adopt_client_project,
-            )
+        token = _ADOPT_CLIENT_PROJECT_AFTER_FROM_DTO.set(adopt_client_project)
+        try:
+            if not quiet:
+                return cls.from_dto(dto, client=client)
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore", UserWarning)
+                return cls.from_dto(dto, client=client)
+        finally:
+            _ADOPT_CLIENT_PROJECT_AFTER_FROM_DTO.reset(token)
 
     @classmethod
     def from_id(
