@@ -152,7 +152,7 @@ def test_admet_run_quote_true(client: DeepOriginClient) -> None:
     result = job.run(quote=True)
 
     assert result is job
-    assert ligand.id is not None
+    assert ligand.id is None
     assert_quote_only_execution(job)
     assert isinstance(job.properties, tuple)
 

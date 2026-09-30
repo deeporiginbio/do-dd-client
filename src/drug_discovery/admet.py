@@ -584,8 +584,9 @@ class Admet(
         """
         self._ensure_run_ligand_count()
         self._ensure_properties_for_run()
-        self._ensure_platform_inputs()
         resolved_amount = QUOTE_APPROVE_AMOUNT if quote else approve_amount
+        if resolved_amount != QUOTE_APPROVE_AMOUNT:
+            self._ensure_platform_inputs()
         sync = resolved_amount is None
         dto = self._create_execution(
             data=self._make_payload(approve_amount=resolved_amount, sync=sync),
