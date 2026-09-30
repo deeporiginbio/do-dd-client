@@ -331,6 +331,33 @@ def test_execution_list_orders_newest_first_and_scopes_by_project() -> None:
     )
 
 
+def test_execution_list_does_not_mutate_client_project_id() -> None:
+    """``list()`` must not adopt the last execution's project on the shared client."""
+    client = MagicMock()
+    client.project_id = "proj-notebook"
+    client.executions.list.return_value = {
+        "data": [
+            {
+                "executionId": "exec-a",
+                "projectId": "proj-a",
+                "tool": {"key": "deeporigin.test-sync-tool", "version": "1.0.0"},
+                "status": "Succeeded",
+            },
+            {
+                "executionId": "exec-b",
+                "projectId": "proj-b",
+                "tool": {"key": "deeporigin.test-sync-tool", "version": "1.0.0"},
+                "status": "Succeeded",
+            },
+        ]
+    }
+
+    results = _TestToolExecution.list(client=client)
+
+    assert client.project_id == "proj-notebook"
+    assert {r.id for r in results} == {"exec-a", "exec-b"}
+
+
 def test_execution_get_user_logs_no_id_noop() -> None:
     """``get_user_logs`` returns ``None`` when the execution has no platform id yet."""
 

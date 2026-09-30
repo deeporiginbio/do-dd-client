@@ -187,9 +187,11 @@ def test_open_signed_url_stream_refreshes_signed_url_on_retry(
     monkeypatch.setattr(files, "signed_url", track_signed_url)
 
     closed_clients: list[MagicMock] = []
+    client_kwargs: list[dict[str, object]] = []
     send_attempts = {"count": 0}
 
-    def make_client(*_args: object, **_kwargs: object) -> MagicMock:
+    def make_client(*_args: object, **kwargs: object) -> MagicMock:
+        client_kwargs.append(kwargs)
         client = MagicMock()
         closed_clients.append(client)
 
@@ -208,6 +210,9 @@ def test_open_signed_url_stream_refreshes_signed_url_on_retry(
     monkeypatch.setattr("deeporigin.platform.files.time.sleep", lambda _seconds: None)
 
     stream = files._open_signed_url_stream("/remote/data.bin", max_retries=1)
+
+    assert client_kwargs
+    assert client_kwargs[0]["timeout"] == _SIGNED_URL_DOWNLOAD_TIMEOUT
 
     assert signed_url_calls == 2
     assert send_attempts["count"] == 2

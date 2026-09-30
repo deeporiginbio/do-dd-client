@@ -4,8 +4,8 @@ from __future__ import annotations
 
 from pathlib import Path
 import struct
-import xml.etree.ElementTree as ET
 from typing import Any, Literal, Self
+import xml.etree.ElementTree as ET
 
 from beartype import beartype
 import pandas as pd
@@ -209,7 +209,11 @@ def _abfe_remote_trajectory_topology_path_from_prepared_system(
     step: Literal["md", "binding", "solvation"],
 ) -> str | None:
     """Return a matching trajectory topology from prepared-system metadata."""
-    if step == "binding" and prepared.solute_pdb_path and prepared.solute_pdb_path.strip():
+    if (
+        step == "binding"
+        and prepared.solute_pdb_path
+        and prepared.solute_pdb_path.strip()
+    ):
         return prepared.solute_pdb_path.strip()
     if (
         step == "solvation"

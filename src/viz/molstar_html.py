@@ -456,6 +456,7 @@ def render_ligand_html(*, sdf_path: str, style: str = "ball-and-stick") -> str:
         A complete HTML document suitable for ``render_html()`` iframe embedding.
     """
     sdf_b64 = _encode_text_base64(_read_structure_file(sdf_path))
+    sdf_b64_json = _json_for_script_tag(sdf_b64)
     style_json = _json_for_script_tag(style)
 
     script_body = f"""const initViewer = async () => {{
@@ -463,7 +464,7 @@ def render_ligand_html(*, sdf_path: str, style: str = "ball-and-stick") -> str:
         throw new Error("molstarLib bundle did not load from {MOLSTAR_JS_URL}");
       }}
       const viewer = await molstarLib.initViewer("{_VIEWER_CONTAINER_ID}");
-      const ligandData = atob("{sdf_b64}");
+      const ligandData = atob({sdf_b64_json});
       await viewer.api.loadFromRawContent(
         ligandData,
         "sdf",
@@ -505,6 +506,7 @@ def render_ligand_set_html(
         if not isinstance(sdf_b64, str):
             raise TypeError("ligand payload dataB64 must be a string")
         label = payload.get("label", "ligand")
+        sdf_b64_json = _json_for_script_tag(sdf_b64)
         label_json = _json_for_script_tag(str(label))
         style_json = _json_for_script_tag(style)
         script_body = f"""const initViewer = async () => {{
@@ -512,7 +514,7 @@ def render_ligand_set_html(
         throw new Error("molstarLib bundle did not load from {MOLSTAR_JS_URL}");
       }}
       const viewer = await molstarLib.initViewer("{_VIEWER_CONTAINER_ID}");
-      const ligandData = atob("{sdf_b64}");
+      const ligandData = atob({sdf_b64_json});
       await viewer.api.loadFromRawContent(
         ligandData,
         "sdf",

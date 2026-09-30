@@ -582,6 +582,7 @@ class Execution:
         dto: dict[str, Any],
         *,
         client: DeepOriginClient | None = None,
+        adopt_client_project: bool = True,
     ) -> Self:
         """Construct an instance from an execution DTO returned by the platform API.
 
@@ -624,12 +625,18 @@ class Execution:
             if post_init is not None:
                 post_init()
 
-        adopt_client_project_from_execution_dto(client, dto)
+        if adopt_client_project:
+            adopt_client_project_from_execution_dto(client, dto)
         return instance
 
     @classmethod
     def _from_dto_maybe_quiet(
-        cls, dto: dict[str, Any], *, client: DeepOriginClient, quiet: bool
+        cls,
+        dto: dict[str, Any],
+        *,
+        client: DeepOriginClient,
+        quiet: bool,
+        adopt_client_project: bool = True,
     ) -> Self:
         """``from_dto()``, optionally with UserWarnings suppressed.
 
@@ -639,10 +646,18 @@ class Execution:
         effect (chemistry normalization, etc.); ``quiet=True`` hides them.
         """
         if not quiet:
-            return cls.from_dto(dto, client=client)
+            return cls.from_dto(
+                dto,
+                client=client,
+                adopt_client_project=adopt_client_project,
+            )
         with warnings.catch_warnings():
             warnings.simplefilter("ignore", UserWarning)
-            return cls.from_dto(dto, client=client)
+            return cls.from_dto(
+                dto,
+                client=client,
+                adopt_client_project=adopt_client_project,
+            )
 
     @classmethod
     def from_id(
@@ -773,7 +788,12 @@ class Execution:
         ]
 
         instances = [
-            cls._from_dto_maybe_quiet(dto, client=client, quiet=quiet)
+            cls._from_dto_maybe_quiet(
+                dto,
+                client=client,
+                quiet=quiet,
+                adopt_client_project=False,
+            )
             for dto in all_dtos
         ]
 

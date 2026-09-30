@@ -187,13 +187,26 @@ def _escape_srcdoc_attribute(html: str) -> str:
     return html.replace("&", "&amp;").replace('"', "&quot;")
 
 
+def _iframe_sandbox_attribute(*, use_srcdoc: bool) -> str:
+    """Return iframe sandbox tokens for trusted SDK-generated HTML.
+
+    ``srcdoc`` inherits the notebook page origin; ``allow-same-origin`` there
+    would let embedded scripts reach the parent document. Opaque ``data:`` URIs
+    need ``allow-same-origin`` so Mol* can load bundled assets.
+    """
+    if use_srcdoc:
+        return 'sandbox="allow-scripts"'
+    return 'sandbox="allow-scripts allow-same-origin"'
+
+
 def _iframe_extras_for_html_document(
     *,
     height: int,
     bridge_id: str | None,
+    use_srcdoc: bool = False,
 ) -> list[str]:
     extras = [
-        'sandbox="allow-scripts allow-same-origin"',
+        _iframe_sandbox_attribute(use_srcdoc=use_srcdoc),
         f'style="width:100%;height:{height}px;border:0"',
         'loading="lazy"',
         'referrerpolicy="no-referrer"',
@@ -245,7 +258,11 @@ def _iframe_for_html_document(
             )
         )
 
-    extras = _iframe_extras_for_html_document(height=height, bridge_id=bridge_id)
+    extras = _iframe_extras_for_html_document(
+        height=height,
+        bridge_id=bridge_id,
+        use_srcdoc=False,
+    )
     return IFrame(
         _iframe_src_for_html_document(html),
         width="100%",
@@ -267,10 +284,15 @@ def _iframe_markup_for_html_document(
         height: Iframe height in pixels.
         bridge_id: When set, adds a stable ``id`` for the comm bridge script.
     """
+    use_srcdoc = _html_document_exceeds_data_uri_embed_limit(html)
     extras = " ".join(
-        _iframe_extras_for_html_document(height=height, bridge_id=bridge_id)
+        _iframe_extras_for_html_document(
+            height=height,
+            bridge_id=bridge_id,
+            use_srcdoc=use_srcdoc,
+        )
     )
-    if _html_document_exceeds_data_uri_embed_limit(html):
+    if use_srcdoc:
         srcdoc = _escape_srcdoc_attribute(html)
         return f'<iframe srcdoc="{srcdoc}" {extras} width="100%" height="{height}"></iframe>'
     src = _iframe_src_for_html_document(html)
