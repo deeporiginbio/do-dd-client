@@ -41,7 +41,7 @@ import httpx
 from deeporigin.auth import get_token, token_to_env
 from deeporigin.config import get_value
 from deeporigin.exceptions import DeepOriginException
-from deeporigin.platform.errors import raise_for_platform_restriction
+from deeporigin.platform.errors import _json_or_none, raise_for_platform_restriction
 from deeporigin.utils.constants import (
     API_ENDPOINT,
     ENV_VARIABLES,
@@ -1111,20 +1111,15 @@ class DeepOriginClient(metaclass=_DeepOriginMeta):
                 response.raise_for_status()
                 return response
             except httpx.HTTPStatusError as e:
-                try:
-                    response_data = e.response.json()
-                except ValueError:
-                    response_data = None
+                if not self._should_retry(e) or attempt == self.max_retries:
+                    self._handle_request_error(method, path, e, body=body)
                 raise_for_platform_restriction(
-                    response_data, http_status=e.response.status_code
+                    _json_or_none(e.response), http_status=e.response.status_code
                 )
-                if self._should_retry(e) and attempt < self.max_retries:
-                    delay = min(
-                        self.retry_backoff_factor * (2**attempt), self.max_retry_delay
-                    )
-                    time.sleep(delay)
-                    continue
-                self._handle_request_error(method, path, e, body=body)
+                delay = min(
+                    self.retry_backoff_factor * (2**attempt), self.max_retry_delay
+                )
+                time.sleep(delay)
             except (httpx.NetworkError, httpx.TimeoutException) as e:
                 if self._should_retry(e) and attempt < self.max_retries:
                     delay = min(
@@ -1152,33 +1147,30 @@ class DeepOriginClient(metaclass=_DeepOriginMeta):
         Raises:
             DeepOriginException: Always raises with error details and curl command filepath.
         """
-        error_message = None
-        error_details = None
-        error_data = None
-        try:
-            error_data = error.response.json()
-
-            if isinstance(error_data, dict):
-                error_message = (
-                    error_data.get("message")
-                    or error_data.get("error")
-                    or error_data.get("detail")
-                )
-                if "errors" in error_data:
-                    error_details = json.dumps(error_data["errors"], indent=2)
-            if error_message is None:
-                error_message = str(error_data)
-        except json.JSONDecodeError:
-            try:
-                error_message = error.response.text
-            except Exception:
-                error_message = f"HTTP {error.response.status_code}"
-
-        full_url = self._base_url.rstrip("/") + "/" + path.lstrip("/")
-
+        error_data = _json_or_none(error.response)
         raise_for_platform_restriction(
             error_data, http_status=error.response.status_code
         )
+        error_message = None
+        error_details = None
+        if isinstance(error_data, dict):
+            error_message = (
+                error_data.get("message")
+                or error_data.get("error")
+                or error_data.get("detail")
+            )
+            if "errors" in error_data:
+                error_details = json.dumps(error_data["errors"], indent=2)
+        if error_message is None:
+            if error_data is not None:
+                error_message = str(error_data)
+            else:
+                try:
+                    error_message = error.response.text
+                except Exception:
+                    error_message = f"HTTP {error.response.status_code}"
+
+        full_url = self._base_url.rstrip("/") + "/" + path.lstrip("/")
 
         curl_parts = ["curl", "-X", method.upper()]
 

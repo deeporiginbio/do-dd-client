@@ -39,22 +39,6 @@ class DeepOriginException(Exception):
         self.http_status = http_status
         self.response_data = response_data
 
-    @classmethod
-    def from_execution(cls, dto: dict, *, title: str, message: str):
-        """Surface restrictions and preserve other execution failure details."""
-        from deeporigin.platform.errors import raise_for_platform_restriction
-
-        raise_for_platform_restriction(dto)
-        return cls(
-            title=title,
-            message=message,
-            response_data={
-                key: dto[key]
-                for key in ("status", "statusReason", "executionId")
-                if key in dto
-            },
-        )
-
     @property
     def user_message(self) -> str:
         """Plain error text for integrations, independent of notebook formatting."""
@@ -134,7 +118,14 @@ class PlatformRestrictionError(DeepOriginException):
 
     @property
     def user_message(self) -> str:
-        return " ".join(part for part in (self.body, self.action) if part)
+        if not self.action:
+            return self.body
+        if not self.body:
+            return self.action
+        separator = (
+            " " if self.body.rstrip().endswith((".", "!", "?", ":", ";")) else ". "
+        )
+        return f"{self.body.rstrip()}{separator}{self.action}"
 
     def __str__(self) -> str:
         return self.user_message

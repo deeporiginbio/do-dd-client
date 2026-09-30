@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Iterator
+from collections.abc import Iterable, Iterator
 import concurrent.futures
 import os
 from pathlib import Path
@@ -17,12 +17,18 @@ if TYPE_CHECKING:
     from deeporigin.platform.client import DeepOriginClient
 
 from deeporigin.exceptions import PlatformRestrictionError
-from deeporigin.platform.errors import raise_for_platform_restriction
+from deeporigin.platform.errors import _json_or_none, raise_for_platform_restriction
 from deeporigin.utils.env import _ensure_do_folder
 
 _FILES_BASE = "/files"
 
 _MISSING_URL_FIELD = "Signed URL response missing 'url' field"
+
+
+def _cancel_pending(futures: Iterable[concurrent.futures.Future]) -> None:
+    """Cancel queued work after a rejection; running requests cannot be undone."""
+    for future in futures:
+        future.cancel()
 
 
 def _normalize_remote_path(remote_path: str) -> str:
@@ -672,8 +678,7 @@ class Files:
                 try:
                     results.append(future.result())
                 except PlatformRestrictionError:
-                    for pending in future_to_local:
-                        pending.cancel()
+                    _cancel_pending(future_to_local)
                     raise
                 except Exception as exc:
                     errors.append((str(local), exc))
@@ -885,8 +890,7 @@ class Files:
                     result = future.result()
                     results.append(result)
                 except PlatformRestrictionError:
-                    for pending in future_to_pair:
-                        pending.cancel()
+                    _cancel_pending(future_to_pair)
                     raise
                 except Exception as e:
                     errors.append((local_path, remote_path, e))
@@ -1028,13 +1032,8 @@ class Files:
                 response.raise_for_status()
             except httpx.HTTPStatusError:
                 try:
-                    response.read()
-                    try:
-                        data = response.json()
-                    except ValueError:
-                        data = None
                     raise_for_platform_restriction(
-                        data, http_status=response.status_code
+                        _json_or_none(response), http_status=response.status_code
                     )
                 finally:
                     response.close()
@@ -1097,8 +1096,7 @@ class Files:
                     result = future.result()
                     results[remote_path] = result
                 except PlatformRestrictionError:
-                    for pending in future_to_pair:
-                        pending.cancel()
+                    _cancel_pending(future_to_pair)
                     raise
                 except Exception as e:
                     errors.append((remote_path, local_path, e))
@@ -1192,8 +1190,7 @@ class Files:
                 try:
                     future.result()
                 except PlatformRestrictionError:
-                    for pending in future_to_path:
-                        pending.cancel()
+                    _cancel_pending(future_to_path)
                     raise
                 except Exception as e:
                     errors.append((remote_path, e))

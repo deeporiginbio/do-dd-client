@@ -204,10 +204,12 @@ class Execution:
             and tool.get("version")
         ):
             self.update_from_dto(dto)
-        else:
+        elif "tool" not in dto:
             # Some rejection DTOs contain only the execution identity and reason.
             self._id = dto["executionId"]
             self._dto = dto
+            self._estimate = None
+            self._cost = None
             self.status = normalize_platform_status(dto.get("status"))
 
     @property
@@ -353,6 +355,7 @@ class Execution:
             self.update_from_dto(dto)
         else:
             self.sync()
+            raise_for_platform_restriction(self.dto)
 
     def _set_status(self, new_status: str) -> None:
         """Validate and apply a lifecycle state transition.
@@ -557,6 +560,10 @@ class Execution:
         lifecycle state, or to refresh an instance built from an older DTO.
         Available on sync-only and async execution types alike.
 
+        Rejected executions are refreshed without raising for their status, so
+        history inspection and notebook displays remain available. HTTP failures
+        while fetching the execution still raise.
+
         If ``executions.get`` returns a falsy value, this instance is left
         unchanged.
 
@@ -566,8 +573,6 @@ class Execution:
                 :class:`Execution`).
             ValueError: If the returned DTO ``tool.key`` does not match this
                 class (see :meth:`update_from_dto`).
-            PlatformRestrictionError: If licensing or billing rejected the
-                execution. The instance retains its updated state.
         """
         exec_id = self._id
         if exec_id is None:
@@ -580,7 +585,6 @@ class Execution:
         result = self.client.executions.get(exec_id)  # ty:ignore[unresolved-attribute]
         if result:
             self.update_from_dto(result)
-            raise_for_platform_restriction(result)
 
     def wait(
         self,

@@ -2,6 +2,8 @@
 
 from dataclasses import dataclass
 
+import httpx
+
 from deeporigin.exceptions import PlatformRestrictionError
 
 _RESTRICTION_CODES = {
@@ -38,8 +40,8 @@ def _reason(data: dict) -> _PlatformRejection:
     message = (
         _text(data.get("purchase_approval_comment"))
         or _text(data.get("message"))
-        or _text(data.get("title"))
         or _text(data.get("detail"))
+        or _text(data.get("title"))
         or _join(_text(item.get("purchaseApprovalComment")) for item in items)
         or "The platform rejected this operation under its licensing or billing rules."
     )
@@ -105,3 +107,12 @@ def raise_for_platform_restriction(
             http_status=http_status,
             response_data=response_data,
         )
+
+
+def _json_or_none(response: httpx.Response) -> object:
+    """Read optional error evidence without masking the original HTTP failure."""
+    try:
+        response.read()
+        return response.json()
+    except (ValueError, httpx.HTTPError, httpx.StreamError):
+        return None

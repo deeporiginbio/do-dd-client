@@ -549,14 +549,15 @@ class Executions:
 
         Returns:
             Latest execution DTOs (one per input), each in a terminal state.
+            List inputs retain all results, including rejected executions.
 
         Raises:
             ValueError: If ``executions`` is empty, ``poll_interval`` is not
                 positive, or any execution ID is an empty string.
             TimeoutError: If ``timeout`` is set and elapses before every
                 execution reaches a terminal state.
-            PlatformRestrictionError: If a polled execution was rejected by
-                licensing or billing. Use ``get`` to inspect rejected history.
+            PlatformRestrictionError: For a single string ID, if licensing or
+                billing rejected execution. List inputs return rejected DTOs.
         """
         ids = [executions] if isinstance(executions, str) else list(executions)
         if not ids:
@@ -573,6 +574,8 @@ class Executions:
         while True:
             pending = self._poll_pending(ids, latest)
             if not pending:
+                if isinstance(executions, str):
+                    raise_for_platform_restriction(latest[executions])
                 return [latest[exec_id] for exec_id in ids]
 
             sleep_for = poll_interval
@@ -609,7 +612,6 @@ class Executions:
             if cached is not None and cached.get("status") in TERMINAL_STATES:
                 continue
             dto = self.get(exec_id)
-            raise_for_platform_restriction(dto)
             latest[exec_id] = dto
             if dto.get("status") not in TERMINAL_STATES:
                 pending.append(exec_id)

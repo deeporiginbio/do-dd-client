@@ -42,17 +42,3 @@ def test_http_error_preserves_payload_without_adding_it_to_display(tmp_path, pay
     assert caught.value.http_status == 400
     assert caught.value.response_data == payload
     client._client.close()
-
-
-def test_unknown_execution_failure_preserves_details():
-    dto = {
-        "status": "Failed",
-        "statusReason": {"message": "Compute unavailable"},
-        "executionId": "exec-1",
-    }
-    exc = DeepOriginException.from_execution(
-        dto, title="Execution failed", message="Compute unavailable"
-    )
-    assert type(exc) is DeepOriginException
-    assert exc.response_data == dto
-    assert exc.user_message == "Compute unavailable"

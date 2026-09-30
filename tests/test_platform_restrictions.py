@@ -1,12 +1,14 @@
 """Restrictions are interpreted once, automatically at SDK boundaries."""
 
-from unittest.mock import MagicMock, patch
+import asyncio
+from contextlib import ExitStack
+from unittest.mock import MagicMock, call, patch
 
 import httpx
 import pytest
 
 from deeporigin.drug_discovery.execution import Execution
-from deeporigin.exceptions import PlatformRestrictionError
+from deeporigin.exceptions import DeepOriginException, PlatformRestrictionError
 from deeporigin.platform.client import DeepOriginClient
 from deeporigin.platform.errors import raise_for_platform_restriction
 from deeporigin.platform.executions import Executions
@@ -107,7 +109,7 @@ def test_unknown_malformed_transient_and_resource_quota_errors_are_not_restricti
 def test_platform_reason_action_and_evidence_survive(payload):
     with pytest.raises(PlatformRestrictionError) as caught:
         raise_for_platform_restriction(payload, http_status=400)
-    assert str(caught.value) == f"{MESSAGE} {ACTION}"
+    assert str(caught.value) == f"{MESSAGE}. {ACTION}"
     assert caught.value.user_message == str(caught.value)
     assert caught.value.response_data is payload
     assert caught.value.http_status == 400
@@ -133,7 +135,7 @@ def test_multiple_item_reasons_and_actions_are_preserved():
         raise_for_platform_restriction(payload)
     assert (
         str(caught.value)
-        == "Payment method required; Insufficient purchasing power Add a card; Add funds"
+        == "Payment method required; Insufficient purchasing power. Add a card; Add funds"
     )
 
 
@@ -148,6 +150,7 @@ def test_plain_execution_reason_is_preserved():
 def test_http_restriction_stops_before_retry_or_diagnostic_file(status):
     client = object.__new__(DeepOriginClient)
     client.max_retries = 3
+    client.retryable_status_codes = {429, 503}
     response = httpx.Response(
         status, json=PAYLOAD, request=httpx.Request("POST", "https://platform.test")
     )
@@ -190,7 +193,7 @@ def test_execution_boundaries_reject_http_success_dto(api, stage):
                 api.wait("exec-1")
             get.assert_called_once()
     assert caught.value.response_data is DTO
-    assert str(caught.value) == f"{MESSAGE} {ACTION}"
+    assert str(caught.value) == f"{MESSAGE}. {ACTION}"
 
 
 def test_reading_rejected_execution_history_remains_possible(api):
@@ -198,7 +201,7 @@ def test_reading_rejected_execution_history_remains_possible(api):
         assert api.get("exec-1") == DTO
 
 
-def test_polling_execution_instance_raises_and_retains_state():
+def test_sync_refreshes_rejected_execution_without_raising():
     class Job(Execution):
         tool_key = "deeporigin.test"
         tool_version = "1"
@@ -210,8 +213,7 @@ def test_polling_execution_instance_raises_and_retains_state():
         **DTO,
         "tool": {"key": "deeporigin.test", "version": "1"},
     }
-    with pytest.raises(PlatformRestrictionError, match=MESSAGE):
-        job.sync()
+    job.sync()
     assert job.status == "InsufficientFunds"
 
 
@@ -287,7 +289,7 @@ def test_bulk_file_operations_preserve_platform_rejection(
         else:
             files.delete_many(["remote/input.txt"], **kwargs)
     assert caught.value.response_data is PAYLOAD
-    assert caught.value.user_message == f"{MESSAGE} {ACTION}"
+    assert caught.value.user_message == f"{MESSAGE}. {ACTION}"
 
 
 def test_bulk_upload_keeps_ordinary_error_aggregation(tmp_path):
@@ -315,6 +317,8 @@ def test_execution_retains_rejected_identity_and_state(stage, full_dto):
     if stage != "create":
         job._id = "exec-1"
         job.status = "Quoted"
+    job._estimate = 12
+    job._cost = 8
     with pytest.raises(PlatformRestrictionError) as caught:
         if stage == "create":
             job._create_execution(data={})
@@ -324,6 +328,8 @@ def test_execution_retains_rejected_identity_and_state(stage, full_dto):
     assert job.id == "exec-1"
     assert job.status == "InsufficientFunds"
     assert job.dto is dto
+    assert job.estimate is None
+    assert job.cost is None
 
 
 def test_direct_file_stream_preserves_restriction_and_closes_response():
@@ -338,3 +344,270 @@ def test_direct_file_stream_preserves_restriction_and_closes_response():
         Files(client).download_stream("file", direct=True)
     assert caught.value.response_data == PAYLOAD
     assert response.is_closed
+
+
+@pytest.mark.parametrize("ids", [["exec-1"], ["completed", "exec-1", "pending"]])
+def test_batch_wait_returns_every_terminal_result_in_input_order(api, ids):
+    pending_polls = 0
+
+    def get(exec_id):
+        nonlocal pending_polls
+        if exec_id == "exec-1":
+            return DTO
+        if exec_id == "pending":
+            pending_polls += 1
+            status = "Running" if pending_polls == 1 else "Completed"
+        else:
+            status = "Completed"
+        return {"executionId": exec_id, "status": status}
+
+    with (
+        patch.object(api, "get", side_effect=get) as fetch,
+        patch("deeporigin.platform.executions.time.sleep"),
+    ):
+        results = api.wait(ids)
+    assert [result["executionId"] for result in results] == ids
+    assert results[ids.index("exec-1")] is DTO
+    assert all(
+        result["status"] in {"Completed", "InsufficientFunds"} for result in results
+    )
+    assert fetch.call_args_list.count(call("exec-1")) == 1
+    if len(ids) > 1:
+        assert pending_polls == 2
+        assert fetch.call_args_list.count(call("completed")) == 1
+
+
+@pytest.fixture
+def rejected_abfe():
+    from deeporigin.drug_discovery.abfe import ABFE
+
+    job = object.__new__(ABFE)
+    client = MagicMock()
+    Execution.__init__(job, client=client)
+    job._id = "exec-1"
+    client.executions.get.return_value = {
+        **DTO,
+        "tool": {"key": ABFE.tool_key, "version": "1"},
+    }
+    return job
+
+
+def test_rejected_abfe_results_remain_inspectable(rejected_abfe):
+    assert rejected_abfe.get_results() is None
+    assert rejected_abfe.status == "InsufficientFunds"
+    assert rejected_abfe.dto["statusReason"] == DTO["statusReason"]
+    rejected_abfe.client.results.get.assert_not_called()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("blocking", [False, True])
+async def test_watch_displays_rejected_history_without_background_error(
+    rejected_abfe, blocking
+):
+    job = rejected_abfe
+    with (
+        patch.object(
+            job, "_render_execution_html", return_value="<div>Rejected</div>"
+        ) as render,
+        patch("deeporigin.drug_discovery.notebook_watch_mixin.display") as display,
+        patch(
+            "deeporigin.drug_discovery.notebook_watch_mixin.get_bool_env",
+            return_value=False,
+        ),
+    ):
+        task = await job.watch(blocking=blocking)
+        if not blocking:
+            assert isinstance(task, asyncio.Task)
+            await task
+            assert task.exception() is None
+        else:
+            assert task is None
+    render.assert_called_once_with(will_auto_update=False)
+    assert display.call_count == 2
+    assert "Rejected" in display.call_args.args[0].data
+    assert job.status == "InsufficientFunds"
+
+
+@pytest.mark.parametrize(
+    "tool",
+    [
+        None,
+        {},
+        {"key": "deeporigin.foreign", "version": "1"},
+        {"key": "deeporigin.test"},
+    ],
+)
+def test_rejection_does_not_adopt_foreign_or_malformed_tool_metadata(tool):
+    class Job(Execution):
+        tool_key = "deeporigin.test"
+        tool_version = "1"
+
+    client = MagicMock(project_id="project")
+    job = Job(client=client)
+    previous = {
+        "executionId": "original",
+        "status": "Quoted",
+        "tool": {"key": job.tool_key, "version": "1"},
+    }
+    job.update_from_dto(previous)
+    job._estimate = 12
+    error = PlatformRestrictionError(MESSAGE, response_data={**DTO, "tool": tool})
+    client.executions.confirm.side_effect = error
+    with pytest.raises(PlatformRestrictionError) as caught:
+        job.confirm()
+    assert caught.value is error
+    assert job.dto is previous
+    assert job.id == "original"
+    assert job.status == "Quoted"
+    assert job.estimate == 12
+
+
+@pytest.mark.parametrize(
+    "body", [b"not json", b'{"message": "upstream unavailable"}', b"dropped stream"]
+)
+def test_direct_stream_retains_http_failure_and_closes_even_if_body_is_unreadable(body):
+    from deeporigin.platform.files import Files
+
+    class Stream(httpx.SyncByteStream):
+        def __init__(self):
+            self.closed = False
+
+        def __iter__(self):
+            if body == b"dropped stream":
+                raise httpx.ReadError("connection dropped")
+            yield body
+
+        def close(self):
+            self.closed = True
+
+    stream = Stream()
+    response = httpx.Response(
+        503, stream=stream, request=httpx.Request("GET", "https://platform.test/file")
+    )
+    client = MagicMock(org_key="org")
+    client._client.send.return_value = response
+    with pytest.raises(httpx.HTTPStatusError) as caught:
+        Files(client).download_stream("file", direct=True)
+    assert caught.value.response is response
+    assert response.is_closed and stream.closed
+
+
+def test_jsonapi_detail_is_preferred_to_generic_title():
+    payload = {
+        "errors": [
+            {
+                "code": "LICENSE.FEATURE_NOT_LICENSED",
+                "title": "Forbidden",
+                "detail": MESSAGE,
+            }
+        ]
+    }
+    with pytest.raises(PlatformRestrictionError) as caught:
+        raise_for_platform_restriction(payload)
+    assert caught.value.body == MESSAGE
+
+
+@pytest.mark.parametrize(
+    "message",
+    [
+        "Allowance exhausted",
+        "Allowance exhausted.",
+        "Allowance exhausted!",
+        "Allowance exhausted?",
+        "Next step:",
+    ],
+)
+def test_restriction_display_separates_reason_and_action(message):
+    error = PlatformRestrictionError(message, action=ACTION)
+    separator = " " if message[-1] in ".!?:" else ". "
+    assert str(error) == message + separator + ACTION
+    assert error.body == message and error.action == ACTION
+
+
+@pytest.mark.parametrize("tool_name", ["admet", "docking", "constrained_docking"])
+@pytest.mark.parametrize("restricted", [True, False])
+def test_scientific_run_preserves_restriction_or_ordinary_failure(
+    tool_name, restricted
+):
+    from deeporigin.drug_discovery.admet import Admet
+    from deeporigin.drug_discovery.constrained_docking import ConstrainedDocking
+    from deeporigin.drug_discovery.docking import Docking
+
+    cls, setup, payload = {
+        "admet": (Admet, ["_ensure_properties_for_run"], "_make_payload"),
+        "docking": (
+            Docking,
+            ["_ensure_inputs_for_sync_run"],
+            "_build_docking_create_payload",
+        ),
+        "constrained_docking": (
+            ConstrainedDocking,
+            ["_validate_sync_run_params", "_ensure_platform_inputs"],
+            "_build_create_payload",
+        ),
+    }[tool_name]
+    job = object.__new__(cls)
+    Execution.__init__(job, client=MagicMock())
+    dto = {
+        **DTO,
+        "tool": {"key": cls.tool_key, "version": "1"},
+    }
+    if not restricted:
+        dto.update(status="Failed", statusReason={"message": "Compute unavailable"})
+    with ExitStack() as stack:
+        for method in setup:
+            stack.enter_context(patch.object(job, method))
+        stack.enter_context(patch.object(job, payload, return_value={}))
+        stack.enter_context(patch.object(job, "_create_execution", return_value=dto))
+        results = stack.enter_context(patch.object(job, "get_results"))
+        with pytest.raises(DeepOriginException) as caught:
+            job.run()
+    assert job.dto is dto
+    results.assert_not_called()
+    if restricted:
+        assert caught.value.response_data is dto
+        assert isinstance(caught.value, PlatformRestrictionError)
+        assert caught.value.body == MESSAGE and caught.value.action == ACTION
+    else:
+        assert type(caught.value) is DeepOriginException
+        assert caught.value.response_data is None
+        assert "Failed" in caught.value.body
+
+
+@pytest.mark.parametrize("status", [400, 503])
+def test_exhausted_http_error_is_parsed_and_classified_once(status, tmp_path):
+    from deeporigin.platform import errors
+
+    client = object.__new__(DeepOriginClient)
+    client.max_retries = 0
+    client._base_url = "https://platform.test"
+    client._client = MagicMock(headers={})
+    response = httpx.Response(
+        status,
+        json={"message": "Unrelated failure"},
+        request=httpx.Request("POST", "https://platform.test"),
+    )
+    with (
+        patch.object(response, "json", wraps=response.json) as parse,
+        patch(
+            "deeporigin.platform.client.raise_for_platform_restriction",
+            wraps=errors.raise_for_platform_restriction,
+        ) as classify,
+        patch("deeporigin.platform.client._ensure_do_folder", return_value=tmp_path),
+    ):
+        with pytest.raises(DeepOriginException) as caught:
+            client._retry_request(lambda: response, "POST", "/tools")
+    parse.assert_called_once()
+    classify.assert_called_once()
+    assert type(caught.value) is DeepOriginException
+    assert caught.value.http_status == status
+    assert caught.value.response_data == {"message": "Unrelated failure"}
+
+
+def test_confirm_checks_rejection_after_refresh_when_response_is_empty(rejected_abfe):
+    rejected_abfe.status = "Quoted"
+    rejected_abfe.client.executions.confirm.return_value = None
+    with pytest.raises(PlatformRestrictionError) as caught:
+        rejected_abfe.confirm()
+    assert caught.value.response_data is rejected_abfe.dto
+    assert rejected_abfe.status == "InsufficientFunds"
