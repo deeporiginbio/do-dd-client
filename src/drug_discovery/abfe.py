@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+import posixpath
 import struct
 from typing import Any, Literal, Self
 import xml.etree.ElementTree as ET
@@ -168,7 +169,10 @@ def _abfe_remote_system_pdb_path(data: dict[str, Any]) -> str | None:
         return pdb.strip()
     binding_xml = data.get("binding_xml_file_path")
     if isinstance(binding_xml, str) and binding_xml.strip():
-        return str(Path(binding_xml.strip()).parent / "system.pdb")
+        return posixpath.join(
+            posixpath.dirname(binding_xml.strip()),
+            "system.pdb",
+        )
     return None
 
 
@@ -180,7 +184,10 @@ def _abfe_remote_system_pdb_path_from_prepared_system(
     if prepared.system_pdb_path and prepared.system_pdb_path.strip():
         return prepared.system_pdb_path.strip()
     if prepared.binding_xml_path and prepared.binding_xml_path.strip():
-        return str(Path(prepared.binding_xml_path.strip()).parent / "system.pdb")
+        return posixpath.join(
+            posixpath.dirname(prepared.binding_xml_path.strip()),
+            "system.pdb",
+        )
     return None
 
 
