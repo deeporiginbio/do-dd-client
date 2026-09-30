@@ -2565,28 +2565,36 @@ class LigandSet:
             ligand.add_hydrogens()
 
     def show(self):
-        """Visualize all ligands in this LigandSet in 3D.
+        """Visualize ligands in this LigandSet in 3D via the hosted molstarLib bundle.
 
-        Uses the legacy ``deeporigin_molstar.MoleculeViewer`` because the hosted
-        molstarLib bundle does not yet split multi-molecule SDF files correctly.
-        Single-ligand :meth:`Ligand.show` uses the new molstarLib path.
+        Each ligand is loaded from its own SDF. When there are multiple ligands, the
+        viewer shows one at a time; use the carousel (or arrow keys) to step through
+        the set, or switch to "show all" to overlay them.
 
         Returns:
             Result of :func:`~deeporigin.utils.notebook.render_html` for the Mol*
             viewer (``None`` after Jupyter display, or a marimo ``mo.Html`` wrapper).
+
+        Raises:
+            ValueError: If the set has no ligands.
+            DeepOriginException: If visualization fails.
         """
-        sdf_file = self.to_sdf()
+        if not self.ligands:
+            raise ValueError("Cannot visualize an empty LigandSet") from None
 
         try:
-            from deeporigin_molstar import MoleculeViewer
-
-            viewer = MoleculeViewer(str(sdf_file), format="sdf")
-            ligand_config = viewer.get_ligand_visualization_config()
-            html = viewer.render_ligand(ligand_config=ligand_config)
-
+            from deeporigin.drug_discovery.docking_common import (
+                ligand_payloads_for_viewer,
+            )
             from deeporigin.utils.notebook import render_html
+            from deeporigin.viz.molstar_html import render_ligand_set_html
 
+            html = render_ligand_set_html(
+                ligand_payloads=ligand_payloads_for_viewer(self),
+            )
             return render_html(html)
+        except ValueError:
+            raise
         except Exception as e:
             raise DeepOriginException(f"Visualization failed: {str(e)}") from e
 

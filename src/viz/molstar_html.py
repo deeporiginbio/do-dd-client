@@ -371,9 +371,6 @@ def _decode_ligand_payloads_js(variable_name: str = "ligandPayloads") -> str:
 def render_ligand_html(*, sdf_path: str, style: str = "ball-and-stick") -> str:
     """Build iframe-ready HTML for a single-ligand SDF.
 
-    For multi-ligand sets, prefer :meth:`LigandSet.show` (legacy viewer): the hosted
-    molstarLib bundle does not yet split multi-molecule SDF files correctly.
-
     Args:
         sdf_path: Path to a single-molecule SDF file on disk.
         style: Mol* representation type for the ligand (default ``ball-and-stick``).
@@ -396,6 +393,99 @@ def render_ligand_html(*, sdf_path: str, style: str = "ball-and-stick") -> str:
         "ligand",
         {style_json},
       );
+    }};"""
+
+    return _render_viewer_html(script_body=script_body)
+
+
+def render_ligand_set_html(
+    *,
+    ligand_payloads: list[dict[str, object]],
+    style: str = "ball-and-stick",
+) -> str:
+    """Build iframe-ready HTML for a multi-ligand set (ligand-only, no protein).
+
+    Each payload is a dict from :func:`ligand_data_for_js`. Loads structures with
+    ``loadFromRawContent`` and ``ligand-N`` tags so the hosted bundle's
+    ``LigandCarousel`` can step through ligands one at a time.
+
+    Args:
+        ligand_payloads: Non-empty list of per-ligand SDF payloads.
+        style: Mol* representation type for ligands (default ``ball-and-stick``).
+
+    Returns:
+        A complete HTML document suitable for ``render_html()`` iframe embedding.
+
+    Raises:
+        ValueError: If ``ligand_payloads`` is empty.
+    """
+    if not ligand_payloads:
+        raise ValueError("ligand_payloads must be non-empty")
+
+    if len(ligand_payloads) == 1:
+        payload = ligand_payloads[0]
+        sdf_b64 = payload["dataB64"]
+        if not isinstance(sdf_b64, str):
+            raise TypeError("ligand payload dataB64 must be a string")
+        label = payload.get("label", "ligand")
+        label_json = _json_for_script_tag(str(label))
+        style_json = _json_for_script_tag(style)
+        script_body = f"""const initViewer = async () => {{
+      if (typeof molstarLib === "undefined" || typeof molstarLib.initViewer !== "function") {{
+        throw new Error("molstarLib bundle did not load from {MOLSTAR_JS_URL}");
+      }}
+      const viewer = await molstarLib.initViewer("{_VIEWER_CONTAINER_ID}");
+      const ligandData = atob("{sdf_b64}");
+      await viewer.api.loadFromRawContent(
+        ligandData,
+        "sdf",
+        {label_json},
+        {style_json},
+      );
+    }};"""
+        return _render_viewer_html(script_body=script_body)
+
+    ligands_json = _json_value_for_script_tag(ligand_payloads)
+    style_json = _json_for_script_tag(style)
+
+    script_body = f"""const initViewer = async () => {{
+      if (typeof molstarLib === "undefined" || typeof molstarLib.initViewer !== "function") {{
+        throw new Error("molstarLib bundle did not load from {MOLSTAR_JS_URL}");
+      }}
+      const viewer = await molstarLib.initViewer("{_VIEWER_CONTAINER_ID}");
+      const ligandPayloads = {ligands_json};
+      const colors = molstarLib.DEFAULT_LIGAND_COLORS;
+      for (let i = 0; i < ligandPayloads.length; i++) {{
+        const payload = ligandPayloads[i];
+        const data = atob(payload.dataB64);
+        const label =
+          payload.label !== undefined ? payload.label : `ligand-${{i + 1}}`;
+        const color = colors[i % colors.length];
+        await viewer.api.loadFromRawContent(
+          data,
+          "sdf",
+          label,
+          {style_json},
+          0,
+          false,
+          false,
+          {style_json},
+          `ligand-${{i}}`,
+          color,
+        );
+      }}
+      const startLigandSetBrowse = async () => {{
+        await viewer.api.showLigandAtIndex(0);
+        const manager = viewer.getPlugin?.()?.ligandManager;
+        if (manager) {{
+          manager.setActiveLigand("ligand-0");
+        }}
+      }};
+      // LigandCarousel defaults to "show all" and re-applies it ~200ms after the
+      // last structure loads; run browse after that stabilizes.
+      setTimeout(() => {{
+        void startLigandSetBrowse();
+      }}, 300);
     }};"""
 
     return _render_viewer_html(script_body=script_body)
