@@ -8,7 +8,9 @@ from deeporigin.drug_discovery.admet import (
     _endpoints_from_definition,
     _execution_predictions,
     _ligands_from_inputs,
+    _ligands_from_list_file_bytes,
     _properties_from_inputs,
+    _rows_from_result_explorer,
     _validate_admet_properties,
 )
 
@@ -144,3 +146,43 @@ def test_ligands_from_inputs_rejects_missing_rows() -> None:
         _ligands_from_inputs({"ligands": ["CCO"]})
     with pytest.raises(ValueError, match="no SMILES"):
         _ligands_from_inputs({"ligands": [{"id": "1"}]})
+
+
+def test_ligands_from_list_file_bytes_parses_rows() -> None:
+    """A Ligand list file rehydrates SMILES and platform ids."""
+    ligands = _ligands_from_list_file_bytes(b'[{"smiles": "CCO", "id": 7}]')
+    assert [(lig.smiles, lig.id) for lig in ligands] == [("CCO", "7")]
+
+
+@pytest.mark.parametrize(
+    ("payload", "match"),
+    [
+        (b"\xff", "not valid UTF-8"),
+        (b"{", "not valid JSON"),
+        (b"[]", "non-empty JSON array"),
+        (b'{"smiles": "CCO"}', "non-empty JSON array"),
+    ],
+)
+def test_ligands_from_list_file_bytes_rejects_bad_bodies(
+    payload: bytes, match: str
+) -> None:
+    """Corrupt list files raise ValueError instead of a parser exception."""
+    with pytest.raises(ValueError, match=match):
+        _ligands_from_list_file_bytes(payload)
+
+
+def test_rows_from_result_explorer_flattens_and_skips_junk() -> None:
+    """Nested, flat, and unrecognized result-explorer records."""
+    flat = {"ligand_id": "1", "hERG_classification": 0.2}
+    nested = {"smiles": "CCO", "AMES_classification": 0.1}
+    response = {
+        "data": [
+            "not-a-record",
+            {"data": {"admetproperties": [nested, "junk"]}},
+            {"data": flat},
+            {"data": {"unrelated": 1}},
+        ]
+    }
+    assert _rows_from_result_explorer(response) == [nested, flat]
+    assert _rows_from_result_explorer(None) == []
+    assert _rows_from_result_explorer({"data": "nope"}) == []

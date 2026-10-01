@@ -37,6 +37,7 @@ from deeporigin.drug_discovery.execution_mixins import (
     AsyncExecutableMixin,
     SyncExecutableMixin,
 )
+from deeporigin.drug_discovery.metabolism import _ligand_payloads
 from deeporigin.drug_discovery.notebook_watch_mixin import NotebookWatchMixin
 from deeporigin.drug_discovery.structures.ligand import Ligand, LigandSet
 from deeporigin.exceptions import DeepOriginException
@@ -152,21 +153,6 @@ def _expand_admet_payload(payload: dict[str, Any]) -> list[dict[str, Any]]:
     ):
         return [payload]
     return []
-
-
-def _ligand_payloads(ligands: list[Ligand]) -> list[dict[str, str]]:
-    """Build ``{smiles, id?}`` dicts for tool inputs or a Ligand list file."""
-
-    ligand_payloads: list[dict[str, str]] = []
-    for idx, lig in enumerate(ligands):
-        smiles = lig.smiles or ""
-        if not smiles:
-            raise ValueError(f"ligands[{idx}] has no SMILES.")
-        payload: dict[str, str] = {"smiles": smiles}
-        if lig.id is not None:
-            payload["id"] = str(lig.id)
-        ligand_payloads.append(payload)
-    return ligand_payloads
 
 
 def _ligands_from_payload_rows(raw: list[Any]) -> list[Ligand]:
