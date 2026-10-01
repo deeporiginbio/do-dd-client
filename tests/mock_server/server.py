@@ -79,6 +79,7 @@ class MockServer:
             "deeporigin.docking": 0.1,  # short poll for local Docking.run (tools API)
             "deeporigin.draco": 3.0,
             "deeporigin.metabolism": 0.1,  # short poll for local Metabolism.start
+            "deeporigin.admet-properties": 0.1,
             "deeporigin.secondary-pharma": 0.1,  # short poll for local docking start
             "deeporigin.import-dataset": 0.05,
         }

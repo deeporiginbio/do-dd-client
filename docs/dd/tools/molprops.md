@@ -5,7 +5,11 @@ Predict physicochemical properties and RDKit descriptors for ligands via
 
 Requestable keys (default is the full set): `logd`, `logp`, `logs`, `pains`,
 `molecular_weight`, `hbond_donor_count`, `hbond_acceptor_count`,
-`rotatable_bond_count`, `tpsa`, `rule_of_5_violations`, `sa_score`.
+`rotatable_bond_count`, `tpsa`, `rule_of_5_violations`, `sa_score`,
+`fraction_csp3`.
+
+Molprops is **not** billed on the platform. ADMET toxicity and related
+endpoints belong on [`Admet`](admet.md), not Molprops.
 
 Results land on named `Ligand` attributes (for example `ligand.sa_score`,
 `ligand.log_p`), not in `ligand.properties`. Toxicity endpoints belong on
