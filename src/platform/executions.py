@@ -9,6 +9,8 @@ from typing import TYPE_CHECKING, Any
 
 from beartype import beartype
 
+from deeporigin.platform.errors import raise_for_platform_restriction
+
 if TYPE_CHECKING:
     from deeporigin.platform.client import DeepOriginClient
 
@@ -104,7 +106,8 @@ class Executions:
             ValueError: If the resolved ``visibility`` -- from ``data``, the
                 argument, or the client default -- is not ``"visible"`` or
                 ``"hidden"``.
-            Exception: If the tool execution fails, with error details printed.
+            PlatformRestrictionError: If licensing or billing rejects execution.
+                The exception preserves the platform reason, action, and response.
         """
         payload = data.copy()
 
@@ -165,12 +168,14 @@ class Executions:
 
         # Single attempt: retrying a timed-out sync create can spawn duplicate
         # long-running tool work (e.g. system-prep behind an nginx 504).
-        return self._c.post_json(
+        result = self._c.post_json(
             f"/tools/{self._c.org_key}/tools/{tool_key}/{tool_version}/executions",
             body=payload,
             timeout=req_timeout,
             retry=False,
         )
+        raise_for_platform_restriction(result)
+        return result
 
     def _list_tools_executions_page(
         self,
@@ -499,6 +504,9 @@ class Executions:
 
         Returns:
             Updated execution DTO from the platform (same shape as :meth:`get`).
+
+        Raises:
+            PlatformRestrictionError: If licensing or billing rejects confirmation.
         """
         patch_kwargs: dict[str, Any] = {}
         if timeout is not None:
@@ -509,7 +517,9 @@ class Executions:
             f"/tools/{self._c.org_key}/tools/executions/{execution_id}:confirm",
             **patch_kwargs,
         )
-        return response.json()
+        result = response.json()
+        raise_for_platform_restriction(result)
+        return result
 
     @beartype
     def wait(
@@ -539,12 +549,15 @@ class Executions:
 
         Returns:
             Latest execution DTOs (one per input), each in a terminal state.
+            List inputs retain all results, including rejected executions.
 
         Raises:
             ValueError: If ``executions`` is empty, ``poll_interval`` is not
                 positive, or any execution ID is an empty string.
             TimeoutError: If ``timeout`` is set and elapses before every
                 execution reaches a terminal state.
+            PlatformRestrictionError: For a single string ID, if licensing or
+                billing rejected execution. List inputs return rejected DTOs.
         """
         ids = [executions] if isinstance(executions, str) else list(executions)
         if not ids:
@@ -558,11 +571,7 @@ class Executions:
         latest: dict[str, dict] = {}
         deadline = time.monotonic() + timeout if timeout is not None else None
 
-        while True:
-            pending = self._poll_pending(ids, latest)
-            if not pending:
-                return [latest[exec_id] for exec_id in ids]
-
+        while pending := self._poll_pending(ids, latest):
             sleep_for = poll_interval
             if deadline is not None:
                 remaining = deadline - time.monotonic()
@@ -574,6 +583,10 @@ class Executions:
                     )
                 sleep_for = min(poll_interval, remaining)
             time.sleep(sleep_for)
+
+        if isinstance(executions, str):
+            raise_for_platform_restriction(latest[executions])
+        return [latest[exec_id] for exec_id in ids]
 
     def _poll_pending(
         self,

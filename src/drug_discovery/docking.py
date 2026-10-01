@@ -27,6 +27,7 @@ from deeporigin.drug_discovery.structures.protein import Protein
 from deeporigin.exceptions import DeepOriginException
 from deeporigin.platform.client import DeepOriginClient
 from deeporigin.platform.constants import TOOL_KEYS_AND_VERSIONS, is_success_status
+from deeporigin.platform.errors import raise_for_platform_restriction
 from deeporigin.utils.constants import QUOTE_APPROVE_AMOUNT
 
 Number = float | int
@@ -349,6 +350,7 @@ class Docking(Execution, SyncExecutableMixin, AsyncExecutableMixin, NotebookWatc
                 return None
             eid = dto.get("executionId")
             reason = dto.get("statusReason") or final_status
+            raise_for_platform_restriction(dto)
             raise DeepOriginException(
                 title="Docking run did not succeed",
                 message=(

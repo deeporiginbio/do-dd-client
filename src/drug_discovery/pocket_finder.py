@@ -61,7 +61,7 @@ from deeporigin.drug_discovery.protein_prep import (
 from deeporigin.drug_discovery.structures.ligand import Ligand
 from deeporigin.drug_discovery.structures.pocket import Pocket
 from deeporigin.drug_discovery.structures.protein import Protein
-from deeporigin.exceptions import DeepOriginException
+from deeporigin.exceptions import DeepOriginException, PlatformRestrictionError
 from deeporigin.platform.client import DeepOriginClient
 from deeporigin.platform.constants import TOOL_KEYS_AND_VERSIONS, is_success_status
 from deeporigin.utils.constants import QUOTE_APPROVE_AMOUNT
@@ -883,6 +883,8 @@ class PocketFinder(
                 execution_id=exec_id,
                 client=self.client,
             )
+        except PlatformRestrictionError:
+            raise
         except Exception:
             pockets = None
 
@@ -893,6 +895,8 @@ class PocketFinder(
                 jo = dto.get("jobOutputs")
                 raw = jo.get("pockets", []) if isinstance(jo, dict) else []
                 pockets = Pocket.from_json(raw, client=self.client)
+            except PlatformRestrictionError:
+                raise
             except Exception:
                 raise DeepOriginException(
                     title="Could not load pockets",

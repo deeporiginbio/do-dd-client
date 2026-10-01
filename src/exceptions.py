@@ -6,6 +6,7 @@ from deeporigin.utils.display import _supports_color
 
 __all__ = [
     "DeepOriginException",
+    "PlatformRestrictionError",
     "MethodDeprecatedError",
     "install_silent_error_handler",
 ]
@@ -18,13 +19,30 @@ class MethodDeprecatedError(ValueError):
 class DeepOriginException(Exception):
     """Stops execution without showing a traceback, displays a styled error card."""
 
-    def __init__(self, title="Error", message=None, fix=None, level="danger"):
+    def __init__(
+        self,
+        title="Error",
+        message=None,
+        fix=None,
+        level="danger",
+        *,
+        http_status: int | None = None,
+        response_data: object = None,
+    ):
         super().__init__(message or title)
         self.title = title
         self.body = message or ""
         self.footer = fix
         # accepted: danger | warning | info | success | secondary
         self.level = level
+        # Machine-readable evidence, kept out of notebook/console formatting.
+        self.http_status = http_status
+        self.response_data = response_data
+
+    @property
+    def user_message(self) -> str:
+        """Plain error text for integrations, independent of notebook formatting."""
+        return self.body or self.title
 
     def __str__(self) -> str:
         """Format exception for display. Returns minimal output in notebooks (where HTML rendering is handled separately) or formatted console output otherwise."""
@@ -75,6 +93,42 @@ class DeepOriginException(Exception):
                 lines.append(self.footer)
 
         return "\n".join(lines)
+
+
+class PlatformRestrictionError(DeepOriginException):
+    """The platform rejected an operation under its licensing or billing rules."""
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        action: str | None = None,
+        http_status=None,
+        response_data=None,
+    ):
+        super().__init__(
+            title="Operation blocked",
+            message=message,
+            fix=action,
+            level="warning",
+            http_status=http_status,
+            response_data=response_data,
+        )
+        self.action = action
+
+    @property
+    def user_message(self) -> str:
+        if not self.action:
+            return self.body
+        if not self.body:
+            return self.action
+        separator = (
+            " " if self.body.rstrip().endswith((".", "!", "?", ":", ";")) else ". "
+        )
+        return f"{self.body.rstrip()}{separator}{self.action}"
+
+    def __str__(self) -> str:
+        return self.user_message
 
 
 def _silent_error_handler(shell, etype, evalue, tb, tb_offset=None):

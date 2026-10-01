@@ -30,11 +30,13 @@ import copy
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Any, ClassVar, Literal, Self
 
+from deeporigin.exceptions import PlatformRestrictionError
 from deeporigin.platform.constants import (
     ALLOWED_STATUS_TRANSITIONS,
     is_success_status,
     normalize_platform_status,
 )
+from deeporigin.platform.errors import raise_for_platform_restriction
 from deeporigin.platform.project_scope import (
     adopt_client_project_from_execution_dto,
     execution_project_scope,
@@ -180,11 +182,35 @@ class Execution:
                 "tool_key and tool_version are required for execution create"
             )
         require_client_project_id(self.client)
-        return self.client.executions.create(  # ty:ignore[unresolved-attribute]
-            tool_key=resolved_key,
-            tool_version=resolved_version,
-            data=data,
-        )
+        try:
+            return self.client.executions.create(  # ty:ignore[unresolved-attribute]
+                tool_key=resolved_key,
+                tool_version=resolved_version,
+                data=data,
+            )
+        except PlatformRestrictionError as exc:
+            self._retain_rejected_execution(exc)
+            raise
+
+    def _retain_rejected_execution(self, error: PlatformRestrictionError) -> None:
+        """Keep lifecycle evidence when a create, confirm, or wait returns a rejected DTO."""
+        dto = error.response_data
+        if not isinstance(dto, dict) or not dto.get("executionId"):
+            return
+        tool = dto.get("tool")
+        if (
+            isinstance(tool, dict)
+            and tool.get("key") == self.tool_key
+            and tool.get("version")
+        ):
+            self.update_from_dto(dto)
+        elif "tool" not in dto:
+            # Some rejection DTOs contain only the execution identity and reason.
+            self._id = dto["executionId"]
+            self._dto = dto
+            self._estimate = None
+            self._cost = None
+            self.status = normalize_platform_status(dto.get("status"))
 
     @property
     def id(self) -> str | None:
@@ -315,15 +341,21 @@ class Execution:
             raise ValueError(
                 f"Cannot confirm: execution is in {status!r} state, not 'Quoted'."
             )
-        dto = self.client.executions.confirm(  # ty:ignore[unresolved-attribute]
-            self._id,
-            timeout=TOOL_EXECUTION_POST_TIMEOUT_SECONDS,
-            retry=False,
-        )
+        try:
+            dto = self.client.executions.confirm(  # ty:ignore[unresolved-attribute]
+                self._id,
+                timeout=TOOL_EXECUTION_POST_TIMEOUT_SECONDS,
+                retry=False,
+            )
+        except PlatformRestrictionError as exc:
+            self._retain_rejected_execution(exc)
+            raise
+
         if dto:
             self.update_from_dto(dto)
         else:
             self.sync()
+            raise_for_platform_restriction(self.dto)
 
     def _set_status(self, new_status: str) -> None:
         """Validate and apply a lifecycle state transition.
@@ -528,6 +560,10 @@ class Execution:
         lifecycle state, or to refresh an instance built from an older DTO.
         Available on sync-only and async execution types alike.
 
+        Rejected executions are refreshed without raising for their status, so
+        history inspection and notebook displays remain available. HTTP failures
+        while fetching the execution still raise.
+
         If ``executions.get`` returns a falsy value, this instance is left
         unchanged.
 
@@ -571,11 +607,16 @@ class Execution:
         """
         exec_id = self._ensure_id()
         executions_client: Any = self.client.executions
-        results = executions_client.wait(
-            exec_id,
-            poll_interval=poll_interval,
-            timeout=timeout,
-        )
+        try:
+            results = executions_client.wait(
+                exec_id,
+                poll_interval=poll_interval,
+                timeout=timeout,
+            )
+        except PlatformRestrictionError as exc:
+            self._retain_rejected_execution(exc)
+            raise
+
         dto = results[0] if results else None
         if dto is not None:
             self.update_from_dto(dto)

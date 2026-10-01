@@ -871,6 +871,7 @@ def create_tools_router(
     *,
     executions: dict[str, dict[str, Any]],
     execution_start_times: dict[str, datetime],
+    confirmation_rejections: dict[str, dict[str, Any]],
     mock_execution_durations: dict[str, float],
     docking_speed: float,
     fixtures_dir: Path,
@@ -887,6 +888,7 @@ def create_tools_router(
     Args:
         executions: In-memory storage for executions.
         execution_start_times: Mapping of execution ID to start time.
+        confirmation_rejections: Billing rejection reasons by org for confirm calls.
         mock_execution_durations: Tool-specific mock durations in seconds.
         docking_speed: Dockings per second for bulk-docking simulations.
         fixtures_dir: Directory where fixture files are stored.
@@ -3164,6 +3166,11 @@ def create_tools_router(
             )
 
         execution = executions[execution_id]
+        if org_key in confirmation_rejections:
+            execution["status"] = "InsufficientFunds"
+            execution["statusReason"] = copy.deepcopy(confirmation_rejections[org_key])
+            return _normalize_execution(execution.copy())
+
         execution["status"] = "Running"
 
         now = datetime.now(timezone.utc)

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Iterator
+from collections.abc import Iterable, Iterator
 import concurrent.futures
 import os
 from pathlib import Path
@@ -16,11 +16,19 @@ from tqdm import tqdm
 if TYPE_CHECKING:
     from deeporigin.platform.client import DeepOriginClient
 
+from deeporigin.exceptions import PlatformRestrictionError
+from deeporigin.platform.errors import _json_or_none, raise_for_platform_restriction
 from deeporigin.utils.env import _ensure_do_folder
 
 _FILES_BASE = "/files"
 
 _MISSING_URL_FIELD = "Signed URL response missing 'url' field"
+
+
+def _cancel_pending(futures: Iterable[concurrent.futures.Future]) -> None:
+    """Cancel queued work after a rejection; running requests cannot be undone."""
+    for future in futures:
+        future.cancel()
 
 
 def _normalize_remote_path(remote_path: str) -> str:
@@ -633,6 +641,8 @@ class Files:
             List of remote paths that were successfully uploaded.
 
         Raises:
+            PlatformRestrictionError: If the platform blocks the operation, even
+                when ordinary file errors may be skipped. Pending work is cancelled.
             RuntimeError: If any upload fails and ``skip_errors`` is False.
             ValueError: If ``local_path`` is not a file, directory, or list.
         """
@@ -667,6 +677,9 @@ class Files:
                 local = future_to_local[future]
                 try:
                     results.append(future.result())
+                except PlatformRestrictionError:
+                    _cancel_pending(future_to_local)
+                    raise
                 except Exception as exc:
                     errors.append((str(local), exc))
 
@@ -854,6 +867,8 @@ class Files:
             List of upload response dictionaries.
 
         Raises:
+            PlatformRestrictionError: If the platform blocks the operation, even
+                when ordinary file errors may be skipped. Pending work is cancelled.
             RuntimeError: If any upload fails, with details about all failures.
         """
         results: list[dict] = []
@@ -874,6 +889,9 @@ class Files:
                 try:
                     result = future.result()
                     results.append(result)
+                except PlatformRestrictionError:
+                    _cancel_pending(future_to_pair)
+                    raise
                 except Exception as e:
                     errors.append((local_path, remote_path, e))
 
@@ -1012,8 +1030,13 @@ class Files:
             response = self._c._client.send(request, stream=True)
             try:
                 response.raise_for_status()
-            except Exception:
-                response.close()
+            except httpx.HTTPStatusError:
+                try:
+                    raise_for_platform_restriction(
+                        _json_or_none(response), http_status=response.status_code
+                    )
+                finally:
+                    response.close()
                 raise
             return FileStream(response)
 
@@ -1041,6 +1064,8 @@ class Files:
             saved. Failed downloads are omitted when ``skip_errors`` is True.
 
         Raises:
+            PlatformRestrictionError: If the platform blocks the operation, even
+                when ordinary file errors may be skipped. Pending work is cancelled.
             RuntimeError: If any download fails and ``skip_errors`` is False.
         """
         if isinstance(files, list):
@@ -1070,6 +1095,9 @@ class Files:
                 try:
                     result = future.result()
                     results[remote_path] = result
+                except PlatformRestrictionError:
+                    _cancel_pending(future_to_pair)
+                    raise
                 except Exception as e:
                     errors.append((remote_path, local_path, e))
 
@@ -1141,6 +1169,8 @@ class Files:
             timeout: Per-request timeout in seconds.
 
         Raises:
+            PlatformRestrictionError: If the platform blocks the operation, even
+                when ordinary file errors may be skipped. Pending work is cancelled.
             RuntimeError: If any deletion fails and ``skip_errors`` is False.
         """
         errors: list[tuple[str, Exception]] = []
@@ -1159,6 +1189,9 @@ class Files:
                 remote_path = future_to_path[future]
                 try:
                     future.result()
+                except PlatformRestrictionError:
+                    _cancel_pending(future_to_path)
+                    raise
                 except Exception as e:
                     errors.append((remote_path, e))
 

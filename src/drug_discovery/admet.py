@@ -33,6 +33,7 @@ from deeporigin.drug_discovery.structures.ligand import Ligand, LigandSet
 from deeporigin.exceptions import DeepOriginException
 from deeporigin.platform.client import DeepOriginClient
 from deeporigin.platform.constants import TOOL_KEYS_AND_VERSIONS, is_success_status
+from deeporigin.platform.errors import raise_for_platform_restriction
 from deeporigin.utils.constants import (
     ADMET_EXECUTION_TIMEOUT_SECONDS,
     QUOTE_APPROVE_AMOUNT,
@@ -385,6 +386,7 @@ class Admet(Execution, SyncExecutableMixin):
             return self
 
         if not is_success_status(self.status):
+            raise_for_platform_restriction(dto)
             raise DeepOriginException(
                 title="ADMET prediction did not complete",
                 message=(
