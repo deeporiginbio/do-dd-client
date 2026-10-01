@@ -148,7 +148,7 @@ def _expand_admet_payload(payload: dict[str, Any]) -> list[dict[str, Any]]:
     if isinstance(nested, list):
         return [item for item in nested if isinstance(item, dict)]
     if "ligand_id" in payload or any(
-        k.endswith("_classification") or k.endswith("_regression") for k in payload
+        k.endswith(("_classification", "_regression")) for k in payload
     ):
         return [payload]
     return []

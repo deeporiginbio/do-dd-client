@@ -21,7 +21,10 @@ df = admet.run()
 
 ```{.python notest}
 # 101+ ligands: async workflow (auto ligands_file)
-large = Admet(ligands=ligand_list)
+from deeporigin.drug_discovery import LigandSet
+
+ligand_set = LigandSet.from_csv("ligands.csv")  # "smiles" column
+large = Admet(ligands=ligand_set)
 large.start()
 large.wait()
 df = large.get_results()
