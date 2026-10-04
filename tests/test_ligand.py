@@ -616,6 +616,8 @@ def test_ligand_from_platform_record_hydrates_molprops():
         "rotatable_bond_count": 6,
         "tpsa": 67.2,
         "rule_of5_violations": 0,
+        "sa_score": 2.75,
+        "fraction_csp3": 0.42,
         "ames_probability": 0.0012685793917626143,
         "herg_probability": 0.17195460200309753,
         "cyp2d6": 0.012631930410861969,
@@ -627,6 +629,8 @@ def test_ligand_from_platform_record_hydrates_molprops():
     assert row["has_pains"] is True
     assert row["molecular_weight"] == pytest.approx(351.4)
     assert row["rule_of_5_violations"] == 0
+    assert row["sa_score"] == pytest.approx(2.75)
+    assert row["fraction_csp3"] == pytest.approx(0.42)
     assert "ames_probability" not in row
     assert "cyp2d6" not in row
 
@@ -640,6 +644,8 @@ def test_ligand_from_platform_record_hydrates_molprops():
     assert ligand.molecular_weight == pytest.approx(351.4)
     assert ligand.hbond_donor_count == 1
     assert ligand.rule_of_5_violations == 0
+    assert ligand.sa_score == pytest.approx(2.75)
+    assert ligand.fraction_csp3 == pytest.approx(0.42)
     assert "logP" not in ligand.properties
     assert "molecular_weight" not in ligand.properties
 

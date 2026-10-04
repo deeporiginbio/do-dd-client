@@ -582,7 +582,15 @@ def test_scientific_run_preserves_restriction_or_ordinary_failure(
     from deeporigin.drug_discovery.docking import Docking
 
     cls, setup, payload = {
-        "admet": (Admet, ["_ensure_properties_for_run"], "_make_payload"),
+        "admet": (
+            Admet,
+            [
+                "_ensure_run_ligand_count",
+                "_ensure_properties_for_run",
+                "_ensure_platform_inputs",
+            ],
+            "_make_payload",
+        ),
         "docking": (
             Docking,
             ["_ensure_inputs_for_sync_run"],

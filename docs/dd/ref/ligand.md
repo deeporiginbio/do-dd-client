@@ -23,7 +23,7 @@ After you run [`Molprops`](../how-to/ligands.md#predicting-molecular-properties-
 - `log_s`, `log_d`, `log_p` — map to tool keys `logS`, `logD`, `logP` (platform columns `logs_predicted`, `logd_predicted`, `log_p`)
 - `has_pains`, `pains_fragments` — PAINS screening (`pains_flag` on the platform record maps to `has_pains`)
 - `molecular_weight`, `hbond_donor_count`, `hbond_acceptor_count`, `rotatable_bond_count`, `tpsa`, `rule_of_5_violations` — RDKit descriptors (platform pin `rule_of5_violations` maps to `rule_of_5_violations`)
-- `sa_score` — synthetic accessibility (from a `Molprops` run; platform pin pending)
+- `sa_score`, `fraction_csp3` — from a `Molprops` run or pinned platform molprops columns
 
 Until molprops has been run or the platform record has pinned values, these fields remain `None`. `pains_fragments` is only available from a fresh `Molprops` run when the platform pin is absent. Toxicity endpoints (AMES, hERG, CYP) belong on `Admet`, not Molprops.
 

@@ -13,13 +13,13 @@ from deeporigin.viz.molstar_html import (
     ligand_data_for_js,
     render_docking_box_html,
     render_ligand_html,
+    render_ligand_set_html,
     render_protein_html,
     render_protein_with_box_and_poses_html,
     render_protein_with_pockets_and_poses_html,
     render_protein_with_pockets_html,
     render_protein_with_poses_html,
     render_trajectory_html,
-    render_ligand_set_html,
 )
 
 _FIXTURE_PDB = (

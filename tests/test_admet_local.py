@@ -9,6 +9,10 @@ import pytest
 
 from deeporigin.drug_discovery import Admet, Ligand
 from deeporigin.platform.constants import TOOL_KEYS_AND_VERSIONS
+from deeporigin.utils.constants import (
+    ADMET_INLINE_LIGAND_CAP,
+    ADMET_WORKFLOW_LIGAND_THRESHOLD,
+)
 from tests.conftest import assert_quote_only_execution, check_tool_exists
 from tests.mock_server.routers.tools import (
     MOCK_ADMET_ENDPOINTS,
@@ -48,7 +52,7 @@ def test_admet_construct_copies_definition_enum(client: DeepOriginClient) -> Non
     assert job.properties == enum
     assert isinstance(job.properties, list)
     assert "Fu_regression" in job.properties
-    assert job.tool_version == "latest"
+    assert job.tool_version == "2"
 
 
 def test_admet_constructor_rejects_properties_kwarg(
@@ -125,22 +129,22 @@ def test_admet_run_returns_dataframe(client: DeepOriginClient) -> None:
     assert job.id is not None
     assert isinstance(job.properties, tuple)
 
+    lid1 = lig1.id or "0"
     expected_lig1 = _synthesize_admet_prediction_row(
         smiles="CCO",
-        ligand_id="0",
+        ligand_id=str(lid1),
         requested=_ADMET_PROPERTIES,
     )
-    row1 = df[df["ligand_id"] == "0"].iloc[0]
+    row1 = df[df["ligand_id"].astype(str) == str(lid1)].iloc[0]
     for prop in _ADMET_PROPERTIES:
         assert row1[prop] == expected_lig1[prop]
 
 
 def test_admet_run_quote_true(client: DeepOriginClient) -> None:
-    """``run(quote=True)`` returns the job with estimate; ligands are unchanged."""
+    """``run(quote=True)`` returns the job with estimate; no prediction DataFrame."""
     _assert_tool_available(client)
 
     ligand = Ligand.from_smiles("CCO")
-    assert ligand.id is None
     job = Admet(ligands=[ligand], client=client)
     job.properties = list(_ADMET_PROPERTIES)
     result = job.run(quote=True)
@@ -295,3 +299,74 @@ def test_admet_from_dto_duplicate_fills_omitted_properties(
     assert isinstance(copy.properties, list)
     copy.properties.remove("AMES_classification")
     assert "AMES_classification" not in copy.properties
+
+
+def test_admet_run_quoted_parks_without_dataframe(client: DeepOriginClient) -> None:
+    """When cost requires confirmation, ``run()`` returns ``None`` (Docking parity)."""
+
+    _assert_tool_available(client)
+    ligand = Ligand.from_smiles("CCO")
+    job = Admet(ligands=[ligand], client=client)
+    job.properties = list(_ADMET_PROPERTIES)
+    # Force a Quoted response without using quote=True (approve cap below estimate).
+    result = job.run(approve_amount=0)
+    assert result is None
+    assert job.status == "Quoted"
+
+
+def test_admet_start_above_inline_cap_uses_ligands_file(
+    client: DeepOriginClient,
+) -> None:
+    """Batches above the inline cap submit ``ligands_file`` and ``ligands_count``."""
+
+    _assert_tool_available(client)
+    n = ADMET_INLINE_LIGAND_CAP + 1
+    ligands = [Ligand.from_smiles("CCO")] * n
+    job = Admet(ligands=ligands, client=client)
+    inputs = job._make_inputs()
+    assert "ligands" not in inputs
+    assert inputs["ligands_count"] == n
+    remote = inputs["ligands_file"]
+    assert remote.startswith("admet-properties/ligand-lists/")
+
+    job.properties = list(_ADMET_PROPERTIES)
+    job.start()
+    dto = job._dto or {}
+    stored = dto.get("userInputs") or {}
+    assert stored.get("ligands_file") == remote
+    assert stored.get("ligands_count") == n
+
+    job.wait(timeout=30.0, poll_interval=0.1)
+    assert job.status == "Completed"
+    df = job.get_results()
+    assert len(df) == n
+    for prop in _ADMET_PROPERTIES:
+        assert prop in df.columns
+
+
+def test_admet_run_rejects_workflow_scale_batch(client: DeepOriginClient) -> None:
+    """``run()`` refuses 101+ ligands."""
+
+    n = ADMET_WORKFLOW_LIGAND_THRESHOLD
+    job = Admet(ligands=[Ligand.from_smiles("CCO")] * n, client=client)
+    with pytest.raises(ValueError, match="run\\(\\) supports at most"):
+        job.run()
+
+
+def test_admet_project_wide_start(client: DeepOriginClient) -> None:
+    """``ligands=[]`` submits ``project.id`` from ``client.project_id``."""
+
+    _assert_tool_available(client)
+    job = Admet(ligands=[], client=client)
+    job.properties = list(_ADMET_PROPERTIES)
+    inputs = job._make_inputs()
+    assert inputs["project"]["id"] == client.project_id
+    assert "ligands" not in inputs
+    job.start()
+    assert job.id is not None
+    job.wait(timeout=30.0, poll_interval=0.1)
+    assert job.status == "Completed"
+    df = job.get_results()
+    assert len(df) >= 1
+    for prop in _ADMET_PROPERTIES:
+        assert prop in df.columns

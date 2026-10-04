@@ -25,11 +25,12 @@ _Avoid_: JSON Schema ``inputs.properties``; molprops keys (``herg``); a fixed co
 of endpoints baked into the client
 
 **Admet**:
-admet-now served platform tool ``deeporigin.admet-properties``. A new Admet
-execution's ``properties`` is the endpoint list from the current tool definition
-(the caller may trim it before the run). A past execution restores ``properties``
-from recorded inputs. The CLI class ``Admet`` returns a
-:class:`pandas.DataFrame`; it does not mutate ligands.
+Platform tool ``deeporigin.admet-properties`` (pin major ``"2"``). ``run()`` for
+≤100 ligands (sync); ``start()``/``wait()`` for 101+ (auto ``ligands_file``) or
+``ligands=[]`` project-wide runs (``client.project_id`` only). Billed DO_TOGO;
+``run()`` returns ``None`` when status is ``Quoted`` — ``confirm()`` then
+``get_results()``. Returns a :class:`pandas.DataFrame`; does not mutate ligands.
+Sync ligands before submit; payload ``id`` only when ``Ligand.id`` is set.
 _Avoid_: constructor ``properties=``; ``ADMET_PROPERTY_NAMES`` /
 ``ADMET_PROPERTY_KEYS``; ``properties is None`` meaning “all” on a
 new run; calling definition-fill “hydration” (that word is ``from_dto`` /

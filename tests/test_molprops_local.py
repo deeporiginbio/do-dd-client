@@ -46,6 +46,18 @@ def test_molprops_run_applies_sa_score(client: DeepOriginClient) -> None:
     assert "sa_score" not in ligand.properties
 
 
+def test_molprops_run_applies_fraction_csp3(client: DeepOriginClient) -> None:
+    """``fraction_csp3`` lands on a named Ligand attribute, not ``properties``."""
+    mp_cfg = TOOL_KEYS_AND_VERSIONS["mol_props"]
+    assert check_tool_exists(client, mp_cfg["tool_key"], mp_cfg["tool_version"])
+
+    ligand = Ligand.from_smiles("CCO")
+    Molprops(ligands=[ligand], props=["fraction_csp3"], client=client).run()
+
+    assert ligand.fraction_csp3 is not None
+    assert "fraction_csp3" not in ligand.properties
+
+
 def test_molprops_default_props_are_full_enum() -> None:
     """Omitting props requests every tool input key."""
     from deeporigin.utils.constants import MOLPROPS_PROPERTY_KEYS

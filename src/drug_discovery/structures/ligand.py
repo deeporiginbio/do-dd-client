@@ -88,6 +88,7 @@ _MOLPROPS_RESPONSE_TO_ATTR: dict[str, str] = {
     "tpsa": "tpsa",
     "rule_of_5_violations": "rule_of_5_violations",
     "sa_score": "sa_score",
+    "fraction_csp3": "fraction_csp3",
 }
 
 # Molprops API row keys that are identity/merge fields, not Ligand attrs.
@@ -115,6 +116,8 @@ _PLATFORM_PINNED_TO_MOLPROPS_ROW: dict[str, str] = {
     "rotatable_bond_count": "rotatable_bond_count",
     "tpsa": "tpsa",
     "rule_of5_violations": "rule_of_5_violations",
+    "sa_score": "sa_score",
+    "fraction_csp3": "fraction_csp3",
 }
 
 
@@ -255,6 +258,7 @@ class Ligand(Entity):
     tpsa: float | None = None
     rule_of_5_violations: int | None = None
     sa_score: float | None = None
+    fraction_csp3: float | None = None
     project_name: str | None = field(default=None, kw_only=True)
 
     # Additional attributes that are initialized in __post_init__
