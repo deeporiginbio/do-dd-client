@@ -144,7 +144,6 @@ abfe.params
 
     ```
     ABFEParams(
-      annihilate: True
       dt: 0.004
       temperature: 298.15
       cutoff: 0.9
@@ -178,7 +177,6 @@ Parameters modified from the defaults are indicated with an asterisk:
 
 ```{.python notest}
 ABFEParams(
-  annihilate: True
   dt: 0.004
   temperature: 300 *
   cutoff: 0.9

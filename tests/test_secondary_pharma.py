@@ -91,7 +91,7 @@ def test_secondary_pharma_construct_copies_definition_enum(
     job = SecondaryPharmacology(ligands=[ligand], method="docking", client=client)
 
     assert _definition_enum(client) == _PANEL_ACCESSIONS
-    assert job.tool_version == "2"
+    assert job.tool_version == "3"
     assert job.method == "docking"
     assert job.uniprots is None
 

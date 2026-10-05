@@ -284,7 +284,6 @@ def test_abfe_from_dto_rehydrates_prepared_system_lv0(client: DeepOriginClient):
                 "ligand1_id": "lig-xyz",
             },
             "binding": {
-                "annihilate": True,
                 "emeq_md_options": {"T": 300.0, "cutoff": 1.0, "dt": 0.002},
                 "n_windows": 24,
                 "npt_reduce_restraints_ns": 1.0,
@@ -296,7 +295,6 @@ def test_abfe_from_dto_rehydrates_prepared_system_lv0(client: DeepOriginClient):
                 "test_run": 1,
             },
             "solvation": {
-                "annihilate": False,
                 "emeq_md_options": {"T": 300.0, "cutoff": 1.0, "dt": 0.002},
                 "n_windows": 16,
                 "npt_reduce_restraints_ns": 0.1,

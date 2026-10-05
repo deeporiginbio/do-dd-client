@@ -113,7 +113,7 @@ EXECUTION_VISIBILITY_VALUES: frozenset[str] = frozenset(get_args(ExecutionVisibi
 TOOL_KEYS_AND_VERSIONS: dict[str, dict[str, str]] = {
     "docking": {
         "tool_key": "deeporigin.docking",
-        "tool_version": "3",
+        "tool_version": "4",
     },
     "constrained_docking": {
         "tool_key": "deeporigin.constrained-docking",
@@ -125,7 +125,7 @@ TOOL_KEYS_AND_VERSIONS: dict[str, dict[str, str]] = {
     },
     "mol_props": {
         "tool_key": "deeporigin.mol-props-combined",
-        "tool_version": "1",
+        "tool_version": "2",
     },
     "protonation": {
         "tool_key": "deeporigin.mol-props-protonation",
@@ -181,6 +181,6 @@ TOOL_KEYS_AND_VERSIONS: dict[str, dict[str, str]] = {
     },
     "secondary_pharma": {
         "tool_key": "deeporigin.secondary-pharma",
-        "tool_version": "2",
+        "tool_version": "3",
     },
 }

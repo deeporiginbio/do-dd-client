@@ -33,7 +33,6 @@ def test_fep_params_from_inputs_round_trip() -> None:
     """_fep_params_from_inputs restores ABFEParams from stored tool inputs."""
     inputs = {
         "binding": {
-            "annihilate": False,
             "emeq_md_options": {"T": 310.0, "cutoff": 1.1, "dt": 0.003},
             "n_windows": 20,
             "npt_reduce_restraints_ns": 1.5,
@@ -45,7 +44,6 @@ def test_fep_params_from_inputs_round_trip() -> None:
             "test_run": 1,
         },
         "solvation": {
-            "annihilate": False,
             "emeq_md_options": {"T": 310.0, "cutoff": 1.1, "dt": 0.003},
             "n_windows": 10,
             "npt_reduce_restraints_ns": 0.2,
