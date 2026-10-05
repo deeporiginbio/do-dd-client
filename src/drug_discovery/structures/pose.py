@@ -101,7 +101,7 @@ def normalize_pose_origin(value: PoseOrigin | str | None) -> PoseOrigin | str | 
     """Return canonical pose provenance for client-facing :class:`Pose` objects.
 
     Maps the legacy indexed alias ``crystal_extract`` to ``cocrystal``. Known and
-    unknown origin strings otherwise remain stripped and unchanged.
+    unknown origin strings otherwise stay stripped and unchanged.
     """
 
     text = _strip_nonempty_str(value)
