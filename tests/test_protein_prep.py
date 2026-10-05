@@ -1446,6 +1446,24 @@ def test_crystal_poses_from_output_rows_hydrates_metadata(
     assert poses[0].remote_path == "entities/ligands/extracted/exec/lig.sdf"
 
 
+def test_crystal_poses_from_output_rows_accepts_legacy_crystal_extract_origin(
+    client: DeepOriginClient,
+) -> None:
+    """Legacy crystal_extract rows surface as canonical cocrystal poses."""
+    rows = [
+        {
+            "component_id": "ligand:LIG:A:100",
+            "file_path": "entities/ligands/extracted/exec/lig.sdf",
+            "ligand_id": "08LIGAND0001",
+            "origin": "crystal_extract",
+            "protein_id": "09PREPAREDPROTEIN",
+        }
+    ]
+    poses = _crystal_poses_from_output_rows(rows, client=client)
+    assert len(poses) == 1
+    assert poses[0].origin == "cocrystal"
+
+
 def test_crystal_poses_from_output_rows_rejects_non_cocrystal_origin(
     client: DeepOriginClient,
 ) -> None:
@@ -1455,7 +1473,7 @@ def test_crystal_poses_from_output_rows_rejects_non_cocrystal_origin(
             "component_id": "ligand:LIG:A:100",
             "file_path": "entities/ligands/extracted/exec/lig.sdf",
             "ligand_id": "08LIGAND0001",
-            "origin": "crystal_extract",
+            "origin": "docked",
             "protein_id": "09PREPAREDPROTEIN",
         }
     ]

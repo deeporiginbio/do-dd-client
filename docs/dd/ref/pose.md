@@ -38,6 +38,11 @@ A **Pose** is a 3D ligand conformation stored in the platform pose result table
 (`result_type=pose`). It has its own platform **pose id** (`Pose.id`) and a
 parent **ligand id** (`Pose.ligand_id`) in the ligands table.
 
+**Pose origin** known values include `cocrystal`, `docked`, `registered`, and
+`manual`. Older indexed rows may still store `crystal_extract`; the client
+reads that as `cocrystal`. Unknown origin strings are preserved for forward
+compatibility.
+
 Use :class:`Pose` / :class:`PoseSet` when you need pose-scoped identity.
 :meth:`~deeporigin.drug_discovery.Docking.get_results` and
 :meth:`~deeporigin.drug_discovery.Docking.get_poses` return :class:`PoseSet`.
