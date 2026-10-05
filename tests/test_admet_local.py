@@ -10,8 +10,8 @@ import pytest
 from deeporigin.drug_discovery import Admet, Ligand
 from deeporigin.platform.constants import TOOL_KEYS_AND_VERSIONS
 from deeporigin.utils.constants import (
-    ADMET_INLINE_LIGAND_CAP,
     ADMET_WORKFLOW_LIGAND_THRESHOLD,
+    INLINE_LIGAND_CAP,
 )
 from tests.conftest import assert_quote_only_execution, check_tool_exists
 from tests.mock_server.routers.tools import (
@@ -320,7 +320,7 @@ def test_admet_start_above_inline_cap_uses_ligands_file(
     """Batches above the inline cap submit ``ligands_file`` and ``ligands_count``."""
 
     _assert_tool_available(client)
-    n = ADMET_INLINE_LIGAND_CAP + 1
+    n = INLINE_LIGAND_CAP + 1
     ligands = [Ligand.from_smiles("CCO")] * n
     job = Admet(ligands=ligands, client=client)
     inputs = job._make_inputs()
@@ -342,6 +342,32 @@ def test_admet_start_above_inline_cap_uses_ligands_file(
     assert len(df) == n
     for prop in _ADMET_PROPERTIES:
         assert prop in df.columns
+
+
+def test_admet_batch_size_sent_on_workflow_paths_only(
+    client: DeepOriginClient,
+) -> None:
+    """``batch_size`` becomes ``batchSize`` on file/project runs, not inline ones."""
+
+    _assert_tool_available(client)
+    many = [Ligand.from_smiles("CCO")] * (INLINE_LIGAND_CAP + 1)
+    assert Admet(ligands=many, client=client)._make_inputs().get("batchSize") is None
+
+    file_job = Admet(ligands=many, batch_size=50, client=client)
+    assert file_job.batch_size == 50
+    assert file_job._make_inputs()["batchSize"] == 50
+    project_inputs = Admet(ligands=[], batch_size=60, client=client)._make_inputs()
+    assert project_inputs["batchSize"] == 60
+    inline = Admet(ligands=[Ligand.from_smiles("CCO")], batch_size=50, client=client)
+    assert "batchSize" not in inline._make_inputs()
+
+    with pytest.raises(ValueError, match="batch_size must be at least 50"):
+        Admet(ligands=many, batch_size=49, client=client)
+
+    file_job.properties = list(_ADMET_PROPERTIES)
+    file_job.start()
+    restored = Admet.from_dto(file_job._dto or {}, client=client)
+    assert restored.batch_size == 50
 
 
 def test_admet_run_rejects_workflow_scale_batch(client: DeepOriginClient) -> None:

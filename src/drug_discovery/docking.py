@@ -19,6 +19,10 @@ from deeporigin.drug_discovery.execution_mixins import (
     AsyncExecutableMixin,
     SyncExecutableMixin,
 )
+from deeporigin.drug_discovery.ligand_list_file import (
+    ligand_rows_from_inputs,
+    ligands_input,
+)
 from deeporigin.drug_discovery.notebook_watch_mixin import NotebookWatchMixin
 from deeporigin.drug_discovery.structures.ligand import Ligand, LigandSet
 from deeporigin.drug_discovery.structures.pocket import Pocket
@@ -427,7 +431,11 @@ class Docking(Execution, SyncExecutableMixin, AsyncExecutableMixin, NotebookWatc
                 "id": self.protein.id,
                 "file_path": self.protein.remote_path,
             },
-            "ligands": [_ligand_tool_input_row(lig) for lig in ligands],
+            **ligands_input(
+                [_ligand_tool_input_row(lig) for lig in ligands],
+                client=self.client,
+                prefix="docking/ligand-lists/",
+            ),
         }
 
         return params, metadata
@@ -513,10 +521,12 @@ class Docking(Execution, SyncExecutableMixin, AsyncExecutableMixin, NotebookWatc
                 "this execution may have been created with an older input schema."
             )
 
-        ligands_input = inputs.get("ligands", [])
-        if not ligands_input:
+        ligand_rows = ligand_rows_from_inputs(
+            inputs, client=instance.client, label="Docking"
+        )
+        if not ligand_rows:
             raise ValueError(
-                "Missing 'ligands' in execution userInputs; "
+                "Missing 'ligands' or 'ligands_file' in execution userInputs; "
                 "this execution may have been created with an older input schema."
             )
 
@@ -530,10 +540,10 @@ class Docking(Execution, SyncExecutableMixin, AsyncExecutableMixin, NotebookWatc
             )
             fut_ligands = executor.submit(
                 LigandSet.from_ids,
-                [lig["id"] for lig in ligands_input],
+                [lig["id"] for lig in ligand_rows],
                 client=instance.client,
                 download=False,
-                ligand_inputs=ligands_input,
+                ligand_inputs=ligand_rows,
             )
             if pocket_id is not None:
                 fut_pocket = executor.submit(

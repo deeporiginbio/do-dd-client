@@ -18,7 +18,7 @@ from deeporigin.platform.constants import (
     is_success_status,
 )
 from deeporigin.utils.constants import (
-    METABOLISM_INLINE_LIGAND_CAP,
+    INLINE_LIGAND_CAP,
     METABOLISM_WORKFLOW_LIGAND_THRESHOLD,
 )
 from tests.conftest import check_tool_exists
@@ -189,7 +189,7 @@ def test_metabolism_start_above_inline_cap_uses_ligands_file(
 ) -> None:
     """Batches above the inline cap submit ``ligands_file`` after UFA upload."""
     _assert_tool_available(client)
-    n = METABOLISM_INLINE_LIGAND_CAP + 1
+    n = INLINE_LIGAND_CAP + 1
     ligands = [Ligand.from_smiles("CCO")] * n
     job = Metabolism(ligands=ligands, client=client)
     inputs = job._make_inputs()
@@ -219,7 +219,7 @@ def test_metabolism_from_dto_rehydrates_ligands_file(
 ) -> None:
     """``from_dto`` downloads ``ligands_file`` and restores ligands."""
     _assert_tool_available(client)
-    n = METABOLISM_INLINE_LIGAND_CAP + 1
+    n = INLINE_LIGAND_CAP + 1
     job = Metabolism(ligands=[Ligand.from_smiles("CCO")] * n, client=client)
     job.start()
     assert job.dto is not None

@@ -31,6 +31,7 @@ from deeporigin.drug_discovery import (
     Ligand,
     SecondaryPharmacology,
 )
+from deeporigin.drug_discovery.ligand_list_file import ligand_rows_from_inputs
 from deeporigin.drug_discovery.structures.pose import Pose, PoseSet
 from deeporigin.exceptions import DeepOriginException
 from deeporigin.platform.constants import (
@@ -39,6 +40,7 @@ from deeporigin.platform.constants import (
     is_success_status,
 )
 from deeporigin.plots import WHITE_RED_HAZARD_PALETTE
+from deeporigin.utils.constants import INLINE_LIGAND_CAP
 from tests.conftest import check_tool_exists
 from tests.mock_server.routers.tools import (
     MOCK_SECONDARY_PHARMA_PANEL,
@@ -440,6 +442,25 @@ def test_secondary_pharma_make_inputs_docking_uses_ligand_id_directly(
     job = SecondaryPharmacology(ligands=[ligand], method="docking", client=client)
     inputs = job._make_inputs()
     assert inputs["ligands"] == [{"id": "manually-set-id", "smiles": "CCO"}]
+
+
+def test_secondary_pharma_make_inputs_ligand_ml_above_cap_uses_synced_file(
+    client: DeepOriginClient,
+) -> None:
+    """Above the inline cap, ligand-ml syncs ligands and sends a Ligand list file.
+
+    Preflight requires ``id`` on every file row, so the unsynced-ligand-ml
+    shortcut above doesn't apply here.
+    """
+    _assert_tool_available(client)
+    ligands = [Ligand.from_smiles("C" * (i + 1)) for i in range(INLINE_LIGAND_CAP + 1)]
+    job = SecondaryPharmacology(ligands=ligands, method="ligand-ml", client=client)
+    inputs = job._make_inputs()
+    assert "ligands" not in inputs
+    assert inputs["ligands_count"] == INLINE_LIGAND_CAP + 1
+    rows = ligand_rows_from_inputs(inputs, client=client, label="T")
+    assert len(rows) == INLINE_LIGAND_CAP + 1
+    assert all(row.get("id") for row in rows)
 
 
 def test_secondary_pharma_ensure_platform_inputs_syncs_ligands(

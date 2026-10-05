@@ -278,17 +278,17 @@ ADMET_EXECUTION_TIMEOUT_SECONDS = 900.0
 Cold-start model loading in the admet-now served image can exceed the default
 600s POST timeout."""
 
-ADMET_INLINE_LIGAND_CAP = 100
-"""Max ligands sent inline in Admet ``inputs.ligands``.
+INLINE_LIGAND_CAP = 100
+"""Max ligands sent inline in tool ``inputs.ligands``.
 
-Matches the platform Inline ligand cap on ``deeporigin.admet-properties`` 2.x.
-Larger batches upload a Ligand list file and pass ``ligands_file`` and
-``ligands_count``."""
+Matches the platform Inline ligand cap on admet-properties 2.x, metabolism,
+docking 4.x and secondary-pharma 3.x. Larger batches upload a Ligand list file
+and pass ``ligands_file`` (see :mod:`deeporigin.drug_discovery.ligand_list_file`)."""
 
 ADMET_WORKFLOW_LIGAND_THRESHOLD = 101
 """Ligand count at which ``Admet.run()`` must use ``start()`` instead.
 
-``run()`` supports at most :data:`ADMET_INLINE_LIGAND_CAP` ligands (sync served).
+``run()`` supports at most :data:`INLINE_LIGAND_CAP` ligands (sync served).
 At or above this threshold (101+), use ``start()`` then ``wait()`` / ``watch()``."""
 
 ADMET_LIGAND_LIST_UPLOAD_PREFIX = "admet-properties/ligand-lists/"
@@ -297,18 +297,15 @@ ADMET_LIGAND_LIST_UPLOAD_PREFIX = "admet-properties/ligand-lists/"
 ADMET_RESULT_EXPLORER_PAGE_SIZE = 1000
 """Page size when paging Admet ``admetproperty`` rows from result-explorer."""
 
+ADMET_MIN_BATCH_SIZE = 50
+"""Smallest ``batchSize`` (ligands per workflow pod) admet-properties accepts."""
+
 METABOLISM_WORKFLOW_LIGAND_THRESHOLD = 30
 """Ligand count at which ``Metabolism.run()`` must use ``start()`` instead.
 
 Matches platform preflight routing: batches at or above this size run as
 workflows. ``run()`` raises for ``len(ligands) >=`` this value; use
 ``start()`` then ``wait()`` / ``watch()``."""
-
-METABOLISM_INLINE_LIGAND_CAP = 100
-"""Max ligands sent inline in Metabolism ``inputs.ligands``.
-
-Matches the platform Inline ligand cap. Larger batches dump a Ligand list
-file to UFA and pass ``inputs.ligands_file`` instead."""
 
 METABOLISM_EXECUTION_TIMEOUT_SECONDS = 900.0
 """HTTP timeout (seconds) for ``deeporigin.metabolism`` sync runs.
