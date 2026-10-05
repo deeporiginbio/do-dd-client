@@ -22,7 +22,7 @@ import uuid
 from fastapi import APIRouter, HTTPException, Request
 
 from deeporigin.utils.constants import (
-    ADMET_INLINE_LIGAND_CAP,
+    INLINE_LIGAND_CAP,
     METABOLISM_WORKFLOW_LIGAND_THRESHOLD,
 )
 
@@ -3668,7 +3668,7 @@ def create_tools_router(
                 body.get("sync") is True
                 and not has_file
                 and not has_project
-                and n_ligands <= ADMET_INLINE_LIGAND_CAP
+                and n_ligands <= INLINE_LIGAND_CAP
             )
             if sync_inline:
                 execution = _build_admet_properties_execution(

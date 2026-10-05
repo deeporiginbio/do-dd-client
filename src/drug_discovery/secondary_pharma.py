@@ -50,12 +50,18 @@ from deeporigin.drug_discovery.execution_mixins import (
     AsyncExecutableMixin,
     SyncExecutableMixin,
 )
+from deeporigin.drug_discovery.ligand_list_file import (
+    ligand_rows_from_inputs,
+    ligands_from_rows,
+    ligands_input,
+)
 from deeporigin.drug_discovery.notebook_watch_mixin import NotebookWatchMixin
 from deeporigin.drug_discovery.structures.ligand import Ligand, LigandSet
 from deeporigin.drug_discovery.structures.pose import Pose, PoseSet
 from deeporigin.exceptions import DeepOriginException
 from deeporigin.platform.client import DeepOriginClient
 from deeporigin.platform.constants import TOOL_KEYS_AND_VERSIONS, is_success_status
+from deeporigin.utils.constants import INLINE_LIGAND_CAP
 
 _UNIPROTS_ENUM_MISSING = (
     "SecondaryPharmacology tool definition is missing a non-empty uniprots enum "
@@ -162,31 +168,20 @@ def _ligand_ml_ligand_rows(ligands: list[Ligand]) -> list[dict[str, Any]]:
     return rows
 
 
-def _ligands_from_inputs(inputs: dict[str, Any]) -> list[Ligand]:
+def _ligands_from_inputs(
+    inputs: dict[str, Any],
+    *,
+    client: DeepOriginClient | None = None,
+) -> list[Ligand]:
     """Rebuild ligands from stored secondary-pharma ``userInputs``.
 
-    Returns an empty list (rather than raising, unlike ``Admet``'s equivalent)
-    when ``ligands`` is absent -- a valid, expected shape for ``self_test`` runs.
+    Reads inline ``ligands``, or downloads ``ligands_file`` (raises
+    ``ValueError`` if it cannot be loaded). Returns an empty list (rather than
+    raising, unlike ``Admet``'s equivalent) when neither is present -- a valid,
+    expected shape for ``self_test`` runs.
     """
-    raw = inputs.get("ligands")
-    if not isinstance(raw, list) or not raw:
-        return []
-    ligands: list[Ligand] = []
-    for idx, row in enumerate(raw):
-        if not isinstance(row, dict):
-            raise ValueError(
-                f"Cannot rehydrate SecondaryPharmacology: ligands[{idx}] is not an object."
-            )
-        smiles = row.get("smiles")
-        if not smiles or not isinstance(smiles, str):
-            raise ValueError(
-                f"Cannot rehydrate SecondaryPharmacology: ligands[{idx}] has no SMILES."
-            )
-        ligand = Ligand.from_smiles(smiles)
-        if row.get("id") is not None:
-            ligand.id = str(row["id"])
-        ligands.append(ligand)
-    return ligands
+    rows = ligand_rows_from_inputs(inputs, client=client, label="SecondaryPharmacology")
+    return ligands_from_rows(rows, label="SecondaryPharmacology")
 
 
 # Result-explorer stores this table's rows under result_type="panelpose" --
@@ -904,11 +899,13 @@ class SecondaryPharmacology(
             )
 
     def _ensure_platform_inputs(self) -> None:
-        """Sync ligands to the data platform for the docking path.
+        """Sync ligands to the data platform so every row has a persisted id.
 
-        Only docking is a workflow that needs persisted ligand ids (as in
-        ``Docking._ensure_platform_inputs``). Ligand-ml scores straight from SMILES and
-        backfills ids afterwards; see :meth:`_backfill_ligand_ids`.
+        Docking always needs persisted ligand ids (as in
+        ``Docking._ensure_platform_inputs``), and so does any batch above
+        :data:`~deeporigin.utils.constants.INLINE_LIGAND_CAP` (a Ligand list
+        file). Small ligand-ml batches score straight from SMILES and backfill
+        ids afterwards; see :meth:`_backfill_ligand_ids`.
         """
         LigandSet(ligands=self._ligands).sync(lazy=True, client=self.client)
 
@@ -953,10 +950,16 @@ class SecondaryPharmacology(
             "self_test": self._self_test,
         }
         if self._ligands:
+            if len(self._ligands) > INLINE_LIGAND_CAP:
+                # Preflight requires ``id`` on every Ligand list file row.
+                self._ensure_platform_inputs()
             if self._method == "docking":
-                inputs["ligands"] = [_docking_ligand_row(lig) for lig in self._ligands]
+                rows = [_docking_ligand_row(lig) for lig in self._ligands]
             else:
-                inputs["ligands"] = _ligand_ml_ligand_rows(self._ligands)
+                rows = _ligand_ml_ligand_rows(self._ligands)
+            inputs |= ligands_input(
+                rows, client=self.client, prefix="secondary-pharma/ligand-lists/"
+            )
         if self._uniprots:
             inputs["uniprots"] = list(self._uniprots)
         return inputs
@@ -1525,7 +1528,7 @@ class SecondaryPharmacology(
         inputs: dict[str, Any] = (
             execution.get("userInputs") or execution.get("inputs") or {}
         )
-        instance._ligands = _ligands_from_inputs(inputs)
+        instance._ligands = _ligands_from_inputs(inputs, client=instance.client)
         methods = inputs.get("methods")
         instance._method = (
             methods[0] if isinstance(methods, list) and methods else "ligand-ml"

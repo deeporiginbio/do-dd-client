@@ -24,7 +24,7 @@ df = admet.run()
 from deeporigin.drug_discovery import LigandSet
 
 ligand_set = LigandSet.from_csv("ligands.csv")  # "smiles" column
-large = Admet(ligands=ligand_set)
+large = Admet(ligands=ligand_set, batch_size=100)  # optional; smaller batches run more in parallel (min 50)
 large.start()
 large.wait()
 df = large.get_results()

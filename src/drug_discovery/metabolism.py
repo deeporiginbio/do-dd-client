@@ -20,7 +20,7 @@ are not mutated. Payload ``id`` is sent only when
 :attr:`~deeporigin.drug_discovery.structures.ligand.Ligand.id` is already set.
 
 Batches larger than the platform Inline ligand cap
-(:data:`~deeporigin.utils.constants.METABOLISM_INLINE_LIGAND_CAP`) dump a
+(:data:`~deeporigin.utils.constants.INLINE_LIGAND_CAP`) dump a
 Ligand list file to UFA and submit ``inputs.ligands_file`` on
 :meth:`start` (transparent to the caller).
 
@@ -48,12 +48,7 @@ Fetch indexed rows without starting a job::
 
 from __future__ import annotations
 
-import json
-import os
-from pathlib import Path
-import tempfile
 from typing import Any, Self
-import uuid
 import warnings
 
 from beartype import beartype
@@ -64,14 +59,19 @@ from deeporigin.drug_discovery.execution_mixins import (
     AsyncExecutableMixin,
     SyncExecutableMixin,
 )
+from deeporigin.drug_discovery.ligand_list_file import (
+    ligand_rows_from_inputs,
+    ligands_from_rows,
+    upload_ligand_list,
+)
 from deeporigin.drug_discovery.notebook_watch_mixin import NotebookWatchMixin
 from deeporigin.drug_discovery.structures.ligand import Ligand, LigandSet
 from deeporigin.exceptions import DeepOriginException
 from deeporigin.platform.client import DeepOriginClient
 from deeporigin.platform.constants import TOOL_KEYS_AND_VERSIONS, is_success_status
 from deeporigin.utils.constants import (
+    INLINE_LIGAND_CAP,
     METABOLISM_EXECUTION_TIMEOUT_SECONDS,
-    METABOLISM_INLINE_LIGAND_CAP,
     METABOLISM_LIGAND_ID_QUERY_BATCH_SIZE,
     METABOLISM_RESULT_EXPLORER_PAGE_SIZE,
     METABOLISM_WORKFLOW_LIGAND_THRESHOLD,
@@ -253,69 +253,6 @@ def _ligand_payloads(ligands: list[Ligand]) -> list[dict[str, str]]:
     return ligand_payloads
 
 
-def _ligands_from_payload_rows(raw: list[Any]) -> list[Ligand]:
-    """Rebuild ligands from a bare Ligand list (inline or file JSON array).
-
-    Args:
-        raw: List of ligand dicts with ``smiles`` and optional ``id``.
-
-    Returns:
-        Ligands with SMILES and optional platform ids restored.
-
-    Raises:
-        ValueError: If a row is not an object or has no SMILES.
-    """
-
-    ligands: list[Ligand] = []
-    for idx, row in enumerate(raw):
-        if not isinstance(row, dict):
-            raise ValueError(
-                f"Cannot rehydrate Metabolism: ligands[{idx}] is not an object."
-            )
-        smiles = row.get("smiles")
-        if not smiles or not isinstance(smiles, str):
-            raise ValueError(
-                f"Cannot rehydrate Metabolism: ligands[{idx}] has no SMILES."
-            )
-        ligand = Ligand.from_smiles(smiles)
-        if row.get("id") is not None:
-            ligand.id = str(row["id"])
-        ligands.append(ligand)
-    return ligands
-
-
-def _ligands_from_list_file_bytes(payload: bytes) -> list[Ligand]:
-    """Parse a Ligand list file body into ligands.
-
-    Args:
-        payload: UTF-8 JSON bytes whose root is a bare ligand array.
-
-    Returns:
-        Parsed ligands.
-
-    Raises:
-        ValueError: If the body is not valid UTF-8 JSON or not a ligand array.
-    """
-
-    try:
-        text = payload.decode("utf-8")
-    except UnicodeDecodeError as exc:
-        raise ValueError(
-            f"Cannot rehydrate Metabolism: ligands_file is not valid UTF-8: {exc}"
-        ) from exc
-    try:
-        parsed = json.loads(text)
-    except json.JSONDecodeError as exc:
-        raise ValueError(
-            f"Cannot rehydrate Metabolism: ligands_file is not valid JSON: {exc.msg}"
-        ) from exc
-    if not isinstance(parsed, list) or not parsed:
-        raise ValueError(
-            "Cannot rehydrate Metabolism: ligands_file must be a non-empty JSON array."
-        )
-    return _ligands_from_payload_rows(parsed)
-
-
 def _ligands_from_inputs(
     inputs: dict[str, Any],
     *,
@@ -338,27 +275,10 @@ def _ligands_from_inputs(
             row has no SMILES.
     """
 
-    raw = inputs.get("ligands")
-    if isinstance(raw, list) and raw:
-        return _ligands_from_payload_rows(raw)
-
-    remote = inputs.get("ligands_file")
-    if not isinstance(remote, str) or not remote.strip():
+    rows = ligand_rows_from_inputs(inputs, client=client, label="Metabolism")
+    if not rows:
         raise ValueError("Cannot rehydrate Metabolism: stored inputs have no ligands.")
-    if client is None or client.files is None:
-        raise ValueError(
-            "Cannot rehydrate Metabolism: client with files is required "
-            "to download ligands_file."
-        )
-    try:
-        local_path = client.files.download(remote.strip(), direct=True)
-        payload = Path(local_path).read_bytes()
-    except Exception as exc:
-        raise ValueError(
-            f"Cannot rehydrate Metabolism: failed to download ligands_file "
-            f"{remote!r}: {exc}"
-        ) from exc
-    return _ligands_from_list_file_bytes(payload)
+    return ligands_from_rows(rows, label="Metabolism")
 
 
 def _resolve_client(client: DeepOriginClient | None) -> DeepOriginClient:
@@ -637,7 +557,7 @@ class Metabolism(
     :meth:`wait` or :meth:`watch`, then :meth:`get_results` /
     :meth:`get_molecules` (data platform first, ``jobOutputs`` fallback).
     Batches above
-    :data:`~deeporigin.utils.constants.METABOLISM_INLINE_LIGAND_CAP` upload a
+    :data:`~deeporigin.utils.constants.INLINE_LIGAND_CAP` upload a
     Ligand list file and pass ``ligands_file`` instead of inline ``ligands``.
 
     Use :meth:`fetch_results` / :meth:`fetch_molecules` to read indexed rows
@@ -745,51 +665,30 @@ class Metabolism(
         )
 
     def _ensure_ligands_file_uploaded(self) -> str:
-        """Dump ligands to JSON, upload to UFA, and return the remote path.
+        """Upload ligands JSON to UFA once and return the remote path.
 
         Caches the remote key on ``_remote_ligands_file`` so a repeated call
         does not re-upload.
-
-        Returns:
-            UFA path under ``metabolism/ligand-lists/``.
-
-        Raises:
-            ValueError: If the client has no files API.
         """
 
-        if self._remote_ligands_file is not None:
-            return self._remote_ligands_file
-        if self.client.files is None:
-            raise ValueError(
-                "Cannot upload Ligand list file: client.files is not available."
+        if self._remote_ligands_file is None:
+            self._remote_ligands_file = upload_ligand_list(
+                _ligand_payloads(self._ligands),
+                client=self.client,
+                prefix=_LIGAND_LIST_UPLOAD_PREFIX,
             )
-
-        payloads = _ligand_payloads(self._ligands)
-        remote_path = f"{_LIGAND_LIST_UPLOAD_PREFIX}{uuid.uuid4().hex}.json"
-        fd, tmp_name = tempfile.mkstemp(suffix=".json", prefix="metabolism-ligands-")
-        try:
-            with os.fdopen(fd, "w", encoding="utf-8") as handle:
-                json.dump(payloads, handle, allow_nan=False)
-            self.client.files.upload(tmp_name, remote_path)
-        finally:
-            try:
-                os.unlink(tmp_name)
-            except OSError:
-                pass
-
-        self._remote_ligands_file = remote_path
-        return remote_path
+        return self._remote_ligands_file
 
     def _make_inputs(self) -> dict[str, Any]:
         """Build tool ``inputs`` matching the metabolism schema.
 
         Batches larger than
-        :data:`~deeporigin.utils.constants.METABOLISM_INLINE_LIGAND_CAP`
+        :data:`~deeporigin.utils.constants.INLINE_LIGAND_CAP`
         upload a Ligand list file and return ``ligands_file``; smaller batches
         send inline ``ligands``.
         """
 
-        if len(self._ligands) > METABOLISM_INLINE_LIGAND_CAP:
+        if len(self._ligands) > INLINE_LIGAND_CAP:
             return {"ligands_file": self._ensure_ligands_file_uploaded()}
         return {"ligands": _ligand_payloads(self._ligands)}
 

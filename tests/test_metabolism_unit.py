@@ -19,7 +19,7 @@ from deeporigin.drug_discovery.metabolism import (
 )
 from deeporigin.drug_discovery.structures.ligand import Ligand, LigandSet
 from deeporigin.utils.constants import (
-    METABOLISM_INLINE_LIGAND_CAP,
+    INLINE_LIGAND_CAP,
     METABOLISM_RESULT_EXPLORER_PAGE_SIZE,
     METABOLISM_WORKFLOW_LIGAND_THRESHOLD,
 )
@@ -214,32 +214,9 @@ def test_ligands_from_inputs_requires_client_for_ligands_file() -> None:
         _ligands_from_inputs({"ligands_file": "metabolism/ligand-lists/x.json"})
 
 
-def test_ligands_from_list_file_bytes_parses_array() -> None:
-    """Bare JSON ligand arrays rehydrate into Ligand objects."""
-    from deeporigin.drug_discovery.metabolism import _ligands_from_list_file_bytes
-
-    raw = b'[{"smiles":"CCO","id":"lig-1"},{"smiles":"CCN"}]'
-    ligands = _ligands_from_list_file_bytes(raw)
-    assert [lig.smiles for lig in ligands] == ["CCO", "CCN"]
-    assert ligands[0].id == "lig-1"
-    assert ligands[1].id is None
-
-
-def test_ligands_from_list_file_bytes_rejects_bad_json() -> None:
-    """Invalid UTF-8 or JSON fails with ValueError."""
-    from deeporigin.drug_discovery.metabolism import _ligands_from_list_file_bytes
-
-    with pytest.raises(ValueError, match="not valid UTF-8"):
-        _ligands_from_list_file_bytes(b"\xff\xfe")
-    with pytest.raises(ValueError, match="not valid JSON"):
-        _ligands_from_list_file_bytes(b"{not-json")
-    with pytest.raises(ValueError, match="non-empty JSON array"):
-        _ligands_from_list_file_bytes(b"{}")
-
-
 def test_make_inputs_stays_inline_at_cap() -> None:
     """Exactly the inline cap still sends ``ligands[]``."""
-    n = METABOLISM_INLINE_LIGAND_CAP
+    n = INLINE_LIGAND_CAP
     job = Metabolism(ligands=[Ligand.from_smiles("CCO")] * n)
     inputs = job._make_inputs()
     assert "ligands_file" not in inputs
