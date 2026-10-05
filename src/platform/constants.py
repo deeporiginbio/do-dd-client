@@ -137,11 +137,11 @@ TOOL_KEYS_AND_VERSIONS: dict[str, dict[str, str]] = {
     },
     "abfe": {
         "tool_key": "deeporigin.abfe-end-to-end",
-        "tool_version": "latest",
+        "tool_version": "2",
     },
     "rbfe": {
         "tool_key": "deeporigin.rbfe",
-        "tool_version": "latest",
+        "tool_version": "2",
     },
     "sysprep": {
         "tool_key": "deeporigin.system-prep",

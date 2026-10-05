@@ -12,7 +12,7 @@ As of tool 0.9.3+, toxicity and metabolism endpoints (hERG, CYP, AMES) moved to
 ``deeporigin.admet-properties``. The CLI class ``Molprops`` mutates dedicated
 :class:`~deeporigin.drug_discovery.structures.ligand.Ligand` attributes in place
 (attrs-only; not ``properties``). Default ``props`` is the full tool input enum.
-Tool version pin is major ``"1"``.
+Tool version pin is major ``"2"``.
 _Avoid_: conflating with ``Admet``; calling it "ADMET" when you mean the
 admet-properties tool; storing molprops results only in ``properties``; local
 RDKit ``@property`` methods named like molprops fields
