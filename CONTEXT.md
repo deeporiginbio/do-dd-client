@@ -348,6 +348,13 @@ ligands) registered via **Pose registration**.
 _Avoid_: using `Ligand` when you mean a pose result with pose-scoped identity;
 conflating with docking-only outputs
 
+**Pose origin**:
+Public provenance of a **Pose**: `cocrystal`, `docked`, `registered`, or
+`manual`. The client presents legacy stored `crystal_extract` as canonical
+`cocrystal`; unknown future values remain visible for forward compatibility.
+_Avoid_: exposing `crystal_extract` as a separate public provenance; rejecting
+an otherwise readable Pose solely because its origin is newer than the client
+
 **Panel pose**:
 A docked pose of one ligand into one member of the Secondary Pharmacology
 **Panel**, stored under `result_type=panelpose` rather than `pose`. Names the
