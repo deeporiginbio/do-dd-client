@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+import shutil
 import struct
 from unittest.mock import MagicMock, patch
 
@@ -615,12 +616,16 @@ def test_abfe_trajectory_topology_uses_solute_pdb_for_fep_windows() -> None:
     )
 
 
-def test_abfe_systemprep_xml_to_pdb_ligand_chain_only_for_solvation() -> None:
+def test_abfe_systemprep_xml_to_pdb_ligand_chain_only_for_solvation(
+    tmp_path: Path,
+) -> None:
     """Solvation solute trajectories contain ligand atoms only (no ions or water)."""
-    xml_path = (
+    xml_src = (
         Path(__file__).resolve().parent
         / "fixtures/files/tool-runs/d037ce61-c52e-49bc-9507-1f300993d9fe/solvation_ligand.xml"
     )
+    xml_path = tmp_path / "solvation_ligand.xml"
+    shutil.copy(xml_src, xml_path)
     pdb_path = _abfe_systemprep_xml_to_pdb(
         str(xml_path),
         exclude_solvent=True,
