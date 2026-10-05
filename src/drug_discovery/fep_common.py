@@ -20,7 +20,6 @@ class ABFEParams:
     """FEP calculation parameters for absolute binding free energy (ABFE).
 
     Attributes:
-        annihilate: Whether to annihilate the ligand.
         dt: Time step in ps. Used for both emeq_md_options and prod_md_options.
         temperature: Temperature in K. Used for both emeq_md_options and prod_md_options.
         cutoff: Cutoff distance in nm. Used for both emeq_md_options and prod_md_options.
@@ -37,7 +36,6 @@ class ABFEParams:
         solvation_steps: Number of steps for solvation calculation.
     """
 
-    annihilate: bool = True
     dt: float = 0.004
     temperature: float = 298.15
     cutoff: float = 0.9
@@ -181,7 +179,6 @@ def _simulation_blocks(params: ABFEParams) -> dict[str, dict[str, Any]]:
     }
     return {
         "binding": {
-            "annihilate": params.annihilate,
             "emeq_md_options": md_options,
             "n_windows": params.binding_n_windows,
             "npt_reduce_restraints_ns": params.binding_npt_reduce_restraints_ns,
@@ -193,7 +190,6 @@ def _simulation_blocks(params: ABFEParams) -> dict[str, dict[str, Any]]:
             "test_run": params.test_run,
         },
         "solvation": {
-            "annihilate": params.annihilate,
             "emeq_md_options": md_options,
             "n_windows": params.solvation_n_windows,
             "npt_reduce_restraints_ns": params.solvation_npt_reduce_restraints_ns,
@@ -225,7 +221,6 @@ def _fep_params_from_inputs(
     md_options = binding.get("emeq_md_options", {})
 
     binding_key_map = {
-        "annihilate": "annihilate",
         "n_windows": "binding_n_windows",
         "npt_reduce_restraints_ns": "binding_npt_reduce_restraints_ns",
         "nvt_heating_ns": "binding_nvt_heating_ns",

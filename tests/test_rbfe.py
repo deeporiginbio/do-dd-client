@@ -546,7 +546,6 @@ def test_rbfe_from_dto_rehydrates_rbfe_only_steps(client: DeepOriginClient) -> N
                 }
             ],
             "binding": {
-                "annihilate": True,
                 "emeq_md_options": {"T": 310.0, "cutoff": 1.0, "dt": 0.002},
                 "n_windows": 12,
                 "npt_reduce_restraints_ns": 1.0,
@@ -558,7 +557,6 @@ def test_rbfe_from_dto_rehydrates_rbfe_only_steps(client: DeepOriginClient) -> N
                 "test_run": 0,
             },
             "solvation": {
-                "annihilate": True,
                 "emeq_md_options": {"T": 310.0, "cutoff": 1.0, "dt": 0.002},
                 "n_windows": 8,
                 "npt_reduce_restraints_ns": 0.1,
