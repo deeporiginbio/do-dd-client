@@ -402,8 +402,10 @@ class Docking(Execution, SyncExecutableMixin, AsyncExecutableMixin, NotebookWatc
     ) -> tuple[dict, dict]:
         """Build params and metadata for ``client.executions.create``.
 
-        Does not sync or upload; call :meth:`_ensure_platform_inputs` first when
-        inputs may not yet exist on the platform.
+        Does not sync; call :meth:`_ensure_platform_inputs` first when inputs may
+        not yet exist on the platform. Above
+        :data:`~deeporigin.utils.constants.INLINE_LIGAND_CAP` ligands, uploads a
+        Ligand list file.
 
         Args:
             ligand_set: Ligands to include in tool ``inputs`` (default: all

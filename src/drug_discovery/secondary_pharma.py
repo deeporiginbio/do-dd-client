@@ -175,8 +175,10 @@ def _ligands_from_inputs(
 ) -> list[Ligand]:
     """Rebuild ligands from stored secondary-pharma ``userInputs``.
 
-    Returns an empty list (rather than raising, unlike ``Admet``'s equivalent)
-    when ``ligands`` is absent -- a valid, expected shape for ``self_test`` runs.
+    Reads inline ``ligands``, or downloads ``ligands_file`` (raises
+    ``ValueError`` if it cannot be loaded). Returns an empty list (rather than
+    raising, unlike ``Admet``'s equivalent) when neither is present -- a valid,
+    expected shape for ``self_test`` runs.
     """
     rows = ligand_rows_from_inputs(inputs, client=client, label="SecondaryPharmacology")
     return ligands_from_rows(rows, label="SecondaryPharmacology")
