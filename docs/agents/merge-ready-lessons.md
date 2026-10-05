@@ -2,6 +2,10 @@
 
 Notes from past merge-ready cycles. Read before starting; append after success.
 
+## 2026-10-05 — PR #654 — DDOS-7952 Pose origin normalize
+
+`Test Python Code` path-filters on `**/*.py`, so a docs-only push leaves required formatting/functionality checks stuck or cancelled — touch a `.py` file to retrigger. `gh pr checks --watch --fail-fast` also exits early on non-required SonarCloud failures; watch required Ubuntu checks only, and treat matrix `cancel` as not-green (fail-fast can cancel queued Ubuntu jobs while Windows already passed). Copilot’s docs nit was real: pose origin docs must say known values + unknown strings preserved, not an exhaustive four-value list.
+
 ## 2026-10-01 — PR #650 — DDOS-8122 ADMET 2.x SDK
 
 `make test` failed because `run(quote=True)` called `_ensure_platform_inputs()` and assigned `ligand.id` while `test_admet.py` expects quote-only runs to leave SMILES-only ligands unregistered (match `SecondaryPharmacology`). Keep `sync=True` on `run()` even when `approve_amount` is set; Copilot’s second pass also needed mock project-scoped ADMET rows and `update_from_dto` on `start()`.
