@@ -18,6 +18,7 @@ from deeporigin.drug_discovery.structures.pose import (
     _optional_bool,
     _optional_float,
     _pose_row_from_registration_execution,
+    normalize_pose_origin,
 )
 from deeporigin.platform.client import DeepOriginClient
 from deeporigin.platform.constants import TOOL_KEYS_AND_VERSIONS
@@ -55,6 +56,44 @@ def test_pose_from_json_remote_path_only_row() -> None:
     assert pose.smiles == "CCO"
     assert pose.remote_path == "entities/poses/p1.sdf"
     assert pose.mol is None
+
+
+@pytest.mark.parametrize(
+    ("raw_origin", "expected"),
+    [
+        ("crystal_extract", "cocrystal"),
+        ("cocrystal", "cocrystal"),
+        ("docked", "docked"),
+        ("registered", "registered"),
+        ("manual", "manual"),
+        ("future_origin", "future_origin"),
+    ],
+)
+def test_pose_origin_normalization_direct_and_json(
+    raw_origin: str,
+    expected: str,
+) -> None:
+    """Legacy crystal_extract and unknown origins follow the client contract."""
+    pose = Pose(ligand_id="L1", origin=raw_origin)
+    assert pose.origin == expected
+
+    hydrated = Pose.from_json(
+        [
+            {
+                "ligand_id": "L1",
+                "remote_path": "entities/poses/p1.sdf",
+                "origin": raw_origin,
+            }
+        ]
+    )[0]
+    assert hydrated.origin == expected
+
+    pose.origin = raw_origin
+    assert pose.origin == expected
+
+
+def test_normalize_pose_origin_none() -> None:
+    assert normalize_pose_origin(None) is None
 
 
 def test_pose_from_json_coerces_metadata_fields() -> None:

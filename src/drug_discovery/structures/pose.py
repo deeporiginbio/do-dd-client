@@ -28,7 +28,10 @@ from deeporigin.drug_discovery.structures.repr_display import (
 from deeporigin.exceptions import DeepOriginException
 from deeporigin.platform.client import DeepOriginClient
 
-PoseOrigin = Literal["cocrystal", "docked", "registered"]
+PoseOrigin = Literal["cocrystal", "docked", "registered", "manual"]
+
+_LEGACY_POSE_ORIGIN_CRYSTAL_EXTRACT = "crystal_extract"
+_CANONICAL_POSE_ORIGIN_COCRYSTAL = "cocrystal"
 
 _POSE_RESULT_ID_POLL_SECONDS = 3.0
 _POSE_RESULT_ID_POLL_INTERVAL = 0.5
@@ -92,6 +95,21 @@ def _strip_nonempty_str(value: Any) -> str | None:
         if stripped:
             return stripped
     return None
+
+
+def normalize_pose_origin(value: PoseOrigin | str | None) -> PoseOrigin | str | None:
+    """Return canonical pose provenance for client-facing :class:`Pose` objects.
+
+    Maps the legacy indexed alias ``crystal_extract`` to ``cocrystal``. Other
+    known and unknown origin strings are returned stripped unchanged.
+    """
+
+    text = _strip_nonempty_str(value)
+    if text is None:
+        return None
+    if text == _LEGACY_POSE_ORIGIN_CRYSTAL_EXTRACT:
+        return _CANONICAL_POSE_ORIGIN_COCRYSTAL
+    return text
 
 
 def _path_points_to_existing_local_file(path: str) -> bool:
@@ -289,7 +307,9 @@ class Pose(Entity):
         pose_score: Docking pose score when present.
         binding_energy: Docking binding energy when present.
         best_pose: Whether this row is the best pose for its ligand in a run.
-        origin: Platform pose provenance (``cocrystal``, ``docked``, ``registered``).
+        origin: Platform pose provenance (``cocrystal``, ``docked``, ``registered``,
+            ``manual``). Legacy rows may store ``crystal_extract``; the client
+            presents that as ``cocrystal``.
         component_id: Protein Prep Selection component id for cocrystal poses.
         props: Additional metadata from the platform row.
     """
@@ -310,6 +330,15 @@ class Pose(Entity):
     _remote_path_base: ClassVar[str] = "entities/poses/"
     _preferred_ext: ClassVar[str] = ".sdf"
     _project_name: str | None = field(default=None, repr=False, compare=False)
+
+    def __post_init__(self) -> None:
+        if self.origin is not None:
+            object.__setattr__(self, "origin", normalize_pose_origin(self.origin))
+
+    def __setattr__(self, name: str, value: object) -> None:
+        if name == "origin" and value is not None:
+            value = normalize_pose_origin(value)  # type: ignore[arg-type]
+        super().__setattr__(name, value)
 
     @property
     def mol(self) -> Chem.Mol | None:

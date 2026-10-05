@@ -45,7 +45,11 @@ from deeporigin.drug_discovery.execution_mixins import (
 from deeporigin.drug_discovery.notebook_watch_mixin import NotebookWatchMixin
 from deeporigin.drug_discovery.structures.ligand import Ligand
 from deeporigin.drug_discovery.structures.pocket import Pocket
-from deeporigin.drug_discovery.structures.pose import Pose, PoseSet
+from deeporigin.drug_discovery.structures.pose import (
+    Pose,
+    PoseSet,
+    normalize_pose_origin,
+)
 from deeporigin.drug_discovery.structures.protein import Protein
 from deeporigin.exceptions import DeepOriginException
 from deeporigin.platform.client import DeepOriginClient
@@ -733,7 +737,7 @@ def _crystal_pose_output_rows(rows: list[Any]) -> list[dict[str, Any]]:
     for row in rows:
         if not isinstance(row, dict):
             continue
-        origin = str(row.get("origin") or "").strip()
+        origin = normalize_pose_origin(row.get("origin"))
         if origin != _PROTEIN_PREP_CRYSTAL_POSE_ORIGIN:
             continue
         filtered.append(row)
