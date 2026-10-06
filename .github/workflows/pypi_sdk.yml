@@ -36,6 +36,23 @@ jobs:
       - name: Build SDK package
         run: bash scripts/build_sdk.sh
 
+      - name: Smoke-test built SDK wheel
+        run: |
+          uv venv /tmp/sdk-smoke
+          uv pip install --python /tmp/sdk-smoke/bin/python dist/*.whl
+          /tmp/sdk-smoke/bin/python - <<'PY'
+          import importlib
+          import pkgutil
+
+          import deeporigin_sdk
+
+          for module in pkgutil.walk_packages(
+              deeporigin_sdk.__path__,
+              prefix="deeporigin_sdk.",
+          ):
+              importlib.import_module(module.name)
+          PY
+
       - name: Publish SDK distributions to PyPI
         uses: pypa/gh-action-pypi-publish@v1.14.0
         with:

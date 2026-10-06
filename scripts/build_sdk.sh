@@ -19,6 +19,7 @@ clean_platform_sdk_staging
 mkdir -p platform-sdk/src/platform
 cp src/platform/__init__.py platform-sdk/src/platform/
 cp src/platform/client.py platform-sdk/src/platform/
+cp src/platform/errors.py platform-sdk/src/platform/
 cp src/platform/files.py platform-sdk/src/platform/
 cp src/platform/entities.py platform-sdk/src/platform/
 cp src/platform/tags.py platform-sdk/src/platform/
