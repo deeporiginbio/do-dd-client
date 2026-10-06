@@ -631,7 +631,10 @@ def test_create_ligand_forwards_origin_payload() -> None:
 
 
 def test_create_protein_metadata_lv1(client: DeepOriginClient) -> None:
-    """create_protein persists state, preparation, structure_hash, and origin (DDOS-7931)."""
+    """create_protein persists state, preparation, structure_hash, and origin (DDOS-7931).
+
+    Also exercised via entity-updates notebook create-with-metadata cells.
+    """
     client.files.upload(_BRD_PDB_LOCAL, _BRD_PDB_REMOTE)
     remote = f"testing/prepared-meta-{uuid.uuid4().hex[:12]}.pdb"
     client.files.upload(_BRD_PDB_LOCAL, remote)
