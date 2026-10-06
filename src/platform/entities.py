@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Literal, TypedDict
 
 from deeporigin.platform.tags import merge_entity_tags, stamp_batch_row_tags
 from deeporigin.utils.constants import (
@@ -13,6 +13,38 @@ from deeporigin.utils.constants import (
 
 if TYPE_CHECKING:
     from deeporigin.platform.client import DeepOriginClient
+
+ProteinState = Literal["unprocessed", "prepared"]
+
+
+class EntityOrigin(TypedDict, total=False):
+    """Write-once provenance supplied on entity create.
+
+    Maps to platform columns ``origin_kind``, ``origin_entity_type``, and
+    ``origin_entity_id``. ``origin_entity_display_id`` is server-stamped.
+    """
+
+    kind: str
+    entity_type: str
+    entity_id: str
+
+
+def _apply_entity_origin(
+    set_dict: dict[str, Any],
+    origin: EntityOrigin | None,
+) -> None:
+    """Translate public ``origin`` mapping into platform ``origin_*`` set fields."""
+    if origin is None:
+        return
+    kind = origin.get("kind")
+    if kind is not None:
+        set_dict["origin_kind"] = kind
+    entity_type = origin.get("entity_type")
+    if entity_type is not None:
+        set_dict["origin_entity_type"] = entity_type
+    entity_id = origin.get("entity_id")
+    if entity_id is not None:
+        set_dict["origin_entity_id"] = entity_id
 
 
 def _writable_ligand_set_fields(set_dict: dict[str, Any]) -> dict[str, Any]:
@@ -54,6 +86,10 @@ LIGAND_RETURNING_FIELDS = [
     "molecular_weight",
     "structure_key",
     "tags",
+    "origin_kind",
+    "origin_entity_type",
+    "origin_entity_id",
+    "origin_entity_display_id",
 ]
 
 PROTEIN_RETURNING_FIELDS = [
@@ -85,6 +121,13 @@ PROTEIN_RETURNING_FIELDS = [
     "protein_family",
     "ligandability_score",
     "protein_length",
+    "state",
+    "preparation",
+    "structure_hash",
+    "origin_kind",
+    "origin_entity_type",
+    "origin_entity_id",
+    "origin_entity_display_id",
 ]
 
 
@@ -525,6 +568,7 @@ class Entities:
         hbond_acceptor_count: int | None = None,
         rotatable_bond_count: int | None = None,
         tpsa: float | None = None,
+        origin: EntityOrigin | None = None,
     ) -> dict:
         """Create a new ligand.
 
@@ -536,6 +580,8 @@ class Entities:
             variant_name_tag: Variant name tag. Defaults to empty string.
             tags: Data-platform metadata tags (jsonb object). Provenance
                 ``app`` / ``session`` are merged from the client automatically.
+            origin: Write-once provenance (``kind``, ``entity_type``, ``entity_id``).
+                Create-only; not accepted on :meth:`update_ligand`.
             molecular_weight: Deprecated. Server-computed from SMILES; ignored.
             formal_charge: Deprecated. Server-computed from SMILES; ignored.
             hbond_donor_count: Deprecated. Server-computed from SMILES; ignored.
@@ -559,6 +605,7 @@ class Entities:
         if mol_file is not None:
             set_dict["mol_file"] = mol_file
         set_dict["tags"] = merge_entity_tags(self._c, tags, always=True)
+        _apply_entity_origin(set_dict, origin)
 
         body: dict[str, Any] = {
             "set": _writable_ligand_set_fields(set_dict),
@@ -777,6 +824,10 @@ class Entities:
         protein_length: int | None = None,
         project_id: str | None = None,
         tags: dict[str, Any] | None = None,
+        state: ProteinState | None = None,
+        preparation: dict[str, Any] | None = None,
+        origin: EntityOrigin | None = None,
+        structure_hash: str | None = None,
     ) -> dict:
         """Create a new protein.
 
@@ -791,6 +842,11 @@ class Entities:
             project_id: Project ID for the protein.
             tags: Data-platform metadata tags (jsonb object). When provided,
                 provenance ``app`` / ``session`` are merged from the client.
+            state: ``unprocessed`` or ``prepared`` (Protein Prep signal).
+            preparation: JSON summary of what preparation did.
+            origin: Write-once provenance (``kind``, ``entity_type``, ``entity_id``).
+                Create-only; not accepted on :meth:`update_protein`.
+            structure_hash: Tool-supplied structure fingerprint for dedupe.
 
         Returns:
             Dictionary containing the created protein data.
@@ -798,6 +854,13 @@ class Entities:
         set_dict: dict[str, Any] = {
             "file_path": file_path,
         }
+
+        if state is not None:
+            set_dict["state"] = state
+        if preparation is not None:
+            set_dict["preparation"] = preparation
+        if structure_hash is not None:
+            set_dict["structure_hash"] = structure_hash
 
         if project_id is not None:
             set_dict["project_id"] = project_id
@@ -814,6 +877,7 @@ class Entities:
         if protein_length is not None:
             set_dict["protein_length"] = protein_length
         set_dict["tags"] = merge_entity_tags(self._c, tags, always=True)
+        _apply_entity_origin(set_dict, origin)
 
         body: dict[str, Any] = {
             "set": set_dict,
