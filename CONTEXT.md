@@ -147,7 +147,7 @@ Simulation-ready binding and solvation XML files (and metadata) produced by syst
 _Avoid_: "system" alone when meaning the prepared molecular system artifact
 
 **Protein Prep**:
-Platform tool `deeporigin.protein-prep` (v10) that inventories a caller-supplied
+Platform tool `deeporigin.protein-prep` (v11) that inventories a caller-supplied
 protein, records editable keep/review/skip Decisions, then applies resolved
 keep/skip Decisions and protonation (including loop modelling on the served
 path). CLI class `ProteinPrep` is the sole public preparation session: all

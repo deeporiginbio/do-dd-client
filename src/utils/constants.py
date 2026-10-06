@@ -170,7 +170,7 @@ PROTEIN_PREP_REGISTERED_PROTEIN_REQUIRED_MSG = (
     "Prepare requires a registered protein. Call Protein.sync() or assign "
     "protein.id before run() or start()."
 )
-"""Used when prepare is submitted without ``protein.id`` (protein-prep v10)."""
+"""Used when prepare is submitted without ``protein.id`` (protein-prep v11)."""
 
 PROTEIN_PREP_POCKETS_EXCLUDED_MSG = (
     "This ProteinPrep execution did not request pockets. Configure "
