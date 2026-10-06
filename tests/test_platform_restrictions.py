@@ -34,6 +34,29 @@ DTO = {
     },
 }
 
+TIER_LIMIT_PAYLOADS = [
+    {
+        "errors": [
+            {
+                "code": "MASON.TOOL_EXECUTION.TIER_LIMIT_EXCEEDED",
+                "title": message,
+                "meta": {
+                    "reason": "tier_limit",
+                    "itemCode": "DO_TOGO",
+                    "limit": limit,
+                    "remaining": remaining,
+                    "requested": 8,
+                    "upgradeTo": "Teams",
+                },
+            }
+        ]
+    }
+    for limit, remaining, message in [
+        (0, 0, "Your plan does not include ADMET. Upgrade to Teams to run it."),
+        (20, 5, "This run needs 8 ADMET actions, but only 5 remain this month."),
+    ]
+]
+
 
 @pytest.mark.parametrize(
     "code",
@@ -43,6 +66,7 @@ DTO = {
         "LICENSE.RESERVE.FEATURE_NOT_LICENSED",
         "LICENSE.RESERVE.EXCEEDS_MAX",
         "MASON.TOOL_EXECUTION.BILLING_REJECTED",
+        "MASON.TOOL_EXECUTION.TIER_LIMIT_EXCEEDED",
         "CREDITS_TX.PREPARE.INSUFFICIENT",
     ],
 )
@@ -147,20 +171,24 @@ def test_plain_execution_reason_is_preserved():
 
 
 @pytest.mark.parametrize("status", [400, 403, 429, 503])
-def test_http_restriction_stops_before_retry_or_diagnostic_file(status):
+@pytest.mark.parametrize("payload", [PAYLOAD, *TIER_LIMIT_PAYLOADS])
+def test_http_restriction_stops_before_retry_or_diagnostic_file(status, payload):
     client = object.__new__(DeepOriginClient)
     client.max_retries = 3
     client.retryable_status_codes = {429, 503}
     response = httpx.Response(
-        status, json=PAYLOAD, request=httpx.Request("POST", "https://platform.test")
+        status, json=payload, request=httpx.Request("POST", "https://platform.test")
     )
     request = MagicMock(return_value=response)
     with (
         patch("deeporigin.platform.client.time.sleep") as sleep,
         patch("deeporigin.platform.client._ensure_do_folder") as folder,
     ):
-        with pytest.raises(PlatformRestrictionError, match=MESSAGE):
+        with pytest.raises(PlatformRestrictionError) as caught:
             client._retry_request(request, "POST", "/tools")
+    assert caught.value.body == payload["errors"][0]["title"]
+    assert caught.value.response_data == payload
+    assert caught.value.http_status == status
     request.assert_called_once()
     sleep.assert_not_called()
     folder.assert_not_called()
