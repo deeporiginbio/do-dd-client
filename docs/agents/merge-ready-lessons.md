@@ -2,6 +2,10 @@
 
 Notes from past merge-ready cycles. Read before starting; append after success.
 
+## 2026-10-05 — PR #655 — DDOS-7931 create metadata kwargs
+
+Copilot correctly required a runnable Entities-layer demo for new public create kwargs — extend the existing `entity-updates` notebook rather than inventing a new one. Reinforced: notebook-only pushes skip `Test Python Code` (`**/*.py` path filter), so touch a `.py` file before waiting on required CI.
+
 ## 2026-10-05 — PR #654 — DDOS-7952 Pose origin normalize
 
 `Test Python Code` path-filters on `**/*.py`, so a docs-only push leaves required formatting/functionality checks stuck or cancelled — touch a `.py` file to retrigger. `gh pr checks --watch --fail-fast` also exits early on non-required SonarCloud failures; watch required Ubuntu checks only, and treat matrix `cancel` as not-green (fail-fast can cancel queued Ubuntu jobs while Windows already passed). Copilot’s docs nit was real: pose origin docs must say known values + unknown strings preserved, not an exhaustive four-value list.
