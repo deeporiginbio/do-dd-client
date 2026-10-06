@@ -10,6 +10,8 @@ from deeporigin.drug_discovery import BRD_DATA_DIR
 from deeporigin.drug_discovery.structures.ligand import Ligand
 from deeporigin.exceptions import DeepOriginException
 from deeporigin.platform import DeepOriginClient
+from deeporigin.platform.entities import Entities
+from tests.mock_server.routers.data_platform import MOCK_CANONICAL_PROTEIN_ID
 
 _BRD_PDB_LOCAL = BRD_DATA_DIR / "brd.pdb"
 _BRD_PDB_REMOTE = "testing/brd.pdb"
@@ -55,6 +57,18 @@ def _unique_test_smiles(*, suffix: str = "O") -> str:
         "C(C)" if (bits >> i) & 1 else "C" for i in range(_SMILES_BACKBONE_UNITS)
     )
     return backbone + suffix
+
+
+def _create_origin_source_protein(client: DeepOriginClient) -> str:
+    """Create a protein row to use as ``origin.entity_id`` on live platform APIs.
+
+    The mock server's ``MOCK_CANONICAL_PROTEIN_ID`` (``"brd"``) is not accepted
+    as ``origin_entity_id`` on dev/prod — the API requires a real entity id.
+    """
+    remote = f"testing/origin-source-{uuid.uuid4().hex[:12]}.pdb"
+    client.files.upload(_BRD_PDB_LOCAL, remote)
+    create = client.entities.create_protein(file_path=remote)
+    return create["data"]["id"]
 
 
 def _wait_for_ligand(client: DeepOriginClient, lig_id: str) -> dict:
@@ -551,4 +565,140 @@ def test_update_ligand_with_tags_lv1(client: DeepOriginClient):
             client.entities.delete(entity="ligands", entity_id=lig_id)
         except DeepOriginException as _e:
             if "404" not in str(_e):
+                raise
+
+
+class _CapturePostJsonClient:
+    """Minimal client stub that records entity create POST bodies."""
+
+    org_key = "test-org"
+    _app = "do-dd-client-tests"
+    _session = "entities-unit"
+
+    def __init__(self) -> None:
+        self.last_body: dict | None = None
+
+    def post_json(self, _path: str, body: dict) -> dict:
+        self.last_body = body
+        row = dict(body.get("set", {}))
+        row["id"] = "stub-id"
+        return {"data": row}
+
+
+def test_create_protein_forwards_metadata_payload() -> None:
+    """create_protein translates origin and passes protein metadata in the set payload."""
+    stub = _CapturePostJsonClient()
+    entities = Entities(stub)  # type: ignore[arg-type]
+    preparation = {"chains": [{"id": "chain:A", "decision": "keep"}]}
+
+    entities.create_protein(
+        file_path="testing/prepared.pdb",
+        state="prepared",
+        preparation=preparation,
+        structure_hash="struct-hash-abc",
+        origin={
+            "kind": "prepared",
+            "entity_type": "protein",
+            "entity_id": MOCK_CANONICAL_PROTEIN_ID,
+        },
+    )
+
+    assert stub.last_body is not None
+    set_payload = stub.last_body["set"]
+    assert set_payload["state"] == "prepared"
+    assert set_payload["preparation"] == preparation
+    assert set_payload["structure_hash"] == "struct-hash-abc"
+    assert set_payload["origin_kind"] == "prepared"
+    assert set_payload["origin_entity_type"] == "protein"
+    assert set_payload["origin_entity_id"] == MOCK_CANONICAL_PROTEIN_ID
+    assert "origin_entity_display_id" not in set_payload
+    returning = stub.last_body["returning"]
+    assert "state" in returning
+    assert "preparation" in returning
+    assert "structure_hash" in returning
+    assert "origin_kind" in returning
+
+
+def test_create_ligand_forwards_origin_payload() -> None:
+    """create_ligand translates origin into origin_* set fields."""
+    stub = _CapturePostJsonClient()
+    entities = Entities(stub)  # type: ignore[arg-type]
+
+    entities.create_ligand(
+        smiles="CCO",
+        origin={
+            "kind": "crystal_extraction",
+            "entity_type": "protein",
+            "entity_id": MOCK_CANONICAL_PROTEIN_ID,
+        },
+    )
+
+    assert stub.last_body is not None
+    set_payload = stub.last_body["set"]
+    assert set_payload["origin_kind"] == "crystal_extraction"
+    assert set_payload["origin_entity_type"] == "protein"
+    assert set_payload["origin_entity_id"] == MOCK_CANONICAL_PROTEIN_ID
+    assert "state" not in set_payload
+    assert "origin_kind" in stub.last_body["returning"]
+
+
+def test_create_protein_metadata_lv1(client: DeepOriginClient) -> None:
+    """create_protein persists state, preparation, structure_hash, and origin (DDOS-7931).
+
+    Also exercised via entity-updates notebook create-with-metadata cells.
+    """
+    source_protein_id = _create_origin_source_protein(client)
+    remote = f"testing/prepared-meta-{uuid.uuid4().hex[:12]}.pdb"
+    client.files.upload(_BRD_PDB_LOCAL, remote)
+    preparation = {"chains": [{"id": "chain:A", "decision": "keep"}]}
+    structure_hash = f"hash-{uuid.uuid4().hex[:16]}"
+
+    response = client.entities.create_protein(
+        file_path=remote,
+        state="prepared",
+        preparation=preparation,
+        structure_hash=structure_hash,
+        origin={
+            "kind": "prepared",
+            "entity_type": "protein",
+            "entity_id": source_protein_id,
+        },
+    )
+
+    data = response["data"]
+    assert data["state"] == "prepared"
+    assert data["preparation"] == preparation
+    assert data["structure_hash"] == structure_hash
+    assert data["origin_kind"] == "prepared"
+    assert data["origin_entity_type"] == "protein"
+    assert data["origin_entity_id"] == source_protein_id
+
+
+def test_create_ligand_origin_lv1(client: DeepOriginClient) -> None:
+    """create_ligand persists translated origin on create (DDOS-7931)."""
+    source_protein_id = _create_origin_source_protein(client)
+    smiles = _unique_test_smiles(suffix="S")
+    tag = f"origin-{uuid.uuid4().hex[:10]}"
+    create = client.entities.create_ligand(
+        smiles=smiles,
+        name=f"ligand-{tag}",
+        origin={
+            "kind": "crystal_extraction",
+            "entity_type": "protein",
+            "entity_id": source_protein_id,
+        },
+    )
+    lig_id = create["data"]["id"]
+    try:
+        data = create["data"]
+        assert data["origin_kind"] == "crystal_extraction"
+        assert data["origin_entity_type"] == "protein"
+        assert data["origin_entity_id"] == source_protein_id
+        fetched = _wait_for_ligand(client, lig_id)
+        assert fetched.get("origin_kind") == "crystal_extraction"
+    finally:
+        try:
+            client.entities.delete(entity="ligands", entity_id=lig_id)
+        except DeepOriginException as exc:
+            if "404" not in str(exc):
                 raise
