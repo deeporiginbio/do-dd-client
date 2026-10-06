@@ -59,6 +59,18 @@ def _unique_test_smiles(*, suffix: str = "O") -> str:
     return backbone + suffix
 
 
+def _create_origin_source_protein(client: DeepOriginClient) -> str:
+    """Create a protein row to use as ``origin.entity_id`` on live platform APIs.
+
+    The mock server's ``MOCK_CANONICAL_PROTEIN_ID`` (``"brd"``) is not accepted
+    as ``origin_entity_id`` on dev/prod — the API requires a real entity id.
+    """
+    remote = f"testing/origin-source-{uuid.uuid4().hex[:12]}.pdb"
+    client.files.upload(_BRD_PDB_LOCAL, remote)
+    create = client.entities.create_protein(file_path=remote)
+    return create["data"]["id"]
+
+
 def _wait_for_ligand(client: DeepOriginClient, lig_id: str) -> dict:
     """Poll until a ligand row is readable via GET or search-by-id.
 
@@ -635,7 +647,7 @@ def test_create_protein_metadata_lv1(client: DeepOriginClient) -> None:
 
     Also exercised via entity-updates notebook create-with-metadata cells.
     """
-    client.files.upload(_BRD_PDB_LOCAL, _BRD_PDB_REMOTE)
+    source_protein_id = _create_origin_source_protein(client)
     remote = f"testing/prepared-meta-{uuid.uuid4().hex[:12]}.pdb"
     client.files.upload(_BRD_PDB_LOCAL, remote)
     preparation = {"chains": [{"id": "chain:A", "decision": "keep"}]}
@@ -649,7 +661,7 @@ def test_create_protein_metadata_lv1(client: DeepOriginClient) -> None:
         origin={
             "kind": "prepared",
             "entity_type": "protein",
-            "entity_id": MOCK_CANONICAL_PROTEIN_ID,
+            "entity_id": source_protein_id,
         },
     )
 
@@ -659,12 +671,12 @@ def test_create_protein_metadata_lv1(client: DeepOriginClient) -> None:
     assert data["structure_hash"] == structure_hash
     assert data["origin_kind"] == "prepared"
     assert data["origin_entity_type"] == "protein"
-    assert data["origin_entity_id"] == MOCK_CANONICAL_PROTEIN_ID
+    assert data["origin_entity_id"] == source_protein_id
 
 
 def test_create_ligand_origin_lv1(client: DeepOriginClient) -> None:
     """create_ligand persists translated origin on create (DDOS-7931)."""
-    client.files.upload(_BRD_PDB_LOCAL, _BRD_PDB_REMOTE)
+    source_protein_id = _create_origin_source_protein(client)
     smiles = _unique_test_smiles(suffix="S")
     tag = f"origin-{uuid.uuid4().hex[:10]}"
     create = client.entities.create_ligand(
@@ -673,7 +685,7 @@ def test_create_ligand_origin_lv1(client: DeepOriginClient) -> None:
         origin={
             "kind": "crystal_extraction",
             "entity_type": "protein",
-            "entity_id": MOCK_CANONICAL_PROTEIN_ID,
+            "entity_id": source_protein_id,
         },
     )
     lig_id = create["data"]["id"]
@@ -681,7 +693,7 @@ def test_create_ligand_origin_lv1(client: DeepOriginClient) -> None:
         data = create["data"]
         assert data["origin_kind"] == "crystal_extraction"
         assert data["origin_entity_type"] == "protein"
-        assert data["origin_entity_id"] == MOCK_CANONICAL_PROTEIN_ID
+        assert data["origin_entity_id"] == source_protein_id
         fetched = _wait_for_ligand(client, lig_id)
         assert fetched.get("origin_kind") == "crystal_extraction"
     finally:
