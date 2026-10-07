@@ -1456,27 +1456,35 @@ class PoseSet:
 
         from deeporigin.drug_discovery import chemistry
 
-        missing: list[str] = []
+        need_download: list[str] = []
+        need_3d: list[str] = []
         mols: list[Chem.Mol] = []
         for pose in self.poses:
+            label = str(pose.id or pose.name or pose.ligand_id or "unnamed pose")
             mol = pose.mol
-            if (
-                mol is None
-                or mol.GetNumConformers() == 0
-                or not mol.GetConformer().Is3D()
-            ):
-                label = pose.id or pose.name or pose.ligand_id or "unnamed pose"
-                missing.append(str(label))
+            if mol is None or mol.GetNumConformers() == 0:
+                need_download.append(label)
+                continue
+            if not mol.GetConformer().Is3D():
+                need_3d.append(label)
                 continue
             mols.append(mol)
-        if missing:
+        if need_download or need_3d:
+            parts: list[str] = [
+                "Every pose must have a hydrated 3D structure before compute_rmsd()."
+            ]
+            if need_download:
+                parts.append(
+                    "Call PoseSet.download() first for: " + ", ".join(need_download)
+                )
+            if need_3d:
+                parts.append(
+                    "Provide 3D coordinates (download cannot convert 2D) for: "
+                    + ", ".join(need_3d)
+                )
             raise DeepOriginException(
                 title="Pose RMSD requires local structures",
-                message=(
-                    "Every pose must have a hydrated 3D structure before "
-                    "compute_rmsd(). Call PoseSet.download() first for: "
-                    + ", ".join(missing)
-                ),
+                message=" ".join(parts),
             )
         return chemistry.pairwise_pose_rmsd(mols)
 

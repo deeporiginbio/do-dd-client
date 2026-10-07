@@ -1,6 +1,7 @@
 """Contains functions for working with SDF files."""
 
 from collections.abc import Sequence
+import math
 from pathlib import Path
 import re
 from typing import Literal, Optional, Tuple
@@ -408,6 +409,7 @@ def mcs_map(
     match_valences: bool = True,
     match_chiral_tag: bool = False,
     timeout: int = 10,
+    max_pairings: int = 4096,
 ) -> Optional[list[Tuple[int, int]]]:
     """Return an atom map for the maximum common substructure (subset comparison)."""
 
@@ -427,27 +429,20 @@ def mcs_map(
     q = Chem.MolFromSmarts(res.smartsString)
     if q is None:
         return None
-    # Enumerate embeddings on both molecules so pose_rmsd(a,b) == pose_rmsd(b,a)
-    # for shared MCS sites; cap pairings to avoid a Cartesian-product blow-up.
-    mA = A.GetSubstructMatches(q, uniquify=False, maxMatches=256)
-    mB = B.GetSubstructMatches(q, uniquify=False, maxMatches=256)
+    # Cap each side to sqrt(max_pairings) so the full Cartesian product stays
+    # within budget and is the same set after swapping mol_a/mol_b.
+    max_per_side = max(1, math.isqrt(max_pairings))
+    mA = A.GetSubstructMatches(q, uniquify=False, maxMatches=max_per_side)
+    mB = B.GetSubstructMatches(q, uniquify=False, maxMatches=max_per_side)
     if not mA or not mB:
         return None
-    max_pairings = 4096
     best_map, best_rms = None, None
-    pairings = 0
     for ref in mA:
         for cand in mB:
-            if pairings >= max_pairings:
-                break
-            pairings += 1
             amap = list(zip(ref, cand, strict=False))
             rms = raw_rmsd_from_map(A, B, amap)  # still NO alignment
             if best_rms is None or rms < best_rms:
                 best_rms, best_map = rms, amap
-        else:
-            continue
-        break
     return best_map
 
 
@@ -459,6 +454,7 @@ def pose_rmsd(
     conf_id_b: int = 0,
     ignore_hs: bool = True,
     use_mcs_if_needed: bool = True,
+    max_mcs_pairings: int = 4096,
 ) -> Optional[float]:
     """
     Pose-sensitive RMSD: NO alignment, NO centering. High if the same structure is translated/rotated.
@@ -490,7 +486,12 @@ def pose_rmsd(
 
     if not use_mcs_if_needed:
         return None
-    amap = mcs_map(mol_a, mol_b, ignore_hs=ignore_hs)
+    amap = mcs_map(
+        mol_a,
+        mol_b,
+        ignore_hs=ignore_hs,
+        max_pairings=max_mcs_pairings,
+    )
     if amap is None:
         return None
     a_cmp = Chem.RemoveHs(mol_a) if ignore_hs else mol_a

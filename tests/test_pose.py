@@ -670,7 +670,7 @@ def test_pose_set_compute_rmsd_rejects_2d_conformer() -> None:
     assert mol.GetNumConformers() == 1
     assert not mol.GetConformer().Is3D()
     pose = Pose(ligand_id="L1", smiles="CCO", _mol=mol)
-    with pytest.raises(DeepOriginException, match="3D structure"):
+    with pytest.raises(DeepOriginException, match="cannot convert 2D"):
         PoseSet(poses=[pose]).compute_rmsd()
 
 
