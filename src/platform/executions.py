@@ -8,6 +8,7 @@ import time
 from typing import TYPE_CHECKING, Any
 
 from beartype import beartype
+import httpx
 
 from deeporigin.platform.errors import raise_for_platform_restriction
 
@@ -20,10 +21,21 @@ from deeporigin.platform.constants import (
     ExecutionVisibility,
 )
 from deeporigin.platform.project_scope import stamp_execution_project_id
+from deeporigin.platform.sse import (
+    StreamUnavailableError,
+    abort_stream_after,
+    iter_dirty_filters,
+    open_project_stream,
+)
 from deeporigin.utils.constants import (
+    DATA_PLATFORM_INGESTION_TIMEOUT_SECONDS,
+    SSE_MAX_READ_TIMEOUT_SECONDS,
+    SSE_RECONNECT_BACKOFF_SECONDS,
     TOOL_EXECUTION_GET_ACCEPT_HEADER,
     TOOL_EXECUTION_POST_TIMEOUT_SECONDS,
 )
+
+_INGESTION_FILTER_ID = "execution"
 
 
 def _created_after_to_iso_utc(created_after: datetime | str) -> str:
@@ -614,3 +626,129 @@ class Executions:
             if dto.get("status") not in TERMINAL_STATES:
                 pending.append(exec_id)
         return pending
+
+    @beartype
+    def wait_for_ingestion(
+        self,
+        execution_id: str,
+        *,
+        project_id: str | None = None,
+        timeout: int | float = DATA_PLATFORM_INGESTION_TIMEOUT_SECONDS,
+    ) -> dict:
+        """Block until an execution's data-platform ingestion has finished.
+
+        Woken by the gateway's SSE stream rather than by polling. Data-platform
+        holds an execution at ``DataIngesting`` until its results are ingested,
+        so a status in :data:`~deeporigin.platform.constants.TERMINAL_STATES`
+        means ingestion is done. The stream watches
+        ``execution:{execution_id}``; each ``filters.dirty`` frame re-reads the
+        row via :meth:`search`. The gateway closes streams after 600s, so the
+        stream is reopened and the row re-read on every connect. Each stream is
+        opened before its read, so a completion in between is not missed.
+        Every reconnect, whether the stream closed, dropped with a network
+        error or was refused with a retryable status, waits
+        ``SSE_RECONNECT_BACKOFF_SECONDS`` first. An open stream is cut off
+        at the deadline, so a read waiting on the next heartbeat cannot carry
+        the wait past ``timeout``.
+
+        Args:
+            execution_id: Tools-service execution id (data-platform
+                ``compute_job_id``).
+            project_id: Project the execution belongs to. Defaults to the
+                client's ``project_id``.
+            timeout: Maximum total seconds to wait.
+
+        Returns:
+            The data-platform execution row, in a terminal state. Failed and
+            cancelled executions are returned, not raised; check ``status``.
+
+        Raises:
+            ValueError: If ``execution_id`` is empty or no project id is set.
+            TimeoutError: If ingestion does not finish within ``timeout``.
+            DeepOriginException: If the gateway refuses the stream with a
+                non-retryable status (e.g. 401, 403, 404).
+        """
+        if not execution_id:
+            raise ValueError("execution_id must be a non-empty string")
+        project_id = project_id or self._c.project_id
+        if not project_id:
+            raise ValueError("project_id is required: pass it or set client.project_id")
+
+        deadline = time.monotonic() + timeout
+        filters = {_INGESTION_FILTER_ID: f"execution:{execution_id}"}
+        while True:
+            remaining = self._ingestion_time_left(deadline, execution_id, project_id)
+            try:
+                with (
+                    open_project_stream(
+                        self._c,
+                        project_id=project_id,
+                        filters=filters,
+                        read_timeout=min(remaining, SSE_MAX_READ_TIMEOUT_SECONDS),
+                    ) as response,
+                    abort_stream_after(response, deadline - time.monotonic()),
+                ):
+                    row = self._terminal_ingestion_row(execution_id, project_id)
+                    if row is not None:
+                        return row
+                    for dirty in iter_dirty_filters(response):
+                        if dirty is not None and _INGESTION_FILTER_ID in dirty:
+                            row = self._terminal_ingestion_row(execution_id, project_id)
+                            if row is not None:
+                                return row
+                        self._ingestion_time_left(deadline, execution_id, project_id)
+            except (httpx.TransportError, StreamUnavailableError):
+                pass
+            remaining = self._ingestion_time_left(deadline, execution_id, project_id)
+            time.sleep(min(SSE_RECONNECT_BACKOFF_SECONDS, remaining))
+
+    def _terminal_ingestion_row(
+        self,
+        execution_id: str,
+        project_id: str,
+    ) -> dict | None:
+        """Read an execution's data-platform row if it is terminal.
+
+        Args:
+            execution_id: Tools-service execution id (``compute_job_id``).
+            project_id: Project the execution belongs to.
+
+        Returns:
+            The row when its status is terminal, else ``None`` (including when
+            the row does not exist yet).
+        """
+        rows = (
+            self.search(
+                compute_job_id=execution_id, project_id=project_id, limit=1
+            ).get("data")
+            or []
+        )
+        if rows and rows[0].get("status") in TERMINAL_STATES:
+            return rows[0]
+        return None
+
+    @staticmethod
+    def _ingestion_time_left(
+        deadline: float, execution_id: str, project_id: str
+    ) -> float:
+        """Return seconds left before ``deadline``, raising once it has passed.
+
+        Args:
+            deadline: ``time.monotonic()`` value at which the wait gives up.
+            execution_id: Execution being waited on, for the error message.
+            project_id: Project the execution is searched in, for the error
+                message.
+
+        Returns:
+            Positive seconds remaining.
+
+        Raises:
+            TimeoutError: If the deadline has passed.
+        """
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            raise TimeoutError(
+                "Timed out waiting for data-platform ingestion "
+                f"(execution_id={execution_id!r}, project_id={project_id!r})."
+            )
+        return remaining

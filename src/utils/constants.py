@@ -248,6 +248,29 @@ EXECUTION_LIST_ORDER_CREATED_DESC = "createdAt desc"
 TOOL_EXECUTION_GET_ACCEPT_HEADER = "application/json;v=2.0"
 """Accept header for tools-service ``GET .../executions/{id}`` (v2 execution DTO)."""
 
+DATA_PLATFORM_INGESTION_TIMEOUT_SECONDS = 3600.0
+"""Default overall timeout (seconds) for
+:meth:`deeporigin.platform.executions.Executions.wait_for_ingestion`."""
+
+SSE_CONNECT_TIMEOUT_SECONDS = 10.0
+"""Connect, write and pool timeout (seconds) when opening a gateway SSE stream."""
+
+SSE_MAX_READ_TIMEOUT_SECONDS = 60.0
+"""Longest a gateway SSE stream may stay silent before it is treated as dead.
+
+The SSE service sends a heartbeat comment every 25s by default, so a stream
+that misses two of them is reconnected rather than waited on."""
+
+SSE_RECONNECT_BACKOFF_SECONDS = 1.0
+"""Pause (seconds) before reopening a gateway SSE stream that closed, dropped,
+or was refused with a retryable status. Capped by the time left before the
+caller's deadline."""
+
+SSE_RETRYABLE_STATUS_CODES: frozenset[int] = HTTP_RETRYABLE_STATUS_CODES | {409}
+"""Stream-open statuses that are reconnected on rather than raised.
+
+409 is the SSE service's per-user, per-project connection cap."""
+
 TOOL_KEY_PREFIX = "deeporigin."
 """Platform tool-key prefix omitted in compact display (e.g. user log tables)."""
 
