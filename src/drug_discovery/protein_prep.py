@@ -404,9 +404,8 @@ class _PrepPocketInput:
         remote = crystal.get("file_path")
         ligand_id = crystal.get("ligand_id") or data.get("ligand_id")
         component_id = crystal.get("component_id") or data.get("component_id")
-        # Loops-off extract-via-Selection serializes find_pockets alone (no
-        # crystal_ligand object); rehydrate as unset pocket — get_pockets()
-        # still detects the Selection extract flag.
+        # Selection-driven crystal pockets store their mode without an explicit
+        # crystal source, so there is no anchor configuration to reconstruct.
         if not remote and not ligand_id and not component_id:
             return None
         return cls(
@@ -1435,6 +1434,10 @@ class ProteinPrep(
             return
         parsed = _PrepPocketInput.from_tool_input(pocket)
         if parsed is None:
+            # Bound executions disable Selection inference; preserve the stored
+            # crystal mode even when its anchor came from extracted ligands.
+            if (pocket.get("find_pockets") or pocket.get("mode")) == "from-crystal-ligand":
+                self._find_pockets = "from-crystal-ligand"
             return
         if parsed.mode == "auto-find":
             self._find_pockets = "novel"
