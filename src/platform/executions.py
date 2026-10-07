@@ -649,7 +649,8 @@ class Executions:
         error or was refused with a retryable status, waits
         ``SSE_RECONNECT_BACKOFF_SECONDS`` first. An open stream is cut off
         at the deadline, so a read waiting on the next heartbeat cannot carry
-        the wait past ``timeout``.
+        the wait past ``timeout``. A row re-read already in flight at the
+        deadline uses the client's own request timeout and retries.
 
         Args:
             execution_id: Tools-service execution id (data-platform
@@ -688,19 +689,47 @@ class Executions:
                     ) as response,
                     abort_stream_after(response, deadline - time.monotonic()),
                 ):
-                    row = self._terminal_ingestion_row(execution_id, project_id)
+                    row = self._wait_on_ingestion_stream(
+                        response, deadline, execution_id, project_id
+                    )
                     if row is not None:
                         return row
-                    for dirty in iter_dirty_filters(response):
-                        if dirty is not None and _INGESTION_FILTER_ID in dirty:
-                            row = self._terminal_ingestion_row(execution_id, project_id)
-                            if row is not None:
-                                return row
-                        self._ingestion_time_left(deadline, execution_id, project_id)
             except (httpx.TransportError, StreamUnavailableError):
                 pass
             remaining = self._ingestion_time_left(deadline, execution_id, project_id)
             time.sleep(min(SSE_RECONNECT_BACKOFF_SECONDS, remaining))
+
+    def _wait_on_ingestion_stream(
+        self,
+        response: httpx.Response,
+        deadline: float,
+        execution_id: str,
+        project_id: str,
+    ) -> dict | None:
+        """Read the row now, then again on each matching dirty frame.
+
+        Args:
+            response: The open SSE stream for this execution's filter.
+            deadline: ``time.monotonic()`` value at which the wait gives up.
+            execution_id: Tools-service execution id (``compute_job_id``).
+            project_id: Project the execution belongs to.
+
+        Returns:
+            The row once it is terminal, or ``None`` if the stream closed first.
+
+        Raises:
+            TimeoutError: If the deadline passes while the stream is open.
+        """
+        row = self._terminal_ingestion_row(execution_id, project_id)
+        if row is not None:
+            return row
+        for dirty in iter_dirty_filters(response):
+            if dirty is not None and _INGESTION_FILTER_ID in dirty:
+                row = self._terminal_ingestion_row(execution_id, project_id)
+                if row is not None:
+                    return row
+            self._ingestion_time_left(deadline, execution_id, project_id)
+        return None
 
     def _terminal_ingestion_row(
         self,

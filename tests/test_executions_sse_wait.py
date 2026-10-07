@@ -163,6 +163,16 @@ def test_already_terminal_on_first_read(mock_client_config) -> None:
     ]
 
 
+def test_stream_open_timeouts_are_capped_by_deadline(mock_client_config) -> None:
+    """Connect, write and pool timeouts cannot outlast a short wait."""
+    gateway = FakeGateway(streams=[HEARTBEAT], statuses=["Completed"])
+
+    _wait(gateway, timeout=2.0)
+
+    timeouts = gateway.stream_requests[0].extensions["timeout"]
+    assert all(0 < value <= 2.0 for value in timeouts.values())
+
+
 def test_terminal_after_ping(mock_client_config) -> None:
     """A heartbeat does not re-read; a ``filters.dirty`` frame does."""
     gateway = FakeGateway(

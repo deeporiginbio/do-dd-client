@@ -253,7 +253,8 @@ DATA_PLATFORM_INGESTION_TIMEOUT_SECONDS = 3600.0
 :meth:`deeporigin.platform.executions.Executions.wait_for_ingestion`."""
 
 SSE_CONNECT_TIMEOUT_SECONDS = 10.0
-"""Connect, write and pool timeout (seconds) when opening a gateway SSE stream."""
+"""Connect, write and pool timeout (seconds) when opening a gateway SSE stream,
+capped by the stream's read timeout (itself capped by the time left)."""
 
 SSE_MAX_READ_TIMEOUT_SECONDS = 60.0
 """Longest a gateway SSE stream may stay silent before it is treated as dead.

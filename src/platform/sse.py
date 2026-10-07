@@ -54,19 +54,15 @@ def iter_dirty_filters(response: httpx.Response) -> Iterator[set[str] | None]:
     """
     data_lines: list[str] = []
     for line in response.iter_lines():
-        if line == "":
-            if data_lines:
-                dirty = _dirty_filters_from_data("\n".join(data_lines))
-                data_lines = []
-                if dirty is not None:
-                    yield dirty
-            continue
-        if line.startswith(":") or line.startswith("retry:"):
+        if line.startswith((":", "retry:")):
             yield None
-            continue
-        if line.startswith("data:"):
-            value = line[len("data:") :]
-            data_lines.append(value[1:] if value.startswith(" ") else value)
+        elif line.startswith("data:"):
+            data_lines.append(line.removeprefix("data:").removeprefix(" "))
+        elif line == "" and data_lines:
+            dirty = _dirty_filters_from_data("\n".join(data_lines))
+            data_lines = []
+            if dirty is not None:
+                yield dirty
 
 
 def _dirty_filters_from_data(data: str) -> set[str] | None:
@@ -108,6 +104,8 @@ def open_project_stream(
             ``{"execution": "execution:abc"}``. Each entry is sent as one
             ``filter=id=pattern`` query parameter.
         read_timeout: Seconds a read may block before ``httpx.ReadTimeout``.
+            Also caps the connect, write and pool timeouts, so opening the
+            stream cannot outlast it.
 
     Yields:
         The open streamed response; it is closed on exit.
@@ -125,7 +123,9 @@ def open_project_stream(
         path,
         params=[("filter", f"{fid}={pattern}") for fid, pattern in filters.items()],
         headers={"Accept": "text/event-stream"},
-        timeout=httpx.Timeout(SSE_CONNECT_TIMEOUT_SECONDS, read=read_timeout),
+        timeout=httpx.Timeout(
+            min(SSE_CONNECT_TIMEOUT_SECONDS, read_timeout), read=read_timeout
+        ),
     )
     response = client._client.send(request, stream=True)
     try:
