@@ -149,7 +149,7 @@ TOOL_KEYS_AND_VERSIONS: dict[str, dict[str, str]] = {
     },
     "protein_prep": {
         "tool_key": "deeporigin.protein-prep",
-        "tool_version": "10",
+        "tool_version": "11",
     },
     "patent": {
         "tool_key": "deeporigin.draco",

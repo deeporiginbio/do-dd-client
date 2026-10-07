@@ -653,7 +653,7 @@ def test_run_allows_loops_on(
     client: DeepOriginClient,
     registered_protein: Protein,
 ) -> None:
-    """Blocking prepare supports served loop modelling on protein-prep v10."""
+    """Blocking prepare supports served loop modelling on protein-prep v11."""
     prep = ProteinPrep(
         protein=registered_protein,
         selection=_SAMPLE_SELECTION,
@@ -683,7 +683,7 @@ def test_run_rejects_novel_pockets() -> None:
 
 
 def test_prepare_requires_registered_protein_id() -> None:
-    """Prepare rejects unregistered proteins (protein-prep v10 contract)."""
+    """Prepare rejects unregistered proteins (protein-prep v11 contract)."""
     prep = ProteinPrep(
         protein=_protein_with_remote(),
         selection=_SAMPLE_SELECTION,
@@ -1153,7 +1153,7 @@ def test_loops_off_keep_ligand_sets_find_pockets_no() -> None:
 
 
 def test_loops_on_prepare_uses_protein_prep_payload() -> None:
-    """Loops-on prepare stays on protein-prep with explicit v10 fields."""
+    """Loops-on prepare stays on protein-prep with explicit v11 fields."""
     selection = {
         "analyzer_version": "1.0.0",
         "decisions": {"chain:A": "keep"},
@@ -1239,7 +1239,7 @@ def test_loops_on_start_uses_protein_prep_tool_key(
     client: DeepOriginClient,
     registered_protein: Protein,
 ) -> None:
-    """Loops-on start binds to protein-prep v10."""
+    """Loops-on start binds to protein-prep v11."""
     selection = {
         "analyzer_version": "1.0.0",
         "decisions": {"chain:A": "keep"},
@@ -1259,7 +1259,7 @@ def test_loops_on_start_uses_protein_prep_tool_key(
     assert prep.id is not None
     assert prep.name == "Preparing and loop modelling 1EBY"
     assert prep.tool_key == TOOL_KEYS_AND_VERSIONS["protein_prep"]["tool_key"]
-    assert prep.tool_version == "10"
+    assert prep.tool_version == "11"
     prepared = prep.get_results()
     assert isinstance(prepared, Protein)
     with pytest.raises(ValueError, match="did not request pockets"):

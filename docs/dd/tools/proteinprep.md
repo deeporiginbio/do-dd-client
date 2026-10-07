@@ -9,7 +9,7 @@ structure via `find_pockets` (`"no"`, `"novel"`, or `"from-crystal-ligand"`).
 Selection-defined pockets require the standalone Pocket Finder tool.
 
 Use standalone [`StructureReport`](structure-report.md) for structure assessment
-(source or prepared). Protein Prep v10 does not bundle Structure Reports in tool
+(source or prepared). Protein Prep v11 does not bundle Structure Reports in tool
 outputs.
 
 ## Recommend and review
@@ -88,7 +88,7 @@ prepared = prep.get_results()
 ## Prepare with loop modelling or pockets
 
 Loop modelling is enabled by default. All prepare paths use
-`deeporigin.protein-prep` v10. Blocking `run()` supports served prepare
+`deeporigin.protein-prep` v11. Blocking `run()` supports served prepare
 (including loops on). `find_pockets="novel"` uses the platform workflow path —
 use `start()` (not `run()`):
 
