@@ -11,6 +11,7 @@ from typing import TYPE_CHECKING, Any, ClassVar, Literal, Optional, Self
 if TYPE_CHECKING:
     from deeporigin.drug_discovery.structures.protein import Protein
 
+import numpy as np
 import pandas as pd
 from rdkit import Chem
 
@@ -1438,6 +1439,54 @@ class PoseSet:
         """Convert to a legacy :class:`LigandSet` of pose-hydrated ligands."""
 
         return LigandSet(ligands=[pose.to_ligand() for pose in self.poses])
+
+    def compute_rmsd(self) -> np.ndarray:
+        """Compute pairwise pose RMSD between all poses in this set.
+
+        RMSD is symmetry-corrected and computed in place: coordinates are not
+        aligned or centered. Each pose must have a local 3D structure; call
+        :meth:`download` first when poses are remote-only.
+
+        Returns:
+            An ``n x n`` NumPy array of pairwise RMSD values in Å.
+
+        Raises:
+            DeepOriginException: If any pose lacks a hydrated RDKit molecule.
+        """
+
+        from deeporigin.drug_discovery import chemistry
+
+        need_download: list[str] = []
+        need_3d: list[str] = []
+        mols: list[Chem.Mol] = []
+        for pose in self.poses:
+            label = str(pose.id or pose.name or pose.ligand_id or "unnamed pose")
+            mol = pose.mol
+            if mol is None or mol.GetNumConformers() == 0:
+                need_download.append(label)
+                continue
+            if not mol.GetConformer().Is3D():
+                need_3d.append(label)
+                continue
+            mols.append(mol)
+        if need_download or need_3d:
+            parts: list[str] = [
+                "Every pose must have a hydrated 3D structure before compute_rmsd()."
+            ]
+            if need_download:
+                parts.append(
+                    "Call PoseSet.download() first for: " + ", ".join(need_download)
+                )
+            if need_3d:
+                parts.append(
+                    "Provide 3D coordinates (download cannot convert 2D) for: "
+                    + ", ".join(need_3d)
+                )
+            raise DeepOriginException(
+                title="Pose RMSD requires local structures",
+                message=" ".join(parts),
+            )
+        return chemistry.pairwise_pose_rmsd(mols)
 
     def download(
         self,

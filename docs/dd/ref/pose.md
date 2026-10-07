@@ -74,3 +74,24 @@ from deeporigin.drug_discovery import PoseSet
 
 pose_set = PoseSet.from_result(execution_id=docking.id)
 ```
+
+### Computing pairwise pose RMSD
+
+Use :meth:`PoseSet.compute_rmsd` for an ``n x n`` matrix of pose-to-pose RMSD
+values (Å). The calculation is **symmetry-corrected** (equivalent symmetric
+atom mappings are minimized) and **in place**: coordinates are not aligned or
+centered, so RMSD reflects actual positional deviation in the stored poses.
+
+Each pose must have a local 3D structure loaded. For remote-only poses, call
+:meth:`PoseSet.download` before :meth:`PoseSet.compute_rmsd`.
+
+```{.python notest}
+from deeporigin.drug_discovery import PoseSet
+
+pose_set = PoseSet.from_sdf("docking_results.sdf")
+rmsd_matrix = pose_set.compute_rmsd()
+```
+
+!!! note "Returns New Data"
+    ``compute_rmsd()`` returns a NumPy array and does not mutate the
+    :class:`PoseSet` or its poses.

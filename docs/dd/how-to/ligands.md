@@ -708,20 +708,6 @@ mcs_smarts = ligands.mcs()  # Returns a SMARTS string
 !!! success "Expected Output"
     ![](../../images/mcs.png)
 
-### Computing RMSD
-
-You can compute pairwise RMSD (Root Mean Square Deviation) between all ligands in a LigandSet:
-
-```{.python notest}
-from deeporigin.drug_discovery import LigandSet
-
-ligands = LigandSet.from_sdf("docking_results.sdf")
-rmsd_matrix = ligands.compute_rmsd()  # Returns a numpy array
-```
-
-!!! note "Returns New Data"
-    The `compute_rmsd()` method returns a numpy array containing pairwise RMSD values. It does not mutate the LigandSet or its ligands.
-
 ### Plotting Ligands
 
 You can create scatter plots of ligands using their properties:

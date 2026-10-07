@@ -2,6 +2,10 @@
 
 Notes from past merge-ready cycles. Read before starting; append after success.
 
+## 2026-10-07 — PR #660 — DDOS-8260 symmetry-aware pose RMSD
+
+Copilot’s first pass caught real RMSD bugs (CalcRMS on molecules with Hs when `ignore_hs=True`, MCS embeddings only on B, missing `Is3D` gate, unhydrated benchmark poses, NaN-skipping regression). The second pass correctly rejected a row-major 4096 pairing cutoff as still order-dependent — cap each side with `isqrt(budget)` before the product. Also: don’t advertise auto-`download()` in the PR summary when the API/tests are caller-managed, and split 2D vs remote error text so download isn’t suggested for local 2D conformers. Formatting CI failed after a multi-line test edit — run `ruff format` locally before push.
+
 ## 2026-10-05 — PR #655 — DDOS-7931 create metadata kwargs
 
 Copilot correctly required a runnable Entities-layer demo for new public create kwargs — extend the existing `entity-updates` notebook rather than inventing a new one. Reinforced: notebook-only pushes skip `Test Python Code` (`**/*.py` path filter), so touch a `.py` file before waiting on required CI.

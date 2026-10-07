@@ -3221,13 +3221,6 @@ class LigandSet:
             mcs_mol=mcs_mol,
         )
 
-    def compute_rmsd(self):
-        """compute pairwise rmsd between all ligands in the set"""
-
-        from deeporigin.drug_discovery import chemistry
-
-        return chemistry.pairwise_pose_rmsd(self.to_rdkit_mols())
-
     def plot(
         self,
         *,
