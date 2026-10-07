@@ -341,6 +341,44 @@ def raw_rmsd_from_map(
     return np.sqrt(diffsq / len(atom_map))
 
 
+def _full_graph_symmetry_min_rmsd(
+    mol_a: Chem.Mol,
+    mol_b: Chem.Mol,
+    *,
+    conf_id_a: int = 0,
+    conf_id_b: int = 0,
+    ignore_hs: bool = True,
+) -> Optional[float]:
+    """Lowest no-alignment RMSD over graph isomorphisms and CalcRMS terminal symmetry."""
+
+    a_cmp = Chem.RemoveHs(mol_a) if ignore_hs else mol_a
+    b_cmp = Chem.RemoveHs(mol_b) if ignore_hs else mol_b
+    if a_cmp.GetNumAtoms() != b_cmp.GetNumAtoms():
+        return None
+    matches = b_cmp.GetSubstructMatches(a_cmp, uniquify=False, maxMatches=4096)
+    if not matches or len(matches[0]) != a_cmp.GetNumAtoms():
+        return None
+
+    candidates: list[float] = []
+    try:
+        candidates.append(
+            float(
+                rdMolAlign.CalcRMS(
+                    mol_b,
+                    mol_a,
+                    prbId=conf_id_b,
+                    refId=conf_id_a,
+                )
+            )
+        )
+    except RuntimeError:
+        pass
+    for match in matches:
+        amap = [(i, match[i]) for i in range(a_cmp.GetNumAtoms())]
+        candidates.append(raw_rmsd_from_map(a_cmp, b_cmp, amap, conf_id_a, conf_id_b))
+    return min(candidates) if candidates else None
+
+
 def full_graph_map(
     mol_a: Chem.Mol,
     mol_b: Chem.Mol,
@@ -388,7 +426,7 @@ def mcs_map(
     if q is None:
         return None
     mA = A.GetSubstructMatches(q, uniquify=True, maxMatches=1024)
-    mB = B.GetSubstructMatches(q, uniquify=True, maxMatches=4096)
+    mB = B.GetSubstructMatches(q, uniquify=False, maxMatches=4096)
     if not mA or not mB:
         return None
     # Fix atom order using first match in A, then choose B’s match minimizing RAW (unaligned) RMSD
@@ -429,14 +467,21 @@ def pose_rmsd(
     ):
         raise ValueError("mol_b lacks a 3D conformer at conf_id_b")
 
-    # Full-graph map
-    amap = full_graph_map(mol_a, mol_b, ignore_hs=ignore_hs)
-    if amap is None and use_mcs_if_needed:
-        amap = mcs_map(mol_a, mol_b, ignore_hs=ignore_hs)
+    full_rmsd = _full_graph_symmetry_min_rmsd(
+        mol_a,
+        mol_b,
+        conf_id_a=conf_id_a,
+        conf_id_b=conf_id_b,
+        ignore_hs=ignore_hs,
+    )
+    if full_rmsd is not None:
+        return full_rmsd
+
+    if not use_mcs_if_needed:
+        return None
+    amap = mcs_map(mol_a, mol_b, ignore_hs=ignore_hs)
     if amap is None:
         return None
-
-    # If we removed Hs to build the map, compare the same H-stripped versions to keep indices consistent
     a_cmp = Chem.RemoveHs(mol_a) if ignore_hs else mol_a
     b_cmp = Chem.RemoveHs(mol_b) if ignore_hs else mol_b
     return raw_rmsd_from_map(a_cmp, b_cmp, amap, conf_id_a, conf_id_b)

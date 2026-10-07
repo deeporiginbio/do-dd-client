@@ -376,6 +376,14 @@ result-explorer queries, and filtering (e.g. best pose per ligand). Replaces
 pose-hydrated :class:`LigandSet` usage.
 _Avoid_: :class:`LigandSet` for docked poses or pose result rows
 
+**Pose RMSD**:
+Pairwise coordinate deviation between hydrated 3D Poses, computed in place
+without alignment or centering and minimized over symmetry-equivalent atom
+mappings (including conjugated terminal groups). Public collection operations
+belong to :class:`PoseSet`.
+_Avoid_: exposing pose RMSD on :class:`LigandSet`; interpreting "in place" as
+mutating coordinates; strict atom-index pairing across symmetric groups
+
 **Ligand.get_poses()**:
 Query result-explorer for poses whose ``ligand_id`` matches the ligand's
 platform id; returns a :class:`PoseSet`. Parent→child discovery path.

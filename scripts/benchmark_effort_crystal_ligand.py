@@ -12,7 +12,7 @@ import csv
 from pathlib import Path
 import time
 
-from deeporigin.drug_discovery import Docking, LigandSet, Pocket, Protein
+from deeporigin.drug_discovery import Docking, Pocket, Protein, chemistry
 
 DEFAULT_CSV = Path(__file__).resolve().parent / "benchmark_effort_crystal_ligand.csv"
 CSV_COLUMNS = ["pdb_id", "effort", "repeat", "execution_id", "time", "rmsd"]
@@ -186,12 +186,26 @@ def main() -> None:
                 start_time = time.perf_counter()
                 poses = docking.run()
                 elapsed_s = time.perf_counter() - start_time
+                if poses is None:
+                    raise RuntimeError("Docking returned no poses (quoted or failed)")
 
-                pose_scores = [pose.properties["pose_score"] for pose in poses]
-                idx = pose_scores.index(max(pose_scores))
-
-                rmsd_matrix = LigandSet([poses[idx], ligand]).compute_rmsd()
-                best_rmsd = float(rmsd_matrix[0][1])
+                pose_scores = [
+                    pose.pose_score
+                    for pose in poses.poses
+                    if pose.pose_score is not None
+                ]
+                if not pose_scores:
+                    raise RuntimeError("Docking returned no scored poses")
+                best_pose = max(
+                    poses.poses,
+                    key=lambda p: (
+                        p.pose_score if p.pose_score is not None else float("-inf")
+                    ),
+                )
+                best_rmsd_val = chemistry.pose_rmsd(best_pose.mol, ligand.mol)
+                best_rmsd = (
+                    float(best_rmsd_val) if best_rmsd_val is not None else float("nan")
+                )
 
                 exec_id = docking.id or ""
                 write_benchmark_row(

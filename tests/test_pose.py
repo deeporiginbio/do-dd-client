@@ -629,6 +629,35 @@ def test_pose_set_from_sdf_docked_fixture() -> None:
     assert poses[0].id is None
 
 
+def test_pose_set_compute_rmsd_returns_pairwise_matrix() -> None:
+    """compute_rmsd delegates to chemistry and returns an n x n matrix."""
+    poses = PoseSet.from_sdf("tests/fixtures/docked-poses.sdf")
+    matrix = poses[:2].compute_rmsd()
+    assert matrix.shape == (2, 2)
+    assert matrix[0, 0] == 0.0
+    assert matrix[1, 1] == 0.0
+    assert matrix[0, 1] == matrix[1, 0]
+    assert matrix[0, 1] >= 0.0
+
+
+def test_pose_set_compute_rmsd_requires_local_structure() -> None:
+    """Remote-only poses must be downloaded before compute_rmsd."""
+    from deeporigin.exceptions import DeepOriginException
+
+    poses = PoseSet.from_json(
+        [
+            {
+                "ligand_id": "L1",
+                "id": "P1",
+                "smiles": "CCO",
+                "remote_path": "entities/poses/p1.sdf",
+            }
+        ]
+    )
+    with pytest.raises(DeepOriginException, match="download"):
+        poses.compute_rmsd()
+
+
 def test_pose_set_set_protein_id() -> None:
     """set_protein_id updates every pose and supports chaining."""
     from deeporigin.exceptions import DeepOriginException
