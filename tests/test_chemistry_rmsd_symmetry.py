@@ -99,12 +99,8 @@ def test_mcs_pairing_cap_is_symmetric_when_product_exceeds_budget() -> None:
     a = _embed_heavy("c1ccc2ccccc2c1", seed=3)
     b = _embed_heavy("Cc1ccc2ccccc2c1", seed=9)
     budget = 16  # isqrt → 4 per side; uncapped product is much larger
-    forward = chemistry.pose_rmsd(
-        a, b, use_mcs_if_needed=True, max_mcs_pairings=budget
-    )
-    reverse = chemistry.pose_rmsd(
-        b, a, use_mcs_if_needed=True, max_mcs_pairings=budget
-    )
+    forward = chemistry.pose_rmsd(a, b, use_mcs_if_needed=True, max_mcs_pairings=budget)
+    reverse = chemistry.pose_rmsd(b, a, use_mcs_if_needed=True, max_mcs_pairings=budget)
     assert forward is not None and reverse is not None
     assert forward == pytest.approx(reverse, abs=1e-9)
 
