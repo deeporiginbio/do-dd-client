@@ -658,6 +658,22 @@ def test_pose_set_compute_rmsd_requires_local_structure() -> None:
         poses.compute_rmsd()
 
 
+def test_pose_set_compute_rmsd_rejects_2d_conformer() -> None:
+    """2D-only molecules fail the local-3D gate with DeepOriginException."""
+    from deeporigin.exceptions import DeepOriginException
+    from rdkit import Chem
+    from rdkit.Chem import AllChem
+
+    mol = Chem.MolFromSmiles("CCO")
+    assert mol is not None
+    AllChem.Compute2DCoords(mol)
+    assert mol.GetNumConformers() == 1
+    assert not mol.GetConformer().Is3D()
+    pose = Pose(ligand_id="L1", smiles="CCO", _mol=mol)
+    with pytest.raises(DeepOriginException, match="3D structure"):
+        PoseSet(poses=[pose]).compute_rmsd()
+
+
 def test_pose_set_set_protein_id() -> None:
     """set_protein_id updates every pose and supports chaining."""
     from deeporigin.exceptions import DeepOriginException

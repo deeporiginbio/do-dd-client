@@ -1460,7 +1460,11 @@ class PoseSet:
         mols: list[Chem.Mol] = []
         for pose in self.poses:
             mol = pose.mol
-            if mol is None or mol.GetNumConformers() == 0:
+            if (
+                mol is None
+                or mol.GetNumConformers() == 0
+                or not mol.GetConformer().Is3D()
+            ):
                 label = pose.id or pose.name or pose.ligand_id or "unnamed pose"
                 missing.append(str(label))
                 continue

@@ -361,11 +361,13 @@ def _full_graph_symmetry_min_rmsd(
 
     candidates: list[float] = []
     try:
+        # Compare the same graphs used for isomorphism so ignore_hs=True is
+        # hydrogen-independent (CalcRMS has no ignoreHs flag).
         candidates.append(
             float(
                 rdMolAlign.CalcRMS(
-                    mol_b,
-                    mol_a,
+                    b_cmp,
+                    a_cmp,
                     prbId=conf_id_b,
                     refId=conf_id_a,
                 )
@@ -425,18 +427,27 @@ def mcs_map(
     q = Chem.MolFromSmarts(res.smartsString)
     if q is None:
         return None
-    mA = A.GetSubstructMatches(q, uniquify=True, maxMatches=1024)
-    mB = B.GetSubstructMatches(q, uniquify=False, maxMatches=4096)
+    # Enumerate embeddings on both molecules so pose_rmsd(a,b) == pose_rmsd(b,a)
+    # for shared MCS sites; cap pairings to avoid a Cartesian-product blow-up.
+    mA = A.GetSubstructMatches(q, uniquify=False, maxMatches=256)
+    mB = B.GetSubstructMatches(q, uniquify=False, maxMatches=256)
     if not mA or not mB:
         return None
-    # Fix atom order using first match in A, then choose B’s match minimizing RAW (unaligned) RMSD
-    ref = mA[0]
+    max_pairings = 4096
     best_map, best_rms = None, None
-    for cand in mB:
-        amap = list(zip(ref, cand, strict=False))
-        rms = raw_rmsd_from_map(A, B, amap)  # still NO alignment
-        if best_rms is None or rms < best_rms:
-            best_rms, best_map = rms, amap
+    pairings = 0
+    for ref in mA:
+        for cand in mB:
+            if pairings >= max_pairings:
+                break
+            pairings += 1
+            amap = list(zip(ref, cand, strict=False))
+            rms = raw_rmsd_from_map(A, B, amap)  # still NO alignment
+            if best_rms is None or rms < best_rms:
+                best_rms, best_map = rms, amap
+        else:
+            continue
+        break
     return best_map
 
 

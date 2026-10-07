@@ -189,6 +189,9 @@ def main() -> None:
                 if poses is None:
                     raise RuntimeError("Docking returned no poses (quoted or failed)")
 
+                # run() → get_results() is metadata-only; hydrate SDFs before RMSD.
+                poses.download(client=docking.client, lazy=True)
+
                 pose_scores = [
                     pose.pose_score
                     for pose in poses.poses
@@ -202,6 +205,10 @@ def main() -> None:
                         p.pose_score if p.pose_score is not None else float("-inf")
                     ),
                 )
+                if best_pose.mol is None:
+                    raise RuntimeError(
+                        "Best pose has no molecule after download; cannot compute RMSD"
+                    )
                 best_rmsd_val = chemistry.pose_rmsd(best_pose.mol, ligand.mol)
                 best_rmsd = (
                     float(best_rmsd_val) if best_rmsd_val is not None else float("nan")

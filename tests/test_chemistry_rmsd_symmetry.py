@@ -83,6 +83,16 @@ def test_pose_rmsd_toluene_on_ethylbenzene_mcs() -> None:
     assert rmsd == pytest.approx(0.0, abs=1e-6)
 
 
+def test_mcs_map_order_independent_for_shared_sites() -> None:
+    """MCS embeddings on both sides keep pose_rmsd(a,b) == pose_rmsd(b,a)."""
+    a = _embed_heavy("CCc1ccccc1", seed=11)
+    b = _embed_heavy("Cc1ccccc1", seed=13)
+    forward = chemistry.pose_rmsd(a, b, use_mcs_if_needed=True)
+    reverse = chemistry.pose_rmsd(b, a, use_mcs_if_needed=True)
+    assert forward is not None and reverse is not None
+    assert forward == pytest.approx(reverse, abs=1e-9)
+
+
 def _legacy_mcs_map(
     mol_a: Chem.Mol,
     mol_b: Chem.Mol,
@@ -182,10 +192,13 @@ def test_pairwise_pose_rmsd_never_increases_vs_legacy(
         for j in range(i + 1, n):
             old_v = old_m[i, j]
             new_v = new_m[i, j]
-            if np.isnan(old_v) and np.isnan(new_v):
+            if np.isnan(old_v):
+                # Legacy could not map; new may still succeed (NaN or finite).
                 continue
-            if np.isnan(old_v) or np.isnan(new_v):
-                continue
+            assert not np.isnan(new_v), (
+                f"{fixture_name} pair ({i},{j}): new lost mapping "
+                f"(NaN) while legacy={old_v}"
+            )
             assert new_v <= old_v + 1e-9, (
                 f"{fixture_name} pair ({i},{j}): new={new_v} > legacy={old_v}"
             )
