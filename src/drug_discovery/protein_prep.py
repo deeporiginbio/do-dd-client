@@ -1436,7 +1436,9 @@ class ProteinPrep(
         if parsed is None:
             # Bound executions disable Selection inference; preserve the stored
             # crystal mode even when its anchor came from extracted ligands.
-            if (pocket.get("find_pockets") or pocket.get("mode")) == "from-crystal-ligand":
+            if (
+                pocket.get("find_pockets") or pocket.get("mode")
+            ) == "from-crystal-ligand":
                 self._find_pockets = "from-crystal-ligand"
             return
         if parsed.mode == "auto-find":
