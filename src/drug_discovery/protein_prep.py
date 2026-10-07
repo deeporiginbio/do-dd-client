@@ -1,7 +1,7 @@
 """Recommend settings and prepare a protein with one mutable configuration.
 
 ``ProteinPrep`` is the sole public preparation session. It uses
-``deeporigin.protein-prep`` v10 for :meth:`recommend` and all :meth:`run` /
+``deeporigin.protein-prep`` v11 for :meth:`recommend` and all :meth:`run` /
 :meth:`start` prepare paths. Extracting a ligand also requests one crystal-ligand
 Pocket per extract (``find_pockets=from-crystal-ligand``). Novel pockets use the
 platform workflow path; use :meth:`start` (not blocking :meth:`run`) for those.
@@ -1041,7 +1041,7 @@ class ProteinPrep(
 ):
     """Recommend settings and prepare a protein.
 
-    All operations use ``deeporigin.protein-prep`` (v10). Blocking :meth:`run`
+    All operations use ``deeporigin.protein-prep`` (v11). Blocking :meth:`run`
     supports served prepare including loop modelling. Novel pocket finding uses
     the platform workflow path — use :meth:`start` (with ``quote`` /
     ``approve_amount`` when pockets are billable). Structure reports are not
