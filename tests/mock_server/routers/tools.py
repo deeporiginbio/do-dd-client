@@ -840,25 +840,32 @@ def _synthesize_metabolism_outputs(
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
     """Build synthetic metabolism ``sites`` and ``molecules`` for one ligand.
 
-    Emits top-3 atom rows per DOSOM CYP isoform (27 site rows) and one
-    molecule row with ``confidence_tier``.
+    Emits every atom per DOSOM CYP isoform and one molecule row with
+    ``confidence_tier``.
     """
 
+    from rdkit import Chem
+
     seed = smiles or (ligand_id or "")
+    mol = Chem.MolFromSmiles(smiles) if smiles else None
+    n_atoms = mol.GetNumAtoms() if mol is not None else 3
     sites: list[dict[str, Any]] = []
     for enzyme in _MOCK_METABOLISM_ENZYMES:
-        for rank in range(3):
-            conf = round(
-                0.95 - 0.2 * rank + 0.04 * _stable_unit_float(seed, f"{enzyme}:{rank}"),
+        for atom_index in range(n_atoms):
+            rank = atom_index
+            probability = round(
+                0.95
+                - 0.05 * rank
+                + 0.04 * _stable_unit_float(seed, f"{enzyme}:{atom_index}"),
                 6,
             )
             sites.append(
                 {
                     "ligand_id": ligand_id,
                     "smiles": smiles,
-                    "atom_index": rank,
+                    "atom_index": atom_index,
                     "enzyme": enzyme,
-                    "confidence": conf,
+                    "probability": probability,
                 }
             )
     tier_idx = int(_stable_unit_float(seed, "tier") * 3) % 3

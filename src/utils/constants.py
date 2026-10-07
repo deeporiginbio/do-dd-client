@@ -322,8 +322,8 @@ Used by ``fetch_results`` / ``fetch_molecules`` and the already-scored preflight
 METABOLISM_RESULT_EXPLORER_PAGE_SIZE = 1000
 """Per-request page size for Metabolism result-explorer fetches.
 
-Site rows are flat (top-3 atoms × CYP isoforms), so the default page size of
-100 creates many sequential HTTP round-trips for modest ligand batches."""
+Site rows are flat (every atom × CYP isoform), so large ligands can require
+many sequential HTTP round-trips when the platform page size is 100."""
 
 JOB_WATCH_BLOCK_ENV = "JOB_WATCH_BLOCK"
 """Env var for blocking :meth:`~deeporigin.drug_discovery.notebook_watch_mixin.NotebookWatchMixin.watch`.

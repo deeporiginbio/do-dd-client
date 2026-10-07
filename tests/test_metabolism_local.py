@@ -85,7 +85,7 @@ def test_metabolism_run_returns_sites_dataframe(
 
     assert isinstance(df, pd.DataFrame)
     assert len(df) == _N_SITES_PER_LIGAND
-    for col in ("ligand_id", "smiles", "atom_index", "enzyme", "confidence"):
+    for col in ("ligand_id", "smiles", "atom_index", "enzyme", "probability"):
         assert col in df.columns
     assert set(df["enzyme"]) == _MOCK_ENZYMES
     assert job.status == "Completed"
@@ -99,7 +99,7 @@ def test_metabolism_run_returns_sites_dataframe(
     assert pd.isna(df["ligand_id"].iloc[0]) or df["ligand_id"].iloc[0] is None
     cyp3a4 = df[df["enzyme"] == "CYP3A4"].sort_values("atom_index")
     expected_3a4 = [r for r in expected_sites if r["enzyme"] == "CYP3A4"]
-    assert list(cyp3a4["confidence"]) == [r["confidence"] for r in expected_3a4]
+    assert list(cyp3a4["probability"]) == [r["probability"] for r in expected_3a4]
 
 
 def test_metabolism_run_omits_id_when_ligand_has_none(
@@ -377,10 +377,27 @@ def test_metabolism_fetch_without_ids_returns_empty(
         "smiles",
         "atom_index",
         "enzyme",
-        "confidence",
+        "probability",
     ]
     assert len(mols) == 0
     assert list(mols.columns)[:3] == ["ligand_id", "smiles", "confidence_tier"]
+
+
+def test_metabolism_run_force_recomputes_when_already_scored(
+    client: DeepOriginClient,
+) -> None:
+    """``run(force=True)`` creates a new execution when already scored."""
+    _assert_tool_available(client)
+    ligand = Ligand.from_smiles("CCO")
+    ligand.id = "lig-force-recompute"
+    first = Metabolism(ligands=ligand, client=client)
+    first.run()
+    first_id = first.id
+
+    second = Metabolism(ligands=ligand, client=client)
+    second.run(force=True)
+    assert second.id is not None
+    assert second.id != first_id
 
 
 def test_metabolism_run_refuses_when_all_already_scored(

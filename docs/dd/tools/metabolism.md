@@ -21,6 +21,24 @@ Instance ``get_results()`` / ``get_molecules()`` still mean **this job only**.
 Do not call ``Metabolism.get_results(ligands)`` — that binds ligands as
 ``self``; use ``fetch_results`` / ``fetch_molecules`` instead.
 
+## Site row filters (client-side)
+
+``run()``, ``get_results()``, and ``fetch_results()`` accept optional
+keyword-only ``top_k`` or ``min_prob`` (mutually exclusive). Omit both to
+return every atom-by-enzyme row the tool stored. ``top_k`` ranks within each
+``(ligand, enzyme)`` group; ``min_prob`` keeps rows with
+``probability >= min_prob``. Legacy top-three views use ``top_k=3``.
+
+``fetch_results()`` is history-preserving across indexed jobs. After a forced
+rerun, use ``job.get_results()`` on that execution for the authoritative full
+site set.
+
+## Force recompute
+
+``run(force=True)`` and ``start(force=True)`` bypass the client refusal and
+workflow skip when ligands already have indexed ``MetabolismMolecule`` rows.
+Default behavior is unchanged.
+
 ## Already scored ligands
 
 Before ``run()`` or ``start()``, the client checks indexed Metabolism molecule
