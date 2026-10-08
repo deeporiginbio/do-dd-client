@@ -109,11 +109,41 @@ def test_apply_site_result_filters_top_k_per_enzyme() -> None:
     """top_k ranks within each ligand and enzyme group."""
     df = pd.DataFrame(
         [
-            {"ligand_id": "l1", "smiles": "CCO", "enzyme": "CYP3A4", "atom_index": 0, "probability": 0.9},
-            {"ligand_id": "l1", "smiles": "CCO", "enzyme": "CYP3A4", "atom_index": 1, "probability": 0.5},
-            {"ligand_id": "l1", "smiles": "CCO", "enzyme": "CYP3A4", "atom_index": 2, "probability": 0.1},
-            {"ligand_id": "l1", "smiles": "CCO", "enzyme": "CYP1A2", "atom_index": 0, "probability": 0.8},
-            {"ligand_id": "l1", "smiles": "CCO", "enzyme": "CYP1A2", "atom_index": 1, "probability": 0.2},
+            {
+                "ligand_id": "l1",
+                "smiles": "CCO",
+                "enzyme": "CYP3A4",
+                "atom_index": 0,
+                "probability": 0.9,
+            },
+            {
+                "ligand_id": "l1",
+                "smiles": "CCO",
+                "enzyme": "CYP3A4",
+                "atom_index": 1,
+                "probability": 0.5,
+            },
+            {
+                "ligand_id": "l1",
+                "smiles": "CCO",
+                "enzyme": "CYP3A4",
+                "atom_index": 2,
+                "probability": 0.1,
+            },
+            {
+                "ligand_id": "l1",
+                "smiles": "CCO",
+                "enzyme": "CYP1A2",
+                "atom_index": 0,
+                "probability": 0.8,
+            },
+            {
+                "ligand_id": "l1",
+                "smiles": "CCO",
+                "enzyme": "CYP1A2",
+                "atom_index": 1,
+                "probability": 0.2,
+            },
         ]
     )
     filtered = _apply_site_result_filters(df, top_k=1, min_prob=None)

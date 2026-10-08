@@ -266,9 +266,7 @@ def _apply_site_result_filters(
         if top_k is not None:
             pieces.append(sorted_group.head(top_k))
         else:
-            pieces.append(
-                sorted_group[sorted_group["probability"] >= float(min_prob)]
-            )
+            pieces.append(sorted_group[sorted_group["probability"] >= float(min_prob)])
     if not pieces:
         return df.iloc[0:0].copy()
     return pd.concat(pieces, ignore_index=True)
