@@ -1715,6 +1715,7 @@ def create_tools_router(
                     },
                     "compute_job_id": execution_id,
                     "ligand_id": ligand_id,
+                    "measured_at": datetime.now(timezone.utc).isoformat(),
                 }
             )
 
@@ -3704,6 +3705,14 @@ def create_tools_router(
                         body=body,
                     )
                     execution["quotationResult"] = quoted.get("quotationResult")
+                else:
+                    # Production indexes inline-run predictions too.
+                    _inject_admet_result_explorer_records(
+                        tool_key=tool_key,
+                        tool_version=tool_version,
+                        execution_id=execution["executionId"],
+                        job_outputs=execution["jobOutputs"],
+                    )
                 executions[execution["executionId"]] = execution
                 return _normalize_execution(execution)
             execution = _build_admet_async_execution(
