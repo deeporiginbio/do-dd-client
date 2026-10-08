@@ -232,22 +232,27 @@ def _admet_dataframe(
 
 
 def _skipped_ligand_count(dto: dict[str, Any]) -> int:
-    """Return the largest ``toolProgress.skipped_ligands`` in the progress tree, else 0.
+    """Return the total ``toolProgress.skipped_ligands`` in the progress tree, else 0.
 
-    Inline runs report at ``progressReport.toolProgress``; workflow runs nest it
-    under ``children``. Chunk pods each report the run's totals, so take the
-    max rather than summing.
+    Inline runs report at ``progressReport.toolProgress``; workflow runs report
+    per chunk pod under ``children``, so sum across nodes.
     """
 
+    # ponytail: a retried pod would be counted twice; dedupe by displayName if retries show up.
     def counts(node: Any):
-        if isinstance(node, dict):
-            skipped = (node.get("toolProgress") or {}).get("skipped_ligands")
+        if not isinstance(node, dict):
+            return
+        tool_progress = node.get("toolProgress")
+        if isinstance(tool_progress, dict):
+            skipped = tool_progress.get("skipped_ligands")
             if isinstance(skipped, int):
                 yield skipped
-            for child in node.get("children") or []:
+        children = node.get("children")
+        if isinstance(children, list):
+            for child in children:
                 yield from counts(child)
 
-    return max(counts(dto.get("progressReport")), default=0)
+    return sum(counts(dto.get("progressReport")))
 
 
 def _properties_from_inputs(
@@ -683,7 +688,7 @@ class Admet(
             dto = self.client.executions.get(self.id)  # ty:ignore[unresolved-attribute]
         rows = self._fetch_output_rows(dto=dto)
         skipped = _skipped_ligand_count(dto or {})
-        # Project and ligands-file runs have no job.ligands to pass back.
+        # Project runs have no job.ligands to pass back.
         ligands_arg = "job.ligands" if self._ligands else "<the ligands you ran>"
         fetch_hint = (
             f"{skipped} ligand(s) were skipped because they already have "

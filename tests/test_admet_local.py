@@ -464,7 +464,7 @@ def test_admet_get_results_points_skipped_ligands_to_fetch_results(
 def test_admet_get_results_skip_hint_without_job_ligands(
     client: DeepOriginClient,
 ) -> None:
-    """Project/file runs have no job.ligands, so the hint does not suggest it."""
+    """Project runs have no job.ligands, so the hint does not suggest it."""
     _assert_tool_available(client)
     dto = {
         **_historical_omit_dto(),
