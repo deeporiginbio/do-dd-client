@@ -2,6 +2,10 @@
 
 Notes from past merge-ready cycles. Read before starting; append after success.
 
+## 2026-10-08 — PR #662 — DDOS-8296 Metabolism filters/force
+
+First push failed `ruff format` — run format locally before CI. Copilot needed four rounds: code fixes (`fetch_results` must use `_sites_dataframe`, validate filters before `run()`), notebook demos via dirty→`notebooks.sh`, then notebook copy must distinguish all-scored refusal vs partial-index warnings. Prod `level-1` and flaky `build-docs` (PyPI) are not branch-protection required; watch Ubuntu formatting + functionality only.
+
 ## 2026-10-07 — PR #660 — DDOS-8260 symmetry-aware pose RMSD
 
 Copilot’s first pass caught real RMSD bugs (CalcRMS on molecules with Hs when `ignore_hs=True`, MCS embeddings only on B, missing `Is3D` gate, unhydrated benchmark poses, NaN-skipping regression). The second pass correctly rejected a row-major 4096 pairing cutoff as still order-dependent — cap each side with `isqrt(budget)` before the product. Also: don’t advertise auto-`download()` in the PR summary when the API/tests are caller-managed, and split 2D vs remote error text so download isn’t suggested for local 2D conformers. Formatting CI failed after a multi-line test edit — run `ruff format` locally before push.
