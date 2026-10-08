@@ -853,11 +853,17 @@ def _synthesize_metabolism_outputs(
     for enzyme in _MOCK_METABOLISM_ENZYMES:
         for atom_index in range(n_atoms):
             rank = atom_index
-            probability = round(
-                0.95
-                - 0.05 * rank
-                + 0.04 * _stable_unit_float(seed, f"{enzyme}:{atom_index}"),
-                6,
+            probability = max(
+                0.0,
+                min(
+                    1.0,
+                    round(
+                        0.95
+                        - 0.05 * rank
+                        + 0.04 * _stable_unit_float(seed, f"{enzyme}:{atom_index}"),
+                        6,
+                    ),
+                ),
             )
             sites.append(
                 {

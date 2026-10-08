@@ -51,7 +51,8 @@ rows:
   ``UserWarning`` is emitted. Instance ``get_*`` methods still return only this
   execution's new rows — use ``fetch_*`` for the full set.
 
-There is no force/recompute flag.
+Pass ``force=True`` to ``run()`` or ``start()`` to recompute ligands that
+already have indexed rows (see **Force recompute** above).
 
 ## Working with existing runs
 

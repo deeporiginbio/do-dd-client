@@ -49,9 +49,9 @@ Fetch indexed rows without starting a job::
 
 from __future__ import annotations
 
-from typing import Any, Self
 import math
 import warnings
+from typing import Any, Self
 
 from beartype import beartype
 import pandas as pd
@@ -718,7 +718,8 @@ class Metabolism(
             result_type=_RESULT_TYPE_SITES,
             columns=_SITE_COLUMNS,
         )
-        return _apply_site_result_filters(df, top_k=top_k, min_prob=min_prob)
+        rows = df.to_dict("records")
+        return _sites_dataframe(rows, top_k=top_k, min_prob=min_prob)
 
     @classmethod
     @beartype
@@ -946,6 +947,7 @@ class Metabolism(
                 could be parsed.
             ValueError: If there are 30 or more ligands.
         """
+        _validate_site_result_filters(top_k=top_k, min_prob=min_prob)
         self._ensure_run_ligand_count()
         self._force_recompute = force
         self._preflight_already_scored(sync=True, force=force)
