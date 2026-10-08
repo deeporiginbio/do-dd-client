@@ -262,10 +262,43 @@ SSE_MAX_READ_TIMEOUT_SECONDS = 60.0
 The SSE service sends a heartbeat comment every 25s by default, so a stream
 that misses two of them is reconnected rather than waited on."""
 
+DATA_PLATFORM_INGESTION_SWEEP_SECONDS = 90.0
+"""Longest (seconds) :meth:`deeporigin.platform.executions.Executions.wait_for_ingestion`
+goes without re-reading the execution row while its SSE stream is open.
+
+Every read, whether woken by the SSE stream or not, pushes the next sweep back
+by this much. The sweep only fires when no frame arrives, which covers a missed
+or unpublished frame."""
+
+DATA_PLATFORM_INGESTION_POLL_SECONDS = 2.0
+"""Interval (seconds) at which
+:meth:`deeporigin.platform.executions.Executions.wait_for_ingestion` polls the
+execution row while its SSE stream is closed, dropped or refused."""
+
+DATA_PLATFORM_NO_ROW_TIMEOUT_SECONDS = 120.0
+"""Seconds :meth:`deeporigin.platform.executions.Executions.wait_for_ingestion`
+waits for a hidden run's row on a backend whose executions search does not
+accept ``include_hidden``, before treating ingestion as done.
+
+Such a backend never returns hidden runs, so the row cannot be read at all."""
+
 SSE_RECONNECT_BACKOFF_SECONDS = 1.0
-"""Pause (seconds) before reopening a gateway SSE stream that closed, dropped,
-or was refused with a retryable status. Capped by the time left before the
-caller's deadline."""
+"""First pause (seconds) before reopening a gateway SSE stream that closed,
+dropped, or was refused with a retryable status. Doubles with each consecutive
+failure up to ``SSE_RECONNECT_MAX_BACKOFF_SECONDS``, is jittered between half
+and all of that, and is capped by the time left before the caller's deadline."""
+
+SSE_RECONNECT_MAX_BACKOFF_SECONDS = 30.0
+"""Ceiling (seconds) on the doubling SSE reconnect pause."""
+
+SSE_STABLE_CONNECTION_SECONDS = 30.0
+"""How long (seconds) a gateway SSE stream must stay open before its close no
+longer counts as a failure.
+
+Opening is not the same as working: a stream that is accepted and then dropped
+straight away keeps the reconnect pause growing instead of resetting it. The
+SSE service heartbeats every 25s, so a stream that held this long has carried
+at least one heartbeat."""
 
 SSE_RETRYABLE_STATUS_CODES: frozenset[int] = HTTP_RETRYABLE_STATUS_CODES | {409}
 """Stream-open statuses that are reconnected on rather than raised.

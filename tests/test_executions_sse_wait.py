@@ -18,6 +18,11 @@ PROJECT_ID = "proj-1"
 ORG_KEY = "test_org"
 STREAM_PATH = f"/sse/{ORG_KEY}/stream/{PROJECT_ID}"
 SEARCH_PATH = f"/data-platform/{ORG_KEY}/executions/search"
+RESULTS_PATH = f"/data-platform/{ORG_KEY}/result-explorer/search"
+INCLUDE_HIDDEN_REJECTED = {
+    "message": "Unknown keys in payload",
+    "errors": [{"field": "include_hidden", "reason": "unknown_field"}],
+}
 
 HEARTBEAT = ": heartbeat\n\n"
 RETRY = "retry: 3000\n\n"
@@ -46,14 +51,50 @@ def mock_client_config() -> Iterator[None]:
 
 @pytest.fixture
 def sleeps(monkeypatch) -> list[float]:
-    """Record reconnect backoff sleeps instead of sleeping.
+    """Record sleeps instead of sleeping, on a fake clock and without jitter.
+
+    Each sleep advances ``time.monotonic`` by its duration and nothing else
+    does, and jitter picks the top of its range, so recorded pauses are exact.
 
     Returns:
         The requested sleep durations, in order.
     """
     recorded: list[float] = []
-    monkeypatch.setattr("deeporigin.platform.executions.time.sleep", recorded.append)
+    clock = [1000.0]
+
+    def sleep(seconds: float) -> None:
+        """Record a sleep and advance the fake clock.
+
+        Args:
+            seconds: Requested duration.
+        """
+        recorded.append(seconds)
+        clock[0] += seconds
+
+    monkeypatch.setattr("deeporigin.platform.executions.time.sleep", sleep)
+    monkeypatch.setattr(
+        "deeporigin.platform.executions.time.monotonic", lambda: clock[0]
+    )
+    monkeypatch.setattr(
+        "deeporigin.platform.executions.random.uniform", lambda low, high: high
+    )
     return recorded
+
+
+@pytest.fixture
+def sweep_every_tick(monkeypatch) -> None:
+    """Make every heartbeat and every reconnect pause re-read the row."""
+    monkeypatch.setattr(
+        "deeporigin.platform.executions.DATA_PLATFORM_INGESTION_SWEEP_SECONDS", 0.0
+    )
+
+
+@pytest.fixture
+def no_poll(monkeypatch) -> None:
+    """Stop reconnect pauses from polling the row, to observe backoff alone."""
+    monkeypatch.setattr(
+        "deeporigin.platform.executions.DATA_PLATFORM_INGESTION_POLL_SECONDS", 1e6
+    )
 
 
 class FakeGateway:
@@ -67,6 +108,8 @@ class FakeGateway:
         *,
         streams: list[str | int | httpx.SyncByteStream],
         statuses: list[str | None],
+        rejects_include_hidden: bool = False,
+        results: list[dict] | None = None,
     ) -> None:
         """Store the scripts.
 
@@ -74,9 +117,14 @@ class FakeGateway:
             streams: SSE body per connect, an HTTP status code to refuse it,
                 or a byte stream to serve as-is.
             statuses: Row status per search, or ``None`` for no row yet.
+            rejects_include_hidden: Answer a search sending ``include_hidden``
+                with the 400 of a backend that does not know the flag.
+            results: Result-explorer rows for the execution.
         """
         self.streams = streams
         self.statuses = statuses
+        self.rejects_include_hidden = rejects_include_hidden
+        self.results = results or []
         self.calls: list[str] = []
         self.stream_requests: list[httpx.Request] = []
         self.search_bodies: list[dict] = []
@@ -107,12 +155,19 @@ class FakeGateway:
                 content=body.encode(),
             )
         if request.url.path == SEARCH_PATH:
+            body = json.loads(request.content)
+            if self.rejects_include_hidden and "include_hidden" in body:
+                self.calls.append("rejected")
+                return httpx.Response(400, json=INCLUDE_HIDDEN_REJECTED)
             n = sum(c == "search" for c in self.calls)
             self.calls.append("search")
-            self.search_bodies.append(json.loads(request.content))
+            self.search_bodies.append(body)
             status = self.statuses[min(n, len(self.statuses) - 1)]
             rows = [] if status is None else [{"id": "dp-1", "status": status}]
             return httpx.Response(200, json={"data": rows, "meta": {}})
+        if request.url.path == RESULTS_PATH:
+            self.calls.append("results")
+            return httpx.Response(200, json={"data": self.results, "meta": {}})
         return httpx.Response(404)
 
     def client(self) -> DeepOriginClient:
@@ -161,6 +216,7 @@ def test_already_terminal_on_first_read(mock_client_config) -> None:
         {"column": "project_id", "op": "eq", "value": PROJECT_ID},
         {"column": "compute_job_id", "op": "eq", "value": EXECUTION_ID},
     ]
+    assert gateway.search_bodies[0]["include_hidden"] is True
 
 
 def test_stream_open_timeouts_are_capped_by_deadline(mock_client_config) -> None:
@@ -279,7 +335,7 @@ def test_ping_for_other_filter_does_not_reread(mock_client_config, sleeps) -> No
     assert gateway.calls == ["stream", "search", "stream", "search"]
 
 
-def test_network_error_reconnects(mock_client_config, monkeypatch) -> None:
+def test_network_error_reconnects(mock_client_config, sleeps) -> None:
     """A dropped connection is reopened after a backoff."""
     gateway = FakeGateway(streams=[HEARTBEAT], statuses=["Completed"])
     real_handler = gateway.handler
@@ -300,8 +356,6 @@ def test_network_error_reconnects(mock_client_config, monkeypatch) -> None:
         return real_handler(request)
 
     gateway.handler = flaky
-    sleeps: list[float] = []
-    monkeypatch.setattr("deeporigin.platform.executions.time.sleep", sleeps.append)
 
     assert _wait(gateway)["status"] == "Completed"
     assert len(failed) == 1
@@ -366,8 +420,24 @@ def test_retryable_refusal_reconnects(
     assert list(tmp_path.iterdir()) == []
 
 
-def test_every_reconnect_waits_one_second(mock_client_config, sleeps) -> None:
-    """Each reopen waits the same fixed pause, with no growing backoff."""
+def test_flapping_stream_backoff_doubles_to_cap(
+    mock_client_config, sleeps, no_poll
+) -> None:
+    """Streams that close before holding double the pause, up to the cap."""
+    gateway = FakeGateway(
+        streams=[HEARTBEAT],
+        statuses=["DataIngesting"] * 7 + ["Completed"],
+    )
+
+    assert _wait(gateway, timeout=600)["status"] == "Completed"
+    assert sleeps == [1.0, 2.0, 4.0, 8.0, 16.0, 30.0, 30.0]
+
+
+def test_stable_stream_resets_backoff(mock_client_config, sleeps, monkeypatch) -> None:
+    """A stream that held long enough reopens after the first pause again."""
+    monkeypatch.setattr(
+        "deeporigin.platform.executions.SSE_STABLE_CONNECTION_SECONDS", 0.0
+    )
     gateway = FakeGateway(
         streams=[HEARTBEAT],
         statuses=["DataIngesting", "DataIngesting", "DataIngesting", "Completed"],
@@ -377,6 +447,73 @@ def test_every_reconnect_waits_one_second(mock_client_config, sleeps) -> None:
     assert sleeps == [1.0, 1.0, 1.0]
 
 
+def test_backoff_is_jittered(mock_client_config, monkeypatch) -> None:
+    """The pause is drawn between half and all of the backoff."""
+    bounds: list[tuple[float, float]] = []
+    sleeps: list[float] = []
+    monkeypatch.setattr("deeporigin.platform.executions.time.sleep", sleeps.append)
+
+    def low(a: float, b: float) -> float:
+        """Record the jitter range and pick its bottom.
+
+        Args:
+            a: Lower bound.
+            b: Upper bound.
+
+        Returns:
+            The lower bound.
+        """
+        bounds.append((a, b))
+        return a
+
+    monkeypatch.setattr("deeporigin.platform.executions.random.uniform", low)
+    gateway = FakeGateway(
+        streams=[HEARTBEAT], statuses=["DataIngesting", "DataIngesting", "Completed"]
+    )
+
+    assert _wait(gateway)["status"] == "Completed"
+    assert bounds == [(0.5, 1.0), (1.0, 2.0)]
+    assert sleeps == [0.5, 1.0]
+
+
+def test_sweep_rereads_on_heartbeat(mock_client_config, sweep_every_tick) -> None:
+    """A due sweep re-reads the row on a heartbeat, with no dirty frame."""
+    gateway = FakeGateway(
+        streams=[HEARTBEAT + HEARTBEAT],
+        statuses=["DataIngesting", "Completed"],
+    )
+
+    assert _wait(gateway)["status"] == "Completed"
+    assert gateway.calls == ["stream", "search", "search"]
+
+
+def test_refused_stream_polls_row(mock_client_config, sleeps, tmp_path) -> None:
+    """A stream that never opens still finds the row by polling."""
+    gateway = FakeGateway(streams=[503], statuses=["DataIngesting", "Completed"])
+
+    with patch("deeporigin.platform.client._ensure_do_folder", return_value=tmp_path):
+        assert _wait(gateway)["status"] == "Completed"
+    assert gateway.calls == ["stream", "stream", "search", "stream", "search"]
+    assert sleeps == [1.0, 1.0, 1.0, 1.0]
+
+
+def test_backoff_pause_polls_every_interval(
+    mock_client_config, sleeps, monkeypatch, tmp_path
+) -> None:
+    """A long reconnect pause polls the row every poll interval."""
+    monkeypatch.setattr(
+        "deeporigin.platform.executions.SSE_RECONNECT_BACKOFF_SECONDS", 30.0
+    )
+    gateway = FakeGateway(
+        streams=[503], statuses=["DataIngesting", "DataIngesting", "Completed"]
+    )
+
+    with patch("deeporigin.platform.client._ensure_do_folder", return_value=tmp_path):
+        assert _wait(gateway, timeout=60)["status"] == "Completed"
+    assert gateway.calls == ["stream", "search", "search", "search"]
+    assert sleeps == [2.0, 2.0, 2.0]
+
+
 def test_reconnect_pause_is_capped_by_deadline(mock_client_config, sleeps) -> None:
     """The pause never runs past the caller's deadline."""
     gateway = FakeGateway(
@@ -384,6 +521,98 @@ def test_reconnect_pause_is_capped_by_deadline(mock_client_config, sleeps) -> No
         statuses=["DataIngesting", "Completed"],
     )
 
-    assert _wait(gateway, timeout=0.5)["status"] == "Completed"
-    assert len(sleeps) == 1
-    assert 0 < sleeps[0] <= 0.5
+    with pytest.raises(TimeoutError, match=EXECUTION_ID):
+        _wait(gateway, timeout=0.5)
+    assert sleeps == [0.5]
+
+
+def test_unsupported_include_hidden_falls_back(mock_client_config, tmp_path) -> None:
+    """A backend without ``include_hidden`` is searched without it."""
+    gateway = FakeGateway(
+        streams=[HEARTBEAT], statuses=["Completed"], rejects_include_hidden=True
+    )
+
+    with patch("deeporigin.platform.client._ensure_do_folder", return_value=tmp_path):
+        assert _wait(gateway)["status"] == "Completed"
+    assert gateway.calls == ["stream", "rejected", "search"]
+    assert "include_hidden" not in gateway.search_bodies[0]
+
+
+def test_unsupported_include_hidden_is_remembered(mock_client_config, tmp_path) -> None:
+    """Later waits on the same client skip the rejected flag."""
+    gateway = FakeGateway(
+        streams=[HEARTBEAT], statuses=["Completed"], rejects_include_hidden=True
+    )
+    client = gateway.client()
+
+    with patch("deeporigin.platform.client._ensure_do_folder", return_value=tmp_path):
+        for _ in range(2):
+            client.executions.wait_for_ingestion(
+                EXECUTION_ID, project_id=PROJECT_ID, timeout=5.0
+            )
+    assert gateway.calls.count("rejected") == 1
+
+
+def test_hidden_run_without_flag_done_on_results(mock_client_config, tmp_path) -> None:
+    """With no visible row, result-explorer rows mean ingestion is done."""
+    gateway = FakeGateway(
+        streams=[HEARTBEAT],
+        statuses=[None],
+        rejects_include_hidden=True,
+        results=[{"id": "r-1"}],
+    )
+
+    with patch("deeporigin.platform.client._ensure_do_folder", return_value=tmp_path):
+        assert _wait(gateway) == {}
+    assert gateway.calls == ["stream", "rejected", "search", "results"]
+
+
+def test_hidden_run_without_flag_gives_up_on_row(
+    mock_client_config, tmp_path, monkeypatch
+) -> None:
+    """With no visible row and no results, the wait ends after the no-row timeout."""
+    monkeypatch.setattr(
+        "deeporigin.platform.executions.DATA_PLATFORM_NO_ROW_TIMEOUT_SECONDS", 0.0
+    )
+    gateway = FakeGateway(
+        streams=[HEARTBEAT], statuses=[None], rejects_include_hidden=True
+    )
+
+    with patch("deeporigin.platform.client._ensure_do_folder", return_value=tmp_path):
+        assert _wait(gateway) == {}
+
+
+def test_hidden_run_with_flag_keeps_waiting_without_row(mock_client_config) -> None:
+    """A backend with the flag never short-cuts a missing row."""
+    gateway = FakeGateway(streams=[HEARTBEAT], statuses=[None], results=[{"id": "r-1"}])
+
+    with pytest.raises(TimeoutError):
+        _wait(gateway, timeout=0.2)
+    assert "results" not in gateway.calls
+
+
+def test_other_search_error_raises(mock_client_config, tmp_path) -> None:
+    """A search failure not about ``include_hidden`` is not swallowed."""
+    gateway = FakeGateway(streams=[HEARTBEAT], statuses=["Completed"])
+    real_handler = gateway.handler
+
+    def broken(request: httpx.Request) -> httpx.Response:
+        """Fail every search with an unrelated 400.
+
+        Args:
+            request: Incoming request.
+
+        Returns:
+            The scripted response.
+        """
+        if request.url.path == SEARCH_PATH:
+            return httpx.Response(400, json={"message": "bad filter"})
+        return real_handler(request)
+
+    gateway.handler = broken
+
+    with (
+        patch("deeporigin.platform.client._ensure_do_folder", return_value=tmp_path),
+        pytest.raises(DeepOriginException),
+    ):
+        _wait(gateway)

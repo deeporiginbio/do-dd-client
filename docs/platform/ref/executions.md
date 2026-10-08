@@ -14,10 +14,14 @@ Then, the following methods can be used, for example:
 tools = client.executions.list()
 ```
 
-To block, without polling, until an execution's results are available on the
-data platform, use `wait_for_ingestion`. It returns the execution record once
-the execution has finished (completed, failed or cancelled), so check its
-`status`:
+To block until an execution's results are available on the data platform, use
+`wait_for_ingestion`. It is woken by change notifications, and also re-checks
+the execution about every 90 seconds, so it still finishes if a notification is
+lost. While notifications are unavailable it checks every 2 seconds instead. It
+returns the execution record once the execution has finished (completed, failed
+or cancelled), so check its `status`. On a backend that cannot return hidden
+executions, it returns `{}` for a hidden execution once its results appear, or
+after about two minutes:
 
 ```{.python notest}
 row = client.executions.wait_for_ingestion(execution_id, project_id=project_id)

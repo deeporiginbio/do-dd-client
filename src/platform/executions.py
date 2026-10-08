@@ -3,13 +3,16 @@
 from __future__ import annotations
 
 import builtins
+from dataclasses import dataclass
 from datetime import datetime, timezone
+import random
 import time
 from typing import TYPE_CHECKING, Any
 
 from beartype import beartype
 import httpx
 
+from deeporigin.exceptions import DeepOriginException
 from deeporigin.platform.errors import raise_for_platform_restriction
 
 if TYPE_CHECKING:
@@ -28,14 +31,113 @@ from deeporigin.platform.sse import (
     open_project_stream,
 )
 from deeporigin.utils.constants import (
+    DATA_PLATFORM_INGESTION_POLL_SECONDS,
+    DATA_PLATFORM_INGESTION_SWEEP_SECONDS,
     DATA_PLATFORM_INGESTION_TIMEOUT_SECONDS,
+    DATA_PLATFORM_NO_ROW_TIMEOUT_SECONDS,
     SSE_MAX_READ_TIMEOUT_SECONDS,
     SSE_RECONNECT_BACKOFF_SECONDS,
+    SSE_RECONNECT_MAX_BACKOFF_SECONDS,
+    SSE_STABLE_CONNECTION_SECONDS,
     TOOL_EXECUTION_GET_ACCEPT_HEADER,
     TOOL_EXECUTION_POST_TIMEOUT_SECONDS,
 )
 
 _INGESTION_FILTER_ID = "execution"
+
+
+@dataclass
+class _IngestionWait:
+    """State of one :meth:`Executions.wait_for_ingestion` call.
+
+    Attributes:
+        execution_id: Tools-service execution id (``compute_job_id``).
+        project_id: Project the execution belongs to.
+        started: ``time.monotonic()`` value at which the wait began.
+        deadline: ``time.monotonic()`` value at which the wait gives up.
+        next_sweep: ``time.monotonic()`` value at which the row is re-read
+            even if no frame asks for it. Every read pushes it back.
+        last_read: ``time.monotonic()`` value of the latest row read, or of
+            the start of the wait before the first read.
+        include_hidden: Whether the row is searched with ``include_hidden``.
+            Cleared when the backend does not accept the flag.
+    """
+
+    execution_id: str
+    project_id: str
+    started: float
+    deadline: float
+    next_sweep: float
+    last_read: float
+    include_hidden: bool = True
+
+    def time_left(self) -> float:
+        """Return seconds left before the deadline, raising once it has passed.
+
+        Returns:
+            Positive seconds remaining.
+
+        Raises:
+            TimeoutError: If the deadline has passed.
+        """
+        remaining = self.deadline - time.monotonic()
+        if remaining <= 0:
+            raise TimeoutError(
+                "Timed out waiting for data-platform ingestion "
+                f"(execution_id={self.execution_id!r}, "
+                f"project_id={self.project_id!r})."
+            )
+        return remaining
+
+    def sweep_due(self) -> bool:
+        """Return whether the row should be re-read without a frame asking.
+
+        Returns:
+            True once ``next_sweep`` has passed.
+        """
+        return time.monotonic() >= self.next_sweep
+
+
+def _rejects_include_hidden(error: DeepOriginException) -> bool:
+    """Return whether a search failed because ``include_hidden`` is unknown.
+
+    Backends without the flag reject it as an unknown key with a 400 that
+    names the field.
+
+    Args:
+        error: The error raised by :meth:`Executions.search`.
+
+    Returns:
+        True when the 400 names ``include_hidden``.
+    """
+    if error.http_status != 400 or not isinstance(error.response_data, dict):
+        return False
+    errors = error.response_data.get("errors")
+    return isinstance(errors, list) and any(
+        isinstance(item, dict) and item.get("field") == "include_hidden"
+        for item in errors
+    )
+
+
+def _reconnect_delay(failures: int) -> float:
+    """Return the jittered pause before reopening an SSE stream.
+
+    Doubles from ``SSE_RECONNECT_BACKOFF_SECONDS`` with each consecutive
+    failure, up to ``SSE_RECONNECT_MAX_BACKOFF_SECONDS``, then picks a point
+    between half and all of it so clients dropped together do not reconnect
+    together.
+
+    Args:
+        failures: Consecutive failed connects; ``0`` after a stable stream.
+
+    Returns:
+        Seconds to wait.
+    """
+    delay = min(
+        SSE_RECONNECT_BACKOFF_SECONDS * 2 ** max(failures - 1, 0),
+        SSE_RECONNECT_MAX_BACKOFF_SECONDS,
+    )
+    return random.uniform(delay / 2, delay)
 
 
 def _created_after_to_iso_utc(created_after: datetime | str) -> str:
@@ -71,6 +173,7 @@ class Executions:
             client: The DeepOriginClient instance to use for API calls.
         """
         self._c = client
+        self._include_hidden_supported = True
 
     def create(
         self,
@@ -397,6 +500,7 @@ class Executions:
         select: list[str] | None = None,
         with_total_count: bool = False,
         compute_job_id: str | None = None,
+        include_hidden: bool = False,
     ) -> dict:
         """Search executions via the data-platform endpoint.
 
@@ -429,6 +533,10 @@ class Executions:
             select: Columns to select; all columns by default.
             with_total_count: When True, the server returns a total count
                 alongside the page (may be slower).
+            compute_job_id: Equality filter on ``compute_job_id`` (the
+                tools-service execution id).
+            include_hidden: When True, also return runs submitted with
+                ``visibility="hidden"``, which the search omits by default.
 
         Returns:
             The raw response dict, typically ``{"data": [...], "meta": {...}}``.
@@ -458,6 +566,8 @@ class Executions:
             body["select"] = select
         if with_total_count:
             body["with_total_count"] = True
+        if include_hidden:
+            body["include_hidden"] = True
 
         return self._c.post_json(
             f"/data-platform/{self._c.org_key}/executions/search",
@@ -642,15 +752,27 @@ class Executions:
         so a status in :data:`~deeporigin.platform.constants.TERMINAL_STATES`
         means ingestion is done. The stream watches
         ``execution:{execution_id}``; each ``filters.dirty`` frame re-reads the
-        row via :meth:`search`. The gateway closes streams after 600s, so the
-        stream is reopened and the row re-read on every connect. Each stream is
-        opened before its read, so a completion in between is not missed.
-        Every reconnect, whether the stream closed, dropped with a network
-        error or was refused with a retryable status, waits
-        ``SSE_RECONNECT_BACKOFF_SECONDS`` first. An open stream is cut off
-        at the deadline, so a read waiting on the next heartbeat cannot carry
-        the wait past ``timeout``. A row re-read already in flight at the
-        deadline uses the client's own request timeout and retries.
+        row via :meth:`search` with ``include_hidden=True``, since client runs
+        are submitted hidden. The row is also re-read on every connect, and
+        each stream is opened before its read, so a completion in between is
+        not missed.
+
+        Frames are not replayed, so while the stream is open a sweep re-reads
+        the row whenever ``DATA_PLATFORM_INGESTION_SWEEP_SECONDS`` pass
+        without a read. Every read pushes the sweep back, so it only fires
+        when the stream has gone quiet. While the stream is closed, dropped
+        or refused, the row is polled every
+        ``DATA_PLATFORM_INGESTION_POLL_SECONDS`` instead.
+
+        A stream that closed, dropped with a network error or was refused
+        with a retryable status is reopened after a jittered pause that
+        doubles from ``SSE_RECONNECT_BACKOFF_SECONDS`` up to
+        ``SSE_RECONNECT_MAX_BACKOFF_SECONDS``. A stream that stayed open for
+        ``SSE_STABLE_CONNECTION_SECONDS`` resets the pause. An open stream is
+        cut off at the deadline, so a read waiting on the next heartbeat
+        cannot carry the wait past ``timeout``. A row re-read already in
+        flight at the deadline uses the client's own request timeout and
+        retries.
 
         Args:
             execution_id: Tools-service execution id (data-platform
@@ -659,9 +781,16 @@ class Executions:
                 client's ``project_id``.
             timeout: Maximum total seconds to wait.
 
+        If the backend does not accept ``include_hidden`` yet, the search
+        drops it. A visible run is then waited on as usual. A hidden run's row
+        cannot be read, so ingestion counts as done once result-explorer has
+        rows for it, or after ``DATA_PLATFORM_NO_ROW_TIMEOUT_SECONDS`` with no
+        row, and ``{}`` is returned.
+
         Returns:
             The data-platform execution row, in a terminal state. Failed and
             cancelled executions are returned, not raised; check ``status``.
+            ``{}`` when the backend cannot return a hidden run's row.
 
         Raises:
             ValueError: If ``execution_id`` is empty or no project id is set.
@@ -675,10 +804,21 @@ class Executions:
         if not project_id:
             raise ValueError("project_id is required: pass it or set client.project_id")
 
-        deadline = time.monotonic() + timeout
+        started = time.monotonic()
+        wait = _IngestionWait(
+            execution_id=execution_id,
+            project_id=project_id,
+            started=started,
+            deadline=started + timeout,
+            next_sweep=started + DATA_PLATFORM_INGESTION_SWEEP_SECONDS,
+            last_read=started,
+            include_hidden=self._include_hidden_supported,
+        )
         filters = {_INGESTION_FILTER_ID: f"execution:{execution_id}"}
+        failures = 0
         while True:
-            remaining = self._ingestion_time_left(deadline, execution_id, project_id)
+            remaining = wait.time_left()
+            opened_at: float | None = None
             try:
                 with (
                     open_project_stream(
@@ -687,32 +827,33 @@ class Executions:
                         filters=filters,
                         read_timeout=min(remaining, SSE_MAX_READ_TIMEOUT_SECONDS),
                     ) as response,
-                    abort_stream_after(response, deadline - time.monotonic()),
+                    abort_stream_after(response, wait.deadline - time.monotonic()),
                 ):
-                    row = self._wait_on_ingestion_stream(
-                        response, deadline, execution_id, project_id
-                    )
+                    opened_at = time.monotonic()
+                    row = self._wait_on_ingestion_stream(response, wait)
                     if row is not None:
                         return row
             except (httpx.TransportError, StreamUnavailableError):
                 pass
-            remaining = self._ingestion_time_left(deadline, execution_id, project_id)
-            time.sleep(min(SSE_RECONNECT_BACKOFF_SECONDS, remaining))
+            stable = (
+                opened_at is not None
+                and time.monotonic() - opened_at >= SSE_STABLE_CONNECTION_SECONDS
+            )
+            failures = 0 if stable else failures + 1
+            row = self._pause_before_reconnect(wait, _reconnect_delay(failures))
+            if row is not None:
+                return row
 
     def _wait_on_ingestion_stream(
         self,
         response: httpx.Response,
-        deadline: float,
-        execution_id: str,
-        project_id: str,
+        wait: _IngestionWait,
     ) -> dict | None:
-        """Read the row now, then again on each matching dirty frame.
+        """Read the row now, then on each matching dirty frame or due sweep.
 
         Args:
             response: The open SSE stream for this execution's filter.
-            deadline: ``time.monotonic()`` value at which the wait gives up.
-            execution_id: Tools-service execution id (``compute_job_id``).
-            project_id: Project the execution belongs to.
+            wait: State of the wait.
 
         Returns:
             The row once it is terminal, or ``None`` if the stream closed first.
@@ -720,64 +861,118 @@ class Executions:
         Raises:
             TimeoutError: If the deadline passes while the stream is open.
         """
-        row = self._terminal_ingestion_row(execution_id, project_id)
+        row = self._terminal_ingestion_row(wait)
         if row is not None:
             return row
         for dirty in iter_dirty_filters(response):
-            if dirty is not None and _INGESTION_FILTER_ID in dirty:
-                row = self._terminal_ingestion_row(execution_id, project_id)
+            woken = dirty is not None and _INGESTION_FILTER_ID in dirty
+            if woken or wait.sweep_due():
+                row = self._terminal_ingestion_row(wait)
                 if row is not None:
                     return row
-            self._ingestion_time_left(deadline, execution_id, project_id)
+            wait.time_left()
         return None
 
-    def _terminal_ingestion_row(
+    def _pause_before_reconnect(
         self,
-        execution_id: str,
-        project_id: str,
+        wait: _IngestionWait,
+        delay: float,
     ) -> dict | None:
-        """Read an execution's data-platform row if it is terminal.
+        """Sleep before the next connect, polling the row while the stream is down.
+
+        The row is read every ``DATA_PLATFORM_INGESTION_POLL_SECONDS`` since
+        the last read, so polling keeps its pace across reconnect attempts.
 
         Args:
-            execution_id: Tools-service execution id (``compute_job_id``).
-            project_id: Project the execution belongs to.
+            wait: State of the wait.
+            delay: Seconds to pause before reconnecting.
 
         Returns:
-            The row when its status is terminal, else ``None`` (including when
-            the row does not exist yet).
-        """
-        rows = (
-            self.search(
-                compute_job_id=execution_id, project_id=project_id, limit=1
-            ).get("data")
-            or []
-        )
-        if rows and rows[0].get("status") in TERMINAL_STATES:
-            return rows[0]
-        return None
-
-    @staticmethod
-    def _ingestion_time_left(
-        deadline: float, execution_id: str, project_id: str
-    ) -> float:
-        """Return seconds left before ``deadline``, raising once it has passed.
-
-        Args:
-            deadline: ``time.monotonic()`` value at which the wait gives up.
-            execution_id: Execution being waited on, for the error message.
-            project_id: Project the execution is searched in, for the error
-                message.
-
-        Returns:
-            Positive seconds remaining.
+            The row if a poll during the pause found it terminal, else
+            ``None``.
 
         Raises:
-            TimeoutError: If the deadline has passed.
+            TimeoutError: If the deadline passes during the pause.
         """
-        remaining = deadline - time.monotonic()
-        if remaining <= 0:
-            raise TimeoutError(
-                "Timed out waiting for data-platform ingestion "
-                f"(execution_id={execution_id!r}, project_id={project_id!r})."
+        while True:
+            until_poll = (
+                wait.last_read + DATA_PLATFORM_INGESTION_POLL_SECONDS - time.monotonic()
             )
-        return remaining
+            if until_poll >= delay:
+                time.sleep(min(delay, wait.time_left()))
+                return None
+            if until_poll > 0:
+                time.sleep(min(until_poll, wait.time_left()))
+                delay -= until_poll
+            wait.time_left()
+            row = self._terminal_ingestion_row(wait)
+            if row is not None:
+                return row
+
+    def _terminal_ingestion_row(self, wait: _IngestionWait) -> dict | None:
+        """Read an execution's data-platform row if it is terminal.
+
+        Pushes the next sweep back, since the row has just been read.
+
+        Without ``include_hidden`` (a backend that rejects it), a hidden run's
+        row is never returned. Ingestion then counts as done once
+        result-explorer has rows for the execution, or once
+        ``DATA_PLATFORM_NO_ROW_TIMEOUT_SECONDS`` pass with no row, as before
+        the flag existed.
+
+        Args:
+            wait: State of the wait.
+
+        Returns:
+            The row when its status is terminal, ``{}`` when ingestion is
+            judged done without a visible row, else ``None`` (including when
+            the row does not exist yet).
+        """
+        rows = self._read_ingestion_rows(wait)
+        wait.last_read = time.monotonic()
+        wait.next_sweep = wait.last_read + DATA_PLATFORM_INGESTION_SWEEP_SECONDS
+        if rows:
+            return rows[0] if rows[0].get("status") in TERMINAL_STATES else None
+        if wait.include_hidden:
+            return None
+        if self._c.results.get(compute_job_id=wait.execution_id, limit=1).get("data"):
+            return {}
+        give_up_at = wait.started + DATA_PLATFORM_NO_ROW_TIMEOUT_SECONDS
+        if time.monotonic() >= give_up_at:
+            return {}
+        wait.next_sweep = min(wait.next_sweep, give_up_at)
+        return None
+
+    def _read_ingestion_rows(self, wait: _IngestionWait) -> list[dict]:
+        """Search the execution's data-platform row.
+
+        Falls back to searching without ``include_hidden`` when the backend
+        rejects the flag, and remembers that for later waits on this client.
+
+        Args:
+            wait: State of the wait.
+
+        Returns:
+            The matching rows, at most one.
+
+        Raises:
+            DeepOriginException: If the search fails for any other reason.
+        """
+        try:
+            response = self.search(
+                compute_job_id=wait.execution_id,
+                project_id=wait.project_id,
+                limit=1,
+                include_hidden=wait.include_hidden,
+            )
+        except DeepOriginException as error:
+            if not wait.include_hidden or not _rejects_include_hidden(error):
+                raise
+            wait.include_hidden = False
+            self._include_hidden_supported = False
+            response = self.search(
+                compute_job_id=wait.execution_id,
+                project_id=wait.project_id,
+                limit=1,
+            )
+        return response.get("data") or []
