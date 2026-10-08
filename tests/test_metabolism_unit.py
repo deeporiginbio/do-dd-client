@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+import pandas as pd
 import pytest
 
 from deeporigin.drug_discovery.metabolism import (
     Metabolism,
+    _apply_site_result_filters,
     _backfill_smiles_from_ligands,
     _job_output_rows,
     _ligands_from_inputs,
@@ -15,7 +17,9 @@ from deeporigin.drug_discovery.metabolism import (
     _platform_ligand_ids,
     _rows_for_ligand_ids,
     _rows_from_result_explorer,
+    _sites_dataframe,
     _unique_preserve_order,
+    _validate_site_result_filters,
 )
 from deeporigin.drug_discovery.structures.ligand import Ligand, LigandSet
 from deeporigin.utils.constants import (
@@ -94,6 +98,91 @@ def test_metabolism_payload_includes_name() -> None:
     job = Metabolism(ligands=Ligand.from_smiles("CCO"))
     payload = job._make_payload(approve_amount=None, sync=True)
     assert payload["name"] == "Site of Metabolism for 1 ligand"
+
+
+def test_validate_site_result_filters_rejects_both() -> None:
+    """top_k and min_prob cannot be used together."""
+    with pytest.raises(ValueError, match="mutually exclusive"):
+        _validate_site_result_filters(top_k=3, min_prob=0.5)
+
+
+def test_sites_dataframe_maps_legacy_confidence() -> None:
+    """Legacy ``confidence`` site rows gain a ``probability`` column."""
+    df = _sites_dataframe(
+        [{"confidence": 0.8, "enzyme": "CYP3A4", "atom_index": 0}],
+        min_prob=0.5,
+    )
+    assert list(df["probability"]) == [0.8]
+
+
+def test_metabolism_run_rejects_invalid_top_k_before_create(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Invalid site filters fail before creating an execution."""
+    job = Metabolism(ligands=Ligand.from_smiles("CCO"))
+
+    def fail_create(*_args: object, **_kwargs: object) -> dict:
+        raise AssertionError("_create_execution should not run")
+
+    monkeypatch.setattr(job, "_create_execution", fail_create)
+    with pytest.raises(ValueError, match="top_k"):
+        job.run(top_k=0)
+
+
+def test_apply_site_result_filters_top_k_per_enzyme() -> None:
+    """top_k ranks within each ligand and enzyme group."""
+    df = pd.DataFrame(
+        [
+            {
+                "ligand_id": "l1",
+                "smiles": "CCO",
+                "enzyme": "CYP3A4",
+                "atom_index": 0,
+                "probability": 0.9,
+            },
+            {
+                "ligand_id": "l1",
+                "smiles": "CCO",
+                "enzyme": "CYP3A4",
+                "atom_index": 1,
+                "probability": 0.5,
+            },
+            {
+                "ligand_id": "l1",
+                "smiles": "CCO",
+                "enzyme": "CYP3A4",
+                "atom_index": 2,
+                "probability": 0.1,
+            },
+            {
+                "ligand_id": "l1",
+                "smiles": "CCO",
+                "enzyme": "CYP1A2",
+                "atom_index": 0,
+                "probability": 0.8,
+            },
+            {
+                "ligand_id": "l1",
+                "smiles": "CCO",
+                "enzyme": "CYP1A2",
+                "atom_index": 1,
+                "probability": 0.2,
+            },
+        ]
+    )
+    filtered = _apply_site_result_filters(df, top_k=1, min_prob=None)
+    assert len(filtered) == 2
+    assert set(filtered["enzyme"]) == {"CYP3A4", "CYP1A2"}
+    assert list(filtered["atom_index"]) == [0, 0]
+
+
+def test_metabolism_make_inputs_includes_force_when_set() -> None:
+    """force=True is forwarded to tool inputs only when requested."""
+    job = Metabolism(ligands=Ligand.from_smiles("CCO"))
+    job._force_recompute = True
+    assert job._make_inputs()["force"] is True
+    job._force_recompute = False
+    assert "force" not in job._make_inputs()
 
 
 def test_metabolism_make_payload_rejects_approve_amount() -> None:

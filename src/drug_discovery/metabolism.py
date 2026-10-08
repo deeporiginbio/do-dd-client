@@ -4,7 +4,7 @@ Backed by the platform tool ``deeporigin.metabolism``. One :class:`Metabolism`
 instance is configured with ligands, then executed with a blocking
 :meth:`run` (small batches) or asynchronous :meth:`start` (larger batches).
 :meth:`run` returns a :class:`pandas.DataFrame` of Metabolism site rows
-(atom, enzyme, site confidence). :meth:`get_molecules` returns
+(atom, enzyme, site probability). :meth:`get_molecules` returns
 molecule-level ``confidence_tier`` rows for **this execution**.
 
 Class-level :meth:`fetch_results` / :meth:`fetch_molecules` load indexed
@@ -12,7 +12,8 @@ rows for a ligand set from the data platform (any past jobs) by
 ``ligand_id``. Before ``run`` / ``start``, if every ligand has a platform id
 and every id already has a Metabolism molecule, the client refuses (no
 execution). If the job still proceeds and any id is already indexed, it
-warns. There is no force/recompute path.
+warns. Pass ``force=True`` to :meth:`run` or :meth:`start` to recompute ligands
+that already have indexed ``MetabolismMolecule`` rows (workflow skip filter).
 
 The tool scores every cytochrome P450 isoform it supports; the client does
 not select or filter enzymes. ``tool_version`` stays ``"latest"``. Ligands
@@ -48,8 +49,9 @@ Fetch indexed rows without starting a job::
 
 from __future__ import annotations
 
-from typing import Any, Self
+import math
 import warnings
+from typing import Any, Self
 
 from beartype import beartype
 import pandas as pd
@@ -82,7 +84,7 @@ _SITE_COLUMNS: tuple[str, ...] = (
     "smiles",
     "atom_index",
     "enzyme",
-    "confidence",
+    "probability",
 )
 _MOLECULE_COLUMNS: tuple[str, ...] = (
     "ligand_id",
@@ -202,6 +204,84 @@ def _expand_metabolism_payload(payload: dict[str, Any]) -> list[dict[str, Any]]:
     if "confidence_tier" in payload or "enzyme" in payload or "atom_index" in payload:
         return [payload]
     return []
+
+
+def _normalize_site_row(row: dict[str, Any]) -> dict[str, Any]:
+    """Copy a site row and map legacy ``confidence`` to ``probability``."""
+    out = dict(row)
+    if "probability" not in out and "confidence" in out:
+        out["probability"] = out["confidence"]
+    return out
+
+
+def _validate_site_result_filters(
+    *,
+    top_k: int | None,
+    min_prob: float | None,
+) -> None:
+    """Validate mutually exclusive Metabolism site DataFrame filters."""
+    if top_k is not None and min_prob is not None:
+        raise ValueError(
+            "Metabolism site filters are mutually exclusive; pass only one of "
+            "top_k or min_prob."
+        )
+    if top_k is not None:
+        if isinstance(top_k, bool) or not isinstance(top_k, int):
+            raise ValueError("top_k must be an integer >= 1.")
+        if top_k < 1:
+            raise ValueError("top_k must be an integer >= 1.")
+    if min_prob is not None:
+        if isinstance(min_prob, bool):
+            raise ValueError("min_prob must be a finite number in [0, 1].")
+        if not isinstance(min_prob, int | float):
+            raise ValueError("min_prob must be a finite number in [0, 1].")
+        prob = float(min_prob)
+        if not math.isfinite(prob) or prob < 0.0 or prob > 1.0:
+            raise ValueError("min_prob must be a finite number in [0, 1].")
+
+
+def _apply_site_result_filters(
+    df: pd.DataFrame,
+    *,
+    top_k: int | None,
+    min_prob: float | None,
+) -> pd.DataFrame:
+    """Filter site rows per ``(ligand_id, smiles, enzyme)`` group."""
+    _validate_site_result_filters(top_k=top_k, min_prob=min_prob)
+    if top_k is None and min_prob is None:
+        return df
+    if df.empty:
+        return df
+    if "probability" not in df.columns:
+        raise ValueError("Metabolism site rows are missing probability values.")
+    group_cols = [col for col in ("ligand_id", "smiles", "enzyme") if col in df.columns]
+    if not group_cols:
+        group_cols = ["enzyme"]
+    pieces: list[pd.DataFrame] = []
+    for _, group in df.groupby(group_cols, dropna=False):
+        sorted_group = group.sort_values(
+            ["probability", "atom_index"],
+            ascending=[False, True],
+        )
+        if top_k is not None:
+            pieces.append(sorted_group.head(top_k))
+        else:
+            pieces.append(sorted_group[sorted_group["probability"] >= float(min_prob)])
+    if not pieces:
+        return df.iloc[0:0].copy()
+    return pd.concat(pieces, ignore_index=True)
+
+
+def _sites_dataframe(
+    rows: list[dict[str, Any]],
+    *,
+    top_k: int | None = None,
+    min_prob: float | None = None,
+) -> pd.DataFrame:
+    """Build a site DataFrame with optional client-side filters."""
+    normalized = [_normalize_site_row(row) for row in rows]
+    df = _ordered_dataframe(normalized, columns=_SITE_COLUMNS).reset_index(drop=True)
+    return _apply_site_result_filters(df, top_k=top_k, min_prob=min_prob)
 
 
 def _ordered_dataframe(
@@ -595,6 +675,7 @@ class Metabolism(
         super().__init__(client=client)
         self._ligands: list[Ligand] = _normalize_ligands(ligands)
         self._remote_ligands_file: str | None = None
+        self._force_recompute: bool = False
         self.name = (
             name if name is not None else _metabolism_default_name(len(self._ligands))
         )
@@ -611,6 +692,8 @@ class Metabolism(
         ligands: Ligand | list[Ligand] | LigandSet,
         *,
         client: DeepOriginClient | None = None,
+        top_k: int | None = None,
+        min_prob: float | None = None,
     ) -> pd.DataFrame:
         """Load indexed Metabolism site rows for *ligands* (any past jobs).
 
@@ -625,14 +708,18 @@ class Metabolism(
 
         Returns:
             DataFrame with preferred columns ``ligand_id``, ``smiles``,
-            ``atom_index``, ``enzyme``, and ``confidence``.
+            ``atom_index``, ``enzyme``, and ``probability``. Optional ``top_k`` or
+            ``min_prob`` filter rows client-side without rerunning the tool.
+            Returns rows from all indexed jobs (history-preserving).
         """
-        return _fetch_dataframe_for_ligands(
+        df = _fetch_dataframe_for_ligands(
             ligands=ligands,
             client=client,
             result_type=_RESULT_TYPE_SITES,
             columns=_SITE_COLUMNS,
         )
+        rows = df.to_dict("records")
+        return _sites_dataframe(rows, top_k=top_k, min_prob=min_prob)
 
     @classmethod
     @beartype
@@ -689,8 +776,14 @@ class Metabolism(
         """
 
         if len(self._ligands) > INLINE_LIGAND_CAP:
-            return {"ligands_file": self._ensure_ligands_file_uploaded()}
-        return {"ligands": _ligand_payloads(self._ligands)}
+            inputs: dict[str, Any] = {
+                "ligands_file": self._ensure_ligands_file_uploaded(),
+            }
+        else:
+            inputs = {"ligands": _ligand_payloads(self._ligands)}
+        if self._force_recompute:
+            inputs["force"] = True
+        return inputs
 
     def _make_payload(
         self,
@@ -758,7 +851,7 @@ class Metabolism(
                 f"(got {n}). Use start() then wait() or watch()."
             )
 
-    def _preflight_already_scored(self, *, sync: bool) -> None:
+    def _preflight_already_scored(self, *, sync: bool, force: bool = False) -> None:
         """Refuse or warn based on indexed MetabolismMolecule coverage.
 
         Refuses when every ligand has a platform id and every id already has
@@ -771,6 +864,9 @@ class Metabolism(
         Raises:
             DeepOriginException: If nothing remains to compute.
         """
+        if force:
+            return
+
         ligand_ids = _platform_ligand_ids(self._ligands)
         all_have_ids = len(ligand_ids) == len(self._ligands)
         if not ligand_ids:
@@ -823,7 +919,13 @@ class Metabolism(
         )
 
     @beartype
-    def run(self) -> pd.DataFrame:
+    def run(
+        self,
+        *,
+        force: bool = False,
+        top_k: int | None = None,
+        min_prob: float | None = None,
+    ) -> pd.DataFrame:
         """Execute metabolism synchronously and return site rows.
 
         Blocks until the job finishes. Requires fewer than
@@ -845,8 +947,10 @@ class Metabolism(
                 could be parsed.
             ValueError: If there are 30 or more ligands.
         """
+        _validate_site_result_filters(top_k=top_k, min_prob=min_prob)
         self._ensure_run_ligand_count()
-        self._preflight_already_scored(sync=True)
+        self._force_recompute = force
+        self._preflight_already_scored(sync=True, force=force)
         dto = self._create_execution(
             data=self._make_payload(approve_amount=None, sync=True)
         )
@@ -861,9 +965,15 @@ class Metabolism(
                 ),
             )
 
-        return self.get_results(dto)
+        return self.get_results(dto, top_k=top_k, min_prob=min_prob)
 
-    def _start_impl(self, *, approve_amount: int | None = None, **kwargs: Any) -> None:
+    def _start_impl(
+        self,
+        *,
+        approve_amount: int | None = None,
+        force: bool = False,
+        **kwargs: Any,
+    ) -> None:
         """Submit metabolism as a persisted async execution (``sync=False``).
 
         Sets :attr:`id`, :attr:`status`, and :attr:`_dto` from the platform
@@ -882,7 +992,8 @@ class Metabolism(
             DeepOriginException: If every ligand is already scored.
         """
         del kwargs
-        self._preflight_already_scored(sync=False)
+        self._force_recompute = force
+        self._preflight_already_scored(sync=False, force=force)
         execution_dto = self._create_execution(
             data=self._make_payload(approve_amount=approve_amount, sync=False)
         )
@@ -973,7 +1084,13 @@ class Metabolism(
         return _job_output_rows(dto, key=job_outputs_key)
 
     @beartype
-    def get_results(self, dto: dict[str, Any] | None = None) -> pd.DataFrame:
+    def get_results(
+        self,
+        dto: dict[str, Any] | None = None,
+        *,
+        top_k: int | None = None,
+        min_prob: float | None = None,
+    ) -> pd.DataFrame:
         """Return this execution's Metabolism site rows as a DataFrame.
 
         Prefers data-platform result-explorer rows for this execution
@@ -990,7 +1107,9 @@ class Metabolism(
 
         Returns:
             DataFrame with ``ligand_id``, ``smiles``, ``atom_index``,
-            ``enzyme``, and ``confidence``.
+            ``enzyme``, and ``probability``. Optional ``top_k`` or ``min_prob``
+            filter rows client-side. This execution's rows are authoritative
+            after a forced rerun.
 
         Raises:
             TypeError: If called as ``Metabolism.get_results(ligands)``.
@@ -1008,7 +1127,7 @@ class Metabolism(
             dto=dto,
         )
         self._require_rows(rows, kind="sites", key="sites")
-        return _ordered_dataframe(rows, columns=_SITE_COLUMNS).reset_index(drop=True)
+        return _sites_dataframe(rows, top_k=top_k, min_prob=min_prob)
 
     @beartype
     def get_molecules(self, dto: dict[str, Any] | None = None) -> pd.DataFrame:
