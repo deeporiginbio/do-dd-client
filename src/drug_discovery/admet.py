@@ -28,6 +28,7 @@ predictions from any past execution with :meth:`Admet.fetch_results`::
 
 from __future__ import annotations
 
+from collections.abc import Iterator
 from typing import Any, Literal, Self
 import warnings
 
@@ -239,7 +240,8 @@ def _skipped_ligand_count(dto: dict[str, Any]) -> int:
     """
 
     # ponytail: a retried pod would be counted twice; dedupe by displayName if retries show up.
-    def counts(node: Any):
+    def counts(node: Any) -> Iterator[int]:
+        """Yield ``skipped_ligands`` from *node* and its descendants."""
         if not isinstance(node, dict):
             return
         tool_progress = node.get("toolProgress")

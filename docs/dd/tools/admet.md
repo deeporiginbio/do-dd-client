@@ -49,11 +49,12 @@ from deeporigin.drug_discovery import Admet
 df = Admet.fetch_results(ligands, properties=["hERG_classification"])
 ```
 
-You get one row per ligand. If a property was predicted more than once, the
-most recent value is used. Ligands must be registered on the platform (they
-are after any ADMET run). You'll see a warning if some ligands or requested
-properties have no predictions yet; those values are empty (`NaN`). If none of
-your ligands have predictions, you'll get an error instead.
+You get one row per ligand that has predictions. If a property was predicted
+more than once, the most recent value is used. Ligands are matched by their
+platform ID, which they get from any ADMET run. You'll see a warning if some
+ligands have no platform ID or no predictions yet (those are left out), or if a
+requested property was never predicted (that value is empty, `NaN`). If none
+of your ligands have predictions, you'll get an error instead.
 
 ## Quotes and confirmation
 
