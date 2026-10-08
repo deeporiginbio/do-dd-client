@@ -461,6 +461,24 @@ def test_admet_get_results_points_skipped_ligands_to_fetch_results(
         job.get_results(dto)
 
 
+def test_admet_get_results_skip_hint_without_job_ligands(
+    client: DeepOriginClient,
+) -> None:
+    """Project/file runs have no job.ligands, so the hint does not suggest it."""
+    _assert_tool_available(client)
+    dto = {
+        **_historical_omit_dto(),
+        "executionId": "__no_result_rows__",
+        "userInputs": {"project": {"id": client.project_id}},
+        "jobOutputs": {"admet_properties": []},
+        "progressReport": {"toolProgress": {"skipped_ligands": 1, "processed": 0}},
+    }
+    job = Admet.from_dto(dto, client=client)
+
+    with pytest.raises(DeepOriginException, match="<the ligands you ran>"):
+        job.get_results(dto)
+
+
 def test_admet_fetch_results_warns_on_ligand_without_predictions(
     client: DeepOriginClient,
 ) -> None:

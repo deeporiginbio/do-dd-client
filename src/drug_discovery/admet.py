@@ -232,14 +232,22 @@ def _admet_dataframe(
 
 
 def _skipped_ligand_count(dto: dict[str, Any]) -> int:
-    """Return ``toolProgress.skipped_ligands`` from an execution DTO, else 0."""
+    """Return the largest ``toolProgress.skipped_ligands`` in the progress tree, else 0.
 
-    progress = dto.get("progressReport")
-    tool_progress = progress.get("toolProgress") if isinstance(progress, dict) else None
-    if not isinstance(tool_progress, dict):
-        return 0
-    skipped = tool_progress.get("skipped_ligands")
-    return skipped if isinstance(skipped, int) else 0
+    Inline runs report at ``progressReport.toolProgress``; workflow runs nest it
+    under ``children``. Chunk pods each report the run's totals, so take the
+    max rather than summing.
+    """
+
+    def counts(node: Any):
+        if isinstance(node, dict):
+            skipped = (node.get("toolProgress") or {}).get("skipped_ligands")
+            if isinstance(skipped, int):
+                yield skipped
+            for child in node.get("children") or []:
+                yield from counts(child)
+
+    return max(counts(dto.get("progressReport")), default=0)
 
 
 def _properties_from_inputs(
@@ -675,9 +683,11 @@ class Admet(
             dto = self.client.executions.get(self.id)  # ty:ignore[unresolved-attribute]
         rows = self._fetch_output_rows(dto=dto)
         skipped = _skipped_ligand_count(dto or {})
+        # Project and ligands-file runs have no job.ligands to pass back.
+        ligands_arg = "job.ligands" if self._ligands else "<the ligands you ran>"
         fetch_hint = (
             f"{skipped} ligand(s) were skipped because they already have "
-            f"predictions. Load them with Admet.fetch_results(job.ligands, "
+            f"predictions. Load them with Admet.fetch_results({ligands_arg}, "
             f"properties=job.properties)."
         )
         if not rows:

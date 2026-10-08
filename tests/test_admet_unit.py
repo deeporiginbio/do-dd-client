@@ -10,6 +10,7 @@ from deeporigin.drug_discovery.admet import (
     _ligands_from_inputs,
     _properties_from_inputs,
     _rows_from_result_explorer,
+    _skipped_ligand_count,
     _validate_admet_properties,
 )
 
@@ -215,3 +216,23 @@ def test_validate_admet_properties_suggests_case_fix() -> None:
     allowed = frozenset({"hERG_classification", "AMES_classification"})
     with pytest.raises(ValueError, match="Did you mean.*'hERG_classification'"):
         _validate_admet_properties(["herg_classification"], allowed=allowed)
+
+
+def test_skipped_ligand_count_reads_nested_workflow_progress() -> None:
+    """Workflow runs nest toolProgress under children; chunk pods repeat totals."""
+    pod = {"toolProgress": {"skipped_ligands": 44, "sent_results": 5}}
+    dto = {
+        "progressReport": {
+            "children": [
+                {"name": "prep"},
+                {"children": [pod, dict(pod)]},
+            ]
+        }
+    }
+    assert _skipped_ligand_count(dto) == 44
+
+
+def test_skipped_ligand_count_defaults_to_zero() -> None:
+    """Missing or malformed progress reports count as no skips."""
+    assert _skipped_ligand_count({}) == 0
+    assert _skipped_ligand_count({"progressReport": {"toolProgress": None}}) == 0
