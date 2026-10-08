@@ -50,8 +50,8 @@ Fetch indexed rows without starting a job::
 from __future__ import annotations
 
 import math
-import warnings
 from typing import Any, Self
+import warnings
 
 from beartype import beartype
 import pandas as pd
@@ -62,9 +62,18 @@ from deeporigin.drug_discovery.execution_mixins import (
     SyncExecutableMixin,
 )
 from deeporigin.drug_discovery.ligand_list_file import (
+    ligand_payloads,
     ligand_rows_from_inputs,
     ligands_from_rows,
     upload_ligand_list,
+)
+from deeporigin.drug_discovery.ligand_results import (
+    backfill_smiles_from_ligands,
+    fetch_result_records,
+    normalize_ligands,
+    platform_ligand_ids,
+    resolve_client,
+    unique_preserve_order,
 )
 from deeporigin.drug_discovery.notebook_watch_mixin import NotebookWatchMixin
 from deeporigin.drug_discovery.structures.ligand import Ligand, LigandSet
@@ -74,7 +83,6 @@ from deeporigin.platform.constants import TOOL_KEYS_AND_VERSIONS, is_success_sta
 from deeporigin.utils.constants import (
     INLINE_LIGAND_CAP,
     METABOLISM_EXECUTION_TIMEOUT_SECONDS,
-    METABOLISM_LIGAND_ID_QUERY_BATCH_SIZE,
     METABOLISM_RESULT_EXPLORER_PAGE_SIZE,
     METABOLISM_WORKFLOW_LIGAND_THRESHOLD,
 )
@@ -113,12 +121,7 @@ def _normalize_ligands(
         ValueError: If the result is empty.
     """
 
-    if isinstance(ligands, LigandSet):
-        out = list(ligands.ligands)
-    elif isinstance(ligands, Ligand):
-        out = [ligands]
-    else:
-        out = list(ligands)
+    out = normalize_ligands(ligands)
     if not out:
         raise ValueError("Metabolism requires at least one ligand.")
     return out
@@ -308,31 +311,6 @@ def _ordered_dataframe(
     return df[ordered + extra]
 
 
-def _ligand_payloads(ligands: list[Ligand]) -> list[dict[str, str]]:
-    """Build ``{smiles, id?}`` dicts for tool inputs or a Ligand list file.
-
-    Args:
-        ligands: Ligands to serialize.
-
-    Returns:
-        Payload rows with required ``smiles`` and optional ``id``.
-
-    Raises:
-        ValueError: If a ligand has no SMILES.
-    """
-
-    ligand_payloads: list[dict[str, str]] = []
-    for idx, lig in enumerate(ligands):
-        smiles = lig.smiles or ""
-        if not smiles:
-            raise ValueError(f"ligands[{idx}] has no SMILES.")
-        payload: dict[str, str] = {"smiles": smiles}
-        if lig.id is not None:
-            payload["id"] = str(lig.id)
-        ligand_payloads.append(payload)
-    return ligand_payloads
-
-
 def _ligands_from_inputs(
     inputs: dict[str, Any],
     *,
@@ -359,19 +337,6 @@ def _ligands_from_inputs(
     if not rows:
         raise ValueError("Cannot rehydrate Metabolism: stored inputs have no ligands.")
     return ligands_from_rows(rows, label="Metabolism")
-
-
-def _resolve_client(client: DeepOriginClient | None) -> DeepOriginClient:
-    """Return *client* or construct the default :class:`DeepOriginClient`.
-
-    Args:
-        client: Optional API client.
-
-    Returns:
-        A usable :class:`DeepOriginClient`.
-    """
-
-    return client if client is not None else DeepOriginClient()
 
 
 def _reject_classmethod_results_call(
@@ -410,47 +375,6 @@ def _reject_classmethod_results_call(
         )
 
 
-def _platform_ligand_ids(ligands: list[Ligand]) -> list[str]:
-    """Return non-empty platform ligand ids in input order (duplicates kept).
-
-    Args:
-        ligands: Ligands that may or may not have ``id`` set.
-
-    Returns:
-        Stripped id strings for ligands that have a platform id.
-    """
-
-    ids: list[str] = []
-    for lig in ligands:
-        raw = lig.id
-        if raw is None:
-            continue
-        text = str(raw).strip()
-        if text:
-            ids.append(text)
-    return ids
-
-
-def _unique_preserve_order(values: list[str]) -> list[str]:
-    """Return unique strings preserving first-seen order.
-
-    Args:
-        values: Possibly duplicated strings.
-
-    Returns:
-        Deduplicated list.
-    """
-
-    seen: set[str] = set()
-    out: list[str] = []
-    for value in values:
-        if value in seen:
-            continue
-        seen.add(value)
-        out.append(value)
-    return out
-
-
 def _rows_for_ligand_ids(
     client: DeepOriginClient,
     *,
@@ -468,25 +392,14 @@ def _rows_for_ligand_ids(
         Nested ``data`` dicts from matching records (may be empty/partial).
     """
 
-    unique_ids = _unique_preserve_order(ligand_ids)
-    if not unique_ids:
-        return []
-
-    rows: list[dict[str, Any]] = []
-    batch_size = METABOLISM_LIGAND_ID_QUERY_BATCH_SIZE
-    for start in range(0, len(unique_ids), batch_size):
-        batch = unique_ids[start : start + batch_size]
-        response = client.results.get(
-            filter_dict={
-                "ligand_id": {"in": batch},
-                "tool_key": {"eq": TOOL_KEYS_AND_VERSIONS["metabolism"]["tool_key"]},
-            },
-            result_type=result_type,
-            limit=None,
-            page_size=METABOLISM_RESULT_EXPLORER_PAGE_SIZE,
-        )
-        rows.extend(_rows_from_result_explorer(response))
-    return rows
+    records = fetch_result_records(
+        client,
+        ligand_ids=ligand_ids,
+        tool_key=TOOL_KEYS_AND_VERSIONS["metabolism"]["tool_key"],
+        result_type=result_type,
+        page_size=METABOLISM_RESULT_EXPLORER_PAGE_SIZE,
+    )
+    return _rows_from_result_explorer({"data": records})
 
 
 def _ligand_ids_with_metabolism_molecule(
@@ -505,7 +418,7 @@ def _ligand_ids_with_metabolism_molecule(
     """
 
     found: set[str] = set()
-    unique_ids = _unique_preserve_order(ligand_ids)
+    unique_ids = unique_preserve_order(ligand_ids)
     if not unique_ids:
         return found
 
@@ -519,71 +432,6 @@ def _ligand_ids_with_metabolism_molecule(
         if isinstance(ligand_id, str) and ligand_id in id_set:
             found.add(ligand_id)
     return found
-
-
-def _smiles_by_ligand_id(ligands: list[Ligand]) -> dict[str, str]:
-    """Map platform ligand id → Caller SMILES from *ligands*.
-
-    When multiple ligands share an id, the first non-empty SMILES wins.
-
-    Args:
-        ligands: Ligands that may carry platform ids and SMILES.
-
-    Returns:
-        Mapping of stripped ligand id to SMILES string.
-    """
-
-    out: dict[str, str] = {}
-    for lig in ligands:
-        raw_id = lig.id
-        if raw_id is None:
-            continue
-        ligand_id = str(raw_id).strip()
-        if not ligand_id or ligand_id in out:
-            continue
-        smiles = lig.smiles
-        if isinstance(smiles, str) and smiles:
-            out[ligand_id] = smiles
-    return out
-
-
-def _backfill_smiles_from_ligands(
-    rows: list[dict[str, Any]],
-    *,
-    ligands: list[Ligand],
-) -> list[dict[str, Any]]:
-    """Fill missing ``smiles`` on result rows from input ligands by ``ligand_id``.
-
-    Indexed MQ rows omit Caller SMILES; HTTP ``jobOutputs`` keep them. Fetch
-    APIs restore SMILES from the caller's ligand objects when the index row
-    has no SMILES.
-
-    Args:
-        rows: Result-explorer or similar row dicts (not mutated).
-        ligands: Ligands passed to ``fetch_*``.
-
-    Returns:
-        New list of row dicts with ``smiles`` filled when possible.
-    """
-
-    smiles_by_id = _smiles_by_ligand_id(ligands)
-    if not smiles_by_id:
-        return list(rows)
-
-    filled: list[dict[str, Any]] = []
-    for row in rows:
-        ligand_id = row.get("ligand_id")
-        existing = row.get("smiles")
-        has_smiles = isinstance(existing, str) and bool(existing)
-        if (
-            has_smiles
-            or not isinstance(ligand_id, str)
-            or ligand_id not in smiles_by_id
-        ):
-            filled.append(row)
-            continue
-        filled.append({**row, "smiles": smiles_by_id[ligand_id]})
-    return filled
 
 
 def _fetch_dataframe_for_ligands(
@@ -608,14 +456,14 @@ def _fetch_dataframe_for_ligands(
         DataFrame of matching rows (possibly empty / partial).
     """
 
-    resolved = _resolve_client(client)
+    resolved = resolve_client(client)
     ligand_list = _normalize_ligands(ligands)
     rows = _rows_for_ligand_ids(
         resolved,
-        ligand_ids=_platform_ligand_ids(ligand_list),
+        ligand_ids=platform_ligand_ids(ligand_list),
         result_type=result_type,
     )
-    rows = _backfill_smiles_from_ligands(rows, ligands=ligand_list)
+    rows = backfill_smiles_from_ligands(rows, ligands=ligand_list)
     return _ordered_dataframe(rows, columns=columns).reset_index(drop=True)
 
 
@@ -760,7 +608,7 @@ class Metabolism(
 
         if self._remote_ligands_file is None:
             self._remote_ligands_file = upload_ligand_list(
-                _ligand_payloads(self._ligands),
+                ligand_payloads(self._ligands),
                 client=self.client,
                 prefix=_LIGAND_LIST_UPLOAD_PREFIX,
             )
@@ -780,7 +628,7 @@ class Metabolism(
                 "ligands_file": self._ensure_ligands_file_uploaded(),
             }
         else:
-            inputs = {"ligands": _ligand_payloads(self._ligands)}
+            inputs = {"ligands": ligand_payloads(self._ligands)}
         if self._force_recompute:
             inputs["force"] = True
         return inputs
@@ -867,7 +715,7 @@ class Metabolism(
         if force:
             return
 
-        ligand_ids = _platform_ligand_ids(self._ligands)
+        ligand_ids = platform_ligand_ids(self._ligands)
         all_have_ids = len(ligand_ids) == len(self._ligands)
         if not ligand_ids:
             return

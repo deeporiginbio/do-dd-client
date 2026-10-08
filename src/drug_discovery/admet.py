@@ -33,11 +33,11 @@ from deeporigin.drug_discovery.execution_mixins import (
     SyncExecutableMixin,
 )
 from deeporigin.drug_discovery.ligand_list_file import (
+    ligand_payloads,
     ligand_rows_from_inputs,
     ligands_from_rows,
     upload_ligand_list,
 )
-from deeporigin.drug_discovery.metabolism import _ligand_payloads
 from deeporigin.drug_discovery.notebook_watch_mixin import NotebookWatchMixin
 from deeporigin.drug_discovery.structures.ligand import Ligand, LigandSet
 from deeporigin.exceptions import DeepOriginException
@@ -369,7 +369,7 @@ class Admet(
 
         if self._remote_ligands_file is None:
             self._remote_ligands_file = upload_ligand_list(
-                _ligand_payloads(self._ligands),
+                ligand_payloads(self._ligands),
                 client=self.client,
                 prefix=ADMET_LIGAND_LIST_UPLOAD_PREFIX,
             )
@@ -399,7 +399,7 @@ class Admet(
             inputs["ligands_count"] = n
             return inputs
 
-        inputs["ligands"] = _ligand_payloads(self._ligands)
+        inputs["ligands"] = ligand_payloads(self._ligands)
         return inputs
 
     def _make_payload(

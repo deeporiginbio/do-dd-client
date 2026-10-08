@@ -20,6 +20,31 @@ from deeporigin.platform.client import DeepOriginClient
 from deeporigin.utils.constants import INLINE_LIGAND_CAP
 
 
+def ligand_payloads(ligands: list[Ligand]) -> list[dict[str, str]]:
+    """Build ``{smiles, id?}`` dicts for tool inputs or a Ligand list file.
+
+    Args:
+        ligands: Ligands to serialize.
+
+    Returns:
+        Payload rows with required ``smiles`` and optional ``id``.
+
+    Raises:
+        ValueError: If a ligand has no SMILES.
+    """
+
+    payloads: list[dict[str, str]] = []
+    for idx, lig in enumerate(ligands):
+        smiles = lig.smiles or ""
+        if not smiles:
+            raise ValueError(f"ligands[{idx}] has no SMILES.")
+        payload: dict[str, str] = {"smiles": smiles}
+        if lig.id is not None:
+            payload["id"] = str(lig.id)
+        payloads.append(payload)
+    return payloads
+
+
 def upload_ligand_list(
     rows: list[dict[str, Any]],
     *,
