@@ -8,17 +8,14 @@ import pytest
 from deeporigin.drug_discovery.metabolism import (
     Metabolism,
     _apply_site_result_filters,
-    _backfill_smiles_from_ligands,
     _job_output_rows,
     _ligands_from_inputs,
     _metabolism_default_name,
     _normalize_ligands,
     _ordered_dataframe,
-    _platform_ligand_ids,
     _rows_for_ligand_ids,
     _rows_from_result_explorer,
     _sites_dataframe,
-    _unique_preserve_order,
     _validate_site_result_filters,
 )
 from deeporigin.drug_discovery.structures.ligand import Ligand, LigandSet
@@ -312,43 +309,11 @@ def test_make_inputs_stays_inline_at_cap() -> None:
     assert len(inputs["ligands"]) == n
 
 
-def test_platform_ligand_ids_skips_missing_and_blank() -> None:
-    """Only non-empty platform ids are collected."""
-    with_id = Ligand.from_smiles("CCO")
-    with_id.id = "lig-1"
-    blank = Ligand.from_smiles("CCN")
-    blank.id = "  "
-    no_id = Ligand.from_smiles("CCC")
-    assert _platform_ligand_ids([with_id, blank, no_id]) == ["lig-1"]
-
-
-def test_unique_preserve_order() -> None:
-    """Duplicates are dropped while keeping first-seen order."""
-    assert _unique_preserve_order(["a", "b", "a", "c", "b"]) == ["a", "b", "c"]
-
-
 def test_ordered_dataframe_empty_keeps_columns() -> None:
     """An empty fetch returns preferred columns with no rows."""
     df = _ordered_dataframe([], columns=("ligand_id", "smiles"))
     assert list(df.columns) == ["ligand_id", "smiles"]
     assert len(df) == 0
-
-
-def test_backfill_smiles_from_ligands_fills_missing() -> None:
-    """MQ-style rows without SMILES pick up Caller SMILES from ligands."""
-    lig = Ligand.from_smiles("CCO")
-    lig.id = "lig-1"
-    other = Ligand.from_smiles("CCN")
-    other.id = "lig-2"
-    rows = [
-        {"ligand_id": "lig-1", "confidence_tier": "high"},
-        {"ligand_id": "lig-2", "smiles": "CCN", "confidence_tier": "low"},
-        {"ligand_id": "lig-missing", "confidence_tier": "medium"},
-    ]
-    filled = _backfill_smiles_from_ligands(rows, ligands=[lig, other])
-    assert filled[0]["smiles"] == "CCO"
-    assert filled[1]["smiles"] == "CCN"
-    assert "smiles" not in filled[2]
 
 
 class _RecordingMetabolismResults:

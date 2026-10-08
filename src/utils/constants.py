@@ -313,11 +313,12 @@ METABOLISM_EXECUTION_TIMEOUT_SECONDS = 900.0
 Cold-start loading of the DOSOM ensemble can exceed the default 600s POST
 timeout."""
 
-METABOLISM_LIGAND_ID_QUERY_BATCH_SIZE = 500
-"""Max ligand ids per result-explorer ``ligand_id`` ``in`` filter for Metabolism.
+LIGAND_ID_QUERY_BATCH_SIZE = 500
+"""Max ligand ids per result-explorer ``ligand_id`` ``in`` filter.
 
-Used by ``fetch_results`` / ``fetch_molecules`` and the already-scored preflight
-(matches the toolbox MetabolismMolecule skip-filter batch size)."""
+Used by tool ``fetch_*`` lookups and the Metabolism already-scored preflight
+(matches the toolbox MetabolismMolecule skip-filter batch size).
+"""
 
 METABOLISM_RESULT_EXPLORER_PAGE_SIZE = 1000
 """Per-request page size for Metabolism result-explorer fetches.

@@ -10,6 +10,7 @@ from deeporigin.drug_discovery.admet import (
     _ligands_from_inputs,
     _properties_from_inputs,
     _rows_from_result_explorer,
+    _skipped_ligand_count,
     _validate_admet_properties,
 )
 
@@ -162,3 +163,92 @@ def test_rows_from_result_explorer_flattens_and_skips_junk() -> None:
     assert _rows_from_result_explorer(response) == [nested, flat]
     assert _rows_from_result_explorer(None) == []
     assert _rows_from_result_explorer({"data": "nope"}) == []
+
+
+def test_merge_records_by_ligand_newest_value_wins() -> None:
+    """Partial records from several executions collapse to one row per ligand."""
+    from deeporigin.drug_discovery.admet import _merge_records_by_ligand
+
+    records = [
+        {
+            "measured_at": "2026-10-01T00:00:00Z",
+            "data": {"ligand_id": "L1", "hERG_classification": 0.9},
+        },
+        {
+            "measured_at": "2026-08-01T00:00:00Z",
+            "data": {
+                "ligand_id": "L1",
+                "hERG_classification": 0.1,
+                "AMES_classification": 0.2,
+            },
+        },
+        {
+            "measured_at": "2026-09-01T00:00:00Z",
+            "data": {"admetproperties": [{"ligand_id": "L2", "PPB_regression": 3.0}]},
+        },
+    ]
+
+    rows = {row["ligand_id"]: row for row in _merge_records_by_ligand(records)}
+
+    assert rows["L1"] == {
+        "ligand_id": "L1",
+        "hERG_classification": 0.9,
+        "AMES_classification": 0.2,
+    }
+    assert rows["L2"] == {"ligand_id": "L2", "PPB_regression": 3.0}
+
+
+def test_admet_dataframe_fills_missing_and_drops_unrequested() -> None:
+    """Requested-but-absent endpoints are NaN; unrequested endpoints are dropped."""
+    from deeporigin.drug_discovery.admet import _admet_dataframe
+
+    df = _admet_dataframe(
+        [{"ligand_id": "L1", "hERG_classification": 0.9, "AMES_classification": 0.2}],
+        ["hERG_classification", "PPB_regression"],
+    )
+
+    assert list(df.columns) == ["ligand_id", "hERG_classification", "PPB_regression"]
+    assert df["PPB_regression"].isna().all()
+
+
+def test_validate_admet_properties_suggests_case_fix() -> None:
+    """A case-only typo names the endpoint the caller meant."""
+    allowed = frozenset({"hERG_classification", "AMES_classification"})
+    with pytest.raises(ValueError, match="Did you mean.*'hERG_classification'"):
+        _validate_admet_properties(["herg_classification"], allowed=allowed)
+
+
+def test_skipped_ligand_count_sums_nested_workflow_pods() -> None:
+    """Workflow runs report per-chunk skips under children (dev b2d08798: 44 + 44)."""
+    dto = {
+        "progressReport": {
+            "children": [
+                {"name": "prep"},
+                {
+                    "children": [
+                        {
+                            "toolProgress": {
+                                "skipped_ligands": 44,
+                                "eligible_ligands": 6,
+                            }
+                        },
+                        {
+                            "toolProgress": {
+                                "skipped_ligands": 44,
+                                "eligible_ligands": 7,
+                            }
+                        },
+                    ]
+                },
+            ]
+        }
+    }
+    assert _skipped_ligand_count(dto) == 88
+
+
+def test_skipped_ligand_count_defaults_to_zero() -> None:
+    """Missing or malformed progress reports count as no skips."""
+    assert _skipped_ligand_count({}) == 0
+    assert _skipped_ligand_count({"progressReport": {"toolProgress": None}}) == 0
+    assert _skipped_ligand_count({"progressReport": {"toolProgress": "done"}}) == 0
+    assert _skipped_ligand_count({"progressReport": {"children": 3}}) == 0
