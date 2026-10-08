@@ -208,3 +208,10 @@ def test_admet_dataframe_fills_missing_and_drops_unrequested() -> None:
 
     assert list(df.columns) == ["ligand_id", "hERG_classification", "PPB_regression"]
     assert df["PPB_regression"].isna().all()
+
+
+def test_validate_admet_properties_suggests_case_fix() -> None:
+    """A case-only typo names the endpoint the caller meant."""
+    allowed = frozenset({"hERG_classification", "AMES_classification"})
+    with pytest.raises(ValueError, match="Did you mean.*'hERG_classification'"):
+        _validate_admet_properties(["herg_classification"], allowed=allowed)

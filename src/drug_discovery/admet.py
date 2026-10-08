@@ -115,8 +115,14 @@ def _validate_admet_properties(
         raise ValueError("properties must not contain duplicates.")
     unknown = set(properties) - allowed
     if unknown:
+        by_lower = {name.lower(): name for name in allowed}
+        hints = {
+            u: by_lower[u.lower()] for u in sorted(unknown) if u.lower() in by_lower
+        }
+        hint = f" Did you mean {hints}?" if hints else ""
         raise ValueError(
-            f"Unknown ADMET properties {sorted(unknown)}. Allowed: {sorted(allowed)}"
+            f"Unknown ADMET properties {sorted(unknown)}.{hint} "
+            f"Allowed: {sorted(allowed)}"
         )
     return list(properties)
 
@@ -658,23 +664,27 @@ class Admet(
         """Return the predictions computed by this execution as a DataFrame.
 
         Ligands the tool skipped because they already had predictions are not
-        included; load those with :meth:`fetch_results`.
+        included (a warning names how many); load those with
+        :meth:`fetch_results`.
 
         Raises:
             DeepOriginException: If this execution produced no prediction rows.
         """
 
+        if dto is None and self.id is not None:
+            dto = self.client.executions.get(self.id)  # ty:ignore[unresolved-attribute]
         rows = self._fetch_output_rows(dto=dto)
+        skipped = _skipped_ligand_count(dto or {})
+        fetch_hint = (
+            f"{skipped} ligand(s) were skipped because they already have "
+            f"predictions. Load them with Admet.fetch_results(job.ligands, "
+            f"properties=job.properties)."
+        )
         if not rows:
-            if dto is None and self.id is not None:
-                dto = self.client.executions.get(self.id)  # ty:ignore[unresolved-attribute]
-            skipped = _skipped_ligand_count(dto or {})
             if skipped:
                 message = (
                     f"Admet execution {self.id!r} computed no new predictions: "
-                    f"{skipped} ligand(s) were skipped because they already have "
-                    f"predictions. Load them with Admet.fetch_results("
-                    f"job.ligands, properties=job.properties)."
+                    f"{fetch_hint}"
                 )
             else:
                 message = (
@@ -684,6 +694,8 @@ class Admet(
             raise DeepOriginException(
                 title="ADMET predictions missing", message=message
             )
+        if skipped:
+            warnings.warn(f"Results are incomplete: {fetch_hint}", stacklevel=2)
 
         return _admet_dataframe(rows, self._properties)
 
@@ -716,16 +728,25 @@ class Admet(
             both are reported with a warning.
 
         Raises:
-            ValueError: If *ligands* is empty.
+            ValueError: If *ligands* is empty or *properties* names an endpoint
+                the tool does not define.
             DeepOriginException: If none of *ligands* has stored predictions.
         """
 
         ligand_list = normalize_ligands(ligands)
         if not ligand_list:
             raise ValueError("Admet.fetch_results requires at least one ligand.")
+        resolved = resolve_client(client)
+        if properties is not None:
+            definition = resolved.tools.get(  # ty:ignore[unresolved-attribute]
+                tool_key=cls.tool_key, tool_version=cls.tool_version
+            )
+            properties = _validate_admet_properties(
+                properties, allowed=frozenset(_endpoints_from_definition(definition))
+            )
         ligand_ids = unique_preserve_order(platform_ligand_ids(ligand_list))
         records = fetch_result_records(
-            resolve_client(client),
+            resolved,
             ligand_ids=ligand_ids,
             tool_key=cls.tool_key,
             result_type=_RESULT_TYPE_ADMET,

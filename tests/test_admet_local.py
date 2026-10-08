@@ -476,3 +476,31 @@ def test_admet_fetch_results_warns_on_ligand_without_predictions(
         df = Admet.fetch_results([scored, unscored], client=client)
 
     assert list(df["ligand_id"]) == [scored.id]
+
+
+def test_admet_fetch_results_rejects_unknown_property(
+    client: DeepOriginClient,
+) -> None:
+    """Endpoint names are checked against the tool definition before querying."""
+    _assert_tool_available(client)
+    ligand = Ligand.from_smiles("CCO")
+    ligand.id = "lig-any"
+
+    with pytest.raises(ValueError, match="Did you mean.*'hERG_classification'"):
+        Admet.fetch_results(ligand, properties=["herg_classification"], client=client)
+
+
+def test_admet_get_results_warns_on_partial_skip(client: DeepOriginClient) -> None:
+    """Rows this execution computed are returned with a warning about skips."""
+    _assert_tool_available(client)
+    dto = {
+        **_historical_omit_dto(),
+        "executionId": "__no_result_rows__",
+        "progressReport": {"toolProgress": {"skipped_ligands": 2, "processed": 1}},
+    }
+    job = Admet.from_dto(dto, client=client)
+
+    with pytest.warns(UserWarning, match="2 ligand\\(s\\) were skipped"):
+        df = job.get_results(dto)
+
+    assert list(df["ligand_id"]) == ["0"]
