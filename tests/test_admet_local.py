@@ -8,6 +8,7 @@ import pandas as pd
 import pytest
 
 from deeporigin.drug_discovery import Admet, Ligand
+from deeporigin.exceptions import DeepOriginException
 from deeporigin.platform.constants import TOOL_KEYS_AND_VERSIONS
 from deeporigin.utils.constants import (
     ADMET_WORKFLOW_LIGAND_THRESHOLD,
@@ -396,3 +397,82 @@ def test_admet_project_wide_start(client: DeepOriginClient) -> None:
     assert len(df) >= 1
     for prop in _ADMET_PROPERTIES:
         assert prop in df.columns
+
+
+def test_admet_fetch_results_across_executions(client: DeepOriginClient) -> None:
+    """``fetch_results`` merges predictions stored by earlier executions."""
+    _assert_tool_available(client)
+
+    ligand = Ligand.from_smiles("CC(C)CO")
+    first = Admet(ligands=[ligand], client=client)
+    first.properties = ["hERG_classification"]
+    first.run()
+    second = Admet(ligands=[ligand], client=client)
+    second.properties = ["AMES_classification"]
+    second.run()
+
+    df = Admet.fetch_results(ligand, properties=_ADMET_PROPERTIES, client=client)
+
+    assert list(df["ligand_id"]) == [ligand.id]
+    assert df[_ADMET_PROPERTIES].notna().all().all()
+
+
+def test_admet_fetch_results_warns_on_missing_property(
+    client: DeepOriginClient,
+) -> None:
+    """Requested endpoints with no stored value warn and come back as NaN."""
+    _assert_tool_available(client)
+
+    ligand = Ligand.from_smiles("OCC(O)CO")
+    job = Admet(ligands=[ligand], client=client)
+    job.properties = ["hERG_classification"]
+    job.run()
+
+    with pytest.warns(UserWarning, match="AMES_classification"):
+        df = Admet.fetch_results(ligand, properties=_ADMET_PROPERTIES, client=client)
+
+    assert df["AMES_classification"].isna().all()
+
+
+def test_admet_fetch_results_raises_when_nothing_stored(
+    client: DeepOriginClient,
+) -> None:
+    """Ligands without stored predictions raise instead of returning empty."""
+    _assert_tool_available(client)
+
+    with pytest.raises(DeepOriginException, match="No stored ADMET predictions"):
+        Admet.fetch_results(Ligand.from_smiles("OCCCCCCCCCO"), client=client)
+
+
+def test_admet_get_results_points_skipped_ligands_to_fetch_results(
+    client: DeepOriginClient,
+) -> None:
+    """An execution that skipped every ligand names ``fetch_results`` in its error."""
+    _assert_tool_available(client)
+    dto = {
+        **_historical_omit_dto(),
+        "executionId": "__no_result_rows__",
+        "jobOutputs": {"admet_properties": []},
+        "progressReport": {"toolProgress": {"skipped_ligands": 1, "processed": 0}},
+    }
+    job = Admet.from_dto(dto, client=client)
+
+    with pytest.raises(DeepOriginException, match="fetch_results"):
+        job.get_results(dto)
+
+
+def test_admet_fetch_results_warns_on_ligand_without_predictions(
+    client: DeepOriginClient,
+) -> None:
+    """Ligands with no stored predictions warn and are left out of the table."""
+    _assert_tool_available(client)
+
+    scored = Ligand.from_smiles("CCOCCO")
+    Admet(ligands=[scored], client=client).run()
+    unscored = Ligand.from_smiles("CCOCCOCCO")
+    unscored.id = "lig-never-scored"
+
+    with pytest.warns(UserWarning, match="1 ligand\\(s\\) have no stored predictions"):
+        df = Admet.fetch_results([scored, unscored], client=client)
+
+    assert list(df["ligand_id"]) == [scored.id]

@@ -37,6 +37,24 @@ project_admet.wait()
 df = project_admet.get_results()
 ```
 
+## Ligands that already have predictions
+
+ADMET skips ligands that already have predictions. `get_results()` only
+returns what that run predicted, so skipped ligands are not in it. To get predictions for your
+ligands no matter which run made them, use `fetch_results`:
+
+```{.python notest}
+from deeporigin.drug_discovery import Admet
+
+df = Admet.fetch_results(ligands, properties=["hERG_classification"])
+```
+
+You get one row per ligand. If a property was predicted more than once, the
+most recent value is used. Ligands must be registered on the platform (they
+are after any ADMET run). You'll see a warning if some ligands or requested
+properties have no predictions yet; those values are empty (`NaN`). If none of
+your ligands have predictions, you'll get an error instead.
+
 ## Quotes and confirmation
 
 Request an estimate with `run(quote=True)` or `start(quote=True)`. When the

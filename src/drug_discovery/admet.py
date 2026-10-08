@@ -18,11 +18,18 @@ Usage::
     admet = Admet(ligands=[ligand])
     admet.properties = ["hERG_classification", "AMES_classification"]
     df = admet.run()
+
+Ligands that already have predictions are skipped by the tool, so their
+values are not in that execution's :meth:`get_results`. Load stored
+predictions from any past execution with :meth:`Admet.fetch_results`::
+
+    df = Admet.fetch_results([ligand], properties=admet.properties)
 """
 
 from __future__ import annotations
 
 from typing import Any, Literal, Self
+import warnings
 
 from beartype import beartype
 import pandas as pd
@@ -37,6 +44,14 @@ from deeporigin.drug_discovery.ligand_list_file import (
     ligand_rows_from_inputs,
     ligands_from_rows,
     upload_ligand_list,
+)
+from deeporigin.drug_discovery.ligand_results import (
+    backfill_smiles_from_ligands,
+    fetch_result_records,
+    normalize_ligands,
+    platform_ligand_ids,
+    resolve_client,
+    unique_preserve_order,
 )
 from deeporigin.drug_discovery.notebook_watch_mixin import NotebookWatchMixin
 from deeporigin.drug_discovery.structures.ligand import Ligand, LigandSet
@@ -156,6 +171,71 @@ def _expand_admet_payload(payload: dict[str, Any]) -> list[dict[str, Any]]:
     return []
 
 
+def _is_admet_property(column: str) -> bool:
+    """True when *column* names an admet-now endpoint."""
+
+    return column.endswith(("_classification", "_regression"))
+
+
+def _merge_records_by_ligand(records: list[Any]) -> list[dict[str, Any]]:
+    """Collapse result-explorer records into one row per ``ligand_id``.
+
+    Each record may hold any subset of endpoints, from any execution or tool
+    version. Records are applied oldest to newest by ``measured_at``, so the
+    newest non-null value of each endpoint wins.
+    """
+
+    dict_records = [r for r in records if isinstance(r, dict)]
+    dict_records.sort(key=lambda r: str(r.get("measured_at") or ""))
+    merged: dict[str, dict[str, Any]] = {}
+    for record in dict_records:
+        data = record.get("data")
+        if not isinstance(data, dict):
+            continue
+        for row in _expand_admet_payload(data):
+            ligand_id = row.get("ligand_id")
+            if not isinstance(ligand_id, str):
+                continue
+            target = merged.setdefault(ligand_id, {})
+            target.update({k: v for k, v in row.items() if v is not None})
+    return list(merged.values())
+
+
+def _admet_dataframe(
+    rows: list[dict[str, Any]],
+    properties: list[str] | tuple[str, ...] | None,
+) -> pd.DataFrame:
+    """Order *rows* as id columns, then *properties* (or every endpoint found).
+
+    Requested properties absent from *rows* become ``NaN`` columns; endpoints
+    not in *properties* are dropped.
+    """
+
+    df = pd.DataFrame(rows)
+    if properties is not None:
+        property_cols = list(properties)
+    else:
+        property_cols = sorted(
+            col
+            for col in df.columns
+            if col not in _ADMET_ID_COLUMNS and _is_admet_property(col)
+        )
+    ordered = [c for c in _ADMET_ID_COLUMNS if c in df.columns] + property_cols
+    extra = [c for c in df.columns if c not in ordered and not _is_admet_property(c)]
+    return df.reindex(columns=ordered + extra)
+
+
+def _skipped_ligand_count(dto: dict[str, Any]) -> int:
+    """Return ``toolProgress.skipped_ligands`` from an execution DTO, else 0."""
+
+    progress = dto.get("progressReport")
+    tool_progress = progress.get("toolProgress") if isinstance(progress, dict) else None
+    if not isinstance(tool_progress, dict):
+        return 0
+    skipped = tool_progress.get("skipped_ligands")
+    return skipped if isinstance(skipped, int) else 0
+
+
 def _properties_from_inputs(
     inputs: dict[str, Any],
 ) -> tuple[str, ...] | None:
@@ -222,6 +302,10 @@ class Admet(
     :meth:`wait` or :meth:`watch`, then :meth:`get_results`. Project-wide runs
     use :class:`Admet` with ``ligands=[]`` and ``client.project_id`` set; call
     :meth:`start` only.
+
+    :meth:`get_results` returns only what that execution computed. Use
+    :meth:`fetch_results` to load stored predictions for ligands from any past
+    execution without starting a job.
 
     Attributes:
         ligands: Ligands whose SMILES are sent to the tool (empty for project runs).
@@ -571,28 +655,126 @@ class Admet(
 
     @beartype
     def get_results(self, dto: dict[str, Any] | None = None) -> pd.DataFrame:
-        """Return this execution's predictions as a :class:`pandas.DataFrame`."""
+        """Return the predictions computed by this execution as a DataFrame.
+
+        Ligands the tool skipped because they already had predictions are not
+        included; load those with :meth:`fetch_results`.
+
+        Raises:
+            DeepOriginException: If this execution produced no prediction rows.
+        """
 
         rows = self._fetch_output_rows(dto=dto)
+        if not rows:
+            if dto is None and self.id is not None:
+                dto = self.client.executions.get(self.id)  # ty:ignore[unresolved-attribute]
+            skipped = _skipped_ligand_count(dto or {})
+            if skipped:
+                message = (
+                    f"Admet execution {self.id!r} computed no new predictions: "
+                    f"{skipped} ligand(s) were skipped because they already have "
+                    f"predictions. Load them with Admet.fetch_results("
+                    f"job.ligands, properties=job.properties)."
+                )
+            else:
+                message = (
+                    f"Admet execution {self.id!r} returned no admet_properties "
+                    f"rows from the data platform or jobOutputs."
+                )
+            raise DeepOriginException(
+                title="ADMET predictions missing", message=message
+            )
+
+        return _admet_dataframe(rows, self._properties)
+
+    @classmethod
+    @beartype
+    def fetch_results(
+        cls,
+        ligands: Ligand | list[Ligand] | LigandSet,
+        *,
+        properties: list[str] | tuple[str, ...] | None = None,
+        client: DeepOriginClient | None = None,
+    ) -> pd.DataFrame:
+        """Load stored ADMET predictions for *ligands* from any past execution.
+
+        Does not start an execution. Queries by platform ``ligand_id`` (ligands
+        without an id are skipped) and merges every stored prediction into one
+        row per ligand; when an endpoint was predicted more than once, the
+        newest value wins regardless of tool version.
+
+        Args:
+            ligands: A ligand, list, or :class:`LigandSet`.
+            properties: Endpoints to return. ``None`` returns every endpoint
+                found.
+            client: Optional API client. Uses the default if not provided.
+
+        Returns:
+            DataFrame with ``ligand_id``, ``smiles``, then one column per
+            endpoint. Ligands with no id or no stored predictions are left
+            out, and requested endpoints with no stored value are ``NaN``;
+            both are reported with a warning.
+
+        Raises:
+            ValueError: If *ligands* is empty.
+            DeepOriginException: If none of *ligands* has stored predictions.
+        """
+
+        ligand_list = normalize_ligands(ligands)
+        if not ligand_list:
+            raise ValueError("Admet.fetch_results requires at least one ligand.")
+        ligand_ids = unique_preserve_order(platform_ligand_ids(ligand_list))
+        records = fetch_result_records(
+            resolve_client(client),
+            ligand_ids=ligand_ids,
+            tool_key=cls.tool_key,
+            result_type=_RESULT_TYPE_ADMET,
+            page_size=ADMET_RESULT_EXPLORER_PAGE_SIZE,
+            select=["id", "tool_version", "data", "compute_job_id", "measured_at"],
+        )
+
+        rows = backfill_smiles_from_ligands(
+            _merge_records_by_ligand(records), ligands=ligand_list
+        )
         if not rows:
             raise DeepOriginException(
                 title="ADMET predictions missing",
                 message=(
-                    f"Admet execution {self.id!r} returned no admet_properties "
-                    f"rows from the data platform or jobOutputs."
+                    f"No stored ADMET predictions for any of the "
+                    f"{len(ligand_list)} ligand(s) ({len(ligand_ids)} with a "
+                    f"platform id). Run Admet on them first."
                 ),
             )
 
-        df = pd.DataFrame(rows)
-        if self._properties is not None:
-            property_cols = list(self._properties)
-        else:
-            property_cols = sorted(
-                col for col in df.columns if col not in _ADMET_ID_COLUMNS
+        found = {row["ligand_id"] for row in rows}
+        problems: list[str] = []
+        no_id = len(ligand_list) - len(platform_ligand_ids(ligand_list))
+        if no_id:
+            problems.append(f"{no_id} ligand(s) have no platform id")
+        not_found = [lig for lig in ligand_ids if lig not in found]
+        if not_found:
+            problems.append(
+                f"{len(not_found)} ligand(s) have no stored predictions "
+                f"({not_found[:5]})"
             )
-        ordered = [c for c in _ADMET_ID_COLUMNS if c in df.columns] + property_cols
-        extra = [c for c in df.columns if c not in ordered]
-        return df[ordered + extra]
+        if properties is not None:
+            missing = {
+                row["ligand_id"]: props
+                for row in rows
+                if (props := [p for p in properties if row.get(p) is None])
+            }
+            if missing:
+                problems.append(
+                    f"{len(missing)} ligand(s) lack some requested properties "
+                    f"({dict(list(missing.items())[:5])}); those values are NaN"
+                )
+        if problems:
+            warnings.warn(
+                "ADMET predictions incomplete: " + "; ".join(problems) + ".",
+                stacklevel=2,
+            )
+
+        return _admet_dataframe(rows, properties)
 
     @classmethod
     def from_dto(
