@@ -438,7 +438,10 @@ rotation** overrides inferred orientation when a `Docking` / `ConstrainedDocking
 holds it. Preview entry points: `Pocket.show_box()` (static, pocket geometry
 only — no session rotation), `Docking.show_box()` /
 `ConstrainedDocking.show_box()` (static or interactive; session rotation when
-set). Distinct from the pocket cavity surface (`Pocket.show()` /
+set). `Docking.from_dto` / `ConstrainedDocking.from_dto` restore the box from the
+submitted `userInputs.pocket` snapshot (center, sizes, rotation); `pocket.id` is
+provenance only and the result row need not still exist. Unresolved or
+non-positive sizes raise instead of producing a zero-sized box. Distinct from the pocket cavity surface (`Pocket.show()` /
 `Protein.show(pockets=...)`).
 _Avoid_: pocket box; docking pocket (when meaning pocket surfaces); conflating
 with `Protein.show(pockets=...)` gaussian surfaces; treating the box as
@@ -457,7 +460,8 @@ session rotation (when you mean pocket-finder output)
 Ephemeral Euler angles `[rx, ry, rz]` on a `Docking` or `ConstrainedDocking`
 instance, written by interactive `show_box` on molstar gesture-end. Not stored
 on `Pocket`. Overrides **Inferred box orientation** when set. Free docking
-`run()` / `start()` forward it; ConstrainedDocking ignores it in v1. `None`
+`run()` / `start()` forward it (Docking and ConstrainedDocking alike); `from_dto`
+restores it from `userInputs.pocket.rotation_deg`. `None`
 when unset or identity.
 _Avoid_: Apply; pocket rotation; inferred box orientation; treating printed cell
 output as live

@@ -13,6 +13,7 @@ from deeporigin.drug_discovery.docking_common import (
     load_docking_poses_from_execution,
     resolve_docking_box_geometry,
     resolve_pocket_docking_box,
+    restore_pocket_from_inputs,
 )
 from deeporigin.drug_discovery.execution import Execution
 from deeporigin.drug_discovery.execution_mixins import (
@@ -512,8 +513,9 @@ class Docking(Execution, SyncExecutableMixin, AsyncExecutableMixin, NotebookWatc
             raise RuntimeError("from_dto did not set _dto")
         inputs = execution.get("userInputs", {})
 
-        pocket_input = inputs.get("pocket", {})
-        pocket_id = pocket_input.get("id") or inputs.get("pocket_id")
+        instance._pocket, restored_rotation = restore_pocket_from_inputs(
+            inputs, client=instance.client
+        )
 
         protein_input = inputs.get("protein", {})
         protein_id = protein_input.get("id")
@@ -532,7 +534,7 @@ class Docking(Execution, SyncExecutableMixin, AsyncExecutableMixin, NotebookWatc
                 "this execution may have been created with an older input schema."
             )
 
-        with concurrent.futures.ThreadPoolExecutor(max_workers=3) as executor:
+        with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
             fut_protein = executor.submit(
                 Protein.from_id,
                 protein_id,
@@ -547,29 +549,11 @@ class Docking(Execution, SyncExecutableMixin, AsyncExecutableMixin, NotebookWatc
                 download=False,
                 ligand_inputs=ligand_rows,
             )
-            if pocket_id is not None:
-                fut_pocket = executor.submit(
-                    Pocket.from_id,
-                    pocket_id,
-                    client=instance.client,
-                )
-            else:
-                fut_pocket = None
 
         instance._protein = fut_protein.result()
         instance._ligands = fut_ligands.result()
         raw_effort = inputs.get("effort")
         instance.effort = int(raw_effort) if raw_effort is not None else cls.effort
-        if fut_pocket is not None:
-            instance._pocket = fut_pocket.result()
-        else:
-            instance._pocket = Pocket(
-                id=None,
-                center=pocket_input.get("center"),
-                box_size_x=pocket_input.get("box_size_x"),
-                box_size_y=pocket_input.get("box_size_y"),
-                box_size_z=pocket_input.get("box_size_z"),
-            )
 
         meta = execution.get("metadata") or {}
         raw_batch = execution.get("batchSize")
@@ -580,7 +564,7 @@ class Docking(Execution, SyncExecutableMixin, AsyncExecutableMixin, NotebookWatc
         except (TypeError, ValueError):
             bs = 16
         instance._batch_size = bs if bs > 0 else 16
-        instance._rotation_deg = None
+        instance._rotation_deg = restored_rotation
 
         return instance
 
