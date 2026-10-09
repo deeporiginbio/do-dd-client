@@ -58,6 +58,29 @@ pose = Pose.from_sdf("cocrystal.sdf", protein_id=protein.id)
 print(pose.id, pose.ligand_id)
 ```
 
+To register several poses in one call, put them in a :class:`PoseSet` and call
+:meth:`PoseSet.sync`. Every pose needs a `protein_id`, and all poses in one call
+must share the same protein, project and origin.
+
+```{.python notest}
+from deeporigin.drug_discovery import PoseSet
+
+pose_set = PoseSet(poses=[pose_a, pose_b, pose_c])
+pose_set.sync()
+print([pose.id for pose in pose_set])
+```
+
+`Pose.from_sdf`, `Pose.sync` and `PoseSet.sync` block until the platform has
+stored every pose, then set `id` on each pose. They raise:
+
+- `DeepOriginException` if the registration run failed. The message includes
+  the reason the platform gave.
+- `DeepOriginException` if the platform stored fewer poses than were sent. The
+  message names each missing record by its position in the batch (starting at
+  0) and its name. The platform can reject a single record without failing the
+  whole run, so check this error even when the run succeeded.
+- `TimeoutError` if the poses are not stored within an hour.
+
 ### List poses for a ligand
 
 ```{.python notest}

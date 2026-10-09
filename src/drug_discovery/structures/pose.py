@@ -5,7 +5,6 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from html import escape
 from pathlib import Path
-import time
 from typing import TYPE_CHECKING, Any, ClassVar, Literal, Optional, Self
 
 if TYPE_CHECKING:
@@ -28,14 +27,13 @@ from deeporigin.drug_discovery.structures.repr_display import (
 )
 from deeporigin.exceptions import DeepOriginException
 from deeporigin.platform.client import DeepOriginClient
+from deeporigin.platform.constants import is_success_status, normalize_platform_status
 
 PoseOrigin = Literal["cocrystal", "docked", "registered", "manual"]
 
 _LEGACY_POSE_ORIGIN_CRYSTAL_EXTRACT = "crystal_extract"
 _CANONICAL_POSE_ORIGIN_COCRYSTAL = "cocrystal"
 
-_POSE_RESULT_ID_POLL_SECONDS = 3.0
-_POSE_RESULT_ID_POLL_INTERVAL = 0.5
 _POSE_SYNC_FAILED = "Pose sync failed"
 
 _POSE_JSON_RESERVED: frozenset[str] = frozenset(
@@ -422,8 +420,9 @@ class Pose(Entity):
         """Register this pose via import-dataset ``process_sdf`` (single-record SDF).
 
         Requires :attr:`protein_id`, ``project_id``, and a local or exportable structure.
-        On success, sets :attr:`id` to the platform pose result row id (and may set
-        :attr:`ligand_id` when the tool mints a new ligand).
+        Blocks until the platform has stored the pose, then sets :attr:`id` to the
+        platform pose result row id (and may set :attr:`ligand_id` when the tool
+        mints a new ligand). Raises as :meth:`PoseSet.sync` does.
         """
         PoseSet(poses=[self]).sync(
             lazy=lazy,
@@ -618,9 +617,13 @@ class Pose(Entity):
         Returns:
             Registered :class:`Pose` with platform id populated.
 
+        Blocks until the platform has stored the pose.
+
         Raises:
-            DeepOriginException: If no project id can be resolved, registration
-                fails, or returns no pose row.
+            DeepOriginException: If no project id can be resolved, the
+                registration run fails (the message carries the run's reason),
+                or the platform did not store the pose.
+            TimeoutError: If the pose is not stored within an hour.
         """
 
         if client is None:
@@ -1031,14 +1034,33 @@ def _hydrate_poses_from_import_outputs(
     ligand_rows: list[Any],
     pose_rows: list[Any],
     client: DeepOriginClient,
-    origin: str,
-    project_id: str | None = None,
-    compute_job_id: str | None = None,
+    compute_job_id: str,
 ) -> None:
-    """Apply import-dataset ligand/pose job outputs onto in-memory poses."""
+    """Apply import-dataset outputs and the stored pose rows onto in-memory poses.
+
+    Ligand ids come from the tool's ``jobOutputs``. Pose ids exist only on the
+    stored result rows, so those are read once, by execution, after ingestion
+    has finished.
+
+    Args:
+        poses_to_sync: Poses sent to import-dataset, in SDF record order.
+        ligand_rows: ``jobOutputs["ligands"]`` from the import.
+        pose_rows: ``jobOutputs["poses"]`` from the import (no ids).
+        client: Platform client used to read the stored pose rows.
+        compute_job_id: Tools-service execution id of the import.
+
+    Raises:
+        DeepOriginException: If any pose has no stored row. Rows rejected
+            during ingestion do not fail the execution, so a short count is
+            the only signal.
+    """
 
     ligands_by_index = _indexed_import_rows(ligand_rows)
     poses_by_index = _indexed_import_rows(pose_rows)
+    stored_by_index = _registered_pose_records_by_index(
+        client, compute_job_id=compute_job_id
+    )
+    missing: list[str] = []
     for idx, pose in enumerate(poses_to_sync):
         lrow = ligands_by_index.get(idx)
         if (
@@ -1065,28 +1087,56 @@ def _hydrate_poses_from_import_outputs(
             prow = dict(pose_rows[idx])
         if prow and "record_index" not in prow:
             prow = {**prow, "record_index": idx}
-        _apply_platform_pose_row(pose, prow)
-        if pose.id is None and pose.ligand_id:
-            resolved = _resolve_registered_pose_row_with_poll(
-                client=client,
-                ligand_id=pose.ligand_id,
-                file_path=prow.get("file_path") or pose.remote_path,
-                origin=origin,
-                fallback=prow,
-                record_index=idx,
-                protein_id=str(pose.protein_id) if pose.protein_id else None,
-                project_id=project_id or pose.project_id,
-                compute_job_id=compute_job_id,
-            )
-            _apply_platform_pose_row(pose, resolved)
-        if pose.id is None:
-            raise DeepOriginException(
-                title=_POSE_SYNC_FAILED,
-                message=(
-                    "import-dataset did not return a pose id for one or more "
-                    "poses after result-explorer lookup."
-                ),
-            )
+        record = stored_by_index.get(idx)
+        if record is None:
+            label = pose.name or pose.smiles or pose.ligand_id or "unnamed"
+            missing.append(f"record {idx} ({label})")
+            continue
+        _apply_platform_pose_row(pose, _explorer_record_to_pose_row(record, prow))
+    if missing:
+        raise DeepOriginException(
+            title=_POSE_SYNC_FAILED,
+            message=(
+                f"{len(missing)} of {len(poses_to_sync)} pose(s) were not stored "
+                f"by import-dataset execution {compute_job_id!r}, although the "
+                f"run succeeded: {', '.join(missing)}. The platform rejected "
+                "these records while storing them."
+            ),
+        )
+
+
+def _registered_pose_records_by_index(
+    client: DeepOriginClient,
+    *,
+    compute_job_id: str,
+) -> dict[int, dict[str, Any]]:
+    """Read an import's stored pose rows once and index them by ``record_index``.
+
+    Args:
+        client: Platform client.
+        compute_job_id: Tools-service execution id of the import.
+
+    Returns:
+        Result-explorer pose records that carry an id, keyed by the SDF record
+        index stored in their ``data``.
+    """
+
+    response = client.results.get(
+        result_type="pose",
+        compute_job_id=compute_job_id,
+        limit=None,
+    )
+    records = response.get("data", []) if isinstance(response, dict) else []
+    by_index: dict[int, dict[str, Any]] = {}
+    for rec in records:
+        data = _pose_record_data(rec)
+        if data is None or not rec.get("id"):
+            continue
+        record_index = data.get("record_index")
+        if record_index is None:
+            continue
+        by_index[int(record_index)] = rec
+    return by_index
 
 
 def _explorer_record_to_pose_row(
@@ -1116,27 +1166,6 @@ def _pose_record_data(rec: Any) -> dict[str, Any] | None:
     return data
 
 
-def _matches_registered_pose_row(
-    data: dict[str, Any],
-    *,
-    origin: str,
-    file_path: str | None,
-    protein_id: str | None = None,
-    record_index: int | None = None,
-) -> bool:
-    """Return whether a pose row matches registration lookup filters."""
-
-    if protein_id is not None and str(data.get("protein_id") or "") != str(protein_id):
-        return False
-    if record_index is not None and data.get("record_index") != record_index:
-        return False
-    if file_path is not None:
-        return data.get("file_path") == file_path
-    if origin:
-        return data.get("origin") == origin
-    return False
-
-
 def _apply_platform_pose_row(pose: Pose, row: dict[str, Any]) -> None:
     """Copy import-dataset / result-explorer pose fields onto a :class:`Pose`."""
 
@@ -1155,107 +1184,6 @@ def _apply_platform_pose_row(pose: Pose, row: dict[str, Any]) -> None:
         pose.protein_id = str(row["protein_id"])
     if row.get("origin"):
         pose.origin = str(row["origin"])
-
-
-def _resolve_registered_pose_row(
-    *,
-    client: DeepOriginClient,
-    ligand_id: str,
-    file_path: str | None,
-    origin: str,
-    fallback: dict[str, Any],
-    protein_id: str | None = None,
-    record_index: int | None = None,
-    project_id: str | None = None,
-    compute_job_id: str | None = None,
-) -> dict[str, Any]:
-    """Look up a freshly registered pose row in result-explorer when id is missing.
-
-    ImportTool returns the pose payload without an id. The id shows up on the
-    result-explorer row after ingestion. When ``protein_id`` is set, a row for
-    the same SDF that belongs to another protein is not a match.
-    """
-
-    if record_index is None and fallback.get("record_index") is not None:
-        record_index = int(fallback["record_index"])
-    deadline = time.monotonic() + (20 if protein_id is not None else 0)
-    chosen = fallback
-    while True:
-        filter_dict: dict[str, Any] = {
-            "ligand_id": {"eq": ligand_id},
-        }
-        if compute_job_id:
-            filter_dict["compute_job_id"] = {"eq": compute_job_id}
-        if project_id is not None and str(project_id).strip():
-            filter_dict["project_id"] = str(project_id).strip()
-        response = client.results.get(
-            result_type="pose",
-            filter_dict=filter_dict,
-            limit=None,
-        )
-        records = response.get("data", []) if isinstance(response, dict) else []
-        matches: list[dict[str, Any]] = []
-        for rec in records:
-            data = _pose_record_data(rec)
-            if data is None:
-                continue
-            if _matches_registered_pose_row(
-                data,
-                origin=origin,
-                file_path=file_path,
-                protein_id=protein_id,
-                record_index=record_index,
-            ):
-                matches.append(rec)
-        if matches:
-            if record_index is not None:
-                for rec in reversed(matches):
-                    data = _pose_record_data(rec)
-                    if data is not None and data.get("record_index") == record_index:
-                        return _explorer_record_to_pose_row(rec, fallback)
-            return _explorer_record_to_pose_row(matches[-1], fallback)
-        if protein_id is None and records and file_path is None:
-            last_rec = records[-1]
-            data = _pose_record_data(last_rec)
-            if data is not None:
-                return _explorer_record_to_pose_row(last_rec, fallback)
-        if time.monotonic() >= deadline:
-            return chosen
-        time.sleep(1)
-
-
-def _resolve_registered_pose_row_with_poll(
-    *,
-    client: DeepOriginClient,
-    ligand_id: str,
-    file_path: str | None,
-    origin: str,
-    fallback: dict[str, Any],
-    record_index: int | None = None,
-    protein_id: str | None = None,
-    project_id: str | None = None,
-    compute_job_id: str | None = None,
-) -> dict[str, Any]:
-    """Poll result-explorer until a pose id appears (served import-dataset path)."""
-
-    deadline = time.monotonic() + _POSE_RESULT_ID_POLL_SECONDS
-    last_row = fallback
-    while time.monotonic() < deadline:
-        last_row = _resolve_registered_pose_row(
-            client=client,
-            ligand_id=ligand_id,
-            file_path=file_path,
-            origin=origin,
-            fallback=fallback,
-            record_index=record_index,
-            protein_id=protein_id,
-            project_id=project_id,
-            compute_job_id=compute_job_id,
-        )
-        if last_row.get("id"):
-            return last_row
-        time.sleep(_POSE_RESULT_ID_POLL_INTERVAL)
-    return last_row
 
 
 @dataclass
@@ -1793,8 +1721,19 @@ class PoseSet:
         Each pose must have :attr:`~Pose.protein_id` set. Ligands are created or
         reused in the tool; pose rows are minted with ``register_poses: true``.
 
+        Blocks until the platform has stored every pose, then reads the stored
+        pose rows once and sets :attr:`~Pose.id` on each pose.
+
         In Jupyter, a step checklist is shown by default (upload → import-dataset
         → ingestion → ID resolution). Pass ``show_progress=False`` to disable.
+
+        Raises:
+            DeepOriginException: If a pose has no ``protein_id``, the import
+                run did not succeed (the message carries the run's reason), or
+                the platform stored fewer poses than were sent (the message
+                names the missing records).
+            TimeoutError: If the platform has not finished storing the poses
+                within an hour.
         """
         if not self.poses:
             return
@@ -1818,11 +1757,11 @@ class PoseSet:
             client = DeepOriginClient()
 
         from deeporigin.drug_discovery.import_dataset_sync import (
+            execution_status_reason,
             require_project_id,
             require_uniform_scope,
             stage_local_file,
             sync_process_sdf,
-            wait_for_data_platform_ingestion,
         )
         from deeporigin.drug_discovery.import_dataset_sync_display import (
             import_dataset_sync_progress_for_pose_registration,
@@ -1898,12 +1837,22 @@ class PoseSet:
             step += 1
 
             progress.start_step(step)
-            wait_for_data_platform_ingestion(
-                client,
+            row = client.executions.wait_for_ingestion(  # ty: ignore[unresolved-attribute]
                 import_execution_id,
-                # Hidden served import-dataset often has no executions/search row.
-                no_row_timeout=30.0,
+                project_id=proj_id,
             )
+            status = normalize_platform_status(row.get("status"))
+            if not is_success_status(status):
+                reason = execution_status_reason(
+                    client, import_execution_id, fallback=status
+                )
+                raise DeepOriginException(
+                    title=_POSE_SYNC_FAILED,
+                    message=(
+                        f"Pose registration (execution_id={import_execution_id!r}) "
+                        f"ended with status {status!r}: {reason}"
+                    ),
+                )
             progress.finish_step(step)
             step += 1
 
@@ -1919,8 +1868,6 @@ class PoseSet:
                 ligand_rows=ligand_rows,
                 pose_rows=pose_rows,
                 client=client,
-                origin=origin,
-                project_id=proj_id,
                 compute_job_id=import_execution_id,
             )
             progress.finish_step(

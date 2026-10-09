@@ -65,6 +65,18 @@ _RBFE_STAGE_KONNEKTOR = (0.12, 0.20)
 _RBFE_STAGE_BUILD_PAIRS = (0.20, 0.28)
 _RBFE_STAGE_PAIR_PIPELINE = (0.28, 1.00)
 
+MOCK_POSE_REGISTRATION_FAIL_NAME = "mock-pose-registration-fail"
+"""SDF record name that makes a mock pose registration run end ``Failed``."""
+
+MOCK_POSE_REGISTRATION_FAIL_REASON = "Mock pose registration failed."
+"""``statusReason`` set on a mock pose registration run that fails."""
+
+MOCK_POSE_REJECTED_NAME = "mock-pose-rejected"
+"""SDF record name whose pose the mock leaves out of result-explorer.
+
+The run still completes, as when the platform rejects a row while storing it.
+"""
+
 # Endpoint enum for mock ``deeporigin.admet-properties`` (tool definition + omit-all).
 MOCK_ADMET_ENDPOINTS: tuple[str, ...] = (
     "hERG_classification",
@@ -922,6 +934,8 @@ def create_tools_router(
         APIRouter instance with tools-related routes.
     """
     router = APIRouter()
+    # Execution id -> SDF record indexes left out of result-explorer.
+    rejected_pose_record_indexes: dict[str, set[int]] = {}
 
     # -- helper closures (capture shared state) --------------------------------
 
@@ -1417,6 +1431,7 @@ def create_tools_router(
             file_path = str(inputs.get("file_path") or "")
             project_id = body.get("projectId") or execution.get("projectId")
             ligand_rows: list[dict[str, Any]] = []
+            record_names: dict[int, str] = {}
             raw = file_storage.get(file_path)
             if raw:
                 supplier = Chem.SDMolSupplier()
@@ -1424,6 +1439,8 @@ def create_tools_router(
                 for idx, mol in enumerate(supplier):
                     if mol is None:
                         continue
+                    record_name = mol.GetProp("_Name") if mol.HasProp("_Name") else ""
+                    record_names[idx] = record_name
                     canonical = Chem.MolToSmiles(mol)
                     lid: str | None = None
                     existing: dict[str, Any] | None = None
@@ -1488,12 +1505,26 @@ def create_tools_router(
                         pose_row["protein_id"] = str(protein_id)
                     pose_rows.append(pose_row)
                 job_outputs["poses"] = pose_rows
+            eid = execution.get("executionId")
+            if register_poses and MOCK_POSE_REGISTRATION_FAIL_NAME in (
+                record_names.values()
+            ):
+                execution["status"] = "Failed"
+                execution["statusReason"] = MOCK_POSE_REGISTRATION_FAIL_REASON
+                execution["jobOutputs"] = {}
+                return execution
             execution["jobOutputs"] = job_outputs
             if register_poses:
-                eid = execution.get("executionId")
                 if eid:
                     execution["dataPlatformRowId"] = str(uuid.uuid4())
                     execution["dataPlatformStatus"] = "DataIngesting"
+                    rejected = {
+                        idx
+                        for idx, name in record_names.items()
+                        if name == MOCK_POSE_REJECTED_NAME
+                    }
+                    if rejected:
+                        rejected_pose_record_indexes[str(eid)] = rejected
             return execution
 
         if not inputs.get("register_pose"):
@@ -3642,11 +3673,22 @@ def create_tools_router(
             )
             eid = execution["executionId"]
             executions[eid] = execution
+            job_outputs = execution.get("jobOutputs")
+            rejected = rejected_pose_record_indexes.pop(str(eid), set())
+            if rejected and isinstance(job_outputs, dict):
+                job_outputs = {
+                    **job_outputs,
+                    "poses": [
+                        row
+                        for row in job_outputs.get("poses") or []
+                        if row.get("record_index") not in rejected
+                    ],
+                }
             _inject_result_explorer_records_from_outputs(
                 tool_key=tool_key,
                 tool_version=tool_version,
                 execution_id=eid,
-                job_outputs=execution.get("jobOutputs"),
+                job_outputs=job_outputs,
             )
             return _normalize_execution(execution)
         if tool_key == "deeporigin.import-dataset" and body.get("sync") is not True:

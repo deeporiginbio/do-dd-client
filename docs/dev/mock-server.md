@@ -17,6 +17,7 @@ The mock server is organized into routers, each handling a group of related endp
 | **files** | `routers/files.py` | File upload/download |
 | **entities** | `routers/entities.py` | Entity management |
 | **billing** | `routers/billing.py` | Billing endpoints |
+| **sse** | `routers/sse.py` | Gateway project event stream (`/sse/{org}/stream/{project}`) |
 
 All routers share in-memory stores (dicts/lists) that are created in `MockServer.__init__` and passed into the router factory functions. This lets data flow between routers — for example, a tool execution in the tools router can inject records that are later visible via the data-platform router's result-explorer search.
 
@@ -25,6 +26,25 @@ All routers share in-memory stores (dicts/lists) that are created in `MockServer
 `tests/brd.pdb` fixture) so IDs stay stable under `--env local`. There is no
 separate test module for the mock server; that behavior is exercised indirectly
 by any local test that syncs a protein (e.g. the `registered_protein` fixture).
+
+**Pose registration (local only):** `PoseSet.sync()` runs a synchronous
+import-dataset `process_sdf` with `register_poses`, waits on
+`client.executions.wait_for_ingestion`, then reads the run's pose rows from
+result-explorer once. The mock covers each step:
+
+- The import mirrors its `jobOutputs["poses"]` into result-explorer, each row with
+  an `id`, the run's `compute_job_id` and the SDF `record_index`. The run's
+  data-platform row reads `DataIngesting` on the first `executions/search` and
+  `Completed` after that.
+- The SSE route sends a `retry:` line and one `filters.dirty` frame naming each
+  requested filter, then closes. A waiter re-reads the row on connect and on
+  that frame.
+- An SDF record named `MOCK_POSE_REGISTRATION_FAIL_NAME` (`routers/tools.py`)
+  makes the run end `Failed` with `statusReason`
+  `MOCK_POSE_REGISTRATION_FAIL_REASON` and no outputs.
+- An SDF record named `MOCK_POSE_REJECTED_NAME` stays in `jobOutputs` but is left
+  out of result-explorer while the run completes. This mimics the platform
+  rejecting one record during storage and drives the short-count error.
 
 ## Running the Mock Server
 
@@ -235,6 +255,7 @@ The mock server implements the following endpoints:
 - **Entities API**: Entity management (delete)
 - **Data Platform API**: Entity CRUD (proteins, ligands), result-explorer search
 - **Billing API**: Billing endpoints
+- **SSE stream**: Gateway project stream that marks requested filters dirty once, then closes
 - **Health Check**: `/health` endpoint
 
 ## Extending the Mock Server
