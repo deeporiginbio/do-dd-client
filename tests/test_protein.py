@@ -134,7 +134,10 @@ def test_mock_create_protein_unique_path_searchable_lv1(
     """Non-canonical create_protein rows keep unset name and are searchable by path."""
     remote = f"entities/proteins/unique-{uuid.uuid4().hex[:10]}.pdb"
     client.files.upload(BRD_DATA_DIR / "brd.pdb", remote)
-    created = client.entities.create_protein(file_path=remote)
+    created = client.entities.create_protein(
+        file_path=remote,
+        pdb_id="1ABC",
+    )
     row = created["data"]
     assert row["id"] != "brd"
     assert row.get("protein_name") is None
@@ -143,6 +146,13 @@ def test_mock_create_protein_unique_path_searchable_lv1(
     found = client.entities.search_proteins(file_path=remote)
     assert found["count"] >= 1
     assert any(r["id"] == row["id"] for r in found["data"])
+
+    # Combined filters still apply after the exact-path shortcut.
+    mismatched = client.entities.search_proteins(file_path=remote, pdb_id="ZZZZ")
+    assert mismatched["count"] == 0
+    matched = client.entities.search_proteins(file_path=remote, pdb_id="1ABC")
+    assert matched["count"] >= 1
+    assert any(r["id"] == row["id"] for r in matched["data"])
 
 
 def test_refresh_requires_platform_id() -> None:

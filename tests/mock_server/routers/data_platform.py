@@ -1030,15 +1030,14 @@ def create_data_platform_router(
             if isinstance(file_path, str) and file_path.startswith(
                 f"{PREPARED_PROTEIN_UFA_PREFIX}/"
             ):
-                matches = [
-                    copy.deepcopy(row)
+                matches = {
+                    str(row["id"]): copy.deepcopy(row)
                     for row in proteins.values()
                     if row.get("file_path") == file_path and not row.get("deleted")
-                ]
-                return {
-                    "data": matches[offset : offset + limit],
-                    "count": len(matches),
                 }
+                return _apply_search_filters(
+                    matches, filter_dict, limit=limit, offset=offset
+                )
 
         # Protein.sync() searches by uploaded file_path (hash-based or custom).
         # Prefer an exact in-memory match (unique create_protein rows); otherwise
@@ -1051,16 +1050,15 @@ def create_data_platform_router(
             raw_path = filter_dict["file_path"]
             file_path = raw_path.get("eq") if isinstance(raw_path, dict) else raw_path
             if isinstance(file_path, str):
-                matches = [
-                    copy.deepcopy(row)
+                matches = {
+                    str(row["id"]): copy.deepcopy(row)
                     for row in proteins.values()
                     if row.get("file_path") == file_path and not row.get("deleted")
-                ]
+                }
                 if matches:
-                    return {
-                        "data": matches[offset : offset + limit],
-                        "count": len(matches),
-                    }
+                    return _apply_search_filters(
+                        matches, filter_dict, limit=limit, offset=offset
+                    )
             if MOCK_CANONICAL_PROTEIN_ID not in proteins:
                 proteins[MOCK_CANONICAL_PROTEIN_ID] = copy.deepcopy(
                     _base_canonical_protein_record()
