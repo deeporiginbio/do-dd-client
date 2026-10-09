@@ -45,6 +45,7 @@ __all__ = [
     "UniprotDiscovery",
     "UniprotDiscoveryCandidate",
     "SecondaryPharmacology",
+    "ProteinCsvImport",
 ]
 
 DATA_DIR = files("deeporigin.data")
@@ -112,6 +113,10 @@ _LAZY_IMPORTS = {
     ),
     "Execution": ("deeporigin.drug_discovery.execution", "Execution"),
     "PlatformStatus": ("deeporigin.platform.constants", "PlatformStatus"),
+    "ProteinCsvImport": (
+        "deeporigin.drug_discovery.protein_csv_import",
+        "ProteinCsvImport",
+    ),
 }
 
 

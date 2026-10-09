@@ -2213,6 +2213,89 @@ def create_tools_router(
             "batches": 1,
         }
 
+    def _is_protein_csv_import(inputs: dict[str, Any]) -> bool:
+        """Return True when an import-dataset mapper targets protein fields."""
+        mapper = inputs.get("mapper") or []
+        return any(
+            str(item.get("json-path", "")).startswith("proteins.")
+            for item in mapper
+            if isinstance(item, dict)
+        )
+
+    def _ingest_import_dataset_protein_csv(execution: dict[str, Any]) -> None:
+        """Simulate a workflow protein CSV import as soon as it is submitted.
+
+        Rows are mapped through ``inputs.mapper`` and search-then-created in the
+        proteins store by sequence (or name when there is no sequence), under
+        the execution's project. The run ends ``Completed`` with the
+        data-platform row still ``DataIngesting`` for one read, so a waiter
+        needs one SSE wake to see it finish. A CSV with no importable rows ends
+        the run ``Failed`` with a ``statusReason``.
+        """
+        import csv
+        import io
+
+        inputs = execution.get("userInputs") or {}
+        project_id = execution.get("projectId") or MOCK_DEFAULT_PROJECT_ID
+        column_to_attr = {
+            str(item["field"]): str(item["json-path"]).split(".", 1)[1]
+            for item in inputs.get("mapper") or []
+            if isinstance(item, dict)
+            and str(item.get("json-path", "")).startswith("proteins.")
+            and item.get("field")
+        }
+        raw = file_storage.get(str(inputs.get("csv_path")))
+        rows: list[dict[str, str]] = []
+        if raw:
+            for csv_row in csv.DictReader(io.StringIO(raw.decode("utf-8"))):
+                mapped = {
+                    attr: str(csv_row.get(column) or "").strip()
+                    for column, attr in column_to_attr.items()
+                }
+                if mapped.get("fasta_sequence") or mapped.get("protein_name"):
+                    rows.append(mapped)
+
+        ts = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z"
+        execution["completedAt"] = ts
+        execution["updatedAt"] = ts
+        execution["workflowCsvIngestApplied"] = True
+        if not rows:
+            execution["status"] = "Failed"
+            execution["statusReason"] = "No importable protein rows in the CSV."
+            return
+
+        for row in rows:
+            key_attr = "fasta_sequence" if row.get("fasta_sequence") else "protein_name"
+            existing = next(
+                (
+                    record
+                    for record in proteins.values()
+                    if record.get("project_id") == project_id
+                    and not record.get("deleted")
+                    and record.get(key_attr) == row[key_attr]
+                ),
+                None,
+            )
+            if existing is not None:
+                continue
+            record = _base_canonical_protein_record()
+            protein_id = "10" + uuid.uuid4().hex[:11].upper()
+            record.update(
+                {
+                    "id": protein_id,
+                    "project_id": project_id,
+                    "protein_name": row.get("protein_name") or None,
+                    "pdb_id": row.get("pdb_id") or None,
+                    "fasta_sequence": row.get("fasta_sequence") or None,
+                    "file_path": None,
+                }
+            )
+            proteins[protein_id] = record
+
+        execution["status"] = "Completed"
+        execution["dataPlatformStatus"] = "DataIngesting"
+        execution["jobOutputs"] = {"records_imported": len(rows), "batches": 1}
+
     def _build_import_dataset_workflow_csv_execution(
         *,
         org_key: str,
@@ -3661,6 +3744,8 @@ def create_tools_router(
                 eid = execution["executionId"]
                 executions[eid] = execution
                 execution_start_times[eid] = datetime.now(timezone.utc)
+                if _is_protein_csv_import(inputs):
+                    _ingest_import_dataset_protein_csv(execution)
                 return _normalize_execution(execution)
         if tool_key == "deeporigin.mol-props-protonation":
             execution = _build_protonation_execution(

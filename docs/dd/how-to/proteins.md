@@ -90,6 +90,68 @@ protein = Protein.from_id("08AD337N5YV4Y", client=client)
 !!! note "Automatic metadata"
     The method automatically populates the protein's `name` field from the platform data, preferring `protein_name`, then `pdb_id`, then `gene_symbol` (in that order).
 
+### Importing many proteins from a comma-separated values (CSV) file
+
+To add many proteins to your project at once, import a CSV file with
+`ProteinCsvImport.start`. You must be signed in (see
+[Authentication](../../how-to/auth.md)) and your client must have a project set.
+
+The CSV has one protein per row. Each column header must be the name of a
+platform protein field; the column fills that field. For example:
+
+| Column | Contents |
+|---|---|
+| `protein_name` | Protein name |
+| `fasta_sequence` | Amino-acid sequence |
+| `pdb_id` | Protein Data Bank (PDB) ID |
+| `file_path` | Structure filename inside the structures zip |
+
+```
+protein_name,fasta_sequence
+insulin-a,GIVEQCCTSICSLYQLENYCN
+glucagon,HSQGTFTSDYSKYLDSRRAQDFVQWLMNT
+```
+
+Headers are sent as they are, so a column named after something that is not a
+protein field (for example `name` instead of `protein_name`) is ignored and its
+values are not imported. The CSV needs at least one column that identifies a
+protein: `fasta_sequence`, `pdb_id`, `uniprot_accession`, `external_id` or
+`file_path`. If it has none, `ProteinCsvImport.start` raises before uploading
+anything, and suggests renames for common headers such as `sequence`. To attach structures, put the PDB files in a zip, name
+each row's file in `file_path`, and pass the zip as `protein_zip_path`.
+
+`ProteinCsvImport.start` uploads the files, starts the import and returns
+straight away, whatever the size of the CSV. Call `wait()` on the result when
+you need the proteins: it blocks until the import has finished, then returns
+every protein in the project as a list of `Protein` objects. Structures are not
+downloaded; call `download()` on a protein when you need its coordinates.
+
+```{.python notest}
+from deeporigin.drug_discovery import ProteinCsvImport
+from deeporigin.platform.client import DeepOriginClient
+
+client = DeepOriginClient()
+
+job = ProteinCsvImport.start(
+    "proteins.csv",
+    protein_zip_path="structures.zip",  # optional
+    client=client,
+)
+
+# ... do other work ...
+
+proteins = job.wait()
+```
+
+A protein that already exists in the project is reused rather than imported
+twice, which is why `wait()` returns the project's proteins rather than only
+the rows in this CSV.
+
+!!! note "Errors"
+    `wait()` raises `DeepOriginException` if the import fails, with the reason
+    in the message, and `TimeoutError` if it has not finished within `timeout`
+    seconds (one hour by default).
+
 
 ## Inspecting the Protein
 
