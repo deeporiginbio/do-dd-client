@@ -238,7 +238,9 @@ def _iframe_for_html_document(
     """Return a display object for a self-contained HTML document in an iframe.
 
     The HTML is embedded with ``allow-scripts`` and ``allow-same-origin`` so
-    Mol* and similar viewers can run. Only pass trusted, SDK-generated HTML.
+    Mol* and similar viewers can run. Prefer SDK-generated HTML; platform tool
+    output (e.g. Konnektor networks) is embedded here in a sandboxed iframe
+    rather than written to disk or served from the notebook origin.
 
     Small documents use a base64 ``data:`` ``src`` (via :class:`~IPython.display.IFrame`).
     Larger documents (typical for MD trajectories) use ``srcdoc`` to avoid blank

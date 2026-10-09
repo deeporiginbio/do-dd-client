@@ -1313,6 +1313,29 @@ def test_panel_file_cache_write_leaves_no_partial_file(
     assert not list(dest.parent.glob("*.tmp"))
 
 
+def test_panel_file_download_refuses_symlinked_cache_dir(
+    client: DeepOriginClient,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """A symlink under ~/.deeporigin cannot redirect panel-file writes outside it."""
+    from deeporigin.drug_discovery import secondary_pharma
+
+    home = tmp_path / "home"
+    outside = tmp_path / "outside"
+    (home / ".deeporigin").mkdir(parents=True)
+    outside.mkdir()
+    (home / ".deeporigin" / "protected").symlink_to(outside, target_is_directory=True)
+    monkeypatch.setattr(Path, "home", lambda: home)
+
+    with pytest.raises(DeepOriginException, match="could not be cached"):
+        secondary_pharma._download_protected_panel_file(
+            client, "protected/panels/v1/members.json"
+        )
+
+    assert list(outside.rglob("*")) == []
+
+
 def test_secondary_pharma_get_panel_by_version_rejects_bad_and_unknown_versions(
     client: DeepOriginClient,
 ) -> None:

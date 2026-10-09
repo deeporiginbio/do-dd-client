@@ -4,7 +4,6 @@ import concurrent.futures
 from typing import Any, Self
 
 from beartype import beartype
-import numpy as np
 
 from deeporigin.drug_discovery.docking_common import (
     build_docking_metadata,

@@ -210,14 +210,15 @@ def _validate_panel_file_path(panel_file: str) -> str:
     """
     from deeporigin.platform.files import _normalize_remote_path
 
-    remote = _normalize_remote_path(panel_file.strip())
+    try:
+        remote = _normalize_remote_path(panel_file.strip())
+    except ValueError:
+        remote = ""
     if (
         not remote.startswith("protected/")
-        or ".." in remote.split("/")
         or "%" in remote
         or "?" in remote
         or "#" in remote
-        or "\x00" in remote
     ):
         raise DeepOriginException(
             title="Invalid panel file path",
@@ -257,8 +258,14 @@ def _download_protected_panel_file(
     from deeporigin.utils.env import _ensure_do_folder
 
     remote = _validate_panel_file_path(remote_path)
-    dest = _ensure_do_folder() / remote
+    from deeporigin.platform.files import _assert_path_under_root
+
+    root = _ensure_do_folder()
+    dest = root / remote
     try:
+        # Refuse symlinks (e.g. ~/.deeporigin/protected -> /outside) before any
+        # read, mkdir or write.
+        _assert_path_under_root(dest, root)
         if lazy and dest.is_file():
             return str(dest)
     except (OSError, ValueError) as exc:

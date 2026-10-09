@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+from unittest.mock import patch
+
 import pytest
 
 from deeporigin.drug_discovery import Konnektor, KonnektorResult, Ligand, LigandSet
@@ -205,3 +208,24 @@ def test_konnektor_run_quote_returns_none(
     assert job.run(quote=True) is None
     assert job.status == "Quoted"
     assert job.estimate == 1.23
+
+
+def test_konnektor_show_network_uses_sandboxed_render_html(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """show_network embeds via render_html and does not write network.html to CWD."""
+    monkeypatch.chdir(tmp_path)
+    result = KonnektorResult(
+        pairs=[],
+        is_connected=True,
+        network_html="<html><body>Konnektor network</body></html>",
+    )
+    with patch(
+        "deeporigin.utils.notebook.render_html",
+        return_value=None,
+    ) as mock_render:
+        result.show_network()
+
+    mock_render.assert_called_once_with(result.network_html, height=1000)
+    assert not (tmp_path / "network.html").exists()

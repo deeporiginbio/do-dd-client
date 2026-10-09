@@ -33,15 +33,17 @@ class KonnektorResult:
     is_connected: bool
     network_html: str
 
-    def show_network(self) -> None:
-        """Display the network visualization in IPython."""
-        from IPython.display import IFrame, display
+    def show_network(self) -> Any:
+        """Display the network visualization in IPython.
 
-        file_name = "network.html"
+        Embeds ``network_html`` in a sandboxed iframe (same helper as Mol*
+        views) so server-supplied markup cannot write to the working directory
+        or run with the notebook page origin.
+        """
+        from deeporigin.utils.notebook import render_html
+
         try:
-            with open(file_name, "w", encoding="utf-8") as file:
-                file.write(self.network_html)
-            display(IFrame(file_name, width=1000, height=1000))
+            return render_html(self.network_html, height=1000)
         except Exception as exc:
             raise DeepOriginException(
                 title="Failed to display Konnektor network",

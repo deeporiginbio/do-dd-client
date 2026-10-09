@@ -3,7 +3,10 @@
 from datetime import datetime, timezone
 import os
 from pathlib import Path
+import stat
+import sys
 from typing import Union
+import warnings
 
 from beartype import beartype
 
@@ -12,10 +15,33 @@ from beartype import beartype
 def _ensure_do_folder() -> Path:
     """Make sure the deeporigin scratch folder exists and return its path.
 
-    The folder is typically ~/.deeporigin. It is created if absent.
+    The folder is typically ~/.deeporigin. It is created if absent and
+    permissions are set to ``0700`` on every call so existing installs are
+    repaired.
     """
     deeporigin_path = Path.home() / ".deeporigin"
-    deeporigin_path.mkdir(parents=True, exist_ok=True)
+    deeporigin_path.mkdir(parents=True, exist_ok=True, mode=0o700)
+    try:
+        dir_stat = deeporigin_path.stat()
+        if stat.S_IMODE(dir_stat.st_mode) != 0o700:
+            if (
+                sys.platform != "win32"
+                and hasattr(os, "geteuid")
+                and dir_stat.st_uid != os.geteuid()
+            ):
+                # Foreign-owned cache (e.g. image builds): cannot chmod; keep import working.
+                warnings.warn(
+                    f"{deeporigin_path} is owned by another user and is not mode 0700; "
+                    "cached data may be readable by other users.",
+                    stacklevel=2,
+                )
+                return deeporigin_path
+            os.chmod(deeporigin_path, 0o700)
+    except OSError:
+        if sys.platform == "win32":
+            pass
+        else:
+            raise
     return deeporigin_path
 
 
