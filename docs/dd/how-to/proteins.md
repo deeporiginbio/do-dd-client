@@ -542,7 +542,24 @@ protein.to_cif("prepared_protein.cif")
 `Protein.show()` also falls back to mmCIF automatically when dumping state for the
 viewer, so visualization still works for those structures.
 
-### Marking a protein as prepared
+### Platform prepared state vs file stamp
+
+| Concern | API | Effect |
+|---------|-----|--------|
+| Platform proteins-table `state` | [`Protein.mark_prepared()`](../ref/protein.md) | Sets `state=prepared` via protein-prep `mark_prepared`; refreshes lifecycle fields. No file change. |
+| Local Prepared Protein stamp | [`Protein.mark_as_prepared()`](../ref/prepared_protein_stamp.md) | Writes `REMARK 99 DO_PREPARED` / mmCIF stamp on disk. Call `sync()` separately to upload. |
+
+Fetched proteins expose lifecycle metadata (`state`, `preparation`, `origin_*`)
+after `from_id` or `refresh()`.
+
+```{.python notest}
+protein = Protein.from_id("…", client=client)
+print(protein.state)  # e.g. "unprocessed" or "prepared"
+protein.mark_prepared(client=client)  # platform state only; idempotent
+assert protein.state == "prepared"
+```
+
+### Marking a local file as prepared (stamp)
 
 If you prepared the structure outside Deep Origin, stamp the local file so
 downstream tools skip automatic protein cleanup. See
@@ -554,8 +571,8 @@ protein.mark_as_prepared()
 protein.sync()
 ```
 
-This does not run Protein Prep — it only writes the file-borne stamp in the
-file's native format (no CIF↔PDB conversion).
+This does not run Protein Prep and does not set platform `state` — it only
+writes the file-borne stamp in the file's native format (no CIF↔PDB conversion).
 
 !!! note "Platform proteins without a local file"
     If the protein was loaded with `from_id(..., download=False)`, it has `remote_path`

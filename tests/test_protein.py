@@ -80,6 +80,12 @@ def test_from_id_without_file_path_lv0(client: DeepOriginClient) -> None:
         "file_path": None,
         "pdb_id": None,
         "project_id": None,
+        "state": "unprocessed",
+        "preparation": None,
+        "origin_kind": None,
+        "origin_entity_type": None,
+        "origin_entity_id": None,
+        "origin_entity_display_id": None,
     }
     with patch.object(client.entities, "get_protein", return_value=record):
         protein = Protein.from_id("metadata-only", client=client)
@@ -88,6 +94,81 @@ def test_from_id_without_file_path_lv0(client: DeepOriginClient) -> None:
     assert protein.name == "orphan"
     assert protein.structure is None
     assert protein.remote_path is None
+    assert protein.state == "unprocessed"
+    assert protein.preparation is None
+    assert protein.origin_kind is None
+
+
+def test_from_id_hydrates_lifecycle_fields_lv0(client: DeepOriginClient) -> None:
+    """from_id copies state/preparation/origin_* from the platform row."""
+    from unittest.mock import patch
+
+    preparation = {"source": "mark_prepared", "execution_id": "exec-1"}
+    record = {
+        "id": "lifecycle-protein",
+        "protein_name": "lifecycle",
+        "file_path": None,
+        "pdb_id": "1ABC",
+        "project_id": None,
+        "state": "prepared",
+        "preparation": preparation,
+        "origin_kind": "prepared",
+        "origin_entity_type": "protein",
+        "origin_entity_id": "parent-1",
+        "origin_entity_display_id": "PARENT1",
+    }
+    with patch.object(client.entities, "get_protein", return_value=record):
+        protein = Protein.from_id("lifecycle-protein", client=client, download=False)
+
+    assert protein.state == "prepared"
+    assert protein.preparation == preparation
+    assert protein.origin_kind == "prepared"
+    assert protein.origin_entity_type == "protein"
+    assert protein.origin_entity_id == "parent-1"
+    assert protein.origin_entity_display_id == "PARENT1"
+    assert "state: prepared" in repr(protein)
+
+
+def test_refresh_requires_platform_id() -> None:
+    """refresh() raises when the protein has no platform id."""
+    protein = Protein.from_file(BRD_DATA_DIR / "brd.pdb")
+    with pytest.raises(ValueError, match="without a platform id"):
+        protein.refresh()
+
+
+def test_mark_prepared_requires_platform_id() -> None:
+    """mark_prepared() raises when the protein has no platform id."""
+    protein = Protein.from_file(BRD_DATA_DIR / "brd.pdb")
+    with pytest.raises(ValueError, match="without a platform id"):
+        protein.mark_prepared()
+
+
+def test_mark_prepared_and_refresh_lv1(
+    client: DeepOriginClient,
+    registered_protein: Protein,
+) -> None:
+    """mark_prepared sets platform state and refresh keeps the instance in sync."""
+    assert registered_protein.id is not None
+    protein = Protein.from_id(
+        str(registered_protein.id),
+        client=client,
+        download=False,
+    )
+
+    protein.mark_prepared(client=client)
+    assert protein.state == "prepared"
+    assert isinstance(protein.preparation, dict)
+    assert protein.preparation.get("source") == "mark_prepared"
+
+    # Idempotent: second call leaves state prepared.
+    prep_before = protein.preparation
+    protein.mark_prepared(client=client)
+    assert protein.state == "prepared"
+    assert protein.preparation == prep_before
+
+    refreshed = Protein.from_id(str(protein.id), client=client, download=False)
+    assert refreshed.state == "prepared"
+    assert refreshed.preparation == protein.preparation
 
 
 def test_from_id_download_false_rehydrates_lv1(

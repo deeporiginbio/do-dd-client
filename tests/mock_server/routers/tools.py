@@ -2835,6 +2835,53 @@ def create_tools_router(
                     pocket.setdefault("component_id", extract_component_id)
                     pocket.setdefault("ligand_name", extract_component_id)
 
+    def _inject_mark_prepared_outputs(execution: dict[str, Any]) -> None:
+        """PATCH an in-memory protein for protein-prep ``action: mark_prepared``."""
+        eid = execution.get("executionId")
+        user_inputs = execution.get("userInputs", {})
+        protein_in = (
+            user_inputs.get("protein") if isinstance(user_inputs, dict) else None
+        )
+        protein_id = protein_in.get("id") if isinstance(protein_in, dict) else None
+        if not eid or not protein_id:
+            execution["jobOutputs"] = {
+                "mark": {
+                    "id": str(protein_id) if protein_id else "",
+                    "state": "prepared",
+                    "updated": False,
+                    "preparation": None,
+                }
+            }
+            return
+        record = proteins.get(str(protein_id))
+        if record is None:
+            execution["status"] = "Failed"
+            execution["statusReason"] = {"message": f"Protein {protein_id!r} not found"}
+            execution["jobOutputs"] = {}
+            return
+        already = record.get("state") == "prepared"
+        if already:
+            preparation = record.get("preparation")
+            updated = False
+        else:
+            now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z"
+            preparation = {
+                "source": "mark_prepared",
+                "marked_at": now,
+                "execution_id": str(eid),
+            }
+            record["state"] = "prepared"
+            record["preparation"] = preparation
+            updated = True
+        execution["jobOutputs"] = {
+            "mark": {
+                "id": str(protein_id),
+                "state": "prepared",
+                "updated": updated,
+                "preparation": preparation,
+            }
+        }
+
     def _inject_protein_prep_tool_execution_results(
         execution: dict[str, Any],
     ) -> None:
@@ -2850,6 +2897,9 @@ def create_tools_router(
 
         user_inputs = execution.get("userInputs", {})
         action = user_inputs.get("action") if isinstance(user_inputs, dict) else None
+        if action == "mark_prepared":
+            _inject_mark_prepared_outputs(execution)
+            return
         fixture_name = (
             "tool-runs/deeporigin.protein-prep/recommend"
             if action == "recommend"
