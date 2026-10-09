@@ -23,7 +23,11 @@ def _ensure_do_folder() -> Path:
     try:
         dir_stat = deeporigin_path.stat()
         if stat.S_IMODE(dir_stat.st_mode) != 0o700:
-            if dir_stat.st_uid != os.geteuid():
+            if (
+                sys.platform != "win32"
+                and hasattr(os, "geteuid")
+                and dir_stat.st_uid != os.geteuid()
+            ):
                 # Foreign-owned cache (e.g. image builds): cannot chmod; keep import working.
                 return deeporigin_path
             os.chmod(deeporigin_path, 0o700)
