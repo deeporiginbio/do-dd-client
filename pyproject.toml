@@ -70,6 +70,7 @@ docs = [
 plots = ["bokeh"]
 tools = [
     "rdkit==2025.9.1",
+    "numpy>=2.1.0",
     "biotite",
     "biopython",
     "rcsb-api>=1.1.4",

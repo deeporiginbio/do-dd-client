@@ -120,6 +120,46 @@ def test_resolve_docking_box_geometry_matches_tool_inputs(
     ]
 
 
+def test_docking_repr_shows_resolved_box_geometry_triple(
+    client,
+    registered_protein,
+    unregistered_pocket,
+    registered_ligand,
+) -> None:
+    """__repr__ center and box_size match _resolve_docking_box_geometry / tool inputs."""
+    from deeporigin.drug_discovery.docking_common import transpose_rotation_deg
+
+    docking = Docking(
+        protein=registered_protein,
+        pocket=unregistered_pocket,
+        ligand=registered_ligand,
+        client=client,
+    )
+    center, box_size = docking._resolve_docking_box_geometry()
+    text = repr(docking)
+    center_fmt = ", ".join(f"{c:.2f}" for c in center)
+    size_fmt = ", ".join(f"{s:.2f}" for s in box_size)
+    assert f"center=[{center_fmt}]" in text
+    assert f"box_size=[{size_fmt}]" in text
+
+    docking._commit_docking_box(
+        {
+            "center": [1.0, 2.0, 3.0],
+            "box_size": [16.0, 18.0, 20.0],
+            "rotation_deg": transpose_rotation_deg([0.0, 30.0, 0.0]),
+        }
+    )
+    center, box_size = docking._resolve_docking_box_geometry()
+    text = repr(docking)
+    assert "box_size=[16.00, 18.00, 20.00]" in text
+    assert "center=[1.00, 2.00, 3.00]" in text
+    assert "rotation_deg=[0.00, 30.00, 0.00]" in text
+    params, _ = docking._build_tool_inputs()
+    if "rotation_deg" in params["pocket"]:
+        rot_fmt = ", ".join(f"{r:.2f}" for r in params["pocket"]["rotation_deg"])
+        assert f"rotation_deg=[{rot_fmt}]" in text
+
+
 def test_show_box_calls_render_docking_box_html(
     registered_protein,
     unregistered_pocket,
