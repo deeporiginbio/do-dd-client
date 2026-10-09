@@ -22,6 +22,7 @@ from deeporigin.platform.constants import (
     EXECUTION_VISIBILITY_VALUES,
     TERMINAL_STATES,
     ExecutionVisibility,
+    normalize_platform_status,
 )
 from deeporigin.platform.project_scope import stamp_execution_project_id
 from deeporigin.platform.sse import (
@@ -34,7 +35,6 @@ from deeporigin.utils.constants import (
     DATA_PLATFORM_INGESTION_POLL_SECONDS,
     DATA_PLATFORM_INGESTION_SWEEP_SECONDS,
     DATA_PLATFORM_INGESTION_TIMEOUT_SECONDS,
-    DATA_PLATFORM_NO_ROW_TIMEOUT_SECONDS,
     SSE_MAX_READ_TIMEOUT_SECONDS,
     SSE_RECONNECT_BACKOFF_SECONDS,
     SSE_RECONNECT_MAX_BACKOFF_SECONDS,
@@ -53,23 +53,18 @@ class _IngestionWait:
     Attributes:
         execution_id: Tools-service execution id (``compute_job_id``).
         project_id: Project the execution belongs to.
-        started: ``time.monotonic()`` value at which the wait began.
         deadline: ``time.monotonic()`` value at which the wait gives up.
         next_sweep: ``time.monotonic()`` value at which the row is re-read
             even if no frame asks for it. Every read pushes it back.
         last_read: ``time.monotonic()`` value of the latest row read, or of
             the start of the wait before the first read.
-        include_hidden: Whether the row is searched with ``include_hidden``.
-            Cleared when the backend does not accept the flag.
     """
 
     execution_id: str
     project_id: str
-    started: float
     deadline: float
     next_sweep: float
     last_read: float
-    include_hidden: bool = True
 
     def time_left(self) -> float:
         """Return seconds left before the deadline, raising once it has passed.
@@ -173,7 +168,6 @@ class Executions:
             client: The DeepOriginClient instance to use for API calls.
         """
         self._c = client
-        self._include_hidden_supported = True
 
     def create(
         self,
@@ -781,22 +775,19 @@ class Executions:
                 client's ``project_id``.
             timeout: Maximum total seconds to wait.
 
-        If the backend does not accept ``include_hidden`` yet, the search
-        drops it. A visible run is then waited on as usual. A hidden run's row
-        cannot be read, so ingestion counts as done once result-explorer has
-        rows for it, or after ``DATA_PLATFORM_NO_ROW_TIMEOUT_SECONDS`` with no
-        row, and ``{}`` is returned.
-
         Returns:
-            The data-platform execution row, in a terminal state. Failed and
+            The data-platform execution row, in a terminal state. A legacy
+            ``Succeeded`` status is returned as ``Completed``. Failed and
             cancelled executions are returned, not raised; check ``status``.
-            ``{}`` when the backend cannot return a hidden run's row.
 
         Raises:
             ValueError: If ``execution_id`` is empty or no project id is set.
             TimeoutError: If ingestion does not finish within ``timeout``.
             DeepOriginException: If the gateway refuses the stream with a
-                non-retryable status (e.g. 401, 403, 404).
+                non-retryable status (e.g. 401, 403, 404); if the backend
+                does not support ``include_hidden``; or if a data-platform
+                read fails with a non-retryable status, or with a 5xx that
+                outlasts the client's retries.
         """
         if not execution_id:
             raise ValueError("execution_id must be a non-empty string")
@@ -808,11 +799,9 @@ class Executions:
         wait = _IngestionWait(
             execution_id=execution_id,
             project_id=project_id,
-            started=started,
             deadline=started + timeout,
             next_sweep=started + DATA_PLATFORM_INGESTION_SWEEP_SECONDS,
             last_read=started,
-            include_hidden=self._include_hidden_supported,
         )
         filters = {_INGESTION_FILTER_ID: f"execution:{execution_id}"}
         failures = 0
@@ -881,7 +870,9 @@ class Executions:
         """Sleep before the next connect, polling the row while the stream is down.
 
         The row is read every ``DATA_PLATFORM_INGESTION_POLL_SECONDS`` since
-        the last read, so polling keeps its pace across reconnect attempts.
+        the last read, so polling keeps its pace across reconnect attempts. A
+        read that fails on the network after the client's retries is skipped
+        like a dropped stream; the next poll tries again.
 
         Args:
             wait: State of the wait.
@@ -905,49 +896,36 @@ class Executions:
                 time.sleep(min(until_poll, wait.time_left()))
                 delay -= until_poll
             wait.time_left()
-            row = self._terminal_ingestion_row(wait)
+            try:
+                row = self._terminal_ingestion_row(wait)
+            except httpx.TransportError:
+                continue
             if row is not None:
                 return row
 
     def _terminal_ingestion_row(self, wait: _IngestionWait) -> dict | None:
         """Read an execution's data-platform row if it is terminal.
 
-        Pushes the next sweep back, since the row has just been read.
-
-        Without ``include_hidden`` (a backend that rejects it), a hidden run's
-        row is never returned. Ingestion then counts as done once
-        result-explorer has rows for the execution, or once
-        ``DATA_PLATFORM_NO_ROW_TIMEOUT_SECONDS`` pass with no row, as before
-        the flag existed.
+        Pushes the next sweep and poll back, since the row is being read.
 
         Args:
             wait: State of the wait.
 
         Returns:
-            The row when its status is terminal, ``{}`` when ingestion is
-            judged done without a visible row, else ``None`` (including when
-            the row does not exist yet).
+            The row, with its status normalized, when the status is terminal,
+            else ``None`` (including when the row does not exist yet).
         """
-        rows = self._read_ingestion_rows(wait)
         wait.last_read = time.monotonic()
         wait.next_sweep = wait.last_read + DATA_PLATFORM_INGESTION_SWEEP_SECONDS
+        rows = self._read_ingestion_rows(wait)
         if rows:
-            return rows[0] if rows[0].get("status") in TERMINAL_STATES else None
-        if wait.include_hidden:
-            return None
-        if self._c.results.get(compute_job_id=wait.execution_id, limit=1).get("data"):
-            return {}
-        give_up_at = wait.started + DATA_PLATFORM_NO_ROW_TIMEOUT_SECONDS
-        if time.monotonic() >= give_up_at:
-            return {}
-        wait.next_sweep = min(wait.next_sweep, give_up_at)
+            status = normalize_platform_status(rows[0].get("status"))
+            if status in TERMINAL_STATES:
+                return {**rows[0], "status": status}
         return None
 
     def _read_ingestion_rows(self, wait: _IngestionWait) -> list[dict]:
-        """Search the execution's data-platform row.
-
-        Falls back to searching without ``include_hidden`` when the backend
-        rejects the flag, and remembers that for later waits on this client.
+        """Search the execution's data-platform row, including hidden runs.
 
         Args:
             wait: State of the wait.
@@ -956,23 +934,28 @@ class Executions:
             The matching rows, at most one.
 
         Raises:
-            DeepOriginException: If the search fails for any other reason.
+            DeepOriginException: If the backend does not support
+                ``include_hidden``, or the search fails for another reason.
         """
         try:
             response = self.search(
                 compute_job_id=wait.execution_id,
                 project_id=wait.project_id,
                 limit=1,
-                include_hidden=wait.include_hidden,
+                include_hidden=True,
             )
         except DeepOriginException as error:
-            if not wait.include_hidden or not _rejects_include_hidden(error):
+            if not _rejects_include_hidden(error):
                 raise
-            wait.include_hidden = False
-            self._include_hidden_supported = False
-            response = self.search(
-                compute_job_id=wait.execution_id,
-                project_id=wait.project_id,
-                limit=1,
-            )
+            raise DeepOriginException(
+                title="Data platform too old",
+                message=(
+                    "This environment's data platform does not support "
+                    "include_hidden on executions search, so wait_for_ingestion "
+                    "cannot read the execution's row."
+                ),
+                fix="Wait for the environment to be upgraded.",
+                http_status=error.http_status,
+                response_data=error.response_data,
+            ) from error
         return response.get("data") or []

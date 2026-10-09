@@ -18,7 +18,6 @@ PROJECT_ID = "proj-1"
 ORG_KEY = "test_org"
 STREAM_PATH = f"/sse/{ORG_KEY}/stream/{PROJECT_ID}"
 SEARCH_PATH = f"/data-platform/{ORG_KEY}/executions/search"
-RESULTS_PATH = f"/data-platform/{ORG_KEY}/result-explorer/search"
 INCLUDE_HIDDEN_REJECTED = {
     "message": "Unknown keys in payload",
     "errors": [{"field": "include_hidden", "reason": "unknown_field"}],
@@ -109,7 +108,6 @@ class FakeGateway:
         streams: list[str | int | httpx.SyncByteStream],
         statuses: list[str | None],
         rejects_include_hidden: bool = False,
-        results: list[dict] | None = None,
     ) -> None:
         """Store the scripts.
 
@@ -119,12 +117,10 @@ class FakeGateway:
             statuses: Row status per search, or ``None`` for no row yet.
             rejects_include_hidden: Answer a search sending ``include_hidden``
                 with the 400 of a backend that does not know the flag.
-            results: Result-explorer rows for the execution.
         """
         self.streams = streams
         self.statuses = statuses
         self.rejects_include_hidden = rejects_include_hidden
-        self.results = results or []
         self.calls: list[str] = []
         self.stream_requests: list[httpx.Request] = []
         self.search_bodies: list[dict] = []
@@ -165,9 +161,6 @@ class FakeGateway:
             status = self.statuses[min(n, len(self.statuses) - 1)]
             rows = [] if status is None else [{"id": "dp-1", "status": status}]
             return httpx.Response(200, json={"data": rows, "meta": {}})
-        if request.url.path == RESULTS_PATH:
-            self.calls.append("results")
-            return httpx.Response(200, json={"data": self.results, "meta": {}})
         return httpx.Response(404)
 
     def client(self) -> DeepOriginClient:
@@ -526,69 +519,60 @@ def test_reconnect_pause_is_capped_by_deadline(mock_client_config, sleeps) -> No
     assert sleeps == [0.5]
 
 
-def test_unsupported_include_hidden_falls_back(mock_client_config, tmp_path) -> None:
-    """A backend without ``include_hidden`` is searched without it."""
+def test_backend_without_include_hidden_raises(mock_client_config, tmp_path) -> None:
+    """A backend that rejects ``include_hidden`` fails the wait clearly."""
     gateway = FakeGateway(
         streams=[HEARTBEAT], statuses=["Completed"], rejects_include_hidden=True
     )
 
-    with patch("deeporigin.platform.client._ensure_do_folder", return_value=tmp_path):
-        assert _wait(gateway)["status"] == "Completed"
-    assert gateway.calls == ["stream", "rejected", "search"]
-    assert "include_hidden" not in gateway.search_bodies[0]
+    with (
+        patch("deeporigin.platform.client._ensure_do_folder", return_value=tmp_path),
+        pytest.raises(DeepOriginException, match="does not support include_hidden"),
+    ):
+        _wait(gateway)
+    assert gateway.calls == ["stream", "rejected"]
 
 
-def test_unsupported_include_hidden_is_remembered(mock_client_config, tmp_path) -> None:
-    """Later waits on the same client skip the rejected flag."""
-    gateway = FakeGateway(
-        streams=[HEARTBEAT], statuses=["Completed"], rejects_include_hidden=True
-    )
-    client = gateway.client()
+def test_legacy_succeeded_row_is_returned_as_completed(mock_client_config) -> None:
+    """A historical ``Succeeded`` row is terminal and normalized."""
+    gateway = FakeGateway(streams=[HEARTBEAT], statuses=["Succeeded"])
 
-    with patch("deeporigin.platform.client._ensure_do_folder", return_value=tmp_path):
-        for _ in range(2):
-            client.executions.wait_for_ingestion(
-                EXECUTION_ID, project_id=PROJECT_ID, timeout=5.0
-            )
-    assert gateway.calls.count("rejected") == 1
+    assert _wait(gateway)["status"] == "Completed"
 
 
-def test_hidden_run_without_flag_done_on_results(mock_client_config, tmp_path) -> None:
-    """With no visible row, result-explorer rows mean ingestion is done."""
-    gateway = FakeGateway(
-        streams=[HEARTBEAT],
-        statuses=[None],
-        rejects_include_hidden=True,
-        results=[{"id": "r-1"}],
-    )
-
-    with patch("deeporigin.platform.client._ensure_do_folder", return_value=tmp_path):
-        assert _wait(gateway) == {}
-    assert gateway.calls == ["stream", "rejected", "search", "results"]
-
-
-def test_hidden_run_without_flag_gives_up_on_row(
-    mock_client_config, tmp_path, monkeypatch
-) -> None:
-    """With no visible row and no results, the wait ends after the no-row timeout."""
-    monkeypatch.setattr(
-        "deeporigin.platform.executions.DATA_PLATFORM_NO_ROW_TIMEOUT_SECONDS", 0.0
-    )
-    gateway = FakeGateway(
-        streams=[HEARTBEAT], statuses=[None], rejects_include_hidden=True
-    )
-
-    with patch("deeporigin.platform.client._ensure_do_folder", return_value=tmp_path):
-        assert _wait(gateway) == {}
-
-
-def test_hidden_run_with_flag_keeps_waiting_without_row(mock_client_config) -> None:
-    """A backend with the flag never short-cuts a missing row."""
-    gateway = FakeGateway(streams=[HEARTBEAT], statuses=[None], results=[{"id": "r-1"}])
+def test_run_without_row_keeps_waiting(mock_client_config) -> None:
+    """A missing row is waited on; it may not have been created yet."""
+    gateway = FakeGateway(streams=[HEARTBEAT], statuses=[None])
 
     with pytest.raises(TimeoutError):
         _wait(gateway, timeout=0.2)
-    assert "results" not in gateway.calls
+
+
+def test_poll_network_error_keeps_polling(mock_client_config, sleeps, tmp_path) -> None:
+    """A poll that fails on the network past retries is skipped, not raised."""
+    gateway = FakeGateway(streams=[503], statuses=["Completed"])
+    real_handler = gateway.handler
+    failed: list[httpx.Request] = []
+
+    def flaky(request: httpx.Request) -> httpx.Response:
+        """Fail the first searches on the network, then delegate.
+
+        Args:
+            request: Incoming request.
+
+        Returns:
+            The scripted response.
+        """
+        if request.url.path == SEARCH_PATH and len(failed) < 10:
+            failed.append(request)
+            raise httpx.ConnectError("connection refused", request=request)
+        return real_handler(request)
+
+    gateway.handler = flaky
+
+    with patch("deeporigin.platform.client._ensure_do_folder", return_value=tmp_path):
+        assert _wait(gateway, timeout=600)["status"] == "Completed"
+    assert len(failed) == 10
 
 
 def test_other_search_error_raises(mock_client_config, tmp_path) -> None:

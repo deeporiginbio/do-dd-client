@@ -275,13 +275,6 @@ DATA_PLATFORM_INGESTION_POLL_SECONDS = 2.0
 :meth:`deeporigin.platform.executions.Executions.wait_for_ingestion` polls the
 execution row while its SSE stream is closed, dropped or refused."""
 
-DATA_PLATFORM_NO_ROW_TIMEOUT_SECONDS = 120.0
-"""Seconds :meth:`deeporigin.platform.executions.Executions.wait_for_ingestion`
-waits for a hidden run's row on a backend whose executions search does not
-accept ``include_hidden``, before treating ingestion as done.
-
-Such a backend never returns hidden runs, so the row cannot be read at all."""
-
 SSE_RECONNECT_BACKOFF_SECONDS = 1.0
 """First pause (seconds) before reopening a gateway SSE stream that closed,
 dropped, or was refused with a retryable status. Doubles with each consecutive
