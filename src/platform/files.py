@@ -73,9 +73,7 @@ def _assert_path_under_root(dest: Path, root: Path) -> None:
     dest_abs = Path(os.path.abspath(dest))
     root_abs = Path(os.path.abspath(root))
     if not dest_abs.is_relative_to(root_abs):
-        raise ValueError(
-            f"Download destination {dest_abs} is outside root {root_abs}"
-        )
+        raise ValueError(f"Download destination {dest_abs} is outside root {root_abs}")
 
 
 # Signed-URL PUTs upload full file bodies; default httpx read timeout (5s) is too
