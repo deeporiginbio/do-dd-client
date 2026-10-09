@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import os
 from pathlib import Path
+import sys
 import time
 from typing import Generator
 
@@ -100,6 +101,16 @@ def test_read_cached_token_round_trip(auth_config: None) -> None:
 
     assert tokens_exist(env="dev") is True
     assert read_cached_token(env="dev") == token
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="POSIX file modes")
+def test_save_token_sets_private_file_mode(
+    isolated_tokens_file: Path,
+    auth_config: None,
+) -> None:
+    """api_tokens.json is written with mode 0600."""
+    save_token(_make_token())
+    assert (isolated_tokens_file.stat().st_mode & 0o777) == 0o600
 
 
 def test_get_token_from_disk(

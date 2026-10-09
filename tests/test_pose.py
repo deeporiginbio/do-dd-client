@@ -660,9 +660,10 @@ def test_pose_set_compute_rmsd_requires_local_structure() -> None:
 
 def test_pose_set_compute_rmsd_rejects_2d_conformer() -> None:
     """2D-only molecules fail the local-3D gate with DeepOriginException."""
-    from deeporigin.exceptions import DeepOriginException
     from rdkit import Chem
     from rdkit.Chem import AllChem
+
+    from deeporigin.exceptions import DeepOriginException
 
     mol = Chem.MolFromSmiles("CCO")
     assert mol is not None

@@ -1,5 +1,6 @@
 """custom exceptions to surface better errors in notebooks"""
 
+import html
 import sys
 
 from deeporigin.utils.display import _supports_color
@@ -140,13 +141,14 @@ def _silent_error_handler(shell, etype, evalue, tb, tb_offset=None):
         print(str(evalue), file=sys.stderr)
         return []
 
+    esc_title = html.escape(str(evalue.title), quote=False)
+    esc_body = html.escape(str(evalue.body or ""), quote=False)
+    esc_footer = html.escape(str(evalue.footer), quote=False) if evalue.footer else ""
     footer_html = (
-        f'<div class="card-footer text-muted">{evalue.footer}</div>'
-        if evalue.footer
-        else ""
+        f'<div class="card-footer text-muted">{esc_footer}</div>' if esc_footer else ""
     )
 
-    html = f"""
+    card_html = f"""
     <!DOCTYPE html>
     <html lang="en">
     <head>
@@ -158,11 +160,11 @@ def _silent_error_handler(shell, etype, evalue, tb, tb_offset=None):
         <div class="container-fluid px-0">
             <div class="card border-{evalue.level} mb-3 shadow-sm" style="max-width: 42rem;">
                 <div class="card-header bg-{evalue.level} text-white fw-bold">
-                    {evalue.title}
+                    {esc_title}
                 </div>
                 <div class="card-body">
                     <div class="card-text">
-                        {evalue.body}
+                        {esc_body}
                     </div>
                 </div>
                 {footer_html}
@@ -171,7 +173,7 @@ def _silent_error_handler(shell, etype, evalue, tb, tb_offset=None):
     </body>
     </html>
     """
-    display(HTML(html))
+    display(HTML(card_html))
     return []  # suppress traceback completely
 
 

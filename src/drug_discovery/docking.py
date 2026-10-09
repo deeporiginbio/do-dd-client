@@ -4,13 +4,13 @@ import concurrent.futures
 from typing import Any, Self
 
 from beartype import beartype
-import numpy as np
 
 from deeporigin.drug_discovery.docking_common import (
     build_docking_metadata,
     build_pocket_tool_params,
     effective_docking_rotation_deg,
     load_docking_poses_from_execution,
+    normalize_rotation_deg,
     resolve_docking_box_geometry,
     resolve_pocket_docking_box,
     restore_pocket_from_inputs,
@@ -225,18 +225,22 @@ class Docking(Execution, SyncExecutableMixin, AsyncExecutableMixin, NotebookWatc
         if hasattr(self.pocket, "id") and self.pocket.id is not None:
             parts.append(f"  pocket_id={self.pocket.id!r},")
 
-        vol = self.pocket.volume
-        if vol is not None:
-            try:
-                box_size = float(2 * np.cbrt(vol))
-                parts.append(f"  box_size={box_size:.2f},")
-            except Exception:
-                pass
+        try:
+            center, box_size = self._resolve_docking_box_geometry()
+            center_fmt = ", ".join(f"{c:.2f}" for c in center)
+            parts.append(f"  center=[{center_fmt}],")
+            size_fmt = ", ".join(f"{s:.2f}" for s in box_size)
+            parts.append(f"  box_size=[{size_fmt}],")
+        except Exception:
+            pass
 
         try:
-            center = self.pocket.get_center().tolist()
-            fmt = ", ".join(f"{c:.2f}" for c in center)
-            parts.append(f"  center=[{fmt}],")
+            rotation_deg = normalize_rotation_deg(
+                self._effective_docking_rotation_deg()
+            )
+            if rotation_deg is not None:
+                rot_fmt = ", ".join(f"{r:.2f}" for r in rotation_deg)
+                parts.append(f"  rotation_deg=[{rot_fmt}],")
         except Exception:
             pass
 

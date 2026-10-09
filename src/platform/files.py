@@ -39,16 +39,81 @@ def _normalize_remote_path(remote_path: str) -> str:
     one; embedding a leading slash in ``/signedUrl/{path}`` creates a double
     slash that misses the signedUrl route and returns 404.
 
+    Rejects NUL bytes and ``..`` path segments so server-supplied names cannot
+    escape a local download root when joined under ``~/.deeporigin``.
+
     Args:
         remote_path: Raw remote path from the caller.
 
     Returns:
         Path with leading slashes removed and repeated ``/`` collapsed.
+
+    Raises:
+        ValueError: If the path contains a NUL byte, a ``..`` segment, or (on
+            Windows) a segment ending in a space or dot.
     """
+    if "\x00" in remote_path:
+        raise ValueError(f"Remote path must not contain NUL: {remote_path!r}")
     normalized = remote_path.replace("\\", "/")
     while "//" in normalized:
         normalized = normalized.replace("//", "/")
-    return normalized.lstrip("/")
+    normalized = normalized.lstrip("/")
+    segments = normalized.split("/")
+    if ".." in segments:
+        raise ValueError(f"Remote path must not contain '..' segments: {remote_path!r}")
+    if os.name == "nt":
+        # Win32 strips trailing spaces/dots from components, so ".. " means "..".
+        for segment in segments:
+            if segment not in ("", ".") and segment != segment.rstrip(" ."):
+                raise ValueError(
+                    "Remote path segments must not end with a space or '.' on "
+                    f"Windows: {remote_path!r}"
+                )
+    return normalized
+
+
+def _is_junction(path: Path) -> bool:
+    """Return True if *path* is a Windows directory junction / reparse point.
+
+    ``os.path.isjunction`` only exists on 3.12+, so on 3.11 inspect the
+    ``FILE_ATTRIBUTE_REPARSE_POINT`` bit directly. Always False off Windows.
+    """
+    isjunction = getattr(os.path, "isjunction", None)
+    if isjunction is not None:
+        return bool(isjunction(path))
+    if os.name != "nt":
+        return False
+    try:
+        attrs = os.lstat(path).st_file_attributes  # type: ignore[attr-defined]
+    except (OSError, AttributeError):
+        return False
+    return bool(attrs & _FILE_ATTRIBUTE_REPARSE_POINT)
+
+
+_FILE_ATTRIBUTE_REPARSE_POINT = 0x400
+
+
+def _assert_path_under_root(dest: Path, root: Path) -> None:
+    """Raise ValueError if *dest* is not under *root* (lexical ``abspath`` check).
+
+    Used as defense-in-depth after joining a normalized remote path under a
+    download root (``~/.deeporigin`` or ``download_to_dir``). Uses
+    ``os.path.abspath`` rather than ``resolve()`` so not-yet-created nested
+    destinations are not rejected on Windows (``\\?\\`` extended paths).
+    """
+    dest_abs = Path(os.path.abspath(dest))
+    root_abs = Path(os.path.abspath(root))
+    if not dest_abs.is_relative_to(root_abs):
+        raise ValueError(f"Download destination {dest_abs} is outside root {root_abs}")
+
+    relative = dest_abs.relative_to(root_abs)
+    current = root_abs
+    for name in relative.parts:
+        current = current / name
+        if current.is_symlink() or _is_junction(current):
+            raise ValueError(
+                f"Download destination {dest_abs} crosses symlink {current}"
+            )
 
 
 # Signed-URL PUTs upload full file bodies; default httpx read timeout (5s) is too
@@ -937,22 +1002,20 @@ class Files:
         """
         remote_path = _normalize_remote_path(remote_path)
         dest: Path
-        if direct:
-            if local_path is not None:
-                dest = Path(local_path)
-            elif download_to_dir is not None:
-                dest = Path(download_to_dir) / Path(remote_path).name
-            else:
-                dest = _ensure_do_folder() / remote_path
-        elif local_path is not None:
+        containment_root: Path | None = None
+        if local_path is not None:
             dest = Path(local_path)
         elif download_to_dir is not None:
             download_to_dir_path = Path(download_to_dir)
-            remote_basename = Path(remote_path).name
-            dest = download_to_dir_path / remote_basename
+            dest = download_to_dir_path / Path(remote_path).name
+            containment_root = download_to_dir_path
         else:
             do_folder = _ensure_do_folder()
-            dest = do_folder / remote_path.lstrip("/")
+            dest = do_folder / remote_path
+            containment_root = do_folder
+
+        if containment_root is not None:
+            _assert_path_under_root(dest, containment_root)
 
         dest.parent.mkdir(parents=True, exist_ok=True)
 
