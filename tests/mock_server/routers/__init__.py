@@ -7,6 +7,6 @@ to shared mutable state that lives on the ``MockServer`` instance (e.g.
 that state as arguments and the inner route handlers close over it.
 """
 
-from . import billing, data_platform, entities, files, tools
+from . import billing, data_platform, entities, files, sse, tools
 
-__all__ = ["billing", "data_platform", "entities", "files", "tools"]
+__all__ = ["billing", "data_platform", "entities", "files", "sse", "tools"]

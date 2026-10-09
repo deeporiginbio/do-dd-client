@@ -216,6 +216,30 @@ def poll_tools_execution_terminal(
     return _tools_execution_terminal_dto(dto)
 
 
+def execution_status_reason(
+    client: DeepOriginClient,
+    execution_id: str,
+    *,
+    fallback: str | None,
+) -> str:
+    """Return the tools-service ``statusReason`` for an execution.
+
+    The data-platform execution row carries no failure reason, so it is read
+    from the tools-service execution.
+
+    Args:
+        client: Platform client.
+        execution_id: Tools-service execution id.
+        fallback: Value returned when the execution has no reason.
+
+    Returns:
+        The status reason, or ``fallback``.
+    """
+    dto = client.executions.get(execution_id)  # ty: ignore[unresolved-attribute]
+    reason = dto.get("statusReason") if isinstance(dto, dict) else None
+    return str(reason or fallback)
+
+
 def _latest_data_platform_execution_row(
     client: DeepOriginClient,
     compute_job_id: str,
