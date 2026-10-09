@@ -209,3 +209,23 @@ def test_assert_path_under_root_rejects_junction(
     )
     with pytest.raises(ValueError, match="crosses symlink"):
         _assert_path_under_root(junction / "payload.sdf", tmp_path)
+
+
+def test_is_junction_fallback_reads_reparse_point_attribute(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Without os.path.isjunction (3.11), the reparse-point attribute is used."""
+    from types import SimpleNamespace
+
+    from deeporigin.platform.files import _is_junction
+
+    monkeypatch.delattr(os.path, "isjunction", raising=False)
+    monkeypatch.setattr(os, "name", "nt")
+    monkeypatch.setattr(
+        os, "lstat", lambda _p: SimpleNamespace(st_file_attributes=0x410)
+    )
+    assert _is_junction(tmp_path)
+    monkeypatch.setattr(
+        os, "lstat", lambda _p: SimpleNamespace(st_file_attributes=0x10)
+    )
+    assert not _is_junction(tmp_path)

@@ -73,9 +73,24 @@ def _normalize_remote_path(remote_path: str) -> str:
 
 
 def _is_junction(path: Path) -> bool:
-    """Return True for Windows junctions (``os.path.isjunction`` needs 3.12+)."""
+    """Return True if *path* is a Windows directory junction / reparse point.
+
+    ``os.path.isjunction`` only exists on 3.12+, so on 3.11 inspect the
+    ``FILE_ATTRIBUTE_REPARSE_POINT`` bit directly. Always False off Windows.
+    """
     isjunction = getattr(os.path, "isjunction", None)
-    return bool(isjunction and isjunction(path))
+    if isjunction is not None:
+        return bool(isjunction(path))
+    if os.name != "nt":
+        return False
+    try:
+        attrs = os.lstat(path).st_file_attributes  # type: ignore[attr-defined]
+    except (OSError, AttributeError):
+        return False
+    return bool(attrs & _FILE_ATTRIBUTE_REPARSE_POINT)
+
+
+_FILE_ATTRIBUTE_REPARSE_POINT = 0x400
 
 
 def _assert_path_under_root(dest: Path, root: Path) -> None:
