@@ -143,17 +143,23 @@ def test_mark_prepared_requires_platform_id() -> None:
         protein.mark_prepared()
 
 
-def test_mark_prepared_and_refresh_lv1(
-    client: DeepOriginClient,
-    registered_protein: Protein,
-) -> None:
-    """mark_prepared sets platform state and refresh keeps the instance in sync."""
-    assert registered_protein.id is not None
-    protein = Protein.from_id(
-        str(registered_protein.id),
-        client=client,
-        download=False,
+def test_mark_prepared_and_refresh_lv1(client: DeepOriginClient) -> None:
+    """mark_prepared sets platform state and refresh keeps the instance in sync.
+
+    Uses a dedicated proteins-table row (not the shared mock canonical ``brd``)
+    so earlier tests that leave ``state=prepared`` on ``brd`` cannot make the
+    first mark a no-op.
+    """
+    remote = f"entities/proteins/mark-prep-{uuid.uuid4().hex[:10]}.pdb"
+    client.files.upload(BRD_DATA_DIR / "brd.pdb", remote)
+    created = client.entities.create_protein(
+        file_path=remote,
+        protein_name="mark-prepared-demo",
+        state="unprocessed",
     )
+    protein_id = created["data"]["id"]
+    protein = Protein.from_id(str(protein_id), client=client, download=False)
+    assert protein.state == "unprocessed"
 
     protein.mark_prepared(client=client)
     assert protein.state == "prepared"
