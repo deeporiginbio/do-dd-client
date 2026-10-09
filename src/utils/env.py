@@ -1,7 +1,6 @@
 """Runtime environment utilities: folder setup, env-var parsing, and timing."""
 
 from datetime import datetime, timezone
-import errno
 import os
 from pathlib import Path
 import stat
@@ -22,11 +21,16 @@ def _ensure_do_folder() -> Path:
     deeporigin_path = Path.home() / ".deeporigin"
     deeporigin_path.mkdir(parents=True, exist_ok=True, mode=0o700)
     try:
-        if stat.S_IMODE(deeporigin_path.stat().st_mode) != 0o700:
+        dir_stat = deeporigin_path.stat()
+        if stat.S_IMODE(dir_stat.st_mode) != 0o700:
+            if dir_stat.st_uid != os.geteuid():
+                # Foreign-owned cache (e.g. image builds): cannot chmod; keep import working.
+                return deeporigin_path
             os.chmod(deeporigin_path, 0o700)
-    except OSError as exc:
-        # Import must keep working when home is not ours (image builds) or on Windows.
-        if sys.platform != "win32" and exc.errno not in (errno.EPERM, errno.EACCES):
+    except OSError:
+        if sys.platform == "win32":
+            pass
+        else:
             raise
     return deeporigin_path
 
