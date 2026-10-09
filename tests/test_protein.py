@@ -128,6 +128,23 @@ def test_from_id_hydrates_lifecycle_fields_lv1(client: DeepOriginClient) -> None
     assert "state: prepared" in repr(protein)
 
 
+def test_mock_create_protein_unique_path_searchable_lv1(
+    client: DeepOriginClient,
+) -> None:
+    """Non-canonical create_protein rows keep unset name and are searchable by path."""
+    remote = f"entities/proteins/unique-{uuid.uuid4().hex[:10]}.pdb"
+    client.files.upload(BRD_DATA_DIR / "brd.pdb", remote)
+    created = client.entities.create_protein(file_path=remote)
+    row = created["data"]
+    assert row["id"] != "brd"
+    assert row.get("protein_name") is None
+    assert row["file_path"] == remote
+
+    found = client.entities.search_proteins(file_path=remote)
+    assert found["count"] >= 1
+    assert any(r["id"] == row["id"] for r in found["data"])
+
+
 def test_refresh_requires_platform_id() -> None:
     """refresh() raises when the protein has no platform id."""
     protein = Protein.from_file(BRD_DATA_DIR / "brd.pdb")

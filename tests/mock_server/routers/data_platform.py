@@ -1041,12 +1041,26 @@ def create_data_platform_router(
                 }
 
         # Protein.sync() searches by uploaded file_path (hash-based or custom).
-        # Always resolve to the canonical BRD fixture + stable ID when unscoped.
+        # Prefer an exact in-memory match (unique create_protein rows); otherwise
+        # resolve unscoped searches to the canonical BRD fixture + stable ID.
         if (
             entity == "proteins"
             and "file_path" in filter_dict
             and "project_id" not in filter_dict
         ):
+            raw_path = filter_dict["file_path"]
+            file_path = raw_path.get("eq") if isinstance(raw_path, dict) else raw_path
+            if isinstance(file_path, str):
+                matches = [
+                    copy.deepcopy(row)
+                    for row in proteins.values()
+                    if row.get("file_path") == file_path and not row.get("deleted")
+                ]
+                if matches:
+                    return {
+                        "data": matches[offset : offset + limit],
+                        "count": len(matches),
+                    }
             if MOCK_CANONICAL_PROTEIN_ID not in proteins:
                 proteins[MOCK_CANONICAL_PROTEIN_ID] = copy.deepcopy(
                     _base_canonical_protein_record()
@@ -1188,6 +1202,9 @@ def create_data_platform_router(
         else:
             protein_id = "08" + uuid.uuid4().hex[:11].upper()
             record = _base_canonical_protein_record()
+            # Template defaults (e.g. protein_name "brd") must not leak onto a
+            # new unique row when the caller omitted those fields.
+            record["protein_name"] = None
             record["valid_from"] = now_s
             record.update(set_data)
             record["id"] = protein_id
