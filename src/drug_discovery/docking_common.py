@@ -283,7 +283,11 @@ def resolve_pocket_docking_box(
         ``inferred_rotation_deg`` is a length-3 list or ``None`` when absent or
         identity.
     """
-    default_box = float(2 * np.cbrt(pocket.volume or 0))
+    default_box = (
+        float(2 * np.cbrt(pocket.volume))
+        if pocket.volume is not None and pocket.volume > 0
+        else math.nan
+    )
     pocket_center = pocket.get_center().tolist()
 
     if pocket.box is not None and use_inferred_obb:
@@ -293,17 +297,112 @@ def resolve_pocket_docking_box(
             float(box.box_size_y),
             float(box.box_size_z),
         ]
+        _validate_box_size(box_size)
         inferred_rotation = normalize_rotation_deg(box.rotation_deg)
         return pocket_center, box_size, inferred_rotation
 
-    box_size_x = pocket.box_size_x if pocket.box_size_x is not None else default_box
-    box_size_y = pocket.box_size_y if pocket.box_size_y is not None else default_box
-    box_size_z = pocket.box_size_z if pocket.box_size_z is not None else default_box
-    box_size = [float(box_size_x), float(box_size_y), float(box_size_z)]
+    box_size = [
+        float(size) if size is not None else default_box
+        for size in (pocket.box_size_x, pocket.box_size_y, pocket.box_size_z)
+    ]
+    _validate_box_size(box_size)
     inferred = None
     if pocket.box is not None:
         inferred = normalize_rotation_deg(pocket.box.rotation_deg)
     return pocket_center, box_size, inferred
+
+
+def _validate_box_size(box_size: list[float]) -> None:
+    """Raise ``ValueError`` unless every box extent is a finite positive number."""
+    if len(box_size) != 3 or not all(
+        math.isfinite(size) and size > 0 for size in box_size
+    ):
+        raise ValueError(
+            "Docking box sizes must be three finite positive numbers (Angstroms), "
+            f"got {box_size!r}. The pocket has no usable box_size_x/y/z or volume."
+        )
+
+
+def restore_pocket_from_inputs(
+    inputs: dict[str, Any],
+    *,
+    client: DeepOriginClient,
+) -> tuple[Pocket, list[float] | None]:
+    """Rebuild a docking pocket and box rotation from execution ``userInputs``.
+
+    ``userInputs.pocket`` is the geometry snapshot submitted with the execution
+    (center, ``box_size_*``, optional ``rotation_deg``) and is the source of
+    truth; ``pocket.id`` is kept only as provenance, so the referenced result
+    row need not still exist. Only when the snapshot holds no geometry at all
+    (legacy executions) is the pocket fetched by ID.
+
+    Args:
+        inputs: The execution's ``userInputs``.
+        client: API client used for the legacy by-ID fallback.
+
+    Returns:
+        ``(pocket, rotation_deg)``; ``rotation_deg`` is ``None`` when none was
+        stored and an explicit ``[0.0, 0.0, 0.0]`` when identity was stored.
+
+    Raises:
+        ValueError: If the snapshot is partial or has invalid geometry, or no
+            snapshot exists and the pocket cannot be fetched by ID.
+    """
+    pocket_input = inputs.get("pocket") or {}
+    pocket_id = pocket_input.get("id") or inputs.get("pocket_id")
+    geometry_keys = (
+        "center",
+        "box_size_x",
+        "box_size_y",
+        "box_size_z",
+        "rotation_deg",
+    )
+
+    if not any(key in pocket_input for key in geometry_keys):
+        if pocket_id is None:
+            raise ValueError(
+                "Missing 'pocket' geometry in execution userInputs; "
+                "cannot restore the docking box."
+            )
+        try:
+            return Pocket.from_id(pocket_id, client=client), None
+        except ValueError as exc:
+            raise ValueError(
+                f"Execution has no pocket geometry snapshot and pocket {pocket_id!r} "
+                f"could not be fetched ({exc}); cannot restore the docking box."
+            ) from exc
+
+    center = pocket_input.get("center")
+    try:
+        center_xyz = [float(value) for value in center]  # type: ignore[union-attr]
+        if len(center_xyz) != 3 or not all(math.isfinite(v) for v in center_xyz):
+            raise ValueError
+    except (TypeError, ValueError):
+        raise ValueError(
+            f"Execution pocket center must be three finite numbers, got {center!r}."
+        ) from None
+    try:
+        box_size = [
+            float(pocket_input[key])
+            for key in ("box_size_x", "box_size_y", "box_size_z")
+        ]
+    except (KeyError, TypeError, ValueError):
+        box_size = [math.nan] * 3
+    _validate_box_size(box_size)
+
+    raw_rotation = pocket_input.get("rotation_deg")
+    rotation = None
+    if raw_rotation is not None:
+        rotation = normalize_rotation_deg(raw_rotation) or [0.0, 0.0, 0.0]
+
+    pocket = Pocket(
+        id=pocket_id,
+        center=center_xyz,
+        box_size_x=box_size[0],
+        box_size_y=box_size[1],
+        box_size_z=box_size[2],
+    )
+    return pocket, rotation
 
 
 def effective_docking_rotation_deg(

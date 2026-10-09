@@ -15,6 +15,7 @@ from deeporigin.drug_discovery.docking_common import (
     load_reference_pose_from_execution,
     resolve_docking_box_geometry,
     resolve_pocket_docking_box,
+    restore_pocket_from_inputs,
 )
 from deeporigin.drug_discovery.execution import Execution
 from deeporigin.drug_discovery.execution_mixins import (
@@ -181,7 +182,6 @@ def _parse_constrained_docking_user_inputs(
     dict[str, Any],
     dict[str, Any],
     list[dict[str, Any]],
-    str | None,
 ]:
     """Parse constrained docking ``userInputs`` from an execution DTO."""
     raw_inputs = execution.get("userInputs")
@@ -190,8 +190,7 @@ def _parse_constrained_docking_user_inputs(
     if not isinstance(raw_inputs, dict):
         raise ValueError("Missing or invalid userInputs in execution DTO.")
     inputs = raw_inputs
-    pocket_input = _expect_mapping(inputs.get("pocket", {}), "pocket")
-    pocket_id = pocket_input.get("id") or inputs.get("pocket_id")
+    _expect_mapping(inputs.get("pocket", {}), "pocket")
 
     protein_input = _expect_mapping(inputs.get("protein", {}), "protein")
     protein_id = protein_input.get("id")
@@ -231,7 +230,6 @@ def _parse_constrained_docking_user_inputs(
         ref_ligand_input,
         ref_pose_input,
         ligands_input,
-        pocket_id,
     )
 
 
@@ -294,11 +292,9 @@ def _load_constrained_docking_entities(
     ref_ligand_input: dict[str, Any],
     ref_pose_input: dict[str, Any],
     ligands_input: list[dict[str, Any]],
-    pocket_input: dict[str, Any],
-    pocket_id: str | None,
 ) -> None:
     """Hydrate constrained docking entities from parsed execution inputs."""
-    with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
+    with concurrent.futures.ThreadPoolExecutor(max_workers=4) as executor:
         fut_protein = executor.submit(
             Protein.from_id,
             protein_id,
@@ -325,29 +321,11 @@ def _load_constrained_docking_entities(
             download=False,
             ligand_inputs=ligands_input,
         )
-        if pocket_id is not None:
-            fut_pocket = executor.submit(
-                Pocket.from_id,
-                pocket_id,
-                client=instance.client,
-            )
-        else:
-            fut_pocket = None
 
     instance._protein = fut_protein.result()
     instance._reference_ligand = fut_ref_ligand.result().ligands[0]
     instance._reference_pose = fut_ref_pose.result()
     instance._ligands = fut_ligands.result()
-    if fut_pocket is not None:
-        instance._pocket = fut_pocket.result()
-    else:
-        instance._pocket = Pocket(
-            id=None,
-            center=pocket_input.get("center"),
-            box_size_x=pocket_input.get("box_size_x"),
-            box_size_y=pocket_input.get("box_size_y"),
-            box_size_z=pocket_input.get("box_size_z"),
-        )
 
 
 class ConstrainedDocking(
@@ -520,10 +498,11 @@ class ConstrainedDocking(
 
     @property
     def rotation_deg(self) -> list[float] | None:
-        """Session rotation from interactive :meth:`show_box` (visualization only).
+        """Session rotation from interactive :meth:`show_box` or a restored execution.
 
-        Set on molstar gesture-end. Constrained docking :meth:`run` / :meth:`start`
-        ignore rotation in v1.
+        Set on molstar gesture-end or by :meth:`from_dto`. Visualization only:
+        constrained docking :meth:`run` / :meth:`start` ignore rotation until the
+        pinned tool version is confirmed to accept it.
         """
         if self._rotation_deg is None:
             return None
@@ -750,9 +729,10 @@ class ConstrainedDocking(
             ref_ligand_input,
             ref_pose_input,
             ligands_input,
-            pocket_id,
         ) = _parse_constrained_docking_user_inputs(execution)
-        pocket_input = inputs.get("pocket", {})
+        instance._pocket, restored_rotation = restore_pocket_from_inputs(
+            inputs, client=instance.client
+        )
 
         _load_constrained_docking_entities(
             instance,
@@ -761,8 +741,6 @@ class ConstrainedDocking(
             ref_ligand_input=ref_ligand_input,
             ref_pose_input=ref_pose_input,
             ligands_input=ligands_input,
-            pocket_input=pocket_input,
-            pocket_id=pocket_id,
         )
 
         raw_effort = inputs.get("effort")
@@ -773,7 +751,7 @@ class ConstrainedDocking(
         instance._mcs_smarts = inputs.get("mcs_smarts")
         instance._mcs_smiles = inputs.get("mcs_smiles")
         instance._batch_size = _batch_size_from_execution(execution)
-        instance._rotation_deg = None
+        instance._rotation_deg = restored_rotation
 
         return instance
 
@@ -835,7 +813,7 @@ class ConstrainedDocking(
         When ``interactive=True``, molstar ``DockingBoxControls`` are available via
         Settings. Releasing a rotation control stores ``rotation_deg`` on this
         instance (visualization only). Constrained docking :meth:`run` /
-        :meth:`start` ignore rotation in v1.
+        :meth:`start` ignore rotation.
 
         When ``poses`` is provided, docked ligands are overlaid with the wireframe
         search box. Interactive mode does not support pose overlays in v1.
