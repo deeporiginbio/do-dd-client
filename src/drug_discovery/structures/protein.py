@@ -28,6 +28,7 @@ from deeporigin.drug_discovery.constants import (
     STATE_DUMP_CIF_PATH,
     STATE_DUMP_PATH,
 )
+from deeporigin.drug_discovery.utils.numpy_compat import ensure_numpy_char_submodule
 from deeporigin.drug_discovery.utils.structure_qc import _any_ligand_protein_clashes
 from deeporigin.exceptions import DeepOriginException
 from deeporigin.platform.client import DeepOriginClient
@@ -1351,6 +1352,7 @@ class Protein(Entity):
             file_path = PROTEINS_DIR / (self.to_hash() + ".pdb")
 
         try:
+            ensure_numpy_char_submodule()
             from biotite.structure.io.pdb import PDBFile
 
             pdb_file = PDBFile()
