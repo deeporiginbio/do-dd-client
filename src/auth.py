@@ -201,6 +201,10 @@ def save_token(token: str) -> None:
         os.chmod(filepath, 0o600)
     except BaseException:
         try:
+            os.close(fd)  # no-op error if fdopen already closed it
+        except OSError:
+            pass
+        try:
             os.unlink(tmp_name)
         except FileNotFoundError:
             pass
