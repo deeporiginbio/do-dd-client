@@ -235,7 +235,9 @@ class Docking(Execution, SyncExecutableMixin, AsyncExecutableMixin, NotebookWatc
             pass
 
         try:
-            rotation_deg = normalize_rotation_deg(self._effective_docking_rotation_deg())
+            rotation_deg = normalize_rotation_deg(
+                self._effective_docking_rotation_deg()
+            )
             if rotation_deg is not None:
                 rot_fmt = ", ".join(f"{r:.2f}" for r in rotation_deg)
                 parts.append(f"  rotation_deg=[{rot_fmt}],")
