@@ -6,6 +6,7 @@ from pathlib import Path
 import stat
 import sys
 from typing import Union
+import warnings
 
 from beartype import beartype
 
@@ -29,6 +30,11 @@ def _ensure_do_folder() -> Path:
                 and dir_stat.st_uid != os.geteuid()
             ):
                 # Foreign-owned cache (e.g. image builds): cannot chmod; keep import working.
+                warnings.warn(
+                    f"{deeporigin_path} is owned by another user and is not mode 0700; "
+                    "cached data may be readable by other users.",
+                    stacklevel=2,
+                )
                 return deeporigin_path
             os.chmod(deeporigin_path, 0o700)
     except OSError:
