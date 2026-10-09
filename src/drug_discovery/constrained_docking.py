@@ -500,8 +500,9 @@ class ConstrainedDocking(
     def rotation_deg(self) -> list[float] | None:
         """Session rotation from interactive :meth:`show_box` or a restored execution.
 
-        Set on molstar gesture-end or by :meth:`from_dto`. Forwarded as
-        ``pocket.rotation_deg`` by :meth:`run` / :meth:`start` / :meth:`quote`.
+        Set on molstar gesture-end or by :meth:`from_dto`. Visualization only:
+        constrained docking :meth:`run` / :meth:`start` ignore rotation until the
+        pinned tool version is confirmed to accept it.
         """
         if self._rotation_deg is None:
             return None
@@ -607,14 +608,7 @@ class ConstrainedDocking(
             use_inferred_obb=False,
         )
         metadata = build_docking_metadata(self.protein)
-        # Session rotation only: sizes above are lab-frame, so inferred OBB
-        # rotation must not be paired with them.
-        pocket_params = build_pocket_tool_params(
-            self.pocket,
-            pocket_center,
-            box_size,
-            rotation_deg=self._rotation_deg,
-        )
+        pocket_params = build_pocket_tool_params(self.pocket, pocket_center, box_size)
 
         params: dict[str, Any] = {
             "effort": self.effort,
@@ -818,14 +812,15 @@ class ConstrainedDocking(
 
         When ``interactive=True``, molstar ``DockingBoxControls`` are available via
         Settings. Releasing a rotation control stores ``rotation_deg`` on this
-        instance and :meth:`run` / :meth:`start` submit it as ``pocket.rotation_deg``.
+        instance (visualization only). Constrained docking :meth:`run` /
+        :meth:`start` ignore rotation.
 
         When ``poses`` is provided, docked ligands are overlaid with the wireframe
         search box. Interactive mode does not support pose overlays in v1.
 
         Args:
             interactive: When ``True``, enable box rotation readback via AnyWidget.
-                Session rotation updates on molstar gesture-end.
+                Session rotation updates on molstar gesture-end (visualization only).
             poses: Optional docked pose(s) to overlay with the search box.
             height: Iframe height in pixels.
 
@@ -856,7 +851,7 @@ class ConstrainedDocking(
             interactive=interactive,
             on_commit=self._commit_docking_box,
             rotation_deg=self._effective_docking_rotation_deg_for_viz(),
-            rotation_used_by_run=True,
+            rotation_used_by_run=False,
             poses=poses,
             height=height,
         )

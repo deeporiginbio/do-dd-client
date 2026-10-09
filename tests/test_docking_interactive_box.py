@@ -291,12 +291,12 @@ def test_show_box_interactive_session_overrides_inferred_rotation(
     assert mock_html.call_args.kwargs["rotation_deg"] == [0.0, 45.0, 0.0]
 
 
-def test_constrained_docking_tool_inputs_forward_session_rotation_deg(
+def test_constrained_docking_tool_inputs_omit_rotation_deg(
     client,
     registered_protein,
     unregistered_pocket,
 ) -> None:
-    """Constrained docking forwards session rotation_deg to the tool."""
+    """Constrained docking v1 does not forward rotation_deg to the tool."""
     from tests.test_constrained_docking import _make_reference_pair
 
     reference_ligand, reference_pose = _make_reference_pair()
@@ -320,7 +320,7 @@ def test_constrained_docking_tool_inputs_forward_session_rotation_deg(
     )
     constrained._rotation_deg = [0.0, 45.0, 0.0]
     params, _ = constrained._build_tool_inputs()
-    assert params["pocket"]["rotation_deg"] == [0.0, 45.0, 0.0]
+    assert "rotation_deg" not in params["pocket"]
 
 
 def test_show_box_interactive_uses_comm_bridge(
@@ -391,11 +391,11 @@ def test_show_box_interactive_forwards_session_rotation(
     assert mock_html.call_args.kwargs["rotation_deg"] == [0.0, 45.0, 0.0]
 
 
-def test_constrained_show_box_interactive_rotation_used_by_run(
+def test_constrained_show_box_interactive_is_visualization_only(
     registered_protein,
     unregistered_pocket,
 ) -> None:
-    """ConstrainedDocking interactive overlay no longer warns that run ignores rotation."""
+    """ConstrainedDocking interactive overlay is visualization-only."""
     from tests.test_constrained_docking import _make_reference_pair
 
     reference_ligand, reference_pose = _make_reference_pair()
@@ -431,7 +431,7 @@ def test_constrained_show_box_interactive_rotation_used_by_run(
         html_builder = mock_bridge.call_args.args[0]
         html_builder("bridge-id")
 
-    assert mock_html.call_args.kwargs["rotation_used_by_run"] is True
+    assert mock_html.call_args.kwargs["rotation_used_by_run"] is False
 
 
 def test_show_box_interactive_rejects_pose_overlay(

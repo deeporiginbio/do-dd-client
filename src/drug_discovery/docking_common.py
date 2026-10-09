@@ -367,10 +367,14 @@ def restore_pocket_from_inputs(
             ) from exc
 
     center = pocket_input.get("center")
-    if center is None or len(center) != 3:
+    try:
+        center_xyz = [float(value) for value in center]  # type: ignore[union-attr]
+        if len(center_xyz) != 3 or not all(math.isfinite(v) for v in center_xyz):
+            raise ValueError
+    except (TypeError, ValueError):
         raise ValueError(
-            f"Execution pocket center must be three numbers, got {center!r}."
-        )
+            f"Execution pocket center must be three finite numbers, got {center!r}."
+        ) from None
     try:
         box_size = [
             float(pocket_input[key])
@@ -387,7 +391,7 @@ def restore_pocket_from_inputs(
 
     pocket = Pocket(
         id=pocket_id,
-        center=[float(value) for value in center],
+        center=center_xyz,
         box_size_x=box_size[0],
         box_size_y=box_size[1],
         box_size_z=box_size[2],
