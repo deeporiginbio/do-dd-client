@@ -20,8 +20,11 @@ test:
 	$(UV_TEST_RUN) pytest -x docs --markdown-docs --markdown-docs-syntax=superfences --env local
 
 # Launch JupyterLab from the project .venv (widgets require this server, not Homebrew / uv cache)
+JUPYTER_KERNEL_NAME := do-dd-client
 jupyter-lab:
 	uv sync $(foreach e,$(NOTEBOOK_EXTRAS),--extra $(e))
+	$(UV_RUN) python -m ipykernel install --user --name "$(JUPYTER_KERNEL_NAME)" --display-name "Deep Origin (do-dd-client .venv)"
+	@echo "Using kernel: Deep Origin (do-dd-client .venv) — pick it in the notebook if 3D show() fails."
 	$(UV_RUN) python -m jupyterlab \
 		--ServerApp.root_dir="$(REPO_ROOT)" \
 		--ServerApp.port=$(JUPYTER_PORT) \
