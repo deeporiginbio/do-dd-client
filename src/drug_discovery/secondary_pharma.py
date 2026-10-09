@@ -212,14 +212,8 @@ def _validate_panel_file_path(panel_file: str) -> str:
 
     try:
         remote = _normalize_remote_path(panel_file.strip())
-    except ValueError as exc:
-        raise DeepOriginException(
-            title="Invalid panel file path",
-            message=(
-                f"Panel file path {panel_file!r} must be under 'protected/' and "
-                "must not contain '..', '%', '?', '#', or NUL."
-            ),
-        ) from exc
+    except ValueError:
+        remote = ""
     if (
         not remote.startswith("protected/")
         or "%" in remote

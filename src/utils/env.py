@@ -1,8 +1,10 @@
 """Runtime environment utilities: folder setup, env-var parsing, and timing."""
 
+from contextlib import suppress
 from datetime import datetime, timezone
 import os
 from pathlib import Path
+import stat
 from typing import Union
 
 from beartype import beartype
@@ -17,8 +19,10 @@ def _ensure_do_folder() -> Path:
     repaired.
     """
     deeporigin_path = Path.home() / ".deeporigin"
-    deeporigin_path.mkdir(parents=True, exist_ok=True)
-    os.chmod(deeporigin_path, 0o700)
+    deeporigin_path.mkdir(parents=True, exist_ok=True, mode=0o700)
+    with suppress(OSError):
+        if stat.S_IMODE(deeporigin_path.stat().st_mode) != 0o700:
+            os.chmod(deeporigin_path, 0o700)
     return deeporigin_path
 
 

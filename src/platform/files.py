@@ -63,16 +63,18 @@ def _normalize_remote_path(remote_path: str) -> str:
 
 
 def _assert_path_under_root(dest: Path, root: Path) -> None:
-    """Raise ValueError if *dest* resolves outside *root*.
+    """Raise ValueError if *dest* is not under *root* (lexical ``abspath`` check).
 
     Used as defense-in-depth after joining a normalized remote path under a
-    download root (``~/.deeporigin`` or ``download_to_dir``).
+    download root (``~/.deeporigin`` or ``download_to_dir``). Uses
+    ``os.path.abspath`` rather than ``resolve()`` so not-yet-created nested
+    destinations are not rejected on Windows (``\\?\\`` extended paths).
     """
-    dest_resolved = dest.resolve()
-    root_resolved = root.resolve()
-    if not dest_resolved.is_relative_to(root_resolved):
+    dest_abs = Path(os.path.abspath(dest))
+    root_abs = Path(os.path.abspath(root))
+    if not dest_abs.is_relative_to(root_abs):
         raise ValueError(
-            f"Download destination {dest_resolved} is outside root {root_resolved}"
+            f"Download destination {dest_abs} is outside root {root_abs}"
         )
 
 
@@ -963,27 +965,15 @@ class Files:
         remote_path = _normalize_remote_path(remote_path)
         dest: Path
         containment_root: Path | None = None
-        if direct:
-            if local_path is not None:
-                dest = Path(local_path)
-            elif download_to_dir is not None:
-                download_to_dir_path = Path(download_to_dir)
-                dest = download_to_dir_path / Path(remote_path).name
-                containment_root = download_to_dir_path
-            else:
-                do_folder = _ensure_do_folder()
-                dest = do_folder / remote_path
-                containment_root = do_folder
-        elif local_path is not None:
+        if local_path is not None:
             dest = Path(local_path)
         elif download_to_dir is not None:
             download_to_dir_path = Path(download_to_dir)
-            remote_basename = Path(remote_path).name
-            dest = download_to_dir_path / remote_basename
+            dest = download_to_dir_path / Path(remote_path).name
             containment_root = download_to_dir_path
         else:
             do_folder = _ensure_do_folder()
-            dest = do_folder / remote_path.lstrip("/")
+            dest = do_folder / remote_path
             containment_root = do_folder
 
         if containment_root is not None:

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import sys
 from pathlib import Path
 
 import pytest
@@ -9,6 +10,7 @@ import pytest
 from deeporigin.utils.env import _ensure_do_folder
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="POSIX file modes")
 def test_ensure_do_folder_sets_private_mode(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

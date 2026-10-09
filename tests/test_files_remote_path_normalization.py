@@ -57,6 +57,37 @@ def test_assert_path_under_root_rejects_escape(tmp_path: Path) -> None:
         _assert_path_under_root(outside, tmp_path)
 
 
+def test_download_default_folder_accepts_nested_remote_path(
+    client: DeepOriginClient,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """Nested paths under ~/.deeporigin pass containment (including on Windows)."""
+    home = tmp_path / "home"
+    home.mkdir()
+    monkeypatch.setattr(Path, "home", lambda: home)
+
+    def fake_download_to_path(
+        _self: object,
+        _remote_path: str,
+        dest: Path,
+    ) -> None:
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        dest.write_bytes(b"ATOM")
+
+    monkeypatch.setattr(
+        type(client.files),
+        "_download_to_path",
+        fake_download_to_path,
+    )
+
+    local_path = client.files.download(remote_path="docking/brd-2/pose.sdf")
+
+    expected = home / ".deeporigin" / "docking" / "brd-2" / "pose.sdf"
+    assert local_path == str(expected)
+    assert expected.read_bytes() == b"ATOM"
+
+
 def test_download_rejects_traversal_before_write(
     client: DeepOriginClient,
     monkeypatch: pytest.MonkeyPatch,

@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import os
 from pathlib import Path
+import sys
 import time
 from typing import Generator
 
@@ -102,6 +103,7 @@ def test_read_cached_token_round_trip(auth_config: None) -> None:
     assert read_cached_token(env="dev") == token
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="POSIX file modes")
 def test_save_token_sets_private_file_mode(
     isolated_tokens_file: Path,
     auth_config: None,

@@ -4,6 +4,7 @@ with tokens"""
 import json
 import os
 from pathlib import Path
+import tempfile
 import time
 
 from beartype import beartype
@@ -184,10 +185,23 @@ def save_token(token: str) -> None:
     # Update tokens for the specific environment
     all_tokens[env] = token
 
-    # Write back all environments
-    with open(filepath, "w") as file:
-        json.dump(all_tokens, file, indent=2)
-    os.chmod(filepath, 0o600)
+    # Write atomically with mode 0600 so secrets are never world-readable.
+    filepath.parent.mkdir(parents=True, exist_ok=True)
+    fd, tmp_name = tempfile.mkstemp(
+        prefix=".api_tokens.",
+        suffix=".tmp",
+        dir=filepath.parent,
+        text=True,
+    )
+    try:
+        os.chmod(tmp_name, 0o600)
+        with os.fdopen(fd, "w") as file:
+            json.dump(all_tokens, file, indent=2)
+        os.replace(tmp_name, filepath)
+        os.chmod(filepath, 0o600)
+    except BaseException:
+        os.unlink(tmp_name)
+        raise
 
     name = decoded_token.get("name", "Unknown User")
 
