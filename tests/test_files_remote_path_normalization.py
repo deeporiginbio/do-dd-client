@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 import httpx
@@ -181,3 +182,30 @@ def test_stat_uses_normalized_path(
 
     assert captured == [f"/files/{client.org_key}/seeded/proteins/BRD/BRD.pdb"]
     assert headers["content-length"] == "1"
+
+
+def test_normalize_rejects_windows_trailing_dot_space_segments(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """On Windows, '.. ' and 'a.' are rewritten by Win32 and must be refused."""
+    monkeypatch.setattr(os, "name", "nt")
+    for bad in ("seeded/.. /outside.txt", "seeded/... /x", "dir./x", "dir /x"):
+        with pytest.raises(ValueError, match="end with a space"):
+            _normalize_remote_path(bad)
+    assert _normalize_remote_path("seeded/./ok.txt") == "seeded/./ok.txt"
+
+
+def test_assert_path_under_root_rejects_junction(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Windows directory junctions below the root count as crossings."""
+    junction = tmp_path / "docking"
+    junction.mkdir()
+    monkeypatch.setattr(
+        os.path,
+        "isjunction",
+        lambda p: os.path.abspath(p) == str(junction),
+        raising=False,
+    )
+    with pytest.raises(ValueError, match="crosses symlink"):
+        _assert_path_under_root(junction / "payload.sdf", tmp_path)

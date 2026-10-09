@@ -49,7 +49,8 @@ def _normalize_remote_path(remote_path: str) -> str:
         Path with leading slashes removed and repeated ``/`` collapsed.
 
     Raises:
-        ValueError: If the path contains a NUL byte or a ``..`` segment.
+        ValueError: If the path contains a NUL byte, a ``..`` segment, or (on
+            Windows) a segment ending in a space or dot.
     """
     if "\x00" in remote_path:
         raise ValueError(f"Remote path must not contain NUL: {remote_path!r}")
@@ -57,9 +58,24 @@ def _normalize_remote_path(remote_path: str) -> str:
     while "//" in normalized:
         normalized = normalized.replace("//", "/")
     normalized = normalized.lstrip("/")
-    if ".." in normalized.split("/"):
+    segments = normalized.split("/")
+    if ".." in segments:
         raise ValueError(f"Remote path must not contain '..' segments: {remote_path!r}")
+    if os.name == "nt":
+        # Win32 strips trailing spaces/dots from components, so ".. " means "..".
+        for segment in segments:
+            if segment not in ("", ".") and segment != segment.rstrip(" ."):
+                raise ValueError(
+                    "Remote path segments must not end with a space or '.' on "
+                    f"Windows: {remote_path!r}"
+                )
     return normalized
+
+
+def _is_junction(path: Path) -> bool:
+    """Return True for Windows junctions (``os.path.isjunction`` needs 3.12+)."""
+    isjunction = getattr(os.path, "isjunction", None)
+    return bool(isjunction and isjunction(path))
 
 
 def _assert_path_under_root(dest: Path, root: Path) -> None:
@@ -79,7 +95,7 @@ def _assert_path_under_root(dest: Path, root: Path) -> None:
     current = root_abs
     for name in relative.parts:
         current = current / name
-        if current.is_symlink():
+        if current.is_symlink() or _is_junction(current):
             raise ValueError(
                 f"Download destination {dest_abs} crosses symlink {current}"
             )
