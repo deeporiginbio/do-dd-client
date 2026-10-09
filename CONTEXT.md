@@ -460,7 +460,7 @@ session rotation (when you mean pocket-finder output)
 Ephemeral Euler angles `[rx, ry, rz]` on a `Docking` or `ConstrainedDocking`
 instance, written by interactive `show_box` on molstar gesture-end. Not stored
 on `Pocket`. Overrides **Inferred box orientation** when set. Free docking
-`run()` / `start()` forward it; ConstrainedDocking ignores it in v1. `from_dto`
+`run()` / `start()` forward it; ConstrainedDocking ignores it. `from_dto`
 restores it from `userInputs.pocket.rotation_deg`, so an explicit identity
 override is kept as `[0.0, 0.0, 0.0]` (distinct from `None`, which means no
 override was set). Free-docking interactive `show_box` likewise keeps an explicit
