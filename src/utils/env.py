@@ -1,10 +1,11 @@
 """Runtime environment utilities: folder setup, env-var parsing, and timing."""
 
-from contextlib import suppress
 from datetime import datetime, timezone
+import errno
 import os
 from pathlib import Path
 import stat
+import sys
 from typing import Union
 
 from beartype import beartype
@@ -20,9 +21,13 @@ def _ensure_do_folder() -> Path:
     """
     deeporigin_path = Path.home() / ".deeporigin"
     deeporigin_path.mkdir(parents=True, exist_ok=True, mode=0o700)
-    with suppress(OSError):
+    try:
         if stat.S_IMODE(deeporigin_path.stat().st_mode) != 0o700:
             os.chmod(deeporigin_path, 0o700)
+    except OSError as exc:
+        # Import must keep working when home is not ours (image builds) or on Windows.
+        if sys.platform != "win32" and exc.errno not in (errno.EPERM, errno.EACCES):
+            raise
     return deeporigin_path
 
 

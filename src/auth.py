@@ -200,7 +200,10 @@ def save_token(token: str) -> None:
         os.replace(tmp_name, filepath)
         os.chmod(filepath, 0o600)
     except BaseException:
-        os.unlink(tmp_name)
+        try:
+            os.unlink(tmp_name)
+        except FileNotFoundError:
+            pass
         raise
 
     name = decoded_token.get("name", "Unknown User")

@@ -75,6 +75,15 @@ def _assert_path_under_root(dest: Path, root: Path) -> None:
     if not dest_abs.is_relative_to(root_abs):
         raise ValueError(f"Download destination {dest_abs} is outside root {root_abs}")
 
+    relative = dest_abs.relative_to(root_abs)
+    current = root_abs
+    for name in relative.parts:
+        current = current / name
+        if current.is_symlink():
+            raise ValueError(
+                f"Download destination {dest_abs} crosses symlink {current}"
+            )
+
 
 # Signed-URL PUTs upload full file bodies; default httpx read timeout (5s) is too
 # short under concurrent upload_tree workers waiting on S3.

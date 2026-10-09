@@ -57,6 +57,17 @@ def test_assert_path_under_root_rejects_escape(tmp_path: Path) -> None:
         _assert_path_under_root(outside, tmp_path)
 
 
+def test_assert_path_under_root_rejects_symlink_under_root(tmp_path: Path) -> None:
+    """Pre-existing symlinks under the download root are refused."""
+    outside = tmp_path.parent / "outside"
+    outside.mkdir()
+    link = tmp_path / "docking"
+    link.symlink_to(outside, target_is_directory=True)
+    dest = link / "payload.sdf"
+    with pytest.raises(ValueError, match="crosses symlink"):
+        _assert_path_under_root(dest, tmp_path)
+
+
 def test_download_default_folder_accepts_nested_remote_path(
     client: DeepOriginClient,
     monkeypatch: pytest.MonkeyPatch,
