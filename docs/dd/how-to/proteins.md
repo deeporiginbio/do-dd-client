@@ -112,9 +112,10 @@ insulin-a,GIVEQCCTSICSLYQLENYCN
 glucagon,HSQGTFTSDYSKYLDSRRAQDFVQWLMNT
 ```
 
-Headers are sent as they are, so a column named after something that is not a
-protein field (for example `name` instead of `protein_name`) is ignored and its
-values are not imported. The CSV needs at least one column that identifies a
+Headers are sent as they are, so every column must be a protein field. A column
+that is not (for example `name` instead of `protein_name`) makes the platform
+reject the rows it was sent with, yet the import still ends as completed, so
+`wait()` returns without those proteins and without raising. The CSV needs at least one column that identifies a
 protein: `fasta_sequence`, `pdb_id`, `uniprot_accession`, `external_id` or
 `file_path`. If it has none, `ProteinCsvImport.start` raises before uploading
 anything, and suggests renames for common headers such as `sequence`. To attach structures, put the PDB files in a zip, name
@@ -143,9 +144,11 @@ job = ProteinCsvImport.start(
 proteins = job.wait()
 ```
 
-A protein that already exists in the project is reused rather than imported
-twice, which is why `wait()` returns the project's proteins rather than only
-the rows in this CSV.
+A row whose sequence or structure is already in the project reuses that
+protein rather than creating a second one, which is why `wait()` returns the
+project's proteins rather than only the rows in this CSV. Rows identified only
+by `pdb_id`, `uniprot_accession` or `external_id` are not matched, so importing
+them again can create duplicates.
 
 !!! note "Errors"
     `wait()` raises `DeepOriginException` if the import fails, with the reason

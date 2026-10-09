@@ -217,3 +217,57 @@ def test_protein_csv_import_wait_raises_on_failed_import(
     with pytest.raises(DeepOriginException, match="Failed") as excinfo:
         handle.wait(timeout=_WAIT_TIMEOUT_SECONDS)
     assert "No importable protein rows" in str(excinfo.value)
+
+
+def test_protein_csv_import_wait_follows_search_cursor(
+    client: DeepOriginClient,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """With one protein per page, ``wait()`` reads every page exactly once."""
+    monkeypatch.setattr(
+        "deeporigin.drug_discovery.protein_csv_import.PROTEIN_SEARCH_PAGE_SIZE", 1
+    )
+    search = client.entities.search_proteins
+    cursors: list[str | None] = []
+
+    def recording_search(**kwargs: Any) -> dict[str, Any]:
+        cursors.append(kwargs.get("cursor"))
+        return search(**kwargs)
+
+    monkeypatch.setattr(client.entities, "search_proteins", recording_search)
+    suffix = uuid.uuid4().hex[:8]
+    rows = [
+        {"protein_name": f"page-{i}-{suffix}", "fasta_sequence": f"MK{i}{suffix}"}
+        for i in range(3)
+    ]
+    csv_path = _write_protein_csv(tmp_path / "proteins.csv", rows)
+
+    proteins = ProteinCsvImport.start(csv_path, client=client).wait(
+        timeout=_WAIT_TIMEOUT_SECONDS
+    )
+
+    ids = [p.id for p in proteins]
+    assert len(ids) == len(set(ids))
+    assert len(cursors) == len(proteins) >= len(rows)
+    assert cursors[0] is None
+    assert len(set(cursors)) == len(cursors)
+    names = {p.name for p in proteins}
+    for row in rows:
+        assert row["protein_name"] in names
+
+
+def test_protein_csv_import_accepts_pdb_id_only_rows_with_padded_header(
+    client: DeepOriginClient,
+    tmp_path: Path,
+) -> None:
+    """A row identified only by ``pdb_id`` is imported; header padding is trimmed."""
+    name = f"pdb-only-{uuid.uuid4().hex[:8]}"
+    csv_path = tmp_path / "proteins.csv"
+    csv_path.write_text(f"protein_name, pdb_id\n{name},1EBY\n")
+
+    proteins = ProteinCsvImport.start(csv_path, client=client).wait(
+        timeout=_WAIT_TIMEOUT_SECONDS
+    )
+
+    assert name in {p.name for p in proteins}

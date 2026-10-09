@@ -207,10 +207,12 @@ class ProteinCsvImport:
     ) -> list[Protein]:
         """Block until the import has finished, then return the project's proteins.
 
-        Returns as soon as the platform reports the import finished. A protein
-        that already existed in the project is reused rather than imported
-        twice, so this returns every protein in the project, not only the rows
-        in the CSV.
+        Returns as soon as the platform reports the import finished. A row
+        whose sequence or structure is already in the project reuses that
+        protein rather than creating a second one, so this returns every
+        protein in the project, not only the rows in the CSV. Rows identified
+        only by ``pdb_id``, ``uniprot_accession`` or ``external_id`` are not
+        matched and can be created again on re-import.
 
         Args:
             timeout: Seconds to wait before giving up.

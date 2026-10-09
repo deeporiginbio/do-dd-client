@@ -12,7 +12,7 @@ The mock server is organized into routers, each handling a group of related endp
 
 | Router | File | Responsibilities |
 |---|---|---|
-| **data_platform** | `routers/data_platform.py` | Entity CRUD (proteins, ligands), result-explorer search |
+| **data_platform** | `routers/data_platform.py` | Entity CRUD (proteins, ligands), entity search (`offset` or `cursor`, with `meta.nextCursor` while more rows remain), result-explorer search |
 | **tools** | `routers/tools.py` | Tool executions (list/get/cancel/confirm/run), clusters |
 | **files** | `routers/files.py` | File upload/download |
 | **entities** | `routers/entities.py` | Entity management |
@@ -37,8 +37,11 @@ read.
 **Protein CSV import (local only):** an import-dataset `csv_path` run whose
 mapper targets `proteins.*` is ingested at submit
 (`_ingest_import_dataset_protein_csv` in `routers/tools.py`). Rows are
-read through the mapper's `proteins.<field>` keys and search-then-created in the
-proteins store by `fasta_sequence`, or by `protein_name`, under the run's project. A CSV with no importable rows ends the run `Failed` with a
+read through the mapper's `proteins.<field>` keys, with header keys and cells
+stripped as the import tool does, and kept when they have an identifying field.
+A row with a `fasta_sequence` reuses the project's protein with that sequence;
+other rows are always created, under the run's project. A CSV with no
+importable rows ends the run `Failed` with a
 `statusReason`. Covered by `tests/test_protein_csv_import_local.py`.
 
 ## Running the Mock Server

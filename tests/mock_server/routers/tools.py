@@ -22,6 +22,7 @@ import uuid
 from fastapi import APIRouter, HTTPException, Request
 
 from deeporigin.utils.constants import (
+    IMPORT_DATASET_PROTEINS_IDENTITY_FIELDS,
     INLINE_LIGAND_CAP,
     METABOLISM_WORKFLOW_LIGAND_THRESHOLD,
 )
@@ -2225,9 +2226,11 @@ def create_tools_router(
     def _ingest_import_dataset_protein_csv(execution: dict[str, Any]) -> None:
         """Simulate a workflow protein CSV import as soon as it is submitted.
 
-        Rows are mapped through ``inputs.mapper`` and search-then-created in the
-        proteins store by sequence (or name when there is no sequence), under
-        the execution's project. The run ends ``Completed`` with the
+        Header keys and cells are stripped as the import tool does. Rows are
+        mapped through ``inputs.mapper``; a row is kept when it has a value for
+        one of ``IMPORT_DATASET_PROTEINS_IDENTITY_FIELDS``. A row with a
+        ``fasta_sequence`` reuses the project's protein with that sequence;
+        other rows are always created, as on the platform. The run ends ``Completed`` with the
         data-platform row still ``DataIngesting`` for one read, so a waiter
         needs one SSE wake to see it finish. A CSV with no importable rows ends
         the run ``Failed`` with a ``statusReason``.
@@ -2247,12 +2250,17 @@ def create_tools_router(
         raw = file_storage.get(str(inputs.get("csv_path")))
         rows: list[dict[str, str]] = []
         if raw:
-            for csv_row in csv.DictReader(io.StringIO(raw.decode("utf-8"))):
+            for raw_row in csv.DictReader(io.StringIO(raw.decode("utf-8-sig"))):
+                csv_row = {
+                    key.strip(): (value or "").strip()
+                    for key, value in raw_row.items()
+                    if key is not None
+                }
                 mapped = {
-                    attr: str(csv_row.get(column) or "").strip()
+                    attr: csv_row.get(column, "")
                     for column, attr in column_to_attr.items()
                 }
-                if mapped.get("fasta_sequence") or mapped.get("protein_name"):
+                if any(mapped.get(f) for f in IMPORT_DATASET_PROTEINS_IDENTITY_FIELDS):
                     rows.append(mapped)
 
         ts = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z"
@@ -2265,14 +2273,15 @@ def create_tools_router(
             return
 
         for row in rows:
-            key_attr = "fasta_sequence" if row.get("fasta_sequence") else "protein_name"
+            sequence = row.get("fasta_sequence")
             existing = next(
                 (
                     record
                     for record in proteins.values()
-                    if record.get("project_id") == project_id
+                    if sequence
+                    and record.get("project_id") == project_id
                     and not record.get("deleted")
-                    and record.get(key_attr) == row[key_attr]
+                    and record.get("fasta_sequence") == sequence
                 ),
                 None,
             )
@@ -2286,7 +2295,9 @@ def create_tools_router(
                     "project_id": project_id,
                     "protein_name": row.get("protein_name") or None,
                     "pdb_id": row.get("pdb_id") or None,
-                    "fasta_sequence": row.get("fasta_sequence") or None,
+                    "uniprot_accession": row.get("uniprot_accession") or None,
+                    "external_id": row.get("external_id") or None,
+                    "fasta_sequence": sequence or None,
                     "file_path": None,
                 }
             )
