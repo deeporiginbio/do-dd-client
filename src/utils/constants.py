@@ -248,6 +248,56 @@ EXECUTION_LIST_ORDER_CREATED_DESC = "createdAt desc"
 TOOL_EXECUTION_GET_ACCEPT_HEADER = "application/json;v=2.0"
 """Accept header for tools-service ``GET .../executions/{id}`` (v2 execution DTO)."""
 
+DATA_PLATFORM_INGESTION_TIMEOUT_SECONDS = 3600.0
+"""Default overall timeout (seconds) for
+:meth:`deeporigin.platform.executions.Executions.wait_for_ingestion`."""
+
+SSE_CONNECT_TIMEOUT_SECONDS = 10.0
+"""Connect, write and pool timeout (seconds) when opening a gateway SSE stream,
+capped by the stream's read timeout (itself capped by the time left)."""
+
+SSE_MAX_READ_TIMEOUT_SECONDS = 60.0
+"""Longest a gateway SSE stream may stay silent before it is treated as dead.
+
+The SSE service sends a heartbeat comment every 25s by default, so a stream
+that misses two of them is reconnected rather than waited on."""
+
+DATA_PLATFORM_INGESTION_SWEEP_SECONDS = 90.0
+"""Longest (seconds) :meth:`deeporigin.platform.executions.Executions.wait_for_ingestion`
+goes without re-reading the execution row while its SSE stream is open.
+
+Every read, whether woken by the SSE stream or not, pushes the next sweep back
+by this much. The sweep only fires when no frame arrives, which covers a missed
+or unpublished frame."""
+
+DATA_PLATFORM_INGESTION_POLL_SECONDS = 2.0
+"""Interval (seconds) at which
+:meth:`deeporigin.platform.executions.Executions.wait_for_ingestion` polls the
+execution row while its SSE stream is closed, dropped or refused."""
+
+SSE_RECONNECT_BACKOFF_SECONDS = 1.0
+"""First pause (seconds) before reopening a gateway SSE stream that closed,
+dropped, or was refused with a retryable status. Doubles with each consecutive
+failure up to ``SSE_RECONNECT_MAX_BACKOFF_SECONDS``, is jittered between half
+and all of that, and is capped by the time left before the caller's deadline."""
+
+SSE_RECONNECT_MAX_BACKOFF_SECONDS = 30.0
+"""Ceiling (seconds) on the doubling SSE reconnect pause."""
+
+SSE_STABLE_CONNECTION_SECONDS = 30.0
+"""How long (seconds) a gateway SSE stream must stay open before its close no
+longer counts as a failure.
+
+Opening is not the same as working: a stream that is accepted and then dropped
+straight away keeps the reconnect pause growing instead of resetting it. The
+SSE service heartbeats every 25s, so a stream that held this long has carried
+at least one heartbeat."""
+
+SSE_RETRYABLE_STATUS_CODES: frozenset[int] = HTTP_RETRYABLE_STATUS_CODES | {409}
+"""Stream-open statuses that are reconnected on rather than raised.
+
+409 is the SSE service's per-user, per-project connection cap."""
+
 TOOL_KEY_PREFIX = "deeporigin."
 """Platform tool-key prefix omitted in compact display (e.g. user log tables)."""
 

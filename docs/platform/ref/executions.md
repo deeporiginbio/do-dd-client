@@ -14,6 +14,22 @@ Then, the following methods can be used, for example:
 tools = client.executions.list()
 ```
 
+To block until an execution's results are available on the data platform, use
+`wait_for_ingestion`. It is woken by change notifications, and also re-checks
+the execution about every 90 seconds, so it still finishes if a notification is
+lost. While notifications are unavailable it checks every 2 seconds instead.
+Hidden executions are waited on too. It returns the execution record once the
+execution has finished (completed, failed or cancelled), so check its `status`:
+
+```{.python notest}
+row = client.executions.wait_for_ingestion(execution_id, project_id=project_id)
+if row["status"] != "Completed":
+    ...
+```
+
+See the [wait-for-ingestion notebook](../../notebooks/clean/wait-for-ingestion.ipynb)
+for a full example.
+
 
 ::: src.platform.executions.Executions
     options:
