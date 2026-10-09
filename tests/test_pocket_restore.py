@@ -121,6 +121,15 @@ def test_rotation_only_snapshot_is_rejected_as_partial(cls, fixture, client) -> 
 
 
 @pytest.mark.parametrize("cls,fixture", CASES)
+def test_explicit_null_snapshot_is_rejected_not_refetched(cls, fixture, client) -> None:
+    """Present-but-null geometry fields are an invalid snapshot, not legacy ID-only."""
+    row_id = client.results.get_pockets()["data"][0]["id"]
+    pocket = {"id": row_id, "center": None, **{k: None for k in SIZES}}
+    with pytest.raises(ValueError, match="center"):
+        _restore(cls, _dto(fixture, pocket), client)
+
+
+@pytest.mark.parametrize("cls,fixture", CASES)
 def test_legacy_id_only_refetches_pocket(cls, fixture, client) -> None:
     """With no geometry snapshot, the pocket row is fetched from the mock server."""
     row_id = client.results.get_pockets()["data"][0]["id"]

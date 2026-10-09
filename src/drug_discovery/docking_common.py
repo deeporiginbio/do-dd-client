@@ -358,7 +358,7 @@ def restore_pocket_from_inputs(
         "rotation_deg",
     )
 
-    if not any(pocket_input.get(key) is not None for key in geometry_keys):
+    if not any(key in pocket_input for key in geometry_keys):
         if pocket_id is None:
             raise ValueError(
                 "Missing 'pocket' geometry in execution userInputs; "
