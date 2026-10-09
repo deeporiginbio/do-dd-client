@@ -463,7 +463,8 @@ on `Pocket`. Overrides **Inferred box orientation** when set. Free docking
 `run()` / `start()` forward it; ConstrainedDocking ignores it in v1. `from_dto`
 restores it from `userInputs.pocket.rotation_deg`, so an explicit identity
 override is kept as `[0.0, 0.0, 0.0]` (distinct from `None`, which means no
-override was set); interactive `show_box` likewise keeps an explicit identity.
+override was set). Free-docking interactive `show_box` likewise keeps an explicit
+identity; ConstrainedDocking's interactive commit normalizes identity to `None`.
 _Avoid_: Apply; pocket rotation; inferred box orientation; treating printed cell
 output as live
 

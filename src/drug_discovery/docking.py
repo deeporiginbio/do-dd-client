@@ -186,8 +186,9 @@ class Docking(Execution, SyncExecutableMixin, AsyncExecutableMixin, NotebookWatc
         """Session rotation ``[rx, ry, rz]`` from :meth:`show_box` (interactive).
 
         Set on molstar gesture-end (slider release, drag end, reset). Ephemeral
-        session state — not persisted on :attr:`pocket`. ``None`` until committed
-        or when rotation is identity.
+        session state — not persisted on :attr:`pocket`. ``None`` when no rotation
+        override is set. An explicit identity override (e.g. restored by
+        :meth:`from_dto`) is returned as ``[0.0, 0.0, 0.0]``, distinct from ``None``.
         """
         if self._rotation_deg is None:
             return None
