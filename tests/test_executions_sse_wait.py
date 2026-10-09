@@ -466,7 +466,7 @@ def test_backoff_is_jittered(mock_client_config, monkeypatch) -> None:
 
     assert _wait(gateway)["status"] == "Completed"
     assert bounds == [(0.5, 1.0), (1.0, 2.0)]
-    assert sleeps == [0.5, 1.0]
+    assert sleeps == pytest.approx([0.5, 1.0], abs=1e-3)
 
 
 def test_sweep_rereads_on_heartbeat(mock_client_config, sweep_every_tick) -> None:
@@ -600,3 +600,45 @@ def test_other_search_error_raises(mock_client_config, tmp_path) -> None:
         pytest.raises(DeepOriginException),
     ):
         _wait(gateway)
+
+
+def test_slow_polls_still_reconnect(mock_client_config, monkeypatch, tmp_path) -> None:
+    """Polls slower than the poll interval do not hold the pause open."""
+    clock = [1000.0]
+    monkeypatch.setattr(
+        "deeporigin.platform.executions.time.sleep",
+        lambda seconds: clock.__setitem__(0, clock[0] + seconds),
+    )
+    monkeypatch.setattr(
+        "deeporigin.platform.executions.time.monotonic", lambda: clock[0]
+    )
+    monkeypatch.setattr(
+        "deeporigin.platform.executions.random.uniform", lambda low, high: high
+    )
+    monkeypatch.setattr(
+        "deeporigin.platform.executions.SSE_RECONNECT_BACKOFF_SECONDS", 10.0
+    )
+    gateway = FakeGateway(streams=[503], statuses=["DataIngesting"])
+    real_handler = gateway.handler
+
+    def slow(request: httpx.Request) -> httpx.Response:
+        """Take three seconds per search, then delegate.
+
+        Args:
+            request: Incoming request.
+
+        Returns:
+            The scripted response.
+        """
+        if request.url.path == SEARCH_PATH:
+            clock[0] += 3.0
+        return real_handler(request)
+
+    gateway.handler = slow
+
+    with (
+        patch("deeporigin.platform.client._ensure_do_folder", return_value=tmp_path),
+        pytest.raises(TimeoutError),
+    ):
+        _wait(gateway, timeout=30)
+    assert gateway.calls.count("stream") >= 2

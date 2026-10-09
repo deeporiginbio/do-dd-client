@@ -885,16 +885,15 @@ class Executions:
         Raises:
             TimeoutError: If the deadline passes during the pause.
         """
+        resume_at = time.monotonic() + delay
         while True:
-            until_poll = (
-                wait.last_read + DATA_PLATFORM_INGESTION_POLL_SECONDS - time.monotonic()
-            )
-            if until_poll >= delay:
-                time.sleep(min(delay, wait.time_left()))
+            now = time.monotonic()
+            poll_at = wait.last_read + DATA_PLATFORM_INGESTION_POLL_SECONDS
+            if poll_at >= resume_at:
+                time.sleep(min(max(resume_at - now, 0.0), wait.time_left()))
                 return None
-            if until_poll > 0:
-                time.sleep(min(until_poll, wait.time_left()))
-                delay -= until_poll
+            if poll_at > now:
+                time.sleep(min(poll_at - now, wait.time_left()))
             wait.time_left()
             try:
                 row = self._terminal_ingestion_row(wait)
