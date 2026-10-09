@@ -1456,11 +1456,12 @@ class Protein(Entity):
         )
         status = normalize_platform_status(dto.get("status"))
         if not is_success_status(status):
+            eid = dto.get("executionId")
+            reason = dto.get("statusReason") or status
             raise DeepOriginException(
                 title="mark_prepared failed",
                 message=(
-                    "protein-prep mark_prepared ended with unexpected status "
-                    f"{status!r}."
+                    f"Execution {eid!r} ended with status {status!r}: {reason!r}."
                 ),
             )
         return self.refresh(client=client)

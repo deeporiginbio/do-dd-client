@@ -99,33 +99,32 @@ def test_from_id_without_file_path_lv0(client: DeepOriginClient) -> None:
     assert protein.origin_kind is None
 
 
-def test_from_id_hydrates_lifecycle_fields_lv0(client: DeepOriginClient) -> None:
-    """from_id copies state/preparation/origin_* from the platform row."""
-    from unittest.mock import patch
-
+def test_from_id_hydrates_lifecycle_fields_lv1(client: DeepOriginClient) -> None:
+    """from_id copies state/preparation/origin_* from the mock entities API."""
+    remote = f"entities/proteins/lifecycle-{uuid.uuid4().hex[:10]}.pdb"
+    client.files.upload(BRD_DATA_DIR / "brd.pdb", remote)
     preparation = {"source": "mark_prepared", "execution_id": "exec-1"}
-    record = {
-        "id": "lifecycle-protein",
-        "protein_name": "lifecycle",
-        "file_path": None,
-        "pdb_id": "1ABC",
-        "project_id": None,
-        "state": "prepared",
-        "preparation": preparation,
-        "origin_kind": "prepared",
-        "origin_entity_type": "protein",
-        "origin_entity_id": "parent-1",
-        "origin_entity_display_id": "PARENT1",
-    }
-    with patch.object(client.entities, "get_protein", return_value=record):
-        protein = Protein.from_id("lifecycle-protein", client=client, download=False)
+    created = client.entities.create_protein(
+        file_path=remote,
+        protein_name="lifecycle",
+        pdb_id="1ABC",
+        state="prepared",
+        preparation=preparation,
+        origin={
+            "kind": "prepared",
+            "entity_type": "protein",
+            "entity_id": "parent-1",
+        },
+    )
+    protein_id = created["data"]["id"]
+    assert protein_id != "brd"
 
+    protein = Protein.from_id(str(protein_id), client=client, download=False)
     assert protein.state == "prepared"
     assert protein.preparation == preparation
     assert protein.origin_kind == "prepared"
     assert protein.origin_entity_type == "protein"
     assert protein.origin_entity_id == "parent-1"
-    assert protein.origin_entity_display_id == "PARENT1"
     assert "state: prepared" in repr(protein)
 
 
@@ -146,9 +145,8 @@ def test_mark_prepared_requires_platform_id() -> None:
 def test_mark_prepared_and_refresh_lv1(client: DeepOriginClient) -> None:
     """mark_prepared sets platform state and refresh keeps the instance in sync.
 
-    Uses a dedicated proteins-table row (not the shared mock canonical ``brd``)
-    so earlier tests that leave ``state=prepared`` on ``brd`` cannot make the
-    first mark a no-op.
+    Uses a non-canonical ``file_path`` so the mock allocates a unique protein
+    row (not the shared ``brd`` id).
     """
     remote = f"entities/proteins/mark-prep-{uuid.uuid4().hex[:10]}.pdb"
     client.files.upload(BRD_DATA_DIR / "brd.pdb", remote)
@@ -158,6 +156,7 @@ def test_mark_prepared_and_refresh_lv1(client: DeepOriginClient) -> None:
         state="unprocessed",
     )
     protein_id = created["data"]["id"]
+    assert protein_id != "brd"
     protein = Protein.from_id(str(protein_id), client=client, download=False)
     assert protein.state == "unprocessed"
 

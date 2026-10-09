@@ -2844,14 +2844,11 @@ def create_tools_router(
         )
         protein_id = protein_in.get("id") if isinstance(protein_in, dict) else None
         if not eid or not protein_id:
-            execution["jobOutputs"] = {
-                "mark": {
-                    "id": str(protein_id) if protein_id else "",
-                    "state": "prepared",
-                    "updated": False,
-                    "preparation": None,
-                }
+            execution["status"] = "Failed"
+            execution["statusReason"] = {
+                "message": "mark_prepared requires protein.id",
             }
+            execution["jobOutputs"] = {}
             return
         record = proteins.get(str(protein_id))
         if record is None:
