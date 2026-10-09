@@ -113,6 +113,14 @@ def test_invalid_center_raises_value_error(cls, fixture, center, client) -> None
 
 
 @pytest.mark.parametrize("cls,fixture", CASES)
+def test_rotation_only_snapshot_is_rejected_as_partial(cls, fixture, client) -> None:
+    """A rotation without center/sizes is a partial snapshot, not legacy ID-only."""
+    pocket = {"id": "p", "rotation_deg": [0.0, 0.0, 0.0]}
+    with pytest.raises(ValueError, match="center"):
+        _restore(cls, _dto(fixture, pocket), client)
+
+
+@pytest.mark.parametrize("cls,fixture", CASES)
 def test_legacy_id_only_refetches_pocket(cls, fixture, client) -> None:
     """With no geometry snapshot, the pocket row is fetched from the mock server."""
     row_id = client.results.get_pockets()["data"][0]["id"]

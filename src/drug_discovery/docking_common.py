@@ -350,7 +350,13 @@ def restore_pocket_from_inputs(
     """
     pocket_input = inputs.get("pocket") or {}
     pocket_id = pocket_input.get("id") or inputs.get("pocket_id")
-    geometry_keys = ("center", "box_size_x", "box_size_y", "box_size_z")
+    geometry_keys = (
+        "center",
+        "box_size_x",
+        "box_size_y",
+        "box_size_z",
+        "rotation_deg",
+    )
 
     if not any(pocket_input.get(key) is not None for key in geometry_keys):
         if pocket_id is None:
