@@ -39,16 +39,41 @@ def _normalize_remote_path(remote_path: str) -> str:
     one; embedding a leading slash in ``/signedUrl/{path}`` creates a double
     slash that misses the signedUrl route and returns 404.
 
+    Rejects NUL bytes and ``..`` path segments so server-supplied names cannot
+    escape a local download root when joined under ``~/.deeporigin``.
+
     Args:
         remote_path: Raw remote path from the caller.
 
     Returns:
         Path with leading slashes removed and repeated ``/`` collapsed.
+
+    Raises:
+        ValueError: If the path contains a NUL byte or a ``..`` segment.
     """
+    if "\x00" in remote_path:
+        raise ValueError(f"Remote path must not contain NUL: {remote_path!r}")
     normalized = remote_path.replace("\\", "/")
     while "//" in normalized:
         normalized = normalized.replace("//", "/")
-    return normalized.lstrip("/")
+    normalized = normalized.lstrip("/")
+    if ".." in normalized.split("/"):
+        raise ValueError(f"Remote path must not contain '..' segments: {remote_path!r}")
+    return normalized
+
+
+def _assert_path_under_root(dest: Path, root: Path) -> None:
+    """Raise ValueError if *dest* resolves outside *root*.
+
+    Used as defense-in-depth after joining a normalized remote path under a
+    download root (``~/.deeporigin`` or ``download_to_dir``).
+    """
+    dest_resolved = dest.resolve()
+    root_resolved = root.resolve()
+    if not dest_resolved.is_relative_to(root_resolved):
+        raise ValueError(
+            f"Download destination {dest_resolved} is outside root {root_resolved}"
+        )
 
 
 # Signed-URL PUTs upload full file bodies; default httpx read timeout (5s) is too
@@ -937,22 +962,32 @@ class Files:
         """
         remote_path = _normalize_remote_path(remote_path)
         dest: Path
+        containment_root: Path | None = None
         if direct:
             if local_path is not None:
                 dest = Path(local_path)
             elif download_to_dir is not None:
-                dest = Path(download_to_dir) / Path(remote_path).name
+                download_to_dir_path = Path(download_to_dir)
+                dest = download_to_dir_path / Path(remote_path).name
+                containment_root = download_to_dir_path
             else:
-                dest = _ensure_do_folder() / remote_path
+                do_folder = _ensure_do_folder()
+                dest = do_folder / remote_path
+                containment_root = do_folder
         elif local_path is not None:
             dest = Path(local_path)
         elif download_to_dir is not None:
             download_to_dir_path = Path(download_to_dir)
             remote_basename = Path(remote_path).name
             dest = download_to_dir_path / remote_basename
+            containment_root = download_to_dir_path
         else:
             do_folder = _ensure_do_folder()
             dest = do_folder / remote_path.lstrip("/")
+            containment_root = do_folder
+
+        if containment_root is not None:
+            _assert_path_under_root(dest, containment_root)
 
         dest.parent.mkdir(parents=True, exist_ok=True)
 

@@ -12,10 +12,13 @@ from beartype import beartype
 def _ensure_do_folder() -> Path:
     """Make sure the deeporigin scratch folder exists and return its path.
 
-    The folder is typically ~/.deeporigin. It is created if absent.
+    The folder is typically ~/.deeporigin. It is created if absent and
+    permissions are set to ``0700`` on every call so existing installs are
+    repaired.
     """
     deeporigin_path = Path.home() / ".deeporigin"
     deeporigin_path.mkdir(parents=True, exist_ok=True)
+    os.chmod(deeporigin_path, 0o700)
     return deeporigin_path
 
 

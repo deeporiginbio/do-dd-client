@@ -13,6 +13,7 @@ from __future__ import annotations
 import asyncio
 from asyncio import Task
 from contextlib import suppress
+import html
 import uuid
 
 from beartype import beartype
@@ -90,10 +91,12 @@ class NotebookWatchMixin:
         import time
 
         timestamp = time.strftime("%Y-%m-%d %H:%M:%S")
+        esc_message = html.escape(str(message), quote=False)
         return (
             "<div style='background: #fff4f4; border: 1px solid #f0b5b5; color: #8a1f1f;"
             " padding: 8px 12px; margin-bottom: 8px; border-radius: 6px;'>"
-            f"Network/update issue at {timestamp}. Will retry automatically. Error: {message}"
+            f"Network/update issue at {timestamp}. Will retry automatically. "
+            f"Error: {esc_message}"
             "</div>"
         )
 

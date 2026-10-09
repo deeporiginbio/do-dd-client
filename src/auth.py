@@ -187,6 +187,7 @@ def save_token(token: str) -> None:
     # Write back all environments
     with open(filepath, "w") as file:
         json.dump(all_tokens, file, indent=2)
+    os.chmod(filepath, 0o600)
 
     name = decoded_token.get("name", "Unknown User")
 

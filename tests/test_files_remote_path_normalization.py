@@ -8,7 +8,10 @@ import httpx
 import pytest
 
 from deeporigin.platform.client import DeepOriginClient
-from deeporigin.platform.files import _normalize_remote_path
+from deeporigin.platform.files import (
+    _assert_path_under_root,
+    _normalize_remote_path,
+)
 
 
 def test_normalize_remote_path_strips_leading_slash() -> None:
@@ -23,6 +26,59 @@ def test_normalize_remote_path_collapses_duplicate_slashes() -> None:
     assert _normalize_remote_path("//seeded//proteins/BRD.pdb") == (
         "seeded/proteins/BRD.pdb"
     )
+
+
+@pytest.mark.parametrize(
+    "bad_path",
+    [
+        "../.ssh/authorized_keys",
+        "seeded/../../.ssh/authorized_keys",
+        "seeded/proteins/../secrets.pdb",
+        "seeded\\..\\secrets.pdb",
+        "a\x00b.pdb",
+    ],
+)
+def test_normalize_remote_path_rejects_traversal_and_nul(bad_path: str) -> None:
+    """Paths with ``..`` segments or NUL must not be accepted."""
+    with pytest.raises(ValueError):
+        _normalize_remote_path(bad_path)
+
+
+def test_assert_path_under_root_accepts_nested(tmp_path: Path) -> None:
+    """Destinations inside the root are allowed."""
+    dest = tmp_path / "seeded" / "proteins" / "BRD.pdb"
+    _assert_path_under_root(dest, tmp_path)
+
+
+def test_assert_path_under_root_rejects_escape(tmp_path: Path) -> None:
+    """Resolved destinations outside the root are refused."""
+    outside = tmp_path.parent / "outside.pdb"
+    with pytest.raises(ValueError, match="outside root"):
+        _assert_path_under_root(outside, tmp_path)
+
+
+def test_download_rejects_traversal_before_write(
+    client: DeepOriginClient,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """Traversal remote paths fail closed without calling the HTTP client."""
+    called: list[str] = []
+
+    def fake_get(path: str, **kwargs: object) -> httpx.Response:
+        called.append(path)
+        return httpx.Response(200, content=b"ATOM")
+
+    monkeypatch.setattr(client, "_get", fake_get)
+
+    with pytest.raises(ValueError, match="\\.\\."):
+        client.files.download(
+            remote_path="../../.ssh/authorized_keys",
+            download_to_dir=str(tmp_path),
+            direct=True,
+        )
+
+    assert called == []
 
 
 def test_signed_url_uses_normalized_path(client: DeepOriginClient) -> None:
