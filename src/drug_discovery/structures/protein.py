@@ -37,7 +37,6 @@ from deeporigin.platform.constants import (
     is_success_status,
     normalize_platform_status,
 )
-from deeporigin.platform.entities import ProteinState
 from deeporigin.utils.env import _ensure_do_folder
 
 from .entity import Entity
@@ -77,8 +76,8 @@ class Protein(Entity):
     block_content: Optional[str] = None
     project_name: str | None = field(default=None, kw_only=True)
     # Platform proteins-table lifecycle / provenance (from get_protein).
-    state: ProteinState | None = field(default=None, kw_only=True)
-    preparation: dict[str, Any] | None = field(default=None, kw_only=True)
+    state: str | None = field(default=None, kw_only=True)
+    preparation: Optional[dict] = field(default=None, kw_only=True)
     origin_kind: str | None = field(default=None, kw_only=True)
     origin_entity_type: str | None = field(default=None, kw_only=True)
     origin_entity_id: str | None = field(default=None, kw_only=True)
