@@ -9,6 +9,7 @@ import pytest
 from deeporigin.drug_discovery import BRD_DATA_DIR, Protein
 from deeporigin.exceptions import DeepOriginException
 from deeporigin.platform.client import DeepOriginClient
+from tests.test_entities import _create_origin_source_protein
 
 
 def test_load_protein_from_cif_structure_factor():
@@ -100,8 +101,9 @@ def test_from_id_without_file_path_lv0(client: DeepOriginClient) -> None:
 
 
 def test_from_id_hydrates_lifecycle_fields_lv1(client: DeepOriginClient) -> None:
-    """from_id copies state/preparation/origin_* from the mock entities API."""
-    remote = f"entities/proteins/lifecycle-{uuid.uuid4().hex[:10]}.pdb"
+    """from_id copies state/preparation/origin_* from the entities API."""
+    source_protein_id = _create_origin_source_protein(client)
+    remote = f"testing/lifecycle-{uuid.uuid4().hex[:10]}.pdb"
     client.files.upload(BRD_DATA_DIR / "brd.pdb", remote)
     preparation = {"source": "mark_prepared", "execution_id": "exec-1"}
     created = client.entities.create_protein(
@@ -113,7 +115,7 @@ def test_from_id_hydrates_lifecycle_fields_lv1(client: DeepOriginClient) -> None
         origin={
             "kind": "prepared",
             "entity_type": "protein",
-            "entity_id": "parent-1",
+            "entity_id": source_protein_id,
         },
     )
     protein_id = created["data"]["id"]
@@ -124,14 +126,17 @@ def test_from_id_hydrates_lifecycle_fields_lv1(client: DeepOriginClient) -> None
     assert protein.preparation == preparation
     assert protein.origin_kind == "prepared"
     assert protein.origin_entity_type == "protein"
-    assert protein.origin_entity_id == "parent-1"
+    assert protein.origin_entity_id == source_protein_id
     assert "state: prepared" in repr(protein)
 
 
-def test_mock_create_protein_unique_path_searchable_lv1(
+def test_mock_create_protein_unique_path_searchable_lv0(
     client: DeepOriginClient,
 ) -> None:
     """Non-canonical create_protein rows keep unset name and are searchable by path."""
+    if client.env != "local":
+        pytest.skip("mock server create_protein/search behavior is local-only")
+
     remote = f"entities/proteins/unique-{uuid.uuid4().hex[:10]}.pdb"
     client.files.upload(BRD_DATA_DIR / "brd.pdb", remote)
     created = client.entities.create_protein(
@@ -175,7 +180,7 @@ def test_mark_prepared_and_refresh_lv1(client: DeepOriginClient) -> None:
     Uses a non-canonical ``file_path`` so the mock allocates a unique protein
     row (not the shared ``brd`` id).
     """
-    remote = f"entities/proteins/mark-prep-{uuid.uuid4().hex[:10]}.pdb"
+    remote = f"testing/mark-prep-{uuid.uuid4().hex[:10]}.pdb"
     client.files.upload(BRD_DATA_DIR / "brd.pdb", remote)
     created = client.entities.create_protein(
         file_path=remote,
