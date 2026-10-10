@@ -138,6 +138,60 @@ class Protein(Entity):
         return proteins[0]
 
     @classmethod
+    def _from_platform_record(
+        cls,
+        data: dict[str, Any],
+        *,
+        client: DeepOriginClient,
+        remote_path: str | None = None,
+        fallback_name: str | None = None,
+        project_name: str | None = None,
+    ) -> Self:
+        """Create a metadata-only Protein from a platform protein record.
+
+        No structure is downloaded; :attr:`structure` stays ``None`` until
+        :meth:`download` or :meth:`load_structure_from_local`.
+
+        Args:
+            data: Protein record returned by the platform entities API.
+            client: DeepOrigin client used to resolve the project display name.
+            remote_path: Platform file path to store on :attr:`remote_path`.
+            fallback_name: Name used when the record has no protein name, PDB ID
+                or gene symbol. Defaults to the record's ``id``.
+            project_name: Project display name, when the caller already has
+                it. Saves one project lookup per protein when building many.
+
+        Returns:
+            Protein: A new Protein instance without a loaded structure.
+        """
+        name = (
+            data.get("protein_name")
+            or data.get("pdb_id")
+            or data.get("gene_symbol")
+            or fallback_name
+            or str(data.get("id"))
+        )
+        proj_id = (
+            str(data["project_id"]) if data.get("project_id") is not None else None
+        )
+        return cls(
+            name=name,
+            structure=None,
+            pdb_id=data.get("pdb_id"),
+            uniprot_accession=data.get("uniprot_accession"),
+            info=None,
+            atom_types=None,
+            block_type="pdb",
+            block_content=None,
+            id=data.get("id"),
+            remote_path=remote_path,
+            project_id=proj_id,
+            project_name=fetch_project_display_name(
+                proj_id, project_name, client=client
+            )[1],
+        )
+
+    @classmethod
     def from_id(
         cls,
         id: str,
@@ -185,30 +239,11 @@ class Protein(Entity):
                 )
             elif remote_path_override is not None:
                 remote_path = remote_path_override
-            name = (
-                data.get("protein_name")
-                or data.get("pdb_id")
-                or data.get("gene_symbol")
-                or id
-            )
-            proj_id = (
-                str(data["project_id"]) if data.get("project_id") is not None else None
-            )
-            return cls(
-                name=name,
-                structure=None,
-                pdb_id=data.get("pdb_id"),
-                uniprot_accession=data.get("uniprot_accession"),
-                info=None,
-                atom_types=None,
-                block_type="pdb",
-                block_content=None,
-                id=data.get("id"),
+            return cls._from_platform_record(
+                data,
+                client=client,
                 remote_path=remote_path,
-                project_id=proj_id,
-                project_name=fetch_project_display_name(proj_id, None, client=client)[
-                    1
-                ],
+                fallback_name=id,
             )
 
         # Download the file

@@ -18,3 +18,18 @@
       show_signature_annotations: true
       show_if_no_docstring: true
       group_by_category: true
+
+## Importing proteins from a comma-separated values (CSV) file
+
+See [Importing many proteins from a CSV file](../how-to/proteins.md#importing-many-proteins-from-a-comma-separated-values-csv-file).
+
+::: src.drug_discovery.protein_csv_import.ProteinCsvImport
+    options:
+      docstring_style: google
+      show_root_heading: true
+      show_object_full_path: false
+      members_order: alphabetical
+      filters:
+        - "!^_"
+      show_signature: true
+      show_signature_annotations: true

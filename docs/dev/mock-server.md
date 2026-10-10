@@ -12,11 +12,12 @@ The mock server is organized into routers, each handling a group of related endp
 
 | Router | File | Responsibilities |
 |---|---|---|
-| **data_platform** | `routers/data_platform.py` | Entity CRUD (proteins, ligands), result-explorer search |
+| **data_platform** | `routers/data_platform.py` | Entity CRUD (proteins, ligands), entity search (`offset` or `cursor`, with `meta.nextCursor` while more rows remain), result-explorer search |
 | **tools** | `routers/tools.py` | Tool executions (list/get/cancel/confirm/run), clusters |
 | **files** | `routers/files.py` | File upload/download |
 | **entities** | `routers/entities.py` | Entity management |
 | **billing** | `routers/billing.py` | Billing endpoints |
+| **sse** | `routers/sse.py` | Gateway project stream (`GET /sse/{org}/stream/{project}`) |
 
 All routers share in-memory stores (dicts/lists) that are created in `MockServer.__init__` and passed into the router factory functions. This lets data flow between routers — for example, a tool execution in the tools router can inject records that are later visible via the data-platform router's result-explorer search.
 
@@ -25,6 +26,23 @@ All routers share in-memory stores (dicts/lists) that are created in `MockServer
 `tests/brd.pdb` fixture) so IDs stay stable under `--env local`. There is no
 separate test module for the mock server; that behavior is exercised indirectly
 by any local test that syncs a protein (e.g. the `registered_protein` fixture).
+
+**SSE stream (local only):** `GET /sse/{org}/stream/{project}` sends a `retry:`
+line, one `filters.dirty` frame naming every `filter=<id>=<pattern>` query
+param, then closes. `Executions.wait_for_ingestion` reads the execution row on
+connect, re-reads on that frame, and reconnects after the close, so a row that
+reads `DataIngesting` once (see `executions/search`) resolves on the second
+read.
+
+**Protein CSV import (local only):** an import-dataset `csv_path` run whose
+mapper targets `proteins.*` is ingested at submit
+(`_ingest_import_dataset_protein_csv` in `routers/tools.py`). Rows are
+read through the mapper's `proteins.<field>` keys, with header keys and cells
+stripped as the import tool does, and kept when they have an identifying field.
+A row with a `fasta_sequence` reuses the project's protein with that sequence;
+other rows are always created, under the run's project. A CSV with no
+importable rows ends the run `Failed` with a
+`statusReason`. Covered by `tests/test_protein_csv_import_local.py`.
 
 ## Running the Mock Server
 

@@ -252,6 +252,41 @@ DATA_PLATFORM_INGESTION_TIMEOUT_SECONDS = 3600.0
 """Default overall timeout (seconds) for
 :meth:`deeporigin.platform.executions.Executions.wait_for_ingestion`."""
 
+IMPORT_DATASET_PROTEINS_GROUP = "proteins"
+"""import-dataset result group for a protein CSV import: each CSV column ``c`` is
+sent as the mapper ``json-path`` ``proteins.c``."""
+
+IMPORT_DATASET_PROTEINS_IDENTITY_FIELDS: tuple[str, ...] = (
+    "fasta_sequence",
+    "pdb_id",
+    "uniprot_accession",
+    "external_id",
+    "file_path",
+)
+"""Protein CSV columns that identify a protein; a CSV needs at least one.
+
+The first four are the data platform's ``requireOneOf`` for proteins; with
+``file_path`` the import registers the protein from its structure file."""
+
+IMPORT_DATASET_PROTEINS_COLUMN_ALIASES: dict[str, str] = {
+    "sequence": "fasta_sequence",
+    "uniprot_id": "uniprot_accession",
+    "name": "protein_name",
+}
+"""Common protein CSV headers mapped to the protein field they should be renamed to."""
+
+IMPORT_DATASET_PROTEINS_DATABASE_KEY = "deeporigin.attributes_catalog"
+"""import-dataset ``database_key`` sent with a protein CSV import."""
+
+IMPORT_DATASET_PROTEINS_DATABASE_VERSION = "1.0.0"
+"""import-dataset ``database_version`` sent with a protein CSV import."""
+
+PROTEIN_IMPORT_FAILED_TITLE = "Protein import failed"
+"""Error title raised when a protein CSV import does not complete successfully."""
+
+PROTEIN_SEARCH_PAGE_SIZE = 500
+"""Page size used to read a project's proteins after a protein CSV import."""
+
 SSE_CONNECT_TIMEOUT_SECONDS = 10.0
 """Connect, write and pool timeout (seconds) when opening a gateway SSE stream,
 capped by the stream's read timeout (itself capped by the time left)."""
