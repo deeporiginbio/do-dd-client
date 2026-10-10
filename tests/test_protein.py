@@ -9,6 +9,7 @@ import pytest
 from deeporigin.drug_discovery import BRD_DATA_DIR, Protein
 from deeporigin.exceptions import DeepOriginException
 from deeporigin.platform.client import DeepOriginClient
+from tests.test_entities import _create_origin_source_protein
 
 
 def test_load_protein_from_cif_structure_factor():
@@ -80,6 +81,12 @@ def test_from_id_without_file_path_lv0(client: DeepOriginClient) -> None:
         "file_path": None,
         "pdb_id": None,
         "project_id": None,
+        "state": "unprocessed",
+        "preparation": None,
+        "origin_kind": None,
+        "origin_entity_type": None,
+        "origin_entity_id": None,
+        "origin_entity_display_id": None,
     }
     with patch.object(client.entities, "get_protein", return_value=record):
         protein = Protein.from_id("metadata-only", client=client)
@@ -88,6 +95,117 @@ def test_from_id_without_file_path_lv0(client: DeepOriginClient) -> None:
     assert protein.name == "orphan"
     assert protein.structure is None
     assert protein.remote_path is None
+    assert protein.state == "unprocessed"
+    assert protein.preparation is None
+    assert protein.origin_kind is None
+
+
+def test_from_id_hydrates_lifecycle_fields_lv1(client: DeepOriginClient) -> None:
+    """from_id copies state/preparation/origin_* from the entities API."""
+    source_protein_id = _create_origin_source_protein(client)
+    remote = f"testing/lifecycle-{uuid.uuid4().hex[:10]}.pdb"
+    client.files.upload(BRD_DATA_DIR / "brd.pdb", remote)
+    preparation = {"source": "mark_prepared", "execution_id": "exec-1"}
+    created = client.entities.create_protein(
+        file_path=remote,
+        protein_name="lifecycle",
+        pdb_id="1ABC",
+        state="prepared",
+        preparation=preparation,
+        origin={
+            "kind": "prepared",
+            "entity_type": "protein",
+            "entity_id": source_protein_id,
+        },
+    )
+    protein_id = created["data"]["id"]
+    assert protein_id != "brd"
+
+    protein = Protein.from_id(str(protein_id), client=client, download=False)
+    assert protein.state == "prepared"
+    assert protein.preparation == preparation
+    assert protein.origin_kind == "prepared"
+    assert protein.origin_entity_type == "protein"
+    assert protein.origin_entity_id == source_protein_id
+    assert "state: prepared" in repr(protein)
+
+
+def test_mock_create_protein_unique_path_searchable_lv0(
+    client: DeepOriginClient,
+) -> None:
+    """Non-canonical create_protein rows keep unset name and are searchable by path."""
+    if client.env != "local":
+        pytest.skip("mock server create_protein/search behavior is local-only")
+
+    remote = f"entities/proteins/unique-{uuid.uuid4().hex[:10]}.pdb"
+    client.files.upload(BRD_DATA_DIR / "brd.pdb", remote)
+    created = client.entities.create_protein(
+        file_path=remote,
+        pdb_id="1ABC",
+    )
+    row = created["data"]
+    assert row["id"] != "brd"
+    assert row.get("protein_name") is None
+    assert row["file_path"] == remote
+
+    found = client.entities.search_proteins(file_path=remote)
+    assert found["count"] >= 1
+    assert any(r["id"] == row["id"] for r in found["data"])
+
+    # Combined filters still apply after the exact-path shortcut.
+    mismatched = client.entities.search_proteins(file_path=remote, pdb_id="ZZZZ")
+    assert mismatched["count"] == 0
+    matched = client.entities.search_proteins(file_path=remote, pdb_id="1ABC")
+    assert matched["count"] >= 1
+    assert any(r["id"] == row["id"] for r in matched["data"])
+
+
+def test_refresh_requires_platform_id() -> None:
+    """refresh() raises when the protein has no platform id."""
+    protein = Protein.from_file(BRD_DATA_DIR / "brd.pdb")
+    with pytest.raises(ValueError, match="without a platform id"):
+        protein.refresh()
+
+
+def test_mark_prepared_requires_platform_id() -> None:
+    """mark_prepared() raises when the protein has no platform id."""
+    protein = Protein.from_file(BRD_DATA_DIR / "brd.pdb")
+    with pytest.raises(ValueError, match="without a platform id"):
+        protein.mark_prepared()
+
+
+def test_mark_prepared_and_refresh_lv1(client: DeepOriginClient) -> None:
+    """mark_prepared sets platform state and refresh keeps the instance in sync.
+
+    Uses a non-canonical ``file_path`` so the mock allocates a unique protein
+    row (not the shared ``brd`` id).
+    """
+    remote = f"testing/mark-prep-{uuid.uuid4().hex[:10]}.pdb"
+    client.files.upload(BRD_DATA_DIR / "brd.pdb", remote)
+    created = client.entities.create_protein(
+        file_path=remote,
+        protein_name="mark-prepared-demo",
+        state="unprocessed",
+    )
+    protein_id = created["data"]["id"]
+    assert protein_id != "brd"
+    protein = Protein.from_id(str(protein_id), client=client, download=False)
+    assert protein.state == "unprocessed"
+
+    protein.mark_prepared(client=client)
+    assert protein.state == "prepared"
+    assert isinstance(protein.preparation, dict)
+    assert protein.preparation.get("source") == "mark_prepared"
+
+    # Idempotent: second call leaves state prepared.
+    prep_before = protein.preparation
+    protein.mark_prepared(client=client)
+    assert protein.state == "prepared"
+    assert protein.preparation == prep_before
+
+    refreshed = Protein.from_id(str(protein.id), client=client, download=False)
+    assert refreshed.state == "prepared"
+    assert refreshed.preparation == protein.preparation
 
 
 def test_from_id_download_false_rehydrates_lv1(

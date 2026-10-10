@@ -2,6 +2,10 @@
 
 Notes from past merge-ready cycles. Read before starting; append after success.
 
+## 2026-10-09 — PR #669 — DDOS-8300 protein lifecycle / mark_prepared
+
+First CI failed because the shared mock `brd` protein was already `state=prepared` from earlier entities tests — do not assert mark_prepared audit fields on the canonical row. Extending mock `create_protein` for unique non-canonical paths invited Copilot rounds on leaked template `protein_name`, file_path search always returning `brd`, and exact-path shortcuts skipping other filters — route path-matched subsets through `_apply_search_filters` and clear template defaults before `set_data`.
+
 ## 2026-10-08 — PR #662 — DDOS-8296 Metabolism filters/force
 
 First push failed `ruff format` — run format locally before CI. Copilot needed four rounds: code fixes (`fetch_results` must use `_sites_dataframe`, validate filters before `run()`), notebook demos via dirty→`notebooks.sh`, then notebook copy must distinguish all-scored refusal vs partial-index warnings. Prod `level-1` and flaky `build-docs` (PyPI) are not branch-protection required; watch Ubuntu formatting + functionality only.
