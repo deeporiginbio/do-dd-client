@@ -90,6 +90,36 @@ protein = Protein.from_id("08AD337N5YV4Y", client=client)
 !!! note "Automatic metadata"
     The method automatically populates the protein's `name` field from the platform data, preferring `protein_name`, then `pdb_id`, then `gene_symbol` (in that order).
 
+### Importing a folder of structures
+
+To add many structures to your project at once, point `projects.sync_proteins` at a folder of `.pdb`, `.cif`, `.mmcif` or `.ent` files. It uploads the files, runs the import on Deep Origin, and returns the project's proteins once the import has finished.
+
+You need to be signed in (see [authentication](../../how-to/auth.md)) and have a current project (see [projects](./projects.md)).
+
+```{.python notest}
+from deeporigin import projects
+
+projects.load("my-project")
+
+proteins = projects.sync_proteins("~/structures/brd4")
+```
+
+`sync_proteins` also accepts a single file or a list of files. Pass `recursive=True` to include files in subfolders:
+
+```{.python notest}
+proteins = projects.sync_proteins("~/structures", recursive=True)
+proteins = projects.sync_proteins(["~/structures/brd4_holo.pdb", "~/structures/brd4_apo.cif"])
+```
+
+Each file becomes one protein, named after its file name without extension, as `Protein.from_file(path).sync()` does. So `brd4_holo.pdb` becomes `brd4_holo`, and two files called `model.pdb` in different subfolders become two proteins named `model`. A structure that is already in the project is reused and keeps its existing name. A file stamped by [Protein Prep](#preparing-a-protein) is recorded as prepared, with its PDB ID.
+
+`sync_proteins` returns every protein in the project, not only the ones from this folder, without downloading their structures. Call `download()` on a protein when you need its structure.
+
+!!! note "Files are checked before upload"
+    Before uploading anything, `sync_proteins` checks every file and raises one error that lists each file it can't import: missing files, unsupported file types, compressed files such as `.pdb.gz` (decompress them first), empty files, and files with no atom records. Nothing is uploaded until every file passes.
+
+!!! note "Errors"
+    `sync_proteins` raises `DeepOriginException` if the import fails, with the reason in the message, and `TimeoutError` if it hasn't finished within `timeout` seconds (one hour by default). Both messages include the import's execution id, for support. If live updates aren't available, `sync_proteins` warns and checks the import's progress periodically instead.
 
 ## Inspecting the Protein
 
