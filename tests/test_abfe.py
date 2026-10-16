@@ -332,8 +332,9 @@ def test_abfe_from_dto_rehydrates_prepared_system_lv0(client: DeepOriginClient):
     assert params.repeats == 2
     assert params.binding_n_windows == 24
     assert params.solvation_n_windows == 16
-    assert params.binding_steps == 100000
-    assert params.solvation_steps == 50000
+    # Stored pre-prod_ns inputs: steps converted with their dt (0.002 ps).
+    assert params.binding_prod_ns == pytest.approx(0.2)
+    assert params.solvation_prod_ns == pytest.approx(0.1)
 
     assert "abfe" in repr(abfe)
 

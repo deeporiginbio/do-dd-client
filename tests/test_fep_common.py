@@ -21,11 +21,13 @@ from deeporigin.exceptions import DeepOriginException
 
 def test_simulation_blocks_round_trip() -> None:
     """_simulation_blocks emits binding/solvation keys expected by workflow tools."""
-    params = ABFEParams(test_run=1, binding_n_windows=12, solvation_steps=99)
+    params = ABFEParams(test_run=1, binding_n_windows=12, solvation_prod_ns=0.5)
     blocks = _simulation_blocks(params)
     assert blocks["binding"]["test_run"] == 1
     assert blocks["binding"]["n_windows"] == 12
-    assert blocks["solvation"]["steps"] == 99
+    assert blocks["solvation"]["prod_ns"] == pytest.approx(0.5)
+    assert "steps" not in blocks["binding"]
+    assert blocks["binding"]["prod_md_options"]["dt"] == pytest.approx(0.0045)
     assert blocks["binding"]["emeq_md_options"]["T"] == pytest.approx(298.15)
 
 
@@ -60,8 +62,21 @@ def test_fep_params_from_inputs_round_trip() -> None:
     assert not isinstance(params, RBFEParams)
     assert params.temperature == pytest.approx(310.0)
     assert params.binding_n_windows == 20
-    assert params.solvation_steps == 80000
+    # Stored pre-prod_ns inputs: steps converted with their dt (0.003 ps).
+    assert params.solvation_prod_ns == pytest.approx(0.24)
+    assert params.binding_prod_ns == pytest.approx(0.6)
     assert params.repeats == 3
+
+
+def test_fep_params_from_inputs_prod_ns() -> None:
+    """Stored ``prod_ns`` is read as-is (no steps conversion)."""
+    inputs = {
+        "binding": {"prod_ns": 4.0, "prod_md_options": {"dt": 0.0045}},
+        "solvation": {"prod_ns": 1.5, "prod_md_options": {"dt": 0.0045}},
+    }
+    params = _fep_params_from_inputs(inputs)
+    assert params.binding_prod_ns == pytest.approx(4.0)
+    assert params.solvation_prod_ns == pytest.approx(1.5)
 
 
 def test_fep_params_from_inputs_rbfe_cls() -> None:
