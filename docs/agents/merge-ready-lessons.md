@@ -2,6 +2,10 @@
 
 Notes from past merge-ready cycles. Read before starting; append after success.
 
+## 2026-10-26 — PR #682 — DDOS-8713 LigandSet partial import
+
+Run `ruff format --check .` before push — the mock `tools.py` date literal failed formatting after `src/` was clean. A nested `import uuid` inside `process_csv` shadowed the module binding for the whole `_build_pose_registration_execution` helper and broke unrelated pose tests. Platform user_logs rows need `log_level`/`date`; Copilot also caught that positional `jobOutputs` mapping without `record_index` must be limited to full batches.
+
 ## 2026-10-21 — PR #680 — structure report notebook summary card
 
 Copilot’s first pass was right on all four nits: `>B<` needs the grade letter inline in the HTML (not wrapped in whitespace), grade hex on white should use palette index 6 not 5, Ligand filled pills should keep the default dark foreground, and the invalid-grade fallback must use `_row_get` for mappings. Run `ruff format` on both `structure_report_html.py` and `structure_report.py` before push — formatting CI failed on the first head even though only one file looked “new.”
