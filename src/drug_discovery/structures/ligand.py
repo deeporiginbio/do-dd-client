@@ -2906,6 +2906,7 @@ class LigandSet:
 
         from deeporigin.drug_discovery.import_dataset_sync import (
             MAX_SERVED_FILE_LIGAND_RECORDS,
+            apply_ligand_import_job_outputs,
             hydrate_ligand_ids_after_import,
             require_project_id,
             require_uniform_scope,
@@ -2956,46 +2957,6 @@ class LigandSet:
         )
         step = 0
 
-        def _apply_ligand_job_outputs(outputs: dict[str, Any]) -> None:
-            rows = outputs.get("ligands") or []
-            if not isinstance(rows, list):
-                rows = []
-            by_index: dict[int, dict[str, Any]] = {}
-            for row in rows:
-                if isinstance(row, dict) and "record_index" in row:
-                    by_index[int(row["record_index"])] = row
-
-            for idx, lig in enumerate(ligands_to_sync):
-                record = by_index.get(idx)
-                if (
-                    record is None
-                    and not by_index
-                    and idx < len(rows)
-                    and isinstance(rows[idx], dict)
-                ):
-                    record = rows[idx]
-                if record is None:
-                    raise DeepOriginException(
-                        title="Ligand sync failed",
-                        message=(
-                            "import-dataset did not return a ligand row for one or more "
-                            f"input records (missing index {idx})."
-                        ),
-                    )
-                lid = record.get("id")
-                if not lid:
-                    raise DeepOriginException(
-                        title="Ligand sync failed",
-                        message=(
-                            "import-dataset did not return a ligand id for one or more "
-                            "input records."
-                        ),
-                    )
-                lig.id = str(lid)
-                mol_file = record.get("mol_file")
-                if mol_file:
-                    lig.remote_path = str(mol_file)
-
         try:
             if use_sdf:
                 subset = LigandSet(ligands=ligands_to_sync)
@@ -3027,7 +2988,9 @@ class LigandSet:
                 step += 1
 
                 progress.start_step(step)
-                _apply_ligand_job_outputs(outputs)
+                apply_ligand_import_job_outputs(
+                    ligands_to_sync, outputs, client=client
+                )
                 progress.finish_step(
                     step,
                     detail=f"{len(ligands_to_sync)} ligand id(s) assigned",
@@ -3052,7 +3015,7 @@ class LigandSet:
                 writer = csv.DictWriter(fd, fieldnames=fieldnames)
                 writer.writeheader()
                 for lig in ligands_to_sync:
-                    smi = lig.smiles or lig.canonical_smiles or ""
+                    smi = lig.canonical_smiles or lig.smiles or ""
                     row: dict[str, str] = {
                         "smiles": smi,
                         "name": lig.name or "",
@@ -3102,7 +3065,9 @@ class LigandSet:
                     step += 1
 
                     progress.start_step(step)
-                    _apply_ligand_job_outputs(outputs)
+                    apply_ligand_import_job_outputs(
+                        ligands_to_sync, outputs, client=client
+                    )
                     progress.finish_step(
                         step,
                         detail=f"{len(ligands_to_sync)} ligand id(s) assigned",
