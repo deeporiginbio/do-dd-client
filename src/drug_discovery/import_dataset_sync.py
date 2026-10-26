@@ -160,12 +160,20 @@ def error_user_log_messages_for_execution(
     ul = client.user_logs
     if ul is None:
         return []
-    response = ul.search(execution_id=execution_id, limit=50)
+    try:
+        response = ul.search(execution_id=execution_id, limit=50)
+    except Exception:
+        return []
     messages: list[str] = []
     for row in response.get("data") or []:
         if not isinstance(row, dict):
             continue
-        if str(row.get("level") or "").upper() != "ERROR":
+        level = (
+            row.get("log_level")
+            if row.get("log_level") is not None
+            else row.get("level")
+        )
+        if str(level or "").upper() != "ERROR":
             continue
         message = row.get("message")
         if message is not None and str(message).strip():

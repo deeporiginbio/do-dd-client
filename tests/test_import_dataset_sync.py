@@ -52,7 +52,7 @@ def test_apply_ligand_import_job_outputs_warns_on_partial_import() -> None:
     mock_client.user_logs.search.return_value = {
         "data": [
             {
-                "level": "ERROR",
+                "log_level": "error",
                 "message": "Import: 1 ligand(s) had invalid SMILES.",
             }
         ]
@@ -61,6 +61,47 @@ def test_apply_ligand_import_job_outputs_warns_on_partial_import() -> None:
         apply_ligand_import_job_outputs(ligands, outputs, client=mock_client)
     assert ligands[0].id == "lig-1"
     assert ligands[1].id is None
+
+
+def test_apply_ligand_import_job_outputs_warns_when_user_log_search_fails() -> None:
+    ligands = [Ligand.from_smiles("CCO"), Ligand.from_smiles("CCN")]
+    outputs = {
+        "ligands": [{"id": "lig-1", "record_index": 0}],
+        "import_execution_id": "exec-partial",
+    }
+    mock_client = MagicMock()
+    mock_client.user_logs.search.side_effect = RuntimeError("user_logs unavailable")
+    with pytest.warns(UserWarning, match="1 of 2 ligand\\(s\\) were not imported"):
+        apply_ligand_import_job_outputs(ligands, outputs, client=mock_client)
+    assert ligands[0].id == "lig-1"
+
+
+def test_partial_import_warning_includes_mock_user_log_error_message(
+    client: DeepOriginClient,
+) -> None:
+    """Partial served import enriches warnings via the mock user_logs search route."""
+    invalid = "O=C(NCA1)CN1CCOCC1"
+    fd = tempfile.NamedTemporaryFile(mode="w", delete=False, suffix=".csv", newline="")
+    writer = csv.writer(fd)
+    writer.writerow(["smiles", "name"])
+    writer.writerow(["CCO", "ok"])
+    writer.writerow([invalid, "bad"])
+    fd.close()
+    remote = stage_local_file(client, fd.name)
+    Path(fd.name).unlink(missing_ok=True)
+    outputs = sync_process_csv(
+        client=client,
+        project_id=str(client.project_id),
+        file_path=remote,
+    )
+    ligands = [Ligand.from_smiles("CCO"), Ligand.from_smiles("CCN")]
+    with pytest.warns(UserWarning) as records:
+        apply_ligand_import_job_outputs(ligands, outputs, client=client)
+    assert ligands[0].id
+    assert ligands[1].id is None
+    messages = " ".join(str(w.message) for w in records)
+    assert "invalid SMILES" in messages
+    assert "1 of 2 ligand(s) were not imported" in messages
 
 
 def test_apply_ligand_import_job_outputs_raises_when_none_imported() -> None:

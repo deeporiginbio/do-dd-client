@@ -1421,11 +1421,14 @@ def create_tools_router(
                 user_logs[log_id] = {
                     "id": log_id,
                     "execution_id": eid,
-                    "level": "ERROR",
+                    "log_level": "error",
                     "message": (
                         f"Import: {invalid_count} ligand(s) had invalid SMILES."
                     ),
-                    "timestamp": datetime.now(timezone.utc).isoformat(),
+                    "date": datetime.now(timezone.utc).strftime(
+                        "%Y-%m-%dT%H:%M:%S.%f"
+                    )[:-3]
+                    + "Z",
                 }
             if not ligand_rows:
                 if invalid_count:
