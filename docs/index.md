@@ -17,8 +17,8 @@
 <iframe 
     src="./images/docking-running.html" 
     width="100%" 
-    height="340" 
+    height="420" 
     style="border:none;"
-    title="Running Docking Job"
+    title="Docking.watch() progress"
 ></iframe>
 

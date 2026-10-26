@@ -2,6 +2,10 @@
 
 Notes from past merge-ready cycles. Read before starting; append after success.
 
+## 2026-10-21 — PR #680 — structure report notebook summary card
+
+Copilot’s first pass was right on all four nits: `>B<` needs the grade letter inline in the HTML (not wrapped in whitespace), grade hex on white should use palette index 6 not 5, Ligand filled pills should keep the default dark foreground, and the invalid-grade fallback must use `_row_get` for mappings. Run `ruff format` on both `structure_report_html.py` and `structure_report.py` before push — formatting CI failed on the first head even though only one file looked “new.”
+
 ## 2026-10-13 — PR #674 — DDOS-8303 crystal-pocket docking docs
 
 Copilot flagged `max(..., key=lambda p: p.pose_score or -inf)` in docs/notebooks — valid `pose_score=0` must use an explicit `is None` check (benchmark script already did). When a benchmark protocol changes incompatibility with legacy CSV rows, use a new default filename instead of in-place schema migration so resume cannot mix measurements.

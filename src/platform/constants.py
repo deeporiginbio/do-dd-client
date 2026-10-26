@@ -20,7 +20,7 @@ PlatformStatus = Literal[
 
 ALLOWED_STATUS_TRANSITIONS: dict[str | None, set[str]] = {
     None: {"Quoted", "Created"},
-    "Quoted": {"Created", "Queued", "Running"},
+    "Quoted": {"Created", "Queued", "Running", "Cancelled"},
     "Created": {"Queued", "Running", "Failed", "Cancelled"},
     "Queued": {"Running", "Failed", "Cancelled"},
     "Running": {"Completed", "Failed", "Cancelled"},

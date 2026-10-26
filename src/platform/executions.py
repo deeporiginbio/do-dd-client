@@ -591,11 +591,12 @@ class Executions:
             execution_id: The execution ID to cancel.
 
         Returns:
-            None. If the execution is already in a terminal state, returns early.
+            None. Returns early if the execution is in a terminal state other than
+            ``Quoted``.
         """
         data = self.get(execution_id)
 
-        if data.get("status") in TERMINAL_STATES:
+        if data.get("status") in TERMINAL_STATES - {"Quoted"}:
             return
 
         self._c._patch(

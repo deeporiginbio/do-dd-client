@@ -125,7 +125,7 @@ pf.wait()
 pockets = pf.get_results()
 ```
 
-To cancel an asynchronous execution that is queued or running, call `cancel()`:
+To cancel an asynchronous execution that is quoted, queued or running, call `cancel()`:
 
 ```{.python notest}
 pf.cancel()

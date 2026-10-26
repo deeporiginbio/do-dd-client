@@ -117,9 +117,9 @@ def test_structure_report_result_from_json_round_trip() -> None:
     assert "weighted_score=0.700" in repr_str
 
     html = row._repr_html_()
-    assert "<table" in html
-    assert "Weighted score" in html
+    assert "Structure Grade" in html
     assert ">B<" in html
+    assert "<table" not in html
 
 
 def test_structure_reports_from_dto_rejects_empty() -> None:
