@@ -1425,9 +1425,9 @@ def create_tools_router(
                     "message": (
                         f"Import: {invalid_count} ligand(s) had invalid SMILES."
                     ),
-                    "date": datetime.now(timezone.utc).strftime(
-                        "%Y-%m-%dT%H:%M:%S.%f"
-                    )[:-3]
+                    "date": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%f")[
+                        :-3
+                    ]
                     + "Z",
                 }
             if not ligand_rows:
