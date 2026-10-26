@@ -3154,31 +3154,60 @@ def create_tools_router(
         return {"status": "ok"}
 
     @router.get("/tools/protected/tools/definitions")
-    def list_tools() -> dict[str, Any]:
-        """List all tool definitions."""
+    def list_tools(request: Request) -> Any:
+        """List tool definitions like tools-service after DDOS-8228.
+
+        ``Accept: application/json;v=2.0`` answers ``{count, data}``, paged by
+        ``page``/``pageSize`` and filtered by ``filter`` (``enabled`` only).
+        Without it (v1) the answer is a bare array of the enabled versions.
+        """
+        tools = [
+            {
+                "key": "test-tool",
+                "name": "Test Tool",
+                "version": "1.0.0",
+                "enabled": True,
+                "inputs": {},
+                "executors": [],
+                "description": "Test tool description",
+                "billingParser": {},
+                "toolManifestVersion": "1.0.0",
+            },
+            {
+                "key": "deeporigin.docking",
+                "name": "Docking Tool",
+                "version": "1.0.0",
+                "enabled": True,
+                "inputs": {},
+                "executors": [],
+                "description": "Docking tool description",
+                "billingParser": {},
+                "toolManifestVersion": "1.0.0",
+            },
+            {
+                "key": "deeporigin.docking",
+                "name": "Docking Tool",
+                "version": "0.9.0",
+                "enabled": False,
+                "inputs": {},
+                "executors": [],
+                "description": "Docking tool description",
+                "billingParser": {},
+                "toolManifestVersion": "1.0.0",
+            },
+        ]
+        query = request.query_params
+        flt = json.loads(query["filter"]) if "filter" in query else {}
+        if "application/json;v=2.0" not in request.headers.get("accept", ""):
+            flt.setdefault("enabled", True)
+            return [t for t in tools if t["enabled"] is flt["enabled"]]
+        if "enabled" in flt:
+            tools = [t for t in tools if t["enabled"] is flt["enabled"]]
+        page = int(query.get("page", 0))
+        page_size = int(query.get("pageSize", 100))
         return {
-            "data": [
-                {
-                    "key": "test-tool",
-                    "name": "Test Tool",
-                    "version": "1.0.0",
-                    "inputs": {},
-                    "executors": [],
-                    "description": "Test tool description",
-                    "billingParser": {},
-                    "toolManifestVersion": "1.0.0",
-                },
-                {
-                    "key": "deeporigin.docking",
-                    "name": "Docking Tool",
-                    "version": "1.0.0",
-                    "inputs": {},
-                    "executors": [],
-                    "description": "Docking tool description",
-                    "billingParser": {},
-                    "toolManifestVersion": "1.0.0",
-                },
-            ]
+            "count": len(tools),
+            "data": tools[page * page_size : (page + 1) * page_size],
         }
 
     @router.get("/tools/protected/tools/{tool_key}/definitions")

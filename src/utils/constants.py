@@ -248,6 +248,12 @@ EXECUTION_LIST_ORDER_CREATED_DESC = "createdAt desc"
 TOOL_EXECUTION_GET_ACCEPT_HEADER = "application/json;v=2.0"
 """Accept header for tools-service ``GET .../executions/{id}`` (v2 execution DTO)."""
 
+TOOL_DEFINITIONS_LIST_ACCEPT_HEADER = "application/json;v=2.0"
+"""Accept header for tools-service ``GET /protected/tools/definitions`` (v2: ``{count, data}``)."""
+
+TOOL_DEFINITIONS_LIST_PAGE_SIZE = 1000
+"""Rows per request when :meth:`deeporigin.platform.tools.Tools.list` pages the v2 list."""
+
 DATA_PLATFORM_INGESTION_TIMEOUT_SECONDS = 3600.0
 """Default overall timeout (seconds) for
 :meth:`deeporigin.platform.executions.Executions.wait_for_ingestion`."""

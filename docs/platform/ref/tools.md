@@ -11,7 +11,8 @@ client = DeepOriginClient()
 Then, the following methods can be used, for example:
 
 ```{.python continuation}
-tools = client.tools.list()
+tools = client.tools.list()  # every version of every tool
+enabled_tools = client.tools.list(enabled=True)  # enabled versions only
 ```
 
 
