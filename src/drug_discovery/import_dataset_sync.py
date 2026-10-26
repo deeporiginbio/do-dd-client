@@ -207,6 +207,7 @@ def apply_ligand_import_job_outputs(
         if (
             record is None
             and not by_index
+            and len(rows) == len(ligands)
             and idx < len(rows)
             and isinstance(rows[idx], dict)
         ):

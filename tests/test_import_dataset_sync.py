@@ -104,6 +104,30 @@ def test_partial_import_warning_includes_mock_user_log_error_message(
     assert "1 of 2 ligand(s) were not imported" in messages
 
 
+def test_apply_ligand_import_job_outputs_uses_positional_rows_only_when_complete() -> (
+    None
+):
+    ligands = [Ligand.from_smiles("CCO"), Ligand.from_smiles("CCN")]
+    outputs = {"ligands": [{"id": "lig-1"}, {"id": "lig-2"}]}
+    apply_ligand_import_job_outputs(ligands, outputs)
+    assert ligands[0].id == "lig-1"
+    assert ligands[1].id == "lig-2"
+
+
+def test_apply_ligand_import_job_outputs_partial_without_record_index_raises() -> None:
+    ligands = [
+        Ligand.from_smiles("CCO"),
+        Ligand.from_smiles("CCN"),
+        Ligand.from_smiles("CCC"),
+    ]
+    outputs = {
+        "ligands": [{"id": "lig-1"}, {"id": "lig-3"}],
+        "import_execution_id": "exec-ambiguous",
+    }
+    with pytest.raises(DeepOriginException, match="missing index 0"):
+        apply_ligand_import_job_outputs(ligands, outputs, client=MagicMock())
+
+
 def test_apply_ligand_import_job_outputs_raises_when_none_imported() -> None:
     ligands = [Ligand.from_smiles("CCO")]
     outputs = {"ligands": [], "import_execution_id": "exec-empty"}
