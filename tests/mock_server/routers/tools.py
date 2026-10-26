@@ -1368,8 +1368,6 @@ def create_tools_router(
         if inputs.get("process_csv"):
             import csv
             import io
-            import uuid
-            from datetime import datetime, timezone
 
             from rdkit import Chem
 
