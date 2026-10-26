@@ -2988,9 +2988,7 @@ class LigandSet:
                 step += 1
 
                 progress.start_step(step)
-                apply_ligand_import_job_outputs(
-                    ligands_to_sync, outputs, client=client
-                )
+                apply_ligand_import_job_outputs(ligands_to_sync, outputs, client=client)
                 progress.finish_step(
                     step,
                     detail=f"{len(ligands_to_sync)} ligand id(s) assigned",

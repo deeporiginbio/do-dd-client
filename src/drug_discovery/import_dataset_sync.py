@@ -235,9 +235,7 @@ def apply_ligand_import_job_outputs(
     ]
     execution_id = outputs.get("import_execution_id")
     if client is not None and execution_id:
-        for message in error_user_log_messages_for_execution(
-            client, str(execution_id)
-        ):
+        for message in error_user_log_messages_for_execution(client, str(execution_id)):
             if message not in detail_parts:
                 detail_parts.append(message)
     warnings.warn(" ".join(detail_parts), UserWarning, stacklevel=3)
