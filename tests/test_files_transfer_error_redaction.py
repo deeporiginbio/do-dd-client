@@ -37,6 +37,7 @@ def files(monkeypatch: pytest.MonkeyPatch) -> Files:
 
 
 def _assert_redacted(text: str) -> None:
+    """Assert the credential values in *text* are redacted and other params survive."""
     for secret in _SECRETS:
         assert secret not in text
     assert "X-Amz-Credential=REDACTED" in text
