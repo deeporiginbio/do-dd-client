@@ -35,7 +35,8 @@ def _redact_transfer_error(exc: Exception) -> Exception:
 
     httpx's ``HTTPStatusError`` text is the full signed URL, which stays
     replayable until it expires. The exception keeps its type, ``.request``
-    and ``.response``, so callers handle it as before.
+    and ``.response``, so callers handle it as before; only the message is
+    redacted, and ``.request``/``.response`` still carry the URL.
     """
     exc.args = tuple(
         _PRESIGNED_PARAM.sub(r"\g<1>REDACTED", arg) if isinstance(arg, str) else arg
@@ -565,9 +566,9 @@ class Files:
                 httpx.NetworkError,
                 httpx.TimeoutException,
             ) as exc:
+                last_exc = _redact_transfer_error(exc)
                 if tmp is not None:
                     os.unlink(tmp.name)
-                last_exc = _redact_transfer_error(exc)
                 if attempt < max_retries:
                     time.sleep(retry_backoff_factor * (2**attempt))
             except BaseException:
@@ -622,10 +623,10 @@ class Files:
                 httpx.NetworkError,
                 httpx.TimeoutException,
             ) as exc:
+                last_exc = _redact_transfer_error(exc)
                 if response is not None:
                     response.close()
                 download_client.close()
-                last_exc = _redact_transfer_error(exc)
                 if attempt < max_retries:
                     time.sleep(retry_backoff_factor * (2**attempt))
             except BaseException:
