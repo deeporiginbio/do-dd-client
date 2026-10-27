@@ -6,6 +6,7 @@ from collections.abc import Iterable, Iterator
 import concurrent.futures
 import os
 from pathlib import Path
+import re
 import tempfile
 import time
 from typing import IO, TYPE_CHECKING, Literal, overload
@@ -23,6 +24,24 @@ from deeporigin.utils.env import _ensure_do_folder
 _FILES_BASE = "/files"
 
 _MISSING_URL_FIELD = "Signed URL response missing 'url' field"
+
+_PRESIGNED_PARAM = re.compile(
+    r"(?i)(X-Amz-(?:Credential|Security-Token|Signature)=)[^&\s\"'<>()\[\]{},;]+"
+)
+
+
+def _redact_transfer_error(exc: Exception) -> Exception:
+    """Replace pre-signed S3 credential values in *exc*'s message with ``REDACTED``.
+
+    httpx's ``HTTPStatusError`` text is the full signed URL, which stays
+    replayable until it expires. The exception keeps its type, ``.request``
+    and ``.response``, so callers handle it as before.
+    """
+    exc.args = tuple(
+        _PRESIGNED_PARAM.sub(r"\g<1>REDACTED", arg) if isinstance(arg, str) else arg
+        for arg in exc.args
+    )
+    return exc
 
 
 def _cancel_pending(futures: Iterable[concurrent.futures.Future]) -> None:
@@ -490,7 +509,7 @@ class Files:
                 httpx.NetworkError,
                 httpx.TimeoutException,
             ) as exc:
-                last_exc = exc
+                last_exc = _redact_transfer_error(exc)
                 if attempt < max_retries:
                     time.sleep(retry_backoff_factor * (2**attempt))
 
@@ -548,7 +567,7 @@ class Files:
             ) as exc:
                 if tmp is not None:
                     os.unlink(tmp.name)
-                last_exc = exc
+                last_exc = _redact_transfer_error(exc)
                 if attempt < max_retries:
                     time.sleep(retry_backoff_factor * (2**attempt))
             except BaseException:
@@ -606,7 +625,7 @@ class Files:
                 if response is not None:
                     response.close()
                 download_client.close()
-                last_exc = exc
+                last_exc = _redact_transfer_error(exc)
                 if attempt < max_retries:
                     time.sleep(retry_backoff_factor * (2**attempt))
             except BaseException:
