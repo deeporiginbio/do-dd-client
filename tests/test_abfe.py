@@ -185,22 +185,100 @@ def test_abfe_from_dto_requires_steps(client: DeepOriginClient) -> None:
         ABFE.from_dto(fake_dto, client=client)
 
 
-def test_abfe_from_dto_rejects_system_prep_only_steps(
+def test_abfe_from_dto_rehydrates_system_prep_only_steps(
     client: DeepOriginClient,
 ) -> None:
-    """from_dto rejects legacy steps=['system-prep'] executions."""
+    """from_dto keeps steps=['system-prep'] runs and their pose."""
     fake_dto = {
         "executionId": "exec-prep",
         "status": "Succeeded",
-        "tool": {"key": "deeporigin.abfe-end-to-end", "version": "0.1.0"},
+        "tool": {"key": "deeporigin.abfe-end-to-end", "version": "3.0.0"},
         "userInputs": {
             "steps": ["system-prep"],
             "protein": {"id": "prot-1", "file_path": "testing/brd.pdb"},
-            "ligand1": {"id": "lig-1", "file_path": "testing/lig1.sdf"},
+            "pose1": {"id": "pose-1", "file_path": "testing/p1.sdf"},
         },
     }
-    with pytest.raises(ValueError, match="Legacy steps=\\['system-prep'\\]"):
-        ABFE.from_dto(fake_dto, client=client)
+    abfe = ABFE.from_dto(fake_dto, client=client)
+    assert abfe.steps == ["system-prep"]
+    assert abfe.pose1 is not None
+    assert abfe.pose1.id == "pose-1"
+
+
+def _abfe_combined(**kwargs) -> ABFE:
+    """ABFE in protein + pose mode with a fixed name (no entity lookups)."""
+    return ABFE(
+        protein=Protein(name="p", id="prot-1", remote_path="testing/brd.pdb"),
+        pose=Pose(ligand_id="lig-1", id="pose-1", remote_path="testing/p1.sdf"),
+        name="test",
+        **kwargs,
+    )
+
+
+def test_abfe_explicit_system_prep_only_steps() -> None:
+    """steps=["system-prep"] sends pose1 and no FEP blocks."""
+    params = _abfe_combined(steps=["system-prep"])._build_params()
+    assert params["steps"] == ["system-prep"]
+    assert params["pose1"] == {"id": "pose-1", "file_path": "testing/p1.sdf"}
+    assert "binding" not in params
+
+
+def test_abfe_rejects_unsupported_steps() -> None:
+    """Explicit steps must be one of the tool's plans."""
+    with pytest.raises(ValueError, match="Unsupported steps"):
+        _abfe_combined(steps=["abfe", "system-prep"])
+
+
+def test_abfe_results_dataframe_has_pose_std_and_result_id() -> None:
+    """The summary row carries pose1_id, std, and the ABFE result record id."""
+    abfe_tool_key = TOOL_KEYS_AND_VERSIONS["abfe"]["tool_key"]
+    response = {
+        "data": [
+            {
+                "id": "PREP-ROW",
+                "tool_key": abfe_tool_key,
+                "data": {"binding_xml_file_path": "x.xml"},
+            },
+            {
+                "id": "ABFE-ROW",
+                "tool_key": abfe_tool_key,
+                "data": {
+                    "protein_id": "prot-1",
+                    "pose1_id": "pose-1",
+                    "ligand1_id": "lig-1",
+                    "total": -8.5,
+                    "std": 0.4,
+                    "unit": "kcal/mol",
+                },
+            },
+        ]
+    }
+    df = _abfe_results_dataframe(response, tool_key=abfe_tool_key)
+    assert df is not None
+    assert list(df.columns[:6]) == [
+        "protein_id",
+        "pose1_id",
+        "ligand1_id",
+        "total",
+        "std",
+        "unit",
+    ]
+    assert df.iloc[0]["result_id"] == "ABFE-ROW"
+
+
+def test_abfe_to_anchor(monkeypatch: pytest.MonkeyPatch) -> None:
+    """to_anchor copies total, std and the result id onto the pose."""
+    abfe = _abfe_combined()
+    df = pd.DataFrame(
+        [{"pose1_id": "pose-1", "total": -8.5, "std": 0.4, "result_id": "ABFE-ROW"}]
+    )
+    monkeypatch.setattr(abfe, "get_results", lambda: df)
+    assert abfe.to_anchor() == {
+        "pose_id": "pose-1",
+        "dG": -8.5,
+        "std": 0.4,
+        "abfe_result_id": "ABFE-ROW",
+    }
 
 
 def test_pose_from_tool_input_rehydrates_pose_ref() -> None:

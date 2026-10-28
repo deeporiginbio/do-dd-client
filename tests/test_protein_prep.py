@@ -1527,6 +1527,7 @@ def test_run_with_extract_populates_get_crystal_poses(
     assert poses[0].ligand_id is not None
     assert poses[0].origin == "cocrystal"
     assert poses[0].protein_id is not None
+    assert poses[0].id is not None
 
 
 def test_configuration_freezes_find_pockets_after_id() -> None:

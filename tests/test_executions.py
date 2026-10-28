@@ -5,7 +5,7 @@ from unittest.mock import MagicMock
 import pandas as pd
 import pytest
 
-from deeporigin.drug_discovery import Konnektor, Ligand
+from deeporigin.drug_discovery import Konnektor, Pose
 from deeporigin.drug_discovery.execution import Execution
 from deeporigin.exceptions import DeepOriginException
 from deeporigin.platform.client import DeepOriginClient
@@ -87,12 +87,13 @@ def test_execution_sync_requires_tool_key() -> None:
 
 def test_execution_sync_applies_get_response(
     client: DeepOriginClient,
-    registered_ligand: Ligand,
-    registered_ligand_brd3: Ligand,
 ) -> None:
     """``sync`` calls ``executions.get`` and applies fields via ``update_from_dto``."""
     job = Konnektor(
-        ligands=[registered_ligand, registered_ligand_brd3],
+        poses=[
+            Pose(ligand_id="lig-1", id="pose-1", remote_path="poses/pose-1.sdf"),
+            Pose(ligand_id="lig-2", id="pose-2", remote_path="poses/pose-2.sdf"),
+        ],
         client=client,
     )
     job.run(quote=True)

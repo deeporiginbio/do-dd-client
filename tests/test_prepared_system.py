@@ -92,3 +92,16 @@ def test_prepared_system_show_raises_without_solute_pdb_when_requested_lv0():
     )
     with pytest.raises(DeepOriginException, match="solute_pdb_path is not set"):
         ps.show(solute=True)
+
+
+def test_from_json_reads_pose_ids_and_older_aliases_lv0():
+    """pose1_id/pose2_id are read, falling back to ligand*_pose_id."""
+    paths = {
+        "binding_xml_file_path": "b.xml",
+        "solvation_xml_ligand_file_path": "s.xml",
+        "system_pdb_file_path": "sys.pdb",
+    }
+    ps = PreparedSystem.from_json({**paths, "pose1_id": "p1", "pose2_id": "p2"})
+    assert (ps.pose1_id, ps.pose2_id) == ("p1", "p2")
+    old = PreparedSystem.from_json({**paths, "ligand1_pose_id": "p1"})
+    assert (old.pose1_id, old.pose2_id) == ("p1", None)

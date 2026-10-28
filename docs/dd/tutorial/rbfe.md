@@ -4,31 +4,36 @@ This document describes how to run a [relative binding free energy (RBFE) :octic
 
 RBFE compares two ligands bound to the same protein and reports the **difference**
 in their binding free energies (ΔΔG). Run it across a series of related ligands to
-rank them relative to one another before committing to synthesis.
+rank them relative to one another before committing to synthesis. Each ligand
+enters as a **pose**: its 3D placement in the binding site, for example from
+[Docking](./docking.md) or a crystal structure.
 
 With the `RBFE` class, you choose *what* to run by *what you pass in*; the
 workflow `steps` are inferred for you:
 
 | You pass | Inferred `steps` | Use when |
 |----------|------------------|----------|
-| `ligands=[...]` (+ `protein`) | `["konnektor", "system-prep", "rbfe"]` | You have a congeneric series (each ligand must already have a docked pose in the binding site — see [Docking](./docking.md)) and want the workflow to plan the pairwise network for you |
-| `pairs=[(a, b), ...]` (+ `protein`) | `["system-prep", "rbfe"]` | You already know which ligand pairs you want to compare |
+| `poses=[...]` (+ `protein`) | `["konnektor", "system-prep", "rbfe"]` | You have a congeneric series (one pose per ligand) and want the workflow to plan the pairwise network for you |
+| `pairs=[(a, b), ...]` (+ `protein`) | `["system-prep", "rbfe"]` | You already know which pose pairs you want to compare |
 | `prepared_systems=[...]` | `["rbfe"]` | You've already prepared systems with [SystemPrep](../tools/systemprep.md) and only want the free energy perturbation (FEP) calculation |
 
 Add `exp_abfe` and/or `fep_abfe` anchors to any of the above to also append a
-`cycle-closure` step, which converts pairwise ΔΔG into per-ligand absolute dG.
+`cycle-closure` step, which converts pairwise ΔΔG into per-pose absolute dG.
 
-You may pass exactly one of `ligands`, `pairs`, or `prepared_systems`.
+You may pass exactly one of `poses`, `pairs`, or `prepared_systems`. To run only
+part of a plan, such as `steps=["system-prep"]` to prepare systems now and run
+FEP later, pass `steps` yourself.
 
 ## Prerequisites
 
-We assume you have a protein and two or more ligands you want to compare. In this
-tutorial we use a protein and ligands from the BRD4 example dataset.
+We assume you have a protein and a pose for each of two or more ligands you want
+to compare. In this tutorial we use a protein and ligand poses from the BRD4
+example dataset.
 
 ```{.python notest}
 from deeporigin.drug_discovery import (
     BRD_DATA_DIR,
-    Ligand,
+    Pose,
     Protein,
     RBFE,
 )
@@ -36,16 +41,14 @@ from deeporigin.drug_discovery import (
 protein = Protein.from_file(BRD_DATA_DIR / "brd.pdb")
 protein.sync()
 
-ligand1 = Ligand.from_sdf(BRD_DATA_DIR / "brd-2.sdf")
-ligand1.sync()
-
-ligand2 = Ligand.from_sdf(BRD_DATA_DIR / "brd-3.sdf")
-ligand2.sync()
+pose1 = Pose.from_sdf(BRD_DATA_DIR / "brd-2.sdf", protein_id=protein.id)
+pose2 = Pose.from_sdf(BRD_DATA_DIR / "brd-3.sdf", protein_id=protein.id)
 ```
 
-`sync()` uploads each structure and registers it on the data platform. This is
-required: RBFE references proteins and ligands by their platform IDs and file
-paths. For more details, see [:material-page-previous: Getting Started](./getting-started.md).
+`sync()` and `Pose.from_sdf()` upload each structure and register it on the data
+platform. This is required: RBFE references proteins and poses by their platform
+IDs and file paths. Poses from [Docking](./docking.md) results are already
+registered. For more details, see [:material-page-previous: Getting Started](./getting-started.md).
 
 ## Ways of running
 
@@ -54,13 +57,13 @@ above). Pick the one that matches what you already have.
 
 ### Comparing specific pairs
 
-If you already know which ligands to compare, pass them as `pairs`. Each tuple is
+If you already know which poses to compare, pass them as `pairs`. Each tuple is
 one ΔΔG calculation. The workflow prepares each pair and runs FEP:
 
 ```{.python notest}
 rbfe = RBFE(
     protein=protein,
-    pairs=[(ligand1, ligand2)],
+    pairs=[(pose1, pose2)],
 )
 rbfe.start(quote=True)
 rbfe.estimate
@@ -70,19 +73,18 @@ Add more tuples to compare more pairs in a single execution (up to 20 pairs).
 
 ### Building a network automatically
 
-For a congeneric series, pass the whole ligand set and let the workflow plan the
+For a congeneric series, pass one pose per ligand and let the workflow plan the
 pairwise edges for you with Konnektor, then prep and run FEP on each edge:
 
 ```{.python notest}
-from deeporigin.drug_discovery import LigandSet
-
-ligands = LigandSet.from_dir(BRD_DATA_DIR)
-for ligand in ligands:
-    ligand.sync()
+poses = [
+    Pose.from_sdf(path, protein_id=protein.id)
+    for path in sorted(BRD_DATA_DIR.glob("brd-*.sdf"))
+]
 
 rbfe = RBFE(
     protein=protein,
-    ligands=ligands,
+    poses=poses,
     network_type="mst",
 )
 rbfe.start(quote=True)
@@ -92,8 +94,8 @@ rbfe.estimate
 `network_type` controls how pairs are chosen:
 
 - `"mst"` (default) — a minimum spanning tree: the fewest edges needed to connect
-  every ligand. Cheapest, but no redundancy.
-- `"star"` — every ligand connected to one central reference.
+  every pose. Cheapest, but no redundancy.
+- `"star"` — every pose connected to one central reference.
 - `"cyclic"` — adds redundant edges so you can check consistency around cycles
   (see [cycle closure](#converting-to-absolute-binding-free-energy)).
 
@@ -119,27 +121,27 @@ pose2=...).run()` — see [SystemPrep](../tools/systemprep.md).
 ## Converting to absolute binding free energy
 
 RBFE gives you *relative* values (ΔΔG between pairs). To turn these into
-*absolute* per-ligand values (dG), anchor the network with at least one known
+*absolute* per-pose values (dG), anchor the network with at least one known
 absolute value and append cycle closure. Provide the anchor as `fep_abfe`
 (computed by [absolute binding free energy (ABFE)](./abfe.md)) and/or `exp_abfe`
 (measured experimentally):
 
 ```{.python notest}
-anchor = [{"ligand_id": ligand1.id, "dG": -10.0}]
-
 rbfe = RBFE(
     protein=protein,
-    ligands=ligands,
+    poses=poses,
     network_type="mst",
-    fep_abfe=anchor,
+    fep_abfe=[abfe.to_anchor()],   # from a finished ABFE run on poses[0]
+    exp_abfe=[{"pose_id": poses[1].id, "dG": -9.5}],
 )
 assert rbfe.steps[-1] == "cycle-closure"
 ```
 
 Passing an anchor appends `cycle-closure` to `steps` automatically. Each anchor
-entry needs a string `ligand_id` and a numeric `dG` (in kcal/mol). Read the
-per-ligand results back with `get_cycle_closure_results()` (see
-[Results](#results)).
+entry needs the `pose_id` of a pose in the network and a numeric `dG` (in
+kcal/mol); `std` is optional. `ABFE.to_anchor()` builds one from an ABFE run,
+copying its dG and std. Read the per-pose results back with
+`get_cycle_closure_results()` (see [Results](#results)).
 
 ## Estimating costs
 
@@ -225,19 +227,19 @@ df
 
 This returns one row per pair:
 
-| protein_id | ligand1_id | ligand2_id | ddG              |
-|------------|------------|------------|------------------|
-| prot-...   | lig-...    | lig-...    | -1.23 kcal/mol   |
+| protein_id | pose1_id | pose2_id | ligand1_id | ligand2_id | ddG            |
+|------------|----------|----------|------------|------------|----------------|
+| prot-...   | pose-... | pose-... | lig-...    | lig-...    | -1.23 kcal/mol |
 
-If you ran cycle closure, also fetch the per-ligand absolute dG:
+If you ran cycle closure, also fetch the per-pose absolute dG:
 
 ```{.python notest}
 rbfe.get_cycle_closure_results()
 ```
 
-| ligand_id | dG    | unit     | cluster |
-|-----------|-------|----------|---------|
-| lig-...   | -9.9  | kcal/mol | 0       |
+| pose_id  | ligand_id | dG    | unit     | cluster |
+|----------|-----------|-------|----------|---------|
+| pose-... | lig-...   | -9.9  | kcal/mol | 0       |
 
 To inspect a prepared system or plan/visualize a network, see
 [RBFE tools](../tools/rbfe.md).
