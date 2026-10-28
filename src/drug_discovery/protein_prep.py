@@ -2372,12 +2372,15 @@ class ProteinPrep(
         result_type: str,
         *,
         filter_by_tool_key: bool = True,
+        keep_id: bool = False,
     ) -> list[dict[str, Any]]:
         """Return result-explorer data payloads for one child result type.
 
         Args:
             result_type: Indexed result type string.
             filter_by_tool_key: When False, match only ``compute_job_id``.
+            keep_id: Copy the result record ``id`` into each payload (when the
+                payload has none), so rows rehydrate as platform entities.
 
         Returns:
             Data dicts for this execution id, or an empty list on failure.
@@ -2400,6 +2403,8 @@ class ProteinPrep(
                 continue
             data = record.get("data")
             if isinstance(data, dict):
+                if keep_id and record.get("id") is not None:
+                    data = {"id": record["id"], **data}
                 rows.append(data)
         return rows
 
@@ -2513,6 +2518,7 @@ class ProteinPrep(
         indexed = self._result_rows(
             _RESULT_TYPE_POSE,
             filter_by_tool_key=False,
+            keep_id=True,
         )
         outputs = self._execution_outputs(dto)
         raw: Any = indexed if indexed else outputs.get("poses")

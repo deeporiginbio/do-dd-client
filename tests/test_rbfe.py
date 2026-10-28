@@ -137,15 +137,17 @@ def test_rbfe_from_dto_rehydrates_legacy_ligand_pairs(
     assert pose2.remote_path == remote2
 
 
-def test_rbfe_ligands_build_params() -> None:
-    """Konnektor steps build ligands[], network_type, and prep flags."""
+def _konnektor_pose(n: int) -> Pose:
+    """Registered pose stub for Konnektor-mode RBFE tests."""
+    return Pose(ligand_id=f"lig-{n}", id=f"pose-{n}", remote_path=f"testing/p{n}.sdf")
+
+
+def test_rbfe_poses_build_params() -> None:
+    """Konnektor steps build poses[], network_type, and prep flags."""
     protein = Protein(name="p", id="prot-1", remote_path="testing/brd.pdb")
-    ligand1 = Ligand.from_smiles("CCO", id="lig-1", remote_path="testing/lig1.sdf")
-    ligand2 = Ligand.from_smiles("CCN", id="lig-2", remote_path="testing/lig2.sdf")
-    ligand3 = Ligand.from_smiles("CCC", id="lig-3", remote_path="testing/lig3.sdf")
     rbfe = RBFE(
         protein=protein,
-        ligands=[ligand1, ligand2, ligand3],
+        poses=[_konnektor_pose(1), _konnektor_pose(2), _konnektor_pose(3)],
         network_type="star",
         retain_waters=False,
         padding=1.5,
@@ -153,25 +155,23 @@ def test_rbfe_ligands_build_params() -> None:
     params = rbfe._build_params()
     assert params["steps"] == ["konnektor", "system-prep", "rbfe"]
     assert params["protein"]["file_path"] == "testing/brd.pdb"
-    assert len(params["ligands"]) == 3
-    assert params["ligands"][0]["id"] == "lig-1"
-    assert params["ligands"][0]["file_path"] == "testing/lig1.sdf"
+    assert params["poses"][0] == {"id": "pose-1", "file_path": "testing/p1.sdf"}
+    assert len(params["poses"]) == 3
+    assert "ligands" not in params
     assert params["network_type"] == "star"
     assert "pairs" not in params
     assert params["padding"] == pytest.approx(1.5)
     assert "binding" in params
 
 
-def test_rbfe_ligands_cycle_closure_build_params() -> None:
-    """Anchor inputs append cycle-closure and serialize fep_abfe."""
+def test_rbfe_poses_cycle_closure_build_params() -> None:
+    """Anchor inputs append cycle-closure and serialize pose-keyed fep_abfe."""
     protein = Protein(name="p", id="prot-1", remote_path="testing/brd.pdb")
-    ligand1 = Ligand.from_smiles("CCO", id="lig-1", remote_path="testing/lig1.sdf")
-    ligand2 = Ligand.from_smiles("CCN", id="lig-2", remote_path="testing/lig2.sdf")
-    ligand3 = Ligand.from_smiles("CCC", id="lig-3", remote_path="testing/lig3.sdf")
+    anchor = {"pose_id": "pose-1", "dG": -10.0, "std": 0.3, "abfe_result_id": "r-1"}
     rbfe = RBFE(
         protein=protein,
-        ligands=[ligand1, ligand2, ligand3],
-        fep_abfe=[{"ligand_id": "lig-1", "dG": -10.0}],
+        poses=[_konnektor_pose(1), _konnektor_pose(2), _konnektor_pose(3)],
+        fep_abfe=[anchor],
     )
     params = rbfe._build_params()
     assert params["steps"] == [
@@ -180,15 +180,13 @@ def test_rbfe_ligands_cycle_closure_build_params() -> None:
         "rbfe",
         "cycle-closure",
     ]
-    assert params["fep_abfe"] == [{"ligand_id": "lig-1", "dG": -10.0}]
+    assert params["fep_abfe"] == [anchor]
 
 
 def test_rbfe_cycle_closure_requires_anchor() -> None:
     """cycle-closure without anchors is rejected at construction."""
     protein = Protein(name="p", id="prot-1", remote_path="testing/brd.pdb")
-    ligand1 = Ligand.from_smiles("CCO", id="lig-1", remote_path="testing/lig1.sdf")
-    ligand2 = Ligand.from_smiles("CCN", id="lig-2", remote_path="testing/lig2.sdf")
-    rbfe = RBFE(protein=protein, ligands=[ligand1, ligand2])
+    rbfe = RBFE(protein=protein, poses=[_konnektor_pose(1), _konnektor_pose(2)])
     rbfe.steps = ["konnektor", "system-prep", "rbfe", "cycle-closure"]
     with pytest.raises(ValueError, match="exp_abfe or fep_abfe is required"):
         rbfe._validate_step_inputs()
@@ -197,17 +195,51 @@ def test_rbfe_cycle_closure_requires_anchor() -> None:
 def test_rbfe_exp_abfe_build_params() -> None:
     """exp_abfe anchors append cycle-closure and serialize exp_abfe only."""
     protein = Protein(name="p", id="prot-1", remote_path="testing/brd.pdb")
-    ligand1 = Ligand.from_smiles("CCO", id="lig-1", remote_path="testing/lig1.sdf")
-    ligand2 = Ligand.from_smiles("CCN", id="lig-2", remote_path="testing/lig2.sdf")
     rbfe = RBFE(
         protein=protein,
-        ligands=[ligand1, ligand2],
-        exp_abfe=[{"ligand_id": "lig-1", "dG": -9.0}],
+        poses=[_konnektor_pose(1), _konnektor_pose(2)],
+        exp_abfe=[{"pose_id": "pose-1", "dG": -9.0}],
     )
     params = rbfe._build_params()
     assert "cycle-closure" in params["steps"]
-    assert params["exp_abfe"] == [{"ligand_id": "lig-1", "dG": -9.0}]
+    assert params["exp_abfe"] == [{"pose_id": "pose-1", "dG": -9.0}]
     assert "fep_abfe" not in params
+
+
+def test_rbfe_prepared_systems_with_anchors_send_prepared_systems() -> None:
+    """["rbfe", "cycle-closure"] still sends the prepared systems."""
+    rbfe = RBFE(
+        prepared_systems=[_sample_prepared_system()],
+        fep_abfe=[{"pose_id": "pose-1", "dG": -9.0}],
+    )
+    params = rbfe._build_params()
+    assert params["steps"] == ["rbfe", "cycle-closure"]
+    assert len(params["prepared_systems"]) == 1
+
+
+def test_rbfe_explicit_system_prep_only_steps() -> None:
+    """steps=["system-prep"] prepares pairs without FEP blocks."""
+    protein = Protein(name="p", id="prot-1", remote_path="testing/brd.pdb")
+    rbfe = RBFE(
+        protein=protein,
+        pairs=[(_konnektor_pose(1), _konnektor_pose(2))],
+        steps=["system-prep"],
+    )
+    params = rbfe._build_params()
+    assert params["steps"] == ["system-prep"]
+    assert params["pairs"][0]["pose1"]["id"] == "pose-1"
+    assert "binding" not in params
+
+
+def test_rbfe_rejects_unsupported_steps() -> None:
+    """Explicit steps must be one of the tool's plans."""
+    protein = Protein(name="p", id="prot-1", remote_path="testing/brd.pdb")
+    with pytest.raises(ValueError, match="Unsupported steps"):
+        RBFE(
+            protein=protein,
+            pairs=[(_konnektor_pose(1), _konnektor_pose(2))],
+            steps=["konnektor", "system-prep"],
+        )
 
 
 def test_cycle_closure_results_dataframe_nested_list() -> None:
@@ -310,26 +342,25 @@ def test_cycle_closure_results_dataframe_filters_non_rbfe_tool_key() -> None:
 def test_rbfe_cycle_closure_rejects_malformed_anchor() -> None:
     """Malformed anchor payloads are rejected before submission."""
     protein = Protein(name="p", id="prot-1", remote_path="testing/brd.pdb")
-    ligand1 = Ligand.from_smiles("CCO", id="lig-1", remote_path="testing/lig1.sdf")
-    ligand2 = Ligand.from_smiles("CCN", id="lig-2", remote_path="testing/lig2.sdf")
-    with pytest.raises(ValueError, match="non-empty string 'ligand_id'"):
+    poses = [_konnektor_pose(1), _konnektor_pose(2)]
+    with pytest.raises(ValueError, match="non-empty string 'pose_id'"):
         RBFE(
             protein=protein,
-            ligands=[ligand1, ligand2],
-            fep_abfe=[{"ligand_id": "", "dG": -10.0}],
+            poses=poses,
+            fep_abfe=[{"ligand_id": "lig-1", "dG": -10.0}],
         )
     with pytest.raises(ValueError, match="numeric 'dG' value"):
         RBFE(
             protein=protein,
-            ligands=[ligand1, ligand2],
-            fep_abfe=[{"ligand_id": "lig-1", "dG": "bad"}],
+            poses=poses,
+            fep_abfe=[{"pose_id": "pose-1", "dG": "bad"}],
         )
 
 
 def test_rbfe_rbfe_steps_require_prepared_systems() -> None:
     """RBFE-only steps reject when no input mode is provided."""
     with pytest.raises(
-        ValueError, match="Exactly one of ligands, pairs, or prepared_systems"
+        ValueError, match="Exactly one of poses, pairs, or prepared_systems"
     ):
         RBFE(prepared_systems=[])
 
@@ -669,24 +700,24 @@ def test_rbfe_ensure_synced_inputs_skips_sync_when_complete(
     pose2_sync.assert_not_called()
 
 
-def test_rbfe_from_dto_rejects_legacy_system_prep_only_steps(
+def test_rbfe_from_dto_rehydrates_system_prep_only_steps(
     client: DeepOriginClient,
 ) -> None:
-    """from_dto rejects legacy steps=['system-prep'] executions."""
+    """from_dto keeps steps=['system-prep'] runs and their pose pairs."""
     fake_dto = {
         "executionId": "exec-prep-1",
         "status": "Succeeded",
         "tool": {
             "key": TOOL_KEYS_AND_VERSIONS["rbfe"]["tool_key"],
-            "version": "0.1.0",
+            "version": "3.0.0",
         },
         "userInputs": {
             "steps": ["system-prep"],
             "protein": {"id": "prot-1", "file_path": "testing/brd.pdb"},
             "pairs": [
                 {
-                    "ligand1": {"id": "lig-1", "file_path": "testing/l1.sdf"},
-                    "ligand2": {"id": "lig-2", "file_path": "testing/l2.sdf"},
+                    "pose1": {"id": "pose-1", "file_path": "testing/p1.sdf"},
+                    "pose2": {"id": "pose-2", "file_path": "testing/p2.sdf"},
                 }
             ],
             "add_H_atoms": True,
@@ -694,8 +725,34 @@ def test_rbfe_from_dto_rejects_legacy_system_prep_only_steps(
             "padding": 1.25,
         },
     }
-    with pytest.raises(ValueError, match="Legacy steps=\\['system-prep'\\]"):
-        RBFE.from_dto(fake_dto, client=client)
+    rbfe = RBFE.from_dto(fake_dto, client=client)
+    assert rbfe.steps == ["system-prep"]
+    assert [(a.id, b.id) for a, b in rbfe.pairs] == [("pose-1", "pose-2")]
+
+
+def test_rbfe_from_dto_rehydrates_legacy_konnektor_ligands(
+    client: DeepOriginClient,
+) -> None:
+    """Pre-3.0 Konnektor runs (ligands[]) rehydrate as pose stubs."""
+    fake_dto = {
+        "executionId": "exec-konn-1",
+        "status": "Succeeded",
+        "tool": {
+            "key": TOOL_KEYS_AND_VERSIONS["rbfe"]["tool_key"],
+            "version": "2.0.38",
+        },
+        "userInputs": {
+            "steps": ["konnektor", "system-prep", "rbfe"],
+            "protein": {"id": "prot-1", "file_path": "testing/brd.pdb"},
+            "ligands": [
+                {"id": "lig-1", "file_path": "testing/l1.sdf"},
+                {"id": "lig-2", "file_path": "testing/l2.sdf"},
+            ],
+        },
+    }
+    rbfe = RBFE.from_dto(fake_dto, client=client)
+    assert [p.ligand_id for p in rbfe.poses] == ["lig-1", "lig-2"]
+    assert all(p.id is None for p in rbfe.poses)
 
 
 def test_rbfe_results_dataframe_columns() -> None:
@@ -711,6 +768,8 @@ def test_rbfe_results_dataframe_columns() -> None:
                     "total": -3875.483,
                     "unit": "kcal/mol",
                     "protein_id": "08BSPN9SNYVEA",
+                    "pose1_id": "08POSE1",
+                    "pose2_id": "08POSE2",
                     "ligand1_id": "08DK80B7DYTXH",
                     "ligand2_id": "08DKACBCXYTXX",
                     "binding_analysis": [{"repeat": 1}],
@@ -732,9 +791,18 @@ def test_rbfe_results_dataframe_columns() -> None:
     }
     df = _rbfe_results_dataframe(response, tool_key=rbfe_tool_key)
     assert df is not None
-    assert list(df.columns) == ["protein_id", "ligand1_id", "ligand2_id", "ddG"]
+    assert list(df.columns) == [
+        "protein_id",
+        "pose1_id",
+        "pose2_id",
+        "ligand1_id",
+        "ligand2_id",
+        "ddG",
+    ]
     assert len(df) == 2
     assert df.iloc[0]["protein_id"] == "08BSPN9SNYVEA"
+    assert df.iloc[0]["pose1_id"] == "08POSE1"
+    assert pd.isna(df.iloc[1]["pose1_id"])
     assert df.iloc[0]["ddG"] == "-3875.483 kcal/mol"
     assert df.iloc[1]["ddG"] == "1.5 kJ/mol"
 
@@ -857,8 +925,11 @@ def test_rbfe_get_prepared_system_returns_first(
         compute_job_id="exec-top",
         ligand1_id=None,
         ligand2_id=None,
+        pose1_id=None,
+        pose2_id=None,
         client=rbfe.client,
     )
+    assert rbfe.get_prepared_systems() == [first, second]
 
 
 def test_rbfe_get_prepared_system_passes_ligand_filters(
@@ -875,13 +946,17 @@ def test_rbfe_get_prepared_system_passes_ligand_filters(
     monkeypatch.setattr(PreparedSystem, "from_result", from_result)
     monkeypatch.setattr(rbfe, "sync", lambda: None)
 
-    out = rbfe.get_prepared_system(ligand1_id="lig-a", ligand2_id="lig-b")
+    out = rbfe.get_prepared_system(
+        ligand1_id="lig-a", ligand2_id="lig-b", pose1_id="pose-a"
+    )
 
     assert out is system
     from_result.assert_called_once_with(
         compute_job_id="exec-top",
         ligand1_id="lig-a",
         ligand2_id="lig-b",
+        pose1_id="pose-a",
+        pose2_id=None,
         client=rbfe.client,
     )
 

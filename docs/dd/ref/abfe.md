@@ -1,8 +1,10 @@
 # `deeporigin.drug_discovery.abfe`
 
 `ABFE` drives platform tool `deeporigin.abfe-end-to-end`. Constructor inputs infer workflow
-`steps` the same way as [`RBFE`](rbfe.md): `protein` + `ligand` runs
-`["system-prep", "abfe"]`; `prepared_system` runs `["abfe"]` only. FEP
+`steps` the same way as [`RBFE`](rbfe.md): `protein` + `pose` runs
+`["system-prep", "abfe"]`; `prepared_system` runs `["abfe"]` only. Pass
+`steps=["system-prep"]` to only prepare the system. `ABFE.to_anchor()` turns a
+finished run into a cycle-closure anchor for RBFE. FEP
 simulation settings use [`ABFEParams`](fep_common.md). RBFE uses a separate
 [`RBFEParams`](fep_common.md) type with relative-FEP window defaults.
 

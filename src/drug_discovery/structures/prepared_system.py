@@ -29,6 +29,8 @@ class PreparedSystem:
         protein_id: Protein ID used for preparation.
         ligand1_id: First ligand ID (ABFE or RBFE).
         ligand2_id: Second ligand ID (RBFE only); None for ABFE.
+        pose1_id: First pose ID (the pose the system was prepared from).
+        pose2_id: Second pose ID (RBFE only); None for ABFE.
         padding: Padding distance in nm, if known.
         add_H_atoms: Whether hydrogens were added, if known.
         retain_waters: Whether waters were retained, if known.
@@ -44,6 +46,8 @@ class PreparedSystem:
     protein_id: Optional[str] = None
     ligand1_id: Optional[str] = None
     ligand2_id: Optional[str] = None
+    pose1_id: Optional[str] = None
+    pose2_id: Optional[str] = None
     padding: Optional[float] = None
     add_H_atoms: Optional[bool] = None  # NOSONAR
     retain_waters: Optional[bool] = None
@@ -51,10 +55,14 @@ class PreparedSystem:
     compute_job_id: Optional[str] = None
 
     def __repr__(self) -> str:
-        workflow = "for RBFE" if self.ligand2_id is not None else "for ABFE"
-        parts = [f"protein_id={self.protein_id!r}", f"ligand1_id={self.ligand1_id!r}"]
-        if self.ligand2_id is not None:
-            parts.append(f"ligand2_id={self.ligand2_id!r}")
+        workflow = (
+            "for RBFE"
+            if self.ligand2_id is not None or self.pose2_id is not None
+            else "for ABFE"
+        )
+        parts = [f"protein_id={self.protein_id!r}", f"pose1_id={self.pose1_id!r}"]
+        if self.pose2_id is not None:
+            parts.append(f"pose2_id={self.pose2_id!r}")
         parts.append(workflow)
         return "PreparedSystem(" + ", ".join(parts) + ")"
 
@@ -117,7 +125,8 @@ class PreparedSystem:
 
         Required keys: ``binding_xml_file_path``, ``solvation_xml_ligand_file_path``,
         ``system_pdb_file_path``. Optional keys include ``solute_pdb_file_path``,
-        ``protein_id``, ``ligand1_id``, ``ligand2_id``, ``padding``, ``add_H_atoms``,
+        ``protein_id``, ``ligand1_id``, ``ligand2_id``, ``pose1_id``, ``pose2_id``
+        (or the older ``ligand1_pose_id`` / ``ligand2_pose_id``), ``padding``, ``add_H_atoms``,
         ``retain_waters``, ``protonate_protein``, ``id`` (result row id), and
         ``compute_job_id``.
 
@@ -152,6 +161,8 @@ class PreparedSystem:
             protein_id=data.get("protein_id"),
             ligand1_id=data.get("ligand1_id"),
             ligand2_id=data.get("ligand2_id"),
+            pose1_id=data.get("pose1_id") or data.get("ligand1_pose_id"),
+            pose2_id=data.get("pose2_id") or data.get("ligand2_pose_id"),
             padding=padding_f,
             add_H_atoms=data.get("add_H_atoms"),
             retain_waters=data.get("retain_waters"),
@@ -183,12 +194,40 @@ class PreparedSystem:
         return cls.from_json(payload)
 
     @classmethod
+    def from_id(
+        cls,
+        id: str,
+        *,
+        client: Optional[DeepOriginClient] = None,
+    ) -> Self:
+        """Load one prepared system by its result record ID.
+
+        Args:
+            id: Prepared-system result record ID.
+            client: Optional DeepOriginClient. If not provided, uses the default.
+
+        Returns:
+            The matching ``PreparedSystem``.
+
+        Raises:
+            ValueError: If no prepared-system result has this ID.
+        """
+        if client is None:
+            client = DeepOriginClient()
+        records = client.results.get_prepared_systems(id=id, limit=1).get("data", [])
+        if not records:
+            raise ValueError(f"No prepared-system result found for id={id!r}.")
+        return cls._from_record(records[0])
+
+    @classmethod
     def from_result(
         cls,
         *,
         protein_id: str | None = None,
         ligand1_id: str | None = None,
         ligand2_id: str | None = None,
+        pose1_id: str | None = None,
+        pose2_id: str | None = None,
         compute_job_id: str | None = None,
         padding: int | float | None = None,
         add_H_atoms: bool | None = None,  # NOSONAR
@@ -205,6 +244,8 @@ class PreparedSystem:
             protein_id: Optional protein ID to filter by.
             ligand1_id: Optional first ligand ID to filter by.
             ligand2_id: Optional second ligand ID to filter by (RBFE).
+            pose1_id: Optional first pose ID to filter by.
+            pose2_id: Optional second pose ID to filter by (RBFE).
             compute_job_id: Optional compute job ID to filter by.
             padding: Optional padding value to filter by.
             add_H_atoms: Optional add_H_atoms flag to filter by.
@@ -230,6 +271,8 @@ class PreparedSystem:
             protein_id=protein_id,
             ligand1_id=ligand1_id,
             ligand2_id=ligand2_id,
+            pose1_id=pose1_id,
+            pose2_id=pose2_id,
             compute_job_id=compute_job_id,
             padding=padding_int,
             add_H_atoms=add_H_atoms,

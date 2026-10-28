@@ -30,6 +30,11 @@ from deeporigin.platform.client import DeepOriginClient
 from deeporigin.platform.constants import TOOL_KEYS_AND_VERSIONS, is_success_status
 
 ABFEWorkflowStep = Literal["system-prep", "abfe"]
+_ABFE_STEP_PLANS: tuple[list[str], ...] = (
+    ["system-prep"],
+    ["system-prep", "abfe"],
+    ["abfe"],
+)
 
 
 @beartype
@@ -608,6 +613,10 @@ def _abfe_results_dataframe(
     data = _abfe_merged_result_data(response, tool_key=tool_key)
     if data is None:
         return None
+    for record in reversed(_abfe_filtered_records(response, tool_key=tool_key)):
+        if "total" in (record.get("data") or {}) and record.get("id") is not None:
+            data["result_id"] = record["id"]
+            break
     df = pd.json_normalize([data])
     drop_roots = frozenset({"binding_analysis", "solvation_analysis"})
     to_drop = [
@@ -615,7 +624,7 @@ def _abfe_results_dataframe(
     ]
     if to_drop:
         df = df.drop(columns=to_drop)
-    priority = ["protein_id", "ligand1_id", "total", "unit"]
+    priority = ["protein_id", "pose1_id", "ligand1_id", "total", "std", "unit"]
     head = [c for c in priority if c in df.columns]
     tail = [c for c in df.columns if c not in head]
     return df[head + tail]
@@ -641,9 +650,11 @@ def _pose_from_tool_input(ref: dict[str, Any]) -> Pose:
 class ABFE(Execution, AsyncExecutableMixin, NotebookWatchMixin):
     """ABFE workflow (``deeporigin.abfe-end-to-end``).
 
-    Platform ``steps`` are inferred from constructor inputs (see :meth:`_post_init`):
+    Platform ``steps`` are inferred from constructor inputs (see :meth:`_post_init`)
+    unless passed explicitly:
 
     - ``["system-prep", "abfe"]``: ``protein`` + ``pose`` / ``pose1``
+    - ``["system-prep"]``: ``protein`` + ``pose`` / ``pose1``, prepare only
     - ``["abfe"]``: ``prepared_system``
 
     Attributes:
@@ -666,6 +677,7 @@ class ABFE(Execution, AsyncExecutableMixin, NotebookWatchMixin):
         protonate_protein: bool = False,
         retain_waters: bool = True,
         padding: float = 1.0,
+        steps: list[ABFEWorkflowStep] | None = None,
         tool_version: str = TOOL_KEYS_AND_VERSIONS["abfe"]["tool_version"],
         client: DeepOriginClient | None = None,
         name: str | None = None,
@@ -690,12 +702,15 @@ class ABFE(Execution, AsyncExecutableMixin, NotebookWatchMixin):
             protonate_protein: Protonate protein during prep.
             retain_waters: Retain crystal waters during prep.
             padding: Solvation box padding (nm) during prep.
+            steps: Explicit workflow steps, e.g. ``["system-prep"]`` to only
+                prepare the system. Inferred from the inputs when omitted.
             tool_version: Platform tool version pin.
             client: Optional API client.
             name: Optional execution label. Auto-generated for combined mode.
 
         Raises:
-            ValueError: When inputs are missing or mutually exclusive.
+            ValueError: When inputs are missing or mutually exclusive, or
+                ``steps`` is not a supported plan.
         """
         super().__init__(client=client)
         self.tool_version = tool_version
@@ -710,6 +725,7 @@ class ABFE(Execution, AsyncExecutableMixin, NotebookWatchMixin):
         self.retain_waters = retain_waters
         self.padding = padding
         self.name = name
+        self._explicit_steps = list(steps) if steps is not None else None
         self._post_init()
 
     def _post_init(self) -> None:
@@ -723,8 +739,15 @@ class ABFE(Execution, AsyncExecutableMixin, NotebookWatchMixin):
                 "Exactly one of prepared_system or (protein and pose/pose1) "
                 "must be provided."
             )
-        if has_prep:
-            self.steps: list[ABFEWorkflowStep] = ["abfe"]
+        if self._explicit_steps is not None:
+            if self._explicit_steps not in _ABFE_STEP_PLANS:
+                raise ValueError(
+                    f"Unsupported steps={self._explicit_steps!r}; use one of "
+                    f"{list(_ABFE_STEP_PLANS)!r}."
+                )
+            self.steps: list[ABFEWorkflowStep] = self._explicit_steps
+        elif has_prep:
+            self.steps = ["abfe"]
         else:
             self.steps = ["system-prep", "abfe"]
         self._validate_step_inputs()
@@ -782,13 +805,7 @@ class ABFE(Execution, AsyncExecutableMixin, NotebookWatchMixin):
             msg = "Missing 'steps' in execution userInputs."
             raise ValueError(msg)
         instance.steps = list(raw_steps)
-
-        if instance.steps == ["system-prep"]:
-            msg = (
-                "Legacy steps=['system-prep'] executions are no longer supported "
-                "by ABFE.from_dto()."
-            )
-            raise ValueError(msg)
+        instance._explicit_steps = list(raw_steps)
 
         instance.protein = None
         instance.pose1 = None
@@ -827,6 +844,7 @@ class ABFE(Execution, AsyncExecutableMixin, NotebookWatchMixin):
                 protein_id=prepared_system_input.get("protein_id"),
                 ligand1_id=prepared_system_input.get("ligand1_id"),
                 ligand2_id=prepared_system_input.get("ligand2_id"),
+                pose1_id=prepared_system_input.get("pose1_id"),
             )
 
         return instance
@@ -962,11 +980,48 @@ class ABFE(Execution, AsyncExecutableMixin, NotebookWatchMixin):
         response = super().get_results()
         return _abfe_results_dataframe(response, tool_key=self.tool_key)
 
+    def to_anchor(self) -> dict[str, Any]:
+        """Return this run's result as an RBFE ``fep_abfe`` anchor.
+
+        The anchor pins the pose's absolute dG:
+        ``{"pose_id", "dG", "std", "abfe_result_id"}``, with ``dG`` taken from
+        the ABFE ``total``.
+
+        Returns:
+            An anchor dict for :class:`~deeporigin.drug_discovery.rbfe.RBFE`.
+
+        Raises:
+            DeepOriginException: If the run has no ABFE result yet.
+        """
+        df = self.get_results()
+        if df is None or df.empty or "total" not in df.columns:
+            raise DeepOriginException(
+                title="No ABFE result",
+                message="This ABFE run has no result to build an anchor from yet.",
+                fix="Wait for the run to finish, then call to_anchor() again.",
+            )
+        row = df.iloc[0]
+        pose_id = row.get("pose1_id")
+        if pd.isna(pose_id) and self.pose1 is not None:
+            pose_id = self.pose1.id
+        if pose_id is None or pd.isna(pose_id):
+            raise DeepOriginException(
+                title="No pose id on ABFE result",
+                message="This ABFE result does not name the pose it was run on.",
+            )
+        anchor: dict[str, Any] = {"pose_id": str(pose_id), "dG": float(row["total"])}
+        if "std" in df.columns and not pd.isna(row["std"]):
+            anchor["std"] = float(row["std"])
+        if "result_id" in df.columns and not pd.isna(row["result_id"]):
+            anchor["abfe_result_id"] = str(row["result_id"])
+        return anchor
+
     @beartype
     def get_prepared_system(
         self,
         *,
         ligand1_id: str | None = None,
+        pose1_id: str | None = None,
         sync: bool = True,
     ) -> PreparedSystem:
         """Load a :class:`PreparedSystem` from system-prep results for this execution.
@@ -977,6 +1032,7 @@ class ABFE(Execution, AsyncExecutableMixin, NotebookWatchMixin):
 
         Args:
             ligand1_id: Optional ligand ID to filter by.
+            pose1_id: Optional pose ID to filter by.
             sync: When ``True`` (default), refresh execution status from the
                 platform before loading prepared-system rows. Pass ``False`` when
                 the caller already synced or only needs paths from results.
@@ -1000,6 +1056,7 @@ class ABFE(Execution, AsyncExecutableMixin, NotebookWatchMixin):
             systems = PreparedSystem.from_result(
                 compute_job_id=self.id,
                 ligand1_id=ligand1_id,
+                pose1_id=pose1_id,
                 client=self.client,
             )
         except ValueError as exc:

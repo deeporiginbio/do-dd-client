@@ -1,16 +1,16 @@
-"""Synchronous ligand network generation with the Konnektor platform tool."""
+"""Synchronous pose network generation with the Konnektor platform tool."""
 
 from __future__ import annotations
 
 from dataclasses import dataclass
-from pathlib import Path
 from typing import Any, Literal
 
 from beartype import beartype
 
 from deeporigin.drug_discovery.execution import Execution, _default_execution_payload
 from deeporigin.drug_discovery.execution_mixins import SyncExecutableMixin
-from deeporigin.drug_discovery.structures.ligand import Ligand, LigandSet
+from deeporigin.drug_discovery.fep_common import _pose_tool_ref
+from deeporigin.drug_discovery.structures.pose import Pose, PoseSet
 from deeporigin.exceptions import DeepOriginException
 from deeporigin.platform.client import DeepOriginClient
 from deeporigin.platform.constants import TOOL_KEYS_AND_VERSIONS, is_success_status
@@ -24,12 +24,12 @@ class KonnektorResult:
     """Result of a successful Konnektor synchronous run.
 
     Attributes:
-        pairs: Resolved ligand pairs from the planned network edges.
+        pairs: Resolved pose pairs from the planned network edges.
         is_connected: Whether the generated network is fully connected.
         network_html: Inline interactive network visualization HTML.
     """
 
-    pairs: list[tuple[Ligand, Ligand]]
+    pairs: list[tuple[Pose, Pose]]
     is_connected: bool
     network_html: str
 
@@ -61,54 +61,33 @@ def _execution_outputs_dict(dto: dict[str, Any]) -> dict[str, Any]:
     return {}
 
 
-def _ligand_display_name(ligand: Ligand, index: int) -> str:
-    """Stable component name matching the Konnektor platform tool."""
-    if ligand.id is not None:
-        lid = str(ligand.id).strip()
-        if lid:
-            return lid
-    if ligand.remote_path is not None:
-        stem = Path(ligand.remote_path).stem.strip()
-        if stem:
-            return stem
-    return f"ligand_{index + 1}"
-
-
-def _ligand_lookup(ligands: LigandSet) -> dict[str, Ligand]:
-    """Map Konnektor edge endpoint names to :class:`Ligand` instances."""
-    lookup: dict[str, Ligand] = {}
-    for index, ligand in enumerate(ligands):
-        lookup[_ligand_display_name(ligand, index)] = ligand
-    return lookup
-
-
-def _resolve_ligand_endpoint(
+def _resolve_pose_endpoint(
     *,
-    name: str,
-    lookup: dict[str, Ligand],
+    pose_id: str,
+    lookup: dict[str, Pose],
     edge_idx: int,
     role: str,
-) -> Ligand:
-    """Resolve one Konnektor edge endpoint to an input ligand."""
-    ligand = lookup.get(name)
-    if ligand is None:
+) -> Pose:
+    """Resolve one Konnektor edge endpoint to an input pose."""
+    pose = lookup.get(pose_id)
+    if pose is None:
         raise DeepOriginException(
             title="Unknown Konnektor edge endpoint",
             message=(
-                f"Edge {edge_idx} {role} {name!r} does not match any input ligand."
+                f"Edge {edge_idx} {role} {pose_id!r} does not match any input pose."
             ),
         ) from None
-    return ligand
+    return pose
 
 
 def _konnektor_pairs_from_edges(
     edges: list[Any],
     *,
-    ligands: LigandSet,
-) -> list[tuple[Ligand, Ligand]]:
-    """Resolve Konnektor edge dicts to ligand pairs."""
-    lookup = _ligand_lookup(ligands)
-    out: list[tuple[Ligand, Ligand]] = []
+    poses: list[Pose],
+) -> list[tuple[Pose, Pose]]:
+    """Resolve Konnektor edge dicts (Pose ids) to pose pairs."""
+    lookup = {str(pose.id): pose for pose in poses}
+    out: list[tuple[Pose, Pose]] = []
     for idx, edge in enumerate(edges):
         if not isinstance(edge, dict):
             raise DeepOriginException(
@@ -124,17 +103,11 @@ def _konnektor_pairs_from_edges(
             ) from None
         out.append(
             (
-                _resolve_ligand_endpoint(
-                    name=source,
-                    lookup=lookup,
-                    edge_idx=idx,
-                    role="source",
+                _resolve_pose_endpoint(
+                    pose_id=source, lookup=lookup, edge_idx=idx, role="source"
                 ),
-                _resolve_ligand_endpoint(
-                    name=target,
-                    lookup=lookup,
-                    edge_idx=idx,
-                    role="target",
+                _resolve_pose_endpoint(
+                    pose_id=target, lookup=lookup, edge_idx=idx, role="target"
                 ),
             )
         )
@@ -144,7 +117,7 @@ def _konnektor_pairs_from_edges(
 def _konnektor_result_from_dto(
     dto: dict[str, Any],
     *,
-    ligands: LigandSet,
+    poses: list[Pose],
 ) -> KonnektorResult:
     """Extract a :class:`KonnektorResult` from a v0.5+ execution DTO."""
     outputs = _execution_outputs_dict(dto)
@@ -176,7 +149,7 @@ def _konnektor_result_from_dto(
             message="Expected jobOutputs.network_html to be a non-empty string.",
         ) from None
 
-    pairs = _konnektor_pairs_from_edges(edges, ligands=ligands)
+    pairs = _konnektor_pairs_from_edges(edges, poses=poses)
     return KonnektorResult(
         pairs=pairs,
         is_connected=is_connected,
@@ -184,33 +157,16 @@ def _konnektor_result_from_dto(
     )
 
 
-def _ligand_tool_input_row(ligand: Ligand) -> dict[str, str]:
-    """Build one ligand entry for the Konnektor ``ligands`` input array."""
-    row: dict[str, str] = {}
-    if ligand.remote_path is not None:
-        row["file_path"] = ligand.remote_path
-    if ligand.id is not None:
-        row["id"] = ligand.id
-    if ligand.smiles:
-        row["smiles"] = ligand.smiles
-    if "file_path" not in row and "id" not in row:
-        raise ValueError(
-            "Each Konnektor ligand must have a platform id or remote file path. "
-            "Call ligand.sync() or ligand.upload() first."
-        )
-    return row
-
-
 class Konnektor(Execution, SyncExecutableMixin):
-    """Generate a ligand network with Konnektor and return a :class:`KonnektorResult`.
+    """Plan an RBFE network over poses with Konnektor and return a :class:`KonnektorResult`.
 
-    Konnektor accepts at least two ligands. Each ligand is synced before execution
-    so the platform can receive either a ligand entity ID or a remote SDF path.
-    The synchronous :meth:`run` method returns resolved ligand pairs, connectivity,
-    and inline visualization HTML suitable for :class:`~deeporigin.drug_discovery.rbfe.RBFE`.
+    Konnektor accepts at least two poses, one per ligand. The synchronous
+    :meth:`run` method returns resolved pose pairs, connectivity, and inline
+    visualization HTML; pass ``result.pairs`` to
+    :class:`~deeporigin.drug_discovery.rbfe.RBFE` as ``pairs``.
 
     Attributes:
-        ligands: Ligands to connect.
+        poses: Poses to connect.
         network_type: Network topology planner, one of ``"star"``, ``"mst"``,
             or ``"cyclic"``. Defaults to ``"mst"``.
     """
@@ -221,7 +177,7 @@ class Konnektor(Execution, SyncExecutableMixin):
     def __init__(
         self,
         *,
-        ligands: list[Ligand] | LigandSet,
+        poses: list[Pose] | PoseSet,
         network_type: KonnektorNetworkType = "mst",
         tool_version: str = TOOL_KEYS_AND_VERSIONS["konnektor"]["tool_version"],
         client: DeepOriginClient | None = None,
@@ -230,34 +186,31 @@ class Konnektor(Execution, SyncExecutableMixin):
         """Create a Konnektor execution wrapper.
 
         Args:
-            ligands: At least two ligands. Local SDF-backed ligands are uploaded
-                during :meth:`run`; registered ligands can be passed directly.
+            poses: At least two poses, one per ligand (for example docked poses).
+                Unregistered poses are registered during :meth:`run`.
             network_type: Network topology planner, one of ``"star"``, ``"mst"``,
                 or ``"cyclic"``. Defaults to ``"mst"`` so the simplest
-                ``Konnektor(ligands=...)`` call works with two or more ligands.
+                ``Konnektor(poses=...)`` call works with two or more poses.
             tool_version: Platform tool version to execute.
             client: Optional API client.
             name: Optional execution label.
 
         Raises:
-            ValueError: If fewer than two ligands are provided.
+            ValueError: If fewer than two poses are provided.
         """
         super().__init__(client=client)
-        if isinstance(ligands, LigandSet):
-            self._ligands = ligands
-        else:
-            self._ligands = LigandSet(ligands=list(ligands))
-        if len(self._ligands) < 2:
-            raise ValueError("Konnektor requires at least two ligands.")
+        self._poses = list(poses)
+        if len(self._poses) < 2:
+            raise ValueError("Konnektor requires at least two poses.")
 
         self._network_type = network_type
         self.tool_version = tool_version
         self.name = name
 
     @property
-    def ligands(self) -> LigandSet:
-        """Ligands to connect."""
-        return self._ligands
+    def poses(self) -> list[Pose]:
+        """Poses to connect."""
+        return self._poses
 
     @property
     def network_type(self) -> KonnektorNetworkType:
@@ -265,14 +218,14 @@ class Konnektor(Execution, SyncExecutableMixin):
         return self._network_type
 
     def _ensure_platform_inputs(self) -> None:
-        """Sync ligands so Konnektor can resolve platform IDs or SDF paths."""
-        for ligand in self.ligands:
-            ligand.sync(lazy=True, client=self.client)
+        """Sync poses so each has a platform id and remote SDF path."""
+        for pose in self.poses:
+            pose.sync(lazy=True, client=self.client)
 
     def _make_inputs(self) -> dict[str, Any]:
-        """Build Konnektor tool inputs from synced ligands."""
+        """Build Konnektor tool inputs from synced poses."""
         return {
-            "ligands": [_ligand_tool_input_row(ligand) for ligand in self.ligands],
+            "poses": [_pose_tool_ref(pose) for pose in self.poses],
             "network_type": self.network_type,
         }
 
@@ -331,4 +284,4 @@ class Konnektor(Execution, SyncExecutableMixin):
                 ),
             ) from None
 
-        return _konnektor_result_from_dto(response, ligands=self.ligands)
+        return _konnektor_result_from_dto(response, poses=self.poses)

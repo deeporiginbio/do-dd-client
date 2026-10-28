@@ -7,7 +7,6 @@ from typing import Any
 
 from beartype import beartype
 
-from deeporigin.drug_discovery.structures.ligand import Ligand
 from deeporigin.drug_discovery.structures.pose import Pose
 from deeporigin.drug_discovery.structures.prepared_system import PreparedSystem
 from deeporigin.drug_discovery.structures.protein import Protein
@@ -118,22 +117,6 @@ def _protein_from_tool_input(
 
 
 @beartype
-def _ligand_tool_ref(ligand: Ligand) -> dict[str, str]:
-    """Serialize a ligand for workflow ``ligand1`` / ``pairs[]`` inputs."""
-    if ligand.remote_path is None:
-        msg = "Ligand must be synced before submitting (remote_path is missing)."
-        raise DeepOriginException(
-            title="Ligand not synced",
-            message=msg,
-            fix="Call ligand.sync(client=...) before start().",
-        )
-    ref: dict[str, str] = {"file_path": ligand.remote_path}
-    if ligand.id is not None:
-        ref["id"] = ligand.id
-    return ref
-
-
-@beartype
 def _pose_tool_ref(pose: Pose) -> dict[str, str]:
     """Serialize a pose for workflow ``pose1`` / ``pairs[].pose*`` inputs."""
     if pose.remote_path is None:
@@ -166,6 +149,10 @@ def _prepared_system_tool_ref(prepared_system: PreparedSystem) -> dict[str, str]
         out["ligand1_id"] = prepared_system.ligand1_id
     if prepared_system.ligand2_id is not None:
         out["ligand2_id"] = prepared_system.ligand2_id
+    if prepared_system.pose1_id is not None:
+        out["pose1_id"] = prepared_system.pose1_id
+    if prepared_system.pose2_id is not None:
+        out["pose2_id"] = prepared_system.pose2_id
     return out
 
 
