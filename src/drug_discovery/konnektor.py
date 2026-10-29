@@ -221,6 +221,7 @@ class Konnektor(Execution, SyncExecutableMixin):
         """Sync poses so each has a platform id and remote SDF path."""
         for pose in self.poses:
             pose.sync(lazy=True, client=self.client)
+            pose.ensure_remote_path(client=self.client, label="Pose")
 
     def _make_inputs(self) -> dict[str, Any]:
         """Build Konnektor tool inputs from synced poses."""

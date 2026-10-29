@@ -277,6 +277,13 @@ class RBFE(Execution, AsyncExecutableMixin, NotebookWatchMixin):
                     f"Unsupported steps={self._explicit_steps!r}; use one of "
                     f"{list(_RBFE_STEP_PLANS)!r}."
                 )
+            if (self.exp_abfe or self.fep_abfe) and "cycle-closure" not in (
+                self._explicit_steps
+            ):
+                raise ValueError(
+                    "exp_abfe/fep_abfe need 'cycle-closure' in steps; add it or "
+                    "drop the anchors."
+                )
             self.steps: list[RBFEWorkflowStep] = self._explicit_steps
         else:
             if has_prep:

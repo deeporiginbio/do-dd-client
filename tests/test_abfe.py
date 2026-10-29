@@ -281,6 +281,22 @@ def test_abfe_to_anchor(monkeypatch: pytest.MonkeyPatch) -> None:
     }
 
 
+def test_abfe_to_anchor_falls_back_to_prepared_system_pose(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Without pose1_id on the result, the prepared system's pose is used."""
+    abfe = ABFE(
+        prepared_system=PreparedSystem(
+            binding_xml_path="b.xml",
+            solvation_xml_path="s.xml",
+            system_pdb_path="",
+            pose1_id="pose-ps",
+        ),
+    )
+    monkeypatch.setattr(abfe, "get_results", lambda: pd.DataFrame([{"total": -7.0}]))
+    assert abfe.to_anchor() == {"pose_id": "pose-ps", "dG": -7.0}
+
+
 def test_pose_from_tool_input_rehydrates_pose_ref() -> None:
     """_pose_from_tool_input rebuilds Pose kwargs from stored execution inputs."""
     pose = _pose_from_tool_input(

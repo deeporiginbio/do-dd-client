@@ -231,6 +231,18 @@ def test_rbfe_explicit_system_prep_only_steps() -> None:
     assert "binding" not in params
 
 
+def test_rbfe_explicit_steps_without_cycle_closure_reject_anchors() -> None:
+    """Anchors with explicit steps lacking cycle-closure raise instead of vanishing."""
+    protein = Protein(name="p", id="prot-1", remote_path="testing/brd.pdb")
+    with pytest.raises(ValueError, match="need 'cycle-closure' in steps"):
+        RBFE(
+            protein=protein,
+            pairs=[(_konnektor_pose(1), _konnektor_pose(2))],
+            fep_abfe=[{"pose_id": "pose-1", "dG": -9.0}],
+            steps=["system-prep", "rbfe"],
+        )
+
+
 def test_rbfe_rejects_unsupported_steps() -> None:
     """Explicit steps must be one of the tool's plans."""
     protein = Protein(name="p", id="prot-1", remote_path="testing/brd.pdb")
