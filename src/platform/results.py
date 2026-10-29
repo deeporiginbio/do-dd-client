@@ -627,7 +627,6 @@ class Results:
     def get_prepared_systems(
         self,
         *,
-        id: str | None = None,
         protein_id: str | None = None,
         ligand1_id: str | None = None,
         ligand2_id: str | None = None,
@@ -653,7 +652,6 @@ class Results:
         ``client.project_id`` is set, only rows for that project are returned.
 
         Args:
-            id: Optional prepared-system result record ID to filter by.
             protein_id: Optional protein ID to filter by.
             ligand1_id: Optional ligand1 ID to filter by.
             ligand2_id: Optional ligand2 ID to filter by.
@@ -674,7 +672,6 @@ class Results:
             ``meta`` from the final response.
         """
         filter_dict = _build_result_filter(
-            id=id,
             protein_id=protein_id,
             ligand1_id=ligand1_id,
             ligand2_id=ligand2_id,
