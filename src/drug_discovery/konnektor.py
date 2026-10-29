@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any, Literal
 
 from beartype import beartype
@@ -26,24 +27,36 @@ class KonnektorResult:
     Attributes:
         pairs: Resolved pose pairs from the planned network edges.
         is_connected: Whether the generated network is fully connected.
-        network_html: Inline interactive network visualization HTML.
+        network_html_file: Remote path of the interactive network view, fetched
+            by :meth:`show_network`.
     """
 
     pairs: list[tuple[Pose, Pose]]
     is_connected: bool
-    network_html: str
+    network_html_file: str | None = None
+    client: DeepOriginClient | None = field(default=None, repr=False, compare=False)
 
     def show_network(self) -> Any:
         """Display the network visualization in IPython.
 
-        Embeds ``network_html`` in a sandboxed iframe (same helper as Mol*
-        views) so server-supplied markup cannot write to the working directory
-        or run with the notebook page origin.
+        Downloads the network view and embeds it in a sandboxed iframe (same
+        helper as Mol* views) so server-supplied markup cannot write to the
+        working directory or run with the notebook page origin.
         """
         from deeporigin.utils.notebook import render_html
 
+        if not self.network_html_file:
+            raise DeepOriginException(
+                title="No Konnektor network view",
+                message="This Konnektor result has no network_html_file.",
+            )
         try:
-            return render_html(self.network_html, height=1000)
+            client = self.client if self.client is not None else DeepOriginClient()
+            local_path = client.files.download(
+                remote_path=self.network_html_file, lazy=True
+            )
+            html = Path(local_path).read_text(encoding="utf-8")
+            return render_html(html, height=1000)
         except Exception as exc:
             raise DeepOriginException(
                 title="Failed to display Konnektor network",
@@ -118,6 +131,7 @@ def _konnektor_result_from_dto(
     dto: dict[str, Any],
     *,
     poses: list[Pose],
+    client: DeepOriginClient | None = None,
 ) -> KonnektorResult:
     """Extract a :class:`KonnektorResult` from a v0.5+ execution DTO."""
     outputs = _execution_outputs_dict(dto)
@@ -142,18 +156,15 @@ def _konnektor_result_from_dto(
             message="Expected jobOutputs.ligand_network.is_connected to be a bool.",
         ) from None
 
-    network_html = outputs.get("network_html")
-    if not isinstance(network_html, str) or not network_html:
-        raise DeepOriginException(
-            title="Konnektor response missing network_html",
-            message="Expected jobOutputs.network_html to be a non-empty string.",
-        ) from None
-
+    network_html_file = ligand_network.get("network_html_file")
     pairs = _konnektor_pairs_from_edges(edges, poses=poses)
     return KonnektorResult(
         pairs=pairs,
         is_connected=is_connected,
-        network_html=network_html,
+        network_html_file=network_html_file
+        if isinstance(network_html_file, str)
+        else None,
+        client=client,
     )
 
 
@@ -285,4 +296,6 @@ class Konnektor(Execution, SyncExecutableMixin):
                 ),
             ) from None
 
-        return _konnektor_result_from_dto(response, poses=self.poses)
+        return _konnektor_result_from_dto(
+            response, poses=self.poses, client=self.client
+        )
