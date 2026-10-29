@@ -465,6 +465,7 @@ class Admet(
         method: Literal["maplight", "togo"] = "togo",
         batch_size: int | None = None,
         client: DeepOriginClient | None = None,
+        tool_version: str | None = None,
     ) -> None:
         """Configure an ADMET prediction run.
 
@@ -483,7 +484,7 @@ class Admet(
             raise ValueError(
                 f"batch_size must be at least {ADMET_MIN_BATCH_SIZE} (got {batch_size})."
             )
-        super().__init__(client=client)
+        super().__init__(client=client, tool_version=tool_version)
         if isinstance(ligands, LigandSet):
             self._ligands: list[Ligand] = list(ligands.ligands)
         else:

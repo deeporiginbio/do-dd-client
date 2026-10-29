@@ -1350,6 +1350,7 @@ def test_extract_start_exposes_crystal_pockets(
     assert pockets is not None
     assert len(pockets) >= 1
     assert pockets[0].origin == "from-crystal-ligand"
+    assert pockets[0].id is not None
 
 
 def test_get_pockets_returns_none_when_not_published() -> None:

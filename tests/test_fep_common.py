@@ -19,11 +19,14 @@ from deeporigin.exceptions import DeepOriginException
 
 def test_simulation_blocks_round_trip() -> None:
     """_simulation_blocks emits binding/solvation keys expected by workflow tools."""
-    params = ABFEParams(test_run=1, binding_n_windows=12, solvation_steps=99)
+    params = ABFEParams(test_run=1, binding_n_windows=12, solvation_prod_ns=0.5)
     blocks = _simulation_blocks(params)
     assert blocks["binding"]["test_run"] == 1
     assert blocks["binding"]["n_windows"] == 12
-    assert blocks["solvation"]["steps"] == 99
+    assert blocks["solvation"]["prod_ns"] == pytest.approx(0.5)
+    assert blocks["binding"]["prod_ns"] == pytest.approx(5.0)
+    assert "steps" not in blocks["binding"]
+    assert "steps" not in blocks["solvation"]
     assert blocks["binding"]["emeq_md_options"]["T"] == pytest.approx(298.15)
 
 
@@ -58,8 +61,19 @@ def test_fep_params_from_inputs_round_trip() -> None:
     assert not isinstance(params, RBFEParams)
     assert params.temperature == pytest.approx(310.0)
     assert params.binding_n_windows == 20
-    assert params.solvation_steps == 80000
+    # Older runs stored steps; 80000 steps x 0.003 ps = 0.24 ns.
+    assert params.solvation_prod_ns == pytest.approx(0.24)
+    assert params.binding_prod_ns == pytest.approx(0.6)
     assert params.repeats == 3
+
+
+def test_fep_params_from_inputs_reads_prod_ns() -> None:
+    """Stored prod_ns is read as is."""
+    params = _fep_params_from_inputs(
+        {"binding": {"prod_ns": 3.0}, "solvation": {"prod_ns": 1.5}}
+    )
+    assert params.binding_prod_ns == pytest.approx(3.0)
+    assert params.solvation_prod_ns == pytest.approx(1.5)
 
 
 def test_fep_params_from_inputs_rbfe_cls() -> None:

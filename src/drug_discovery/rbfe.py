@@ -184,6 +184,7 @@ class RBFE(Execution, AsyncExecutableMixin, NotebookWatchMixin):
     """
 
     tool_key: str = TOOL_KEYS_AND_VERSIONS["rbfe"]["tool_key"]
+    tool_version: str = TOOL_KEYS_AND_VERSIONS["rbfe"]["tool_version"]
 
     def __init__(
         self,
@@ -201,7 +202,7 @@ class RBFE(Execution, AsyncExecutableMixin, NotebookWatchMixin):
         exp_abfe: list[RBFEAnchorInput] | None = None,
         fep_abfe: list[RBFEAnchorInput] | None = None,
         steps: list[RBFEWorkflowStep] | None = None,
-        tool_version: str = TOOL_KEYS_AND_VERSIONS["rbfe"]["tool_version"],
+        tool_version: str | None = None,
         client: DeepOriginClient | None = None,
         name: str | None = None,
     ) -> None:
@@ -242,8 +243,7 @@ class RBFE(Execution, AsyncExecutableMixin, NotebookWatchMixin):
             ValueError: When inputs are missing or mutually exclusive, or
                 ``steps`` is not a supported plan.
         """
-        super().__init__(client=client)
-        self.tool_version = tool_version
+        super().__init__(client=client, tool_version=tool_version)
         self.exp_abfe = list(exp_abfe or [])
         self.fep_abfe = list(fep_abfe or [])
         self.protein = protein

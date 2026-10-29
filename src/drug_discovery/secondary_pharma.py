@@ -619,6 +619,7 @@ class SecondaryPharmacology(
     """
 
     tool_key: str = TOOL_KEYS_AND_VERSIONS["secondary_pharma"]["tool_key"]
+    tool_version: str = TOOL_KEYS_AND_VERSIONS["secondary_pharma"]["tool_version"]
     effort: int = 1
 
     @beartype
@@ -631,7 +632,7 @@ class SecondaryPharmacology(
         effort: int = 1,
         batch_size: int = 30,
         self_test: bool = False,
-        tool_version: str = TOOL_KEYS_AND_VERSIONS["secondary_pharma"]["tool_version"],
+        tool_version: str | None = None,
         client: DeepOriginClient | None = None,
         name: str | None = None,
     ) -> None:
@@ -695,8 +696,7 @@ class SecondaryPharmacology(
                 "result is ever produced -- use method='ligand-ml' instead."
             )
 
-        super().__init__(client=client)
-        self.tool_version = tool_version
+        super().__init__(client=client, tool_version=tool_version)
         self.effort = effort
         self._batch_size = batch_size
         self._method = method
@@ -812,7 +812,7 @@ class SecondaryPharmacology(
         *,
         full: bool = False,
         panel_version: str | None = None,
-        tool_version: str = TOOL_KEYS_AND_VERSIONS["secondary_pharma"]["tool_version"],
+        tool_version: str | None = None,
         client: DeepOriginClient | None = None,
     ) -> pd.DataFrame:
         """Return the current scoring panel, or an earlier version of it.
@@ -827,8 +827,8 @@ class SecondaryPharmacology(
             panel_version: An immutable panel version to look up instead of the current
                 panel.
             tool_version: Platform tool version to look up (ignored when
-                ``panel_version`` is given). Defaults to the pinned major version in
-                :data:`TOOL_KEYS_AND_VERSIONS`.
+                ``panel_version`` is given). Defaults to the class's
+                :attr:`tool_version`.
             client: Optional API client. Uses the default if not provided.
 
         Returns:
@@ -847,7 +847,7 @@ class SecondaryPharmacology(
             if client.tools is None:
                 raise RuntimeError("DeepOriginClient has no tools API")
             definition = client.tools.get(
-                tool_key=cls.tool_key, tool_version=tool_version
+                tool_key=cls.tool_key, tool_version=tool_version or cls.tool_version
             )
             members = _panel_from_definition(definition)
         df = pd.DataFrame(members, columns=["uniprot_id", "gene_name"])

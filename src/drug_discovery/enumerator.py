@@ -108,6 +108,7 @@ class Enumerator(Execution, SyncExecutableMixin):
     """
 
     tool_key: str = TOOL_KEYS_AND_VERSIONS["enumerator"]["tool_key"]
+    tool_version: str = TOOL_KEYS_AND_VERSIONS["enumerator"]["tool_version"]
 
     @beartype
     def __init__(
@@ -119,7 +120,7 @@ class Enumerator(Execution, SyncExecutableMixin):
         reaction_sites: list[dict[str, Any]] | None = None,
         radius: int = ENUMERATOR_RADIUS_MIN,
         max_fragment_size: int = _DEFAULT_MAX_FRAGMENT_SIZE,
-        tool_version: str = TOOL_KEYS_AND_VERSIONS["enumerator"]["tool_version"],
+        tool_version: str | None = None,
         client: DeepOriginClient | None = None,
     ) -> None:
         """Configure an enumerator run for a single parent ligand.
@@ -145,8 +146,7 @@ class Enumerator(Execution, SyncExecutableMixin):
             ValueError: If ``job_type`` is unknown, required mode inputs are missing
                 or malformed, or numeric bounds are exceeded.
         """
-        super().__init__(client=client)
-        self.tool_version = tool_version
+        super().__init__(client=client, tool_version=tool_version)
         self._ligand = ligand
         self._job_type = job_type
         self._replace_ix = _normalize_replace_ix(replace_ix)

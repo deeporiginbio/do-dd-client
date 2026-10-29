@@ -46,6 +46,7 @@ class Protonation(Execution, SyncExecutableMixin):
         ph: number = 7.4,
         filter_percentage: number = 1.0,
         client: DeepOriginClient | None = None,
+        tool_version: str | None = None,
     ) -> None:
         """Create a protonation job from exactly one of ``smiles``, ``ligand``, or ``ligands``.
 
@@ -80,7 +81,7 @@ class Protonation(Execution, SyncExecutableMixin):
 
         self._input_smiles = first.smiles
 
-        super().__init__(client=client)
+        super().__init__(client=client, tool_version=tool_version)
         self._ph = ph
         self._filter_percentage = float(filter_percentage)
         self._responses: list[dict] = []

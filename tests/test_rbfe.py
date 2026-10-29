@@ -618,7 +618,7 @@ def test_rbfe_from_dto_rehydrates_rbfe_only_steps(client: DeepOriginClient) -> N
     assert len(rbfe.prepared_systems) == 1
     assert rbfe.prepared_systems[0].ligand2_id == "lig-2"
     assert rbfe.prepared_systems[0].system_pdb_path == ""
-    assert rbfe.params.binding_steps == 1000
+    assert rbfe.params.binding_prod_ns == pytest.approx(0.002)
     assert rbfe.params.temperature == pytest.approx(310.0)
     assert "steps=" in repr(rbfe)
 

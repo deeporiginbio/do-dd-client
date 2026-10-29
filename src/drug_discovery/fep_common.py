@@ -28,11 +28,11 @@ class ABFEParams:
         binding_n_windows: Number of windows for binding calculation.
         binding_npt_reduce_restraints_ns: NPT reduce restraints time in ns for binding.
         binding_nvt_heating_ns: NVT heating time in ns for binding.
-        binding_steps: Number of steps for binding calculation.
+        binding_prod_ns: Length of each binding production repeat in ns.
         solvation_n_windows: Number of windows for solvation calculation.
         solvation_npt_reduce_restraints_ns: NPT reduce restraints time in ns for solvation.
         solvation_nvt_heating_ns: NVT heating time in ns for solvation.
-        solvation_steps: Number of steps for solvation calculation.
+        solvation_prod_ns: Length of each solvation production repeat in ns.
     """
 
     dt: float = 0.004
@@ -44,11 +44,11 @@ class ABFEParams:
     binding_n_windows: int = 48
     binding_npt_reduce_restraints_ns: float = 2.0
     binding_nvt_heating_ns: float = 1.0
-    binding_steps: int = 1250000
+    binding_prod_ns: float = 5.0
     solvation_n_windows: int = 32
     solvation_npt_reduce_restraints_ns: float = 0.2
     solvation_nvt_heating_ns: float = 0.1
-    solvation_steps: int = 500000
+    solvation_prod_ns: float = 2.0
 
     def __repr__(self) -> str:
         """Return a string representation with each attribute on its own line.
@@ -173,7 +173,7 @@ def _simulation_blocks(params: ABFEParams) -> dict[str, dict[str, Any]]:
             "prod_md_options": md_options,
             "repeats": params.repeats,
             "replex_period_ps": params.replex_period_ps,
-            "steps": params.binding_steps,
+            "prod_ns": params.binding_prod_ns,
             "test_run": params.test_run,
         },
         "solvation": {
@@ -184,7 +184,7 @@ def _simulation_blocks(params: ABFEParams) -> dict[str, dict[str, Any]]:
             "prod_md_options": md_options,
             "repeats": params.repeats,
             "replex_period_ps": params.replex_period_ps,
-            "steps": params.solvation_steps,
+            "prod_ns": params.solvation_prod_ns,
             "test_run": params.test_run,
         },
     }
@@ -197,6 +197,9 @@ def _fep_params_from_inputs(
     params_cls: type[ABFEParams] = ABFEParams,
 ) -> ABFEParams:
     """Build FEP params from stored ``binding`` / ``solvation`` blocks.
+
+    Runs that stored ``steps`` instead of ``prod_ns`` are converted to ns with
+    the stored ``dt``.
 
     Args:
         inputs: Tool inputs containing optional ``binding`` / ``solvation`` dicts.
@@ -211,7 +214,7 @@ def _fep_params_from_inputs(
         "n_windows": "binding_n_windows",
         "npt_reduce_restraints_ns": "binding_npt_reduce_restraints_ns",
         "nvt_heating_ns": "binding_nvt_heating_ns",
-        "steps": "binding_steps",
+        "prod_ns": "binding_prod_ns",
         "repeats": "repeats",
         "replex_period_ps": "replex_period_ps",
         "test_run": "test_run",
@@ -220,7 +223,7 @@ def _fep_params_from_inputs(
         "n_windows": "solvation_n_windows",
         "npt_reduce_restraints_ns": "solvation_npt_reduce_restraints_ns",
         "nvt_heating_ns": "solvation_nvt_heating_ns",
-        "steps": "solvation_steps",
+        "prod_ns": "solvation_prod_ns",
     }
     md_options_key_map = {
         "dt": "dt",
@@ -238,5 +241,12 @@ def _fep_params_from_inputs(
     for dto_key, param_field in md_options_key_map.items():
         if dto_key in md_options:
             kwargs[param_field] = md_options[dto_key]
+    dt_ps = kwargs.get("dt", params_cls.dt)
+    for block, param_field in (
+        (binding, "binding_prod_ns"),
+        (solvation, "solvation_prod_ns"),
+    ):
+        if "prod_ns" not in block and "steps" in block:
+            kwargs[param_field] = block["steps"] * dt_ps / 1000
 
     return params_cls(**kwargs)
