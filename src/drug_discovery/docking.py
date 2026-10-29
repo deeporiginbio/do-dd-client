@@ -96,6 +96,7 @@ class Docking(Execution, SyncExecutableMixin, AsyncExecutableMixin, NotebookWatc
     """
 
     tool_key: str = TOOL_KEYS_AND_VERSIONS["docking"]["tool_key"]
+    tool_version: str = TOOL_KEYS_AND_VERSIONS["docking"]["tool_version"]
     effort: int = 1
 
     def __init__(
@@ -106,7 +107,7 @@ class Docking(Execution, SyncExecutableMixin, AsyncExecutableMixin, NotebookWatc
         ligand: Ligand | None = None,
         ligands: LigandSet | None = None,
         smiles_list: list[str] | None = None,
-        tool_version: str = TOOL_KEYS_AND_VERSIONS["docking"]["tool_version"],
+        tool_version: str | None = None,
         effort: int = 1,
         batch_size: int = 16,
         client: DeepOriginClient | None = None,
@@ -152,8 +153,7 @@ class Docking(Execution, SyncExecutableMixin, AsyncExecutableMixin, NotebookWatc
 
         if batch_size <= 0:
             raise ValueError("batch_size must be a positive integer.")
-        super().__init__(client=client)
-        self.tool_version = tool_version
+        super().__init__(client=client, tool_version=tool_version)
         self.effort = effort
         self._batch_size = batch_size
 

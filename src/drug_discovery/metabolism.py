@@ -505,6 +505,7 @@ class Metabolism(
         *,
         ligands: Ligand | list[Ligand] | LigandSet,
         client: DeepOriginClient | None = None,
+        tool_version: str | None = None,
         name: str | None = None,
     ) -> None:
         """Configure a site-of-metabolism run for one or more ligands.
@@ -512,13 +513,15 @@ class Metabolism(
         Args:
             ligands: A ligand, a list of ligands, or a :class:`LigandSet`.
             client: Optional API client. Uses the default if not provided.
+            tool_version: Tool version for this instance; defaults to the
+                class's :attr:`tool_version`.
             name: Optional execution label. When omitted, set from the ligand
                 count (e.g. ``Site of Metabolism for 5 ligands``).
 
         Raises:
             ValueError: If no ligands are provided.
         """
-        super().__init__(client=client)
+        super().__init__(client=client, tool_version=tool_version)
         self._ligands: list[Ligand] = _normalize_ligands(ligands)
         self._remote_ligands_file: str | None = None
         self._force_recompute: bool = False

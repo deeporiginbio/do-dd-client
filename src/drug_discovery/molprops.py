@@ -179,9 +179,10 @@ class Molprops(Execution, SyncExecutableMixin):
         properties: set[str] | None = None,
         batch_size: int | None = None,
         client: DeepOriginClient | None = None,
+        tool_version: str | None = None,
     ) -> None:
         """Configure a molprops run for one or more ligands."""
-        super().__init__(client=client)
+        super().__init__(client=client, tool_version=tool_version)
         if isinstance(ligands, LigandSet):
             self._ligands: list[Ligand] = list(ligands.ligands)
         else:

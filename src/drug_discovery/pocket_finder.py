@@ -139,6 +139,7 @@ class PocketFinder(
     """
 
     tool_key: str = TOOL_KEYS_AND_VERSIONS["pocket_finder"]["tool_key"]
+    tool_version: str = TOOL_KEYS_AND_VERSIONS["pocket_finder"]["tool_version"]
 
     def __init__(
         self,
@@ -154,7 +155,7 @@ class PocketFinder(
         ligand_id: str | None = None,
         box_geometry: BoxGeometry | None = None,
         box_padding: float | None = None,
-        tool_version: str = TOOL_KEYS_AND_VERSIONS["pocket_finder"]["tool_version"],
+        tool_version: str | None = None,
         client: DeepOriginClient | None = None,
     ) -> None:
         """Create a PocketFinder for the given protein.
@@ -195,8 +196,7 @@ class PocketFinder(
         Raises:
             ValueError: If mode/kwargs are inconsistent or structurally invalid.
         """
-        super().__init__(client=client)
-        self.tool_version = tool_version
+        super().__init__(client=client, tool_version=tool_version)
         self._protein = protein
         self._mode: PocketFinderMode = mode
         self._pocket_count = (

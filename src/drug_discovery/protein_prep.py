@@ -1061,6 +1061,7 @@ class ProteinPrep(
     """
 
     tool_key: str = _PROTEIN_PREP_TOOL_KEY
+    tool_version: str = TOOL_KEYS_AND_VERSIONS["protein_prep"]["tool_version"]
 
     def __init__(
         self,
@@ -1078,7 +1079,7 @@ class ProteinPrep(
         box_geometry: BoxGeometry | None = None,
         box_padding: float | None = None,
         pocket_radius: int | float | None = None,
-        tool_version: str = TOOL_KEYS_AND_VERSIONS["protein_prep"]["tool_version"],
+        tool_version: str | None = None,
         client: DeepOriginClient | None = None,
         name: str | None = None,
     ) -> None:
@@ -1117,9 +1118,8 @@ class ProteinPrep(
         Raises:
             ValueError: If ``pdb_id``, ``selection``, or pocket settings are invalid.
         """
-        super().__init__(client=client)
-        self.tool_version = tool_version
-        self._direct_tool_version = tool_version
+        super().__init__(client=client, tool_version=tool_version)
+        self._direct_tool_version = self.tool_version
         self.name = name
         self._protein = protein
         self._operation_kind: ProteinPrepAction | None = None
@@ -2312,9 +2312,7 @@ class ProteinPrep(
             instance._find_pockets_user_configured = True
         elif not hasattr(instance, "_find_pockets_user_configured"):
             instance._find_pockets_user_configured = False
-        instance._direct_tool_version = TOOL_KEYS_AND_VERSIONS["protein_prep"][
-            "tool_version"
-        ]
+        instance._direct_tool_version = type(instance).tool_version
         return instance
 
     @classmethod
@@ -2372,15 +2370,15 @@ class ProteinPrep(
         result_type: str,
         *,
         filter_by_tool_key: bool = True,
-        keep_id: bool = False,
     ) -> list[dict[str, Any]]:
         """Return result-explorer data payloads for one child result type.
+
+        Each payload carries the result record ``id`` (unless it has its own),
+        so rows rehydrate as platform entities.
 
         Args:
             result_type: Indexed result type string.
             filter_by_tool_key: When False, match only ``compute_job_id``.
-            keep_id: Copy the result record ``id`` into each payload (when the
-                payload has none), so rows rehydrate as platform entities.
 
         Returns:
             Data dicts for this execution id, or an empty list on failure.
@@ -2403,7 +2401,7 @@ class ProteinPrep(
                 continue
             data = record.get("data")
             if isinstance(data, dict):
-                if keep_id and record.get("id") is not None:
+                if record.get("id") is not None:
                     data = {"id": record["id"], **data}
                 rows.append(data)
         return rows
@@ -2518,7 +2516,6 @@ class ProteinPrep(
         indexed = self._result_rows(
             _RESULT_TYPE_POSE,
             filter_by_tool_key=False,
-            keep_id=True,
         )
         outputs = self._execution_outputs(dto)
         raw: Any = indexed if indexed else outputs.get("poses")

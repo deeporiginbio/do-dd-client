@@ -287,6 +287,7 @@ class UniprotDiscovery(Execution, SyncExecutableMixin):
     """
 
     tool_key: str = TOOL_KEYS_AND_VERSIONS["uniprot_discovery"]["tool_key"]
+    tool_version: str = TOOL_KEYS_AND_VERSIONS["uniprot_discovery"]["tool_version"]
 
     @beartype
     def __init__(
@@ -294,7 +295,7 @@ class UniprotDiscovery(Execution, SyncExecutableMixin):
         uniprot_accession: str,
         *,
         project_id: str | None = None,
-        tool_version: str = TOOL_KEYS_AND_VERSIONS["uniprot_discovery"]["tool_version"],
+        tool_version: str | None = None,
         client: DeepOriginClient | None = None,
         name: str | None = None,
     ) -> None:
@@ -312,10 +313,9 @@ class UniprotDiscovery(Execution, SyncExecutableMixin):
         Raises:
             ValueError: If ``uniprot_accession`` is malformed.
         """
-        super().__init__(client=client)
+        super().__init__(client=client, tool_version=tool_version)
         self._uniprot_accession = _normalize_uniprot_accession(uniprot_accession)
         self._project_id = project_id
-        self.tool_version = tool_version
         self.name = name
         self._candidates: list[UniprotDiscoveryCandidate] | None = None
 

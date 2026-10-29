@@ -265,6 +265,7 @@ class StructureReport(Execution, SyncExecutableMixin):
     """
 
     tool_key: str = TOOL_KEYS_AND_VERSIONS["structure_report"]["tool_key"]
+    tool_version: str = TOOL_KEYS_AND_VERSIONS["structure_report"]["tool_version"]
 
     @beartype
     def __init__(
@@ -272,7 +273,7 @@ class StructureReport(Execution, SyncExecutableMixin):
         protein: Protein | None = None,
         *,
         pdb_id: str | None = None,
-        tool_version: str = TOOL_KEYS_AND_VERSIONS["structure_report"]["tool_version"],
+        tool_version: str | None = None,
         client: DeepOriginClient | None = None,
         name: str | None = None,
     ) -> None:
@@ -291,12 +292,11 @@ class StructureReport(Execution, SyncExecutableMixin):
             ValueError: If neither ``protein`` nor ``pdb_id`` is set, or if
                 ``pdb_id`` is malformed.
         """
-        super().__init__(client=client)
+        super().__init__(client=client, tool_version=tool_version)
         if protein is None and pdb_id is None:
             raise ValueError("StructureReport requires a protein and/or pdb_id.")
         self._protein = protein
         self._pdb_id = _normalize_pdb_id(pdb_id) if pdb_id is not None else None
-        self.tool_version = tool_version
         self.name = name
 
     @property

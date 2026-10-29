@@ -48,6 +48,7 @@ class SystemPrep(Execution, SyncExecutableMixin):
     """
 
     tool_key: str = TOOL_KEYS_AND_VERSIONS["sysprep"]["tool_key"]
+    tool_version: str = TOOL_KEYS_AND_VERSIONS["sysprep"]["tool_version"]
 
     def __init__(
         self,
@@ -61,7 +62,7 @@ class SystemPrep(Execution, SyncExecutableMixin):
         add_H_atoms: bool = True,  # NOSONAR
         protonate_protein: bool = True,
         box_size: list[float] | None = None,
-        tool_version: str = TOOL_KEYS_AND_VERSIONS["sysprep"]["tool_version"],
+        tool_version: str | None = None,
         client: DeepOriginClient | None = None,
     ) -> None:
         """Create a SystemPrep for ABFE (single pose) or RBFE (pose pair).
@@ -92,7 +93,7 @@ class SystemPrep(Execution, SyncExecutableMixin):
             or docking results — :meth:`~deeporigin.drug_discovery.structures.pose.Pose.sync`
             only uploads SDF bytes and does not register a new pose id.
         """
-        super().__init__(client=client)
+        super().__init__(client=client, tool_version=tool_version)
         _abfe_mode = pose is not None and pose1 is None and pose2 is None
         _rbfe_mode = pose is None and pose1 is not None and pose2 is not None
         if not (_abfe_mode or _rbfe_mode):
@@ -101,7 +102,6 @@ class SystemPrep(Execution, SyncExecutableMixin):
                 "but not both and not only one of pose1/pose2."
             )
 
-        self.tool_version = tool_version
         self._protein = protein
         if _abfe_mode:
             assert pose is not None
