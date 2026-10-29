@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from pathlib import Path
 from unittest.mock import patch
 
 import pytest
@@ -55,18 +54,16 @@ def _konnektor_v05_dto(
     *,
     edges: list[dict[str, str]],
     is_connected: bool = True,
-    network_html: str = "<html><body>network</body></html>",
 ) -> dict[str, object]:
-    """Build a v0.5 Konnektor execution DTO for unit tests."""
+    """Build a Konnektor execution DTO shaped like the tool's output."""
     return {
         "jobOutputs": {
             "ligand_network": {
                 "edges": edges,
                 "is_connected": is_connected,
-                "network": {},
+                "network_file": "tool-runs/test/network.json",
                 "network_html_file": "tool-runs/test/network.html",
             },
-            "network_html": network_html,
         }
     }
 
@@ -81,7 +78,7 @@ def test_konnektor_result_from_dto_resolves_pose_pairs() -> None:
     assert isinstance(result, KonnektorResult)
     assert result.pairs == [(p1, p2)]
     assert result.is_connected is True
-    assert result.network_html == "<html><body>network</body></html>"
+    assert result.network_html_file == "tool-runs/test/network.html"
 
 
 def test_konnektor_result_from_dto_rejects_unknown_pose() -> None:
@@ -118,9 +115,14 @@ def test_konnektor_run_returns_konnektor_result(client: DeepOriginClient) -> Non
     assert isinstance(result, KonnektorResult)
     assert result.pairs == [(p1, p2)]
     assert result.is_connected is True
-    assert result.network_html
     assert job.status == "Completed"
     assert job.id is not None
+
+    with patch("deeporigin.utils.notebook.render_html", return_value=None) as render:
+        result.show_network()
+    render.assert_called_once_with(
+        "<html><body>Konnektor network</body></html>", height=1000
+    )
 
 
 def test_konnektor_run_quote_returns_none(client: DeepOriginClient) -> None:
@@ -135,22 +137,8 @@ def test_konnektor_run_quote_returns_none(client: DeepOriginClient) -> None:
     assert job.estimate == 1.23
 
 
-def test_konnektor_show_network_uses_sandboxed_render_html(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """show_network embeds via render_html and does not write network.html to CWD."""
-    monkeypatch.chdir(tmp_path)
-    result = KonnektorResult(
-        pairs=[],
-        is_connected=True,
-        network_html="<html><body>Konnektor network</body></html>",
-    )
-    with patch(
-        "deeporigin.utils.notebook.render_html",
-        return_value=None,
-    ) as mock_render:
+def test_konnektor_show_network_requires_html_file() -> None:
+    """show_network explains when the result has no network view."""
+    result = KonnektorResult(pairs=[], is_connected=True)
+    with pytest.raises(DeepOriginException, match="network_html_file"):
         result.show_network()
-
-    mock_render.assert_called_once_with(result.network_html, height=1000)
-    assert not (tmp_path / "network.html").exists()
