@@ -183,7 +183,6 @@ class Konnektor(Execution, SyncExecutableMixin):
     """
 
     tool_key: str = TOOL_KEYS_AND_VERSIONS["konnektor"]["tool_key"]
-    tool_version: str = TOOL_KEYS_AND_VERSIONS["konnektor"]["tool_version"]
 
     @beartype
     def __init__(
@@ -191,7 +190,7 @@ class Konnektor(Execution, SyncExecutableMixin):
         *,
         poses: list[Pose] | PoseSet,
         network_type: KonnektorNetworkType = "mst",
-        tool_version: str | None = None,
+        tool_version: str = TOOL_KEYS_AND_VERSIONS["konnektor"]["tool_version"],
         client: DeepOriginClient | None = None,
         name: str | None = None,
     ) -> None:
@@ -210,12 +209,13 @@ class Konnektor(Execution, SyncExecutableMixin):
         Raises:
             ValueError: If fewer than two poses are provided.
         """
-        super().__init__(client=client, tool_version=tool_version)
+        super().__init__(client=client)
         self._poses = list(poses)
         if len(self._poses) < 2:
             raise ValueError("Konnektor requires at least two poses.")
 
         self._network_type = network_type
+        self.tool_version = tool_version
         self.name = name
 
     @property

@@ -455,7 +455,6 @@ class Admet(
     """
 
     tool_key: str = TOOL_KEYS_AND_VERSIONS["admet"]["tool_key"]
-    tool_version: str = TOOL_KEYS_AND_VERSIONS["admet"]["tool_version"]
 
     @beartype
     def __init__(
@@ -465,7 +464,7 @@ class Admet(
         method: Literal["maplight", "togo"] = "togo",
         batch_size: int | None = None,
         client: DeepOriginClient | None = None,
-        tool_version: str | None = None,
+        tool_version: str = TOOL_KEYS_AND_VERSIONS["admet"]["tool_version"],
     ) -> None:
         """Configure an ADMET prediction run.
 
@@ -484,7 +483,8 @@ class Admet(
             raise ValueError(
                 f"batch_size must be at least {ADMET_MIN_BATCH_SIZE} (got {batch_size})."
             )
-        super().__init__(client=client, tool_version=tool_version)
+        super().__init__(client=client)
+        self.tool_version = tool_version
         if isinstance(ligands, LigandSet):
             self._ligands: list[Ligand] = list(ligands.ligands)
         else:
@@ -915,7 +915,8 @@ class Admet(
         resolved = resolve_client(client)
         if properties is not None:
             definition = resolved.tools.get(  # ty:ignore[unresolved-attribute]
-                tool_key=cls.tool_key, tool_version=cls.tool_version
+                tool_key=cls.tool_key,
+                tool_version=TOOL_KEYS_AND_VERSIONS["admet"]["tool_version"],
             )
             properties = _validate_admet_properties(
                 properties, allowed=frozenset(_endpoints_from_definition(definition))

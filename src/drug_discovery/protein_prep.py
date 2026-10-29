@@ -1061,7 +1061,6 @@ class ProteinPrep(
     """
 
     tool_key: str = _PROTEIN_PREP_TOOL_KEY
-    tool_version: str = TOOL_KEYS_AND_VERSIONS["protein_prep"]["tool_version"]
 
     def __init__(
         self,
@@ -1079,7 +1078,7 @@ class ProteinPrep(
         box_geometry: BoxGeometry | None = None,
         box_padding: float | None = None,
         pocket_radius: int | float | None = None,
-        tool_version: str | None = None,
+        tool_version: str = TOOL_KEYS_AND_VERSIONS["protein_prep"]["tool_version"],
         client: DeepOriginClient | None = None,
         name: str | None = None,
     ) -> None:
@@ -1118,8 +1117,9 @@ class ProteinPrep(
         Raises:
             ValueError: If ``pdb_id``, ``selection``, or pocket settings are invalid.
         """
-        super().__init__(client=client, tool_version=tool_version)
-        self._direct_tool_version = self.tool_version
+        super().__init__(client=client)
+        self.tool_version = tool_version
+        self._direct_tool_version = tool_version
         self.name = name
         self._protein = protein
         self._operation_kind: ProteinPrepAction | None = None
@@ -2312,7 +2312,9 @@ class ProteinPrep(
             instance._find_pockets_user_configured = True
         elif not hasattr(instance, "_find_pockets_user_configured"):
             instance._find_pockets_user_configured = False
-        instance._direct_tool_version = type(instance).tool_version
+        instance._direct_tool_version = TOOL_KEYS_AND_VERSIONS["protein_prep"][
+            "tool_version"
+        ]
         return instance
 
     @classmethod
