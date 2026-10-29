@@ -361,7 +361,6 @@ class ConstrainedDocking(
     """
 
     tool_key: str = TOOL_KEYS_AND_VERSIONS["constrained_docking"]["tool_key"]
-    tool_version: str = TOOL_KEYS_AND_VERSIONS["constrained_docking"]["tool_version"]
     effort: int = 1
 
     def __init__(
@@ -376,7 +375,9 @@ class ConstrainedDocking(
         constraint_energy: float = 5.0,
         effort: int = 1,
         batch_size: int = 8,
-        tool_version: str | None = None,
+        tool_version: str = TOOL_KEYS_AND_VERSIONS["constrained_docking"][
+            "tool_version"
+        ],
         client: DeepOriginClient | None = None,
         name: str | None = None,
         **mcs_override: Any,
@@ -426,7 +427,8 @@ class ConstrainedDocking(
         if len(ligands) == 0:
             raise ValueError("At least one test ligand is required.")
 
-        super().__init__(client=client, tool_version=tool_version)
+        super().__init__(client=client)
+        self.tool_version = tool_version
         self.effort = effort
         self._batch_size = batch_size
         self._protein = protein

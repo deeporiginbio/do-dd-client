@@ -138,10 +138,7 @@ class Execution:
         runtime: Elapsed seconds from DTO ``startedAt`` to ``completedAt`` or now; see property.
         tool_key: Platform tool key identifying this execution type (class attribute on
             concrete subclasses; may be updated from the DTO in :meth:`update_from_dto`).
-        tool_version: Version string for the tool. The class attribute is the default;
-            pass ``tool_version=`` to a constructor to pin one instance, or set
-            ``Cls.tool_version`` to pin every new instance. Updated from the DTO like
-            ``tool_key``.
+        tool_version: Version string for the tool (updated from the DTO like ``tool_key``).
         _id: Internal storage for the execution UUID; use :attr:`id` for reads. Subclasses
             and tests may assign before the property is wired from the platform.
         _dto: Internal storage for the raw execution dict; use :attr:`dto` for reads.
@@ -149,7 +146,6 @@ class Execution:
     """
 
     tool_key: str = ""
-    tool_version: str = ""
 
     USER_LOG_COLUMNS: ClassVar[list[str]] = [
         "log_level",
@@ -158,21 +154,9 @@ class Execution:
         "message",
     ]
 
-    def __init__(
-        self,
-        *,
-        client: DeepOriginClient | None = None,
-        tool_version: str | None = None,
-    ) -> None:
-        """Initialize base execution state and chain mixin ``__init__`` via ``super()``.
-
-        Args:
-            client: Optional API client. Uses the default if not provided.
-            tool_version: Tool version for this instance; defaults to the class's
-                :attr:`tool_version`.
-        """
+    def __init__(self, *, client: DeepOriginClient | None = None) -> None:
+        """Initialize base execution state and chain mixin ``__init__`` via ``super()``."""
         super().__init__()
-        self.tool_version = tool_version or type(self).tool_version
         self._estimate: float | None = None
         self._cost: float | None = None
         self._name: str | None = None

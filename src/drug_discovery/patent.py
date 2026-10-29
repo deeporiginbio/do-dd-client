@@ -225,14 +225,13 @@ class Patent(Execution, AsyncExecutableMixin, NotebookWatchMixin):
     """
 
     tool_key: str = TOOL_KEYS_AND_VERSIONS["patent"]["tool_key"]
-    tool_version: str = TOOL_KEYS_AND_VERSIONS["patent"]["tool_version"]
 
     @beartype
     def __init__(
         self,
         pdf: str | Path,
         *,
-        tool_version: str | None = None,
+        tool_version: str = TOOL_KEYS_AND_VERSIONS["patent"]["tool_version"],
         client: DeepOriginClient | None = None,
         name: str | None = None,
     ) -> None:
@@ -244,7 +243,8 @@ class Patent(Execution, AsyncExecutableMixin, NotebookWatchMixin):
             client: Optional API client.
             name: Optional execution label.
         """
-        super().__init__(client=client, tool_version=tool_version)
+        super().__init__(client=client)
+        self.tool_version = tool_version
         self._pdf_path: Path | None = None
         self._remote_pdf_path: str | None = None
         self._validate_pdf_path(pdf)

@@ -33,7 +33,6 @@ class Protonation(Execution, SyncExecutableMixin):
     """Run ligand protonation through the platform tools API (sync)."""
 
     tool_key: str = TOOL_KEYS_AND_VERSIONS["protonation"]["tool_key"]
-    tool_version: str = TOOL_KEYS_AND_VERSIONS["protonation"]["tool_version"]
     ligands: LigandSet
 
     @beartype
@@ -46,7 +45,7 @@ class Protonation(Execution, SyncExecutableMixin):
         ph: number = 7.4,
         filter_percentage: number = 1.0,
         client: DeepOriginClient | None = None,
-        tool_version: str | None = None,
+        tool_version: str = TOOL_KEYS_AND_VERSIONS["protonation"]["tool_version"],
     ) -> None:
         """Create a protonation job from exactly one of ``smiles``, ``ligand``, or ``ligands``.
 
@@ -81,7 +80,8 @@ class Protonation(Execution, SyncExecutableMixin):
 
         self._input_smiles = first.smiles
 
-        super().__init__(client=client, tool_version=tool_version)
+        super().__init__(client=client)
+        self.tool_version = tool_version
         self._ph = ph
         self._filter_percentage = float(filter_percentage)
         self._responses: list[dict] = []

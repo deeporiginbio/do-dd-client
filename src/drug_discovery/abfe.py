@@ -703,7 +703,6 @@ class ABFE(Execution, AsyncExecutableMixin, NotebookWatchMixin):
     """
 
     tool_key: str = TOOL_KEYS_AND_VERSIONS["abfe"]["tool_key"]
-    tool_version: str = TOOL_KEYS_AND_VERSIONS["abfe"]["tool_version"]
 
     @beartype
     def __init__(
@@ -719,7 +718,7 @@ class ABFE(Execution, AsyncExecutableMixin, NotebookWatchMixin):
         retain_waters: bool = True,
         padding: float = 1.0,
         steps: list[ABFEWorkflowStep] | None = None,
-        tool_version: str | None = None,
+        tool_version: str = TOOL_KEYS_AND_VERSIONS["abfe"]["tool_version"],
         client: DeepOriginClient | None = None,
         name: str | None = None,
     ) -> None:
@@ -754,7 +753,8 @@ class ABFE(Execution, AsyncExecutableMixin, NotebookWatchMixin):
             ValueError: When inputs are missing or mutually exclusive, or
                 ``steps`` is not a supported plan.
         """
-        super().__init__(client=client, tool_version=tool_version)
+        super().__init__(client=client)
+        self.tool_version = tool_version
         self.protein = protein
         if pose is not None and pose1 is not None:
             raise ValueError("Provide only one of pose or pose1, not both.")
