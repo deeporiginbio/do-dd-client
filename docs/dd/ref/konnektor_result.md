@@ -1,7 +1,7 @@
 # `deeporigin.drug_discovery.konnektor.KonnektorResult`
 
 `KonnektorResult` holds the output of a [`Konnektor`](konnektor.md) run: the
-resolved ligand pairs, whether the network is connected, and an interactive
+resolved pose pairs, whether the network is connected, and an interactive
 network visualization you can display with `show_network()`.
 
 ::: src.drug_discovery.konnektor.KonnektorResult

@@ -791,7 +791,7 @@ class ABFE(Execution, AsyncExecutableMixin, NotebookWatchMixin):
             A fully-hydrated ABFE instance with status from the DTO.
 
         Raises:
-            ValueError: When ``steps`` is missing or unsupported.
+            ValueError: When ``steps`` is missing.
         """
         instance = super().from_dto(dto, client=client)
         inputs: dict[str, Any] = (
@@ -1002,8 +1002,8 @@ class ABFE(Execution, AsyncExecutableMixin, NotebookWatchMixin):
             )
         row = df.iloc[0]
         pose_id = row.get("pose1_id")
-        if pd.isna(pose_id) and self.pose1 is not None:
-            pose_id = self.pose1.id
+        if pd.isna(pose_id) and self.prepared_system is not None:
+            pose_id = self.prepared_system.pose1_id
         if pose_id is None or pd.isna(pose_id):
             raise DeepOriginException(
                 title="No pose id on ABFE result",

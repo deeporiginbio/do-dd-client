@@ -167,7 +167,8 @@ without re-specifying anything.
 - **No results yet** — RBFE runs asynchronously. Call `rbfe.sync()` and confirm
   the status is `Completed` before expecting `get_results()` to return rows.
 - **`get_prepared_system()` raises** — the system-prep step hasn't produced rows
-  yet, or several pairs match. Wait, or pass `pose1_id`/`pose2_id`.
+  yet, or no row matches the pose filters. Wait, or check `pose1_id`/`pose2_id`.
+  With several pairs and no filter, it returns the first one.
 - **Empty cycle-closure results** — cycle closure only runs when you pass
   `exp_abfe` or `fep_abfe`; check that `"cycle-closure"` is in `rbfe.steps`.
 - **Konnektor network not connected** — `network.is_connected` is `False` when

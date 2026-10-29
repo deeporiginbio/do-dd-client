@@ -270,7 +270,7 @@ A named stage in a combined workflow execution (`system-prep`, `abfe`, `rbfe`, `
 _Avoid_: `mode` for v5 workflow tools
 
 **KonnektorResult**:
-CLI return type from `Konnektor.run()` — resolved ligand pairs, connectivity flag, and inline viz HTML.
+CLI return type from `Konnektor.run()` — resolved pose pairs, connectivity flag, and inline viz HTML.
 _Avoid_: conflating with platform ingest entity `LigandNetwork` or legacy `LigandSet.network` dict
 
 **Entity update**:
@@ -378,8 +378,9 @@ _Avoid_: treating it as a registered **Pose**; passing it to a **Pose-consuming
 tool input**
 
 **Pose-consuming tool input**:
-Downstream tools that need 3D coordinates (SystemPrep ABFE/RBFE, ABFE, RBFE)
-accept `Pose` via kwargs `pose`, `pose1`, `pose2` — not `ligand`. Standalone
+Downstream tools that need 3D coordinates (SystemPrep ABFE/RBFE, ABFE, RBFE,
+Konnektor) accept `Pose` via kwargs `pose`, `pose1`, `pose2`, `poses` — not
+`ligand`/`ligands`. Standalone
 ligand parameterization (SystemPrep without protein) still uses `ligand: Ligand`.
 _Avoid_: `ligand=` when passing a docked pose or registered 3D conformer
 

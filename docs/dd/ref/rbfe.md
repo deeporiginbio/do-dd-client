@@ -24,8 +24,8 @@ step automatically. At least one anchor is required: `{"pose_id", "dG", "std"?,
 `ABFE.to_anchor()` builds one from an ABFE run. See
 [RBFE cycle-closure workflow notebook](../../notebooks/clean/rbfe-6-cycle-closure-workflow.ipynb).
 
-For Konnektor mode, each ligand must be synced and registered (platform `id` and
-`file_path` required). Use `SystemPrep` for single-pair prep without FEP.
+For Konnektor mode, pass one pose per ligand; each pose must be registered
+(platform `id` and `file_path` required). Use `SystemPrep` for single-pair prep without FEP.
 
 Start executions via `RBFE.start()` or the [Platform executions API](../../platform/ref/executions.md).
 
@@ -44,7 +44,7 @@ optional `cluster`.
 Visualize the returned object in a notebook:
 
 ```{.python notest}
-ps = rbfe.get_prepared_system(ligand1_id=ligand1.id, ligand2_id=ligand2.id)
+ps = rbfe.get_prepared_system(pose1_id=pose1.id, pose2_id=pose2.id)
 ps.show()
 ps.show(solute=True)  # solute-only PDB when available
 ```
