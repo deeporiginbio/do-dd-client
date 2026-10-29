@@ -138,7 +138,11 @@ def _rbfe_results_dataframe(
     *,
     tool_key: str,
 ) -> pd.DataFrame | None:
-    """Build a summary table from a data-platform RBFE results response."""
+    """Build a summary table from the pairwise RBFE rows of a results response.
+
+    Cycle-closure and prepared-system rows share the tool key; only edge rows
+    carry ``total``.
+    """
     records = response.get("data") or []
     rows: list[dict[str, Any]] = []
     for record in records:
@@ -147,7 +151,7 @@ def _rbfe_results_dataframe(
         if record.get("tool_key") != tool_key:
             continue
         payload = record.get("data")
-        if not isinstance(payload, dict):
+        if not isinstance(payload, dict) or "total" not in payload:
             continue
         rows.append(
             {

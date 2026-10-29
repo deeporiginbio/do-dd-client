@@ -856,6 +856,41 @@ def test_rbfe_results_dataframe_filters_non_rbfe_tool_key() -> None:
     assert df.iloc[0]["ddG"] == "-3875.483 kcal/mol"
 
 
+def test_rbfe_results_dataframe_skips_cycle_closure_and_system_rows() -> None:
+    """Only edge rows (with ``total``) become ddG rows; other RBFE rows are skipped."""
+    rbfe_tool_key = TOOL_KEYS_AND_VERSIONS["rbfe"]["tool_key"]
+    response = {
+        "data": [
+            {
+                "tool_key": rbfe_tool_key,
+                "data": {
+                    "total": 1.2,
+                    "unit": "kcal/mol",
+                    "pose1_id": "pose-1",
+                    "pose2_id": "pose-2",
+                },
+            },
+            {
+                "tool_key": rbfe_tool_key,
+                "data": {
+                    "pose_id": "pose-1",
+                    "ligand_id": "lig-1",
+                    "dG": -9.0,
+                    "unit": "kcal/mol",
+                },
+            },
+            {
+                "tool_key": rbfe_tool_key,
+                "data": {"binding_xml_file_path": "b.xml", "pose1_id": "pose-1"},
+            },
+        ]
+    }
+    df = _rbfe_results_dataframe(response, tool_key=rbfe_tool_key)
+    assert df is not None
+    assert len(df) == 1
+    assert df.iloc[0]["pose2_id"] == "pose-2"
+
+
 def test_rbfe_get_results_returns_dataframe(
     client: DeepOriginClient,
     monkeypatch: pytest.MonkeyPatch,
