@@ -228,6 +228,7 @@ def test_rbfe_explicit_system_prep_only_steps() -> None:
     params = rbfe._build_params()
     assert params["steps"] == ["system-prep"]
     assert params["pairs"][0]["pose1"]["id"] == "pose-1"
+    assert params["add_H_atoms"] is True
     assert "binding" not in params
 
 
@@ -241,6 +242,16 @@ def test_rbfe_explicit_steps_without_cycle_closure_reject_anchors() -> None:
             fep_abfe=[{"pose_id": "pose-1", "dG": -9.0}],
             steps=["system-prep", "rbfe"],
         )
+
+
+def test_rbfe_rejects_ligands_as_poses() -> None:
+    """Passing Ligands where Poses are expected fails at construction."""
+    from beartype.roar import BeartypeCallHintParamViolation
+
+    protein = Protein(name="p", id="prot-1", remote_path="testing/brd.pdb")
+    ligands = [Ligand.from_smiles("CCO"), Ligand.from_smiles("CCN")]
+    with pytest.raises(BeartypeCallHintParamViolation, match="poses"):
+        RBFE(protein=protein, poses=ligands)
 
 
 def test_rbfe_rejects_unsupported_steps() -> None:
