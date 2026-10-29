@@ -214,7 +214,11 @@ class PreparedSystem:
         """
         if client is None:
             client = DeepOriginClient()
-        records = client.results.get_prepared_systems(id=id, limit=1).get("data", [])
+        records = client.results.get(
+            result_type="preparedsystem",
+            filter_dict={"id": {"eq": id}},
+            limit=1,
+        ).get("data", [])
         if not records:
             raise ValueError(f"No prepared-system result found for id={id!r}.")
         return cls._from_record(records[0])

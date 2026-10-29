@@ -272,18 +272,7 @@ class RBFE(Execution, AsyncExecutableMixin, NotebookWatchMixin):
                 "Exactly one of poses, pairs, or prepared_systems must be provided."
             )
         if self._explicit_steps is not None:
-            if self._explicit_steps not in _RBFE_STEP_PLANS:
-                raise ValueError(
-                    f"Unsupported steps={self._explicit_steps!r}; use one of "
-                    f"{list(_RBFE_STEP_PLANS)!r}."
-                )
-            if (self.exp_abfe or self.fep_abfe) and "cycle-closure" not in (
-                self._explicit_steps
-            ):
-                raise ValueError(
-                    "exp_abfe/fep_abfe need 'cycle-closure' in steps; add it or "
-                    "drop the anchors."
-                )
+            self._check_explicit_steps(self._explicit_steps)
             self.steps: list[RBFEWorkflowStep] = self._explicit_steps
         else:
             if has_prep:
@@ -295,6 +284,18 @@ class RBFE(Execution, AsyncExecutableMixin, NotebookWatchMixin):
             if (self.exp_abfe or self.fep_abfe) and "cycle-closure" not in self.steps:
                 self.steps = [*self.steps, "cycle-closure"]
         self._validate_step_inputs()
+
+    def _check_explicit_steps(self, steps: list[RBFEWorkflowStep]) -> None:
+        """Reject unsupported plans and anchors that the plan would drop."""
+        if steps not in _RBFE_STEP_PLANS:
+            raise ValueError(
+                f"Unsupported steps={steps!r}; use one of {list(_RBFE_STEP_PLANS)!r}."
+            )
+        if (self.exp_abfe or self.fep_abfe) and "cycle-closure" not in steps:
+            raise ValueError(
+                "exp_abfe/fep_abfe need 'cycle-closure' in steps; add it or "
+                "drop the anchors."
+            )
 
     def _uses_prepared_systems(self) -> bool:
         """Whether RBFE runs on given prepared systems (no system-prep step)."""
