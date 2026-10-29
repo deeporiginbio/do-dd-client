@@ -172,8 +172,8 @@ class Konnektor(Execution, SyncExecutableMixin):
     """Plan an RBFE network over poses with Konnektor and return a :class:`KonnektorResult`.
 
     Konnektor accepts at least two poses, one per ligand. The synchronous
-    :meth:`run` method returns resolved pose pairs, connectivity, and inline
-    visualization HTML; pass ``result.pairs`` to
+    :meth:`run` method returns resolved pose pairs, connectivity, and the
+    network view's file, shown by ``result.show_network()``; pass ``result.pairs`` to
     :class:`~deeporigin.drug_discovery.rbfe.RBFE` as ``pairs``.
 
     Attributes:

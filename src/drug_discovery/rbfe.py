@@ -28,7 +28,7 @@ from deeporigin.platform.constants import TOOL_KEYS_AND_VERSIONS
 
 RBFEWorkflowStep = Literal["konnektor", "system-prep", "rbfe", "cycle-closure"]
 KonnektorNetworkType = Literal["star", "mst", "cyclic"]
-RBFEAnchorInput = dict[str, str | float]
+RBFEAnchorInput = dict[str, str | int | float]
 _RBFE_STEP_PLANS: tuple[list[str], ...] = (
     ["system-prep"],
     ["system-prep", "rbfe"],
@@ -190,6 +190,7 @@ class RBFE(Execution, AsyncExecutableMixin, NotebookWatchMixin):
     tool_key: str = TOOL_KEYS_AND_VERSIONS["rbfe"]["tool_key"]
     tool_version: str = TOOL_KEYS_AND_VERSIONS["rbfe"]["tool_version"]
 
+    @beartype
     def __init__(
         self,
         *,
@@ -199,7 +200,7 @@ class RBFE(Execution, AsyncExecutableMixin, NotebookWatchMixin):
         prepared_systems: list[PreparedSystem] | None = None,
         network_type: KonnektorNetworkType = "mst",
         params: RBFEParams | None = None,
-        add_h_atoms: bool = False,
+        add_h_atoms: bool = True,
         protonate_protein: bool = False,
         retain_waters: bool = True,
         padding: float = 1.0,
@@ -229,7 +230,8 @@ class RBFE(Execution, AsyncExecutableMixin, NotebookWatchMixin):
             prepared_systems: Prepared systems for RBFE-only steps.
             network_type: Konnektor topology when ``poses`` is provided.
             params: FEP simulation parameters for plans that include ``rbfe``.
-            add_h_atoms: Add hydrogens to poses during prep.
+            add_h_atoms: Add hydrogens to poses during prep (default True;
+                no-op for poses that already have them).
             protonate_protein: Protonate protein during prep.
             retain_waters: Retain crystal waters during prep.
             padding: Solvation box padding (nm) during prep.
@@ -356,7 +358,7 @@ class RBFE(Execution, AsyncExecutableMixin, NotebookWatchMixin):
         if raw_network_type not in ("star", "mst", "cyclic"):
             raw_network_type = "mst"
         instance.network_type = raw_network_type
-        instance.add_h_atoms = bool(inputs.get("add_H_atoms", False))
+        instance.add_h_atoms = bool(inputs.get("add_H_atoms", True))
         instance.protonate_protein = bool(inputs.get("protonate_protein", False))
         instance.retain_waters = bool(inputs.get("retain_waters", True))
         instance.padding = float(inputs.get("padding", 1.0))
@@ -444,8 +446,8 @@ class RBFE(Execution, AsyncExecutableMixin, NotebookWatchMixin):
                     protein_id=ps.get("protein_id"),
                     ligand1_id=ps.get("ligand1_id"),
                     ligand2_id=ps.get("ligand2_id"),
-                    pose1_id=ps.get("pose1_id"),
-                    pose2_id=ps.get("pose2_id"),
+                    pose1_id=ps.get("pose1_id") or ps.get("ligand1_pose_id"),
+                    pose2_id=ps.get("pose2_id") or ps.get("ligand2_pose_id"),
                 )
                 for ps in inputs.get("prepared_systems", [])
                 if isinstance(ps, dict)

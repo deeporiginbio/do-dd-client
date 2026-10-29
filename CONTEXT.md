@@ -270,7 +270,7 @@ A named stage in a combined workflow execution (`system-prep`, `abfe`, `rbfe`, `
 _Avoid_: `mode` for v5 workflow tools
 
 **KonnektorResult**:
-CLI return type from `Konnektor.run()` — resolved pose pairs, connectivity flag, and inline viz HTML.
+CLI return type from `Konnektor.run()` — resolved pose pairs, connectivity flag, and the remote network-view file (`network_html_file`, downloaded by `show_network()`).
 _Avoid_: conflating with platform ingest entity `LigandNetwork` or legacy `LigandSet.network` dict
 
 **Entity update**:

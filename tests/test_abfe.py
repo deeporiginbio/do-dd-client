@@ -12,6 +12,7 @@ import pytest
 
 from deeporigin.drug_discovery.abfe import (
     ABFE,
+    _abfe_anchor_from_results,
     _abfe_default_name_from_entities,
     _abfe_merged_result_data,
     _abfe_merged_result_data_for_execution,
@@ -31,6 +32,7 @@ from deeporigin.drug_discovery.structures.ligand import Ligand
 from deeporigin.drug_discovery.structures.pose import Pose
 from deeporigin.drug_discovery.structures.prepared_system import PreparedSystem
 from deeporigin.drug_discovery.structures.protein import Protein
+from deeporigin.exceptions import DeepOriginException
 from deeporigin.platform.client import DeepOriginClient
 from deeporigin.platform.constants import TOOL_KEYS_AND_VERSIONS
 
@@ -220,6 +222,7 @@ def test_abfe_explicit_system_prep_only_steps() -> None:
     params = _abfe_combined(steps=["system-prep"])._build_params()
     assert params["steps"] == ["system-prep"]
     assert params["pose1"] == {"id": "pose-1", "file_path": "testing/p1.sdf"}
+    assert params["add_H_atoms"] is True
     assert "binding" not in params
 
 
@@ -266,14 +269,17 @@ def test_abfe_results_dataframe_has_pose_std_and_result_id() -> None:
     assert df.iloc[0]["result_id"] == "ABFE-ROW"
 
 
-def test_abfe_to_anchor(monkeypatch: pytest.MonkeyPatch) -> None:
-    """to_anchor copies total, std and the result id onto the pose."""
-    abfe = _abfe_combined()
-    df = pd.DataFrame(
-        [{"pose1_id": "pose-1", "total": -8.5, "std": 0.4, "result_id": "ABFE-ROW"}]
-    )
-    monkeypatch.setattr(abfe, "get_results", lambda: df)
-    assert abfe.to_anchor() == {
+def _abfe_result_frame(**data) -> pd.DataFrame | None:
+    """Results frame built from one ABFE result row, as get_results() builds it."""
+    abfe_tool_key = TOOL_KEYS_AND_VERSIONS["abfe"]["tool_key"]
+    response = {"data": [{"id": "ABFE-ROW", "tool_key": abfe_tool_key, "data": data}]}
+    return _abfe_results_dataframe(response, tool_key=abfe_tool_key)
+
+
+def test_abfe_anchor_from_results() -> None:
+    """The anchor copies total, std and the result id onto the pose."""
+    df = _abfe_result_frame(pose1_id="pose-1", total=-8.5, std=0.4, unit="kcal/mol")
+    assert _abfe_anchor_from_results(df) == {
         "pose_id": "pose-1",
         "dG": -8.5,
         "std": 0.4,
@@ -281,20 +287,18 @@ def test_abfe_to_anchor(monkeypatch: pytest.MonkeyPatch) -> None:
     }
 
 
-def test_abfe_to_anchor_falls_back_to_prepared_system_pose(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
+def test_abfe_anchor_falls_back_to_prepared_system_pose() -> None:
     """Without pose1_id on the result, the prepared system's pose is used."""
-    abfe = ABFE(
-        prepared_system=PreparedSystem(
-            binding_xml_path="b.xml",
-            solvation_xml_path="s.xml",
-            system_pdb_path="",
-            pose1_id="pose-ps",
-        ),
-    )
-    monkeypatch.setattr(abfe, "get_results", lambda: pd.DataFrame([{"total": -7.0}]))
-    assert abfe.to_anchor() == {"pose_id": "pose-ps", "dG": -7.0}
+    df = _abfe_result_frame(total=-7.0)
+    anchor = _abfe_anchor_from_results(df, fallback_pose_id="pose-ps")
+    assert anchor["pose_id"] == "pose-ps"
+    assert anchor["dG"] == pytest.approx(-7.0)
+
+
+def test_abfe_to_anchor_rejects_prep_only_run() -> None:
+    """A prepare-only run has no ABFE result to anchor from."""
+    with pytest.raises(DeepOriginException, match="only prepares the system"):
+        _abfe_combined(steps=["system-prep"]).to_anchor()
 
 
 def test_pose_from_tool_input_rehydrates_pose_ref() -> None:

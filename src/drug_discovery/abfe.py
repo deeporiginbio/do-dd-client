@@ -630,6 +630,46 @@ def _abfe_results_dataframe(
     return df[head + tail]
 
 
+def _abfe_anchor_from_results(
+    df: pd.DataFrame | None,
+    *,
+    fallback_pose_id: str | None = None,
+) -> dict[str, Any]:
+    """Build an RBFE anchor from an ABFE results frame (see :meth:`ABFE.to_anchor`).
+
+    Args:
+        df: Frame from :func:`_abfe_results_dataframe`.
+        fallback_pose_id: Pose id to use when the result row has no ``pose1_id``.
+
+    Returns:
+        ``{"pose_id", "dG", "std"?, "abfe_result_id"?}``.
+
+    Raises:
+        DeepOriginException: If there is no result or no pose id.
+    """
+    if df is None or df.empty or "total" not in df.columns:
+        raise DeepOriginException(
+            title="No ABFE result",
+            message="This ABFE run has no result to build an anchor from yet.",
+            fix="Wait for the run to finish, then call to_anchor() again.",
+        )
+    row = df.iloc[0]
+    pose_id = row.get("pose1_id")
+    if pose_id is None or pd.isna(pose_id):
+        pose_id = fallback_pose_id
+    if pose_id is None:
+        raise DeepOriginException(
+            title="No pose id on ABFE result",
+            message="This ABFE result does not name the pose it was run on.",
+        )
+    anchor: dict[str, Any] = {"pose_id": str(pose_id), "dG": float(row["total"])}
+    if "std" in df.columns and not pd.isna(row["std"]):
+        anchor["std"] = float(row["std"])
+    if "result_id" in df.columns and not pd.isna(row["result_id"]):
+        anchor["abfe_result_id"] = str(row["result_id"])
+    return anchor
+
+
 def _pose_from_tool_input(ref: dict[str, Any]) -> Pose:
     """Rehydrate a pose from an ABFE ``pose1`` reference."""
     pose_id = ref.get("id")
@@ -674,7 +714,7 @@ class ABFE(Execution, AsyncExecutableMixin, NotebookWatchMixin):
         pose1: Pose | None = None,
         prepared_system: PreparedSystem | None = None,
         params: ABFEParams | None = None,
-        add_h_atoms: bool = False,
+        add_h_atoms: bool = True,
         protonate_protein: bool = False,
         retain_waters: bool = True,
         padding: float = 1.0,
@@ -699,7 +739,8 @@ class ABFE(Execution, AsyncExecutableMixin, NotebookWatchMixin):
             pose1: Pose for combined mode.
             prepared_system: Prepared system for ABFE-only steps.
             params: FEP simulation parameters.
-            add_h_atoms: Add hydrogens to pose during prep.
+            add_h_atoms: Add hydrogens to the pose during prep (default True;
+                no-op for poses that already have them).
             protonate_protein: Protonate protein during prep.
             retain_waters: Retain crystal waters during prep.
             padding: Solvation box padding (nm) during prep.
@@ -810,7 +851,7 @@ class ABFE(Execution, AsyncExecutableMixin, NotebookWatchMixin):
         instance.protein = None
         instance.pose1 = None
         instance.prepared_system = None
-        instance.add_h_atoms = bool(inputs.get("add_H_atoms", False))
+        instance.add_h_atoms = bool(inputs.get("add_H_atoms", True))
         instance.protonate_protein = bool(inputs.get("protonate_protein", False))
         instance.retain_waters = bool(inputs.get("retain_waters", True))
         instance.padding = float(inputs.get("padding", 1.0))
@@ -844,7 +885,8 @@ class ABFE(Execution, AsyncExecutableMixin, NotebookWatchMixin):
                 protein_id=prepared_system_input.get("protein_id"),
                 ligand1_id=prepared_system_input.get("ligand1_id"),
                 ligand2_id=prepared_system_input.get("ligand2_id"),
-                pose1_id=prepared_system_input.get("pose1_id"),
+                pose1_id=prepared_system_input.get("pose1_id")
+                or prepared_system_input.get("ligand1_pose_id"),
             )
 
         return instance
@@ -991,30 +1033,22 @@ class ABFE(Execution, AsyncExecutableMixin, NotebookWatchMixin):
             An anchor dict for :class:`~deeporigin.drug_discovery.rbfe.RBFE`.
 
         Raises:
-            DeepOriginException: If the run has no ABFE result yet.
+            DeepOriginException: If the run has no ABFE step or no ABFE result yet.
         """
-        df = self.get_results()
-        if df is None or df.empty or "total" not in df.columns:
+        if "abfe" not in self.steps:
             raise DeepOriginException(
-                title="No ABFE result",
-                message="This ABFE run has no result to build an anchor from yet.",
-                fix="Wait for the run to finish, then call to_anchor() again.",
+                title="No ABFE step",
+                message=f"This run only prepares the system (steps={self.steps!r}).",
+                fix="Run ABFE on its prepared system, then call to_anchor() on that run.",
             )
-        row = df.iloc[0]
-        pose_id = row.get("pose1_id")
-        if pd.isna(pose_id) and self.prepared_system is not None:
-            pose_id = self.prepared_system.pose1_id
-        if pose_id is None or pd.isna(pose_id):
-            raise DeepOriginException(
-                title="No pose id on ABFE result",
-                message="This ABFE result does not name the pose it was run on.",
-            )
-        anchor: dict[str, Any] = {"pose_id": str(pose_id), "dG": float(row["total"])}
-        if "std" in df.columns and not pd.isna(row["std"]):
-            anchor["std"] = float(row["std"])
-        if "result_id" in df.columns and not pd.isna(row["result_id"]):
-            anchor["abfe_result_id"] = str(row["result_id"])
-        return anchor
+        return _abfe_anchor_from_results(
+            self.get_results(),
+            fallback_pose_id=(
+                self.prepared_system.pose1_id
+                if self.prepared_system is not None
+                else None
+            ),
+        )
 
     @beartype
     def get_prepared_system(
