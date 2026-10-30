@@ -282,7 +282,8 @@ class StructureReport(Execution, SyncExecutableMixin):
             protein: Local protein with a remote path (synced before ``run``).
             pdb_id: Four-character PDB ID. Alone enables remote mode; with
                 ``protein``, RCSB supplies experimental metadata.
-            tool_version: Platform tool version (defaults to ``"latest"``).
+            tool_version: Platform tool version. Defaults to the pinned major
+                version in :data:`TOOL_KEYS_AND_VERSIONS`.
             client: Optional API client.
             name: Optional execution label.
 

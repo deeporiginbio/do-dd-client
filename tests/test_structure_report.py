@@ -41,7 +41,9 @@ def test_structure_report_normalizes_pdb_id(client: DeepOriginClient) -> None:
     job = StructureReport(pdb_id="1abc", client=client)
     assert job.pdb_id == "1ABC"
     assert job.protein is None
-    assert job.tool_version == "latest"
+    assert (
+        job.tool_version == TOOL_KEYS_AND_VERSIONS["structure_report"]["tool_version"]
+    )
     assert job.tool_key == TOOL_KEYS_AND_VERSIONS["structure_report"]["tool_key"]
 
 
