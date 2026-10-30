@@ -1369,15 +1369,22 @@ def create_tools_router(
             import csv
             import io
 
+            from rdkit import Chem
+
             file_path = str(inputs.get("file_path") or "")
             project_id = body.get("projectId") or execution.get("projectId")
             ligand_rows: list[dict[str, Any]] = []
+            invalid_count = 0
             raw = file_storage.get(file_path)
             if raw:
                 reader = csv.DictReader(io.StringIO(raw.decode("utf-8")))
                 for idx, row in enumerate(reader):
                     smiles = str(row.get("smiles") or "")
-                    canonical = _canonicalize_smiles(smiles)
+                    stripped = smiles.strip()
+                    if not stripped or Chem.MolFromSmiles(stripped) is None:
+                        invalid_count += 1
+                        continue
+                    canonical = Chem.MolToSmiles(Chem.MolFromSmiles(stripped))
                     lid: str | None = None
                     for record in ligands.values():
                         if record.get("canonical_smiles") == canonical:
@@ -1398,17 +1405,42 @@ def create_tools_router(
                                 parsed = None
                             if isinstance(parsed, dict):
                                 extra["tags"] = parsed
-                        record = _make_ligand_record(smiles, extra)
+                        record = _make_ligand_record(stripped, extra)
                         ligands[record["id"]] = record
                         lid = str(record["id"])
                     ligand_rows.append(
                         {
                             "id": lid,
-                            "smiles": smiles,
+                            "smiles": stripped,
                             "record_index": idx,
                         }
                     )
+            if invalid_count:
+                log_id = uuid.uuid4().hex
+                eid = str(execution.get("executionId") or "")
+                user_logs[log_id] = {
+                    "id": log_id,
+                    "execution_id": eid,
+                    "log_level": "error",
+                    "message": (
+                        f"Import: {invalid_count} ligand(s) had invalid SMILES."
+                    ),
+                    "date": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%f")[
+                        :-3
+                    ]
+                    + "Z",
+                }
             if not ligand_rows:
+                if invalid_count:
+                    execution["status"] = "Failed"
+                    execution["statusReason"] = {
+                        "code": "Failed",
+                        "message": (
+                            f"Import: {invalid_count} ligand(s) had invalid SMILES."
+                        ),
+                    }
+                    execution["jobOutputs"] = {"ligands": []}
+                    return execution
                 for idx in range(8):
                     ligand_rows.append(
                         {

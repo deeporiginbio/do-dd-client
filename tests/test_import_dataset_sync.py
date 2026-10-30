@@ -11,6 +11,7 @@ import pytest
 
 from deeporigin.drug_discovery import BRD_DATA_DIR
 from deeporigin.drug_discovery.import_dataset_sync import (
+    apply_ligand_import_job_outputs,
     DATA_PLATFORM_DATA_INGESTING_STATUS,
     hydrate_ligand_ids_after_import,
     job_outputs,
@@ -39,6 +40,99 @@ def test_job_outputs_helpers() -> None:
     )
     assert merged["import_execution_id"] == "exec-1"
     assert merged["ligands"] == []
+
+
+def test_apply_ligand_import_job_outputs_warns_on_partial_import() -> None:
+    ligands = [Ligand.from_smiles("CCO"), Ligand.from_smiles("CCN")]
+    outputs = {
+        "ligands": [{"id": "lig-1", "record_index": 0}],
+        "import_execution_id": "exec-partial",
+    }
+    mock_client = MagicMock()
+    mock_client.user_logs.search.return_value = {
+        "data": [
+            {
+                "log_level": "error",
+                "message": "Import: 1 ligand(s) had invalid SMILES.",
+            }
+        ]
+    }
+    with pytest.warns(UserWarning, match="1 of 2 ligand\\(s\\) were not imported"):
+        apply_ligand_import_job_outputs(ligands, outputs, client=mock_client)
+    assert ligands[0].id == "lig-1"
+    assert ligands[1].id is None
+
+
+def test_apply_ligand_import_job_outputs_warns_when_user_log_search_fails() -> None:
+    ligands = [Ligand.from_smiles("CCO"), Ligand.from_smiles("CCN")]
+    outputs = {
+        "ligands": [{"id": "lig-1", "record_index": 0}],
+        "import_execution_id": "exec-partial",
+    }
+    mock_client = MagicMock()
+    mock_client.user_logs.search.side_effect = RuntimeError("user_logs unavailable")
+    with pytest.warns(UserWarning, match="1 of 2 ligand\\(s\\) were not imported"):
+        apply_ligand_import_job_outputs(ligands, outputs, client=mock_client)
+    assert ligands[0].id == "lig-1"
+
+
+def test_partial_import_warning_includes_mock_user_log_error_message(
+    client: DeepOriginClient,
+) -> None:
+    """Partial served import enriches warnings via the mock user_logs search route."""
+    invalid = "O=C(NCA1)CN1CCOCC1"
+    fd = tempfile.NamedTemporaryFile(mode="w", delete=False, suffix=".csv", newline="")
+    writer = csv.writer(fd)
+    writer.writerow(["smiles", "name"])
+    writer.writerow(["CCO", "ok"])
+    writer.writerow([invalid, "bad"])
+    fd.close()
+    remote = stage_local_file(client, fd.name)
+    Path(fd.name).unlink(missing_ok=True)
+    outputs = sync_process_csv(
+        client=client,
+        project_id=str(client.project_id),
+        file_path=remote,
+    )
+    ligands = [Ligand.from_smiles("CCO"), Ligand.from_smiles("CCN")]
+    with pytest.warns(UserWarning) as records:
+        apply_ligand_import_job_outputs(ligands, outputs, client=client)
+    assert ligands[0].id
+    assert ligands[1].id is None
+    messages = " ".join(str(w.message) for w in records)
+    assert "invalid SMILES" in messages
+    assert "1 of 2 ligand(s) were not imported" in messages
+
+
+def test_apply_ligand_import_job_outputs_uses_positional_rows_only_when_complete() -> (
+    None
+):
+    ligands = [Ligand.from_smiles("CCO"), Ligand.from_smiles("CCN")]
+    outputs = {"ligands": [{"id": "lig-1"}, {"id": "lig-2"}]}
+    apply_ligand_import_job_outputs(ligands, outputs)
+    assert ligands[0].id == "lig-1"
+    assert ligands[1].id == "lig-2"
+
+
+def test_apply_ligand_import_job_outputs_partial_without_record_index_raises() -> None:
+    ligands = [
+        Ligand.from_smiles("CCO"),
+        Ligand.from_smiles("CCN"),
+        Ligand.from_smiles("CCC"),
+    ]
+    outputs = {
+        "ligands": [{"id": "lig-1"}, {"id": "lig-3"}],
+        "import_execution_id": "exec-ambiguous",
+    }
+    with pytest.raises(DeepOriginException, match="missing index 0"):
+        apply_ligand_import_job_outputs(ligands, outputs, client=MagicMock())
+
+
+def test_apply_ligand_import_job_outputs_raises_when_none_imported() -> None:
+    ligands = [Ligand.from_smiles("CCO")]
+    outputs = {"ligands": [], "import_execution_id": "exec-empty"}
+    with pytest.raises(DeepOriginException, match="missing index 0"):
+        apply_ligand_import_job_outputs(ligands, outputs, client=MagicMock())
 
 
 def test_require_project_id_uses_client_scope(client: DeepOriginClient) -> None:
@@ -134,6 +228,30 @@ def test_hydrate_ligand_ids_raises_when_platform_row_missing() -> None:
         )
 
 
+def test_sync_process_csv_mixed_invalid_returns_partial_job_outputs(
+    client: DeepOriginClient,
+) -> None:
+    """Mock served import-dataset skips invalid CSV rows (DDOS-8713)."""
+    invalid = "O=C(NCA1)CN1CCOCC1"
+    fd = tempfile.NamedTemporaryFile(mode="w", delete=False, suffix=".csv", newline="")
+    writer = csv.writer(fd)
+    writer.writerow(["smiles", "name"])
+    writer.writerow(["CCO", "ok"])
+    writer.writerow([invalid, "bad"])
+    fd.close()
+    remote = stage_local_file(client, fd.name)
+    Path(fd.name).unlink(missing_ok=True)
+    outputs = sync_process_csv(
+        client=client,
+        project_id=str(client.project_id),
+        file_path=remote,
+    )
+    assert outputs.get("import_execution_id")
+    rows = outputs.get("ligands") or []
+    assert len(rows) == 1
+    assert rows[0]["record_index"] == 0
+
+
 def test_sync_process_csv_on_mock_server(client: DeepOriginClient) -> None:
     with tempfile.NamedTemporaryFile("w", suffix=".csv", delete=False) as handle:
         writer = csv.DictWriter(handle, fieldnames=["smiles", "name"])
@@ -196,10 +314,10 @@ def test_require_uniform_scope_rejects_empty() -> None:
         require_uniform_scope([None, ""], field_label="project_id")
 
 
-def test_sync_process_pdb_uses_import_dataset_v3_and_process_pdb_flag(
+def test_sync_process_pdb_uses_import_dataset_v4_and_process_pdb_flag(
     client: DeepOriginClient,
 ) -> None:
-    """Entity sync must target import-dataset v3 ``process_pdb`` on the mock server."""
+    """Entity sync must target import-dataset v4 ``process_pdb`` on the mock server."""
     pdb_path = BRD_DATA_DIR / "brd.pdb"
     remote = stage_local_file(client, pdb_path)
     outputs = sync_process_pdb(
@@ -212,4 +330,4 @@ def test_sync_process_pdb_uses_import_dataset_v3_and_process_pdb_flag(
     assert isinstance(proteins, list)
     assert len(proteins) >= 1
     meta = TOOL_KEYS_AND_VERSIONS["import_dataset"]
-    assert meta["tool_version"] == "3"
+    assert meta["tool_version"] == "4"

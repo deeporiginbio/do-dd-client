@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 import time
+import warnings
 from typing import Any, Literal, Optional
 import uuid
 
@@ -149,6 +150,104 @@ def job_outputs_with_execution_id(dto: dict[str, Any]) -> dict[str, Any]:
     if eid:
         outputs = {**outputs, "import_execution_id": str(eid)}
     return outputs
+
+
+def error_user_log_messages_for_execution(
+    client: DeepOriginClient,
+    execution_id: str,
+) -> list[str]:
+    """Return ERROR-level user_log message strings for a tools execution id."""
+    ul = client.user_logs
+    if ul is None:
+        return []
+    try:
+        response = ul.search(execution_id=execution_id, limit=50)
+    except Exception:
+        return []
+    messages: list[str] = []
+    for row in response.get("data") or []:
+        if not isinstance(row, dict):
+            continue
+        level = (
+            row.get("log_level")
+            if row.get("log_level") is not None
+            else row.get("level")
+        )
+        if str(level or "").upper() != "ERROR":
+            continue
+        message = row.get("message")
+        if message is not None and str(message).strip():
+            messages.append(str(message).strip())
+    return messages
+
+
+def apply_ligand_import_job_outputs(
+    ligands: list[Any],
+    outputs: dict[str, Any],
+    *,
+    client: DeepOriginClient | None = None,
+) -> None:
+    """Assign platform ids from import-dataset ``jobOutputs.ligands``.
+
+    When some input indices have no returned row but at least one ligand imported,
+    emit a warning (including count-only ERROR user_logs when available). Raises
+    when no ligand received an id.
+    """
+    rows = outputs.get("ligands") or []
+    if not isinstance(rows, list):
+        rows = []
+    by_index: dict[int, dict[str, Any]] = {}
+    for row in rows:
+        if isinstance(row, dict) and "record_index" in row:
+            by_index[int(row["record_index"])] = row
+
+    missing_indices: list[int] = []
+    for idx, lig in enumerate(ligands):
+        record = by_index.get(idx)
+        if (
+            record is None
+            and not by_index
+            and len(rows) == len(ligands)
+            and idx < len(rows)
+            and isinstance(rows[idx], dict)
+        ):
+            record = rows[idx]
+        if record is None:
+            missing_indices.append(idx)
+            continue
+        lid = record.get("id")
+        if not lid:
+            missing_indices.append(idx)
+            continue
+        lig.id = str(lid)
+        mol_file = record.get("mol_file")
+        if mol_file:
+            lig.remote_path = str(mol_file)
+
+    if not missing_indices:
+        return
+
+    imported = len(ligands) - len(missing_indices)
+    if imported == 0:
+        first = missing_indices[0]
+        raise DeepOriginException(
+            title="Ligand sync failed",
+            message=(
+                "import-dataset did not return a ligand row for one or more "
+                f"input records (missing index {first})."
+            ),
+        )
+
+    detail_parts = [
+        f"Ligand sync: {len(missing_indices)} of {len(ligands)} ligand(s) "
+        "were not imported."
+    ]
+    execution_id = outputs.get("import_execution_id")
+    if client is not None and execution_id:
+        for message in error_user_log_messages_for_execution(client, str(execution_id)):
+            if message not in detail_parts:
+                detail_parts.append(message)
+    warnings.warn(" ".join(detail_parts), UserWarning, stacklevel=3)
 
 
 def require_uniform_scope(
@@ -555,6 +654,6 @@ def sync_process_csv(
 ) -> dict[str, Any]:
     """Run blocking import-dataset CSV processing and return jobOutputs."""
     inputs = {"process_csv": True, "file_path": file_path}
-    return job_outputs(
+    return job_outputs_with_execution_id(
         run_import_dataset_sync(inputs=inputs, project_id=project_id, client=client)
     )
