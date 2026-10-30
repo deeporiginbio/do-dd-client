@@ -2375,6 +2375,9 @@ class ProteinPrep(
     ) -> list[dict[str, Any]]:
         """Return result-explorer data payloads for one child result type.
 
+        Each payload carries the result record ``id`` (unless it has its own),
+        so rows rehydrate as platform entities.
+
         Args:
             result_type: Indexed result type string.
             filter_by_tool_key: When False, match only ``compute_job_id``.
@@ -2400,6 +2403,8 @@ class ProteinPrep(
                 continue
             data = record.get("data")
             if isinstance(data, dict):
+                if record.get("id") is not None:
+                    data = {"id": record["id"], **data}
                 rows.append(data)
         return rows
 

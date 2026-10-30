@@ -153,11 +153,11 @@ abfe.params
       binding_n_windows: 48
       binding_npt_reduce_restraints_ns: 2.0
       binding_nvt_heating_ns: 1.0
-      binding_steps: 1250000
+      binding_prod_ns: 5.0
       solvation_n_windows: 32
       solvation_npt_reduce_restraints_ns: 0.2
       solvation_nvt_heating_ns: 0.1
-      solvation_steps: 500000
+      solvation_prod_ns: 2.0
     )
     ```
 
@@ -185,11 +185,11 @@ ABFEParams(
   binding_n_windows: 48
   binding_npt_reduce_restraints_ns: 2.0
   binding_nvt_heating_ns: 1.0
-  binding_steps: 1250000
+  binding_prod_ns: 5.0
   solvation_n_windows: 32
   solvation_npt_reduce_restraints_ns: 0.2
   solvation_nvt_heating_ns: 0.1
-  solvation_steps: 500000
+  solvation_prod_ns: 2.0
 )
 ```
 

@@ -1350,6 +1350,7 @@ def test_extract_start_exposes_crystal_pockets(
     assert pockets is not None
     assert len(pockets) >= 1
     assert pockets[0].origin == "from-crystal-ligand"
+    assert pockets[0].id is not None
 
 
 def test_get_pockets_returns_none_when_not_published() -> None:
@@ -1527,6 +1528,7 @@ def test_run_with_extract_populates_get_crystal_poses(
     assert poses[0].ligand_id is not None
     assert poses[0].origin == "cocrystal"
     assert poses[0].protein_id is not None
+    assert poses[0].id is not None
 
 
 def test_configuration_freezes_find_pockets_after_id() -> None:

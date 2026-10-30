@@ -281,8 +281,8 @@ def _rbfe_ts(start_dt: datetime, duration_s: float, fraction: float) -> str:
 def _rbfe_pair_count(user_inputs: dict[str, Any], steps: list[str]) -> int:
     """Return the number of pair-pipeline branches for this RBFE request."""
     if "konnektor" in steps:
-        ligands = user_inputs.get("ligands") or []
-        return max(1, len(ligands) - 1) if len(ligands) > 1 else 1
+        poses = user_inputs.get("poses") or []
+        return max(1, len(poses) - 1) if len(poses) > 1 else 1
     if "system-prep" in steps:
         pairs = user_inputs.get("pairs") or []
         return max(1, len(pairs))
@@ -673,25 +673,12 @@ def _stable_log_value(seed: str, suffix: str, *, low: float, high: float) -> flo
     return round(low + _stable_unit_float(seed, suffix) * (high - low), 6)
 
 
-def _konnektor_ligand_display_name(ligand: dict[str, Any], index: int) -> str:
-    """Stable component name aligned with rbfe-tools ``ligand_resolve``."""
-    ligand_id = str(ligand.get("id") or "").strip()
-    if ligand_id:
-        return ligand_id
-    file_path = str(ligand.get("file_path") or "").strip()
-    if file_path:
-        stem = Path(file_path).stem.strip()
-        if stem:
-            return stem
-    return f"ligand_{index + 1}"
-
-
 def _konnektor_edges(
     names: list[str],
     *,
     network_type: str,
 ) -> list[dict[str, str]]:
-    """Build mock Konnektor edges for ``names`` (order matches input ligands)."""
+    """Build mock Konnektor edges for ``names`` (Pose ids, in input order)."""
     if len(names) < 2:
         return []
     if network_type == "star":
@@ -3130,12 +3117,19 @@ def create_tools_router(
             ps_list = user_inputs.get("prepared_systems") or []
             if isinstance(ps_list, list) and ps_list and isinstance(ps_list[0], dict):
                 ps0 = ps_list[0]
-                for key in ("ligand1_id", "ligand2_id", "protein_id"):
+                for key in (
+                    "ligand1_id",
+                    "ligand2_id",
+                    "pose1_id",
+                    "pose2_id",
+                    "protein_id",
+                ):
                     if ps0.get(key) is not None:
                         data[key] = ps0[key]
         if isinstance(data, dict) and "cycleclosureresults" not in data:
             data["cycleclosureresults"] = [
                 {
+                    "pose_id": data.get("pose1_id") or "pose-1",
                     "ligand_id": data.get("ligand1_id") or "lig-1",
                     "dG": -10.0,
                     "unit": "kcal/mol",
@@ -3701,24 +3695,24 @@ def create_tools_router(
                     body=body,
                 )
                 inputs = body.get("inputs", {}) or {}
-                ligand_inputs = inputs.get("ligands") or []
                 network_type = str(inputs.get("network_type") or "mst")
                 names = [
-                    _konnektor_ligand_display_name(row, idx)
-                    for idx, row in enumerate(ligand_inputs)
-                    if isinstance(row, dict)
+                    str(row["id"])
+                    for row in inputs.get("poses") or []
+                    if isinstance(row, dict) and row.get("id")
                 ]
                 edges = _konnektor_edges(names, network_type=network_type)
                 eid = execution["executionId"]
                 is_connected = len(names) <= 1 or len(edges) >= len(names) - 1
+                html_path = f"tool-runs/{eid}/network.html"
+                file_storage[html_path] = b"<html><body>Konnektor network</body></html>"
                 execution["jobOutputs"] = {
                     "ligand_network": {
                         "edges": edges,
                         "is_connected": is_connected,
-                        "network": {},
-                        "network_html_file": f"tool-runs/{eid}/network.html",
+                        "network_file": f"tool-runs/{eid}/network.json",
+                        "network_html_file": html_path,
                     },
-                    "network_html": "<html><body>Konnektor network</body></html>",
                 }
                 executions[execution["executionId"]] = execution
                 return _normalize_execution(execution)

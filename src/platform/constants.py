@@ -133,15 +133,15 @@ TOOL_KEYS_AND_VERSIONS: dict[str, dict[str, str]] = {
     },
     "konnektor": {
         "tool_key": "deeporigin.konnektor",
-        "tool_version": "1",
+        "tool_version": "2",
     },
     "abfe": {
         "tool_key": "deeporigin.abfe-end-to-end",
-        "tool_version": "2",
+        "tool_version": "3",
     },
     "rbfe": {
         "tool_key": "deeporigin.rbfe",
-        "tool_version": "2",
+        "tool_version": "3",
     },
     "sysprep": {
         "tool_key": "deeporigin.system-prep",

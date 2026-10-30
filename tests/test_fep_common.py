@@ -8,12 +8,10 @@ from deeporigin.drug_discovery.fep_common import (
     ABFEParams,
     RBFEParams,
     _fep_params_from_inputs,
-    _ligand_tool_ref,
     _pose_tool_ref,
     _prepared_system_tool_ref,
     _simulation_blocks,
 )
-from deeporigin.drug_discovery.structures.ligand import Ligand
 from deeporigin.drug_discovery.structures.pose import Pose
 from deeporigin.drug_discovery.structures.prepared_system import PreparedSystem
 from deeporigin.exceptions import DeepOriginException
@@ -21,11 +19,14 @@ from deeporigin.exceptions import DeepOriginException
 
 def test_simulation_blocks_round_trip() -> None:
     """_simulation_blocks emits binding/solvation keys expected by workflow tools."""
-    params = ABFEParams(test_run=1, binding_n_windows=12, solvation_steps=99)
+    params = ABFEParams(test_run=1, binding_n_windows=12, solvation_prod_ns=0.5)
     blocks = _simulation_blocks(params)
     assert blocks["binding"]["test_run"] == 1
     assert blocks["binding"]["n_windows"] == 12
-    assert blocks["solvation"]["steps"] == 99
+    assert blocks["solvation"]["prod_ns"] == pytest.approx(0.5)
+    assert blocks["binding"]["prod_ns"] == pytest.approx(5.0)
+    assert "steps" not in blocks["binding"]
+    assert "steps" not in blocks["solvation"]
     assert blocks["binding"]["emeq_md_options"]["T"] == pytest.approx(298.15)
 
 
@@ -60,8 +61,19 @@ def test_fep_params_from_inputs_round_trip() -> None:
     assert not isinstance(params, RBFEParams)
     assert params.temperature == pytest.approx(310.0)
     assert params.binding_n_windows == 20
-    assert params.solvation_steps == 80000
+    # Older runs stored steps; 80000 steps x 0.003 ps = 0.24 ns.
+    assert params.solvation_prod_ns == pytest.approx(0.24)
+    assert params.binding_prod_ns == pytest.approx(0.6)
     assert params.repeats == 3
+
+
+def test_fep_params_from_inputs_reads_prod_ns() -> None:
+    """Stored prod_ns is read as is."""
+    params = _fep_params_from_inputs(
+        {"binding": {"prod_ns": 3.0}, "solvation": {"prod_ns": 1.5}}
+    )
+    assert params.binding_prod_ns == pytest.approx(3.0)
+    assert params.solvation_prod_ns == pytest.approx(1.5)
 
 
 def test_fep_params_from_inputs_rbfe_cls() -> None:
@@ -109,10 +121,14 @@ def test_prepared_system_tool_ref_includes_optional_ids() -> None:
         protein_id="prot-1",
         ligand1_id="lig-1",
         ligand2_id="lig-2",
+        pose1_id="pose-1",
+        pose2_id="pose-2",
     )
     ref = _prepared_system_tool_ref(ps)
     assert ref["binding_xml_file_path"] == "testing/a.xml"
     assert ref["ligand2_id"] == "lig-2"
+    assert ref["pose1_id"] == "pose-1"
+    assert ref["pose2_id"] == "pose-2"
 
 
 def test_pose_tool_ref_serializes_synced_pose() -> None:
@@ -140,25 +156,3 @@ def test_pose_tool_ref_requires_platform_id() -> None:
     pose = Pose(ligand_id="lig-1", remote_path="testing/pose.sdf")
     with pytest.raises(DeepOriginException, match="platform id"):
         _pose_tool_ref(pose)
-
-
-def test_ligand_tool_ref_serializes_synced_ligand() -> None:
-    """_ligand_tool_ref emits remote file_path and optional platform id."""
-    ligand = Ligand.from_smiles("CCO", id="lig-1", remote_path="testing/lig.sdf")
-    assert _ligand_tool_ref(ligand) == {
-        "id": "lig-1",
-        "file_path": "testing/lig.sdf",
-    }
-
-
-def test_ligand_tool_ref_allows_missing_id() -> None:
-    """_ligand_tool_ref omits id when the ligand is file-only."""
-    ligand = Ligand.from_smiles("CCO", id=None, remote_path="testing/lig.sdf")
-    assert _ligand_tool_ref(ligand) == {"file_path": "testing/lig.sdf"}
-
-
-def test_ligand_tool_ref_requires_remote_path() -> None:
-    """_ligand_tool_ref rejects ligands that are not synced."""
-    ligand = Ligand.from_smiles("CCO", id="lig-1")
-    with pytest.raises(DeepOriginException, match="remote_path"):
-        _ligand_tool_ref(ligand)

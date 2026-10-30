@@ -7,7 +7,6 @@ from typing import Any
 
 from beartype import beartype
 
-from deeporigin.drug_discovery.structures.ligand import Ligand
 from deeporigin.drug_discovery.structures.pose import Pose
 from deeporigin.drug_discovery.structures.prepared_system import PreparedSystem
 from deeporigin.drug_discovery.structures.protein import Protein
@@ -29,11 +28,11 @@ class ABFEParams:
         binding_n_windows: Number of windows for binding calculation.
         binding_npt_reduce_restraints_ns: NPT reduce restraints time in ns for binding.
         binding_nvt_heating_ns: NVT heating time in ns for binding.
-        binding_steps: Number of steps for binding calculation.
+        binding_prod_ns: Length of each binding production repeat in ns.
         solvation_n_windows: Number of windows for solvation calculation.
         solvation_npt_reduce_restraints_ns: NPT reduce restraints time in ns for solvation.
         solvation_nvt_heating_ns: NVT heating time in ns for solvation.
-        solvation_steps: Number of steps for solvation calculation.
+        solvation_prod_ns: Length of each solvation production repeat in ns.
     """
 
     dt: float = 0.004
@@ -45,11 +44,11 @@ class ABFEParams:
     binding_n_windows: int = 48
     binding_npt_reduce_restraints_ns: float = 2.0
     binding_nvt_heating_ns: float = 1.0
-    binding_steps: int = 1250000
+    binding_prod_ns: float = 5.0
     solvation_n_windows: int = 32
     solvation_npt_reduce_restraints_ns: float = 0.2
     solvation_nvt_heating_ns: float = 0.1
-    solvation_steps: int = 500000
+    solvation_prod_ns: float = 2.0
 
     def __repr__(self) -> str:
         """Return a string representation with each attribute on its own line.
@@ -118,22 +117,6 @@ def _protein_from_tool_input(
 
 
 @beartype
-def _ligand_tool_ref(ligand: Ligand) -> dict[str, str]:
-    """Serialize a ligand for workflow ``ligand1`` / ``pairs[]`` inputs."""
-    if ligand.remote_path is None:
-        msg = "Ligand must be synced before submitting (remote_path is missing)."
-        raise DeepOriginException(
-            title="Ligand not synced",
-            message=msg,
-            fix="Call ligand.sync(client=...) before start().",
-        )
-    ref: dict[str, str] = {"file_path": ligand.remote_path}
-    if ligand.id is not None:
-        ref["id"] = ligand.id
-    return ref
-
-
-@beartype
 def _pose_tool_ref(pose: Pose) -> dict[str, str]:
     """Serialize a pose for workflow ``pose1`` / ``pairs[].pose*`` inputs."""
     if pose.remote_path is None:
@@ -166,6 +149,10 @@ def _prepared_system_tool_ref(prepared_system: PreparedSystem) -> dict[str, str]
         out["ligand1_id"] = prepared_system.ligand1_id
     if prepared_system.ligand2_id is not None:
         out["ligand2_id"] = prepared_system.ligand2_id
+    if prepared_system.pose1_id is not None:
+        out["pose1_id"] = prepared_system.pose1_id
+    if prepared_system.pose2_id is not None:
+        out["pose2_id"] = prepared_system.pose2_id
     return out
 
 
@@ -186,7 +173,7 @@ def _simulation_blocks(params: ABFEParams) -> dict[str, dict[str, Any]]:
             "prod_md_options": md_options,
             "repeats": params.repeats,
             "replex_period_ps": params.replex_period_ps,
-            "steps": params.binding_steps,
+            "prod_ns": params.binding_prod_ns,
             "test_run": params.test_run,
         },
         "solvation": {
@@ -197,7 +184,7 @@ def _simulation_blocks(params: ABFEParams) -> dict[str, dict[str, Any]]:
             "prod_md_options": md_options,
             "repeats": params.repeats,
             "replex_period_ps": params.replex_period_ps,
-            "steps": params.solvation_steps,
+            "prod_ns": params.solvation_prod_ns,
             "test_run": params.test_run,
         },
     }
@@ -210,6 +197,9 @@ def _fep_params_from_inputs(
     params_cls: type[ABFEParams] = ABFEParams,
 ) -> ABFEParams:
     """Build FEP params from stored ``binding`` / ``solvation`` blocks.
+
+    Runs that stored ``steps`` instead of ``prod_ns`` are converted to ns with
+    the stored ``dt``.
 
     Args:
         inputs: Tool inputs containing optional ``binding`` / ``solvation`` dicts.
@@ -224,7 +214,7 @@ def _fep_params_from_inputs(
         "n_windows": "binding_n_windows",
         "npt_reduce_restraints_ns": "binding_npt_reduce_restraints_ns",
         "nvt_heating_ns": "binding_nvt_heating_ns",
-        "steps": "binding_steps",
+        "prod_ns": "binding_prod_ns",
         "repeats": "repeats",
         "replex_period_ps": "replex_period_ps",
         "test_run": "test_run",
@@ -233,7 +223,7 @@ def _fep_params_from_inputs(
         "n_windows": "solvation_n_windows",
         "npt_reduce_restraints_ns": "solvation_npt_reduce_restraints_ns",
         "nvt_heating_ns": "solvation_nvt_heating_ns",
-        "steps": "solvation_steps",
+        "prod_ns": "solvation_prod_ns",
     }
     md_options_key_map = {
         "dt": "dt",
@@ -251,5 +241,12 @@ def _fep_params_from_inputs(
     for dto_key, param_field in md_options_key_map.items():
         if dto_key in md_options:
             kwargs[param_field] = md_options[dto_key]
+    dt_ps = kwargs.get("dt", params_cls.dt)
+    for block, param_field in (
+        (binding, "binding_prod_ns"),
+        (solvation, "solvation_prod_ns"),
+    ):
+        if "prod_ns" not in block and "steps" in block:
+            kwargs[param_field] = block["steps"] * dt_ps / 1000
 
     return params_cls(**kwargs)
