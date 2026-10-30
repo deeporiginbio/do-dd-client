@@ -6,17 +6,40 @@ Requires the ``core`` optional dependency (``pandas``) for DataFrame helpers.
 from __future__ import annotations
 
 from collections.abc import Sequence
+from pathlib import Path
+import tempfile
 from typing import Any, List
 
 from beartype import beartype
 
+from deeporigin.drug_discovery.import_dataset_sync import (
+    run_import_dataset_workflow,
+    stage_local_file,
+    wait_for_import_ingestion,
+)
 from deeporigin.drug_discovery.structures.ligand import LigandSet
 from deeporigin.drug_discovery.structures.protein import Protein
+from deeporigin.drug_discovery.structures.protein_files import (
+    build_protein_bundle,
+    find_structure_files,
+    validate_structure_files,
+)
+from deeporigin.drug_discovery.structures.repr_display import (
+    fetch_project_display_name,
+)
 from deeporigin.exceptions import DeepOriginException
 from deeporigin.platform.client import DeepOriginClient
+from deeporigin.platform.constants import is_success_status, normalize_platform_status
 from deeporigin.utils.constants import (
+    DATA_PLATFORM_INGESTION_TIMEOUT_SECONDS,
     ENTITIES_UNAVAILABLE_DETAIL,
     ENTITIES_UNAVAILABLE_TITLE,
+    IMPORT_DATASET_PROTEINS_DATABASE_KEY,
+    IMPORT_DATASET_PROTEINS_DATABASE_VERSION,
+    PROTEIN_FOLDER_CSV_MAPPER,
+    PROTEIN_FOLDER_IMPORT_TOOL_VERSION,
+    PROTEIN_IMPORT_FAILED_TITLE,
+    PROTEIN_SEARCH_PAGE_SIZE,
 )
 
 
@@ -449,6 +472,139 @@ def set_proteins(proteins: Sequence[Protein]) -> None:
         p.sync(client=client)
 
 
+@beartype
+def sync_proteins(
+    path: str | Path | Sequence[str | Path],
+    *,
+    recursive: bool = False,
+    timeout: int | float = DATA_PLATFORM_INGESTION_TIMEOUT_SECONDS,
+) -> Sequence[Protein]:
+    """Import a folder of protein structure files into the current project.
+
+    Each ``.pdb``, ``.cif``, ``.mmcif`` or ``.ent`` file becomes one protein
+    named after its file name without extension, as with
+    ``Protein.from_file(path).sync()``. Files that share a name become separate
+    proteins. A structure already in the project is reused and keeps its name.
+
+    Every file is checked first, and if any can't be imported nothing is
+    uploaded and one error lists them all. The import then runs on Deep Origin;
+    this waits on the platform's live update stream rather than holding a
+    request open, and returns once the proteins are saved.
+
+    Args:
+        path: A folder, a single file, or a list of files.
+        recursive: Also import files in subfolders.
+        timeout: Seconds to wait for the import before giving up.
+
+    Returns:
+        Sequence[Protein]: Every protein in the current project, not only the
+        imported files, metadata only (no structure downloaded).
+
+    Raises:
+        DeepOriginException: If no current project is set, the entities API is
+            unavailable, any file can't be imported, or the import does not
+            start or does not succeed.
+        TimeoutError: If the import has not finished within ``timeout``. The
+            message includes the import's execution id.
+    """
+
+    project_id = _require_project_id()
+    client = DeepOriginClient()
+    if client.entities is None:
+        raise DeepOriginException(
+            title=ENTITIES_UNAVAILABLE_TITLE,
+            message=ENTITIES_UNAVAILABLE_DETAIL,
+            level="danger",
+        )
+    files = find_structure_files(path, recursive=recursive)
+    validate_structure_files(files)
+    with tempfile.TemporaryDirectory() as tmp:
+        zip_path, csv_path = build_protein_bundle(files, tmp)
+        inputs = {
+            "csv_path": stage_local_file(client, csv_path),
+            "protein_zip_path": stage_local_file(client, zip_path),
+            "mapper": PROTEIN_FOLDER_CSV_MAPPER,
+            "database_key": IMPORT_DATASET_PROTEINS_DATABASE_KEY,
+            "database_version": IMPORT_DATASET_PROTEINS_DATABASE_VERSION,
+        }
+    dto = run_import_dataset_workflow(
+        inputs=inputs,
+        project_id=project_id,
+        client=client,
+        tool_version=PROTEIN_FOLDER_IMPORT_TOOL_VERSION,
+    )
+    execution_id = dto.get("executionId")
+    if not execution_id:
+        raise DeepOriginException(
+            title=PROTEIN_IMPORT_FAILED_TITLE,
+            message="Deep Origin did not start the protein import.",
+            fix="Try again. If it keeps failing, contact support.",
+        )
+    return _wait_for_import(client, str(execution_id), project_id, timeout=timeout)
+
+
+def _wait_for_import(
+    client: DeepOriginClient,
+    execution_id: str,
+    project_id: str,
+    *,
+    timeout: int | float,
+) -> list[Protein]:
+    """Wait for a protein import (SSE, else polling), raise if it failed, else return proteins."""
+    row = wait_for_import_ingestion(
+        client, execution_id, project_id=project_id, timeout=timeout
+    )
+    status = normalize_platform_status(row.get("status"))
+    if not is_success_status(status):
+        reason = _status_reason(client, execution_id) or status
+        raise DeepOriginException(
+            title=PROTEIN_IMPORT_FAILED_TITLE,
+            message=(
+                f"The protein import (execution_id={execution_id!r}) ended with "
+                f"status {status!r}: {reason}"
+            ),
+            fix="Check the files, then run projects.sync_proteins again.",
+        )
+    return _project_proteins(client, project_id)
+
+
+def _status_reason(client: DeepOriginClient, execution_id: str) -> str | None:
+    """Return the tools-service ``statusReason`` for an execution.
+
+    The data-platform execution row carries no failure reason, so it is read
+    from the tools-service execution.
+    """
+    dto = client.executions.get(execution_id)  # ty: ignore[unresolved-attribute]
+    reason = dto.get("statusReason") if isinstance(dto, dict) else None
+    return str(reason) if reason else None
+
+
+def _project_proteins(client: DeepOriginClient, project_id: str) -> list[Protein]:
+    """Read every protein in a project as metadata-only proteins, following the search cursor."""
+    project_name = fetch_project_display_name(project_id, None, client=client)[0]
+    out: list[Protein] = []
+    cursor: str | None = None
+    while True:
+        response = client.entities.search_proteins(  # ty: ignore[unresolved-attribute]
+            project_id=project_id,
+            limit=PROTEIN_SEARCH_PAGE_SIZE,
+            cursor=cursor,
+        )
+        out.extend(
+            Protein._from_platform_record(
+                record,
+                client=client,
+                remote_path=record.get("file_path"),
+                project_name=project_name,
+            )
+            for record in response.get("data") or []
+            if isinstance(record, dict)
+        )
+        cursor = (response.get("meta") or {}).get("nextCursor")
+        if not cursor:
+            return out
+
+
 __all__ = [
     "create",
     "current",
@@ -461,4 +617,5 @@ __all__ = [
     "proteins",
     "set_ligands",
     "set_proteins",
+    "sync_proteins",
 ]

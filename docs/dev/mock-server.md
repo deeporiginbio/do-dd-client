@@ -12,11 +12,12 @@ The mock server is organized into routers, each handling a group of related endp
 
 | Router | File | Responsibilities |
 |---|---|---|
-| **data_platform** | `routers/data_platform.py` | Entity CRUD (proteins, ligands), result-explorer search |
+| **data_platform** | `routers/data_platform.py` | Entity CRUD (proteins, ligands), entity search (`offset` or `cursor`, with `meta.nextCursor` while more rows remain), result-explorer search |
 | **tools** | `routers/tools.py` | Tool executions (list/get/cancel/confirm/run), clusters |
 | **files** | `routers/files.py` | File upload/download |
 | **entities** | `routers/entities.py` | Entity management |
 | **billing** | `routers/billing.py` | Billing endpoints |
+| **sse** | `routers/sse.py` | Gateway project stream (`GET /sse/{org}/stream/{project}`) |
 
 All routers share in-memory stores (dicts/lists) that are created in `MockServer.__init__` and passed into the router factory functions. This lets data flow between routers — for example, a tool execution in the tools router can inject records that are later visible via the data-platform router's result-explorer search.
 
@@ -25,6 +26,25 @@ All routers share in-memory stores (dicts/lists) that are created in `MockServer
 `tests/brd.pdb` fixture) so IDs stay stable under `--env local`. There is no
 separate test module for the mock server; that behavior is exercised indirectly
 by any local test that syncs a protein (e.g. the `registered_protein` fixture).
+
+**SSE stream (local only):** `GET /sse/{org}/stream/{project}` sends a `retry:`
+line, one `filters.dirty` frame naming every `filter=<id>=<pattern>` query
+param, then closes. `Executions.wait_for_ingestion` reads the execution row on
+connect, re-reads on that frame, and reconnects after the close, so a row that
+reads `DataIngesting` once (see `executions/search`) resolves on the second
+read.
+The stream for project `MOCK_SSE_DISABLED_PROJECT_ID` (`tests/mock_server/constants.py`) is refused with 404, as on a gateway without SSE, to test the fallback to polling in `wait_for_import_ingestion`.
+
+**Protein import (local only):** an import-dataset `csv_path` run whose mapper targets `proteins.*`, as `projects.sync_proteins` sends, is ingested at submit (`_ingest_import_dataset_protein_csv` in `routers/tools.py`). Rows are read through the mapper's `proteins.<field>` keys, with header keys and cells stripped as the import tool does. A CSV with no rows ends the run `Failed` with a `statusReason`.
+
+**Protein zip (local only):** with `protein_zip_path`, a row's `file_path` names a file in the uploaded zip, mirroring import-dataset 4.x (`_protein_zip_entries` and `_register_zip_protein` in `routers/tools.py`):
+
+- Zip entries are matched by file name at any depth; the first match wins.
+- Registrations are cached by that file name, so rows naming the same file share one protein. This is why `build_protein_bundle` gives every entry a unique internal name.
+- Each file is stored at `entities/proteins/<sha256><ext>`. A project protein with the same content is reused and keeps its name. The mock hashes file bytes where the tool hashes coordinates.
+- A missing file, or one without `ATOM`/`HETATM` lines, loses its `file_path` silently. The row is still imported as a protein with only its name, and the run ends `Completed`, as the tool does on dev.
+
+Covered by `tests/test_protein_folder_import_local.py`.
 
 ## Running the Mock Server
 
@@ -228,7 +248,7 @@ client = DeepOriginClient(
 
 The mock server implements the following endpoints:
 
-- **Files API**: List, upload, download, and delete files
+- **Files API**: List, upload, download, and delete files. Listing a folder that isn't in `tests/fixtures/files` returns the files uploaded under it during the session (e.g. `imports/staging`).
 - **Tools API**: List tools and tool definitions
 - **Executions API**: List, get, cancel, confirm, and create tool executions
 - **Clusters API**: List available clusters

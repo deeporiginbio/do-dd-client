@@ -254,7 +254,8 @@ def _apply_search_filters(
 
     Returns:
         Dict with ``data`` (list of matching records) and ``count``
-        (total matches before pagination).
+        (total matches before pagination), plus ``meta.nextCursor`` (the
+        offset of the next page) when more matches remain.
     """
     results = list(records.values())
 
@@ -339,8 +340,10 @@ def _apply_search_filters(
 
     total = len(results)
     page = results[offset : offset + limit]
-
-    return {"data": page, "count": total}
+    response: dict[str, Any] = {"data": page, "count": total}
+    if offset + len(page) < total:
+        response["meta"] = {"nextCursor": str(offset + len(page))}
+    return response
 
 
 def _canonicalize_smiles(smiles: str) -> str:
@@ -1021,7 +1024,8 @@ def create_data_platform_router(
         body = await request.json()
         filter_dict = body.get("filter", {})
         limit = body.get("limit", 100)
-        offset = body.get("offset", 0)
+        cursor = body.get("cursor")
+        offset = int(cursor) if cursor else body.get("offset", 0)
         store = _entity_stores.get(entity, {})
 
         if entity == "proteins" and "file_path" in filter_dict:

@@ -6,6 +6,7 @@ from pathlib import Path
 import time
 from typing import Any, Literal, Optional
 import uuid
+import warnings
 
 from deeporigin.exceptions import DeepOriginException
 from deeporigin.platform.client import DeepOriginClient
@@ -16,6 +17,7 @@ from deeporigin.platform.constants import (
     normalize_platform_status,
 )
 from deeporigin.platform.project_scope import require_client_project_id
+from deeporigin.utils.constants import DATA_PLATFORM_INGESTION_POLL_SECONDS
 
 MAX_SERVED_FILE_LIGAND_RECORDS = 500
 
@@ -92,13 +94,19 @@ def run_import_dataset_workflow(
     inputs: dict[str, Any],
     project_id: str,
     client: Optional[DeepOriginClient] = None,
+    tool_version: str | None = None,
 ) -> dict[str, Any]:
-    """Start a workflow import-dataset execution and return the creation DTO."""
+    """Start a workflow import-dataset execution and return the creation DTO.
+
+    ``tool_version`` overrides the import-dataset version pinned in
+    ``TOOL_KEYS_AND_VERSIONS`` for this execution only.
+    """
     return _create_import_dataset_execution(
         inputs=inputs,
         project_id=project_id,
         client=client,
         sync=False,
+        tool_version=tool_version,
     )
 
 
@@ -108,6 +116,7 @@ def _create_import_dataset_execution(
     project_id: str,
     client: Optional[DeepOriginClient] | None,
     sync: bool,
+    tool_version: str | None = None,
 ) -> dict[str, Any]:
     if client is None:
         client = DeepOriginClient()
@@ -124,7 +133,7 @@ def _create_import_dataset_execution(
     tool_meta = TOOL_KEYS_AND_VERSIONS["import_dataset"]
     raw = client.executions.create(  # ty: ignore[unresolved-attribute]
         tool_key=tool_meta["tool_key"],
-        tool_version=tool_meta["tool_version"],
+        tool_version=tool_version or tool_meta["tool_version"],
         data={
             "inputs": inputs,
             "outputs": {},
@@ -278,6 +287,93 @@ def wait_for_data_platform_ingestion(
                 f"{compute_job_id!r})."
             )
         time.sleep(poll_interval)
+
+
+def wait_for_import_ingestion(
+    client: DeepOriginClient,
+    execution_id: str,
+    *,
+    project_id: str,
+    timeout: float,
+) -> dict[str, Any]:
+    """Wait for an import run and its data-platform ingestion to finish.
+
+    Waits on the gateway's SSE stream (:meth:`Executions.wait_for_ingestion`).
+    If the stream can't be used (for example the gateway refuses it, or the
+    backend can't read hidden runs), warns and polls instead: first the
+    tools-service run until it finishes, then the data-platform row until it
+    leaves ``DataIngesting``. Failures are returned, not raised, so the caller
+    raises its own error.
+
+    Args:
+        client: Platform client.
+        execution_id: Tools-service execution id of the import.
+        project_id: Project the import runs in.
+        timeout: Maximum total seconds to wait.
+
+    Returns:
+        A row whose ``status`` is terminal: the data-platform execution row,
+        ``{"status": <tools-service status>}`` when the run itself did not
+        succeed, or ``{"status": "Completed"}`` when the run succeeded but no
+        data-platform row became readable.
+
+    Raises:
+        TimeoutError: If the wait does not finish within ``timeout``.
+    """
+    deadline = time.monotonic() + timeout
+    try:
+        return client.executions.wait_for_ingestion(  # ty: ignore[unresolved-attribute]
+            execution_id,
+            project_id=project_id,
+            timeout=timeout,
+        )
+    except DeepOriginException as error:
+        warnings.warn(
+            f"Live updates are unavailable ({error.title}); polling for import "
+            f"execution {execution_id!r} instead.",
+            stacklevel=2,
+        )
+
+    dto = client.executions.wait(  # ty: ignore[unresolved-attribute]
+        execution_id,
+        poll_interval=DATA_PLATFORM_INGESTION_POLL_SECONDS,
+        timeout=max(deadline - time.monotonic(), 0.0),
+    )[0]
+    status = normalize_platform_status(dto.get("status"))
+    if not is_success_status(status):
+        return {"status": status}
+
+    finished_at = time.monotonic()
+    while True:
+        row = _ingestion_row(client, execution_id)
+        if row is not None:
+            row_status = normalize_platform_status(row.get("status"))
+            if row_status in TERMINAL_STATES:
+                return {**row, "status": row_status}
+        elif time.monotonic() - finished_at >= _DEFAULT_NO_DP_EXECUTION_ROW_TIMEOUT_S:
+            return {"status": "Completed"}
+        if time.monotonic() >= deadline:
+            raise TimeoutError(
+                "Timed out waiting for data-platform ingestion "
+                f"(execution_id={execution_id!r}, project_id={project_id!r})."
+            )
+        time.sleep(DATA_PLATFORM_INGESTION_POLL_SECONDS)
+
+
+def _ingestion_row(
+    client: DeepOriginClient, execution_id: str
+) -> dict[str, Any] | None:
+    """Read an import's data-platform row, including hidden runs where supported."""
+    try:
+        resp = client.executions.search(  # ty: ignore[unresolved-attribute]
+            compute_job_id=execution_id,
+            include_hidden=True,
+            limit=1,
+        )
+    except DeepOriginException:
+        return _latest_data_platform_execution_row(client, execution_id)
+    rows = resp.get("data") or []
+    return rows[0] if rows and isinstance(rows[0], dict) else None
 
 
 def _dp_execution_row_id(row: dict[str, Any]) -> str | None:

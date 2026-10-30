@@ -2269,6 +2269,173 @@ def create_tools_router(
             "batches": 1,
         }
 
+    def _is_protein_csv_import(inputs: dict[str, Any]) -> bool:
+        """Return True when an import-dataset mapper targets protein fields."""
+        mapper = inputs.get("mapper") or []
+        return any(
+            str(item.get("json-path", "")).startswith("proteins.")
+            for item in mapper
+            if isinstance(item, dict)
+        )
+
+    def _protein_zip_entries(zip_key: Any) -> dict[str, bytes]:
+        """Return the uploaded protein zip's files by basename, first match winning.
+
+        Mirrors import-dataset: entries are matched by file name at any depth.
+        """
+        import io
+        import zipfile
+
+        raw = file_storage.get(str(zip_key)) if zip_key else None
+        if not raw:
+            return {}
+        entries: dict[str, bytes] = {}
+        with zipfile.ZipFile(io.BytesIO(raw)) as archive:
+            for info in archive.infolist():
+                if not info.is_dir():
+                    entries.setdefault(
+                        info.filename.rsplit("/", 1)[-1], archive.read(info)
+                    )
+        return entries
+
+    def _register_zip_protein(
+        name: str,
+        data: bytes,
+        *,
+        protein_name: str | None,
+        project_id: str,
+    ) -> str | None:
+        """Register one zip structure as import-dataset 4.x does; return its protein id.
+
+        A structure without ``ATOM``/``HETATM`` lines is rejected (None), as the
+        tool rejects files it can't read. The file is stored at
+        ``entities/proteins/<sha256><ext>``. A project protein with the same
+        content is reused and keeps its name; the content hash stands in for
+        the tool's coordinate hash.
+        """
+        import hashlib
+
+        if not any(line.startswith((b"ATOM", b"HETATM")) for line in data.splitlines()):
+            return None
+        digest = hashlib.sha256(data).hexdigest()
+        suffix = ("." + name.rsplit(".", 1)[-1].lower()) if "." in name else ".pdb"
+        canonical = f"entities/proteins/{digest}{suffix}"
+        for record in proteins.values():
+            if (
+                record.get("project_id") == project_id
+                and not record.get("deleted")
+                and record.get("structure_hash") == digest
+            ):
+                return str(record["id"])
+        file_storage[canonical] = data
+        record = _base_canonical_protein_record()
+        protein_id = "10" + uuid.uuid4().hex[:11].upper()
+        record.update(
+            {
+                "id": protein_id,
+                "project_id": project_id,
+                "protein_name": protein_name or name.rsplit(".", 1)[0],
+                "pdb_id": None,
+                "uniprot_accession": None,
+                "external_id": None,
+                "fasta_sequence": None,
+                "file_path": canonical,
+                "structure_hash": digest,
+            }
+        )
+        proteins[protein_id] = record
+        return protein_id
+
+    def _ingest_import_dataset_protein_csv(execution: dict[str, Any]) -> None:
+        """Simulate a workflow protein folder import as soon as it is submitted.
+
+        Header keys and cells are stripped as the import tool does. Rows are
+        mapped through ``inputs.mapper``, and each row's ``file_path`` names a
+        file in the ``protein_zip_path`` zip, matched by basename. As in
+        import-dataset, registrations are cached by that name, so rows naming
+        the same file share one protein. A row whose file is missing or has no
+        atoms is still imported, as a protein with only its name, as the tool
+        does on dev.
+
+        The run ends ``Completed`` with the data-platform row still
+        ``DataIngesting`` for one read, so a waiter needs one SSE wake to see it
+        finish. A CSV with no rows ends the run ``Failed`` with a
+        ``statusReason``.
+        """
+        import csv
+        import io
+
+        inputs = execution.get("userInputs") or {}
+        project_id = execution.get("projectId") or MOCK_DEFAULT_PROJECT_ID
+        column_to_attr = {
+            str(item["field"]): str(item["json-path"]).split(".", 1)[1]
+            for item in inputs.get("mapper") or []
+            if isinstance(item, dict)
+            and str(item.get("json-path", "")).startswith("proteins.")
+            and item.get("field")
+        }
+        zip_entries = _protein_zip_entries(inputs.get("protein_zip_path"))
+        raw = file_storage.get(str(inputs.get("csv_path")))
+        csv_rows = (
+            [
+                {
+                    key.strip(): (value or "").strip()
+                    for key, value in raw_row.items()
+                    if key is not None
+                }
+                for raw_row in csv.DictReader(io.StringIO(raw.decode("utf-8-sig")))
+            ]
+            if raw
+            else []
+        )
+
+        ts = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z"
+        execution["completedAt"] = ts
+        execution["updatedAt"] = ts
+        execution["workflowCsvIngestApplied"] = True
+        if not csv_rows:
+            execution["status"] = "Failed"
+            execution["statusReason"] = "No importable protein rows in the CSV."
+            return
+
+        registered_by_name: dict[str, str | None] = {}
+        for csv_row in csv_rows:
+            mapped = {
+                attr: csv_row.get(column, "") for column, attr in column_to_attr.items()
+            }
+            protein_name = mapped.get("protein_name") or None
+            name = mapped.get("file_path", "").replace("\\", "/").rsplit("/", 1)[-1]
+            if name not in registered_by_name:
+                data = zip_entries.get(name)
+                registered_by_name[name] = (
+                    _register_zip_protein(
+                        name, data, protein_name=protein_name, project_id=project_id
+                    )
+                    if data is not None
+                    else None
+                )
+            if registered_by_name[name] is not None:
+                continue
+            record = _base_canonical_protein_record()
+            protein_id = "10" + uuid.uuid4().hex[:11].upper()
+            record.update(
+                {
+                    "id": protein_id,
+                    "project_id": project_id,
+                    "protein_name": protein_name,
+                    "pdb_id": None,
+                    "uniprot_accession": None,
+                    "external_id": None,
+                    "fasta_sequence": None,
+                    "file_path": None,
+                }
+            )
+            proteins[protein_id] = record
+
+        execution["status"] = "Completed"
+        execution["dataPlatformStatus"] = "DataIngesting"
+        execution["jobOutputs"] = {"records_imported": len(csv_rows), "batches": 1}
+
     def _build_import_dataset_workflow_csv_execution(
         *,
         org_key: str,
@@ -3836,6 +4003,8 @@ def create_tools_router(
                 eid = execution["executionId"]
                 executions[eid] = execution
                 execution_start_times[eid] = datetime.now(timezone.utc)
+                if _is_protein_csv_import(inputs):
+                    _ingest_import_dataset_protein_csv(execution)
                 return _normalize_execution(execution)
         if tool_key == "deeporigin.mol-props-protonation":
             execution = _build_protonation_execution(

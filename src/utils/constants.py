@@ -258,6 +258,38 @@ DATA_PLATFORM_INGESTION_TIMEOUT_SECONDS = 3600.0
 """Default overall timeout (seconds) for
 :meth:`deeporigin.platform.executions.Executions.wait_for_ingestion`."""
 
+IMPORT_DATASET_PROTEINS_DATABASE_KEY = "deeporigin.attributes_catalog"
+"""import-dataset ``database_key`` sent with a protein folder import."""
+
+IMPORT_DATASET_PROTEINS_DATABASE_VERSION = "1.0.0"
+"""import-dataset ``database_version`` sent with a protein folder import."""
+
+PROTEIN_IMPORT_FAILED_TITLE = "Protein import failed"
+"""Error title raised when a protein folder import does not complete successfully."""
+
+PROTEIN_SEARCH_PAGE_SIZE = 500
+"""Page size used to read a project's proteins after a protein folder import."""
+
+PROTEIN_STRUCTURE_SUFFIXES = (".pdb", ".cif", ".mmcif", ".ent")
+"""File extensions (lowercase) a protein folder import accepts. import-dataset
+parses ``.cif`` and ``.mmcif`` as mmCIF and everything else as PDB."""
+
+PROTEIN_FILES_REJECTED_TITLE = "Protein files can't be imported"
+"""Error title raised when local protein files fail checks before upload."""
+
+PROTEIN_FOLDER_CSV_MAPPER = [
+    {"field": "protein_name", "json-path": "proteins.protein_name"},
+    {"field": "file_path", "json-path": "proteins.file_path"},
+]
+"""import-dataset ``mapper`` for the CSV a protein folder import writes: one row
+per file, naming the protein and the file's entry in the uploaded zip."""
+
+PROTEIN_FOLDER_IMPORT_TOOL_VERSION = "4"
+"""import-dataset major version for a protein folder import. 4.x reads each
+protein's sequence from its coordinates, matches repeats by structure within the
+project, and recognises Protein Prep output; 3.x (still used by
+``Protein.sync``) does none of these for files."""
+
 SSE_CONNECT_TIMEOUT_SECONDS = 10.0
 """Connect, write and pool timeout (seconds) when opening a gateway SSE stream,
 capped by the stream's read timeout (itself capped by the time left)."""

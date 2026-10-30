@@ -1,0 +1,36 @@
+HEADER    HYDROLASE/HYDROLASE INHIBITOR           25-JAN-00   1EBY
+TITLE     HIV-1 PROTEASE IN COMPLEX WITH THE INHIBITOR BEA369
+COMPND    MOL_ID: 1;
+COMPND   2 MOLECULE: HIV-1 PROTEASE;
+COMPND   3 CHAIN: A, B;
+COMPND   4 FRAGMENT: FRAGMENT 69-167;
+COMPND   5 EC: 3.4.23.16;
+COMPND   6 ENGINEERED: YES
+DBREF  1EBY A    1    99  UNP    P03366   POL_HV1B1       69    167
+DBREF  1EBY B  101   199  UNP    P03366   POL_HV1B1       69    167
+ATOM      1  N   PRO A   1      29.176  40.428   5.347  1.00 41.09           N
+ATOM      2  CA  PRO A   1      30.087  39.336   4.931  1.00 39.97           C
+ATOM      3  C   PRO A   1      29.502  38.515   3.789  1.00 39.01           C
+ATOM      4  O   PRO A   1      28.333  38.670   3.438  1.00 37.91           O
+ATOM      5  CB  PRO A   1      30.313  38.461   6.156  1.00 40.65           C
+ATOM      6  CG  PRO A   1      29.036  38.723   6.952  1.00 42.12           C
+ATOM      7  CD  PRO A   1      28.752  40.219   6.742  1.00 41.43           C
+ATOM      8  N   GLN A   2      30.330  37.659   3.200  1.00 38.69           N
+ATOM      9  CA  GLN A   2      29.890  36.790   2.117  1.00 36.59           C
+ATOM     10  C   GLN A   2      30.022  35.362   2.619  1.00 33.32           C
+ATOM     11  O   GLN A   2      31.117  34.924   2.979  1.00 32.86           O
+ATOM     12  CB  GLN A   2      30.749  36.981   0.868  1.00 39.99           C
+ATOM     13  CG  GLN A   2      30.246  36.170  -0.315  1.00 44.53           C
+ATOM     14  CD  GLN A   2      31.009  36.442  -1.596  1.00 47.88           C
+ATOM     15  OE1 GLN A   2      32.187  36.098  -1.718  1.00 48.92           O
+ATOM     16  NE2 GLN A   2      30.340  37.063  -2.561  1.00 48.92           N
+ATOM     17  N   ILE A   3      28.902  34.643   2.650  1.00 29.82           N
+ATOM     18  CA  ILE A   3      28.881  33.270   3.136  1.00 25.54           C
+ATOM     19  C   ILE A   3      28.809  32.268   1.989  1.00 25.63           C
+ATOM     20  O   ILE A   3      27.894  32.332   1.167  1.00 23.38           O
+ATOM     21  CB  ILE A   3      27.654  33.029   4.057  1.00 26.91           C
+ATOM     22  CG1 ILE A   3      27.514  34.170   5.070  1.00 26.55           C
+ATOM     23  CG2 ILE A   3      27.795  31.701   4.786  1.00 25.26           C
+ATOM     24  CD1 ILE A   3      28.666  34.297   6.030  1.00 27.44           C
+TER
+END
