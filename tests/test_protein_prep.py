@@ -768,8 +768,8 @@ def test_removed_api_is_absent() -> None:
     assert "approve_amount" in inspect.signature(prep.start).parameters
 
 
-def test_recommend_payload_is_blocking_and_minimal() -> None:
-    """Internal recommend payload contains only action and protein input."""
+def test_recommend_payload_is_blocking_minimal_and_hidden() -> None:
+    """Internal recommend payload: action and protein input, hidden from Activity."""
     protein = _protein_with_remote()
     protein.id = "prot-1"
     prep = ProteinPrep(protein=protein)
@@ -784,7 +784,17 @@ def test_recommend_payload_is_blocking_and_minimal() -> None:
         "metadata": {},
         "outputs": {},
         "sync": True,
+        "visibility": "hidden",
     }
+
+
+def test_prepare_payload_is_visible() -> None:
+    """The prepare run is the one the user sees in Activity."""
+    prep = ProteinPrep(protein=_protein_with_remote(), selection=_SAMPLE_SELECTION)
+
+    payload = prep._make_protein_prep_payload(action="prepare", sync=False)
+
+    assert "visibility" not in payload
 
 
 def test_prepare_payload_contains_resolved_selection() -> None:

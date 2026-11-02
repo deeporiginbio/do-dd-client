@@ -56,6 +56,7 @@ def test_structure_report_make_payload_pdb_id_only(
 
     assert payload["sync"] is True
     assert payload["name"] == "sr-remote"
+    assert payload["visibility"] == "hidden"
     assert payload["inputs"] == {"pdb_id": "1ABC"}
     assert "protein" not in payload["inputs"]
 
