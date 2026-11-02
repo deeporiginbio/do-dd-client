@@ -323,3 +323,14 @@ def test_patent_cancel_lv1(client: DeepOriginClient) -> None:
 
     patent.cancel()
     assert patent.status == "Cancelled"
+
+
+def test_patent_cancel_quoted_lv1(client: DeepOriginClient) -> None:
+    """Cancel a Quoted run without confirming it."""
+    patent = Patent(pdf=PATENT_PDF_PATH, client=client)
+    patent.start(quote=True)
+    if patent.status != "Quoted":
+        pytest.skip(f"Patent quote returned {patent.status!r} on {client.env}.")
+
+    patent.cancel()
+    assert patent.status == "Cancelled"

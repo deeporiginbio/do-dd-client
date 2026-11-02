@@ -5,10 +5,10 @@ Requires the ``core`` optional dependency (``pandas``) for DataFrame helpers.
 
 from __future__ import annotations
 
-from typing import Any
+from collections.abc import Sequence
+from typing import Any, List
 
 from beartype import beartype
-from beartype.typing import List
 
 from deeporigin.drug_discovery.structures.ligand import LigandSet
 from deeporigin.drug_discovery.structures.protein import Protein
@@ -372,12 +372,17 @@ def get_ligands(
     return LigandSet.from_ids(ids, client=client)
 
 
+@beartype
 def get_proteins(
     *,
     limit: int | None = 100,
     **filter_kwargs: Any,
-) -> List[Protein]:
-    """Load proteins for the current project.
+) -> Sequence[Protein]:
+    """Load proteins for the current project as metadata-only Protein objects.
+
+    Structures are not downloaded; call :meth:`~deeporigin.drug_discovery.structures.protein.Protein.download`
+    to hydrate a protein. This keeps listing resilient when a remote PDB is
+    missing or unparseable.
 
     Args:
         limit: Max proteins to fetch.
@@ -402,12 +407,12 @@ def get_proteins(
         filter_dict=fd,
         limit=limit,
     )
-    out: List[Protein] = []
+    out: list[Protein] = []
     for row in raw.get("data") or []:
         row_id = row.get("id")
         if row_id is None:
             continue
-        out.append(Protein.from_id(str(row_id), client=client))
+        out.append(Protein.from_id(str(row_id), client=client, download=False))
     return out
 
 
@@ -427,7 +432,8 @@ def set_ligands(ligands: LigandSet) -> None:
     ligands.sync(client=client)
 
 
-def set_proteins(proteins: List[Protein]) -> None:
+@beartype
+def set_proteins(proteins: Sequence[Protein]) -> None:
     """Sync proteins to the current project.
 
     Args:

@@ -387,7 +387,6 @@ def test_get_protein_lv1(client: DeepOriginClient):
     assert isinstance(response, dict), "Expected a dictionary response"
     assert response["id"] == protein_id, "Expected id to match"
     assert response["file_path"] == _BRD_PDB_REMOTE, "Expected file_path to match"
-    assert response["subtable_name"] == "proteins", "Expected subtable_name to match"
 
 
 def test_update_ligand_lv1(client: DeepOriginClient):

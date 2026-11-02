@@ -7,6 +7,8 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+from deeporigin.drug_discovery import BRD_DATA_DIR
+from deeporigin.drug_discovery.import_dataset_sync import parse_protein_disposition
 from deeporigin.drug_discovery.structures.prepared_protein_stamp import (
     has_prepared_protein_stamp,
     stamp_prepared_protein,
@@ -17,6 +19,7 @@ from deeporigin.drug_discovery.structures.prepared_protein_stamp import (
 )
 from deeporigin.drug_discovery.structures.protein import Protein
 from deeporigin.exceptions import DeepOriginException
+from deeporigin.platform.client import DeepOriginClient
 from deeporigin.utils.constants import (
     PREPARED_PROTEIN_CIF_STAMP_LINE,
     PREPARED_PROTEIN_STAMP_LINE,
@@ -361,3 +364,37 @@ def test_protein_upload_uses_local_bytes_not_to_file(tmp_path: Path) -> None:
     client.files.upload.assert_called_once()
     assert Path(client.files.upload.call_args.args[0]) == cif_path
     assert str(protein.remote_path).endswith(".cif")
+
+
+@pytest.mark.parametrize(
+    ("row", "expected"),
+    [
+        ({"created": True}, "created"),
+        ({"created": False}, "reused"),
+        ({"disposition": "created"}, "created"),
+        ({"disposition": "reused"}, "reused"),
+        ({}, None),
+        ({"created": "yes", "disposition": "weird"}, None),
+    ],
+)
+def test_parse_protein_disposition(row: dict, expected) -> None:
+    """Maps the server disposition, or None when absent/unrecognized."""
+    assert parse_protein_disposition(row) == expected
+
+
+def test_protein_sync_returns_disposition(client: DeepOriginClient) -> None:
+    """sync() surfaces the import-dataset disposition from the server."""
+    if client.env != "local":
+        pytest.skip("server disposition field not yet shipped (DDOS-8302)")
+    protein = Protein.from_file(BRD_DATA_DIR / "brd.pdb")
+    # The mock maps every protein sync onto the seeded canonical row.
+    assert protein.sync(client=client) == "reused"
+    assert protein.id is not None
+
+
+def test_protein_sync_lazy_returns_none(client: DeepOriginClient) -> None:
+    """lazy sync with an existing id makes no server call and returns None."""
+    protein = Protein.from_file(BRD_DATA_DIR / "brd.pdb")
+    protein.id = "prot-existing"
+    assert protein.sync(lazy=True, client=client) is None
+    assert protein.id == "prot-existing"

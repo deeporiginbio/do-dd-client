@@ -14,10 +14,17 @@ from deeporigin.platform.constants import (
     CANONICAL_SUCCESS_STATUS,
     LEGACY_SUCCEEDED_STATUS,
     TERMINAL_STATES,
+    TOOL_KEYS_AND_VERSIONS,
     display_platform_status,
     is_success_status,
     normalize_platform_status,
 )
+
+
+@pytest.mark.parametrize("name", sorted(TOOL_KEYS_AND_VERSIONS))
+def test_every_tool_is_pinned_to_a_major(name: str) -> None:
+    """A tool pin is a bare major, so a new major never reaches users unasked."""
+    assert TOOL_KEYS_AND_VERSIONS[name]["tool_version"].isdigit()
 
 
 def test_normalize_platform_status_maps_succeeded_to_completed() -> None:
@@ -72,7 +79,7 @@ def test_watch_stops_when_status_is_completed(
     running = {
         "executionId": "exec-1",
         "status": "Running",
-        "tool": {"key": "deeporigin.abfe-end-to-end", "version": "latest"},
+        "tool": {"key": "deeporigin.abfe-end-to-end", "version": "2"},
         "userInputs": {},
         "userOutputs": {},
         "quotationResult": {},

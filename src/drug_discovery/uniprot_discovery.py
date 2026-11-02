@@ -304,7 +304,8 @@ class UniprotDiscovery(Execution, SyncExecutableMixin):
             uniprot_accession: UniProtKB accession (6 or 10 characters).
             project_id: Optional project id used by :meth:`import_proteins`
                 when the call does not pass ``project_id``.
-            tool_version: Platform tool version (defaults to ``"latest"``).
+            tool_version: Platform tool version. Defaults to the pinned major
+                version in :data:`TOOL_KEYS_AND_VERSIONS`.
             client: Optional API client.
             name: Optional execution label.
 

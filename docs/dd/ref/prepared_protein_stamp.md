@@ -31,6 +31,11 @@ protein.sync()              # uploads the stamped bytes to UFA
 [Protein Prep](../tools/proteinprep.md) when you want Deep Origin to prepare the
 structure for you.
 
+To set platform `state=prepared` on an existing catalog protein **without**
+stamping or rewriting the file, use
+[`Protein.mark_prepared()`](../how-to/proteins.md#platform-prepared-state-vs-file-stamp)
+instead.
+
 Client `to_pdb()` / `to_cif()` translate the stamp across formats when the
 source was stamped. External converters (for example PyMOL “save as”) may still
 drop it — re-run `mark_as_prepared()` on the saved file if needed.

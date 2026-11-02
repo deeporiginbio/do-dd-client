@@ -667,6 +667,34 @@ def test_run_allows_loops_on(
     assert prep.tool_key == TOOL_KEYS_AND_VERSIONS["protein_prep"]["tool_key"]
 
 
+def test_run_failed_prepare_raises_with_server_reason(
+    client: DeepOriginClient,
+    registered_protein: Protein,
+) -> None:
+    """A Failed blocking prepare surfaces the platform statusReason."""
+    prep = ProteinPrep(
+        protein=registered_protein,
+        selection=_SAMPLE_SELECTION,
+        model_missing_loops=False,
+        find_pockets="from-crystal-ligand",
+        ligand_id="BEB",
+        client=client,
+    )
+
+    with pytest.raises(DeepOriginException, match="Failed") as exc_info:
+        prep.run()
+
+    message = str(exc_info.value)
+    assert "did not succeed" in message
+    assert "BEB" in message
+    assert prep.id is not None
+    assert prep.id in message
+    assert prep.status == "Failed"
+    if client.env == "local":
+        assert "SubmissionFailed" in message
+        assert "no residue named 'BEB'" in message
+
+
 def test_run_rejects_novel_pockets() -> None:
     """Blocking prepare is unavailable when novel pocket finding is enabled."""
     prep = ProteinPrep(

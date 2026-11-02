@@ -2,6 +2,12 @@
 
 Find pockets in a [`Protein`](../ref/protein.md) using the Deep Origin Pocket Finder.
 
+Use Pocket Finder's default auto-find mode to discover novel pockets on a target
+without a known binding site. When the structure has a co-crystallized ligand,
+you usually do not need to search: get the crystal-ligand pocket from
+[Protein Prep](proteinprep.md) (`find_pockets="from-crystal-ligand"`) and pass
+it to `Docking`, as shown in the [docking tutorial](../tutorial/docking.md).
+
 ## Creating pockets
 
 First, create a protein, for example:
@@ -119,7 +125,7 @@ pf.wait()
 pockets = pf.get_results()
 ```
 
-To cancel an asynchronous execution that is queued or running, call `cancel()`:
+To cancel an asynchronous execution that is quoted, queued or running, call `cancel()`:
 
 ```{.python notest}
 pf.cancel()

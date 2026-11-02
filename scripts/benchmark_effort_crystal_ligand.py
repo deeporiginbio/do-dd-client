@@ -1,9 +1,17 @@
 """Benchmark docking effort levels on crystal ligand pose recovery.
 
-Runs each effort level several times per PDB structure, records wall time,
-execution id, and best-pose RMSD vs the crystal ligand, and appends each result
-to a CSV as it completes. Re-running the script skips (pdb_id, effort, repeat)
-triples already present in the CSV so you can resume after failures.
+Each PDB structure is prepared with Protein Prep (``find_pockets=
+"from-crystal-ligand"``), which extracts the crystal ligand and returns its
+pocket. The crystal ligand is then re-docked into that pocket on the prepared
+protein. Runs each effort level several times per PDB structure, records wall
+time, execution id, and best-pose RMSD vs the crystal pose, and appends each
+result to a CSV as it completes. Re-running the script skips (pdb_id, effort,
+repeat) triples already present in the CSV so you can resume after failures.
+
+Results go to ``benchmark_effort_crystal_ligand_prepared.csv``. Earlier versions
+of this script docked into the raw PDB with a locally built pocket and wrote
+``benchmark_effort_crystal_ligand.csv``; that file is never read or appended to,
+so the two protocols cannot mix.
 """
 
 from __future__ import annotations
@@ -12,67 +20,23 @@ import csv
 from pathlib import Path
 import time
 
-from deeporigin.drug_discovery import Docking, Pocket, Protein, chemistry
+from deeporigin.drug_discovery import (
+    Docking,
+    Ligand,
+    Pocket,
+    Protein,
+    ProteinPrep,
+    chemistry,
+)
+from deeporigin.drug_discovery.structures.pose import Pose
 
-DEFAULT_CSV = Path(__file__).resolve().parent / "benchmark_effort_crystal_ligand.csv"
+DEFAULT_CSV = (
+    Path(__file__).resolve().parent / "benchmark_effort_crystal_ligand_prepared.csv"
+)
 CSV_COLUMNS = ["pdb_id", "effort", "repeat", "execution_id", "time", "rmsd"]
 PDB_IDS = ["1stp", "3ptb"]
 EFFORT_LEVELS = [1, 2, 3, 4, 5]
 REPEATS = 3
-
-
-def _migrate_csv_schema_if_needed(csv_path: Path) -> None:
-    """Rewrite legacy CSV files to the current schema (add ``pdb_id``, etc.)."""
-    if not csv_path.exists() or csv_path.stat().st_size == 0:
-        return
-    with csv_path.open(newline="") as f:
-        reader = csv.reader(f)
-        rows = list(reader)
-    if not rows:
-        return
-    header = [h.strip() for h in rows[0]]
-    if header and header[0].lower() == "pdb_id":
-        return
-
-    data_rows = rows[1:]
-    new_rows: list[list[object]] = []
-    legacy_pdb = "1eby"
-
-    if header == ["effort", "time", "rmsd"]:
-        per_effort: dict[int, int] = {}
-        for row in data_rows:
-            if len(row) < 3:
-                continue
-            e = int(row[0])
-            per_effort[e] = per_effort.get(e, 0) + 1
-            r = per_effort[e]
-            new_rows.append([legacy_pdb, e, r, "", float(row[1]), float(row[2])])
-    elif header == ["effort", "repeat", "execution_id", "time", "rmsd"]:
-        for row in data_rows:
-            if len(row) < 5:
-                continue
-            new_rows.append(
-                [
-                    legacy_pdb,
-                    int(row[0]),
-                    int(row[1]),
-                    row[2],
-                    float(row[3]),
-                    float(row[4]),
-                ]
-            )
-    else:
-        return
-
-    with csv_path.open("w", newline="") as f:
-        w = csv.writer(f)
-        w.writerow(CSV_COLUMNS)
-        w.writerows(new_rows)
-    print(
-        f"Migrated {csv_path} to schema {CSV_COLUMNS} "
-        f"(legacy rows use pdb_id={legacy_pdb!r}).",
-        flush=True,
-    )
 
 
 def load_completed_runs(csv_path: Path) -> set[tuple[str, int, int]]:
@@ -128,9 +92,56 @@ def write_benchmark_row(
         writer.writerow([pdb_id, effort, repeat, execution_id, elapsed_s, rmsd])
 
 
+def prepare_crystal_pocket(pdb_id: str) -> tuple[Protein, Pocket, Ligand, Pose]:
+    """Prepare ``pdb_id`` and return its crystal pocket, ligand, and pose.
+
+    Uses the first ligand that Protein Prep recommends extracting.
+
+    Returns:
+        The prepared protein, the crystal-ligand pocket on it, the extracted
+        ligand, and its crystal pose (downloaded).
+    """
+    protein = Protein.from_pdb_id(pdb_id)
+    protein.sync()
+    prep = ProteinPrep(protein)
+    recommendation = prep.recommend()
+    extracted = recommendation[
+        (recommendation["kind"] == "ligand") & (recommendation["decision"] == "extract")
+    ]
+    if extracted.empty:
+        raise RuntimeError(
+            f"Protein Prep found no crystal ligand to extract in {pdb_id}"
+        )
+    component_id = str(extracted["id"].iloc[0])
+    prep.skip(decision="review")
+    prep.find_pockets = "from-crystal-ligand"
+    prep.component_id = component_id
+    prepared = prep.run()
+    if prepared is None:
+        raise RuntimeError(f"Protein Prep returned no prepared protein for {pdb_id}")
+
+    pockets = prep.get_pockets() or []
+    pocket = next((p for p in pockets if p.component_id == component_id), None)
+    if pocket is None or pocket.ligand_id is None:
+        raise RuntimeError(f"No crystal pocket for {component_id} in {pdb_id}")
+    crystal_poses = prep.get_crystal_poses()
+    crystal_pose = next(
+        (
+            p
+            for p in (crystal_poses.poses if crystal_poses is not None else [])
+            if p.component_id == component_id
+        ),
+        None,
+    )
+    if crystal_pose is None:
+        raise RuntimeError(f"No crystal pose for {component_id} in {pdb_id}")
+    crystal_pose.download()
+    ligand = Ligand.from_id(pocket.ligand_id)
+    return prepared, pocket, ligand, crystal_pose
+
+
 def main() -> None:
     csv_path = DEFAULT_CSV
-    _migrate_csv_schema_if_needed(csv_path)
     completed = load_completed_runs(csv_path)
 
     pdb_ids_norm = [p.strip().lower() for p in PDB_IDS]
@@ -153,12 +164,8 @@ def main() -> None:
     for pdb_id in PDB_IDS:
         pdb_key = pdb_id.strip().lower()
         print(f"\n========== PDB {pdb_id.upper()} ==========", flush=True)
-        print("Loading structure…", flush=True)
-        protein = Protein.from_pdb_id(pdb_id)
-        ligand = protein.extract_ligand()
-        pocket = Pocket.from_ligand(ligand)
-        ligand.sync()
-        protein.sync()
+        print("Preparing structure and crystal pocket…", flush=True)
+        protein, pocket, ligand, crystal_pose = prepare_crystal_pocket(pdb_id)
         print("Structure ready. Docking loop for this PDB.\n", flush=True)
 
         docking = Docking(protein=protein, ligand=ligand, pocket=pocket)
@@ -209,7 +216,7 @@ def main() -> None:
                     raise RuntimeError(
                         "Best pose has no molecule after download; cannot compute RMSD"
                     )
-                best_rmsd_val = chemistry.pose_rmsd(best_pose.mol, ligand.mol)
+                best_rmsd_val = chemistry.pose_rmsd(best_pose.mol, crystal_pose.mol)
                 best_rmsd = (
                     float(best_rmsd_val) if best_rmsd_val is not None else float("nan")
                 )

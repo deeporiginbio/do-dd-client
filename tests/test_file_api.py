@@ -368,7 +368,7 @@ def test_upload_directory_bulk_lv1(client: DeepOriginClient):
     if client.env == "local":
         pytest.skip("Requires a real file service (use --env dev/staging/prod)")
 
-    remote_dir = "/testing-bulk-upload/"
+    remote_dir = f"testing-bulk-upload-{uuid.uuid4()}/"
     num_files = 10
     file_size = 1024 * 1024  # 1 MB
 

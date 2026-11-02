@@ -7,11 +7,34 @@ Dock ligands to a [`Protein`](../ref/protein.md) with the Deep Origin docking to
 - You have a prepared [Protein](../how-to/proteins.md)
 - You have a [Ligand or LigandSet](../how-to/ligands.md)
 - You have [protonated your ligands](../how-to/ligands.md#protonation)
-- You have found pockets in your protein using [PocketFinder](pocketfinder.md)
+- You have a [`Pocket`](../ref/pocket.md) that defines the binding site
+
+`Docking` does not search for a binding site: you always pass the pocket
+explicitly. For a known site, use the crystal-ligand pocket from
+[Protein Prep](proteinprep.md#prepare-with-loop-modelling-or-pockets)
+(`find_pockets="from-crystal-ligand"`). For a target without a known site,
+discover candidates with `find_pockets="novel"` or
+[PocketFinder](pocketfinder.md) and choose one. The
+[docking tutorial](../tutorial/docking.md) walks through both.
+
+```{.python notest}
+from deeporigin.drug_discovery import Protein, ProteinPrep
+
+protein = Protein.from_pdb_id("1EBY")
+protein.sync()
+prep = ProteinPrep(
+    protein,
+    find_pockets="from-crystal-ligand",
+    component_id="ligand:B:BEB:501:",
+)
+prep.recommend()
+protein = prep.run()  # the prepared protein
+pocket = prep.get_pockets()[0]
+```
 
 ## Docking a single `Ligand`
 
-Use [`Docking`](../ref/docking.md) with your protein, pocket, and ligand. Here `pocket` is a `Pocket` from [PocketFinder](pocketfinder.md) :octicons-book-24: . Both [`Docking.run()`](../ref/docking.md) and [`Docking.start()`](../ref/docking.md) use `client.executions.create`: `run()` sets `sync=True` for **one** ligand (one blocking request until completion), and `start()` sets `sync=False` for a single persisted async job with **two or more** ligands. [`Docking.run()`](../ref/docking.md) returns a `LigandSet` of poses.
+Use [`Docking`](../ref/docking.md) with your protein, pocket, and ligand. Both [`Docking.run()`](../ref/docking.md) and [`Docking.start()`](../ref/docking.md) use `client.executions.create`: `run()` sets `sync=True` for **one** ligand (one blocking request until completion), and `start()` sets `sync=False` for a single persisted async job with **two or more** ligands. [`Docking.run()`](../ref/docking.md) returns a `PoseSet` of poses.
 
 ```{.python notest}
 from deeporigin.drug_discovery import Docking
@@ -22,11 +45,11 @@ poses = docking.run()
 
 ### Estimating cost
 
-To get a cost estimate without running the docking, call [`quote()`](../ref/docking.md) on the [`Docking`](../ref/docking.md) instance:
+To get a cost estimate without running the docking, pass `quote=True` to [`run()`](../ref/docking.md):
 
 ```{.python notest}
 docking = Docking(protein=protein, pocket=pocket, ligand=ligand)
-docking.quote()       # populates docking.estimate
+docking.run(quote=True)  # populates docking.estimate
 docking.estimate      # estimated cost in dollars
 docking.cost          # None until a billable run completes
 ```
@@ -88,13 +111,6 @@ poses.to_sdf()
 
 ## Docking many ligands
 
-### Using batch jobs
-
-!!! tip "Tutorial"
-    Follow [the tutorial](../tutorial/docking.md) on how to dock ligands using batch jobs. This is best suited for large jobs with 100+ ligands.
-
-### Using functions
-
 Several ligands in a LigandSet can be docked by passing `ligands` to [`Docking`](../ref/docking.md), then [`Docking.start()`](../ref/docking.md) (async). Poll with [`sync()`](../ref/docking.md) or Jupyter helpers until the job completes, then call [`get_results()`](../ref/docking.md) to retrieve a `PoseSet` of poses.
 
 ```{.python notest}
@@ -104,7 +120,7 @@ docking.start()
 poses = docking.get_results()
 ```
 
-`poses` is a `LigandSet` containing the docked poses. To work with a DataFrame:
+`poses` is a `PoseSet` containing the docked poses. To work with a DataFrame:
 
 ```{.python notest}
 df = poses.to_dataframe()
@@ -133,7 +149,7 @@ To estimate the cost of docking a full LigandSet without running it:
 
 ```{.python notest}
 docking = Docking(protein=protein, pocket=pocket, ligands=ligands)
-docking.quote()
+docking.start(quote=True)
 docking.estimate  # total estimated cost across all ligands
 ```
 
@@ -167,9 +183,33 @@ reference pose. Callers provide ``reference_ligand`` (scaffold identity) and
 ``reference_pose`` (required 3D SDF coordinates); they do not pass constraint
 atom lists.
 
+### Crystal pose as the reference
+
+When the pocket comes from a crystal ligand, Protein Prep already has the
+reference pose: use the extracted crystal pose from `get_crystal_poses()` and
+the extracted ligand (`pocket.ligand_id`):
+
+```{.python notest}
+from deeporigin.drug_discovery import ConstrainedDocking, Ligand
+
+reference_ligand = Ligand.from_id(pocket.ligand_id)
+crystal_pose = prep.get_crystal_poses().poses[0]
+crystal_pose.download()
+
+cd = ConstrainedDocking(
+    protein=protein,  # the prepared protein
+    pocket=pocket,
+    reference_ligand=reference_ligand,
+    reference_pose=crystal_pose.to_ligand(),
+    ligand=query_ligand,
+)
+poses = cd.run()
+```
+
 ### Dock-then-constrain pipeline
 
-Dock a reference ligand, upload the best pose SDF, then constrained-dock analogs:
+Without a crystal pose, dock a reference ligand, upload the best pose SDF, then
+constrained-dock analogs:
 
 ```{.python notest}
 from deeporigin.drug_discovery import ConstrainedDocking, Docking
@@ -280,20 +320,16 @@ cd.estimate
 
 ## Filtering docking outputs
 
-Filter docking results by score and related properties.
-
-!!! warning "Deprecated: `Complex`"
-    The examples below use the deprecated [`Complex`](../ref/complex.md) type. New workflows should use [`Docking`](../ref/docking.md) (and related APIs) instead of `Complex.docking`.
-
-Here we assume that you have constructed a `Complex` object and successfully run [Docking](../tutorial/docking.md).
-Following convention, we assume that the `Complex` object is called `sim`.
+Filter docking results by score and related properties. Here we assume that
+you have run [Docking](../tutorial/docking.md) on many ligands with a `Docking`
+object called `docking`.
 
 ### Fetch docked poses
 
-First, we get the results of Docking in a pandas DataFrame using:
+First, fetch the docked poses:
 
 ```{.python notest}
-poses = sim.docking.get_poses()
+poses = docking.get_poses()
 ```
 Inspecting the `poses` object shows us:
 

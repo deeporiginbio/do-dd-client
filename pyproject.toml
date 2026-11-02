@@ -117,7 +117,7 @@ force-sort-within-sections = true
 universal = true
 
 [tool.coverage.run]
-omit = ["src/data_hub/client.py", "tests/*.py"]
+omit = ["tests/*.py"]
 source = ["src"]
 
 [tool.coverage.report]
@@ -156,9 +156,7 @@ exclude = [
     "tests",
     "variables",
     "conftest.py",
-    "src/files",
     "notebooks/*",
-    "scratch-notebooks/*",
     "scripts/*",
     "scratch/*",
 ]

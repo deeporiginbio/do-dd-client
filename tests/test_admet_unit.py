@@ -7,6 +7,7 @@ import pytest
 from deeporigin.drug_discovery.admet import (
     _endpoints_from_definition,
     _execution_predictions,
+    _failed_properties,
     _ligands_from_inputs,
     _properties_from_inputs,
     _rows_from_result_explorer,
@@ -252,3 +253,48 @@ def test_skipped_ligand_count_defaults_to_zero() -> None:
     assert _skipped_ligand_count({"progressReport": {"toolProgress": None}}) == 0
     assert _skipped_ligand_count({"progressReport": {"toolProgress": "done"}}) == 0
     assert _skipped_ligand_count({"progressReport": {"children": 3}}) == 0
+
+
+def test_failed_properties_newest_attempt_wins() -> None:
+    """A failure counts only while no stored value for that property is newer."""
+    values = [
+        {
+            "measured_at": "2026-10-02T00:00:00Z",
+            "data": {"ligand_id": "L1", "hERG_classification": 0.4},
+        }
+    ]
+    failures = [
+        {
+            "measured_at": "2026-10-01T00:00:00Z",
+            "data": {
+                "admetfailures": [
+                    {"ligand_id": "L1", "properties": ["hERG_classification"]}
+                ]
+            },
+        },
+        {
+            "measured_at": "2026-10-03T00:00:00Z",
+            "data": {
+                "admetfailures": [
+                    {"ligand_id": "L1", "properties": ["AMES_classification"]},
+                    {"ligand_id": "L2", "properties": ["hERG_classification"]},
+                ]
+            },
+        },
+    ]
+
+    assert _failed_properties(value_records=values, failure_records=failures) == {
+        "L1": {"AMES_classification"},
+        "L2": {"hERG_classification"},
+    }
+
+
+def test_skipped_ligand_count_reads_known_failures() -> None:
+    """Already-predicted and previously-failed skips are separate keys."""
+    dto = {
+        "progressReport": {
+            "toolProgress": {"skipped_ligands": 2, "known_failures": 3},
+        }
+    }
+    assert _skipped_ligand_count(dto) == 2
+    assert _skipped_ligand_count(dto, key="known_failures") == 3

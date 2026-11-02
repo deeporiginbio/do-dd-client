@@ -20,7 +20,7 @@ PlatformStatus = Literal[
 
 ALLOWED_STATUS_TRANSITIONS: dict[str | None, set[str]] = {
     None: {"Quoted", "Created"},
-    "Quoted": {"Created", "Queued", "Running"},
+    "Quoted": {"Created", "Queued", "Running", "Cancelled"},
     "Created": {"Queued", "Running", "Failed", "Cancelled"},
     "Queued": {"Running", "Failed", "Cancelled"},
     "Running": {"Completed", "Failed", "Cancelled"},
@@ -129,11 +129,11 @@ TOOL_KEYS_AND_VERSIONS: dict[str, dict[str, str]] = {
     },
     "protonation": {
         "tool_key": "deeporigin.mol-props-protonation",
-        "tool_version": "latest",
+        "tool_version": "1",
     },
     "konnektor": {
         "tool_key": "deeporigin.konnektor",
-        "tool_version": "latest",
+        "tool_version": "1",
     },
     "abfe": {
         "tool_key": "deeporigin.abfe-end-to-end",
@@ -153,11 +153,11 @@ TOOL_KEYS_AND_VERSIONS: dict[str, dict[str, str]] = {
     },
     "patent": {
         "tool_key": "deeporigin.draco",
-        "tool_version": "latest",
+        "tool_version": "1",
     },
     "enumerator": {
         "tool_key": "deeporigin.enumerator",
-        "tool_version": "latest",
+        "tool_version": "1",
     },
     "admet": {
         "tool_key": "deeporigin.admet-properties",
@@ -165,19 +165,19 @@ TOOL_KEYS_AND_VERSIONS: dict[str, dict[str, str]] = {
     },
     "metabolism": {
         "tool_key": "deeporigin.metabolism",
-        "tool_version": "latest",
+        "tool_version": "8",
     },
     "structure_report": {
         "tool_key": "deeporigin.structure-report",
-        "tool_version": "latest",
+        "tool_version": "3",
     },
     "uniprot_discovery": {
         "tool_key": "deeporigin.uniprot-discovery",
-        "tool_version": "latest",
+        "tool_version": "1",
     },
     "import_dataset": {
         "tool_key": "deeporigin.import-dataset",
-        "tool_version": "3",
+        "tool_version": "4",
     },
     "secondary_pharma": {
         "tool_key": "deeporigin.secondary-pharma",

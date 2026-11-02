@@ -137,7 +137,7 @@ Integration coverage: `tests/test_rbfe_local.py` (`uv run pytest tests/test_rbfe
 
 ## How Tool Executions Work
 
-This is the most complex part of the mock server. When client code runs a tool (e.g., `protein.dock()`, `PocketFinder(protein).run()`, or `Molprops(...).run()`), the following happens end-to-end. All runnable work goes through `client.executions.create()` and the mock's `POST /tools/{org}/tools/{tool_key}/{tool_version}/executions` route (`run_tool` in `routers/tools.py`).
+This is the most complex part of the mock server. When client code runs a tool (e.g., `Docking(protein=..., pocket=..., ligand=...).run()`, `PocketFinder(protein).run()`, or `Molprops(...).run()`), the following happens end-to-end. All runnable work goes through `client.executions.create()` and the mock's `POST /tools/{org}/tools/{tool_key}/{tool_version}/executions` route (`run_tool` in `routers/tools.py`).
 
 ### 1. Building the execution DTO
 
@@ -166,7 +166,7 @@ Some fixtures (docking, pocket-finder, system-prep) were recorded with whatever 
 
 ### 4. Result-explorer injection
 
-In production, when a tool execution completes, a message-queue flow writes structured outputs (pockets, poses, system, …) into a **result-explorer** table. Client code later queries this table to retrieve results — for example, `PoseSet.from_result(protein_id=...)` calls `client.results.get_poses(protein_id=...)`, which searches the result-explorer.
+In production, when a tool execution completes, a message-queue flow writes structured outputs (pockets, poses, system, …) into a **result-explorer** table. Client code later queries this table to retrieve results — for example, `Docking.get_results()` calls `client.results.get_poses(compute_job_id=...)`, which searches the result-explorer.
 
 The mock server emulates this with `_inject_result_explorer_records_from_outputs`. After a tool execution returns, it checks the `output_key_map`:
 
@@ -182,15 +182,15 @@ output_key_map = {
 
 Each entry maps a tool manifest key to the `jobOutputs` field that should be mirrored into the shared result-explorer store and the `result_type` to tag those records with. Tool-specific helpers (`_inject_docking_tool_execution_results`, `_inject_pocketfinder_tool_execution_results`, `_inject_sysprep_tool_execution_results`, `_inject_protein_prep_tool_execution_results`) load the same fixture shapes and call this generic injector.
 
-**When adding a new tool**, extend `output_key_map` and any tool-specific injectors in `routers/tools.py` so downstream queries (e.g., `Pocket.from_result`, `PoseSet.from_result`) can find the records.
+**When adding a new tool**, extend `output_key_map` and any tool-specific injectors in `routers/tools.py` so downstream queries (e.g., `Pocket.from_result`, `Docking.get_results()`) can find the records.
 
 ### 5. Result-explorer queries
 
-When client code queries results (e.g., `client.results.get_poses(protein_id=...)`), it hits the data-platform router's `result-explorer/search` endpoint. This applies `_apply_eq_filters`, which checks filter values against both top-level record fields **and** nested `data` fields. Since the injected records store tool outputs under `data`, a filter like `protein_id: {eq: "abc123"}` matches `record["data"]["protein_id"]`.
+When client code queries results (e.g., `client.results.get_poses(compute_job_id=...)`), it hits the data-platform router's `result-explorer/search` endpoint. This applies `_apply_eq_filters`, which checks filter values against both top-level record fields **and** nested `data` fields. Since the injected records store tool outputs under `data`, a filter like `protein_id: {eq: "abc123"}` matches `record["data"]["protein_id"]`.
 
 ### End-to-end example: docking
 
-Here's the full flow for `test_docking_with_data_platform_lv2`:
+Here's the full flow for `test_docking_run_lv2` in `tests/test_docking.py`:
 
 ```
 1. registered_protein fixture
@@ -199,7 +199,7 @@ Here's the full flow for `test_docking_with_data_platform_lv2`:
 2. registered_ligand fixture
    → POST /data-platform/{org}/ligands   (creates or syncs ligand)
 
-3. protein.dock(ligand=..., pocket=...)
+3. Docking(protein=..., pocket=..., ligand=...).run()
    → POST /tools/{org}/tools/deeporigin.docking/{version}/executions
    → run_tool:
        a. build a Completed execution DTO via _create_blocking_run_dto
@@ -207,11 +207,11 @@ Here's the full flow for `test_docking_with_data_platform_lv2`:
           replaces protein_id/ligand_id, and pushes the "poses" rows into
           the result-explorer store
 
-4. PoseSet.from_result(protein_id=...)
+4. run() → get_results() → client.results.get_poses(compute_job_id=...)
    → POST /data-platform/{org}/result-explorer/search
-       filter: {protein_id: {eq: "<fresh ID>"}, tool_id: {in: [...]}}
-   → _apply_eq_filters matches record["data"]["protein_id"]
-   → returns the poses injected in step 3b
+       filter: {compute_job_id: {eq: "<executionId>"}, ...}
+   → _apply_eq_filters matches the injected rows
+   → returns the poses injected in step 3b (falls back to jobOutputs.poses)
 ```
 
 ## Entity Stores and Fixtures

@@ -2,9 +2,6 @@
 
 Run and analyze Absolute Binding Free Energy (ABFE) workflows in Deep Origin.
 
-!!! warning "Deprecated: `Complex` in examples"
-    Older examples referenced a legacy [`Complex`](../ref/complex.md). Prefer the [`ABFE`](../ref/abfe.md) class directly for new code.
-
 ## Visualizing trajectories
 
 ABFE simulations generate molecular dynamics trajectories that show how ligands interact with proteins over time. Visualizing these trajectories can provide valuable insights into binding mechanisms, protein-ligand interactions, and conformational changes.

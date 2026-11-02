@@ -41,7 +41,9 @@ def test_structure_report_normalizes_pdb_id(client: DeepOriginClient) -> None:
     job = StructureReport(pdb_id="1abc", client=client)
     assert job.pdb_id == "1ABC"
     assert job.protein is None
-    assert job.tool_version == "latest"
+    assert (
+        job.tool_version == TOOL_KEYS_AND_VERSIONS["structure_report"]["tool_version"]
+    )
     assert job.tool_key == TOOL_KEYS_AND_VERSIONS["structure_report"]["tool_key"]
 
 
@@ -117,9 +119,9 @@ def test_structure_report_result_from_json_round_trip() -> None:
     assert "weighted_score=0.700" in repr_str
 
     html = row._repr_html_()
-    assert "<table" in html
-    assert "Weighted score" in html
+    assert "Structure Grade" in html
     assert ">B<" in html
+    assert "<table" not in html
 
 
 def test_structure_reports_from_dto_rejects_empty() -> None:

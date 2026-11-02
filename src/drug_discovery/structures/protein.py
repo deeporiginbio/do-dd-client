@@ -14,7 +14,7 @@ import io
 import os
 from pathlib import Path
 import tempfile
-from typing import Any, Optional, Self
+from typing import Any, Literal, Optional, Self
 import uuid
 
 from beartype import beartype
@@ -32,6 +32,11 @@ from deeporigin.drug_discovery.utils.numpy_compat import ensure_numpy_char_submo
 from deeporigin.drug_discovery.utils.structure_qc import _any_ligand_protein_clashes
 from deeporigin.exceptions import DeepOriginException
 from deeporigin.platform.client import DeepOriginClient
+from deeporigin.platform.constants import (
+    TOOL_KEYS_AND_VERSIONS,
+    is_success_status,
+    normalize_platform_status,
+)
 from deeporigin.utils.env import _ensure_do_folder
 
 from .entity import Entity
@@ -53,6 +58,24 @@ from .repr_display import (
 )
 
 _PROTEIN_STRUCTURE_NOT_LOADED_MSG = "Protein structure is not loaded."
+_STRUCTURE_BLOCK_TYPES = ("pdb", "pdbqt", "cif")
+
+
+def _structure_block_type_from_path(file_path: Path) -> str:
+    """Return the structure format for *file_path* (``pdb``, ``pdbqt``, or ``cif``).
+
+    ``pathlib.Path.suffix`` is empty for names like ``.pdb`` (treated as a
+    hidden file with no extension). Fall back to the filename so prepared
+    protein paths such as ``entities/proteins/prepared/.pdb`` still resolve.
+    """
+    suffix = file_path.suffix.lstrip(".").lower()
+    if suffix in _STRUCTURE_BLOCK_TYPES:
+        return suffix
+    name = file_path.name.lower()
+    for ext in _STRUCTURE_BLOCK_TYPES:
+        if name == f".{ext}" or name.endswith(f".{ext}"):
+            return ext
+    return suffix
 
 
 @dataclass
@@ -70,9 +93,38 @@ class Protein(Entity):
     block_type: str = "pdb"
     block_content: Optional[str] = None
     project_name: str | None = field(default=None, kw_only=True)
+    # Platform proteins-table lifecycle / provenance (from get_protein).
+    state: str | None = field(default=None, kw_only=True)
+    preparation: Optional[dict] = field(default=None, kw_only=True)
+    origin_kind: str | None = field(default=None, kw_only=True)
+    origin_entity_type: str | None = field(default=None, kw_only=True)
+    origin_entity_id: str | None = field(default=None, kw_only=True)
+    origin_entity_display_id: str | None = field(default=None, kw_only=True)
 
     _remote_path_base = "entities/proteins/"
     _preferred_ext = ".pdb"
+
+    def _apply_protein_row(self, row: dict[str, Any]) -> None:
+        """Copy platform lifecycle and origin fields from a proteins-table row.
+
+        Missing keys are left unchanged. Present keys (including explicit
+        ``None``) overwrite the corresponding attributes.
+
+        Args:
+            row: Dict from ``get_protein`` or an equivalent API response.
+        """
+        if "state" in row:
+            self.state = row["state"]
+        if "preparation" in row:
+            self.preparation = row["preparation"]
+        if "origin_kind" in row:
+            self.origin_kind = row["origin_kind"]
+        if "origin_entity_type" in row:
+            self.origin_entity_type = row["origin_entity_type"]
+        if "origin_entity_id" in row:
+            self.origin_entity_id = row["origin_entity_id"]
+        if "origin_entity_display_id" in row:
+            self.origin_entity_display_id = row["origin_entity_display_id"]
 
     def _display_project_name(self) -> str:
         """Human-readable project name for repr (cached on :attr:`project_name`)."""
@@ -194,7 +246,7 @@ class Protein(Entity):
             proj_id = (
                 str(data["project_id"]) if data.get("project_id") is not None else None
             )
-            return cls(
+            protein = cls(
                 name=name,
                 structure=None,
                 pdb_id=data.get("pdb_id"),
@@ -210,6 +262,8 @@ class Protein(Entity):
                     1
                 ],
             )
+            protein._apply_protein_row(data)
+            return protein
 
         # Download the file
         local_file_path = client.files.download(remote_path=file_path, lazy=True)
@@ -244,6 +298,7 @@ class Protein(Entity):
             )
             protein.project_name = cached
 
+        protein._apply_protein_row(data)
         return protein
 
     def _hydrate_structure_from_file(self, path: str | Path) -> None:
@@ -392,8 +447,8 @@ class Protein(Entity):
         if not file_path.exists():
             raise FileNotFoundError(f"The file {file_path} does not exist.")
 
-        block_type = file_path.suffix.lstrip(".").lower()
-        if block_type not in ["pdb", "pdbqt", "cif"]:
+        block_type = _structure_block_type_from_path(file_path)
+        if block_type not in _STRUCTURE_BLOCK_TYPES:
             raise ValueError(
                 f"Unsupported file type: {block_type}. Supported types are: pdb, pdbqt, cif"
             )
@@ -1287,6 +1342,9 @@ class Protein(Entity):
         :attr:`local_path` (for example after :meth:`from_file` or
         :meth:`download`).
 
+        This does **not** set platform ``state=prepared``. For catalog proteins
+        use :meth:`mark_prepared` instead.
+
         Returns:
             Self, for chaining.
 
@@ -1309,6 +1367,121 @@ class Protein(Entity):
         except UnicodeDecodeError:
             self.block_content = Path(self.local_path).read_text(encoding="latin-1")
         return self
+
+    def refresh(
+        self,
+        *,
+        client: Optional[DeepOriginClient] = None,
+    ) -> Self:
+        """Reload platform metadata for this protein from ``get_protein``.
+
+        Updates lifecycle and origin fields via :meth:`_apply_protein_row`, and
+        refreshes name, ``pdb_id``, ``uniprot_accession``, ``project_id``, and
+        ``remote_path`` when present on the row. Does not download structure
+        bytes.
+
+        Args:
+            client: Optional API client. Defaults to ``DeepOriginClient()``.
+
+        Returns:
+            Self, for chaining.
+
+        Raises:
+            ValueError: If :attr:`id` is unset.
+        """
+        if self.id is None:
+            raise ValueError(
+                "Cannot refresh a protein without a platform id; call sync() first."
+            )
+        if client is None:
+            client = DeepOriginClient()
+
+        data = client.entities.get_protein(id=self.id)
+        if data.get("protein_name"):
+            self.name = data["protein_name"]
+        elif data.get("pdb_id"):
+            self.name = data["pdb_id"]
+        elif data.get("gene_symbol"):
+            self.name = data["gene_symbol"]
+        if "pdb_id" in data:
+            self.pdb_id = data.get("pdb_id")
+        if "uniprot_accession" in data:
+            self.uniprot_accession = data.get("uniprot_accession")
+        if data.get("project_id") is not None:
+            self.project_id = str(data["project_id"])
+            _, cached = fetch_project_display_name(
+                self.project_id,
+                self.project_name,
+                client=client,
+            )
+            if cached:
+                self.project_name = cached
+        file_path = data.get("file_path")
+        if isinstance(file_path, str) and file_path:
+            self.remote_path = file_path
+        self._apply_protein_row(data)
+        return self
+
+    def mark_prepared(
+        self,
+        *,
+        client: Optional[DeepOriginClient] = None,
+    ) -> Self:
+        """Set platform ``state=prepared`` on this catalog protein.
+
+        Invokes ``deeporigin.protein-prep`` with ``action: mark_prepared`` and
+        this protein's :attr:`id`. Does not change the structure file, write a
+        Prepared Protein stamp, or create a copy. Distinct from
+        :meth:`mark_as_prepared` (local file stamp only). Idempotent when the
+        protein is already prepared. Requires ``client.project_id``.
+
+        Args:
+            client: Optional API client. Defaults to ``DeepOriginClient()``.
+
+        Returns:
+            Self, after :meth:`refresh` so :attr:`state` and
+            :attr:`preparation` match the platform row.
+
+        Raises:
+            ValueError: If :attr:`id` is unset.
+            DeepOriginException: If the protein-prep execution fails.
+        """
+        if self.id is None:
+            raise ValueError(
+                "Cannot mark_prepared without a platform id; call sync() first."
+            )
+        if client is None:
+            client = DeepOriginClient()
+
+        from deeporigin.platform.project_scope import require_client_project_id
+
+        require_client_project_id(client, entity_project_id=self.project_id)
+
+        tool_meta = TOOL_KEYS_AND_VERSIONS["protein_prep"]
+        dto = client.executions.create(  # ty:ignore[unresolved-attribute]
+            tool_key=tool_meta["tool_key"],
+            tool_version=tool_meta["tool_version"],
+            data={
+                "inputs": {
+                    "action": "mark_prepared",
+                    "protein": {"id": self.id},
+                },
+                "outputs": {},
+                "metadata": {},
+                "sync": True,
+            },
+        )
+        status = normalize_platform_status(dto.get("status"))
+        if not is_success_status(status):
+            eid = dto.get("executionId")
+            reason = dto.get("statusReason") or status
+            raise DeepOriginException(
+                title="mark_prepared failed",
+                message=(
+                    f"Execution {eid!r} ended with status {status!r}: {reason!r}."
+                ),
+            )
+        return self.refresh(client=client)
 
     @beartype
     def to_pdb(self, file_path: Optional[str | Path] = None) -> str:
@@ -1712,13 +1885,16 @@ class Protein(Entity):
     def _metadata_repr_lines(self) -> list[str]:
         """Metadata lines for text and HTML representations (no file paths)."""
         indent = REPR_INNER_INDENT
-        return [
+        lines = [
             "Protein(",
             f"{indent}name: {self.name}",
             f"{indent}id: {self.id or ''}",
             f"{indent}project: {self._display_project_name()}",
-            ")",
         ]
+        if self.state is not None:
+            lines.append(f"{indent}state: {self.state}")
+        lines.append(")")
+        return lines
 
     def _metadata_repr_text(self) -> str:
         """Plain-text summary shared by ``__repr__``, ``__str__``, and ``_repr_html_``."""
@@ -1814,7 +1990,7 @@ class Protein(Entity):
         lazy: bool = False,
         client: Optional[DeepOriginClient] = None,
         remote_path: Optional[str] = None,
-    ) -> None:
+    ) -> Optional[Literal["created", "reused"]]:
         """Sync the protein to the data platform via import-dataset.
 
         Uploads local bytes to a staging UFA path when needed, then invokes the
@@ -1833,9 +2009,13 @@ class Protein(Entity):
                 default staging path.
 
         Returns:
-            None. As a side effect, uploads the protein (if necessary) and updates
-            ``self.id`` with the ID of the existing or newly created protein record,
-            and sets :attr:`project_id` to the resolved project scope.
+            ``"created"`` if a new protein record was created, ``"reused"`` if an
+            existing one was linked. ``None`` if no registration happened
+            (``lazy=True`` with an existing ID) or the server did not report a
+            disposition (older servers). As a side effect, uploads the protein
+            (if necessary), updates ``self.id`` with the ID of the existing or
+            newly created protein record, and sets :attr:`project_id` to the
+            resolved project scope.
 
         Raises:
             DeepOriginException: If no project id can be resolved, or registration
@@ -1851,7 +2031,7 @@ class Protein(Entity):
                 self.project_id = require_client_project_id(
                     client, entity_project_id=self.project_id
                 )
-            return
+            return None
 
         if client is None:
             client = DeepOriginClient()
@@ -1885,7 +2065,10 @@ class Protein(Entity):
         if self.tags is not None:
             extra["tags"] = self.tags
 
-        from deeporigin.drug_discovery.import_dataset_sync import sync_process_pdb
+        from deeporigin.drug_discovery.import_dataset_sync import (
+            parse_protein_disposition,
+            sync_process_pdb,
+        )
 
         outputs = sync_process_pdb(
             client=client,
@@ -1917,6 +2100,7 @@ class Protein(Entity):
             self.remote_path = file_path
 
         self.project_id = proj_id
+        return parse_protein_disposition(protein_row)
 
     @beartype
     def update(

@@ -1,10 +1,8 @@
 include README.md
 include src/VERSION
 include src/config/default.yml
-include src/js/*.js
 include src/data/**/*
 include src/templates/*.html
-include src/files/file_service/gen_file_openapi.yaml 
 include src/drug_discovery/external_tools/assets/protein_info.gql
 include src/drug_discovery/external_tools/assets/molecule_smiles.gql
 include src/drug_discovery/external_tools/assets/protein_base_info.gql

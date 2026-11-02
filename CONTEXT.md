@@ -227,10 +227,23 @@ skip AUTO protein cleanup. PDB: `REMARK  99 DO_PREPARED`. mmCIF:
 `_deeporigin.prepared     DO_PREPARED`. Written by Protein Prep or
 `Protein.mark_as_prepared()`; never a public `PreparedProtein` type.
 _Avoid_: treating accidental PDB REMARK text inside CIF as prepared; converting
-CIF to PDB just to stamp
+CIF to PDB just to stamp; conflating with platform protein prepared state
+(`Protein.mark_prepared()`)
+
+**Platform protein prepared state**:
+Proteins-table column `state` (`unprocessed` | `prepared`) plus optional
+`preparation` audit JSON. Set by Protein Prep prepare/mark_prepared or
+Entities create. Exposed on :class:`~deeporigin.drug_discovery.structures.protein.Protein`
+as `state` / `preparation` / `origin_*` after `from_id` or `refresh`.
+`Protein.mark_prepared()` invokes protein-prep `action: mark_prepared` (no
+structure change, no file stamp, idempotent). Distinct from the Prepared
+Protein stamp and from `Protein.mark_as_prepared()`.
+_Avoid_: calling the stamp API for platform state; treating mark_prepared as
+creating a new Prepared protein (CLI) entity
 
 **Protein**:
 A macromolecular target structure. Once synced, a platform proteins-table row.
+May carry platform prepared state and origin provenance after fetch.
 _Avoid_: PreparedSystem; Prepared protein (CLI) when you mean a catalog protein
 
 **Pocket**:
@@ -265,7 +278,7 @@ PATCH an existing ligand or protein record by ID; the platform creates a new imm
 _Avoid_: calling it "edit in place" or conflating with `sync()`
 
 **Entity sync**:
-Link-or-create by identity (canonical SMILES for ligands, file path for proteins). Does not modify an existing record's `mol_file` or `file_path`.
+Link-or-create by identity (canonical SMILES for ligands, file path for proteins). Does not modify an existing record's `mol_file` or `file_path`. `Protein.sync()` returns `"created"` or `"reused"` (or `None` when skipped by `lazy=True` or not reported by the server).
 _Avoid_: using `sync()` when the intent is to change structure files on a known platform ID — use `update()` instead
 
 **Tool version pin**:

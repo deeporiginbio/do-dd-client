@@ -1030,23 +1030,35 @@ def create_data_platform_router(
             if isinstance(file_path, str) and file_path.startswith(
                 f"{PREPARED_PROTEIN_UFA_PREFIX}/"
             ):
-                matches = [
-                    copy.deepcopy(row)
+                matches = {
+                    str(row["id"]): copy.deepcopy(row)
                     for row in proteins.values()
                     if row.get("file_path") == file_path and not row.get("deleted")
-                ]
-                return {
-                    "data": matches[offset : offset + limit],
-                    "count": len(matches),
                 }
+                return _apply_search_filters(
+                    matches, filter_dict, limit=limit, offset=offset
+                )
 
         # Protein.sync() searches by uploaded file_path (hash-based or custom).
-        # Always resolve to the canonical BRD fixture + stable ID when unscoped.
+        # Prefer an exact in-memory match (unique create_protein rows); otherwise
+        # resolve unscoped searches to the canonical BRD fixture + stable ID.
         if (
             entity == "proteins"
             and "file_path" in filter_dict
             and "project_id" not in filter_dict
         ):
+            raw_path = filter_dict["file_path"]
+            file_path = raw_path.get("eq") if isinstance(raw_path, dict) else raw_path
+            if isinstance(file_path, str):
+                matches = {
+                    str(row["id"]): copy.deepcopy(row)
+                    for row in proteins.values()
+                    if row.get("file_path") == file_path and not row.get("deleted")
+                }
+                if matches:
+                    return _apply_search_filters(
+                        matches, filter_dict, limit=limit, offset=offset
+                    )
             if MOCK_CANONICAL_PROTEIN_ID not in proteins:
                 proteins[MOCK_CANONICAL_PROTEIN_ID] = copy.deepcopy(
                     _base_canonical_protein_record()
@@ -1153,10 +1165,12 @@ def create_data_platform_router(
 
     @router.post("/data-platform/{org_key}/proteins")
     async def create_protein(org_key: str, request: Request) -> dict[str, Any]:
-        """Create or update the canonical mock protein (stable ID, BRD fixture file_path).
+        """Create a protein row in the mock store.
 
-        Every register/sync flow maps to the same platform row so tests and
-        notebooks get deterministic IDs and ``tests/brd.pdb`` content.
+        When ``set.file_path`` is the canonical BRD path (or omitted), updates the
+        shared stable ``brd`` row so sync/register tests keep deterministic IDs.
+        Any other ``file_path`` allocates a unique protein id so lifecycle tests
+        do not share state with the canonical row.
         """
         body = await request.json()
         set_data = body.get("set", {})
@@ -1165,15 +1179,36 @@ def create_data_platform_router(
         now = datetime.now(timezone.utc)
         now_s = now.strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z"
 
-        base = proteins.get(MOCK_CANONICAL_PROTEIN_ID, _base_canonical_protein_record())
-        record = copy.deepcopy(base)
-        record["valid_from"] = now_s
-        record.update(set_data)
-        record["id"] = MOCK_CANONICAL_PROTEIN_ID
-        record["file_path"] = MOCK_CANONICAL_PROTEIN_FILE_PATH
-        record["deleted"] = False
+        requested_path = set_data.get("file_path")
+        use_canonical = (
+            requested_path is None
+            or requested_path == ""
+            or requested_path == MOCK_CANONICAL_PROTEIN_FILE_PATH
+        )
 
-        proteins[MOCK_CANONICAL_PROTEIN_ID] = record
+        if use_canonical:
+            base = proteins.get(
+                MOCK_CANONICAL_PROTEIN_ID, _base_canonical_protein_record()
+            )
+            record = copy.deepcopy(base)
+            record["valid_from"] = now_s
+            record.update(set_data)
+            record["id"] = MOCK_CANONICAL_PROTEIN_ID
+            record["file_path"] = MOCK_CANONICAL_PROTEIN_FILE_PATH
+            record["deleted"] = False
+            proteins[MOCK_CANONICAL_PROTEIN_ID] = record
+        else:
+            protein_id = "08" + uuid.uuid4().hex[:11].upper()
+            record = _base_canonical_protein_record()
+            # Template defaults (e.g. protein_name "brd") must not leak onto a
+            # new unique row when the caller omitted those fields.
+            record["protein_name"] = None
+            record["valid_from"] = now_s
+            record.update(set_data)
+            record["id"] = protein_id
+            record["file_path"] = str(requested_path)
+            record["deleted"] = False
+            proteins[protein_id] = record
 
         response_data = record.copy()
         if returning:
