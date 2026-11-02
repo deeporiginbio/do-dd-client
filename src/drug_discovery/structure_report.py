@@ -331,13 +331,19 @@ class StructureReport(Execution, SyncExecutableMixin):
         approve_amount: int | None,
         sync: bool,
     ) -> dict[str, Any]:
-        """Build the body dict for ``client.executions.create``."""
-        return _default_execution_payload(
+        """Build the body dict for ``client.executions.create``.
+
+        Hidden from Activity, as Studio and the MCP server hide their structure
+        reports: the report informs a preparation and is read from the return value.
+        """
+        payload = _default_execution_payload(
             self._make_inputs(),
             name=self.name,
             approve_amount=approve_amount,
             sync=sync,
         )
+        payload["visibility"] = "hidden"
+        return payload
 
     def run(
         self,
