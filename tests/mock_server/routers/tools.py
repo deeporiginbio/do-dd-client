@@ -68,7 +68,14 @@ _RBFE_STAGE_BUILD_PAIRS = (0.20, 0.28)
 _RBFE_STAGE_PAIR_PIPELINE = (0.28, 1.00)
 
 MOCK_POSE_REGISTRATION_FAIL_NAME = "mock-pose-registration-fail"
-"""SDF record name that makes a mock pose registration run end ``Failed``."""
+"""SDF record name that makes a mock pose registration run end ``Failed``.
+
+The run fails before data platform creates its execution row, so
+``executions/search`` never returns one for it.
+"""
+
+MOCK_POSE_INGESTION_FAIL_NAME = "mock-pose-ingestion-fail"
+"""SDF record name whose run completes while its data-platform row ends ``Failed``."""
 
 MOCK_POSE_REGISTRATION_FAIL_REASON = "Mock pose registration failed."
 """``statusReason`` set on a mock pose registration run that fails."""
@@ -1556,12 +1563,17 @@ def create_tools_router(
                 execution["status"] = "Failed"
                 execution["statusReason"] = MOCK_POSE_REGISTRATION_FAIL_REASON
                 execution["jobOutputs"] = {}
+                execution["dataPlatformRowMissing"] = True
                 return execution
             execution["jobOutputs"] = job_outputs
             if register_poses:
                 if eid:
                     execution["dataPlatformRowId"] = str(uuid.uuid4())
-                    execution["dataPlatformStatus"] = "DataIngesting"
+                    execution["dataPlatformStatus"] = (
+                        "Failed"
+                        if MOCK_POSE_INGESTION_FAIL_NAME in record_names.values()
+                        else "DataIngesting"
+                    )
                     rejected = {
                         idx
                         for idx, name in record_names.items()
@@ -3878,10 +3890,12 @@ def create_tools_router(
         ):
             # import-dataset's input schema has ``additionalProperties: false``;
             # ``result_lane`` was added in IMPORT_DATASET_RESULT_LANE_MIN_VERSION.
+            # A partial pin runs the newest release in its line (``"4"`` is the
+            # latest 4.x), so it is compared on the segments it names.
             try:
-                accepts_lane = Version(tool_version) >= Version(
-                    IMPORT_DATASET_RESULT_LANE_MIN_VERSION
-                )
+                pinned = Version(tool_version).release
+                minimum = Version(IMPORT_DATASET_RESULT_LANE_MIN_VERSION).release
+                accepts_lane = pinned >= minimum[: len(pinned)]
             except InvalidVersion:
                 accepts_lane = False
             if not accepts_lane:

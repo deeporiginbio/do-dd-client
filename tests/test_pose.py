@@ -23,11 +23,11 @@ from deeporigin.drug_discovery.structures.pose import (
 from deeporigin.platform.client import DeepOriginClient
 from deeporigin.platform.constants import TOOL_KEYS_AND_VERSIONS
 from deeporigin.utils.constants import (
-    IMPORT_DATASET_RESULT_LANE_MIN_VERSION,
     POSE_REGISTRATION_RESULT_LANE,
 )
 from tests.conftest import check_tool_exists
 from tests.mock_server.routers.tools import (
+    MOCK_POSE_INGESTION_FAIL_NAME,
     MOCK_POSE_REGISTRATION_FAIL_NAME,
     MOCK_POSE_REGISTRATION_FAIL_REASON,
     MOCK_POSE_REJECTED_NAME,
@@ -289,7 +289,10 @@ def test_pose_set_sync_raises_on_failed_run(
     registered_protein,
     tmp_path: Path,
 ) -> None:
-    """A failed import run raises with the run's status reason."""
+    """A run that fails before its data-platform row exists raises with its status reason.
+
+    No ingestion wait starts, so this does not hang until the wait times out.
+    """
     from deeporigin.exceptions import DeepOriginException
 
     _require_local_env(pytestconfig)
@@ -303,6 +306,29 @@ def test_pose_set_sync_raises_on_failed_run(
         PoseSet(poses=poses).sync(client=client)
     assert "'Failed'" in str(exc_info.value)
     assert MOCK_POSE_REGISTRATION_FAIL_REASON in str(exc_info.value)
+    assert all(pose.id is None for pose in poses)
+
+
+def test_pose_set_sync_raises_on_failed_ingestion(
+    pytestconfig: pytest.Config,
+    client: DeepOriginClient,
+    registered_protein,
+    tmp_path: Path,
+) -> None:
+    """A completed run whose data-platform row ends Failed raises."""
+    from deeporigin.exceptions import DeepOriginException
+
+    _require_local_env(pytestconfig)
+    poses = _registration_poses(
+        client,
+        protein_id=registered_protein.id,
+        tmp_path=tmp_path,
+        names=["pose-a", MOCK_POSE_INGESTION_FAIL_NAME],
+    )
+    with pytest.raises(DeepOriginException) as exc_info:
+        PoseSet(poses=poses).sync(client=client)
+    assert "Pose registration" in str(exc_info.value)
+    assert "'Failed'" in str(exc_info.value)
     assert all(pose.id is None for pose in poses)
 
 
@@ -346,14 +372,16 @@ def _registration_inputs(client: DeepOriginClient, pose: Pose) -> dict:
     return client.executions.get(compute_job_id)["userInputs"]
 
 
-def test_pose_set_sync_omits_result_lane_on_pinned_import_dataset(
+def test_pose_set_sync_omits_result_lane_on_import_dataset_3(
     pytestconfig: pytest.Config,
     client: DeepOriginClient,
     registered_protein,
     tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """The pinned import-dataset predates result_lane, so it is not sent."""
+    """import-dataset 3 predates result_lane, so it is not sent."""
     _require_local_env(pytestconfig)
+    monkeypatch.setitem(TOOL_KEYS_AND_VERSIONS["import_dataset"], "tool_version", "3")
     poses = _registration_poses(
         client,
         protein_id=registered_protein.id,
@@ -364,20 +392,14 @@ def test_pose_set_sync_omits_result_lane_on_pinned_import_dataset(
     assert "result_lane" not in _registration_inputs(client, poses[0])
 
 
-def test_pose_set_sync_sends_fast_result_lane_from_4_0_2(
+def test_pose_set_sync_sends_fast_result_lane_on_pinned_import_dataset(
     pytestconfig: pytest.Config,
     client: DeepOriginClient,
     registered_protein,
     tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """With import-dataset pinned at 4.0.2, pose registration asks for the fast lane."""
+    """The pinned import-dataset accepts result_lane, so pose registration asks for the fast lane."""
     _require_local_env(pytestconfig)
-    monkeypatch.setitem(
-        TOOL_KEYS_AND_VERSIONS["import_dataset"],
-        "tool_version",
-        IMPORT_DATASET_RESULT_LANE_MIN_VERSION,
-    )
     poses = _registration_poses(
         client,
         protein_id=registered_protein.id,

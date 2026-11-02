@@ -41,7 +41,10 @@ result-explorer once. The mock covers each step:
   that frame.
 - An SDF record named `MOCK_POSE_REGISTRATION_FAIL_NAME` (`routers/tools.py`)
   makes the run end `Failed` with `statusReason`
-  `MOCK_POSE_REGISTRATION_FAIL_REASON` and no outputs.
+  `MOCK_POSE_REGISTRATION_FAIL_REASON` and no outputs. `executions/search` returns
+  no row for it, as when a run fails before data platform records it.
+- An SDF record named `MOCK_POSE_INGESTION_FAIL_NAME` lets the run complete while
+  its data-platform row reads `Failed`.
 - An SDF record named `MOCK_POSE_REJECTED_NAME` stays in `jobOutputs` but is left
   out of result-explorer while the run completes. This mimics the platform
   rejecting one record during storage and drives the short-count error.

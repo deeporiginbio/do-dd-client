@@ -785,7 +785,7 @@ class Executions:
             ValueError: If ``execution_id`` is empty or no project id is set.
             TimeoutError: If ingestion does not finish within ``timeout``.
             DeepOriginException: If the gateway refuses the stream with a
-                non-retryable status (e.g. 401, 403, 404); if the backend
+                non-retryable status (e.g. 401, 403); if the backend
                 does not support ``include_hidden``; or if a data-platform
                 read fails with a non-retryable status, or with a 5xx that
                 outlasts the client's retries.

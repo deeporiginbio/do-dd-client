@@ -4,9 +4,9 @@ from __future__ import annotations
 
 from pathlib import Path
 import time
-import warnings
 from typing import Any, Literal, Optional
 import uuid
+import warnings
 
 from packaging.version import InvalidVersion, Version
 
@@ -35,6 +35,7 @@ DATA_PLATFORM_DATA_INGESTING_STATUS = "DataIngesting"
 
 _FAILED_DP_STATUSES = frozenset({"Failed", "Cancelled"})
 _IMPORT_FAILED_TITLE = "Ligand import failed"
+_IMPORT_RUN_FAILED_TITLE = "import-dataset run failed"
 _SMILES_LIST_SEARCH_CHUNK = 500
 _DEFAULT_TOOLS_POLL_INTERVAL_S = 2.0
 _DEFAULT_TOOLS_WAIT_TIMEOUT_S = 3600.0
@@ -650,21 +651,43 @@ def sync_process_pdb(
 def import_dataset_supports_result_lane(tool_version: str) -> bool:
     """Return whether an import-dataset version accepts the ``result_lane`` input.
 
-    A partial pin is read as its lowest release (``"4"`` is ``4.0.0``), since
-    the version it resolves to is not known here. A pin that is not a version
-    number (e.g. ``"latest"``) is treated as not supporting it.
+    tools-service runs a partial pin as the latest release that fills in its
+    remaining segments (``"4"`` runs the newest 4.x), so a partial pin is
+    compared on the segments it names: ``"4"`` and ``"4.0"`` qualify, ``"3"``
+    and ``"4.0.1"`` do not. A pin that is not a version number (e.g.
+    ``"latest"``) is treated as not supporting it.
 
     Args:
-        tool_version: import-dataset version pin, e.g. ``"3"`` or ``"4.0.2"``.
+        tool_version: import-dataset version pin, e.g. ``"4"`` or ``"4.0.2"``.
 
     Returns:
         True when ``tool_version`` is at least
-        :data:`~deeporigin.utils.constants.IMPORT_DATASET_RESULT_LANE_MIN_VERSION`.
+        :data:`~deeporigin.utils.constants.IMPORT_DATASET_RESULT_LANE_MIN_VERSION`
+        on the segments it names.
     """
     try:
-        return Version(tool_version) >= Version(IMPORT_DATASET_RESULT_LANE_MIN_VERSION)
+        pinned = Version(tool_version).release
     except InvalidVersion:
         return False
+    minimum = Version(IMPORT_DATASET_RESULT_LANE_MIN_VERSION).release
+    return pinned >= minimum[: len(pinned)]
+
+
+def _raise_if_run_failed(dto: dict[str, Any]) -> None:
+    """Raise when a synchronous import-dataset run ended without success.
+
+    A run can fail before data platform creates its execution row, so the
+    status the run returned is checked before any ingestion wait.
+    """
+    status = normalize_platform_status(dto.get("status"))
+    if status in TERMINAL_STATES and not is_success_status(status):
+        raise DeepOriginException(
+            title=_IMPORT_RUN_FAILED_TITLE,
+            message=(
+                f"import-dataset run (execution_id={dto.get('executionId')!r}) "
+                f"ended with status {status!r}: {dto.get('statusReason') or status}"
+            ),
+        )
 
 
 def sync_process_sdf(
@@ -695,6 +718,9 @@ def sync_process_sdf(
 
     Returns:
         The run's ``jobOutputs`` plus ``import_execution_id``.
+
+    Raises:
+        DeepOriginException: If the run ended without success.
     """
     inputs: dict[str, Any] = {
         "process_sdf": True,
@@ -710,9 +736,9 @@ def sync_process_sdf(
         TOOL_KEYS_AND_VERSIONS["import_dataset"]["tool_version"]
     ):
         inputs["result_lane"] = result_lane
-    return job_outputs_with_execution_id(
-        run_import_dataset_sync(inputs=inputs, project_id=project_id, client=client)
-    )
+    dto = run_import_dataset_sync(inputs=inputs, project_id=project_id, client=client)
+    _raise_if_run_failed(dto)
+    return job_outputs_with_execution_id(dto)
 
 
 def sync_process_csv(
