@@ -9,3 +9,6 @@ MOCK_BULK_DOCKING_EXECUTION_ID = "bdcc1213-4aa1-48e7-ada9-fbd6331f01d9"
 # Do not prefix with ``tests/fixtures/files/`` — the files router already maps
 # ``remote_path`` under ``<fixtures_dir>/files/``.
 MOCK_BULK_DOCKING_POSES_SDF_PATH = "128poses.sdf"
+
+MOCK_SSE_DISABLED_PROJECT_ID = "09NOSSEPROJECT0"
+"""Project whose gateway SSE stream is refused with 404, as on a gateway without SSE."""

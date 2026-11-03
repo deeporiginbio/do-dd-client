@@ -165,7 +165,16 @@ def create_files_router(
             return {"data": []}
 
         if not dir_path.exists() or not dir_path.is_dir():
-            return {"data": []}
+            # Not a fixture folder: list files uploaded to the mock under it instead.
+            prefix = file_path.strip("/") + "/"
+            return {
+                "data": [
+                    {"Key": key}
+                    for key in sorted(file_storage)
+                    if key.startswith(prefix)
+                    and (recursive or "/" not in key[len(prefix) :])
+                ]
+            }
 
         files: list[dict[str, str]] = []
 

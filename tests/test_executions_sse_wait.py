@@ -5,6 +5,7 @@ import json
 import threading
 import time
 from unittest.mock import patch
+import warnings
 
 import httpx
 import pytest
@@ -18,6 +19,7 @@ PROJECT_ID = "proj-1"
 ORG_KEY = "test_org"
 STREAM_PATH = f"/sse/{ORG_KEY}/stream/{PROJECT_ID}"
 SEARCH_PATH = f"/data-platform/{ORG_KEY}/executions/search"
+RUN_PATH = f"/tools/{ORG_KEY}/tools/executions/{EXECUTION_ID}"
 INCLUDE_HIDDEN_REJECTED = {
     "message": "Unknown keys in payload",
     "errors": [{"field": "include_hidden", "reason": "unknown_field"}],
@@ -108,6 +110,8 @@ class FakeGateway:
         streams: list[str | int | httpx.SyncByteStream],
         statuses: list[str | None],
         rejects_include_hidden: bool = False,
+        run_status: str = "Running",
+        run_reason: str | None = None,
     ) -> None:
         """Store the scripts.
 
@@ -117,10 +121,14 @@ class FakeGateway:
             statuses: Row status per search, or ``None`` for no row yet.
             rejects_include_hidden: Answer a search sending ``include_hidden``
                 with the 400 of a backend that does not know the flag.
+            run_status: Tools-service run status, read while there is no row.
+            run_reason: Tools-service ``statusReason`` of the run.
         """
         self.streams = streams
         self.statuses = statuses
         self.rejects_include_hidden = rejects_include_hidden
+        self.run_status = run_status
+        self.run_reason = run_reason
         self.calls: list[str] = []
         self.stream_requests: list[httpx.Request] = []
         self.search_bodies: list[dict] = []
@@ -161,6 +169,16 @@ class FakeGateway:
             status = self.statuses[min(n, len(self.statuses) - 1)]
             rows = [] if status is None else [{"id": "dp-1", "status": status}]
             return httpx.Response(200, json={"data": rows, "meta": {}})
+        if request.url.path == RUN_PATH:
+            self.calls.append("run")
+            return httpx.Response(
+                200,
+                json={
+                    "executionId": EXECUTION_ID,
+                    "status": self.run_status,
+                    "statusReason": self.run_reason,
+                },
+            )
         return httpx.Response(404)
 
     def client(self) -> DeepOriginClient:
@@ -313,7 +331,7 @@ def test_missing_row_then_ping(mock_client_config) -> None:
     )
 
     assert _wait(gateway)["status"] == "Completed"
-    assert gateway.calls == ["stream", "search", "search", "search"]
+    assert gateway.calls == ["stream", "search", "run", "search", "search"]
 
 
 def test_ping_for_other_filter_does_not_reread(mock_client_config, sleeps) -> None:
@@ -412,6 +430,33 @@ def test_retryable_refusal_reconnects(
     assert gateway.calls == ["stream", "stream", "search"]
     assert sleeps == [1.0]
     assert list(tmp_path.iterdir()) == []
+
+
+def test_missing_sse_route_warns_once(mock_client_config, sleeps, tmp_path) -> None:
+    """A 404 (no SSE route) warns once that the wait is polling, however often it repeats."""
+    gateway = FakeGateway(streams=[404, 404, HEARTBEAT], statuses=["Completed"])
+
+    with (
+        patch("deeporigin.platform.client._ensure_do_folder", return_value=tmp_path),
+        pytest.warns(UserWarning, match="SSE is not available.*polling") as record,
+    ):
+        assert _wait(gateway)["status"] == "Completed"
+    assert len(record) == 1
+
+
+@pytest.mark.parametrize("status", [409, 503])
+def test_transient_refusal_does_not_warn(
+    mock_client_config, sleeps, tmp_path, status: int
+) -> None:
+    """A connection-cap or transient refusal reconnects without a polling warning."""
+    gateway = FakeGateway(streams=[status, HEARTBEAT], statuses=["Completed"])
+
+    with (
+        patch("deeporigin.platform.client._ensure_do_folder", return_value=tmp_path),
+        warnings.catch_warnings(),
+    ):
+        warnings.simplefilter("error")
+        assert _wait(gateway)["status"] == "Completed"
 
 
 def test_flapping_stream_backoff_doubles_to_cap(
@@ -544,12 +589,35 @@ def test_legacy_succeeded_row_is_returned_as_completed(mock_client_config) -> No
     assert _wait(gateway)["status"] == "Completed"
 
 
-def test_run_without_row_keeps_waiting(mock_client_config) -> None:
-    """A missing row is waited on; it may not have been created yet."""
-    gateway = FakeGateway(streams=[HEARTBEAT], statuses=[None])
+@pytest.mark.parametrize("run_status", ["Running", "Completed"])
+def test_run_without_row_keeps_waiting(mock_client_config, run_status: str) -> None:
+    """A missing row is waited on while the run is running or has succeeded."""
+    gateway = FakeGateway(streams=[HEARTBEAT], statuses=[None], run_status=run_status)
 
     with pytest.raises(TimeoutError):
         _wait(gateway, timeout=0.2)
+
+
+@pytest.mark.parametrize("run_status", ["Failed", "Cancelled"])
+def test_failed_run_without_row_ends_the_wait(
+    mock_client_config, run_status: str
+) -> None:
+    """A run that ends without success before any row exists returns its status and reason."""
+    gateway = FakeGateway(
+        streams=[HEARTBEAT],
+        statuses=[None],
+        run_status=run_status,
+        run_reason="bad input",
+    )
+
+    row = _wait(gateway)
+
+    assert row == {
+        "compute_job_id": EXECUTION_ID,
+        "status": run_status,
+        "statusReason": "bad input",
+    }
+    assert gateway.calls == ["stream", "search", "run"]
 
 
 def test_poll_network_error_keeps_polling(mock_client_config, sleeps, tmp_path) -> None:

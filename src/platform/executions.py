@@ -8,6 +8,7 @@ from datetime import datetime, timezone
 import random
 import time
 from typing import TYPE_CHECKING, Any
+import warnings
 
 from beartype import beartype
 import httpx
@@ -22,6 +23,7 @@ from deeporigin.platform.constants import (
     EXECUTION_VISIBILITY_VALUES,
     TERMINAL_STATES,
     ExecutionVisibility,
+    is_success_status,
     normalize_platform_status,
 )
 from deeporigin.platform.project_scope import stamp_execution_project_id
@@ -58,6 +60,8 @@ class _IngestionWait:
             even if no frame asks for it. Every read pushes it back.
         last_read: ``time.monotonic()`` value of the latest row read, or of
             the start of the wait before the first read.
+        warned_polling: Whether the wait has already warned that SSE is not
+            available and it is polling.
     """
 
     execution_id: str
@@ -65,6 +69,7 @@ class _IngestionWait:
     deadline: float
     next_sweep: float
     last_read: float
+    warned_polling: bool = False
 
     def time_left(self) -> float:
         """Return seconds left before the deadline, raising once it has passed.
@@ -762,7 +767,9 @@ class Executions:
         A stream that closed, dropped with a network error or was refused
         with a retryable status is reopened after a jittered pause that
         doubles from ``SSE_RECONNECT_BACKOFF_SECONDS`` up to
-        ``SSE_RECONNECT_MAX_BACKOFF_SECONDS``. A stream that stayed open for
+        ``SSE_RECONNECT_MAX_BACKOFF_SECONDS``. A 404 means the gateway has no
+        SSE route, so the first one warns that SSE is not available and the
+        wait is polling. A stream that stayed open for
         ``SSE_STABLE_CONNECTION_SECONDS`` resets the pause. An open stream is
         cut off at the deadline, so a read waiting on the next heartbeat
         cannot carry the wait past ``timeout``. A row re-read already in
@@ -780,6 +787,9 @@ class Executions:
             The data-platform execution row, in a terminal state. A legacy
             ``Succeeded`` status is returned as ``Completed``. Failed and
             cancelled executions are returned, not raised; check ``status``.
+            A run that ends without success before data platform records it
+            has no row, so ``{"compute_job_id", "status", "statusReason"}``
+            from the tools-service run is returned instead.
 
         Raises:
             ValueError: If ``execution_id`` is empty or no project id is set.
@@ -807,24 +817,9 @@ class Executions:
         filters = {_INGESTION_FILTER_ID: f"execution:{execution_id}"}
         failures = 0
         while True:
-            remaining = wait.time_left()
-            opened_at: float | None = None
-            try:
-                with (
-                    open_project_stream(
-                        self._c,
-                        project_id=project_id,
-                        filters=filters,
-                        read_timeout=min(remaining, SSE_MAX_READ_TIMEOUT_SECONDS),
-                    ) as response,
-                    abort_stream_after(response, wait.deadline - time.monotonic()),
-                ):
-                    opened_at = time.monotonic()
-                    row = self._wait_on_ingestion_stream(response, wait)
-                    if row is not None:
-                        return row
-            except (httpx.TransportError, StreamUnavailableError):
-                pass
+            row, opened_at = self._try_ingestion_stream(wait, filters)
+            if row is not None:
+                return row
             stable = (
                 opened_at is not None
                 and time.monotonic() - opened_at >= SSE_STABLE_CONNECTION_SECONDS
@@ -833,6 +828,55 @@ class Executions:
             row = self._pause_before_reconnect(wait, _reconnect_delay(failures))
             if row is not None:
                 return row
+
+    def _try_ingestion_stream(
+        self,
+        wait: _IngestionWait,
+        filters: dict[str, str],
+    ) -> tuple[dict | None, float | None]:
+        """Open the stream once and wait on it until it closes or the row is terminal.
+
+        A network error or a retryable refusal ends the attempt quietly, so the
+        caller reconnects. The first 404 (no SSE route) warns that the wait is
+        polling instead.
+
+        Args:
+            wait: State of the wait.
+            filters: SSE filters naming this execution.
+
+        Returns:
+            The terminal row, or ``None`` if the stream ended first, and the
+            ``time.monotonic()`` value at which the stream opened, or ``None``
+            if it never opened.
+
+        Raises:
+            TimeoutError: If the deadline passes while the stream is open.
+        """
+        remaining = wait.time_left()
+        opened_at: float | None = None
+        try:
+            with (
+                open_project_stream(
+                    self._c,
+                    project_id=wait.project_id,
+                    filters=filters,
+                    read_timeout=min(remaining, SSE_MAX_READ_TIMEOUT_SECONDS),
+                ) as response,
+                abort_stream_after(response, wait.deadline - time.monotonic()),
+            ):
+                opened_at = time.monotonic()
+                return self._wait_on_ingestion_stream(response, wait), opened_at
+        except StreamUnavailableError as error:
+            if error.status_code == 404 and not wait.warned_polling:
+                warnings.warn(
+                    "SSE is not available (HTTP 404); polling for execution "
+                    f"{wait.execution_id!r} instead.",
+                    stacklevel=3,
+                )
+                wait.warned_polling = True
+        except httpx.TransportError:
+            pass
+        return None, opened_at
 
     def _wait_on_ingestion_stream(
         self,
@@ -907,13 +951,16 @@ class Executions:
         """Read an execution's data-platform row if it is terminal.
 
         Pushes the next sweep and poll back, since the row is being read.
+        While there is no row, reads the tools-service run instead, so a run
+        that failed before data platform recorded it ends the wait.
 
         Args:
             wait: State of the wait.
 
         Returns:
-            The row, with its status normalized, when the status is terminal,
-            else ``None`` (including when the row does not exist yet).
+            The row, with its status normalized, when the status is terminal;
+            the run's id, status and ``statusReason`` when there is no row and
+            the run ended without success; else ``None``.
         """
         wait.last_read = time.monotonic()
         wait.next_sweep = wait.last_read + DATA_PLATFORM_INGESTION_SWEEP_SECONDS
@@ -922,6 +969,15 @@ class Executions:
             status = normalize_platform_status(rows[0].get("status"))
             if status in TERMINAL_STATES:
                 return {**rows[0], "status": status}
+            return None
+        run = self.get(wait.execution_id)
+        status = normalize_platform_status(run.get("status"))
+        if status in TERMINAL_STATES and not is_success_status(status):
+            return {
+                "compute_job_id": wait.execution_id,
+                "status": status,
+                "statusReason": run.get("statusReason"),
+            }
         return None
 
     def _read_ingestion_rows(self, wait: _IngestionWait) -> list[dict]:
