@@ -128,6 +128,17 @@ prepared = prep.run()
 pockets = prep.get_pockets()
 ```
 
+Name the crystal ligand with exactly one of `component_id` (its Selection id),
+`ligand_id` (a residue code such as `"BEB"`), or `crystal_ligand` (an external
+`Ligand`). When the Selection extracts that ligand, use `component_id`:
+`ligand_id` must name a residue that is still in the structure, so the run fails
+once that ligand is extracted. When the Selection extracts a ligand and you leave
+`find_pockets` unset, prepare requests a crystal-ligand pocket automatically.
+
+The crystal pocket belongs to the prepared protein. Pass both to
+[`Docking`](docking.md) or `ConstrainedDocking`, which take the pocket
+explicitly; see the [docking tutorial](../tutorial/docking.md).
+
 Loop modelling requires a four-character
 [Protein Data Bank (PDB) :octicons-link-external-16:](https://www.rcsb.org/)
 ID. `ProteinPrep` initially uses `protein.pdb_id` when available; otherwise set

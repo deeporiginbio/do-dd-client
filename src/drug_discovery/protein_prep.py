@@ -58,6 +58,7 @@ from deeporigin.platform.constants import (
     is_success_status,
     normalize_platform_status,
 )
+from deeporigin.platform.errors import raise_for_platform_restriction
 from deeporigin.utils.constants import (
     PROTEIN_PREP_COMPONENT_KINDS,  # ty:ignore[unresolved-import]
     PROTEIN_PREP_DATAFRAME_ID_COLUMN_MSG,  # ty:ignore[unresolved-import]
@@ -1999,6 +2000,10 @@ class ProteinPrep(
             payload["approveAmount"] = approve_amount
         if self.name is not None and action == "prepare":
             payload["name"] = self.name
+        if action == "recommend":
+            # A recommend is a helper run, hidden from Activity as Studio hides it;
+            # the prepare it feeds is the run the user sees.
+            payload["visibility"] = "hidden"
         return payload
 
     def recommend(self) -> pd.DataFrame:
@@ -2100,7 +2105,8 @@ class ProteinPrep(
 
         Raises:
             ValueError: If already submitted or this is not the direct path.
-            DeepOriginException: If no prepared PDB path could be loaded.
+            DeepOriginException: If the execution does not succeed, or no
+                prepared PDB path could be loaded.
         """
         if self.id is not None or self.status is not None:
             raise ValueError("Cannot run: this ProteinPrep is already bound.")
@@ -2121,6 +2127,19 @@ class ProteinPrep(
         self.update_from_dto(dto)
         if self.status == "Quoted":
             return None
+
+        final_status = dto.get("status")
+        if not is_success_status(final_status):
+            eid = dto.get("executionId")
+            reason = dto.get("statusReason") or final_status
+            raise_for_platform_restriction(dto)
+            raise DeepOriginException(
+                title="Protein preparation did not succeed",
+                message=(
+                    f"Execution {eid!r} ended with status {final_status!r}: {reason!r}."
+                ),
+            ) from None
+
         return self.get_results(dto)
 
     def update_from_dto(self, dto: dict[str, Any]) -> None:

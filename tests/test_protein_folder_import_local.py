@@ -9,7 +9,7 @@ import zipfile
 import pytest
 
 from deeporigin import projects
-from deeporigin.drug_discovery import BRD_DATA_DIR, import_dataset_sync
+from deeporigin.drug_discovery import BRD_DATA_DIR
 from deeporigin.drug_discovery.import_dataset_sync import (
     run_import_dataset_workflow,
     stage_local_file,
@@ -19,11 +19,11 @@ from deeporigin.drug_discovery.structures.protein_files import (
     find_structure_files,
 )
 from deeporigin.exceptions import DeepOriginException
+from deeporigin.platform.constants import TOOL_KEYS_AND_VERSIONS
 from deeporigin.utils.constants import (
     IMPORT_DATASET_PROTEINS_DATABASE_KEY,
     IMPORT_DATASET_PROTEINS_DATABASE_VERSION,
     PROTEIN_FOLDER_CSV_MAPPER,
-    PROTEIN_FOLDER_IMPORT_TOOL_VERSION,
 )
 from tests.mock_server.constants import MOCK_SSE_DISABLED_PROJECT_ID
 
@@ -186,8 +186,8 @@ def _import_dataset_execution_ids(client) -> set[str]:
     return {str(e["executionId"]) for e in response.get("data") or []}
 
 
-def test_sync_proteins_runs_a_workflow_import_on_version_4(client):
-    """sync_proteins starts one import, routed to the workflow on version 4."""
+def test_sync_proteins_runs_a_workflow_import_on_the_pinned_version(client):
+    """sync_proteins starts one workflow import on the SDK's import-dataset pin."""
     before = _import_dataset_execution_ids(client)
 
     projects.sync_proteins(PROTEIN_DIRS / "flat", timeout=30)
@@ -195,7 +195,8 @@ def test_sync_proteins_runs_a_workflow_import_on_version_4(client):
     (execution_id,) = _import_dataset_execution_ids(client) - before
     dto = client.executions.get(execution_id)
     inputs = dto["userInputs"]
-    assert dto["tool"]["version"] == PROTEIN_FOLDER_IMPORT_TOOL_VERSION
+    pinned = TOOL_KEYS_AND_VERSIONS["import_dataset"]["tool_version"]
+    assert dto["tool"]["version"] == pinned
     assert inputs["mapper"] == PROTEIN_FOLDER_CSV_MAPPER
     assert inputs["csv_path"] and inputs["protein_zip_path"]
     assert not inputs.get("sync") and not inputs.get("rows")
@@ -316,23 +317,23 @@ def no_sse(client, monkeypatch):
     """Work in the mock project whose SSE stream is refused, polling fast."""
     monkeypatch.setattr(client, "project_id", MOCK_SSE_DISABLED_PROJECT_ID)
     monkeypatch.setattr(
-        import_dataset_sync, "DATA_PLATFORM_INGESTION_POLL_SECONDS", 0.01
+        "deeporigin.platform.executions.DATA_PLATFORM_INGESTION_POLL_SECONDS", 0.01
     )
     return client
 
 
 def test_sync_proteins_polls_when_sse_is_unavailable(no_sse, tmp_path):
-    """A refused SSE stream falls back to polling, with a warning."""
+    """With no SSE route (404), the wait warns, polls, and returns the proteins."""
     path = _structure(tmp_path / "polled.pdb")
 
-    with pytest.warns(UserWarning, match="polling"):
+    with pytest.warns(UserWarning, match="SSE is not available.*polling"):
         proteins = projects.sync_proteins(tmp_path, timeout=30)
 
     by_path = {p.remote_path: p for p in proteins}
     assert by_path[_canonical_path(path)].project_id == MOCK_SSE_DISABLED_PROJECT_ID
 
 
-def test_polling_fallback_raises_when_the_import_fails(no_sse, tmp_path):
+def test_polling_raises_when_the_import_fails(no_sse, tmp_path):
     """Without SSE, a failed import still raises with its reason and execution id."""
     zip_path, csv_path = _write_bundle(tmp_path, {}, [])
     inputs = {
@@ -347,7 +348,7 @@ def test_polling_fallback_raises_when_the_import_fails(no_sse, tmp_path):
     )["executionId"]
 
     with (
-        pytest.warns(UserWarning, match="polling"),
+        pytest.warns(UserWarning, match="SSE is not available.*polling"),
         pytest.raises(DeepOriginException) as excinfo,
     ):
         projects._wait_for_import(no_sse, execution_id, no_sse.project_id, timeout=30)

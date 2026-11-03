@@ -56,6 +56,15 @@ ligands have no platform ID or no predictions yet (those are left out), or if a
 requested property was never predicted (that value is empty, `NaN`). If none
 of your ligands have predictions, you'll get an error instead.
 
+ADMET also skips ligands that got no prediction on an earlier run with the same
+method and model version. `fetch_results` names those ligands in its warning,
+apart from ligands that were never run. To predict every ligand again, pass
+`force=True`:
+
+```{.python notest}
+df = admet.run(force=True)  # or admet.start(force=True)
+```
+
 ## Quotes and confirmation
 
 Request an estimate with `run(quote=True)` or `start(quote=True)`. When the

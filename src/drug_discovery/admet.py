@@ -19,16 +19,20 @@ Usage::
     admet.properties = ["hERG_classification", "AMES_classification"]
     df = admet.run()
 
-Ligands that already have predictions are skipped by the tool, so their
-values are not in that execution's :meth:`get_results`. Load stored
+Ligands that already have predictions, or that got no prediction from this
+method and admet-now version on an earlier run, are skipped by the tool, so
+their values are not in that execution's :meth:`get_results`. Load stored
 predictions from any past execution with :meth:`Admet.fetch_results`::
 
     df = Admet.fetch_results([ligand], properties=admet.properties)
+
+Pass ``force=True`` to :meth:`run` or :meth:`start` to predict every ligand
+again (sent to the tool as its ``recompute`` input).
 """
 
 from __future__ import annotations
 
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from typing import Any, Literal, Self
 import warnings
 
@@ -77,6 +81,7 @@ _ADMET_ENUM_MISSING = (
     "(inputs.properties.properties.items.enum)."
 )
 _RESULT_TYPE_ADMET = "admetproperty"
+_RESULT_TYPE_ADMET_FAILURE = "admetfailure"
 
 
 def _endpoints_from_definition(definition: dict[str, Any]) -> list[str]:
@@ -208,6 +213,117 @@ def _merge_records_by_ligand(records: list[Any]) -> list[dict[str, Any]]:
     return list(merged.values())
 
 
+def _timed_rows(
+    records: list[Any],
+    expand: Callable[[dict[str, Any]], list[Any]],
+) -> Iterator[tuple[str, dict[str, Any]]]:
+    """Yield ``(measured_at, row)`` for each row with a ``ligand_id`` in *records*."""
+
+    for record in records:
+        data = record.get("data") if isinstance(record, dict) else None
+        if not isinstance(data, dict):
+            continue
+        at = str(record.get("measured_at") or "")
+        for row in expand(data):
+            if isinstance(row, dict) and isinstance(row.get("ligand_id"), str):
+                yield at, row
+
+
+def _failure_payload_rows(payload: dict[str, Any]) -> list[Any]:
+    """Return ``AdmetFailure`` rows from a result-explorer ``data`` payload."""
+
+    nested = payload.get("admetfailures")
+    return nested if isinstance(nested, list) else [payload]
+
+
+def _newest_value_times(records: list[Any]) -> dict[tuple[str, str], str]:
+    """Return the newest ``measured_at`` per ``(ligand_id, property)`` with a value."""
+
+    newest: dict[tuple[str, str], str] = {}
+    for at, row in _timed_rows(records, _expand_admet_payload):
+        for name, value in row.items():
+            if value is not None and _is_admet_property(name):
+                key = (row["ligand_id"], name)
+                newest[key] = max(newest.get(key, ""), at)
+    return newest
+
+
+def _failed_properties(
+    *,
+    value_records: list[Any],
+    failure_records: list[Any],
+) -> dict[str, set[str]]:
+    """Return, per ``ligand_id``, the properties whose newest attempt failed.
+
+    An ``admetfailure`` row lists the properties admet-now returned empty for one
+    ligand. It counts only while no stored value for that property is newer by
+    ``measured_at``, so a later run that predicted it (e.g. ``force=True``) wins.
+    """
+
+    newest_value = _newest_value_times(value_records)
+    failed: dict[str, set[str]] = {}
+    for at, row in _timed_rows(failure_records, _failure_payload_rows):
+        names = row.get("properties")
+        for name in names if isinstance(names, list) else []:
+            key = (row["ligand_id"], name)
+            if isinstance(name, str) and (
+                key not in newest_value or at > newest_value[key]
+            ):
+                failed.setdefault(row["ligand_id"], set()).add(name)
+    return failed
+
+
+def _fetch_problems(
+    *,
+    ligand_list: list[Ligand],
+    ligand_ids: list[str],
+    rows: list[dict[str, Any]],
+    properties: list[str] | tuple[str, ...] | None,
+    failed: dict[str, set[str]],
+    failed_hint: str,
+) -> list[str]:
+    """Return the warning clauses :meth:`Admet.fetch_results` reports, if any."""
+
+    found = {row["ligand_id"] for row in rows}
+    problems: list[str] = []
+    no_id = len(ligand_list) - len(platform_ligand_ids(ligand_list))
+    if no_id:
+        problems.append(f"{no_id} ligand(s) have no platform id")
+    # A ligand with only failures is "never predicted" unless they cover
+    # every requested property.
+    not_found = [
+        lig
+        for lig in ligand_ids
+        if lig not in found
+        and not (
+            lig in failed and (properties is None or set(properties) <= failed[lig])
+        )
+    ]
+    if not_found:
+        problems.append(
+            f"{len(not_found)} ligand(s) have no stored predictions ({not_found[:5]})"
+        )
+    missing = {
+        row["ligand_id"]: props
+        for row in rows
+        if (
+            props := [
+                p
+                for p in properties or ()
+                if row.get(p) is None and p not in failed.get(row["ligand_id"], set())
+            ]
+        )
+    }
+    if missing:
+        problems.append(
+            f"{len(missing)} ligand(s) lack some requested properties "
+            f"({dict(list(missing.items())[:5])}); those values are NaN"
+        )
+    if failed:
+        problems.append(failed_hint)
+    return problems
+
+
 def _admet_dataframe(
     rows: list[dict[str, Any]],
     properties: list[str] | tuple[str, ...] | None,
@@ -232,21 +348,23 @@ def _admet_dataframe(
     return df.reindex(columns=ordered + extra)
 
 
-def _skipped_ligand_count(dto: dict[str, Any]) -> int:
-    """Return the total ``toolProgress.skipped_ligands`` in the progress tree, else 0.
+def _skipped_ligand_count(dto: dict[str, Any], key: str = "skipped_ligands") -> int:
+    """Return the total ``toolProgress[key]`` in the progress tree, else 0.
 
-    Inline runs report at ``progressReport.toolProgress``; workflow runs report
-    per chunk pod under ``children``, so sum across nodes.
+    The tool reports ligands skipped for already having predictions as
+    ``skipped_ligands`` and ligands skipped after an earlier failed attempt as
+    ``known_failures``. Inline runs report at ``progressReport.toolProgress``;
+    workflow runs report per chunk pod under ``children``, so sum across nodes.
     """
 
     # ponytail: a retried pod would be counted twice; dedupe by displayName if retries show up.
     def counts(node: Any) -> Iterator[int]:
-        """Yield ``skipped_ligands`` from *node* and its descendants."""
+        """Yield ``key`` from *node* and its descendants."""
         if not isinstance(node, dict):
             return
         tool_progress = node.get("toolProgress")
         if isinstance(tool_progress, dict):
-            skipped = tool_progress.get("skipped_ligands")
+            skipped = tool_progress.get(key)
             if isinstance(skipped, int):
                 yield skipped
         children = node.get("children")
@@ -376,6 +494,7 @@ class Admet(
         self._method = method
         self._batch_size = batch_size
         self._remote_ligands_file: str | None = None
+        self._force: bool = False
 
     @property
     def ligands(self) -> list[Ligand]:
@@ -488,6 +607,8 @@ class Admet(
             inputs["method"] = self._method
         if self._properties is not None:
             inputs["properties"] = list(self._properties)
+        if self._force:
+            inputs["recompute"] = True
         workflow_run = self._is_project_run() or len(self._ligands) > INLINE_LIGAND_CAP
         if workflow_run and self._batch_size is not None:
             inputs["batchSize"] = self._batch_size
@@ -611,6 +732,7 @@ class Admet(
         *,
         quote: bool = False,
         approve_amount: int | None = None,
+        force: bool = False,
     ) -> pd.DataFrame | Admet | None:
         """Execute admet-properties synchronously and return predictions.
 
@@ -622,12 +744,20 @@ class Admet(
         and returns ``None``. Call :meth:`~deeporigin.drug_discovery.execution.Execution.confirm`
         to proceed, then :meth:`get_results`.
 
+        Args:
+            quote: Request a cost estimate only.
+            approve_amount: Spend cap sent as ``approveAmount``.
+            force: Predict every ligand, including ligands with stored
+                predictions or a recorded failure for this method and
+                admet-now version (skipped by default).
+
         Returns:
             A :class:`pandas.DataFrame` on success, ``self`` when quoting, or
             ``None`` when the run is waiting for confirmation.
         """
         self._ensure_run_ligand_count()
         self._ensure_properties_for_run()
+        self._force = force
         resolved_amount = QUOTE_APPROVE_AMOUNT if quote else approve_amount
         if resolved_amount != QUOTE_APPROVE_AMOUNT:
             self._ensure_platform_inputs()
@@ -659,10 +789,24 @@ class Admet(
 
         return self.get_results(dto)
 
-    def _start_impl(self, *, approve_amount: int | None = None, **kwargs: Any) -> None:
-        """Submit admet-properties as a persisted async execution."""
+    def _start_impl(
+        self,
+        *,
+        approve_amount: int | None = None,
+        force: bool = False,
+        **kwargs: Any,
+    ) -> None:
+        """Submit admet-properties as a persisted async execution.
+
+        Args:
+            approve_amount: Spend cap sent as ``approveAmount``.
+            force: Predict every ligand, including ligands with stored
+                predictions or a recorded failure (see :meth:`run`).
+            **kwargs: Unused extra keyword arguments from the mixin.
+        """
 
         del kwargs
+        self._force = force
         self._ensure_start_preconditions()
         self._ensure_properties_for_run()
         self._ensure_platform_inputs()
@@ -678,9 +822,10 @@ class Admet(
     def get_results(self, dto: dict[str, Any] | None = None) -> pd.DataFrame:
         """Return the predictions computed by this execution as a DataFrame.
 
-        Ligands the tool skipped because they already had predictions are not
-        included (a warning names how many); load those with
-        :meth:`fetch_results`.
+        Ligands the tool skipped are not included, and a warning names how
+        many: load those that already had predictions with
+        :meth:`fetch_results`; rerun with ``force=True`` to retry those an
+        earlier run got no prediction for.
 
         Raises:
             DeepOriginException: If this execution produced no prediction rows.
@@ -690,15 +835,24 @@ class Admet(
             dto = self.client.executions.get(self.id)  # ty:ignore[unresolved-attribute]
         rows = self._fetch_output_rows(dto=dto)
         skipped = _skipped_ligand_count(dto or {})
+        known_failures = _skipped_ligand_count(dto or {}, key="known_failures")
         # Project runs have no job.ligands to pass back.
         ligands_arg = "job.ligands" if self._ligands else "<the ligands you ran>"
-        fetch_hint = (
-            f"{skipped} ligand(s) were skipped because they already have "
-            f"predictions. Load them with Admet.fetch_results({ligands_arg}, "
-            f"properties=job.properties)."
-        )
+        hints: list[str] = []
+        if skipped:
+            hints.append(
+                f"{skipped} ligand(s) were skipped because they already have "
+                f"predictions. Load them with Admet.fetch_results({ligands_arg}, "
+                f"properties=job.properties)."
+            )
+        if known_failures:
+            hints.append(
+                f"{known_failures} ligand(s) were skipped because an earlier run "
+                f"got no prediction for them. Rerun with force=True to retry them."
+            )
+        fetch_hint = " ".join(hints)
         if not rows:
-            if skipped:
+            if fetch_hint:
                 message = (
                     f"Admet execution {self.id!r} computed no new predictions: "
                     f"{fetch_hint}"
@@ -711,7 +865,7 @@ class Admet(
             raise DeepOriginException(
                 title="ADMET predictions missing", message=message
             )
-        if skipped:
+        if fetch_hint:
             warnings.warn(f"Results are incomplete: {fetch_hint}", stacklevel=2)
 
         return _admet_dataframe(rows, self._properties)
@@ -730,7 +884,10 @@ class Admet(
         Does not start an execution. Queries by platform ``ligand_id`` (ligands
         without an id are skipped) and merges every stored prediction into one
         row per ligand; when an endpoint was predicted more than once, the
-        newest value wins regardless of tool version.
+        newest value wins regardless of tool version. Recorded failures
+        (``admetfailure`` rows, from any method or admet-now version) are read
+        too: a property whose newest attempt came back empty is reported
+        separately, since ``force=True`` retries it.
 
         Args:
             ligands: A ligand, list, or :class:`LigandSet`.
@@ -742,7 +899,8 @@ class Admet(
             DataFrame with ``ligand_id``, ``smiles``, then one column per
             endpoint. Ligands with no id or no stored predictions are left
             out, and requested endpoints with no stored value are ``NaN``;
-            both are reported with a warning.
+            both are reported with a warning, which names the ligands whose
+            last attempt failed apart from those never predicted.
 
         Raises:
             ValueError: If *ligands* is empty or *properties* names an endpoint
@@ -771,41 +929,55 @@ class Admet(
             select=["id", "tool_version", "data", "compute_job_id", "measured_at"],
         )
 
+        failure_records = fetch_result_records(
+            resolved,
+            ligand_ids=ligand_ids,
+            tool_key=cls.tool_key,
+            result_type=_RESULT_TYPE_ADMET_FAILURE,
+            page_size=ADMET_RESULT_EXPLORER_PAGE_SIZE,
+            select=["data", "measured_at"],
+        )
+        failed = _failed_properties(
+            value_records=records, failure_records=failure_records
+        )
+        if properties is not None:
+            failed = {
+                lid: names & set(properties)
+                for lid, names in failed.items()
+                if names & set(properties)
+            }
+        failed_examples = {
+            lid: sorted(names) for lid, names in list(failed.items())[:5]
+        }
+        failed_hint = (
+            f"{len(failed)} ligand(s) got no prediction for some properties on "
+            f"their last attempt ({failed_examples}); a plain rerun retries them "
+            f"after an admet-now update, force=True retries them now"
+        )
+
         rows = backfill_smiles_from_ligands(
             _merge_records_by_ligand(records), ligands=ligand_list
         )
         if not rows:
+            message = (
+                f"No stored ADMET predictions for any of the "
+                f"{len(ligand_list)} ligand(s) ({len(ligand_ids)} with a "
+                f"platform id). Run Admet on them first."
+            )
+            if failed:
+                message += f" {failed_hint}."
             raise DeepOriginException(
-                title="ADMET predictions missing",
-                message=(
-                    f"No stored ADMET predictions for any of the "
-                    f"{len(ligand_list)} ligand(s) ({len(ligand_ids)} with a "
-                    f"platform id). Run Admet on them first."
-                ),
+                title="ADMET predictions missing", message=message
             )
 
-        found = {row["ligand_id"] for row in rows}
-        problems: list[str] = []
-        no_id = len(ligand_list) - len(platform_ligand_ids(ligand_list))
-        if no_id:
-            problems.append(f"{no_id} ligand(s) have no platform id")
-        not_found = [lig for lig in ligand_ids if lig not in found]
-        if not_found:
-            problems.append(
-                f"{len(not_found)} ligand(s) have no stored predictions "
-                f"({not_found[:5]})"
-            )
-        if properties is not None:
-            missing = {
-                row["ligand_id"]: props
-                for row in rows
-                if (props := [p for p in properties if row.get(p) is None])
-            }
-            if missing:
-                problems.append(
-                    f"{len(missing)} ligand(s) lack some requested properties "
-                    f"({dict(list(missing.items())[:5])}); those values are NaN"
-                )
+        problems = _fetch_problems(
+            ligand_list=ligand_list,
+            ligand_ids=ligand_ids,
+            rows=rows,
+            properties=properties,
+            failed=failed,
+            failed_hint=failed_hint,
+        )
         if problems:
             warnings.warn(
                 "ADMET predictions incomplete: " + "; ".join(problems) + ".",
@@ -832,6 +1004,7 @@ class Admet(
         instance._method = method if method in ("maplight", "togo") else "togo"
         raw_batch = inputs.get("batchSize")
         instance._batch_size = raw_batch if isinstance(raw_batch, int) else None
+        instance._force = inputs.get("recompute") is True
         remote = inputs.get("ligands_file")
         if isinstance(remote, str) and remote.strip():
             instance._remote_ligands_file = remote.strip()

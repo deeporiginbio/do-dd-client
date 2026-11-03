@@ -4,7 +4,7 @@
 subplots in one row — time vs effort, binding energy vs effort, time vs binding
 energy. Each ligand is a distinct color (hover identifies the series).
 
-**Crystal ligand benchmark** (``benchmark_effort_crystal_ligand.csv``): three
+**Crystal ligand benchmark** (``benchmark_effort_crystal_ligand_prepared.csv``): three
 square scatter subplots — time vs effort, **RMSD vs effort**, time vs RMSD.
 Each PDB id is a distinct color.
 
@@ -16,7 +16,7 @@ Example:
     uv run --extra core --extra plots python scripts/plot_benchmark_docking.py \\
         --csv scripts/benchmark_docking_results.csv --output /tmp/docking.html
     uv run --extra core --extra plots python scripts/plot_benchmark_docking.py \\
-        --csv scripts/benchmark_effort_crystal_ligand.csv -o /tmp/crystal.html
+        --csv scripts/benchmark_effort_crystal_ligand_prepared.csv -o /tmp/crystal.html
 """
 
 from __future__ import annotations
@@ -37,7 +37,7 @@ DEFAULT_CSV = Path(__file__).resolve().parent / "benchmark_docking_results.csv"
 DEFAULT_HTML = Path(__file__).resolve().parent / "benchmark_docking_plots.html"
 
 CRYSTAL_DEFAULT_CSV = (
-    Path(__file__).resolve().parent / "benchmark_effort_crystal_ligand.csv"
+    Path(__file__).resolve().parent / "benchmark_effort_crystal_ligand_prepared.csv"
 )
 
 
@@ -294,7 +294,7 @@ def build_crystal_figure(df: pd.DataFrame) -> Any:
 
 @beartype
 def _is_crystal_ligand_csv(df: pd.DataFrame) -> bool:
-    """True if the dataframe matches ``benchmark_effort_crystal_ligand.csv`` schema."""
+    """True if the dataframe matches ``benchmark_effort_crystal_ligand_prepared.csv`` schema."""
     cols = {str(c).strip() for c in df.columns}
     need = {"pdb_id", "effort", "repeat", "time", "rmsd"}
     return need.issubset(cols)

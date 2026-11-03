@@ -6,6 +6,7 @@ from collections.abc import Iterable, Iterator
 import concurrent.futures
 import os
 from pathlib import Path
+import re
 import tempfile
 import time
 from typing import IO, TYPE_CHECKING, Literal, overload
@@ -23,6 +24,25 @@ from deeporigin.utils.env import _ensure_do_folder
 _FILES_BASE = "/files"
 
 _MISSING_URL_FIELD = "Signed URL response missing 'url' field"
+
+_PRESIGNED_PARAM = re.compile(
+    r"(?i)(X-Amz-(?:Credential|Security-Token|Signature)=)[^&\s\"'<>()\[\]{},;]+"
+)
+
+
+def _redact_transfer_error(exc: Exception) -> Exception:
+    """Replace pre-signed S3 credential values in *exc*'s message with ``REDACTED``.
+
+    httpx's ``HTTPStatusError`` text is the full signed URL, which stays
+    replayable until it expires. The exception keeps its type, ``.request``
+    and ``.response``, so callers handle it as before; only the message is
+    redacted, and ``.request``/``.response`` still carry the URL.
+    """
+    exc.args = tuple(
+        _PRESIGNED_PARAM.sub(r"\g<1>REDACTED", arg) if isinstance(arg, str) else arg
+        for arg in exc.args
+    )
+    return exc
 
 
 def _cancel_pending(futures: Iterable[concurrent.futures.Future]) -> None:
@@ -490,7 +510,7 @@ class Files:
                 httpx.NetworkError,
                 httpx.TimeoutException,
             ) as exc:
-                last_exc = exc
+                last_exc = _redact_transfer_error(exc)
                 if attempt < max_retries:
                     time.sleep(retry_backoff_factor * (2**attempt))
 
@@ -546,9 +566,9 @@ class Files:
                 httpx.NetworkError,
                 httpx.TimeoutException,
             ) as exc:
+                last_exc = _redact_transfer_error(exc)
                 if tmp is not None:
                     os.unlink(tmp.name)
-                last_exc = exc
                 if attempt < max_retries:
                     time.sleep(retry_backoff_factor * (2**attempt))
             except BaseException:
@@ -603,10 +623,10 @@ class Files:
                 httpx.NetworkError,
                 httpx.TimeoutException,
             ) as exc:
+                last_exc = _redact_transfer_error(exc)
                 if response is not None:
                     response.close()
                 download_client.close()
-                last_exc = exc
                 if attempt < max_retries:
                     time.sleep(retry_backoff_factor * (2**attempt))
             except BaseException:
@@ -1193,27 +1213,72 @@ class Files:
                 response body for success.
         """
         remote_path = _normalize_remote_path(remote_path)
-        # Temporarily increase timeout if specified
-        original_timeout = None
+        delete_kwargs: dict[str, float] = {}
         if timeout is not None:
-            original_timeout = self._c._client.timeout
-            self._c._client.timeout = timeout
+            delete_kwargs["timeout"] = timeout
 
-        try:
-            # Make DELETE request
-            response = self._c._delete(
-                f"/files/{self._c.org_key}/{remote_path}",
-            )
-        finally:
-            if original_timeout is not None:
-                self._c._client.timeout = original_timeout
+        response = self._c._delete(
+            f"/files/{self._c.org_key}/{remote_path}",
+            **delete_kwargs,
+        )
 
         # Parse JSON response
         # API returns 200 even on failure, but response body indicates success
         data = response.json()
 
-        if not data:
-            raise RuntimeError(f"Failed to delete file {remote_path}")
+        if data is True:
+            return
+
+        if remote_path.endswith("/"):
+            self._delete_prefix_tree(remote_path, timeout=timeout)
+            return
+
+        raise RuntimeError(f"Failed to delete file {remote_path}")
+
+    def _delete_prefix_tree(
+        self,
+        remote_path: str,
+        *,
+        timeout: float | None,
+    ) -> None:
+        """Delete all objects under a directory prefix when bulk DELETE returns false.
+
+        The file-service returns ``false`` when no S3 keys were removed in a batch
+        (timeouts, eventual consistency, or a partial bulk delete). Fall back to
+        per-object deletes after listing the prefix.
+        """
+        remaining = self.list(remote_path, recursive=True)
+        if not remaining:
+            return
+
+        if isinstance(remaining[0], dict):
+            keys = [str(item.get("Key") or item.get("key") or "") for item in remaining]
+            keys = [k for k in keys if k]
+        else:
+            keys = [str(k) for k in remaining]
+
+        if not keys:
+            return
+
+        self.delete_many(keys, timeout=timeout, max_workers=5)
+
+        still = self.list(remote_path, recursive=True)
+        if not still:
+            return
+
+        if isinstance(still[0], dict):
+            still_keys = [
+                str(item.get("Key") or item.get("key") or "") for item in still
+            ]
+            still_keys = [k for k in still_keys if k]
+        else:
+            still_keys = [str(k) for k in still]
+
+        if still_keys:
+            raise RuntimeError(
+                f"Failed to delete prefix {remote_path}: "
+                f"{len(still_keys)} object(s) remain"
+            )
 
     def delete_many(
         self,

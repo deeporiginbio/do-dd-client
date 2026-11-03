@@ -13,9 +13,37 @@ protein = Protein.from_file(BRD_DATA_DIR / "brd.pdb")
 protein.remove_water()
 ```
 
+### From Protein Prep (crystal ligand)
+
+When the structure has a co-crystallized ligand, the binding site is known.
+Request its pocket while preparing the protein, then pass that pocket to
+[`Docking`](../ref/docking.md) or [`ConstrainedDocking`](../ref/constrained_docking.md):
+
+```{.python notest}
+from deeporigin.drug_discovery import Protein, ProteinPrep
+
+protein = Protein.from_pdb_id("1EBY")
+protein.sync()
+prep = ProteinPrep(
+    protein,
+    find_pockets="from-crystal-ligand",
+    component_id="ligand:B:BEB:501:",
+)
+prep.recommend()
+prepared = prep.run()
+pocket = prep.get_pockets()[0]
+```
+
+The pocket belongs to the prepared protein, records its source ligand
+(`pocket.origin`, `pocket.component_id`, `pocket.ligand_id`), and includes a
+docking box oriented to the ligand. See the
+[docking tutorial](../tutorial/docking.md) for the full flow.
+
 ### Using the PocketFinder tool
 
-To discover novel pockets on a protein structure, use the PocketFinder tool. See the [PocketFinder documentation](../tools/pocketfinder.md) for synchronous and asynchronous execution, define-by-selection mode, cost estimates, loading results by record ID, and visualization.
+To discover novel pockets on a target without a known site, use
+`find_pockets="novel"` in [Protein Prep](../tools/proteinprep.md) or the
+PocketFinder tool. See the [PocketFinder documentation](../tools/pocketfinder.md) for synchronous and asynchronous execution, define-by-selection mode, cost estimates, loading results by record ID, and visualization.
 
 ### From a residue number
 
@@ -34,9 +62,9 @@ pocket = Pocket.from_residue_number(
 
 `residue_number` is the residue index in the loaded structure. `chain_id` is optional when the number is unique. `cutoff` (Å) sets how far from that residue to include surrounding residues in the pocket.
 
-### From a crystal ligand
+### From a crystal ligand (local)
 
-When a PDB contains a co-crystallized ligand, extract it from the protein and define the pocket from that ligand geometry:
+To build a pocket locally from a co-crystallized ligand, without Protein Prep, extract it from the protein and define the pocket from that ligand geometry:
 
 ```python
 from deeporigin.drug_discovery import Protein, Pocket

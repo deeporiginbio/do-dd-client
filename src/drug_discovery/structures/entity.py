@@ -7,7 +7,7 @@ The Entity class provides methods to manage file uploads, such as protein struct
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, ClassVar, Optional
+from typing import Any, ClassVar, Literal, Optional
 
 from deeporigin.exceptions import DeepOriginException
 from deeporigin.platform.client import DeepOriginClient
@@ -86,7 +86,7 @@ class Entity(ABC):
         lazy: bool = False,
         client: Optional[DeepOriginClient] = None,
         remote_path: Optional[str] = None,
-    ) -> None:
+    ) -> Optional[Literal["created", "reused"]]:
         """Sync this entity to the data platform (upload and/or register as needed).
 
         Subclasses define how records are created or linked; all share the
@@ -97,6 +97,11 @@ class Entity(ABC):
             client: DeepOrigin client. If None, implementations typically use
                 ``DeepOriginClient()``.
             remote_path: Optional explicit remote storage path for uploads.
+
+        Returns:
+            ``"created"`` or ``"reused"`` when the implementation reports whether
+            a new record was created (currently only :class:`Protein`); otherwise
+            ``None``.
         """
         ...
 

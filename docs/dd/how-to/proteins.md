@@ -241,12 +241,17 @@ print(num_atoms)
 
 ### Finding pockets
 
-You can find potential binding pockets in the protein structure. See [PocketFinder](../tools/pocketfinder.md) for detailed information.
+When the structure has a co-crystallized ligand, get its pocket from
+[Protein Prep](../tools/proteinprep.md) with `find_pockets="from-crystal-ligand"`
+(see [Preparing a protein](#preparing-a-protein) below). To discover novel
+pockets on a target without a known site, use `find_pockets="novel"` or the
+[PocketFinder](../tools/pocketfinder.md) tool:
 
 ```{.python notest}
 from deeporigin.drug_discovery import PocketFinder, Protein
 
 protein = Protein.from_pdb_id("1EBY")
+protein.sync()
 pf = PocketFinder(protein, pocket_count=5)
 pockets = pf.run()
 pockets[0].show()
@@ -264,21 +269,36 @@ Inventory components and prepare the structure with
 grade. `recommend()` updates the same object with an editable Selection.
 Resolve any review decisions, then either:
 
-- disable loop modelling and omit pocket config, then call `run()` for a
-  blocking prepared protein; or
-- enable loop modelling and/or set `find_pockets`, then call
-  `start()` (use `quote=True` / `confirm()` when pockets are billable).
+- call `run()` for a blocking prepared protein (loops on or off, with or
+  without a crystal-ligand pocket); or
+- set `find_pockets="novel"`, then call `start()` (use `quote=True` /
+  `confirm()` when pockets are billable).
+
+To dock into the site of a co-crystallized ligand, extract the ligand and
+request its pocket:
 
 ```{.python notest}
 from deeporigin.drug_discovery import Protein, ProteinPrep
 
 protein = Protein.from_pdb_id("1EBY")
-prep = ProteinPrep(protein=protein)
-prep.find_pockets = "novel"
-prep.pocket_count = 3
-prep.pocket_min_size = 80
+protein.sync()
+prep = ProteinPrep(
+    protein,
+    find_pockets="from-crystal-ligand",
+    component_id="ligand:B:BEB:501:",
+)
 prep.recommend()
 prep.recommendation[prep.recommendation["decision"] == "review"]
+prep.skip(decision="review")
+prepared = prep.run()
+pocket = prep.get_pockets()[0]
+```
+
+For a target without a known site, request novel pockets instead:
+
+```{.python notest}
+prep = ProteinPrep(protein, find_pockets="novel", pocket_count=3)
+prep.recommend()
 prep.skip(decision="review")
 prep.start()
 prep.wait()
@@ -611,18 +631,18 @@ writes the file-borne stamp in the file's native format (no CIF↔PDB conversion
 
 ### Docking ligands
 
-You can dock ligands into pockets of the protein. See the [Docking guide](docking.md) for detailed information.
+Dock ligands with [`Docking`](../ref/docking.md), passing the prepared protein
+and a pocket explicitly. See the [docking tutorial](../tutorial/docking.md) and
+the [Docking tool guide](../tools/docking.md) for details.
 
 ```{.python notest}
-from deeporigin.drug_discovery import PocketFinder, Protein, Ligand, BRD_DATA_DIR
+from deeporigin.drug_discovery import Docking, Ligand
 
-protein = Protein.from_file(BRD_DATA_DIR / "brd.pdb")
-ligand = Ligand.from_sdf(BRD_DATA_DIR / "brd-2.sdf")
-pf = PocketFinder(protein, pocket_count=1)
-pockets = pf.run()
-
-# Dock ligand into the first pocket
-poses = protein.dock(ligand=ligand, pocket=pockets[0])
+# prepared and pocket from ProteinPrep with find_pockets="from-crystal-ligand"
+ligand = Ligand.from_smiles("CC(=O)Nc1ccc(O)cc1")
+ligand.sync()
+docking = Docking(protein=prepared, pocket=pocket, ligand=ligand)
+poses = docking.run()
 ```
 
 ## Best Practices

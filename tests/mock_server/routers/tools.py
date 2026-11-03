@@ -20,8 +20,10 @@ from typing import Any
 import uuid
 
 from fastapi import APIRouter, HTTPException, Request
+from packaging.version import InvalidVersion, Version
 
 from deeporigin.utils.constants import (
+    IMPORT_DATASET_RESULT_LANE_MIN_VERSION,
     INLINE_LIGAND_CAP,
     METABOLISM_WORKFLOW_LIGAND_THRESHOLD,
 )
@@ -64,6 +66,25 @@ _RBFE_STAGE_PREPARE = (0.00, 0.12)
 _RBFE_STAGE_KONNEKTOR = (0.12, 0.20)
 _RBFE_STAGE_BUILD_PAIRS = (0.20, 0.28)
 _RBFE_STAGE_PAIR_PIPELINE = (0.28, 1.00)
+
+MOCK_POSE_REGISTRATION_FAIL_NAME = "mock-pose-registration-fail"
+"""SDF record name that makes a mock pose registration run end ``Failed``.
+
+The run fails before data platform creates its execution row, so
+``executions/search`` never returns one for it.
+"""
+
+MOCK_POSE_INGESTION_FAIL_NAME = "mock-pose-ingestion-fail"
+"""SDF record name whose run completes while its data-platform row ends ``Failed``."""
+
+MOCK_POSE_REGISTRATION_FAIL_REASON = "Mock pose registration failed."
+"""``statusReason`` set on a mock pose registration run that fails."""
+
+MOCK_POSE_REJECTED_NAME = "mock-pose-rejected"
+"""SDF record name whose pose the mock leaves out of result-explorer.
+
+The run still completes, as when the platform rejects a row while storing it.
+"""
 
 # Endpoint enum for mock ``deeporigin.admet-properties`` (tool definition + omit-all).
 MOCK_ADMET_ENDPOINTS: tuple[str, ...] = (
@@ -745,6 +766,14 @@ def _synthesize_molprops_row(
     return row
 
 
+MOCK_ADMET_FAILURE_SMILES = ("ClC(Cl)(Cl)C(Cl)(Cl)Cl", "ClC(Cl)(Cl)Cl")
+"""SMILES the mock admet tool predicts nothing for (recorded as ``admet_failures`` rows).
+
+Tests share one mock store, so each test uses its own entry."""
+MOCK_ADMET_NOW_VERSION = "v0.0.0-mock"
+"""admet-now tag the mock records on ``admet_failures`` rows."""
+
+
 def _synthesize_admet_prediction_row(
     *, smiles: str, ligand_id: str, requested: list[str]
 ) -> dict[str, Any]:
@@ -922,6 +951,8 @@ def create_tools_router(
         APIRouter instance with tools-related routes.
     """
     router = APIRouter()
+    # Execution id -> SDF record indexes left out of result-explorer.
+    rejected_pose_record_indexes: dict[str, set[int]] = {}
 
     # -- helper closures (capture shared state) --------------------------------
 
@@ -1327,6 +1358,7 @@ def create_tools_router(
         if inputs.get("process_pdb") or inputs.get("register_protein"):
             # Mirror create_protein: every sync maps to the canonical mock row
             # so local tests keep stable IDs while still exercising the tool path.
+            created = MOCK_CANONICAL_PROTEIN_ID not in proteins
             base = proteins.get(
                 MOCK_CANONICAL_PROTEIN_ID, _base_canonical_protein_record()
             )
@@ -1347,6 +1379,7 @@ def create_tools_router(
                 "id": MOCK_CANONICAL_PROTEIN_ID,
                 "protein_id": MOCK_CANONICAL_PROTEIN_ID,
                 "file_path": MOCK_CANONICAL_PROTEIN_FILE_PATH,
+                "created": created,
             }
             if inputs.get("protein_name"):
                 protein_row["name"] = str(inputs["protein_name"])
@@ -1359,15 +1392,22 @@ def create_tools_router(
             import csv
             import io
 
+            from rdkit import Chem
+
             file_path = str(inputs.get("file_path") or "")
             project_id = body.get("projectId") or execution.get("projectId")
             ligand_rows: list[dict[str, Any]] = []
+            invalid_count = 0
             raw = file_storage.get(file_path)
             if raw:
                 reader = csv.DictReader(io.StringIO(raw.decode("utf-8")))
                 for idx, row in enumerate(reader):
                     smiles = str(row.get("smiles") or "")
-                    canonical = _canonicalize_smiles(smiles)
+                    stripped = smiles.strip()
+                    if not stripped or Chem.MolFromSmiles(stripped) is None:
+                        invalid_count += 1
+                        continue
+                    canonical = Chem.MolToSmiles(Chem.MolFromSmiles(stripped))
                     lid: str | None = None
                     for record in ligands.values():
                         if record.get("canonical_smiles") == canonical:
@@ -1388,17 +1428,42 @@ def create_tools_router(
                                 parsed = None
                             if isinstance(parsed, dict):
                                 extra["tags"] = parsed
-                        record = _make_ligand_record(smiles, extra)
+                        record = _make_ligand_record(stripped, extra)
                         ligands[record["id"]] = record
                         lid = str(record["id"])
                     ligand_rows.append(
                         {
                             "id": lid,
-                            "smiles": smiles,
+                            "smiles": stripped,
                             "record_index": idx,
                         }
                     )
+            if invalid_count:
+                log_id = uuid.uuid4().hex
+                eid = str(execution.get("executionId") or "")
+                user_logs[log_id] = {
+                    "id": log_id,
+                    "execution_id": eid,
+                    "log_level": "error",
+                    "message": (
+                        f"Import: {invalid_count} ligand(s) had invalid SMILES."
+                    ),
+                    "date": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%f")[
+                        :-3
+                    ]
+                    + "Z",
+                }
             if not ligand_rows:
+                if invalid_count:
+                    execution["status"] = "Failed"
+                    execution["statusReason"] = {
+                        "code": "Failed",
+                        "message": (
+                            f"Import: {invalid_count} ligand(s) had invalid SMILES."
+                        ),
+                    }
+                    execution["jobOutputs"] = {"ligands": []}
+                    return execution
                 for idx in range(8):
                     ligand_rows.append(
                         {
@@ -1417,6 +1482,7 @@ def create_tools_router(
             file_path = str(inputs.get("file_path") or "")
             project_id = body.get("projectId") or execution.get("projectId")
             ligand_rows: list[dict[str, Any]] = []
+            record_names: dict[int, str] = {}
             raw = file_storage.get(file_path)
             if raw:
                 supplier = Chem.SDMolSupplier()
@@ -1424,6 +1490,8 @@ def create_tools_router(
                 for idx, mol in enumerate(supplier):
                     if mol is None:
                         continue
+                    record_name = mol.GetProp("_Name") if mol.HasProp("_Name") else ""
+                    record_names[idx] = record_name
                     canonical = Chem.MolToSmiles(mol)
                     lid: str | None = None
                     existing: dict[str, Any] | None = None
@@ -1488,12 +1556,31 @@ def create_tools_router(
                         pose_row["protein_id"] = str(protein_id)
                     pose_rows.append(pose_row)
                 job_outputs["poses"] = pose_rows
+            eid = execution.get("executionId")
+            if register_poses and MOCK_POSE_REGISTRATION_FAIL_NAME in (
+                record_names.values()
+            ):
+                execution["status"] = "Failed"
+                execution["statusReason"] = MOCK_POSE_REGISTRATION_FAIL_REASON
+                execution["jobOutputs"] = {}
+                execution["dataPlatformRowMissing"] = True
+                return execution
             execution["jobOutputs"] = job_outputs
             if register_poses:
-                eid = execution.get("executionId")
                 if eid:
                     execution["dataPlatformRowId"] = str(uuid.uuid4())
-                    execution["dataPlatformStatus"] = "DataIngesting"
+                    execution["dataPlatformStatus"] = (
+                        "Failed"
+                        if MOCK_POSE_INGESTION_FAIL_NAME in record_names.values()
+                        else "DataIngesting"
+                    )
+                    rejected = {
+                        idx
+                        for idx, name in record_names.items()
+                        if name == MOCK_POSE_REJECTED_NAME
+                    }
+                    if rejected:
+                        rejected_pose_record_indexes[str(eid)] = rejected
             return execution
 
         if not inputs.get("register_pose"):
@@ -1670,6 +1757,8 @@ def create_tools_router(
         ligands_in = _admet_ligands_from_inputs(inputs)
         for i, lig in enumerate(ligands_in):
             smiles = str(lig.get("smiles") or "")
+            if smiles in MOCK_ADMET_FAILURE_SMILES:
+                continue
             lid = str(lig.get("id") if lig.get("id") is not None else i)
             rows.append(
                 _synthesize_admet_prediction_row(
@@ -1680,6 +1769,28 @@ def create_tools_router(
             )
         return rows
 
+    def _admet_failure_rows_from_inputs(
+        inputs: dict[str, Any],
+    ) -> list[dict[str, Any]]:
+        """Return ``admet_failures`` rows for ligands the mock predicts nothing for."""
+
+        requested_raw = inputs.get("properties")
+        if isinstance(requested_raw, list) and requested_raw:
+            requested = [p for p in requested_raw if isinstance(p, str)]
+        else:
+            requested = list(MOCK_ADMET_ENDPOINTS)
+        return [
+            {
+                "ligand_id": str(lig["id"]),
+                "method": str(inputs.get("method") or "togo"),
+                "admet_now_version": MOCK_ADMET_NOW_VERSION,
+                "properties": requested,
+            }
+            for lig in _admet_ligands_from_inputs(inputs)
+            if lig.get("smiles") in MOCK_ADMET_FAILURE_SMILES
+            and lig.get("id") is not None
+        ]
+
     def _inject_admet_result_explorer_records(
         *,
         tool_key: str,
@@ -1687,15 +1798,31 @@ def create_tools_router(
         execution_id: str,
         job_outputs: dict[str, Any],
     ) -> None:
-        """Mirror ADMET ``admet_properties`` rows into result-explorer."""
+        """Mirror ADMET ``admet_properties`` and ``admet_failures`` into result-explorer."""
 
         if any(
             r.get("compute_job_id") == execution_id
-            and r.get("result_type") == "admetproperty"
+            and r.get("result_type") in ("admetproperty", "admetfailure")
             for r in results
         ):
             return
 
+        for failure in job_outputs.get("admet_failures") or []:
+            results.append(
+                {
+                    "id": "08" + str(uuid.uuid4()).replace("-", "").upper()[:11],
+                    "tool_key": tool_key,
+                    "tool_version": tool_version,
+                    "result_type": "admetfailure",
+                    "data": {
+                        "ligand_id": failure["ligand_id"],
+                        "admetfailures": [dict(failure)],
+                    },
+                    "compute_job_id": execution_id,
+                    "ligand_id": failure["ligand_id"],
+                    "measured_at": datetime.now(timezone.utc).isoformat(),
+                }
+            )
         items = job_outputs.get("admet_properties")
         if not isinstance(items, list):
             return
@@ -1733,7 +1860,10 @@ def create_tools_router(
         if not isinstance(user_inputs, dict):
             user_inputs = {}
         rows = _admet_prediction_rows_from_inputs(user_inputs)
-        job_outputs = {"admet_properties": rows}
+        job_outputs = {
+            "admet_properties": rows,
+            "admet_failures": _admet_failure_rows_from_inputs(user_inputs),
+        }
         execution["jobOutputs"] = {"admet_properties": []}
         _inject_admet_result_explorer_records(
             tool_key=tkey,
@@ -1797,7 +1927,10 @@ def create_tools_router(
         inputs = body.get("inputs", {}) or {}
         rows = _admet_prediction_rows_from_inputs(inputs)
 
-        execution["jobOutputs"] = {"admet_properties": rows}
+        execution["jobOutputs"] = {
+            "admet_properties": rows,
+            "admet_failures": _admet_failure_rows_from_inputs(inputs),
+        }
         n_billable = max(len(rows), 1)
         price_each = 1.0
         price_total = float(n_billable) * price_each
@@ -3046,6 +3179,35 @@ def create_tools_router(
             }
         }
 
+    def _protein_prep_missing_crystal_residue(user_inputs: object) -> str | None:
+        """Return a crystal ``ligand_id`` absent from the Selection, else ``None``.
+
+        Mirrors the platform's ``SubmissionFailed`` when ``from-crystal-ligand``
+        names a residue the structure does not contain. Residue names come from
+        Selection ligand ids (``ligand:<resname>:<chain>:<resseq>``).
+        """
+        if not isinstance(user_inputs, dict):
+            return None
+        if user_inputs.get("action") != "prepare":
+            return None
+        if user_inputs.get("find_pockets") != "from-crystal-ligand":
+            return None
+        crystal = user_inputs.get("crystal_ligand")
+        ligand_id = crystal.get("ligand_id") if isinstance(crystal, dict) else None
+        if not ligand_id:
+            return None
+        selection = user_inputs.get("selection")
+        decisions = (
+            selection.get("decisions") if isinstance(selection, dict) else None
+        ) or {}
+        resnames = {
+            str(component_id).split(":")[1]
+            for component_id in decisions
+            if str(component_id).startswith("ligand:")
+            and len(str(component_id).split(":")) > 1
+        }
+        return None if str(ligand_id) in resnames else str(ligand_id)
+
     def _inject_protein_prep_tool_execution_results(
         execution: dict[str, Any],
     ) -> None:
@@ -3063,6 +3225,20 @@ def create_tools_router(
         action = user_inputs.get("action") if isinstance(user_inputs, dict) else None
         if action == "mark_prepared":
             _inject_mark_prepared_outputs(execution)
+            return
+        missing_residue = _protein_prep_missing_crystal_residue(user_inputs)
+        if missing_residue is not None:
+            execution["status"] = "Failed"
+            execution["statusReason"] = {
+                "code": "SubmissionFailed",
+                "detail": {
+                    "detail": (
+                        f"no residue named {missing_residue!r} found in the "
+                        "protein structure"
+                    )
+                },
+            }
+            execution["jobOutputs"] = {}
             return
         fixture_name = (
             "tool-runs/deeporigin.protein-prep/recommend"
@@ -3222,31 +3398,60 @@ def create_tools_router(
         return {"status": "ok"}
 
     @router.get("/tools/protected/tools/definitions")
-    def list_tools() -> dict[str, Any]:
-        """List all tool definitions."""
+    def list_tools(request: Request) -> Any:
+        """List tool definitions like tools-service after DDOS-8228.
+
+        ``Accept: application/json;v=2.0`` answers ``{count, data}``, paged by
+        ``page``/``pageSize`` and filtered by ``filter`` (``enabled`` only).
+        Without it (v1) the answer is a bare array of the enabled versions.
+        """
+        tools = [
+            {
+                "key": "test-tool",
+                "name": "Test Tool",
+                "version": "1.0.0",
+                "enabled": True,
+                "inputs": {},
+                "executors": [],
+                "description": "Test tool description",
+                "billingParser": {},
+                "toolManifestVersion": "1.0.0",
+            },
+            {
+                "key": "deeporigin.docking",
+                "name": "Docking Tool",
+                "version": "1.0.0",
+                "enabled": True,
+                "inputs": {},
+                "executors": [],
+                "description": "Docking tool description",
+                "billingParser": {},
+                "toolManifestVersion": "1.0.0",
+            },
+            {
+                "key": "deeporigin.docking",
+                "name": "Docking Tool",
+                "version": "0.9.0",
+                "enabled": False,
+                "inputs": {},
+                "executors": [],
+                "description": "Docking tool description",
+                "billingParser": {},
+                "toolManifestVersion": "1.0.0",
+            },
+        ]
+        query = request.query_params
+        flt = json.loads(query["filter"]) if "filter" in query else {}
+        if "application/json;v=2.0" not in request.headers.get("accept", ""):
+            flt.setdefault("enabled", True)
+            return [t for t in tools if t["enabled"] is flt["enabled"]]
+        if "enabled" in flt:
+            tools = [t for t in tools if t["enabled"] is flt["enabled"]]
+        page = int(query.get("page", 0))
+        page_size = int(query.get("pageSize", 100))
         return {
-            "data": [
-                {
-                    "key": "test-tool",
-                    "name": "Test Tool",
-                    "version": "1.0.0",
-                    "inputs": {},
-                    "executors": [],
-                    "description": "Test tool description",
-                    "billingParser": {},
-                    "toolManifestVersion": "1.0.0",
-                },
-                {
-                    "key": "deeporigin.docking",
-                    "name": "Docking Tool",
-                    "version": "1.0.0",
-                    "inputs": {},
-                    "executors": [],
-                    "description": "Docking tool description",
-                    "billingParser": {},
-                    "toolManifestVersion": "1.0.0",
-                },
-            ]
+            "count": len(tools),
+            "data": tools[page * page_size : (page + 1) * page_size],
         }
 
     @router.get("/tools/protected/tools/{tool_key}/definitions")
@@ -3847,6 +4052,27 @@ def create_tools_router(
             )
             executions[execution["executionId"]] = execution
             return _normalize_execution(execution)
+        if tool_key == "deeporigin.import-dataset" and "result_lane" in (
+            body.get("inputs") or {}
+        ):
+            # import-dataset's input schema has ``additionalProperties: false``;
+            # ``result_lane`` was added in IMPORT_DATASET_RESULT_LANE_MIN_VERSION.
+            # A partial pin runs the newest release in its line (``"4"`` is the
+            # latest 4.x), so it is compared on the segments it names.
+            try:
+                pinned = Version(tool_version).release
+                minimum = Version(IMPORT_DATASET_RESULT_LANE_MIN_VERSION).release
+                accepts_lane = pinned >= minimum[: len(pinned)]
+            except InvalidVersion:
+                accepts_lane = False
+            if not accepts_lane:
+                raise HTTPException(
+                    status_code=400,
+                    detail=(
+                        f"import-dataset {tool_version} does not accept input "
+                        "'result_lane'"
+                    ),
+                )
         if tool_key == "deeporigin.import-dataset" and body.get("sync") is True:
             execution = _build_pose_registration_execution(
                 org_key=org_key,
@@ -3856,11 +4082,22 @@ def create_tools_router(
             )
             eid = execution["executionId"]
             executions[eid] = execution
+            job_outputs = execution.get("jobOutputs")
+            rejected = rejected_pose_record_indexes.pop(str(eid), set())
+            if rejected and isinstance(job_outputs, dict):
+                job_outputs = {
+                    **job_outputs,
+                    "poses": [
+                        row
+                        for row in job_outputs.get("poses") or []
+                        if row.get("record_index") not in rejected
+                    ],
+                }
             _inject_result_explorer_records_from_outputs(
                 tool_key=tool_key,
                 tool_version=tool_version,
                 execution_id=eid,
-                job_outputs=execution.get("jobOutputs"),
+                job_outputs=job_outputs,
             )
             return _normalize_execution(execution)
         if tool_key == "deeporigin.import-dataset" and body.get("sync") is not True:

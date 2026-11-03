@@ -720,6 +720,18 @@ def test_from_file_invalid_extension():
         os.unlink(tmp_path)
 
 
+def test_from_file_dot_pdb_hidden_name(tmp_path):
+    """pathlib treats ``.pdb`` as a nameless hidden file; still load as PDB."""
+    src = BRD_DATA_DIR / "brd.pdb"
+    dest = tmp_path / "prepared" / ".pdb"
+    dest.parent.mkdir(parents=True)
+    dest.write_text(src.read_text())
+
+    protein = Protein.from_file(dest)
+    assert protein.block_type == "pdb"
+    assert protein.structure is not None
+
+
 def test_load_structure_from_block_cif():
     """Test loading structure from CIF block content."""
     cif_path = Path(__file__).parent / "fixtures" / "1EBY.cif"

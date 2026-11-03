@@ -42,7 +42,9 @@ def test_uniprot_discovery_normalizes_accession(client: DeepOriginClient) -> Non
     """Accessions are uppercased after validation."""
     job = UniprotDiscovery(uniprot_accession="p00533", client=client)
     assert job.uniprot_accession == "P00533"
-    assert job.tool_version == "latest"
+    assert (
+        job.tool_version == TOOL_KEYS_AND_VERSIONS["uniprot_discovery"]["tool_version"]
+    )
     assert job.tool_key == TOOL_KEYS_AND_VERSIONS["uniprot_discovery"]["tool_key"]
 
 
@@ -57,6 +59,7 @@ def test_uniprot_discovery_make_payload(client: DeepOriginClient) -> None:
 
     assert payload["sync"] is True
     assert payload["name"] == "ud-test"
+    assert payload["visibility"] == "hidden"
     assert payload["inputs"] == {"uniprot_accession": "P00533"}
 
 

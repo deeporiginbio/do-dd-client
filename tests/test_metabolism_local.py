@@ -41,11 +41,11 @@ def _assert_tool_available(client: DeepOriginClient) -> None:
 def test_metabolism_construct_sets_tool_identity(
     client: DeepOriginClient,
 ) -> None:
-    """``Metabolism(...)`` pins the metabolism tool key and latest version."""
+    """``Metabolism(...)`` pins the metabolism tool key and major version."""
     _assert_tool_available(client)
     job = Metabolism(ligands=Ligand.from_smiles("CCO"), client=client)
 
-    assert job.tool_version == "latest"
+    assert job.tool_version == TOOL_KEYS_AND_VERSIONS["metabolism"]["tool_version"]
     assert job.tool_key == "deeporigin.metabolism"
     assert not hasattr(job, "enzymes")
 

@@ -63,6 +63,12 @@ When shipping a new user-facing SDK capability in the cli repo, include all of t
 3. Documentation in `docs/` (API reference and/or how-to as appropriate)
 4. **Demo notebook** — never create or edit notebooks in `docs/notebooks/clean/` directly. Write `docs/notebooks/dirty/{feature}.ipynb` (gitignored; agents can still create it). After it runs against a live org (authenticated per `docs/how-to/auth.md`, `DeepOriginClient.from_disk()`), promote with `./scripts/notebooks.sh` (dirty → clean, strip outputs). The committed artifact is `docs/notebooks/clean/{feature}.ipynb`.
 
+# Reading results after an execution
+
+- Never poll result-explorer per item (one `results.get` per ligand or pose in a loop until it appears). It multiplies platform load by the batch size and still races ingestion.
+- Wait once: `client.executions.wait_for_ingestion(execution_id)` blocks on the SSE stream until the execution's results are ingested.
+- Then read everything in one batched query: filter on `ligand_id: {"in": [...]}` or `compute_job_id`, chunked at `LIGAND_ID_QUERY_BATCH_SIZE`. Reuse `fetch_result_records` in `src/drug_discovery/ligand_results.py` instead of writing a new loop.
+
 # Common mistakes
 
 - Editing `src/VERSION` or `platform-sdk/src/VERSION` — never change these files; release CI sets the version from the git tag (see `.github/workflows/pypi.yml` and `.github/workflows/pypi_sdk.yml`)

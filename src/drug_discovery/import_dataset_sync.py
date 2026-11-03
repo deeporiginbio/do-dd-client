@@ -4,9 +4,11 @@ from __future__ import annotations
 
 from pathlib import Path
 import time
-from typing import Any, Optional
+from typing import Any, Literal, Optional
 import uuid
 import warnings
+
+from packaging.version import InvalidVersion, Version
 
 from deeporigin.exceptions import DeepOriginException
 from deeporigin.platform.client import DeepOriginClient
@@ -17,7 +19,7 @@ from deeporigin.platform.constants import (
     normalize_platform_status,
 )
 from deeporigin.platform.project_scope import require_client_project_id
-from deeporigin.utils.constants import DATA_PLATFORM_INGESTION_POLL_SECONDS
+from deeporigin.utils.constants import IMPORT_DATASET_RESULT_LANE_MIN_VERSION
 
 MAX_SERVED_FILE_LIGAND_RECORDS = 500
 
@@ -33,6 +35,7 @@ DATA_PLATFORM_DATA_INGESTING_STATUS = "DataIngesting"
 
 _FAILED_DP_STATUSES = frozenset({"Failed", "Cancelled"})
 _IMPORT_FAILED_TITLE = "Ligand import failed"
+_IMPORT_RUN_FAILED_TITLE = "import-dataset run failed"
 _SMILES_LIST_SEARCH_CHUNK = 500
 _DEFAULT_TOOLS_POLL_INTERVAL_S = 2.0
 _DEFAULT_TOOLS_WAIT_TIMEOUT_S = 3600.0
@@ -94,19 +97,13 @@ def run_import_dataset_workflow(
     inputs: dict[str, Any],
     project_id: str,
     client: Optional[DeepOriginClient] = None,
-    tool_version: str | None = None,
 ) -> dict[str, Any]:
-    """Start a workflow import-dataset execution and return the creation DTO.
-
-    ``tool_version`` overrides the import-dataset version pinned in
-    ``TOOL_KEYS_AND_VERSIONS`` for this execution only.
-    """
+    """Start a workflow import-dataset execution and return the creation DTO."""
     return _create_import_dataset_execution(
         inputs=inputs,
         project_id=project_id,
         client=client,
         sync=False,
-        tool_version=tool_version,
     )
 
 
@@ -116,7 +113,6 @@ def _create_import_dataset_execution(
     project_id: str,
     client: Optional[DeepOriginClient] | None,
     sync: bool,
-    tool_version: str | None = None,
 ) -> dict[str, Any]:
     if client is None:
         client = DeepOriginClient()
@@ -133,7 +129,7 @@ def _create_import_dataset_execution(
     tool_meta = TOOL_KEYS_AND_VERSIONS["import_dataset"]
     raw = client.executions.create(  # ty: ignore[unresolved-attribute]
         tool_key=tool_meta["tool_key"],
-        tool_version=tool_version or tool_meta["tool_version"],
+        tool_version=tool_meta["tool_version"],
         data={
             "inputs": inputs,
             "outputs": {},
@@ -158,6 +154,104 @@ def job_outputs_with_execution_id(dto: dict[str, Any]) -> dict[str, Any]:
     if eid:
         outputs = {**outputs, "import_execution_id": str(eid)}
     return outputs
+
+
+def error_user_log_messages_for_execution(
+    client: DeepOriginClient,
+    execution_id: str,
+) -> list[str]:
+    """Return ERROR-level user_log message strings for a tools execution id."""
+    ul = client.user_logs
+    if ul is None:
+        return []
+    try:
+        response = ul.search(execution_id=execution_id, limit=50)
+    except Exception:
+        return []
+    messages: list[str] = []
+    for row in response.get("data") or []:
+        if not isinstance(row, dict):
+            continue
+        level = (
+            row.get("log_level")
+            if row.get("log_level") is not None
+            else row.get("level")
+        )
+        if str(level or "").upper() != "ERROR":
+            continue
+        message = row.get("message")
+        if message is not None and str(message).strip():
+            messages.append(str(message).strip())
+    return messages
+
+
+def apply_ligand_import_job_outputs(
+    ligands: list[Any],
+    outputs: dict[str, Any],
+    *,
+    client: DeepOriginClient | None = None,
+) -> None:
+    """Assign platform ids from import-dataset ``jobOutputs.ligands``.
+
+    When some input indices have no returned row but at least one ligand imported,
+    emit a warning (including count-only ERROR user_logs when available). Raises
+    when no ligand received an id.
+    """
+    rows = outputs.get("ligands") or []
+    if not isinstance(rows, list):
+        rows = []
+    by_index: dict[int, dict[str, Any]] = {}
+    for row in rows:
+        if isinstance(row, dict) and "record_index" in row:
+            by_index[int(row["record_index"])] = row
+
+    missing_indices: list[int] = []
+    for idx, lig in enumerate(ligands):
+        record = by_index.get(idx)
+        if (
+            record is None
+            and not by_index
+            and len(rows) == len(ligands)
+            and idx < len(rows)
+            and isinstance(rows[idx], dict)
+        ):
+            record = rows[idx]
+        if record is None:
+            missing_indices.append(idx)
+            continue
+        lid = record.get("id")
+        if not lid:
+            missing_indices.append(idx)
+            continue
+        lig.id = str(lid)
+        mol_file = record.get("mol_file")
+        if mol_file:
+            lig.remote_path = str(mol_file)
+
+    if not missing_indices:
+        return
+
+    imported = len(ligands) - len(missing_indices)
+    if imported == 0:
+        first = missing_indices[0]
+        raise DeepOriginException(
+            title="Ligand sync failed",
+            message=(
+                "import-dataset did not return a ligand row for one or more "
+                f"input records (missing index {first})."
+            ),
+        )
+
+    detail_parts = [
+        f"Ligand sync: {len(missing_indices)} of {len(ligands)} ligand(s) "
+        "were not imported."
+    ]
+    execution_id = outputs.get("import_execution_id")
+    if client is not None and execution_id:
+        for message in error_user_log_messages_for_execution(client, str(execution_id)):
+            if message not in detail_parts:
+                detail_parts.append(message)
+    warnings.warn(" ".join(detail_parts), UserWarning, stacklevel=3)
 
 
 def require_uniform_scope(
@@ -225,6 +319,30 @@ def poll_tools_execution_terminal(
     return _tools_execution_terminal_dto(dto)
 
 
+def execution_status_reason(
+    client: DeepOriginClient,
+    execution_id: str,
+    *,
+    fallback: str | None,
+) -> str:
+    """Return the tools-service ``statusReason`` for an execution.
+
+    The data-platform execution row carries no failure reason, so it is read
+    from the tools-service execution.
+
+    Args:
+        client: Platform client.
+        execution_id: Tools-service execution id.
+        fallback: Value returned when the execution has no reason.
+
+    Returns:
+        The status reason, or ``fallback``.
+    """
+    dto = client.executions.get(execution_id)  # ty: ignore[unresolved-attribute]
+    reason = dto.get("statusReason") if isinstance(dto, dict) else None
+    return str(reason or fallback)
+
+
 def _latest_data_platform_execution_row(
     client: DeepOriginClient,
     compute_job_id: str,
@@ -287,93 +405,6 @@ def wait_for_data_platform_ingestion(
                 f"{compute_job_id!r})."
             )
         time.sleep(poll_interval)
-
-
-def wait_for_import_ingestion(
-    client: DeepOriginClient,
-    execution_id: str,
-    *,
-    project_id: str,
-    timeout: float,
-) -> dict[str, Any]:
-    """Wait for an import run and its data-platform ingestion to finish.
-
-    Waits on the gateway's SSE stream (:meth:`Executions.wait_for_ingestion`).
-    If the stream can't be used (for example the gateway refuses it, or the
-    backend can't read hidden runs), warns and polls instead: first the
-    tools-service run until it finishes, then the data-platform row until it
-    leaves ``DataIngesting``. Failures are returned, not raised, so the caller
-    raises its own error.
-
-    Args:
-        client: Platform client.
-        execution_id: Tools-service execution id of the import.
-        project_id: Project the import runs in.
-        timeout: Maximum total seconds to wait.
-
-    Returns:
-        A row whose ``status`` is terminal: the data-platform execution row,
-        ``{"status": <tools-service status>}`` when the run itself did not
-        succeed, or ``{"status": "Completed"}`` when the run succeeded but no
-        data-platform row became readable.
-
-    Raises:
-        TimeoutError: If the wait does not finish within ``timeout``.
-    """
-    deadline = time.monotonic() + timeout
-    try:
-        return client.executions.wait_for_ingestion(  # ty: ignore[unresolved-attribute]
-            execution_id,
-            project_id=project_id,
-            timeout=timeout,
-        )
-    except DeepOriginException as error:
-        warnings.warn(
-            f"Live updates are unavailable ({error.title}); polling for import "
-            f"execution {execution_id!r} instead.",
-            stacklevel=2,
-        )
-
-    dto = client.executions.wait(  # ty: ignore[unresolved-attribute]
-        execution_id,
-        poll_interval=DATA_PLATFORM_INGESTION_POLL_SECONDS,
-        timeout=max(deadline - time.monotonic(), 0.0),
-    )[0]
-    status = normalize_platform_status(dto.get("status"))
-    if not is_success_status(status):
-        return {"status": status}
-
-    finished_at = time.monotonic()
-    while True:
-        row = _ingestion_row(client, execution_id)
-        if row is not None:
-            row_status = normalize_platform_status(row.get("status"))
-            if row_status in TERMINAL_STATES:
-                return {**row, "status": row_status}
-        elif time.monotonic() - finished_at >= _DEFAULT_NO_DP_EXECUTION_ROW_TIMEOUT_S:
-            return {"status": "Completed"}
-        if time.monotonic() >= deadline:
-            raise TimeoutError(
-                "Timed out waiting for data-platform ingestion "
-                f"(execution_id={execution_id!r}, project_id={project_id!r})."
-            )
-        time.sleep(DATA_PLATFORM_INGESTION_POLL_SECONDS)
-
-
-def _ingestion_row(
-    client: DeepOriginClient, execution_id: str
-) -> dict[str, Any] | None:
-    """Read an import's data-platform row, including hidden runs where supported."""
-    try:
-        resp = client.executions.search(  # ty: ignore[unresolved-attribute]
-            compute_job_id=execution_id,
-            include_hidden=True,
-            limit=1,
-        )
-    except DeepOriginException:
-        return _latest_data_platform_execution_row(client, execution_id)
-    rows = resp.get("data") or []
-    return rows[0] if rows and isinstance(rows[0], dict) else None
 
 
 def _dp_execution_row_id(row: dict[str, Any]) -> str | None:
@@ -581,6 +612,26 @@ def workflow_import_smiles_csv(
     return execution_id, dp_row
 
 
+ProteinDisposition = Literal["created", "reused"]
+
+
+def parse_protein_disposition(row: dict[str, Any]) -> Optional[ProteinDisposition]:
+    """Map a ``jobOutputs.proteins`` row to a create/reuse disposition.
+
+    Accepts ``created: bool`` or a ``disposition`` string (``"created"`` /
+    ``"reused"``). Returns None when the server did not report one (older
+    servers) or the value is unrecognized.
+    """
+    # TODO(DDOS-8302): narrow to the single field the server ships.
+    created = row.get("created")
+    if isinstance(created, bool):
+        return "created" if created else "reused"
+    disposition = row.get("disposition")
+    if disposition in ("created", "reused"):
+        return disposition
+    return None
+
+
 def sync_process_pdb(
     *,
     client: DeepOriginClient,
@@ -597,6 +648,48 @@ def sync_process_pdb(
     )
 
 
+def import_dataset_supports_result_lane(tool_version: str) -> bool:
+    """Return whether an import-dataset version accepts the ``result_lane`` input.
+
+    tools-service runs a partial pin as the latest release that fills in its
+    remaining segments (``"4"`` runs the newest 4.x), so a partial pin is
+    compared on the segments it names: ``"4"`` and ``"4.0"`` qualify, ``"3"``
+    and ``"4.0.1"`` do not. A pin that is not a version number (e.g.
+    ``"latest"``) is treated as not supporting it.
+
+    Args:
+        tool_version: import-dataset version pin, e.g. ``"4"`` or ``"4.0.2"``.
+
+    Returns:
+        True when ``tool_version`` is at least
+        :data:`~deeporigin.utils.constants.IMPORT_DATASET_RESULT_LANE_MIN_VERSION`
+        on the segments it names.
+    """
+    try:
+        pinned = Version(tool_version).release
+    except InvalidVersion:
+        return False
+    minimum = Version(IMPORT_DATASET_RESULT_LANE_MIN_VERSION).release
+    return pinned >= minimum[: len(pinned)]
+
+
+def _raise_if_run_failed(dto: dict[str, Any]) -> None:
+    """Raise when a synchronous import-dataset run ended without success.
+
+    A run can fail before data platform creates its execution row, so the
+    status the run returned is checked before any ingestion wait.
+    """
+    status = normalize_platform_status(dto.get("status"))
+    if status in TERMINAL_STATES and not is_success_status(status):
+        raise DeepOriginException(
+            title=_IMPORT_RUN_FAILED_TITLE,
+            message=(
+                f"import-dataset run (execution_id={dto.get('executionId')!r}) "
+                f"ended with status {status!r}: {dto.get('statusReason') or status}"
+            ),
+        )
+
+
 def sync_process_sdf(
     *,
     client: DeepOriginClient,
@@ -606,8 +699,29 @@ def sync_process_sdf(
     protein_id: str | None = None,
     origin: str = "registered",
     tags: dict[str, Any] | None = None,
+    result_lane: str | None = None,
 ) -> dict[str, Any]:
-    """Run blocking import-dataset SDF processing and return jobOutputs."""
+    """Run blocking import-dataset SDF processing and return jobOutputs.
+
+    Args:
+        client: Platform client.
+        project_id: Project to import into; must match ``client.project_id``.
+        file_path: Remote path of the staged SDF.
+        register_poses: Also register a pose row per SDF record.
+        protein_id: Protein the registered poses belong to.
+        origin: Provenance stored on registered pose rows.
+        tags: Optional tags for created ligands.
+        result_lane: Data-platform result lane (e.g. ``"fast"``). Sent only
+            when the pinned import-dataset version accepts it (see
+            :func:`import_dataset_supports_result_lane`); otherwise left out,
+            so the tool's default lane applies.
+
+    Returns:
+        The run's ``jobOutputs`` plus ``import_execution_id``.
+
+    Raises:
+        DeepOriginException: If the run ended without success.
+    """
     inputs: dict[str, Any] = {
         "process_sdf": True,
         "file_path": file_path,
@@ -618,9 +732,13 @@ def sync_process_sdf(
         inputs["protein_id"] = protein_id
     if tags is not None:
         inputs["tags"] = tags
-    return job_outputs_with_execution_id(
-        run_import_dataset_sync(inputs=inputs, project_id=project_id, client=client)
-    )
+    if result_lane is not None and import_dataset_supports_result_lane(
+        TOOL_KEYS_AND_VERSIONS["import_dataset"]["tool_version"]
+    ):
+        inputs["result_lane"] = result_lane
+    dto = run_import_dataset_sync(inputs=inputs, project_id=project_id, client=client)
+    _raise_if_run_failed(dto)
+    return job_outputs_with_execution_id(dto)
 
 
 def sync_process_csv(
@@ -631,6 +749,6 @@ def sync_process_csv(
 ) -> dict[str, Any]:
     """Run blocking import-dataset CSV processing and return jobOutputs."""
     inputs = {"process_csv": True, "file_path": file_path}
-    return job_outputs(
+    return job_outputs_with_execution_id(
         run_import_dataset_sync(inputs=inputs, project_id=project_id, client=client)
     )

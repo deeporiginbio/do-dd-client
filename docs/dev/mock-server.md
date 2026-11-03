@@ -17,7 +17,7 @@ The mock server is organized into routers, each handling a group of related endp
 | **files** | `routers/files.py` | File upload/download |
 | **entities** | `routers/entities.py` | Entity management |
 | **billing** | `routers/billing.py` | Billing endpoints |
-| **sse** | `routers/sse.py` | Gateway project stream (`GET /sse/{org}/stream/{project}`) |
+| **sse** | `routers/sse.py` | Gateway project event stream (`/sse/{org}/stream/{project}`) |
 
 All routers share in-memory stores (dicts/lists) that are created in `MockServer.__init__` and passed into the router factory functions. This lets data flow between routers — for example, a tool execution in the tools router can inject records that are later visible via the data-platform router's result-explorer search.
 
@@ -30,10 +30,13 @@ by any local test that syncs a protein (e.g. the `registered_protein` fixture).
 **SSE stream (local only):** `GET /sse/{org}/stream/{project}` sends a `retry:`
 line, one `filters.dirty` frame naming every `filter=<id>=<pattern>` query
 param, then closes. `Executions.wait_for_ingestion` reads the execution row on
-connect, re-reads on that frame, and reconnects after the close, so a row that
-reads `DataIngesting` once (see `executions/search`) resolves on the second
-read.
-The stream for project `MOCK_SSE_DISABLED_PROJECT_ID` (`tests/mock_server/constants.py`) is refused with 404, as on a gateway without SSE, to test the fallback to polling in `wait_for_import_ingestion`.
+connect, re-reads on that frame, and reconnects only if the row is still not
+terminal, so a row that reads `DataIngesting` once (see `executions/search`)
+resolves on the second read. While there is no row, the wait also reads the
+tools-service run and ends if the run failed. The stream for project
+`MOCK_SSE_DISABLED_PROJECT_ID` (`tests/mock_server/constants.py`) is refused
+with 404, as on a gateway without SSE, to test that the wait warns and polls the
+row instead.
 
 **Protein import (local only):** an import-dataset `csv_path` run whose mapper targets `proteins.*`, as `projects.sync_proteins` sends, is ingested at submit (`_ingest_import_dataset_protein_csv` in `routers/tools.py`). Rows are read through the mapper's `proteins.<field>` keys, with header keys and cells stripped as the import tool does. A CSV with no rows ends the run `Failed` with a `statusReason`.
 
@@ -45,6 +48,30 @@ The stream for project `MOCK_SSE_DISABLED_PROJECT_ID` (`tests/mock_server/consta
 - A missing file, or one without `ATOM`/`HETATM` lines, loses its `file_path` silently. The row is still imported as a protein with only its name, and the run ends `Completed`, as the tool does on dev.
 
 Covered by `tests/test_protein_folder_import_local.py`.
+
+**Pose registration (local only):** `PoseSet.sync()` runs a synchronous
+import-dataset `process_sdf` with `register_poses`, waits on
+`client.executions.wait_for_ingestion`, then reads the run's pose rows from
+result-explorer once. The mock covers each step:
+
+- The import mirrors its `jobOutputs["poses"]` into result-explorer, each row with
+  an `id`, the run's `compute_job_id` and the SDF `record_index`. The run's
+  data-platform row reads `DataIngesting` on the first `executions/search` and
+  `Completed` after that.
+- An SDF record named `MOCK_POSE_REGISTRATION_FAIL_NAME` (`routers/tools.py`)
+  makes the run end `Failed` with `statusReason`
+  `MOCK_POSE_REGISTRATION_FAIL_REASON` and no outputs. `executions/search` returns
+  no row for it, as when a run fails before data platform records it.
+- An SDF record named `MOCK_POSE_INGESTION_FAIL_NAME` lets the run complete while
+  its data-platform row reads `Failed`.
+- An SDF record named `MOCK_POSE_REJECTED_NAME` stays in `jobOutputs` but is left
+  out of result-explorer while the run completes. This mimics the platform
+  rejecting one record during storage and drives the short-count error.
+- A synchronous import-dataset run whose inputs include `result_lane` is rejected
+  with HTTP 400 unless the requested tool version is at least
+  `IMPORT_DATASET_RESULT_LANE_MIN_VERSION` (`src/utils/constants.py`). This mirrors
+  older import-dataset input schemas, which reject unknown keys. Pose registration
+  sends `result_lane` only when the pinned version accepts it.
 
 ## Running the Mock Server
 
@@ -132,7 +159,7 @@ Integration coverage: `tests/test_rbfe_local.py` (`uv run pytest tests/test_rbfe
 
 ## How Tool Executions Work
 
-This is the most complex part of the mock server. When client code runs a tool (e.g., `protein.dock()`, `PocketFinder(protein).run()`, or `Molprops(...).run()`), the following happens end-to-end. All runnable work goes through `client.executions.create()` and the mock's `POST /tools/{org}/tools/{tool_key}/{tool_version}/executions` route (`run_tool` in `routers/tools.py`).
+This is the most complex part of the mock server. When client code runs a tool (e.g., `Docking(protein=..., pocket=..., ligand=...).run()`, `PocketFinder(protein).run()`, or `Molprops(...).run()`), the following happens end-to-end. All runnable work goes through `client.executions.create()` and the mock's `POST /tools/{org}/tools/{tool_key}/{tool_version}/executions` route (`run_tool` in `routers/tools.py`).
 
 ### 1. Building the execution DTO
 
@@ -161,7 +188,7 @@ Some fixtures (docking, pocket-finder, system-prep) were recorded with whatever 
 
 ### 4. Result-explorer injection
 
-In production, when a tool execution completes, a message-queue flow writes structured outputs (pockets, poses, system, …) into a **result-explorer** table. Client code later queries this table to retrieve results — for example, `PoseSet.from_result(protein_id=...)` calls `client.results.get_poses(protein_id=...)`, which searches the result-explorer.
+In production, when a tool execution completes, a message-queue flow writes structured outputs (pockets, poses, system, …) into a **result-explorer** table. Client code later queries this table to retrieve results — for example, `Docking.get_results()` calls `client.results.get_poses(compute_job_id=...)`, which searches the result-explorer.
 
 The mock server emulates this with `_inject_result_explorer_records_from_outputs`. After a tool execution returns, it checks the `output_key_map`:
 
@@ -177,15 +204,15 @@ output_key_map = {
 
 Each entry maps a tool manifest key to the `jobOutputs` field that should be mirrored into the shared result-explorer store and the `result_type` to tag those records with. Tool-specific helpers (`_inject_docking_tool_execution_results`, `_inject_pocketfinder_tool_execution_results`, `_inject_sysprep_tool_execution_results`, `_inject_protein_prep_tool_execution_results`) load the same fixture shapes and call this generic injector.
 
-**When adding a new tool**, extend `output_key_map` and any tool-specific injectors in `routers/tools.py` so downstream queries (e.g., `Pocket.from_result`, `PoseSet.from_result`) can find the records.
+**When adding a new tool**, extend `output_key_map` and any tool-specific injectors in `routers/tools.py` so downstream queries (e.g., `Pocket.from_result`, `Docking.get_results()`) can find the records.
 
 ### 5. Result-explorer queries
 
-When client code queries results (e.g., `client.results.get_poses(protein_id=...)`), it hits the data-platform router's `result-explorer/search` endpoint. This applies `_apply_eq_filters`, which checks filter values against both top-level record fields **and** nested `data` fields. Since the injected records store tool outputs under `data`, a filter like `protein_id: {eq: "abc123"}` matches `record["data"]["protein_id"]`.
+When client code queries results (e.g., `client.results.get_poses(compute_job_id=...)`), it hits the data-platform router's `result-explorer/search` endpoint. This applies `_apply_eq_filters`, which checks filter values against both top-level record fields **and** nested `data` fields. Since the injected records store tool outputs under `data`, a filter like `protein_id: {eq: "abc123"}` matches `record["data"]["protein_id"]`.
 
 ### End-to-end example: docking
 
-Here's the full flow for `test_docking_with_data_platform_lv2`:
+Here's the full flow for `test_docking_run_lv2` in `tests/test_docking.py`:
 
 ```
 1. registered_protein fixture
@@ -194,7 +221,7 @@ Here's the full flow for `test_docking_with_data_platform_lv2`:
 2. registered_ligand fixture
    → POST /data-platform/{org}/ligands   (creates or syncs ligand)
 
-3. protein.dock(ligand=..., pocket=...)
+3. Docking(protein=..., pocket=..., ligand=...).run()
    → POST /tools/{org}/tools/deeporigin.docking/{version}/executions
    → run_tool:
        a. build a Completed execution DTO via _create_blocking_run_dto
@@ -202,11 +229,11 @@ Here's the full flow for `test_docking_with_data_platform_lv2`:
           replaces protein_id/ligand_id, and pushes the "poses" rows into
           the result-explorer store
 
-4. PoseSet.from_result(protein_id=...)
+4. run() → get_results() → client.results.get_poses(compute_job_id=...)
    → POST /data-platform/{org}/result-explorer/search
-       filter: {protein_id: {eq: "<fresh ID>"}, tool_id: {in: [...]}}
-   → _apply_eq_filters matches record["data"]["protein_id"]
-   → returns the poses injected in step 3b
+       filter: {compute_job_id: {eq: "<executionId>"}, ...}
+   → _apply_eq_filters matches the injected rows
+   → returns the poses injected in step 3b (falls back to jobOutputs.poses)
 ```
 
 ## Entity Stores and Fixtures
@@ -255,6 +282,7 @@ The mock server implements the following endpoints:
 - **Entities API**: Entity management (delete)
 - **Data Platform API**: Entity CRUD (proteins, ligands), result-explorer search
 - **Billing API**: Billing endpoints
+- **SSE stream**: Gateway project stream that marks requested filters dirty once, then closes
 - **Health Check**: `/health` endpoint
 
 ## Extending the Mock Server

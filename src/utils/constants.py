@@ -248,6 +248,12 @@ EXECUTION_LIST_ORDER_CREATED_DESC = "createdAt desc"
 TOOL_EXECUTION_GET_ACCEPT_HEADER = "application/json;v=2.0"
 """Accept header for tools-service ``GET .../executions/{id}`` (v2 execution DTO)."""
 
+TOOL_DEFINITIONS_LIST_ACCEPT_HEADER = "application/json;v=2.0"
+"""Accept header for tools-service ``GET /protected/tools/definitions`` (v2: ``{count, data}``)."""
+
+TOOL_DEFINITIONS_LIST_PAGE_SIZE = 1000
+"""Rows per request when :meth:`deeporigin.platform.tools.Tools.list` pages the v2 list."""
+
 DATA_PLATFORM_INGESTION_TIMEOUT_SECONDS = 3600.0
 """Default overall timeout (seconds) for
 :meth:`deeporigin.platform.executions.Executions.wait_for_ingestion`."""
@@ -277,12 +283,6 @@ PROTEIN_FOLDER_CSV_MAPPER = [
 ]
 """import-dataset ``mapper`` for the CSV a protein folder import writes: one row
 per file, naming the protein and the file's entry in the uploaded zip."""
-
-PROTEIN_FOLDER_IMPORT_TOOL_VERSION = "4"
-"""import-dataset major version for a protein folder import. 4.x reads each
-protein's sequence from its coordinates, matches repeats by structure within the
-project, and recognises Protein Prep output; 3.x (still used by
-``Protein.sync``) does none of these for files."""
 
 SSE_CONNECT_TIMEOUT_SECONDS = 10.0
 """Connect, write and pool timeout (seconds) when opening a gateway SSE stream,
@@ -325,10 +325,13 @@ straight away keeps the reconnect pause growing instead of resetting it. The
 SSE service heartbeats every 25s, so a stream that held this long has carried
 at least one heartbeat."""
 
-SSE_RETRYABLE_STATUS_CODES: frozenset[int] = HTTP_RETRYABLE_STATUS_CODES | {409}
+SSE_RETRYABLE_STATUS_CODES: frozenset[int] = HTTP_RETRYABLE_STATUS_CODES | {404, 409}
 """Stream-open statuses that are reconnected on rather than raised.
 
-409 is the SSE service's per-user, per-project connection cap."""
+404 means the gateway has no SSE route (SSE disabled or not deployed); the
+wait polls the row instead, as Studio's SSE provider falls back to polling.
+409 is the SSE service's per-user, per-project connection cap. 401 and 403
+still raise: polling would hit the same refusal."""
 
 TOOL_KEY_PREFIX = "deeporigin."
 """Platform tool-key prefix omitted in compact display (e.g. user log tables)."""
@@ -479,3 +482,12 @@ ENUMERATOR_AVAILABLE_REACTIONS_COLUMNS: tuple[str, ...] = (
     "atom_indices",
 )
 """Column order for the DataFrame built from AVAILABLE_REACTIONS ``jobOutputs``."""
+
+IMPORT_DATASET_RESULT_LANE_MIN_VERSION = "4.0.2"
+"""Oldest import-dataset version that accepts the ``result_lane`` input.
+
+Older versions reject unknown inputs, so ``result_lane`` is only sent when the
+pinned import-dataset version is at least this one."""
+
+POSE_REGISTRATION_RESULT_LANE = "fast"
+"""Data-platform result lane requested for pose registration imports."""

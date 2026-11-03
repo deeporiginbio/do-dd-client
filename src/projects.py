@@ -15,7 +15,6 @@ from beartype import beartype
 from deeporigin.drug_discovery.import_dataset_sync import (
     run_import_dataset_workflow,
     stage_local_file,
-    wait_for_import_ingestion,
 )
 from deeporigin.drug_discovery.structures.ligand import LigandSet
 from deeporigin.drug_discovery.structures.protein import Protein
@@ -37,7 +36,6 @@ from deeporigin.utils.constants import (
     IMPORT_DATASET_PROTEINS_DATABASE_KEY,
     IMPORT_DATASET_PROTEINS_DATABASE_VERSION,
     PROTEIN_FOLDER_CSV_MAPPER,
-    PROTEIN_FOLDER_IMPORT_TOOL_VERSION,
     PROTEIN_IMPORT_FAILED_TITLE,
     PROTEIN_SEARCH_PAGE_SIZE,
 )
@@ -401,7 +399,11 @@ def get_proteins(
     limit: int | None = 100,
     **filter_kwargs: Any,
 ) -> Sequence[Protein]:
-    """Load proteins for the current project.
+    """Load proteins for the current project as metadata-only Protein objects.
+
+    Structures are not downloaded; call :meth:`~deeporigin.drug_discovery.structures.protein.Protein.download`
+    to hydrate a protein. This keeps listing resilient when a remote PDB is
+    missing or unparseable.
 
     Args:
         limit: Max proteins to fetch.
@@ -431,7 +433,7 @@ def get_proteins(
         row_id = row.get("id")
         if row_id is None:
             continue
-        out.append(Protein.from_id(str(row_id), client=client))
+        out.append(Protein.from_id(str(row_id), client=client, download=False))
     return out
 
 
@@ -524,10 +526,7 @@ def sync_proteins(
             "database_version": IMPORT_DATASET_PROTEINS_DATABASE_VERSION,
         }
     dto = run_import_dataset_workflow(
-        inputs=inputs,
-        project_id=project_id,
-        client=client,
-        tool_version=PROTEIN_FOLDER_IMPORT_TOOL_VERSION,
+        inputs=inputs, project_id=project_id, client=client
     )
     execution_id = dto.get("executionId")
     if not execution_id:
@@ -546,9 +545,9 @@ def _wait_for_import(
     *,
     timeout: int | float,
 ) -> list[Protein]:
-    """Wait for a protein import (SSE, else polling), raise if it failed, else return proteins."""
-    row = wait_for_import_ingestion(
-        client, execution_id, project_id=project_id, timeout=timeout
+    """Wait for a protein import on SSE, raise if it failed, else return proteins."""
+    row = client.executions.wait_for_ingestion(  # ty: ignore[unresolved-attribute]
+        execution_id, project_id=project_id, timeout=timeout
     )
     status = normalize_platform_status(row.get("status"))
     if not is_success_status(status):

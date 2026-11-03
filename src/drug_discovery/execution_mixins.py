@@ -140,7 +140,7 @@ class AsyncExecutableMixin:
         raise NotImplementedError
 
     def cancel(self) -> None:
-        """Cancel a running or queued execution.
+        """Cancel a quoted, queued or running execution.
 
         Raises:
             ValueError: If the job has no execution ID.
@@ -151,7 +151,7 @@ class AsyncExecutableMixin:
                 "Cannot cancel: no execution has been started (id is None)."
             )
 
-        cancellable = {"Created", "Queued", "Running"}
+        cancellable = {"Created", "Quoted", "Queued", "Running"}
         if self.status not in cancellable:
             raise ValueError(
                 f"Cannot cancel: job is in {self.status!r} state. "

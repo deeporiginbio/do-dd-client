@@ -16,7 +16,7 @@ warns. Pass ``force=True`` to :meth:`run` or :meth:`start` to recompute ligands
 that already have indexed ``MetabolismMolecule`` rows (workflow skip filter).
 
 The tool scores every cytochrome P450 isoform it supports; the client does
-not select or filter enzymes. ``tool_version`` stays ``"latest"``. Ligands
+not select or filter enzymes. Ligands
 are not mutated. Payload ``id`` is sent only when
 :attr:`~deeporigin.drug_discovery.structures.ligand.Ligand.id` is already set.
 
@@ -508,8 +508,6 @@ class Metabolism(
         name: str | None = None,
     ) -> None:
         """Configure a site-of-metabolism run for one or more ligands.
-
-        Does not pin ``tool_version``; it stays ``"latest"``.
 
         Args:
             ligands: A ligand, a list of ligands, or a :class:`LigandSet`.

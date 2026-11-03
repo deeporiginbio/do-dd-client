@@ -17,6 +17,7 @@ from deeporigin.utils.constants import (
 from tests.conftest import assert_quote_only_execution, check_tool_exists
 from tests.mock_server.routers.tools import (
     MOCK_ADMET_ENDPOINTS,
+    MOCK_ADMET_FAILURE_SMILES,
     _synthesize_admet_prediction_row,
 )
 
@@ -371,6 +372,28 @@ def test_admet_batch_size_sent_on_workflow_paths_only(
     assert restored.batch_size == 50
 
 
+def test_admet_force_sends_recompute(client: DeepOriginClient) -> None:
+    """``force=True`` on run()/start() becomes the tool's ``recompute`` input."""
+    _assert_tool_available(client)
+
+    default = Admet(ligands=[Ligand.from_smiles("CCO")], client=client)
+    default.properties = list(_ADMET_PROPERTIES)
+    default.run()
+    assert "recompute" not in (default._dto or {}).get("userInputs", {})
+
+    inline = Admet(ligands=[Ligand.from_smiles("CCO")], client=client)
+    inline.properties = list(_ADMET_PROPERTIES)
+    inline.run(force=True)
+    assert (inline._dto or {})["userInputs"]["recompute"] is True
+
+    many = [Ligand.from_smiles("CCO")] * (INLINE_LIGAND_CAP + 1)
+    file_job = Admet(ligands=many, client=client)
+    file_job.properties = list(_ADMET_PROPERTIES)
+    file_job.start(force=True)
+    assert (file_job._dto or {})["userInputs"]["recompute"] is True
+    assert Admet.from_dto(file_job._dto or {}, client=client)._force is True
+
+
 def test_admet_run_rejects_workflow_scale_batch(client: DeepOriginClient) -> None:
     """``run()`` refuses 101+ ligands."""
 
@@ -477,6 +500,63 @@ def test_admet_get_results_skip_hint_without_job_ligands(
 
     with pytest.raises(DeepOriginException, match="<the ligands you ran>"):
         job.get_results(dto)
+
+
+def test_admet_fetch_results_names_failed_ligands(client: DeepOriginClient) -> None:
+    """Ligands whose last attempt failed get a ``force=True`` hint, not "never run"."""
+    _assert_tool_available(client)
+    good = Ligand.from_smiles("CCCO")
+    bad = Ligand.from_smiles(MOCK_ADMET_FAILURE_SMILES[0])
+    job = Admet(ligands=[good, bad], client=client)
+    job.properties = list(_ADMET_PROPERTIES)
+    job.run()
+
+    with pytest.warns(UserWarning, match="force=True") as record:
+        df = Admet.fetch_results(
+            [good, bad], properties=_ADMET_PROPERTIES, client=client
+        )
+
+    assert list(df["ligand_id"]) == [good.id]
+    message = str(record[0].message)
+    assert bad.id in message
+    assert "no stored predictions" not in message
+
+
+def test_admet_get_results_points_failed_skips_to_force(
+    client: DeepOriginClient,
+) -> None:
+    """Ligands skipped after a failed attempt get a force=True hint, not fetch_results."""
+    _assert_tool_available(client)
+    dto = {
+        **_historical_omit_dto(),
+        "executionId": "__no_result_rows__",
+        "jobOutputs": {"admet_properties": []},
+        "progressReport": {"toolProgress": {"skipped_ligands": 0, "known_failures": 1}},
+    }
+    job = Admet.from_dto(dto, client=client)
+
+    with pytest.raises(DeepOriginException, match="force=True") as excinfo:
+        job.get_results(dto)
+    assert "fetch_results" not in str(excinfo.value)
+
+
+def test_admet_fetch_results_failure_on_subset_reports_other_properties(
+    client: DeepOriginClient,
+) -> None:
+    """A failure for one property does not hide properties that were never run."""
+    _assert_tool_available(client)
+    good = Ligand.from_smiles("CCCCO")
+    bad = Ligand.from_smiles(MOCK_ADMET_FAILURE_SMILES[1])
+    job = Admet(ligands=[good, bad], client=client)
+    job.properties = ["hERG_classification"]
+    job.run()
+
+    with pytest.warns(UserWarning) as record:
+        Admet.fetch_results([good, bad], properties=_ADMET_PROPERTIES, client=client)
+
+    message = str(record[0].message)
+    assert "no stored predictions" in message
+    assert "force=True" in message
 
 
 def test_admet_fetch_results_warns_on_ligand_without_predictions(

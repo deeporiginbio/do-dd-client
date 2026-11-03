@@ -22,7 +22,16 @@ from deeporigin.drug_discovery.structures.pose import (
 )
 from deeporigin.platform.client import DeepOriginClient
 from deeporigin.platform.constants import TOOL_KEYS_AND_VERSIONS
+from deeporigin.utils.constants import (
+    POSE_REGISTRATION_RESULT_LANE,
+)
 from tests.conftest import check_tool_exists
+from tests.mock_server.routers.tools import (
+    MOCK_POSE_INGESTION_FAIL_NAME,
+    MOCK_POSE_REGISTRATION_FAIL_NAME,
+    MOCK_POSE_REGISTRATION_FAIL_REASON,
+    MOCK_POSE_REJECTED_NAME,
+)
 
 
 def test_pose_coercion_helpers() -> None:
@@ -206,46 +215,200 @@ def test_pose_sync_lazy_skips_when_id_set() -> None:
     pose.sync(lazy=True)
 
 
-def test_pose_set_sync_waits_for_data_platform_ingestion(
-    client,
+def _registration_poses(
+    client: DeepOriginClient,
+    *,
+    protein_id: str,
+    tmp_path: Path,
+    names: list[str],
+) -> list[Pose]:
+    """Build one unsynced pose per name from the BRD ligand SDFs.
+
+    Args:
+        client: Client scoped to the test project.
+        protein_id: Protein the poses are registered against.
+        tmp_path: Directory for the per-pose SDF files.
+        names: Pose names, written as each SDF record's name.
+
+    Returns:
+        Poses with a ligand id, local SDF and protein id, and no pose id.
+    """
+    poses: list[Pose] = []
+    for idx, name in enumerate(names):
+        lig = Ligand.from_sdf(BRD_DATA_DIR / f"brd-{idx + 2}.sdf")
+        lig.sync(client=client)
+        sdf_path = tmp_path / f"pose-{idx}.sdf"
+        lig.to_sdf(str(sdf_path))
+        poses.append(
+            Pose(
+                ligand_id=lig.id,
+                protein_id=protein_id,
+                local_path=str(sdf_path),
+                project_id=client.project_id,
+                name=name,
+            )
+        )
+    return poses
+
+
+def _require_local_env(pytestconfig: pytest.Config) -> None:
+    """Skip unless running against the mock server, whose triggers these tests use.
+
+    Args:
+        pytestconfig: Pytest config holding the ``--env`` option.
+    """
+    if pytestconfig.getoption("--env") != "local":
+        pytest.skip("uses mock-server pose registration triggers")
+
+
+def test_pose_set_sync_assigns_stored_pose_ids(
+    client: DeepOriginClient,
+    registered_protein,
+    tmp_path: Path,
+) -> None:
+    """Every pose gets the id of the stored row for its SDF record."""
+    poses = _registration_poses(
+        client,
+        protein_id=registered_protein.id,
+        tmp_path=tmp_path,
+        names=["pose-a", "pose-b", "pose-c"],
+    )
+    PoseSet(poses=poses).sync(client=client)
+
+    ids = [pose.id for pose in poses]
+    assert all(ids)
+    assert len(set(ids)) == len(poses)
+    for pose in poses:
+        found = registered_ligand_poses_for_id(client, pose.ligand_id)
+        assert any(p.id == pose.id for p in found)
+
+
+def test_pose_set_sync_raises_on_failed_run(
+    pytestconfig: pytest.Config,
+    client: DeepOriginClient,
+    registered_protein,
+    tmp_path: Path,
+) -> None:
+    """A run that fails before its data-platform row exists raises with its status reason.
+
+    No ingestion wait starts, so this does not hang until the wait times out.
+    """
+    from deeporigin.exceptions import DeepOriginException
+
+    _require_local_env(pytestconfig)
+    poses = _registration_poses(
+        client,
+        protein_id=registered_protein.id,
+        tmp_path=tmp_path,
+        names=["pose-a", MOCK_POSE_REGISTRATION_FAIL_NAME],
+    )
+    with pytest.raises(DeepOriginException) as exc_info:
+        PoseSet(poses=poses).sync(client=client)
+    assert "'Failed'" in str(exc_info.value)
+    assert MOCK_POSE_REGISTRATION_FAIL_REASON in str(exc_info.value)
+    assert all(pose.id is None for pose in poses)
+
+
+def test_pose_set_sync_raises_on_failed_ingestion(
+    pytestconfig: pytest.Config,
+    client: DeepOriginClient,
+    registered_protein,
+    tmp_path: Path,
+) -> None:
+    """A completed run whose data-platform row ends Failed raises."""
+    from deeporigin.exceptions import DeepOriginException
+
+    _require_local_env(pytestconfig)
+    poses = _registration_poses(
+        client,
+        protein_id=registered_protein.id,
+        tmp_path=tmp_path,
+        names=["pose-a", MOCK_POSE_INGESTION_FAIL_NAME],
+    )
+    with pytest.raises(DeepOriginException) as exc_info:
+        PoseSet(poses=poses).sync(client=client)
+    assert "Pose registration" in str(exc_info.value)
+    assert "'Failed'" in str(exc_info.value)
+    assert all(pose.id is None for pose in poses)
+
+
+def test_pose_set_sync_raises_on_short_count(
+    pytestconfig: pytest.Config,
+    client: DeepOriginClient,
+    registered_protein,
+    tmp_path: Path,
+) -> None:
+    """A pose the platform did not store is named in the error."""
+    from deeporigin.exceptions import DeepOriginException
+
+    _require_local_env(pytestconfig)
+    poses = _registration_poses(
+        client,
+        protein_id=registered_protein.id,
+        tmp_path=tmp_path,
+        names=["pose-a", MOCK_POSE_REJECTED_NAME, "pose-c"],
+    )
+    with pytest.raises(DeepOriginException) as exc_info:
+        PoseSet(poses=poses).sync(client=client)
+    message = str(exc_info.value)
+    assert f"record 1 ({MOCK_POSE_REJECTED_NAME})" in message
+    assert "1 of 3 pose(s)" in message
+    assert "record 0" not in message
+    assert "record 2" not in message
+
+
+def _registration_inputs(client: DeepOriginClient, pose: Pose) -> dict:
+    """Return the import-dataset inputs of the run that registered ``pose``.
+
+    Args:
+        client: Client scoped to the test project.
+        pose: A synced pose.
+
+    Returns:
+        The run's ``userInputs``.
+    """
+    compute_job_id = Pose.from_id(pose.id, client=client).compute_job_id
+    assert compute_job_id
+    return client.executions.get(compute_job_id)["userInputs"]
+
+
+def test_pose_set_sync_omits_result_lane_on_import_dataset_3(
+    pytestconfig: pytest.Config,
+    client: DeepOriginClient,
     registered_protein,
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """PoseSet.sync blocks on data-platform ingestion before result-explorer hydrate."""
-    from deeporigin.drug_discovery import import_dataset_sync
-
-    calls: list[str] = []
-    real_wait = import_dataset_sync.wait_for_data_platform_ingestion
-
-    def _spy_wait(
-        bound_client: DeepOriginClient,
-        compute_job_id: str,
-        **kwargs: object,
-    ) -> dict:
-        calls.append(compute_job_id)
-        return real_wait(bound_client, compute_job_id, **kwargs)
-
-    monkeypatch.setattr(
-        import_dataset_sync,
-        "wait_for_data_platform_ingestion",
-        _spy_wait,
-    )
-
-    sdf_path = tmp_path / "pose.sdf"
-    lig = Ligand.from_sdf(BRD_DATA_DIR / "brd-2.sdf")
-    lig.sync(client=client)
-    lig.to_sdf(str(sdf_path))
-    pose = Pose(
-        ligand_id=lig.id,
+    """import-dataset 3 predates result_lane, so it is not sent."""
+    _require_local_env(pytestconfig)
+    monkeypatch.setitem(TOOL_KEYS_AND_VERSIONS["import_dataset"], "tool_version", "3")
+    poses = _registration_poses(
+        client,
         protein_id=registered_protein.id,
-        local_path=str(sdf_path),
-        project_id=client.project_id,
+        tmp_path=tmp_path,
+        names=["pose-a"],
     )
-    PoseSet(poses=[pose]).sync(client=client)
-    assert len(calls) == 1
-    assert calls[0]
-    assert pose.id is not None
+    PoseSet(poses=poses).sync(client=client)
+    assert "result_lane" not in _registration_inputs(client, poses[0])
+
+
+def test_pose_set_sync_sends_fast_result_lane_on_pinned_import_dataset(
+    pytestconfig: pytest.Config,
+    client: DeepOriginClient,
+    registered_protein,
+    tmp_path: Path,
+) -> None:
+    """The pinned import-dataset accepts result_lane, so pose registration asks for the fast lane."""
+    _require_local_env(pytestconfig)
+    poses = _registration_poses(
+        client,
+        protein_id=registered_protein.id,
+        tmp_path=tmp_path,
+        names=["pose-a"],
+    )
+    PoseSet(poses=poses).sync(client=client)
+    inputs = _registration_inputs(client, poses[0])
+    assert inputs["result_lane"] == POSE_REGISTRATION_RESULT_LANE
 
 
 def test_pose_set_sync_requires_import_execution_id(

@@ -304,7 +304,8 @@ class UniprotDiscovery(Execution, SyncExecutableMixin):
             uniprot_accession: UniProtKB accession (6 or 10 characters).
             project_id: Optional project id used by :meth:`import_proteins`
                 when the call does not pass ``project_id``.
-            tool_version: Platform tool version (defaults to ``"latest"``).
+            tool_version: Platform tool version. Defaults to the pinned major
+                version in :data:`TOOL_KEYS_AND_VERSIONS`.
             client: Optional API client.
             name: Optional execution label.
 
@@ -343,13 +344,19 @@ class UniprotDiscovery(Execution, SyncExecutableMixin):
         approve_amount: int | None,
         sync: bool,
     ) -> dict[str, Any]:
-        """Build the body dict for ``client.executions.create``."""
-        return _default_execution_payload(
+        """Build the body dict for ``client.executions.create``.
+
+        Hidden from Activity, as Studio and the MCP server hide their UniProt
+        lookups: the candidates are read from the return value.
+        """
+        payload = _default_execution_payload(
             self._make_inputs(),
             name=self.name,
             approve_amount=approve_amount,
             sync=sync,
         )
+        payload["visibility"] = "hidden"
+        return payload
 
     def run(
         self,
