@@ -971,14 +971,16 @@ def create_data_platform_router(
         store = executions or {}
         normalized: list[dict[str, Any]] = []
         for raw in store.values():
+            if raw.get("dataPlatformRowMissing"):
+                continue
             eid = raw.get("executionId")
             polls = 0
             if isinstance(eid, str):
                 polls = _dp_ingestion_polls.get(eid, 0)
                 _dp_ingestion_polls[eid] = polls + 1
             dp_status = raw.get("dataPlatformStatus")
-            if dp_status == "Completed":
-                row_status = "Completed"
+            if dp_status in ("Completed", "Failed"):
+                row_status = dp_status
             elif dp_status == "DataIngesting" and polls < 1:
                 row_status = "DataIngesting"
             elif dp_status == "DataIngesting":

@@ -355,9 +355,10 @@ def test_network_error_reconnects(mock_client_config, sleeps) -> None:
     assert sleeps == [1.0]
 
 
-def test_refused_stream_raises(mock_client_config, tmp_path) -> None:
-    """A gateway refusal (e.g. 403) raises, saving a curl with the filters."""
-    gateway = FakeGateway(streams=[403], statuses=["Completed"])
+@pytest.mark.parametrize("status", [401, 403])
+def test_refused_stream_raises(mock_client_config, tmp_path, status: int) -> None:
+    """An auth refusal raises, saving a curl with the filters."""
+    gateway = FakeGateway(streams=[status], statuses=["Completed"])
 
     with (
         patch("deeporigin.platform.client._ensure_do_folder", return_value=tmp_path),
@@ -399,11 +400,11 @@ def test_iter_dirty_filters_parses_frames() -> None:
     ]
 
 
-@pytest.mark.parametrize("status", [409, 429, 503])
+@pytest.mark.parametrize("status", [404, 409, 429, 503])
 def test_retryable_refusal_reconnects(
     mock_client_config, sleeps, tmp_path, status: int
 ) -> None:
-    """A connection-cap or transient refusal is retried, without a curl file."""
+    """A missing route, connection-cap or transient refusal is retried, without a curl file."""
     gateway = FakeGateway(streams=[status, HEARTBEAT], statuses=["Completed"])
 
     with patch("deeporigin.platform.client._ensure_do_folder", return_value=tmp_path):
@@ -480,9 +481,12 @@ def test_sweep_rereads_on_heartbeat(mock_client_config, sweep_every_tick) -> Non
     assert gateway.calls == ["stream", "search", "search"]
 
 
-def test_refused_stream_polls_row(mock_client_config, sleeps, tmp_path) -> None:
-    """A stream that never opens still finds the row by polling."""
-    gateway = FakeGateway(streams=[503], statuses=["DataIngesting", "Completed"])
+@pytest.mark.parametrize("status", [404, 503])
+def test_refused_stream_polls_row(
+    mock_client_config, sleeps, tmp_path, status: int
+) -> None:
+    """A stream that never opens (no SSE route, or unavailable) still finds the row by polling."""
+    gateway = FakeGateway(streams=[status], statuses=["DataIngesting", "Completed"])
 
     with patch("deeporigin.platform.client._ensure_do_folder", return_value=tmp_path):
         assert _wait(gateway)["status"] == "Completed"

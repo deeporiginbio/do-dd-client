@@ -20,8 +20,10 @@ from typing import Any
 import uuid
 
 from fastapi import APIRouter, HTTPException, Request
+from packaging.version import InvalidVersion, Version
 
 from deeporigin.utils.constants import (
+    IMPORT_DATASET_RESULT_LANE_MIN_VERSION,
     INLINE_LIGAND_CAP,
     METABOLISM_WORKFLOW_LIGAND_THRESHOLD,
 )
@@ -64,6 +66,25 @@ _RBFE_STAGE_PREPARE = (0.00, 0.12)
 _RBFE_STAGE_KONNEKTOR = (0.12, 0.20)
 _RBFE_STAGE_BUILD_PAIRS = (0.20, 0.28)
 _RBFE_STAGE_PAIR_PIPELINE = (0.28, 1.00)
+
+MOCK_POSE_REGISTRATION_FAIL_NAME = "mock-pose-registration-fail"
+"""SDF record name that makes a mock pose registration run end ``Failed``.
+
+The run fails before data platform creates its execution row, so
+``executions/search`` never returns one for it.
+"""
+
+MOCK_POSE_INGESTION_FAIL_NAME = "mock-pose-ingestion-fail"
+"""SDF record name whose run completes while its data-platform row ends ``Failed``."""
+
+MOCK_POSE_REGISTRATION_FAIL_REASON = "Mock pose registration failed."
+"""``statusReason`` set on a mock pose registration run that fails."""
+
+MOCK_POSE_REJECTED_NAME = "mock-pose-rejected"
+"""SDF record name whose pose the mock leaves out of result-explorer.
+
+The run still completes, as when the platform rejects a row while storing it.
+"""
 
 # Endpoint enum for mock ``deeporigin.admet-properties`` (tool definition + omit-all).
 MOCK_ADMET_ENDPOINTS: tuple[str, ...] = (
@@ -930,6 +951,8 @@ def create_tools_router(
         APIRouter instance with tools-related routes.
     """
     router = APIRouter()
+    # Execution id -> SDF record indexes left out of result-explorer.
+    rejected_pose_record_indexes: dict[str, set[int]] = {}
 
     # -- helper closures (capture shared state) --------------------------------
 
@@ -1459,6 +1482,7 @@ def create_tools_router(
             file_path = str(inputs.get("file_path") or "")
             project_id = body.get("projectId") or execution.get("projectId")
             ligand_rows: list[dict[str, Any]] = []
+            record_names: dict[int, str] = {}
             raw = file_storage.get(file_path)
             if raw:
                 supplier = Chem.SDMolSupplier()
@@ -1466,6 +1490,8 @@ def create_tools_router(
                 for idx, mol in enumerate(supplier):
                     if mol is None:
                         continue
+                    record_name = mol.GetProp("_Name") if mol.HasProp("_Name") else ""
+                    record_names[idx] = record_name
                     canonical = Chem.MolToSmiles(mol)
                     lid: str | None = None
                     existing: dict[str, Any] | None = None
@@ -1530,12 +1556,31 @@ def create_tools_router(
                         pose_row["protein_id"] = str(protein_id)
                     pose_rows.append(pose_row)
                 job_outputs["poses"] = pose_rows
+            eid = execution.get("executionId")
+            if register_poses and MOCK_POSE_REGISTRATION_FAIL_NAME in (
+                record_names.values()
+            ):
+                execution["status"] = "Failed"
+                execution["statusReason"] = MOCK_POSE_REGISTRATION_FAIL_REASON
+                execution["jobOutputs"] = {}
+                execution["dataPlatformRowMissing"] = True
+                return execution
             execution["jobOutputs"] = job_outputs
             if register_poses:
-                eid = execution.get("executionId")
                 if eid:
                     execution["dataPlatformRowId"] = str(uuid.uuid4())
-                    execution["dataPlatformStatus"] = "DataIngesting"
+                    execution["dataPlatformStatus"] = (
+                        "Failed"
+                        if MOCK_POSE_INGESTION_FAIL_NAME in record_names.values()
+                        else "DataIngesting"
+                    )
+                    rejected = {
+                        idx
+                        for idx, name in record_names.items()
+                        if name == MOCK_POSE_REJECTED_NAME
+                    }
+                    if rejected:
+                        rejected_pose_record_indexes[str(eid)] = rejected
             return execution
 
         if not inputs.get("register_pose"):
@@ -3840,6 +3885,27 @@ def create_tools_router(
             )
             executions[execution["executionId"]] = execution
             return _normalize_execution(execution)
+        if tool_key == "deeporigin.import-dataset" and "result_lane" in (
+            body.get("inputs") or {}
+        ):
+            # import-dataset's input schema has ``additionalProperties: false``;
+            # ``result_lane`` was added in IMPORT_DATASET_RESULT_LANE_MIN_VERSION.
+            # A partial pin runs the newest release in its line (``"4"`` is the
+            # latest 4.x), so it is compared on the segments it names.
+            try:
+                pinned = Version(tool_version).release
+                minimum = Version(IMPORT_DATASET_RESULT_LANE_MIN_VERSION).release
+                accepts_lane = pinned >= minimum[: len(pinned)]
+            except InvalidVersion:
+                accepts_lane = False
+            if not accepts_lane:
+                raise HTTPException(
+                    status_code=400,
+                    detail=(
+                        f"import-dataset {tool_version} does not accept input "
+                        "'result_lane'"
+                    ),
+                )
         if tool_key == "deeporigin.import-dataset" and body.get("sync") is True:
             execution = _build_pose_registration_execution(
                 org_key=org_key,
@@ -3849,11 +3915,22 @@ def create_tools_router(
             )
             eid = execution["executionId"]
             executions[eid] = execution
+            job_outputs = execution.get("jobOutputs")
+            rejected = rejected_pose_record_indexes.pop(str(eid), set())
+            if rejected and isinstance(job_outputs, dict):
+                job_outputs = {
+                    **job_outputs,
+                    "poses": [
+                        row
+                        for row in job_outputs.get("poses") or []
+                        if row.get("record_index") not in rejected
+                    ],
+                }
             _inject_result_explorer_records_from_outputs(
                 tool_key=tool_key,
                 tool_version=tool_version,
                 execution_id=eid,
-                job_outputs=execution.get("jobOutputs"),
+                job_outputs=job_outputs,
             )
             return _normalize_execution(execution)
         if tool_key == "deeporigin.import-dataset" and body.get("sync") is not True:

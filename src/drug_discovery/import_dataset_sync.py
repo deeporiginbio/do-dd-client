@@ -4,9 +4,11 @@ from __future__ import annotations
 
 from pathlib import Path
 import time
-import warnings
 from typing import Any, Literal, Optional
 import uuid
+import warnings
+
+from packaging.version import InvalidVersion, Version
 
 from deeporigin.exceptions import DeepOriginException
 from deeporigin.platform.client import DeepOriginClient
@@ -17,6 +19,7 @@ from deeporigin.platform.constants import (
     normalize_platform_status,
 )
 from deeporigin.platform.project_scope import require_client_project_id
+from deeporigin.utils.constants import IMPORT_DATASET_RESULT_LANE_MIN_VERSION
 
 MAX_SERVED_FILE_LIGAND_RECORDS = 500
 
@@ -32,6 +35,7 @@ DATA_PLATFORM_DATA_INGESTING_STATUS = "DataIngesting"
 
 _FAILED_DP_STATUSES = frozenset({"Failed", "Cancelled"})
 _IMPORT_FAILED_TITLE = "Ligand import failed"
+_IMPORT_RUN_FAILED_TITLE = "import-dataset run failed"
 _SMILES_LIST_SEARCH_CHUNK = 500
 _DEFAULT_TOOLS_POLL_INTERVAL_S = 2.0
 _DEFAULT_TOOLS_WAIT_TIMEOUT_S = 3600.0
@@ -313,6 +317,30 @@ def poll_tools_execution_terminal(
     )
     dto = dtos[0]
     return _tools_execution_terminal_dto(dto)
+
+
+def execution_status_reason(
+    client: DeepOriginClient,
+    execution_id: str,
+    *,
+    fallback: str | None,
+) -> str:
+    """Return the tools-service ``statusReason`` for an execution.
+
+    The data-platform execution row carries no failure reason, so it is read
+    from the tools-service execution.
+
+    Args:
+        client: Platform client.
+        execution_id: Tools-service execution id.
+        fallback: Value returned when the execution has no reason.
+
+    Returns:
+        The status reason, or ``fallback``.
+    """
+    dto = client.executions.get(execution_id)  # ty: ignore[unresolved-attribute]
+    reason = dto.get("statusReason") if isinstance(dto, dict) else None
+    return str(reason or fallback)
 
 
 def _latest_data_platform_execution_row(
@@ -620,6 +648,48 @@ def sync_process_pdb(
     )
 
 
+def import_dataset_supports_result_lane(tool_version: str) -> bool:
+    """Return whether an import-dataset version accepts the ``result_lane`` input.
+
+    tools-service runs a partial pin as the latest release that fills in its
+    remaining segments (``"4"`` runs the newest 4.x), so a partial pin is
+    compared on the segments it names: ``"4"`` and ``"4.0"`` qualify, ``"3"``
+    and ``"4.0.1"`` do not. A pin that is not a version number (e.g.
+    ``"latest"``) is treated as not supporting it.
+
+    Args:
+        tool_version: import-dataset version pin, e.g. ``"4"`` or ``"4.0.2"``.
+
+    Returns:
+        True when ``tool_version`` is at least
+        :data:`~deeporigin.utils.constants.IMPORT_DATASET_RESULT_LANE_MIN_VERSION`
+        on the segments it names.
+    """
+    try:
+        pinned = Version(tool_version).release
+    except InvalidVersion:
+        return False
+    minimum = Version(IMPORT_DATASET_RESULT_LANE_MIN_VERSION).release
+    return pinned >= minimum[: len(pinned)]
+
+
+def _raise_if_run_failed(dto: dict[str, Any]) -> None:
+    """Raise when a synchronous import-dataset run ended without success.
+
+    A run can fail before data platform creates its execution row, so the
+    status the run returned is checked before any ingestion wait.
+    """
+    status = normalize_platform_status(dto.get("status"))
+    if status in TERMINAL_STATES and not is_success_status(status):
+        raise DeepOriginException(
+            title=_IMPORT_RUN_FAILED_TITLE,
+            message=(
+                f"import-dataset run (execution_id={dto.get('executionId')!r}) "
+                f"ended with status {status!r}: {dto.get('statusReason') or status}"
+            ),
+        )
+
+
 def sync_process_sdf(
     *,
     client: DeepOriginClient,
@@ -629,8 +699,29 @@ def sync_process_sdf(
     protein_id: str | None = None,
     origin: str = "registered",
     tags: dict[str, Any] | None = None,
+    result_lane: str | None = None,
 ) -> dict[str, Any]:
-    """Run blocking import-dataset SDF processing and return jobOutputs."""
+    """Run blocking import-dataset SDF processing and return jobOutputs.
+
+    Args:
+        client: Platform client.
+        project_id: Project to import into; must match ``client.project_id``.
+        file_path: Remote path of the staged SDF.
+        register_poses: Also register a pose row per SDF record.
+        protein_id: Protein the registered poses belong to.
+        origin: Provenance stored on registered pose rows.
+        tags: Optional tags for created ligands.
+        result_lane: Data-platform result lane (e.g. ``"fast"``). Sent only
+            when the pinned import-dataset version accepts it (see
+            :func:`import_dataset_supports_result_lane`); otherwise left out,
+            so the tool's default lane applies.
+
+    Returns:
+        The run's ``jobOutputs`` plus ``import_execution_id``.
+
+    Raises:
+        DeepOriginException: If the run ended without success.
+    """
     inputs: dict[str, Any] = {
         "process_sdf": True,
         "file_path": file_path,
@@ -641,9 +732,13 @@ def sync_process_sdf(
         inputs["protein_id"] = protein_id
     if tags is not None:
         inputs["tags"] = tags
-    return job_outputs_with_execution_id(
-        run_import_dataset_sync(inputs=inputs, project_id=project_id, client=client)
-    )
+    if result_lane is not None and import_dataset_supports_result_lane(
+        TOOL_KEYS_AND_VERSIONS["import_dataset"]["tool_version"]
+    ):
+        inputs["result_lane"] = result_lane
+    dto = run_import_dataset_sync(inputs=inputs, project_id=project_id, client=client)
+    _raise_if_run_failed(dto)
+    return job_outputs_with_execution_id(dto)
 
 
 def sync_process_csv(

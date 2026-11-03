@@ -299,10 +299,13 @@ straight away keeps the reconnect pause growing instead of resetting it. The
 SSE service heartbeats every 25s, so a stream that held this long has carried
 at least one heartbeat."""
 
-SSE_RETRYABLE_STATUS_CODES: frozenset[int] = HTTP_RETRYABLE_STATUS_CODES | {409}
+SSE_RETRYABLE_STATUS_CODES: frozenset[int] = HTTP_RETRYABLE_STATUS_CODES | {404, 409}
 """Stream-open statuses that are reconnected on rather than raised.
 
-409 is the SSE service's per-user, per-project connection cap."""
+404 means the gateway has no SSE route (SSE disabled or not deployed); the
+wait polls the row instead, as Studio's SSE provider falls back to polling.
+409 is the SSE service's per-user, per-project connection cap. 401 and 403
+still raise: polling would hit the same refusal."""
 
 TOOL_KEY_PREFIX = "deeporigin."
 """Platform tool-key prefix omitted in compact display (e.g. user log tables)."""
@@ -453,3 +456,12 @@ ENUMERATOR_AVAILABLE_REACTIONS_COLUMNS: tuple[str, ...] = (
     "atom_indices",
 )
 """Column order for the DataFrame built from AVAILABLE_REACTIONS ``jobOutputs``."""
+
+IMPORT_DATASET_RESULT_LANE_MIN_VERSION = "4.0.2"
+"""Oldest import-dataset version that accepts the ``result_lane`` input.
+
+Older versions reject unknown inputs, so ``result_lane`` is only sent when the
+pinned import-dataset version is at least this one."""
+
+POSE_REGISTRATION_RESULT_LANE = "fast"
+"""Data-platform result lane requested for pose registration imports."""

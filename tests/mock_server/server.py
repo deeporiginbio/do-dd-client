@@ -21,7 +21,7 @@ import uvicorn
 from .constants import (
     MOCK_BULK_DOCKING_EXECUTION_ID,
 )
-from .routers import billing, data_platform, entities, files, tools
+from .routers import billing, data_platform, entities, files, sse, tools
 from .routers.data_platform import (
     MOCK_CANONICAL_POCKET_ID,
     MOCK_CANONICAL_PROTEIN_ID,
@@ -426,6 +426,9 @@ class MockServer:
         # Include billing routes
         billing_router = billing.create_billing_router()
         self.app.include_router(billing_router)
+
+        # Include the gateway SSE stream route
+        self.app.include_router(sse.create_sse_router())
 
         @self.app.get("/health")
         def health() -> dict[str, str]:

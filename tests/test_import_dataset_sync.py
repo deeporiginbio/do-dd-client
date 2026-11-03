@@ -11,9 +11,10 @@ import pytest
 
 from deeporigin.drug_discovery import BRD_DATA_DIR
 from deeporigin.drug_discovery.import_dataset_sync import (
-    apply_ligand_import_job_outputs,
     DATA_PLATFORM_DATA_INGESTING_STATUS,
+    apply_ligand_import_job_outputs,
     hydrate_ligand_ids_after_import,
+    import_dataset_supports_result_lane,
     job_outputs,
     job_outputs_with_execution_id,
     poll_tools_execution_terminal,
@@ -331,3 +332,22 @@ def test_sync_process_pdb_uses_import_dataset_v4_and_process_pdb_flag(
     assert len(proteins) >= 1
     meta = TOOL_KEYS_AND_VERSIONS["import_dataset"]
     assert meta["tool_version"] == "4"
+
+
+@pytest.mark.parametrize(
+    ("tool_version", "expected"),
+    [
+        ("3", False),
+        ("3.1.16", False),
+        ("4", True),
+        ("4.0", True),
+        ("4.0.1", False),
+        ("4.0.2", True),
+        ("4.1", True),
+        ("5", True),
+        ("latest", False),
+    ],
+)
+def test_import_dataset_supports_result_lane(tool_version: str, expected: bool) -> None:
+    """result_lane is accepted from 4.0.2; a partial pin is compared on the segments it names."""
+    assert import_dataset_supports_result_lane(tool_version) is expected
