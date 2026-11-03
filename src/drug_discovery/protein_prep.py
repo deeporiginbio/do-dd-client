@@ -2000,6 +2000,10 @@ class ProteinPrep(
             payload["approveAmount"] = approve_amount
         if self.name is not None and action == "prepare":
             payload["name"] = self.name
+        if action == "recommend":
+            # A recommend is a helper run, hidden from Activity as Studio hides it;
+            # the prepare it feeds is the run the user sees.
+            payload["visibility"] = "hidden"
         return payload
 
     def recommend(self) -> pd.DataFrame:

@@ -59,6 +59,7 @@ def test_uniprot_discovery_make_payload(client: DeepOriginClient) -> None:
 
     assert payload["sync"] is True
     assert payload["name"] == "ud-test"
+    assert payload["visibility"] == "hidden"
     assert payload["inputs"] == {"uniprot_accession": "P00533"}
 
 
