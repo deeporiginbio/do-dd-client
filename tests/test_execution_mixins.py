@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING, Any
 
 import pytest
 
-from deeporigin.drug_discovery import Konnektor, Ligand
+from deeporigin.drug_discovery import Konnektor, Pose
 from deeporigin.drug_discovery.execution import Execution
 from deeporigin.drug_discovery.execution_mixins import AsyncExecutableMixin
 
@@ -52,12 +52,13 @@ class _AsyncJob(Execution, AsyncExecutableMixin):
 
 def test_execution_confirm_transitions_quoted_to_running(
     client: DeepOriginClient,
-    registered_ligand: Ligand,
-    registered_ligand_brd3: Ligand,
 ) -> None:
     """``confirm`` on a quoted execution transitions to Running via the mock server."""
     job = Konnektor(
-        ligands=[registered_ligand, registered_ligand_brd3],
+        poses=[
+            Pose(ligand_id="lig-1", id="pose-1", remote_path="poses/pose-1.sdf"),
+            Pose(ligand_id="lig-2", id="pose-2", remote_path="poses/pose-2.sdf"),
+        ],
         client=client,
     )
     assert job.run(quote=True) is None
