@@ -29,6 +29,7 @@ from contextvars import ContextVar
 import copy
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Any, ClassVar, Literal, Self
+import warnings
 
 from deeporigin.exceptions import PlatformRestrictionError
 from deeporigin.platform.constants import (
@@ -44,6 +45,7 @@ from deeporigin.platform.project_scope import (
 )
 from deeporigin.utils.constants import (
     EXECUTION_LIST_ORDER_CREATED_DESC,
+    SYNC_RUN_INGESTION_TIMEOUT_SECONDS,
     TOOL_EXECUTION_POST_TIMEOUT_SECONDS,
     TOOL_KEY_PREFIX,
 )
@@ -585,6 +587,43 @@ class Execution:
         result = self.client.executions.get(exec_id)  # ty:ignore[unresolved-attribute]
         if result:
             self.update_from_dto(result)
+
+    def _wait_for_result_ingestion(self) -> None:
+        """Block until data platform has ingested this execution's result rows.
+
+        A sync ``run()`` returns as soon as the tool finishes, but its result
+        rows reach data platform asynchronously (message queue, then ingest),
+        so a read straight after the run can find none. Data platform holds the
+        execution at ``DataIngesting`` until the rows are written; this waits
+        for it to leave that state.
+
+        A wait that times out, or an ingestion that ends without success, only
+        warns: the run itself succeeded, and ``get_results`` can still fall
+        back to ``jobOutputs``.
+        """
+        exec_id = self._ensure_id()
+        executions_client: Any = self.client.executions
+        try:
+            row = executions_client.wait_for_ingestion(
+                exec_id,
+                timeout=SYNC_RUN_INGESTION_TIMEOUT_SECONDS,
+            )
+        except TimeoutError:
+            warnings.warn(
+                f"Data platform did not finish ingesting results for execution "
+                f"{exec_id!r} within {SYNC_RUN_INGESTION_TIMEOUT_SECONDS:.0f}s; "
+                "results may be incomplete or lack data-platform ids.",
+                stacklevel=3,
+            )
+            return
+        status = normalize_platform_status(row.get("status"))
+        if not is_success_status(status):
+            warnings.warn(
+                f"Data platform ingestion for execution {exec_id!r} ended with "
+                f"status {status!r}; results may be incomplete or lack "
+                "data-platform ids.",
+                stacklevel=3,
+            )
 
     def wait(
         self,

@@ -258,6 +258,12 @@ DATA_PLATFORM_INGESTION_TIMEOUT_SECONDS = 3600.0
 """Default overall timeout (seconds) for
 :meth:`deeporigin.platform.executions.Executions.wait_for_ingestion`."""
 
+SYNC_RUN_INGESTION_TIMEOUT_SECONDS = 300.0
+"""Longest (seconds) a sync ``run()`` waits for data platform to ingest its results.
+
+Ingestion usually ends a second or two after the tool returns, so a wait this
+long means it is stuck; ``run()`` then warns and loads what it can."""
+
 IMPORT_DATASET_PROTEINS_DATABASE_KEY = "deeporigin.attributes_catalog"
 """import-dataset ``database_key`` sent with a protein folder import."""
 

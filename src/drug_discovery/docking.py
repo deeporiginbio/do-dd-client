@@ -368,6 +368,7 @@ class Docking(Execution, SyncExecutableMixin, AsyncExecutableMixin, NotebookWatc
                 ),
             ) from None
 
+        self._wait_for_result_ingestion()
         return self.get_results(dto, all_poses=True)
 
     def _start_impl(self, *, approve_amount: int | None = None, **kwargs) -> None:

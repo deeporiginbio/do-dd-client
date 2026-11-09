@@ -951,6 +951,7 @@ class PocketFinder(
         if not is_success_status(self.status):
             return None
 
+        self._wait_for_result_ingestion()
         return self.get_results(dto)
 
     def _stamp_parent_protein(self, pockets: list[Pocket]) -> list[Pocket]:
