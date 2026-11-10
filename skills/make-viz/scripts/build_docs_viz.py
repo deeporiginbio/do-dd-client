@@ -182,8 +182,8 @@ def _build_5qsp_lm() -> str:
     """5QSP after loop modelling (docs ``5QSP-lm.html``).
 
     Uses the same PDB fetch as ``_build_5qsp`` until a checked-in loop-modelled
-    structure snapshot is added to fixtures. Re-run ``model_loops()`` locally when
-    updating this visual.
+    structure snapshot is added to fixtures. Re-run ``ProteinPrep`` with
+    ``model_missing_loops=True`` locally when updating this visual.
     """
     return _build_5qsp()
 

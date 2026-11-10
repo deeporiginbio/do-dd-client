@@ -391,11 +391,16 @@ records and waters) and ignores hydrogens. Customize this with ``protein_atoms_o
     In this example, the atom count might not change significantly because the ligand atoms are typically a small fraction of the total protein structure. However, the protein's internal structure and `block_content` are updated to exclude the ligand. Additionally, the PDB file's MASTER record is automatically updated to reflect the new atom and CONECT record counts.
 
 
-### Loop modelling 
+### Loop modelling
 
-Missing information and gaps in the structure can be filled in using the Loop Modelling tool. 
+Gaps in a deposited structure can be filled during preparation. Loop modelling is
+part of [Protein Prep](../tools/proteinprep.md): set `model_missing_loops=True`
+(the default) on a `ProteinPrep` session and call `run()` after you resolve
+component decisions. It is not a method on [`Protein`](../ref/protein.md) itself.
 
-For example, this protein from the PDB has missing elements, as can be seen from the dashed lines below:
+The example below uses PDB entry `5QSP`, which has missing segments (dashed
+lines in the viewer). Use [`find_missing_residues`](#finding-missing-residues)
+to list gaps before preparation.
 
 ```python
 from deeporigin.drug_discovery import Protein
@@ -412,45 +417,45 @@ protein.show()
     title="Protein visualization"
 ></iframe>
 
-We can verify that there are missing residues using the `find_missing_residues` method:
-
-```python
-from deeporigin.drug_discovery import Protein
-
-protein = Protein.from_pdb_id("5QSP")
-protein.find_missing_residues()
-```
-
-!!! success "Expected output"
-    ```
-    {'A': [(511, 514), (547, 550), (679, 682), (841, 855)],
-     'B': [(509, 516), (546, 551), (679, 684), (840, 854)]}
-    ```
-
-
-We can use the loop modelling tool to fix this structure using:
-
+Register the structure, recommend keep/skip settings, then prepare with loop
+modelling enabled:
 
 ```{.python notest}
-protein.model_loops()
-protein.show()
+from deeporigin.drug_discovery import Protein, ProteinPrep
+
+protein = Protein.from_pdb_id("5QSP")
+protein.sync()
+prep = ProteinPrep(protein)  # model_missing_loops=True by default
+prep.recommend()
+prep.skip(decision="review")
+prepared = prep.run()
+prepared.show()
 ```
 
-!!! warning "Method mutates the `Protein` object"
-    The `model_loops()` method **mutates the protein object** by updating its structure with the modeled loops.
+!!! note "Prepared protein is a new object"
+    `run()` returns a new registered `Protein` for the prepared PDB under
+    `entities/proteins/prepared/`. The input `protein` is unchanged. Loop
+    modelling needs a four-character PDB ID (`protein.pdb_id` or `prep.pdb_id`).
+
+To turn loop modelling off for a faster prepare-only path:
+
+```{.python notest}
+prep.model_missing_loops = False
+prepared = prep.run()
+```
 
 <iframe 
     src="../../images/5QSP-lm.html" 
     width="100%" 
     height="600" 
     style="border:none;"
-    title="Protein visualization"
+    title="Protein visualization after loop modelling"
 ></iframe>
 
-We can verify that there are no missing residues anymore:
+On the prepared structure, gaps should be gone:
 
 ```{.python notest}
-protein.find_missing_residues()
+prepared.find_missing_residues()
 ```
 
 !!! success "Expected output"
@@ -458,22 +463,29 @@ protein.find_missing_residues()
     {}
     ```
 
+See [Preparing a protein](#preparing-a-protein) for pockets, async `start()`, and
+saved Selection workflows.
+
 
 ??? info "How does loop modelling work?"
 
-    The current implementation of LoopModeling tool can use known experimental or predicted structures to fill gaps in given protein structure.
+    During served prepare (`deeporigin.protein-prep` v11), the platform can model
+    missing loops using experimental or predicted templates.
 
-    The tool works by searching for potential templates for each chain with missing residues in Protein Data Bank (PDB) and specified directory of templates. If the PDB contains the Uniprot IDs, this can also be used to download the predicted AlphaFold2 structures from AF Structural Database.
+    For each chain, the full sequence and the resolved structure are aligned to
+    find continuous gaps. The Protein Data Bank (PDB) is searched for templates
+    above a sequence-identity threshold. When UniProt IDs are present, predicted
+    AlphaFold structures from the AF Structural Database may be considered as well.
 
-    First, for each chain the full sequence and the sequence of the resolved structure are extracted and aligned to identify gaps as continuous groups of missing residues. If gaps are found the PDB database is searched for templates using specified sequence identity threshold. Structures in the additional template directory and AF structure are added for consideration.
+    For each template, a global 3D alignment is attempted and structural motifs
+    for missing residues are transferred when the gap edges and sequence identity
+    look consistent. If global alignment fails, a local alignment around the gap
+    is tried.
 
-    For each template, global 3D alignment is first performed and an attempt is made to transfer the motifs corresponding to missing residues in the target if corresponding residues are present in the given template. The success is evaluated based on CA-CA distances at the edges of the gap and sequence identity of the residues to be transferred.
-
-    If the global alignment fails for the given gap, the local alignment is attempted using the specified number of residues adjacent to the gap and the transfer of the structural motif is again attempted.
-
-    Based on each found template, a model is constructed with structural motifs that were successfully matched. If the b_mixed_models flag is on, the attempt will be made to fill the gaps where matching was not successful using models based on other templates, sorted by resolution.
-
-    Finally, the results for all chains are combined to obtain N possible structures using best models obtained for each chain.
+    Successful transfers are assembled into models per template. Mixed models can
+    combine motifs from several templates (ordered by resolution) when a single
+    template does not cover every gap. Results for all chains are merged into the
+    prepared structure returned by `ProteinPrep.run()`.
 
 ### Removing specific residues
 
