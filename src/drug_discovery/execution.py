@@ -31,7 +31,7 @@ from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Any, ClassVar, Literal, Self
 import warnings
 
-from deeporigin.exceptions import PlatformRestrictionError
+from deeporigin.exceptions import DeepOriginException, PlatformRestrictionError
 from deeporigin.platform.constants import (
     ALLOWED_STATUS_TRANSITIONS,
     is_success_status,
@@ -597,9 +597,10 @@ class Execution:
         execution at ``DataIngesting`` until the rows are written; this waits
         for it to leave that state.
 
-        A wait that times out, or an ingestion that ends without success, only
-        warns: the run itself succeeded, and ``get_results`` can still fall
-        back to ``jobOutputs``.
+        A wait that times out, a wait that fails (the gateway refuses the
+        stream, or a data-platform read fails), or an ingestion that ends
+        without success only warns: the run itself succeeded, and
+        ``get_results`` can still fall back to ``jobOutputs``.
         """
         exec_id = self._ensure_id()
         executions_client: Any = self.client.executions
@@ -613,6 +614,14 @@ class Execution:
                 f"Data platform did not finish ingesting results for execution "
                 f"{exec_id!r} within {SYNC_RUN_INGESTION_TIMEOUT_SECONDS:.0f}s; "
                 "results may be incomplete or lack data-platform ids.",
+                stacklevel=3,
+            )
+            return
+        except DeepOriginException as error:
+            warnings.warn(
+                f"Could not wait for data platform to ingest results for execution "
+                f"{exec_id!r} ({error.user_message}); results may be incomplete or "
+                "lack data-platform ids.",
                 stacklevel=3,
             )
             return

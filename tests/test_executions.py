@@ -182,6 +182,21 @@ def test_wait_for_result_ingestion_warns_on_timeout() -> None:
         job._wait_for_result_ingestion()
 
 
+def test_wait_for_result_ingestion_warns_when_wait_fails() -> None:
+    """A wait that raises (gateway 401/403, data-platform 5xx) warns, not raises."""
+    client = MagicMock()
+    client.executions.wait_for_ingestion.side_effect = DeepOriginException(
+        title="Data platform unavailable",
+        message="executions search failed with 503",
+        http_status=503,
+    )
+    job: Any = _TestToolExecution(client=client)
+    job._id = "exec-99"
+
+    with pytest.warns(UserWarning, match="Could not wait.*failed with 503"):
+        job._wait_for_result_ingestion()
+
+
 def test_wait_for_result_ingestion_warns_on_failed_ingestion() -> None:
     """An ingestion that ends ``Failed`` warns that results may lack ids."""
     client = MagicMock()
