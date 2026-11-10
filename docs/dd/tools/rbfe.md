@@ -2,8 +2,10 @@
 
 Plan, run, and inspect Relative Binding Free Energy (RBFE) workflows in Deep Origin.
 
-This page covers the tools around an RBFE run: planning and visualizing a ligand
-network, inspecting prepared systems, and reading results. For an end-to-end walk
+This page covers the tools around an RBFE run: planning and visualizing a pose
+network, inspecting prepared systems, and reading results. RBFE works on poses:
+each ligand enters the network as one 3D pose in the binding site (a docked or
+crystal pose). For an end-to-end walk
 through of submitting a run, see the [RBFE tutorial](../tutorial/rbfe.md).
 
 The `RBFE` class follows the [common tool lifecycle](./overview.md): construct it,
@@ -12,19 +14,19 @@ It is submitted asynchronously, so your notebook stays responsive while it runs.
 
 ## Planning and visualizing a network
 
-When you pass a `ligands` set to `RBFE`, the workflow plans the pairwise network
-for you. To see or tune that network *before* submitting a full run, run
-Konnektor on its own:
+When you pass `poses` to `RBFE`, the workflow plans the pairwise network for
+you. Pass one pose per ligand. To see or tune that network *before* submitting a
+full run, run Konnektor on its own:
 
 ```{.python notest}
 from deeporigin.drug_discovery import Konnektor
 
-kn = Konnektor(ligands=ligands, network_type="mst")
+kn = Konnektor(poses=poses, network_type="mst")
 network = kn.run()
 
 network.show_network()   # interactive network view in the notebook
-network.pairs            # list of (ligand, ligand) tuples
-network.is_connected     # True if every ligand is reachable
+network.pairs            # list of (pose, pose) tuples
+network.is_connected     # True if every pose is reachable
 ```
 
 `show_network()` renders an interactive graph:
@@ -45,7 +47,7 @@ connectivity before spending on simulation.
 Choose `network_type` based on the trade-off you want:
 
 - `"mst"` — minimum spanning tree; fewest edges, lowest cost, no redundancy.
-- `"star"` — all ligands connected to one reference.
+- `"star"` — all poses connected to one reference.
 - `"cyclic"` — redundant edges that form cycles, enabling consistency checks.
 
 ## Inspecting prepared systems
@@ -60,12 +62,22 @@ system = rbfe.get_prepared_system()
 system.show()
 
 # A specific pair, when the run has many:
-system = rbfe.get_prepared_system(
-    ligand1_id=ligand1.id,
-    ligand2_id=ligand2.id,
-)
+system = rbfe.get_prepared_system(pose1_id=pose1.id, pose2_id=pose2.id)
 system.show()
 system.show(solute=True)   # solute-only view, when available
+
+# Every prepared system of the run:
+systems = rbfe.get_prepared_systems()
+```
+
+To only prepare systems now and run the FEP step later, pass
+`steps=["system-prep"]`, then start a second run from the prepared systems:
+
+```{.python notest}
+prep = RBFE(protein=protein, pairs=network.pairs, steps=["system-prep"])
+prep.start()
+# ... once it completes:
+rbfe = RBFE(prepared_systems=prep.get_prepared_systems())
 ```
 
 You will see something like:
@@ -80,8 +92,8 @@ You will see something like:
 
 You do not need to wait for the whole run to finish — prepared systems become
 available as soon as the system-prep step completes. If no prepared-system rows
-exist yet, `get_prepared_system()` raises an error telling you to wait or to pass
-`ligand1_id`/`ligand2_id` to disambiguate.
+exist yet, `get_prepared_system()` raises an error telling you to wait or to
+check the pose filters.
 
 ## Reading results
 
@@ -93,29 +105,30 @@ After the RBFE step completes, `get_results()` returns one row per pair:
 rbfe.get_results()
 ```
 
-| protein_id | ligand1_id | ligand2_id | ddG            |
-|------------|------------|------------|----------------|
-| prot-...   | lig-...    | lig-...    | -1.23 kcal/mol |
+| protein_id | pose1_id | pose2_id | ligand1_id | ligand2_id | ddG            |
+|------------|----------|----------|------------|------------|----------------|
+| prot-...   | pose-... | pose-... | lig-...    | lig-...    | -1.23 kcal/mol |
 
-`ddG` is the relative binding free energy difference between `ligand1` and
-`ligand2`, formatted with its unit. A more negative `ddG` means `ligand2` binds
-more tightly than `ligand1`.
+`ddG` is the relative binding free energy difference between `pose1` and
+`pose2`, formatted with its unit. A more negative `ddG` means `pose2` binds more
+tightly than `pose1`. `ligand1_id` and `ligand2_id` name the ligands the poses
+belong to.
 
-### Per-ligand absolute dG (cycle closure)
+### Per-pose absolute dG (cycle closure)
 
 If you submitted the run with `exp_abfe` and/or `fep_abfe` anchors, the
-`cycle-closure` step converts the pairwise network into absolute per-ligand
+`cycle-closure` step converts the pairwise network into absolute per-pose
 values:
 
 ```{.python notest}
 rbfe.get_cycle_closure_results()
 ```
 
-| ligand_id | dG   | unit     | cluster |
-|-----------|------|----------|---------|
-| lig-...   | -9.9 | kcal/mol | 0       |
+| pose_id  | ligand_id | dG   | unit     | cluster |
+|----------|-----------|------|----------|---------|
+| pose-... | lig-...   | -9.9 | kcal/mol | 0       |
 
-`cluster` groups ligands that are connected in the network; ligands in separate,
+`cluster` groups poses that are connected in the network; poses in separate,
 unconnected clusters cannot be placed on the same absolute scale. See the
 [RBFE tutorial](../tutorial/rbfe.md#converting-to-absolute-binding-free-energy)
 for how to supply anchors.
@@ -145,7 +158,7 @@ rbfe.sync()          # refresh status from the platform
 rbfe.get_results()
 ```
 
-This rehydrates the stored inputs (steps, protein, ligands/pairs, prepared
+This rehydrates the stored inputs (steps, protein, poses/pairs, prepared
 systems, parameters) so you can check status, watch progress, or fetch results
 without re-specifying anything.
 
@@ -154,11 +167,14 @@ without re-specifying anything.
 - **No results yet** — RBFE runs asynchronously. Call `rbfe.sync()` and confirm
   the status is `Completed` before expecting `get_results()` to return rows.
 - **`get_prepared_system()` raises** — the system-prep step hasn't produced rows
-  yet, or several pairs match. Wait, or pass `ligand1_id`/`ligand2_id`.
+  yet, or no row matches the pose filters. Wait, or check `pose1_id`/`pose2_id`.
+  With several pairs and no filter, it returns the first one.
 - **Empty cycle-closure results** — cycle closure only runs when you pass
   `exp_abfe` or `fep_abfe`; check that `"cycle-closure"` is in `rbfe.steps`.
 - **Konnektor network not connected** — `network.is_connected` is `False` when
   ligands are too dissimilar to map; try `network_type="star"` or curate the set.
+- **Run refused before it starts** — RBFE takes one pose per ligand, and every
+  anchor's `pose_id` must be one of the network's poses.
 
 ## Additional resources
 

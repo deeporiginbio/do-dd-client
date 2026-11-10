@@ -18,8 +18,8 @@ from deeporigin.drug_discovery.fep_common import (
     _simulation_blocks,
 )
 from deeporigin.drug_discovery.notebook_watch_mixin import NotebookWatchMixin
-from deeporigin.drug_discovery.structures.ligand import Ligand, LigandSet
-from deeporigin.drug_discovery.structures.pose import Pose
+from deeporigin.drug_discovery.structures.ligand import Ligand
+from deeporigin.drug_discovery.structures.pose import Pose, PoseSet
 from deeporigin.drug_discovery.structures.prepared_system import PreparedSystem
 from deeporigin.drug_discovery.structures.protein import Protein
 from deeporigin.exceptions import DeepOriginException
@@ -28,32 +28,20 @@ from deeporigin.platform.constants import TOOL_KEYS_AND_VERSIONS
 
 RBFEWorkflowStep = Literal["konnektor", "system-prep", "rbfe", "cycle-closure"]
 KonnektorNetworkType = Literal["star", "mst", "cyclic"]
-RBFEAnchorInput = dict[str, str | float]
-
-
-@beartype
-def _ligand_konnektor_tool_ref(ligand: Ligand) -> dict[str, str]:
-    """Serialize a ligand for the RBFE Konnektor ``ligands[]`` input."""
-    ligand_id = ligand.id
-    if ligand_id is None or not str(ligand_id).strip():
-        msg = "Ligand must be registered before submitting RBFE (id is missing)."
-        raise DeepOriginException(
-            title="Ligand not registered",
-            message=msg,
-            fix="Call ligand.sync(client=...) before RBFE.start().",
-        )
-    if ligand.remote_path is None:
-        msg = "Ligand must be synced before submitting RBFE (remote_path is missing)."
-        raise DeepOriginException(
-            title="Ligand not synced",
-            message=msg,
-            fix="Call ligand.sync(client=...) before RBFE.start().",
-        )
-    return {"id": str(ligand_id), "file_path": ligand.remote_path}
+RBFEAnchorInput = dict[str, str | int | float]
+_RBFE_STEP_PLANS: tuple[list[str], ...] = (
+    ["system-prep"],
+    ["system-prep", "rbfe"],
+    ["rbfe"],
+    ["konnektor", "system-prep", "rbfe"],
+    ["system-prep", "rbfe", "cycle-closure"],
+    ["rbfe", "cycle-closure"],
+    ["konnektor", "system-prep", "rbfe", "cycle-closure"],
+)
 
 
 def _ligand_from_pair_input(ref: dict[str, Any], *, client: DeepOriginClient) -> Ligand:
-    """Rehydrate a ligand from an RBFE ``pairs[]`` ligand reference."""
+    """Rehydrate a ligand from a pre-3.0 RBFE ``pairs[]`` ligand reference."""
     lig_id = ref.get("id")
     file_path = ref.get("file_path")
     if lig_id is not None:
@@ -72,7 +60,7 @@ def _ligand_from_pair_input(ref: dict[str, Any], *, client: DeepOriginClient) ->
 
 
 def _pose_from_pair_input(ref: dict[str, Any]) -> Pose:
-    """Rehydrate a pose from an RBFE ``pairs[]`` pose reference."""
+    """Rehydrate a pose from an RBFE ``pairs[]`` / ``poses[]`` reference."""
     pose_id = ref.get("id")
     file_path = ref.get("file_path")
     if pose_id is None and not file_path:
@@ -101,6 +89,7 @@ def _format_ddg(*, total: Any, unit: str | None) -> str | None:
 def _cycle_closure_row_from_item(item: dict[str, Any]) -> dict[str, Any]:
     """Extract one cycle-closure summary row from a result item."""
     return {
+        "pose_id": item.get("pose_id"),
         "ligand_id": item.get("ligand_id"),
         "dG": item.get("dG"),
         "unit": item.get("unit"),
@@ -117,7 +106,7 @@ def _cycle_closure_rows_from_payload(payload: dict[str, Any]) -> list[dict[str, 
             for item in nested
             if isinstance(item, dict)
         ]
-    if "ligand_id" in payload and "dG" in payload:
+    if ("pose_id" in payload or "ligand_id" in payload) and "dG" in payload:
         return [_cycle_closure_row_from_item(payload)]
     return []
 
@@ -149,7 +138,11 @@ def _rbfe_results_dataframe(
     *,
     tool_key: str,
 ) -> pd.DataFrame | None:
-    """Build a summary table from a data-platform RBFE results response."""
+    """Build a summary table from the pairwise RBFE rows of a results response.
+
+    Cycle-closure and prepared-system rows share the tool key; only edge rows
+    carry ``total``.
+    """
     records = response.get("data") or []
     rows: list[dict[str, Any]] = []
     for record in records:
@@ -158,11 +151,13 @@ def _rbfe_results_dataframe(
         if record.get("tool_key") != tool_key:
             continue
         payload = record.get("data")
-        if not isinstance(payload, dict):
+        if not isinstance(payload, dict) or "total" not in payload:
             continue
         rows.append(
             {
                 "protein_id": payload.get("protein_id"),
+                "pose1_id": payload.get("pose1_id"),
+                "pose2_id": payload.get("pose2_id"),
                 "ligand1_id": payload.get("ligand1_id"),
                 "ligand2_id": payload.get("ligand2_id"),
                 "ddG": _format_ddg(
@@ -179,9 +174,10 @@ def _rbfe_results_dataframe(
 class RBFE(Execution, AsyncExecutableMixin, NotebookWatchMixin):
     """Batch RBFE workflow (``deeporigin.rbfe``).
 
-    Platform ``steps`` are inferred from constructor inputs (see :meth:`_post_init`):
+    Platform ``steps`` are inferred from constructor inputs (see :meth:`_post_init`)
+    unless passed explicitly:
 
-    - ``["konnektor", "system-prep", "rbfe"]``: ``protein`` + ``ligands``
+    - ``["konnektor", "system-prep", "rbfe"]``: ``protein`` + ``poses``
     - ``["system-prep", "rbfe"]``: ``protein`` + ``pairs``
     - ``["rbfe"]``: ``prepared_systems``
     - Append ``cycle-closure`` when ``exp_abfe`` and/or ``fep_abfe`` anchors are set
@@ -193,21 +189,23 @@ class RBFE(Execution, AsyncExecutableMixin, NotebookWatchMixin):
 
     tool_key: str = TOOL_KEYS_AND_VERSIONS["rbfe"]["tool_key"]
 
+    @beartype
     def __init__(
         self,
         *,
         protein: Protein | None = None,
-        ligands: LigandSet | list[Ligand] | None = None,
+        poses: PoseSet | list[Pose] | None = None,
         pairs: list[tuple[Pose, Pose]] | None = None,
         prepared_systems: list[PreparedSystem] | None = None,
         network_type: KonnektorNetworkType = "mst",
         params: RBFEParams | None = None,
-        add_h_atoms: bool = False,
+        add_h_atoms: bool = True,
         protonate_protein: bool = False,
         retain_waters: bool = True,
         padding: float = 1.0,
         exp_abfe: list[RBFEAnchorInput] | None = None,
         fep_abfe: list[RBFEAnchorInput] | None = None,
+        steps: list[RBFEWorkflowStep] | None = None,
         tool_version: str = TOOL_KEYS_AND_VERSIONS["rbfe"]["tool_version"],
         client: DeepOriginClient | None = None,
         name: str | None = None,
@@ -218,43 +216,44 @@ class RBFE(Execution, AsyncExecutableMixin, NotebookWatchMixin):
 
         - ``prepared_systems`` -> ``["rbfe"]`` (FEP on existing systems)
         - ``protein`` + ``pairs`` -> ``["system-prep", "rbfe"]``
-        - ``protein`` + ``ligands`` -> ``["konnektor", "system-prep", "rbfe"]``
+        - ``protein`` + ``poses`` -> ``["konnektor", "system-prep", "rbfe"]``
 
-        Exactly one of ``ligands``, ``pairs``, or ``prepared_systems`` must be
+        Exactly one of ``poses``, ``pairs``, or ``prepared_systems`` must be
         provided.
 
         Args:
-            protein: Shared protein for prep modes (required with ``ligands`` or
+            protein: Shared protein for prep modes (required with ``poses`` or
                 ``pairs``).
-            ligands: Ligand set for Konnektor network planning (min 2).
+            poses: Poses for Konnektor network planning (min 2, one per ligand).
             pairs: Explicit pose pairs for system-prep steps.
             prepared_systems: Prepared systems for RBFE-only steps.
-            network_type: Konnektor topology when ``ligands`` is provided.
+            network_type: Konnektor topology when ``poses`` is provided.
             params: FEP simulation parameters for plans that include ``rbfe``.
-            add_h_atoms: Add hydrogens to poses during prep.
+            add_h_atoms: Add hydrogens to poses during prep (default True;
+                no-op for poses that already have them).
             protonate_protein: Protonate protein during prep.
             retain_waters: Retain crystal waters during prep.
             padding: Solvation box padding (nm) during prep.
-            exp_abfe: Experimental ABFE anchor values for cycle closure.
-            fep_abfe: FEP-ABFE anchor values for cycle closure.
+            exp_abfe: Experimental anchors for cycle closure, each
+                ``{"pose_id", "dG", "std"?, "abfe_result_id"?}``.
+            fep_abfe: FEP-ABFE anchors for cycle closure, same shape as
+                ``exp_abfe``; :meth:`ABFE.to_anchor` builds one from an ABFE run.
+            steps: Explicit workflow steps, e.g. ``["system-prep"]`` to only
+                prepare the systems. Inferred from the inputs when omitted.
             tool_version: Platform tool version pin.
             client: Optional API client.
             name: Optional execution label.
 
         Raises:
-            ValueError: When inputs are missing or mutually exclusive.
+            ValueError: When inputs are missing or mutually exclusive, or
+                ``steps`` is not a supported plan.
         """
         super().__init__(client=client)
         self.tool_version = tool_version
         self.exp_abfe = list(exp_abfe or [])
         self.fep_abfe = list(fep_abfe or [])
         self.protein = protein
-        if ligands is None:
-            self.ligands = LigandSet()
-        elif isinstance(ligands, LigandSet):
-            self.ligands = ligands
-        else:
-            self.ligands = LigandSet(ligands=list(ligands))
+        self.poses = list(poses) if poses is not None else []
         self.pairs = pairs or []
         self.prepared_systems = prepared_systems or []
         self.network_type = network_type
@@ -264,28 +263,49 @@ class RBFE(Execution, AsyncExecutableMixin, NotebookWatchMixin):
         self.retain_waters = retain_waters
         self.padding = padding
         self.name = name
+        self._explicit_steps = list(steps) if steps is not None else None
         self._post_init()
 
     def _post_init(self) -> None:
         """Infer platform ``steps`` from constructor inputs and validate."""
-        has_ligands = bool(self.ligands)
+        has_poses = bool(self.poses)
         has_pairs = bool(self.pairs)
         has_prep = bool(self.prepared_systems)
-        mode_count = sum([has_ligands, has_pairs, has_prep])
+        mode_count = sum([has_poses, has_pairs, has_prep])
 
         if mode_count != 1:
             raise ValueError(
-                "Exactly one of ligands, pairs, or prepared_systems must be provided."
+                "Exactly one of poses, pairs, or prepared_systems must be provided."
             )
-        if has_prep:
-            self.steps: list[RBFEWorkflowStep] = ["rbfe"]
-        elif has_ligands:
-            self.steps = ["konnektor", "system-prep", "rbfe"]
+        if self._explicit_steps is not None:
+            self._check_explicit_steps(self._explicit_steps)
+            self.steps: list[RBFEWorkflowStep] = self._explicit_steps
         else:
-            self.steps = ["system-prep", "rbfe"]
-        if (self.exp_abfe or self.fep_abfe) and "cycle-closure" not in self.steps:
-            self.steps = [*self.steps, "cycle-closure"]
+            if has_prep:
+                self.steps = ["rbfe"]
+            elif has_poses:
+                self.steps = ["konnektor", "system-prep", "rbfe"]
+            else:
+                self.steps = ["system-prep", "rbfe"]
+            if (self.exp_abfe or self.fep_abfe) and "cycle-closure" not in self.steps:
+                self.steps = [*self.steps, "cycle-closure"]
         self._validate_step_inputs()
+
+    def _check_explicit_steps(self, steps: list[RBFEWorkflowStep]) -> None:
+        """Reject unsupported plans and anchors that the plan would drop."""
+        if steps not in _RBFE_STEP_PLANS:
+            raise ValueError(
+                f"Unsupported steps={steps!r}; use one of {list(_RBFE_STEP_PLANS)!r}."
+            )
+        if (self.exp_abfe or self.fep_abfe) and "cycle-closure" not in steps:
+            raise ValueError(
+                "exp_abfe/fep_abfe need 'cycle-closure' in steps; add it or "
+                "drop the anchors."
+            )
+
+    def _uses_prepared_systems(self) -> bool:
+        """Whether RBFE runs on given prepared systems (no system-prep step)."""
+        return "rbfe" in self.steps and "system-prep" not in self.steps
 
     @property
     def params(self) -> RBFEParams:
@@ -328,23 +348,17 @@ class RBFE(Execution, AsyncExecutableMixin, NotebookWatchMixin):
             msg = "Missing 'steps' in execution userInputs."
             raise ValueError(msg)
         instance.steps = list(raw_steps)
-
-        if instance.steps == ["system-prep"]:
-            msg = (
-                "Legacy steps=['system-prep'] executions are no longer supported "
-                "by RBFE.from_dto()."
-            )
-            raise ValueError(msg)
+        instance._explicit_steps = list(raw_steps)
 
         instance.protein = None
-        instance.ligands = LigandSet()
+        instance.poses = []
         instance.pairs = []
         instance.prepared_systems = []
         raw_network_type = inputs.get("network_type", "mst")
         if raw_network_type not in ("star", "mst", "cyclic"):
             raw_network_type = "mst"
         instance.network_type = raw_network_type
-        instance.add_h_atoms = bool(inputs.get("add_H_atoms", False))
+        instance.add_h_atoms = bool(inputs.get("add_H_atoms", True))
         instance.protonate_protein = bool(inputs.get("protonate_protein", False))
         instance.retain_waters = bool(inputs.get("retain_waters", True))
         instance.padding = float(inputs.get("padding", 1.0))
@@ -361,13 +375,19 @@ class RBFE(Execution, AsyncExecutableMixin, NotebookWatchMixin):
         )
 
         if "konnektor" in instance.steps:
-            instance.ligands = LigandSet(
-                ligands=[
-                    _ligand_from_pair_input(ref, client=instance.client)
-                    for ref in inputs.get("ligands", [])
-                    if isinstance(ref, dict)
-                ]
-            )
+            instance.poses = [
+                _pose_from_pair_input(ref)
+                for ref in inputs.get("poses", [])
+                if isinstance(ref, dict)
+            ]
+            # Pre-3.0 executions planned the network over ligands.
+            instance.poses += [
+                Pose(
+                    ligand_id=str(ref.get("id") or ""), remote_path=ref.get("file_path")
+                )
+                for ref in inputs.get("ligands", [])
+                if isinstance(ref, dict)
+            ]
 
         if "system-prep" in instance.steps:
             protein_input = inputs.get("protein", {})
@@ -416,9 +436,7 @@ class RBFE(Execution, AsyncExecutableMixin, NotebookWatchMixin):
                             )
                         )
 
-        if instance.steps == ["rbfe"] or (
-            "rbfe" in instance.steps and inputs.get("prepared_systems")
-        ):
+        if instance._uses_prepared_systems() or inputs.get("prepared_systems"):
             instance.prepared_systems = [
                 PreparedSystem(
                     binding_xml_path=ps.get("binding_xml_file_path", ""),
@@ -428,6 +446,8 @@ class RBFE(Execution, AsyncExecutableMixin, NotebookWatchMixin):
                     protein_id=ps.get("protein_id"),
                     ligand1_id=ps.get("ligand1_id"),
                     ligand2_id=ps.get("ligand2_id"),
+                    pose1_id=ps.get("pose1_id") or ps.get("ligand1_pose_id"),
+                    pose2_id=ps.get("pose2_id") or ps.get("ligand2_pose_id"),
                 )
                 for ps in inputs.get("prepared_systems", [])
                 if isinstance(ps, dict)
@@ -461,8 +481,8 @@ class RBFE(Execution, AsyncExecutableMixin, NotebookWatchMixin):
             self._validate_konnektor_inputs()
         elif "system-prep" in self.steps:
             self._validate_system_prep_inputs()
-        if self.steps == ["rbfe"] and not self.prepared_systems:
-            raise ValueError("prepared_systems is required for steps=['rbfe'].")
+        if self._uses_prepared_systems() and not self.prepared_systems:
+            raise ValueError(f"prepared_systems is required for steps={self.steps!r}.")
         if "cycle-closure" in self.steps:
             self._validate_cycle_closure_inputs()
 
@@ -470,9 +490,9 @@ class RBFE(Execution, AsyncExecutableMixin, NotebookWatchMixin):
         """Validate inputs for Konnektor workflow steps."""
         if self.protein is None:
             raise ValueError(f"protein is required for steps={self.steps!r}.")
-        if len(self.ligands) < 2:
+        if len(self.poses) < 2:
             raise ValueError(
-                f"ligands requires at least two ligands for steps={self.steps!r}."
+                f"poses requires at least two poses for steps={self.steps!r}."
             )
 
     def _validate_system_prep_inputs(self) -> None:
@@ -501,22 +521,22 @@ class RBFE(Execution, AsyncExecutableMixin, NotebookWatchMixin):
             ("fep_abfe", self.fep_abfe),
         ):
             for anchor in anchors:
-                ligand_id = anchor.get("ligand_id")
-                if not isinstance(ligand_id, str) or not ligand_id:
+                pose_id = anchor.get("pose_id")
+                if not isinstance(pose_id, str) or not pose_id:
                     raise ValueError(
-                        f"{label} entries require a non-empty string 'ligand_id'."
+                        f"{label} entries require a non-empty string 'pose_id'."
                     )
                 if not isinstance(anchor.get("dG"), (int, float)):
                     raise ValueError(f"{label} entries require a numeric 'dG' value.")
 
     def _ensure_synced_inputs(self) -> None:
-        """Sync protein, ligands, and poses before submission."""
+        """Sync protein and poses before submission."""
         client = self.client
         if self.protein is not None:
             self._sync_entity_if_needed(self.protein, client=client, label="Protein")
         if "konnektor" in self.steps:
-            for ligand in self.ligands:
-                self._sync_entity_if_needed(ligand, client=client, label="Ligand")
+            for pose in self.poses:
+                self._sync_entity_if_needed(pose, client=client, label="Pose")
         for pose1, pose2 in self.pairs:
             self._sync_entity_if_needed(pose1, client=client, label="Pose")
             self._sync_entity_if_needed(pose2, client=client, label="Pose")
@@ -537,9 +557,7 @@ class RBFE(Execution, AsyncExecutableMixin, NotebookWatchMixin):
         """Construct workflow input parameters for ``deeporigin.rbfe``."""
         out: dict[str, Any] = {"steps": self.steps}
         if "konnektor" in self.steps:
-            out["ligands"] = [
-                _ligand_konnektor_tool_ref(ligand) for ligand in self.ligands
-            ]
+            out["poses"] = [_pose_tool_ref(pose) for pose in self.poses]
             out["network_type"] = self.network_type
         if "system-prep" in self.steps:
             assert self.protein is not None
@@ -563,7 +581,7 @@ class RBFE(Execution, AsyncExecutableMixin, NotebookWatchMixin):
                     "padding": self.padding,
                 }
             )
-        if self.steps == ["rbfe"]:
+        if self._uses_prepared_systems():
             out["prepared_systems"] = [
                 _prepared_system_tool_ref(ps) for ps in self.prepared_systems
             ]
@@ -609,14 +627,15 @@ class RBFE(Execution, AsyncExecutableMixin, NotebookWatchMixin):
 
         Uses :meth:`~deeporigin.drug_discovery.execution.Execution.get_results`
         (results for this tools execution id), then builds one row per result
-        record with ``protein_id``, ligand ids, and ``ddG`` (``total`` plus
-        ``unit`` from the stored payload).
+        record with ``protein_id``, pose ids, ligand ids, and ``ddG`` (``total``
+        plus ``unit`` from the stored payload).
         Keyword arguments are accepted for signature compatibility with the base
         class but are not forwarded.
 
         Returns:
-            A DataFrame with columns ``protein_id``, ``ligand1_id``,
-            ``ligand2_id``, and ``ddG``, or ``None`` if no result rows exist yet.
+            A DataFrame with columns ``protein_id``, ``pose1_id``, ``pose2_id``,
+            ``ligand1_id``, ``ligand2_id``, and ``ddG``, or ``None`` if no result
+            rows exist yet.
 
         Raises:
             ValueError: If no execution has been started.
@@ -626,10 +645,10 @@ class RBFE(Execution, AsyncExecutableMixin, NotebookWatchMixin):
         return _rbfe_results_dataframe(response, tool_key=self.tool_key)
 
     def get_cycle_closure_results(self, **_kwargs: Any) -> pd.DataFrame | None:
-        """Retrieve per-ligand absolute dG values from cycle closure.
+        """Retrieve per-pose absolute dG values from cycle closure.
 
         Returns:
-            A DataFrame with columns ``ligand_id``, ``dG``, ``unit``, and
+            A DataFrame with columns ``pose_id``, ``ligand_id``, ``dG``, ``unit``, and
             optional ``cluster``, or ``None`` if no cycle-closure rows exist yet.
 
         Raises:
@@ -645,6 +664,8 @@ class RBFE(Execution, AsyncExecutableMixin, NotebookWatchMixin):
         *,
         ligand1_id: str | None = None,
         ligand2_id: str | None = None,
+        pose1_id: str | None = None,
+        pose2_id: str | None = None,
     ) -> PreparedSystem:
         """Load a :class:`PreparedSystem` from system-prep results for this execution.
 
@@ -656,9 +677,42 @@ class RBFE(Execution, AsyncExecutableMixin, NotebookWatchMixin):
         Args:
             ligand1_id: Optional first ligand ID to filter by.
             ligand2_id: Optional second ligand ID to filter by.
+            pose1_id: Optional first pose ID to filter by.
+            pose2_id: Optional second pose ID to filter by.
 
         Returns:
             A :class:`PreparedSystem` with paths and metadata from the result row.
+
+        Raises:
+            ValueError: If no execution has been started.
+            DeepOriginException: If no matching system-prep results exist yet.
+        """
+        return self.get_prepared_systems(
+            ligand1_id=ligand1_id,
+            ligand2_id=ligand2_id,
+            pose1_id=pose1_id,
+            pose2_id=pose2_id,
+        )[0]
+
+    @beartype
+    def get_prepared_systems(
+        self,
+        *,
+        ligand1_id: str | None = None,
+        ligand2_id: str | None = None,
+        pose1_id: str | None = None,
+        pose2_id: str | None = None,
+    ) -> list[PreparedSystem]:
+        """Load every :class:`PreparedSystem` this execution prepared.
+
+        Args:
+            ligand1_id: Optional first ligand ID to filter by.
+            ligand2_id: Optional second ligand ID to filter by.
+            pose1_id: Optional first pose ID to filter by.
+            pose2_id: Optional second pose ID to filter by.
+
+        Returns:
+            One :class:`PreparedSystem` per prepared pair.
 
         Raises:
             ValueError: If no execution has been started.
@@ -676,6 +730,8 @@ class RBFE(Execution, AsyncExecutableMixin, NotebookWatchMixin):
                 compute_job_id=self.id,
                 ligand1_id=ligand1_id,
                 ligand2_id=ligand2_id,
+                pose1_id=pose1_id,
+                pose2_id=pose2_id,
                 client=self.client,
             )
         except ValueError as exc:
@@ -683,8 +739,8 @@ class RBFE(Execution, AsyncExecutableMixin, NotebookWatchMixin):
                 title="No system-prep results found",
                 message=(
                     "No system-prep results found for this RBFE execution. "
-                    "Wait for the system-prep step to complete, or pass "
-                    "ligand1_id/ligand2_id to disambiguate."
+                    "Wait for the system-prep step to complete, or check the "
+                    "pose/ligand ID filters."
                 ),
             ) from exc
 
@@ -693,12 +749,12 @@ class RBFE(Execution, AsyncExecutableMixin, NotebookWatchMixin):
                 title="No system-prep results found",
                 message=(
                     "No system-prep results found for this RBFE execution. "
-                    "Wait for the system-prep step to complete, or pass "
-                    "ligand1_id/ligand2_id to disambiguate."
+                    "Wait for the system-prep step to complete, or check the "
+                    "pose/ligand ID filters."
                 ),
             )
 
-        return systems[0]
+        return systems
 
     def __repr__(self) -> str:
         """Return a concise multi-line representation."""
@@ -711,7 +767,7 @@ class RBFE(Execution, AsyncExecutableMixin, NotebookWatchMixin):
             [
                 f"  steps={self.steps!r},",
                 f"  tool_key={self.tool_key!r},",
-                f"  ligands={len(self.ligands)},",
+                f"  poses={len(self.poses)},",
                 f"  pairs={len(self.pairs)},",
                 f"  prepared_systems={len(self.prepared_systems)},",
                 ")",
