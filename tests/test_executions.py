@@ -11,6 +11,7 @@ from deeporigin.exceptions import DeepOriginException
 from deeporigin.platform.client import DeepOriginClient
 from deeporigin.platform.executions import Executions
 from deeporigin.utils.constants import (
+    SYNC_RUN_INGESTION_TIMEOUT_SECONDS,
     TOOL_EXECUTION_GET_ACCEPT_HEADER,
     TOOL_EXECUTION_POST_TIMEOUT_SECONDS,
 )
@@ -153,6 +154,58 @@ def test_execution_wait_calls_platform_and_applies_response() -> None:
     assert result == dto
     assert job.status == "Completed"
     assert job.cost == pytest.approx(2.25)
+
+
+def test_wait_for_result_ingestion_waits_on_data_platform() -> None:
+    """``_wait_for_result_ingestion`` blocks on ``executions.wait_for_ingestion``."""
+    client = MagicMock()
+    client.executions.wait_for_ingestion.return_value = {"status": "Completed"}
+    job: Any = _TestToolExecution(client=client)
+    job._id = "exec-99"
+
+    job._wait_for_result_ingestion()
+
+    client.executions.wait_for_ingestion.assert_called_once_with(
+        "exec-99",
+        timeout=SYNC_RUN_INGESTION_TIMEOUT_SECONDS,
+    )
+
+
+def test_wait_for_result_ingestion_warns_on_timeout() -> None:
+    """A stuck ingestion warns instead of failing the already-successful run."""
+    client = MagicMock()
+    client.executions.wait_for_ingestion.side_effect = TimeoutError("stuck")
+    job: Any = _TestToolExecution(client=client)
+    job._id = "exec-99"
+
+    with pytest.warns(UserWarning, match="did not finish ingesting"):
+        job._wait_for_result_ingestion()
+
+
+def test_wait_for_result_ingestion_warns_when_wait_fails() -> None:
+    """A wait that raises (gateway 401/403, data-platform 5xx) warns, not raises."""
+    client = MagicMock()
+    client.executions.wait_for_ingestion.side_effect = DeepOriginException(
+        title="Data platform unavailable",
+        message="executions search failed with 503",
+        http_status=503,
+    )
+    job: Any = _TestToolExecution(client=client)
+    job._id = "exec-99"
+
+    with pytest.warns(UserWarning, match="Could not wait.*failed with 503"):
+        job._wait_for_result_ingestion()
+
+
+def test_wait_for_result_ingestion_warns_on_failed_ingestion() -> None:
+    """An ingestion that ends ``Failed`` warns that results may lack ids."""
+    client = MagicMock()
+    client.executions.wait_for_ingestion.return_value = {"status": "Failed"}
+    job: Any = _TestToolExecution(client=client)
+    job._id = "exec-99"
+
+    with pytest.warns(UserWarning, match="ended with status 'Failed'"):
+        job._wait_for_result_ingestion()
 
 
 def test_execution_from_id_requires_tool_key() -> None:

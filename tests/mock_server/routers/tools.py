@@ -2910,6 +2910,18 @@ def create_tools_router(
                     ref_record["project_id"] = project_id
                 results.append(ref_record)
 
+    def _defer_results_until_ingested(execution: dict[str, Any]) -> None:
+        """Hide a sync run's result rows until data platform reports them ingested.
+
+        As on dev, a sync run returns as soon as the tool finishes, while its
+        result rows land in data platform a moment later. The data-platform row
+        reads ``DataIngesting`` once and ``Completed`` after that, and
+        result-explorer hides the run's rows until a read has returned
+        ``Completed``, so a caller that reads results without waiting finds none.
+        """
+        execution["dataPlatformStatus"] = "DataIngesting"
+        execution["resultsHiddenUntilIngested"] = True
+
     def _inject_docking_tool_execution_results(execution: dict[str, Any]) -> None:
         """Mirror docking fixture poses into ``results`` when an execution completes."""
         eid = execution.get("executionId")
@@ -3873,6 +3885,7 @@ def create_tools_router(
             eid = execution["executionId"]
             executions[eid] = execution
             _inject_docking_tool_execution_results(execution)
+            _defer_results_until_ingested(execution)
             return _normalize_execution(execution)
         if (
             tool_key == "deeporigin.constrained-docking"
@@ -3889,6 +3902,7 @@ def create_tools_router(
             eid = execution["executionId"]
             executions[eid] = execution
             _inject_docking_tool_execution_results(execution)
+            _defer_results_until_ingested(execution)
             return _normalize_execution(execution)
         if (
             tool_key == "deeporigin.pocket-finder"
@@ -3904,6 +3918,7 @@ def create_tools_router(
             eid = execution["executionId"]
             executions[eid] = execution
             _inject_pocketfinder_tool_execution_results(execution)
+            _defer_results_until_ingested(execution)
             return _normalize_execution(execution)
         if tool_key == "deeporigin.system-prep" and body.get("sync") is True:
             execution = _create_blocking_run_dto(

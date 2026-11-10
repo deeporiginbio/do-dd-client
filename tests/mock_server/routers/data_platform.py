@@ -669,6 +669,20 @@ def create_data_platform_router(
     )
     _dp_ingestion_polls: dict[str, int] = {}
 
+    def _ingestion_pending(compute_job_id: Any) -> bool:
+        """Return True while a deferred sync run's result rows are not ingested.
+
+        Rows of a run marked ``resultsHiddenUntilIngested`` stay hidden until an
+        ``executions/search`` read has reported its row ``Completed`` (the
+        second read, see ``search_executions``).
+        """
+        if not isinstance(compute_job_id, str):
+            return False
+        raw = (executions or {}).get(compute_job_id)
+        if not raw or not raw.get("resultsHiddenUntilIngested"):
+            return False
+        return _dp_ingestion_polls.get(compute_job_id, 0) < 2
+
     _entity_stores: dict[str, dict[str, dict[str, Any]]] = {
         "ligands": ligands,
         "proteins": proteins,
@@ -912,16 +926,19 @@ def create_data_platform_router(
             pass
 
         # Records injected by tool executions (same list the tools router appends to).
-        all_results.extend(results)
+        all_results.extend(
+            r for r in results if not _ingestion_pending(r.get("compute_job_id"))
+        )
 
         filtered = _apply_eq_filters(all_results, filter_dict)
         compute_job_eq = filter_dict.get("compute_job_id", {}).get("eq")
         # Sentinel: keep an empty page so callers can exercise missing-result paths
-        # without the fixture-id rematch below.
+        # without the fixture-id rematch below. A run still ingesting has no rows
+        # yet either.
         if compute_job_eq in (
             "__no_prepared_system_rows__",
             "__no_result_rows__",
-        ):
+        ) or _ingestion_pending(compute_job_eq):
             filtered = []
         elif not filtered and compute_job_eq is not None:
             # Fixture IDs won't match dynamic execution IDs; keep legacy behaviour
