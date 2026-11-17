@@ -4,10 +4,11 @@ from __future__ import annotations
 
 import builtins
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 import random
 import time
 from typing import TYPE_CHECKING, Any
+import uuid
 import warnings
 
 from beartype import beartype
@@ -20,8 +21,10 @@ if TYPE_CHECKING:
     from deeporigin.platform.client import DeepOriginClient
 
 from deeporigin.platform.constants import (
+    CREATE_IN_REQUEST_STATES,
     EXECUTION_VISIBILITY_VALUES,
     TERMINAL_STATES,
+    WORKFLOW_EXECUTION_METHOD,
     ExecutionVisibility,
     is_success_status,
     normalize_platform_status,
@@ -41,11 +44,55 @@ from deeporigin.utils.constants import (
     SSE_RECONNECT_BACKOFF_SECONDS,
     SSE_RECONNECT_MAX_BACKOFF_SECONDS,
     SSE_STABLE_CONNECTION_SECONDS,
+    TOOL_EXECUTION_CORRELATION_HEADER,
     TOOL_EXECUTION_GET_ACCEPT_HEADER,
     TOOL_EXECUTION_POST_TIMEOUT_SECONDS,
+    TOOL_EXECUTION_RECOVERY_LOOKBACK_SECONDS,
+    TOOL_EXECUTION_RECOVERY_POLL_SECONDS,
 )
 
 _INGESTION_FILTER_ID = "execution"
+
+# Transport errors after which the create request may have reached tools-service
+# and its 201 been lost on the way back. A connect error is not among them: the
+# request never left, so no execution exists.
+_LOST_CREATE_RESPONSE_ERRORS = (
+    httpx.ReadTimeout,
+    httpx.ReadError,
+    httpx.RemoteProtocolError,
+)
+
+
+def _create_has_answered(dto: dict, *, quote_only: bool) -> bool:
+    """Return whether the create POST that made ``dto`` has certainly answered.
+
+    tools-service can still be working inside the create request while the row
+    is ``Created`` or ``Quoted`` (estimating, quoting, auto-confirming), or
+    ``Running`` for a direct or deferred run. Every other status is written only
+    after the POST answered, or as its answer. A quote-only request
+    (``approveAmount`` below zero) is never auto-confirmed, so its ``Quoted``
+    row is the answer once it carries a ``quotationResult``. Without one the
+    tool's billing is skipped, and tools-service runs it anyway.
+
+    Args:
+        dto: Execution DTO as returned by :meth:`Executions.get`.
+        quote_only: Whether the create asked for a quote only.
+
+    Returns:
+        ``True`` when the row can be handed back to the create caller.
+    """
+    status = dto.get("status")
+    if status == "Quoted" and quote_only and dto.get("quotationResult"):
+        return True
+    if status in CREATE_IN_REQUEST_STATES:
+        return False
+    if status == "Running":
+        # tools-service reads a missing method as "workflow"; waiting on such a
+        # row is deliberately more cautious than the server.
+        estimator = dto.get("estimatorOutput")
+        method = estimator.get("method") if isinstance(estimator, dict) else None
+        return method == WORKFLOW_EXECUTION_METHOD
+    return True
 
 
 @dataclass
@@ -201,6 +248,7 @@ class Executions:
                 the caller already included ``billing`` in ``data``.
                 Uses ``retry=False`` so a failed create (including gateway 504)
                 is not retried; retries can otherwise duplicate long sync jobs.
+                The same value bounds the recovery described below.
             visibility: Optional activity-history visibility, ``"visible"`` or
                 ``"hidden"``. ``"hidden"`` opts the run out of user-facing activity
                 views (it still exists, and stays visible to admin/audit/billing).
@@ -213,8 +261,16 @@ class Executions:
                 falls through to it. To force one run visible on a client that
                 defaults to hidden, pass ``visibility="visible"`` explicitly.
 
+        Each call sends a fresh correlation id as the ``x-correlation-id``
+        header. If the response is lost after the request was sent (read
+        timeout, read error, or the server closing the connection), the
+        execution may still exist: ``create`` finds it by that id and, once
+        tools-service has certainly answered the POST, returns its DTO with a
+        warning instead of raising. The POST itself is never sent twice.
+
         Returns:
-            Dictionary containing the execution response from the API.
+            Dictionary containing the execution response from the API, or the
+            recovered execution's DTO when the response was lost.
 
         Raises:
             ValueError: If the resolved ``visibility`` -- from ``data``, the
@@ -222,6 +278,14 @@ class Executions:
                 ``"hidden"``.
             PlatformRestrictionError: If licensing or billing rejects execution.
                 The exception preserves the platform reason, action, and response.
+            httpx.TransportError: The original read timeout, read error or
+                protocol error, when no single execution carries this call's
+                correlation id, or when looking it up fails.
+            DeepOriginException: When the response was lost and the recovered
+                execution is still ``Created``, ``Quoted`` or running inside the
+                request after ``timeout`` more seconds, or cannot be read. The
+                message names the execution id; inspect it before confirming or
+                starting again.
         """
         payload = data.copy()
 
@@ -279,17 +343,186 @@ class Executions:
         req_timeout = (
             timeout if timeout is not None else TOOL_EXECUTION_POST_TIMEOUT_SECONDS
         )
+        # Per request, never on the shared client: the cached client is used
+        # across threads.
+        correlation_id = str(uuid.uuid4())
 
         # Single attempt: retrying a timed-out sync create can spawn duplicate
         # long-running tool work (e.g. system-prep behind an nginx 504).
-        result = self._c.post_json(
-            f"/tools/{self._c.org_key}/tools/{tool_key}/{tool_version}/executions",
-            body=payload,
-            timeout=req_timeout,
-            retry=False,
-        )
+        try:
+            result = self._c.post_json(
+                f"/tools/{self._c.org_key}/tools/{tool_key}/{tool_version}/executions",
+                body=payload,
+                timeout=req_timeout,
+                retry=False,
+                headers={TOOL_EXECUTION_CORRELATION_HEADER: correlation_id},
+            )
+        except _LOST_CREATE_RESPONSE_ERRORS as error:
+            amount = payload.get("approveAmount")
+            quote_only = (
+                isinstance(amount, int | float)
+                and not isinstance(amount, bool)
+                and amount < 0
+            )
+            result = self._recover_lost_create(
+                error=error,
+                correlation_id=correlation_id,
+                tool_key=tool_key,
+                budget=req_timeout,
+                quote_only=quote_only,
+            )
         raise_for_platform_restriction(result)
         return result
+
+    def _recover_lost_create(
+        self,
+        *,
+        error: httpx.TransportError,
+        correlation_id: str,
+        tool_key: str,
+        budget: float,
+        quote_only: bool,
+    ) -> dict:
+        """Return the execution a create call made after its response was lost.
+
+        Looks the execution up by the correlation id the create sent (one
+        re-check after a short pause when nothing matches), then reads it until
+        tools-service has certainly answered the create POST (see
+        :func:`_create_has_answered`).
+
+        Args:
+            error: The transport error the create POST raised.
+            correlation_id: The ``x-correlation-id`` the create POST carried.
+            tool_key: Key of the tool the create POST ran.
+            budget: Seconds, counted from now, before giving up.
+            quote_only: Whether the create asked for a quote only.
+
+        Returns:
+            The execution DTO, as :meth:`get` returns it.
+
+        Raises:
+            httpx.TransportError: ``error`` itself, when no single execution
+                carries this correlation id, or when the lookup fails (chained
+                from the lookup's error).
+            DeepOriginException: Once the execution is found, when it is still
+                in the request after ``budget`` (chained from ``error``) or
+                cannot be read (chained from the read's error). Both name the
+                execution, so the caller does not start it again blindly.
+        """
+        deadline = time.monotonic() + budget
+        created_after = datetime.now(timezone.utc) - timedelta(
+            seconds=budget + TOOL_EXECUTION_RECOVERY_LOOKBACK_SECONDS
+        )
+        # If ``error`` is re-raised below, the caller can still find a run that
+        # shows up later.
+        error.add_note(
+            f"Correlation id {correlation_id}: find a late execution with "
+            f"client.executions.list(correlation_id={correlation_id!r})."
+        )
+        try:
+            matches = self._find_created_executions(
+                correlation_id=correlation_id,
+                tool_key=tool_key,
+                created_after=created_after,
+            )
+            if not matches:
+                time.sleep(
+                    max(
+                        0.0,
+                        min(
+                            TOOL_EXECUTION_RECOVERY_POLL_SECONDS,
+                            deadline - time.monotonic(),
+                        ),
+                    )
+                )
+                matches = self._find_created_executions(
+                    correlation_id=correlation_id,
+                    tool_key=tool_key,
+                    created_after=created_after,
+                )
+        except (httpx.HTTPError, DeepOriginException) as lookup_error:
+            raise error from lookup_error
+        if len(matches) != 1:
+            raise error
+        execution_id = matches[0]
+
+        # Only the error type: an h11 protocol error's text can echo bytes from
+        # a malformed server response, and the full error stays on the chain.
+        warnings.warn(
+            f"The create response for execution {execution_id!r} was not "
+            f"received ({type(error).__name__}); recovering it by its "
+            "correlation id.",
+            stacklevel=3,
+        )
+        while True:
+            try:
+                dto = self.get(execution_id)
+            except (httpx.HTTPError, DeepOriginException) as poll_error:
+                raise DeepOriginException(
+                    title="Tool execution create response lost",
+                    message=(
+                        f"The response to creating execution {execution_id!r} "
+                        f"was lost ({type(error).__name__}), and reading the "
+                        "execution failed. Inspect it with "
+                        f"client.executions.get({execution_id!r}) before "
+                        "confirming, cancelling or starting it again."
+                    ),
+                ) from poll_error
+            if _create_has_answered(dto, quote_only=quote_only):
+                return dto
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise DeepOriginException(
+                    title="Tool execution create response lost",
+                    message=(
+                        f"The response to creating execution {execution_id!r} "
+                        f"was lost ({type(error).__name__}), and the execution "
+                        f"is still {dto.get('status')!r} after {budget:.0f}s. "
+                        "Inspect it with "
+                        f"client.executions.get({execution_id!r}) before "
+                        "confirming, cancelling or starting it again."
+                    ),
+                ) from error
+            time.sleep(min(TOOL_EXECUTION_RECOVERY_POLL_SECONDS, remaining))
+
+    def _find_created_executions(
+        self,
+        *,
+        correlation_id: str,
+        tool_key: str,
+        created_after: datetime,
+    ) -> builtins.list[str]:
+        """Return the ids of this client's executions carrying ``correlation_id``.
+
+        The server filter only narrows the scan. Rows are then matched exactly
+        on correlation id, session and tool key, so a lax or changed server
+        filter can never hand back someone else's execution.
+
+        Args:
+            correlation_id: The ``x-correlation-id`` the create POST carried.
+            tool_key: Key of the tool the create POST ran.
+            created_after: Lower bound on the execution's ``createdAt``.
+
+        Returns:
+            The matching execution ids (normally one, or none).
+        """
+        response = self.list(
+            tool_key=tool_key,
+            session=self._c._session,
+            created_after=created_after,
+            correlation_id=correlation_id,
+        )
+        rows = response.get("data", []) if isinstance(response, dict) else response
+        matches = [
+            row
+            for row in rows or []
+            if isinstance(row, dict)
+            and row.get("correlationId") == correlation_id
+            and row.get("session") == self._c._session
+            and (row.get("tool") or {}).get("key") == tool_key
+            and row.get("executionId")
+        ]
+        return [row["executionId"] for row in matches]
 
     def _list_tools_executions_page(
         self,
@@ -301,6 +534,7 @@ class Executions:
         session: str | None = None,
         project_id: str | None = None,
         created_after: datetime | str | None = None,
+        correlation_id: str | None = None,
     ) -> Any:
         """Perform one GET for the tools-service executions list URL with query params.
 
@@ -312,6 +546,7 @@ class Executions:
             session: Filter by session tag.
             project_id: Filter by project id.
             created_after: Lower bound on ``createdAt``.
+            correlation_id: Filter by the execution's ``correlationId``.
 
         Returns:
             Parsed JSON from the platform (typically ``{"data": [...], "count": n}``).
@@ -333,6 +568,8 @@ class Executions:
             filter_dict["projectId"] = project_id
         if created_after is not None:
             filter_dict["createdAt"] = {"$gt": _created_after_to_iso_utc(created_after)}
+        if correlation_id is not None:
+            filter_dict["correlationId"] = correlation_id
 
         if filter_dict:
             import json
@@ -353,6 +590,7 @@ class Executions:
         session: str | None = None,
         project_id: str | None = None,
         created_after: datetime | str | None = None,
+        correlation_id: str | None = None,
     ) -> dict[str, Any]:
         """Merge every page of tools execution list results for the given filters.
 
@@ -363,6 +601,7 @@ class Executions:
             session: Filter by session tag.
             project_id: Filter by project id.
             created_after: Lower bound on ``createdAt``.
+            correlation_id: Filter by the execution's ``correlationId``.
 
         Returns:
             ``{"data": [...], "count": <server total>}`` with ``data`` concatenated
@@ -381,6 +620,7 @@ class Executions:
                 session=session,
                 project_id=project_id,
                 created_after=created_after,
+                correlation_id=correlation_id,
             )
 
             if not isinstance(response, dict):
@@ -412,6 +652,7 @@ class Executions:
         session: str | None = None,
         project_id: str | None = None,
         created_after: datetime | str | None = None,
+        correlation_id: str | None = None,
         fetch_all_pages: bool = False,
     ) -> dict:
         """List tool executions with pagination and filtering.
@@ -437,6 +678,10 @@ class Executions:
                 entity ``createdAt`` column). Use a timezone-aware
                 :class:`~datetime.datetime` or an ISO string such as
                 ``2026-05-07T15:13:25.254Z``.
+            correlation_id: When set, restrict to the execution whose
+                ``correlationId`` matches. :meth:`create` sends a fresh one per
+                call as the ``x-correlation-id`` header, and tools-service
+                stores it on the row before the tool runs.
             fetch_all_pages: When ``True``, follow pagination until every row
                 for the filter is collected, merge ``data`` in page order, and
                 return ``{"data": [...], "count": <total>}``. When ``False``,
@@ -455,6 +700,7 @@ class Executions:
                 session=session,
                 project_id=project_id,
                 created_after=created_after,
+                correlation_id=correlation_id,
             )
 
         return self._list_tools_executions_page(
@@ -465,6 +711,7 @@ class Executions:
             session=session,
             project_id=project_id,
             created_after=created_after,
+            correlation_id=correlation_id,
         )
 
     def get(self, execution_id: str) -> dict:

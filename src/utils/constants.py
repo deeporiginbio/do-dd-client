@@ -232,7 +232,25 @@ TOOL_EXECUTION_POST_TIMEOUT_SECONDS = 600.0
 
 600s aligns with typical server-side ``timeoutSeconds`` for tool workloads such
 as molprops and protonation, where synchronous executions can take longer than
-the client's default short timeout."""
+the client's default short timeout. ``Executions.create`` also uses it as the
+default budget for recovering an execution whose create response was lost, and
+``Execution.confirm`` as the HTTP timeout of its PATCH."""
+
+TOOL_EXECUTION_CORRELATION_HEADER = "x-correlation-id"
+"""Request header carrying a create call's correlation id.
+
+The gateway forwards it, and tools-service stores it as the execution's
+``correlationId`` before the tool runs, so a create whose response is lost can
+find its execution again with ``Executions.list(correlation_id=...)``."""
+
+TOOL_EXECUTION_RECOVERY_POLL_SECONDS = 5.0
+"""Seconds between reads while recovering a create whose response was lost."""
+
+TOOL_EXECUTION_RECOVERY_LOOKBACK_SECONDS = 1800.0
+"""Slack (seconds) added to the create budget for the recovery lookup window.
+
+The lookup filters on ``createdAt`` only to bound the scan (the correlation id
+is unique), so the window is wide enough to absorb client clock skew."""
 
 QUOTE_APPROVE_AMOUNT = -1
 """``approveAmount`` value sent when ``quote=True``.

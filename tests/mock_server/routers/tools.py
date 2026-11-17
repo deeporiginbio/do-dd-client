@@ -3673,6 +3673,14 @@ def create_tools_router(
                 or exec.get("session") == session_filter_value
             ]
 
+        if filter_dict and "correlationId" in filter_dict:
+            correlation_filter_value = filter_dict["correlationId"]
+            filtered_executions = [
+                exec
+                for exec in filtered_executions
+                if exec.get("correlationId") == correlation_filter_value
+            ]
+
         if created_after_gt is not None:
 
             def _parse_created_at(value: str) -> datetime:
@@ -3848,11 +3856,10 @@ def create_tools_router(
 
         return fixture
 
-    @router.post("/tools/{org_key}/tools/{tool_key}/{tool_version}/executions")
-    async def run_tool(
+    async def _run_tool(
         org_key: str, tool_key: str, tool_version: str, request: Request
     ) -> dict[str, Any]:
-        """Run a tool."""
+        """Run a tool and return its execution DTO (see :func:`run_tool`)."""
         body = await request.json()
 
         approve_amount = body.get("approveAmount", 0)
@@ -4311,5 +4318,24 @@ def create_tools_router(
         executions[execution_id] = execution
 
         return _normalize_execution(execution)
+
+    @router.post("/tools/{org_key}/tools/{tool_key}/{tool_version}/executions")
+    async def run_tool(
+        org_key: str, tool_key: str, tool_version: str, request: Request
+    ) -> dict[str, Any]:
+        """Run a tool, storing the request's ``x-correlation-id`` on the execution.
+
+        tools-service keeps that header as the execution's ``correlationId``,
+        and the SDK finds a create whose response was lost by it (QA-1000).
+        Stamped here, once, because ``_run_tool`` returns from many branches.
+        """
+        result = await _run_tool(org_key, tool_key, tool_version, request)
+        correlation_id = request.headers.get("x-correlation-id")
+        if correlation_id and isinstance(result, dict):
+            stored = executions.get(result.get("executionId"))
+            if stored is not None:
+                stored["correlationId"] = correlation_id
+            result["correlationId"] = correlation_id
+        return result
 
     return router

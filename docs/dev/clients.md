@@ -136,6 +136,23 @@ The client does not retry on client errors (4xx status codes except 429), as the
 **single HTTP attempt** (`retry=False`). Retrying a timed-out sync create can
 spawn duplicate long-running tool work after an upstream gateway 504.
 
+A lost response is handled without a retry. ``executions.create`` sends a fresh
+``x-correlation-id`` header per call, which tools-service stores as the
+execution's ``correlationId``. When no response arrives after the request was
+sent (read timeout, read error, or the server closing the connection),
+``create`` finds the execution with ``executions.list(correlation_id=...)`` and
+reads it until the platform has certainly answered the request, then returns it
+with a warning. It never hands back a row the platform could still be working
+on inside the request: ``Created``, ``Quoted``, or a direct or deferred run that
+is ``Running``. The one exception is a quote-only create (``approveAmount``
+below zero) of a billed tool, whose ``Quoted`` row with a ``quotationResult`` is
+its answer. If the execution stays in one of those states for another
+``timeout`` seconds, or cannot be read, ``create`` raises a
+``DeepOriginException`` naming the execution id. When no single execution
+carries the id, or the lookup fails, the original error is raised as before,
+with a note giving the correlation id to look for a late execution. An HTTP
+error status, such as a gateway 504, is raised as it always was.
+
 ### Configuring Retries
 
 You can customize retry behavior when creating a client:

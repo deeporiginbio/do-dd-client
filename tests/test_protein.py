@@ -3,12 +3,14 @@ from pathlib import Path
 import tempfile
 import uuid
 
+import httpx
 import numpy as np
 import pytest
 
 from deeporigin.drug_discovery import BRD_DATA_DIR, Protein
 from deeporigin.exceptions import DeepOriginException
 from deeporigin.platform.client import DeepOriginClient
+from deeporigin.utils.constants import TOOL_EXECUTION_CORRELATION_HEADER
 from tests.test_entities import _create_origin_source_protein
 
 
@@ -206,6 +208,48 @@ def test_mark_prepared_and_refresh_lv1(client: DeepOriginClient) -> None:
     refreshed = Protein.from_id(str(protein.id), client=client, download=False)
     assert refreshed.state == "prepared"
     assert refreshed.preparation == protein.preparation
+
+
+def test_create_correlation_id_round_trip_lv1(client: DeepOriginClient) -> None:
+    """The correlation id ``create`` sends is the one the platform stores.
+
+    A create whose response is lost finds its execution by this id (QA-1000),
+    so the header must survive the edge and the gateway, be stored by
+    tools-service, and match the executions list filter.
+    """
+    remote = f"testing/correlation-{uuid.uuid4().hex[:10]}.pdb"
+    client.files.upload(BRD_DATA_DIR / "brd.pdb", remote)
+    created = client.entities.create_protein(
+        file_path=remote,
+        protein_name="correlation-round-trip",
+        state="unprocessed",
+    )
+    protein = Protein.from_id(str(created["data"]["id"]), client=client, download=False)
+
+    sent: list[str] = []
+
+    def capture_create(request: httpx.Request) -> None:
+        """Record the correlation id of each tool-execution create.
+
+        Args:
+            request: Outgoing request seen by the client's transport.
+        """
+        if request.method == "POST" and request.url.path.endswith("/executions"):
+            sent.append(request.headers[TOOL_EXECUTION_CORRELATION_HEADER])
+
+    hooks = client._client.event_hooks
+    hooks["request"].append(capture_create)
+    try:
+        protein.mark_prepared(client=client)
+    finally:
+        hooks["request"].remove(capture_create)
+
+    assert len(sent) == 1
+    listed = client.executions.list(correlation_id=sent[0])  # ty:ignore[unresolved-attribute]
+    rows = listed.get("data", [])
+    matches = [row for row in rows if row.get("correlationId") == sent[0]]
+    assert len(matches) == 1
+    assert matches[0]["tool"]["key"] == "deeporigin.protein-prep"
 
 
 def test_from_id_download_false_rehydrates_lv1(

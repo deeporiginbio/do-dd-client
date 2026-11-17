@@ -46,6 +46,16 @@ TERMINAL_STATES = {
 # Non-terminal states for tool executions
 NON_TERMINAL_STATES = {"Created", "Queued", "Running"}
 
+# Statuses in which tools-service may still be working inside the create POST,
+# so a create whose response was lost cannot hand the row back yet. A row in one
+# of these cannot tell "the POST is still running" from "the POST answered with
+# this status" (QA-1000), so recovery waits for the row to leave them.
+CREATE_IN_REQUEST_STATES = frozenset({"Created", "Quoted"})
+
+# ``estimatorOutput.method`` of a run tools-service queues as a workflow; its
+# create POST answers before the run reaches ``Running``.
+WORKFLOW_EXECUTION_METHOD = "workflow"
+
 # Non-failed states for tool executions
 NON_FAILED_STATES = {"Completed", "Running", "Queued", "Created"}
 
