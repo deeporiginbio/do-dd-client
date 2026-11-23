@@ -393,10 +393,7 @@ records and waters) and ignores hydrogens. Customize this with ``protein_atoms_o
 
 ### Loop modelling
 
-Gaps in a deposited structure can be filled during preparation. Loop modelling is
-part of [Protein Prep](../tools/proteinprep.md): set `model_missing_loops=True`
-(the default) on a `ProteinPrep` session and call `run()` after you resolve
-component decisions. It is not a method on [`Protein`](../ref/protein.md) itself.
+Gaps in a deposited structure can be filled during preparation. Loop modelling is part of [Protein Prep](../tools/proteinprep.md): it is on by default when the structure has chain breaks, and runs when you call `run()` on a `ProteinPrep` session after you resolve component decisions. It is not a method on [`Protein`](../ref/protein.md) itself.
 
 The example below uses PDB entry `5QSP`, which has missing segments (dashed
 lines in the viewer). Use [`find_missing_residues`](#finding-missing-residues)
@@ -417,32 +414,25 @@ protein.show()
     title="Protein visualization"
 ></iframe>
 
-Register the structure, recommend keep/skip settings, then prepare with loop
-modelling enabled:
+Register the structure, recommend keep/skip settings, then prepare:
 
 ```{.python notest}
 from deeporigin.drug_discovery import Protein, ProteinPrep
 
 protein = Protein.from_pdb_id("5QSP")
 protein.sync()
-prep = ProteinPrep(protein)  # model_missing_loops=True by default
+prep = ProteinPrep(protein, find_pockets="no")
 prep.recommend()
 prep.skip(decision="review")
 prepared = prep.run()
+prepared.download()
 prepared.show()
 ```
 
+`skip(decision="review")` extracts any ligand left in review, and an extracted ligand requests a crystal-ligand pocket unless you set `find_pockets` yourself. `find_pockets="no"` keeps this example to preparation only.
+
 !!! note "Prepared protein is a new object"
-    `run()` returns a new registered `Protein` for the prepared PDB under
-    `entities/proteins/prepared/`. The input `protein` is unchanged. Loop
-    modelling needs a four-character PDB ID (`protein.pdb_id` or `prep.pdb_id`).
-
-To turn loop modelling off for a faster prepare-only path:
-
-```{.python notest}
-prep.model_missing_loops = False
-prepared = prep.run()
-```
+    `run()` returns a new registered `Protein`, and the input `protein` is unchanged. Loop modelling needs a four-character PDB ID, which `Protein.from_pdb_id` sets for you. See [Blocking prepare](../tools/proteinprep.md#blocking-prepare-run) for what `run()` returns and for preparing with loop modelling off.
 
 <iframe 
     src="../../images/5QSP-lm.html" 
@@ -452,7 +442,7 @@ prepared = prep.run()
     title="Protein visualization after loop modelling"
 ></iframe>
 
-On the prepared structure, gaps should be gone:
+On the prepared structure, the gaps are filled. This prepared structure keeps chain A, following the recommended decisions:
 
 ```{.python notest}
 prepared.find_missing_residues()
@@ -463,14 +453,12 @@ prepared.find_missing_residues()
     {}
     ```
 
-See [Preparing a protein](#preparing-a-protein) for pockets, async `start()`, and
-saved Selection workflows.
+See [Preparing a protein](#preparing-a-protein) for pockets and async `start()`, and [Use a saved Selection](../tools/proteinprep.md#use-a-saved-selection) to reuse your keep/skip decisions.
 
 
 ??? info "How does loop modelling work?"
 
-    During served prepare (`deeporigin.protein-prep` v11), the platform can model
-    missing loops using experimental or predicted templates.
+    Protein Prep fills missing loops using experimental or predicted templates.
 
     For each chain, the full sequence and the resolved structure are aligned to
     find continuous gaps. The Protein Data Bank (PDB) is searched for templates
