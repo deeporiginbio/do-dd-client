@@ -170,7 +170,7 @@ def _build_1eby() -> str:
 
 
 def _build_5qsp() -> str:
-    """5QSP with gaps visible (mirrors docs loop-modelling section, pre-``model_loops``)."""
+    """5QSP with gaps visible (the input structure in the docs loop-modelling section)."""
     from deeporigin.drug_discovery import Protein
     from deeporigin.viz.molstar_html import render_protein_html
 
@@ -179,13 +179,12 @@ def _build_5qsp() -> str:
 
 
 def _build_5qsp_lm() -> str:
-    """5QSP after loop modelling (docs ``5QSP-lm.html``).
+    """5QSP after Protein Prep with loop modelling (docs ``5QSP-lm.html``)."""
+    from deeporigin.viz.molstar_html import render_protein_html
 
-    Uses the same PDB fetch as ``_build_5qsp`` until a checked-in loop-modelled
-    structure snapshot is added to fixtures. Re-run ``model_loops()`` locally when
-    updating this visual.
-    """
-    return _build_5qsp()
+    return render_protein_html(
+        pdb_path=str(REPO_ROOT / "tests" / "fixtures" / "5qsp_prepared.pdb")
+    )
 
 
 def _build_1eby_docked_poses() -> str:
