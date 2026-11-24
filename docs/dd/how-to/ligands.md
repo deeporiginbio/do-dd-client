@@ -424,18 +424,18 @@ You can generate 3D coordinates for a single ligand or all ligands in a LigandSe
 
 ### Constructing a network using Konnektor
 
-To run RBFE, it is helpful to map out a network within the ligand set, so that we can run RBFE on those pairs of ligands. Use the Konnektor platform tool:
+To run RBFE, it is helpful to map out a network within the ligand set, so that we can run RBFE on those pairs of ligands. Konnektor plans the network over poses, one per ligand, such as the top docked pose of each:
 
 ```{.python notest}
 from deeporigin.drug_discovery import Konnektor
 
-# assuming ligands is a LigandSet with at least two ligands
-result = Konnektor(ligands=ligands).run()
+# assuming poses holds one docked pose per ligand, e.g. poses.filter_top_poses()
+result = Konnektor(poses=poses).run()
 result.show_network()
 pairs = result.pairs
 ```
 
-`result.pairs` is a list of `(ligand1, ligand2)` tuples suitable for RBFE. The visualization is similar to:
+`result.pairs` is a list of `(pose1, pose2)` tuples suitable for `RBFE(pairs=...)`. The visualization is similar to:
 
 <iframe 
     src="../../images/network.html" 

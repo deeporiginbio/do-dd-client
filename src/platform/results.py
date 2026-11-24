@@ -630,6 +630,8 @@ class Results:
         protein_id: str | None = None,
         ligand1_id: str | None = None,
         ligand2_id: str | None = None,
+        pose1_id: str | None = None,
+        pose2_id: str | None = None,
         compute_job_id: str | None = None,
         padding: int | None = None,
         add_H_atoms: bool | None = None,  # NOSONAR
@@ -653,6 +655,8 @@ class Results:
             protein_id: Optional protein ID to filter by.
             ligand1_id: Optional ligand1 ID to filter by.
             ligand2_id: Optional ligand2 ID to filter by.
+            pose1_id: Optional pose1 ID to filter by.
+            pose2_id: Optional pose2 ID to filter by.
             compute_job_id: Optional compute job ID to filter by.
             padding: Optional padding value to filter by.
             add_H_atoms: Optional add_H_atoms flag to filter by.
@@ -671,6 +675,8 @@ class Results:
             protein_id=protein_id,
             ligand1_id=ligand1_id,
             ligand2_id=ligand2_id,
+            pose1_id=pose1_id,
+            pose2_id=pose2_id,
             compute_job_id=compute_job_id,
             padding=padding,
             retain_waters=retain_waters,
@@ -694,6 +700,7 @@ class Results:
         *,
         protein_id: str | None = None,
         ligand1_id: str | list[str] | None = None,
+        pose1_id: str | list[str] | None = None,
         compute_job_id: str | None = None,
         tool_version: str | None = None,
         limit: int | None = 1000,
@@ -712,6 +719,7 @@ class Results:
         Args:
             protein_id: Optional protein ID to filter by.
             ligand1_id: Optional ligand ID (or list of IDs) to filter by.
+            pose1_id: Optional pose ID (or list of IDs) to filter by.
             compute_job_id: Optional compute job ID to filter by.
             tool_version: Optional tool version to filter by.
             limit: Maximum total number of results to return. Defaults to 1000.
@@ -727,6 +735,7 @@ class Results:
             filter_dict=_build_result_filter(
                 protein_id=protein_id,
                 ligand1_id=ligand1_id,
+                pose1_id=pose1_id,
                 compute_job_id=compute_job_id,
                 tool_version=tool_version,
             ),

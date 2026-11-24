@@ -12,6 +12,7 @@ import pytest
 
 from deeporigin.drug_discovery.abfe import (
     ABFE,
+    _abfe_anchor_from_results,
     _abfe_default_name_from_entities,
     _abfe_merged_result_data,
     _abfe_merged_result_data_for_execution,
@@ -31,6 +32,7 @@ from deeporigin.drug_discovery.structures.ligand import Ligand
 from deeporigin.drug_discovery.structures.pose import Pose
 from deeporigin.drug_discovery.structures.prepared_system import PreparedSystem
 from deeporigin.drug_discovery.structures.protein import Protein
+from deeporigin.exceptions import DeepOriginException
 from deeporigin.platform.client import DeepOriginClient
 from deeporigin.platform.constants import TOOL_KEYS_AND_VERSIONS
 
@@ -185,22 +187,118 @@ def test_abfe_from_dto_requires_steps(client: DeepOriginClient) -> None:
         ABFE.from_dto(fake_dto, client=client)
 
 
-def test_abfe_from_dto_rejects_system_prep_only_steps(
+def test_abfe_from_dto_rehydrates_system_prep_only_steps(
     client: DeepOriginClient,
 ) -> None:
-    """from_dto rejects legacy steps=['system-prep'] executions."""
+    """from_dto keeps steps=['system-prep'] runs and their pose."""
     fake_dto = {
         "executionId": "exec-prep",
         "status": "Succeeded",
-        "tool": {"key": "deeporigin.abfe-end-to-end", "version": "0.1.0"},
+        "tool": {"key": "deeporigin.abfe-end-to-end", "version": "3.0.0"},
         "userInputs": {
             "steps": ["system-prep"],
             "protein": {"id": "prot-1", "file_path": "testing/brd.pdb"},
-            "ligand1": {"id": "lig-1", "file_path": "testing/lig1.sdf"},
+            "pose1": {"id": "pose-1", "file_path": "testing/p1.sdf"},
         },
     }
-    with pytest.raises(ValueError, match="Legacy steps=\\['system-prep'\\]"):
-        ABFE.from_dto(fake_dto, client=client)
+    abfe = ABFE.from_dto(fake_dto, client=client)
+    assert abfe.steps == ["system-prep"]
+    assert abfe.pose1 is not None
+    assert abfe.pose1.id == "pose-1"
+
+
+def _abfe_combined(**kwargs) -> ABFE:
+    """ABFE in protein + pose mode with a fixed name (no entity lookups)."""
+    return ABFE(
+        protein=Protein(name="p", id="prot-1", remote_path="testing/brd.pdb"),
+        pose=Pose(ligand_id="lig-1", id="pose-1", remote_path="testing/p1.sdf"),
+        name="test",
+        **kwargs,
+    )
+
+
+def test_abfe_explicit_system_prep_only_steps() -> None:
+    """steps=["system-prep"] sends pose1 and no FEP blocks."""
+    params = _abfe_combined(steps=["system-prep"])._build_params()
+    assert params["steps"] == ["system-prep"]
+    assert params["pose1"] == {"id": "pose-1", "file_path": "testing/p1.sdf"}
+    assert params["add_H_atoms"] is True
+    assert "binding" not in params
+
+
+def test_abfe_rejects_unsupported_steps() -> None:
+    """Explicit steps must be one of the tool's plans."""
+    with pytest.raises(ValueError, match="Unsupported steps"):
+        _abfe_combined(steps=["abfe", "system-prep"])
+
+
+def test_abfe_results_dataframe_has_pose_std_and_result_id() -> None:
+    """The summary row carries pose1_id, std, and the ABFE result record id."""
+    abfe_tool_key = TOOL_KEYS_AND_VERSIONS["abfe"]["tool_key"]
+    response = {
+        "data": [
+            {
+                "id": "PREP-ROW",
+                "tool_key": abfe_tool_key,
+                "data": {"binding_xml_file_path": "x.xml"},
+            },
+            {
+                "id": "ABFE-ROW",
+                "tool_key": abfe_tool_key,
+                "data": {
+                    "protein_id": "prot-1",
+                    "pose1_id": "pose-1",
+                    "ligand1_id": "lig-1",
+                    "total": -8.5,
+                    "std": 0.4,
+                    "unit": "kcal/mol",
+                },
+            },
+        ]
+    }
+    df = _abfe_results_dataframe(response, tool_key=abfe_tool_key)
+    assert df is not None
+    assert list(df.columns[:6]) == [
+        "protein_id",
+        "pose1_id",
+        "ligand1_id",
+        "total",
+        "std",
+        "unit",
+    ]
+    assert df.iloc[0]["result_id"] == "ABFE-ROW"
+
+
+def _abfe_result_frame(**data) -> pd.DataFrame | None:
+    """Results frame built from one ABFE result row, as get_results() builds it."""
+    abfe_tool_key = TOOL_KEYS_AND_VERSIONS["abfe"]["tool_key"]
+    response = {"data": [{"id": "ABFE-ROW", "tool_key": abfe_tool_key, "data": data}]}
+    return _abfe_results_dataframe(response, tool_key=abfe_tool_key)
+
+
+def test_abfe_anchor_from_results() -> None:
+    """The anchor copies total, std and the result id onto the pose."""
+    df = _abfe_result_frame(pose1_id="pose-1", total=-8.5, std=0.4, unit="kcal/mol")
+    assert _abfe_anchor_from_results(df) == {
+        "pose_id": "pose-1",
+        "dG": -8.5,
+        "std": 0.4,
+        "abfe_result_id": "ABFE-ROW",
+    }
+
+
+def test_abfe_anchor_falls_back_to_prepared_system_pose() -> None:
+    """Without pose1_id on the result, the prepared system's pose is used."""
+    df = _abfe_result_frame(total=-7.0)
+    anchor = _abfe_anchor_from_results(df, fallback_pose_id="pose-ps")
+    assert anchor["pose_id"] == "pose-ps"
+    assert anchor["dG"] == pytest.approx(-7.0)
+
+
+def test_abfe_to_anchor_rejects_prep_only_run() -> None:
+    """A prepare-only run has no ABFE result to anchor from."""
+    with pytest.raises(DeepOriginException, match="only prepares the system"):
+        _abfe_combined(steps=["system-prep"]).to_anchor()
 
 
 def test_pose_from_tool_input_rehydrates_pose_ref() -> None:
@@ -332,8 +430,8 @@ def test_abfe_from_dto_rehydrates_prepared_system_lv0(client: DeepOriginClient):
     assert params.repeats == 2
     assert params.binding_n_windows == 24
     assert params.solvation_n_windows == 16
-    assert params.binding_steps == 100000
-    assert params.solvation_steps == 50000
+    assert params.binding_prod_ns == pytest.approx(0.2)
+    assert params.solvation_prod_ns == pytest.approx(0.1)
 
     assert "abfe" in repr(abfe)
 
