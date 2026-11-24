@@ -442,7 +442,7 @@ prepared.show()
     title="Protein visualization after loop modelling"
 ></iframe>
 
-On the prepared structure, the gaps are filled. This prepared structure keeps chain A, following the recommended decisions:
+On the prepared structure, the gaps are filled. It keeps only chain A, with the ligand extracted and the waters removed:
 
 ```{.python notest}
 prepared.find_missing_residues()
@@ -463,7 +463,7 @@ See [Preparing a protein](#preparing-a-protein) for pockets and async `start()`,
     For each chain, the full sequence and the resolved structure are aligned to
     find continuous gaps. The Protein Data Bank (PDB) is searched for templates
     above a sequence-identity threshold. When UniProt IDs are present, predicted
-    AlphaFold structures from the AF Structural Database may be considered as well.
+    AlphaFold structures from the [AlphaFold Protein Structure Database :octicons-link-external-16:](https://alphafold.ebi.ac.uk/) may be considered as well.
 
     For each template, a global 3D alignment is attempted and structural motifs
     for missing residues are transferred when the gap edges and sequence identity
