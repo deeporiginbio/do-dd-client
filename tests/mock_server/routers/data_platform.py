@@ -12,6 +12,8 @@ import uuid
 from fastapi import APIRouter, Request
 from rdkit import Chem
 
+from deeporigin.utils.constants import EXECUTION_ID_HEADER
+
 MOCK_CANONICAL_PROTEIN_ID = "brd"
 MOCK_CANONICAL_PROTEIN_FILE_PATH = "testing/brd.pdb"
 PREPARED_PROTEIN_UFA_PREFIX = "entities/proteins/prepared"
@@ -698,6 +700,34 @@ def create_data_platform_router(
         if record.get("canonical_smiles")
     }
 
+    def _record_execution_attribution(
+        request: Request, *, entity_type: str, records: list[dict[str, Any]]
+    ) -> None:
+        """Link created rows to the run named in ``X-Do-Execution-Id``, as DPS does.
+
+        The mock keys the link by the compute job id it was sent; DPS resolves it to
+        the run's ``executions`` row.
+
+        Args:
+            request: The create request.
+            entity_type: ``ligand`` or ``protein``.
+            records: Rows the create wrote.
+        """
+        execution_id = request.headers.get(EXECUTION_ID_HEADER)
+        if not execution_id:
+            return
+        for record in records:
+            subject_id = str(uuid.uuid4())
+            _execution_subjects_store[subject_id] = {
+                "id": subject_id,
+                "execution_id": execution_id,
+                "entity_type": entity_type,
+                "entity_canonical_id": str(record["id"]),
+                "role": "output",
+                "deleted": False,
+                "project_id": record.get("project_id"),
+            }
+
     def _insert_ligand(smiles: str, extra: dict[str, Any]) -> dict[str, Any]:
         """Insert a ligand, raising 409 if the unique key already exists.
 
@@ -1158,6 +1188,7 @@ def create_data_platform_router(
 
         smiles = set_data.get("smiles", "")
         record = _insert_ligand(smiles, set_data)
+        _record_execution_attribution(request, entity_type="ligand", records=[record])
 
         response_data = record.copy()
         if returning:
@@ -1176,6 +1207,9 @@ def create_data_platform_router(
         for row in rows:
             smiles = row.get("smiles", "")
             record = _insert_ligand(smiles, row)
+            _record_execution_attribution(
+                request, entity_type="ligand", records=[record]
+            )
 
             response_data = record.copy()
             if returning:
@@ -1232,6 +1266,7 @@ def create_data_platform_router(
             record["file_path"] = str(requested_path)
             record["deleted"] = False
             proteins[protein_id] = record
+        _record_execution_attribution(request, entity_type="protein", records=[record])
 
         response_data = record.copy()
         if returning:

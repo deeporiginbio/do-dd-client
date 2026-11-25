@@ -577,7 +577,7 @@ class _CapturePostJsonClient:
     def __init__(self) -> None:
         self.last_body: dict | None = None
 
-    def post_json(self, _path: str, body: dict) -> dict:
+    def post_json(self, _path: str, body: dict, headers: dict | None = None) -> dict:
         self.last_body = body
         row = dict(body.get("set", {}))
         row["id"] = "stub-id"

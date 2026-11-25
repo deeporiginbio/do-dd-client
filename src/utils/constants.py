@@ -245,6 +245,9 @@ MCP/pipeline after DDOS-7765 / platform PR #6769.
 EXECUTION_LIST_ORDER_CREATED_DESC = "createdAt desc"
 """Tools-service ``order`` query value for most-recently-created executions first."""
 
+EXECUTION_ID_HEADER = "X-Do-Execution-Id"
+"""Data-platform create header naming the tool run (compute job id) that creates the entity."""
+
 TOOL_EXECUTION_GET_ACCEPT_HEADER = "application/json;v=2.0"
 """Accept header for tools-service ``GET .../executions/{id}`` (v2 execution DTO)."""
 

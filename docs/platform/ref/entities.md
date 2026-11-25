@@ -23,6 +23,12 @@ ligand = client.entities.create_ligand(
     formal_charge=0,
 )
 
+# From a tool run: record the run (its compute job id) as the protein's producer
+protein = client.entities.create_protein(
+    file_path="entities/proteins/prepared/abc.pdb",
+    execution_id="11111111-2222-4333-8444-555555555555",
+)
+
 # Delete an entity
 result = client.entities.delete(entity="proteins", entity_id="08BSPN61NYVE3")
 
