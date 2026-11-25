@@ -8,6 +8,7 @@ from deeporigin.platform.tags import merge_entity_tags, stamp_batch_row_tags
 from deeporigin.utils.constants import (
     DEFAULT_SEARCH_PAGE_SIZE,
     ENTITY_SEARCH_TIMEOUT_SECONDS,
+    EXECUTION_ID_HEADER,
     LIGAND_MOLPROPS_SET_FIELDS,
 )
 
@@ -45,6 +46,21 @@ def _apply_entity_origin(
     entity_id = origin.get("entity_id")
     if entity_id is not None:
         set_dict["origin_entity_id"] = entity_id
+
+
+def _execution_headers(execution_id: str | None) -> dict[str, str]:
+    """Return the header naming the run that creates an entity, or none.
+
+    Sent per call, never as a client default: clients are cached per credential
+    and shared by concurrent runs.
+
+    Args:
+        execution_id: Compute job id of the creating run, if any.
+
+    Returns:
+        Headers to send with the create request.
+    """
+    return {EXECUTION_ID_HEADER: execution_id} if execution_id else {}
 
 
 def _writable_ligand_set_fields(set_dict: dict[str, Any]) -> dict[str, Any]:
@@ -258,6 +274,7 @@ class Entities:
         *,
         rows: list[dict[str, Any]],
         returning: list[str] | None = None,
+        execution_id: str | None = None,
     ) -> dict:
         """Batch create entity rows.
 
@@ -273,6 +290,8 @@ class Entities:
             returning: Optional list of fields to include in the response.
                 For ``ligands`` and ``proteins``, defaults to an INSERT-safe
                 returning list when omitted (avoids the platform COPY ingest path).
+            execution_id: Compute job id of the tool run creating the rows. When
+                set, the platform records that run as their producer.
 
         Returns:
             Dictionary containing the batch creation response.
@@ -291,6 +310,7 @@ class Entities:
         return self._c.post_json(
             f"/data-platform/{self._c.org_key}/{entity}/batch/create",
             body=body,
+            headers=_execution_headers(execution_id),
         )
 
     def update(
@@ -569,6 +589,7 @@ class Entities:
         rotatable_bond_count: int | None = None,
         tpsa: float | None = None,
         origin: EntityOrigin | None = None,
+        execution_id: str | None = None,
     ) -> dict:
         """Create a new ligand.
 
@@ -588,6 +609,8 @@ class Entities:
             hbond_acceptor_count: Deprecated. Server-computed from SMILES; ignored.
             rotatable_bond_count: Deprecated. Server-computed from SMILES; ignored.
             tpsa: Deprecated. Server-computed from SMILES; ignored.
+            execution_id: Compute job id of the tool run creating the ligand. When
+                set, the platform records that run as the ligand's producer.
 
         Returns:
             Dictionary containing the created ligand data.
@@ -615,9 +638,15 @@ class Entities:
         return self._c.post_json(
             f"/data-platform/{self._c.org_key}/ligands",
             body=body,
+            headers=_execution_headers(execution_id),
         )
 
-    def batch_create_ligands(self, *, rows: list[dict[str, Any]]) -> dict:
+    def batch_create_ligands(
+        self,
+        *,
+        rows: list[dict[str, Any]],
+        execution_id: str | None = None,
+    ) -> dict:
         """Batch create ligands.
 
         Each row should contain at minimum a ``smiles`` key. Optional keys
@@ -629,6 +658,8 @@ class Entities:
             rows: List of dicts, each describing one ligand to create.  Every
                 dict must contain ``smiles`` (str).  All other keys are
                 optional and mirror the ``set`` payload of ``create_ligand``.
+            execution_id: Compute job id of the tool run creating the ligands. When
+                set, the platform records that run as their producer.
 
         Returns:
             Dictionary containing the batch creation response with a ``data``
@@ -645,6 +676,7 @@ class Entities:
         return self._c.post_json(
             f"/data-platform/{self._c.org_key}/ligands/batch/create",
             body=body,
+            headers=_execution_headers(execution_id),
         )
 
     def update_ligand(
@@ -828,6 +860,7 @@ class Entities:
         preparation: dict[str, Any] | None = None,
         origin: EntityOrigin | None = None,
         structure_hash: str | None = None,
+        execution_id: str | None = None,
     ) -> dict:
         """Create a new protein.
 
@@ -847,6 +880,8 @@ class Entities:
             origin: Write-once provenance (``kind``, ``entity_type``, ``entity_id``).
                 Create-only; not accepted on :meth:`update_protein`.
             structure_hash: Tool-supplied structure fingerprint for dedupe.
+            execution_id: Compute job id of the tool run creating the protein. When
+                set, the platform records that run as the protein's producer.
 
         Returns:
             Dictionary containing the created protein data.
@@ -887,6 +922,7 @@ class Entities:
         return self._c.post_json(
             f"/data-platform/{self._c.org_key}/proteins",
             body=body,
+            headers=_execution_headers(execution_id),
         )
 
     def update_protein(
